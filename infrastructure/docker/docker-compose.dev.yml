@@ -1,0 +1,86 @@
+# FreightProof SA — local development Docker Compose stack.
+# Four services: web (Next.js dispatcher), api (FastAPI), redis, worker (Celery).
+# Database is Supabase-hosted Postgres — no local db service.
+#
+# Start:  docker compose -f infrastructure/docker/docker-compose.dev.yml up -d
+# Stop:   docker compose -f infrastructure/docker/docker-compose.dev.yml down
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Redis — Celery broker, result backend, and ephemeral cache.
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: freightproof-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ---------------------------------------------------------------------------
+  # API — FastAPI backend, connects to Supabase Postgres and Redis.
+  # Source is bind-mounted so uvicorn --reload picks up changes immediately.
+  # ---------------------------------------------------------------------------
+  api:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    container_name: freightproof-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../../backend:/app
+    env_file:
+      - ../../backend/.env
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Worker — Celery task worker, same image as api.
+  # No ports exposed — communicates with api via Redis broker only.
+  # ---------------------------------------------------------------------------
+  worker:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    container_name: freightproof-worker
+    volumes:
+      - ../../backend:/app
+    env_file:
+      - ../../backend/.env
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: celery -A app.tasks worker --loglevel=info
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Web — Next.js dispatcher dashboard.
+  # node_modules anonymous volume prevents the host bind-mount from shadowing
+  # the dependencies installed inside the image.
+  # ---------------------------------------------------------------------------
+  web:
+    build:
+      context: ../../frontend/dispatcher
+      dockerfile: Dockerfile.dev
+    container_name: freightproof-web
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../../frontend/dispatcher:/app
+      - /app/node_modules
+    command: npm run dev
+    restart: unless-stopped
+
+volumes:
+  redis_data:

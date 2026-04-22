@@ -136,13 +136,22 @@ celerybeat.pid
 
 # Environments
 .env
+.env.local
+.env.*.local
+frontend/**/.env.local
+frontend/**/.env.*.local
 .envrc
 .venv
+.venv/
 env/
 venv/
 ENV/
 env.bak/
 venv.bak/
+
+# Frontend — ignore build artefacts and installed packages across all workspaces
+frontend/**/node_modules/
+frontend/**/.next/
 
 # Spyder project settings
 .spyderproject

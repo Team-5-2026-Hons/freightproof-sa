@@ -1,0 +1,79 @@
+# CI pipeline for FreightProof SA.
+# Runs on every PR targeting dev or main, and on direct pushes to dev.
+# Backend and frontend jobs run in parallel — neither blocks the other.
+
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - dev
+      - main
+  push:
+    branches:
+      - dev
+
+jobs:
+
+  backend:
+    name: Backend — lint, type-check, test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ hashFiles('backend/requirements.txt') }}
+          restore-keys: pip-
+
+      - name: Install dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+
+      - name: Lint — ruff
+        working-directory: backend
+        run: ruff check .
+
+      - name: Type-check — mypy
+        working-directory: backend
+        run: mypy .
+
+      - name: Test — pytest (excluding slow tests)
+        working-directory: backend
+        run: pytest -m "not slow"
+
+  frontend:
+    name: Frontend — lint, type-check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/dispatcher/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend/dispatcher
+        run: npm ci
+
+      - name: Lint — ESLint via next lint
+        working-directory: frontend/dispatcher
+        run: npm run lint
+
+      - name: Type-check — tsc
+        working-directory: frontend/dispatcher
+        run: npx tsc --noEmit
