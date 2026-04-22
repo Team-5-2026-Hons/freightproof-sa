@@ -19,7 +19,7 @@ services:
       - redis_data:/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -27,6 +27,10 @@ services:
   # ---------------------------------------------------------------------------
   # API — FastAPI backend, connects to Supabase Postgres and Redis.
   # Source is bind-mounted so uvicorn --reload picks up changes immediately.
+  #
+  # REDIS_URL is overridden here because .env uses redis://localhost:6379/0
+  # for local dev outside Docker. Inside the container, Redis is reachable
+  # via the compose service name "redis".
   # ---------------------------------------------------------------------------
   api:
     build:
@@ -39,6 +43,8 @@ services:
       - ../../backend:/app
     env_file:
       - ../../backend/.env
+    environment:
+      REDIS_URL: redis://redis:6379/0
     depends_on:
       redis:
         condition: service_healthy
@@ -48,6 +54,7 @@ services:
   # ---------------------------------------------------------------------------
   # Worker — Celery task worker, same image as api.
   # No ports exposed — communicates with api via Redis broker only.
+  # REDIS_URL overridden for the same reason as the api service.
   # ---------------------------------------------------------------------------
   worker:
     build:
@@ -58,6 +65,8 @@ services:
       - ../../backend:/app
     env_file:
       - ../../backend/.env
+    environment:
+      REDIS_URL: redis://redis:6379/0
     depends_on:
       redis:
         condition: service_healthy
