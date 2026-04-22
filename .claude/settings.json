@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(open -a Docker)",
+      "Bash(docker --version)",
+      "Read(//Users/timgultig/.docker/run/**)",
+      "Read(//var/run/**)",
+      "Read(//Users/timgultig/.colima/default/**)",
+      "Read(//Users/timgultig/.lima/docker/sock/**)",
+      "Read(//Applications/**)",
+      "Read(//Users/timgultig/Applications/**)",
+      "Bash(mdfind -name \"Docker.app\")",
+      "Bash(curl -s http://localhost:8000/health)",
+      "Bash(redis-cli ping *)",
+      "Read(//private/tmp/**)",
+      "Bash(python3 -c ' *)",
+      "Bash(git -C /Users/timgultig/freightproof-sa ls-files)",
+      "Bash(grep -E \"^\\\\.env$\")",
+      "Bash(git add *)"
+    ]
+  }
+}
