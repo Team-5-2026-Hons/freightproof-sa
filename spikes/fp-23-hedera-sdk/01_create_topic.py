@@ -44,10 +44,11 @@ if NETWORK != "testnet":
 # hiero-sdk-python must be installed in the active venv:
 #   pip install -r requirements.txt
 try:
-    from hiero import (
+    from hiero_sdk_python import (
         AccountId,
         Client,
         PrivateKey,
+        ResponseCode,
         TopicCreateTransaction,
     )
 except ImportError as exc:
@@ -65,7 +66,9 @@ def main() -> None:
     # Build client and set operator (the account that pays the transaction fee).
     client = Client.for_testnet()
     account_id = AccountId.from_string(ACCOUNT_ID)
-    private_key = PrivateKey.from_string(PRIVATE_KEY)
+    # Key in .env is a 0x-prefixed 32-byte ECDSA secp256k1 scalar — must be explicit
+    # or the SDK will try Ed25519 first and produce INVALID_SIGNATURE.
+    private_key = PrivateKey.from_string_ecdsa(PRIVATE_KEY)
     client.set_operator(account_id, private_key)
 
     print("Submitting TopicCreateTransaction…")
@@ -73,9 +76,8 @@ def main() -> None:
 
     receipt = (
         TopicCreateTransaction()
-        .set_topic_memo(TOPIC_MEMO)
+        .set_memo(TOPIC_MEMO)
         .execute(client)
-        .get_receipt(client)
     )
 
     elapsed = time.monotonic() - t_start
@@ -88,7 +90,7 @@ def main() -> None:
     print(f"Latency:  {elapsed:.2f}s")
     print()
 
-    if str(status) != "SUCCESS":
+    if status != ResponseCode.SUCCESS:
         print(f"ERROR: transaction did not succeed (status={status})", file=sys.stderr)
         sys.exit(1)
 

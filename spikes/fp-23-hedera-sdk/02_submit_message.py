@@ -56,10 +56,11 @@ if not topic_id_str:
 
 # --- SDK imports -----------------------------------------------------------
 try:
-    from hiero import (
+    from hiero_sdk_python import (
         AccountId,
         Client,
         PrivateKey,
+        ResponseCode,
         TopicId,
         TopicMessageSubmitTransaction,
     )
@@ -117,16 +118,19 @@ def main() -> None:
 
     client = Client.for_testnet()
     account_id = AccountId.from_string(ACCOUNT_ID)
-    private_key = PrivateKey.from_string(PRIVATE_KEY)
+    # Key in .env is a 0x-prefixed 32-byte ECDSA secp256k1 scalar — must be explicit
+    # or the SDK will try Ed25519 first and produce INVALID_SIGNATURE.
+    private_key = PrivateKey.from_string_ecdsa(PRIVATE_KEY)
     client.set_operator(account_id, private_key)
 
     topic_id = TopicId.from_string(topic_id_str)
     payload = build_anchor_payload(topic_id_str)
-    payload_bytes = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    # set_message() takes a str; we use compact JSON (no extra whitespace) to minimise bytes.
+    payload_json = json.dumps(payload, separators=(",", ":"))
 
     print("Payload:")
     print(json.dumps(payload, indent=2))
-    print(f"Payload size: {len(payload_bytes)} bytes")
+    print(f"Payload size: {len(payload_json.encode())} bytes")
     print()
 
     print("Submitting TopicMessageSubmitTransaction…")
@@ -135,9 +139,8 @@ def main() -> None:
     receipt = (
         TopicMessageSubmitTransaction()
         .set_topic_id(topic_id)
-        .set_message(payload_bytes)
+        .set_message(payload_json)
         .execute(client)
-        .get_receipt(client)
     )
 
     elapsed = time.monotonic() - t_start
@@ -150,7 +153,7 @@ def main() -> None:
     print(f"Latency:        {elapsed:.2f}s")
     print()
 
-    if str(status) != "SUCCESS":
+    if status != ResponseCode.SUCCESS:
         print(f"ERROR: transaction did not succeed (status={status})", file=sys.stderr)
         sys.exit(1)
 
@@ -177,7 +180,7 @@ def main() -> None:
         "mirror_confirmed": mirror_url is not None,
         "mirror_url": mirror_url or f"{MIRROR_BASE}/topics/{topic_id_str}/messages",
         "hashscan_url": hashscan_url,
-        "payload_size_bytes": len(payload_bytes),
+        "payload_size_bytes": len(payload_json.encode()),
     }
     print("=== SUMMARY (copy into 03_findings.md) ===")
     print(json.dumps(summary, indent=2))
