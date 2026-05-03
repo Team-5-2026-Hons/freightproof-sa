@@ -16,7 +16,12 @@
       "Bash(python3 -c ' *)",
       "Bash(git -C /Users/timgultig/freightproof-sa ls-files)",
       "Bash(grep -E \"^\\\\.env$\")",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git -C /Users/timgultig/freightproof-sa branch --show-current)",
+      "Bash(pip show *)",
+      "Bash(pip3 show *)",
+      "Bash(git -C /Users/timgultig/freightproof-sa status)",
+      "Bash(git -C /Users/timgultig/freightproof-sa check-ignore -v spikes/fp-23-hedera-sdk/.env.spike)"
     ]
   }
 }

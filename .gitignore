@@ -138,6 +138,7 @@ celerybeat.pid
 .env
 .env.local
 .env.*.local
+.env.spike
 frontend/**/.env.local
 frontend/**/.env.*.local
 .envrc
