@@ -175,3 +175,26 @@ class TripTrailerCreate(TripTrailerBase):
 
 class TripTrailerRead(TripTrailerBase):
     pass
+
+
+class DriverSubstitutionBase(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    trip_id: UUID
+    original_driver_id: UUID
+    substituting_driver_id: UUID
+    exchange_location: str
+    approving_dispatcher_user_id: UUID
+    is_planned: bool
+    substitution_at: datetime
+    exception_id: Optional[UUID] = None
+    blockchain_receipt_id: Optional[UUID] = None
+
+
+class DriverSubstitutionCreate(DriverSubstitutionBase):
+    pass
+
+
+class DriverSubstitutionRead(DriverSubstitutionBase):
+    id: UUID
+    created_at: datetime

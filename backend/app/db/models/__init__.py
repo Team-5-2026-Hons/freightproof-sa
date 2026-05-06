@@ -17,6 +17,7 @@ from app.db.models.people import Driver, User  # noqa: E402,F401
 from app.db.models.vehicles import Vehicle  # noqa: E402,F401
 from app.db.models.trips import (  # noqa: E402,F401
     Consignment,
+    DriverSubstitution,
     Parcel,
     Trip,
     TripTemplate,

@@ -23,6 +23,9 @@ class Organization(Base):
     org_type: Mapped[OrganizationType] = mapped_column(String(50), nullable=False)
     contact_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
 
 
 class Precinct(Base):
@@ -40,3 +43,6 @@ class Precinct(Base):
     longitude: Mapped[Decimal] = mapped_column(Numeric(10, 7), nullable=False)
     geofence_radius_metres: Mapped[int] = mapped_column(Integer, nullable=False, server_default="200")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )

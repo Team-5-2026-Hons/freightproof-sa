@@ -38,6 +38,9 @@ class TripTemplate(Base):
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
 
 
 class Consignment(Base):
@@ -151,3 +154,45 @@ class TripTrailer(Base):
     trailer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("vehicles.id"), nullable=False)
     # Snapshot prevents retroactive trailer reassignment from altering the evidence chain.
     pulsit_device_id_snapshot: Mapped[str] = mapped_column(String(100), nullable=False)
+
+
+class DriverSubstitution(Base):
+    """Records every mid-trip driver change — planned or unplanned.
+
+    Spec §5 + Handshake 3: four fields are required for all substitutions.
+    Planned substitutions (is_planned=True) are normal trip events with no
+    exception flag. Unplanned ones link to a TripException row via exception_id
+    and are anchored to blockchain separately.
+    """
+
+    __tablename__ = "driver_substitutions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    trip_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("trips.id"), nullable=False
+    )
+    # The four required log fields from the spec.
+    original_driver_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("drivers.id"), nullable=False
+    )
+    substituting_driver_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("drivers.id"), nullable=False
+    )
+    # Free-text: exchange points are Pulsit geofence locations (e.g. "Harrismith
+    # N3 fuel stop"), not necessarily Precinct rows in our DB.
+    exchange_location: Mapped[str] = mapped_column(String(255), nullable=False)
+    approving_dispatcher_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    is_planned: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    substitution_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Populated only for unplanned substitutions — links to the TripException record.
+    exception_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("exceptions.id"), nullable=True
+    )
+    blockchain_receipt_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("blockchain_receipts.id", use_alter=True, name="fk_driver_sub_blockchain_receipt"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
