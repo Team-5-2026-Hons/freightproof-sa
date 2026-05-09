@@ -8,7 +8,7 @@ This document is the single source of truth for all UI decisions across both MVP
 | Surface | Stack | Primary Context |
 |---|---|---|
 | **Dispatcher Portal** | Next.js 15, Tailwind, TypeScript | Desktop / tablet, professional operations |
-| **Driver PWA** | Next.js 15 + next-pwa, Tailwind, TypeScript | Mobile Android (company-issued Samsung), outdoor use |
+| **Driver PWA** | Next.js 15 + Capacitor (Android APK) + @serwist/next (browser PWA), Tailwind, TypeScript | Mobile Android (company-issued Samsung), outdoor use. Static export (`output: 'export'`); all pages `"use client"`. |
 
 ---
 

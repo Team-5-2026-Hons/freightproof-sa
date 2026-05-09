@@ -65,7 +65,7 @@ If you hit deprecated code in an existing file, flag it under `Deprecation warni
 
 **Python/FastAPI:** All endpoints `async def`. All DB calls via async `get_db()`. Pydantic v2 models in/out, never raw dicts. `tags=["..."]` on every router. Endpoints thin — validate, call service, return. Business logic in `orchestration/`, `auth/`, `blockchain/` etc., never inline.
 
-**TS/Next.js:** App Router, async Server Components where possible. Explicit prop interfaces. `"use client"` only at lowest level needed. Typed fetch wrapper, never raw `fetch()` in components. Client env vars as `process.env.NEXT_PUBLIC_*`.
+**TS/Next.js:** App Router, async Server Components where possible. Explicit prop interfaces. `"use client"` only at lowest level needed — **exception: `driver-pwa/` requires `"use client"` on every page** because `output: 'export'` (required for Capacitor Android APK) is incompatible with Server Components. Typed fetch wrapper, never raw `fetch()` in components. Client env vars as `process.env.NEXT_PUBLIC_*`.
 
 **Database:** Never edit Supabase schema directly — all changes via Alembic. New models must be imported in `db/models/__init__.py`. Every table has `created_at`, `updated_at`. Explicit `ForeignKey()` on FKs.
 
@@ -111,7 +111,7 @@ endpoints → orchestration/auth/storage → integrations/blockchain/crypto → 
 ```
 `integrations/` never imports from `api/` or `orchestration/`. `db/` never imports from elsewhere in `app/`. Endpoints never call `hedera.py` directly — go through orchestration.
 
-**Frontend:** `dispatcher/` (Next.js dashboard), `driver-pwa/` (Next.js + next-pwa), `guard/` (plain HTML+JS, no framework), `client-portal/` (Next.js read-only).
+**Frontend:** `dispatcher/` (Next.js dashboard), `driver-pwa/` (Next.js + Capacitor Android APK + @serwist/next browser PWA; `output: 'export'`; all pages `"use client"`), `guard/` (plain HTML+JS, no framework), `client-portal/` (Next.js read-only).
 
 **Stack (do not swap without team agreement):** FastAPI, SQLAlchemy 2.0, Alembic, Celery+Redis, JWT+python-jose, Hedera HCS, Supabase Storage, Next.js 15, Tailwind, Pydantic v2.
 
