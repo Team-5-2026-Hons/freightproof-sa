@@ -90,7 +90,7 @@ All 11 files are **identical** in both surfaces. Write them once, copy to the ot
 - IDs are branded strings: `type TripId = string & { readonly __brand: 'TripId' }`.
 - Timestamps are `string` (ISO 8601), never `Date`.
 - Enums are string unions, not TS `enum`.
-- `TripStatus` must be exactly: `'CREATED' | 'AT_ORIGIN' | 'LOADED' | 'IN_TRANSIT' | 'AT_DESTINATION' | 'CLOSED'`.
+- `TripStatus` must match the backend enum exactly: `'created' | 'origin_gate_in' | 'loading' | 'origin_gate_out' | 'in_transit' | 'dest_gate_in' | 'unloading' | 'closed' | 'cancelled' | 'exception_hold'` (10 values — see `backend/app/db/models/enums.py`).
 - `HandshakeNumber` is `0 | 1 | 2 | 3 | 4 | 5`.
 - `AuthState` (in `user.ts`) includes `signIn` and `signOut` methods as defined in spec §3.3.
 - Type files may import from each other (e.g. `trip.ts` imports `DriverId` from `driver.ts`).
@@ -114,7 +114,7 @@ All fixture files are **identical** in both surfaces. Write once, copy.
 - IDs are UUID-format strings. No sequential numbers like `'trip-1'`.
 - Timestamps are recent (within last 7 days of 2026-05-09) and plausible.
 - Names are South African: Linbro Park, N3 corridor, Tugela Plaza, Mooi River, Harrismith.
-- **6 trips:** 1 CREATED, 1 AT_ORIGIN, 2 IN_TRANSIT, 1 AT_DESTINATION, 1 CLOSED.
+- **6 trips:** 1 `created`, 1 `origin_gate_in`, 2 `in_transit`, 1 `dest_gate_in`, 1 `closed`.
 - **4 drivers:** One must be `S. Dlamini` (the canonical driver from Full Picture §6.4). Others can use dev-inspired names.
 - **3 horses, 5 trailers.**
 - **4 precincts:** FedEx JHB (Linbro Park), FedEx DBN, Courier Guy CT, and one more.

@@ -162,7 +162,7 @@ lib/types/
 - IDs are branded strings — `type TripId = string & { readonly __brand: 'TripId' }` — to prevent accidental mixing.
 - Timestamps are ISO 8601 strings, never `Date`. Conversion happens at the display boundary only.
 - Enums are string unions, not TS `enum`s.
-- Status values match the domain doc verbatim. Trip status: `'CREATED' | 'AT_ORIGIN' | 'LOADED' | 'IN_TRANSIT' | 'AT_DESTINATION' | 'CLOSED'`.
+- Status values match the backend enum verbatim. Trip status: `'created' | 'origin_gate_in' | 'loading' | 'origin_gate_out' | 'in_transit' | 'dest_gate_in' | 'unloading' | 'closed' | 'cancelled' | 'exception_hold'` (10 values — see `backend/app/db/models/enums.py` `TripStatus`).
 
 ### 3.2 Fixture data
 
@@ -172,7 +172,7 @@ Fixtures live in `lib/mocks/` and are **typed** — every export has an explicit
 
 ```
 lib/mocks/
-├── trips.ts           # 6 trips: 1 created, 1 at-origin, 2 in-transit, 1 at-destination, 1 closed
+├── trips.ts           # 6 trips: 1 created, 1 origin_gate_in, 2 in_transit, 1 dest_gate_in, 1 closed
 ├── drivers.ts         # 4 drivers (matches the 4 dev names for fun)
 ├── vehicles.ts        # 3 horses, 5 trailers
 ├── manifests.ts       # 3 manifests (one per active trip)
@@ -451,7 +451,7 @@ Port :3000. Desktop-first, tablet-usable, never a mobile-first port. All pages a
 | User story | As a dispatcher, I want to see all currently in-progress trips at a glance so that I can spot exceptions and check progress without opening each trip. |
 | Purpose | The operational nerve centre. |
 | Components | `PageHeader`, `DataTable` of `ChecklistRow`s, `Chip`, `HandshakeChain` (compact), `EmptyState`, `DateRangePicker` (filter), search input |
-| Mock data | `useTrips({ status: ['CREATED','AT_ORIGIN','LOADED','IN_TRANSIT','AT_DESTINATION'] })` |
+| Mock data | `useTrips({ status: ['created','origin_gate_in','loading','origin_gate_out','in_transit','dest_gate_in','unloading'] })` |
 | Row anatomy | Status chip · `TripIdStamp` · Driver name · Route (origin → destination) · Compact `HandshakeChain` · Latest event timestamp · Open button |
 | Filters | Status, driver, route, has-exceptions |
 | Sort | Default: latest event timestamp desc |
@@ -601,7 +601,7 @@ Port :3001. Mobile-first Android (Samsung). Every page is one logical step. Ever
 | User story | As a driver, I want to see today's assigned trip and start it in one tap so that I don't have to navigate menus before driving off. |
 | Purpose | The home screen between trips. |
 | States | **No trip** — `EmptyState` with `Truck` icon, copy "No trip assigned. Check back with dispatch." · **Trip assigned, not started** — `EvidencePacket` showing trip summary (route, vehicle, expected origin gate, slot time) with a single full-width primary `Button` "Start Trip → Begin Handshake 1" |
-| Mock data | `useTrip()` returns the first trip in `lib/mocks/trips.ts` with status `CREATED` or `AT_ORIGIN`. |
+| Mock data | `useTrip()` returns the first trip in `lib/mocks/trips.ts` with status `'created'` or `'origin_gate_in'`. |
 
 ### 8.3 Settings
 
