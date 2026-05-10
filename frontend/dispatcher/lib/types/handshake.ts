@@ -1,6 +1,6 @@
-// Handshake: one of five sequential evidence-capture events that progress a trip
-// through its lifecycle. Each handshake has its own status independent of the trip.
-// Corresponds to backend HandshakeType/HandshakeStatus enums.
+// Handshake: one of five sequential evidence-capture events that progress a trip.
+// Each handshake has its own status independent of the trip status.
+// Mirrors backend HandshakeEventRead schema in schemas/handshakes.py.
 
 export type HandshakeEventId = string & { readonly __brand: 'HandshakeEventId' }
 
@@ -24,6 +24,34 @@ export type HandshakeStatus =
   | 'completed'    // Fully evidenced; rendered with a tick
   | 'exception'    // Blocked by an unresolved exception; rendered as a warning node
   | 'overridden'   // Completed via dispatcher override; rendered with an override badge
+
+export interface HandshakeEvent {
+  id: HandshakeEventId
+  trip_id: string
+  handshake_type: HandshakeType
+  sequence_number: HandshakeNumber
+  status: HandshakeStatus
+  dispatcher_override_user_id: string | null
+  dispatcher_override_note: string | null
+  driver_phone_lat: number | null
+  driver_phone_lng: number | null
+  horse_gps_lat: number | null
+  horse_gps_lng: number | null
+  pulsit_geofence_confirmed: boolean | null
+  seal_number: string | null
+  seal_photo_artifact_id: string | null
+  waybill_photo_artifact_id: string | null
+  gate_photo_artifact_id: string | null
+  pod_photo_artifact_id: string | null
+  parcel_count_origin: number | null
+  parcel_count_destination: number | null
+  driver_visual_count: number | null
+  event_hash: string | null
+  blockchain_receipt_id: string | null
+  completed_at: string | null
+  created_at: string
+  updated_at: string
+}
 
 export interface HandshakeStep {
   handshake: HandshakeNumber

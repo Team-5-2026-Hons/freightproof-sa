@@ -1,6 +1,6 @@
-// Exception: a recorded deviation from the expected trip workflow. Can be raised
-// by the driver, detected automatically by the system, or noted by a dispatcher.
-// Corresponds to backend ExceptionType/ExceptionSource/ExceptionSeverity enums.
+// TripException: a recorded deviation from expected trip workflow.
+// Raised by driver, detected by system, or noted by dispatcher.
+// Mirrors backend TripExceptionRead schema in schemas/transit.py.
 
 export type ExceptionId = string & { readonly __brand: 'ExceptionId' }
 
@@ -33,12 +33,21 @@ export type ExceptionSource = 'system' | 'driver' | 'dispatcher'
 
 export type ExceptionSeverity = 'info' | 'warning' | 'critical'
 
-export interface Exception {
+export interface TripException {
   id: ExceptionId
-  type: ExceptionType
+  trip_id: string
+  exception_type: ExceptionType
   source: ExceptionSource
   severity: ExceptionSeverity
   description: string
-  createdAt: string
-  resolvedAt: string | null
+  handshake_event_id: string | null
+  checkpoint_id: string | null
+  supporting_artifact_id: string | null
+  resolved: boolean
+  resolved_by_user_id: string | null
+  resolved_at: string | null
+  resolver_note: string | null
+  merkle_batch_id: string | null
+  created_at: string
+  updated_at: string
 }
