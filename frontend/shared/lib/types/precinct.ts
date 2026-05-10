@@ -1,5 +1,5 @@
 // Precinct: a physical depot or warehouse with a GPS geofence boundary.
-// Principal: the client organisation that owns a precinct (e.g. FedEx, Courier Guy).
+// Organization: the client organisation that owns a precinct (e.g. FedEx, Courier Guy).
 // Mirrors backend PrecinctRead and OrganizationRead schemas in schemas/organisations.py.
 
 export type PrecinctId = string & { readonly __brand: 'PrecinctId' }

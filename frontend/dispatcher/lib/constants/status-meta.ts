@@ -1,4 +1,4 @@
-import type { ExceptionType } from '../types/exception'
+import type { ExceptionType } from '@shared/lib/types/exception'
 
 // Driver raises these from the /in-transit/exception picker screen.
 // System-detected types are never shown as driver options.

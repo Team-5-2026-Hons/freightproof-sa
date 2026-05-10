@@ -1,4 +1,5 @@
-import type { Metadata } from "next";
+"use client";
+
 import { Space_Grotesk, IBM_Plex_Mono } from "next/font/google";
 import { AuthProvider } from "@/lib/context/AuthContext";
 import { ToastProvider } from "@/lib/context/ToastContext";
@@ -18,11 +19,8 @@ const ibmPlexMono = IBM_Plex_Mono({
   display: "swap",
 });
 
-export const metadata: Metadata = {
-  title: "FreightProof SA — Dispatcher",
-  description: "Cargo theft and disputed delivery evidence platform — dispatcher console",
-};
-
+// TripProvider is wired in app/(app)/layout.tsx (created in Phase 1) — it belongs
+// in the authenticated route group, not the root, so unauthenticated pages stay lean.
 export default function RootLayout({
   children,
 }: {
