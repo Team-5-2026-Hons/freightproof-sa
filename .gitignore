@@ -216,3 +216,4 @@ marimo/_lsp/
 __marimo__/
 .DS_Store
 **/.DS_Store
+spikes/fp-23-hedera-sdk/.env.spike
