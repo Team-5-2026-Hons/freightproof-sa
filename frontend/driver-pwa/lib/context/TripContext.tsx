@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
+import { createContext, useContext, useState, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Trip } from '@shared/lib/types/trip'
 import type { HandshakeNumber } from '@shared/lib/types/handshake'
@@ -50,18 +50,21 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
         t => t.driver_id === authCtx.user!.id && !['closed', 'cancelled'].includes(t.status),
       ) ?? null
     )
-  }, [authCtx?.user])
+  }, [authCtx])
 
   const [currentHandshake, setCurrentHandshake] = useState<HandshakeNumber>(1)
   const [currentStep, setCurrentStep] = useState(1)
   const [exceptions, setExceptions] = useState<TripException[]>([])
+  // Track which trip's initial state we've applied — avoids the useEffect + setState anti-pattern.
+  // When a new trip loads, reset derived state synchronously during render (React docs recommended).
+  const [syncedTripId, setSyncedTripId] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!trip) return
+  if (trip !== null && (trip.id as string) !== syncedTripId) {
+    setSyncedTripId(trip.id as string)
     setCurrentHandshake(handshakeFromStatus(trip.status))
     setCurrentStep(1)
     setExceptions(trip.exceptions)
-  }, [trip])
+  }
 
   const totalSteps = HANDSHAKE_STEP_COUNTS[currentHandshake]
 

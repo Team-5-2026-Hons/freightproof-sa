@@ -1,6 +1,8 @@
 "use client"
 
 import { createContext, useState, useCallback, useRef } from 'react'
+import { Toast } from '@/components/ui/Toast'
+import { Z } from '@shared/lib/z-index'
 
 export interface Toast {
   id: string
@@ -42,6 +44,16 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={{ toasts, notify, dismiss }}>
       {children}
+      {/* Toast viewport — bottom-center, full-width with margin per DESIGN_SYSTEM.md §10.7 */}
+      <div
+        className="fixed bottom-4 left-4 right-4 flex flex-col gap-2"
+        style={{ zIndex: Z.toast }}
+        aria-label="Notifications"
+      >
+        {toasts.map(toast => (
+          <Toast key={toast.id} toast={toast} onDismiss={dismiss} />
+        ))}
+      </div>
     </ToastContext.Provider>
   )
 }
