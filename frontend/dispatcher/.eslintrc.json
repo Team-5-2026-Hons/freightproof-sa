@@ -1,0 +1,18 @@
+{
+  "extends": "next/core-web-vitals",
+  "rules": {
+    "no-restricted-syntax": [
+      "error",
+      {
+        "selector": "Literal[value=/^#[0-9a-fA-F]{3,8}$/]",
+        "message": "No raw hex in component code. Use the Tailwind token map (see DESIGN_SYSTEM.md §2.3)."
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["lib/tokens.ts", "tailwind.config.ts"],
+      "rules": { "no-restricted-syntax": "off" }
+    }
+  ]
+}
