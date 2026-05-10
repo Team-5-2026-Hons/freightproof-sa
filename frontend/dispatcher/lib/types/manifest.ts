@@ -1,9 +1,8 @@
-// Manifest: the Parcel Perfect consignment record for a trip, used at H2 (loading)
-// and H5 (unloading) to verify parcel counts.
-// Mirrors backend ConsignmentRead and ParcelRead schemas in schemas/trips.py.
-// Served by GET /trips/{id}/manifest as a separate endpoint.
+// Manifest: the Parcel Perfect consignment for a trip, grouped by delivery stop.
+// Fetched on demand via GET /trips/{id}/manifest — separate from trip detail.
+// Only available after H2 loading starts; the endpoint returns 404 before that.
+// Mirrors backend ManifestResponse schema — see api_contract_dispatcher_driver.md §4.3.
 
-export type ManifestId = string & { readonly __brand: 'ManifestId' }
 export type ParcelId = string & { readonly __brand: 'ParcelId' }
 
 export type ParcelStatus = 'pending' | 'scanned_out' | 'scanned_in' | 'exception'
@@ -21,18 +20,20 @@ export interface Parcel {
   updated_at: string
 }
 
-export interface Manifest {
-  id: ManifestId
-  trip_id: string | null
-  parcel_perfect_reference: string
-  client_organization_id: string
-  origin_precinct_id: string | null
-  destination_precinct_id: string | null
-  declared_value: number | null
-  parcel_count_expected: number | null
-  slot_time_origin: string | null
-  slot_time_destination: string | null
+// Parcels grouped by delivery stop — the shape the driver sees on the H2 loading screen.
+export interface DeliveryStop {
+  delivery_stop: string
+  parcel_count: number
   parcels: Parcel[]
-  created_at: string
-  updated_at: string
+}
+
+export interface Manifest {
+  trip_id: string
+  consignment_id: string
+  parcel_perfect_reference: string
+  total_parcel_count: number
+  // True once every parcel has a pp_scan_out_at timestamp from Parcel Perfect.
+  origin_scan_complete: boolean
+  stops: DeliveryStop[]
+  pulled_at: string
 }
