@@ -63,7 +63,7 @@ Full architecture documentation: [`docs/FreightProof_TechArch.docx`](docs/)
 | Cache / Queue | Redis 7, Celery |
 | Storage | Amazon S3 / Supabase Storage |
 | Frontend | Next.js 15 (App Router), TypeScript 5.5, React 19, Tailwind CSS |
-| Driver PWA | Next.js 15 + next-pwa (Workbox offline support) |
+| Driver PWA | Next.js 15 + Capacitor (Android APK) + @serwist/next (browser PWA / Workbox) |
 | Guard page | Plain HTML + JS (zero install, zero login) |
 | Infrastructure | Docker, AWS ECS Fargate, af-south-1 region (POPIA) |
 | CI/CD | GitHub Actions |
@@ -199,6 +199,20 @@ npm run dev -- --port 3001
 ```
 
 Opens at [http://localhost:3001](http://localhost:3001)
+
+### 9. Build and run the driver Android APK (optional — requires Android Studio)
+
+```bash
+cd frontend/driver-pwa
+npm run build          # Next.js static export → out/
+npx cap sync android   # copies out/ into android/app/src/main/assets
+npx cap open android   # opens Android Studio
+```
+
+In Android Studio: select a connected Samsung device or emulator → Run. The APK installs and launches the driver app natively.
+
+> **Prerequisites:** Android Studio with SDK Platform 34+, Java 17. `ANDROID_HOME` env var set.  
+> **Not required** for browser-based development — `npm run dev` works without Android Studio.
 
 ---
 
