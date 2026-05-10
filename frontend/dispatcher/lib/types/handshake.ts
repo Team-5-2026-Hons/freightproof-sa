@@ -25,6 +25,7 @@ export type HandshakeStatus =
   | 'exception'    // Blocked by an unresolved exception; rendered as a warning node
   | 'overridden'   // Completed via dispatcher override; rendered with an override badge
 
+// Named 'handshakes' on TripDetailResponse — matches API contract §4.2.
 export interface HandshakeEvent {
   id: HandshakeEventId
   trip_id: string
