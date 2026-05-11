@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">FreightProof Driver</string>
+    <string name="title_activity_main">FreightProof Driver</string>
+    <string name="package_name">za.ac.uct.freightproof.driver</string>
+    <string name="custom_url_scheme">za.ac.uct.freightproof.driver</string>
+</resources>

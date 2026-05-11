@@ -202,16 +202,16 @@ Read `DESIGN_SYSTEM.md §10` and `spec §5.1` for every component's visual spec 
 
 ---
 
-## Task 9: /_dev/tokens pages — both surfaces
+## Task 9: /dev/tokens pages — both surfaces
 
 **Files:**
-- Create: `dispatcher/app/_dev/tokens/page.tsx`
-- Create: `driver-pwa/app/_dev/tokens/page.tsx`
+- Create: `dispatcher/app/dev/tokens/page.tsx`
+- Create: `driver-pwa/app/dev/tokens/page.tsx`
 
 - [ ] Both pages: gate with `if (process.env.NODE_ENV !== 'development') notFound()` at the top.
 - [ ] Render every colour swatch from `TOKENS` (name + hex + coloured block), every type role (live text samples using the correct font/size), every shadow, every border radius. Use `DESIGN_SYSTEM.md §17 Quick Reference Card` as the checklist.
 - [ ] Driver-pwa token page additionally: a "Simulate gate arrival H1" and "Simulate gate arrival H4" button that calls `usePushNotifications().simulateGateArrival(1|4)`. This is the v1 substitute for a real FCM push.
-- [ ] Start both dev servers. Open `http://localhost:3000/_dev/tokens` and `http://localhost:3001/_dev/tokens`. Visually verify every colour matches `DESIGN_SYSTEM.md §2.2`. This is the Phase 0 sign-off gate — do not proceed to Phase 1 until this page looks correct.
+- [ ] Start both dev servers. Open `http://localhost:3000/dev/tokens` and `http://localhost:3001/dev/tokens`. Visually verify every colour matches `DESIGN_SYSTEM.md §2.2`. This is the Phase 0 sign-off gate — do not proceed to Phase 1 until this page looks correct.
 - [ ] Commit: `feat(dispatcher,driver-pwa): add dev token preview pages`
 
 ---
@@ -233,7 +233,7 @@ Before handing off to Phase 1, confirm all of the following:
 - [ ] `npm run type-check` passes in both surfaces with zero errors
 - [ ] `npm run lint` passes in both surfaces with zero errors (especially no raw hex)
 - [ ] Both dev servers start and the homepage renders without a console error
-- [ ] `/_dev/tokens` page renders correctly in both surfaces — colours match the design system
+- [ ] `/dev/tokens` page renders correctly in both surfaces — colours match the design system
 - [ ] `npx cap sync android` runs clean inside `driver-pwa/`
 
 ---

@@ -282,7 +282,7 @@ CI must run `next lint` and fail on hits.
 
 ### 4.3 Living token page
 
-Both surfaces include a development-only page at `/_dev/tokens` that renders every colour swatch, type role, spacing scale, radius, and shadow. The page is gated by `process.env.NODE_ENV === 'development'` — it does not ship to production. It is the visual proof that the token map matches the design system.
+Both surfaces include a development-only page at `/dev/tokens` that renders every colour swatch, type role, spacing scale, radius, and shadow. The page is gated by `process.env.NODE_ENV === 'development'` — it does not ship to production. It is the visual proof that the token map matches the design system.
 
 ### 4.4 Fonts
 
@@ -407,7 +407,7 @@ Logic that more than one component needs is extracted into a hook in `lib/hooks/
 - `useTrips(filter?)` — paged/filtered access to fixture trips (dispatcher).
 - `useHoldToConfirm(durationMs)` — for the panic button; returns `{ isPressing, progress, onPressStart, onPressEnd }`. Pure logic, unit-testable.
 - `useLocation()` — wraps `@capacitor/geolocation`. Returns `{ coords, accuracy, status, capture }`. On a real device, calls `Geolocation.getCurrentPosition()`; in a desktop browser, returns a hardcoded Linbro Park coordinate for dev. Never calls the web `navigator.geolocation` API directly — always go through this hook so the Capacitor layer is swappable.
-- `usePushNotifications()` — wraps `@capacitor/push-notifications`. Registers the FCM token on mount, listens for `pushNotificationReceived` events. On a `GATE_ARRIVAL` push from the backend, navigates the driver directly to the correct handshake step URL. On v1 (no backend), a dev helper button in `/_dev/tokens` simulates the push. Driver-pwa only.
+- `usePushNotifications()` — wraps `@capacitor/push-notifications`. Registers the FCM token on mount, listens for `pushNotificationReceived` events. On a `GATE_ARRIVAL` push from the backend, navigates the driver directly to the correct handshake step URL. On v1 (no backend), a dev helper button in `/dev/tokens` simulates the push. Driver-pwa only.
 
 ### 6.6 Forbidden duplication patterns
 
@@ -560,7 +560,7 @@ Port :3000. Desktop-first, tablet-usable, never a mobile-first port. All pages a
 
 | | |
 |---|---|
-| Route | `/_dev/tokens` |
+| Route | `/dev/tokens` |
 | Purpose | §4.3 living style sheet. Renders every colour, type role, spacing, radius, shadow. |
 | Production | Returns 404 in production builds. |
 
@@ -624,7 +624,7 @@ Bruce's narrative: driver arrives at origin precinct, gate security performs thr
 | User story | As a driver, I want the system to know I've arrived at the gate automatically — without me tapping anything — so I can keep my hands on the wheel until I'm parked. |
 | Purpose | Auto-triggered by the backend `GATE_ARRIVAL` push (Pulsit geofence fires → backend sends FCM via `@capacitor/push-notifications` → `usePushNotifications()` navigates here). Driver does not tap to start; the page opens itself. `LocationCapture` fires on mount and silently records GPS. |
 | Layout | `StepHeader` · `LocationCapture` status card (auto, shows GPS captured) · `Card` showing precinct name and Pulsit geofence match status · Helper copy: "Wait for guard to scan vehicle disc, trailer disc, and your licence." · CTA "Guard scans done · Continue" |
-| Dev / v1 | On v1 (no backend), the `/_dev/tokens` page has a "Simulate gate arrival push" button that triggers navigation to this URL. The `useLocation()` hook returns a hardcoded Linbro Park coordinate in the browser. |
+| Dev / v1 | On v1 (no backend), the `/dev/tokens` page has a "Simulate gate arrival push" button that triggers navigation to this URL. The `useLocation()` hook returns a hardcoded Linbro Park coordinate in the browser. |
 
 #### H1 · Step 2 of 3 — Capture gate-entry photo
 
@@ -861,7 +861,7 @@ The doc emphasises arrival verification as the highest-weight evidence. Bruce's 
 
 ### 8.11 Token preview (dev only)
 
-Same as dispatcher — `/_dev/tokens`.
+Same as dispatcher — `/dev/tokens`.
 
 ---
 
@@ -894,7 +894,7 @@ If four developers split this work, build in this order:
 5. `lib/context/*.ts` — Auth, Trip, Toast providers.
 6. `lib/hooks/*.ts` — required hooks (including `useLocation`, `usePushNotifications`).
 7. `components/ui/*` — every primitive in §5.1.
-8. `/_dev/tokens` page in both surfaces (visual sign-off that design system is wired, plus the "Simulate gate arrival push" dev button on the driver surface).
+8. `/dev/tokens` page in both surfaces (visual sign-off that design system is wired, plus the "Simulate gate arrival push" dev button on the driver surface).
 9. **Capacitor scaffold** (driver-pwa only): `npx cap init`, set `output: 'export'` in `next.config.ts`, `npx cap add android`, verify `npx cap sync android` runs clean, open in Android Studio and confirm the emulator boots. Do this in Phase 0 — retrofitting Capacitor after pages are built is painful because every web API call needs swapping.
 
 **Phase 1 — Dispatcher in parallel with Phase 1 Driver.**
