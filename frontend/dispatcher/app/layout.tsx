@@ -1,38 +1,24 @@
-import type { Metadata } from "next";
-import { Space_Grotesk, IBM_Plex_Mono } from "next/font/google";
-import { AuthProvider } from "@/lib/context/AuthContext";
-import { ToastProvider } from "@/lib/context/ToastContext";
-import "./globals.css";
+import type { Metadata } from 'next'
+import { Inter } from 'next/font/google'
+import './globals.css'
+import { AuthProvider } from '@/lib/context/AuthContext'
+import { ToastProvider } from '@/lib/context/ToastContext'
 
-const spaceGrotesk = Space_Grotesk({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-space-grotesk",
-  display: "swap",
-});
-
-const ibmPlexMono = IBM_Plex_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--font-ibm-plex-mono",
-  display: "swap",
-});
+const inter = Inter({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700', '800', '900'],
+  variable: '--font-inter',
+  display: 'swap',
+})
 
 export const metadata: Metadata = {
-  title: "FreightProof SA — Dispatcher",
-  description: "Cargo theft and disputed delivery evidence platform — dispatcher console",
-};
+  title: 'FreightProof SA — Dispatcher',
+  description: 'Cargo theft and disputed delivery evidence platform',
+}
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html
-      lang="en"
-      className={`${spaceGrotesk.variable} ${ibmPlexMono.variable}`}
-    >
+    <html lang="en" className={inter.variable}>
       <body className="font-sans bg-surface text-surface-on antialiased">
         <AuthProvider>
           <ToastProvider>
@@ -41,5 +27,5 @@ export default function RootLayout({
         </AuthProvider>
       </body>
     </html>
-  );
+  )
 }

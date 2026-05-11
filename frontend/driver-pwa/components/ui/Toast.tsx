@@ -1,55 +1,82 @@
-"use client"
+'use client'
 
-import { X, CheckCircle2, AlertTriangle, Info, AlertOctagon } from 'lucide-react'
+import { useEffect, type ReactNode } from 'react'
+import { X, CheckCircle2, AlertTriangle, Info, ShieldAlert } from 'lucide-react'
 import { cn } from '@shared/lib/utils/cn'
-import type { Toast as ToastData } from '@/lib/context/ToastContext'
 
-interface ToastProps {
+export type ToastKind = 'info' | 'success' | 'warning' | 'error'
+
+export interface ToastData {
+  id: string
+  kind: ToastKind
+  title: string
+  body?: string
+  sticky?: boolean
+}
+
+interface ToastItemProps {
   toast: ToastData
   onDismiss: (id: string) => void
 }
 
-const kindClass: Record<ToastData['kind'], string> = {
-  success: 'border-success text-success-on-container',
-  info:    'border-outline text-surface-on',
-  warning: 'border-tertiary text-tertiary-on-container',
-  error:   'border-error text-error-on-container',
+const kindConfig: Record<ToastKind, { icon: ReactNode; accent: string; role: 'status' | 'alert' }> = {
+  info:    { icon: <Info className="w-4 h-4 text-secondary shrink-0" />,       accent: 'border-secondary/20',  role: 'status' },
+  success: { icon: <CheckCircle2 className="w-4 h-4 text-success shrink-0" />, accent: 'border-success/20',   role: 'status' },
+  warning: { icon: <AlertTriangle className="w-4 h-4 text-tertiary shrink-0" />, accent: 'border-tertiary/20', role: 'status' },
+  error:   { icon: <ShieldAlert className="w-4 h-4 text-error shrink-0" />,    accent: 'border-error/20',      role: 'alert'  },
 }
 
-const KindIcon: Record<ToastData['kind'], React.ElementType> = {
-  success: CheckCircle2,
-  info:    Info,
-  warning: AlertTriangle,
-  error:   AlertOctagon,
-}
+function ToastItem({ toast, onDismiss }: ToastItemProps) {
+  const { icon, accent, role } = kindConfig[toast.kind]
 
-export function Toast({ toast, onDismiss }: ToastProps) {
-  const Icon = KindIcon[toast.kind]
-  const isError = toast.kind === 'error'
+  useEffect(() => {
+    if (toast.sticky || toast.kind === 'error') return
+    const timer = setTimeout(() => onDismiss(toast.id), 4000)
+    return () => clearTimeout(timer)
+  }, [toast, onDismiss])
 
   return (
     <div
-      role={isError ? 'alert' : undefined}
-      aria-live={isError ? undefined : 'polite'}
+      role={role}
       className={cn(
-        'flex w-full items-start gap-3 rounded-xl border-2 bg-surface-container-lowest p-4 shadow-hard',
-        kindClass[toast.kind],
+        'flex items-start gap-3 w-full max-w-sm px-4 py-3 pr-3',
+        'bg-surface-container-lowest rounded-xl shadow-ambient',
+        'border border-outline-variant/20',
+        accent,
       )}
     >
-      <Icon size={20} strokeWidth={1.5} className="mt-0.5 shrink-0" aria-hidden="true" />
+      {icon}
       <div className="flex-1 min-w-0">
-        <p className="text-[14px] font-semibold leading-5">{toast.title}</p>
-        {toast.body && (
-          <p className="mt-0.5 text-[12px] leading-4 text-surface-on-variant">{toast.body}</p>
-        )}
+        <p className="text-sm font-bold text-surface-on">{toast.title}</p>
+        {toast.body && <p className="text-xs text-surface-on-variant mt-0.5 leading-relaxed">{toast.body}</p>}
       </div>
       <button
         onClick={() => onDismiss(toast.id)}
         aria-label="Dismiss notification"
-        className="shrink-0 rounded-md p-0.5 text-surface-on-variant hover:text-surface-on transition-colors"
+        className="w-6 h-6 flex items-center justify-center rounded-lg text-surface-on-variant hover:bg-surface-container-low shrink-0 transition-colors"
       >
-        <X size={16} strokeWidth={1.5} aria-hidden="true" />
+        <X className="w-3 h-3" />
       </button>
+    </div>
+  )
+}
+
+interface ToastViewportProps {
+  toasts: ToastData[]
+  onDismiss: (id: string) => void
+}
+
+// Render once inside DispatcherShell. Consumers call useToast().notify() — never render this directly.
+export function ToastViewport({ toasts, onDismiss }: ToastViewportProps) {
+  return (
+    <div
+      aria-live="polite"
+      aria-atomic="false"
+      className="fixed bottom-6 right-6 z-[80] flex flex-col gap-3 items-end"
+    >
+      {toasts.slice(0, 3).map((toast) => (
+        <ToastItem key={toast.id} toast={toast} onDismiss={onDismiss} />
+      ))}
     </div>
   )
 }

@@ -1,12 +1,12 @@
-"use client"
+'use client'
 
-import type { LucideIcon } from 'lucide-react'
+import { type ReactNode } from 'react'
 import { cn } from '@shared/lib/utils/cn'
 
 interface Tab {
   id: string
   label: string
-  icon?: LucideIcon
+  icon?: ReactNode
 }
 
 interface TabsProps {
@@ -18,12 +18,8 @@ interface TabsProps {
 
 export function Tabs({ tabs, active, onChange, className }: TabsProps) {
   return (
-    <div
-      role="tablist"
-      className={cn('flex border-b-2 border-outline', className)}
-    >
-      {tabs.map(tab => {
-        const Icon = tab.icon
+    <div role="tablist" className={cn('flex gap-1 bg-surface-container-low rounded-xl p-1', className)}>
+      {tabs.map((tab) => {
         const isActive = tab.id === active
         return (
           <button
@@ -32,14 +28,14 @@ export function Tabs({ tabs, active, onChange, className }: TabsProps) {
             aria-selected={isActive}
             onClick={() => onChange(tab.id)}
             className={cn(
-              'inline-flex items-center gap-2 px-5 py-3 text-[14px] font-semibold leading-5 tracking-[0.006em]',
-              'border-b-2 -mb-0.5 transition-colors duration-150',
+              'flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg',
+              'text-sm font-bold uppercase tracking-wider transition-all duration-200',
               isActive
-                ? 'border-secondary text-secondary'
-                : 'border-transparent text-surface-on-variant hover:text-surface-on hover:border-surface-on-variant',
+                ? 'bg-surface-container-lowest text-surface-on shadow-ambient-sm'
+                : 'text-surface-on-variant hover:text-surface-on hover:bg-surface-container',
             )}
           >
-            {Icon && <Icon size={16} strokeWidth={1.5} aria-hidden="true" />}
+            {tab.icon}
             {tab.label}
           </button>
         )

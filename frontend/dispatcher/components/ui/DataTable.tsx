@@ -1,10 +1,9 @@
-"use client"
-
-import { ChevronUp, ChevronDown } from 'lucide-react'
+import { ChevronUp, ChevronDown, PackageOpen } from 'lucide-react'
 import { cn } from '@shared/lib/utils/cn'
+import { EmptyState } from './EmptyState'
 
 export interface Column<T> {
-  key: keyof T & string
+  key: keyof T
   label: string
   sortable?: boolean
   render?: (value: T[keyof T], row: T) => React.ReactNode
@@ -13,50 +12,56 @@ export interface Column<T> {
 interface DataTableProps<T extends Record<string, unknown>> {
   columns: Column<T>[]
   rows: T[]
-  sort?: { key: string; dir: 'asc' | 'desc' }
-  onSort?: (key: string) => void
-  empty?: React.ReactNode
+  sort?: { key: keyof T; dir: 'asc' | 'desc' }
+  onSort?: (key: keyof T) => void
+  empty?: { title: string; body: string }
   className?: string
 }
 
 export function DataTable<T extends Record<string, unknown>>({
   columns, rows, sort, onSort, empty, className,
 }: DataTableProps<T>) {
-  if (rows.length === 0 && empty) {
-    return <div className={className}>{empty}</div>
+  if (rows.length === 0) {
+    return (
+      <EmptyState
+        icon={<PackageOpen />}
+        title={empty?.title ?? 'No results'}
+        body={empty?.body ?? 'Nothing to show here yet.'}
+      />
+    )
   }
 
   return (
-    <div className={cn('overflow-x-auto', className)}>
-      <table className="w-full border-collapse">
+    <div className={cn('w-full overflow-x-auto rounded-xl shadow-ambient-sm', className)}>
+      <table className="w-full text-sm border-collapse">
         <thead>
-          <tr className="border-b-2 border-outline">
-            {columns.map(col => {
-              const isSorted = sort?.key === col.key
-              const dir = isSorted ? sort.dir : undefined
-              return (
-                <th
-                  key={col.key}
-                  scope="col"
-                  aria-sort={isSorted ? (dir === 'asc' ? 'ascending' : 'descending') : undefined}
-                  className={cn(
-                    'px-4 py-3 text-left text-[12px] font-medium uppercase tracking-[0.08em] text-surface-on-variant',
-                    col.sortable && 'cursor-pointer select-none hover:text-surface-on',
+          <tr className="bg-surface-container-low">
+            {columns.map((col) => (
+              <th
+                key={String(col.key)}
+                scope="col"
+                aria-sort={
+                  sort?.key === col.key
+                    ? sort.dir === 'asc' ? 'ascending' : 'descending'
+                    : 'none'
+                }
+                onClick={() => col.sortable && onSort?.(col.key)}
+                className={cn(
+                  'px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-surface-on-variant',
+                  'border-b border-outline-variant/20',
+                  col.sortable && 'cursor-pointer select-none hover:text-surface-on',
+                )}
+              >
+                <span className="flex items-center gap-1.5">
+                  {col.label}
+                  {col.sortable && sort?.key === col.key && (
+                    sort.dir === 'asc'
+                      ? <ChevronUp className="w-3 h-3" />
+                      : <ChevronDown className="w-3 h-3" />
                   )}
-                  onClick={col.sortable ? () => onSort?.(col.key) : undefined}
-                >
-                  <span className="inline-flex items-center gap-1">
-                    {col.label}
-                    {col.sortable && (
-                      <span aria-hidden="true" className="inline-flex flex-col opacity-50">
-                        <ChevronUp size={10} strokeWidth={2} className={cn(isSorted && dir === 'asc' && 'opacity-100')} />
-                        <ChevronDown size={10} strokeWidth={2} className={cn(isSorted && dir === 'desc' && 'opacity-100')} />
-                      </span>
-                    )}
-                  </span>
-                </th>
-              )
-            })}
+                </span>
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
@@ -64,15 +69,16 @@ export function DataTable<T extends Record<string, unknown>>({
             <tr
               key={i}
               className={cn(
-                'border-b border-outline/20 transition-colors duration-150 hover:bg-surface-container-high',
-                i % 2 === 0 ? 'bg-surface-container-lowest' : 'bg-surface-container-low',
+                'transition-colors duration-150 hover:bg-surface-container-low',
+                i % 2 === 0 ? 'bg-surface-container-lowest' : 'bg-surface-container-low/50',
               )}
             >
-              {columns.map(col => (
-                <td key={col.key} className="px-4 py-3 text-[14px] leading-5 text-surface-on">
-                  {col.render
-                    ? col.render(row[col.key], row)
-                    : String(row[col.key] ?? '')}
+              {columns.map((col) => (
+                <td
+                  key={String(col.key)}
+                  className="px-4 py-3 text-surface-on border-b border-outline-variant/10"
+                >
+                  {col.render ? col.render(row[col.key], row) : String(row[col.key] ?? '')}
                 </td>
               ))}
             </tr>

@@ -1,23 +1,23 @@
-import type { LucideIcon } from 'lucide-react'
+import { type ReactNode } from 'react'
 import { cn } from '@shared/lib/utils/cn'
 
 interface EmptyStateProps {
-  icon: LucideIcon
+  icon: ReactNode
   title: string
   body: string
-  cta?: React.ReactNode
+  cta?: ReactNode
   className?: string
 }
 
-export function EmptyState({ icon: Icon, title, body, cta, className }: EmptyStateProps) {
+export function EmptyState({ icon, title, body, cta, className }: EmptyStateProps) {
   return (
-    <div className={cn('flex flex-col items-center justify-center gap-4 py-12 text-center', className)}>
-      <Icon size={48} strokeWidth={1.5} className="text-surface-on-variant" aria-hidden="true" />
-      <div className="max-w-xs space-y-2 px-4">
-        <p className="text-[24px] font-semibold leading-8 text-surface-on">{title}</p>
-        <p className="text-[14px] leading-5 text-surface-on-variant">{body}</p>
+    <div className={cn('flex flex-col items-center justify-center gap-4 py-16 px-6 text-center', className)}>
+      <span className="text-surface-on-variant [&>svg]:w-12 [&>svg]:h-12">{icon}</span>
+      <div className="flex flex-col gap-2">
+        <h3 className="text-xl font-bold text-surface-on">{title}</h3>
+        <p className="text-sm text-surface-on-variant max-w-xs leading-relaxed">{body}</p>
       </div>
-      {cta && <div className="mt-2 w-full px-4">{cta}</div>}
+      {cta && <div className="mt-2">{cta}</div>}
     </div>
   )
 }

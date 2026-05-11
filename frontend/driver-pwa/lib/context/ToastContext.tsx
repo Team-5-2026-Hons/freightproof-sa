@@ -1,30 +1,26 @@
 "use client"
 
 import { createContext, useState, useCallback, useRef } from 'react'
-import { Toast } from '@/components/ui/Toast'
+import { ToastViewport, type ToastData } from '@/components/ui/Toast'
 import { Z } from '@shared/lib/z-index'
 
-export interface Toast {
-  id: string
-  kind: 'info' | 'success' | 'warning' | 'error'
-  title: string
-  body?: string
-  sticky?: boolean
-}
+export type { ToastData }
 
 export interface ToastState {
-  toasts: Toast[]
-  notify: (toast: Omit<Toast, 'id'>) => void
+  toasts: ToastData[]
+  notify: (toast: Omit<ToastData, 'id'>) => void
   dismiss: (id: string) => void
 }
 
 export const ToastContext = createContext<ToastState | null>(null)
 
 const MAX_TOASTS = 3
+// Auto-dismiss delay matches the ToastItem internal timer in Toast.tsx (4 000 ms).
+// Kept here so ToastProvider can also track timers for dismiss() cancellation.
 const AUTO_DISMISS_MS = 4000
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
-  const [toasts, setToasts] = useState<Toast[]>([])
+  const [toasts, setToasts] = useState<ToastData[]>([])
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
   const dismiss = useCallback((id: string) => {
@@ -33,7 +29,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     setToasts(prev => prev.filter(t => t.id !== id))
   }, [])
 
-  const notify = useCallback((toast: Omit<Toast, 'id'>) => {
+  const notify = useCallback((toast: Omit<ToastData, 'id'>) => {
     const id = crypto.randomUUID()
     setToasts(prev => [...prev, { ...toast, id }].slice(-MAX_TOASTS))
     if (!toast.sticky && toast.kind !== 'error') {
@@ -44,15 +40,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={{ toasts, notify, dismiss }}>
       {children}
-      {/* Toast viewport — bottom-center, full-width with margin per DESIGN_SYSTEM.md §10.7 */}
-      <div
-        className="fixed bottom-4 left-4 right-4 flex flex-col gap-2"
-        style={{ zIndex: Z.toast }}
-        aria-label="Notifications"
-      >
-        {toasts.map(toast => (
-          <Toast key={toast.id} toast={toast} onDismiss={dismiss} />
-        ))}
+      {/* Toast viewport — bottom-left/right with margin, full-width on mobile per DESIGN_SYSTEM.md §10.7 */}
+      <div style={{ zIndex: Z.toast }}>
+        <ToastViewport toasts={toasts} onDismiss={dismiss} />
       </div>
     </ToastContext.Provider>
   )

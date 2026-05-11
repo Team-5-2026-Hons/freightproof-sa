@@ -1,31 +1,30 @@
-"use client"
+'use client'
 
-import type { ButtonHTMLAttributes } from 'react'
-import type { LucideIcon } from 'lucide-react'
+import { type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { cn } from '@shared/lib/utils/cn'
 
 interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  icon: LucideIcon
+  icon: ReactNode
   'aria-label': string
   size?: 'sm' | 'md' | 'lg'
 }
 
-const sizeClass = { sm: 'h-8 w-8', md: 'h-10 w-10', lg: 'h-12 w-12' }
-const iconSize  = { sm: 16, md: 20, lg: 24 }
+const sizeClasses = { sm: 'w-8 h-8', md: 'w-10 h-10', lg: 'w-12 h-12' }
 
-export function IconButton({ icon: Icon, size = 'md', className, ...rest }: IconButtonProps) {
+export function IconButton({ icon, size = 'md', className, ...props }: IconButtonProps) {
   return (
     <button
       className={cn(
-        'inline-flex items-center justify-center rounded-lg text-surface-on',
-        'hover:bg-surface-container-high transition-colors duration-150',
-        'disabled:cursor-not-allowed disabled:opacity-40',
-        sizeClass[size],
+        'inline-flex items-center justify-center rounded-xl',
+        'text-surface-on-variant hover:bg-surface-container-high',
+        'transition-all duration-200 active:scale-95',
+        'disabled:opacity-40 disabled:cursor-not-allowed',
+        sizeClasses[size],
         className,
       )}
-      {...rest}
+      {...props}
     >
-      <Icon size={iconSize[size]} strokeWidth={1.5} aria-hidden="true" />
+      {icon}
     </button>
   )
 }

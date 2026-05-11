@@ -2,21 +2,34 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Collapse all motion for users who have requested reduced motion — DESIGN_SYSTEM.md §13.3. */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
+@layer utilities {
+  /* Glassmorphism for sticky headers and bottom nav only — never on cards */
+  .glass-nav {
+    background: rgba(252, 248, 249, 0.8);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  /* Trip IDs, seal codes — Inter with wide tracking mimics monospace feel */
+  .tracking-industrial {
+    letter-spacing: 0.05em;
   }
 }
 
-/* 2px Signal Orange focus ring at 2px offset — high contrast on both surface tiers. */
-:focus-visible {
-  outline: 2px solid #FF4F00;
-  outline-offset: 2px;
-  border-radius: 4px;
+@layer base {
+  /* Focus ring uses blue secondary token */
+  :focus-visible {
+    outline: 2px solid #0051d5;
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+/* Collapse all animation when user prefers reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

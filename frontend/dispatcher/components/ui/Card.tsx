@@ -1,21 +1,39 @@
+import { type ReactNode } from 'react'
 import { cn } from '@shared/lib/utils/cn'
 
 interface CardProps {
-  variant?: 'default' | 'exception' | 'selected'
+  variant?: 'default' | 'exception' | 'selected' | 'section'
+  children: ReactNode
   className?: string
-  children: React.ReactNode
+  onClick?: () => void
 }
 
-const variantClass = {
-  default:   'bg-surface-container-lowest border-2 border-outline',
-  // Left accent communicates exception state semantically, not just by colour.
-  exception: 'bg-surface-container-lowest border-2 border-outline border-l-[3px] border-l-error',
-  selected:  'bg-secondary-container border-2 border-outline',
+const variantClasses: Record<NonNullable<CardProps['variant']>, string> = {
+  default:   'bg-surface-container-lowest shadow-ambient',
+  exception: 'bg-surface-container-lowest shadow-ambient border-l-4 border-error',
+  selected:  'bg-secondary-fixed shadow-ambient-sm',
+  section:   'bg-surface-container-low',
 }
 
-export function Card({ variant = 'default', className, children }: CardProps) {
+export function Card({ variant = 'default', children, className, onClick }: CardProps) {
+  const isInteractive = onClick !== undefined
   return (
-    <div className={cn('rounded-xl', variantClass[variant], className)}>
+    <div
+      role={isInteractive ? 'button' : undefined}
+      tabIndex={isInteractive ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={
+        isInteractive
+          ? (e) => { if (e.key === 'Enter' || e.key === ' ') onClick() }
+          : undefined
+      }
+      className={cn(
+        'rounded-xl p-5',
+        variantClasses[variant],
+        isInteractive && 'cursor-pointer hover:bg-surface-container-high transition-colors duration-150',
+        className,
+      )}
+    >
       {children}
     </div>
   )

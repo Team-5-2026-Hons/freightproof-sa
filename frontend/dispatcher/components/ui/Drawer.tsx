@@ -1,82 +1,64 @@
-"use client"
+'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import { X } from 'lucide-react'
 import { cn } from '@shared/lib/utils/cn'
-import { Z } from '@shared/lib/z-index'
 
 interface DrawerProps {
   open: boolean
   onClose: () => void
   side?: 'left' | 'right' | 'bottom'
-  children: React.ReactNode
-  className?: string
+  children: ReactNode
+  title?: string
 }
 
-const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-
-const panelClass = {
-  left:   'inset-y-0 left-0 w-[320px] border-r-2',
-  right:  'inset-y-0 right-0 w-[320px] border-l-2',
-  bottom: 'inset-x-0 bottom-0 border-t-2 rounded-t-xl',
+const panelClasses = {
+  left:   { container: 'left-0 top-0 h-full w-80',                           open: 'translate-x-0',  closed: '-translate-x-full' },
+  right:  { container: 'right-0 top-0 h-full w-80',                          open: 'translate-x-0',  closed: 'translate-x-full'  },
+  bottom: { container: 'bottom-0 left-0 w-full rounded-t-2xl max-h-[85vh]',  open: 'translate-y-0',  closed: 'translate-y-full'  },
 }
 
-export function Drawer({ open, onClose, side = 'right', children, className }: DrawerProps) {
-  const panelRef = useRef<HTMLDivElement>(null)
-  const previousFocusRef = useRef<HTMLElement | null>(null)
-
+export function Drawer({ open, onClose, side = 'right', children, title }: DrawerProps) {
   useEffect(() => {
     if (!open) return
-    previousFocusRef.current = document.activeElement as HTMLElement
-    const panel = panelRef.current
-    const focusable = panel ? Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE)) : []
-    focusable[0]?.focus()
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { onClose(); return }
-      if (e.key !== 'Tab' || focusable.length === 0) return
-      const first = focusable[0]
-      const last  = focusable[focusable.length - 1]
-      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus() }
-      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus() }
-    }
-
-    document.addEventListener('keydown', onKeyDown)
-    return () => {
-      document.removeEventListener('keydown', onKeyDown)
-      previousFocusRef.current?.focus()
-    }
+    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
   }, [open, onClose])
 
-  if (!open) return null
+  const { container, open: openClass, closed } = panelClasses[side]
 
   return (
-    <div className="fixed inset-0" style={{ zIndex: Z.overlay }}>
+    <>
+      {open && (
+        <div
+          className="fixed inset-0 bg-black/40 z-[40] transition-opacity duration-200"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      )}
       <div
-        className="absolute inset-0"
-        style={{ backgroundColor: 'rgba(0,0,0,0.48)' }}
-        onClick={onClose}
-        aria-hidden="true"
-      />
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
         className={cn(
-          'absolute border-outline bg-surface-container-lowest',
-          panelClass[side],
-          className,
+          'fixed bg-surface-container-lowest shadow-ambient z-[50]',
+          'transition-transform duration-300 ease-out overflow-y-auto',
+          container,
+          open ? openClass : closed,
         )}
       >
-        <button
-          onClick={onClose}
-          aria-label="Close panel"
-          className="absolute right-4 top-4 rounded-md p-1 text-surface-on-variant hover:text-surface-on transition-colors"
-        >
-          <X size={20} strokeWidth={1.5} aria-hidden="true" />
-        </button>
-        {children}
+        {title && (
+          <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant/20">
+            <h2 className="text-base font-bold text-surface-on">{title}</h2>
+            <button
+              onClick={onClose}
+              aria-label="Close drawer"
+              className="w-8 h-8 flex items-center justify-center rounded-xl text-surface-on-variant hover:bg-surface-container-low transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+        <div className="p-6">{children}</div>
       </div>
-    </div>
+    </>
   )
 }
