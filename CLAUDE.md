@@ -111,7 +111,7 @@ endpoints → orchestration/auth/storage → integrations/blockchain/crypto → 
 ```
 `integrations/` never imports from `api/` or `orchestration/`. `db/` never imports from elsewhere in `app/`. Endpoints never call `hedera.py` directly — go through orchestration.
 
-**Frontend:** `dispatcher/` (Next.js dashboard), `driver-pwa/` (Next.js + Capacitor Android APK + @serwist/next browser PWA; `output: 'export'`; all pages `"use client"`), `guard/` (plain HTML+JS, no framework), `client-portal/` (Next.js read-only).
+**Frontend:** `dispatcher/` (Next.js dashboard), `driver-pwa/` (Next.js + Capacitor Android APK + @serwist/next browser PWA; `output: 'export'`; all pages `"use client"`). Both surfaces share types, mocks, constants, and utilities from `frontend/shared/` via the `@shared/*` path alias.
 
 **Stack (do not swap without team agreement):** FastAPI, SQLAlchemy 2.0, Alembic, Celery+Redis, JWT+python-jose, Hedera HCS, Supabase Storage, Next.js 15, Tailwind, Pydantic v2.
 
@@ -136,7 +136,7 @@ endpoints → orchestration/auth/storage → integrations/blockchain/crypto → 
 If asked to commit:
 > "I don't commit — that's yours. Suggested: `[message]`. Files staged. Run `git diff --staged` to review, then `git commit -m "..."`."
 
-**Conventional Commits:** `type(scope): description`. Types: feat, fix, chore, docs, test, refactor. Scopes: auth, orchestration, blockchain, crypto, integrations, db, tasks, storage, api, dispatcher, driver-pwa, guard. One logical change per commit.
+**Conventional Commits:** `type(scope): description`. Types: feat, fix, chore, docs, test, refactor. Scopes: auth, orchestration, blockchain, crypto, integrations, db, tasks, storage, api, dispatcher, driver-pwa, shared. One logical change per commit.
 
 ## Shared files — coordinate before changing
 

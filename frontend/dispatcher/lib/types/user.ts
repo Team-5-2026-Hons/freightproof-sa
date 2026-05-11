@@ -1,8 +1,8 @@
-// User: authenticated session identity. Two distinct shapes depending on surface:
-// DispatcherUser for the dispatcher dashboard, DriverUser for the driver PWA.
+// User: authenticated session identity for the Dispatcher Portal.
+// DispatcherUser authenticates via email + password (POST /auth/token).
 // AuthState is the shape exposed by AuthContext to all consumers via useAuth().
 
-import type { Driver } from './driver'
+import type { Driver } from '@shared/lib/types/driver'
 
 export type UserId = string & { readonly __brand: 'UserId' }
 
@@ -14,12 +14,11 @@ export interface DispatcherUser {
   is_active: boolean
 }
 
-// The driver PWA session wraps the full Driver record so handshake screens can
-// read driver identity fields (id_number, phone_number) without a separate fetch.
+// DriverUser wraps the full Driver record so cross-surface type imports stay consistent.
 export type DriverUser = Driver
 
 export interface AuthState {
-  user: DispatcherUser | DriverUser | null
+  user: DispatcherUser | null
   isLoading: boolean
   signIn: (credentials: { email: string; password: string }) => Promise<void>
   signOut: () => Promise<void>
