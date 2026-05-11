@@ -58,7 +58,7 @@ The stack is **not negotiable** and is fixed by [`CLAUDE.md`](../CLAUDE.md) and 
 
 ## 2. Repository layout
 
-Two surfaces, identical internal structure. The dispatcher already has a Next.js scaffold; the driver-pwa is greenfield.
+Two surfaces, identical internal structure. Both are fully scaffolded — the dispatcher is a Next.js app; the driver-pwa has a Next.js app, PWA manifest and icons, Capacitor config (`capacitor.config.ts`), and a committed Android Studio project (`android/`).
 
 ```
 frontend/
@@ -145,7 +145,7 @@ Backend doesn't exist yet. Everything is fixtures + React Context. The shape dec
 
 Domain types live in `lib/types/` and mirror the eventual Pydantic v2 schemas. Each model gets one file. Keep these in sync conceptually with `backend/app/db/models/` once it's stable, but for now define them in TS only.
 
-**Required types (one per file in `frontend/shared/lib/types/`):**
+**Domain types in `frontend/shared/lib/types/` (shared by both surfaces):**
 
 ```
 shared/lib/types/
@@ -155,12 +155,16 @@ shared/lib/types/
 ├── vehicle.ts         # Horse, Trailer
 ├── manifest.ts        # ParcelPerfectManifest, Parcel, DeliveryStop
 ├── seal.ts            # Seal, SealVerification
-├── exception.ts       # Exception, ExceptionType, ExceptionSource
+├── exception.ts       # TripException, ExceptionType, ExceptionSource, ExceptionId
 ├── checkpoint.ts      # Checkpoint
 ├── evidence.ts        # EvidenceArtifact, BlockchainReceipt
-├── precinct.ts        # Precinct, Principal
-└── user.ts            # DispatcherUser, DriverUser, AuthState
+└── precinct.ts        # Precinct, Principal
 ```
+
+**Auth/session types are per-surface** (not in shared) because the two surfaces have different credentials — dispatcher uses email + password, driver uses phone OTP. Each surface has its own `lib/types/user.ts`:
+
+- `dispatcher/lib/types/user.ts` — `DispatcherUser`, `UserId`, `AuthState` (email + password signIn)
+- `driver-pwa/lib/types/user.ts` — `DriverUser`, `AuthState` (phone OTP: requestOtp + signIn)
 
 **Type rules:**
 
@@ -201,18 +205,30 @@ shared/lib/mocks/
 
 Three providers, set once each in `app/layout.tsx` of each surface.
 
-#### `AuthContext` (both surfaces)
+#### `AuthContext` (both surfaces — different shapes per surface)
 
+**Dispatcher** (`dispatcher/lib/types/user.ts`):
 ```ts
 interface AuthState {
-  user: DispatcherUser | DriverUser | null
-  status: 'idle' | 'authenticating' | 'authenticated' | 'error'
-  signIn: (email: string, password: string) => Promise<void>
-  signOut: () => void
+  user: DispatcherUser | null
+  isLoading: boolean
+  signIn: (credentials: { email: string; password: string }) => Promise<void>
+  signOut: () => Promise<void>
 }
 ```
 
-`signIn` resolves after a 600 ms artificial delay regardless of input. On the dispatcher it sets a hard-coded dispatcher user; on the driver it sets the first driver in `lib/mocks/drivers.ts`. This is enough to demo the login flow without real auth.
+**Driver PWA** (`driver-pwa/lib/types/user.ts`):
+```ts
+interface AuthState {
+  user: DriverUser | null
+  isLoading: boolean
+  requestOtp: (phone_number: string) => Promise<void>   // step 1
+  signIn: (credentials: { phone_number: string; otp: string }) => Promise<void>  // step 2
+  signOut: () => Promise<void>
+}
+```
+
+Both mock implementations resolve after a 600 ms artificial delay. The dispatcher sets a hardcoded `DispatcherUser`; the driver sets `mockDrivers[0]` from `@shared/lib/mocks/drivers`.
 
 #### `TripContext` (driver only)
 
@@ -222,10 +238,10 @@ interface TripState {
   currentHandshake: HandshakeNumber
   currentStep: number              // 1..N within the handshake
   totalSteps: number               // total steps for the current handshake
-  exceptions: Exception[]
+  exceptions: TripException[]      // TripException from @shared/lib/types/exception
   advance: () => void              // moves step+1, or handshake+1 if at last step
   goBack: () => void               // step-1, or handshake-1 if at step 1
-  logException: (type: ExceptionType, payload: Record<string, unknown>) => void
+  logException: (type: ExceptionType, payload: Record<string, unknown>) => void  // ExceptionType from @shared/lib/types/exception
   triggerPanic: () => void
   reset: () => void                // for demo/dev use
 }
@@ -265,11 +281,11 @@ Both `tailwind.config.ts` files extend `theme.extend.colors` with the §2.3 toke
 
 ### 4.2 Lint rule (compulsory)
 
-Both surfaces use ESLint flat config (`eslint.config.mjs`). The hex-ban rule is already wired — it rejects any bare hex literal in component code and is disabled for `lib/tokens.ts` and `tailwind.config.ts` (the only files allowed to contain raw hex). CI runs `next lint` and fails on hits. **Do not bypass this rule with `eslint-disable` comments.**
+Both surfaces use ESLint flat config (`eslint.config.mjs`). The hex-ban rule is already wired — it rejects any bare hex literal in component code and is disabled for `lib/tokens.ts` and `tailwind.config.ts` (the only files allowed to contain raw hex). CI runs `npm run lint` (which runs `eslint .`) and fails on hits. **Do not bypass this rule with `eslint-disable` comments.**
 
 ### 4.3 Living token page
 
-Both surfaces include a development-only page at `/dev/tokens` that renders every colour swatch, type role, spacing scale, radius, and shadow. The page is gated by `process.env.NODE_ENV === 'development'` — it does not ship to production. It is the visual proof that the token map matches the design system.
+Both surfaces include a development-only page at `/dev/tokens` that renders every colour swatch, type role, ambient shadow scale, border radii, glassmorphism utility, z-index scale, and quick reference card. The page is gated by `process.env.NODE_ENV === 'development'` — it does not ship to production. It is the visual proof that the token map matches the design system. The driver-pwa page additionally has "Simulate Gate Arrival" buttons for H1 and H4.
 
 ### 4.4 Fonts
 
@@ -386,15 +402,24 @@ Every authenticated dispatcher page is wrapped by `DispatcherShell` in the `(app
 
 Logic that more than one component needs is extracted into a hook in `lib/hooks/`. Required hooks:
 
+**Phase 0 — already implemented:**
 - `useAuth()` — wraps `AuthContext`.
 - `useTrip()` — wraps `TripContext` (driver only).
 - `useToast()` — wraps `ToastContext`.
 - `useStepIndicator(handshake)` — returns `{ current, total, name, stepName }` for the `StepHeader`.
-- `useExceptions(tripId?)` — filtered access to fixture exceptions.
+- `useExceptions(filter?)` — filtered access to fixture exceptions. Current filter shape is `{ resolved?: boolean; tripId?: string }`.
 - `useTrips(filter?)` — paged/filtered access to fixture trips (dispatcher).
-- `useHoldToConfirm(durationMs)` — for the panic button; returns `{ isPressing, progress, onPressStart, onPressEnd }`. Pure logic, unit-testable.
+- `useHoldToConfirm(durationMs, onConfirm)` — for the panic button; returns `{ isPressing, progress, onPressStart, onPressEnd }`. Pure logic, unit-testable.
 - `useLocation()` — wraps `@capacitor/geolocation`. Returns `{ coords, accuracy, status, capture }`. On a real device, calls `Geolocation.getCurrentPosition()`; in a desktop browser, returns a hardcoded Linbro Park coordinate for dev. Never calls the web `navigator.geolocation` API directly — always go through this hook so the Capacitor layer is swappable.
 - `usePushNotifications()` — wraps `@capacitor/push-notifications`. Registers the FCM token on mount, listens for `pushNotificationReceived` events. On a `GATE_ARRIVAL` push from the backend, navigates the driver directly to the correct handshake step URL. On v1 (no backend), a dev helper button in `/dev/tokens` simulates the push. Driver-pwa only.
+
+**Phase 1 — create alongside the page that first needs them:**
+- `useDrivers()` — returns all drivers from `@shared/lib/mocks/drivers`. Used by Trip Creation.
+- `useVehicles()` — returns horses and trailers from `@shared/lib/mocks/vehicles`. Used by Trip Creation.
+- `usePrecincts()` — returns precincts from `@shared/lib/mocks/precincts`. Used by Trip Creation.
+- `useManifest(tripId)` — returns the manifest for a trip. Used by H2 Step 2.
+- `useException(id)` — returns a single exception by ID. Used by Exception Detail.
+- `useSLAMetrics({ clientId, range })` — derives SLA stats from fixture trips in-memory. Used by SLA Reports.
 
 ### 6.6 Forbidden duplication patterns
 
@@ -456,7 +481,7 @@ Port :3000. Desktop-first, tablet-usable, never a mobile-first port. All pages a
 | Tabs | **Timeline** (default — chronological list of events), **Manifest** (parcel list per stop), **Exceptions** (this trip only), **Blockchain** (anchored hashes + Hedera tx IDs) |
 | Mock data | `useTrip(id)` — returns trip + handshake events + exceptions + manifest + receipts |
 | States | Loading · Not found (404) · Trip closed (read-only banner) · Trip with active exception (banner above tabs) |
-| Notes | No live map — show GPS as text per `DESIGN_SYSTEM.md §16 Don'ts`. Each evidence packet links to its blockchain receipt. |
+| Notes | No live map — show GPS as text (see DESIGN_SYSTEM.md Do's and Don'ts). Each evidence packet links to its blockchain receipt. |
 
 ### 7.4 Trip Creation
 
@@ -561,7 +586,7 @@ Port :3001. Mobile-first Android (Samsung). Every page is one logical step. Ever
 
 - All authenticated pages wrap in `DriverShell` (`OfflineBanner`, `StepHeader`, content, `BottomBar`, `PanicButton`).
 - All forms validate on blur and only enable the primary CTA when valid.
-- The Android back gesture confirms before discarding partial step data per `DESIGN_SYSTEM.md §15.2`.
+- The Android back gesture confirms before discarding partial step data — never lose a partially completed handshake step silently.
 - "Complete & continue" calls `useTrip().advance()` and routes to the next step's URL.
 - All `inputMode` attributes are correct (numeric for seal numbers, text for names).
 - **Photo capture uses `@capacitor/camera` (`Camera.getPhoto()`)** — native Android camera UI on-device; falls back to `<input type="file" accept="image/*" capture="environment">` in a desktop browser. Always use the `PhotoCapture` component, never the raw input. On v1 the captured file is held in `TripContext` for the demo; not uploaded.

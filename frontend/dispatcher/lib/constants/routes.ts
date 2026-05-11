@@ -12,5 +12,5 @@ export const ROUTES = {
   sla:             '/sla',
   settings:        '/settings',
   login:           '/login',
-  devTokens:       '/_dev/tokens',
+  devTokens:       '/dev/tokens',
 } as const

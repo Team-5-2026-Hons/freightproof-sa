@@ -2,6 +2,9 @@ import coreWebVitals from "eslint-config-next/core-web-vitals";
 
 // eslint-config-next 16 exports a flat config array — spread directly, no FlatCompat needed.
 const eslintConfig = [
+  {
+    ignores: [".next/**", "out/**", "node_modules/**", "android/app/src/main/assets/**", "public/sw.js", "tsconfig.tsbuildinfo"]
+  },
   ...coreWebVitals,
   {
     rules: {

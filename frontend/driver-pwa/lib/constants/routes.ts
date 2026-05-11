@@ -17,5 +17,5 @@ export const ROUTES = {
   panic:          (tripId: string) => `/trip/${tripId}/panic`,
   panicSubmitted: (tripId: string) => `/trip/${tripId}/panic/submitted`,
 
-  devTokens: '/_dev/tokens',
+  devTokens: '/dev/tokens',
 } as const
