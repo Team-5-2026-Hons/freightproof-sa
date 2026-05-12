@@ -351,7 +351,7 @@ These are reused across pages and encode FreightProof-specific behaviour. Driver
 | Component | Surfaces | Purpose |
 |---|---|---|
 | `DispatcherShell` | dispatcher | The full layout: 240 px sidebar at `lg+`, 64 px icon rail at `md`, top hamburger below `md`. Renders `Sidebar`, `MainContent`, `ToastViewport`. |
-| `Sidebar` | dispatcher | Black (`bg-primary`) background. Active item has a blue (`secondary`) left accent bar 3 px. Items: Active Trips, Trip History, Exceptions, SLA Reports, Settings. |
+| `Sidebar` | dispatcher | Black (`bg-primary`) background. Active item has a blue (`secondary`) left accent bar 3 px. Items: Active Trips, Trip History, Exceptions, SLA Reports, Fleet, Settings. |
 | `DriverShell` | driver | Full-bleed mobile layout with `OfflineBanner` (top), `StepHeader` (when in a handshake), main content, `BottomBar` (when in a trip), `PanicButton` (when in a trip). Uses `min-h-dvh` and `pb-safe`. |
 | `BottomBar` | driver | 64 px + safe-area (`pb-safe`). Three slots: current step, trip summary, panic. `glass-nav` background, `shadow-ambient-up-lg`, `border-t border-outline-variant/20`. Active item uses `text-secondary` with a filled Lucide icon. |
 | `PageHeader` | dispatcher | Page title + breadcrumb + page actions. |
@@ -560,7 +560,41 @@ Port :3000. Desktop-first, tablet-usable, never a mobile-first port. All pages a
 | Mock data | `useAuth().user` |
 | States | Idle |
 
-### 7.10 Not-found and error
+### 7.10 Fleet: Vehicles
+
+| | |
+|---|---|
+| Route | `/fleet/vehicles` |
+| Layout group | `(app)` — wraps in `DispatcherShell` |
+| User story | As a dispatcher, I want to see all trucks and trailers in the fleet so that I can manage tracker IDs, registrations, and active status before assigning them to trips. |
+| Purpose | Vehicle registry — the source of truth for Trip Creation's horse and trailer dropdowns. |
+| Components | `PageHeader`, `DataTable` with vehicle rows, `Chip` (type: horse/trailer, active/inactive), search input, type filter, `Button` ("Add vehicle"), `Modal` (add/edit form) |
+| Mock data | `useVehicles()` |
+| Row anatomy | Type chip (`horse` / `trailer`) · Registration · Pulsit device ID · Active status chip · Edit button |
+| Filters | Type (horse / trailer), active status |
+| Sort | Default: registration asc |
+| Modal form | Registration (`Input`), type (`Select`: horse / trailer), Pulsit device ID (`Input`), active toggle. Submit creates or updates the mock vehicle and shows a success toast. |
+| States | Loading · Empty ("No vehicles registered — add your first truck or trailer") · No-results-after-filter |
+| Notes | Deactivating a vehicle does not delete it — soft-disable via `is_active`. Deactivated vehicles are hidden from Trip Creation dropdowns but remain visible here with an "Inactive" filter. Pulsit device ID is the field that changes when a tracker is upgraded or swapped — this is the primary reason this page exists. |
+
+### 7.11 Fleet: Drivers
+
+| | |
+|---|---|
+| Route | `/fleet/drivers` |
+| Layout group | `(app)` — wraps in `DispatcherShell` |
+| User story | As a dispatcher, I want to manage the registered driver list so that I can add new drivers, update phone numbers, and deactivate drivers who have left the company. |
+| Purpose | Driver registry — the source of truth for Trip Creation's driver dropdown. IDVS re-verification runs at trip creation, not here. |
+| Components | `PageHeader`, `DataTable` with driver rows, `Chip` (IDVS status, active status), search input, `Button` ("Add driver"), `Modal` (add/edit form) |
+| Mock data | `useDrivers()` |
+| Row anatomy | Full name · ID number (masked: `····` + last 4) · Phone number · Licence number · IDVS status chip (`verified` / `pending` / `failed`) · Active status chip · Edit button |
+| Filters | IDVS status, active status |
+| Sort | Default: full name asc |
+| Modal form | Full name (`Input`), SA ID number (`Input`, `inputMode="numeric"`, 13 digits), phone number (`Input`, `inputMode="tel"`), licence number (`Input`), active toggle. Submit creates or updates the mock driver and shows a success toast. |
+| States | Loading · Empty ("No drivers registered — add your first driver") · No-results-after-filter |
+| Notes | ID numbers are masked in the table for POPIA compliance — full number visible only in the edit modal. IDVS status is read-only in the UI (set by backend verification at trip creation, not by dispatcher). |
+
+### 7.12 Not-found and error
 
 | | |
 |---|---|
@@ -568,7 +602,7 @@ Port :3000. Desktop-first, tablet-usable, never a mobile-first port. All pages a
 | Purpose | 404 and runtime error pages. |
 | Components | `EmptyState` with `AlertTriangle` icon and a "Back to Active Trips" button. |
 
-### 7.11 Token preview (dev only)
+### 7.13 Token preview (dev only)
 
 | | |
 |---|---|
@@ -881,7 +915,7 @@ Same as dispatcher — `/dev/tokens`.
 
 | Surface | Pages | Notes |
 |---|---|---|
-| **Dispatcher** | 11 | Login, Active Trips, Trip Detail, Trip Creation, History, Exceptions, Exception Detail, SLA Reports, Settings, 404, Error (+ dev tokens) |
+| **Dispatcher** | 13 | Login, Active Trips, Trip Detail, Trip Creation, History, Exceptions, Exception Detail, SLA Reports, Fleet: Vehicles, Fleet: Drivers, Settings, 404, Error (+ dev tokens) |
 | **Driver — Auth/Shell** | 3 | Login, Driver Home, Settings |
 | **Driver — Handshake 1** | 3 | Approach, entry photo, verification |
 | **Driver — Handshake 2** | 5 | Arrive bay, manifest, waybill, seal, review |

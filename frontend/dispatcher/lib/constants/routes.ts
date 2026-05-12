@@ -10,6 +10,8 @@ export const ROUTES = {
   exceptions:      '/exceptions',
   exceptionDetail: (id: string) => `/exceptions/${id}`,
   sla:             '/sla',
+  fleetVehicles:   '/fleet/vehicles',
+  fleetDrivers:    '/fleet/drivers',
   settings:        '/settings',
   login:           '/login',
   devTokens:       '/dev/tokens',
