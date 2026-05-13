@@ -67,7 +67,15 @@
       "Bash(/Users/timgultig/freightproof-sa/backend/.venv/bin/python -c ' *)",
       "Bash(.venv/bin/python3 -m pytest tests/ -q --tb=short)",
       "Bash(.venv/bin/python3 -m pytest tests/unit/ -v --tb=short)",
-      "Bash(python3)"
+      "Bash(python3)",
+      "Bash(pg_ctl --version)",
+      "Bash(brew services *)",
+      "Bash(.venv/bin/python3 -c \"from app.core.config import settings; print\\('OK — DEMO_MODE:', settings.DEMO_MODE\\)\")",
+      "Bash(.venv/bin/python3 -m pytest tests/integration/test_trips.py -v)",
+      "Bash(.venv/bin/python3 -m pytest --version)",
+      "Bash(.venv/bin/pip show *)",
+      "Bash(.venv/bin/python3 -m pytest tests/integration/test_trips.py::test_create_trip_returns_201 -v -s)",
+      "Bash(.venv/bin/python3 -m pytest tests/unit/ -q)"
     ],
     "additionalDirectories": [
       "/private/tmp"
