@@ -17,10 +17,8 @@ from app.db.models.handshakes import HandshakeEvent
 from app.db.models.people import Driver
 from app.db.models.trips import Trip, TripTrailer
 from app.db.models.vehicles import Vehicle
-from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.handshakes import HandshakeEventRead
 from app.schemas.people import DriverRead, UserRead
-from app.schemas.transit import TripExceptionRead
 from app.schemas.trips import TripCreateRequest, TripDetailResponse
 from app.schemas.vehicles import VehicleRead
 

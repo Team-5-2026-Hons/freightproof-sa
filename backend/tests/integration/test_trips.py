@@ -6,7 +6,6 @@ dependency returns a fixed user whose organization_id is _DEMO_ORG_ID.
 """
 
 import uuid
-import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession

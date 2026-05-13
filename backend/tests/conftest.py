@@ -26,7 +26,6 @@ from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
 from app.db.models import Base
-from app.db.session import get_db
 from app.main import app
 
 # ── JWT test helpers ───────────────────────────────────────────────────────────
