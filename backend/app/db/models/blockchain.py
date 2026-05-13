@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -30,10 +30,10 @@ class BlockchainReceipt(Base):
     )
     receipt_type: Mapped[BlockchainReceiptType] = mapped_column(String(30), nullable=False)
     data_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    hedera_topic_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    hedera_tx_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    hedera_sequence_number: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    hedera_consensus_timestamp: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    hedera_topic_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    hedera_tx_id: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    hedera_sequence_number: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    hedera_consensus_timestamp: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     payload_json: Mapped[Any] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
@@ -56,9 +56,9 @@ class MerkleBatch(Base):
         nullable=False,
     )
     batch_type: Mapped[MerkleBatchType] = mapped_column(String(20), nullable=False)
-    merkle_root: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    merkle_root: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     leaf_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
-    blockchain_receipt_id: Mapped[uuid.UUID | None] = mapped_column(
+    blockchain_receipt_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("blockchain_receipts.id"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

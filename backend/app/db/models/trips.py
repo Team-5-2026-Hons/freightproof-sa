@@ -3,7 +3,7 @@
 import uuid
 from decimal import Decimal
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 from sqlalchemy import (
     Boolean, DateTime, ForeignKey, Integer, Numeric,
@@ -30,10 +30,10 @@ class TripTemplate(Base):
         UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    default_origin_precinct_id: Mapped[uuid.UUID | None] = mapped_column(
+    default_origin_precinct_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("precincts.id"), nullable=True
     )
-    default_destination_precinct_id: Mapped[uuid.UUID | None] = mapped_column(
+    default_destination_precinct_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("precincts.id"), nullable=True
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
@@ -49,24 +49,24 @@ class Consignment(Base):
     __tablename__ = "consignments"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    trip_id: Mapped[uuid.UUID | None] = mapped_column(
+    trip_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("trips.id"), nullable=True
     )
     parcel_perfect_reference: Mapped[str] = mapped_column(String(100), nullable=False)
     client_organization_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False
     )
-    origin_precinct_id: Mapped[uuid.UUID | None] = mapped_column(
+    origin_precinct_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("precincts.id"), nullable=True
     )
-    destination_precinct_id: Mapped[uuid.UUID | None] = mapped_column(
+    destination_precinct_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("precincts.id"), nullable=True
     )
-    declared_value: Mapped[Decimal | None] = mapped_column(Numeric(15, 2), nullable=True)
-    parcel_count_expected: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    slot_time_origin: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    slot_time_destination: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    pp_raw_json: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
+    declared_value: Mapped[Optional[Decimal]] = mapped_column(Numeric(15, 2), nullable=True)
+    parcel_count_expected: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    slot_time_origin: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    slot_time_destination: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    pp_raw_json: Mapped[Optional[Any]] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
@@ -83,10 +83,10 @@ class Parcel(Base):
         UUID(as_uuid=True), ForeignKey("consignments.id"), nullable=False
     )
     barcode: Mapped[str] = mapped_column(String(100), nullable=False)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    delivery_stop: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    pp_scan_out_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    pp_scan_in_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    delivery_stop: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    pp_scan_out_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    pp_scan_in_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[ParcelStatus] = mapped_column(String(20), nullable=False, server_default="pending")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
@@ -120,18 +120,18 @@ class Trip(Base):
     destination_precinct_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("precincts.id"), nullable=False
     )
-    pulsit_trip_reference_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    template_id: Mapped[uuid.UUID | None] = mapped_column(
+    pulsit_trip_reference_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    template_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("trip_templates.id"), nullable=True
     )
     status: Mapped[TripStatus] = mapped_column(String(30), nullable=False, server_default="created")
-    journey_lock_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    journey_lock_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     idvs_check_status: Mapped[IdvsStatus] = mapped_column(String(20), nullable=False, server_default="pending")
-    idvs_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    planned_departure_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    planned_arrival_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    actual_departure_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    actual_arrival_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    idvs_checked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    planned_departure_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    planned_arrival_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    actual_departure_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    actual_arrival_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_by_user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )
@@ -139,7 +139,7 @@ class Trip(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
-    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class TripTrailer(Base):
@@ -187,10 +187,10 @@ class DriverSubstitution(Base):
     is_planned: Mapped[bool] = mapped_column(Boolean, nullable=False)
     substitution_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     # Populated only for unplanned substitutions — links to the TripException record.
-    exception_id: Mapped[uuid.UUID | None] = mapped_column(
+    exception_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("exceptions.id"), nullable=True
     )
-    blockchain_receipt_id: Mapped[uuid.UUID | None] = mapped_column(
+    blockchain_receipt_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("blockchain_receipts.id", use_alter=True, name="fk_driver_sub_blockchain_receipt"),
         nullable=True,

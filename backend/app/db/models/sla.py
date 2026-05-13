@@ -1,6 +1,7 @@
 """SQLAlchemy model for SLA configuration between operator and client."""
 
 import uuid
+from typing import Optional
 from datetime import date, datetime
 
 from sqlalchemy import Date, DateTime, ForeignKey, Integer
@@ -27,18 +28,18 @@ class SlaConfig(Base):
     client_organization_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False
     )
-    origin_precinct_id: Mapped[uuid.UUID | None] = mapped_column(
+    origin_precinct_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("precincts.id"), nullable=True
     )
-    destination_precinct_id: Mapped[uuid.UUID | None] = mapped_column(
+    destination_precinct_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("precincts.id"), nullable=True
     )
-    max_pickup_overrun_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    max_delivery_overrun_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_pickup_overrun_minutes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    max_delivery_overrun_minutes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     # 15 minutes matches the Pulsit stationary alert threshold in the domain.
     max_checkpoint_interval_minutes: Mapped[int] = mapped_column(Integer, nullable=False, server_default="15")
     effective_from: Mapped[date] = mapped_column(Date, nullable=False)
-    effective_to: Mapped[date | None] = mapped_column(Date, nullable=True)
+    effective_to: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False

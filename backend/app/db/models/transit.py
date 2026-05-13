@@ -1,6 +1,7 @@
 """SQLAlchemy models for in-transit checkpoints and exceptions."""
 
 import uuid
+from typing import Optional
 from decimal import Decimal
 from datetime import datetime
 
@@ -23,19 +24,19 @@ class Checkpoint(Base):
         UUID(as_uuid=True), ForeignKey("trips.id"), nullable=False
     )
     checkpoint_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    driver_phone_lat: Mapped[Decimal | None] = mapped_column(Numeric(10, 7), nullable=True)
-    driver_phone_lng: Mapped[Decimal | None] = mapped_column(Numeric(10, 7), nullable=True)
-    horse_gps_lat: Mapped[Decimal | None] = mapped_column(Numeric(10, 7), nullable=True)
-    horse_gps_lng: Mapped[Decimal | None] = mapped_column(Numeric(10, 7), nullable=True)
-    selfie_artifact_id: Mapped[uuid.UUID | None] = mapped_column(
+    driver_phone_lat: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
+    driver_phone_lng: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
+    horse_gps_lat: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
+    horse_gps_lng: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
+    selfie_artifact_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("evidence_artifacts.id"), nullable=True
     )
-    cargo_photo_artifact_id: Mapped[uuid.UUID | None] = mapped_column(
+    cargo_photo_artifact_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("evidence_artifacts.id"), nullable=True
     )
-    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_deviation: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
-    merkle_batch_id: Mapped[uuid.UUID | None] = mapped_column(
+    merkle_batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("merkle_batches.id"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -54,26 +55,26 @@ class TripException(Base):
     trip_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("trips.id"), nullable=False
     )
-    handshake_event_id: Mapped[uuid.UUID | None] = mapped_column(
+    handshake_event_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("handshake_events.id"), nullable=True
     )
-    checkpoint_id: Mapped[uuid.UUID | None] = mapped_column(
+    checkpoint_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("checkpoints.id"), nullable=True
     )
     exception_type: Mapped[ExceptionType] = mapped_column(String(50), nullable=False)
     source: Mapped[ExceptionSource] = mapped_column(String(20), nullable=False)
     severity: Mapped[ExceptionSeverity] = mapped_column(String(20), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
-    supporting_artifact_id: Mapped[uuid.UUID | None] = mapped_column(
+    supporting_artifact_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("evidence_artifacts.id"), nullable=True
     )
     resolved: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
-    resolved_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+    resolved_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
-    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    resolver_note: Mapped[str | None] = mapped_column(Text, nullable=True)
-    merkle_batch_id: Mapped[uuid.UUID | None] = mapped_column(
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolver_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    merkle_batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("merkle_batches.id"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

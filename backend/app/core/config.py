@@ -57,15 +57,16 @@ class Settings(BaseSettings):
     SENDGRID_FROM_EMAIL: str
 
     # -------------------------------------------------------------------------
-    # JWT Authentication
-    # Split into access/refresh horizons to support token rotation.
-    # Access: 8 hours matches a standard dispatcher shift.
-    # Refresh: 24 hours allows a driver to stay logged in across a full trip day.
+    # Supabase Auth
+    # JWT_SECRET: signs all tokens issued by Supabase Auth — used by FastAPI to
+    # verify incoming Bearer tokens locally without a network round-trip.
+    # Found in Supabase dashboard: Settings → API → JWT Secret.
+    # SERVICE_ROLE_KEY: grants full DB + Auth admin access; used server-side
+    # only (e.g. creating auth users, setting app_metadata). Never sent to
+    # the browser.
     # -------------------------------------------------------------------------
-    JWT_SECRET_KEY: str
-    JWT_ALGORITHM: str = "HS256"
-    JWT_ACCESS_TOKEN_EXPIRE_HOURS: int = 8
-    JWT_REFRESH_TOKEN_EXPIRE_HOURS: int = 24
+    SUPABASE_JWT_SECRET: str
+    SUPABASE_SERVICE_ROLE_KEY: str
 
     # -------------------------------------------------------------------------
     # Integration mock toggles
@@ -115,7 +116,13 @@ class Settings(BaseSettings):
     # In local dev, pydantic-settings reads from backend/.env automatically.
     # In Docker / production, values come from the container's environment and
     # env_file is effectively ignored (the file won't be present in the image).
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    # extra="ignore" prevents validation errors if .env contains keys that are
+    # no longer in this model (e.g. after a config field is removed or renamed).
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
 
 # Single shared instance — import this wherever config values are needed.

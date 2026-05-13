@@ -1,6 +1,7 @@
 """SQLAlchemy models for dispatcher users and drivers."""
 
 import uuid
+from typing import Optional
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, String
@@ -13,16 +14,17 @@ from app.db.models.enums import IdvsStatus
 
 
 class User(Base):
-    """Dispatcher or admin account — not used for drivers."""
+    """Dispatcher account. id must equal the Supabase auth.users UUID so that
+    auth.uid() resolves correctly in RLS policies and the JWT sub claim maps
+    directly to this row without a secondary lookup column."""
 
     __tablename__ = "users"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     organization_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False
     )
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
-    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -45,7 +47,7 @@ class Driver(Base):
     phone_number: Mapped[str] = mapped_column(String(20), nullable=False)
     license_number: Mapped[str] = mapped_column(String(50), nullable=False)
     idvs_status: Mapped[IdvsStatus] = mapped_column(String(20), nullable=False, server_default="pending")
-    idvs_last_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    idvs_last_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(

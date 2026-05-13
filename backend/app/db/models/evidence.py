@@ -1,6 +1,7 @@
 """SQLAlchemy model for evidence artifacts stored in S3."""
 
 import uuid
+from typing import Optional
 from decimal import Decimal
 from datetime import datetime
 
@@ -34,13 +35,13 @@ class EvidenceArtifact(Base):
     s3_bucket: Mapped[str] = mapped_column(String(255), nullable=False)
     file_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     mime_type: Mapped[str] = mapped_column(String(100), nullable=False)
-    captured_by_driver_id: Mapped[uuid.UUID | None] = mapped_column(
+    captured_by_driver_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("drivers.id"), nullable=True
     )
-    captured_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+    captured_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
-    captured_lat: Mapped[Decimal | None] = mapped_column(Numeric(10, 7), nullable=True)
-    captured_lng: Mapped[Decimal | None] = mapped_column(Numeric(10, 7), nullable=True)
+    captured_lat: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
+    captured_lng: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

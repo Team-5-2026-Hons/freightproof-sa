@@ -19,7 +19,9 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
-    hashed_password: str
+    # id must be supplied by the caller — it must equal the UUID Supabase Auth
+    # assigned when the account was created in the Supabase dashboard.
+    id: UUID
 
 
 class UserUpdate(BaseModel):
@@ -28,7 +30,6 @@ class UserUpdate(BaseModel):
     full_name: Optional[str] = None
     email: Optional[str] = None
     is_active: Optional[bool] = None
-    hashed_password: Optional[str] = None
 
 
 class UserRead(UserBase):
