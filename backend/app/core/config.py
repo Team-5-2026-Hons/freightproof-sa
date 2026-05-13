@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     DATABASE_URL: str
 
+    # Separate async PostgreSQL URL for integration tests.
+    # Must point at a throwaway database — tests create and drop tables.
+    # Leave empty to skip integration tests automatically.
+    TEST_DATABASE_URL: str = ""
+
     # -------------------------------------------------------------------------
     # Redis
     # Used by Celery as both the broker and result backend, and directly

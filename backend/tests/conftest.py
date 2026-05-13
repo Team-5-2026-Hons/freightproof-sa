@@ -1,12 +1,18 @@
 """Shared fixtures for unit and integration tests.
 
-DB_URL falls back to a local test database if TEST_DATABASE_URL is not set.
-Integration tests that hit the DB are skipped when no database is reachable.
+Two fixture families live here:
 
-JWT helpers create signed tokens using a known test secret so tests never
-depend on a live Supabase project.
+  JWT helpers (make_token, auth_header, client): for endpoint tests that need a
+  real HTTP client with signed tokens. The client fixture monkeypatches
+  SUPABASE_JWT_SECRET so token verification uses test-minted tokens instead of
+  production credentials.
+
+  DB session fixtures (test_engine, db_session): for integration tests that need
+  direct DB access. Each test runs inside a rolled-back transaction so the DB is
+  clean between tests. Requires TEST_DATABASE_URL in backend/.env.
 """
 
+import asyncio
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import AsyncGenerator, Optional
@@ -15,8 +21,11 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from jose import jwt
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
+from app.db.models import Base
 from app.db.session import get_db
 from app.main import app
 
@@ -77,3 +86,50 @@ async def client(monkeypatch: pytest.MonkeyPatch) -> AsyncGenerator[AsyncClient,
         base_url="http://test",
     ) as ac:
         yield ac
+
+
+# ── DB session fixtures ────────────────────────────────────────────────────────
+
+
+@pytest.fixture(scope="session")
+def test_engine():
+    """Create tables once per session (sync wrapper) and yield the async engine.
+
+    NullPool means no connections are held by the engine itself, so there is no
+    event-loop binding on the engine object. Each test's db_session fixture
+    opens a fresh connection in its own (function-scoped) event loop.
+    """
+    if not settings.TEST_DATABASE_URL:
+        pytest.skip("TEST_DATABASE_URL not set — skipping integration tests")
+
+    engine = create_async_engine(settings.TEST_DATABASE_URL, poolclass=NullPool)
+
+    async def _create() -> None:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+    async def _drop() -> None:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+        await engine.dispose()
+
+    asyncio.run(_create())
+    yield engine
+    asyncio.run(_drop())
+
+
+@pytest_asyncio.fixture
+async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
+    """Yield a rolled-back AsyncSession for each test — leaves DB clean."""
+    async with test_engine.connect() as conn:
+        transaction = await conn.begin()
+        session = AsyncSession(
+            bind=conn,
+            expire_on_commit=False,
+            join_transaction_mode="create_savepoint",
+        )
+        try:
+            yield session
+        finally:
+            await session.close()
+            await transaction.rollback()
