@@ -12,9 +12,9 @@ export function DispatcherShell({ children }: DispatcherShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
 
   return (
-    <div className="min-h-screen bg-canvas p-3">
+    <div className="h-screen overflow-hidden bg-canvas p-3">
       {/* Floating panel — r-xl, elevation-6, white surface */}
-      <div className="flex min-h-[calc(100vh-24px)] bg-surf rounded-xl shadow-level-6 overflow-hidden">
+      <div className="flex h-full bg-surf rounded-xl shadow-level-6 overflow-hidden">
         <Sidebar
           mobileOpen={mobileOpen}
           onMobileClose={() => setMobileOpen(false)}

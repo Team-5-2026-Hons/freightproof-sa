@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { TopBar }         from '@/components/ui/TopBar'
 import { StatCard }       from '@/components/ui/StatCard'
@@ -9,7 +9,7 @@ import { Button }         from '@/components/ui/Button'
 import { Ic }             from '@/components/ui/Ic'
 import { EmptyState }     from '@/components/ui/EmptyState'
 import { ChecklistRow }   from '@/components/domain/ChecklistRow'
-import { ExceptionBanner } from '@/components/domain/ExceptionBanner'
+import type { ColWidths } from '@/components/domain/ChecklistRow'
 import { useTrips }       from '@/lib/hooks/useTrips'
 import { useExceptions }  from '@/lib/hooks/useExceptions'
 import { ROUTES }         from '@/lib/constants/routes'
@@ -24,14 +24,26 @@ const ACTIVE_STATUSES: TripStatus[] = [
 
 const CLOSED_STATUS: TripStatus[] = ['closed']
 
-const COLUMNS = [
-  { label: 'TRIP ID',        width: 88  },
-  { label: 'ORDER',          width: 100 },
-  { label: 'DRIVER / HORSE', width: 115 },
-  { label: 'ROUTE',          width: 100 },
-  { label: 'PROGRESS',       width: null },
-  { label: 'STATUS',         width: 90  },
-] as const
+type ColId = keyof ColWidths
+
+const COL_HEADERS: { id: ColId | 'progress'; label: string }[] = [
+  { id: 'tripId',   label: 'TRIP ID'        },
+  { id: 'order',    label: 'ORDER'          },
+  { id: 'driver',   label: 'DRIVER / HORSE' },
+  { id: 'route',    label: 'ROUTE'          },
+  { id: 'progress', label: 'PROGRESS'       },
+  { id: 'status',   label: 'STATUS'         },
+]
+
+const INITIAL_COL_WIDTHS: ColWidths = {
+  tripId: 155,
+  order:  155,
+  driver: 150,
+  route:  130,
+  status: 120,
+}
+
+const MIN_COL_W = 80
 
 function formatDate(d: Date): string {
   return d.toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' })
@@ -40,9 +52,11 @@ function formatDate(d: Date): string {
 export default function ActiveTripsPage() {
   const router = useRouter()
   const [search, setSearch] = useState('')
+  const [colWidths, setColWidths] = useState<ColWidths>(INITIAL_COL_WIDTHS)
+  const resizeRef = useRef<{ id: ColId; startX: number; startW: number } | null>(null)
 
-  const allTrips      = useTrips({ status: ACTIVE_STATUSES })
-  const closedTrips   = useTrips({ status: CLOSED_STATUS })
+  const allTrips       = useTrips({ status: ACTIVE_STATUSES })
+  const closedTrips    = useTrips({ status: CLOSED_STATUS })
   const openExceptions = useExceptions({ resolved: false })
 
   const todayStr = new Date().toDateString()
@@ -78,6 +92,26 @@ export default function ActiveTripsPage() {
     )
   }, [allTrips, search])
 
+  function startResize(id: ColId, e: React.MouseEvent) {
+    e.preventDefault()
+    resizeRef.current = { id, startX: e.clientX, startW: colWidths[id] }
+
+    function onMove(ev: MouseEvent) {
+      const r = resizeRef.current
+      if (!r) return
+      setColWidths(p => ({ ...p, [r.id]: Math.max(MIN_COL_W, r.startW + ev.clientX - r.startX) }))
+    }
+
+    function onUp() {
+      resizeRef.current = null
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <TopBar
@@ -95,30 +129,11 @@ export default function ActiveTripsPage() {
 
       {/* Stat strip */}
       <div className="flex gap-3 px-6 py-4 bg-surf-low shrink-0">
-        <StatCard value={String(allTrips.length)}   label="Active trips" />
-        <StatCard value={String(openExceptions.length)} label="Exceptions today" warn={openExceptions.length > 0} />
-        <StatCard value={String(completedCount)}    label="Completed today" />
-        <StatCard value={`${onTimePercent}%`}       label="On-time rate (30d)" success />
+        <StatCard value={String(allTrips.length)}        label="Active trips" />
+        <StatCard value={String(openExceptions.length)}  label="Exceptions today" warn={openExceptions.length > 0} />
+        <StatCard value={String(completedCount)}         label="Completed today" />
+        <StatCard value={`${onTimePercent}%`}            label="On-time rate (30d)" success={onTimePercent >= 90} warn={onTimePercent < 70} />
       </div>
-
-      {/* Exception banner — only when open exceptions exist */}
-      {openExceptions.length > 0 && (
-        <div className="mx-6 mt-4 shrink-0">
-          <ExceptionBanner
-            title={`${openExceptions.length} exception${openExceptions.length > 1 ? 's' : ''} require review`}
-            description={exceptionDescription}
-            action={
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => router.push(ROUTES.exceptions)}
-              >
-                View all
-              </Button>
-            }
-          />
-        </div>
-      )}
 
       {/* Search */}
       <div className="px-6 py-3 shrink-0">
@@ -135,49 +150,88 @@ export default function ActiveTripsPage() {
       </div>
 
       {/* Trip list card */}
-      <div className="flex-1 overflow-auto mx-6 mb-6 bg-surf-lowest rounded-lg shadow-level-3 overflow-hidden flex flex-col">
+      <div className="flex-1 overflow-hidden mx-6 mb-6 bg-surf-lowest rounded-lg shadow-level-3 flex flex-col">
         <SecHead
           title="Active Trips"
           action="New Trip"
           onAction={() => router.push(ROUTES.tripNew)}
         />
 
-        {/* Column header row */}
-        <div className="flex gap-3 px-6 py-[7px] bg-surf-low shrink-0">
-          {COLUMNS.map(col => (
-            <div
-              key={col.label}
-              style={col.width ? { width: col.width, flexShrink: 0 } : { flex: 1 }}
-              className="text-[10px] font-[700] tracking-[0.1em] uppercase text-on-surf-v"
+        {/* Inline exception notice — red strip, sits in the card header zone */}
+        {openExceptions.length > 0 && (
+          <div className="flex items-center gap-2 px-6 py-[7px] bg-err/8 border-b border-err/20 shrink-0">
+            <Ic n="warn" s={13} className="text-err shrink-0" />
+            <span className="text-[12px] font-[600] text-err">
+              {openExceptions.length} exception{openExceptions.length > 1 ? 's' : ''} need review
+            </span>
+            {exceptionDescription && (
+              <span className="text-[11px] text-err/60 truncate">· {exceptionDescription}</span>
+            )}
+            <button
+              onClick={() => router.push(ROUTES.exceptions)}
+              className="ml-auto text-[12px] font-[600] text-err hover:text-err/80 transition-colors shrink-0"
             >
-              {col.label}
-            </div>
-          ))}
-        </div>
+              Review →
+            </button>
+          </div>
+        )}
 
-        {/* Rows */}
-        <div className="flex-1 overflow-y-auto divide-y divide-outline-v/10">
-          {allTrips.length === 0 ? (
-            <div className="p-6">
-              <EmptyState
-                icon={<Ic n="truck" s={32} className="text-on-surf-v" />}
-                title={COPY.emptyState.activeTrips.title}
-                body={COPY.emptyState.activeTrips.body}
-              />
+        {/* Table scroll area — x+y scroll together, min-w prevents column overlap */}
+        <div className="flex-1 overflow-auto">
+          <div className="min-w-[700px]">
+
+            {/* Sticky column header — drag the handle on the right edge of any cell to resize */}
+            <div className="sticky top-0 flex gap-3 px-6 py-[7px] bg-surf-low border-b border-outline-v/10 select-none">
+              {COL_HEADERS.map(col =>
+                col.id === 'progress' ? (
+                  <div key="progress" className="flex-1 text-[10px] font-[700] tracking-[0.1em] uppercase text-on-surf-v">
+                    {col.label}
+                  </div>
+                ) : (
+                  <div
+                    key={col.id}
+                    style={{ width: colWidths[col.id as ColId], flexShrink: 0 }}
+                    className="relative group text-[10px] font-[700] tracking-[0.1em] uppercase text-on-surf-v"
+                  >
+                    {col.label}
+                    {/* Resize handle — hover to reveal, drag to resize */}
+                    <div
+                      onMouseDown={e => startResize(col.id as ColId, e)}
+                      className="absolute right-0 top-0 h-full w-4 cursor-col-resize flex items-center justify-center"
+                    >
+                      <div className="w-[2px] h-3 rounded-full bg-outline-v/50 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                  </div>
+                )
+              )}
             </div>
-          ) : filteredTrips.length === 0 ? (
-            <div className="p-6">
-              <EmptyState
-                icon={<Ic n="search" s={32} className="text-on-surf-v" />}
-                title={COPY.emptyState.noResults.title}
-                body={COPY.emptyState.noResults.body}
-              />
+
+            {/* Rows */}
+            <div className="divide-y divide-outline-v/10">
+              {allTrips.length === 0 ? (
+                <div className="p-6">
+                  <EmptyState
+                    icon={<Ic n="truck" s={32} className="text-on-surf-v" />}
+                    title={COPY.emptyState.activeTrips.title}
+                    body={COPY.emptyState.activeTrips.body}
+                  />
+                </div>
+              ) : filteredTrips.length === 0 ? (
+                <div className="p-6">
+                  <EmptyState
+                    icon={<Ic n="search" s={32} className="text-on-surf-v" />}
+                    title={COPY.emptyState.noResults.title}
+                    body={COPY.emptyState.noResults.body}
+                  />
+                </div>
+              ) : (
+                filteredTrips.map(trip => (
+                  <ChecklistRow key={trip.id} trip={trip} colWidths={colWidths} />
+                ))
+              )}
             </div>
-          ) : (
-            filteredTrips.map(trip => (
-              <ChecklistRow key={trip.id} trip={trip} />
-            ))
-          )}
+
+          </div>
         </div>
       </div>
     </div>

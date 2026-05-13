@@ -7,7 +7,7 @@ import { Ic }             from '@/components/ui/Ic'
 import { Card }           from '@/components/ui/Card'
 import { EmptyState }     from '@/components/ui/EmptyState'
 import { useSLAMetrics }  from '@/lib/hooks/useSLAMetrics'
-import type { DateRange } from '@/components/ui/DateRangePicker'
+import type { DateRange } from '@/lib/types/date-range'
 
 function todayStr(): string {
   return new Date().toISOString().slice(0, 10)

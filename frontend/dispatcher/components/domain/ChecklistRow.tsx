@@ -11,8 +11,17 @@ import { mockTrips } from '@shared/lib/mocks/trips'
 import type { TripSummary, TripStatus } from '@shared/lib/types/trip'
 import { cn } from '@shared/lib/utils/cn'
 
+export interface ColWidths {
+  tripId: number
+  order:  number
+  driver: number
+  route:  number
+  status: number
+}
+
 interface ChecklistRowProps {
   trip: TripSummary
+  colWidths: ColWidths
   className?: string
 }
 
@@ -29,7 +38,7 @@ const STATUS_HINT: Record<TripStatus, string> = {
   exception_hold:  '⚠ Exception',
 }
 
-export function ChecklistRow({ trip, className }: ChecklistRowProps) {
+export function ChecklistRow({ trip, colWidths, className }: ChecklistRowProps) {
   const router = useRouter()
   const statusMeta = TRIP_STATUS_META[trip.status]
 
@@ -47,9 +56,14 @@ export function ChecklistRow({ trip, className }: ChecklistRowProps) {
     ? `⚠ ${trip.open_exception_count} exception${trip.open_exception_count > 1 ? 's' : ''}`
     : STATUS_HINT[trip.status]
 
+  function navigate() { router.push(ROUTES.tripDetail(trip.id)) }
+
   return (
-    <button
-      onClick={() => router.push(ROUTES.tripDetail(trip.id))}
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={navigate}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') navigate() }}
       className={cn(
         'w-full flex items-center gap-3 px-6 py-3 text-left',
         'bg-surf-lowest cursor-pointer transition-colors duration-[120ms]',
@@ -59,30 +73,30 @@ export function ChecklistRow({ trip, className }: ChecklistRowProps) {
         className,
       )}
     >
-      {/* Trip ID — 88px, sec colour, tabular-nums */}
-      <div className="w-[88px] shrink-0 text-[13px] font-[600] text-sec tabular-nums tracking-[0.05em]">
+      {/* Trip ID — overflow-hidden prevents monospace text bleeding into adjacent cell */}
+      <div style={{ width: colWidths.tripId }} className="shrink-0 overflow-hidden text-[13px] font-[600] text-sec tabular-nums tracking-[0.05em]">
         <TripIdStamp tripReference={trip.trip_reference} />
       </div>
 
-      {/* Order number — 100px */}
-      <div className="w-[100px] shrink-0 text-[11px] text-on-surf-v tabular-nums tracking-[0.03em]">
+      {/* Order number */}
+      <div style={{ width: colWidths.order }} className="shrink-0 text-[11px] text-on-surf-v tabular-nums tracking-[0.03em] truncate">
         {trip.order_number}
       </div>
 
-      {/* Driver + Horse — 115px */}
-      <div className="w-[115px] shrink-0">
+      {/* Driver + Horse */}
+      <div style={{ width: colWidths.driver }} className="shrink-0 min-w-0">
         <div className="text-[14px] font-[600] text-on-surf truncate">{trip.driver.full_name}</div>
         <div className="text-[11px] text-on-surf-v tabular-nums tracking-[0.04em] truncate">
           {trip.horse?.registration ?? '—'}
         </div>
       </div>
 
-      {/* Route — 100px */}
-      <div className="w-[100px] shrink-0 text-[13px] font-[600] text-on-surf truncate">
+      {/* Route */}
+      <div style={{ width: colWidths.route }} className="shrink-0 text-[13px] font-[600] text-on-surf truncate">
         {originShort} → {destShort}
       </div>
 
-      {/* Progress — flex-1: compact HandshakeChain + hint text */}
+      {/* Progress — flex-1 fills remaining space between route and status */}
       <div className="flex-1 flex items-center gap-2 min-w-0">
         {handshakes.length > 0 && (
           <HandshakeChain handshakes={handshakes} compact />
@@ -98,7 +112,9 @@ export function ChecklistRow({ trip, className }: ChecklistRowProps) {
       </div>
 
       {/* Status chip */}
-      <Chip type={statusMeta.chipType} label={statusMeta.label} className="shrink-0" />
-    </button>
+      <div style={{ width: colWidths.status }} className="shrink-0">
+        <Chip type={statusMeta.chipType} label={statusMeta.label} />
+      </div>
+    </div>
   )
 }

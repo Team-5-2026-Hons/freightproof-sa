@@ -2,9 +2,10 @@
 
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
-import { X } from 'lucide-react'
+import { X, Shield } from 'lucide-react'
 import { Ic } from '@/components/ui/Ic'
 import { useAuth } from '@/lib/hooks/useAuth'
+import { useExceptions } from '@/lib/hooks/useExceptions'
 import { cn } from '@shared/lib/utils/cn'
 import { ROUTES } from '@/lib/constants/routes'
 import type { IconName } from '@/components/ui/Ic'
@@ -32,8 +33,9 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'TRIPS',
     items: [
-      { label: 'Create Trip',  href: ROUTES.tripNew, icon: 'plus',  activePatterns: ['/trips/new'] },
-      { label: 'Trip History', href: ROUTES.history,  icon: 'clock', activePatterns: ['/history'] },
+      { label: 'Create Trip',  href: ROUTES.tripNew,    icon: 'plus',  activePatterns: ['/trips/new'] },
+      { label: 'Trip History', href: ROUTES.history,    icon: 'clock', activePatterns: ['/history'] },
+      { label: 'Exceptions',   href: ROUTES.exceptions, icon: 'warn',  activePatterns: ['/exceptions'] },
     ],
   },
   {
@@ -106,17 +108,25 @@ interface SidebarContentProps {
 function SidebarContent({ onClose }: SidebarContentProps) {
   const pathname = usePathname()
   const { user } = useAuth()
+  const openExceptions = useExceptions({ resolved: false })
+
+  // Inject live badge count onto the exceptions nav item at render time
+  const navGroups = NAV_GROUPS.map(g => ({
+    ...g,
+    items: g.items.map(item =>
+      item.href === ROUTES.exceptions && openExceptions.length > 0
+        ? { ...item, badge: openExceptions.length }
+        : item,
+    ),
+  }))
 
   return (
     <div className="flex flex-col h-full bg-primary w-[220px] shrink-0">
       {/* Header — logo mark + wordmark + eyebrow */}
       <div className="flex items-center gap-[10px] px-[18px] py-[18px] border-b border-white/[0.08]">
         {/* Hex logo mark — bg-sec container, white polygon, sec-coloured circle */}
-        <div className="w-8 h-8 bg-sec rounded-md flex items-center justify-center shrink-0 text-sec">
-          <svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-            <path d="M12 2L20 6.5V17.5L12 22L4 17.5V6.5Z" fill="white" fillOpacity="0.88" />
-            <circle cx={12} cy={12} r={3} fill="currentColor" />
-          </svg>
+        <div className="w-8 h-8 bg-primary rounded-md flex items-center justify-center shrink-0">
+          <Shield className="w-4 h-4 text-white" />
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-[16px] font-[800] text-white leading-none tracking-[-0.02em]">
@@ -139,7 +149,7 @@ function SidebarContent({ onClose }: SidebarContentProps) {
 
       {/* Nav groups */}
       <div className="flex-1 py-2 overflow-y-auto">
-        {NAV_GROUPS.map(group => (
+        {navGroups.map(group => (
           <div key={group.label}>
             {group.label && (
               <div className="text-[10px] font-[700] tracking-[0.12em] uppercase text-white/30 px-[18px] pt-3 pb-1">
@@ -157,10 +167,11 @@ function SidebarContent({ onClose }: SidebarContentProps) {
           </div>
         ))}
 
-        {/* Settings — ungrouped, separated by a small top margin */}
-        <div className="mt-2">
-          <NavLink item={SETTINGS_ITEM} pathname={pathname} onClose={onClose} />
-        </div>
+      </div>
+
+      {/* Settings — pinned above the profile footer */}
+      <div className="border-t border-white/[0.08]">
+        <NavLink item={SETTINGS_ITEM} pathname={pathname} onClose={onClose} />
       </div>
 
       {/* Footer — user avatar + name + role */}

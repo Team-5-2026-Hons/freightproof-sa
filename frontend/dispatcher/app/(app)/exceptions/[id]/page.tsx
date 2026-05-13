@@ -2,162 +2,218 @@
 
 import { useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, MessageSquare, CheckCircle2, Navigation } from 'lucide-react'
-import { TopBar } from '@/components/ui/TopBar'
-import { Card } from '@/components/ui/Card'
-import { Button } from '@/components/ui/Button'
-import { Chip } from '@/components/ui/Chip'
-import { Input } from '@/components/ui/Input'
+import { TopBar }     from '@/components/ui/TopBar'
+import { SecHead }    from '@/components/ui/SecHead'
+import { Chip }       from '@/components/ui/Chip'
+import { Button }     from '@/components/ui/Button'
+import { Ic }         from '@/components/ui/Ic'
+import { Input }      from '@/components/ui/Input'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { EvidencePacket } from '@/components/domain/EvidencePacket'
-import { TimestampWithIcon } from '@/components/domain/TimestampWithIcon'
 import { TripIdStamp } from '@/components/domain/TripIdStamp'
-import { useToast } from '@/lib/hooks/useToast'
+import { useToast }      from '@/lib/hooks/useToast'
 import { useExceptions } from '@/lib/hooks/useExceptions'
-import { mockTrips } from '@shared/lib/mocks/trips'
-import { EXCEPTION_SEVERITY_META } from '@shared/lib/constants/status-meta'
-import { COPY } from '@shared/lib/constants/copy'
+import { mockTrips }     from '@shared/lib/mocks/trips'
+import { EXCEPTION_SEVERITY_META, EXCEPTION_SOURCE_META } from '@shared/lib/constants/status-meta'
+import { COPY }   from '@shared/lib/constants/copy'
 import { ROUTES } from '@/lib/constants/routes'
+
+function fmtType(t: string): string {
+  return t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
+
+function fmtTs(iso: string): string {
+  return new Date(iso).toLocaleString('en-ZA', {
+    day: 'numeric', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  })
+}
 
 export default function ExceptionDetailPage() {
   const params = useParams()
   const router = useRouter()
   const { notify } = useToast()
-  
-  const exceptionId = params.id as string
-  // For the MVP, we just find it from the mock data hook
-  const allExceptions = useExceptions()
-  const exception = useMemo(() => allExceptions.find(e => e.id === exceptionId), [allExceptions, exceptionId])
-  
-  const [resolutionNote, setResolutionNote] = useState('')
-  const [resolving, setResolving] = useState(false)
 
+  const exceptionId  = params.id as string
+  const allExceptions = useExceptions()
+  const exception = useMemo(
+    () => allExceptions.find(e => e.id === exceptionId),
+    [allExceptions, exceptionId],
+  )
+
+  const [resolutionNote, setResolutionNote] = useState('')
+  const [resolving, setResolving]           = useState(false)
+
+  // ── Not found ────────────────────────────────────────────────────────────────
   if (!exception) {
     return (
       <div className="flex flex-col flex-1 min-h-0">
-        <TopBar title="Exception Detail" />
-        <div className="flex-1 overflow-y-auto p-6">
+        <TopBar title="Exception Detail">
+          <Button
+            variant="secondary"
+            size="sm"
+            iconLeft={<Ic n="back" s={14} className="text-on-surf" />}
+            onClick={() => router.back()}
+          >
+            Back
+          </Button>
+        </TopBar>
+        <div className="flex-1 overflow-auto p-6">
           <EmptyState
-            icon={<MessageSquare />}
+            icon={<Ic n="warn" s={32} className="text-on-surf-v" />}
             title="Exception not found"
             body="This record does not exist or you do not have access to it."
-            cta={<Button onClick={() => router.push(ROUTES.exceptions)}>Back to Feed</Button>}
+            cta={
+              <Button onClick={() => router.push(ROUTES.exceptions)}>
+                Back to Exceptions
+              </Button>
+            }
           />
         </div>
       </div>
     )
   }
 
-  const trip = mockTrips.find(t => t.id === exception.trip_id)
+  const trip    = mockTrips.find(t => t.id === exception.trip_id)
   const sevMeta = EXCEPTION_SEVERITY_META[exception.severity]
+  const srcMeta = EXCEPTION_SOURCE_META[exception.source]
 
-  const handleResolve = async (e: React.FormEvent) => {
+  const handleResolve = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    if (!resolutionNote) return
-
+    if (!resolutionNote.trim()) return
     setResolving(true)
     await new Promise(r => setTimeout(r, 600))
-    
-    notify({
-      kind: 'success',
-      title: COPY.toast.exceptionResolved,
-    })
-    
-    // In MVP, we just navigate back to the feed since we can't mutate the mock data
+    notify({ kind: 'success', title: COPY.toast.exceptionResolved })
     router.push(ROUTES.exceptions)
   }
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <TopBar title="Exception Detail">
+      <TopBar
+        title={fmtType(exception.exception_type)}
+        sub={`${sevMeta.label} · ${exception.resolved ? 'Resolved' : 'Open'}`}
+      >
         <Button
           variant="secondary"
           size="sm"
-          iconLeft={<ArrowLeft className="w-4 h-4" />}
+          iconLeft={<Ic n="back" s={14} className="text-on-surf" />}
           onClick={() => router.back()}
         >
           Back
         </Button>
       </TopBar>
-      <div className="flex-1 overflow-y-auto p-6">
-        <div className="max-w-3xl">
 
-      {trip && (
-        <Card variant="section" className="mb-6 p-4 flex items-center justify-between">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wider text-surface-on-variant mb-1">Related Trip</p>
-            <TripIdStamp tripReference={trip.trip_reference} />
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            iconRight={<Navigation className="w-4 h-4" />}
-            onClick={() => router.push(ROUTES.tripDetail(trip.id))}
-          >
-            View Trip
-          </Button>
-        </Card>
-      )}
+      <div className="flex-1 overflow-auto">
+        <div className="max-w-3xl mx-auto px-6 py-6 flex flex-col gap-4">
 
-      <EvidencePacket
-        chipType={sevMeta.chipType}
-        chipLabel={sevMeta.label}
-        title={exception.exception_type.replace(/_/g, ' ')}
-        exception={!exception.resolved}
-        className="mb-6"
-      >
-        <div className="flex items-center gap-2 mb-4">
-          <span className="text-xs font-bold uppercase tracking-wider text-surface-on-variant w-24">Source</span>
-          <span className="text-sm text-surface-on font-medium capitalize">{exception.source}</span>
-        </div>
-        
-        <div className="p-4 bg-surface-container-low rounded-xl mb-4">
-          <p className="text-sm text-surface-on leading-relaxed">
-            {exception.description}
-          </p>
-        </div>
-
-        <div className="flex items-center justify-between mt-4">
-          <TimestampWithIcon timestamp={exception.created_at} />
-          <Chip
-            type={exception.resolved ? 'complete' : 'critical'}
-            label={exception.resolved ? 'Resolved' : 'Open'}
-          />
-        </div>
-      </EvidencePacket>
-
-      {/* Resolution section */}
-      {exception.resolved ? (
-        <Card variant="section" className="p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <CheckCircle2 className="w-5 h-5 text-success" />
-            <h3 className="text-lg font-bold text-surface-on">Resolution</h3>
-          </div>
-          <p className="text-sm text-surface-on-variant mb-4">{exception.resolver_note}</p>
-          <TimestampWithIcon timestamp={exception.resolved_at!} />
-        </Card>
-      ) : (
-        <Card className="p-5 border border-secondary/20">
-          <h3 className="text-lg font-bold text-surface-on mb-4">Resolve Exception</h3>
-          <form onSubmit={handleResolve} className="space-y-4">
-            <Input
-              label="Resolution Note"
-              placeholder={COPY.confirm.resolveNote}
-              value={resolutionNote}
-              onChange={e => setResolutionNote(e.target.value)}
-            />
-            <div className="flex justify-end">
-              <Button
-                type="submit"
-                disabled={!resolutionNote || resolving}
-                loading={resolving}
+          {/* Related trip banner */}
+          {trip && (
+            <div className="bg-surf-low rounded-lg px-5 py-4 flex items-center justify-between">
+              <div>
+                <div className="text-[11px] font-[700] tracking-[0.1em] uppercase text-on-surf-v mb-1">
+                  Related Trip
+                </div>
+                <TripIdStamp tripReference={trip.trip_reference} />
+              </div>
+              <button
+                onClick={() => router.push(ROUTES.tripDetail(trip.id))}
+                className="flex items-center gap-1 text-[13px] font-[600] text-sec hover:opacity-75 transition-opacity"
               >
-                {COPY.actions.resolve}
-              </Button>
+                View trip <Ic n="chev" s={14} c="#0051d5" />
+              </button>
             </div>
-          </form>
-        </Card>
-      )}
+          )}
+
+          {/* Exception detail card */}
+          <div className="bg-surf-lowest rounded-lg shadow-level-3 overflow-hidden">
+            <SecHead title="Exception Details" />
+            <div className="p-6">
+
+              {/* Chips + source row */}
+              <div className="flex items-center gap-2 mb-5 flex-wrap">
+                <Chip type={sevMeta.chipType} label={sevMeta.label} />
+                <Chip
+                  type={exception.resolved ? 'complete' : 'critical'}
+                  label={exception.resolved ? 'Resolved' : 'Open'}
+                />
+                <span className="ml-auto text-[11px] text-on-surf-v font-[500]">
+                  {srcMeta.label} · {fmtTs(exception.created_at)}
+                </span>
+              </div>
+
+              {/* Description */}
+              <div className="bg-surf-low rounded-lg p-4 mb-5">
+                <p className="text-[14px] text-on-surf leading-relaxed">{exception.description}</p>
+              </div>
+
+              {/* Meta rows */}
+              <div className="flex flex-col">
+                {([
+                  ['Source',  srcMeta.label],
+                  ['Raised',  fmtTs(exception.created_at)],
+                  ['Updated', fmtTs(exception.updated_at)],
+                  ...(exception.resolved && exception.resolved_at
+                    ? [['Resolved', fmtTs(exception.resolved_at)]] as [string, string][]
+                    : []),
+                ] as [string, string][]).map(([label, value]) => (
+                  <div
+                    key={label}
+                    className="flex items-start gap-3 py-2 border-b border-outline-v/10 last:border-0"
+                  >
+                    <span className="text-[11px] text-on-surf-v w-24 shrink-0 pt-px">{label}</span>
+                    <span className="text-[13px] font-[500] text-on-surf">{value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Resolution card */}
+          {exception.resolved ? (
+            <div className="bg-surf-lowest rounded-lg shadow-level-3 overflow-hidden">
+              <SecHead title="Resolution" />
+              <div className="p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <Ic n="check" s={16} className="text-ok shrink-0" />
+                  <span className="text-[14px] font-[700] text-ok">Exception resolved</span>
+                </div>
+                <div className="bg-surf-low rounded-lg p-4 mb-4">
+                  <p className="text-[14px] text-on-surf leading-relaxed">
+                    {exception.resolver_note ?? 'No note provided.'}
+                  </p>
+                </div>
+                {exception.resolved_at && (
+                  <div className="flex items-center gap-1.5 text-[11px] font-[500] text-sec tabular-nums">
+                    <Ic n="clock" s={10} className="text-sec shrink-0" />
+                    {fmtTs(exception.resolved_at)}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="bg-surf-lowest rounded-lg shadow-level-3 overflow-hidden">
+              <SecHead title="Resolve Exception" />
+              <form onSubmit={handleResolve} className="p-6 flex flex-col gap-4">
+                <Input
+                  label="Resolution note"
+                  placeholder={COPY.confirm.resolveNote}
+                  value={resolutionNote}
+                  onChange={e => setResolutionNote(e.target.value)}
+                />
+                <div className="flex justify-end">
+                  <Button
+                    type="submit"
+                    variant="success"
+                    disabled={!resolutionNote.trim() || resolving}
+                    loading={resolving}
+                    iconLeft={<Ic n="check" s={14} c="white" />}
+                  >
+                    {COPY.actions.resolve}
+                  </Button>
+                </div>
+              </form>
+            </div>
+          )}
+
         </div>
       </div>
     </div>

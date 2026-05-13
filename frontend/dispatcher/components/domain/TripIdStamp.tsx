@@ -16,7 +16,8 @@ interface TripIdStampProps {
 export function TripIdStamp({ tripReference, className }: TripIdStampProps) {
   const [copied, setCopied] = useState(false)
 
-  const handleCopy = async () => {
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.stopPropagation()
     await navigator.clipboard.writeText(tripReference)
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
@@ -24,10 +25,10 @@ export function TripIdStamp({ tripReference, className }: TripIdStampProps) {
 
   return (
     <button
-      onClick={handleCopy}
+      onClick={e => handleCopy(e)}
       aria-label={`Copy trip ID ${tripReference}`}
       className={cn(
-        'inline-flex items-center gap-1.5 group',
+        'inline-flex items-center gap-1.5 group whitespace-nowrap',
         'font-mono tracking-[0.05em] font-bold text-sm text-surface-on',
         'hover:text-secondary transition-colors duration-150',
         className,

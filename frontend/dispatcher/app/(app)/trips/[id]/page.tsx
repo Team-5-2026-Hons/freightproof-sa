@@ -16,17 +16,6 @@ import { mockManifests } from '@shared/lib/mocks/manifests'
 import type { HandshakeNumber } from '@shared/lib/types/handshake'
 import type { Trip } from '@shared/lib/types/trip'
 
-// Evidence weight displayed as a badge on each completed handshake.
-// Sequence 0 = trip creation (baseline), 5 = final delivery (highest evidence).
-const HS_EVIDENCE: Record<number, { label: string; bgClass: string; textClass: string }> = {
-  0: { label: 'Baseline',                    bgClass: 'bg-surf-high',  textClass: 'text-on-surf-v' },
-  1: { label: 'Medium Evidence',             bgClass: 'bg-sec-c',      textClass: 'text-sec-onc'   },
-  2: { label: 'High Evidence',               bgClass: 'bg-ok-c',       textClass: 'text-ok-onc'    },
-  3: { label: 'Medium Evidence',             bgClass: 'bg-sec-c',      textClass: 'text-sec-onc'   },
-  4: { label: 'High Evidence',               bgClass: 'bg-ok-c',       textClass: 'text-ok-onc'    },
-  5: { label: 'Highest — Primary Evidence',  bgClass: 'bg-primary',    textClass: 'text-white'     },
-}
-
 // Maps trip status to which sequence number is currently the active (in-progress) handshake.
 // `in_transit` has no active handshake (vehicle is on the road between H3 and H4).
 const ACTIVE_HS_FOR_STATUS: Partial<Record<string, number>> = {
@@ -35,20 +24,6 @@ const ACTIVE_HS_FOR_STATUS: Partial<Record<string, number>> = {
   origin_gate_out: 3,
   dest_gate_in:    4,
   unloading:       5,
-}
-
-// ── Evidence weight badge ─────────────────────────────────────────────────────
-function EvidenceBadge({ seqNum }: { seqNum: number }) {
-  const w = HS_EVIDENCE[seqNum]
-  if (!w) return null
-  return (
-    <span
-      className={`inline-flex items-center gap-1 text-[10px] font-[700] tracking-[0.06em] uppercase px-2 py-[2px] rounded-sm whitespace-nowrap ${w.bgClass} ${w.textClass}`}
-    >
-      {seqNum === 5 && <Ic n="shield" s={9} className={w.textClass} />}
-      {w.label}
-    </span>
-  )
 }
 
 // ── Blockchain chain tag ──────────────────────────────────────────────────────
@@ -75,15 +50,21 @@ interface TimelineEventProps {
   label: string
   meta: string
   detail?: string
-  evidenceSeq?: number
+  /** ISO timestamp shown top-right when the event was completed. */
+  timestamp?: string
   chainText?: string
   excText?: string
   resText?: string
 }
 
+function fmtTs(iso: string): string {
+  const d = new Date(iso)
+  return d.toLocaleString('en-ZA', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' })
+}
+
 function TimelineEvent({
   nodeType, nodeLabel, isLast,
-  label, meta, detail, evidenceSeq,
+  label, meta, detail, timestamp,
   chainText, excText, resText,
 }: TimelineEventProps) {
   const nodeStyle: Record<NodeType, string> = {
@@ -100,14 +81,20 @@ function TimelineEvent({
     cp:      'bg-ok/40',
     pending: 'bg-outline-v/30',
   }
+  // Card background visually groups each event's content
+  const cardStyle: Record<NodeType, string> = {
+    done:    'bg-surf-low',
+    active:  'bg-sec-c border border-sec/20',
+    warn:    'bg-warn-c/40 border border-warn/20',
+    cp:      'bg-surf-low',
+    pending: 'border border-dashed border-outline-v/40',
+  }
 
   return (
     <div className="flex gap-[14px]">
       {/* Node + vertical connector */}
       <div className="flex flex-col items-center shrink-0">
-        <div
-          className={`w-[30px] h-[30px] rounded-full flex items-center justify-center text-[11px] font-[700] shrink-0 ${nodeStyle[nodeType]}`}
-        >
+        <div className={`w-[30px] h-[30px] rounded-full flex items-center justify-center text-[11px] font-[700] shrink-0 ${nodeStyle[nodeType]}`}>
           {nodeType === 'done' || nodeType === 'cp'
             ? <Ic n="check" s={14} className="text-white" />
             : nodeLabel}
@@ -117,34 +104,42 @@ function TimelineEvent({
         )}
       </div>
 
-      {/* Content */}
-      <div className="flex-1 pb-5">
-        <div className="flex items-start justify-between gap-2 mb-[2px]">
-          <div
-            className={`text-[15px] font-[700] ${nodeType === 'pending' ? 'text-on-surf-v' : 'text-on-surf'}`}
-          >
-            {label}
+      {/* Content card — one card per event, timestamp pinned inside */}
+      <div className="flex-1 mb-3">
+        <div className={`rounded-lg px-4 py-3 ${cardStyle[nodeType]}`}>
+          {/* Title row — event name left, timestamp top-right inside the card */}
+          <div className="flex items-start justify-between gap-3 mb-[5px]">
+            <div className={`text-[15px] font-[700] leading-snug ${nodeType === 'pending' ? 'text-on-surf-v' : 'text-on-surf'}`}>
+              {label}
+            </div>
+            {timestamp && (
+              <div className="flex items-center gap-[4px] shrink-0 tabular-nums text-[12px] font-[700] text-sec">
+                <Ic n="clock" s={11} className="text-sec" />
+                {fmtTs(timestamp)}
+              </div>
+            )}
           </div>
-          {evidenceSeq !== undefined && <EvidenceBadge seqNum={evidenceSeq} />}
+          {/* Context line — location / actor / status */}
+          {meta && (
+            <div className="text-[11px] font-[500] text-on-surf-v mb-[6px]">
+              {meta}
+            </div>
+          )}
+          {detail && <div className="text-[13px] text-on-surf-v mt-1">{detail}</div>}
+          {excText && (
+            <div className="inline-flex items-center gap-[7px] bg-warn-c rounded-sm px-[12px] py-[5px] mt-[6px]">
+              <Ic n="warn" s={13} className="text-warn-onc" />
+              <span className="text-[12px] font-[600] text-warn-onc">{excText}</span>
+            </div>
+          )}
+          {resText && (
+            <div className="text-[12px] text-ok mt-[5px] flex items-center gap-[5px]">
+              <Ic n="check" s={12} className="text-ok" />
+              {resText}
+            </div>
+          )}
+          {chainText && <ChainTag text={chainText} />}
         </div>
-        <div className="text-[11px] font-[500] tracking-[0.03em] text-sec mb-[4px] flex items-center gap-1 tabular-nums">
-          <Ic n="clock" s={10} className="text-sec" />
-          {meta}
-        </div>
-        {detail && <div className="text-[13px] text-on-surf-v">{detail}</div>}
-        {excText && (
-          <div className="inline-flex items-center gap-[7px] bg-warn-c rounded-sm px-[12px] py-[5px] mt-[6px]">
-            <Ic n="warn" s={13} className="text-warn-onc" />
-            <span className="text-[12px] font-[600] text-warn-onc">{excText}</span>
-          </div>
-        )}
-        {resText && (
-          <div className="text-[12px] text-ok mt-1 flex items-center gap-[5px]">
-            <Ic n="check" s={12} className="text-ok" />
-            {resText}
-          </div>
-        )}
-        {chainText && <ChainTag text={chainText} />}
       </div>
     </div>
   )
@@ -197,10 +192,11 @@ export default function TripDetailPage() {
   // Which sequence number is currently active (in-progress) based on trip status
   const activeHsNum = ACTIVE_HS_FOR_STATUS[trip.status]
 
-  // Handshakes sorted by sequence so the timeline flows 0→5
-  const sortedHandshakes = [...trip.handshakes].sort(
-    (a, b) => a.sequence_number - b.sequence_number,
-  )
+  // Separate the trip_creation handshake (seq 0) from the five gate handshakes (seq 1-5).
+  // seq-0 is rendered as a fixed first event; the loop handles seq 1-5 only.
+  const allSorted = [...trip.handshakes].sort((a, b) => a.sequence_number - b.sequence_number)
+  const tripCreationHs = allSorted.find(h => h.sequence_number === 0)
+  const sortedHandshakes = allSorted.filter(h => h.sequence_number > 0)
 
   // Parcel count: prefer loading handshake scan count, fall back to manifest sum
   const loadingHs = sortedHandshakes.find(h => h.sequence_number === 2)
@@ -271,9 +267,9 @@ export default function TripDetailPage() {
             nodeLabel="0"
             isLast={sortedHandshakes.length === 0}
             label="Trip Created"
-            meta={`${new Date(trip.created_at).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })} · Dispatcher`}
+            meta="Dispatcher"
             detail={`${trip.order_number} · ${trip.driver?.full_name ?? '—'} · ${trip.horse?.registration ?? '—'} · ${parcelCount} parcels`}
-            evidenceSeq={0}
+            timestamp={tripCreationHs?.completed_at ?? trip.created_at}
             chainText={
               trip.blockchain_receipts[0]
                 ? `Journey lock hash anchored · ${hederaRef(trip.blockchain_receipts[0].hedera_topic_id, trip.blockchain_receipts[0].hedera_sequence_number)}`
@@ -287,14 +283,14 @@ export default function TripDetailPage() {
             const hsName = HANDSHAKE_NAMES[hs.sequence_number as HandshakeNumber]
             const isLastItem = idx === timelineItems.length - 1
 
-            // Time and location for the meta line
-            const timePart = hs.completed_at
-              ? new Date(hs.completed_at).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })
+            // Context line — location when done, status when not yet completed.
+            // Time is shown separately via the `timestamp` prop so it isn't duplicated here.
+            const locationPart = hs.sequence_number <= 3 ? originShort : destShort
+            const meta = hs.completed_at
+              ? locationPart
               : item.nodeType === 'active' ? 'In progress'
               : item.nodeType === 'warn'   ? 'Exception'
               : 'Pending'
-            const locationPart = hs.sequence_number <= 3 ? originShort : destShort
-            const meta = `${timePart}${hs.completed_at ? ` · ${locationPart}` : ''}`
 
             // Detail line — concatenate non-null data points
             const detailParts: string[] = []
@@ -329,7 +325,7 @@ export default function TripDetailPage() {
                   }
                   meta={meta}
                   detail={detail}
-                  evidenceSeq={hs.sequence_number}
+                  timestamp={hs.completed_at ?? undefined}
                   chainText={chainText}
                 />
                 {/* Exceptions rendered inline beneath the parent handshake event */}

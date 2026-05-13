@@ -1,6 +1,4 @@
-'use client'
-
-import type { DateRange } from '@/components/ui/DateRangePicker'
+import type { DateRange } from '@/lib/types/date-range'
 
 interface SLAMetrics {
   onTimePickupPct: number
