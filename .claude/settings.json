@@ -16,7 +16,22 @@
       "Bash(python3 -c ' *)",
       "Bash(git -C /Users/timgultig/freightproof-sa ls-files)",
       "Bash(grep -E \"^\\\\.env$\")",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Read(//Users/timgultig/.claude/plugins/cache/claude-plugins-official/superpowers/5.0.7/skills/subagent-driven-development/**)",
+      "Bash(git checkout *)",
+      "Bash(python -c \"from app.schemas.trips import TripCreateRequest, TripDetailResponse; print\\('OK'\\)\")",
+      "Bash(python3 -c \"from app.schemas.trips import TripCreateRequest, TripDetailResponse; print\\('OK'\\)\")",
+      "Bash(pip install *)",
+      "Bash(/opt/homebrew/opt/python@3.13/Frameworks/Python.framework/Versions/3.13/bin/pip3 install *)",
+      "Bash(git -C /Users/timgultig/freightproof-sa branch --show-current)",
+      "Bash(git -C /Users/timgultig/freightproof-sa diff 6a0fb6a HEAD -- backend/app/schemas/trips.py)",
+      "Bash(git -C /Users/timgultig/freightproof-sa diff 6a0fb6a -- backend/app/schemas/trips.py)",
+      "Bash(git -C /Users/timgultig/freightproof-sa show 6a0fb6a:backend/app/schemas/trips.py)",
+      "Bash(git -C /Users/timgultig/freightproof-sa log --oneline feature/post-trips-endpoint)",
+      "Bash(python -c \"from app.schemas.trips import TripCreateRequest, TripDetailResponse; print\\('Import OK'\\)\")",
+      "Bash(python3 -c \"from app.schemas.trips import TripCreateRequest, TripDetailResponse; print\\('Import OK'\\)\")",
+      "Bash(.venv/bin/python3 -c \"from app.schemas.trips import TripCreateRequest, TripDetailResponse; print\\('Import OK'\\)\")",
+      "Bash(python -c \"from app.schemas.trips import TripCreateRequest, TripDetailResponse; print\\('Import check: OK'\\)\")"
     ]
   }
 }

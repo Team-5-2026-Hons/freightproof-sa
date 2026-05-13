@@ -5,10 +5,13 @@ from decimal import Decimal
 from uuid import UUID
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.db.models.enums import IdvsStatus, ParcelStatus, TripStatus
+from app.schemas.blockchain import BlockchainReceiptRead
+from app.schemas.handshakes import HandshakeEventRead
 from app.schemas.people import DriverRead
+from app.schemas.transit import TripExceptionRead
 from app.schemas.vehicles import VehicleRead
 
 
@@ -198,3 +201,57 @@ class DriverSubstitutionCreate(DriverSubstitutionBase):
 class DriverSubstitutionRead(DriverSubstitutionBase):
     id: UUID
     created_at: datetime
+
+
+class TripCreateRequest(BaseModel):
+    """Dispatcher-facing trip creation payload — excludes auto-generated and JWT-derived fields."""
+
+    order_number: str = Field(..., min_length=1)
+    client_organization_id: UUID
+    driver_id: UUID
+    horse_id: UUID
+    trailer_ids: list[UUID]
+    origin_precinct_id: UUID
+    destination_precinct_id: UUID
+    template_id: Optional[UUID] = None
+    planned_departure_at: Optional[datetime] = None
+    planned_arrival_at: Optional[datetime] = None
+
+    @model_validator(mode="after")
+    def validate_request(self) -> "TripCreateRequest":
+        if not self.trailer_ids:
+            raise ValueError("At least one trailer is required")
+        if self.origin_precinct_id == self.destination_precinct_id:
+            raise ValueError("origin and destination precincts must differ")
+        if self.planned_departure_at and self.planned_arrival_at:
+            if self.planned_arrival_at <= self.planned_departure_at:
+                raise ValueError("planned_arrival_at must be after planned_departure_at")
+        return self
+
+
+class TripDetailResponse(BaseModel):
+    """Full trip record returned by POST /trips and GET /trips/{id}. No manifest."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    trip_reference: str
+    order_number: str
+    status: TripStatus
+    journey_lock_hash: Optional[str] = None
+    idvs_check_status: IdvsStatus
+    driver: DriverRead
+    horse: VehicleRead
+    trailers: list[VehicleRead]
+    origin_precinct_id: UUID
+    destination_precinct_id: UUID
+    pulsit_trip_reference_id: Optional[str] = None
+    planned_departure_at: Optional[datetime] = None
+    actual_departure_at: Optional[datetime] = None
+    planned_arrival_at: Optional[datetime] = None
+    actual_arrival_at: Optional[datetime] = None
+    closed_at: Optional[datetime] = None
+    handshakes: list[HandshakeEventRead]
+    exceptions: list[TripExceptionRead]
+    blockchain_receipts: list[BlockchainReceiptRead]
+    created_at: datetime
+    updated_at: datetime
