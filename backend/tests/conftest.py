@@ -1,10 +1,15 @@
 """Shared fixtures for unit and integration tests.
 
-JWT helpers create signed tokens using a known test secret so tests never
-depend on a live Supabase project.
+Two fixture families live here:
 
-DB session fixtures run each test inside a rolled-back transaction so the
-DB is clean between tests. Requires TEST_DATABASE_URL in backend/.env.
+  JWT helpers (make_token, auth_header, client): for endpoint tests that need a
+  real HTTP client with signed tokens. The client fixture monkeypatches
+  SUPABASE_JWT_SECRET so token verification uses test-minted tokens instead of
+  production credentials.
+
+  DB session fixtures (test_engine, db_session): for integration tests that need
+  direct DB access. Each test runs inside a rolled-back transaction so the DB is
+  clean between tests. Requires TEST_DATABASE_URL in backend/.env.
 """
 
 import asyncio

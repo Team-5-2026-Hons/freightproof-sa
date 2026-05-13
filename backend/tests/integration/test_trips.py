@@ -59,7 +59,6 @@ async def seed_data(db_session: AsyncSession):
         id=_DEMO_USER_ID,
         organization_id=_DEMO_ORG_ID,
         email="demo-dispatcher@freightproof.co.za",
-        hashed_password="not-used-in-tests",
         full_name="Demo Dispatcher",
         is_active=True,
     )
@@ -284,7 +283,9 @@ async def test_create_trip_422_same_origin_and_destination(seed_data, db_session
     assert resp.status_code == 422
 
 
-async def test_create_trip_401_without_demo_mode(seed_data, db_session, monkeypatch):
+async def test_create_trip_403_without_demo_mode(seed_data, db_session, monkeypatch):
+    # FastAPI's HTTPBearer returns 403 (not 401) when the Authorization header
+    # is completely absent. 401 is reserved for an invalid/expired token.
     monkeypatch.setattr("app.core.config.settings.DEMO_MODE", False)
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
@@ -293,4 +294,4 @@ async def test_create_trip_401_without_demo_mode(seed_data, db_session, monkeypa
             "/api/v1/trips",
             json=_make_payload(seed_data),
         )
-    assert resp.status_code == 401
+    assert resp.status_code == 403

@@ -105,10 +105,10 @@ async def get_current_dispatcher(
         return _DEMO_USER
 
     if credentials is None:
+        # FastAPI's HTTPBearer convention: missing header → 403, invalid token → 401.
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
+            status_code=status.HTTP_403_FORBIDDEN,
             detail="Missing authentication credentials.",
-            headers={"WWW-Authenticate": "Bearer"},
         )
 
     payload = _decode_token(credentials.credentials)

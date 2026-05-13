@@ -16,6 +16,9 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+# CORS is configured here rather than per-router so that all endpoints
+# inherit the same origin policy. In production, ALLOWED_ORIGINS will
+# be restricted to the actual domain.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,
@@ -25,8 +28,6 @@ app.add_middleware(
 )
 
 app.include_router(trips_router, prefix="/api/v1")
-
-
 app.include_router(auth_router, prefix="/api/v1")
 
 

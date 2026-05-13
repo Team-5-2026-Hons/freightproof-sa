@@ -49,8 +49,10 @@ async def _mock_db() -> AsyncGenerator:
 @pytest_asyncio.fixture
 async def client_with_db(monkeypatch: pytest.MonkeyPatch) -> AsyncGenerator[AsyncClient, None]:
     """Client with JWT secret patched and DB dependency overridden."""
-    monkeypatch.setattr(__import__("app.core.config", fromlist=["settings"]).settings,
-                        "SUPABASE_JWT_SECRET", TEST_JWT_SECRET)
+    _settings = __import__("app.core.config", fromlist=["settings"]).settings
+    monkeypatch.setattr(_settings, "SUPABASE_JWT_SECRET", TEST_JWT_SECRET)
+    # DEMO_MODE bypasses all JWT checks — disable it so these tests exercise real auth.
+    monkeypatch.setattr(_settings, "DEMO_MODE", False)
 
     app.dependency_overrides[get_db] = _mock_db
     try:

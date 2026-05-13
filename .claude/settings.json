@@ -75,7 +75,12 @@
       "Bash(.venv/bin/python3 -m pytest --version)",
       "Bash(.venv/bin/pip show *)",
       "Bash(.venv/bin/python3 -m pytest tests/integration/test_trips.py::test_create_trip_returns_201 -v -s)",
-      "Bash(.venv/bin/python3 -m pytest tests/unit/ -q)"
+      "Bash(.venv/bin/python3 -m pytest tests/unit/ -q)",
+      "Bash(git fetch *)",
+      "Bash(sed -n '38,50p' /tmp/merge_preview.txt)",
+      "Bash(sed -n '198,215p' /tmp/merge_preview.txt)",
+      "Bash(sed -n '689,705p' /tmp/merge_preview.txt)",
+      "Bash(sed -n '1439,1455p' /tmp/merge_preview.txt)"
     ],
     "additionalDirectories": [
       "/private/tmp"
