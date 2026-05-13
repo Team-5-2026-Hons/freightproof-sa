@@ -1,4 +1,5 @@
 import uuid
+import pytest
 from app.crypto.hashing import compute_journey_lock_hash
 
 
@@ -37,6 +38,9 @@ def test_hash_is_deterministic():
         destination_precinct_id=dest_id,
     )
     assert compute_journey_lock_hash(**kwargs) == compute_journey_lock_hash(**kwargs)
+    # Pin the expected hash value to detect any changes to canonical format
+    expected = "62cf116aff02586aac33e7e84649baedf6a89374fdf4d1e802e6d725d29bb254"
+    assert compute_journey_lock_hash(**kwargs) == expected
 
 
 def test_trailer_order_does_not_affect_hash():
@@ -69,3 +73,17 @@ def test_different_inputs_produce_different_hash():
     h1 = compute_journey_lock_hash(**base)
     h2 = compute_journey_lock_hash(**{**base, "order_number": "ORD-999"})
     assert h1 != h2
+
+
+def test_empty_trailer_ids_raises():
+    """Hash function must reject empty trailer list — every anchored trip has at least one trailer."""
+    with pytest.raises(ValueError, match="trailer_ids must not be empty"):
+        compute_journey_lock_hash(
+            trip_id=uuid.UUID("11111111-1111-1111-1111-111111111111"),
+            order_number="ORD-001",
+            driver_id=uuid.UUID("22222222-2222-2222-2222-222222222222"),
+            horse_id=uuid.UUID("33333333-3333-3333-3333-333333333333"),
+            trailer_ids=[],
+            origin_precinct_id=uuid.UUID("66666666-6666-6666-6666-666666666666"),
+            destination_precinct_id=uuid.UUID("77777777-7777-7777-7777-777777777777"),
+        )

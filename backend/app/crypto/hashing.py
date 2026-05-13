@@ -7,6 +7,7 @@ record indicates tampering.
 """
 
 import hashlib
+import json
 import uuid
 
 
@@ -22,17 +23,29 @@ def compute_journey_lock_hash(
 ) -> str:
     """Return a 64-char lowercase hex SHA-256 digest of the trip's fixed parameters.
 
-    Trailers are sorted before hashing so that insertion order does not affect
-    the result — only the set of trailers matters.
+    The canonical string is a compact JSON object with keys in alphabetical order.
+    Trailers are sorted by their UUID string representation (lowercase RFC 4122 hex,
+    locale-independent) so insertion order does not affect the hash.
+
+    Canonical format example:
+        {"destination_precinct_id":"<uuid>","driver_id":"<uuid>","horse_id":"<uuid>",
+         "order_number":"<str>","origin_precinct_id":"<uuid>","trailers":["<uuid>",...],
+         "trip_id":"<uuid>"}
+
+    The JSON is encoded as UTF-8 before hashing. This format is reproducible from
+    any language with a standard JSON library using sort_keys=True and no whitespace.
     """
-    sorted_trailers = ",".join(sorted(str(t) for t in trailer_ids))
-    canonical = (
-        f"trip_id={trip_id}"
-        f"|order_number={order_number}"
-        f"|driver_id={driver_id}"
-        f"|horse_id={horse_id}"
-        f"|trailers={sorted_trailers}"
-        f"|origin={origin_precinct_id}"
-        f"|destination={destination_precinct_id}"
-    )
-    return hashlib.sha256(canonical.encode()).hexdigest()
+    if not trailer_ids:
+        raise ValueError("trailer_ids must not be empty")
+
+    payload = {
+        "trip_id": str(trip_id),
+        "order_number": order_number,
+        "driver_id": str(driver_id),
+        "horse_id": str(horse_id),
+        "trailers": sorted(str(t) for t in trailer_ids),
+        "origin_precinct_id": str(origin_precinct_id),
+        "destination_precinct_id": str(destination_precinct_id),
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
