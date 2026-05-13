@@ -1,6 +1,6 @@
 """FastAPI dependencies for Supabase Auth verification.
 
-Flow:
+Flow (DEMO_MODE=False):
   1. Extract Bearer token from Authorization header.
   2. Decode + verify the JWT locally using SUPABASE_JWT_SECRET (no network
      round-trip per request).
@@ -9,11 +9,13 @@ Flow:
   4. Look up the User row by id == JWT sub claim.
   5. Assert the account is active.
 
-Import get_current_dispatcher as a FastAPI Depends() on any endpoint that
-requires an authenticated dispatcher session.
+In DEMO_MODE=True a fixed stub UserRead is returned without touching the DB
+or verifying any token — local dev only, blocked in production by the guard
+at the bottom of this module.
 """
 
 import uuid
+from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
@@ -25,12 +27,28 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.models.people import User
 from app.db.session import get_db
+from app.schemas.people import UserRead
 
-_bearer = HTTPBearer()
+_bearer = HTTPBearer(auto_error=False)
 
 _ALGORITHM = "HS256"
 _AUDIENCE = "authenticated"
 _DISPATCHER_ROLE = "dispatcher"
+
+# Fixed stub identity used in DEMO_MODE — must match the org created by DB seeds.
+_DEMO_USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
+_DEMO_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000002")
+_DEMO_NOW = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+_DEMO_USER = UserRead(
+    id=_DEMO_USER_ID,
+    organization_id=_DEMO_ORG_ID,
+    email="demo-dispatcher@freightproof.co.za",
+    full_name="Demo Dispatcher",
+    is_active=True,
+    created_at=_DEMO_NOW,
+    updated_at=_DEMO_NOW,
+)
 
 
 def _decode_token(token: str) -> dict:
@@ -75,14 +93,24 @@ def _require_dispatcher_role(payload: dict) -> None:
 
 
 async def get_current_dispatcher(
-    credentials: Annotated[HTTPAuthorizationCredentials, Depends(_bearer)],
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
     db: AsyncSession = Depends(get_db),
-) -> User:
-    """Return the authenticated dispatcher User, or raise 401/403.
+) -> UserRead:
+    """Return the authenticated dispatcher for the current request, or raise 401/403.
 
     Used as a FastAPI dependency:
-        async def my_endpoint(user: User = Depends(get_current_dispatcher)):
+        async def my_endpoint(user: UserRead = Depends(get_current_dispatcher)):
     """
+    if settings.DEMO_MODE:
+        return _DEMO_USER
+
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing authentication credentials.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     payload = _decode_token(credentials.credentials)
     _require_dispatcher_role(payload)
 
@@ -112,4 +140,13 @@ async def get_current_dispatcher(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    return user
+    # Convert ORM model to Pydantic schema before returning.
+    return UserRead.model_validate(user)
+
+
+# Guard: DEMO_MODE must never be enabled in production — it bypasses all authentication.
+if settings.DEMO_MODE and settings.ENVIRONMENT == "production":
+    raise RuntimeError(
+        "DEMO_MODE=True is not permitted when ENVIRONMENT='production'. "
+        "Set DEMO_MODE=False and configure Supabase Auth credentials."
+    )
