@@ -1,10 +1,10 @@
 """Shared fixtures for unit and integration tests.
 
-DB_URL falls back to a local test database if TEST_DATABASE_URL is not set.
-Integration tests that hit the DB are skipped when no database is reachable.
-
 JWT helpers create signed tokens using a known test secret so tests never
 depend on a live Supabase project.
+
+DB session fixtures run each test inside a rolled-back transaction so the
+DB is clean between tests. Requires TEST_DATABASE_URL in backend/.env.
 """
 
 import uuid
@@ -15,8 +15,10 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from jose import jwt
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.core.config import settings
+from app.db.models import Base
 from app.db.session import get_db
 from app.main import app
 
@@ -77,3 +79,38 @@ async def client(monkeypatch: pytest.MonkeyPatch) -> AsyncGenerator[AsyncClient,
         base_url="http://test",
     ) as ac:
         yield ac
+
+
+# ── DB session fixtures ────────────────────────────────────────────────────────
+
+
+@pytest_asyncio.fixture(scope="session")
+async def test_engine():
+    """Create the test engine and schema once per session."""
+    if not settings.TEST_DATABASE_URL:
+        pytest.skip("TEST_DATABASE_URL not set — skipping integration tests")
+
+    engine = create_async_engine(settings.TEST_DATABASE_URL, pool_pre_ping=True)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield engine
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+    await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
+    """Yield a rolled-back AsyncSession for each test — leaves DB clean."""
+    async with test_engine.connect() as conn:
+        transaction = await conn.begin()
+        session = AsyncSession(
+            bind=conn,
+            expire_on_commit=False,
+            join_transaction_mode="create_savepoint",
+        )
+        try:
+            yield session
+        finally:
+            await session.close()
+            await transaction.rollback()
