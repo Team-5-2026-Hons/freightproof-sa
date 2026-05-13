@@ -142,6 +142,12 @@ async def create_trip(
             )
         )
 
+    # Flush trip + trailers before adding the HandshakeEvent. The evidence_artifacts
+    # table has a use_alter=True FK back to trips, creating a circular dependency
+    # in SQLAlchemy's unit-of-work topological sort. Without an explicit flush here,
+    # the sort can emit the HandshakeEvent INSERT before trips, violating the FK.
+    await db.flush()
+
     # 5. Create the H0 HandshakeEvent (Trip Creation handshake).
     h0 = HandshakeEvent(
         trip_id=trip_id,
@@ -150,10 +156,6 @@ async def create_trip(
         status=HandshakeStatus.PENDING,
     )
     db.add(h0)
-
-    # Flush all pending rows within the transaction before writing journey_lock_hash.
-    # This ensures Trip and HandshakeEvent rows are visible to DB-side constraints
-    # before we mutate trip.journey_lock_hash on the same object.
     await db.flush()
 
     # 6. Compute journey lock hash over the immutable trip parameters.
