@@ -16,7 +16,6 @@ import { cn } from '@shared/lib/utils/cn'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const SEC = '#0051d5'
 const STEP_NAMES = ['Order & Cargo', 'Crew & Vehicle', 'Route & Schedule', 'Review']
 const HANDLING_OPTIONS = ['Hazmat', 'Fragile', 'Temperature-controlled', 'Oversized'] as const
 
@@ -37,7 +36,7 @@ function FormCard({ children }: { children: React.ReactNode }) {
 function CardTitle({ icon, children }: { icon: string; children: React.ReactNode }) {
   return (
     <div className="text-[15px] font-[800] text-on-surf mb-[18px] flex items-center gap-2">
-      <Ic n={icon as Parameters<typeof Ic>[0]['n']} s={16} c={SEC} />
+      <Ic n={icon as Parameters<typeof Ic>[0]['n']} s={16} className="text-sec" />
       {children}
     </div>
   )
@@ -409,7 +408,7 @@ export default function TripNewPage() {
                   onClick={() => setShowReceiver(r => !r)}
                   className="flex items-center gap-1.5 text-[13px] font-[600] text-sec hover:opacity-75 transition-opacity mb-3"
                 >
-                  <Ic n={showReceiver ? 'chev' : 'plus'} s={14} c={SEC} className={showReceiver ? 'rotate-90' : ''} />
+                  <Ic n={showReceiver ? 'chev' : 'plus'} s={14} className={cn('text-sec', showReceiver ? 'rotate-90' : '')} />
                   {showReceiver ? 'Remove receiver contact' : 'Add receiver contact'}
                 </button>
                 {showReceiver && (
@@ -496,8 +495,7 @@ export default function TripNewPage() {
 
               {/* Right: dark trip summary + CTA */}
               <div
-                className="w-[280px] shrink-0 rounded-lg shadow-level-5 p-[22px]"
-                style={{ background: '#1b1b1c' }}
+                className="w-[280px] shrink-0 rounded-lg shadow-level-5 p-[22px] bg-primary"
               >
                 <div
                   className="text-[11px] font-[700] tracking-[0.1em] uppercase mb-[14px]"
@@ -552,7 +550,7 @@ export default function TripNewPage() {
           {/* Error banner */}
           {showErrors && !stepValid[step] && (
             <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-err-c mt-4">
-              <Ic n="warn" s={14} c="#ba1a1a" />
+              <Ic n="warn" s={14} className="text-err" />
               <span className="text-[13px] font-[600] text-err-onc">
                 Please complete all required fields before continuing.
               </span>

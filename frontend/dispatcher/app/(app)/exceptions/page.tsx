@@ -160,7 +160,7 @@ export default function ExceptionsPage() {
                       {/* View */}
                       <div className="w-[48px] shrink-0 flex justify-end">
                         <span className="flex items-center gap-0.5 text-[12px] font-[600] text-sec">
-                          View <Ic n="chev" s={13} c="#0051d5" />
+                          View <Ic n="chev" s={13} className="text-sec" />
                         </span>
                       </div>
                     </div>

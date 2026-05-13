@@ -118,7 +118,7 @@ export default function ExceptionDetailPage() {
                 onClick={() => router.push(ROUTES.tripDetail(trip.id))}
                 className="flex items-center gap-1 text-[13px] font-[600] text-sec hover:opacity-75 transition-opacity"
               >
-                View trip <Ic n="chev" s={14} c="#0051d5" />
+                View trip <Ic n="chev" s={14} className="text-sec" />
               </button>
             </div>
           )}
