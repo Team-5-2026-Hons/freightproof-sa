@@ -2,68 +2,62 @@
 
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
-import {
-  Truck,
-  History,
-  AlertTriangle,
-  BarChart3,
-  Settings,
-  Navigation,
-  Users,
-  X,
-} from 'lucide-react'
+import { X } from 'lucide-react'
+import { Ic } from '@/components/ui/Ic'
+import { useAuth } from '@/lib/hooks/useAuth'
 import { cn } from '@shared/lib/utils/cn'
 import { ROUTES } from '@/lib/constants/routes'
-import type { ReactNode } from 'react'
+import type { IconName } from '@/components/ui/Ic'
 
 interface NavItem {
   label: string
   href: string
-  icon: ReactNode
-  /** Active when pathname starts with any of these prefixes */
+  icon: IconName
   activePatterns: string[]
+  badge?: number
 }
 
-const NAV_ITEMS: NavItem[] = [
+interface NavGroup {
+  label?: string
+  items: NavItem[]
+}
+
+const NAV_GROUPS: NavGroup[] = [
   {
-    label: 'Active Trips',
-    href: ROUTES.home,
-    icon: <Navigation className="w-5 h-5" />,
-    activePatterns: ['/', '/trips'],
+    label: 'OVERVIEW',
+    items: [
+      { label: 'Dashboard', href: ROUTES.home, icon: 'home', activePatterns: ['/'] },
+    ],
   },
   {
-    label: 'Trip History',
-    href: ROUTES.history,
-    icon: <History className="w-5 h-5" />,
-    activePatterns: ['/history'],
+    label: 'TRIPS',
+    items: [
+      { label: 'Create Trip',  href: ROUTES.tripNew, icon: 'plus',  activePatterns: ['/trips/new'] },
+      { label: 'Trip History', href: ROUTES.history,  icon: 'clock', activePatterns: ['/history'] },
+    ],
   },
   {
-    label: 'Exceptions',
-    href: ROUTES.exceptions,
-    icon: <AlertTriangle className="w-5 h-5" />,
-    activePatterns: ['/exceptions'],
+    label: 'REPORTING',
+    items: [
+      { label: 'SLA Reports', href: ROUTES.sla, icon: 'bars', activePatterns: ['/sla'] },
+    ],
   },
   {
-    label: 'SLA Reports',
-    href: ROUTES.sla,
-    icon: <BarChart3 className="w-5 h-5" />,
-    activePatterns: ['/sla'],
-  },
-  {
-    label: 'Fleet',
-    href: ROUTES.fleetVehicles,
-    icon: <Truck className="w-5 h-5" />,
-    activePatterns: ['/fleet'],
-  },
-  {
-    label: 'Settings',
-    href: ROUTES.settings,
-    icon: <Settings className="w-5 h-5" />,
-    activePatterns: ['/settings'],
+    label: 'FLEET',
+    items: [
+      { label: 'Vehicles', href: ROUTES.fleetVehicles, icon: 'truck', activePatterns: ['/fleet/vehicles'] },
+      { label: 'Drivers',  href: ROUTES.fleetDrivers,  icon: 'user',  activePatterns: ['/fleet/drivers'] },
+    ],
   },
 ]
 
-/** Matches active state — exact match for "/" or prefix match for deeper routes */
+const SETTINGS_ITEM: NavItem = {
+  label: 'Settings',
+  href: ROUTES.settings,
+  icon: 'check',
+  activePatterns: ['/settings'],
+}
+
 function isActive(pathname: string, patterns: string[]): boolean {
   return patterns.some(p => {
     if (p === '/') return pathname === '/'
@@ -71,84 +65,144 @@ function isActive(pathname: string, patterns: string[]): boolean {
   })
 }
 
+function NavLink({ item, pathname, onClose }: { item: NavItem; pathname: string; onClose?: () => void }) {
+  const active = isActive(pathname, item.activePatterns)
+  return (
+    <Link
+      href={item.href}
+      onClick={onClose}
+      className={cn(
+        'flex items-center gap-[9px] px-[18px] py-[9px] transition-all duration-[120ms]',
+        'border-l-[3px]',
+        active
+          ? 'bg-white/10 border-sec'
+          : 'border-transparent hover:bg-white/[0.06]',
+      )}
+    >
+      <Ic
+        n={item.icon}
+        s={15}
+        className={active ? 'text-sec' : 'text-white/45'}
+      />
+      <span className={cn(
+        'text-[14px]',
+        active ? 'font-[600] text-white' : 'font-[400] text-white/55',
+      )}>
+        {item.label}
+      </span>
+      {item.badge != null && (
+        <span className="ml-auto bg-err text-white text-[10px] font-[700] rounded-sm px-[6px] py-[1px]">
+          {item.badge}
+        </span>
+      )}
+    </Link>
+  )
+}
+
+interface SidebarContentProps {
+  onClose?: () => void
+}
+
+function SidebarContent({ onClose }: SidebarContentProps) {
+  const pathname = usePathname()
+  const { user } = useAuth()
+
+  return (
+    <div className="flex flex-col h-full bg-primary w-[220px] shrink-0">
+      {/* Header — logo mark + wordmark + eyebrow */}
+      <div className="flex items-center gap-[10px] px-[18px] py-[18px] border-b border-white/[0.08]">
+        {/* Hex logo mark — bg-sec container, white polygon, sec-coloured circle */}
+        <div className="w-8 h-8 bg-sec rounded-md flex items-center justify-center shrink-0 text-sec">
+          <svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+            <path d="M12 2L20 6.5V17.5L12 22L4 17.5V6.5Z" fill="white" fillOpacity="0.88" />
+            <circle cx={12} cy={12} r={3} fill="currentColor" />
+          </svg>
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-[16px] font-[800] text-white leading-none tracking-[-0.02em]">
+            FreightProof
+          </div>
+          <div className="text-[10px] text-white/35 mt-[2px] tracking-[0.06em] uppercase">
+            Evidence Platform
+          </div>
+        </div>
+        {onClose && (
+          <button
+            onClick={onClose}
+            aria-label="Close navigation"
+            className="ml-auto text-white/60 hover:text-white transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
+      {/* Nav groups */}
+      <div className="flex-1 py-2 overflow-y-auto">
+        {NAV_GROUPS.map(group => (
+          <div key={group.label}>
+            {group.label && (
+              <div className="text-[10px] font-[700] tracking-[0.12em] uppercase text-white/30 px-[18px] pt-3 pb-1">
+                {group.label}
+              </div>
+            )}
+            {group.items.map(item => (
+              <NavLink
+                key={item.href + item.label}
+                item={item}
+                pathname={pathname}
+                onClose={onClose}
+              />
+            ))}
+          </div>
+        ))}
+
+        {/* Settings — ungrouped, separated by a small top margin */}
+        <div className="mt-2">
+          <NavLink item={SETTINGS_ITEM} pathname={pathname} onClose={onClose} />
+        </div>
+      </div>
+
+      {/* Footer — user avatar + name + role */}
+      <div className="flex items-center gap-2 px-[18px] py-3 border-t border-white/[0.08]">
+        <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center shrink-0">
+          <Ic n="user" s={13} className="text-white/60" />
+        </div>
+        <div>
+          <div className="text-[12px] font-[600] text-white/85 leading-tight">
+            {user?.full_name ?? 'Dispatcher'}
+          </div>
+          <div className="text-[10px] text-white/40">Dispatcher</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 interface SidebarProps {
-  /** Controls the mobile hamburger drawer visibility */
   mobileOpen: boolean
   onMobileClose: () => void
 }
 
 export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
-  const pathname = usePathname()
-
-  const navContent = (
-    <nav className="flex flex-col gap-1 px-3 py-4">
-      {NAV_ITEMS.map(item => {
-        const active = isActive(pathname, item.activePatterns)
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            onClick={onMobileClose}
-            className={cn(
-              'flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200',
-              'text-sm font-bold uppercase tracking-wider',
-              active
-                ? 'text-secondary bg-secondary/10 relative'
-                : 'text-primary-on-container hover:text-primary-on hover:bg-primary-on/5',
-            )}
-          >
-            {/* Blue left accent bar — 3px — per DESIGN_SYSTEM.md §9.5 */}
-            {active && (
-              <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-full bg-secondary" />
-            )}
-            {item.icon}
-            <span className="hidden lg:inline">{item.label}</span>
-          </Link>
-        )
-      })}
-    </nav>
-  )
-
   return (
     <>
-      {/* Desktop / tablet sidebar — always visible at md+ */}
-      <aside className="hidden md:flex flex-col bg-primary text-primary-on h-screen sticky top-0 lg:w-60 md:w-16 shrink-0">
-        <div className="flex items-center gap-2.5 px-4 py-5 lg:px-5">
-          <span className="text-sm font-black tracking-widest uppercase text-primary-on lg:block hidden">
-            FreightProof
-          </span>
-          <span className="text-sm font-black tracking-widest uppercase text-primary-on lg:hidden block">
-            FP
-          </span>
-        </div>
-        {navContent}
-      </aside>
+      {/* Desktop sidebar — always visible at md+ */}
+      <div className="hidden md:block">
+        <SidebarContent />
+      </div>
 
-      {/* Mobile drawer overlay — below md */}
+      {/* Mobile drawer overlay */}
       {mobileOpen && (
         <div className="fixed inset-0 z-overlay md:hidden">
-          {/* Scrim */}
           <div
             className="absolute inset-0 bg-primary/40"
             onClick={onMobileClose}
             aria-hidden
           />
-          {/* Drawer panel */}
-          <aside className="relative w-60 h-full bg-primary text-primary-on shadow-ambient flex flex-col">
-            <div className="flex items-center justify-between px-5 py-5">
-              <span className="text-sm font-black tracking-widest uppercase text-primary-on">
-                FreightProof
-              </span>
-              <button
-                onClick={onMobileClose}
-                aria-label="Close navigation"
-                className="text-primary-on-container hover:text-primary-on transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            {navContent}
-          </aside>
+          <div className="relative">
+            <SidebarContent onClose={onMobileClose} />
+          </div>
         </div>
       )}
     </>

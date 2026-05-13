@@ -1,4 +1,4 @@
-import { Link2, ExternalLink } from 'lucide-react'
+import { ExternalLink } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Chip } from '@/components/ui/Chip'
 import type { BlockchainReceipt as BlockchainReceiptType } from '@shared/lib/types/trip'
@@ -8,23 +8,13 @@ interface BlockchainReceiptProps {
   receipt: BlockchainReceiptType
 }
 
-/**
- * Displays a blockchain receipt — SHA-256 hash, Hedera tx ID, and HashScan link.
- * Uses font-mono tracking for the hash display per DESIGN_SYSTEM.md §3.
- */
 export function BlockchainReceipt({ receipt }: BlockchainReceiptProps) {
   const hashScanUrl = `https://hashscan.io/testnet/topic/${receipt.hedera_topic_id}/message/${receipt.hedera_sequence_number}`
-  const shortHash = `${receipt.sha256_hash.slice(0, 8)}…${receipt.sha256_hash.slice(-8)}`
 
   return (
     <Card variant="section" className="p-4">
       <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Link2 className="w-4 h-4 text-secondary shrink-0" />
-          <Chip kind="verified" icon={<Link2 className="w-3 h-3" />}>
-            {receipt.receipt_type.replace('_', ' ')}
-          </Chip>
-        </div>
+        <Chip type="complete" label={receipt.receipt_type.replace('_', ' ')} />
         <a
           href={hashScanUrl}
           target="_blank"

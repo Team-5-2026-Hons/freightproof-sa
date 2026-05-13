@@ -2,9 +2,8 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, ShieldAlert, CheckCircle2, Navigation } from 'lucide-react'
-import { PageShell } from '@/components/layout/PageShell'
-import { PageHeader } from '@/components/layout/PageHeader'
+import { ShieldAlert, CheckCircle2, Navigation } from 'lucide-react'
+import { TopBar } from '@/components/ui/TopBar'
 import { Card } from '@/components/ui/Card'
 import { Chip } from '@/components/ui/Chip'
 import { Button } from '@/components/ui/Button'
@@ -25,8 +24,9 @@ export default function ExceptionsPage() {
   const exceptions = useExceptions({ resolved: showResolved })
 
   return (
-    <PageShell>
-      <PageHeader title="Exceptions Feed" />
+    <div className="flex flex-col flex-1 min-h-0">
+      <TopBar title="Exceptions" />
+      <div className="flex-1 overflow-y-auto p-6">
 
       {/* Toggle filter */}
       <div className="flex gap-2 mb-6 border-b border-outline-variant/20 pb-4">
@@ -71,8 +71,8 @@ export default function ExceptionsPage() {
               >
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div className="flex items-center gap-2">
-                    <Chip kind={sevMeta.chipKind}>{sevMeta.label}</Chip>
-                    <Chip kind="neutral">{exc.exception_type.replace(/_/g, ' ')}</Chip>
+                    <Chip type={sevMeta.chipType} label={sevMeta.label} />
+                    <Chip type="pending" label={exc.exception_type.replace(/_/g, ' ')} />
                   </div>
                   {trip && <TripIdStamp tripReference={trip.trip_reference} />}
                 </div>
@@ -94,6 +94,7 @@ export default function ExceptionsPage() {
           })}
         </div>
       )}
-    </PageShell>
+      </div>
+    </div>
   )
 }

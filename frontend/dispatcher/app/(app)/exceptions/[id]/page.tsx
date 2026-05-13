@@ -3,8 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { ArrowLeft, MessageSquare, CheckCircle2, Navigation } from 'lucide-react'
-import { PageShell } from '@/components/layout/PageShell'
-import { PageHeader } from '@/components/layout/PageHeader'
+import { TopBar } from '@/components/ui/TopBar'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Chip } from '@/components/ui/Chip'
@@ -35,14 +34,17 @@ export default function ExceptionDetailPage() {
 
   if (!exception) {
     return (
-      <PageShell>
-        <EmptyState
-          icon={<MessageSquare />}
-          title="Exception not found"
-          body="This record does not exist or you do not have access to it."
-          cta={<Button onClick={() => router.push(ROUTES.exceptions)}>Back to Feed</Button>}
-        />
-      </PageShell>
+      <div className="flex flex-col flex-1 min-h-0">
+        <TopBar title="Exception Detail" />
+        <div className="flex-1 overflow-y-auto p-6">
+          <EmptyState
+            icon={<MessageSquare />}
+            title="Exception not found"
+            body="This record does not exist or you do not have access to it."
+            cta={<Button onClick={() => router.push(ROUTES.exceptions)}>Back to Feed</Button>}
+          />
+        </div>
+      </div>
     )
   }
 
@@ -66,23 +68,19 @@ export default function ExceptionDetailPage() {
   }
 
   return (
-    <PageShell className="max-w-3xl">
-      <PageHeader
-        title="Exception Detail"
-        breadcrumbs={[
-          { label: 'Exceptions', href: ROUTES.exceptions },
-        ]}
-        actions={
-          <Button
-            variant="secondary"
-            size="sm"
-            iconLeft={<ArrowLeft className="w-4 h-4" />}
-            onClick={() => router.back()}
-          >
-            Back
-          </Button>
-        }
-      />
+    <div className="flex flex-col flex-1 min-h-0">
+      <TopBar title="Exception Detail">
+        <Button
+          variant="secondary"
+          size="sm"
+          iconLeft={<ArrowLeft className="w-4 h-4" />}
+          onClick={() => router.back()}
+        >
+          Back
+        </Button>
+      </TopBar>
+      <div className="flex-1 overflow-y-auto p-6">
+        <div className="max-w-3xl">
 
       {trip && (
         <Card variant="section" className="mb-6 p-4 flex items-center justify-between">
@@ -102,7 +100,7 @@ export default function ExceptionDetailPage() {
       )}
 
       <EvidencePacket
-        chipKind={sevMeta.chipKind}
+        chipType={sevMeta.chipType}
         chipLabel={sevMeta.label}
         title={exception.exception_type.replace(/_/g, ' ')}
         exception={!exception.resolved}
@@ -121,9 +119,10 @@ export default function ExceptionDetailPage() {
 
         <div className="flex items-center justify-between mt-4">
           <TimestampWithIcon timestamp={exception.created_at} />
-          <Chip kind={exception.resolved ? 'success' : 'error'}>
-            {exception.resolved ? 'Resolved' : 'Open'}
-          </Chip>
+          <Chip
+            type={exception.resolved ? 'complete' : 'critical'}
+            label={exception.resolved ? 'Resolved' : 'Open'}
+          />
         </div>
       </EvidencePacket>
 
@@ -159,6 +158,8 @@ export default function ExceptionDetailPage() {
           </form>
         </Card>
       )}
-    </PageShell>
+        </div>
+      </div>
+    </div>
   )
 }

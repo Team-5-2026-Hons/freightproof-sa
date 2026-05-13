@@ -39,7 +39,7 @@ The stack is **not negotiable** and is fixed by [`CLAUDE.md`](../CLAUDE.md) and 
 | Native shell | **Capacitor** — wraps the driver-pwa static build as an Android APK. Provides native plugins for camera, geolocation, push notifications, and background location. Replaces `next-pwa`; `@serwist/next` handles the browser PWA path (service worker + offline). |
 | Native plugins | `@capacitor/camera` · `@capacitor/geolocation` · `@capacitor/push-notifications` · `@capacitor-community/background-geolocation` |
 | Browser PWA | `@serwist/next` (Workbox-based; the maintained Next.js 15 successor to the abandoned `next-pwa`) |
-| Icons | `lucide-react` (1.5px stroke, no other libraries) |
+| Icons | Custom `Ic` component — 23-icon `IP` stroke set (24×24, 1.75px stroke, `fill:none`). See `components/ui/Ic.tsx` and DESIGN_SYSTEM.md §6. `lucide-react` may be used for utility icons absent from the `IP` set (e.g. sort arrows inside `DataTable`), but all design-system icons must use `Ic`. |
 | Forms | Native `<form>` + controlled inputs. **No** form library on v1. |
 | Charts | `recharts` (dispatcher only, SLA Reports page) |
 | Lint | `eslint-config-next` + a custom rule blocking raw hex in component code |
@@ -308,9 +308,9 @@ Pure, presentational, framework-free of FreightProof concepts. These are the bui
 
 | Component | Props | Notes |
 |---|---|---|
-| `Button` | `variant: 'primary'\|'secondary'\|'ghost'\|'danger'`, `size?: 'sm'\|'md'\|'lg'`, `disabled?`, `loading?`, `iconLeft?: ReactNode`, `iconRight?: ReactNode`, all native `button` props | Driver PWA defaults to `size="lg"` (full-width, `min-h-[52px]`). Primary variant: black background, white text, `rounded-xl`, `shadow-ambient`. |
+| `Button` | `variant: 'primary'\|'secondary'\|'ghost'\|'danger'\|'success'`, `size?: 'sm'\|'md'\|'lg'`, `disabled?`, `loading?`, `full?`, `iconLeft?: ReactNode`, `iconRight?: ReactNode`, all native `button` props | Primary variant: `linear-gradient(135deg,#1b1b1c,#303031)` with `border:1px solid rgba(255,255,255,0.08)` — inline style, not a Tailwind class. Hover: `brightness(1.12)`. Press: `scale(0.97)`. `rounded-md` (6px). Labels are normal case — never uppercase. |
 | `Card` | `variant?: 'default'\|'exception'\|'selected'\|'section'`, `onClick?`, children | `rounded-xl`, `shadow-ambient`, white background. Exception adds `border-l-4 border-error`. Section drops the shadow for a lower elevation. |
-| `Chip` | `kind: 'verified'\|'success'\|'warning'\|'error'\|'pending'\|'neutral'\|'overridden'\|'info'`, `icon?: ReactNode`, `animated?`, children | `rounded-full` pill. Always has an icon or animated dot — never colour-only. |
+| `Chip` | `type: 'transit'\|'loading'\|'complete'\|'exception'\|'critical'\|'pending'`, `label?: string`, `children?: ReactNode` | 6 domain types matching DESIGN_SYSTEM.md §7.2. Always renders a 6×6 dot on the left — never an icon inside the chip. `rounded-md` (6px), **not** `rounded-full`. 11px/700/0.03em letter-spacing/3×10 padding. `ChipType` is exported from `@shared/lib/constants/status-meta`. |
 | `Input` | `label`, `helperText?`, `error?`, `inputMode?`, all native `input` props | Label always visible above. Validates on blur (not on keystroke). Driver-PWA default `min-h-[44px]`. |
 | `TextArea` | `label`, `helperText?`, `error?`, native props | Same rules as `Input`. `resize-none`, `min-h-[120px]`. |
 | `Modal` | `open`, `onClose`, `title`, children, `footer?`, `size?: 'sm'\|'md'\|'lg'` | Native `<dialog>` element. Traps focus, `backdrop:bg-black/40` scrim, restores focus on close. |
@@ -323,6 +323,9 @@ Pure, presentational, framework-free of FreightProof concepts. These are the bui
 | `Tabs` | `tabs: { id, label, icon?: ReactNode }[]`, `active`, `onChange` | `role="tablist"` container, `role="tab"` buttons. Used on dispatcher Trip Detail. |
 | `DataTable` | `columns: Column<T>[]`, `rows: T[]`, `sort?`, `onSort?`, `empty?` | Dispatcher only. Renders a real `<table>` with `aria-sort`. Never a div-grid. |
 | `DateRangePicker` | `value: DateRange`, `onChange`, `presets?` | Dispatcher only (SLA, History). `DateRange` is `{ from: string; to: string }` (YYYY-MM-DD). |
+| `Ic` | `n: IconName`, `s?: number` (default 16), `c?: string` (default currentColor), `sw?: number` (default 1.75) | Renders a single icon from the `IP` stroke set. Multi-segment paths split automatically. `aria-hidden="true"` always set; use a parent `aria-label` for icon-only buttons. |
+| `StatCard` | `value: string`, `label: string`, `warn?: boolean`, `success?: boolean` | Metric display tile — 28px/800 value (`--err` if `warn`, `--ok` if `success`, else `--on-surf`), 12px/500 label. `--surf-lowest` bg, `r-lg`, elevation 3. Used in Dashboard stat row and SLA Reports. |
+| `SecHead` | `title: string`, `action?: string`, `onAction?: () => void` | Sticky-feeling section header band inside cards. `--surf-low` bg, 10×24 padding. Title 11px/700/0.1em UPPER/`--on-surf-v`. Optional gradient-primary action button on right with `plus` icon. |
 
 ### 5.2 `components/domain/` — FreightProof concepts
 
@@ -345,13 +348,17 @@ These are reused across pages and encode FreightProof-specific behaviour. Driver
 | `OfflineBanner` | driver | Renders at the top of `(app)` layout when `navigator.onLine === false`. "Offline — actions queued, will submit on reconnect." |
 | `ChecklistRow` | dispatcher | Trip-list row layout. Used on Active Trips and History pages. |
 | `SLAChartCard` | dispatcher | A `Card` wrapping a `recharts` chart with required `aria-label` text summary and a toggle to switch to a `DataTable` view for accessibility. |
+| `EvidenceTag` | both | Evidence weight pill — `level: 'baseline'\|'medium'\|'high'\|'highest'`. 10px/700/0.06em UPPER, 2×8 padding, `r-sm`. `highest` uses `--primary` bg with white `shield` icon. Only attached to committed handshake events (H1–H5); never on checkpoints or exceptions. |
+| `Seal` | both | Seal ID pill — `num: string`, `mismatch?: boolean`. 13px/700/0.06em/tabular-nums, 3×10 padding, `r-sm`. Default: `--primary` bg, white text. `mismatch`: `--err` bg. |
+| `ChainTag` | both | Hedera receipt marker — `text: string` (TXN ID). `--chain-c` bg, `r-sm`, 5×10 padding. `hex` icon (12px, `--chain`) + 11px/500/0.04em/tabular-nums text in `--on-chain-c`. Only rendered when a receipt is actually anchored — never shown as a placeholder. |
 
 ### 5.3 `components/layout/` — shells
 
 | Component | Surfaces | Purpose |
 |---|---|---|
-| `DispatcherShell` | dispatcher | The full layout: 240 px sidebar at `lg+`, 64 px icon rail at `md`, top hamburger below `md`. Renders `Sidebar`, `MainContent`, `ToastViewport`. |
-| `Sidebar` | dispatcher | Black (`bg-primary`) background. Active item has a blue (`secondary`) left accent bar 3 px. Items: Active Trips, Trip History, Exceptions, SLA Reports, Fleet, Settings. |
+| `DispatcherShell` | dispatcher | Outer app chrome: `#0a0a0c` body background; dispatcher panel floats inside with `margin:12px`, `border-radius:14px`, `box-shadow: elevation-6`. Panel is a flex row: `Sidebar` (220px fixed) + main content area (`--surf` bg, scroll-y). Renders `Sidebar`, `ToastViewport`. |
+| `TopBar` | dispatcher | 60px page header strip. `--surf-lowest` bg, bottom `1px solid --outline-v+'33'`, elevation 1. Left: title (18/800/−0.02em) + optional `sub` (11/500/0.03em/`--sec`/tabular-nums). Right slot (`children`): flex, 8px gap — holds chips, buttons. Replaces `PageHeader` in all dispatcher pages. |
+| `Sidebar` | dispatcher | 220px, `--primary` bg, full height. **Header**: logo mark (32×32 `--sec` bg, `r-md`, hex SVG) + "FreightProof" wordmark (16/800/−0.02em) + "EVIDENCE PLATFORM" eyebrow (10px/0.06em UPPER/rgba(255,255,255,0.35)). **Nav groups**: "OVERVIEW", "TRIPS", "REPORTING" section headers (10/700/0.12em UPPER/rgba(255,255,255,0.3)) before their first item. Active item: `rgba(255,255,255,0.1)` bg + `3px solid --sec` left border, icon `--sec`, label white 600. Inactive: transparent + 3px transparent border, icon/label at 45%/55% white. Hover: `rgba(255,255,255,0.06)`. Badge: `--err` bg, white, 10/700, `r-sm`. **Footer**: user avatar (28×28 circle, `rgba(255,255,255,0.1)`, `user` icon) + name (12/600) + role (10/`--outline-v`). |
 | `DriverShell` | driver | Full-bleed mobile layout with `OfflineBanner` (top), `StepHeader` (when in a handshake), main content, `BottomBar` (when in a trip), `PanicButton` (when in a trip). Uses `min-h-dvh` and `pb-safe`. |
 | `BottomBar` | driver | 64 px + safe-area (`pb-safe`). Three slots: current step, trip summary, panic. `glass-nav` background, `shadow-ambient-up-lg`, `border-t border-outline-variant/20`. Active item uses `text-secondary` with a filled Lucide icon. |
 | `PageHeader` | dispatcher | Page title + breadcrumb + page actions. |
@@ -462,7 +469,7 @@ Port :3000. Desktop-first, tablet-usable, never a mobile-first port. All pages a
 | Layout group | `(app)` — wraps in `DispatcherShell` |
 | User story | As a dispatcher, I want to see all currently in-progress trips at a glance so that I can spot exceptions and check progress without opening each trip. |
 | Purpose | The operational nerve centre. |
-| Components | `PageHeader`, `DataTable` of `ChecklistRow`s, `Chip`, `HandshakeChain` (compact), `EmptyState`, `DateRangePicker` (filter), search input |
+| Components | `TopBar`, `StatCard` ×3 (stat strip), `ExceptionBanner` (if open exceptions), `SecHead`, `DataTable` of `ChecklistRow`s, `Chip`, `HandshakeChain` (compact, `MiniTL` pattern), `EmptyState`, search input |
 | Mock data | `useTrips({ status: ['created','origin_gate_in','loading','origin_gate_out','in_transit','dest_gate_in','unloading'] })` |
 | Row anatomy | Status chip · `TripIdStamp` · Driver name · Route (origin → destination) · Compact `HandshakeChain` · Latest event timestamp · Open button |
 | Filters | Status, driver, route, has-exceptions |
@@ -477,7 +484,7 @@ Port :3000. Desktop-first, tablet-usable, never a mobile-first port. All pages a
 | Route | `/trips/[id]` |
 | User story | As a dispatcher, I want to drill into a single trip's complete evidence trail so that I can investigate exceptions and answer client questions. |
 | Purpose | The full evidence record for one trip. |
-| Components | `PageHeader` (with status chip + `TripIdStamp`), full-width `HandshakeChain` (horizontal), `Tabs`, `EvidencePacket` per event, `BlockchainReceipt`, `ExceptionBanner` |
+| Components | `TopBar` (with status `Chip` + `TripIdStamp` in sub slot), full-width `HandshakeChain` (horizontal), `Tabs`, `EvidencePacket` per event (with `EvidenceTag` + `ChainTag`), `Seal` (sidebar), `BlockchainReceipt`, `ExceptionBanner` |
 | Tabs | **Timeline** (default — chronological list of events), **Manifest** (parcel list per stop), **Exceptions** (this trip only), **Blockchain** (anchored hashes + Hedera tx IDs) |
 | Mock data | `useTrip(id)` — returns trip + handshake events + exceptions + manifest + receipts |
 | States | Loading · Not found (404) · Trip closed (read-only banner) · Trip with active exception (banner above tabs) |
@@ -998,3 +1005,4 @@ These are intentionally excluded so the spec doesn't sprawl. Each has a future h
 | v1 | 2026-05-09 | First spec. Covers Dispatcher Portal and Driver PWA only. Page granularity = "logical-step grouping" (option B). Mock data via TS fixtures + React Context (option A). |
 | v1.1 | 2026-05-09 | Added Capacitor for native Android support. Replaced `next-pwa` with `@serwist/next` (browser PWA) + Capacitor (Android APK). Driver PWA switches to `output: 'export'` (all pages `"use client"`). `PhotoCapture` uses `@capacitor/camera`. Added `LocationCapture` component (auto, no button). Added `useLocation()` and `usePushNotifications()` hooks. Gate arrivals (H1.1, H4.1) are now auto-triggered by FCM push + Pulsit geofence, not manual acknowledgement. Capacitor scaffold added to Phase 0 build sequence. iOS and Play Store out of scope for v1. |
 | v1.2 | 2026-05-11 | Design system replaced: Inter (single font), blue secondary (#0051d5), ambient shadows, rounded-xl cards, rounded-full chips, glassmorphism nav. All §5.1 component props updated to match rebuilt implementations (ReactNode icons, new Card/Chip variants, native dialog Modal, ToastData type, DateRange type). §2.1 updated to reflect frontend/shared/ package (types, mocks, constants, tokens, z-index, cn utility) accessed via @shared/* alias. Lint rule section updated for eslint.config.mjs flat config format. Route corrected to /dev/tokens. Capacitor android/ scaffold committed. |
+| v1.3 | 2026-05-13 | **Icon system**: replaced `lucide-react` as primary with custom `Ic` component (`IP` stroke set, 23 icons) — matches DESIGN_SYSTEM.md §6 and all HTML references. Lucide retained for utility icons absent from IP set. **Chip**: API replaced — `kind` → `type: ChipType` (6 trip-status values: transit/loading/complete/exception/critical/pending); `rounded-full` → `rounded-md` (6px); dot-left always, never icon inside chip. `ChipType` exported from `@shared/lib/constants/status-meta`. **Button**: primary uses gradient, not flat bg; label case is normal (not uppercase); added `success` variant and `full` prop. **Tailwind tokens**: all hex values corrected to match design system; `chain` color set added; border-radius corrected (sm:3px, md:6px, lg:10px, xl:14px); design-system shorthand tokens (`surf`, `sec`, `ok`, `err`, `warn`, `chain`, `on-surf`, `on-surf-v`, `outline-v`) added alongside semantic aliases. **New components**: `Ic` (§5.1), `StatCard` (§5.1), `SecHead` (§5.1), `EvidenceTag` (§5.2), `Seal` (§5.2), `ChainTag` (§5.2), `TopBar` (§5.3). **Layout**: `DispatcherShell` outer chrome spec added (`#0a0a0c`, margin 12px, elevation 6). `Sidebar` fully specified (logo, groups, footer, badge). `TopBar` replaces `PageHeader` on all dispatcher pages. |

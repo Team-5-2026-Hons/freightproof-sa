@@ -2,9 +2,9 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Plus } from 'lucide-react'
-import { PageShell } from '@/components/layout/PageShell'
-import { PageHeader } from '@/components/layout/PageHeader'
+import { TopBar }   from '@/components/ui/TopBar'
+import { SecHead }  from '@/components/ui/SecHead'
+import { Ic }       from '@/components/ui/Ic'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
@@ -14,7 +14,6 @@ import { useDrivers } from '@/lib/hooks/useDrivers'
 import { useVehicles } from '@/lib/hooks/useVehicles'
 import { usePrecincts } from '@/lib/hooks/usePrecincts'
 import { COPY } from '@shared/lib/constants/copy'
-import { cn } from '@shared/lib/utils/cn'
 
 export default function TripNewPage() {
   const router = useRouter()
@@ -62,195 +61,159 @@ export default function TripNewPage() {
   }
 
   return (
-    <PageShell>
-      <PageHeader
-        title="Create New Trip"
-        breadcrumbs={[
-          { label: 'Active Trips', href: ROUTES.home },
-        ]}
-        actions={
-          <Button
-            variant="secondary"
-            size="sm"
-            iconLeft={<ArrowLeft className="w-4 h-4" />}
-            onClick={() => router.back()}
-          >
-            Cancel
-          </Button>
-        }
-      />
+    <div className="flex flex-col flex-1 min-h-0">
+      <TopBar title="New Trip">
+        <Button
+          variant="secondary"
+          size="sm"
+          iconLeft={<Ic n="back" s={14} className="text-on-surf" />}
+          onClick={() => router.back()}
+        >
+          Cancel
+        </Button>
+      </TopBar>
 
-      <Card className="max-w-2xl">
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Order Details */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-bold text-surface-on border-b border-outline-variant/20 pb-2">Order Details</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="flex gap-6 p-6 flex-1 overflow-auto">
+        {/* Form — left column */}
+        <form onSubmit={handleSubmit} className="flex-1 flex flex-col gap-4 min-w-0">
+          {/* ORDER */}
+          <Card className="p-6">
+            <SecHead title="Order" />
+            <div className="p-6 pt-3">
               <Input
-                label="Order Number"
-                placeholder="e.g. FX-ORD-2026-..."
+                label="Order number"
                 value={orderNumber}
-                onChange={e => { setOrderNumber(e.target.value); setError(false) }}
+                onChange={e => setOrderNumber(e.target.value)}
                 error={error && !orderNumber ? 'Required' : undefined}
               />
-              <Input
-                label="Planned Departure"
-                type="datetime-local"
-                value={plannedDeparture}
-                onChange={e => { setPlannedDeparture(e.target.value); setError(false) }}
-                error={error && !plannedDeparture ? 'Required' : undefined}
-              />
             </div>
-          </div>
+          </Card>
 
-          {/* Route */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-bold text-surface-on border-b border-outline-variant/20 pb-2">Route</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-surface-on-variant">
-                  Origin Precinct
-                </label>
-                <select
-                  value={originId}
-                  onChange={e => { setOriginId(e.target.value); setError(false) }}
-                  className={cn(
-                    'w-full rounded-xl px-4 py-3 text-sm font-medium text-surface-on',
-                    'bg-surface-container-low border border-outline-variant/30',
-                    'focus:outline-none focus:border-secondary focus:bg-surface-container-lowest',
-                    'transition-colors duration-150 min-h-[44px] appearance-none',
-                    error && !originId && 'border-error focus:border-error'
-                  )}
-                >
-                  <option value="">Select Origin...</option>
-                  {precincts.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-                {error && !originId && <p className="text-xs text-error font-medium">Required</p>}
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-surface-on-variant">
-                  Destination Precinct
-                </label>
-                <select
-                  value={destId}
-                  onChange={e => { setDestId(e.target.value); setError(false) }}
-                  className={cn(
-                    'w-full rounded-xl px-4 py-3 text-sm font-medium text-surface-on',
-                    'bg-surface-container-low border border-outline-variant/30',
-                    'focus:outline-none focus:border-secondary focus:bg-surface-container-lowest',
-                    'transition-colors duration-150 min-h-[44px] appearance-none',
-                    error && !destId && 'border-error focus:border-error'
-                  )}
-                >
-                  <option value="">Select Destination...</option>
-                  {precincts.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-                {error && !destId && <p className="text-xs text-error font-medium">Required</p>}
-              </div>
-            </div>
-          </div>
-
-          {/* Resources */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-bold text-surface-on border-b border-outline-variant/20 pb-2">Resources</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-surface-on-variant">
-                  Driver
-                </label>
+          {/* DRIVER & VEHICLE */}
+          <Card className="p-0 overflow-hidden">
+            <SecHead title="Driver & Vehicle" />
+            <div className="p-6 flex flex-col gap-4">
+              <div>
+                <label className="block text-[12px] font-[600] text-on-surf-v mb-1">Driver</label>
                 <select
                   value={driverId}
-                  onChange={e => { setDriverId(e.target.value); setError(false) }}
-                  className={cn(
-                    'w-full rounded-xl px-4 py-3 text-sm font-medium text-surface-on',
-                    'bg-surface-container-low border border-outline-variant/30',
-                    'focus:outline-none focus:border-secondary focus:bg-surface-container-lowest',
-                    'transition-colors duration-150 min-h-[44px] appearance-none',
-                    error && !driverId && 'border-error focus:border-error'
-                  )}
+                  onChange={e => setDriverId(e.target.value)}
+                  className="w-full px-3 py-2 text-[14px] bg-surf-low border border-outline-v/30 rounded-md text-on-surf outline-none focus:border-sec transition-colors"
                 >
-                  <option value="">Select Driver...</option>
+                  <option value="">Select driver…</option>
                   {drivers.map(d => (
                     <option key={d.id} value={d.id}>{d.full_name}</option>
                   ))}
                 </select>
-                {error && !driverId && <p className="text-xs text-error font-medium">Required</p>}
               </div>
 
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-surface-on-variant">
-                  Horse
-                </label>
+              <div>
+                <label className="block text-[12px] font-[600] text-on-surf-v mb-1">Horse (truck)</label>
                 <select
                   value={horseId}
-                  onChange={e => { setHorseId(e.target.value); setError(false) }}
-                  className={cn(
-                    'w-full rounded-xl px-4 py-3 text-sm font-medium text-surface-on',
-                    'bg-surface-container-low border border-outline-variant/30',
-                    'focus:outline-none focus:border-secondary focus:bg-surface-container-lowest',
-                    'transition-colors duration-150 min-h-[44px] appearance-none',
-                    error && !horseId && 'border-error focus:border-error'
-                  )}
+                  onChange={e => setHorseId(e.target.value)}
+                  className="w-full px-3 py-2 text-[14px] bg-surf-low border border-outline-v/30 rounded-md text-on-surf outline-none focus:border-sec transition-colors"
                 >
-                  <option value="">Select Horse...</option>
+                  <option value="">Select horse…</option>
                   {horses.map(h => (
                     <option key={h.id} value={h.id}>{h.registration}</option>
                   ))}
                 </select>
-                {error && !horseId && <p className="text-xs text-error font-medium">Required</p>}
               </div>
-            </div>
-            
-            {/* Multiple trailers selection via multi-select for MVP */}
-             <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-surface-on-variant">
-                  Trailers (Optional)
-                </label>
+
+              <div>
+                <label className="block text-[12px] font-[600] text-on-surf-v mb-1">Trailer(s)</label>
                 <select
                   multiple
                   value={trailerIds}
-                  onChange={e => {
-                    const values = Array.from(e.target.selectedOptions, option => option.value)
-                    setTrailerIds(values)
-                  }}
-                  className={cn(
-                    'w-full rounded-xl px-4 py-3 text-sm font-medium text-surface-on',
-                    'bg-surface-container-low border border-outline-variant/30',
-                    'focus:outline-none focus:border-secondary focus:bg-surface-container-lowest',
-                    'transition-colors duration-150 min-h-[88px]',
-                  )}
+                  onChange={e => setTrailerIds(Array.from(e.target.selectedOptions, o => o.value))}
+                  className="w-full px-3 py-2 text-[14px] bg-surf-low border border-outline-v/30 rounded-md text-on-surf outline-none focus:border-sec transition-colors h-24"
                 >
                   {trailers.map(t => (
                     <option key={t.id} value={t.id}>{t.registration}</option>
                   ))}
                 </select>
-                <p className="text-xs text-surface-on-variant">Hold Cmd/Ctrl to select multiple</p>
               </div>
-          </div>
+            </div>
+          </Card>
 
-          <div className="pt-4 flex justify-end gap-3">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => router.back()}
-              disabled={loading}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              loading={loading}
-            >
-              Create Trip
-            </Button>
-          </div>
+          {/* ROUTE */}
+          <Card className="p-0 overflow-hidden">
+            <SecHead title="Route" />
+            <div className="p-6 flex flex-col gap-4">
+              <div>
+                <label className="block text-[12px] font-[600] text-on-surf-v mb-1">Origin precinct</label>
+                <select
+                  value={originId}
+                  onChange={e => setOriginId(e.target.value)}
+                  className="w-full px-3 py-2 text-[14px] bg-surf-low border border-outline-v/30 rounded-md text-on-surf outline-none focus:border-sec transition-colors"
+                >
+                  <option value="">Select origin…</option>
+                  {precincts.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[12px] font-[600] text-on-surf-v mb-1">Destination precinct</label>
+                <select
+                  value={destId}
+                  onChange={e => setDestId(e.target.value)}
+                  className="w-full px-3 py-2 text-[14px] bg-surf-low border border-outline-v/30 rounded-md text-on-surf outline-none focus:border-sec transition-colors"
+                >
+                  <option value="">Select destination…</option>
+                  {precincts.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </Card>
+
+          {/* SLOT TIME */}
+          <Card className="p-0 overflow-hidden">
+            <SecHead title="Schedule" />
+            <div className="p-6">
+              <Input
+                label="Planned departure"
+                type="datetime-local"
+                value={plannedDeparture}
+                onChange={e => setPlannedDeparture(e.target.value)}
+              />
+            </div>
+          </Card>
+
+          <Button
+            type="submit"
+            full
+            loading={loading}
+            disabled={!isValid}
+          >
+            Create Trip · Anchor journey lock
+          </Button>
         </form>
-      </Card>
-    </PageShell>
+
+        {/* Summary preview — right column */}
+        <div className="w-[300px] shrink-0 hidden lg:block">
+          <Card className="p-0 overflow-hidden sticky top-0">
+            <SecHead title="Trip Summary" />
+            <div className="p-5 flex flex-col gap-3 text-[13px]">
+              {[
+                { label: 'Order',       value: orderNumber  || '—' },
+                { label: 'Driver',      value: drivers.find(d => d.id === driverId)?.full_name || '—' },
+                { label: 'Horse',       value: horses.find(h => h.id === horseId)?.registration || '—' },
+                { label: 'Origin',      value: precincts.find(p => p.id === originId)?.name || '—' },
+                { label: 'Destination', value: precincts.find(p => p.id === destId)?.name || '—' },
+              ].map(row => (
+                <div key={row.label} className="flex justify-between gap-2">
+                  <span className="text-on-surf-v font-[500]">{row.label}</span>
+                  <span className="text-on-surf font-[600] text-right truncate max-w-[160px]">{row.value}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+      </div>
+    </div>
   )
 }

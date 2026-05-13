@@ -1,8 +1,7 @@
 'use client'
 
 import { Settings as SettingsIcon } from 'lucide-react'
-import { PageShell } from '@/components/layout/PageShell'
-import { PageHeader } from '@/components/layout/PageHeader'
+import { TopBar } from '@/components/ui/TopBar'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { useAuth } from '@/lib/hooks/useAuth'
@@ -11,9 +10,9 @@ export default function SettingsPage() {
   const { user, signOut } = useAuth()
 
   return (
-    <PageShell>
-      <PageHeader title="Settings" />
-      
+    <div className="flex flex-col flex-1 min-h-0">
+      <TopBar title="Settings" />
+      <div className="flex-1 overflow-y-auto p-6">
       <div className="max-w-2xl space-y-6">
         <Card className="p-6">
           <div className="flex items-center gap-3 mb-6 border-b border-outline-variant/20 pb-4">
@@ -46,6 +45,7 @@ export default function SettingsPage() {
           </div>
         </Card>
       </div>
-    </PageShell>
+      </div>
+    </div>
   )
 }
