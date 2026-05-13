@@ -7,6 +7,7 @@ DB session fixtures run each test inside a rolled-back transaction so the
 DB is clean between tests. Requires TEST_DATABASE_URL in backend/.env.
 """
 
+import asyncio
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import AsyncGenerator, Optional
@@ -16,6 +17,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from jose import jwt
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
 from app.db.models import Base
@@ -84,19 +86,31 @@ async def client(monkeypatch: pytest.MonkeyPatch) -> AsyncGenerator[AsyncClient,
 # ── DB session fixtures ────────────────────────────────────────────────────────
 
 
-@pytest_asyncio.fixture(scope="session")
-async def test_engine():
-    """Create the test engine and schema once per session."""
+@pytest.fixture(scope="session")
+def test_engine():
+    """Create tables once per session (sync wrapper) and yield the async engine.
+
+    NullPool means no connections are held by the engine itself, so there is no
+    event-loop binding on the engine object. Each test's db_session fixture
+    opens a fresh connection in its own (function-scoped) event loop.
+    """
     if not settings.TEST_DATABASE_URL:
         pytest.skip("TEST_DATABASE_URL not set — skipping integration tests")
 
-    engine = create_async_engine(settings.TEST_DATABASE_URL, pool_pre_ping=True)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    engine = create_async_engine(settings.TEST_DATABASE_URL, poolclass=NullPool)
+
+    async def _create() -> None:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+    async def _drop() -> None:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+        await engine.dispose()
+
+    asyncio.run(_create())
     yield engine
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-    await engine.dispose()
+    asyncio.run(_drop())
 
 
 @pytest_asyncio.fixture
