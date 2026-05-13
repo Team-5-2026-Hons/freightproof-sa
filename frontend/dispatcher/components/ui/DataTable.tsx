@@ -2,14 +2,14 @@ import { ChevronUp, ChevronDown, PackageOpen } from 'lucide-react'
 import { cn } from '@shared/lib/utils/cn'
 import { EmptyState } from './EmptyState'
 
-export interface Column<T> {
+export interface Column<T extends object> {
   key: keyof T
   label: string
   sortable?: boolean
   render?: (value: T[keyof T], row: T) => React.ReactNode
 }
 
-interface DataTableProps<T extends Record<string, unknown>> {
+interface DataTableProps<T extends object> {
   columns: Column<T>[]
   rows: T[]
   sort?: { key: keyof T; dir: 'asc' | 'desc' }
@@ -18,7 +18,7 @@ interface DataTableProps<T extends Record<string, unknown>> {
   className?: string
 }
 
-export function DataTable<T extends Record<string, unknown>>({
+export function DataTable<T extends object>({
   columns, rows, sort, onSort, empty, className,
 }: DataTableProps<T>) {
   if (rows.length === 0) {

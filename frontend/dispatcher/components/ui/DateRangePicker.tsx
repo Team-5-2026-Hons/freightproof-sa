@@ -3,11 +3,9 @@
 import { useState } from 'react'
 import { Calendar, ChevronDown } from 'lucide-react'
 import { cn } from '@shared/lib/utils/cn'
+import type { DateRange } from '@/lib/types/date-range'
 
-export interface DateRange {
-  from: string  // YYYY-MM-DD
-  to: string
-}
+export type { DateRange }
 
 interface Preset { label: string; range: DateRange }
 

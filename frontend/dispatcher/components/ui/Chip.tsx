@@ -1,41 +1,52 @@
-import { type ReactNode } from 'react'
 import { cn } from '@shared/lib/utils/cn'
+import type { ChipType } from '@shared/lib/constants/status-meta'
 
-export type ChipKind = 'verified' | 'success' | 'warning' | 'error' | 'pending' | 'neutral' | 'overridden' | 'info'
+export type { ChipType }
 
 interface ChipProps {
-  kind: ChipKind
-  icon?: ReactNode
-  children: ReactNode
-  animated?: boolean
+  type: ChipType
+  /** Text label. Accepts children as an alternative. */
+  label?: string
+  children?: React.ReactNode
   className?: string
 }
 
-const kindClasses: Record<ChipKind, string> = {
-  verified:   'bg-secondary/10 text-secondary',
-  info:       'bg-secondary/10 text-secondary',
-  success:    'bg-success-container text-success-on-container',
-  warning:    'bg-tertiary-container text-tertiary-on-container',
-  error:      'bg-error-container text-error-on-container',
-  pending:    'bg-surface-container-highest text-surface-on-variant',
-  neutral:    'bg-surface-container-highest text-surface-on',
-  overridden: 'bg-secondary-fixed text-secondary-on-container',
+const chipStyles: Record<ChipType, string> = {
+  transit:   'bg-sec-c text-sec-onc',
+  loading:   'bg-sec-c text-sec-onc',
+  complete:  'bg-ok-c text-ok-onc',
+  exception: 'bg-warn-c text-warn-onc',
+  critical:  'bg-err-c text-err-onc',
+  pending:   'bg-surf-high text-on-surf-v',
 }
 
-export function Chip({ kind, icon, children, animated = false, className }: ChipProps) {
+const dotStyles: Record<ChipType, string> = {
+  transit:   'bg-sec',
+  loading:   'bg-sec',
+  complete:  'bg-ok',
+  exception: 'bg-warn',
+  critical:  'bg-err',
+  pending:   'bg-outline-v',
+}
+
+/**
+ * Trip-status pill — 6 domain types matching DESIGN_SYSTEM.md §7.2.
+ * Always renders a 6×6 dot on the left. Never uses icons.
+ * Radius is r-md (6px), not rounded-full.
+ */
+export function Chip({ type, label, children, className }: ChipProps) {
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 px-3 py-1',
-        'rounded-full text-xs font-bold uppercase tracking-wider',
-        kindClasses[kind],
+        'inline-flex items-center gap-[5px]',
+        'text-[11px] font-bold tracking-[0.03em] whitespace-nowrap',
+        'px-[10px] py-[3px] rounded-md',
+        chipStyles[type],
         className,
       )}
     >
-      {icon ?? (
-        <span className={cn('w-1.5 h-1.5 rounded-full bg-current opacity-70', animated && 'animate-pulse')} />
-      )}
-      {children}
+      <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', dotStyles[type])} />
+      {label ?? children}
     </span>
   )
 }
