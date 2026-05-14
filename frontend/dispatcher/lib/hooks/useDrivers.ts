@@ -1,10 +1,17 @@
-"use client"
+'use client'
 
-import { useMemo } from 'react'
-import { mockDrivers } from '@shared/lib/mocks/drivers'
+import { useEffect, useState } from 'react'
+import { api } from '@/lib/api/client'
 import type { Driver } from '@shared/lib/types/driver'
 
-/** Returns all drivers from mock data. Used by Trip Creation. */
 export function useDrivers(): Driver[] {
-  return useMemo(() => mockDrivers, [])
+  const [drivers, setDrivers] = useState<Driver[]>([])
+
+  useEffect(() => {
+    api.get<Driver[]>('/api/v1/drivers')
+      .then(setDrivers)
+      .catch(console.error)
+  }, [])
+
+  return drivers
 }

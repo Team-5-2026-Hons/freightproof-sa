@@ -1,10 +1,17 @@
-"use client"
+'use client'
 
-import { useMemo } from 'react'
-import { mockPrecincts } from '@shared/lib/mocks/precincts'
+import { useEffect, useState } from 'react'
+import { api } from '@/lib/api/client'
 import type { Precinct } from '@shared/lib/types/precinct'
 
-/** Returns all precincts from mock data. Used by Trip Creation. */
 export function usePrecincts(): Precinct[] {
-  return useMemo(() => mockPrecincts, [])
+  const [precincts, setPrecincts] = useState<Precinct[]>([])
+
+  useEffect(() => {
+    api.get<Precinct[]>('/api/v1/precincts')
+      .then(setPrecincts)
+      .catch(console.error)
+  }, [])
+
+  return precincts
 }

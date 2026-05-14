@@ -1,14 +1,21 @@
-"use client"
+'use client'
 
-import { useMemo } from 'react'
-import { mockHorses, mockTrailers, mockVehicles } from '@shared/lib/mocks/vehicles'
+import { useEffect, useMemo, useState } from 'react'
+import { api } from '@/lib/api/client'
 import type { Vehicle } from '@shared/lib/types/vehicle'
 
-/** Returns horses, trailers, or all vehicles from mock data. Used by Trip Creation and Fleet pages. */
 export function useVehicles(): { horses: Vehicle[]; trailers: Vehicle[]; all: Vehicle[] } {
+  const [vehicles, setVehicles] = useState<Vehicle[]>([])
+
+  useEffect(() => {
+    api.get<Vehicle[]>('/api/v1/vehicles')
+      .then(setVehicles)
+      .catch(console.error)
+  }, [])
+
   return useMemo(() => ({
-    horses: mockHorses,
-    trailers: mockTrailers,
-    all: mockVehicles,
-  }), [])
+    horses: vehicles.filter(v => v.vehicle_type === 'horse'),
+    trailers: vehicles.filter(v => v.vehicle_type === 'trailer'),
+    all: vehicles,
+  }), [vehicles])
 }

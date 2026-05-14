@@ -164,6 +164,32 @@ class TripRead(TripBase):
     horse: Optional[VehicleRead] = None
 
 
+class TripListItemResponse(BaseModel):
+    """Lightweight trip shape returned by GET /api/v1/trips.
+
+    Excludes handshakes and receipts. open_exception_count is computed
+    by resource_service.list_trips() via a grouped COUNT query.
+    """
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    trip_reference: str
+    order_number: str
+    status: TripStatus
+    driver: DriverRead
+    horse: VehicleRead
+    trailers: list[VehicleRead]
+    origin_precinct_id: UUID
+    destination_precinct_id: UUID
+    planned_departure_at: Optional[datetime] = None
+    actual_departure_at: Optional[datetime] = None
+    planned_arrival_at: Optional[datetime] = None
+    actual_arrival_at: Optional[datetime] = None
+    open_exception_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
 class TripTrailerBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
