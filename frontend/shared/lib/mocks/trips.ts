@@ -6,9 +6,9 @@ import { mockHorses, mockTrailers, HORSE_1_ID, HORSE_2_ID, HORSE_3_ID, TRAILER_1
 import { OPERATOR_ORG_ID, FEDEX_ORG_ID, CGY_ORG_ID } from './principals'
 import { PRECINCT_FEDEX_JHB_ID, PRECINCT_FEDEX_DBN_ID, PRECINCT_CGY_JHB_ID, PRECINCT_CGY_CT_ID } from './precincts'
 
-const tripId  = (v: string): TripId          => v as unknown as TripId
-const heId    = (v: string): HandshakeEventId => v as unknown as HandshakeEventId
-const excId   = (v: string): ExceptionId      => v as unknown as ExceptionId
+const tripId = (v: string): TripId => v as unknown as TripId
+const heId = (v: string): HandshakeEventId => v as unknown as HandshakeEventId
+const excId = (v: string): ExceptionId => v as unknown as ExceptionId
 
 // Exported so exceptions.ts, checkpoints.ts, and manifests.ts can reference trips by ID.
 export const TRIP_0035_ID = tripId('7e8f9a0b-1c2d-4e3f-8a5b-6c7d8e9f0a1b')
@@ -177,11 +177,11 @@ const HANDSHAKES_0038: HandshakeEvent[] = [
     event_hash: null, blockchain_receipt_id: null,
     completed_at: null, created_at: '2026-05-09T06:00:00Z', updated_at: '2026-05-09T06:00:00Z',
   },
-  pendingHE('aa003800-0000-4001-8001-000000000002', TRIP_0038_ID, 'origin_gate_in',   1, '2026-05-09T06:00:00Z'),
-  pendingHE('aa003800-0000-4002-8001-000000000003', TRIP_0038_ID, 'loading',          2, '2026-05-09T06:00:00Z'),
-  pendingHE('aa003800-0000-4003-8001-000000000004', TRIP_0038_ID, 'origin_gate_out',  3, '2026-05-09T06:00:00Z'),
-  pendingHE('aa003800-0000-4004-8001-000000000005', TRIP_0038_ID, 'dest_gate_in',     4, '2026-05-09T06:00:00Z'),
-  pendingHE('aa003800-0000-4005-8001-000000000006', TRIP_0038_ID, 'unloading',        5, '2026-05-09T06:00:00Z'),
+  pendingHE('aa003800-0000-4001-8001-000000000002', TRIP_0038_ID, 'origin_gate_in', 1, '2026-05-09T06:00:00Z'),
+  pendingHE('aa003800-0000-4002-8001-000000000003', TRIP_0038_ID, 'loading', 2, '2026-05-09T06:00:00Z'),
+  pendingHE('aa003800-0000-4003-8001-000000000004', TRIP_0038_ID, 'origin_gate_out', 3, '2026-05-09T06:00:00Z'),
+  pendingHE('aa003800-0000-4004-8001-000000000005', TRIP_0038_ID, 'dest_gate_in', 4, '2026-05-09T06:00:00Z'),
+  pendingHE('aa003800-0000-4005-8001-000000000006', TRIP_0038_ID, 'unloading', 5, '2026-05-09T06:00:00Z'),
 ]
 
 // ─── TRP-2026-0039 · origin_gate_in · Kasongo · FedEx DBN → JHB ──────────────
@@ -225,10 +225,10 @@ const HANDSHAKES_0039: HandshakeEvent[] = [
     event_hash: null, blockchain_receipt_id: null,
     completed_at: null, created_at: '2026-05-09T07:00:00Z', updated_at: '2026-05-09T07:04:00Z',
   },
-  pendingHE('aa003900-0000-4002-8001-000000000003', TRIP_0039_ID, 'loading',         2, '2026-05-09T04:30:00Z'),
+  pendingHE('aa003900-0000-4002-8001-000000000003', TRIP_0039_ID, 'loading', 2, '2026-05-09T04:30:00Z'),
   pendingHE('aa003900-0000-4003-8001-000000000004', TRIP_0039_ID, 'origin_gate_out', 3, '2026-05-09T04:30:00Z'),
-  pendingHE('aa003900-0000-4004-8001-000000000005', TRIP_0039_ID, 'dest_gate_in',    4, '2026-05-09T04:30:00Z'),
-  pendingHE('aa003900-0000-4005-8001-000000000006', TRIP_0039_ID, 'unloading',       5, '2026-05-09T04:30:00Z'),
+  pendingHE('aa003900-0000-4004-8001-000000000005', TRIP_0039_ID, 'dest_gate_in', 4, '2026-05-09T04:30:00Z'),
+  pendingHE('aa003900-0000-4005-8001-000000000006', TRIP_0039_ID, 'unloading', 5, '2026-05-09T04:30:00Z'),
 ]
 
 // ─── TRP-2026-0040 · dest_gate_in · Formby · FedEx JHB → DBN ────────────────
@@ -384,7 +384,7 @@ const HANDSHAKES_0041: HandshakeEvent[] = [
     completed_at: '2026-05-09T08:32:00Z', created_at: '2026-05-09T08:20:00Z', updated_at: '2026-05-09T08:32:00Z',
   },
   pendingHE('aa004100-0000-4004-8001-000000000005', TRIP_0041_ID, 'dest_gate_in', 4, '2026-05-09T05:30:00Z'),
-  pendingHE('aa004100-0000-4005-8001-000000000006', TRIP_0041_ID, 'unloading',    5, '2026-05-09T05:30:00Z'),
+  pendingHE('aa004100-0000-4005-8001-000000000006', TRIP_0041_ID, 'unloading', 5, '2026-05-09T05:30:00Z'),
 ]
 
 // ─── TRP-2026-0042 · in_transit · Formby · FedEx JHB → DBN ──────────────────
@@ -462,7 +462,7 @@ const HANDSHAKES_0042: HandshakeEvent[] = [
     completed_at: '2026-05-08T17:10:00Z', created_at: '2026-05-08T16:55:00Z', updated_at: '2026-05-08T17:10:00Z',
   },
   pendingHE('aa004200-0000-4004-8001-000000000005', TRIP_0042_ID, 'dest_gate_in', 4, '2026-05-08T14:00:00Z'),
-  pendingHE('aa004200-0000-4005-8001-000000000006', TRIP_0042_ID, 'unloading',    5, '2026-05-08T14:00:00Z'),
+  pendingHE('aa004200-0000-4005-8001-000000000006', TRIP_0042_ID, 'unloading', 5, '2026-05-08T14:00:00Z'),
 ]
 
 // ─── Trip objects ──────────────────────────────────────────────────────────────
