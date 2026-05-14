@@ -112,7 +112,7 @@ export default function TripNewPage() {
   const router = useRouter()
   const { notify } = useToast()
 
-  const drivers   = useDrivers()
+  const { drivers } = useDrivers()
   const { horses, trailers } = useVehicles()
   const precincts = usePrecincts()
 

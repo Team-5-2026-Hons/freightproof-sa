@@ -23,6 +23,18 @@ class VehicleCreate(VehicleBase):
     pass
 
 
+class VehicleCreateBody(BaseModel):
+    """Fields the dispatcher submits when registering a new vehicle.
+
+    organization_id is injected from the dispatcher's JWT — not accepted from the client.
+    """
+    model_config = ConfigDict(from_attributes=True)
+
+    registration: str
+    vehicle_type: VehicleType
+    pulsit_device_id: str
+
+
 class VehicleUpdate(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

@@ -1,6 +1,7 @@
-"""FastAPI router for driver list endpoint.
+"""FastAPI router for driver endpoints.
 
-GET /drivers — list active drivers for the dispatcher's operator org.
+GET  /drivers — list active drivers for the dispatcher's organisation.
+POST /drivers — register a new driver under the dispatcher's organisation.
 """
 
 from fastapi import APIRouter, Depends
@@ -8,8 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_dispatcher
 from app.db.session import get_db
-from app.orchestration.resource_service import list_drivers
-from app.schemas.people import DriverRead, UserRead
+from app.orchestration.resource_service import create_driver, list_drivers
+from app.schemas.people import DriverCreateBody, DriverRead, UserRead
 
 router = APIRouter(prefix="/drivers", tags=["drivers"])
 
@@ -24,3 +25,21 @@ async def list_drivers_endpoint(
     current_user: UserRead = Depends(get_current_dispatcher),
 ) -> list[DriverRead]:
     return await list_drivers(db=db, organization_id=current_user.organization_id)
+
+
+@router.post(
+    "",
+    response_model=DriverRead,
+    status_code=201,
+    summary="Register a new driver under the dispatcher's organisation",
+)
+async def create_driver_endpoint(
+    body: DriverCreateBody,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserRead = Depends(get_current_dispatcher),
+) -> DriverRead:
+    return await create_driver(
+        db=db,
+        organization_id=current_user.organization_id,
+        data=body,
+    )

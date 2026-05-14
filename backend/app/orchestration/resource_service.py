@@ -1,4 +1,4 @@
-"""Read-only service functions for list/detail endpoints.
+"""Service functions for resource endpoints (drivers, vehicles, trips, precincts).
 
 Layering: imports db/, schemas/, core/exceptions only.
 Never import from api/ or auth/.
@@ -8,10 +8,11 @@ import uuid
 from collections import defaultdict
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ResourceNotFoundError
-from app.db.models.enums import TripStatus
+from app.core.exceptions import DuplicateResourceError, ResourceNotFoundError
+from app.db.models.enums import IdvsStatus, TripStatus
 from app.db.models.handshakes import HandshakeEvent
 from app.db.models.organisations import Precinct
 from app.db.models.people import Driver
@@ -20,10 +21,10 @@ from app.db.models.trips import Trip, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.schemas.handshakes import HandshakeEventRead
 from app.schemas.organisations import PrecinctRead
-from app.schemas.people import DriverRead
+from app.schemas.people import DriverCreateBody, DriverRead
 from app.schemas.transit import TripExceptionRead
 from app.schemas.trips import TripDetailResponse, TripListItemResponse
-from app.schemas.vehicles import VehicleRead
+from app.schemas.vehicles import VehicleCreateBody, VehicleRead
 
 
 async def list_drivers(
@@ -38,6 +39,28 @@ async def list_drivers(
     return [DriverRead.model_validate(d) for d in result.scalars().all()]
 
 
+async def create_driver(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    data: DriverCreateBody,
+) -> DriverRead:
+    driver = Driver(
+        organization_id=organization_id,
+        full_name=data.full_name,
+        id_number=data.id_number,
+        phone_number=data.phone_number,
+        license_number=data.license_number,
+        idvs_status=IdvsStatus.PENDING,
+    )
+    db.add(driver)
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        raise DuplicateResourceError("Driver", "id_number", data.id_number) from exc
+    await db.refresh(driver)
+    return DriverRead.model_validate(driver)
+
+
 async def list_vehicles(
     db: AsyncSession,
     organization_id: uuid.UUID,
@@ -48,6 +71,26 @@ async def list_vehicles(
         .order_by(Vehicle.registration)
     )
     return [VehicleRead.model_validate(v) for v in result.scalars().all()]
+
+
+async def create_vehicle(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    data: VehicleCreateBody,
+) -> VehicleRead:
+    vehicle = Vehicle(
+        organization_id=organization_id,
+        registration=data.registration,
+        vehicle_type=data.vehicle_type,
+        pulsit_device_id=data.pulsit_device_id,
+    )
+    db.add(vehicle)
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        raise DuplicateResourceError("Vehicle", "registration", data.registration) from exc
+    await db.refresh(vehicle)
+    return VehicleRead.model_validate(vehicle)
 
 
 async def list_precincts(db: AsyncSession) -> list[PrecinctRead]:

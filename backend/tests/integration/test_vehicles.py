@@ -96,3 +96,69 @@ async def test_list_vehicles_excludes_inactive(db_session, seed_org):
             headers={"Authorization": "Bearer demo"},
         )
     assert resp.json() == []
+
+
+async def test_create_vehicle_returns_201(seed_org):
+    payload = {
+        "registration": "CA 555-NEW",
+        "vehicle_type": "horse",
+        "pulsit_device_id": "PLT-HORSE-NEW",
+    }
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        resp = await client.post(
+            "/api/v1/vehicles",
+            json=payload,
+            headers={"Authorization": "Bearer demo"},
+        )
+
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["registration"] == "CA 555-NEW"
+    assert body["vehicle_type"] == "horse"
+    assert body["pulsit_device_id"] == "PLT-HORSE-NEW"
+    assert "id" in body
+
+
+async def test_create_vehicle_invalid_type_returns_422(seed_org):
+    payload = {
+        "registration": "CA 999-BAD",
+        "vehicle_type": "submarine",
+        "pulsit_device_id": "PLT-SUB",
+    }
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        resp = await client.post(
+            "/api/v1/vehicles",
+            json=payload,
+            headers={"Authorization": "Bearer demo"},
+        )
+
+    assert resp.status_code == 422
+
+
+async def test_create_vehicle_appears_in_subsequent_list(seed_org):
+    payload = {
+        "registration": "WC 555-TEST",
+        "vehicle_type": "trailer",
+        "pulsit_device_id": "PLT-TRAILER-NEW",
+    }
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        create_resp = await client.post(
+            "/api/v1/vehicles",
+            json=payload,
+            headers={"Authorization": "Bearer demo"},
+        )
+        assert create_resp.status_code == 201
+
+        list_resp = await client.get(
+            "/api/v1/vehicles",
+            headers={"Authorization": "Bearer demo"},
+        )
+
+    regs = [v["registration"] for v in list_resp.json()]
+    assert "WC 555-TEST" in regs

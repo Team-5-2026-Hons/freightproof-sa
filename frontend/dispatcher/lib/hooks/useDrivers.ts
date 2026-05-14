@@ -1,17 +1,21 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { api } from '@/lib/api/client'
 import type { Driver } from '@shared/lib/types/driver'
 
-export function useDrivers(): Driver[] {
+export function useDrivers(): { drivers: Driver[]; refetch: () => void } {
   const [drivers, setDrivers] = useState<Driver[]>([])
 
-  useEffect(() => {
+  const refetch = useCallback(() => {
     api.get<Driver[]>('/api/v1/drivers')
       .then(setDrivers)
       .catch(console.error)
   }, [])
 
-  return drivers
+  useEffect(() => {
+    refetch()
+  }, [refetch])
+
+  return { drivers, refetch }
 }
