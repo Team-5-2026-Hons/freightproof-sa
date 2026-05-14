@@ -5,6 +5,9 @@ connection. The DB dependency is overridden to return a controlled User
 fixture, keeping the tests fast and hermetic while still exercising the
 full FastAPI request path (middleware, dependency injection, response
 serialisation).
+
+_get_jwks is monkeypatched to return a test EC public key, avoiding any
+network calls to Supabase's live JWKS endpoint.
 """
 
 import uuid
@@ -13,13 +16,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import pytest_asyncio
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 
 from app.auth.dependencies import get_current_dispatcher
 from app.db.models.people import User
 from app.db.session import get_db
 from app.main import app
-from tests.conftest import TEST_JWT_SECRET, auth_header, make_token
+from tests.conftest import auth_header, make_token, make_jwks
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -48,15 +51,15 @@ async def _mock_db() -> AsyncGenerator:
 
 @pytest_asyncio.fixture
 async def client_with_db(monkeypatch: pytest.MonkeyPatch) -> AsyncGenerator[AsyncClient, None]:
-    """Client with JWT secret patched and DB dependency overridden."""
+    """Client with JWKS patched and DB dependency overridden."""
     _settings = __import__("app.core.config", fromlist=["settings"]).settings
-    monkeypatch.setattr(_settings, "SUPABASE_JWT_SECRET", TEST_JWT_SECRET)
     # DEMO_MODE bypasses all JWT checks — disable it so these tests exercise real auth.
     monkeypatch.setattr(_settings, "DEMO_MODE", False)
+    # Patch JWKS so token verification uses the test EC key pair, not Supabase's live endpoint.
+    monkeypatch.setattr("app.auth.dependencies._get_jwks", make_jwks)
 
     app.dependency_overrides[get_db] = _mock_db
     try:
-        from httpx import ASGITransport
         async with AsyncClient(
             transport=ASGITransport(app=app),
             base_url="http://test",
