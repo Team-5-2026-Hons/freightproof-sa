@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Plus } from 'lucide-react'
 import { TopBar } from '@/components/ui/TopBar'
 import { DataTable } from '@/components/ui/DataTable'
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { Chip } from '@/components/ui/Chip'
 import { Modal } from '@/components/ui/Modal'
 import { useVehicles } from '@/lib/hooks/useVehicles'
+import { useToast } from '@/lib/hooks/useToast'
 import { api } from '@/lib/api/client'
 import type { Column } from '@/components/ui/DataTable'
 import type { Vehicle } from '@shared/lib/types/vehicle'
@@ -94,11 +95,18 @@ const EMPTY_FORM: VehicleFormState = {
 }
 
 export default function FleetVehiclesPage(): React.JSX.Element {
-  const { all: vehicles, refetch } = useVehicles()
+  const { all: vehicles, isLoading, error: fetchError, refetch } = useVehicles()
+  const { notify } = useToast()
   const [modalOpen, setModalOpen] = useState(false)
   const [form, setForm] = useState<VehicleFormState>(EMPTY_FORM)
   const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [formError, setFormError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (fetchError) {
+      notify({ kind: 'error', title: 'Failed to load vehicles', body: fetchError })
+    }
+  }, [fetchError, notify])
 
   function handleChange<K extends keyof VehicleFormState>(field: K, value: VehicleFormState[K]): void {
     setForm((prev) => ({ ...prev, [field]: value }))
@@ -107,12 +115,12 @@ export default function FleetVehiclesPage(): React.JSX.Element {
   function handleClose(): void {
     setModalOpen(false)
     setForm(EMPTY_FORM)
-    setError(null)
+    setFormError(null)
   }
 
   async function handleSubmit(): Promise<void> {
     setSubmitting(true)
-    setError(null)
+    setFormError(null)
     try {
       await api.post('/api/v1/vehicles', {
         registration: form.registration,
@@ -128,7 +136,7 @@ export default function FleetVehiclesPage(): React.JSX.Element {
       handleClose()
       refetch()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create vehicle')
+      setFormError(err instanceof Error ? err.message : 'Failed to create vehicle')
     } finally {
       setSubmitting(false)
     }
@@ -146,6 +154,9 @@ export default function FleetVehiclesPage(): React.JSX.Element {
         <DataTable<Vehicle>
           columns={columns}
           rows={vehicles}
+          isLoading={isLoading}
+          error={fetchError}
+          onRetry={refetch}
           empty={{ title: 'No vehicles', body: 'No vehicles registered yet.' }}
         />
       </div>
@@ -166,8 +177,8 @@ export default function FleetVehiclesPage(): React.JSX.Element {
           </>
         }
       >
-        {error && (
-          <p className="mb-4 text-sm text-red-500">{error}</p>
+        {formError && (
+          <p className="mb-4 text-sm text-red-500">{formError}</p>
         )}
         <div className="flex flex-col gap-4">
           <label className="flex flex-col gap-1">

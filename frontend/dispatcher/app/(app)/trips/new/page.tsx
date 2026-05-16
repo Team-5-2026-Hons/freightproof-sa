@@ -113,7 +113,7 @@ export default function TripNewPage() {
 
   const { drivers } = useDrivers()
   const { horses, trailers } = useVehicles()
-  const precincts = usePrecincts()
+  const { precincts } = usePrecincts()
 
   const [step, setStep]           = useState(1)  // 1–4
   const [loading, setLoading]     = useState(false)

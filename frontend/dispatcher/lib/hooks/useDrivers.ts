@@ -1,21 +1,22 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
 import { api } from '@/lib/api/client'
 import type { Driver } from '@shared/lib/types/driver'
+import { useAsyncData } from './useAsyncData'
 
-export function useDrivers(): { drivers: Driver[]; refetch: () => void } {
-  const [drivers, setDrivers] = useState<Driver[]>([])
+const EMPTY: Driver[] = []
 
-  const refetch = useCallback(() => {
-    api.get<Driver[]>('/api/v1/drivers')
-      .then(setDrivers)
-      .catch(console.error)
-  }, [])
+export interface UseDriversResult {
+  drivers: Driver[]
+  isLoading: boolean
+  error: string | null
+  refetch: () => void
+}
 
-  useEffect(() => {
-    refetch()
-  }, [refetch])
-
-  return { drivers, refetch }
+export function useDrivers(): UseDriversResult {
+  const { data, isLoading, error, refetch } = useAsyncData<Driver[]>(
+    () => api.get<Driver[]>('/api/v1/drivers'),
+    EMPTY,
+  )
+  return { drivers: data, isLoading, error, refetch }
 }

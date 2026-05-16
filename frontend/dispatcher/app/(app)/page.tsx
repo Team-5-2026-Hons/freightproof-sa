@@ -1,17 +1,21 @@
 'use client'
 
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { AlertCircle } from 'lucide-react'
 import { TopBar }         from '@/components/ui/TopBar'
 import { StatCard }       from '@/components/ui/StatCard'
 import { SecHead }        from '@/components/ui/SecHead'
 import { Button }         from '@/components/ui/Button'
+import { Spinner }        from '@/components/ui/Spinner'
 import { Ic }             from '@/components/ui/Ic'
 import { EmptyState }     from '@/components/ui/EmptyState'
 import { ChecklistRow }   from '@/components/domain/ChecklistRow'
 import type { ColWidths } from '@/components/domain/ChecklistRow'
 import { useTrips }       from '@/lib/hooks/useTrips'
 import { useExceptions }  from '@/lib/hooks/useExceptions'
+import { usePrecincts }   from '@/lib/hooks/usePrecincts'
+import { useToast }       from '@/lib/hooks/useToast'
 import { ROUTES }         from '@/lib/constants/routes'
 import { COPY }           from '@shared/lib/constants/copy'
 import { mockTrips }      from '@shared/lib/mocks/trips'
@@ -21,8 +25,6 @@ const ACTIVE_STATUSES: TripStatus[] = [
   'created', 'origin_gate_in', 'loading', 'origin_gate_out',
   'in_transit', 'dest_gate_in', 'unloading', 'exception_hold',
 ]
-
-const CLOSED_STATUS: TripStatus[] = ['closed']
 
 type ColId = keyof ColWidths
 
@@ -51,13 +53,31 @@ function formatDate(d: Date): string {
 
 export default function ActiveTripsPage() {
   const router = useRouter()
+  const { notify } = useToast()
   const [search, setSearch] = useState('')
   const [colWidths, setColWidths] = useState<ColWidths>(INITIAL_COL_WIDTHS)
   const resizeRef = useRef<{ id: ColId; startX: number; startW: number } | null>(null)
 
-  const allTrips       = useTrips({ status: ACTIVE_STATUSES })
-  const closedTrips    = useTrips({ status: CLOSED_STATUS })
+  // Single fetch for all trips — active and closed are derived client-side
+  const { trips: allFetchedTrips, isLoading: tripsLoading, error: tripsError, refetch: refetchTrips } = useTrips()
+  const { precincts } = usePrecincts()
   const openExceptions = useExceptions({ resolved: false })
+
+  useEffect(() => {
+    if (tripsError) {
+      notify({ kind: 'error', title: 'Failed to load trips', body: tripsError })
+    }
+  }, [tripsError, notify])
+
+  const allTrips = useMemo(
+    () => allFetchedTrips.filter(t => ACTIVE_STATUSES.includes(t.status)),
+    [allFetchedTrips],
+  )
+
+  const closedTrips = useMemo(
+    () => allFetchedTrips.filter(t => t.status === 'closed'),
+    [allFetchedTrips],
+  )
 
   const todayStr = new Date().toDateString()
   const completedCount = useMemo(
@@ -127,12 +147,12 @@ export default function ActiveTripsPage() {
         </Button>
       </TopBar>
 
-      {/* Stat strip */}
+      {/* Stat strip — shows placeholders while trips are loading */}
       <div className="flex gap-3 px-6 py-4 bg-surf-low shrink-0">
-        <StatCard value={String(allTrips.length)}        label="Active trips" />
-        <StatCard value={String(openExceptions.length)}  label="Exceptions today" warn={openExceptions.length > 0} />
-        <StatCard value={String(completedCount)}         label="Completed today" />
-        <StatCard value={`${onTimePercent}%`}            label="On-time rate (30d)" success={onTimePercent >= 90} warn={onTimePercent < 70} />
+        <StatCard value={tripsLoading ? '—' : String(allTrips.length)}       label="Active trips" />
+        <StatCard value={String(openExceptions.length)}                       label="Exceptions today" warn={openExceptions.length > 0} />
+        <StatCard value={tripsLoading ? '—' : String(completedCount)}         label="Completed today" />
+        <StatCard value={tripsLoading ? '—' : `${onTimePercent}%`}            label="On-time rate (30d)" success={!tripsLoading && onTimePercent >= 90} warn={!tripsLoading && onTimePercent < 70} />
       </div>
 
       {/* Search */}
@@ -176,62 +196,79 @@ export default function ActiveTripsPage() {
           </div>
         )}
 
-        {/* Table scroll area — x+y scroll together, min-w prevents column overlap */}
+        {/* Table scroll area */}
         <div className="flex-1 overflow-auto">
-          <div className="min-w-[700px]">
+          {tripsLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <Spinner size="lg" />
+            </div>
+          ) : tripsError ? (
+            <div className="flex flex-col items-center justify-center gap-4 py-16 px-6 text-center">
+              <AlertCircle className="w-10 h-10 text-error" />
+              <div className="flex flex-col gap-1">
+                <p className="text-sm font-bold text-surface-on">Failed to load trips</p>
+                <p className="text-xs text-surface-on-variant">{tripsError}</p>
+              </div>
+              <Button size="sm" variant="ghost" onClick={refetchTrips}>
+                Try again
+              </Button>
+            </div>
+          ) : (
+            <div className="min-w-[700px]">
 
-            {/* Sticky column header — drag the handle on the right edge of any cell to resize */}
-            <div className="sticky top-0 flex gap-3 px-6 py-[7px] bg-surf-low border-b border-outline-v/10 select-none">
-              {COL_HEADERS.map(col =>
-                col.id === 'progress' ? (
-                  <div key="progress" className="flex-1 text-[10px] font-[700] tracking-[0.1em] uppercase text-on-surf-v">
-                    {col.label}
+              {/* Sticky column header */}
+              <div className="sticky top-0 flex gap-3 px-6 py-[7px] bg-surf-low border-b border-outline-v/10 select-none">
+                {COL_HEADERS.map(col =>
+                  col.id === 'progress' ? (
+                    <div key="progress" className="flex-1 text-[10px] font-[700] tracking-[0.1em] uppercase text-on-surf-v">
+                      {col.label}
+                    </div>
+                  ) : (
+                    <div
+                      key={col.id}
+                      style={{ width: colWidths[col.id as ColId], flexShrink: 0 }}
+                      className="relative group text-[10px] font-[700] tracking-[0.1em] uppercase text-on-surf-v"
+                    >
+                      {col.label}
+                      {/* Resize handle — hover to reveal, drag to resize */}
+                      <div
+                        onMouseDown={e => startResize(col.id as ColId, e)}
+                        className="absolute right-0 top-0 h-full w-4 cursor-col-resize flex items-center justify-center"
+                      >
+                        <div className="w-[2px] h-3 rounded-full bg-outline-v/50 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                    </div>
+                  )
+                )}
+              </div>
+
+              {/* Rows */}
+              <div className="divide-y divide-outline-v/10">
+                {allTrips.length === 0 ? (
+                  <div className="p-6">
+                    <EmptyState
+                      icon={<Ic n="truck" s={32} className="text-on-surf-v" />}
+                      title={COPY.emptyState.activeTrips.title}
+                      body={COPY.emptyState.activeTrips.body}
+                    />
+                  </div>
+                ) : filteredTrips.length === 0 ? (
+                  <div className="p-6">
+                    <EmptyState
+                      icon={<Ic n="search" s={32} className="text-on-surf-v" />}
+                      title={COPY.emptyState.noResults.title}
+                      body={COPY.emptyState.noResults.body}
+                    />
                   </div>
                 ) : (
-                  <div
-                    key={col.id}
-                    style={{ width: colWidths[col.id as ColId], flexShrink: 0 }}
-                    className="relative group text-[10px] font-[700] tracking-[0.1em] uppercase text-on-surf-v"
-                  >
-                    {col.label}
-                    {/* Resize handle — hover to reveal, drag to resize */}
-                    <div
-                      onMouseDown={e => startResize(col.id as ColId, e)}
-                      className="absolute right-0 top-0 h-full w-4 cursor-col-resize flex items-center justify-center"
-                    >
-                      <div className="w-[2px] h-3 rounded-full bg-outline-v/50 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </div>
-                  </div>
-                )
-              )}
-            </div>
+                  filteredTrips.map(trip => (
+                    <ChecklistRow key={trip.id} trip={trip} colWidths={colWidths} precincts={precincts} />
+                  ))
+                )}
+              </div>
 
-            {/* Rows */}
-            <div className="divide-y divide-outline-v/10">
-              {allTrips.length === 0 ? (
-                <div className="p-6">
-                  <EmptyState
-                    icon={<Ic n="truck" s={32} className="text-on-surf-v" />}
-                    title={COPY.emptyState.activeTrips.title}
-                    body={COPY.emptyState.activeTrips.body}
-                  />
-                </div>
-              ) : filteredTrips.length === 0 ? (
-                <div className="p-6">
-                  <EmptyState
-                    icon={<Ic n="search" s={32} className="text-on-surf-v" />}
-                    title={COPY.emptyState.noResults.title}
-                    body={COPY.emptyState.noResults.body}
-                  />
-                </div>
-              ) : (
-                filteredTrips.map(trip => (
-                  <ChecklistRow key={trip.id} trip={trip} colWidths={colWidths} />
-                ))
-              )}
             </div>
-
-          </div>
+          )}
         </div>
       </div>
     </div>

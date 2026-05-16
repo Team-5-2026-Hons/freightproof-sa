@@ -1,34 +1,36 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { api } from '@/lib/api/client'
 import type { Vehicle } from '@shared/lib/types/vehicle'
+import { useAsyncData } from './useAsyncData'
 
-export function useVehicles(): {
+const EMPTY: Vehicle[] = []
+
+export interface UseVehiclesResult {
   horses: Vehicle[]
   trailers: Vehicle[]
   all: Vehicle[]
+  isLoading: boolean
+  error: string | null
   refetch: () => void
-} {
-  const [vehicles, setVehicles] = useState<Vehicle[]>([])
+}
 
-  const refetch = useCallback(() => {
-    api.get<Vehicle[]>('/api/v1/vehicles')
-      .then(setVehicles)
-      .catch(console.error)
-  }, [])
-
-  useEffect(() => {
-    refetch()
-  }, [refetch])
+export function useVehicles(): UseVehiclesResult {
+  const { data: vehicles, isLoading, error, refetch } = useAsyncData<Vehicle[]>(
+    () => api.get<Vehicle[]>('/api/v1/vehicles'),
+    EMPTY,
+  )
 
   return useMemo(
     () => ({
       horses: vehicles.filter((v) => v.vehicle_type === 'horse'),
       trailers: vehicles.filter((v) => v.vehicle_type === 'trailer'),
       all: vehicles,
+      isLoading,
+      error,
       refetch,
     }),
-    [vehicles, refetch],
+    [vehicles, isLoading, error, refetch],
   )
 }

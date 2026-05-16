@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { api } from '@/lib/api/client'
 import type { TripStatus, TripSummary } from '@shared/lib/types/trip'
+import { useAsyncData } from './useAsyncData'
 
 export interface TripsFilter {
   status?: TripStatus[]
@@ -10,21 +11,27 @@ export interface TripsFilter {
   hasExceptions?: boolean
 }
 
-export function useTrips(filter?: TripsFilter): TripSummary[] {
-  const [trips, setTrips] = useState<TripSummary[]>([])
+export interface UseTripsResult {
+  trips: TripSummary[]
+  isLoading: boolean
+  error: string | null
+  refetch: () => void
+}
 
-  useEffect(() => {
-    api.get<TripSummary[]>('/api/v1/trips')
-      .then(setTrips)
-      .catch(console.error)
-  }, [])
+const EMPTY: TripSummary[] = []
+
+export function useTrips(filter?: TripsFilter): UseTripsResult {
+  const { data: allTrips, isLoading, error, refetch } = useAsyncData<TripSummary[]>(
+    () => api.get<TripSummary[]>('/api/v1/trips'),
+    EMPTY,
+  )
 
   const statusKey = filter?.status?.join(',') ?? ''
   const driverId = filter?.driverId ?? ''
   const hasExceptions = filter?.hasExceptions
 
-  return useMemo(() => {
-    return trips.filter(t => {
+  const trips = useMemo(() => {
+    return allTrips.filter(t => {
       if (filter?.status?.length && !filter.status.includes(t.status)) return false
       if (filter?.driverId && t.driver.id !== filter.driverId) return false
       if (hasExceptions !== undefined) {
@@ -34,5 +41,7 @@ export function useTrips(filter?: TripsFilter): TripSummary[] {
       return true
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trips, statusKey, driverId, hasExceptions])
+  }, [allTrips, statusKey, driverId, hasExceptions])
+
+  return { trips, isLoading, error, refetch }
 }

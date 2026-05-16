@@ -1,17 +1,21 @@
 'use client'
 
-import { useEffect, useState } from 'react'
 import { api } from '@/lib/api/client'
 import type { Precinct } from '@shared/lib/types/precinct'
+import { useAsyncData } from './useAsyncData'
 
-export function usePrecincts(): Precinct[] {
-  const [precincts, setPrecincts] = useState<Precinct[]>([])
+const EMPTY: Precinct[] = []
 
-  useEffect(() => {
-    api.get<Precinct[]>('/api/v1/precincts')
-      .then(setPrecincts)
-      .catch(console.error)
-  }, [])
+export interface UsePrecincts {
+  precincts: Precinct[]
+  isLoading: boolean
+  error: string | null
+}
 
-  return precincts
+export function usePrecincts(): UsePrecincts {
+  const { data, isLoading, error } = useAsyncData<Precinct[]>(
+    () => api.get<Precinct[]>('/api/v1/precincts'),
+    EMPTY,
+  )
+  return { precincts: data, isLoading, error }
 }
