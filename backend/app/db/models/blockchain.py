@@ -10,7 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from app.db.models import Base
-from app.db.models.enums import BlockchainReceiptType, MerkleBatchType
+from app.db.models.enums import BlockchainReceiptType, MerkleBatchType, SubjectType
 
 
 class BlockchainReceipt(Base):
@@ -18,16 +18,21 @@ class BlockchainReceipt(Base):
 
     trip_id uses use_alter=True — see EvidenceArtifact for rationale.
     payload_json stores the hashed payload for audit; no PII (POPIA compliance).
+    subject_type/subject_id generalise receipts beyond trips to vehicles, drivers, events.
     """
 
     __tablename__ = "blockchain_receipts"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    trip_id: Mapped[uuid.UUID] = mapped_column(
+    # trip_id kept for backward compatibility with trip-scoped queries.
+    # Non-trip receipts leave it NULL and use subject_type/subject_id.
+    trip_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("trips.id", use_alter=True, name="fk_blockchain_receipts_trip_id"),
-        nullable=False,
+        nullable=True,
     )
+    subject_type: Mapped[SubjectType] = mapped_column(String(30), nullable=False)
+    subject_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     receipt_type: Mapped[BlockchainReceiptType] = mapped_column(String(30), nullable=False)
     data_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     hedera_topic_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)

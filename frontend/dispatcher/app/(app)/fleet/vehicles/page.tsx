@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react'
 import { Plus } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { TopBar } from '@/components/ui/TopBar'
 import { DataTable } from '@/components/ui/DataTable'
 import { Button } from '@/components/ui/Button'
@@ -95,6 +96,7 @@ const EMPTY_FORM: VehicleFormState = {
 }
 
 export default function FleetVehiclesPage(): React.JSX.Element {
+  const router = useRouter()
   const { all: vehicles, isLoading, error: fetchError, refetch } = useVehicles()
   const { notify } = useToast()
   const [modalOpen, setModalOpen] = useState(false)
@@ -157,6 +159,7 @@ export default function FleetVehiclesPage(): React.JSX.Element {
           isLoading={isLoading}
           error={fetchError}
           onRetry={refetch}
+          onRowClick={(v) => router.push(`/fleet/vehicles/${v.id}`)}
           empty={{ title: 'No vehicles', body: 'No vehicles registered yet.' }}
         />
       </div>

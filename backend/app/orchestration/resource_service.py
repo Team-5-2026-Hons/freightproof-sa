@@ -4,28 +4,36 @@ Layering: imports db/, schemas/, core/exceptions, integrations/ only.
 Never import from api/ or auth/.
 """
 
+import hashlib
 import uuid
 from collections import defaultdict
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.blockchain.anchor_service import anchor_subject
 from app.core.exceptions import DuplicateResourceError, ResourceNotFoundError
 from app.integrations.supabase_admin import create_driver_auth_user
-from app.db.models.enums import IdvsStatus, TripStatus
+from app.db.models.blockchain import BlockchainReceipt
+from app.db.models.enums import (
+    BlockchainReceiptType, DriverEventType, IdvsStatus, SubjectType, TripStatus, VehicleEventType,
+)
+from app.db.models.events import DriverEvent, VehicleEvent
 from app.db.models.handshakes import HandshakeEvent
 from app.db.models.organisations import Precinct
 from app.db.models.people import Driver
 from app.db.models.transit import TripException
 from app.db.models.trips import Trip, TripTrailer
 from app.db.models.vehicles import Vehicle
+from app.schemas.blockchain import BlockchainReceiptRead
+from app.schemas.events import DriverEventRead, VehicleEventRead
 from app.schemas.handshakes import HandshakeEventRead
 from app.schemas.organisations import PrecinctRead
-from app.schemas.people import DriverCreateBody, DriverRead
+from app.schemas.people import DriverCreateBody, DriverDetailResponse, DriverRead
 from app.schemas.transit import TripExceptionRead
 from app.schemas.trips import TripDetailResponse, TripListItemResponse
-from app.schemas.vehicles import VehicleCreateBody, VehicleRead
+from app.schemas.vehicles import VehicleCreateBody, VehicleDetailResponse, VehicleRead
 
 
 async def list_drivers(
@@ -44,6 +52,7 @@ async def create_driver(
     db: AsyncSession,
     organization_id: uuid.UUID,
     data: DriverCreateBody,
+    current_user_id: uuid.UUID,
 ) -> DriverRead:
     # Provision a Supabase Auth account first — drivers.id must reference
     # auth.users(id) per the FK constraint added in migration 0003.
@@ -58,6 +67,7 @@ async def create_driver(
         id_number=data.id_number,
         phone_number=data.phone_number,
         license_number=data.license_number,
+        license_expiry=data.license_expiry,
         idvs_status=IdvsStatus.PENDING,
     )
     db.add(driver)
@@ -65,6 +75,44 @@ async def create_driver(
         await db.flush()
     except IntegrityError as exc:
         raise DuplicateResourceError("Driver", "id_number", data.id_number) from exc
+
+    # POPIA: license_number is hashed before going on chain. Plaintext stays in DB only.
+    license_number_sha256 = hashlib.sha256(
+        driver.license_number.encode("utf-8")
+    ).hexdigest()
+
+    snapshot = {
+        "license_number_sha256": license_number_sha256,
+        "license_expiry": driver.license_expiry.isoformat() if driver.license_expiry else None,
+        "is_active": driver.is_active,
+    }
+    driver_event = DriverEvent(
+        id=uuid.uuid4(),
+        driver_id=driver.id,
+        event_type=DriverEventType.CREATED.value,
+        changed_fields=snapshot,
+        changed_by_user_id=current_user_id,
+    )
+    db.add(driver_event)
+    await db.flush()
+
+    canonical = {
+        "driver_event_id": str(driver_event.id),
+        "driver_id": str(driver.id),
+        "event_type": DriverEventType.CREATED.value,
+        "fields": snapshot,
+        "changed_by_user_id": str(current_user_id),
+        "timestamp": driver_event.created_at.isoformat(),
+    }
+    receipt = await anchor_subject(
+        db,
+        subject_type=SubjectType.DRIVER_EVENT,
+        subject_id=driver_event.id,
+        canonical_payload=canonical,
+        receipt_type=BlockchainReceiptType.DRIVER_CREATED,
+    )
+    driver_event.blockchain_receipt_id = receipt.id
+
     await db.refresh(driver)
     return DriverRead.model_validate(driver)
 
@@ -85,6 +133,7 @@ async def create_vehicle(
     db: AsyncSession,
     organization_id: uuid.UUID,
     data: VehicleCreateBody,
+    current_user_id: uuid.UUID,
 ) -> VehicleRead:
     vehicle = Vehicle(
         organization_id=organization_id,
@@ -105,6 +154,45 @@ async def create_vehicle(
         if "UniqueViolationError" not in str(exc):
             raise
         raise DuplicateResourceError("Vehicle", "registration", data.registration) from exc
+
+    snapshot = {
+        "registration": vehicle.registration,
+        "vehicle_type": vehicle.vehicle_type.value if hasattr(vehicle.vehicle_type, "value") else vehicle.vehicle_type,
+        "pulsit_device_id": vehicle.pulsit_device_id,
+        "make": vehicle.make,
+        "model": vehicle.model,
+        "year": vehicle.year,
+        "vin_number": vehicle.vin_number,
+        "licence_disc_expiry": vehicle.licence_disc_expiry.isoformat() if vehicle.licence_disc_expiry else None,
+        "is_active": vehicle.is_active,
+    }
+    vehicle_event = VehicleEvent(
+        id=uuid.uuid4(),
+        vehicle_id=vehicle.id,
+        event_type=VehicleEventType.CREATED.value,
+        changed_fields=snapshot,
+        changed_by_user_id=current_user_id,
+    )
+    db.add(vehicle_event)
+    await db.flush()
+
+    canonical = {
+        "vehicle_event_id": str(vehicle_event.id),
+        "vehicle_id": str(vehicle.id),
+        "event_type": VehicleEventType.CREATED.value,
+        "fields": snapshot,
+        "changed_by_user_id": str(current_user_id),
+        "timestamp": vehicle_event.created_at.isoformat(),
+    }
+    receipt = await anchor_subject(
+        db,
+        subject_type=SubjectType.VEHICLE_EVENT,
+        subject_id=vehicle_event.id,
+        canonical_payload=canonical,
+        receipt_type=BlockchainReceiptType.VEHICLE_CREATED,
+    )
+    vehicle_event.blockchain_receipt_id = receipt.id
+
     await db.refresh(vehicle)
     return VehicleRead.model_validate(vehicle)
 
@@ -229,6 +317,14 @@ async def get_trip_detail(
     )
     exceptions = exc_result.scalars().all()
 
+    receipts_result = await db.execute(
+        select(BlockchainReceipt).where(
+            BlockchainReceipt.subject_type == SubjectType.TRIP,
+            BlockchainReceipt.subject_id == trip_id,
+        )
+    )
+    receipts = receipts_result.scalars().all()
+
     return TripDetailResponse(
         id=trip.id,
         trip_reference=trip.trip_reference,
@@ -249,7 +345,118 @@ async def get_trip_detail(
         closed_at=trip.closed_at,
         handshakes=[HandshakeEventRead.model_validate(h) for h in handshakes],
         exceptions=[TripExceptionRead.model_validate(e) for e in exceptions],
-        blockchain_receipts=[],
+        blockchain_receipts=[BlockchainReceiptRead.model_validate(r) for r in receipts],
         created_at=trip.created_at,
         updated_at=trip.updated_at,
+    )
+
+
+async def get_vehicle_detail(
+    db: AsyncSession,
+    vehicle_id: uuid.UUID,
+    organization_id: uuid.UUID,
+) -> VehicleDetailResponse:
+    vehicle = (
+        await db.execute(
+            select(Vehicle).where(
+                Vehicle.id == vehicle_id, Vehicle.organization_id == organization_id
+            )
+        )
+    ).scalar_one_or_none()
+    if vehicle is None:
+        raise ResourceNotFoundError("Vehicle", str(vehicle_id))
+
+    events = (
+        await db.execute(
+            select(VehicleEvent)
+            .where(VehicleEvent.vehicle_id == vehicle_id)
+            .order_by(VehicleEvent.created_at.desc())
+        )
+    ).scalars().all()
+
+    event_ids = [e.id for e in events]
+    if event_ids:
+        receipts = (
+            await db.execute(
+                select(BlockchainReceipt).where(
+                    or_(
+                        (BlockchainReceipt.subject_type == SubjectType.VEHICLE)
+                        & (BlockchainReceipt.subject_id == vehicle_id),
+                        (BlockchainReceipt.subject_type == SubjectType.VEHICLE_EVENT)
+                        & (BlockchainReceipt.subject_id.in_(event_ids)),
+                    )
+                )
+            )
+        ).scalars().all()
+    else:
+        receipts = []
+
+    trips = (
+        await db.execute(
+            select(Trip).where(
+                or_(
+                    Trip.horse_id == vehicle_id,
+                    Trip.id.in_(
+                        select(TripTrailer.trip_id).where(TripTrailer.trailer_id == vehicle_id)
+                    ),
+                )
+            ).order_by(Trip.created_at.desc())
+        )
+    ).scalars().all()
+
+    return VehicleDetailResponse(
+        **VehicleRead.model_validate(vehicle).model_dump(),
+        events=[VehicleEventRead.model_validate(e) for e in events],
+        receipts=[BlockchainReceiptRead.model_validate(r) for r in receipts],
+        trip_ids=[t.id for t in trips],
+    )
+
+
+async def get_driver_detail(
+    db: AsyncSession,
+    driver_id: uuid.UUID,
+    organization_id: uuid.UUID,
+) -> DriverDetailResponse:
+    driver = (
+        await db.execute(
+            select(Driver).where(
+                Driver.id == driver_id, Driver.organization_id == organization_id
+            )
+        )
+    ).scalar_one_or_none()
+    if driver is None:
+        raise ResourceNotFoundError("Driver", str(driver_id))
+
+    events = (
+        await db.execute(
+            select(DriverEvent)
+            .where(DriverEvent.driver_id == driver_id)
+            .order_by(DriverEvent.created_at.desc())
+        )
+    ).scalars().all()
+
+    event_ids = [e.id for e in events]
+    if event_ids:
+        receipts = (
+            await db.execute(
+                select(BlockchainReceipt).where(
+                    (BlockchainReceipt.subject_type == SubjectType.DRIVER_EVENT)
+                    & (BlockchainReceipt.subject_id.in_(event_ids))
+                )
+            )
+        ).scalars().all()
+    else:
+        receipts = []
+
+    trips = (
+        await db.execute(
+            select(Trip).where(Trip.driver_id == driver_id).order_by(Trip.created_at.desc())
+        )
+    ).scalars().all()
+
+    return DriverDetailResponse(
+        **DriverRead.model_validate(driver).model_dump(),
+        events=[DriverEventRead.model_validate(e) for e in events],
+        receipts=[BlockchainReceiptRead.model_validate(r) for r in receipts],
+        trip_ids=[t.id for t in trips],
     )

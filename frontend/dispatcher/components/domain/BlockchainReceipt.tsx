@@ -30,7 +30,7 @@ export function BlockchainReceipt({ receipt }: BlockchainReceiptProps) {
         <div>
           <p className="text-xs font-bold uppercase tracking-wider text-surface-on-variant">SHA-256</p>
           <p className="font-mono tracking-[0.05em] font-bold text-xs text-surface-on break-all mt-0.5">
-            {receipt.sha256_hash}
+            {receipt.data_hash}
           </p>
         </div>
         <div className="flex items-center gap-4">
@@ -47,8 +47,8 @@ export function BlockchainReceipt({ receipt }: BlockchainReceiptProps) {
             </p>
           </div>
         </div>
-        {receipt.confirmed_at && (
-          <TimestampWithIcon timestamp={receipt.confirmed_at} className="text-xs" />
+        {receipt.hedera_consensus_timestamp && (
+          <TimestampWithIcon timestamp={receipt.hedera_consensus_timestamp} className="text-xs" />
         )}
       </div>
     </Card>

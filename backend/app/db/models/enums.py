@@ -87,6 +87,40 @@ class BlockchainReceiptType(str, enum.Enum):
     CHECKPOINT_BATCH    = "checkpoint_batch"
     EXCEPTION_BATCH     = "exception_batch"
     DRIVER_SUBSTITUTION = "driver_substitution"
+    VEHICLE_CREATED     = "vehicle_created"
+    VEHICLE_UPDATED     = "vehicle_updated"
+    DRIVER_CREATED      = "driver_created"
+    DRIVER_UPDATED      = "driver_updated"
+
+
+class SubjectType(str, enum.Enum):
+    TRIP            = "trip"
+    VEHICLE         = "vehicle"
+    DRIVER          = "driver"
+    VEHICLE_EVENT   = "vehicle_event"
+    DRIVER_EVENT    = "driver_event"
+
+
+class VehicleEventType(str, enum.Enum):
+    CREATED                = "created"
+    LICENSE_PLATE_CHANGED  = "license_plate_changed"
+    LICENSE_DISC_RENEWED   = "license_disc_renewed"
+    DEACTIVATED            = "deactivated"
+    COSMETIC_UPDATE        = "cosmetic_update"
+
+
+class DriverEventType(str, enum.Enum):
+    CREATED          = "created"
+    LICENSE_RENEWED  = "license_renewed"
+    DEACTIVATED      = "deactivated"
+    COSMETIC_UPDATE  = "cosmetic_update"
+
+
+class VerifyStatus(str, enum.Enum):
+    VERIFIED          = "verified"
+    DB_MISMATCH       = "db_mismatch"
+    HEDERA_MISMATCH   = "hedera_mismatch"
+    NO_RECEIPT        = "no_receipt"
 
 
 class MerkleBatchType(str, enum.Enum):

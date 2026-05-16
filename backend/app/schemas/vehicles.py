@@ -58,3 +58,23 @@ class VehicleUpdate(BaseModel):
 class VehicleRead(VehicleBase):
     id: UUID
     created_at: datetime
+
+
+# Imported here (not at the top of the module) to avoid a circular import:
+# vehicles.py → blockchain.py → enums.py is fine, but resource_service.py
+# imports both VehicleRead and BlockchainReceiptRead from their respective
+# schema modules, so the dependency graph stays acyclic.
+from app.schemas.blockchain import BlockchainReceiptRead  # noqa: E402
+from app.schemas.events import VehicleEventRead  # noqa: E402
+
+
+class VehicleDetailResponse(VehicleRead):
+    """Extended vehicle shape returned by GET /vehicles/{id}.
+
+    Includes the full event log, linked blockchain receipts, and the IDs of
+    trips that used this vehicle (as horse or trailer).
+    """
+
+    events: list[VehicleEventRead] = []
+    receipts: list[BlockchainReceiptRead] = []
+    trip_ids: list[UUID] = []

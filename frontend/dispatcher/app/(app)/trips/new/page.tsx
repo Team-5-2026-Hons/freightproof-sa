@@ -574,6 +574,11 @@ export default function TripNewPage() {
                 <Button full loading={loading} onClick={handleSubmit}>
                   Create Trip + Lock to Blockchain
                 </Button>
+                {loading && (
+                  <div className="mt-3 rounded-md bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+                    ⏳ Anchoring trip to Hedera testnet (approx. 4–6 seconds)…
+                  </div>
+                )}
               </div>
             </div>
           )}

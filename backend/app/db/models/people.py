@@ -2,9 +2,9 @@
 
 import uuid
 from typing import Optional
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -46,6 +46,7 @@ class Driver(Base):
     id_number: Mapped[str] = mapped_column(String(13), nullable=False)
     phone_number: Mapped[str] = mapped_column(String(20), nullable=False)
     license_number: Mapped[str] = mapped_column(String(50), nullable=False)
+    license_expiry: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     idvs_status: Mapped[IdvsStatus] = mapped_column(String(20), nullable=False, server_default="pending")
     idvs_last_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")

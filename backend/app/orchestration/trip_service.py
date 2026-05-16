@@ -10,13 +10,15 @@ from datetime import UTC, datetime
 from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.blockchain.anchor_service import anchor_subject
 from app.core.exceptions import ResourceNotFoundError, TripConflictError
-from app.crypto.hashing import compute_journey_lock_hash
-from app.db.models.enums import HandshakeStatus, HandshakeType, IdvsStatus, TripStatus, VehicleType
+from app.crypto.hashing import compute_journey_lock_hash, compute_trip_canonical_payload
+from app.db.models.enums import BlockchainReceiptType, HandshakeStatus, HandshakeType, IdvsStatus, SubjectType, TripStatus, VehicleType
 from app.db.models.handshakes import HandshakeEvent
 from app.db.models.people import Driver
 from app.db.models.trips import Trip, TripTrailer
 from app.db.models.vehicles import Vehicle
+from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.handshakes import HandshakeEventRead
 from app.schemas.people import DriverRead, UserRead
 from app.schemas.trips import TripCreateRequest, TripDetailResponse
@@ -165,15 +167,36 @@ async def create_trip(
         trailer_ids=payload.trailer_ids,
         origin_precinct_id=payload.origin_precinct_id,
         destination_precinct_id=payload.destination_precinct_id,
+        created_by_user_id=current_user.id,
+        created_at=trip.created_at,
+    )
+    canonical = compute_trip_canonical_payload(
+        trip_id=trip_id,
+        order_number=payload.order_number,
+        driver_id=payload.driver_id,
+        horse_id=payload.horse_id,
+        trailer_ids=payload.trailer_ids,
+        origin_precinct_id=payload.origin_precinct_id,
+        destination_precinct_id=payload.destination_precinct_id,
+        created_by_user_id=current_user.id,
+        created_at=trip.created_at,
     )
     trip.journey_lock_hash = lock_hash
+
+    # Anchor synchronously to Hedera HCS (blocks ~4-6s for demo).
+    receipt = await anchor_subject(
+        db,
+        subject_type=SubjectType.TRIP,
+        subject_id=trip_id,
+        canonical_payload=canonical,
+        receipt_type=BlockchainReceiptType.JOURNEY_LOCK,
+        trip_id=trip_id,
+    )
 
     await db.commit()
     await db.refresh(trip)
     await db.refresh(h0)
-
-    # NOTE: Hedera HCS anchor task would be queued here via Celery once that
-    # module is implemented. Skipped in this PR — see tasks/ module.
+    await db.refresh(receipt)
 
     # 7. Assemble and return the response (no ORM relationships — fetch separately).
     return TripDetailResponse(
@@ -196,7 +219,7 @@ async def create_trip(
         closed_at=trip.closed_at,
         handshakes=[HandshakeEventRead.model_validate(h0)],
         exceptions=[],
-        blockchain_receipts=[],
+        blockchain_receipts=[BlockchainReceiptRead.model_validate(receipt)],
         created_at=trip.created_at,
         updated_at=trip.updated_at,
     )

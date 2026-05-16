@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react'
 import { Plus } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { TopBar } from '@/components/ui/TopBar'
 import { DataTable } from '@/components/ui/DataTable'
 import { Button } from '@/components/ui/Button'
@@ -80,6 +81,7 @@ const EMPTY_FORM: DriverFormState = {
 }
 
 export default function FleetDriversPage(): React.JSX.Element {
+  const router = useRouter()
   const { drivers, isLoading, error: fetchError, refetch } = useDrivers()
   const { notify } = useToast()
   const [modalOpen, setModalOpen] = useState(false)
@@ -139,6 +141,7 @@ export default function FleetDriversPage(): React.JSX.Element {
           isLoading={isLoading}
           error={fetchError}
           onRetry={refetch}
+          onRowClick={(d) => router.push(`/fleet/drivers/${d.id}`)}
           empty={{ title: 'No drivers', body: 'No drivers registered yet.' }}
         />
       </div>

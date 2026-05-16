@@ -12,6 +12,8 @@ import { useTripDetail }  from '@/lib/hooks/useTripDetail'
 import { usePrecincts }   from '@/lib/hooks/usePrecincts'
 import { TRIP_STATUS_META } from '@shared/lib/constants/status-meta'
 import { HANDSHAKE_NAMES }  from '@shared/lib/constants/handshake-meta'
+import { BlockchainBadge } from '@shared/components/blockchain/BlockchainBadge'
+import { VerifyButton } from '@/components/blockchain/VerifyButton'
 import type { HandshakeNumber } from '@shared/lib/types/handshake'
 import type { Trip } from '@shared/lib/types/trip'
 
@@ -238,10 +240,12 @@ export default function TripDetailPage() {
         sub={`${trip.order_number} · ${originShort} → ${destShort} · ${trip.driver?.full_name ?? '—'} · ${trip.horse?.registration ?? '—'}`}
         left={backButton}
       >
+        <BlockchainBadge receipt={trip.blockchain_receipts?.[0] ?? null} />
         <Chip type={statusMeta.chipType} label={statusMeta.label} />
         <Button variant="secondary" size="sm" iconLeft={<Ic n="file" s={13} className="text-on-surf" />}>
           Add Note
         </Button>
+        <VerifyButton subjectType="trip" subjectId={trip.id as string} />
         <Button size="sm" iconLeft={<Ic n="dl" s={13} className="text-white" />}>
           Export Evidence PDF
         </Button>
@@ -262,7 +266,7 @@ export default function TripDetailPage() {
             timestamp={tripCreationHs?.completed_at ?? trip.created_at}
             chainText={
               trip.blockchain_receipts[0]
-                ? `Journey lock hash anchored · ${hederaRef(trip.blockchain_receipts[0].hedera_topic_id, trip.blockchain_receipts[0].hedera_sequence_number)}`
+                ? `Journey lock hash anchored · ${hederaRef(trip.blockchain_receipts[0].hedera_topic_id ?? '', trip.blockchain_receipts[0].hedera_sequence_number ?? 0)}`
                 : undefined
             }
           />
@@ -290,7 +294,7 @@ export default function TripDetailPage() {
               ? trip.blockchain_receipts.find(r => r.id === hs.blockchain_receipt_id)
               : undefined
             const chainText = linkedReceipt
-              ? `Receipt anchored · ${hederaRef(linkedReceipt.hedera_topic_id, linkedReceipt.hedera_sequence_number)}`
+              ? `Receipt anchored · ${hederaRef(linkedReceipt.hedera_topic_id ?? '', linkedReceipt.hedera_sequence_number ?? 0)}`
               : undefined
 
             const excItems = item.exceptions
@@ -332,6 +336,22 @@ export default function TripDetailPage() {
               </div>
             )
           })}
+          {trip.blockchain_receipts && trip.blockchain_receipts.length > 0 && (
+            <section className="mt-6 space-y-2">
+              <h2 className="text-sm font-semibold text-white/80">Blockchain Receipts</h2>
+              <ul className="space-y-2">
+                {trip.blockchain_receipts.map((r) => (
+                  <li key={r.id} className="rounded-lg border border-white/5 bg-white/[0.02] p-3 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-white/70">{r.receipt_type}</span>
+                      <BlockchainBadge receipt={r} />
+                    </div>
+                    <div className="mt-1 break-all font-mono text-white/40">hash: {r.data_hash}</div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
         </div>
 
         {/* ── RIGHT: Sidebar ── */}
