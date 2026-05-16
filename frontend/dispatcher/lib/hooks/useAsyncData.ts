@@ -14,9 +14,12 @@ export function useAsyncData<T>(fetchFn: () => Promise<T>, initial: T): AsyncSta
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Ref keeps fetchFn stable across renders without needing it as a dep of refetch
   const fetchRef = useRef(fetchFn)
-  fetchRef.current = fetchFn
+
+  // Keep ref in sync without re-triggering the fetch effect
+  useEffect(() => {
+    fetchRef.current = fetchFn
+  }, [fetchFn])
 
   const refetch = useCallback(() => {
     setIsLoading(true)
@@ -32,9 +35,21 @@ export function useAsyncData<T>(fetchFn: () => Promise<T>, initial: T): AsyncSta
       })
   }, [])
 
+  // Runs once on mount; uses ref so callers don't need to memoize fetchFn
   useEffect(() => {
-    refetch()
-  }, [refetch])
+    setIsLoading(true)
+    setError(null)
+    fetchRef.current()
+      .then((result) => {
+        setData(result)
+        setIsLoading(false)
+      })
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : 'An unexpected error occurred')
+        setIsLoading(false)
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return { data, isLoading, error, refetch }
 }

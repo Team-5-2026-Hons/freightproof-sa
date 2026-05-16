@@ -103,10 +103,6 @@ def test_decode_token_unknown_kid_raises_401(monkeypatch: pytest.MonkeyPatch) ->
 
 def test_decode_token_wrong_audience_raises_401() -> None:
     # Token signed with the correct key but carrying the wrong audience claim.
-    from cryptography.hazmat.primitives.asymmetric.ec import generate_private_key, SECP256R1
-    from cryptography.hazmat.backends import default_backend
-    from cryptography.hazmat.primitives import serialization
-
     key = generate_private_key(SECP256R1(), default_backend())
     private_pem = key.private_bytes(
         encoding=serialization.Encoding.PEM,
