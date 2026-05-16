@@ -1,9 +1,10 @@
 """SQLAlchemy model for vehicles (horses and trailers unified)."""
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
+from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -33,6 +34,12 @@ class Vehicle(Base):
     vehicle_type: Mapped[VehicleType] = mapped_column(String(20), nullable=False)
     pulsit_device_id: Mapped[str] = mapped_column(String(100), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    make: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    model: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    vin_number: Mapped[Optional[str]] = mapped_column(String(17), nullable=True, unique=True)
+    licence_disc_expiry: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    gross_vehicle_mass_kg: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False

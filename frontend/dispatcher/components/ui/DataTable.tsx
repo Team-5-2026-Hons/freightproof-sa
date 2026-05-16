@@ -1,6 +1,8 @@
-import { ChevronUp, ChevronDown, PackageOpen } from 'lucide-react'
+import { ChevronUp, ChevronDown, PackageOpen, AlertCircle } from 'lucide-react'
 import { cn } from '@shared/lib/utils/cn'
 import { EmptyState } from './EmptyState'
+import { Spinner } from './Spinner'
+import { Button } from './Button'
 
 export interface Column<T extends object> {
   key: keyof T
@@ -16,11 +18,39 @@ interface DataTableProps<T extends object> {
   onSort?: (key: keyof T) => void
   empty?: { title: string; body: string }
   className?: string
+  isLoading?: boolean
+  error?: string | null
+  onRetry?: () => void
 }
 
 export function DataTable<T extends object>({
-  columns, rows, sort, onSort, empty, className,
+  columns, rows, sort, onSort, empty, className, isLoading, error, onRetry,
 }: DataTableProps<T>) {
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Spinner size="lg" />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <EmptyState
+        icon={<AlertCircle />}
+        title="Failed to load"
+        body={error}
+        cta={
+          onRetry && (
+            <Button size="sm" variant="ghost" onClick={onRetry}>
+              Try again
+            </Button>
+          )
+        }
+      />
+    )
+  }
+
   if (rows.length === 0) {
     return (
       <EmptyState

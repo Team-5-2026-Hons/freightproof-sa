@@ -61,7 +61,7 @@ async def client_with_db(monkeypatch: pytest.MonkeyPatch) -> AsyncGenerator[Asyn
     app.dependency_overrides[get_db] = _mock_db
     try:
         async with AsyncClient(
-            transport=ASGITransport(app=app),
+            transport=ASGITransport(app=app),  # type: ignore[arg-type]
             base_url="http://test",
         ) as ac:
             yield ac

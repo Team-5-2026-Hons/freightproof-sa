@@ -13,5 +13,11 @@ export interface Vehicle {
   vehicle_type: VehicleType
   pulsit_device_id: string
   is_active: boolean
+  make: string | null
+  model: string | null
+  year: number | null
+  vin_number: string | null
+  licence_disc_expiry: string | null
+  gross_vehicle_mass_kg: number | null
   created_at: string
 }

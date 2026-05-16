@@ -23,3 +23,13 @@ class ResourceNotFoundError(Exception):
         super().__init__(f"{resource} with id='{resource_id}' not found or inactive.")
         self.resource = resource
         self.resource_id = resource_id
+
+
+class DuplicateResourceError(Exception):
+    """Raised when a unique constraint would be violated (e.g. duplicate id_number)."""
+
+    def __init__(self, resource: str, field: str, value: str) -> None:
+        super().__init__(f"{resource} with {field}='{value}' already exists.")
+        self.resource = resource
+        self.field = field
+        self.value = value

@@ -7,17 +7,21 @@ import { Ic }       from '@/components/ui/Ic'
 import { Button }   from '@/components/ui/Button'
 import { StepRail } from '@/components/ui/StepRail'
 import { useToast }     from '@/lib/hooks/useToast'
+import { useAuth }      from '@/lib/hooks/useAuth'
 import { ROUTES }       from '@/lib/constants/routes'
 import { useDrivers }   from '@/lib/hooks/useDrivers'
 import { useVehicles }  from '@/lib/hooks/useVehicles'
 import { usePrecincts } from '@/lib/hooks/usePrecincts'
 import { COPY } from '@shared/lib/constants/copy'
 import { cn } from '@shared/lib/utils/cn'
+import { api, ApiError } from '@/lib/api/client'
+import type { Trip } from '@shared/lib/types/trip'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const STEP_NAMES = ['Order & Cargo', 'Crew & Vehicle', 'Route & Schedule', 'Review']
 const HANDLING_OPTIONS = ['Hazmat', 'Fragile', 'Temperature-controlled', 'Oversized'] as const
+
 
 // Underline input style — Material 3 filled field look
 const inp =
@@ -105,10 +109,11 @@ function fmtDateTime(iso: string): string {
 export default function TripNewPage() {
   const router = useRouter()
   const { notify } = useToast()
+  const { user } = useAuth()
 
-  const drivers   = useDrivers()
+  const { drivers } = useDrivers()
   const { horses, trailers } = useVehicles()
-  const precincts = usePrecincts()
+  const { precincts } = usePrecincts()
 
   const [step, setStep]           = useState(1)  // 1–4
   const [loading, setLoading]     = useState(false)
@@ -168,9 +173,35 @@ export default function TripNewPage() {
 
   const handleSubmit = async () => {
     setLoading(true)
-    await new Promise(r => setTimeout(r, 800))
-    notify({ kind: 'success', title: COPY.toast.tripCreated })
-    router.push(ROUTES.home)
+    try {
+      await api.post<Trip>('/api/v1/trips', {
+        order_number: orderNumber,
+        client_organization_id: user?.organization_id,
+        driver_id: driverId,
+        horse_id: horseId,
+        trailer_ids: trailerIds,
+        origin_precinct_id: originId,
+        destination_precinct_id: destId,
+        planned_departure_at: plannedDeparture
+          ? new Date(plannedDeparture).toISOString()
+          : null,
+        planned_arrival_at: expectedArrival
+          ? new Date(expectedArrival).toISOString()
+          : null,
+      })
+      notify({ kind: 'success', title: COPY.toast.tripCreated })
+      router.push(ROUTES.home)
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        notify({ kind: 'error', title: 'Order number already active for this operator' })
+      } else if (err instanceof ApiError && err.status === 404) {
+        notify({ kind: 'error', title: 'Driver or vehicle not found — check fleet data' })
+      } else {
+        notify({ kind: 'error', title: 'Failed to create trip. Please try again.' })
+      }
+    } finally {
+      setLoading(false)
+    }
   }
 
   // Derived display values
@@ -314,7 +345,7 @@ export default function TripNewPage() {
               </div>
 
               <div>
-                <Lbl>Trailers (optional)</Lbl>
+                <Lbl>Trailers * (at least one required)</Lbl>
                 {trailers.length === 0 ? (
                   <p className="text-[13px] text-on-surf-v py-2">No trailers registered.</p>
                 ) : (

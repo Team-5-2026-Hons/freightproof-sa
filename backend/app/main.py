@@ -5,7 +5,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
+from app.api.v1.endpoints.drivers import router as drivers_router
+from app.api.v1.endpoints.precincts import router as precincts_router
 from app.api.v1.endpoints.trips import router as trips_router
+from app.api.v1.endpoints.vehicles import router as vehicles_router
 from app.auth.router import router as auth_router
 
 app = FastAPI(
@@ -29,6 +32,9 @@ app.add_middleware(
 
 app.include_router(trips_router, prefix="/api/v1")
 app.include_router(auth_router, prefix="/api/v1")
+app.include_router(drivers_router, prefix="/api/v1")
+app.include_router(vehicles_router, prefix="/api/v1")
+app.include_router(precincts_router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["system"])

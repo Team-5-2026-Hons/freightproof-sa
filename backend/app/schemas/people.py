@@ -58,6 +58,27 @@ class DriverCreate(DriverBase):
         return v
 
 
+class DriverCreateBody(BaseModel):
+    """Fields the dispatcher submits when registering a new driver.
+
+    organization_id is injected from the dispatcher's JWT — not accepted from the client.
+    id_number validation mirrors DriverCreate to keep rules in one place.
+    """
+    model_config = ConfigDict(from_attributes=True)
+
+    full_name: str
+    id_number: str
+    phone_number: str
+    license_number: str
+
+    @field_validator("id_number")
+    @classmethod
+    def validate_id_number(cls, v: str) -> str:
+        if not v.isdigit() or len(v) != 13:
+            raise ValueError("id_number must be exactly 13 digits (SA ID format)")
+        return v
+
+
 class DriverUpdate(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

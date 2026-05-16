@@ -294,3 +294,93 @@ async def test_create_trip_403_without_demo_mode(seed_data, db_session, monkeypa
             json=_make_payload(seed_data),
         )
     assert resp.status_code == 403
+
+
+async def test_list_trips_empty_returns_200(seed_data, db_session):
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        resp = await client.get(
+            "/api/v1/trips",
+            headers={"Authorization": "Bearer demo"},
+        )
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+async def test_list_trips_returns_created_trip(seed_data, db_session):
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        await client.post(
+            "/api/v1/trips",
+            json=_make_payload(seed_data),
+            headers={"Authorization": "Bearer demo"},
+        )
+        resp = await client.get(
+            "/api/v1/trips",
+            headers={"Authorization": "Bearer demo"},
+        )
+    body = resp.json()
+    assert resp.status_code == 200
+    assert len(body) == 1
+    assert body[0]["order_number"] == "ORD-TEST-001"
+    assert body[0]["status"] == "created"
+    assert body[0]["open_exception_count"] == 0
+    assert "driver" in body[0]
+    assert "horse" in body[0]
+    assert "trailers" in body[0]
+
+
+async def test_list_trips_status_filter(seed_data, db_session):
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        await client.post(
+            "/api/v1/trips",
+            json=_make_payload(seed_data),
+            headers={"Authorization": "Bearer demo"},
+        )
+        resp_created = await client.get(
+            "/api/v1/trips?status=created",
+            headers={"Authorization": "Bearer demo"},
+        )
+        resp_in_transit = await client.get(
+            "/api/v1/trips?status=in_transit",
+            headers={"Authorization": "Bearer demo"},
+        )
+    assert len(resp_created.json()) == 1
+    assert resp_in_transit.json() == []
+
+
+async def test_get_trip_detail_returns_200(seed_data, db_session):
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        create_resp = await client.post(
+            "/api/v1/trips",
+            json=_make_payload(seed_data),
+            headers={"Authorization": "Bearer demo"},
+        )
+        trip_id = create_resp.json()["id"]
+        resp = await client.get(
+            f"/api/v1/trips/{trip_id}",
+            headers={"Authorization": "Bearer demo"},
+        )
+    body = resp.json()
+    assert resp.status_code == 200
+    assert body["id"] == trip_id
+    assert len(body["handshakes"]) == 1
+    assert body["handshakes"][0]["handshake_type"] == "trip_creation"
+
+
+async def test_get_trip_detail_not_found_returns_404(seed_data, db_session):
+    import uuid
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        resp = await client.get(
+            f"/api/v1/trips/{uuid.uuid4()}",
+            headers={"Authorization": "Bearer demo"},
+        )
+    assert resp.status_code == 404

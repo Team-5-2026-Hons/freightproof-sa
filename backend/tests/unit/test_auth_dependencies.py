@@ -103,10 +103,6 @@ def test_decode_token_unknown_kid_raises_401(monkeypatch: pytest.MonkeyPatch) ->
 
 def test_decode_token_wrong_audience_raises_401() -> None:
     # Token signed with the correct key but carrying the wrong audience claim.
-    from cryptography.hazmat.primitives.asymmetric.ec import generate_private_key, SECP256R1
-    from cryptography.hazmat.backends import default_backend
-    from cryptography.hazmat.primitives import serialization
-
     key = generate_private_key(SECP256R1(), default_backend())
     private_pem = key.private_bytes(
         encoding=serialization.Encoding.PEM,
@@ -114,7 +110,7 @@ def test_decode_token_wrong_audience_raises_401() -> None:
         encryption_algorithm=serialization.NoEncryption(),
     )
 
-    payload = {
+    payload: dict[str, object] = {
         "aud": "service_role",
         "sub": str(uuid.uuid4()),
         "exp": int((datetime.now(UTC) + timedelta(hours=1)).timestamp()),
@@ -162,7 +158,7 @@ def test_require_dispatcher_role_raises_403_when_metadata_missing() -> None:
 
 
 def test_require_dispatcher_role_raises_403_when_role_missing() -> None:
-    payload = {"app_metadata": {}}
+    payload: dict[str, object] = {"app_metadata": {}}
 
     with pytest.raises(HTTPException) as exc_info:
         _require_dispatcher_role(payload)
