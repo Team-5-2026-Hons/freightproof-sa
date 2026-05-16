@@ -158,7 +158,7 @@ def test_require_dispatcher_role_raises_403_when_metadata_missing() -> None:
 
 
 def test_require_dispatcher_role_raises_403_when_role_missing() -> None:
-    payload = {"app_metadata": {}}
+    payload: dict[str, object] = {"app_metadata": {}}
 
     with pytest.raises(HTTPException) as exc_info:
         _require_dispatcher_role(payload)

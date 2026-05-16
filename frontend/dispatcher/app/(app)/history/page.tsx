@@ -8,6 +8,7 @@ import { EmptyState }   from '@/components/ui/EmptyState'
 import { ChecklistRow } from '@/components/domain/ChecklistRow'
 import type { ColWidths } from '@/components/domain/ChecklistRow'
 import { useTrips }     from '@/lib/hooks/useTrips'
+import { usePrecincts } from '@/lib/hooks/usePrecincts'
 import { COPY }         from '@shared/lib/constants/copy'
 import type { TripStatus } from '@shared/lib/types/trip'
 
@@ -39,7 +40,8 @@ export default function HistoryPage() {
   const [colWidths, setColWidths] = useState<ColWidths>(INITIAL_COL_WIDTHS)
   const resizeRef = useRef<{ id: ColId; startX: number; startW: number } | null>(null)
 
-  const allTrips = useTrips({ status: CLOSED_STATUS })
+  const { trips: allTrips } = useTrips({ status: CLOSED_STATUS })
+  const { precincts } = usePrecincts()
 
   const filteredTrips = useMemo(() => {
     if (!search.trim()) return allTrips
@@ -143,7 +145,7 @@ export default function HistoryPage() {
                 </div>
               ) : (
                 filteredTrips.map(trip => (
-                  <ChecklistRow key={trip.id} trip={trip} colWidths={colWidths} />
+                  <ChecklistRow key={trip.id} trip={trip} colWidths={colWidths} precincts={precincts} />
                 ))
               )}
             </div>
