@@ -30,6 +30,29 @@ const columns: Column<Vehicle>[] = [
     ),
   },
   {
+    key: 'make',
+    label: 'Make / Model',
+    render: (val, row) => (
+      <span className="text-sm text-surface-on">
+        {[val, row.model].filter(Boolean).join(' ') || '—'}
+      </span>
+    ),
+  },
+  {
+    key: 'year',
+    label: 'Year',
+    render: (val) => (
+      <span className="text-sm text-surface-on-variant">{val ?? '—'}</span>
+    ),
+  },
+  {
+    key: 'vin_number',
+    label: 'VIN',
+    render: (val) => (
+      <span className="font-mono text-xs tracking-wider text-surface-on-variant">{val ?? '—'}</span>
+    ),
+  },
+  {
     key: 'pulsit_device_id',
     label: 'Pulsit Device',
     render: (val) => (
@@ -50,12 +73,24 @@ interface VehicleFormState {
   registration: string
   vehicle_type: 'horse' | 'trailer'
   pulsit_device_id: string
+  make: string
+  model: string
+  year: string
+  vin_number: string
+  licence_disc_expiry: string
+  gross_vehicle_mass_kg: string
 }
 
 const EMPTY_FORM: VehicleFormState = {
   registration: '',
   vehicle_type: 'horse',
   pulsit_device_id: '',
+  make: '',
+  model: '',
+  year: '',
+  vin_number: '',
+  licence_disc_expiry: '',
+  gross_vehicle_mass_kg: '',
 }
 
 export default function FleetVehiclesPage(): React.JSX.Element {
@@ -79,7 +114,17 @@ export default function FleetVehiclesPage(): React.JSX.Element {
     setSubmitting(true)
     setError(null)
     try {
-      await api.post('/api/v1/vehicles', form)
+      await api.post('/api/v1/vehicles', {
+        registration: form.registration,
+        vehicle_type: form.vehicle_type,
+        pulsit_device_id: form.pulsit_device_id,
+        make: form.make || null,
+        model: form.model || null,
+        year: form.year ? parseInt(form.year, 10) : null,
+        vin_number: form.vin_number || null,
+        licence_disc_expiry: form.licence_disc_expiry || null,
+        gross_vehicle_mass_kg: form.gross_vehicle_mass_kg ? parseInt(form.gross_vehicle_mass_kg, 10) : null,
+      })
       handleClose()
       refetch()
     } catch (err) {
@@ -126,7 +171,7 @@ export default function FleetVehiclesPage(): React.JSX.Element {
         )}
         <div className="flex flex-col gap-4">
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-surface-on-variant">Registration</span>
+            <span className="text-xs font-medium text-surface-on-variant">Registration *</span>
             <input
               className="border border-outline-variant rounded-lg px-3 py-2 text-sm bg-surface-container-lowest text-surface-on focus:outline-none focus:ring-2 focus:ring-primary font-mono tracking-widest uppercase"
               value={form.registration}
@@ -135,7 +180,7 @@ export default function FleetVehiclesPage(): React.JSX.Element {
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-surface-on-variant">Type</span>
+            <span className="text-xs font-medium text-surface-on-variant">Type *</span>
             <select
               className="border border-outline-variant rounded-lg px-3 py-2 text-sm bg-surface-container-lowest text-surface-on focus:outline-none focus:ring-2 focus:ring-primary"
               value={form.vehicle_type}
@@ -145,8 +190,71 @@ export default function FleetVehiclesPage(): React.JSX.Element {
               <option value="trailer">Trailer</option>
             </select>
           </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-surface-on-variant">Make</span>
+              <input
+                className="border border-outline-variant rounded-lg px-3 py-2 text-sm bg-surface-container-lowest text-surface-on focus:outline-none focus:ring-2 focus:ring-primary"
+                value={form.make}
+                onChange={(e) => handleChange('make', e.target.value)}
+                placeholder="Volvo"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-surface-on-variant">Model</span>
+              <input
+                className="border border-outline-variant rounded-lg px-3 py-2 text-sm bg-surface-container-lowest text-surface-on focus:outline-none focus:ring-2 focus:ring-primary"
+                value={form.model}
+                onChange={(e) => handleChange('model', e.target.value)}
+                placeholder="FH16"
+              />
+            </label>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-surface-on-variant">Year</span>
+              <input
+                type="number"
+                className="border border-outline-variant rounded-lg px-3 py-2 text-sm bg-surface-container-lowest text-surface-on focus:outline-none focus:ring-2 focus:ring-primary"
+                value={form.year}
+                onChange={(e) => handleChange('year', e.target.value)}
+                placeholder="2021"
+                min={1990}
+                max={new Date().getFullYear() + 1}
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-surface-on-variant">GVM (kg)</span>
+              <input
+                type="number"
+                className="border border-outline-variant rounded-lg px-3 py-2 text-sm bg-surface-container-lowest text-surface-on focus:outline-none focus:ring-2 focus:ring-primary"
+                value={form.gross_vehicle_mass_kg}
+                onChange={(e) => handleChange('gross_vehicle_mass_kg', e.target.value)}
+                placeholder="56000"
+              />
+            </label>
+          </div>
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-surface-on-variant">Pulsit Device ID</span>
+            <span className="text-xs font-medium text-surface-on-variant">VIN Number</span>
+            <input
+              className="border border-outline-variant rounded-lg px-3 py-2 text-sm bg-surface-container-lowest text-surface-on focus:outline-none focus:ring-2 focus:ring-primary font-mono tracking-widest uppercase"
+              value={form.vin_number}
+              onChange={(e) => handleChange('vin_number', e.target.value)}
+              placeholder="WVW ZZZ 1K ZBW 012345"
+              maxLength={17}
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-surface-on-variant">Licence Disc Expiry</span>
+            <input
+              type="date"
+              className="border border-outline-variant rounded-lg px-3 py-2 text-sm bg-surface-container-lowest text-surface-on focus:outline-none focus:ring-2 focus:ring-primary"
+              value={form.licence_disc_expiry}
+              onChange={(e) => handleChange('licence_disc_expiry', e.target.value)}
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-surface-on-variant">Pulsit Device ID *</span>
             <input
               className="border border-outline-variant rounded-lg px-3 py-2 text-sm bg-surface-container-lowest text-surface-on focus:outline-none focus:ring-2 focus:ring-primary font-mono"
               value={form.pulsit_device_id}

@@ -95,11 +95,18 @@ export default function FleetDriversPage(): React.JSX.Element {
     setError(null)
   }
 
+  function normalisePhone(phone: string): string {
+    const digits = phone.replace(/\s+/g, '')
+    // Convert local SA format (0XXXXXXXXX) to international (+27XXXXXXXXX)
+    if (/^0\d{9}$/.test(digits)) return `+27${digits.slice(1)}`
+    return digits
+  }
+
   async function handleSubmit(): Promise<void> {
     setSubmitting(true)
     setError(null)
     try {
-      await api.post('/api/v1/drivers', form)
+      await api.post('/api/v1/drivers', { ...form, phone_number: normalisePhone(form.phone_number) })
       handleClose()
       refetch()
     } catch (err) {
@@ -170,7 +177,7 @@ export default function FleetDriversPage(): React.JSX.Element {
               className="border border-outline-variant rounded-lg px-3 py-2 text-sm bg-surface-container-lowest text-surface-on focus:outline-none focus:ring-2 focus:ring-primary"
               value={form.phone_number}
               onChange={(e) => handleChange('phone_number', e.target.value)}
-              placeholder="+27821234567"
+              placeholder="0821234567 or +27821234567"
             />
           </label>
           <label className="flex flex-col gap-1">

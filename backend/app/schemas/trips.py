@@ -236,7 +236,7 @@ class TripCreateRequest(BaseModel):
     client_organization_id: UUID
     driver_id: UUID
     horse_id: UUID
-    trailer_ids: list[UUID]
+    trailer_ids: list[UUID] = []
     origin_precinct_id: UUID
     destination_precinct_id: UUID
     template_id: Optional[UUID] = None
@@ -245,8 +245,6 @@ class TripCreateRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_request(self) -> "TripCreateRequest":
-        if not self.trailer_ids:
-            raise ValueError("At least one trailer is required")
         if self.origin_precinct_id == self.destination_precinct_id:
             raise ValueError("origin and destination precincts must differ")
         if self.planned_departure_at and self.planned_arrival_at:

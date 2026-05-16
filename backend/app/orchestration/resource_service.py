@@ -1,6 +1,6 @@
 """Service functions for resource endpoints (drivers, vehicles, trips, precincts).
 
-Layering: imports db/, schemas/, core/exceptions only.
+Layering: imports db/, schemas/, core/exceptions, integrations/ only.
 Never import from api/ or auth/.
 """
 
@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import DuplicateResourceError, ResourceNotFoundError
+from app.integrations.supabase_admin import create_driver_auth_user
 from app.db.models.enums import IdvsStatus, TripStatus
 from app.db.models.handshakes import HandshakeEvent
 from app.db.models.organisations import Precinct
@@ -44,7 +45,14 @@ async def create_driver(
     organization_id: uuid.UUID,
     data: DriverCreateBody,
 ) -> DriverRead:
+    # Provision a Supabase Auth account first — drivers.id must reference
+    # auth.users(id) per the FK constraint added in migration 0003.
+    driver_id = await create_driver_auth_user(
+        phone=data.phone_number,
+        full_name=data.full_name,
+    )
     driver = Driver(
+        id=driver_id,
         organization_id=organization_id,
         full_name=data.full_name,
         id_number=data.id_number,
@@ -83,11 +91,19 @@ async def create_vehicle(
         registration=data.registration,
         vehicle_type=data.vehicle_type,
         pulsit_device_id=data.pulsit_device_id,
+        make=data.make,
+        model=data.model,
+        year=data.year,
+        vin_number=data.vin_number,
+        licence_disc_expiry=data.licence_disc_expiry,
+        gross_vehicle_mass_kg=data.gross_vehicle_mass_kg,
     )
     db.add(vehicle)
     try:
         await db.flush()
     except IntegrityError as exc:
+        if "UniqueViolationError" not in str(exc):
+            raise
         raise DuplicateResourceError("Vehicle", "registration", data.registration) from exc
     await db.refresh(vehicle)
     return VehicleRead.model_validate(vehicle)

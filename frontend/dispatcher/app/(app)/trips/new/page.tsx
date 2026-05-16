@@ -7,6 +7,7 @@ import { Ic }       from '@/components/ui/Ic'
 import { Button }   from '@/components/ui/Button'
 import { StepRail } from '@/components/ui/StepRail'
 import { useToast }     from '@/lib/hooks/useToast'
+import { useAuth }      from '@/lib/hooks/useAuth'
 import { ROUTES }       from '@/lib/constants/routes'
 import { useDrivers }   from '@/lib/hooks/useDrivers'
 import { useVehicles }  from '@/lib/hooks/useVehicles'
@@ -21,9 +22,6 @@ import type { Trip } from '@shared/lib/types/trip'
 const STEP_NAMES = ['Order & Cargo', 'Crew & Vehicle', 'Route & Schedule', 'Review']
 const HANDLING_OPTIONS = ['Hazmat', 'Fragile', 'Temperature-controlled', 'Oversized'] as const
 
-// Matches the client org ID inserted by backend/scripts/seed_demo.py.
-// Replace with a real org selector once GET /api/v1/organizations is built.
-const DEMO_CLIENT_ORG_ID = '00000000-0000-0000-0000-000000000003'
 
 // Underline input style — Material 3 filled field look
 const inp =
@@ -111,6 +109,7 @@ function fmtDateTime(iso: string): string {
 export default function TripNewPage() {
   const router = useRouter()
   const { notify } = useToast()
+  const { user } = useAuth()
 
   const { drivers } = useDrivers()
   const { horses, trailers } = useVehicles()
@@ -150,7 +149,7 @@ export default function TripNewPage() {
   const stepValid = [
     true,
     !!(orderNumber && commodity && weightKg && unitCount),
-    !!(driverId && horseId && trailerIds.length > 0),
+    !!(driverId && horseId),
     !!(originId && destId && !sameLocation && plannedDeparture && expectedArrival && !arrivalNotAfterDepart),
     true,
   ]
@@ -177,7 +176,7 @@ export default function TripNewPage() {
     try {
       await api.post<Trip>('/api/v1/trips', {
         order_number: orderNumber,
-        client_organization_id: DEMO_CLIENT_ORG_ID,
+        client_organization_id: user?.organization_id,
         driver_id: driverId,
         horse_id: horseId,
         trailer_ids: trailerIds,

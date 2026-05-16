@@ -1,16 +1,10 @@
 /**
  * Typed fetch wrapper for the FreightProof FastAPI backend.
- *
- * Auth hookup: replace getToken() with the real Supabase session token once
- * the auth teammate merges their work. All hooks inherit auth automatically.
  */
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+import { supabase } from '@/lib/supabase/client'
 
-// Auth placeholder — teammate replaces this body with Supabase session lookup.
-function getToken(): string | null {
-  return null
-}
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 export class ApiError extends Error {
   constructor(
@@ -23,7 +17,8 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const token = getToken()
+  const { data: { session } } = await supabase.auth.getSession()
+  const token = session?.access_token ?? null
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -34,7 +29,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ detail: res.statusText }))
-    throw new ApiError(res.status, (body as { detail?: string }).detail ?? res.statusText)
+    const raw = (body as { detail?: unknown }).detail
+    const message = Array.isArray(raw)
+      ? (raw[0] as { msg?: string })?.msg ?? res.statusText
+      : (raw as string | undefined) ?? res.statusText
+    throw new ApiError(res.status, message)
   }
 
   return res.json() as Promise<T>

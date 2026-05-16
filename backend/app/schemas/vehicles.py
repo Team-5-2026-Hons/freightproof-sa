@@ -1,6 +1,6 @@
 """Pydantic v2 schemas for Vehicle (horse and trailer)."""
 
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 from typing import Optional
 
@@ -17,6 +17,12 @@ class VehicleBase(BaseModel):
     vehicle_type: VehicleType
     pulsit_device_id: str
     is_active: bool = True
+    make: Optional[str] = None
+    model: Optional[str] = None
+    year: Optional[int] = None
+    vin_number: Optional[str] = None
+    licence_disc_expiry: Optional[date] = None
+    gross_vehicle_mass_kg: Optional[int] = None
 
 
 class VehicleCreate(VehicleBase):
@@ -33,6 +39,12 @@ class VehicleCreateBody(BaseModel):
     registration: str
     vehicle_type: VehicleType
     pulsit_device_id: str
+    make: Optional[str] = None
+    model: Optional[str] = None
+    year: Optional[int] = None
+    vin_number: Optional[str] = None
+    licence_disc_expiry: Optional[date] = None
+    gross_vehicle_mass_kg: Optional[int] = None
 
 
 class VehicleUpdate(BaseModel):

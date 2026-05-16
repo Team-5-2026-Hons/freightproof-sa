@@ -3,6 +3,11 @@ import { OPERATOR_ORG_ID } from './principals'
 
 const vehicleId = (v: string): VehicleId => v as unknown as VehicleId
 
+const nullAttrs = {
+  make: null, model: null, year: null,
+  vin_number: null, licence_disc_expiry: null, gross_vehicle_mass_kg: null,
+}
+
 export const HORSE_1_ID   = vehicleId('f1a2b3c4-d5e6-4172-9526-374859607080')
 export const HORSE_2_ID   = vehicleId('a2b3c4d5-e6f7-4283-b637-48596a7b8c90')
 export const HORSE_3_ID   = vehicleId('b3c4d5e6-f7a8-4394-b748-596a7b8c9d00')
@@ -21,6 +26,7 @@ export const mockHorses: Vehicle[] = [
     pulsit_device_id: 'PLT-H-001',
     is_active: true,
     created_at: '2024-01-25T08:00:00Z',
+    ...nullAttrs,
   },
   {
     id: HORSE_2_ID,
@@ -30,6 +36,7 @@ export const mockHorses: Vehicle[] = [
     pulsit_device_id: 'PLT-H-002',
     is_active: true,
     created_at: '2024-02-10T08:00:00Z',
+    ...nullAttrs,
   },
   {
     id: HORSE_3_ID,
@@ -39,6 +46,7 @@ export const mockHorses: Vehicle[] = [
     pulsit_device_id: 'PLT-H-003',
     is_active: true,
     created_at: '2024-03-15T08:00:00Z',
+    ...nullAttrs,
   },
 ]
 
@@ -51,6 +59,7 @@ export const mockTrailers: Vehicle[] = [
     pulsit_device_id: 'PLT-T-001',
     is_active: true,
     created_at: '2024-01-25T08:00:00Z',
+    ...nullAttrs,
   },
   {
     id: TRAILER_2_ID,
@@ -60,6 +69,7 @@ export const mockTrailers: Vehicle[] = [
     pulsit_device_id: 'PLT-T-002',
     is_active: true,
     created_at: '2024-02-10T08:00:00Z',
+    ...nullAttrs,
   },
   {
     id: TRAILER_3_ID,
@@ -69,6 +79,7 @@ export const mockTrailers: Vehicle[] = [
     pulsit_device_id: 'PLT-T-003',
     is_active: true,
     created_at: '2024-02-20T08:00:00Z',
+    ...nullAttrs,
   },
   {
     id: TRAILER_4_ID,
@@ -78,6 +89,7 @@ export const mockTrailers: Vehicle[] = [
     pulsit_device_id: 'PLT-T-004',
     is_active: true,
     created_at: '2024-03-01T08:00:00Z',
+    ...nullAttrs,
   },
   {
     id: TRAILER_5_ID,
@@ -87,6 +99,7 @@ export const mockTrailers: Vehicle[] = [
     pulsit_device_id: 'PLT-T-005',
     is_active: true,
     created_at: '2024-03-15T08:00:00Z',
+    ...nullAttrs,
   },
 ]
 
