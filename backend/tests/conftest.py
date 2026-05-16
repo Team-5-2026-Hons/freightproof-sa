@@ -124,7 +124,7 @@ async def client(monkeypatch: pytest.MonkeyPatch) -> AsyncGenerator[AsyncClient,
     monkeypatch.setattr("app.auth.dependencies._get_jwks", make_jwks)
 
     async with AsyncClient(
-        transport=ASGITransport(app=app),
+        transport=ASGITransport(app=app),  # type: ignore[arg-type]
         base_url="http://test",
     ) as ac:
         yield ac

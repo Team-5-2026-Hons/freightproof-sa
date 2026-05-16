@@ -35,10 +35,9 @@ export function useAsyncData<T>(fetchFn: () => Promise<T>, initial: T): AsyncSta
       })
   }, [])
 
-  // Runs once on mount; uses ref so callers don't need to memoize fetchFn
+  // Runs once on mount; isLoading/error already at their initial values so no
+  // synchronous setState needed — only async resolution updates state
   useEffect(() => {
-    setIsLoading(true)
-    setError(null)
     fetchRef.current()
       .then((result) => {
         setData(result)

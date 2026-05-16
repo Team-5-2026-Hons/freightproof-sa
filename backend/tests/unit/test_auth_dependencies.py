@@ -110,7 +110,7 @@ def test_decode_token_wrong_audience_raises_401() -> None:
         encryption_algorithm=serialization.NoEncryption(),
     )
 
-    payload = {
+    payload: dict[str, object] = {
         "aud": "service_role",
         "sub": str(uuid.uuid4()),
         "exp": int((datetime.now(UTC) + timedelta(hours=1)).timestamp()),
