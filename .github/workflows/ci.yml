@@ -49,6 +49,8 @@ jobs:
 
       - name: Test — pytest (excluding slow tests)
         working-directory: backend
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: pytest -m "not slow"
 
   frontend:
