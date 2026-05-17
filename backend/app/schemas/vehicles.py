@@ -55,6 +55,25 @@ class VehicleUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
+class VehicleUpdateBody(BaseModel):
+    """Fields the dispatcher may change via PATCH /vehicles/{id}.
+
+    All fields are optional — only supplied fields are applied.
+    vehicle_type is excluded: changing horse↔trailer would silently break trip logic.
+    """
+    model_config = ConfigDict(from_attributes=True)
+
+    registration: Optional[str] = None
+    pulsit_device_id: Optional[str] = None
+    vin_number: Optional[str] = None
+    licence_disc_expiry: Optional[date] = None
+    make: Optional[str] = None
+    model: Optional[str] = None
+    year: Optional[int] = None
+    gross_vehicle_mass_kg: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
 class VehicleRead(VehicleBase):
     id: UUID
     created_at: datetime

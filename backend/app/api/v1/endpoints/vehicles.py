@@ -9,10 +9,10 @@ from app.auth.dependencies import get_current_dispatcher
 from app.core.exceptions import DuplicateResourceError, ResourceNotFoundError
 from app.db.session import get_db
 from app.orchestration.resource_service import (
-    create_vehicle, get_vehicle_detail, list_vehicles,
+    create_vehicle, get_vehicle_detail, list_vehicles, update_vehicle,
 )
 from app.schemas.people import UserRead
-from app.schemas.vehicles import VehicleCreateBody, VehicleDetailResponse, VehicleRead
+from app.schemas.vehicles import VehicleCreateBody, VehicleDetailResponse, VehicleRead, VehicleUpdateBody
 
 router = APIRouter(prefix="/vehicles", tags=["vehicles"])
 
@@ -40,6 +40,25 @@ async def create_vehicle_endpoint(
         )
     except DuplicateResourceError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+
+
+@router.patch("/{vehicle_id}", response_model=VehicleRead)
+async def update_vehicle_endpoint(
+    vehicle_id: UUID,
+    body: VehicleUpdateBody,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserRead = Depends(get_current_dispatcher),
+) -> VehicleRead:
+    try:
+        return await update_vehicle(
+            db=db,
+            vehicle_id=vehicle_id,
+            organization_id=current_user.organization_id,
+            data=body,
+            current_user_id=current_user.id,
+        )
+    except ResourceNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
 
 
 @router.get("/{vehicle_id}", response_model=VehicleDetailResponse)

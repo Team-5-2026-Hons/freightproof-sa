@@ -1,6 +1,6 @@
 """Verify a subject's current DB state against its anchored Hedera record.
 
-Returns one of: verified, db_mismatch, hedera_mismatch, no_receipt.
+Returns one of: verified, db_mismatch, hedera_mismatch, no_receipt, error.
 """
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from typing import Any
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.blockchain.hedera import HederaService
+from app.blockchain.hedera import HederaService, HederaServiceError
 from app.crypto.hashing import compute_trip_canonical_payload
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import SubjectType, VerifyStatus
@@ -113,8 +113,10 @@ async def verify_subject(
             receipt.hedera_sequence_number,
             receipt.data_hash,
         )
-    except Exception:
-        return VerifyOutcome(status=VerifyStatus.HEDERA_MISMATCH, receipt=receipt)
+    except HederaServiceError:
+        # Mirror node unreachable, bad stored topic_id, SDK error — infrastructure failure,
+        # not evidence of tamper. Return ERROR so the UI can distinguish it from HEDERA_MISMATCH.
+        return VerifyOutcome(status=VerifyStatus.ERROR, receipt=receipt)
     if not match:
         return VerifyOutcome(status=VerifyStatus.HEDERA_MISMATCH, receipt=receipt)
 

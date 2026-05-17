@@ -105,6 +105,8 @@ class VehicleEventType(str, enum.Enum):
     CREATED                = "created"
     LICENSE_PLATE_CHANGED  = "license_plate_changed"
     LICENSE_DISC_RENEWED   = "license_disc_renewed"
+    VIN_UPDATED            = "vin_updated"
+    VEHICLE_UPDATED        = "vehicle_updated"   # multiple critical fields changed at once
     DEACTIVATED            = "deactivated"
     COSMETIC_UPDATE        = "cosmetic_update"
 
@@ -121,6 +123,8 @@ class VerifyStatus(str, enum.Enum):
     DB_MISMATCH       = "db_mismatch"
     HEDERA_MISMATCH   = "hedera_mismatch"
     NO_RECEIPT        = "no_receipt"
+    # Mirror node unreachable, SDK misconfigured, or bad stored topic_id — not tamper evidence.
+    ERROR             = "error"
 
 
 class MerkleBatchType(str, enum.Enum):

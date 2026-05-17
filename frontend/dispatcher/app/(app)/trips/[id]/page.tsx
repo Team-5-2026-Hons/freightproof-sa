@@ -12,7 +12,6 @@ import { useTripDetail }  from '@/lib/hooks/useTripDetail'
 import { usePrecincts }   from '@/lib/hooks/usePrecincts'
 import { TRIP_STATUS_META } from '@shared/lib/constants/status-meta'
 import { HANDSHAKE_NAMES }  from '@shared/lib/constants/handshake-meta'
-import { BlockchainBadge } from '@shared/components/blockchain/BlockchainBadge'
 import { VerifyButton } from '@/components/blockchain/VerifyButton'
 import type { HandshakeNumber } from '@shared/lib/types/handshake'
 import type { Trip } from '@shared/lib/types/trip'
@@ -240,12 +239,10 @@ export default function TripDetailPage() {
         sub={`${trip.order_number} · ${originShort} → ${destShort} · ${trip.driver?.full_name ?? '—'} · ${trip.horse?.registration ?? '—'}`}
         left={backButton}
       >
-        <BlockchainBadge receipt={trip.blockchain_receipts?.[0] ?? null} />
         <Chip type={statusMeta.chipType} label={statusMeta.label} />
         <Button variant="secondary" size="sm" iconLeft={<Ic n="file" s={13} className="text-on-surf" />}>
           Add Note
         </Button>
-        <VerifyButton subjectType="trip" subjectId={trip.id as string} />
         <Button size="sm" iconLeft={<Ic n="dl" s={13} className="text-white" />}>
           Export Evidence PDF
         </Button>
@@ -336,22 +333,6 @@ export default function TripDetailPage() {
               </div>
             )
           })}
-          {trip.blockchain_receipts && trip.blockchain_receipts.length > 0 && (
-            <section className="mt-6 space-y-2">
-              <h2 className="text-sm font-semibold text-white/80">Blockchain Receipts</h2>
-              <ul className="space-y-2">
-                {trip.blockchain_receipts.map((r) => (
-                  <li key={r.id} className="rounded-lg border border-white/5 bg-white/[0.02] p-3 text-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono text-white/70">{r.receipt_type}</span>
-                      <BlockchainBadge receipt={r} />
-                    </div>
-                    <div className="mt-1 break-all font-mono text-white/40">hash: {r.data_hash}</div>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
         </div>
 
         {/* ── RIGHT: Sidebar ── */}
@@ -362,27 +343,26 @@ export default function TripDetailPage() {
           </div>
           <div className="bg-surf-lowest rounded-lg p-[12px_14px] mb-4 shadow-level-2">
             {([
-              { label: 'Order',       value: trip.order_number,               mono: true  },
-              { label: 'Driver',      value: trip.driver?.full_name ?? '—',   mono: false },
-              { label: 'Horse',       value: trip.horse?.registration ?? '—', mono: true  },
-              { label: 'Origin',      value: originShort,                      mono: false },
-              { label: 'Destination', value: destShort,                        mono: false },
-              { label: 'Route',       value: `${originShort} → ${destShort}`,  mono: false },
-            ] as const).map(row => (
+              { label: 'Order',       value: trip.order_number,             mono: true  },
+              { label: 'Driver',      value: trip.driver?.full_name ?? '—', mono: false },
+              { label: 'Horse',       value: trip.horse?.registration ?? '—', mono: true },
+              { label: 'Origin',      value: originShort,                   mono: false },
+              { label: 'Destination', value: destShort,                     mono: false },
+            ] as const).map((row, i, arr) => (
               <div
                 key={row.label}
-                className="flex justify-between items-center py-[6px] border-b border-outline-v/20 text-[13px]"
+                className={`flex justify-between items-start gap-3 py-[8px] text-[13px]${i < arr.length - 1 ? ' border-b border-outline-v/20' : ''}`}
               >
-                <span className="text-[11px] text-on-surf-v">{row.label}</span>
-                <span className={row.mono ? 'tabular-nums tracking-[0.05em] font-[500] text-on-surf' : 'font-[500] text-on-surf'}>
+                <span className="text-[11px] text-on-surf-v shrink-0 pt-[1px]">{row.label}</span>
+                <span className={`text-right${row.mono ? ' tabular-nums tracking-[0.05em] font-[600] text-on-surf' : ' font-[500] text-on-surf'}`}>
                   {row.value}
                 </span>
               </div>
             ))}
             {sealNumber && (
-              <div className="flex justify-between items-center pt-[6px] text-[13px]">
-                <span className="text-[11px] text-on-surf-v">Seal</span>
-                <span className="font-mono tracking-[0.06em] font-[700] text-[13px] bg-primary text-white rounded-sm px-[10px] py-[3px]">
+              <div className="flex justify-between items-center pt-[8px] mt-[2px] border-t border-outline-v/20 text-[13px]">
+                <span className="text-[11px] text-on-surf-v shrink-0">Seal</span>
+                <span className="font-mono tracking-[0.06em] font-[700] text-[13px] bg-primary text-white rounded-[var(--r-sm)] px-[10px] py-[3px]">
                   {sealNumber}
                 </span>
               </div>
@@ -413,10 +393,11 @@ export default function TripDetailPage() {
               </span>
             </div>
             {trip.blockchain_receipts.slice(0, 3).map(r => (
-              <div key={r.id} className="text-[11px] tracking-[0.03em] text-chain truncate">
+              <div key={r.id} className="text-[11px] tracking-[0.03em] text-chain truncate tabular-nums">
                 {r.hedera_topic_id} #{r.hedera_sequence_number}
               </div>
             ))}
+            <VerifyButton subjectType="trip" subjectId={trip.id as string} autoVerify />
           </div>
 
           <Button

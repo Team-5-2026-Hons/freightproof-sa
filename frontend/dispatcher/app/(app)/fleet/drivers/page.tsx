@@ -128,7 +128,7 @@ export default function FleetDriversPage(): React.JSX.Element {
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <TopBar title="Fleet — Drivers">
+      <TopBar title="Drivers">
         <Button size="sm" iconLeft={<Plus className="w-4 h-4" />} onClick={() => setModalOpen(true)}>
           Add Driver
         </Button>

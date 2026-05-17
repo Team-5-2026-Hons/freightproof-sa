@@ -25,7 +25,7 @@ export type BlockchainReceipt = {
 };
 
 export type VerifyStatus =
-  | 'verified' | 'db_mismatch' | 'hedera_mismatch' | 'no_receipt';
+  | 'verified' | 'db_mismatch' | 'hedera_mismatch' | 'no_receipt' | 'error';
 
 export type VerifyResult = {
   status: VerifyStatus;

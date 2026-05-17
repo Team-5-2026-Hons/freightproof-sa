@@ -90,6 +90,21 @@ class DriverUpdate(BaseModel):
     idvs_status: Optional[IdvsStatus] = None
 
 
+class DriverUpdateBody(BaseModel):
+    """Fields the dispatcher may change via PATCH /drivers/{id}.
+
+    All fields are optional — only supplied fields are applied.
+    POPIA: license_number is accepted here but only its SHA-256 hash goes to Hedera.
+    """
+    model_config = ConfigDict(from_attributes=True)
+
+    full_name: Optional[str] = None
+    phone_number: Optional[str] = None
+    license_number: Optional[str] = None
+    license_expiry: Optional[date] = None
+    is_active: Optional[bool] = None
+
+
 class DriverRead(DriverBase):
     id: UUID
     idvs_status: IdvsStatus

@@ -1,19 +1,15 @@
 'use client'
 
-// On-demand verify button that POSTs to /api/v1/blockchain/verify and renders
-// the result inline. Auto-resets to idle after 7 s so the user can re-verify.
-// Accepts an authHeader prop so dispatcher (JWT Bearer) and driver-pwa can both use it.
-
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { api } from '@/lib/api/client'
+import { Ic } from '@/components/ui/Ic'
 import type { SubjectType, VerifyResult } from '@shared/lib/types/blockchain'
 
 type Props = {
   subjectType: SubjectType
   subjectId: string
-  /** Override the API base URL — defaults to NEXT_PUBLIC_API_BASE_URL or localhost:8000. */
-  apiBase?: string
-  /** Full Authorization header value, e.g. "Bearer <token>". Omit for unauthenticated calls. */
-  authHeader?: string
+  // When true: fires on mount, result persists (no auto-reset), shows Re-check link.
+  autoVerify?: boolean
   onResult?: (r: VerifyResult) => void
   className?: string
 }
@@ -23,77 +19,132 @@ type UIState =
   | { kind: 'verifying' }
   | { kind: 'result'; result: VerifyResult }
 
-// Env var resolved at module init; falls back to local dev server.
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000'
-
 export function VerifyButton({
-  subjectType, subjectId, apiBase = API_BASE, authHeader, onResult, className = '',
+  subjectType, subjectId, autoVerify = false, onResult, className = '',
 }: Props) {
-  const [ui, setUi] = useState<UIState>({ kind: 'idle' })
+  // Start in 'verifying' immediately when auto-mode so no button flash before the effect fires.
+  const [ui, setUi] = useState<UIState>(autoVerify ? { kind: 'verifying' } : { kind: 'idle' })
 
-  async function verify() {
+  const verify = useCallback(async () => {
     setUi({ kind: 'verifying' })
-    const resp = await fetch(`${apiBase}/api/v1/blockchain/verify`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        ...(authHeader ? { authorization: authHeader } : {}),
-      },
-      body: JSON.stringify({ subject_type: subjectType, subject_id: subjectId }),
-    })
-    const result = (await resp.json()) as VerifyResult
-    setUi({ kind: 'result', result })
-    onResult?.(result)
-    // Reset to idle after 7 s so the user can trigger another verify without a page reload.
-    setTimeout(() => setUi({ kind: 'idle' }), 7000)
-  }
+    try {
+      const result = await api.post<VerifyResult>('/api/v1/blockchain/verify', {
+        subject_type: subjectType,
+        subject_id: subjectId,
+      })
+      setUi({ kind: 'result', result })
+      onResult?.(result)
+      // Manual verifies auto-reset after 8s; auto-verify results stay visible.
+      if (!autoVerify) {
+        setTimeout(() => setUi({ kind: 'idle' }), 8000)
+      }
+    } catch {
+      setUi(autoVerify ? { kind: 'idle' } : { kind: 'idle' })
+    }
+  }, [subjectType, subjectId, autoVerify, onResult])
+
+  // Fire once after the page has rendered — non-blocking.
+  useEffect(() => {
+    if (autoVerify) verify()
+  }, [autoVerify, verify])
+
+  const reCheckButton = autoVerify ? (
+    <button
+      onClick={verify}
+      className="mt-[4px] flex items-center gap-[4px] text-[10px] font-[500] text-chain opacity-60 hover:opacity-100 transition-opacity"
+    >
+      <Ic n="hex" s={9} className="text-chain" />
+      Re-check
+    </button>
+  ) : null
 
   if (ui.kind === 'verifying') {
     return (
-      <button disabled className={`rounded-md bg-white/5 px-3 py-1.5 text-xs text-white/70 ${className}`}>
-        Verifying against Hedera…
-      </button>
+      <div className={`mt-2 flex items-center gap-[5px] text-[11px] font-[500] tracking-[0.03em] text-chain-onc opacity-70 ${className}`}>
+        <Ic n="hex" s={10} className="text-chain animate-pulse" />
+        Checking integrity…
+      </div>
     )
   }
+
   if (ui.kind === 'result') {
     const r = ui.result
+
     if (r.status === 'verified') {
       return (
-        <span className={`inline-flex items-center gap-2 rounded-md bg-emerald-500/15 px-3 py-1.5 text-xs font-medium text-emerald-300 ${className}`}>
-          ✓ Verified — DB matches Hedera anchor
-        </span>
-      )
-    }
-    if (r.status === 'db_mismatch') {
-      return (
-        <div className={`rounded-md bg-red-500/15 p-3 text-xs text-red-200 ${className}`}>
-          <div className="font-semibold">⚠ MISMATCH — DB has been modified since anchoring</div>
-          <div className="mt-1 opacity-80 font-mono">
-            <div>Expected: {r.expected_hash}</div>
-            <div>Current:  {r.current_hash}</div>
+        <div className={`mt-2 ${className}`}>
+          <div className="flex items-center gap-[5px] rounded-[var(--r-md)] bg-ok-c px-[8px] py-[5px] text-[11px] font-[600] text-on-ok-c">
+            <Ic n="check" s={11} className="text-ok" />
+            Verified — DB matches Hedera
           </div>
+          {reCheckButton}
         </div>
       )
     }
-    if (r.status === 'hedera_mismatch') {
+
+    if (r.status === 'db_mismatch') {
       return (
-        <span className={`inline-flex items-center gap-2 rounded-md bg-red-500/15 px-3 py-1.5 text-xs font-medium text-red-300 ${className}`}>
-          ⚠ Hedera record mismatch — escalate
-        </span>
+        <div className={`mt-2 ${className}`}>
+          <div className="rounded-[var(--r-md)] bg-err-c p-[8px] text-[11px] text-on-err-c">
+            <div className="flex items-center gap-[5px] font-[700]">
+              <Ic n="warn" s={11} className="text-err" />
+              Tamper detected
+            </div>
+            <div className="mt-[4px] font-mono text-[10px] tracking-[0.03em] opacity-80 break-all">
+              Expected: {r.expected_hash?.slice(0, 16)}…
+            </div>
+            <div className="font-mono text-[10px] tracking-[0.03em] opacity-80 break-all">
+              Current:&nbsp;&nbsp;{r.current_hash?.slice(0, 16)}…
+            </div>
+          </div>
+          {reCheckButton}
+        </div>
       )
     }
+
+    if (r.status === 'hedera_mismatch') {
+      return (
+        <div className={`mt-2 ${className}`}>
+          <div className="flex items-center gap-[5px] rounded-[var(--r-md)] bg-err-c px-[8px] py-[5px] text-[11px] font-[600] text-on-err-c">
+            <Ic n="warn" s={11} className="text-err" />
+            Hedera mismatch — escalate
+          </div>
+          {reCheckButton}
+        </div>
+      )
+    }
+
+    if (r.status === 'error') {
+      return (
+        <div className={`mt-2 ${className}`}>
+          <div className="flex items-center gap-[5px] rounded-[var(--r-md)] bg-warn-c px-[8px] py-[5px] text-[11px] font-[600] text-on-warn-c">
+            <Ic n="warn" s={11} className="text-warn" />
+            Hedera unavailable — check config
+          </div>
+          {reCheckButton}
+        </div>
+      )
+    }
+
+    // no_receipt
     return (
-      <span className={`inline-flex items-center gap-2 rounded-md bg-white/5 px-3 py-1.5 text-xs text-white/60 ${className}`}>
-        No anchor on file — cannot verify
-      </span>
+      <div className={`mt-2 ${className}`}>
+        <div className="text-[11px] font-[500] text-chain-onc opacity-60">
+          No anchor on file for this trip
+        </div>
+        {reCheckButton}
+      </div>
     )
   }
+
+  // idle — manual mode only
   return (
     <button
       onClick={verify}
-      className={`rounded-md bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-300 hover:bg-emerald-500/15 ${className}`}
+      className={`mt-2 w-full flex items-center justify-center gap-[5px] rounded-[var(--r-md)] border border-chain/30 bg-chain/10 px-[10px] py-[5px] text-[11px] font-[600] text-chain transition-all duration-[120ms] hover:bg-chain/15 active:scale-[0.97] ${className}`}
     >
-      Verify Now
+      <Ic n="hex" s={11} className="text-chain" />
+      Verify integrity
     </button>
   )
 }

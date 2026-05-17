@@ -146,7 +146,7 @@ export default function FleetVehiclesPage(): React.JSX.Element {
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <TopBar title="Fleet — Vehicles">
+      <TopBar title="Vehicles">
         <Button size="sm" iconLeft={<Plus className="w-4 h-4" />} onClick={() => setModalOpen(true)}>
           Add Vehicle
         </Button>

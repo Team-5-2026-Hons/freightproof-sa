@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.blockchain.anchor_service import anchor_subject
+from app.blockchain.critical_fields import DRIVER_CRITICAL_FIELDS, VEHICLE_CRITICAL_FIELDS, diff_critical_fields
 from app.core.exceptions import DuplicateResourceError, ResourceNotFoundError
 from app.integrations.supabase_admin import create_driver_auth_user
 from app.db.models.blockchain import BlockchainReceipt
@@ -30,10 +31,10 @@ from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.events import DriverEventRead, VehicleEventRead
 from app.schemas.handshakes import HandshakeEventRead
 from app.schemas.organisations import PrecinctRead
-from app.schemas.people import DriverCreateBody, DriverDetailResponse, DriverRead
+from app.schemas.people import DriverCreateBody, DriverDetailResponse, DriverRead, DriverUpdateBody
 from app.schemas.transit import TripExceptionRead
 from app.schemas.trips import TripDetailResponse, TripListItemResponse
-from app.schemas.vehicles import VehicleCreateBody, VehicleDetailResponse, VehicleRead
+from app.schemas.vehicles import VehicleCreateBody, VehicleDetailResponse, VehicleRead, VehicleUpdateBody
 
 
 async def list_drivers(
@@ -117,6 +118,93 @@ async def create_driver(
     return DriverRead.model_validate(driver)
 
 
+async def update_driver(
+    db: AsyncSession,
+    driver_id: uuid.UUID,
+    organization_id: uuid.UUID,
+    data: DriverUpdateBody,
+    current_user_id: uuid.UUID,
+) -> DriverRead:
+    driver = (
+        await db.execute(
+            select(Driver).where(
+                Driver.id == driver_id, Driver.organization_id == organization_id
+            )
+        )
+    ).scalar_one_or_none()
+    if driver is None:
+        raise ResourceNotFoundError("Driver", str(driver_id))
+
+    # POPIA: compare hashed license numbers so plaintext never enters the diff.
+    # We use "license_number_sha256" as the key, not "license_number".
+    _DRIVER_CRITICAL_HASHED: frozenset[str] = frozenset({
+        "license_number_sha256",
+        "license_expiry",
+        "is_active",
+    })
+    old = {
+        "license_number_sha256": hashlib.sha256(
+            driver.license_number.encode("utf-8")
+        ).hexdigest(),
+        "license_expiry": driver.license_expiry.isoformat() if driver.license_expiry else None,
+        "is_active": driver.is_active,
+    }
+
+    patched = data.model_dump(exclude_unset=True)
+    for field, value in patched.items():
+        setattr(driver, field, value)
+    await db.flush()
+
+    new = {
+        "license_number_sha256": hashlib.sha256(
+            driver.license_number.encode("utf-8")
+        ).hexdigest(),
+        "license_expiry": driver.license_expiry.isoformat() if driver.license_expiry else None,
+        "is_active": driver.is_active,
+    }
+
+    diff = diff_critical_fields(old, new, _DRIVER_CRITICAL_HASHED)
+    event_type = DriverEventType.COSMETIC_UPDATE
+    if diff is not None:
+        if "license_number_sha256" in diff:
+            event_type = DriverEventType.LICENSE_RENEWED
+        elif "is_active" in diff and not new["is_active"]:
+            event_type = DriverEventType.DEACTIVATED
+
+    # Exclude license_number plaintext from the cosmetic patch record stored in DB.
+    safe_patch = {k: v for k, v in patched.items() if k != "license_number"}
+    event = DriverEvent(
+        id=uuid.uuid4(),
+        driver_id=driver.id,
+        event_type=event_type.value,
+        changed_fields=diff or {"_no_critical_change": True, "_patch": safe_patch},
+        changed_by_user_id=current_user_id,
+    )
+    db.add(event)
+    await db.flush()
+
+    if diff is not None:
+        canonical = {
+            "driver_event_id": str(event.id),
+            "driver_id": str(driver.id),
+            "event_type": event_type.value,
+            "fields": diff,
+            "changed_by_user_id": str(current_user_id),
+            "timestamp": event.created_at.isoformat(),
+        }
+        receipt = await anchor_subject(
+            db,
+            subject_type=SubjectType.DRIVER_EVENT,
+            subject_id=event.id,
+            canonical_payload=canonical,
+            receipt_type=BlockchainReceiptType.DRIVER_UPDATED,
+        )
+        event.blockchain_receipt_id = receipt.id
+
+    await db.refresh(driver)
+    return DriverRead.model_validate(driver)
+
+
 async def list_vehicles(
     db: AsyncSession,
     organization_id: uuid.UUID,
@@ -192,6 +280,94 @@ async def create_vehicle(
         receipt_type=BlockchainReceiptType.VEHICLE_CREATED,
     )
     vehicle_event.blockchain_receipt_id = receipt.id
+
+    await db.refresh(vehicle)
+    return VehicleRead.model_validate(vehicle)
+
+
+async def update_vehicle(
+    db: AsyncSession,
+    vehicle_id: uuid.UUID,
+    organization_id: uuid.UUID,
+    data: VehicleUpdateBody,
+    current_user_id: uuid.UUID,
+) -> VehicleRead:
+    vehicle = (
+        await db.execute(
+            select(Vehicle).where(
+                Vehicle.id == vehicle_id, Vehicle.organization_id == organization_id
+            )
+        )
+    ).scalar_one_or_none()
+    if vehicle is None:
+        raise ResourceNotFoundError("Vehicle", str(vehicle_id))
+
+    old = {
+        "registration": vehicle.registration,
+        "licence_disc_expiry": vehicle.licence_disc_expiry.isoformat() if vehicle.licence_disc_expiry else None,
+        "vehicle_type": vehicle.vehicle_type.value if hasattr(vehicle.vehicle_type, "value") else vehicle.vehicle_type,
+        "vin_number": vehicle.vin_number,
+        "pulsit_device_id": vehicle.pulsit_device_id,
+        "is_active": vehicle.is_active,
+    }
+    patched = data.model_dump(exclude_unset=True)
+    for field, value in patched.items():
+        setattr(vehicle, field, value)
+    await db.flush()
+    new = {
+        "registration": vehicle.registration,
+        "licence_disc_expiry": vehicle.licence_disc_expiry.isoformat() if vehicle.licence_disc_expiry else None,
+        "vehicle_type": vehicle.vehicle_type.value if hasattr(vehicle.vehicle_type, "value") else vehicle.vehicle_type,
+        "vin_number": vehicle.vin_number,
+        "pulsit_device_id": vehicle.pulsit_device_id,
+        "is_active": vehicle.is_active,
+    }
+
+    diff = diff_critical_fields(old, new, VEHICLE_CRITICAL_FIELDS)
+    event_type = VehicleEventType.COSMETIC_UPDATE
+    if diff is not None:
+        changed = set(diff.keys())
+        if "registration" in changed:
+            event_type = VehicleEventType.LICENSE_PLATE_CHANGED
+        elif "is_active" in changed and not new["is_active"]:
+            event_type = VehicleEventType.DEACTIVATED
+        elif changed == {"licence_disc_expiry"}:
+            # Only the disc expiry changed — specific label
+            event_type = VehicleEventType.LICENSE_DISC_RENEWED
+        elif changed == {"vin_number"}:
+            # Only the VIN changed — specific label
+            event_type = VehicleEventType.VIN_UPDATED
+        else:
+            # Multiple critical fields changed simultaneously
+            event_type = VehicleEventType.VEHICLE_UPDATED
+
+    event = VehicleEvent(
+        id=uuid.uuid4(),
+        vehicle_id=vehicle.id,
+        event_type=event_type.value,
+        changed_fields=diff or {"_no_critical_change": True, "_patch": patched},
+        changed_by_user_id=current_user_id,
+    )
+    db.add(event)
+    await db.flush()
+
+    if diff is not None:
+        canonical = {
+            "vehicle_event_id": str(event.id),
+            "vehicle_id": str(vehicle.id),
+            "event_type": event_type.value,
+            "fields": diff,
+            "changed_by_user_id": str(current_user_id),
+            "timestamp": event.created_at.isoformat(),
+        }
+        receipt = await anchor_subject(
+            db,
+            subject_type=SubjectType.VEHICLE_EVENT,
+            subject_id=event.id,
+            canonical_payload=canonical,
+            receipt_type=BlockchainReceiptType.VEHICLE_UPDATED,
+        )
+        event.blockchain_receipt_id = receipt.id
 
     await db.refresh(vehicle)
     return VehicleRead.model_validate(vehicle)
@@ -385,7 +561,7 @@ async def get_vehicle_detail(
                         (BlockchainReceipt.subject_type == SubjectType.VEHICLE_EVENT)
                         & (BlockchainReceipt.subject_id.in_(event_ids)),
                     )
-                )
+                ).order_by(BlockchainReceipt.created_at.desc())
             )
         ).scalars().all()
     else:
@@ -442,7 +618,7 @@ async def get_driver_detail(
                 select(BlockchainReceipt).where(
                     (BlockchainReceipt.subject_type == SubjectType.DRIVER_EVENT)
                     & (BlockchainReceipt.subject_id.in_(event_ids))
-                )
+                ).order_by(BlockchainReceipt.created_at.desc())
             )
         ).scalars().all()
     else:
