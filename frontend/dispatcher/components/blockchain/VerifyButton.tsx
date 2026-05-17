@@ -60,7 +60,7 @@ function MismatchReport({ result, onClose }: { result: VerifyResult; onClose: ()
         </div>
 
         <div className="mb-5 rounded-lg bg-err-c px-3 py-[10px] text-[12px] leading-relaxed text-on-err-c">
-          This trip's data may have been altered after it was anchored on the blockchain. Do not act on this trip — escalate to your supervisor immediately.
+          This trip&apos;s data may have been altered after it was anchored on the blockchain. Do not act on this trip — escalate to your supervisor immediately.
         </div>
 
         <div className="space-y-3">
@@ -129,9 +129,9 @@ export function VerifyButton({
     }
   }, [subjectType, subjectId, autoVerify, onResult, notify])
 
-  // Fire once after the page has rendered — non-blocking.
+  // Defer to next tick so verify()'s synchronous setUi call doesn't fire during render.
   useEffect(() => {
-    if (autoVerify) verify()
+    if (autoVerify) setTimeout(() => { void verify() }, 0)
   }, [autoVerify, verify])
 
   const reCheckButton = autoVerify ? (
@@ -183,7 +183,7 @@ export function VerifyButton({
               Mismatch Detected
             </div>
             <div className="mt-[4px] text-[11px] leading-snug text-on-err-c/80">
-              This trip's data does not match the blockchain record. Escalate immediately.
+              This trip&apos;s data does not match the blockchain record. Escalate immediately.
             </div>
             <button
               onClick={() => setShowReport(true)}
