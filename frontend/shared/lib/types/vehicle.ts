@@ -19,5 +19,6 @@ export interface Vehicle {
   vin_number: string | null
   licence_disc_expiry: string | null
   gross_vehicle_mass_kg: number | null
+  length_m: number | null
   created_at: string
 }

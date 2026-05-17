@@ -23,6 +23,7 @@ class VehicleBase(BaseModel):
     vin_number: Optional[str] = None
     licence_disc_expiry: Optional[date] = None
     gross_vehicle_mass_kg: Optional[int] = None
+    length_m: Optional[int] = None
 
 
 class VehicleCreate(VehicleBase):
@@ -45,6 +46,7 @@ class VehicleCreateBody(BaseModel):
     vin_number: Optional[str] = None
     licence_disc_expiry: Optional[date] = None
     gross_vehicle_mass_kg: Optional[int] = None
+    length_m: Optional[int] = None
 
 
 class VehicleUpdate(BaseModel):
@@ -71,6 +73,7 @@ class VehicleUpdateBody(BaseModel):
     model: Optional[str] = None
     year: Optional[int] = None
     gross_vehicle_mass_kg: Optional[int] = None
+    length_m: Optional[int] = None
     is_active: Optional[bool] = None
 
 

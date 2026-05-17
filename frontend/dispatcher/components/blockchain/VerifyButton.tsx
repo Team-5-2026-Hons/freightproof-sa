@@ -19,11 +19,90 @@ type UIState =
   | { kind: 'verifying' }
   | { kind: 'result'; result: VerifyResult }
 
+function SpinnerRing() {
+  return (
+    <svg className="animate-spin shrink-0" width={12} height={12} viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25" />
+      <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function MismatchReport({ result, onClose }: { result: VerifyResult; onClose: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-[480px] rounded-xl bg-surf-lowest shadow-xl p-6"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <div className="flex items-center gap-2 text-[16px] font-[700] text-on-surf">
+              <Ic n="shield" s={16} className="text-err" />
+              Mismatch Report
+            </div>
+            <div className="text-[12px] text-on-surf-v mt-[3px]">
+              {result.status === 'db_mismatch'
+                ? 'The database record no longer matches what was recorded on the blockchain.'
+                : 'The blockchain record does not match the expected hash.'}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="ml-4 shrink-0 text-[22px] leading-[1] text-on-surf-v hover:text-on-surf"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="mb-5 rounded-lg bg-err-c px-3 py-[10px] text-[12px] leading-relaxed text-on-err-c">
+          This trip's data may have been altered after it was anchored on the blockchain. Do not act on this trip — escalate to your supervisor immediately.
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <div className="mb-[6px] text-[10px] font-[700] uppercase tracking-[0.08em] text-on-surf-v">
+              Blockchain anchor (expected)
+            </div>
+            <div className="break-all rounded-lg bg-surf-low p-[10px] font-mono text-[11px] leading-relaxed tracking-[0.03em] text-on-surf">
+              {result.expected_hash ?? '—'}
+            </div>
+          </div>
+          <div>
+            <div className="mb-[6px] text-[10px] font-[700] uppercase tracking-[0.08em] text-on-surf-v">
+              Database record (current)
+            </div>
+            <div className="break-all rounded-lg bg-err-c p-[10px] font-mono text-[11px] leading-relaxed tracking-[0.03em] text-err">
+              {result.current_hash ?? '—'}
+            </div>
+          </div>
+        </div>
+
+        {result.receipt && (
+          <div className="mt-4 border-t border-outline-v/20 pt-4 text-[11px] text-on-surf-v">
+            Anchored to Hedera topic {result.receipt.hedera_topic_id ?? '—'} · seq #{result.receipt.hedera_sequence_number ?? '—'}
+          </div>
+        )}
+
+        <button
+          onClick={onClose}
+          className="mt-5 w-full rounded-lg border border-outline-v/40 bg-surf-low py-[8px] text-[13px] font-[600] text-on-surf transition-colors hover:bg-surf-high"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export function VerifyButton({
   subjectType, subjectId, autoVerify = false, onResult, className = '',
 }: Props) {
-  // Start in 'verifying' immediately when auto-mode so no button flash before the effect fires.
   const [ui, setUi] = useState<UIState>(autoVerify ? { kind: 'verifying' } : { kind: 'idle' })
+  const [showReport, setShowReport] = useState(false)
 
   const verify = useCallback(async () => {
     setUi({ kind: 'verifying' })
@@ -39,7 +118,7 @@ export function VerifyButton({
         setTimeout(() => setUi({ kind: 'idle' }), 8000)
       }
     } catch {
-      setUi(autoVerify ? { kind: 'idle' } : { kind: 'idle' })
+      setUi({ kind: 'idle' })
     }
   }, [subjectType, subjectId, autoVerify, onResult])
 
@@ -51,7 +130,7 @@ export function VerifyButton({
   const reCheckButton = autoVerify ? (
     <button
       onClick={verify}
-      className="mt-[4px] flex items-center gap-[4px] text-[10px] font-[500] text-chain opacity-60 hover:opacity-100 transition-opacity"
+      className="mt-[4px] flex items-center gap-[4px] text-[10px] font-[500] text-chain opacity-60 transition-opacity hover:opacity-100"
     >
       <Ic n="hex" s={9} className="text-chain" />
       Re-check
@@ -60,9 +139,9 @@ export function VerifyButton({
 
   if (ui.kind === 'verifying') {
     return (
-      <div className={`mt-2 flex items-center gap-[5px] text-[11px] font-[500] tracking-[0.03em] text-chain-onc opacity-70 ${className}`}>
-        <Ic n="hex" s={10} className="text-chain animate-pulse" />
-        Checking integrity…
+      <div className={`mt-2 flex items-center gap-[6px] rounded-[var(--r-md)] bg-surf-high px-[8px] py-[6px] text-[11px] font-[500] text-on-surf-v ${className}`}>
+        <SpinnerRing />
+        Checking blockchain integrity…
       </div>
     )
   }
@@ -73,28 +152,13 @@ export function VerifyButton({
     if (r.status === 'verified') {
       return (
         <div className={`mt-2 ${className}`}>
-          <div className="flex items-center gap-[5px] rounded-[var(--r-md)] bg-ok-c px-[8px] py-[5px] text-[11px] font-[600] text-on-ok-c">
-            <Ic n="check" s={11} className="text-ok" />
-            Verified — DB matches Hedera
-          </div>
-          {reCheckButton}
-        </div>
-      )
-    }
-
-    if (r.status === 'db_mismatch') {
-      return (
-        <div className={`mt-2 ${className}`}>
-          <div className="rounded-[var(--r-md)] bg-err-c p-[8px] text-[11px] text-on-err-c">
-            <div className="flex items-center gap-[5px] font-[700]">
-              <Ic n="warn" s={11} className="text-err" />
-              Tamper detected
+          <div className="rounded-[var(--r-md)] bg-ok-c px-[10px] py-[8px]">
+            <div className="flex items-center gap-[6px] text-[12px] font-[700] text-on-ok-c">
+              <Ic n="shield" s={13} className="text-ok" />
+              Records intact
             </div>
-            <div className="mt-[4px] font-mono text-[10px] tracking-[0.03em] opacity-80 break-all">
-              Expected: {r.expected_hash?.slice(0, 16)}…
-            </div>
-            <div className="font-mono text-[10px] tracking-[0.03em] opacity-80 break-all">
-              Current:&nbsp;&nbsp;{r.current_hash?.slice(0, 16)}…
+            <div className="mt-[4px] text-[11px] leading-snug text-on-ok-c/80">
+              All data matches the blockchain record. Nothing has been altered.
             </div>
           </div>
           {reCheckButton}
@@ -102,12 +166,25 @@ export function VerifyButton({
       )
     }
 
-    if (r.status === 'hedera_mismatch') {
+    if (r.status === 'db_mismatch' || r.status === 'hedera_mismatch') {
       return (
         <div className={`mt-2 ${className}`}>
-          <div className="flex items-center gap-[5px] rounded-[var(--r-md)] bg-err-c px-[8px] py-[5px] text-[11px] font-[600] text-on-err-c">
-            <Ic n="warn" s={11} className="text-err" />
-            Hedera mismatch — escalate
+          {showReport && <MismatchReport result={r} onClose={() => setShowReport(false)} />}
+          <div className="rounded-[var(--r-md)] bg-err-c px-[10px] py-[8px]">
+            <div className="flex items-center gap-[6px] text-[12px] font-[700] text-on-err-c">
+              <Ic n="warn" s={13} className="text-err" />
+              Mismatch Detected
+            </div>
+            <div className="mt-[4px] text-[11px] leading-snug text-on-err-c/80">
+              This trip's data does not match the blockchain record. Escalate immediately.
+            </div>
+            <button
+              onClick={() => setShowReport(true)}
+              className="mt-[6px] flex items-center gap-[5px] rounded-[var(--r-sm)] border border-err/30 bg-err/10 px-[8px] py-[4px] text-[10px] font-[600] text-on-err-c transition-colors hover:bg-err/20"
+            >
+              <Ic n="file" s={10} className="text-on-err-c" />
+              View Mismatch Report
+            </button>
           </div>
           {reCheckButton}
         </div>
@@ -117,9 +194,12 @@ export function VerifyButton({
     if (r.status === 'error') {
       return (
         <div className={`mt-2 ${className}`}>
-          <div className="flex items-center gap-[5px] rounded-[var(--r-md)] bg-warn-c px-[8px] py-[5px] text-[11px] font-[600] text-on-warn-c">
-            <Ic n="warn" s={11} className="text-warn" />
-            Hedera unavailable — check config
+          <div className="flex items-center gap-[6px] rounded-[var(--r-md)] bg-warn-c px-[10px] py-[7px]">
+            <Ic n="warn" s={12} className="text-warn" />
+            <div>
+              <div className="text-[11px] font-[700] text-on-warn-c">Blockchain check unavailable</div>
+              <div className="mt-[1px] text-[10px] text-on-warn-c/70">Try again later</div>
+            </div>
           </div>
           {reCheckButton}
         </div>
@@ -141,7 +221,7 @@ export function VerifyButton({
   return (
     <button
       onClick={verify}
-      className={`mt-2 w-full flex items-center justify-center gap-[5px] rounded-[var(--r-md)] border border-chain/30 bg-chain/10 px-[10px] py-[5px] text-[11px] font-[600] text-chain transition-all duration-[120ms] hover:bg-chain/15 active:scale-[0.97] ${className}`}
+      className={`mt-2 flex w-full items-center justify-center gap-[5px] rounded-[var(--r-md)] border border-chain/30 bg-chain/10 px-[10px] py-[5px] text-[11px] font-[600] text-chain transition-all duration-[120ms] hover:bg-chain/15 active:scale-[0.97] ${className}`}
     >
       <Ic n="hex" s={11} className="text-chain" />
       Verify integrity
