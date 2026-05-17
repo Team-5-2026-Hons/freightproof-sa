@@ -21,8 +21,6 @@ function describeEvent(e: Event): string {
   if (t === 'created') return 'Created'
   if (t === 'license_plate_changed') return 'Licence plate changed'
   if (t === 'license_disc_renewed') return 'Licence disc renewed'
-  if (t === 'vin_updated') return 'VIN updated'
-  if (t === 'vehicle_updated') return 'Multiple fields updated'
   if (t === 'license_renewed') return 'Driver licence renewed'
   if (t === 'deactivated') return 'Deactivated'
   if (t === 'cosmetic_update') return 'Cosmetic update'
