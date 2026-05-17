@@ -47,7 +47,7 @@ export function useAsyncData<T>(fetchFn: () => Promise<T>, initial: T): AsyncSta
         setError(err instanceof Error ? err.message : 'An unexpected error occurred')
         setIsLoading(false)
       })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [])
 
   return { data, isLoading, error, refetch }

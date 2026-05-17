@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react'
 import { Plus } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { TopBar } from '@/components/ui/TopBar'
 import { DataTable } from '@/components/ui/DataTable'
 import { Button } from '@/components/ui/Button'
@@ -9,7 +10,6 @@ import { Chip } from '@/components/ui/Chip'
 import { Modal } from '@/components/ui/Modal'
 import { useDrivers } from '@/lib/hooks/useDrivers'
 import { useToast } from '@/lib/hooks/useToast'
-import { TimestampWithIcon } from '@/components/domain/TimestampWithIcon'
 import { api } from '@/lib/api/client'
 import type { Column } from '@/components/ui/DataTable'
 import type { Driver } from '@shared/lib/types/driver'
@@ -37,25 +37,6 @@ const columns: Column<Driver>[] = [
     render: (val) => <span className="text-sm text-surface-on">{String(val)}</span>,
   },
   {
-    key: 'idvs_status',
-    label: 'Verification',
-    sortable: true,
-    render: (val, row) => (
-      <div className="flex flex-col gap-1">
-        <Chip
-          type={val === 'verified' ? 'complete' : val === 'failed' ? 'critical' : 'pending'}
-          label={String(val)}
-        />
-        {val === 'verified' && row.idvs_last_verified_at && (
-          <TimestampWithIcon
-            timestamp={String(row.idvs_last_verified_at)}
-            className="text-xs text-surface-on-variant"
-          />
-        )}
-      </div>
-    ),
-  },
-  {
     key: 'is_active',
     label: 'Status',
     sortable: true,
@@ -80,6 +61,7 @@ const EMPTY_FORM: DriverFormState = {
 }
 
 export default function FleetDriversPage(): React.JSX.Element {
+  const router = useRouter()
   const { drivers, isLoading, error: fetchError, refetch } = useDrivers()
   const { notify } = useToast()
   const [modalOpen, setModalOpen] = useState(false)
@@ -126,7 +108,7 @@ export default function FleetDriversPage(): React.JSX.Element {
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <TopBar title="Fleet — Drivers">
+      <TopBar title="Drivers">
         <Button size="sm" iconLeft={<Plus className="w-4 h-4" />} onClick={() => setModalOpen(true)}>
           Add Driver
         </Button>
@@ -139,6 +121,7 @@ export default function FleetDriversPage(): React.JSX.Element {
           isLoading={isLoading}
           error={fetchError}
           onRetry={refetch}
+          onRowClick={(d) => router.push(`/fleet/drivers/${d.id}`)}
           empty={{ title: 'No drivers', body: 'No drivers registered yet.' }}
         />
       </div>

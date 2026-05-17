@@ -6,6 +6,7 @@ import type { Driver } from './driver'
 import type { Vehicle } from './vehicle'
 import type { HandshakeEvent } from './handshake'
 import type { TripException } from './exception'
+import type { BlockchainReceipt } from './blockchain'
 
 export type TripId = string & { readonly __brand: 'TripId' }
 
@@ -76,17 +77,9 @@ export interface Trip {
   updated_at: string
 }
 
-// Minimal blockchain receipt shape on TripDetailResponse.
-// Full schema in backend/app/schemas/blockchain.py.
-export interface BlockchainReceipt {
-  id: string
-  receipt_type: string
-  hedera_topic_id: string
-  hedera_sequence_number: number
-  sha256_hash: string
-  confirmed_at: string | null
-  created_at: string
-}
+// BlockchainReceipt moved to the canonical blockchain types file.
+// Re-exported here so existing imports from './trip' continue to resolve.
+export type { BlockchainReceipt } from './blockchain'
 
 // Pagination envelope for GET /trips — keys confirmed by API contract §0.2.
 export interface PaginatedList<T> {

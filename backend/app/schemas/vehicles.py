@@ -23,6 +23,7 @@ class VehicleBase(BaseModel):
     vin_number: Optional[str] = None
     licence_disc_expiry: Optional[date] = None
     gross_vehicle_mass_kg: Optional[int] = None
+    length_m: Optional[int] = None
 
 
 class VehicleCreate(VehicleBase):
@@ -45,6 +46,7 @@ class VehicleCreateBody(BaseModel):
     vin_number: Optional[str] = None
     licence_disc_expiry: Optional[date] = None
     gross_vehicle_mass_kg: Optional[int] = None
+    length_m: Optional[int] = None
 
 
 class VehicleUpdate(BaseModel):
@@ -55,6 +57,46 @@ class VehicleUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
+class VehicleUpdateBody(BaseModel):
+    """Fields the dispatcher may change via PATCH /vehicles/{id}.
+
+    All fields are optional — only supplied fields are applied.
+    vehicle_type is excluded: changing horse↔trailer would silently break trip logic.
+    """
+    model_config = ConfigDict(from_attributes=True)
+
+    registration: Optional[str] = None
+    pulsit_device_id: Optional[str] = None
+    vin_number: Optional[str] = None
+    licence_disc_expiry: Optional[date] = None
+    make: Optional[str] = None
+    model: Optional[str] = None
+    year: Optional[int] = None
+    gross_vehicle_mass_kg: Optional[int] = None
+    length_m: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
 class VehicleRead(VehicleBase):
     id: UUID
     created_at: datetime
+
+
+# Imported here (not at the top of the module) to avoid a circular import:
+# vehicles.py → blockchain.py → enums.py is fine, but resource_service.py
+# imports both VehicleRead and BlockchainReceiptRead from their respective
+# schema modules, so the dependency graph stays acyclic.
+from app.schemas.blockchain import BlockchainReceiptRead  # noqa: E402
+from app.schemas.events import VehicleEventRead  # noqa: E402
+
+
+class VehicleDetailResponse(VehicleRead):
+    """Extended vehicle shape returned by GET /vehicles/{id}.
+
+    Includes the full event log, linked blockchain receipts, and the IDs of
+    trips that used this vehicle (as horse or trailer).
+    """
+
+    events: list[VehicleEventRead] = []
+    receipts: list[BlockchainReceiptRead] = []
+    trip_ids: list[UUID] = []

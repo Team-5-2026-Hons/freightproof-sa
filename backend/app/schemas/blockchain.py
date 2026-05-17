@@ -6,7 +6,7 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from app.db.models.enums import BlockchainReceiptType, MerkleBatchType
+from app.db.models.enums import BlockchainReceiptType, MerkleBatchType, SubjectType, VerifyStatus
 
 _VALID_LEAF_SOURCE_TYPES = frozenset({"checkpoint", "exception", "artifact"})
 
@@ -33,7 +33,14 @@ class BlockchainReceiptUpdate(BaseModel):
     hedera_consensus_timestamp: Optional[datetime] = None
 
 
-class BlockchainReceiptRead(BlockchainReceiptBase):
+class BlockchainReceiptReadLegacy(BlockchainReceiptBase):
+    """Legacy receipt shape — uses trip_id from BlockchainReceiptBase.
+
+    Kept for backward compatibility with any internal code that predates
+    the subject_type/subject_id migration. New code should use
+    BlockchainReceiptRead instead.
+    """
+
     id: UUID
     hedera_topic_id: Optional[str] = None
     hedera_tx_id: Optional[str] = None
@@ -95,3 +102,40 @@ class MerkleBatchLeafCreate(MerkleBatchLeafBase):
 class MerkleBatchLeafRead(MerkleBatchLeafBase):
     id: UUID
     created_at: datetime
+
+
+class BlockchainReceiptRead(BaseModel):
+    """Full receipt shape returned by blockchain endpoints and embedded in TripDetailResponse.
+
+    Uses subject_type/subject_id rather than the legacy trip_id field so that
+    receipts for vehicles, drivers, and events can all be represented uniformly.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    subject_type: SubjectType
+    subject_id: UUID
+    receipt_type: BlockchainReceiptType
+    data_hash: str
+    hedera_topic_id: Optional[str] = None
+    hedera_sequence_number: Optional[int] = None
+    hedera_consensus_timestamp: Optional[datetime] = None
+    hedera_tx_id: Optional[str] = None
+    created_at: datetime
+
+
+class VerifyRequest(BaseModel):
+    """Payload for POST /blockchain/verify."""
+
+    subject_type: SubjectType
+    subject_id: UUID
+
+
+class VerifyResponse(BaseModel):
+    """Result of a verification check against the Hedera on-chain record."""
+
+    status: VerifyStatus
+    receipt: Optional[BlockchainReceiptRead] = None
+    expected_hash: Optional[str] = None
+    current_hash: Optional[str] = None

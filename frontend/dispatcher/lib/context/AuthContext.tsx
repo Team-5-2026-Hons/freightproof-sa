@@ -3,6 +3,7 @@
 import { createContext, useState, useEffect, useCallback } from 'react'
 import type { AuthState, DispatcherUser } from '@/lib/types/user'
 import { supabase } from '@/lib/supabase/client'
+import { api } from '@/lib/api/client'
 
 export const AuthContext = createContext<AuthState | null>(null)
 
@@ -10,19 +11,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<DispatcherUser | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
-  const fetchProfile = useCallback(async (accessToken: string): Promise<DispatcherUser | null> => {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/auth/me`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    })
-    if (!res.ok) return null
-    return res.json()
+  const fetchProfile = useCallback(async (): Promise<DispatcherUser | null> => {
+    try {
+      return await api.get<DispatcherUser>('/api/v1/auth/me')
+    } catch {
+      return null
+    }
   }, [])
 
   // On app load, check if a session already exists (e.g. user refreshed the page).
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session) {
-        const profile = await fetchProfile(session.access_token)
+        const profile = await fetchProfile()
         setUser(profile)
       }
       setIsLoading(false)
@@ -31,7 +32,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Listen for Supabase Auth state changes (login, logout, token refresh).
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session) {
-        const profile = await fetchProfile(session.access_token)
+        const profile = await fetchProfile()
         setUser(profile)
       } else {
         setUser(null)

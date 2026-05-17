@@ -2,6 +2,8 @@
 // A trip has one horse and one or more trailers.
 // Mirrors backend VehicleRead schema in schemas/vehicles.py.
 
+import type { VehicleEvent, BlockchainReceipt } from './blockchain'
+
 export type VehicleId = string & { readonly __brand: 'VehicleId' }
 
 export type VehicleType = 'horse' | 'trailer'
@@ -19,5 +21,13 @@ export interface Vehicle {
   vin_number: string | null
   licence_disc_expiry: string | null
   gross_vehicle_mass_kg: number | null
+  length_m: number | null
   created_at: string
+}
+
+// Extended vehicle shape returned by GET /api/v1/vehicles/:id — includes event/receipt history.
+export interface VehicleDetail extends Vehicle {
+  events: VehicleEvent[]
+  receipts: BlockchainReceipt[]
+  trip_ids: string[]
 }

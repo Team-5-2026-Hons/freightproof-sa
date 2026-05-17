@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { TopBar }     from '@/components/ui/TopBar'
 import { Chip }       from '@/components/ui/Chip'
@@ -12,8 +13,11 @@ import { useTripDetail }  from '@/lib/hooks/useTripDetail'
 import { usePrecincts }   from '@/lib/hooks/usePrecincts'
 import { TRIP_STATUS_META } from '@shared/lib/constants/status-meta'
 import { HANDSHAKE_NAMES }  from '@shared/lib/constants/handshake-meta'
+import { VerifyButton }       from '@/components/blockchain/VerifyButton'
+import { TripCreatedDetail }  from '@/components/domain/TripCreatedDetail'
 import type { HandshakeNumber } from '@shared/lib/types/handshake'
 import type { Trip } from '@shared/lib/types/trip'
+import type { BlockchainReceipt, BlockchainReceiptType, VerifyResult } from '@shared/lib/types/blockchain'
 
 // Maps trip status to which sequence number is currently the active (in-progress) handshake.
 // `in_transit` has no active handshake (vehicle is on the road between H3 and H4).
@@ -26,13 +30,51 @@ const ACTIVE_HS_FOR_STATUS: Partial<Record<string, number>> = {
 }
 
 // ── Blockchain chain tag ──────────────────────────────────────────────────────
-function ChainTag({ text }: { text: string }) {
+const RECEIPT_LABELS: Partial<Record<BlockchainReceiptType, string>> = {
+  journey_lock:      'Journey lock anchored',
+  pickup:            'Pickup receipt anchored',
+  delivery:          'Delivery receipt anchored',
+  checkpoint_batch:  'Checkpoint receipt anchored',
+  exception_batch:   'Exception receipt anchored',
+}
+
+function ChainReceiptTag({ receipt }: { receipt: BlockchainReceipt }) {
+  const [copied, setCopied] = useState(false)
+
+  const isPending = !receipt.hedera_topic_id || receipt.hedera_topic_id === 'None'
+  const truncated = `${receipt.data_hash.slice(0, 8)}…${receipt.data_hash.slice(-8)}`
+  const label = RECEIPT_LABELS[receipt.receipt_type] ?? 'Receipt anchored'
+
+  function copyHash() {
+    navigator.clipboard.writeText(receipt.data_hash).catch(() => {})
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
   return (
-    <div className="inline-flex items-center gap-[6px] bg-chain-c rounded-sm px-[10px] py-[5px] mt-[6px]">
-      <Ic n="hex" s={12} className="text-chain" />
-      <span className="text-[11px] font-[500] tracking-[0.04em] tabular-nums leading-relaxed text-chain-onc">
-        {text}
-      </span>
+    <div className="bg-chain-c rounded-sm px-[10px] py-[6px] mt-[6px]">
+      <div className="flex items-center gap-[6px]">
+        <Ic n="hex" s={12} className="text-chain" />
+        <span className="text-[11px] font-[500] tracking-[0.04em] text-chain-onc">
+          {label} · {isPending ? 'Pending anchor' : `Hedera seq #${receipt.hedera_sequence_number}`}
+        </span>
+      </div>
+      <div className="flex items-center gap-[6px] mt-[3px]">
+        <span className="font-mono text-[10px] tracking-[0.04em] text-chain-onc/80 tabular-nums flex-1">
+          {truncated}
+        </span>
+        <button
+          onClick={copyHash}
+          className="shrink-0 inline-flex items-center rounded px-[6px] py-[2px] text-[9px] font-[600] bg-chain-onc/15 text-chain-onc hover:bg-chain-onc/30 transition-colors"
+        >
+          {copied ? '✓ Copied' : 'Copy'}
+        </button>
+      </div>
+      {receipt.hedera_consensus_timestamp && (
+        <div className="text-[10px] text-chain-onc/60 mt-[2px]">
+          Anchored {fmtTs(receipt.hedera_consensus_timestamp)}
+        </div>
+      )}
     </div>
   )
 }
@@ -48,9 +90,10 @@ interface TimelineEventProps {
   meta: string
   detail?: string
   timestamp?: string
-  chainText?: string
+  chainReceipt?: BlockchainReceipt
   excText?: string
   resText?: string
+  expandedContent?: React.ReactNode
 }
 
 function fmtTs(iso: string): string {
@@ -61,8 +104,11 @@ function fmtTs(iso: string): string {
 function TimelineEvent({
   nodeType, nodeLabel, isLast,
   label, meta, detail, timestamp,
-  chainText, excText, resText,
+  chainReceipt, excText, resText, expandedContent,
 }: TimelineEventProps) {
+  const [isExpanded, setIsExpanded] = useState(false)
+  const isExpandable = !!expandedContent
+
   const nodeStyle: Record<NodeType, string> = {
     done:    'bg-ok text-white',
     active:  'bg-sec text-white animate-pulse',
@@ -99,7 +145,10 @@ function TimelineEvent({
       </div>
 
       <div className="flex-1 mb-3">
-        <div className={`rounded-lg px-4 py-3 ${cardStyle[nodeType]}`}>
+        <div
+          className={`rounded-lg px-4 py-3 ${cardStyle[nodeType]} ${isExpandable ? 'cursor-pointer transition-shadow duration-150 hover:shadow-md active:shadow-sm select-none' : ''}`}
+          onClick={isExpandable ? () => setIsExpanded(e => !e) : undefined}
+        >
           <div className="flex items-start justify-between gap-3 mb-[5px]">
             <div className={`text-[15px] font-[700] leading-snug ${nodeType === 'pending' ? 'text-on-surf-v' : 'text-on-surf'}`}>
               {label}
@@ -129,7 +178,8 @@ function TimelineEvent({
               {resText}
             </div>
           )}
-          {chainText && <ChainTag text={chainText} />}
+          {chainReceipt && <ChainReceiptTag receipt={chainReceipt} />}
+          {isExpanded && expandedContent}
         </div>
       </div>
     </div>
@@ -144,6 +194,7 @@ export default function TripDetailPage() {
   const tripId = routeParams.id as string
   const { trip, isLoading, error } = useTripDetail(tripId)
   const { precincts } = usePrecincts()
+  const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null)
 
   const backButton = (
     <Button
@@ -227,9 +278,6 @@ export default function TripDetailPage() {
     if (targetIdx >= 0) timelineItems[targetIdx].exceptions.push(exc)
   }
 
-  function hederaRef(topicId: string, seqNum: number): string {
-    return `Hedera ${topicId} seq #${seqNum}`
-  }
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -239,12 +287,6 @@ export default function TripDetailPage() {
         left={backButton}
       >
         <Chip type={statusMeta.chipType} label={statusMeta.label} />
-        <Button variant="secondary" size="sm" iconLeft={<Ic n="file" s={13} className="text-on-surf" />}>
-          Add Note
-        </Button>
-        <Button size="sm" iconLeft={<Ic n="dl" s={13} className="text-white" />}>
-          Export Evidence PDF
-        </Button>
       </TopBar>
 
       <div className="flex flex-1 overflow-hidden">
@@ -260,11 +302,8 @@ export default function TripDetailPage() {
             meta="Dispatcher"
             detail={`${trip.order_number} · ${trip.driver?.full_name ?? '—'} · ${trip.horse?.registration ?? '—'} · ${parcelCount} parcels`}
             timestamp={tripCreationHs?.completed_at ?? trip.created_at}
-            chainText={
-              trip.blockchain_receipts[0]
-                ? `Journey lock hash anchored · ${hederaRef(trip.blockchain_receipts[0].hedera_topic_id, trip.blockchain_receipts[0].hedera_sequence_number)}`
-                : undefined
-            }
+            chainReceipt={trip.blockchain_receipts[0]}
+            expandedContent={<TripCreatedDetail trip={trip} />}
           />
 
           {timelineItems.map((item, idx) => {
@@ -289,9 +328,6 @@ export default function TripDetailPage() {
             const linkedReceipt = hs.blockchain_receipt_id
               ? trip.blockchain_receipts.find(r => r.id === hs.blockchain_receipt_id)
               : undefined
-            const chainText = linkedReceipt
-              ? `Receipt anchored · ${hederaRef(linkedReceipt.hedera_topic_id, linkedReceipt.hedera_sequence_number)}`
-              : undefined
 
             const excItems = item.exceptions
 
@@ -311,7 +347,7 @@ export default function TripDetailPage() {
                   meta={meta}
                   detail={detail}
                   timestamp={hs.completed_at ?? undefined}
-                  chainText={chainText}
+                  chainReceipt={linkedReceipt}
                 />
                 {excItems.map((exc, ei) => (
                   <TimelineEvent
@@ -342,27 +378,26 @@ export default function TripDetailPage() {
           </div>
           <div className="bg-surf-lowest rounded-lg p-[12px_14px] mb-4 shadow-level-2">
             {([
-              { label: 'Order',       value: trip.order_number,               mono: true  },
-              { label: 'Driver',      value: trip.driver?.full_name ?? '—',   mono: false },
-              { label: 'Horse',       value: trip.horse?.registration ?? '—', mono: true  },
-              { label: 'Origin',      value: originShort,                      mono: false },
-              { label: 'Destination', value: destShort,                        mono: false },
-              { label: 'Route',       value: `${originShort} → ${destShort}`,  mono: false },
-            ] as const).map(row => (
+              { label: 'Order',       value: trip.order_number,             mono: true  },
+              { label: 'Driver',      value: trip.driver?.full_name ?? '—', mono: false },
+              { label: 'Horse',       value: trip.horse?.registration ?? '—', mono: true },
+              { label: 'Origin',      value: originShort,                   mono: false },
+              { label: 'Destination', value: destShort,                     mono: false },
+            ] as const).map((row, i, arr) => (
               <div
                 key={row.label}
-                className="flex justify-between items-center py-[6px] border-b border-outline-v/20 text-[13px]"
+                className={`flex justify-between items-start gap-3 py-[8px] text-[13px]${i < arr.length - 1 ? ' border-b border-outline-v/20' : ''}`}
               >
-                <span className="text-[11px] text-on-surf-v">{row.label}</span>
-                <span className={row.mono ? 'tabular-nums tracking-[0.05em] font-[500] text-on-surf' : 'font-[500] text-on-surf'}>
+                <span className="text-[11px] text-on-surf-v shrink-0 pt-[1px]">{row.label}</span>
+                <span className={`text-right${row.mono ? ' tabular-nums tracking-[0.05em] font-[600] text-on-surf' : ' font-[500] text-on-surf'}`}>
                   {row.value}
                 </span>
               </div>
             ))}
             {sealNumber && (
-              <div className="flex justify-between items-center pt-[6px] text-[13px]">
-                <span className="text-[11px] text-on-surf-v">Seal</span>
-                <span className="font-mono tracking-[0.06em] font-[700] text-[13px] bg-primary text-white rounded-sm px-[10px] py-[3px]">
+              <div className="flex justify-between items-center pt-[8px] mt-[2px] border-t border-outline-v/20 text-[13px]">
+                <span className="text-[11px] text-on-surf-v shrink-0">Seal</span>
+                <span className="font-mono tracking-[0.06em] font-[700] text-[13px] bg-primary text-white rounded-[var(--r-sm)] px-[10px] py-[3px]">
                   {sealNumber}
                 </span>
               </div>
@@ -385,28 +420,33 @@ export default function TripDetailPage() {
           <div className="text-[11px] font-[700] tracking-[0.1em] uppercase text-on-surf-v mb-2">
             Blockchain
           </div>
-          <div className="bg-chain-c rounded-md p-[10px_12px] mb-4 leading-relaxed">
-            <div className="flex items-center gap-[5px] mb-1">
-              <Ic n="hex" s={12} className="text-chain" />
-              <span className="text-[11px] font-[500] tracking-[0.04em] text-chain-onc">
-                {anchoredCount} of {sortedHandshakes.length + 1} receipts anchored
-              </span>
-            </div>
-            {trip.blockchain_receipts.slice(0, 3).map(r => (
-              <div key={r.id} className="text-[11px] tracking-[0.03em] text-chain truncate">
-                {r.hedera_topic_id} #{r.hedera_sequence_number}
+          {(() => {
+            const v = verifyResult
+            const isOk      = v?.status === 'verified'
+            const isMismatch = v?.status === 'db_mismatch' || v?.status === 'hedera_mismatch'
+            const isWarn    = v?.status === 'error'
+            const cardBg    = isOk ? 'bg-ok-c' : isMismatch ? 'bg-err-c' : isWarn ? 'bg-warn-c' : 'bg-chain-c'
+            const iconCl    = isOk ? 'text-ok'  : isMismatch ? 'text-err'  : isWarn ? 'text-warn'  : 'text-chain'
+            const labelCl   = isOk ? 'text-on-ok-c' : isMismatch ? 'text-on-err-c' : isWarn ? 'text-on-warn-c' : 'text-chain-onc'
+            const subCl     = isOk ? 'text-ok'  : isMismatch ? 'text-err'  : isWarn ? 'text-warn'  : 'text-chain'
+            return (
+              <div className={`${cardBg} rounded-md p-[10px_12px] mb-4 leading-relaxed transition-colors duration-300`}>
+                <div className="flex items-center gap-[5px] mb-1">
+                  <Ic n="hex" s={12} className={iconCl} />
+                  <span className={`text-[11px] font-[500] tracking-[0.04em] ${labelCl}`}>
+                    {anchoredCount} of {sortedHandshakes.length + 1} receipts anchored
+                  </span>
+                </div>
+                {trip.blockchain_receipts.slice(0, 3).map(r => (
+                  <div key={r.id} className={`text-[11px] tracking-[0.03em] truncate tabular-nums ${subCl}`}>
+                    {r.hedera_topic_id} #{r.hedera_sequence_number}
+                  </div>
+                ))}
+                <VerifyButton subjectType="trip" subjectId={trip.id as string} autoVerify onResult={setVerifyResult} />
               </div>
-            ))}
-          </div>
+            )
+          })()}
 
-          <Button
-            variant="secondary"
-            full
-            size="sm"
-            iconLeft={<Ic n="warn" s={13} className="text-warn" />}
-          >
-            Hold Trip
-          </Button>
         </div>
       </div>
     </div>

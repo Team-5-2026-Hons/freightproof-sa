@@ -16,6 +16,7 @@ interface DataTableProps<T extends object> {
   rows: T[]
   sort?: { key: keyof T; dir: 'asc' | 'desc' }
   onSort?: (key: keyof T) => void
+  onRowClick?: (row: T) => void
   empty?: { title: string; body: string }
   className?: string
   isLoading?: boolean
@@ -24,7 +25,7 @@ interface DataTableProps<T extends object> {
 }
 
 export function DataTable<T extends object>({
-  columns, rows, sort, onSort, empty, className, isLoading, error, onRetry,
+  columns, rows, sort, onSort, onRowClick, empty, className, isLoading, error, onRetry,
 }: DataTableProps<T>) {
   if (isLoading) {
     return (
@@ -98,9 +99,11 @@ export function DataTable<T extends object>({
           {rows.map((row, i) => (
             <tr
               key={i}
+              onClick={() => onRowClick?.(row)}
               className={cn(
                 'transition-colors duration-150 hover:bg-surface-container-low',
                 i % 2 === 0 ? 'bg-surface-container-lowest' : 'bg-surface-container-low/50',
+                onRowClick && 'cursor-pointer',
               )}
             >
               {columns.map((col) => (

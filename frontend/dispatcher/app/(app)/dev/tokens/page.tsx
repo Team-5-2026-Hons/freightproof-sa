@@ -43,7 +43,10 @@ export default function DevTokensPage() {
 
         <div className="flex gap-3">
           <Button
-            onClick={() => signIn({ email: 'dev@test.com', password: 'mock' })}
+            onClick={() => signIn({
+              email: process.env.NEXT_PUBLIC_DEV_EMAIL ?? '',
+              password: process.env.NEXT_PUBLIC_DEV_PASSWORD ?? '',
+            })}
             disabled={!!user}
           >
             Force Sign In

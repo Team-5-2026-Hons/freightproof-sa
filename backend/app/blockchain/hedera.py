@@ -69,54 +69,62 @@ class _SdkHederaAdapter:
                 "Install backend dependencies to include it."
             ) from exc
 
+        # hedera-sdk-py wraps the Java SDK via pyjnius — all names are Java camelCase.
         normalized_network = network.strip().lower()
         if normalized_network == "testnet":
-            client = Client.for_testnet()
+            client = Client.forTestnet()
         elif normalized_network == "mainnet":
-            client = Client.for_mainnet()
+            client = Client.forMainnet()
         elif normalized_network == "previewnet":
-            client = Client.for_previewnet()
+            client = Client.forPreviewnet()
         else:
             raise HederaConfigError(
                 f"Unsupported HEDERA_NETWORK '{network}'. "
                 "Expected one of: testnet, mainnet, previewnet."
             )
 
-        client.set_operator(
-            AccountId.from_string(account_id),
-            PrivateKey.from_string(private_key),
+        # Strip leading 0x if present — fromStringECDSA expects raw hex only.
+        raw_key = private_key.strip().removeprefix("0x")
+        client.setOperator(
+            AccountId.fromString(account_id),
+            PrivateKey.fromStringECDSA(raw_key),
         )
         self._client = client
 
     def submit_message(self, topic_id: str, message: str) -> HederaReceipt:
         from hedera import TopicId, TopicMessageSubmitTransaction
 
-        topic = TopicId.from_string(topic_id)
-        tx = TopicMessageSubmitTransaction().set_topic_id(topic).set_message(message)
+        topic = TopicId.fromString(topic_id)
+        tx = TopicMessageSubmitTransaction().setTopicId(topic).setMessage(message)
 
         tx_response = tx.execute(self._client)
-        receipt = tx_response.get_receipt(self._client)
+        receipt = tx_response.getReceipt(self._client)
 
-        sequence_number = getattr(receipt, "topic_sequence_number", None)
+        sequence_number = getattr(receipt, "topicSequenceNumber", None)
         if sequence_number is None:
             raise HederaSubmitError(
-                "Hedera receipt did not include topic_sequence_number."
+                "Hedera receipt did not include topicSequenceNumber."
             )
 
-        tx_id = getattr(tx_response, "transaction_id", None)
+        tx_id = getattr(tx_response, "transactionId", None)
         transaction_id = str(tx_id) if tx_id is not None else None
 
         consensus_timestamp: str | None = None
         try:
-            tx_record = tx_response.get_record(self._client)
-            maybe_timestamp = getattr(tx_record, "consensus_timestamp", None)
+            tx_record = tx_response.getRecord(self._client)
+            maybe_timestamp = getattr(tx_record, "consensusTimestamp", None)
             if maybe_timestamp is not None:
                 consensus_timestamp = str(maybe_timestamp)
         except Exception:
             consensus_timestamp = None
 
+        # receipt.topicId can be Java null (pyjnius maps it to Python None) on
+        # TopicMessageSubmit receipts — fall back to the known topic_id we submitted to.
+        raw_topic_id = getattr(receipt, "topicId", None)
+        resolved_topic_id = str(raw_topic_id) if raw_topic_id is not None else topic_id
+
         return HederaReceipt(
-            topic_id=str(getattr(receipt, "topic_id", topic_id)),
+            topic_id=resolved_topic_id,
             sequence_number=int(sequence_number),
             consensus_timestamp=consensus_timestamp,
             transaction_id=transaction_id,

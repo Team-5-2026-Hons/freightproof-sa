@@ -2,25 +2,26 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { TopBar }   from '@/components/ui/TopBar'
-import { Ic }       from '@/components/ui/Ic'
-import { Button }   from '@/components/ui/Button'
-import { StepRail } from '@/components/ui/StepRail'
-import { useToast }     from '@/lib/hooks/useToast'
-import { useAuth }      from '@/lib/hooks/useAuth'
-import { ROUTES }       from '@/lib/constants/routes'
-import { useDrivers }   from '@/lib/hooks/useDrivers'
-import { useVehicles }  from '@/lib/hooks/useVehicles'
-import { usePrecincts } from '@/lib/hooks/usePrecincts'
-import { COPY } from '@shared/lib/constants/copy'
-import { cn } from '@shared/lib/utils/cn'
+import { TopBar }        from '@/components/ui/TopBar'
+import { Ic }            from '@/components/ui/Ic'
+import { Button }        from '@/components/ui/Button'
+import { StepRail }      from '@/components/ui/StepRail'
+import { SearchSelect }  from '@/components/ui/SearchSelect'
+import { useToast }      from '@/lib/hooks/useToast'
+import { useAuth }       from '@/lib/hooks/useAuth'
+import { ROUTES }        from '@/lib/constants/routes'
+import { useDrivers }    from '@/lib/hooks/useDrivers'
+import { useVehicles }   from '@/lib/hooks/useVehicles'
+import { usePrecincts }  from '@/lib/hooks/usePrecincts'
+import { COPY }          from '@shared/lib/constants/copy'
+import { cn }            from '@shared/lib/utils/cn'
 import { api, ApiError } from '@/lib/api/client'
-import type { Trip } from '@shared/lib/types/trip'
+import type { Trip }     from '@shared/lib/types/trip'
+import type { Vehicle }  from '@shared/lib/types/vehicle'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const STEP_NAMES = ['Order & Cargo', 'Crew & Vehicle', 'Route & Schedule', 'Review']
-const HANDLING_OPTIONS = ['Hazmat', 'Fragile', 'Temperature-controlled', 'Oversized'] as const
 
 
 // Underline input style — Material 3 filled field look
@@ -104,6 +105,44 @@ function fmtDateTime(iso: string): string {
   })
 }
 
+// ── Step 2 helpers ────────────────────────────────────────────────────────────
+
+function MiniField({ label, value, mono = false }: { label: string; value: string | null | undefined; mono?: boolean }) {
+  return (
+    <div>
+      <div className="text-[10px] text-on-surf-v mb-[1px]">{label}</div>
+      <div className={cn('text-[12px] font-[500] text-on-surf', mono && 'font-mono tracking-[0.04em]')}>
+        {value || '—'}
+      </div>
+    </div>
+  )
+}
+
+// Trailer combination rules (South African road regs):
+//   0 trailers → single unit, valid
+//   1 trailer  → valid (any length)
+//   2 trailers → valid only when one is 6 m and one is 12 m (combined 18 m)
+//   3+ trailers → blocked
+function trailerCombo(selected: Vehicle[]): { valid: boolean; message: string } {
+  if (selected.length === 0) return { valid: true,  message: 'Single unit — no trailer' }
+  if (selected.length === 1) {
+    const t = selected[0]
+    const len = t.length_m != null ? `${t.length_m} m` : 'unknown length'
+    return { valid: true, message: `${t.registration} — ${len}` }
+  }
+  if (selected.length === 2) {
+    const lengths = selected.map(t => t.length_m ?? 0).sort((a, b) => a - b)
+    if (lengths[0] === 6 && lengths[1] === 12) {
+      return { valid: true, message: `6 m + 12 m combination — valid` }
+    }
+    return {
+      valid: false,
+      message: `${lengths[0]} m + ${lengths[1]} m — exceeds 18 m limit`,
+    }
+  }
+  return { valid: false, message: 'Maximum 2 trailers allowed' }
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function TripNewPage() {
@@ -115,21 +154,22 @@ export default function TripNewPage() {
   const { horses, trailers } = useVehicles()
   const { precincts } = usePrecincts()
 
-  const [step, setStep]           = useState(1)  // 1–4
-  const [loading, setLoading]     = useState(false)
-  const [showErrors, setShowErrors] = useState(false)
+  const [step, setStep]               = useState(1)  // 1–4
+  const [loading, setLoading]         = useState(false)
+  const [showErrors, setShowErrors]   = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
 
   // Step 1 — Order & Cargo
   const [orderNumber, setOrderNumber] = useState('')
   const [commodity,   setCommodity]   = useState('')
   const [weightKg,    setWeightKg]    = useState('')
   const [unitCount,   setUnitCount]   = useState('')
-  const [handling,    setHandling]    = useState<string[]>([])
 
   // Step 2 — Crew & Vehicle
-  const [driverId,   setDriverId]   = useState('')
-  const [horseId,    setHorseId]    = useState('')
-  const [trailerIds, setTrailerIds] = useState<string[]>([])
+  const [driverId,      setDriverId]      = useState('')
+  const [horseId,       setHorseId]       = useState('')
+  const [trailerIds,    setTrailerIds]    = useState<string[]>([])
+  const [trailerSearch, setTrailerSearch] = useState('')
 
   // Step 3 — Route & Schedule
   const [originId,         setOriginId]         = useState('')
@@ -140,8 +180,21 @@ export default function TripNewPage() {
   const [receiverName,     setReceiverName]     = useState('')
   const [receiverContact,  setReceiverContact]  = useState('')
 
+  // Step 2 derived values
+  const selectedDriver        = drivers.find(d => d.id === driverId) ?? null
+  const selectedHorse         = horses.find(h => h.id === horseId) ?? null
+  const selectedTrailerObjects = trailerIds.map(id => trailers.find(t => t.id === id)).filter((t): t is Vehicle => !!t)
+  const comboResult           = trailerCombo(selectedTrailerObjects)
+  const filteredTrailers      = trailerSearch.trim()
+    ? trailers.filter(t =>
+        t.registration.toLowerCase().includes(trailerSearch.toLowerCase()) ||
+        (t.make ?? '').toLowerCase().includes(trailerSearch.toLowerCase()) ||
+        (t.model ?? '').toLowerCase().includes(trailerSearch.toLowerCase()),
+      )
+    : trailers
+
   // Cross-field validation
-  const sameLocation         = !!originId && originId === destId
+  const sameLocation          = !!originId && originId === destId
   const arrivalNotAfterDepart = !!plannedDeparture && !!expectedArrival
     && new Date(expectedArrival) <= new Date(plannedDeparture)
 
@@ -149,13 +202,10 @@ export default function TripNewPage() {
   const stepValid = [
     true,
     !!(orderNumber && commodity && weightKg && unitCount),
-    !!(driverId && horseId),
+    !!(driverId && horseId && comboResult.valid),
     !!(originId && destId && !sameLocation && plannedDeparture && expectedArrival && !arrivalNotAfterDepart),
     true,
   ]
-
-  const toggleHandling = (opt: string) =>
-    setHandling(prev => prev.includes(opt) ? prev.filter(h => h !== opt) : [...prev, opt])
 
   const toggleTrailer = (id: string) =>
     setTrailerIds(prev => prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id])
@@ -287,89 +337,188 @@ export default function TripNewPage() {
                     />
                   </div>
                 </div>
-                <div>
-                  <Lbl>Special handling (optional)</Lbl>
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {HANDLING_OPTIONS.map(opt => (
-                      <button
-                        key={opt}
-                        type="button"
-                        onClick={() => toggleHandling(opt)}
-                        className={cn(
-                          'px-3 py-1.5 rounded-md text-xs font-semibold transition-colors duration-150',
-                          handling.includes(opt)
-                            ? 'bg-sec text-white'
-                            : 'bg-surf-high text-on-surf-v border border-outline-v/30 hover:bg-outline-v/20',
-                        )}
-                      >
-                        {opt}
-                      </button>
-                    ))}
-                  </div>
-                </div>
               </FormCard>
             </>
           )}
 
           {/* ── Step 2: Crew & Vehicle ─────────────────────────────────────── */}
           {step === 2 && (
-            <FormCard>
-              <CardTitle icon="user">Driver & Vehicle</CardTitle>
-
-              <div className="mb-[14px]">
-                <Lbl>Assigned Driver *</Lbl>
-                <select
-                  value={driverId}
-                  onChange={e => setDriverId(e.target.value)}
-                  className={inp}
-                >
-                  <option value="">Select driver…</option>
-                  {drivers.map(d => (
-                    <option key={d.id} value={d.id}>{d.full_name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="mb-[14px]">
-                <Lbl>Horse (truck) *</Lbl>
-                <select
-                  value={horseId}
-                  onChange={e => setHorseId(e.target.value)}
-                  className={inp}
-                >
-                  <option value="">Select horse…</option>
-                  {horses.map(h => (
-                    <option key={h.id} value={h.id}>{h.registration}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <Lbl>Trailers * (at least one required)</Lbl>
-                {trailers.length === 0 ? (
-                  <p className="text-[13px] text-on-surf-v py-2">No trailers registered.</p>
-                ) : (
-                  <div className="flex flex-col mt-1">
-                    {trailers.map(t => (
-                      <label
-                        key={t.id}
-                        className="flex items-center gap-3 px-3 py-[10px] bg-surf-low border-b border-outline-v/20 cursor-pointer hover:bg-sec-c transition-colors duration-150 last:border-0"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={trailerIds.includes(t.id)}
-                          onChange={() => toggleTrailer(t.id)}
-                          className="w-4 h-4 accent-sec"
-                        />
-                        <span className="text-[14px] font-[500] text-on-surf tabular-nums tracking-[0.04em]">
-                          {t.registration}
-                        </span>
-                      </label>
-                    ))}
+            <>
+              {/* Driver ── */}
+              <FormCard>
+                <CardTitle icon="user">Driver</CardTitle>
+                <div className="mb-[14px]">
+                  <Lbl>Assigned Driver *</Lbl>
+                  <SearchSelect
+                    options={drivers.filter(d => d.is_active).map(d => ({
+                      value: d.id as string,
+                      label: d.full_name,
+                      sublabel: `License ${d.license_number}`,
+                    }))}
+                    value={driverId}
+                    onChange={setDriverId}
+                    placeholder="Select driver…"
+                    searchPlaceholder="Search by name or license…"
+                    error={showErrors && !driverId}
+                  />
+                  {showErrors && !driverId && (
+                    <p className="text-[11px] text-err mt-1 font-[500]">Please select a driver.</p>
+                  )}
+                </div>
+                {selectedDriver && (
+                  <div className="rounded-lg bg-surf-low p-[12px_14px] border border-outline-v/20">
+                    <div className="mb-[10px]">
+                      <div className="text-[15px] font-[700] text-on-surf">{selectedDriver.full_name}</div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-[6px]">
+                      <MiniField label="License number" value={selectedDriver.license_number} mono />
+                      <MiniField label="ID number"      value={selectedDriver.id_number}      mono />
+                      <MiniField label="Phone"          value={selectedDriver.phone_number} />
+                    </div>
                   </div>
                 )}
-              </div>
-            </FormCard>
+              </FormCard>
+
+              {/* Horse ── */}
+              <FormCard>
+                <CardTitle icon="truck">Horse (Truck)</CardTitle>
+                <div className="mb-[14px]">
+                  <Lbl>Horse *</Lbl>
+                  <SearchSelect
+                    options={horses.filter(h => h.is_active).map(h => ({
+                      value: h.id as string,
+                      label: h.registration,
+                      sublabel: [h.make, h.model, h.year].filter(Boolean).join(' ') || undefined,
+                    }))}
+                    value={horseId}
+                    onChange={setHorseId}
+                    placeholder="Select horse…"
+                    searchPlaceholder="Search by registration or make…"
+                    error={showErrors && !horseId}
+                  />
+                  {showErrors && !horseId && (
+                    <p className="text-[11px] text-err mt-1 font-[500]">Please select a horse.</p>
+                  )}
+                </div>
+                {selectedHorse && (
+                  <div className="rounded-lg bg-surf-low p-[12px_14px] border border-outline-v/20">
+                    <div className="text-[16px] font-[700] text-on-surf tabular-nums tracking-[0.04em] mb-[10px]">
+                      {selectedHorse.registration}
+                    </div>
+                    <div className="grid grid-cols-3 gap-x-4 gap-y-[6px]">
+                      <MiniField label="Make"  value={selectedHorse.make} />
+                      <MiniField label="Model" value={selectedHorse.model} />
+                      <MiniField label="Year"  value={selectedHorse.year?.toString()} />
+                      {selectedHorse.gross_vehicle_mass_kg != null && (
+                        <MiniField
+                          label="GVM"
+                          value={`${selectedHorse.gross_vehicle_mass_kg.toLocaleString()} kg`}
+                          mono
+                        />
+                      )}
+                    </div>
+                  </div>
+                )}
+              </FormCard>
+
+              {/* Trailers ── */}
+              <FormCard>
+                <CardTitle icon="truck">Trailers</CardTitle>
+                <p className="text-[12px] text-on-surf-v mb-4 leading-relaxed">
+                  A truck can run as a single unit with no trailer, pull one trailer of any length,
+                  or pull a 6 m + 12 m combination only. Any other two-trailer combination exceeds
+                  the 18 m limit.
+                </p>
+
+                {trailers.length === 0 ? (
+                  <p className="text-[13px] text-on-surf-v">No trailers registered in the fleet.</p>
+                ) : (
+                  <>
+                    {/* Search filter — only shown when there are enough to warrant it */}
+                    {trailers.length > 5 && (
+                      <div className="flex items-center gap-2 bg-surf-low rounded-t-sm border-b border-outline-v px-3 py-[8px] mb-2">
+                        <Ic n="search" s={13} className="text-on-surf-v shrink-0" />
+                        <input
+                          value={trailerSearch}
+                          onChange={e => setTrailerSearch(e.target.value)}
+                          placeholder="Search trailers…"
+                          className="flex-1 bg-transparent text-[13px] text-on-surf outline-none placeholder:text-on-surf-v"
+                        />
+                      </div>
+                    )}
+
+                    {filteredTrailers.length === 0 ? (
+                      <p className="text-[13px] text-on-surf-v py-2">No trailers match your search.</p>
+                    ) : (
+                      <div className="flex flex-col border border-outline-v/20 rounded-lg overflow-hidden mb-3">
+                        {filteredTrailers.map(t => {
+                          const checked     = trailerIds.includes(t.id as string)
+                          const wouldExceed = !checked && trailerIds.length >= 2
+                          return (
+                            <label
+                              key={t.id as string}
+                              className={cn(
+                                'flex items-start gap-3 px-4 py-[10px] border-b border-outline-v/10 last:border-0 transition-colors duration-100',
+                                checked      ? 'bg-sec-c cursor-pointer'
+                                : wouldExceed ? 'opacity-40 cursor-not-allowed'
+                                : 'hover:bg-surf-low cursor-pointer',
+                              )}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                disabled={wouldExceed}
+                                onChange={() => { if (!wouldExceed) toggleTrailer(t.id as string) }}
+                                className="w-4 h-4 accent-sec mt-[3px] shrink-0"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-[14px] font-[600] text-on-surf tabular-nums tracking-[0.04em]">
+                                    {t.registration}
+                                  </span>
+                                  {t.length_m != null && (
+                                    <span className="text-[11px] font-[700] bg-chain-c text-chain-onc rounded-full px-[8px] py-[1px] tabular-nums">
+                                      {t.length_m} m
+                                    </span>
+                                  )}
+                                </div>
+                                {(t.make || t.model || t.gross_vehicle_mass_kg) && (
+                                  <div className="text-[11px] text-on-surf-v mt-[2px]">
+                                    {[t.make, t.model, t.year].filter(Boolean).join(' ')}
+                                    {t.gross_vehicle_mass_kg != null
+                                      ? ` · ${t.gross_vehicle_mass_kg.toLocaleString()} kg GVM`
+                                      : ''}
+                                  </div>
+                                )}
+                              </div>
+                            </label>
+                          )
+                        })}
+                      </div>
+                    )}
+
+                    {/* Combination status indicator */}
+                    <div className={cn(
+                      'flex items-center gap-2 rounded-lg px-[12px] py-[9px] text-[12px] font-[600]',
+                      comboResult.valid ? 'bg-ok-c text-on-ok-c' : 'bg-err-c text-on-err-c',
+                    )}>
+                      <Ic
+                        n={comboResult.valid ? 'check' : 'warn'}
+                        s={13}
+                        className={comboResult.valid ? 'text-ok' : 'text-err'}
+                      />
+                      {comboResult.message}
+                    </div>
+
+                    {showErrors && !comboResult.valid && (
+                      <p className="text-[11px] text-err mt-1 font-[500]">
+                        Fix the trailer combination before continuing.
+                      </p>
+                    )}
+                  </>
+                )}
+              </FormCard>
+            </>
           )}
 
           {/* ── Step 3: Route & Schedule ───────────────────────────────────── */}
@@ -480,21 +629,6 @@ export default function TripNewPage() {
                     { label: 'Weight',    value: `${weightKg} kg`,     mono: true },
                     { label: 'Units',     value: unitCount,            mono: true },
                   ]} />
-                  {handling.length > 0 && (
-                    <div className="flex items-start gap-3 pt-2 border-t border-outline-v/10 mt-1">
-                      <span className="text-[11px] text-on-surf-v w-24 shrink-0 pt-px">Handling</span>
-                      <div className="flex flex-wrap gap-1.5">
-                        {handling.map(h => (
-                          <span
-                            key={h}
-                            className="px-2 py-0.5 rounded-sm text-[11px] font-[600] bg-surf-high text-on-surf"
-                          >
-                            {h}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </ReviewSection>
 
                 <ReviewSection title="Crew & Vehicle" onEdit={() => setStep(2)}>
@@ -571,7 +705,7 @@ export default function TripNewPage() {
                   On submit: journey lock hash anchored to Hedera HCS + pre-notification sent to principal.
                 </div>
 
-                <Button full loading={loading} onClick={handleSubmit}>
+                <Button full onClick={() => setShowConfirm(true)}>
                   Create Trip + Lock to Blockchain
                 </Button>
               </div>
@@ -590,6 +724,48 @@ export default function TripNewPage() {
 
         </div>
       </div>
+
+      {/* ── Confirmation modal ──────────────────────────────────────────── */}
+      {showConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={() => !loading && setShowConfirm(false)}
+        >
+          <div
+            className="w-full max-w-[440px] rounded-xl bg-surf-lowest shadow-xl p-6"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3 mb-4">
+              <div className="mt-[2px] shrink-0 rounded-full bg-warn-c p-[6px]">
+                <Ic n="lock" s={16} className="text-warn" />
+              </div>
+              <div>
+                <div className="text-[16px] font-[700] text-on-surf">This action is permanent</div>
+                <div className="text-[13px] text-on-surf-v mt-[4px] leading-relaxed">
+                  Once created, this trip will be anchored to the Hedera blockchain and cannot be
+                  deleted. A trip can only be cancelled to retain evidence. Are you sure you want
+                  to proceed?
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Button full loading={loading} onClick={handleSubmit}>
+                Create Trip + Lock to Blockchain
+              </Button>
+              {loading && (
+                <div className="flex items-center gap-2 rounded-lg bg-warn-c px-3 py-2 text-[12px] font-[500] text-on-warn-c">
+                  <Ic n="hex" s={12} className="text-warn animate-pulse" />
+                  Anchoring to Hedera testnet — approx. 4–6 seconds…
+                </div>
+              )}
+              <Button variant="secondary" full onClick={() => setShowConfirm(false)} disabled={loading}>
+                Go back and review
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Bottom navigation strip */}
       <div className="shrink-0 flex gap-[10px] px-6 py-3 bg-surf-lowest border-t border-outline-v/20">

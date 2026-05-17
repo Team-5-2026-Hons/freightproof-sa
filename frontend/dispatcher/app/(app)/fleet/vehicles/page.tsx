@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react'
 import { Plus } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { TopBar } from '@/components/ui/TopBar'
 import { DataTable } from '@/components/ui/DataTable'
 import { Button } from '@/components/ui/Button'
@@ -47,6 +48,15 @@ const columns: Column<Vehicle>[] = [
     ),
   },
   {
+    key: 'length_m',
+    label: 'Length',
+    render: (val, row) => (
+      row.vehicle_type === 'trailer'
+        ? <span className="text-sm font-mono text-surface-on">{val != null ? `${val} m` : '—'}</span>
+        : <span className="text-sm text-surface-on-variant">—</span>
+    ),
+  },
+  {
     key: 'vin_number',
     label: 'VIN',
     render: (val) => (
@@ -80,6 +90,7 @@ interface VehicleFormState {
   vin_number: string
   licence_disc_expiry: string
   gross_vehicle_mass_kg: string
+  length_m: string
 }
 
 const EMPTY_FORM: VehicleFormState = {
@@ -92,9 +103,11 @@ const EMPTY_FORM: VehicleFormState = {
   vin_number: '',
   licence_disc_expiry: '',
   gross_vehicle_mass_kg: '',
+  length_m: '',
 }
 
 export default function FleetVehiclesPage(): React.JSX.Element {
+  const router = useRouter()
   const { all: vehicles, isLoading, error: fetchError, refetch } = useVehicles()
   const { notify } = useToast()
   const [modalOpen, setModalOpen] = useState(false)
@@ -132,6 +145,7 @@ export default function FleetVehiclesPage(): React.JSX.Element {
         vin_number: form.vin_number || null,
         licence_disc_expiry: form.licence_disc_expiry || null,
         gross_vehicle_mass_kg: form.gross_vehicle_mass_kg ? parseInt(form.gross_vehicle_mass_kg, 10) : null,
+        length_m: form.vehicle_type === 'trailer' && form.length_m ? parseInt(form.length_m, 10) : null,
       })
       handleClose()
       refetch()
@@ -144,7 +158,7 @@ export default function FleetVehiclesPage(): React.JSX.Element {
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <TopBar title="Fleet — Vehicles">
+      <TopBar title="Vehicles">
         <Button size="sm" iconLeft={<Plus className="w-4 h-4" />} onClick={() => setModalOpen(true)}>
           Add Vehicle
         </Button>
@@ -157,6 +171,7 @@ export default function FleetVehiclesPage(): React.JSX.Element {
           isLoading={isLoading}
           error={fetchError}
           onRetry={refetch}
+          onRowClick={(v) => router.push(`/fleet/vehicles/${v.id}`)}
           empty={{ title: 'No vehicles', body: 'No vehicles registered yet.' }}
         />
       </div>
@@ -245,6 +260,21 @@ export default function FleetVehiclesPage(): React.JSX.Element {
               />
             </label>
           </div>
+          {form.vehicle_type === 'trailer' && (
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-surface-on-variant">Trailer Length *</span>
+              <select
+                className="border border-outline-variant rounded-lg px-3 py-2 text-sm bg-surface-container-lowest text-surface-on focus:outline-none focus:ring-2 focus:ring-primary"
+                value={form.length_m}
+                onChange={(e) => handleChange('length_m', e.target.value)}
+              >
+                <option value="">Select length…</option>
+                <option value="6">6 m</option>
+                <option value="12">12 m</option>
+                <option value="18">18 m</option>
+              </select>
+            </label>
+          )}
           <label className="flex flex-col gap-1">
             <span className="text-xs font-medium text-surface-on-variant">VIN Number</span>
             <input

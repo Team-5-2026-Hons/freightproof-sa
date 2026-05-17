@@ -40,6 +40,7 @@ class Vehicle(Base):
     vin_number: Mapped[Optional[str]] = mapped_column(String(17), nullable=True, unique=True)
     licence_disc_expiry: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     gross_vehicle_mass_kg: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    length_m: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False

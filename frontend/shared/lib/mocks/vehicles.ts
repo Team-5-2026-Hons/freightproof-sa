@@ -6,6 +6,7 @@ const vehicleId = (v: string): VehicleId => v as unknown as VehicleId
 const nullAttrs = {
   make: null, model: null, year: null,
   vin_number: null, licence_disc_expiry: null, gross_vehicle_mass_kg: null,
+  length_m: null,
 }
 
 export const HORSE_1_ID   = vehicleId('f1a2b3c4-d5e6-4172-9526-374859607080')

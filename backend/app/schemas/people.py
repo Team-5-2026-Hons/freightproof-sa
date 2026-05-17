@@ -1,6 +1,6 @@
 """Pydantic v2 schemas for User and Driver."""
 
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 from typing import Optional
 
@@ -70,6 +70,7 @@ class DriverCreateBody(BaseModel):
     id_number: str
     phone_number: str
     license_number: str
+    license_expiry: Optional[date] = None
 
     @field_validator("id_number")
     @classmethod
@@ -89,9 +90,45 @@ class DriverUpdate(BaseModel):
     idvs_status: Optional[IdvsStatus] = None
 
 
+class DriverUpdateBody(BaseModel):
+    """Fields the dispatcher may change via PATCH /drivers/{id}.
+
+    All fields are optional — only supplied fields are applied.
+    POPIA: license_number is accepted here but only its SHA-256 hash goes to Hedera.
+    """
+    model_config = ConfigDict(from_attributes=True)
+
+    full_name: Optional[str] = None
+    phone_number: Optional[str] = None
+    license_number: Optional[str] = None
+    license_expiry: Optional[date] = None
+    is_active: Optional[bool] = None
+
+
 class DriverRead(DriverBase):
     id: UUID
     idvs_status: IdvsStatus
     idvs_last_verified_at: Optional[datetime] = None
+    license_expiry: Optional[date] = None
     created_at: datetime
     updated_at: datetime
+
+
+# Imported here (not at the top of the module) to avoid a circular import:
+# people.py → blockchain.py → enums.py is fine, but resource_service.py
+# imports both DriverRead and BlockchainReceiptRead from their respective
+# schema modules, so the dependency graph stays acyclic.
+from app.schemas.blockchain import BlockchainReceiptRead  # noqa: E402
+from app.schemas.events import DriverEventRead  # noqa: E402
+
+
+class DriverDetailResponse(DriverRead):
+    """Extended driver shape returned by GET /drivers/{id}.
+
+    Includes the full event log, linked blockchain receipts, and the IDs of
+    trips assigned to this driver.
+    """
+
+    events: list[DriverEventRead] = []
+    receipts: list[BlockchainReceiptRead] = []
+    trip_ids: list[UUID] = []
