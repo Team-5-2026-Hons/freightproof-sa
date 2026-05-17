@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '@/lib/api/client'
 import { Ic } from '@/components/ui/Ic'
+import { useToast } from '@/lib/hooks/useToast'
 import type { SubjectType, VerifyResult } from '@shared/lib/types/blockchain'
 
 type Props = {
@@ -101,6 +102,7 @@ function MismatchReport({ result, onClose }: { result: VerifyResult; onClose: ()
 export function VerifyButton({
   subjectType, subjectId, autoVerify = false, onResult, className = '',
 }: Props) {
+  const { notify } = useToast()
   const [ui, setUi] = useState<UIState>(autoVerify ? { kind: 'verifying' } : { kind: 'idle' })
   const [showReport, setShowReport] = useState(false)
 
@@ -117,10 +119,15 @@ export function VerifyButton({
       if (!autoVerify) {
         setTimeout(() => setUi({ kind: 'idle' }), 8000)
       }
-    } catch {
+    } catch (err) {
       setUi({ kind: 'idle' })
+      notify({
+        kind: 'error',
+        title: 'Blockchain check failed',
+        body: err instanceof Error ? err.message : 'Could not reach the verification service.',
+      })
     }
-  }, [subjectType, subjectId, autoVerify, onResult])
+  }, [subjectType, subjectId, autoVerify, onResult, notify])
 
   // Fire once after the page has rendered — non-blocking.
   useEffect(() => {

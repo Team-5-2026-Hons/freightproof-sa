@@ -7,45 +7,13 @@ import { Chip }      from '@/components/ui/Chip'
 import { Spinner }   from '@/components/ui/Spinner'
 import { Button }    from '@/components/ui/Button'
 import { Ic }        from '@/components/ui/Ic'
+import { InfoRow }   from '@/components/ui/InfoRow'
+import { FormField } from '@/components/ui/FormField'
 import { BlockchainBadge } from '@/components/blockchain/BlockchainBadge'
 import { EventTimeline }   from '@/components/blockchain/EventTimeline'
 import { useVehicleDetail } from '@/lib/hooks/useVehicleDetail'
 import { api } from '@/lib/api/client'
 import { ROUTES } from '@/lib/constants/routes'
-
-function InfoRow({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div className="flex justify-between items-start gap-3 py-[8px] border-b border-outline-v/20 last:border-0 text-[13px]">
-      <span className="text-[11px] text-on-surf-v shrink-0 pt-[1px]">{label}</span>
-      <span className={`text-right font-[500] text-on-surf${mono ? ' tabular-nums tracking-[0.05em] font-[600]' : ''}`}>
-        {value}
-      </span>
-    </div>
-  )
-}
-
-function FormField({
-  label, name, type = 'text', value, onChange,
-}: {
-  label: string
-  name: string
-  type?: string
-  value: string
-  onChange: (name: string, value: string) => void
-}) {
-  return (
-    <label className="flex flex-col gap-1">
-      <span className="text-xs font-medium text-surface-on-variant">{label}</span>
-      <input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(name, e.target.value)}
-        className="border border-outline-variant rounded-lg px-3 py-2 text-sm bg-surface-container-lowest
-                   text-surface-on focus:outline-none focus:ring-2 focus:ring-primary"
-      />
-    </label>
-  )
-}
 
 type EditState = {
   registration: string

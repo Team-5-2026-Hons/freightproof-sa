@@ -8,8 +8,11 @@ interface BlockchainReceiptProps {
   receipt: BlockchainReceiptType
 }
 
+const HASHSCAN_BASE =
+  process.env.NEXT_PUBLIC_HEDERA_HASHSCAN_BASE ?? 'https://hashscan.io/testnet'
+
 export function BlockchainReceipt({ receipt }: BlockchainReceiptProps) {
-  const hashScanUrl = `https://hashscan.io/testnet/topic/${receipt.hedera_topic_id}/message/${receipt.hedera_sequence_number}`
+  const hashScanUrl = `${HASHSCAN_BASE}/topic/${receipt.hedera_topic_id}/message/${receipt.hedera_sequence_number}`
 
   return (
     <Card variant="section" className="p-4">

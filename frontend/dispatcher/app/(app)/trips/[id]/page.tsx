@@ -287,8 +287,6 @@ export default function TripDetailPage() {
         left={backButton}
       >
         <Chip type={statusMeta.chipType} label={statusMeta.label} />
-        {false && <Button variant="secondary" size="sm" iconLeft={<Ic n="file" s={13} className="text-on-surf" />}>Add Note</Button>}
-        {false && <Button size="sm" iconLeft={<Ic n="dl" s={13} className="text-white" />}>Export Evidence PDF</Button>}
       </TopBar>
 
       <div className="flex flex-1 overflow-hidden">
@@ -449,11 +447,6 @@ export default function TripDetailPage() {
             )
           })()}
 
-          {false && (
-            <Button variant="secondary" full size="sm" iconLeft={<Ic n="warn" s={13} className="text-warn" />}>
-              Hold Trip
-            </Button>
-          )}
         </div>
       </div>
     </div>

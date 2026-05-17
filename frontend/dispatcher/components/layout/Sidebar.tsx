@@ -56,7 +56,7 @@ const NAV_GROUPS: NavGroup[] = [
 const SETTINGS_ITEM: NavItem = {
   label: 'Settings',
   href: ROUTES.settings,
-  icon: 'check',
+  icon: 'gear',
   activePatterns: ['/settings'],
 }
 
