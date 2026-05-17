@@ -10,7 +10,6 @@ import { Chip } from '@/components/ui/Chip'
 import { Modal } from '@/components/ui/Modal'
 import { useDrivers } from '@/lib/hooks/useDrivers'
 import { useToast } from '@/lib/hooks/useToast'
-import { TimestampWithIcon } from '@/components/domain/TimestampWithIcon'
 import { api } from '@/lib/api/client'
 import type { Column } from '@/components/ui/DataTable'
 import type { Driver } from '@shared/lib/types/driver'
@@ -36,25 +35,6 @@ const columns: Column<Driver>[] = [
     key: 'phone_number',
     label: 'Phone',
     render: (val) => <span className="text-sm text-surface-on">{String(val)}</span>,
-  },
-  {
-    key: 'idvs_status',
-    label: 'Verification',
-    sortable: true,
-    render: (val, row) => (
-      <div className="flex flex-col gap-1">
-        <Chip
-          type={val === 'verified' ? 'complete' : val === 'failed' ? 'critical' : 'pending'}
-          label={String(val)}
-        />
-        {val === 'verified' && row.idvs_last_verified_at && (
-          <TimestampWithIcon
-            timestamp={String(row.idvs_last_verified_at)}
-            className="text-xs text-surface-on-variant"
-          />
-        )}
-      </div>
-    ),
   },
   {
     key: 'is_active',

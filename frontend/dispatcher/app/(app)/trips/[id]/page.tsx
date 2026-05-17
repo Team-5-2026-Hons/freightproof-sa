@@ -60,14 +60,14 @@ function ChainReceiptTag({ receipt }: { receipt: BlockchainReceipt }) {
         </span>
       </div>
       <div className="flex items-center gap-[6px] mt-[3px]">
-        <span className="font-mono text-[10px] tracking-[0.04em] text-chain-onc/80 tabular-nums">
+        <span className="font-mono text-[10px] tracking-[0.04em] text-chain-onc/80 tabular-nums flex-1">
           {truncated}
         </span>
         <button
           onClick={copyHash}
-          className="text-[9px] font-[500] text-chain-onc/50 hover:text-chain-onc transition-colors"
+          className="shrink-0 inline-flex items-center rounded px-[6px] py-[2px] text-[9px] font-[600] bg-chain-onc/15 text-chain-onc hover:bg-chain-onc/30 transition-colors"
         >
-          {copied ? '✓ copied' : 'copy'}
+          {copied ? '✓ Copied' : 'Copy'}
         </button>
       </div>
       {receipt.hedera_consensus_timestamp && (

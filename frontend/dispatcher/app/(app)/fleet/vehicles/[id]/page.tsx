@@ -56,6 +56,7 @@ type EditState = {
   model: string
   year: string
   gross_vehicle_mass_kg: string
+  length_m: string
   is_active: boolean
 }
 
@@ -115,6 +116,7 @@ export default function VehicleDetailPage() {
       model: vehicle!.model ?? '',
       year: vehicle!.year != null ? String(vehicle!.year) : '',
       gross_vehicle_mass_kg: vehicle!.gross_vehicle_mass_kg != null ? String(vehicle!.gross_vehicle_mass_kg) : '',
+      length_m: vehicle!.length_m != null ? String(vehicle!.length_m) : '',
       is_active: vehicle!.is_active,
     })
     setSaveError(null)
@@ -140,6 +142,9 @@ export default function VehicleDetailPage() {
       if (form.year !== (vehicle!.year != null ? String(vehicle!.year) : '')) body.year = form.year ? parseInt(form.year, 10) : null
       if (form.gross_vehicle_mass_kg !== (vehicle!.gross_vehicle_mass_kg != null ? String(vehicle!.gross_vehicle_mass_kg) : '')) {
         body.gross_vehicle_mass_kg = form.gross_vehicle_mass_kg ? parseInt(form.gross_vehicle_mass_kg, 10) : null
+      }
+      if (form.length_m !== (vehicle!.length_m != null ? String(vehicle!.length_m) : '')) {
+        body.length_m = form.length_m ? parseInt(form.length_m, 10) : null
       }
       if (form.is_active !== vehicle!.is_active) body.is_active = form.is_active
 
@@ -198,6 +203,22 @@ export default function VehicleDetailPage() {
               <FormField label="Year"     name="year"                   type="number" value={form.year}                  onChange={handleFieldChange} />
               <FormField label="GVM (kg)" name="gross_vehicle_mass_kg" type="number" value={form.gross_vehicle_mass_kg} onChange={handleFieldChange} />
 
+              {vehicle.vehicle_type === 'trailer' && (
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs font-medium text-surface-on-variant">Trailer Length</span>
+                  <select
+                    value={form.length_m}
+                    onChange={(e) => setForm((prev) => prev ? { ...prev, length_m: e.target.value } : prev)}
+                    className="border border-outline-variant rounded-lg px-3 py-2 text-sm bg-surface-container-lowest text-surface-on focus:outline-none focus:ring-2 focus:ring-primary"
+                  >
+                    <option value="">Not set</option>
+                    <option value="6">6 m</option>
+                    <option value="12">12 m</option>
+                    <option value="18">18 m</option>
+                  </select>
+                </label>
+              )}
+
               <div className="flex items-center justify-between py-[6px]">
                 <span className="text-xs font-medium text-surface-on-variant">Active</span>
                 <button
@@ -234,6 +255,9 @@ export default function VehicleDetailPage() {
               <InfoRow label="VIN"                 value={vehicle.vin_number ?? '—'} mono={!!vehicle.vin_number} />
               <InfoRow label="Licence disc expiry" value={vehicle.licence_disc_expiry ?? '—'} mono={!!vehicle.licence_disc_expiry} />
               <InfoRow label="GVM"                 value={vehicle.gross_vehicle_mass_kg != null ? `${vehicle.gross_vehicle_mass_kg.toLocaleString()} kg` : '—'} mono={vehicle.gross_vehicle_mass_kg != null} />
+              {vehicle.vehicle_type === 'trailer' && (
+                <InfoRow label="Length" value={vehicle.length_m != null ? `${vehicle.length_m} m` : '—'} mono={vehicle.length_m != null} />
+              )}
               <InfoRow label="Status"              value={vehicle.is_active ? 'Active' : 'Inactive'} />
             </div>
           )}

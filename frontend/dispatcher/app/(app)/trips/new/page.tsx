@@ -17,7 +17,6 @@ import { COPY }          from '@shared/lib/constants/copy'
 import { cn }            from '@shared/lib/utils/cn'
 import { api, ApiError } from '@/lib/api/client'
 import type { Trip }     from '@shared/lib/types/trip'
-import type { Driver }   from '@shared/lib/types/driver'
 import type { Vehicle }  from '@shared/lib/types/vehicle'
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -116,22 +115,6 @@ function MiniField({ label, value, mono = false }: { label: string; value: strin
         {value || '—'}
       </div>
     </div>
-  )
-}
-
-function IdvsStatusChip({ status }: { status: Driver['idvs_status'] }) {
-  const styles = {
-    verified: 'bg-ok-c text-on-ok-c',
-    pending:  'bg-surf-high text-on-surf-v',
-    failed:   'bg-err-c text-on-err-c',
-  }
-  const labels = { verified: 'IDVS Verified', pending: 'IDVS Pending', failed: 'IDVS Failed' }
-  return (
-    <span className={cn('inline-flex items-center gap-[4px] rounded-full px-[8px] py-[2px] text-[10px] font-[700] shrink-0', styles[status])}>
-      {status === 'verified' && <Ic n="check" s={9} />}
-      {status === 'failed'   && <Ic n="warn"  s={9} />}
-      {labels[status]}
-    </span>
   )
 }
 
@@ -384,9 +367,8 @@ export default function TripNewPage() {
                 </div>
                 {selectedDriver && (
                   <div className="rounded-lg bg-surf-low p-[12px_14px] border border-outline-v/20">
-                    <div className="flex items-start justify-between gap-3 mb-[10px]">
+                    <div className="mb-[10px]">
                       <div className="text-[15px] font-[700] text-on-surf">{selectedDriver.full_name}</div>
-                      <IdvsStatusChip status={selectedDriver.idvs_status} />
                     </div>
                     <div className="grid grid-cols-2 gap-x-4 gap-y-[6px]">
                       <MiniField label="License number" value={selectedDriver.license_number} mono />

@@ -55,11 +55,6 @@ type EditState = {
   is_active: boolean
 }
 
-function idvsChipType(status: string): 'complete' | 'critical' | 'pending' {
-  if (status === 'verified') return 'complete'
-  if (status === 'failed') return 'critical'
-  return 'pending'
-}
 
 export default function DriverDetailPage() {
   const router = useRouter()
@@ -150,10 +145,6 @@ export default function DriverDetailPage() {
         sub={driver.phone_number}
         left={backButton}
       >
-        <Chip
-          type={idvsChipType(driver.idvs_status)}
-          label={driver.idvs_status === 'verified' ? 'IDVS Verified' : driver.idvs_status === 'failed' ? 'IDVS Failed' : 'IDVS Pending'}
-        />
         <Chip type={driver.is_active ? 'complete' : 'pending'} label={driver.is_active ? 'Active' : 'Inactive'} />
         {!isEditing && (
           <Button variant="secondary" size="sm" onClick={startEdit}>
@@ -227,7 +218,6 @@ export default function DriverDetailPage() {
                 <InfoRow label="ID number"      value={driver.id_number} mono />
                 <InfoRow label="Licence number" value={driver.license_number} mono />
                 <InfoRow label="Licence expiry" value={driver.license_expiry ?? '—'} mono={!!driver.license_expiry} />
-                <InfoRow label="IDVS status"    value={driver.idvs_status} />
                 <InfoRow label="Status"         value={driver.is_active ? 'Active' : 'Inactive'} />
               </div>
               <div className="flex items-center gap-[5px] mb-4 px-[2px]">
