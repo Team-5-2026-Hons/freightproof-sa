@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.blockchain.hedera import HederaService, HederaServiceError
 from app.crypto.hashing import compute_trip_canonical_payload
 from app.db.models.blockchain import BlockchainReceipt
+from app.db.models.events import DriverEvent, VehicleEvent
 from app.db.models.enums import SubjectType, VerifyStatus
 from app.db.models.trips import Trip, TripTrailer
 
@@ -69,6 +70,42 @@ async def _reconstruct_trip_payload(
     )
 
 
+async def _reconstruct_vehicle_event_payload(
+    db: AsyncSession, event_id: uuid.UUID
+) -> dict[str, Any] | None:
+    event = (
+        await db.execute(select(VehicleEvent).where(VehicleEvent.id == event_id))
+    ).scalar_one_or_none()
+    if event is None:
+        return None
+    return {
+        "vehicle_event_id": str(event.id),
+        "vehicle_id": str(event.vehicle_id),
+        "event_type": event.event_type,
+        "fields": event.changed_fields,
+        "changed_by_user_id": str(event.changed_by_user_id),
+        "timestamp": event.created_at.isoformat(),
+    }
+
+
+async def _reconstruct_driver_event_payload(
+    db: AsyncSession, event_id: uuid.UUID
+) -> dict[str, Any] | None:
+    event = (
+        await db.execute(select(DriverEvent).where(DriverEvent.id == event_id))
+    ).scalar_one_or_none()
+    if event is None:
+        return None
+    return {
+        "driver_event_id": str(event.id),
+        "driver_id": str(event.driver_id),
+        "event_type": event.event_type,
+        "fields": event.changed_fields,
+        "changed_by_user_id": str(event.changed_by_user_id),
+        "timestamp": event.created_at.isoformat(),
+    }
+
+
 def _hash_payload(payload: dict[str, Any]) -> str:
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -91,9 +128,16 @@ async def verify_subject(
         if rebuilt is None:
             return VerifyOutcome(status=VerifyStatus.NO_RECEIPT, receipt=receipt)
         current_hash = _hash_payload(rebuilt)
-    elif subject_type in (SubjectType.VEHICLE_EVENT, SubjectType.DRIVER_EVENT):
-        # Events are immutable; re-hash the stored payload_json.
-        current_hash = _hash_payload(receipt.payload_json)
+    elif subject_type == SubjectType.VEHICLE_EVENT:
+        rebuilt = await _reconstruct_vehicle_event_payload(db, subject_id)
+        if rebuilt is None:
+            return VerifyOutcome(status=VerifyStatus.NO_RECEIPT, receipt=receipt)
+        current_hash = _hash_payload(rebuilt)
+    elif subject_type == SubjectType.DRIVER_EVENT:
+        rebuilt = await _reconstruct_driver_event_payload(db, subject_id)
+        if rebuilt is None:
+            return VerifyOutcome(status=VerifyStatus.NO_RECEIPT, receipt=receipt)
+        current_hash = _hash_payload(rebuilt)
     else:
         # vehicle/driver subject types not currently verifiable directly
         return VerifyOutcome(status=VerifyStatus.NO_RECEIPT, receipt=receipt)
@@ -105,6 +149,9 @@ async def verify_subject(
             expected_hash=receipt.data_hash,
             current_hash=current_hash,
         )
+
+    if not receipt.hedera_topic_id or not receipt.hedera_sequence_number:
+        return VerifyOutcome(status=VerifyStatus.ERROR, receipt=receipt)
 
     service = hedera_service or HederaService()
     try:

@@ -7,6 +7,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,6 +26,24 @@ def compute_payload_hash(payload: dict[str, Any]) -> str:
     """SHA-256 hex over the canonical JSON encoding of payload."""
     canonical = canonicalize_payload(payload)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _parse_consensus_timestamp(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        # Hedera/Java returns 9 digits of nanoseconds (e.g. 2021-06-23T10:13:30.123456789Z)
+        # Python's fromisoformat only supports 6 digits (microseconds).
+        # We replace the Z and slice off the last 3 digits of the fractional seconds if there are 9.
+        val = value.replace("Z", "+00:00")
+        if "." in val and "+" in val:
+            time_part, tz_part = val.split("+")
+            secs, frac = time_part.split(".")
+            if len(frac) > 6:
+                val = f"{secs}.{frac[:6]}+{tz_part}"
+        return datetime.fromisoformat(val)
+    except ValueError:
+        return None
 
 
 async def anchor_subject(
@@ -59,7 +78,9 @@ async def anchor_subject(
         hedera_topic_id=hedera_receipt.topic_id,
         hedera_tx_id=hedera_receipt.transaction_id,
         hedera_sequence_number=hedera_receipt.sequence_number,
-        hedera_consensus_timestamp=None,
+        hedera_consensus_timestamp=_parse_consensus_timestamp(
+            hedera_receipt.consensus_timestamp
+        ),
         payload_json=canonical_payload,
     )
     db.add(receipt)
