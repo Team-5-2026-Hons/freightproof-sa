@@ -384,6 +384,12 @@ cd frontend/driver-pwa && npm install
 
 ---
 
+## Vercel link to live hosted site.
+
+frontend: https://freightproof-sa.vercel.app/
+
+backend: https://freightproof-sa.up.railway.app
+
 ## Licence
 
 Copyright (c) 2026 Ciaran Formby, Tim Gultig, Chiko Kasongo, Tom Davis.
