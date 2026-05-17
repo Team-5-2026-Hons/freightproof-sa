@@ -32,9 +32,17 @@ def _generate_trip_reference() -> str:
     return f"FP-{date_str}-{short_id}"
 
 
-async def _fetch_driver(db: AsyncSession, driver_id: uuid.UUID) -> Driver:
+async def _fetch_driver(
+    db: AsyncSession,
+    driver_id: uuid.UUID,
+    organization_id: uuid.UUID,
+) -> Driver:
     result = await db.execute(
-        select(Driver).where(Driver.id == driver_id, Driver.is_active.is_(True))
+        select(Driver).where(
+            Driver.id == driver_id,
+            Driver.organization_id == organization_id,
+            Driver.is_active.is_(True),
+        )
     )
     driver = result.scalar_one_or_none()
     if driver is None:
@@ -43,11 +51,15 @@ async def _fetch_driver(db: AsyncSession, driver_id: uuid.UUID) -> Driver:
 
 
 async def _fetch_vehicle(
-    db: AsyncSession, vehicle_id: uuid.UUID, vehicle_type: VehicleType
+    db: AsyncSession,
+    vehicle_id: uuid.UUID,
+    vehicle_type: VehicleType,
+    organization_id: uuid.UUID,
 ) -> Vehicle:
     result = await db.execute(
         select(Vehicle).where(
             Vehicle.id == vehicle_id,
+            Vehicle.organization_id == organization_id,
             Vehicle.is_active.is_(True),
             Vehicle.vehicle_type == vehicle_type,
         )
@@ -99,11 +111,27 @@ async def create_trip(
         TripConflictError: if an active trip already exists for the given order_number.
     """
     # 1. Validate all referenced records exist before any writes.
-    driver = await _fetch_driver(db, payload.driver_id)
-    horse = await _fetch_vehicle(db, payload.horse_id, VehicleType.HORSE)
+    driver = await _fetch_driver(
+        db,
+        payload.driver_id,
+        current_user.organization_id,
+    )
+    horse = await _fetch_vehicle(
+        db,
+        payload.horse_id,
+        VehicleType.HORSE,
+        current_user.organization_id,
+    )
     trailers: list[Vehicle] = []
     for trailer_id in payload.trailer_ids:
-        trailers.append(await _fetch_vehicle(db, trailer_id, VehicleType.TRAILER))
+        trailers.append(
+            await _fetch_vehicle(
+                db,
+                trailer_id,
+                VehicleType.TRAILER,
+                current_user.organization_id,
+            )
+        )
 
     # 2. Guard against duplicate active order_number within this operator org.
     await _check_order_number_conflict(
