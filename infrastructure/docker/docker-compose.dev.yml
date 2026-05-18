@@ -87,6 +87,7 @@ services:
       - "3000:3000"
     volumes:
       - ../../frontend/dispatcher:/app
+      - ../../frontend/shared:/shared
       - /app/node_modules
     command: npm run dev
     restart: unless-stopped
