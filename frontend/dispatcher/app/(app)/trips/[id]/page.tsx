@@ -30,6 +30,9 @@ const ACTIVE_HS_FOR_STATUS: Partial<Record<string, number>> = {
 }
 
 // ── Blockchain chain tag ──────────────────────────────────────────────────────
+const HASHSCAN_BASE =
+  process.env.NEXT_PUBLIC_HEDERA_HASHSCAN_BASE ?? 'https://hashscan.io/testnet'
+
 const RECEIPT_LABELS: Partial<Record<BlockchainReceiptType, string>> = {
   journey_lock:      'Journey lock anchored',
   pickup:            'Pickup receipt anchored',
@@ -69,6 +72,16 @@ function ChainReceiptTag({ receipt }: { receipt: BlockchainReceipt }) {
         >
           {copied ? '✓ Copied' : 'Copy'}
         </button>
+        {!isPending && (
+          <a
+            href={`${HASHSCAN_BASE}/topic/${receipt.hedera_topic_id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 inline-flex items-center rounded px-[6px] py-[2px] text-[9px] font-[600] bg-chain-onc/15 text-chain-onc hover:bg-chain-onc/30 transition-colors"
+          >
+            HashScan ↗
+          </a>
+        )}
       </div>
       {receipt.hedera_consensus_timestamp && (
         <div className="text-[10px] text-chain-onc/60 mt-[2px]">

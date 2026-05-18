@@ -23,7 +23,7 @@ export function BlockchainBadge({ receipt, state, className = '' }: Props) {
 
   if (resolvedState === 'anchored' && receipt && receipt.hedera_topic_id) {
     const hashscanUrl =
-      `${HASHSCAN_BASE}/topic/${receipt.hedera_topic_id}/${receipt.hedera_sequence_number}`
+      `${HASHSCAN_BASE}/topic/${receipt.hedera_topic_id}`
     return (
       <a
         href={hashscanUrl}
