@@ -6,10 +6,11 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies including JDK required by hedera-sdk-py (jnius bridge)
 RUN apt-get update && apt-get install -y \
     gcc \
     libpq-dev \
+    default-jdk \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
