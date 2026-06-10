@@ -1,156 +1,190 @@
-# Graph Report - freightproof-sa-4  (2026-06-10)
+# Graph Report - .  (2026-06-10)
 
 ## Corpus Check
-- 300 files · ~162,671 words
+- 303 files · ~162,671 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1595 nodes · 3463 edges · 161 communities (133 shown, 28 thin omitted)
-- Extraction: 67% EXTRACTED · 33% INFERRED · 0% AMBIGUOUS · INFERRED: 1143 edges (avg confidence: 0.54)
+- 1933 nodes · 4065 edges · 196 communities (145 shown, 51 thin omitted)
+- Extraction: 71% EXTRACTED · 29% INFERRED · 0% AMBIGUOUS · INFERRED: 1174 edges (avg confidence: 0.57)
 - Token cost: 0 input · 0 output
 
-## Graph Freshness
-- Built from commit: `c00ccbe8`
-- Run `git rev-parse HEAD` and compare to check if the graph is stale.
-- Run `graphify update .` after code changes (no API cost).
-
 ## Community Hubs (Navigation)
-- [[_COMMUNITY_API Endpoints Layer|API Endpoints Layer]]
-- [[_COMMUNITY_Blockchain Anchor Service|Blockchain Anchor Service]]
-- [[_COMMUNITY_Orchestration Verification|Orchestration Verification]]
-- [[_COMMUNITY_Project Config & Docs|Project Config & Docs]]
-- [[_COMMUNITY_Dispatcher Active Trips UI|Dispatcher Active Trips UI]]
-- [[_COMMUNITY_Mock Trip Data|Mock Trip Data]]
-- [[_COMMUNITY_API Client & Fleet Pages|API Client & Fleet Pages]]
-- [[_COMMUNITY_Status & Exception Constants|Status & Exception Constants]]
-- [[_COMMUNITY_Trip API Endpoints|Trip API Endpoints]]
-- [[_COMMUNITY_Driver PWA Capacitor Deps|Driver PWA Capacitor Deps]]
-- [[_COMMUNITY_Trip & Parcel Schemas|Trip & Parcel Schemas]]
-- [[_COMMUNITY_Handshake Constants & Context|Handshake Constants & Context]]
-- [[_COMMUNITY_Blockchain UI Components|Blockchain UI Components]]
-- [[_COMMUNITY_Fleet Drivers Page|Fleet Drivers Page]]
-- [[_COMMUNITY_Blockchain Verify Button|Blockchain Verify Button]]
-- [[_COMMUNITY_Trip & Consignment Models|Trip & Consignment Models]]
-- [[_COMMUNITY_Auth Context & Driver Mocks|Auth Context & Driver Mocks]]
-- [[_COMMUNITY_Base UI Components|Base UI Components]]
-- [[_COMMUNITY_Dispatcher Frontend Deps|Dispatcher Frontend Deps]]
-- [[_COMMUNITY_Auth Dependencies & Tests|Auth Dependencies & Tests]]
-- [[_COMMUNITY_Dispatcher TypeScript Config|Dispatcher TypeScript Config]]
-- [[_COMMUNITY_Blockchain Receipt UI|Blockchain Receipt UI]]
-- [[_COMMUNITY_Driver PWA TypeScript Config|Driver PWA TypeScript Config]]
-- [[_COMMUNITY_Trip Integration Tests|Trip Integration Tests]]
-- [[_COMMUNITY_Model Schema Unit Tests|Model Schema Unit Tests]]
-- [[_COMMUNITY_Handshake Models & Enums|Handshake Models & Enums]]
-- [[_COMMUNITY_Auth Router Tests|Auth Router Tests]]
-- [[_COMMUNITY_Form & Exception UI|Form & Exception UI]]
-- [[_COMMUNITY_App Layout & Sidebar|App Layout & Sidebar]]
-- [[_COMMUNITY_Shared TypeScript Config|Shared TypeScript Config]]
-- [[_COMMUNITY_Crypto Hashing|Crypto Hashing]]
-- [[_COMMUNITY_Test Fixtures & Conftest|Test Fixtures & Conftest]]
-- [[_COMMUNITY_Blockchain Verify Tests|Blockchain Verify Tests]]
-- [[_COMMUNITY_Schema Validators|Schema Validators]]
-- [[_COMMUNITY_Vehicle & Receipt Schemas|Vehicle & Receipt Schemas]]
-- [[_COMMUNITY_Design Token System|Design Token System]]
-- [[_COMMUNITY_SLA Metrics|SLA Metrics]]
-- [[_COMMUNITY_Manifest Mock Data|Manifest Mock Data]]
-- [[_COMMUNITY_Trip Anchor Tests|Trip Anchor Tests]]
-- [[_COMMUNITY_Dispatcher UI Concepts|Dispatcher UI Concepts]]
-- [[_COMMUNITY_Driver Integration Tests|Driver Integration Tests]]
-- [[_COMMUNITY_Vehicle Integration Tests|Vehicle Integration Tests]]
-- [[_COMMUNITY_Evidence Packet UI|Evidence Packet UI]]
-- [[_COMMUNITY_Capacitor App Config|Capacitor App Config]]
-- [[_COMMUNITY_Dispatcher Auth Guard|Dispatcher Auth Guard]]
-- [[_COMMUNITY_Push Notifications Hook|Push Notifications Hook]]
-- [[_COMMUNITY_Evidence Models|Evidence Models]]
-- [[_COMMUNITY_Organisation Schemas|Organisation Schemas]]
-- [[_COMMUNITY_App Entry & Precinct Tests|App Entry & Precinct Tests]]
-- [[_COMMUNITY_Blockchain Critical Fields|Blockchain Critical Fields]]
-- [[_COMMUNITY_Event Schemas|Event Schemas]]
-- [[_COMMUNITY_Driver Anchor Tests|Driver Anchor Tests]]
-- [[_COMMUNITY_Vehicle Anchor Tests|Vehicle Anchor Tests]]
-- [[_COMMUNITY_Alembic Migration Env|Alembic Migration Env]]
-- [[_COMMUNITY_Page Header Layout|Page Header Layout]]
-- [[_COMMUNITY_Dispatcher Toast UI|Dispatcher Toast UI]]
-- [[_COMMUNITY_Driver PWA Toast UI|Driver PWA Toast UI]]
-- [[_COMMUNITY_Checkpoint Mock Data|Checkpoint Mock Data]]
-- [[_COMMUNITY_Auth JWKS Validation|Auth JWKS Validation]]
-- [[_COMMUNITY_Precinct API Endpoints|Precinct API Endpoints]]
-- [[_COMMUNITY_Geolocation Hook|Geolocation Hook]]
-- [[_COMMUNITY_Auth Router|Auth Router]]
-- [[_COMMUNITY_DB Session|DB Session]]
-- [[_COMMUNITY_Toast Context|Toast Context]]
-- [[_COMMUNITY_Driver PWA Button|Driver PWA Button]]
-- [[_COMMUNITY_Driver PWA Chip|Driver PWA Chip]]
-- [[_COMMUNITY_Root Layout Metadata|Root Layout Metadata]]
-- [[_COMMUNITY_Claude Code Settings|Claude Code Settings]]
-- [[_COMMUNITY_Dispatcher Button|Dispatcher Button]]
-- [[_COMMUNITY_Dispatcher Card UI|Dispatcher Card UI]]
-- [[_COMMUNITY_Dispatcher Drawer UI|Dispatcher Drawer UI]]
-- [[_COMMUNITY_Dispatcher Icon Button|Dispatcher Icon Button]]
-- [[_COMMUNITY_Dispatcher Modal UI|Dispatcher Modal UI]]
-- [[_COMMUNITY_Android Instrumented Tests|Android Instrumented Tests]]
-- [[_COMMUNITY_Android Unit Tests|Android Unit Tests]]
-- [[_COMMUNITY_Driver PWA Card UI|Driver PWA Card UI]]
-- [[_COMMUNITY_Driver PWA Icon Button|Driver PWA Icon Button]]
-- [[_COMMUNITY_Driver PWA Modal UI|Driver PWA Modal UI]]
-- [[_COMMUNITY_Driver PWA Spinner UI|Driver PWA Spinner UI]]
-- [[_COMMUNITY_Organisation Models|Organisation Models]]
-- [[_COMMUNITY_SLA Config Models|SLA Config Models]]
-- [[_COMMUNITY_Vehicle Models|Vehicle Models]]
-- [[_COMMUNITY_Evidence Types|Evidence Types]]
-- [[_COMMUNITY_Search Select UI|Search Select UI]]
-- [[_COMMUNITY_Exception Unit Tests|Exception Unit Tests]]
-- [[_COMMUNITY_Service Worker|Service Worker]]
-- [[_COMMUNITY_Core App Config|Core App Config]]
-- [[_COMMUNITY_Android Bridge Activity|Android Bridge Activity]]
-- [[_COMMUNITY_Dispatcher Next.js Config|Dispatcher Next.js Config]]
-- [[_COMMUNITY_Driver PWA Next.js Config|Driver PWA Next.js Config]]
+- [[_COMMUNITY_Dispatcher UI component library|Dispatcher UI component library]]
+- [[_COMMUNITY_ResourceNotFoundError|ResourceNotFoundError]]
+- [[_COMMUNITY_page.tsx|page.tsx]]
+- [[_COMMUNITY_SubjectType|SubjectType]]
+- [[_COMMUNITY_hedera.py|hedera.py]]
+- [[_COMMUNITY_blockchain.ts|blockchain.ts]]
+- [[_COMMUNITY_POPIA compliance — only hashes to blockchain, no PII|POPIA compliance — only hashes to blockchain, no PII]]
+- [[_COMMUNITY_DeclarativeBase (Base)|DeclarativeBase (Base)]]
+- [[_COMMUNITY_BlockchainReceiptRead|BlockchainReceiptRead]]
+- [[_COMMUNITY_compilerOptions|compilerOptions]]
+- [[_COMMUNITY_HandshakeStatus|HandshakeStatus]]
+- [[_COMMUNITY_trip.ts|trip.ts]]
+- [[_COMMUNITY_dependencies|dependencies]]
+- [[_COMMUNITY_0001_initial_schema.py|0001_initial_schema.py]]
+- [[_COMMUNITY_get_current_dispatcher()|get_current_dispatcher()]]
+- [[_COMMUNITY_page.tsx|page.tsx]]
+- [[_COMMUNITY_test_auth_dependencies.py|test_auth_dependencies.py]]
+- [[_COMMUNITY_cn()|cn()]]
+- [[_COMMUNITY_page.tsx|page.tsx]]
+- [[_COMMUNITY_enums.py|enums.py]]
+- [[_COMMUNITY_SubjectNotVisibleError|SubjectNotVisibleError]]
+- [[_COMMUNITY_page.tsx|page.tsx]]
+- [[_COMMUNITY_devDependencies|devDependencies]]
+- [[_COMMUNITY_client.ts|client.ts]]
+- [[_COMMUNITY_DuplicateResourceError|DuplicateResourceError]]
+- [[_COMMUNITY_VerifyStatus|VerifyStatus]]
+- [[_COMMUNITY_test_model_schema_v6.py|test_model_schema_v6.py]]
+- [[_COMMUNITY_OrganizationType|OrganizationType]]
+- [[_COMMUNITY_cn.ts|cn.ts]]
+- [[_COMMUNITY_manifests.ts|manifests.ts]]
+- [[_COMMUNITY_trips.ts|trips.ts]]
+- [[_COMMUNITY_conftest.py|conftest.py]]
+- [[_COMMUNITY_Sidebar.tsx|Sidebar.tsx]]
+- [[_COMMUNITY_test_trips.py|test_trips.py]]
+- [[_COMMUNITY_test_auth_router.py|test_auth_router.py]]
+- [[_COMMUNITY_compilerOptions|compilerOptions]]
+- [[_COMMUNITY_Chip UI Component|Chip UI Component]]
+- [[_COMMUNITY_page.tsx|page.tsx]]
+- [[_COMMUNITY_Base|Base]]
+- [[_COMMUNITY_precincts.ts|precincts.ts]]
+- [[_COMMUNITY_VehicleType|VehicleType]]
+- [[_COMMUNITY_compute_journey_lock_hash()|compute_journey_lock_hash()]]
+- [[_COMMUNITY_UUID|UUID]]
+- [[_COMMUNITY_ChecklistRow.tsx|ChecklistRow.tsx]]
+- [[_COMMUNITY_vehicle_service.py|vehicle_service.py]]
+- [[_COMMUNITY_people.py|people.py]]
+- [[_COMMUNITY_page.tsx|page.tsx]]
+- [[_COMMUNITY_compilerOptions|compilerOptions]]
+- [[_COMMUNITY_AuthProvider|AuthProvider]]
+- [[_COMMUNITY_vehicles.ts|vehicles.ts]]
+- [[_COMMUNITY_test_blockchain_verify.py|test_blockchain_verify.py]]
+- [[_COMMUNITY_update_driver_endpoint()|update_driver_endpoint()]]
+- [[_COMMUNITY_TripCreatedDetail.tsx|TripCreatedDetail.tsx]]
+- [[_COMMUNITY_anchor_service.py|anchor_service.py]]
+- [[_COMMUNITY_create_trip()|create_trip()]]
+- [[_COMMUNITY_test_drivers.py|test_drivers.py]]
+- [[_COMMUNITY_test_vehicles.py|test_vehicles.py]]
+- [[_COMMUNITY_test_trips_anchor.py|test_trips_anchor.py]]
+- [[_COMMUNITY_capacitor.config.json|capacitor.config.json]]
+- [[_COMMUNITY_AsyncSession|AsyncSession]]
+- [[_COMMUNITY_main.py|main.py]]
+- [[_COMMUNITY_diff_critical_fields()|diff_critical_fields()]]
+- [[_COMMUNITY_seed_demo.py|seed_demo.py]]
+- [[_COMMUNITY_page.tsx|page.tsx]]
+- [[_COMMUNITY_tsconfig.json|tsconfig.json]]
+- [[_COMMUNITY_page.tsx|page.tsx]]
+- [[_COMMUNITY_test_precincts.py|test_precincts.py]]
+- [[_COMMUNITY_Toast.tsx|Toast.tsx]]
+- [[_COMMUNITY_exceptions.ts|exceptions.ts]]
+- [[_COMMUNITY_Toast.tsx|Toast.tsx]]
+- [[_COMMUNITY_ToastData|ToastData]]
+- [[_COMMUNITY_drivers.ts|drivers.ts]]
+- [[_COMMUNITY_Active Trip Detail Page|Active Trip Detail Page]]
+- [[_COMMUNITY_Android App build.gradle|Android App build.gradle]]
+- [[_COMMUNITY_get_db()|get_db()]]
+- [[_COMMUNITY_page.tsx|page.tsx]]
+- [[_COMMUNITY_Driver PWA package.json|Driver PWA package.json]]
+- [[_COMMUNITY_useToast Hook|useToast Hook]]
+- [[_COMMUNITY_ToastContext.tsx|ToastContext.tsx]]
+- [[_COMMUNITY_Capacitor Android Native Integration|Capacitor Android Native Integration]]
+- [[_COMMUNITY_get_me()|get_me()]]
+- [[_COMMUNITY_list_precincts_endpoint()|list_precincts_endpoint()]]
+- [[_COMMUNITY_test_auth_jwks_cache.py|test_auth_jwks_cache.py]]
+- [[_COMMUNITY_Parcel interface|Parcel interface]]
+- [[_COMMUNITY_useLocation.ts|useLocation.ts]]
+- [[_COMMUNITY_ToastContext.tsx|ToastContext.tsx]]
+- [[_COMMUNITY_AuthContext.tsx|AuthContext.tsx]]
+- [[_COMMUNITY_Button.tsx|Button.tsx]]
+- [[_COMMUNITY_Chip.tsx|Chip.tsx]]
+- [[_COMMUNITY_Organization interface|Organization interface]]
+- [[_COMMUNITY_layout.tsx|layout.tsx]]
+- [[_COMMUNITY_client()|client()]]
+- [[_COMMUNITY_permissions|permissions]]
+- [[_COMMUNITY_Dev Tokens Page (Design System Preview)|Dev Tokens Page (Design System Preview)]]
+- [[_COMMUNITY_Card.tsx|Card.tsx]]
+- [[_COMMUNITY_Drawer.tsx|Drawer.tsx]]
+- [[_COMMUNITY_IconButton.tsx|IconButton.tsx]]
+- [[_COMMUNITY_Modal.tsx|Modal.tsx]]
+- [[_COMMUNITY_Spinner.tsx|Spinner.tsx]]
+- [[_COMMUNITY_Test|Test]]
+- [[_COMMUNITY_Test|Test]]
+- [[_COMMUNITY_Modal.tsx|Modal.tsx]]
+- [[_COMMUNITY_Tabs.tsx|Tabs.tsx]]
+- [[_COMMUNITY_SlaConfig|SlaConfig]]
+- [[_COMMUNITY_events.py|events.py]]
+- [[_COMMUNITY_evidence.ts|evidence.ts]]
+- [[_COMMUNITY_sw.ts|sw.ts]]
 - [[_COMMUNITY_Driver PWA Root Layout|Driver PWA Root Layout]]
-- [[_COMMUNITY_Hold-to-Confirm Hook|Hold-to-Confirm Hook]]
-- [[_COMMUNITY_Demo Seed Script|Demo Seed Script]]
-- [[_COMMUNITY_Seal Types|Seal Types]]
-- [[_COMMUNITY_Blockchain Module Init|Blockchain Module Init]]
-- [[_COMMUNITY_Dispatcher ESLint Config|Dispatcher ESLint Config]]
-- [[_COMMUNITY_Dispatcher Tailwind Config|Dispatcher Tailwind Config]]
-- [[_COMMUNITY_Driver PWA Capacitor Config|Driver PWA Capacitor Config]]
-- [[_COMMUNITY_Driver PWA ESLint Config|Driver PWA ESLint Config]]
-- [[_COMMUNITY_Driver PWA Tailwind Config|Driver PWA Tailwind Config]]
-- [[_COMMUNITY_Dispatcher Route Constants|Dispatcher Route Constants]]
-- [[_COMMUNITY_Driver PWA Route Constants|Driver PWA Route Constants]]
-- [[_COMMUNITY_Schemas Package Init|Schemas Package Init]]
-- [[_COMMUNITY_Tasks Package Init|Tasks Package Init]]
-- [[_COMMUNITY_Client Portal Readme|Client Portal Readme]]
-- [[_COMMUNITY_Spikes Exploratory Concept|Spikes Exploratory Concept]]
-- [[_COMMUNITY_Docs Readme|Docs Readme]]
-- [[_COMMUNITY_Scripts Readme|Scripts Readme]]
-- [[_COMMUNITY_Spikes Readme|Spikes Readme]]
-- [[_COMMUNITY_Community 158|Community 158]]
-- [[_COMMUNITY_Community 159|Community 159]]
-- [[_COMMUNITY_Community 160|Community 160]]
+- [[_COMMUNITY_BridgeActivity|BridgeActivity]]
+- [[_COMMUNITY_Z z-index scale constants|Z z-index scale constants]]
+- [[_COMMUNITY_next.config.js|next.config.js]]
+- [[_COMMUNITY_paths|paths]]
+- [[_COMMUNITY_tailwind.config.ts|tailwind.config.ts]]
+- [[_COMMUNITY_layout.tsx|layout.tsx]]
+- [[_COMMUNITY_request|request]]
+- [[_COMMUNITY_useExceptions|useExceptions]]
+- [[_COMMUNITY_useStepIndicator|useStepIndicator]]
+- [[_COMMUNITY_PublicLayout()|PublicLayout()]]
+- [[_COMMUNITY_seal.ts|seal.ts]]
+- [[_COMMUNITY_Capacitor Config JSON|Capacitor Config JSON]]
+- [[_COMMUNITY___init__.py|__init__.py]]
+- [[_COMMUNITY_Brutalist design system rewrite (Space Grotesk, IBM Plex Mon|Brutalist design system rewrite (Space Grotesk, IBM Plex Mon]]
+- [[_COMMUNITY_Design System Token Preview|Design System Token Preview]]
+- [[_COMMUNITY_eslint.config.mjs|eslint.config.mjs]]
+- [[_COMMUNITY_tailwind.config.ts|tailwind.config.ts]]
+- [[_COMMUNITY_capacitor.config.ts|capacitor.config.ts]]
+- [[_COMMUNITY_routes.ts|routes.ts]]
+- [[_COMMUNITY_routes.ts|routes.ts]]
+- [[_COMMUNITY_useSLAMetrics|useSLAMetrics]]
+- [[_COMMUNITY___init__.py|__init__.py]]
+- [[_COMMUNITY_Android Instrumented Test|Android Instrumented Test]]
+- [[_COMMUNITY_Android Unit Test|Android Unit Test]]
+- [[_COMMUNITY_RootLayout|RootLayout]]
+- [[_COMMUNITY_VerifyStatus enum|VerifyStatus enum]]
+- [[_COMMUNITY_Next.js Env Types|Next.js Env Types]]
+- [[_COMMUNITY_ROUTES|ROUTES]]
+- [[_COMMUNITY_Driver PWA Root Page (Scaffold)|Driver PWA Root Page (Scaffold)]]
+- [[_COMMUNITY_MerkleBatchLeafRead|MerkleBatchLeafRead]]
+- [[_COMMUNITY_MerkleBatchRead|MerkleBatchRead]]
+- [[_COMMUNITY_VerifyRequest|VerifyRequest]]
+- [[_COMMUNITY_EvidenceArtifactBase|EvidenceArtifactBase]]
+- [[_COMMUNITY_EvidenceArtifactRead|EvidenceArtifactRead]]
+- [[_COMMUNITY_TrailerGpsSnapshotRead|TrailerGpsSnapshotRead]]
+- [[_COMMUNITY_OrganizationRead|OrganizationRead]]
+- [[_COMMUNITY_PrecinctRead|PrecinctRead]]
+- [[_COMMUNITY_DriverCreateBody|DriverCreateBody]]
+- [[_COMMUNITY_DriverUpdateBody|DriverUpdateBody]]
+- [[_COMMUNITY_UserRead|UserRead]]
+- [[_COMMUNITY_SlaConfigRead|SlaConfigRead]]
+- [[_COMMUNITY_CheckpointRead|CheckpointRead]]
+- [[_COMMUNITY_TripCreateRequest|TripCreateRequest]]
+- [[_COMMUNITY_UI Copy Constants|UI Copy Constants]]
+- [[_COMMUNITY_Handshake Metadata Constants|Handshake Metadata Constants]]
+- [[_COMMUNITY_PaginatedListT generic interface|PaginatedList<T> generic interface]]
+- [[_COMMUNITY_cn() class-name utility function|cn() class-name utility function]]
+- [[_COMMUNITY_DateRange Interface|DateRange Interface]]
+- [[_COMMUNITY_Tabs UI Component|Tabs UI Component]]
+- [[_COMMUNITY_TextArea UI Component|TextArea UI Component]]
+- [[_COMMUNITY_Toast UI Component|Toast UI Component]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `cn()` - 86 edges
-2. `BlockchainReceiptRead` - 78 edges
-3. `IdvsStatus` - 72 edges
-4. `TripStatus` - 64 edges
-5. `SubjectType` - 63 edges
-6. `VehicleRead` - 60 edges
-7. `ResourceNotFoundError` - 56 edges
-8. `BlockchainReceiptType` - 49 edges
-9. `Driver` - 37 edges
-10. `TripDetailResponse` - 36 edges
+2. `BlockchainReceiptRead` - 80 edges
+3. `SubjectType` - 71 edges
+4. `trips.ts` - 67 edges
+5. `ResourceNotFoundError` - 66 edges
+6. `IdvsStatus` - 66 edges
+7. `VehicleRead` - 58 edges
+8. `TripStatus` - 58 edges
+9. `BaseModel` - 48 edges
+10. `BlockchainReceiptType` - 47 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `Client Portal — Read-Only Evidence Portal` --conceptually_related_to--> `Five Handshakes Trip Lifecycle`  [INFERRED]
-  frontend/client-portal/README.md → docs/FreightProof_Full_Picture_v6.md
-- `User` --uses--> `User`  [INFERRED]
-  backend/app/auth/router.py → backend/app/db/models/people.py
-- `test_trip_conflict_error_carries_order_number()` --calls--> `TripConflictError`  [INFERRED]
-  backend/tests/unit/test_exceptions.py → backend/app/core/exceptions.py
-- `test_resource_not_found_error_carries_resource_and_id()` --calls--> `ResourceNotFoundError`  [INFERRED]
-  backend/tests/unit/test_exceptions.py → backend/app/core/exceptions.py
-- `User` --uses--> `User`  [INFERRED]
-  backend/tests/integration/test_auth_router.py → backend/app/db/models/people.py
+- `schemas_init` --conceptually_related_to--> `tasks_init`  [AMBIGUOUS]
+   → 
 
 ## Import Cycles
 - 1-file cycle: `backend/app/api/v1/endpoints/blockchain.py -> backend/app/api/v1/endpoints/blockchain.py`
@@ -162,371 +196,445 @@
 - 1-file cycle: `frontend/dispatcher/lib/constants/status-meta.ts -> frontend/dispatcher/lib/constants/status-meta.ts`
 - 1-file cycle: `frontend/driver-pwa/lib/constants/status-meta.ts -> frontend/driver-pwa/lib/constants/status-meta.ts`
 
-## Hyperedges (group relationships)
-- **Handshake-Blockchain Integrity Chain** — concept_five_handshakes, concept_journey_lock_hash, concept_hedera_hcs_anchoring [EXTRACTED 1.00]
-- **Frontend Data Architecture (Shared Types / Mocks / API Swap)** — concept_shared_frontend_types, concept_frontend_mock_to_api_swap, concept_driver_pwa_static_export [INFERRED 0.85]
-- **POPIA Storage Compliance Pattern** — concept_popia_pii_boundary, concept_supabase_storage_popia, concept_hedera_hcs_anchoring [EXTRACTED 1.00]
-- **Hedera On-Chain Anchoring Flow** — concept_anchor_service, concept_journey_lock_hash, concept_verification_service, concept_subject_type, concept_popia_compliance [EXTRACTED 1.00]
-- **DB Schema Implementation (Models + Schemas + Migration)** — concept_sqlalchemy_19_models, concept_pydantic_v2_schemas, concept_alembic_initial_migration, concept_use_alter_circular_fk [EXTRACTED 1.00]
-- **Frontend-Backend Integration Stack** — concept_resource_service, concept_api_client_ts, concept_demo_mode, concept_seed_demo_script [EXTRACTED 1.00]
+## Communities (196 total, 51 thin omitted)
 
-## Communities (161 total, 28 thin omitted)
+### Community 0 - "Dispatcher UI component library"
+Cohesion: 0.05
+Nodes (73): Dispatcher UI component library, api client, AppLayout, BlockchainBadge, ChecklistRow, DispatcherShell, EventTimeline, routes constants (+65 more)
 
-### Community 0 - "API Endpoints Layer"
+### Community 1 - "ResourceNotFoundError"
+Cohesion: 0.13
+Nodes (46): AsyncSession, TripCreateRequest, TripDetailResponse, TripListItemResponse, TripStatus, UserRead, UUID, AsyncSession (+38 more)
+
+### Community 2 - "page.tsx"
 Cohesion: 0.08
-Nodes (97): AsyncSession, SubjectType, UserRead, UUID, AsyncSession, DriverCreateBody, DriverDetailResponse, DriverRead (+89 more)
+Nodes (32): ACTIVE_STATUSES, ActiveTripsPage(), COL_HEADERS, ColId, formatDate(), INITIAL_COL_WIDTHS, COPY, EXCEPTION_SOURCE_META (+24 more)
 
-### Community 1 - "Blockchain Anchor Service"
-Cohesion: 0.08
-Nodes (65): Any, AsyncSession, BlockchainReceipt, datetime, HederaService, SubjectType, UUID, anchor_subject() (+57 more)
-
-### Community 2 - "Orchestration Verification"
-Cohesion: 0.07
-Nodes (50): Any, AsyncSession, BlockchainReceipt, HederaService, SubjectType, UUID, _default_mirror_url(), _HederaAdapter (+42 more)
-
-### Community 3 - "Project Config & Docs"
-Cohesion: 0.06
-Nodes (54): Initial Alembic Migration (0001_initial_schema), anchor_service.py — Hedera Anchor Orchestration, Frontend API Client (client.ts), API Pagination Envelope Convention, BlockchainBadge — Hedera Anchor UI Component, Capacitor 6 Android APK Build, Client Portal — Read-Only Evidence Portal, Critical Fields — Blockchain Anchor Trigger (+46 more)
-
-### Community 4 - "Dispatcher Active Trips UI"
-Cohesion: 0.09
-Nodes (25): ACTIVE_STATUSES, ActiveTripsPage(), COL_HEADERS, ColId, formatDate(), INITIAL_COL_WIDTHS, COPY, EXCEPTION_SEVERITY_META (+17 more)
-
-### Community 5 - "Mock Trip Data"
-Cohesion: 0.08
-Nodes (29): EXCEPTIONS_0035, EXCEPTIONS_0039, EXCEPTIONS_0040, EXCEPTIONS_0041, EXCEPTIONS_0042, HANDSHAKES_0035, HANDSHAKES_0038, HANDSHAKES_0039 (+21 more)
-
-### Community 6 - "API Client & Fleet Pages"
-Cohesion: 0.12
-Nodes (20): api, EditState, EditState, AuthContext, AsyncState, useAsyncData(), useBlockchainReceipts(), useDriverDetail() (+12 more)
-
-### Community 7 - "Status & Exception Constants"
-Cohesion: 0.29
-Nodes (8): ChecklistRowProps, EMPTY, TripsFilter, UseTripsResult, PaginatedList, TripId, TripStatus, TripSummary
-
-### Community 8 - "Trip API Endpoints"
-Cohesion: 0.17
-Nodes (33): TripCreateRequest, AsyncSession, TripCreateRequest, TripDetailResponse, UserRead, UUID, AsyncSession, Raised when a trip with the given order_number is already active. (+25 more)
-
-### Community 9 - "Driver PWA Capacitor Deps"
-Cohesion: 0.06
-Nodes (33): dependencies, @capacitor/android, @capacitor/camera, @capacitor-community/background-geolocation, @capacitor/core, @capacitor/geolocation, @capacitor/push-notifications, lucide-react (+25 more)
-
-### Community 10 - "Trip & Parcel Schemas"
-Cohesion: 0.19
-Nodes (35): VehicleRead, BaseModel, ParcelStatus, TripStatus, DriverEventRead, Pydantic v2 schemas for VehicleEvent and DriverEvent read shapes., VehicleEventRead, ConsignmentBase (+27 more)
-
-### Community 11 - "Handshake Constants & Context"
-Cohesion: 0.07
-Nodes (40): HANDSHAKE_NAMES, HANDSHAKE_STEP_COUNTS, STEP_NAMES, DISPATCHER_EXCEPTION_TYPES, DRIVER_EXCEPTION_TYPES, HANDSHAKE_STATUS_META, StatusMeta, SYSTEM_EXCEPTION_TYPES (+32 more)
-
-### Community 12 - "Blockchain UI Components"
-Cohesion: 0.08
-Nodes (17): ApiError, BadgeState, Props, Event, Props, fmtDateTime(), MiniField(), STEP_NAMES (+9 more)
-
-### Community 13 - "Fleet Drivers Page"
-Cohesion: 0.12
-Nodes (18): columns, DriverFormState, EMPTY_FORM, FleetDriversPage(), AuthState, DriverUser, AuthState, DriverUser (+10 more)
-
-### Community 14 - "Blockchain Verify Button"
-Cohesion: 0.09
-Nodes (20): Props, UIState, VerifyButton(), Props, TripCreatedDetail(), fmtTs(), useTripDetail(), ACTIVE_HS_FOR_STATUS (+12 more)
-
-### Community 15 - "Trip & Consignment Models"
-Cohesion: 0.21
-Nodes (15): IdvsStatus, DriverBase, DriverCreateBody, DriverDetailResponse, DriverRead, DriverUpdate, DriverUpdateBody, Pydantic v2 schemas for User and Driver. (+7 more)
-
-### Community 16 - "Auth Context & Driver Mocks"
-Cohesion: 0.15
-Nodes (13): mockPrecincts, PRECINCT_CGY_CT_ID, PRECINCT_CGY_JHB_ID, PRECINCT_FEDEX_DBN_ID, PRECINCT_FEDEX_JHB_ID, CGY_ORG_ID, FEDEX_ORG_ID, mockOperator (+5 more)
-
-### Community 17 - "Base UI Components"
+### Community 3 - "SubjectType"
 Cohesion: 0.11
-Nodes (16): EmptyState(), EmptyStateProps, Input(), InputProps, Skeleton(), SkeletonProps, TextArea(), TextAreaProps (+8 more)
+Nodes (43): Any, AsyncSession, BlockchainReceipt, HederaService, SubjectType, UUID, DriverDetailResponse, anchor_subject() (+35 more)
 
-### Community 18 - "Dispatcher Frontend Deps"
+### Community 4 - "hedera.py"
+Cohesion: 0.09
+Nodes (34): _default_mirror_url(), _HederaAdapter, HederaConfigError, HederaDependencyError, HederaReceipt, HederaServiceError, HederaSubmitError, HederaVerifyError (+26 more)
+
+### Community 5 - "blockchain.ts"
+Cohesion: 0.07
+Nodes (27): BadgeState, Props, Event, Props, AuthState, DriverUser, AuthState, DriverUser (+19 more)
+
+### Community 6 - "POPIA compliance — only hashes to blockchain, no PII"
+Cohesion: 0.06
+Nodes (40): diff_critical_fields() — detect changed critical fields, DRIVER_CRITICAL_FIELDS frozenset, VEHICLE_CRITICAL_FIELDS frozenset, HederaService.verify_hash() — mirror-node check, CQ-1: Split resource_service.py into driver_service.py and vehicle_service.py, CQ-2: Extract _assert_subject_visible into subject_visibility.py, SEC-4: DEMO_MODE guard — block staging/preview environments, Driver PWA phone OTP login flow (Supabase Auth) (+32 more)
+
+### Community 7 - "DeclarativeBase (Base)"
+Cohesion: 0.12
+Nodes (38): BlockchainReceipt model, MerkleBatch model, MerkleBatchLeaf model, BlockchainReceiptType enum, ExceptionType enum, HandshakeStatus enum, HandshakeType enum, MerkleBatchType enum (+30 more)
+
+### Community 8 - "BlockchainReceiptRead"
+Cohesion: 0.26
+Nodes (36): VehicleRead, BaseModel, BlockchainReceiptRead, IdvsStatus, ParcelStatus, TripStatus, DriverUpdate, UserUpdate (+28 more)
+
+### Community 9 - "compilerOptions"
+Cohesion: 0.07
+Nodes (37): compilerOptions, allowJs, esModuleInterop, incremental, isolatedModules, jsx, lib, module (+29 more)
+
+### Community 10 - "HandshakeStatus"
+Cohesion: 0.09
+Nodes (28): HandshakeStatus, HandshakeType, SQLAlchemy models for handshake events and per-trailer GPS snapshots., Per-trailer GPS reading at each handshake — independent Pulsit source for cross-, TrailerGpsSnapshot, HandshakeEventBase, HandshakeEventCreate, HandshakeEventRead (+20 more)
+
+### Community 11 - "trip.ts"
+Cohesion: 0.10
+Nodes (26): ROUTES Constants, DISPATCHER_EXCEPTION_TYPES, DRIVER_EXCEPTION_TYPES, EXCEPTION_SEVERITY_META, HANDSHAKE_STATUS_META, Status Meta Re-export, StatusMeta, SYSTEM_EXCEPTION_TYPES (+18 more)
+
+### Community 12 - "dependencies"
+Cohesion: 0.06
+Nodes (34): dependencies, @capacitor/android, @capacitor/camera, @capacitor-community/background-geolocation, @capacitor/core, @capacitor/geolocation, @capacitor/push-notifications, lucide-react (+26 more)
+
+### Community 13 - "0001_initial_schema.py"
+Cohesion: 0.06
+Nodes (14): Connection, do_run_migrations(), Run migrations without a live DB connection (outputs SQL to stdout)., Create an async engine and run migrations inside a sync wrapper.      asyncpg ca, Entry point for online (live connection) migrations., run_async_migrations(), run_migrations_offline(), run_migrations_online() (+6 more)
+
+### Community 14 - "get_current_dispatcher()"
+Cohesion: 0.08
+Nodes (31): DEMO_MODE stub UserRead (_DEMO_USER), get_current_dispatcher(), Return the authenticated dispatcher for the current request, or raise 401/403., AsyncSession, UserRead, BaseSettings, _bearer, DEMO_MODE — dev-only auth bypass concept (+23 more)
+
+### Community 15 - "page.tsx"
+Cohesion: 0.10
+Nodes (25): Phone OTP Authentication Flow, columns, DriverFormState, EMPTY_FORM, FleetDriversPage(), useDrivers(), useVehicles(), supabase (+17 more)
+
+### Community 16 - "test_auth_dependencies.py"
+Cohesion: 0.10
+Nodes (30): _decode_token(), _fetch_jwks(), _get_jwks(), _get_signing_key(), FastAPI dependencies for Supabase Auth verification.  Flow (DEMO_MODE=False):, Raise HTTP 403 if the JWT does not carry the dispatcher role.      Role lives in, Network request to Supabase JWKS. Called only by _get_jwks., Return Supabase JWKS, re-fetching if the TTL has expired. (+22 more)
+
+### Community 17 - "cn()"
+Cohesion: 0.09
+Nodes (21): LoginPage(), Button(), ButtonProps, sizeClasses, EmptyState(), EmptyStateProps, Input(), InputProps (+13 more)
+
+### Community 18 - "page.tsx"
+Cohesion: 0.12
+Nodes (19): HANDSHAKE_NAMES, HANDSHAKE_STEP_COUNTS, STEP_NAMES, STEP_SLUGS, fmtTs(), StepIndicator, StepIndicator, useTripDetail() (+11 more)
+
+### Community 19 - "enums.py"
+Cohesion: 0.15
+Nodes (25): ArtifactType, ExceptionSeverity, ExceptionSource, ExceptionType, EvidenceArtifact, SQLAlchemy model for evidence artifacts stored in S3., Photo or document uploaded during a handshake or checkpoint.      trip_id uses u, Checkpoint (+17 more)
+
+### Community 20 - "SubjectNotVisibleError"
+Cohesion: 0.15
+Nodes (21): AsyncSession, SubjectType, UserRead, UUID, UUID, assert_subject_visible() — org-scoped visibility check, assert_subject_visible(), Organisation-scoped visibility check for blockchain subjects.  Raises SubjectNot (+13 more)
+
+### Community 21 - "page.tsx"
+Cohesion: 0.10
+Nodes (16): ApiError, fmtDateTime(), MiniField(), STEP_NAMES, trailerCombo(), TripNewPage(), Ic(), IcProps (+8 more)
+
+### Community 22 - "devDependencies"
 Cohesion: 0.07
 Nodes (26): dependencies, lucide-react, next, react, react-dom, recharts, @supabase/supabase-js, devDependencies (+18 more)
 
-### Community 19 - "Auth Dependencies & Tests"
-Cohesion: 0.16
-Nodes (18): _decode_token(), Raise HTTP 403 if the JWT does not carry the dispatcher role.      Role lives in, Verify the Supabase JWT and return its payload.      Supabase uses ES256 (ECDSA), _require_dispatcher_role(), MonkeyPatch, patch_jwks(), Unit tests for auth/dependencies.py — pure logic, no DB, no HTTP.  Tests cover _, Patch _get_jwks for every test in this module — no Supabase network calls. (+10 more)
+### Community 23 - "client.ts"
+Cohesion: 0.13
+Nodes (15): api, Props, UIState, AsyncState, useAsyncData(), useBlockchainReceipts(), EMPTY, UsePrecincts (+7 more)
 
-### Community 20 - "Dispatcher TypeScript Config"
+### Community 24 - "DuplicateResourceError"
+Cohesion: 0.27
+Nodes (25): AsyncSession, UserRead, UUID, VehicleCreateBody, VehicleDetailResponse, VehicleUpdateBody, AsyncSession, UUID (+17 more)
+
+### Community 25 - "VerifyStatus"
+Cohesion: 0.22
+Nodes (22): AsyncSession, SubjectType, Any, AsyncSession, BlockchainReceipt, HederaService, SubjectType, UUID (+14 more)
+
+### Community 26 - "test_model_schema_v6.py"
 Cohesion: 0.10
-Nodes (20): compilerOptions, allowJs, esModuleInterop, incremental, isolatedModules, jsx, lib, module (+12 more)
+Nodes (22): organisations.py (models), sla.py (models), trips.py (models), vehicles.py (models), _column_names(), Unit tests for v6 model changes.  Covers:   1. DriverSubstitution model — all fo, Spec §5+H3: original_driver_id, substituting_driver_id, exchange_location,     a, Planned substitutions are normal events; unplanned are exceptions.     is_planne (+14 more)
 
-### Community 21 - "Blockchain Receipt UI"
-Cohesion: 0.14
-Nodes (8): BlockchainReceiptProps, TimestampWithIcon(), TimestampWithIconProps, BadgeState, Props, Event, Props, BlockchainReceipt
+### Community 27 - "OrganizationType"
+Cohesion: 0.18
+Nodes (21): AsyncSession, AsyncSession, AsyncSession, AsyncSession, AsyncSession, UUID, OrganizationType, Organization (+13 more)
 
-### Community 22 - "Driver PWA TypeScript Config"
-Cohesion: 0.10
-Nodes (20): compilerOptions, allowJs, esModuleInterop, incremental, isolatedModules, jsx, lib, module (+12 more)
+### Community 28 - "cn.ts"
+Cohesion: 0.09
+Nodes (16): TimestampWithIconProps, Tab, Tabs(), TabsProps, Card(), CardProps, variantClasses, Drawer() (+8 more)
 
-### Community 23 - "Trip Integration Tests"
+### Community 29 - "manifests.ts"
+Cohesion: 0.12
+Nodes (17): mockCheckpoints, mockManifest0040, mockManifest0041, mockManifest0042, mockManifests, parcel(), parcelId(), TRIP_0040_ID (+9 more)
+
+### Community 30 - "trips.ts"
+Cohesion: 0.09
+Nodes (20): EXCEPTIONS_0035, EXCEPTIONS_0039, EXCEPTIONS_0040, EXCEPTIONS_0041, EXCEPTIONS_0042, HANDSHAKES_0035, HANDSHAKES_0038, HANDSHAKES_0039 (+12 more)
+
+### Community 31 - "conftest.py"
+Cohesion: 0.13
+Nodes (21): AsyncSession, Blockchain receipt subject_type/subject_id: generic anchoring for trip, vehicle_event, driver_event entities, DEMO_MODE auth: Bearer demo token bypasses JWT verification for local development, Rolled-back transaction fixture: each test runs in a rolled-back DB transaction for isolation, db_session(), make_jwks(), Shared fixtures for unit and integration tests.  Two fixture families live here:, Create tables once per session and yield the async engine.      NullPool prevent (+13 more)
+
+### Community 32 - "Sidebar.tsx"
+Cohesion: 0.13
+Nodes (17): Trip Creation Wizard, useAuth Hook, DispatcherShell(), DispatcherShellProps, isActive(), NAV_GROUPS, NavGroup, NavItem (+9 more)
+
+### Community 33 - "test_trips.py"
 Cohesion: 0.16
 Nodes (18): _make_payload(), override_get_db(), Integration tests for POST /api/v1/trips.  These tests use a real PostgreSQL tes, Insert the minimal rows required by POST /trips and yield their IDs., seed_data(), test_create_trip_403_without_demo_mode(), test_create_trip_404_unknown_driver(), test_create_trip_409_on_duplicate_order_number() (+10 more)
 
-### Community 24 - "Model Schema Unit Tests"
-Cohesion: 0.12
-Nodes (18): _column_names(), Unit tests for v6 model changes.  Covers:   1. DriverSubstitution model — all fo, Spec §5+H3: original_driver_id, substituting_driver_id, exchange_location,     a, Planned substitutions are normal events; unplanned are exceptions.     is_planne, exception_id is only populated for unplanned substitutions., Both original and substituting driver must FK to the drivers table., test_driver_substitution_driver_fks_present(), test_driver_substitution_exception_id_nullable() (+10 more)
+### Community 34 - "test_auth_router.py"
+Cohesion: 0.19
+Nodes (17): AsyncClient, MonkeyPatch, User, client_with_db(), _make_user(), _mock_db(), Integration tests for GET /api/v1/auth/me.  These tests mock the database layer, Return a User ORM instance that does not touch the database. (+9 more)
 
-### Community 25 - "Handshake Models & Enums"
-Cohesion: 0.10
-Nodes (20): 1. Read first, 2. Plan, 3. Execute, 4. Report with TASK COMPLETE (see bottom), Architecture, Codebase Status, Domain knowledge, FreightProof SA — Claude Code Instructions (+12 more)
+### Community 35 - "compilerOptions"
+Cohesion: 0.11
+Nodes (17): @shared/* path alias for cross-surface type/util sharing, compilerOptions, allowJs, esModuleInterop, isolatedModules, lib, module, moduleResolution (+9 more)
 
-### Community 26 - "Auth Router Tests"
-Cohesion: 0.18
-Nodes (19): AsyncClient, MonkeyPatch, User, client_with_db(), _make_user(), _mock_db(), Integration tests for GET /api/v1/auth/me.  These tests mock the database layer, Return a User ORM instance that does not touch the database. (+11 more)
+### Community 36 - "Chip UI Component"
+Cohesion: 0.16
+Nodes (14): ChipType, BlockchainReceipt(), BlockchainReceiptProps, EvidencePacket(), EvidencePacketProps, TimestampWithIcon(), TripIdStamp(), TripIdStampProps (+6 more)
 
-### Community 27 - "Form & Exception UI"
+### Community 37 - "page.tsx"
+Cohesion: 0.20
+Nodes (12): BlockchainBadge, EventTimeline, EditState, EditState, useDriverDetail(), useVehicleDetail(), DriverDetailPage(), VehicleDetailPage() (+4 more)
+
+### Community 38 - "Base"
+Cohesion: 0.15
+Nodes (15): DeclarativeBase, Base, Consignment, DriverSubstitution, Parcel, SQLAlchemy models for trip lifecycle: template, consignment, parcel, trip, trip-, Many-to-many: which trailers are attached to a trip (composite PK)., Records every mid-trip driver change — planned or unplanned.      Spec §5 + Hand (+7 more)
+
+### Community 39 - "precincts.ts"
 Cohesion: 0.13
-Nodes (10): ExceptionBanner(), ExceptionBannerProps, Drawer(), DrawerProps, panelClasses, Tab, Tabs(), TabsProps (+2 more)
+Nodes (13): mockPrecincts, PRECINCT_CGY_CT_ID, PRECINCT_CGY_JHB_ID, PRECINCT_FEDEX_DBN_ID, PRECINCT_FEDEX_JHB_ID, CGY_ORG_ID, FEDEX_ORG_ID, mockOperator (+5 more)
 
-### Community 28 - "App Layout & Sidebar"
-Cohesion: 0.09
-Nodes (22): SLAMetrics, useSLAMetrics(), DispatcherShell(), DispatcherShellProps, isActive(), NAV_GROUPS, NavGroup, NavItem (+14 more)
+### Community 40 - "VehicleType"
+Cohesion: 0.18
+Nodes (15): VehicleType, SQLAlchemy model for vehicles (horses and trailers unified)., Horse (cab) or trailer — distinguished by vehicle_type.      A single Pulsit dev, Vehicle, Pydantic v2 schemas for Vehicle (horse and trailer)., Fields the dispatcher submits when registering a new vehicle.      organization_, Fields the dispatcher may change via PATCH /vehicles/{id}.      All fields are o, Extended vehicle shape returned by GET /vehicles/{id}.      Includes the full ev (+7 more)
 
-### Community 29 - "Shared TypeScript Config"
-Cohesion: 0.12
-Nodes (16): compilerOptions, allowJs, esModuleInterop, isolatedModules, lib, module, moduleResolution, noEmit (+8 more)
-
-### Community 30 - "Crypto Hashing"
-Cohesion: 0.27
+### Community 41 - "compute_journey_lock_hash()"
+Cohesion: 0.28
 Nodes (14): datetime, UUID, compute_journey_lock_hash(), compute_trip_canonical_payload(), SHA-256 hashing utilities for FreightProof evidence integrity.  compute_journey_, Return a 64-char lowercase hex SHA-256 digest of the trip's fixed parameters., Return the canonical payload dict used for both the lock hash and on-chain ancho, _fixed_args() (+6 more)
 
-### Community 31 - "Test Fixtures & Conftest"
-Cohesion: 0.12
-Nodes (15): AsyncClient, AsyncSession, MonkeyPatch, _b64url(), client(), db_session(), make_jwks(), Shared fixtures for unit and integration tests.  Two fixture families live here: (+7 more)
+### Community 42 - "UUID"
+Cohesion: 0.23
+Nodes (14): UUID, AsyncSession, DriverCreateBody, DriverRead, DriverUpdateBody, UUID, create_driver_auth_user(), Supabase Auth Admin API client.  Server-side only — requires SUPABASE_SERVICE_RO (+6 more)
 
-### Community 32 - "Blockchain Verify Tests"
+### Community 43 - "ChecklistRow.tsx"
 Cohesion: 0.18
-Nodes (14): AsyncSession, _make_trip_payload(), override_get_db(), Integration tests: POST /api/v1/blockchain/verify covers all four VerifyStatus p, Build a valid POST /trips request body from seeded IDs., Verify against a subject UUID that has never been anchored → no_receipt., Create a trip (anchored), then verify → verified.      Two separate patches are, Wire every endpoint in this module to the rolled-back test session. (+6 more)
+Nodes (13): Handshake Progress Visualisation, chainNodesFromStatus(), ChecklistRow(), COMPLETED_THROUGH, IN_PROGRESS_HS, STATUS_HINT, ExceptionBanner(), ExceptionBannerProps (+5 more)
 
-### Community 33 - "Schema Validators"
-Cohesion: 0.13
-Nodes (16): HandshakeEventCreate, DriverCreate, TripCreate, Unit tests for the four Pydantic v2 schema validators defined in the spec.  Run:, Validator must not fire when only one of the two fields is provided., test_driver_id_number_non_digits(), test_driver_id_number_too_short(), test_driver_id_number_valid() (+8 more)
+### Community 44 - "vehicle_service.py"
+Cohesion: 0.18
+Nodes (15): get_vehicle_detail(), Service functions for vehicle resources.  Extracted from resource_service.py — o, BlockchainReceiptRead, VerifyResponse, DriverEventRead, VehicleEventRead, HandshakeEventRead, DriverDetailResponse (+7 more)
 
-### Community 34 - "Vehicle & Receipt Schemas"
-Cohesion: 0.28
-Nodes (12): BlockchainReceiptRead, Pydantic v2 schemas for Vehicle (horse and trailer)., Fields the dispatcher submits when registering a new vehicle.      organization_, Fields the dispatcher may change via PATCH /vehicles/{id}.      All fields are o, Extended vehicle shape returned by GET /vehicles/{id}.      Includes the full ev, VehicleBase, VehicleCreate, VehicleCreateBody (+4 more)
-
-### Community 35 - "Design Token System"
-Cohesion: 0.11
-Nodes (16): COLOR_GROUPS, RADII, SHADOWS, TYPE_SCALE, TypeRole, ToastContext, ToastState, usePushNotifications() (+8 more)
-
-### Community 36 - "SLA Metrics"
+### Community 45 - "people.py"
 Cohesion: 0.16
-Nodes (15): EMPTY, useVehicles(), UseVehiclesResult, VehicleEvent, Vehicle, VehicleDetail, VehicleId, VehicleType (+7 more)
+Nodes (13): Public re-exports for all FreightProof SA Pydantic schemas., DriverBase, DriverCreateBody, DriverDetailResponse, DriverRead, DriverUpdateBody, Pydantic v2 schemas for User and Driver., Extended driver shape returned by GET /drivers/{id}.      Includes the full even (+5 more)
 
-### Community 37 - "Manifest Mock Data"
-Cohesion: 0.20
-Nodes (12): mockManifest0040, mockManifest0041, mockManifest0042, mockManifests, parcel(), parcelId(), TRIP_0040_ID, DeliveryStop (+4 more)
+### Community 46 - "page.tsx"
+Cohesion: 0.23
+Nodes (11): SLA Reporting, SLAMetrics, useSLAMetrics(), SLAPage(), thirtyDaysAgo(), todayStr(), DateRange, DateRangePicker() (+3 more)
 
-### Community 38 - "Trip Anchor Tests"
-Cohesion: 0.21
-Nodes (12): AsyncSession, _make_trip_payload(), override_get_db(), Integration test: POST /api/v1/trips anchors to Hedera and returns a receipt.  U, Build a valid POST /trips request body from seeded IDs., POST /trips → BlockchainReceipt in response with subject_type=trip + matching ha, Wire every endpoint in this module to the rolled-back test session., Insert the operator org and demo user required by DEMO_MODE auth. (+4 more)
+### Community 47 - "compilerOptions"
+Cohesion: 0.13
+Nodes (15): compilerOptions, allowJs, esModuleInterop, incremental, isolatedModules, jsx, lib, module (+7 more)
 
-### Community 39 - "Dispatcher UI Concepts"
+### Community 48 - "AuthProvider"
+Cohesion: 0.18
+Nodes (9): AuthContext, useVerify Hook, AuthContext, AuthProvider, useAuth, AuthState/DispatcherUser types, AuthState Interface, DispatcherUser (+1 more)
+
+### Community 49 - "vehicles.ts"
+Cohesion: 0.13
+Nodes (13): HORSE_1_ID, HORSE_2_ID, HORSE_3_ID, mockHorses, mockTrailers, mockVehicles, nullAttrs, TRAILER_1_ID (+5 more)
+
+### Community 50 - "test_blockchain_verify.py"
+Cohesion: 0.15
+Nodes (13): _make_trip_payload(), override_get_db(), Integration tests: POST /api/v1/blockchain/verify covers all four VerifyStatus p, Build a valid POST /trips request body from seeded IDs., Verify against a subject UUID that has never been anchored → no_receipt., Create a trip (anchored), then verify → verified.      Two separate patches are, Wire every endpoint in this module to the rolled-back test session., Insert the operator org and demo user required by DEMO_MODE auth. (+5 more)
+
+### Community 51 - "update_driver_endpoint()"
+Cohesion: 0.28
+Nodes (12): AsyncSession, DriverCreateBody, DriverDetailResponse, DriverRead, DriverUpdateBody, UserRead, UUID, create_driver_endpoint() (+4 more)
+
+### Community 52 - "TripCreatedDetail.tsx"
+Cohesion: 0.19
+Nodes (9): MismatchReport(), VerifyButton(), Blockchain Integrity Verification, Trip Detail Timeline, Props, TripCreatedDetail(), ChainReceiptTag, TimelineEvent (+1 more)
+
+### Community 53 - "anchor_service.py"
 Cohesion: 0.24
-Nodes (13): Canonical Demo Trip TRP-2026-0041, Design System v2 — Clean Modern Aesthetic, Dispatcher Portal Phase 1 — 13 Pages, DispatcherShell — Two-Layer Chrome, Dispatcher UI Primitives (TopBar, StatCard, SecHead), Glassmorphism Navigation (.glass-nav), frontend/shared/ — Cross-Surface Shared Code, FreightProof SA Design System v2 (+5 more)
+Nodes (10): datetime, canonicalize_payload(), compute_payload_hash(), _parse_consensus_timestamp(), Orchestration-layer wrapper around HederaService + BlockchainReceipt persistence, JSON with sorted keys and no whitespace — reproducible from any language., SHA-256 hex over the canonical JSON encoding of payload., test_anchor_subject_persists_receipt() (+2 more)
 
-### Community 40 - "Driver Integration Tests"
+### Community 54 - "create_trip()"
+Cohesion: 0.32
+Nodes (11): AsyncSession, UUID, _check_order_number_conflict(), create_trip(), _fetch_driver(), _fetch_vehicle(), _generate_trip_reference(), Trip orchestration — create_trip() is the single entry point for trip creation. (+3 more)
+
+### Community 55 - "test_drivers.py"
 Cohesion: 0.20
 Nodes (5): AsyncSession, override_get_db(), Integration tests for GET /api/v1/drivers., seed_driver(), seed_org()
 
-### Community 41 - "Vehicle Integration Tests"
+### Community 56 - "test_vehicles.py"
 Cohesion: 0.20
 Nodes (5): AsyncSession, override_get_db(), Integration tests for GET /api/v1/vehicles., seed_org(), seed_vehicles()
 
-### Community 42 - "Evidence Packet UI"
-Cohesion: 0.21
-Nodes (9): ChipType, EvidencePacket(), EvidencePacketProps, TripIdStamp(), TripIdStampProps, Chip(), ChipProps, chipStyles (+1 more)
+### Community 57 - "test_trips_anchor.py"
+Cohesion: 0.18
+Nodes (11): _make_trip_payload(), override_get_db(), Integration test: POST /api/v1/trips anchors to Hedera and returns a receipt.  U, Build a valid POST /trips request body from seeded IDs., POST /trips → BlockchainReceipt in response with subject_type=trip + matching ha, Wire every endpoint in this module to the rolled-back test session., Insert the operator org and demo user required by DEMO_MODE auth., Insert the minimal rows required by POST /trips and yield their IDs. (+3 more)
 
-### Community 43 - "Capacitor App Config"
+### Community 58 - "capacitor.config.json"
 Cohesion: 0.18
 Nodes (10): appId, appName, permissions, permissions, plugins, Camera, Geolocation, PushNotifications (+2 more)
 
-### Community 44 - "Dispatcher Auth Guard"
-Cohesion: 0.25
-Nodes (10): get_current_dispatcher(), Return the authenticated dispatcher for the current request, or raise 401/403., AsyncSession, UserRead, _bearer, Depends, HTTPAuthorizationCredentials, SQLAlchemy models for dispatcher users and drivers. (+2 more)
+### Community 59 - "AsyncSession"
+Cohesion: 0.24
+Nodes (10): AsyncSession, override_get_db(), Integration test: POST /api/v1/vehicles anchors to Hedera and creates a VehicleE, SEC-5: GPS device ID must be hashed in payload_json, never stored in plaintext., Wire every endpoint in this module to the rolled-back test session., Insert the operator org and demo user required by DEMO_MODE auth., POST /vehicles → VehicleEvent created + BlockchainReceipt on detail endpoint., seed_org() (+2 more)
 
-### Community 45 - "Push Notifications Hook"
+### Community 60 - "main.py"
 Cohesion: 0.20
-Nodes (7): AuthContext, DRIVER_DLAMINI_ID, DRIVER_FORMBY_ID, DRIVER_GULTIG_ID, DRIVER_KASONGO_ID, mockDrivers, OPERATOR_ORG_ID
+Nodes (7): override_get_db(), Integration test: POST /api/v1/drivers anchors to Hedera (POPIA-safe payload)., Wire every endpoint in this module to the rolled-back test session., Insert the operator org and demo user required by DEMO_MODE auth., Critical POPIA test: no PII appears in the anchored payload_json., seed_org(), test_create_driver_does_not_anchor_pii()
 
-### Community 46 - "Evidence Models"
-Cohesion: 0.27
-Nodes (9): ArtifactType, EvidenceArtifact, SQLAlchemy model for evidence artifacts stored in S3., Photo or document uploaded during a handshake or checkpoint.      trip_id uses u, EvidenceArtifactBase, EvidenceArtifactCreate, EvidenceArtifactRead, EvidenceArtifactUpdate (+1 more)
-
-### Community 47 - "Organisation Schemas"
-Cohesion: 0.38
-Nodes (10): OrganizationType, OrganizationBase, OrganizationCreate, OrganizationRead, OrganizationUpdate, PrecinctBase, PrecinctCreate, PrecinctRead (+2 more)
-
-### Community 48 - "App Entry & Precinct Tests"
-Cohesion: 0.32
-Nodes (5): AsyncSession, override_get_db(), Integration tests for GET /api/v1/precincts., seed_orgs(), seed_precincts()
-
-### Community 49 - "Blockchain Critical Fields"
-Cohesion: 0.27
+### Community 61 - "diff_critical_fields()"
+Cohesion: 0.29
 Nodes (8): Any, diff_critical_fields(), Critical-fields lists for vehicle/driver mutations.  A field is 'critical' if a, Return {field: {"from": old, "to": new}} for changed critical fields, or None., test_diff_handles_missing_keys_as_none(), test_diff_multiple_critical_fields(), test_diff_returns_diff_when_critical_changed(), test_diff_returns_none_when_no_critical_change()
 
-### Community 50 - "Event Schemas"
-Cohesion: 0.47
-Nodes (5): Pydantic v2 schemas for SlaConfig., SlaConfigBase, SlaConfigCreate, SlaConfigRead, SlaConfigUpdate
+### Community 62 - "seed_demo.py"
+Cohesion: 0.20
+Nodes (8): Vehicle trailer combination rules: 0-1 trailers valid, 2 only if lengths sum to 18m, 3+ blocked, Migration 0006: Add updated_at to precincts, Migration 0008: Add make/model/year/vin/licence_disc_expiry/gross_vehicle_mass_kg to vehicles, Migration ciaran_driver_license_expiry: Add license_expiry to drivers, Migration ciaran_add_event_tables: Add vehicle_events and driver_events tables, Migration ciaran_add_vehicle_length_m: Add length_m to vehicles for trailer combination validation, Migration ciaran_bc_receipts_ext: Extend blockchain_receipts for arbitrary subjects, One-off seed script for local DEMO_MODE development.  Usage:     cd backend
 
-### Community 51 - "Driver Anchor Tests"
-Cohesion: 0.28
-Nodes (8): AsyncSession, override_get_db(), Integration test: POST /api/v1/drivers anchors to Hedera (POPIA-safe payload)., Wire every endpoint in this module to the rolled-back test session., Insert the operator org and demo user required by DEMO_MODE auth., Critical POPIA test: no PII appears in the anchored payload_json., seed_org(), test_create_driver_does_not_anchor_pii()
+### Community 63 - "page.tsx"
+Cohesion: 0.24
+Nodes (8): PushNotificationsState, usePushNotifications(), COLOR_GROUPS, RADII, SHADOWS, TokensPage(), TYPE_SCALE, TypeRole
 
-### Community 52 - "Vehicle Anchor Tests"
-Cohesion: 0.28
-Nodes (8): AsyncSession, override_get_db(), Integration test: POST /api/v1/vehicles anchors to Hedera and creates a VehicleE, Wire every endpoint in this module to the rolled-back test session., Insert the operator org and demo user required by DEMO_MODE auth., POST /vehicles → VehicleEvent created + BlockchainReceipt on detail endpoint., seed_org(), test_create_vehicle_writes_event_and_anchor()
+### Community 64 - "tsconfig.json"
+Cohesion: 0.22
+Nodes (8): Next.js Config (Dispatcher), Next.js Env Type Declarations (Dispatcher), Dispatcher Package.json, PostCSS Config (Dispatcher), Tailwind Config (Dispatcher), exclude, include, Supabase Client (Dispatcher)
 
-### Community 53 - "Alembic Migration Env"
-Cohesion: 0.25
-Nodes (8): Connection, do_run_migrations(), Run migrations without a live DB connection (outputs SQL to stdout)., Create an async engine and run migrations inside a sync wrapper.      asyncpg ca, Entry point for online (live connection) migrations., run_async_migrations(), run_migrations_offline(), run_migrations_online()
-
-### Community 54 - "Page Header Layout"
+### Community 65 - "page.tsx"
 Cohesion: 0.28
 Nodes (5): Breadcrumb, PageHeader(), PageHeaderProps, PageShell(), PageShellProps
 
-### Community 55 - "Dispatcher Toast UI"
+### Community 66 - "test_precincts.py"
+Cohesion: 0.32
+Nodes (5): AsyncSession, override_get_db(), Integration tests for GET /api/v1/precincts., seed_orgs(), seed_precincts()
+
+### Community 67 - "Toast.tsx"
 Cohesion: 0.25
 Nodes (6): kindConfig, ToastData, ToastItem(), ToastItemProps, ToastKind, ToastViewportProps
 
-### Community 56 - "Driver PWA Toast UI"
+### Community 68 - "exceptions.ts"
+Cohesion: 0.32
+Nodes (3): ExceptionsFilter, ExceptionsFilter, mockExceptions
+
+### Community 69 - "Toast.tsx"
 Cohesion: 0.25
 Nodes (6): kindConfig, ToastData, ToastItem(), ToastItemProps, ToastKind, ToastViewportProps
 
-### Community 57 - "Checkpoint Mock Data"
-Cohesion: 0.20
-Nodes (7): STEP_SLUGS, PushNotificationsState, mockCheckpoints, TRIP_0041_ID, TRIP_0042_ID, Checkpoint, CheckpointId
+### Community 70 - "ToastData"
+Cohesion: 0.36
+Nodes (8): ToastProvider, ToastState, ToastData, ToastData Interface, ToastItem, ToastKind, ToastKind Type, ToastViewport
 
-### Community 58 - "Auth JWKS Validation"
-Cohesion: 0.40
-Nodes (5): _get_jwks(), _get_signing_key(), FastAPI dependencies for Supabase Auth verification.  Flow (DEMO_MODE=False):, Fetch and cache the Supabase JWKS. Called once per process lifetime., Return the JWK matching the token's key ID.
+### Community 71 - "drivers.ts"
+Cohesion: 0.25
+Nodes (6): DRIVER_DLAMINI_ID, DRIVER_FORMBY_ID, DRIVER_GULTIG_ID, DRIVER_KASONGO_ID, mockDrivers, DriverId
 
-### Community 59 - "Precinct API Endpoints"
+### Community 72 - "Active Trip Detail Page"
+Cohesion: 0.38
+Nodes (7): Active Trip Detail Page, Driver Handshake Flow (H1-H5), Handshake Step Page, Shared Handshake Meta Constants, Shared Mock Trips Data, Shared Trip Type, Trips List Page
+
+### Community 73 - "Android App build.gradle"
+Cohesion: 0.38
+Nodes (7): Android App build.gradle, Android Capacitor build.gradle, Capacitor Settings Gradle, Capacitor Cordova Plugins build.gradle, Cordova Variables Gradle, Android MainActivity, Android Root build.gradle
+
+### Community 74 - "get_db()"
+Cohesion: 0.29
+Nodes (6): FastAPI app entry point, AsyncSession, SQLAlchemy async engine, get_db(), Async database session factory for FreightProof SA.  The engine connects to Supa, FastAPI dependency that yields a database session per request.      Usage:
+
+### Community 75 - "page.tsx"
+Cohesion: 0.29
+Nodes (5): COLOR_GROUPS, RADII, SHADOWS, TYPE_SCALE, TypeRole
+
+### Community 76 - "Driver PWA package.json"
+Cohesion: 0.29
+Nodes (5): eslintConfig, nextConfig, withSerwist, Driver PWA package.json, Supabase Client (Driver PWA)
+
+### Community 77 - "useToast Hook"
+Cohesion: 0.29
+Nodes (3): useToast Hook, ToastContext, useToast
+
+### Community 78 - "ToastContext.tsx"
+Cohesion: 0.33
+Nodes (4): ToastContext, ToastState, Z, ZLevel
+
+### Community 79 - "Capacitor Android Native Integration"
+Cohesion: 0.33
+Nodes (6): Android Settings Gradle, Android Variables Gradle, Capacitor Config (Android APK), Capacitor Android Native Integration, PWA Service Worker / Serwist Precaching, Service Worker (Serwist PWA)
+
+### Community 80 - "get_me()"
+Cohesion: 0.33
+Nodes (5): get_me(), Auth router — dispatcher session endpoints.  GET /auth/me  returns the current d, Return the authenticated dispatcher's profile.      The frontend uses this as a, Auth APIRouter (prefix=/auth), User
+
+### Community 81 - "list_precincts_endpoint()"
 Cohesion: 0.33
 Nodes (5): AsyncSession, PrecinctRead, UserRead, list_precincts_endpoint(), FastAPI router for precinct list endpoint.  GET /precincts — all precincts (orig
 
-### Community 60 - "Geolocation Hook"
+### Community 82 - "test_auth_jwks_cache.py"
+Cohesion: 0.47
+Nodes (5): MonkeyPatch, Unit tests for JWKS TTL cache and key-rotation refresh., test_get_signing_key_refreshes_on_unknown_kid(), test_jwks_cache_refetches_after_ttl_expires(), test_jwks_cache_serves_from_cache_within_ttl()
+
+### Community 83 - "Parcel interface"
 Cohesion: 0.33
-Nodes (4): LINBRO_PARK, LocationCoords, LocationState, LocationStatus
+Nodes (6): Parcel Perfect manifest (grouped by delivery stop, available after H2), DeliveryStop interface, Manifest interface, Parcel interface, ParcelId (branded string type), ParcelStatus union
 
-### Community 61 - "Auth Router"
-Cohesion: 0.40
-Nodes (4): get_me(), Auth router — dispatcher session endpoints.  GET /auth/me  returns the current d, Return the authenticated dispatcher's profile.      The frontend uses this as a, User
+### Community 84 - "useLocation.ts"
+Cohesion: 0.33
+Nodes (5): LINBRO_PARK, LocationCoords, LocationState, LocationStatus, useLocation()
 
-### Community 62 - "DB Session"
-Cohesion: 0.40
-Nodes (4): AsyncSession, get_db(), Async database session factory for FreightProof SA.  The engine connects to Supa, FastAPI dependency that yields a database session per request.      Usage:
-
-### Community 63 - "Toast Context"
+### Community 85 - "ToastContext.tsx"
 Cohesion: 0.40
 Nodes (3): Toast, ToastContext, ToastState
 
-### Community 64 - "Driver PWA Button"
+### Community 87 - "Button.tsx"
 Cohesion: 0.40
 Nodes (4): Button(), ButtonProps, sizeClasses, variantClasses
 
-### Community 65 - "Driver PWA Chip"
+### Community 88 - "Chip.tsx"
 Cohesion: 0.40
 Nodes (4): Chip(), ChipProps, ChipKind, kindClasses
 
-### Community 67 - "Claude Code Settings"
+### Community 89 - "Organization interface"
+Cohesion: 0.40
+Nodes (5): Organization interface, OrganizationId (branded string type), OrganizationType union (operator|principal|both), Precinct interface, PrecinctId (branded string type)
+
+### Community 91 - "client()"
+Cohesion: 0.50
+Nodes (4): AsyncClient, MonkeyPatch, client(), AsyncClient wired directly to the FastAPI app via ASGITransport.      Patches _g
+
+### Community 92 - "permissions"
 Cohesion: 0.50
 Nodes (3): permissions, additionalDirectories, allow
 
-### Community 68 - "Dispatcher Button"
+### Community 93 - "Dev Tokens Page (Design System Preview)"
 Cohesion: 0.50
-Nodes (3): Button(), ButtonProps, sizeClasses
+Nodes (4): Dev Tokens Page (Design System Preview), usePushNotifications Hook, Shared Design Tokens (@shared/lib/tokens), Shared Z-Index Constants (@shared/lib/z-index)
 
-### Community 69 - "Dispatcher Card UI"
-Cohesion: 0.50
-Nodes (3): Card(), CardProps, variantClasses
-
-### Community 70 - "Dispatcher Drawer UI"
-Cohesion: 0.50
-Nodes (3): sizeMap, Spinner(), SpinnerProps
-
-### Community 71 - "Dispatcher Icon Button"
-Cohesion: 0.50
-Nodes (3): IconButton(), IconButtonProps, sizeClasses
-
-### Community 72 - "Dispatcher Modal UI"
-Cohesion: 0.50
-Nodes (3): Modal(), ModalProps, sizeClasses
-
-### Community 75 - "Driver PWA Card UI"
+### Community 94 - "Card.tsx"
 Cohesion: 0.50
 Nodes (3): Card(), CardProps, variantClasses
 
-### Community 76 - "Driver PWA Icon Button"
-Cohesion: 0.50
-Nodes (3): IconButton(), IconButtonProps, sizeClasses
-
-### Community 77 - "Driver PWA Modal UI"
-Cohesion: 0.50
-Nodes (3): Modal(), ModalProps, sizeClasses
-
-### Community 78 - "Driver PWA Spinner UI"
-Cohesion: 0.50
-Nodes (3): sizeMap, Spinner(), SpinnerProps
-
-### Community 79 - "Organisation Models"
-Cohesion: 0.50
-Nodes (3): Organization, SQLAlchemy models for organizations and precincts., Legal entity — transport operator, principal client, or both.
-
-### Community 80 - "SLA Config Models"
-Cohesion: 0.50
-Nodes (3): SQLAlchemy model for SLA configuration between operator and client., SLA thresholds for a given operator-client-route combination.      Rows with nul, SlaConfig
-
-### Community 81 - "Vehicle Models"
-Cohesion: 0.12
-Nodes (18): DeclarativeBase, Base, Consignment, DriverSubstitution, Parcel, SQLAlchemy models for trip lifecycle: template, consignment, parcel, trip, trip-, Many-to-many: which trailers are attached to a trip (composite PK)., Records every mid-trip driver change — planned or unplanned.      Spec §5 + Hand (+10 more)
-
-### Community 82 - "Evidence Types"
-Cohesion: 0.50
-Nodes (3): ArtifactId, ArtifactType, EvidenceArtifact
-
-### Community 83 - "Search Select UI"
-Cohesion: 0.50
-Nodes (3): Props, SearchSelect(), SearchSelectOption
-
-### Community 84 - "Exception Unit Tests"
-Cohesion: 0.50
-Nodes (3): Tests for domain exception classes., test_resource_not_found_error_carries_resource_and_id(), test_trip_conflict_error_carries_order_number()
-
-### Community 158 - "Community 158"
-Cohesion: 0.50
-Nodes (3): Tab, Tabs(), TabsProps
-
-### Community 159 - "Community 159"
+### Community 95 - "Drawer.tsx"
 Cohesion: 0.50
 Nodes (3): Drawer(), DrawerProps, panelClasses
 
+### Community 96 - "IconButton.tsx"
+Cohesion: 0.50
+Nodes (3): IconButton(), IconButtonProps, sizeClasses
+
+### Community 97 - "Modal.tsx"
+Cohesion: 0.50
+Nodes (3): Modal(), ModalProps, sizeClasses
+
+### Community 98 - "Spinner.tsx"
+Cohesion: 0.50
+Nodes (3): sizeMap, Spinner(), SpinnerProps
+
+### Community 101 - "Modal.tsx"
+Cohesion: 0.50
+Nodes (3): Modal(), ModalProps, sizeClasses
+
+### Community 102 - "Tabs.tsx"
+Cohesion: 0.50
+Nodes (3): Tab, Tabs(), TabsProps
+
+### Community 103 - "SlaConfig"
+Cohesion: 0.50
+Nodes (3): SQLAlchemy model for SLA configuration between operator and client., SLA thresholds for a given operator-client-route combination.      Rows with nul, SlaConfig
+
+### Community 104 - "events.py"
+Cohesion: 0.50
+Nodes (3): DriverEventRead, Pydantic v2 schemas for VehicleEvent and DriverEvent read shapes., VehicleEventRead
+
+### Community 105 - "evidence.ts"
+Cohesion: 0.50
+Nodes (3): ArtifactId, ArtifactType, EvidenceArtifact
+
+### Community 107 - "Driver PWA Root Layout"
+Cohesion: 0.67
+Nodes (3): AuthContext Provider, Driver PWA Root Layout, ToastContext Provider
+
+### Community 109 - "Z z-index scale constants"
+Cohesion: 0.67
+Nodes (3): Z-index scale design constraint (panic button always on top), Z z-index scale constants, ZLevel type alias
+
+### Community 111 - "paths"
+Cohesion: 0.67
+Nodes (3): paths, @/*, @shared/*
+
+### Community 114 - "request"
+Cohesion: 0.67
+Nodes (3): ApiError, request, supabase client
+
+### Community 115 - "useExceptions"
+Cohesion: 0.67
+Nodes (3): useExceptions, @shared/lib/mocks/exceptions, @shared/lib/types/exception
+
+### Community 116 - "useStepIndicator"
+Cohesion: 0.67
+Nodes (3): useStepIndicator, @shared/lib/constants/handshake-meta, @shared/lib/types/handshake
+
+## Ambiguous Edges - Review These
+- `__init__.py` → `__init__.py`  [AMBIGUOUS]
+  backend/app/tasks/__init__.py · relation: conceptually_related_to
+
 ## Knowledge Gaps
-- **361 isolated node(s):** `Project`, `Prime Directive`, `1. Read first`, `2. Plan`, `3. Execute` (+356 more)
+- **472 isolated node(s):** `allow`, `additionalDirectories`, `AsyncSession`, `UserRead`, `PrecinctRead` (+467 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **28 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
-
-## Suggested Questions
-_Questions this graph is uniquely positioned to answer:_
-
-- **Why does `IdvsStatus` connect `Trip & Consignment Models` to `API Endpoints Layer`, `Blockchain Verify Tests`, `Blockchain Anchor Service`, `Schema Validators`, `Trip Anchor Tests`, `Trip API Endpoints`, `Driver Integration Tests`, `Trip & Parcel Schemas`, `Dispatcher Auth Guard`, `Vehicle Models`?**
-  _High betweenness centrality (0.047) - this node is a cross-community bridge._
-- **Why does `User` connect `Dispatcher Auth Guard` to `Blockchain Verify Tests`, `Trip Anchor Tests`, `Trip API Endpoints`, `Trip & Consignment Models`, `Vehicle Models`, `Driver Anchor Tests`, `Vehicle Anchor Tests`, `Auth Router Tests`, `Auth Router`?**
-  _High betweenness centrality (0.036) - this node is a cross-community bridge._
-- **Why does `cn()` connect `Base UI Components` to `Dispatcher Active Trips UI`, `Handshake Constants & Context`, `Blockchain UI Components`, `Blockchain Receipt UI`, `Form & Exception UI`, `App Layout & Sidebar`, `Community 158`, `Community 159`, `SLA Metrics`, `Evidence Packet UI`, `Page Header Layout`, `Dispatcher Toast UI`, `Driver PWA Toast UI`, `Driver PWA Button`, `Driver PWA Chip`, `Dispatcher Button`, `Dispatcher Card UI`, `Dispatcher Drawer UI`, `Dispatcher Icon Button`, `Dispatcher Modal UI`, `Driver PWA Card UI`, `Driver PWA Icon Button`, `Driver PWA Modal UI`, `Driver PWA Spinner UI`, `Search Select UI`?**
-  _High betweenness centrality (0.026) - this node is a cross-community bridge._
-- **Are the 26 inferred relationships involving `cn()` (e.g. with `Button()` and `Card()`) actually correct?**
-  _`cn()` has 26 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 76 inferred relationships involving `BlockchainReceiptRead` (e.g. with `AsyncSession` and `SubjectType`) actually correct?**
-  _`BlockchainReceiptRead` has 76 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 70 inferred relationships involving `IdvsStatus` (e.g. with `AsyncSession` and `DriverCreateBody`) actually correct?**
-  _`IdvsStatus` has 70 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 62 inferred relationships involving `TripStatus` (e.g. with `AsyncSession` and `TripCreateRequest`) actually correct?**
-  _`TripStatus` has 62 INFERRED edges - model-reasoned connections that need verification._
+- **51 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.

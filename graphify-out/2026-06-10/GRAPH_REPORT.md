@@ -1,13 +1,18 @@
-# Graph Report - .  (2026-06-10)
+# Graph Report - freightproof-sa-4  (2026-06-10)
 
 ## Corpus Check
-- 290 files · ~155,801 words
+- 300 files · ~162,671 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1579 nodes · 3473 edges · 158 communities (131 shown, 27 thin omitted)
-- Extraction: 67% EXTRACTED · 33% INFERRED · 0% AMBIGUOUS · INFERRED: 1148 edges (avg confidence: 0.54)
+- 1595 nodes · 3463 edges · 161 communities (133 shown, 28 thin omitted)
+- Extraction: 67% EXTRACTED · 33% INFERRED · 0% AMBIGUOUS · INFERRED: 1143 edges (avg confidence: 0.54)
 - Token cost: 0 input · 0 output
+
+## Graph Freshness
+- Built from commit: `c00ccbe8`
+- Run `git rev-parse HEAD` and compare to check if the graph is stale.
+- Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
 - [[_COMMUNITY_API Endpoints Layer|API Endpoints Layer]]
@@ -119,6 +124,9 @@
 - [[_COMMUNITY_Docs Readme|Docs Readme]]
 - [[_COMMUNITY_Scripts Readme|Scripts Readme]]
 - [[_COMMUNITY_Spikes Readme|Spikes Readme]]
+- [[_COMMUNITY_Community 158|Community 158]]
+- [[_COMMUNITY_Community 159|Community 159]]
+- [[_COMMUNITY_Community 160|Community 160]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `cn()` - 86 edges
@@ -133,8 +141,6 @@
 10. `TripDetailResponse` - 36 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `CI Pipeline (GitHub Actions)` --conceptually_related_to--> `Claude Code Instructions (CLAUDE.md)`  [INFERRED]
-  .github/workflows/ci.yml → CLAUDE.md
 - `Client Portal — Read-Only Evidence Portal` --conceptually_related_to--> `Five Handshakes Trip Lifecycle`  [INFERRED]
   frontend/client-portal/README.md → docs/FreightProof_Full_Picture_v6.md
 - `User` --uses--> `User`  [INFERRED]
@@ -143,6 +149,8 @@
   backend/tests/unit/test_exceptions.py → backend/app/core/exceptions.py
 - `test_resource_not_found_error_carries_resource_and_id()` --calls--> `ResourceNotFoundError`  [INFERRED]
   backend/tests/unit/test_exceptions.py → backend/app/core/exceptions.py
+- `User` --uses--> `User`  [INFERRED]
+  backend/tests/integration/test_auth_router.py → backend/app/db/models/people.py
 
 ## Import Cycles
 - 1-file cycle: `backend/app/api/v1/endpoints/blockchain.py -> backend/app/api/v1/endpoints/blockchain.py`
@@ -162,11 +170,11 @@
 - **DB Schema Implementation (Models + Schemas + Migration)** — concept_sqlalchemy_19_models, concept_pydantic_v2_schemas, concept_alembic_initial_migration, concept_use_alter_circular_fk [EXTRACTED 1.00]
 - **Frontend-Backend Integration Stack** — concept_resource_service, concept_api_client_ts, concept_demo_mode, concept_seed_demo_script [EXTRACTED 1.00]
 
-## Communities (158 total, 27 thin omitted)
+## Communities (161 total, 28 thin omitted)
 
 ### Community 0 - "API Endpoints Layer"
-Cohesion: 0.09
-Nodes (87): AsyncSession, SubjectType, UserRead, UUID, AsyncSession, DriverCreateBody, DriverDetailResponse, DriverRead (+79 more)
+Cohesion: 0.08
+Nodes (97): AsyncSession, SubjectType, UserRead, UUID, AsyncSession, DriverCreateBody, DriverDetailResponse, DriverRead (+89 more)
 
 ### Community 1 - "Blockchain Anchor Service"
 Cohesion: 0.08
@@ -177,28 +185,28 @@ Cohesion: 0.07
 Nodes (50): Any, AsyncSession, BlockchainReceipt, HederaService, SubjectType, UUID, _default_mirror_url(), _HederaAdapter (+42 more)
 
 ### Community 3 - "Project Config & Docs"
-Cohesion: 0.07
-Nodes (61): Backend Python Requirements, Claude Code Instructions (CLAUDE.md), Initial Alembic Migration (0001_initial_schema), anchor_service.py — Hedera Anchor Orchestration, Frontend API Client (client.ts), API Pagination Envelope Convention, Backend Layering Architecture, BlockchainBadge — Hedera Anchor UI Component (+53 more)
+Cohesion: 0.06
+Nodes (54): Initial Alembic Migration (0001_initial_schema), anchor_service.py — Hedera Anchor Orchestration, Frontend API Client (client.ts), API Pagination Envelope Convention, BlockchainBadge — Hedera Anchor UI Component, Capacitor 6 Android APK Build, Client Portal — Read-Only Evidence Portal, Critical Fields — Blockchain Anchor Trigger (+46 more)
 
 ### Community 4 - "Dispatcher Active Trips UI"
 Cohesion: 0.09
-Nodes (27): ACTIVE_STATUSES, ActiveTripsPage(), COL_HEADERS, ColId, formatDate(), INITIAL_COL_WIDTHS, COPY, EXCEPTION_SEVERITY_META (+19 more)
+Nodes (25): ACTIVE_STATUSES, ActiveTripsPage(), COL_HEADERS, ColId, formatDate(), INITIAL_COL_WIDTHS, COPY, EXCEPTION_SEVERITY_META (+17 more)
 
 ### Community 5 - "Mock Trip Data"
-Cohesion: 0.07
-Nodes (32): EXCEPTIONS_0035, EXCEPTIONS_0039, EXCEPTIONS_0040, EXCEPTIONS_0041, EXCEPTIONS_0042, HANDSHAKES_0035, HANDSHAKES_0038, HANDSHAKES_0039 (+24 more)
+Cohesion: 0.08
+Nodes (29): EXCEPTIONS_0035, EXCEPTIONS_0039, EXCEPTIONS_0040, EXCEPTIONS_0041, EXCEPTIONS_0042, HANDSHAKES_0035, HANDSHAKES_0038, HANDSHAKES_0039 (+21 more)
 
 ### Community 6 - "API Client & Fleet Pages"
 Cohesion: 0.12
 Nodes (20): api, EditState, EditState, AuthContext, AsyncState, useAsyncData(), useBlockchainReceipts(), useDriverDetail() (+12 more)
 
 ### Community 7 - "Status & Exception Constants"
-Cohesion: 0.10
-Nodes (29): DISPATCHER_EXCEPTION_TYPES, DRIVER_EXCEPTION_TYPES, HANDSHAKE_STATUS_META, StatusMeta, SYSTEM_EXCEPTION_TYPES, TRIP_STATUS_META, chainNodesFromStatus(), ChecklistRow() (+21 more)
+Cohesion: 0.29
+Nodes (8): ChecklistRowProps, EMPTY, TripsFilter, UseTripsResult, PaginatedList, TripId, TripStatus, TripSummary
 
 ### Community 8 - "Trip API Endpoints"
-Cohesion: 0.19
-Nodes (32): AsyncSession, TripCreateRequest, TripDetailResponse, TripStatus, UserRead, UUID, AsyncSession, TripCreateRequest (+24 more)
+Cohesion: 0.17
+Nodes (33): TripCreateRequest, AsyncSession, TripCreateRequest, TripDetailResponse, UserRead, UUID, AsyncSession, Raised when a trip with the given order_number is already active. (+25 more)
 
 ### Community 9 - "Driver PWA Capacitor Deps"
 Cohesion: 0.06
@@ -206,51 +214,51 @@ Nodes (33): dependencies, @capacitor/android, @capacitor/camera, @capacitor-comm
 
 ### Community 10 - "Trip & Parcel Schemas"
 Cohesion: 0.19
-Nodes (31): VehicleRead, BaseModel, ParcelStatus, ConsignmentBase, ConsignmentCreate, ConsignmentRead, ConsignmentUpdate, DriverSubstitutionBase (+23 more)
+Nodes (35): VehicleRead, BaseModel, ParcelStatus, TripStatus, DriverEventRead, Pydantic v2 schemas for VehicleEvent and DriverEvent read shapes., VehicleEventRead, ConsignmentBase (+27 more)
 
 ### Community 11 - "Handshake Constants & Context"
-Cohesion: 0.11
-Nodes (19): HANDSHAKE_NAMES, HANDSHAKE_STEP_COUNTS, STEP_NAMES, STEP_SLUGS, handshakeFromStatus(), TripContext, TripProvider(), TripState (+11 more)
+Cohesion: 0.07
+Nodes (40): HANDSHAKE_NAMES, HANDSHAKE_STEP_COUNTS, STEP_NAMES, DISPATCHER_EXCEPTION_TYPES, DRIVER_EXCEPTION_TYPES, HANDSHAKE_STATUS_META, StatusMeta, SYSTEM_EXCEPTION_TYPES (+32 more)
 
 ### Community 12 - "Blockchain UI Components"
 Cohesion: 0.08
 Nodes (17): ApiError, BadgeState, Props, Event, Props, fmtDateTime(), MiniField(), STEP_NAMES (+9 more)
 
 ### Community 13 - "Fleet Drivers Page"
-Cohesion: 0.09
-Nodes (25): columns, DriverFormState, EMPTY_FORM, FleetDriversPage(), AuthState, DriverUser, AuthState, DriverUser (+17 more)
+Cohesion: 0.12
+Nodes (18): columns, DriverFormState, EMPTY_FORM, FleetDriversPage(), AuthState, DriverUser, AuthState, DriverUser (+10 more)
 
 ### Community 14 - "Blockchain Verify Button"
 Cohesion: 0.09
 Nodes (20): Props, UIState, VerifyButton(), Props, TripCreatedDetail(), fmtTs(), useTripDetail(), ACTIVE_HS_FOR_STATUS (+12 more)
 
 ### Community 15 - "Trip & Consignment Models"
-Cohesion: 0.10
-Nodes (28): IdvsStatus, Consignment, DriverSubstitution, Parcel, SQLAlchemy models for trip lifecycle: template, consignment, parcel, trip, trip-, Many-to-many: which trailers are attached to a trip (composite PK)., Records every mid-trip driver change — planned or unplanned.      Spec §5 + Hand, Reusable trip configuration for recurring contractual routes. (+20 more)
+Cohesion: 0.21
+Nodes (15): IdvsStatus, DriverBase, DriverCreateBody, DriverDetailResponse, DriverRead, DriverUpdate, DriverUpdateBody, Pydantic v2 schemas for User and Driver. (+7 more)
 
 ### Community 16 - "Auth Context & Driver Mocks"
-Cohesion: 0.09
-Nodes (20): AuthContext, DRIVER_DLAMINI_ID, DRIVER_FORMBY_ID, DRIVER_GULTIG_ID, DRIVER_KASONGO_ID, mockDrivers, mockPrecincts, PRECINCT_CGY_CT_ID (+12 more)
+Cohesion: 0.15
+Nodes (13): mockPrecincts, PRECINCT_CGY_CT_ID, PRECINCT_CGY_JHB_ID, PRECINCT_FEDEX_DBN_ID, PRECINCT_FEDEX_JHB_ID, CGY_ORG_ID, FEDEX_ORG_ID, mockOperator (+5 more)
 
 ### Community 17 - "Base UI Components"
-Cohesion: 0.09
-Nodes (20): EmptyState(), EmptyStateProps, sizeMap, Spinner(), SpinnerProps, TextArea(), TextAreaProps, EmptyState() (+12 more)
+Cohesion: 0.11
+Nodes (16): EmptyState(), EmptyStateProps, Input(), InputProps, Skeleton(), SkeletonProps, TextArea(), TextAreaProps (+8 more)
 
 ### Community 18 - "Dispatcher Frontend Deps"
 Cohesion: 0.07
 Nodes (26): dependencies, lucide-react, next, react, react-dom, recharts, @supabase/supabase-js, devDependencies (+18 more)
 
 ### Community 19 - "Auth Dependencies & Tests"
-Cohesion: 0.15
-Nodes (21): _decode_token(), Raise HTTP 403 if the JWT does not carry the dispatcher role.      Role lives in, Verify the Supabase JWT and return its payload.      Supabase uses ES256 (ECDSA), _require_dispatcher_role(), MonkeyPatch, make_token(), Return an ES256-signed JWT matching the Supabase Auth payload shape.      role a, patch_jwks() (+13 more)
+Cohesion: 0.16
+Nodes (18): _decode_token(), Raise HTTP 403 if the JWT does not carry the dispatcher role.      Role lives in, Verify the Supabase JWT and return its payload.      Supabase uses ES256 (ECDSA), _require_dispatcher_role(), MonkeyPatch, patch_jwks(), Unit tests for auth/dependencies.py — pure logic, no DB, no HTTP.  Tests cover _, Patch _get_jwks for every test in this module — no Supabase network calls. (+10 more)
 
 ### Community 20 - "Dispatcher TypeScript Config"
 Cohesion: 0.10
 Nodes (20): compilerOptions, allowJs, esModuleInterop, incremental, isolatedModules, jsx, lib, module (+12 more)
 
 ### Community 21 - "Blockchain Receipt UI"
-Cohesion: 0.12
-Nodes (12): BlockchainReceiptProps, TimestampWithIcon(), TimestampWithIconProps, BadgeState, Props, Event, Props, BlockchainReceipt (+4 more)
+Cohesion: 0.14
+Nodes (8): BlockchainReceiptProps, TimestampWithIcon(), TimestampWithIconProps, BadgeState, Props, Event, Props, BlockchainReceipt
 
 ### Community 22 - "Driver PWA TypeScript Config"
 Cohesion: 0.10
@@ -265,20 +273,20 @@ Cohesion: 0.12
 Nodes (18): _column_names(), Unit tests for v6 model changes.  Covers:   1. DriverSubstitution model — all fo, Spec §5+H3: original_driver_id, substituting_driver_id, exchange_location,     a, Planned substitutions are normal events; unplanned are exceptions.     is_planne, exception_id is only populated for unplanned substitutions., Both original and substituting driver must FK to the drivers table., test_driver_substitution_driver_fks_present(), test_driver_substitution_exception_id_nullable() (+10 more)
 
 ### Community 25 - "Handshake Models & Enums"
-Cohesion: 0.19
-Nodes (17): AsyncSession, HandshakeStatus, HandshakeType, SQLAlchemy models for handshake events and per-trailer GPS snapshots., Per-trailer GPS reading at each handshake — independent Pulsit source for cross-, TrailerGpsSnapshot, HandshakeEventBase, HandshakeEventCreate (+9 more)
+Cohesion: 0.10
+Nodes (20): 1. Read first, 2. Plan, 3. Execute, 4. Report with TASK COMPLETE (see bottom), Architecture, Codebase Status, Domain knowledge, FreightProof SA — Claude Code Instructions (+12 more)
 
 ### Community 26 - "Auth Router Tests"
-Cohesion: 0.19
-Nodes (17): AsyncClient, MonkeyPatch, User, client_with_db(), _make_user(), _mock_db(), Integration tests for GET /api/v1/auth/me.  These tests mock the database layer, Return a User ORM instance that does not touch the database. (+9 more)
+Cohesion: 0.18
+Nodes (19): AsyncClient, MonkeyPatch, User, client_with_db(), _make_user(), _mock_db(), Integration tests for GET /api/v1/auth/me.  These tests mock the database layer, Return a User ORM instance that does not touch the database. (+11 more)
 
 ### Community 27 - "Form & Exception UI"
-Cohesion: 0.11
-Nodes (12): ExceptionBanner(), ExceptionBannerProps, Input(), InputProps, Skeleton(), SkeletonProps, Tab, Tabs() (+4 more)
+Cohesion: 0.13
+Nodes (10): ExceptionBanner(), ExceptionBannerProps, Drawer(), DrawerProps, panelClasses, Tab, Tabs(), TabsProps (+2 more)
 
 ### Community 28 - "App Layout & Sidebar"
-Cohesion: 0.15
-Nodes (12): DispatcherShell(), DispatcherShellProps, isActive(), NAV_GROUPS, NavGroup, NavItem, NavLink(), SETTINGS_ITEM (+4 more)
+Cohesion: 0.09
+Nodes (22): SLAMetrics, useSLAMetrics(), DispatcherShell(), DispatcherShellProps, isActive(), NAV_GROUPS, NavGroup, NavItem (+14 more)
 
 ### Community 29 - "Shared TypeScript Config"
 Cohesion: 0.12
@@ -289,28 +297,28 @@ Cohesion: 0.27
 Nodes (14): datetime, UUID, compute_journey_lock_hash(), compute_trip_canonical_payload(), SHA-256 hashing utilities for FreightProof evidence integrity.  compute_journey_, Return a 64-char lowercase hex SHA-256 digest of the trip's fixed parameters., Return the canonical payload dict used for both the lock hash and on-chain ancho, _fixed_args() (+6 more)
 
 ### Community 31 - "Test Fixtures & Conftest"
-Cohesion: 0.14
-Nodes (14): AsyncClient, AsyncSession, MonkeyPatch, _b64url(), client(), db_session(), make_jwks(), Shared fixtures for unit and integration tests.  Two fixture families live here: (+6 more)
+Cohesion: 0.12
+Nodes (15): AsyncClient, AsyncSession, MonkeyPatch, _b64url(), client(), db_session(), make_jwks(), Shared fixtures for unit and integration tests.  Two fixture families live here: (+7 more)
 
 ### Community 32 - "Blockchain Verify Tests"
 Cohesion: 0.18
 Nodes (14): AsyncSession, _make_trip_payload(), override_get_db(), Integration tests: POST /api/v1/blockchain/verify covers all four VerifyStatus p, Build a valid POST /trips request body from seeded IDs., Verify against a subject UUID that has never been anchored → no_receipt., Create a trip (anchored), then verify → verified.      Two separate patches are, Wire every endpoint in this module to the rolled-back test session. (+6 more)
 
 ### Community 33 - "Schema Validators"
-Cohesion: 0.17
-Nodes (12): DriverCreate, TripCreate, Unit tests for the four Pydantic v2 schema validators defined in the spec.  Run:, Validator must not fire when only one of the two fields is provided., test_driver_id_number_non_digits(), test_driver_id_number_too_short(), test_driver_id_number_valid(), test_merkle_leaf_source_type_invalid() (+4 more)
+Cohesion: 0.13
+Nodes (16): HandshakeEventCreate, DriverCreate, TripCreate, Unit tests for the four Pydantic v2 schema validators defined in the spec.  Run:, Validator must not fire when only one of the two fields is provided., test_driver_id_number_non_digits(), test_driver_id_number_too_short(), test_driver_id_number_valid() (+8 more)
 
 ### Community 34 - "Vehicle & Receipt Schemas"
-Cohesion: 0.32
-Nodes (13): BlockchainReceiptRead, VehicleType, Pydantic v2 schemas for Vehicle (horse and trailer)., Fields the dispatcher submits when registering a new vehicle.      organization_, Fields the dispatcher may change via PATCH /vehicles/{id}.      All fields are o, Extended vehicle shape returned by GET /vehicles/{id}.      Includes the full ev, VehicleBase, VehicleCreate (+5 more)
+Cohesion: 0.28
+Nodes (12): BlockchainReceiptRead, Pydantic v2 schemas for Vehicle (horse and trailer)., Fields the dispatcher submits when registering a new vehicle.      organization_, Fields the dispatcher may change via PATCH /vehicles/{id}.      All fields are o, Extended vehicle shape returned by GET /vehicles/{id}.      Includes the full ev, VehicleBase, VehicleCreate, VehicleCreateBody (+4 more)
 
 ### Community 35 - "Design Token System"
-Cohesion: 0.16
-Nodes (9): COLOR_GROUPS, RADII, SHADOWS, TYPE_SCALE, TypeRole, ToastContext, ToastState, Z (+1 more)
+Cohesion: 0.11
+Nodes (16): COLOR_GROUPS, RADII, SHADOWS, TYPE_SCALE, TypeRole, ToastContext, ToastState, usePushNotifications() (+8 more)
 
 ### Community 36 - "SLA Metrics"
-Cohesion: 0.25
-Nodes (10): SLAMetrics, useSLAMetrics(), SLAPage(), thirtyDaysAgo(), todayStr(), DateRange, DateRangePicker(), DateRangePickerProps (+2 more)
+Cohesion: 0.16
+Nodes (15): EMPTY, useVehicles(), UseVehiclesResult, VehicleEvent, Vehicle, VehicleDetail, VehicleId, VehicleType (+7 more)
 
 ### Community 37 - "Manifest Mock Data"
 Cohesion: 0.20
@@ -345,8 +353,8 @@ Cohesion: 0.25
 Nodes (10): get_current_dispatcher(), Return the authenticated dispatcher for the current request, or raise 401/403., AsyncSession, UserRead, _bearer, Depends, HTTPAuthorizationCredentials, SQLAlchemy models for dispatcher users and drivers. (+2 more)
 
 ### Community 45 - "Push Notifications Hook"
-Cohesion: 0.22
-Nodes (9): PushNotificationsState, usePushNotifications(), TRIP_0041_ID, COLOR_GROUPS, RADII, SHADOWS, TokensPage(), TYPE_SCALE (+1 more)
+Cohesion: 0.20
+Nodes (7): AuthContext, DRIVER_DLAMINI_ID, DRIVER_FORMBY_ID, DRIVER_GULTIG_ID, DRIVER_KASONGO_ID, mockDrivers, OPERATOR_ORG_ID
 
 ### Community 46 - "Evidence Models"
 Cohesion: 0.27
@@ -357,7 +365,7 @@ Cohesion: 0.38
 Nodes (10): OrganizationType, OrganizationBase, OrganizationCreate, OrganizationRead, OrganizationUpdate, PrecinctBase, PrecinctCreate, PrecinctRead (+2 more)
 
 ### Community 48 - "App Entry & Precinct Tests"
-Cohesion: 0.24
+Cohesion: 0.32
 Nodes (5): AsyncSession, override_get_db(), Integration tests for GET /api/v1/precincts., seed_orgs(), seed_precincts()
 
 ### Community 49 - "Blockchain Critical Fields"
@@ -365,8 +373,8 @@ Cohesion: 0.27
 Nodes (8): Any, diff_critical_fields(), Critical-fields lists for vehicle/driver mutations.  A field is 'critical' if a, Return {field: {"from": old, "to": new}} for changed critical fields, or None., test_diff_handles_missing_keys_as_none(), test_diff_multiple_critical_fields(), test_diff_returns_diff_when_critical_changed(), test_diff_returns_none_when_no_critical_change()
 
 ### Community 50 - "Event Schemas"
-Cohesion: 0.22
-Nodes (8): DriverEventRead, Pydantic v2 schemas for VehicleEvent and DriverEvent read shapes., VehicleEventRead, Pydantic v2 schemas for SlaConfig., SlaConfigBase, SlaConfigCreate, SlaConfigRead, SlaConfigUpdate
+Cohesion: 0.47
+Nodes (5): Pydantic v2 schemas for SlaConfig., SlaConfigBase, SlaConfigCreate, SlaConfigRead, SlaConfigUpdate
 
 ### Community 51 - "Driver Anchor Tests"
 Cohesion: 0.28
@@ -393,8 +401,8 @@ Cohesion: 0.25
 Nodes (6): kindConfig, ToastData, ToastItem(), ToastItemProps, ToastKind, ToastViewportProps
 
 ### Community 57 - "Checkpoint Mock Data"
-Cohesion: 0.38
-Nodes (4): mockCheckpoints, TRIP_0042_ID, Checkpoint, CheckpointId
+Cohesion: 0.20
+Nodes (7): STEP_SLUGS, PushNotificationsState, mockCheckpoints, TRIP_0041_ID, TRIP_0042_ID, Checkpoint, CheckpointId
 
 ### Community 58 - "Auth JWKS Validation"
 Cohesion: 0.40
@@ -442,7 +450,7 @@ Nodes (3): Card(), CardProps, variantClasses
 
 ### Community 70 - "Dispatcher Drawer UI"
 Cohesion: 0.50
-Nodes (3): Drawer(), DrawerProps, panelClasses
+Nodes (3): sizeMap, Spinner(), SpinnerProps
 
 ### Community 71 - "Dispatcher Icon Button"
 Cohesion: 0.50
@@ -477,8 +485,8 @@ Cohesion: 0.50
 Nodes (3): SQLAlchemy model for SLA configuration between operator and client., SLA thresholds for a given operator-client-route combination.      Rows with nul, SlaConfig
 
 ### Community 81 - "Vehicle Models"
-Cohesion: 0.50
-Nodes (3): SQLAlchemy model for vehicles (horses and trailers unified)., Horse (cab) or trailer — distinguished by vehicle_type.      A single Pulsit dev, Vehicle
+Cohesion: 0.12
+Nodes (18): DeclarativeBase, Base, Consignment, DriverSubstitution, Parcel, SQLAlchemy models for trip lifecycle: template, consignment, parcel, trip, trip-, Many-to-many: which trailers are attached to a trip (composite PK)., Records every mid-trip driver change — planned or unplanned.      Spec §5 + Hand (+10 more)
 
 ### Community 82 - "Evidence Types"
 Cohesion: 0.50
@@ -492,20 +500,28 @@ Nodes (3): Props, SearchSelect(), SearchSelectOption
 Cohesion: 0.50
 Nodes (3): Tests for domain exception classes., test_resource_not_found_error_carries_resource_and_id(), test_trip_conflict_error_carries_order_number()
 
+### Community 158 - "Community 158"
+Cohesion: 0.50
+Nodes (3): Tab, Tabs(), TabsProps
+
+### Community 159 - "Community 159"
+Cohesion: 0.50
+Nodes (3): Drawer(), DrawerProps, panelClasses
+
 ## Knowledge Gaps
-- **342 isolated node(s):** `allow`, `additionalDirectories`, `AsyncSession`, `UserRead`, `PrecinctRead` (+337 more)
+- **361 isolated node(s):** `Project`, `Prime Directive`, `1. Read first`, `2. Plan`, `3. Execute` (+356 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **27 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **28 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `IdvsStatus` connect `Trip & Consignment Models` to `API Endpoints Layer`, `Blockchain Verify Tests`, `Blockchain Anchor Service`, `Schema Validators`, `Trip Anchor Tests`, `Trip API Endpoints`, `Driver Integration Tests`, `Trip & Parcel Schemas`, `Dispatcher Auth Guard`, `Handshake Models & Enums`?**
-  _High betweenness centrality (0.038) - this node is a cross-community bridge._
-- **Why does `User` connect `Dispatcher Auth Guard` to `Blockchain Verify Tests`, `API Endpoints Layer`, `Trip Anchor Tests`, `Trip & Consignment Models`, `Driver Anchor Tests`, `Vehicle Anchor Tests`, `Handshake Models & Enums`, `Auth Router Tests`, `Auth Router`?**
-  _High betweenness centrality (0.032) - this node is a cross-community bridge._
-- **Why does `cn()` connect `Base UI Components` to `Dispatcher Active Trips UI`, `Status & Exception Constants`, `Blockchain UI Components`, `Fleet Drivers Page`, `Blockchain Receipt UI`, `Form & Exception UI`, `App Layout & Sidebar`, `SLA Metrics`, `Evidence Packet UI`, `Page Header Layout`, `Dispatcher Toast UI`, `Driver PWA Toast UI`, `Driver PWA Button`, `Driver PWA Chip`, `Dispatcher Button`, `Dispatcher Card UI`, `Dispatcher Drawer UI`, `Dispatcher Icon Button`, `Dispatcher Modal UI`, `Driver PWA Card UI`, `Driver PWA Icon Button`, `Driver PWA Modal UI`, `Driver PWA Spinner UI`, `Search Select UI`?**
-  _High betweenness centrality (0.028) - this node is a cross-community bridge._
+- **Why does `IdvsStatus` connect `Trip & Consignment Models` to `API Endpoints Layer`, `Blockchain Verify Tests`, `Blockchain Anchor Service`, `Schema Validators`, `Trip Anchor Tests`, `Trip API Endpoints`, `Driver Integration Tests`, `Trip & Parcel Schemas`, `Dispatcher Auth Guard`, `Vehicle Models`?**
+  _High betweenness centrality (0.047) - this node is a cross-community bridge._
+- **Why does `User` connect `Dispatcher Auth Guard` to `Blockchain Verify Tests`, `Trip Anchor Tests`, `Trip API Endpoints`, `Trip & Consignment Models`, `Vehicle Models`, `Driver Anchor Tests`, `Vehicle Anchor Tests`, `Auth Router Tests`, `Auth Router`?**
+  _High betweenness centrality (0.036) - this node is a cross-community bridge._
+- **Why does `cn()` connect `Base UI Components` to `Dispatcher Active Trips UI`, `Handshake Constants & Context`, `Blockchain UI Components`, `Blockchain Receipt UI`, `Form & Exception UI`, `App Layout & Sidebar`, `Community 158`, `Community 159`, `SLA Metrics`, `Evidence Packet UI`, `Page Header Layout`, `Dispatcher Toast UI`, `Driver PWA Toast UI`, `Driver PWA Button`, `Driver PWA Chip`, `Dispatcher Button`, `Dispatcher Card UI`, `Dispatcher Drawer UI`, `Dispatcher Icon Button`, `Dispatcher Modal UI`, `Driver PWA Card UI`, `Driver PWA Icon Button`, `Driver PWA Modal UI`, `Driver PWA Spinner UI`, `Search Select UI`?**
+  _High betweenness centrality (0.026) - this node is a cross-community bridge._
 - **Are the 26 inferred relationships involving `cn()` (e.g. with `Button()` and `Card()`) actually correct?**
   _`cn()` has 26 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 76 inferred relationships involving `BlockchainReceiptRead` (e.g. with `AsyncSession` and `SubjectType`) actually correct?**
