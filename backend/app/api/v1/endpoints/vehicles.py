@@ -8,8 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import get_current_dispatcher
 from app.core.exceptions import DuplicateResourceError, ResourceNotFoundError
 from app.db.session import get_db
-from app.orchestration.resource_service import (
-    create_vehicle, get_vehicle_detail, list_vehicles, update_vehicle,
+from app.orchestration.vehicle_service import (
+    list_vehicles, create_vehicle, update_vehicle, get_vehicle_detail,
 )
 from app.schemas.people import UserRead
 from app.schemas.vehicles import VehicleCreateBody, VehicleDetailResponse, VehicleRead, VehicleUpdateBody

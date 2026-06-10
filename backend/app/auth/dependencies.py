@@ -14,10 +14,10 @@ at the bottom of this module.
 """
 
 import json
+import time
 import uuid
 import urllib.request
 from datetime import UTC, datetime
-from functools import lru_cache
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
@@ -53,18 +53,37 @@ _DEMO_USER = UserRead(
 )
 
 
-@lru_cache(maxsize=1)
-def _get_jwks() -> dict:
-    """Fetch and cache the Supabase JWKS. Called once per process lifetime."""
+_jwks_cache: dict | None = None
+_jwks_fetched_at: float = 0.0
+_JWKS_TTL_SECONDS: float = 3600.0  # 1-hour TTL; force-refresh on unknown kid for rotation.
+
+
+def _fetch_jwks() -> dict:
+    """Network request to Supabase JWKS. Called only by _get_jwks."""
     url = f"{settings.SUPABASE_URL}/auth/v1/.well-known/jwks.json"
     with urllib.request.urlopen(url, timeout=10) as resp:
         return json.loads(resp.read())
 
 
+def _get_jwks() -> dict:
+    """Return Supabase JWKS, re-fetching if the TTL has expired."""
+    global _jwks_cache, _jwks_fetched_at
+    if _jwks_cache is None or time.monotonic() - _jwks_fetched_at > _JWKS_TTL_SECONDS:
+        _jwks_cache = _fetch_jwks()
+        _jwks_fetched_at = time.monotonic()
+    return _jwks_cache
+
+
 def _get_signing_key(kid: str) -> dict:
-    """Return the JWK matching the token's key ID."""
-    jwks = _get_jwks()
-    for key in jwks.get("keys", []):
+    """Return the JWK for kid. Forces one refresh on cache miss to handle key rotation."""
+    for key in _get_jwks().get("keys", []):
+        if key.get("kid") == kid:
+            return key
+    # Not found — key may have rotated since last TTL refresh. Refresh once.
+    global _jwks_cache, _jwks_fetched_at
+    _jwks_cache = _fetch_jwks()
+    _jwks_fetched_at = time.monotonic()
+    for key in _jwks_cache.get("keys", []):
         if key.get("kid") == kid:
             return key
     raise HTTPException(
@@ -177,8 +196,9 @@ async def get_current_dispatcher(
 
 
 # Guard: DEMO_MODE must never be enabled in production — it bypasses all authentication.
-if settings.DEMO_MODE and settings.ENVIRONMENT == "production":
+if settings.DEMO_MODE and settings.ENVIRONMENT not in {"development", "test"}:
     raise RuntimeError(
-        "DEMO_MODE=True is not permitted when ENVIRONMENT='production'. "
+        f"DEMO_MODE=True is not permitted when ENVIRONMENT='{settings.ENVIRONMENT}'. "
+        "DEMO_MODE may only be enabled in 'development' or 'test' environments. "
         "Set DEMO_MODE=False and configure Supabase Auth credentials."
     )

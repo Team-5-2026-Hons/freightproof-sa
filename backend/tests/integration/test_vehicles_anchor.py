@@ -104,3 +104,51 @@ async def test_create_vehicle_writes_event_and_anchor(db_session: AsyncSession, 
     # against the vehicle_event subject type (not the vehicle itself).
     assert len(body["receipts"]) == 1
     assert body["receipts"][0]["subject_type"] == "vehicle_event"
+
+
+@pytest.mark.asyncio
+async def test_create_vehicle_payload_json_hashes_pulsit_device_id(
+    db_session: AsyncSession, seed_org,
+) -> None:
+    """SEC-5: GPS device ID must be hashed in payload_json, never stored in plaintext."""
+    from sqlalchemy import select
+    from app.db.models.blockchain import BlockchainReceipt
+    from app.db.models.enums import SubjectType
+
+    secret_id = "SECRET-TRACKER-001"
+    vehicle_payload = {
+        "registration": "CA 999 XYZ",
+        "vehicle_type": "horse",
+        "pulsit_device_id": secret_id,
+    }
+    fake_receipt = HederaReceipt(
+        topic_id="0.0.12345",
+        sequence_number=44,
+        consensus_timestamp=None,
+        transaction_id="0.0.12345@1715865602.0",
+    )
+
+    with patch("app.blockchain.anchor_service.HederaService") as MockService:
+        MockService.return_value.submit_hash.return_value = fake_receipt
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            resp = await client.post(
+                "/api/v1/vehicles",
+                json=vehicle_payload,
+                headers={"Authorization": "Bearer demo"},
+            )
+            assert resp.status_code == 201
+
+    receipt = (
+        await db_session.execute(
+            select(BlockchainReceipt).where(
+                BlockchainReceipt.subject_type == SubjectType.VEHICLE_EVENT
+            )
+        )
+    ).scalars().first()
+    assert receipt is not None
+    fields = receipt.payload_json.get("fields", {})
+    assert "pulsit_device_id" not in fields, "plaintext pulsit_device_id must not be in payload_json"
+    assert "pulsit_device_id_sha256" in fields, "hash of pulsit_device_id must be present"
+    assert fields["pulsit_device_id_sha256"] != secret_id

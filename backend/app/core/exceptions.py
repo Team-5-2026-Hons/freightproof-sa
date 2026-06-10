@@ -33,3 +33,12 @@ class DuplicateResourceError(Exception):
         self.resource = resource
         self.field = field
         self.value = value
+
+
+class SubjectNotVisibleError(Exception):
+    """Raised when a dispatcher queries a blockchain subject outside their organisation."""
+
+    def __init__(self, subject_type: str, subject_id: str) -> None:
+        self.subject_type = subject_type
+        self.subject_id = subject_id
+        super().__init__(f"Subject {subject_type}/{subject_id} not visible to caller's org")

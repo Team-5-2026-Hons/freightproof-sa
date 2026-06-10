@@ -42,7 +42,8 @@ async def create_driver_auth_user(phone: str, full_name: str) -> uuid.UUID:
         response = await client.post(url, json=payload, headers=headers)
 
     if response.status_code == 422:
-        logger.warning("Supabase auth user already exists for phone=%s", phone)
+        _masked = f"***{phone[-4:]}" if len(phone) >= 4 else "****"
+        logger.warning("Supabase auth user already exists for phone=%s", _masked)
         raise DuplicateResourceError("Driver", "phone_number", phone)
 
     if not response.is_success:
@@ -53,5 +54,5 @@ async def create_driver_auth_user(phone: str, full_name: str) -> uuid.UUID:
         raise ValueError(f"Could not create driver account: {error_msg}")
 
     auth_id = response.json()["id"]
-    logger.info("Created Supabase auth user id=%s for driver phone=%s", auth_id, phone)
+    logger.info("Created Supabase auth user id=%s for new driver", auth_id)
     return uuid.UUID(auth_id)

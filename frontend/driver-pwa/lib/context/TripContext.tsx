@@ -47,7 +47,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     if (!authCtx?.user) return null
     return (
       mockTrips.find(
-        t => t.driver_id === authCtx.user!.id && !['closed', 'cancelled'].includes(t.status),
+        t => t.driver?.id === authCtx.user!.id && !['closed', 'cancelled'].includes(t.status),
       ) ?? null
     )
   }, [authCtx])

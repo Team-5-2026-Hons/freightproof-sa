@@ -8,8 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import get_current_dispatcher
 from app.core.exceptions import DuplicateResourceError, ResourceNotFoundError
 from app.db.session import get_db
-from app.orchestration.resource_service import (
-    create_driver, get_driver_detail, list_drivers, update_driver,
+from app.orchestration.driver_service import (
+    list_drivers, create_driver, update_driver, get_driver_detail,
 )
 from app.schemas.people import (
     DriverCreateBody, DriverDetailResponse, DriverRead, DriverUpdateBody, UserRead,

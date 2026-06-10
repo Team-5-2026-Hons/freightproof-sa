@@ -91,7 +91,9 @@ def test_decode_token_malformed_raises_401() -> None:
 
 def test_decode_token_unknown_kid_raises_401(monkeypatch: pytest.MonkeyPatch) -> None:
     # JWKS contains no key with the kid that the token carries.
+    # Patch both _get_jwks (TTL path) and _fetch_jwks (forced-refresh path in _get_signing_key).
     monkeypatch.setattr("app.auth.dependencies._get_jwks", lambda: {"keys": []})
+    monkeypatch.setattr("app.auth.dependencies._fetch_jwks", lambda: {"keys": []})
 
     token = make_token()
 
