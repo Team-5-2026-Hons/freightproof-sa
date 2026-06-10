@@ -196,4 +196,20 @@ Next: [handoff]
 ```
 
 ---
+
+## Team Graph Policy
+
+Only the developer merging to `main` should run `/graphify .` and commit the result. Other developers should pull and read the committed graph. Do not rebuild the graph locally unless you are the designated maintainer or on `main`.
+
+## Codebase Status
+
+This project is in early-stage active development using agile methodology. The architecture is not finalised. Features and modules will be added incrementally. When the graph is sparse or a module appears incomplete, that is expected — do not infer missing structure from what exists.
+
+## Graph Usage Rules
+
+- Always read `graphify-out/GRAPH_REPORT.md` before answering any architecture or cross-file question.
+- Use the graph to identify which files are relevant before opening them — do not grep the whole repo first.
+- If `graph.json` and the actual source files appear out of sync (e.g. a file referenced in the graph no longer exists), note it but continue — the next commit will rebuild automatically.
+
+---
 *Changes to this file require a PR on `dev` reviewed by all four team members.*
