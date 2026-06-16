@@ -6,6 +6,7 @@
 
 import { Ic } from '@/components/ui/Ic'
 import { BlockchainBadge } from './BlockchainBadge'
+import { ForensicOnly } from './ForensicOnly'
 import type { BlockchainReceipt, DriverEvent, VehicleEvent } from '@shared/lib/types/blockchain'
 
 type Event = VehicleEvent | DriverEvent
@@ -58,13 +59,15 @@ export function EventTimeline({ events, receipts, className = '' }: Props) {
                 })}
               </div>
             </div>
-            {/* Hedera ref below title */}
-            <div className="mt-[4px]">
-              <BlockchainBadge receipt={receipt} />
-            </div>
-            <pre className="mt-[8px] overflow-x-auto rounded bg-surf-low p-[8px] text-[11px] font-mono tracking-[0.02em] leading-relaxed text-on-surf-v">
-              {JSON.stringify(e.changed_fields, null, 2)}
-            </pre>
+            {/* Hedera ref and changed-fields are forensic detail — admin-only */}
+            <ForensicOnly>
+              <div className="mt-[4px]">
+                <BlockchainBadge receipt={receipt} />
+              </div>
+              <pre className="mt-[8px] overflow-x-auto rounded bg-surf-low p-[8px] text-[11px] font-mono tracking-[0.02em] leading-relaxed text-on-surf-v">
+                {JSON.stringify(e.changed_fields, null, 2)}
+              </pre>
+            </ForensicOnly>
           </li>
         )
       })}

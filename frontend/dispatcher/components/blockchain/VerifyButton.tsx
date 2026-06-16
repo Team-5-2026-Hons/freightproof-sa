@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from '@/lib/api/client'
 import { Ic } from '@/components/ui/Ic'
 import { useToast } from '@/lib/hooks/useToast'
+import { ForensicOnly } from './ForensicOnly'
 import type { SubjectType, VerifyResult } from '@shared/lib/types/blockchain'
 
 type Props = {
@@ -176,7 +177,9 @@ export function VerifyButton({
     if (r.status === 'db_mismatch' || r.status === 'hedera_mismatch') {
       return (
         <div className={`mt-2 ${className}`}>
-          {showReport && <MismatchReport result={r} onClose={() => setShowReport(false)} />}
+          <ForensicOnly>
+            {showReport && <MismatchReport result={r} onClose={() => setShowReport(false)} />}
+          </ForensicOnly>
           <div className="rounded-[var(--r-md)] bg-err-c px-[10px] py-[8px]">
             <div className="flex items-center gap-[6px] text-[12px] font-[700] text-on-err-c">
               <Ic n="warn" s={13} className="text-err" />
@@ -185,13 +188,15 @@ export function VerifyButton({
             <div className="mt-[4px] text-[11px] leading-snug text-on-err-c/80">
               This trip&apos;s data does not match the blockchain record. Escalate immediately.
             </div>
-            <button
-              onClick={() => setShowReport(true)}
-              className="mt-[6px] flex items-center gap-[5px] rounded-[var(--r-sm)] border border-err/30 bg-err/10 px-[8px] py-[4px] text-[10px] font-[600] text-on-err-c transition-colors hover:bg-err/20"
-            >
-              <Ic n="file" s={10} className="text-on-err-c" />
-              View Mismatch Report
-            </button>
+            <ForensicOnly>
+              <button
+                onClick={() => setShowReport(true)}
+                className="mt-[6px] flex items-center gap-[5px] rounded-[var(--r-sm)] border border-err/30 bg-err/10 px-[8px] py-[4px] text-[10px] font-[600] text-on-err-c transition-colors hover:bg-err/20"
+              >
+                <Ic n="file" s={10} className="text-on-err-c" />
+                View Mismatch Report
+              </button>
+            </ForensicOnly>
           </div>
           {reCheckButton}
         </div>

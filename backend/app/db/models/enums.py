@@ -1,6 +1,11 @@
 import enum
 
 
+class DispatcherRole(str, enum.Enum):
+    DISPATCHER       = "dispatcher"
+    ADMIN_DISPATCHER = "admin_dispatcher"
+
+
 class OrganizationType(str, enum.Enum):
     OPERATOR  = "operator"
     PRINCIPAL = "principal"

@@ -79,7 +79,7 @@ Phases map to the vac timeline. Each phase ends with a working demo against trun
 |---|---|
 | `docs/scope-boundaries.md` defence document | **FP-119** (new) |
 | NFC feasibility + cost analysis | **FP-120** (new) |
-| Parcel Perfect API field-mapping spec (+ parcel-granularity question) | **FP-121** (new) |
+| Parcel Perfect API field-mapping spec (+ parcel-granularity question) — see `docs/parcel-traceability.md` | **FP-121** (new) |
 | National Transport Act + driver contract review | **FP-122** (new) |
 
 ---

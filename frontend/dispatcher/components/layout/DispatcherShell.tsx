@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from 'react'
 import { Menu } from 'lucide-react'
 import { Sidebar } from './Sidebar'
+import { useForensicMode } from '@/lib/context/ForensicModeContext'
 
 interface DispatcherShellProps {
   children: ReactNode
@@ -10,6 +11,7 @@ interface DispatcherShellProps {
 
 export function DispatcherShell({ children }: DispatcherShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const { canViewForensics, forensicOn, toggle } = useForensicMode()
 
   return (
     <div className="h-screen overflow-hidden bg-canvas p-3">
@@ -33,6 +35,19 @@ export function DispatcherShell({ children }: DispatcherShellProps) {
             <span className="text-sm font-extrabold tracking-widest uppercase text-on-surf">
               FreightProof
             </span>
+            {canViewForensics && (
+              <button
+                onClick={toggle}
+                aria-pressed={forensicOn}
+                className={`ml-auto flex items-center gap-[6px] rounded-[var(--r-sm)] border px-[10px] py-[4px] text-[11px] font-[600] transition-colors ${
+                  forensicOn
+                    ? 'border-chain/40 bg-chain-c text-chain-onc'
+                    : 'border-outline-v/30 bg-surf-high text-on-surf-v hover:border-chain/30 hover:text-chain'
+                }`}
+              >
+                Forensic mode
+              </button>
+            )}
           </header>
 
           {/* Page content — scrolls within the panel */}

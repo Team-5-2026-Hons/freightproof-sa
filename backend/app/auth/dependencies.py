@@ -27,6 +27,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.db.models.enums import DispatcherRole
 from app.db.models.people import User
 from app.db.session import get_db
 from app.schemas.people import UserRead
@@ -35,7 +36,7 @@ _bearer = HTTPBearer(auto_error=False)
 
 _ALGORITHMS = ["ES256"]
 _AUDIENCE = "authenticated"
-_DISPATCHER_ROLE = "dispatcher"
+_DISPATCHER_ROLES = {DispatcherRole.DISPATCHER, DispatcherRole.ADMIN_DISPATCHER}
 
 # Fixed stub identity used in DEMO_MODE — must match the org created by DB seeds.
 _DEMO_USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
@@ -50,6 +51,7 @@ _DEMO_USER = UserRead(
     is_active=True,
     created_at=_DEMO_NOW,
     updated_at=_DEMO_NOW,
+    role=DispatcherRole.DISPATCHER,
 )
 
 
@@ -131,18 +133,27 @@ def _decode_token(token: str) -> dict:
         )
 
 
-def _require_dispatcher_role(payload: dict) -> None:
-    """Raise HTTP 403 if the JWT does not carry the dispatcher role.
+def _require_dispatcher_role(payload: dict) -> DispatcherRole:
+    """Return the DispatcherRole from the JWT, or raise HTTP 403.
 
     Role lives in app_metadata (set by service_role at account creation) —
-    never in user_metadata, which is user-editable.
+    never in user_metadata, which is user-editable. Accepts both dispatcher
+    and admin_dispatcher; rejects driver, client_viewer, and missing roles.
     """
-    role = (payload.get("app_metadata") or {}).get("role")
-    if role != _DISPATCHER_ROLE:
+    raw = (payload.get("app_metadata") or {}).get("role")
+    try:
+        role = DispatcherRole(raw)
+    except ValueError:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Dispatcher role required.",
         )
+    if role not in _DISPATCHER_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Dispatcher role required.",
+        )
+    return role
 
 
 async def get_current_dispatcher(
@@ -164,7 +175,7 @@ async def get_current_dispatcher(
         )
 
     payload = _decode_token(credentials.credentials)
-    _require_dispatcher_role(payload)
+    role = _require_dispatcher_role(payload)
 
     try:
         user_id = uuid.UUID(payload["sub"])
@@ -192,7 +203,21 @@ async def get_current_dispatcher(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    return UserRead.model_validate(user)
+    user_read = UserRead.model_validate(user)
+    user_read.role = role
+    return user_read
+
+
+async def require_admin_dispatcher(
+    current_user: UserRead = Depends(get_current_dispatcher),
+) -> UserRead:
+    """Raise HTTP 403 unless the authenticated dispatcher has the admin_dispatcher role."""
+    if current_user.role != DispatcherRole.ADMIN_DISPATCHER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin dispatcher role required.",
+        )
+    return current_user
 
 
 # Guard: DEMO_MODE must never be enabled in production — it bypasses all authentication.

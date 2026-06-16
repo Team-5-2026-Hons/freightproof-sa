@@ -18,8 +18,28 @@ from cryptography.hazmat.primitives.asymmetric.ec import SECP256R1, generate_pri
 from fastapi import HTTPException
 from jose import jwt as jose_jwt
 
-from app.auth.dependencies import _decode_token, _require_dispatcher_role
+import uuid
+from datetime import UTC, datetime
+
+from app.auth.dependencies import _decode_token, _require_dispatcher_role, require_admin_dispatcher
+from app.db.models.enums import DispatcherRole
+from app.schemas.people import UserRead
 from tests.conftest import TEST_KID, make_token, make_jwks
+
+_NOW = datetime(2026, 1, 1, tzinfo=UTC)
+
+
+def _make_user(role: DispatcherRole) -> UserRead:
+    return UserRead(
+        id=uuid.uuid4(),
+        organization_id=uuid.uuid4(),
+        email="test@fp.co.za",
+        full_name="Test User",
+        is_active=True,
+        created_at=_NOW,
+        updated_at=_NOW,
+        role=role,
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -131,7 +151,14 @@ def test_decode_token_wrong_audience_raises_401() -> None:
 
 def test_require_dispatcher_role_passes_for_dispatcher() -> None:
     payload = {"app_metadata": {"role": "dispatcher"}}
-    _require_dispatcher_role(payload)
+    role = _require_dispatcher_role(payload)
+    assert role == DispatcherRole.DISPATCHER
+
+
+def test_require_dispatcher_role_passes_for_admin_dispatcher() -> None:
+    payload = {"app_metadata": {"role": "admin_dispatcher"}}
+    role = _require_dispatcher_role(payload)
+    assert role == DispatcherRole.ADMIN_DISPATCHER
 
 
 def test_require_dispatcher_role_raises_403_for_driver() -> None:
@@ -164,5 +191,25 @@ def test_require_dispatcher_role_raises_403_when_role_missing() -> None:
 
     with pytest.raises(HTTPException) as exc_info:
         _require_dispatcher_role(payload)
+
+    assert exc_info.value.status_code == 403
+
+
+# ── require_admin_dispatcher ──────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_require_admin_dispatcher_passes_for_admin() -> None:
+    user = _make_user(DispatcherRole.ADMIN_DISPATCHER)
+    result = await require_admin_dispatcher(current_user=user)
+    assert result is user
+
+
+@pytest.mark.asyncio
+async def test_require_admin_dispatcher_raises_403_for_dispatcher() -> None:
+    user = _make_user(DispatcherRole.DISPATCHER)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await require_admin_dispatcher(current_user=user)
 
     assert exc_info.value.status_code == 403

@@ -6,7 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import get_current_dispatcher
+from app.auth.dependencies import get_current_dispatcher, require_admin_dispatcher
+from app.db.models.enums import DispatcherRole
 from app.blockchain.subject_visibility import assert_subject_visible
 from app.core.exceptions import SubjectNotVisibleError
 from app.db.models.blockchain import BlockchainReceipt
@@ -24,7 +25,7 @@ async def list_receipts(
     subject_type: SubjectType = Query(...),
     subject_id: UUID = Query(...),
     db: AsyncSession = Depends(get_db),
-    current_user: UserRead = Depends(get_current_dispatcher),
+    current_user: UserRead = Depends(require_admin_dispatcher),
 ) -> list[BlockchainReceiptRead]:
     try:
         await assert_subject_visible(
@@ -62,9 +63,10 @@ async def verify_endpoint(
         subject_type=payload.subject_type,
         subject_id=payload.subject_id,
     )
+    is_admin = current_user.role == DispatcherRole.ADMIN_DISPATCHER
     return VerifyResponse(
         status=outcome.status,
-        receipt=BlockchainReceiptRead.model_validate(outcome.receipt) if outcome.receipt else None,
-        expected_hash=outcome.expected_hash,
-        current_hash=outcome.current_hash,
+        receipt=BlockchainReceiptRead.model_validate(outcome.receipt) if (outcome.receipt and is_admin) else None,
+        expected_hash=outcome.expected_hash if is_admin else None,
+        current_hash=outcome.current_hash if is_admin else None,
     )
