@@ -6,9 +6,34 @@
 
 **Architecture:** Step dispatcher at `/trip/[id]/handshake/[h]/step/[slug]` renders step-specific components. Each step writes into `useHandshakeDraft` (localStorage-backed). The final step of each handshake calls `submitHandshake()` (demo: mock response) then navigates via a pure, URL-derived helper (`nextHandshakeRoute`, Task 5b) — **not** TripContext's internal step counter, which desyncs on refresh/deep-link. The backend stays the single authority on whether each handshake is valid; the frontend only collects, displays, and submits evidence. Offline submissions queue in localStorage and flush on reconnect.
 
-**Tech Stack:** Next.js 15 (`output: 'export'`, all pages `"use client"`), TypeScript 5.5+, Tailwind 3.4, `@capacitor/camera`, `@capacitor/geolocation`, vitest (new devDep for hooks), existing: `useHoldToConfirm`, `useLocation`, `TripContext`.
+**Tech Stack:** Next.js 15 (`output: 'export'`, all pages `"use client"`), TypeScript 5.5+, Tailwind 3.4, `@capacitor/camera`, `@capacitor/geolocation`, `lucide-react` (icons — already a dependency), vitest (new devDep for hooks), existing: `useHoldToConfirm`, `useLocation`, `TripContext`.
 
 **Parallelisation note:** Tasks 1–6 (including 5b) must run sequentially. Tasks 7–11 are independent of each other and can run in parallel once Task 6 is complete. Tasks 12–13 depend on all screens being done.
+
+---
+
+## Design contract (read before ANY UI task — non-negotiable)
+
+This is a graded, examinable product. Every screen must look like one team designed it on purpose. Conform to the rules below exactly; do not invent new visual patterns mid-build.
+
+**North star — what "good" looks like here:**
+- **Primary reference: Onfleet** for *look and feel* — clean, generous whitespace, calm single-accent colour use, soft low-contrast cards, confident typography, restraint. The app should feel modern, quiet, and trustworthy, not busy.
+- **Secondary reference: Samsara Driver** for *domain density and hierarchy* — how a trucking/fleet app structures trip status, sequential steps, and at-a-glance state. Borrow its information architecture, not its heavier visual styling.
+- In one line: **Samsara's structure, Onfleet's polish.** When the two conflict on appearance, Onfleet wins.
+
+**Hard rules (a reviewer will reject the task if any are broken):**
+1. **No emoji, anywhere.** Use `lucide-react` icons only (the existing `components/ui/` already does). Examples: `Camera`, `MapPin`, `ShieldAlert`, `CheckCircle2`, `XCircle`, `AlertTriangle`, `Lock`.
+2. **Tokens only — no raw colour.** Use `surface-*`, `primary`, `secondary`, `tertiary`, `success`, `error` (+ `-container` / `-on` / `-on-variant` / `-on-container` variants) and `outline`. Never `text-blue-600`, `bg-gray-100`, `#hex`, or default Tailwind palette.
+3. **Radii from the scale only:** `rounded-xl` (8px) for cards/inputs/buttons, `rounded-full` (12px) for pills. Never `rounded-2xl`/`3xl` — the bubbly look reads as AI-generated.
+4. **Elevation via `shadow-ambient*` only.** No `shadow-md`/`shadow-lg`. Cards sit on `surface-container-lowest` with `shadow-ambient-sm`; sticky headers use `shadow-ambient-header`.
+5. **Typography:** Inter (already wired). Titles `text-xl font-semibold`, body `text-sm`, captions/labels `text-xs uppercase tracking-wider text-surface-on-variant`. One H1 per screen.
+6. **Spacing rhythm:** screen padding `p-4`, stacked content `gap-6`, grouped sub-items `gap-3`. Consistent vertical rhythm beats clever layout.
+7. **Touch targets ≥ 44px** (driver uses this one-handed, often gloved). Primary action is a single full-width `Button size="lg"` or the hold-to-confirm control, anchored at the bottom.
+8. **Real copy, not filler.** Plain operational English ("Hold to confirm arrival"), never lorem ipsum or hedgy AI phrasing.
+9. **One accent per screen.** Default to neutral surfaces + `secondary` (blue) for the active/primary action; reserve `error` for genuine danger (panic, mismatch) and `tertiary` (amber) for warnings only.
+10. **Reuse before creating.** Prefer existing `components/ui/` (`Button`, `Input`, `Modal`, `Toast`, `Drawer`) over bespoke markup.
+
+**Screenshot review checkpoint (applies after every handshake task, 7–13):** run `npm run dev`, open the new screen(s) at a **390px mobile viewport**, and check each against this contract and the Onfleet reference: hierarchy reads in <2s, spacing is even, no emoji, accent restraint, the primary action is obvious and reachable by thumb. Fix before moving to the next task — visual debt compounds.
 
 ---
 
@@ -170,6 +195,62 @@ app/trips/page.tsx
 app/trips/[id]/page.tsx
 app/trips/[id]/handshake/[step]/page.tsx
 ```
+
+---
+
+## Task 0: Android native permissions + sync script (do FIRST — APK prerequisite)
+
+Without this, every camera and GPS step works in `npm run dev` (browser fallback) but
+silently fails inside the APK, because Android requires the permissions to be declared in
+the manifest. The `permissions` block in `capacitor.config.ts` does **not** add them.
+
+> **Coordination note:** `android/app/src/main/AndroidManifest.xml` is the shared native
+> shell (FP-69). Confirm with the driver-pwa native owner before editing, and flag this in
+> TASK COMPLETE.
+
+**Files:**
+- Modify: `android/app/src/main/AndroidManifest.xml`
+- Modify: `package.json`
+
+- [ ] **Step 1: Add the required permissions and camera feature to AndroidManifest.xml**
+
+Replace the existing `<!-- Permissions -->` block (currently only `INTERNET`) with:
+
+```xml
+    <!-- Permissions -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Camera: every handshake captures gate / waybill / seal / POD photos -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- Location: GPS capture at each gate and bay -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!-- Web-capable: app must still install on devices without a camera (Play Store filter off) -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+```
+
+Leave the rest of the manifest unchanged. Do **not** add `ACCESS_BACKGROUND_LOCATION`
+here — continuous in-transit tracking (`@capacitor-community/background-geolocation`) is a
+separate plan and adds Play Store review friction; this plan only captures location on
+explicit user action, which foreground `ACCESS_FINE_LOCATION` covers.
+
+- [ ] **Step 2: Add Capacitor sync/run scripts to package.json**
+
+```json
+// Add to "scripts":
+"cap:sync": "next build && npx cap sync android",
+"cap:open": "npx cap open android",
+"cap:run": "next build && npx cap sync android && npx cap run android"
+```
+
+`cap:sync` rebuilds the static export into `out/` and copies it into the Android project.
+Runtime permission prompts are handled by the Capacitor Camera/Geolocation plugins at call
+time — declaring them in the manifest (Step 1) is what makes those prompts succeed.
+
+> **Suggested commit:** `chore(driver-pwa): declare Android camera/location permissions and add cap sync scripts`
 
 ---
 
@@ -1009,6 +1090,7 @@ export function HoldButton({
 import { useState, useCallback } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
+import { Camera as CameraIcon } from 'lucide-react'
 
 interface CameraCaptureProps {
   label: string
@@ -1069,9 +1151,10 @@ export function CameraCapture({ label, dataUrl, onCapture }: CameraCaptureProps)
         <button
           onClick={handleCapture}
           disabled={isCapturing}
-          className="flex h-32 w-full items-center justify-center rounded-xl border-2 border-dashed border-outline-variant bg-surface-container-low text-sm text-surface-on-variant disabled:opacity-60"
+          className="flex h-32 w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-outline-variant bg-surface-container-low text-sm text-surface-on-variant disabled:opacity-60"
         >
-          {isCapturing ? 'Opening camera…' : '📷 Tap to photograph'}
+          <CameraIcon className="h-6 w-6" strokeWidth={1.5} aria-hidden />
+          {isCapturing ? 'Opening camera…' : 'Tap to photograph'}
         </button>
       )}
     </div>
@@ -1085,6 +1168,7 @@ export function CameraCapture({ label, dataUrl, onCapture }: CameraCaptureProps)
 // frontend/driver-pwa/components/handshake/GpsCapture.tsx
 'use client'
 
+import { MapPin } from 'lucide-react'
 import { useLocation } from '@/lib/hooks/useLocation'
 import { Button } from '@/components/ui/Button'
 
@@ -1104,7 +1188,7 @@ export function GpsCapture({ onCapture, captured }: GpsCaptureProps) {
   if (captured) {
     return (
       <div className="flex items-center gap-2 rounded-xl bg-success/10 px-4 py-3">
-        <span className="text-success text-lg">📍</span>
+        <MapPin className="h-5 w-5 text-success" strokeWidth={2} aria-hidden />
         <p className="text-sm font-medium text-success">Location captured</p>
       </div>
     )
@@ -1174,6 +1258,8 @@ export function SealInput({
 // frontend/driver-pwa/components/handshake/EvidenceReview.tsx
 'use client'
 
+import { AlertTriangle } from 'lucide-react'
+
 interface EvidenceItem {
   label: string
   value: string | null
@@ -1194,9 +1280,12 @@ export function EvidenceReview({ items }: EvidenceReviewProps) {
           {item.isImage && item.value ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={item.value} alt={item.label} className="max-h-24 w-full rounded-lg object-cover" />
+          ) : item.value ? (
+            <p className="text-sm font-medium text-surface-on">{item.value}</p>
           ) : (
-            <p className={`text-sm font-medium ${item.value ? 'text-surface-on' : 'text-error'}`}>
-              {item.value ?? '⚠ Missing'}
+            <p className="flex items-center gap-1.5 text-sm font-medium text-error">
+              <AlertTriangle className="h-4 w-4" strokeWidth={2} aria-hidden />
+              Missing
             </p>
           )}
         </div>
@@ -2089,6 +2178,7 @@ export function H4EntryPhoto({ tripId, draft, onUpdate, onComplete }: H4EntryPho
 'use client'
 
 import { useState } from 'react'
+import { CheckCircle2, XCircle } from 'lucide-react'
 import { StepHeader } from '@/components/handshake/StepHeader'
 import { Input } from '@/components/ui/Input'
 import { HoldButton } from '@/components/handshake/HoldButton'
@@ -2121,9 +2211,14 @@ export function H4SealVerify({ tripId, draft, h2SealNumber, onComplete }: H4Seal
           onChange={(e) => setInput(e.target.value)}
         />
         {hasInput && (
-          <div className={`rounded-xl px-4 py-3 ${matches ? 'bg-success/10' : 'bg-error-container'}`}>
+          <div className={`flex items-center gap-2 rounded-xl px-4 py-3 ${matches ? 'bg-success/10' : 'bg-error-container'}`}>
+            {matches ? (
+              <CheckCircle2 className="h-5 w-5 shrink-0 text-success" strokeWidth={2} aria-hidden />
+            ) : (
+              <XCircle className="h-5 w-5 shrink-0 text-error-on-container" strokeWidth={2} aria-hidden />
+            )}
             <p className={`text-sm font-medium ${matches ? 'text-success' : 'text-error-on-container'}`}>
-              {matches ? '✓ Seal matches — integrity confirmed' : '✗ Mismatch — this will be flagged as an exception'}
+              {matches ? 'Seal matches — integrity confirmed' : 'Mismatch — this will be flagged as an exception'}
             </p>
           </div>
         )}
@@ -2345,9 +2440,19 @@ export function H5PodPhoto({ tripId, onComplete }: H5PodPhotoProps) {
 // frontend/driver-pwa/components/handshake/steps/H5Reconciliation.tsx
 'use client'
 
+import { CheckCircle2, XCircle } from 'lucide-react'
 import { StepHeader } from '@/components/handshake/StepHeader'
 import { HoldButton } from '@/components/handshake/HoldButton'
 import type { H5Evidence } from '@/lib/types/evidence-draft'
+
+// Renders a green check / red cross for a boolean reconciliation row.
+function StatusMark({ ok }: { ok: boolean }) {
+  return ok ? (
+    <CheckCircle2 className="h-5 w-5 text-success" strokeWidth={2} aria-label="Done" />
+  ) : (
+    <XCircle className="h-5 w-5 text-error" strokeWidth={2} aria-label="Missing" />
+  )
+}
 
 interface H5ReconciliationProps {
   tripId: string
@@ -2374,13 +2479,13 @@ export function H5Reconciliation({ tripId, draft, onUpdate, onComplete }: H5Reco
             <span className="text-sm text-surface-on-variant">Parcels counted at destination</span>
             <span className="text-sm font-bold">{draft.driverVisualCount ?? '—'}</span>
           </div>
-          <div className="flex justify-between">
-            <span className="text-sm text-surface-on-variant">Seal broken & photographed</span>
-            <span className="text-sm font-bold">{draft.sealBrokenPhotoDataUrl ? '✓' : '✗'}</span>
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-surface-on-variant">Seal broken &amp; photographed</span>
+            <StatusMark ok={draft.sealBrokenPhotoDataUrl !== null} />
           </div>
-          <div className="flex justify-between">
+          <div className="flex items-center justify-between">
             <span className="text-sm text-surface-on-variant">Waybill handed over</span>
-            <span className="text-sm font-bold">{draft.waybillHandedOver ? '✓' : '✗'}</span>
+            <StatusMark ok={draft.waybillHandedOver === true} />
           </div>
         </div>
       </div>
@@ -2399,6 +2504,7 @@ export function H5Reconciliation({ tripId, draft, onUpdate, onComplete }: H5Reco
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { CheckCircle2 } from 'lucide-react'
 import { StepHeader } from '@/components/handshake/StepHeader'
 import { HoldButton } from '@/components/handshake/HoldButton'
 import { ROUTES } from '@/lib/constants/routes'
@@ -2427,7 +2533,7 @@ export function H5Closed({ tripId, draft, onComplete }: H5ClosedProps) {
       <StepHeader tripId={tripId} handshakeName="Unloading" stepName="Trip Closed" stepIndex={6} totalSteps={6} />
       <div className="flex flex-1 flex-col items-center justify-center gap-6 p-4 text-center">
         <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
-          <span className="text-4xl">✓</span>
+          <CheckCircle2 className="h-10 w-10 text-success" strokeWidth={2} aria-hidden />
         </div>
         <div>
           <p className="text-xl font-bold">Trip Complete</p>
@@ -2459,6 +2565,7 @@ export function H5Closed({ tripId, draft, onComplete }: H5ClosedProps) {
 'use client'
 
 import { useParams, useRouter } from 'next/navigation'
+import { ArrowRight, ShieldAlert } from 'lucide-react'
 import { mockTrips } from '@shared/lib/mocks/trips'
 import { ROUTES } from '@/lib/constants/routes'
 import { STEP_SLUGS } from '@shared/lib/constants/handshake-meta'
@@ -2531,17 +2638,19 @@ export default function InTransitPage() {
         {/* Begin destination gate-in */}
         <Button
           size="lg"
+          iconRight={<ArrowRight className="h-4 w-4" strokeWidth={2} aria-hidden />}
           onClick={() => router.push(ROUTES.handshakeStep(tripId, 4, STEP_SLUGS[4][0]))}
         >
-          Arrive at destination →
+          Arrive at destination
         </Button>
 
         {/* Panic */}
         <button
           onClick={() => router.push(ROUTES.panic(tripId))}
-          className="mt-2 w-full rounded-xl bg-error py-4 text-sm font-bold uppercase tracking-widest text-white"
+          className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-error py-4 text-sm font-bold uppercase tracking-widest text-error-on"
         >
-          🚨 PANIC
+          <ShieldAlert className="h-5 w-5" strokeWidth={2} aria-hidden />
+          Panic
         </button>
       </div>
     </main>
@@ -2645,6 +2754,7 @@ export default function LogExceptionPage() {
 'use client'
 
 import { useParams, useRouter } from 'next/navigation'
+import { ShieldAlert } from 'lucide-react'
 import { useTrip } from '@/lib/hooks/useTrip'
 import { HoldButton } from '@/components/handshake/HoldButton'
 import { ROUTES } from '@/lib/constants/routes'
@@ -2664,23 +2774,23 @@ export default function PanicPage() {
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-8 bg-error p-6">
-      <div className="text-center text-white">
-        <p className="text-5xl mb-4">🚨</p>
-        <h1 className="text-2xl font-bold mb-2">Panic Alert</h1>
+      <div className="flex flex-col items-center text-center text-error-on">
+        <ShieldAlert className="mb-4 h-14 w-14" strokeWidth={1.5} aria-hidden />
+        <h1 className="mb-2 text-2xl font-bold">Panic Alert</h1>
         <p className="text-sm opacity-90">
           Hold the button below to send an emergency alert to your dispatcher.
           Your GPS location will be included.
         </p>
       </div>
       <HoldButton
-        label="SEND PANIC"
+        label="Send panic"
         durationMs={3000}
         onConfirm={handlePanic}
         variant="danger"
       />
       <button
         onClick={() => router.back()}
-        className="text-sm text-white/70 underline"
+        className="text-sm text-error-on/70 underline"
       >
         Cancel — return to in-transit
       </button>
@@ -2696,6 +2806,7 @@ export default function PanicPage() {
 'use client'
 
 import { useParams, useRouter } from 'next/navigation'
+import { CheckCircle2 } from 'lucide-react'
 import { ROUTES } from '@/lib/constants/routes'
 import { Button } from '@/components/ui/Button'
 
@@ -2705,7 +2816,9 @@ export default function PanicSubmittedPage() {
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-6 text-center">
-      <p className="text-5xl">✅</p>
+      <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
+        <CheckCircle2 className="h-10 w-10 text-success" strokeWidth={2} aria-hidden />
+      </div>
       <h1 className="text-xl font-bold">Alert sent</h1>
       <p className="text-sm text-surface-on-variant max-w-xs">
         Your dispatcher has been notified. Stay calm and wait for contact.
@@ -2752,6 +2865,19 @@ cd frontend/driver-pwa && npm run dev   # http://localhost:3001
 
 Expected: all screens render without console errors; hold-to-confirm ring animates; camera opens the file picker in browser.
 
+**2b. Android-target verification (this is an Android-first app — web parity is not enough):**
+
+```bash
+cd frontend/driver-pwa && npm run cap:run   # builds export, syncs, launches APK on device/emulator
+```
+
+On the device/emulator (NOT the browser — native paths only run here):
+1. Reach an `…/step/…` GPS step → tap capture → the OS location-permission prompt appears → grant → coords captured. (If no prompt and capture fails, the manifest permissions from Task 0 are missing.)
+2. Reach a camera step → tap photograph → the OS camera-permission prompt appears → the **native camera** opens (not a file picker) → photo returns and renders.
+3. Confirm the app launches from the Android home screen under the name "FreightProof Driver" and fills the screen (static export served from `out/`).
+
+Expected: native camera + GPS both work on-device. This is the check the browser smoke test cannot give you.
+
 **3. Self-review gates** — every box must be true:
 
 - [ ] All 20 handshake step components created and wired into the dispatcher
@@ -2767,8 +2893,11 @@ Expected: all screens render without console errors; hold-to-confirm ring animat
 - [ ] Login/OTP populate `AuthContext` so the `(app)` guard works
 - [ ] Exception picker sourced from `DRIVER_EXCEPTION_TYPES` — no invalid `ExceptionType` literals
 - [ ] Design-system tokens + `components/ui/*` only — no raw `text-gray-*` / `text-blue-*` / `bg-white`
+- [ ] **Design contract honoured:** zero emoji (lucide icons only), radii from the scale, `shadow-ambient*` only, one accent per screen, ≥44px touch targets
+- [ ] **Screenshot pass done:** every screen reviewed at a 390px viewport against the Onfleet reference — hierarchy reads in <2s, even spacing, primary action thumb-reachable
 - [ ] No business logic in the frontend — evidence is collected/displayed/submitted; backend computes & validates
 - [ ] `output: 'export'` build passes; hook + navigation unit tests pass
+- [ ] **Android target verified on-device:** APK launches, manifest permissions present, native camera + GPS prompt and work (not just the browser fallback)
 
 > **Suggested commit:** `feat(driver-pwa): full H1–H5 handshake flow, in-transit hub, panic + offline queue`
 
