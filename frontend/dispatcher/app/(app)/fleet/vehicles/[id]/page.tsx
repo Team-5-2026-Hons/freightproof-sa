@@ -11,6 +11,7 @@ import { InfoRow }   from '@/components/ui/InfoRow'
 import { FormField } from '@/components/ui/FormField'
 import { BlockchainBadge } from '@/components/blockchain/BlockchainBadge'
 import { EventTimeline }   from '@/components/blockchain/EventTimeline'
+import { ForensicOnly }    from '@/components/blockchain/ForensicOnly'
 import { useVehicleDetail } from '@/lib/hooks/useVehicleDetail'
 import { api } from '@/lib/api/client'
 import { ROUTES } from '@/lib/constants/routes'
@@ -230,31 +231,33 @@ export default function VehicleDetailPage() {
             </div>
           )}
 
-          {/* Blockchain */}
-          <div className="text-[11px] font-[700] tracking-[0.1em] uppercase text-on-surf-v mb-3">
-            Blockchain
-          </div>
-          <div className="bg-chain-c rounded-md p-[10px_12px] mb-4 leading-relaxed">
-            <div className="flex items-center gap-[5px] mb-1">
-              <Ic n="hex" s={12} className="text-chain" />
-              <span className="text-[11px] font-[500] tracking-[0.04em] text-chain-onc">
-                {vehicle.receipts.length === 0
-                  ? 'Not yet anchored'
-                  : `${vehicle.receipts.length} receipt${vehicle.receipts.length > 1 ? 's' : ''} anchored`
-                }
-              </span>
+          {/* Blockchain — forensic detail; hidden for non-admin / forensic-off dispatchers. */}
+          <ForensicOnly>
+            <div className="text-[11px] font-[700] tracking-[0.1em] uppercase text-on-surf-v mb-3">
+              Blockchain
             </div>
-            {latestReceipt && (
-              <div className="mb-[6px]">
-                <BlockchainBadge receipt={latestReceipt} />
+            <div className="bg-chain-c rounded-md p-[10px_12px] mb-4 leading-relaxed">
+              <div className="flex items-center gap-[5px] mb-1">
+                <Ic n="hex" s={12} className="text-chain" />
+                <span className="text-[11px] font-[500] tracking-[0.04em] text-chain-onc">
+                  {vehicle.receipts.length === 0
+                    ? 'Not yet anchored'
+                    : `${vehicle.receipts.length} receipt${vehicle.receipts.length > 1 ? 's' : ''} anchored`
+                  }
+                </span>
               </div>
-            )}
-            {vehicle.receipts.length === 0 && (
-              <div className="text-[11px] text-chain-onc opacity-60">
-                Receipts are created when a vehicle is registered or updated.
-              </div>
-            )}
-          </div>
+              {latestReceipt && (
+                <div className="mb-[6px]">
+                  <BlockchainBadge receipt={latestReceipt} />
+                </div>
+              )}
+              {vehicle.receipts.length === 0 && (
+                <div className="text-[11px] text-chain-onc opacity-60">
+                  Receipts are created when a vehicle is registered or updated.
+                </div>
+              )}
+            </div>
+          </ForensicOnly>
 
           {/* Trips */}
           {vehicle.trip_ids.length > 0 && (

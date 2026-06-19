@@ -113,7 +113,7 @@ export function VerifyButton({
       const result = await api.post<VerifyResult>('/api/v1/blockchain/verify', {
         subject_type: subjectType,
         subject_id: subjectId,
-      })
+      }, { idempotent: true })
       setUi({ kind: 'result', result })
       onResult?.(result)
       // Manual verifies auto-reset after 8s; auto-verify results stay visible.

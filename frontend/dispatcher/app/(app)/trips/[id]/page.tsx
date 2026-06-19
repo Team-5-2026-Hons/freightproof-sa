@@ -14,6 +14,7 @@ import { usePrecincts }   from '@/lib/hooks/usePrecincts'
 import { TRIP_STATUS_META } from '@shared/lib/constants/status-meta'
 import { HANDSHAKE_NAMES }  from '@shared/lib/constants/handshake-meta'
 import { VerifyButton }       from '@/components/blockchain/VerifyButton'
+import { ForensicOnly }       from '@/components/blockchain/ForensicOnly'
 import { TripCreatedDetail }  from '@/components/domain/TripCreatedDetail'
 import type { HandshakeNumber } from '@shared/lib/types/handshake'
 import type { Trip } from '@shared/lib/types/trip'
@@ -191,7 +192,7 @@ function TimelineEvent({
               {resText}
             </div>
           )}
-          {chainReceipt && <ChainReceiptTag receipt={chainReceipt} />}
+          {chainReceipt && <ForensicOnly><ChainReceiptTag receipt={chainReceipt} /></ForensicOnly>}
           {isExpanded && expandedContent}
         </div>
       </div>
@@ -444,17 +445,19 @@ export default function TripDetailPage() {
             const subCl     = isOk ? 'text-ok'  : isMismatch ? 'text-err'  : isWarn ? 'text-warn'  : 'text-chain'
             return (
               <div className={`${cardBg} rounded-md p-[10px_12px] mb-4 leading-relaxed transition-colors duration-300`}>
-                <div className="flex items-center gap-[5px] mb-1">
-                  <Ic n="hex" s={12} className={iconCl} />
-                  <span className={`text-[11px] font-[500] tracking-[0.04em] ${labelCl}`}>
-                    {anchoredCount} of {sortedHandshakes.length + 1} receipts anchored
-                  </span>
-                </div>
-                {trip.blockchain_receipts.slice(0, 3).map(r => (
-                  <div key={r.id} className={`text-[11px] tracking-[0.03em] truncate tabular-nums ${subCl}`}>
-                    {r.hedera_topic_id} #{r.hedera_sequence_number}
+                <ForensicOnly>
+                  <div className="flex items-center gap-[5px] mb-1">
+                    <Ic n="hex" s={12} className={iconCl} />
+                    <span className={`text-[11px] font-[500] tracking-[0.04em] ${labelCl}`}>
+                      {anchoredCount} of {sortedHandshakes.length + 1} receipts anchored
+                    </span>
                   </div>
-                ))}
+                  {trip.blockchain_receipts.slice(0, 3).map(r => (
+                    <div key={r.id} className={`text-[11px] tracking-[0.03em] truncate tabular-nums ${subCl}`}>
+                      {r.hedera_topic_id} #{r.hedera_sequence_number}
+                    </div>
+                  ))}
+                </ForensicOnly>
                 <VerifyButton subjectType="trip" subjectId={trip.id as string} autoVerify onResult={setVerifyResult} />
               </div>
             )
