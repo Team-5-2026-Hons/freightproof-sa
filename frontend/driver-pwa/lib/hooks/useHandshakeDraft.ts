@@ -31,6 +31,11 @@ export function useHandshakeDraft<T extends object>(
       setDraft((prev) => {
         const next = { ...prev, ...patch }
         try {
+          // Synchronous write here (inside the updater, not a useEffect keyed on `draft`)
+          // is load-bearing: every step component calls onUpdate(patch) then immediately
+          // calls onComplete()/navigates in the same tick. If this write moved to a
+          // useEffect, that call-then-navigate pattern would silently lose the last patch
+          // on fast navigation, since the effect wouldn't have flushed yet.
           localStorage.setItem(key, JSON.stringify(next))
         } catch {
           // Quota exceeded, private browsing, or storage disabled — draft still

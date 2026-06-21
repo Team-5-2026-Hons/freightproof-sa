@@ -1,11 +1,9 @@
 // frontend/driver-pwa/components/handshake/steps/H5Closed.tsx
 'use client'
 
-import { useRouter } from 'next/navigation'
 import { CheckCircle2 } from 'lucide-react'
 import { StepHeader } from '@/components/handshake/StepHeader'
 import { HoldButton } from '@/components/handshake/HoldButton'
-import { ROUTES } from '@/lib/constants/routes'
 import type { H5Evidence } from '@/lib/types/evidence-draft'
 
 interface H5ClosedProps {
@@ -15,15 +13,17 @@ interface H5ClosedProps {
 }
 
 export function H5Closed({ tripId, draft, onComplete }: H5ClosedProps) {
-  const router = useRouter()
   const isReady =
     draft.waybillHandedOver === true &&
     draft.sealBrokenPhotoDataUrl !== null &&
     draft.driverVisualCount !== null
 
+  // Navigation is owned by the dispatcher: onComplete() triggers submitAndAdvance(),
+  // which awaits the real submission, then calls clearH5() and advance() (which routes
+  // to ROUTES.trips for this step via nextHandshakeRoute). Navigating here too would
+  // race that async submission and land on an unmounted/stale screen.
   function handleClose() {
     onComplete()
-    router.replace(ROUTES.trips)
   }
 
   return (

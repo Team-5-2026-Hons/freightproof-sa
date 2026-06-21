@@ -35,6 +35,9 @@ export function H5Reconciliation({ tripId, draft, onUpdate, onComplete }: H5Reco
         <p className="text-sm text-surface-on-variant">
           Confirm that the unloading is reconciled with the warehouse. Any discrepancies have been logged.
         </p>
+        {/* POD / reconciliation-note fields are deliberately omitted from this summary —
+            BQ2 (physical POD vs on-device signature) is unresolved, so this is a 3-of-6-field
+            summary by design, not an oversight. */}
         <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4 flex flex-col gap-3">
           <div className="flex justify-between">
             <span className="text-sm text-surface-on-variant">Parcels counted at destination</span>
