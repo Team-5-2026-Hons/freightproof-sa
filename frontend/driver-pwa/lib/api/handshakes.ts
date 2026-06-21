@@ -29,8 +29,18 @@ export async function submitHandshake(
   })
 
   if (!resp.ok) {
+    // TODO(backend-integration): include response body in this error once the real endpoint exists
     throw new Error(`submitHandshake failed: HTTP ${resp.status}`)
   }
 
-  return resp.json() as Promise<SubmitHandshakeResult>
+  const result = (await resp.json()) as SubmitHandshakeResult
+
+  // A 200 response with ok: false (partial success, pending validation, etc.) is still
+  // a failure — throw so the existing "resolves = success, throws = failure" contract
+  // callers rely on (e.g. useOfflineQueue.flush) actually holds.
+  if (!result.ok) {
+    throw new Error('submitHandshake failed: backend returned ok: false')
+  }
+
+  return result
 }

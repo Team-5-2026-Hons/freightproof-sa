@@ -52,6 +52,9 @@ export function useOfflineQueue() {
       try {
         await submitHandshake(entry.tripId, entry.handshakeType, entry.evidence)
       } catch {
+        // TODO(backend-integration): distinguish retryable (network/5xx) from terminal
+        // (4xx/validation) failures once submitHandshake can report which kind occurred —
+        // currently all failures retry indefinitely
         failed.push(entry)
       }
     }
