@@ -16,10 +16,19 @@ interface H3ExitSealProps {
   onComplete: () => void
 }
 
+// Case-insensitive, whitespace-tolerant seal comparison shared by the live "matches" indicator
+// and the persisted sealVerifiedMatch field, so the two can never drift out of sync (the bug
+// class found in Task 9 review). A null/empty reference seal (h2SealNumber) never matches.
+export function sealsMatch(a: string, b: string | null): boolean {
+  const normalizedA = a.trim().toUpperCase()
+  const normalizedB = (b ?? '').trim().toUpperCase()
+  return normalizedA.length > 0 && normalizedA === normalizedB
+}
+
 export function H3ExitSeal({ tripId, draft, h2SealNumber, onUpdate, onComplete }: H3ExitSealProps) {
   const input = draft.sealNumberConfirmed ?? ''
   const hasInput = input.trim().length > 0
-  const matches = input.trim().toUpperCase() === (h2SealNumber ?? '').toUpperCase()
+  const matches = sealsMatch(input, h2SealNumber)
   const isReady = draft.gatePhotoDataUrl !== null && hasInput
 
   function handleSealInput(value: string) {
@@ -28,7 +37,7 @@ export function H3ExitSeal({ tripId, draft, h2SealNumber, onUpdate, onComplete }
     // matches H2's seal; a mismatch is flagged as an exception downstream, not blocked here.
     onUpdate({
       sealNumberConfirmed: upper,
-      sealVerifiedMatch: upper.trim().length > 0 ? upper.trim() === (h2SealNumber ?? '').toUpperCase() : null,
+      sealVerifiedMatch: upper.trim().length > 0 ? sealsMatch(upper, h2SealNumber) : null,
     })
   }
 
