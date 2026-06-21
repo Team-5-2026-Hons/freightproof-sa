@@ -13,6 +13,7 @@ import { EmptyState }     from '@/components/ui/EmptyState'
 import { ChecklistRow }   from '@/components/domain/ChecklistRow'
 import type { ColWidths } from '@/components/domain/ChecklistRow'
 import { useTrips }       from '@/lib/hooks/useTrips'
+import { useAuth }        from '@/lib/hooks/useAuth'
 // ITERATION 2: re-enable exceptions — uncomment the two lines below
 // import { useExceptions }  from '@/lib/hooks/useExceptions'
 // import { mockTrips }      from '@shared/lib/mocks/trips'
@@ -54,6 +55,7 @@ function formatDate(d: Date): string {
 
 export default function ActiveTripsPage() {
   const router = useRouter()
+  const { user } = useAuth()
   const { notify } = useToast()
   const [search, setSearch] = useState('')
   const [colWidths, setColWidths] = useState<ColWidths>(INITIAL_COL_WIDTHS)
@@ -137,7 +139,13 @@ export default function ActiveTripsPage() {
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <TopBar
-        title="Dashboard"
+        title="Dispatcher Dashboard"
+        badge={user?.role === 'admin_dispatcher' ? (
+          <span className="inline-flex items-center gap-[4px] rounded-[var(--r-sm)] bg-surf-high px-[8px] py-[3px] text-[11px] font-[600] tracking-[0.04em] text-on-surf-v">
+            <Ic n="shield" s={11} className="text-on-surf-v shrink-0" />
+            Admin
+          </span>
+        ) : undefined}
         sub={`${formatDate(new Date())} · Load Factor Transport`}
       >
         <Button
@@ -151,10 +159,10 @@ export default function ActiveTripsPage() {
 
       {/* Stat strip — shows placeholders while trips are loading */}
       <div className="flex gap-3 px-6 py-4 bg-surf-low shrink-0">
-        <StatCard value={tripsLoading ? '—' : String(allTrips.length)}       label="Active trips" />
+        <StatCard value={String(allTrips.length)}       label="Active trips"      loading={tripsLoading} />
         {/* ITERATION 2: <StatCard value={String(openExceptions.length)} label="Exceptions today" warn={openExceptions.length > 0} /> */}
-        <StatCard value={tripsLoading ? '—' : String(completedCount)}         label="Completed today" />
-        <StatCard value={tripsLoading ? '—' : `${onTimePercent}%`}            label="On-time rate (30d)" success={!tripsLoading && onTimePercent >= 90} warn={!tripsLoading && onTimePercent < 70} />
+        <StatCard value={String(completedCount)}         label="Completed today"   loading={tripsLoading} />
+        <StatCard value={`${onTimePercent}%`}            label="On-time rate (30d)" success={onTimePercent >= 90} warn={onTimePercent < 70} loading={tripsLoading} />
       </div>
 
       {/* Search */}

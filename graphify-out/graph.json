@@ -4,14 +4,254 @@
   "graph": {},
   "nodes": [
     {
+      "label": "2026-06-12-driver-pwa-handshakes.md",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "plans_2026_06_12_driver_pwa_handshakes",
+      "community": 42,
+      "norm_label": "2026-06-12-driver-pwa-handshakes.md"
+    },
+    {
+      "label": "Driver PWA \u2014 Full Handshake Flow Implementation Plan",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "plans_2026_06_12_driver_pwa_handshakes_driver_pwa_full_handshake_flow_implementation_plan",
+      "community": 42,
+      "norm_label": "driver pwa \u2014 full handshake flow implementation plan"
+    },
+    {
+      "label": "Design contract (read before ANY UI task \u2014 non-negotiable)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L15",
+      "_origin": "ast",
+      "id": "plans_2026_06_12_driver_pwa_handshakes_design_contract_read_before_any_ui_task_non_negotiable",
+      "community": 42,
+      "norm_label": "design contract (read before any ui task \u2014 non-negotiable)"
+    },
+    {
+      "label": "Engineering principles (read before any task)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L40",
+      "_origin": "ast",
+      "id": "plans_2026_06_12_driver_pwa_handshakes_engineering_principles_read_before_any_task",
+      "community": 42,
+      "norm_label": "engineering principles (read before any task)"
+    },
+    {
+      "label": "Forward-compatibility (do NOT build now \u2014 just don't block it)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L86",
+      "_origin": "ast",
+      "id": "plans_2026_06_12_driver_pwa_handshakes_forward_compatibility_do_not_build_now_just_don_t_block_it",
+      "community": 42,
+      "norm_label": "forward-compatibility (do not build now \u2014 just don't block it)"
+    },
+    {
+      "label": "Scope",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L123",
+      "_origin": "ast",
+      "id": "plans_2026_06_12_driver_pwa_handshakes_scope",
+      "community": 42,
+      "norm_label": "scope"
+    },
+    {
+      "label": "File Map",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L135",
+      "_origin": "ast",
+      "id": "plans_2026_06_12_driver_pwa_handshakes_file_map",
+      "community": 42,
+      "norm_label": "file map"
+    },
+    {
+      "label": "Task 0: Android native permissions + sync script (do FIRST \u2014 APK prerequisite)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L201",
+      "_origin": "ast",
+      "id": "plans_2026_06_12_driver_pwa_handshakes_task_0_android_native_permissions_sync_script_do_first_apk_prerequisite",
+      "community": 42,
+      "norm_label": "task 0: android native permissions + sync script (do first \u2014 apk prerequisite)"
+    },
+    {
+      "label": "Task 1: Test infrastructure + authenticated route group",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L257",
+      "_origin": "ast",
+      "id": "plans_2026_06_12_driver_pwa_handshakes_task_1_test_infrastructure_authenticated_route_group",
+      "community": 42,
+      "norm_label": "task 1: test infrastructure + authenticated route group"
+    },
+    {
+      "label": "Task 2: ROUTES.ts additions + move trips pages into (app) group",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L396",
+      "_origin": "ast",
+      "id": "plans_2026_06_12_driver_pwa_handshakes_task_2_routes_ts_additions_move_trips_pages_into_app_group",
+      "community": 42,
+      "norm_label": "task 2: routes.ts additions + move trips pages into (app) group"
+    },
+    {
+      "label": "Task 3: Evidence types + useHandshakeDraft hook",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L564",
+      "_origin": "ast",
+      "id": "plans_2026_06_12_driver_pwa_handshakes_task_3_evidence_types_usehandshakedraft_hook",
+      "community": 42,
+      "norm_label": "task 3: evidence types + usehandshakedraft hook"
+    },
+    {
+      "label": "Task 4: API client + useOfflineQueue hook",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L725",
+      "_origin": "ast",
+      "id": "plans_2026_06_12_driver_pwa_handshakes_task_4_api_client_useofflinequeue_hook",
+      "community": 42,
+      "norm_label": "task 4: api client + useofflinequeue hook"
+    },
+    {
+      "label": "Task 5: Modify useLocation + shared handshake components",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L897",
+      "_origin": "ast",
+      "id": "plans_2026_06_12_driver_pwa_handshakes_task_5_modify_uselocation_shared_handshake_components",
+      "community": 42,
+      "norm_label": "task 5: modify uselocation + shared handshake components"
+    },
+    {
+      "label": "Task 5b: URL-driven navigation helper (single source of truth)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L1300",
+      "_origin": "ast",
+      "id": "plans_2026_06_12_driver_pwa_handshakes_task_5b_url_driven_navigation_helper_single_source_of_truth",
+      "community": 42,
+      "norm_label": "task 5b: url-driven navigation helper (single source of truth)"
+    },
+    {
+      "label": "Task 6: Step dispatcher page + PP manifest mock",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L1381",
+      "_origin": "ast",
+      "id": "plans_2026_06_12_driver_pwa_handshakes_task_6_step_dispatcher_page_pp_manifest_mock",
+      "community": 42,
+      "norm_label": "task 6: step dispatcher page + pp manifest mock"
+    },
+    {
+      "label": "Task 7: H1 \u2014 Origin Gate-In (3 step components)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L1536",
+      "_origin": "ast",
+      "id": "plans_2026_06_12_driver_pwa_handshakes_task_7_h1_origin_gate_in_3_step_components",
+      "community": 42,
+      "norm_label": "task 7: h1 \u2014 origin gate-in (3 step components)"
+    },
+    {
+      "label": "Task 8: H2 \u2014 Loading (5 step components)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L1696",
+      "_origin": "ast",
+      "id": "plans_2026_06_12_driver_pwa_handshakes_task_8_h2_loading_5_step_components",
+      "community": 42,
+      "norm_label": "task 8: h2 \u2014 loading (5 step components)"
+    },
+    {
+      "label": "Task 9: H3 \u2014 Origin Gate-Out (3 step components)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L1948",
+      "_origin": "ast",
+      "id": "plans_2026_06_12_driver_pwa_handshakes_task_9_h3_origin_gate_out_3_step_components",
+      "community": 42,
+      "norm_label": "task 9: h3 \u2014 origin gate-out (3 step components)"
+    },
+    {
+      "label": "Task 10: H4 \u2014 Destination Gate-In (3 step components)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L2088",
+      "_origin": "ast",
+      "id": "plans_2026_06_12_driver_pwa_handshakes_task_10_h4_destination_gate_in_3_step_components",
+      "community": 42,
+      "norm_label": "task 10: h4 \u2014 destination gate-in (3 step components)"
+    },
+    {
+      "label": "Task 11: H5 \u2014 Unloading (6 step components)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L2241",
+      "_origin": "ast",
+      "id": "plans_2026_06_12_driver_pwa_handshakes_task_11_h5_unloading_6_step_components",
+      "community": 42,
+      "norm_label": "task 11: h5 \u2014 unloading (6 step components)"
+    },
+    {
+      "label": "Task 12: In-transit hub + exception screen",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L2555",
+      "_origin": "ast",
+      "id": "plans_2026_06_12_driver_pwa_handshakes_task_12_in_transit_hub_exception_screen",
+      "community": 42,
+      "norm_label": "task 12: in-transit hub + exception screen"
+    },
+    {
+      "label": "Task 13: Panic flow",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L2744",
+      "_origin": "ast",
+      "id": "plans_2026_06_12_driver_pwa_handshakes_task_13_panic_flow",
+      "community": 42,
+      "norm_label": "task 13: panic flow"
+    },
+    {
+      "label": "Final verification (run once, after all tasks are complete)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L2837",
+      "_origin": "ast",
+      "id": "plans_2026_06_12_driver_pwa_handshakes_final_verification_run_once_after_all_tasks_are_complete",
+      "community": 42,
+      "norm_label": "final verification (run once, after all tasks are complete)"
+    },
+    {
+      "label": "New .env keys required",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L2904",
+      "_origin": "ast",
+      "id": "plans_2026_06_12_driver_pwa_handshakes_new_env_keys_required",
+      "community": 42,
+      "norm_label": "new .env keys required"
+    },
+    {
       "label": "supabase_admin.py",
       "file_type": "code",
       "source_file": "backend/app/integrations/supabase_admin.py",
       "source_location": "L1",
       "_origin": "ast",
-      "id": "integrations_supabase_admin",
       "community": 28,
-      "norm_label": "supabase_admin.py"
+      "norm_label": "supabase_admin.py",
+      "id": "integrations_supabase_admin"
     },
     {
       "label": "create_driver_auth_user()",
@@ -19,9 +259,9 @@
       "source_file": "backend/app/integrations/supabase_admin.py",
       "source_location": "L20",
       "_origin": "ast",
-      "id": "integrations_supabase_admin_create_driver_auth_user",
       "community": 28,
-      "norm_label": "create_driver_auth_user()"
+      "norm_label": "create_driver_auth_user()",
+      "id": "integrations_supabase_admin_create_driver_auth_user"
     },
     {
       "label": "UUID",
@@ -29,9 +269,9 @@
       "source_file": "backend/app/integrations/supabase_admin.py",
       "source_location": "L20",
       "_origin": "ast",
-      "id": "backend_app_integrations_supabase_admin_py_uuid",
       "community": 28,
-      "norm_label": "uuid"
+      "norm_label": "uuid",
+      "id": "backend_app_integrations_supabase_admin_py_uuid"
     },
     {
       "label": "create_dispatcher_auth_user()",
@@ -39,9 +279,9 @@
       "source_file": "backend/app/integrations/supabase_admin.py",
       "source_location": "L62",
       "_origin": "ast",
-      "id": "integrations_supabase_admin_create_dispatcher_auth_user",
       "community": 28,
-      "norm_label": "create_dispatcher_auth_user()"
+      "norm_label": "create_dispatcher_auth_user()",
+      "id": "integrations_supabase_admin_create_dispatcher_auth_user"
     },
     {
       "label": "DispatcherRole",
@@ -49,9 +289,9 @@
       "source_file": "backend/app/integrations/supabase_admin.py",
       "source_location": "L62",
       "_origin": "ast",
-      "id": "backend_app_integrations_supabase_admin_py_dispatcherrole",
       "community": 28,
-      "norm_label": "dispatcherrole"
+      "norm_label": "dispatcherrole",
+      "id": "backend_app_integrations_supabase_admin_py_dispatcherrole"
     },
     {
       "label": "Supabase Auth Admin API client.  Server-side only \u2014 requires SUPABASE_SERVICE_RO",
@@ -59,9 +299,9 @@
       "source_file": "backend/app/integrations/supabase_admin.py",
       "source_location": "L1",
       "_origin": "ast",
-      "id": "integrations_supabase_admin_rationale_1",
       "community": 28,
-      "norm_label": "supabase auth admin api client.  server-side only \u2014 requires supabase_service_ro"
+      "norm_label": "supabase auth admin api client.  server-side only \u2014 requires supabase_service_ro",
+      "id": "integrations_supabase_admin_rationale_1"
     },
     {
       "label": "Create a Supabase Auth phone account for a new driver.      Returns the Supabase",
@@ -69,9 +309,9 @@
       "source_file": "backend/app/integrations/supabase_admin.py",
       "source_location": "L21",
       "_origin": "ast",
-      "id": "integrations_supabase_admin_rationale_21",
       "community": 28,
-      "norm_label": "create a supabase auth phone account for a new driver.      returns the supabase"
+      "norm_label": "create a supabase auth phone account for a new driver.      returns the supabase",
+      "id": "integrations_supabase_admin_rationale_21"
     },
     {
       "label": "Create a Supabase Auth email/password account for a dispatcher.      `role` is w",
@@ -79,9 +319,9 @@
       "source_file": "backend/app/integrations/supabase_admin.py",
       "source_location": "L68",
       "_origin": "ast",
-      "id": "integrations_supabase_admin_rationale_68",
       "community": 28,
-      "norm_label": "create a supabase auth email/password account for a dispatcher.      `role` is w"
+      "norm_label": "create a supabase auth email/password account for a dispatcher.      `role` is w",
+      "id": "integrations_supabase_admin_rationale_68"
     },
     {
       "label": "seed_dispatcher.py",
@@ -89,9 +329,9 @@
       "source_file": "backend/scripts/seed_dispatcher.py",
       "source_location": "L1",
       "_origin": "ast",
-      "id": "scripts_seed_dispatcher",
       "community": 28,
-      "norm_label": "seed_dispatcher.py"
+      "norm_label": "seed_dispatcher.py",
+      "id": "scripts_seed_dispatcher"
     },
     {
       "label": "_parse_args()",
@@ -99,9 +339,9 @@
       "source_file": "backend/scripts/seed_dispatcher.py",
       "source_location": "L38",
       "_origin": "ast",
-      "id": "scripts_seed_dispatcher_parse_args",
       "community": 28,
-      "norm_label": "_parse_args()"
+      "norm_label": "_parse_args()",
+      "id": "scripts_seed_dispatcher_parse_args"
     },
     {
       "label": "Namespace",
@@ -109,9 +349,9 @@
       "source_file": "backend/scripts/seed_dispatcher.py",
       "source_location": "L38",
       "_origin": "ast",
-      "id": "namespace",
       "community": 28,
-      "norm_label": "namespace"
+      "norm_label": "namespace",
+      "id": "namespace"
     },
     {
       "label": "_resolve_password()",
@@ -119,9 +359,9 @@
       "source_file": "backend/scripts/seed_dispatcher.py",
       "source_location": "L58",
       "_origin": "ast",
-      "id": "scripts_seed_dispatcher_resolve_password",
       "community": 28,
-      "norm_label": "_resolve_password()"
+      "norm_label": "_resolve_password()",
+      "id": "scripts_seed_dispatcher_resolve_password"
     },
     {
       "label": "seed_dispatcher()",
@@ -129,9 +369,9 @@
       "source_file": "backend/scripts/seed_dispatcher.py",
       "source_location": "L66",
       "_origin": "ast",
-      "id": "scripts_seed_dispatcher_seed_dispatcher",
       "community": 28,
-      "norm_label": "seed_dispatcher()"
+      "norm_label": "seed_dispatcher()",
+      "id": "scripts_seed_dispatcher_seed_dispatcher"
     },
     {
       "label": "UUID",
@@ -139,9 +379,9 @@
       "source_file": "backend/scripts/seed_dispatcher.py",
       "source_location": "L66",
       "_origin": "ast",
-      "id": "backend_scripts_seed_dispatcher_py_uuid",
       "community": 28,
-      "norm_label": "uuid"
+      "norm_label": "uuid",
+      "id": "backend_scripts_seed_dispatcher_py_uuid"
     },
     {
       "label": "DispatcherRole",
@@ -149,9 +389,9 @@
       "source_file": "backend/scripts/seed_dispatcher.py",
       "source_location": "L66",
       "_origin": "ast",
-      "id": "backend_scripts_seed_dispatcher_py_dispatcherrole",
       "community": 28,
-      "norm_label": "dispatcherrole"
+      "norm_label": "dispatcherrole",
+      "id": "backend_scripts_seed_dispatcher_py_dispatcherrole"
     },
     {
       "label": "main()",
@@ -159,9 +399,9 @@
       "source_file": "backend/scripts/seed_dispatcher.py",
       "source_location": "L118",
       "_origin": "ast",
-      "id": "scripts_seed_dispatcher_main",
       "community": 28,
-      "norm_label": "main()"
+      "norm_label": "main()",
+      "id": "scripts_seed_dispatcher_main"
     },
     {
       "label": "Provision a real (non-DEMO_MODE) dispatcher account end-to-end.  Creates a Supab",
@@ -169,9 +409,9 @@
       "source_file": "backend/scripts/seed_dispatcher.py",
       "source_location": "L1",
       "_origin": "ast",
-      "id": "scripts_seed_dispatcher_rationale_1",
       "community": 28,
-      "norm_label": "provision a real (non-demo_mode) dispatcher account end-to-end.  creates a supab"
+      "norm_label": "provision a real (non-demo_mode) dispatcher account end-to-end.  creates a supab",
+      "id": "scripts_seed_dispatcher_rationale_1"
     },
     {
       "label": "Resolve the password without ever hardcoding it: flag, then env, then prompt.",
@@ -179,9 +419,9 @@
       "source_file": "backend/scripts/seed_dispatcher.py",
       "source_location": "L59",
       "_origin": "ast",
-      "id": "scripts_seed_dispatcher_rationale_59",
       "community": 28,
-      "norm_label": "resolve the password without ever hardcoding it: flag, then env, then prompt."
+      "norm_label": "resolve the password without ever hardcoding it: flag, then env, then prompt.",
+      "id": "scripts_seed_dispatcher_rationale_59"
     },
     {
       "label": "test_supabase_admin.py",
@@ -189,9 +429,9 @@
       "source_file": "backend/tests/unit/test_supabase_admin.py",
       "source_location": "L1",
       "_origin": "ast",
-      "id": "unit_test_supabase_admin",
       "community": 28,
-      "norm_label": "test_supabase_admin.py"
+      "norm_label": "test_supabase_admin.py",
+      "id": "unit_test_supabase_admin"
     },
     {
       "label": "_mock_async_client()",
@@ -199,9 +439,9 @@
       "source_file": "backend/tests/unit/test_supabase_admin.py",
       "source_location": "L17",
       "_origin": "ast",
-      "id": "unit_test_supabase_admin_mock_async_client",
       "community": 28,
-      "norm_label": "_mock_async_client()"
+      "norm_label": "_mock_async_client()",
+      "id": "unit_test_supabase_admin_mock_async_client"
     },
     {
       "label": "test_create_dispatcher_auth_user_returns_uuid_and_sets_role()",
@@ -209,9 +449,9 @@
       "source_file": "backend/tests/unit/test_supabase_admin.py",
       "source_location": "L32",
       "_origin": "ast",
-      "id": "unit_test_supabase_admin_test_create_dispatcher_auth_user_returns_uuid_and_sets_role",
       "community": 28,
-      "norm_label": "test_create_dispatcher_auth_user_returns_uuid_and_sets_role()"
+      "norm_label": "test_create_dispatcher_auth_user_returns_uuid_and_sets_role()",
+      "id": "unit_test_supabase_admin_test_create_dispatcher_auth_user_returns_uuid_and_sets_role"
     },
     {
       "label": "test_create_dispatcher_auth_user_duplicate_email_raises()",
@@ -219,9 +459,9 @@
       "source_file": "backend/tests/unit/test_supabase_admin.py",
       "source_location": "L58",
       "_origin": "ast",
-      "id": "unit_test_supabase_admin_test_create_dispatcher_auth_user_duplicate_email_raises",
       "community": 28,
-      "norm_label": "test_create_dispatcher_auth_user_duplicate_email_raises()"
+      "norm_label": "test_create_dispatcher_auth_user_duplicate_email_raises()",
+      "id": "unit_test_supabase_admin_test_create_dispatcher_auth_user_duplicate_email_raises"
     },
     {
       "label": "test_create_dispatcher_auth_user_server_error_raises_valueerror()",
@@ -229,9 +469,9 @@
       "source_file": "backend/tests/unit/test_supabase_admin.py",
       "source_location": "L76",
       "_origin": "ast",
-      "id": "unit_test_supabase_admin_test_create_dispatcher_auth_user_server_error_raises_valueerror",
       "community": 28,
-      "norm_label": "test_create_dispatcher_auth_user_server_error_raises_valueerror()"
+      "norm_label": "test_create_dispatcher_auth_user_server_error_raises_valueerror()",
+      "id": "unit_test_supabase_admin_test_create_dispatcher_auth_user_server_error_raises_valueerror"
     },
     {
       "label": "Unit tests: Supabase Auth Admin client for dispatcher provisioning (FP-115).  ht",
@@ -239,9 +479,9 @@
       "source_file": "backend/tests/unit/test_supabase_admin.py",
       "source_location": "L1",
       "_origin": "ast",
-      "id": "unit_test_supabase_admin_rationale_1",
       "community": 28,
-      "norm_label": "unit tests: supabase auth admin client for dispatcher provisioning (fp-115).  ht"
+      "norm_label": "unit tests: supabase auth admin client for dispatcher provisioning (fp-115).  ht",
+      "id": "unit_test_supabase_admin_rationale_1"
     },
     {
       "label": "Build a mock for httpx.AsyncClient whose context-managed instance.post returns `",
@@ -249,9 +489,9 @@
       "source_file": "backend/tests/unit/test_supabase_admin.py",
       "source_location": "L18",
       "_origin": "ast",
-      "id": "unit_test_supabase_admin_rationale_18",
       "community": 28,
-      "norm_label": "build a mock for httpx.asyncclient whose context-managed instance.post returns `"
+      "norm_label": "build a mock for httpx.asyncclient whose context-managed instance.post returns `",
+      "id": "unit_test_supabase_admin_rationale_18"
     },
     {
       "label": "page.tsx",
@@ -259,9 +499,9 @@
       "source_file": "frontend/dispatcher/app/(app)/fleet/drivers/[id]/page.tsx",
       "source_location": "L1",
       "_origin": "ast",
-      "id": "frontend_dispatcher_app_app_fleet_drivers_id_page_tsx_id_page",
       "community": 22,
-      "norm_label": "page.tsx"
+      "norm_label": "page.tsx",
+      "id": "frontend_dispatcher_app_app_fleet_drivers_id_page_tsx_id_page"
     },
     {
       "label": "EditState",
@@ -269,9 +509,9 @@
       "source_file": "frontend/dispatcher/app/(app)/fleet/drivers/[id]/page.tsx",
       "source_location": "L19",
       "_origin": "ast",
-      "id": "frontend_dispatcher_app_app_fleet_drivers_id_page_tsx_id_page_editstate",
       "community": 22,
-      "norm_label": "editstate"
+      "norm_label": "editstate",
+      "id": "frontend_dispatcher_app_app_fleet_drivers_id_page_tsx_id_page_editstate"
     },
     {
       "label": "DriverDetailPage()",
@@ -279,9 +519,9 @@
       "source_file": "frontend/dispatcher/app/(app)/fleet/drivers/[id]/page.tsx",
       "source_location": "L28",
       "_origin": "ast",
-      "id": "id_page_driverdetailpage",
       "community": 22,
-      "norm_label": "driverdetailpage()"
+      "norm_label": "driverdetailpage()",
+      "id": "id_page_driverdetailpage"
     },
     {
       "label": "page.tsx",
@@ -289,9 +529,9 @@
       "source_file": "frontend/dispatcher/app/(app)/fleet/vehicles/[id]/page.tsx",
       "source_location": "L1",
       "_origin": "ast",
-      "id": "frontend_dispatcher_app_app_fleet_vehicles_id_page_tsx_id_page",
       "community": 22,
-      "norm_label": "page.tsx"
+      "norm_label": "page.tsx",
+      "id": "frontend_dispatcher_app_app_fleet_vehicles_id_page_tsx_id_page"
     },
     {
       "label": "EditState",
@@ -299,9 +539,9 @@
       "source_file": "frontend/dispatcher/app/(app)/fleet/vehicles/[id]/page.tsx",
       "source_location": "L19",
       "_origin": "ast",
-      "id": "frontend_dispatcher_app_app_fleet_vehicles_id_page_tsx_id_page_editstate",
       "community": 22,
-      "norm_label": "editstate"
+      "norm_label": "editstate",
+      "id": "frontend_dispatcher_app_app_fleet_vehicles_id_page_tsx_id_page_editstate"
     },
     {
       "label": "VehicleDetailPage()",
@@ -309,9 +549,9 @@
       "source_file": "frontend/dispatcher/app/(app)/fleet/vehicles/[id]/page.tsx",
       "source_location": "L32",
       "_origin": "ast",
-      "id": "id_page_vehicledetailpage",
       "community": 22,
-      "norm_label": "vehicledetailpage()"
+      "norm_label": "vehicledetailpage()",
+      "id": "id_page_vehicledetailpage"
     },
     {
       "label": "page.tsx",
@@ -319,9 +559,9 @@
       "source_file": "frontend/dispatcher/app/(app)/trips/[id]/page.tsx",
       "source_location": "L1",
       "_origin": "ast",
-      "id": "frontend_dispatcher_app_app_trips_id_page_tsx_id_page",
       "community": 17,
-      "norm_label": "page.tsx"
+      "norm_label": "page.tsx",
+      "id": "frontend_dispatcher_app_app_trips_id_page_tsx_id_page"
     },
     {
       "label": "ACTIVE_HS_FOR_STATUS",
@@ -329,9 +569,9 @@
       "source_file": "frontend/dispatcher/app/(app)/trips/[id]/page.tsx",
       "source_location": "L25",
       "_origin": "ast",
-      "id": "id_page_active_hs_for_status",
       "community": 17,
-      "norm_label": "active_hs_for_status"
+      "norm_label": "active_hs_for_status",
+      "id": "id_page_active_hs_for_status"
     },
     {
       "label": "RECEIPT_LABELS",
@@ -339,9 +579,9 @@
       "source_file": "frontend/dispatcher/app/(app)/trips/[id]/page.tsx",
       "source_location": "L37",
       "_origin": "ast",
-      "id": "id_page_receipt_labels",
       "community": 17,
-      "norm_label": "receipt_labels"
+      "norm_label": "receipt_labels",
+      "id": "id_page_receipt_labels"
     },
     {
       "label": "ChainReceiptTag()",
@@ -349,9 +589,9 @@
       "source_file": "frontend/dispatcher/app/(app)/trips/[id]/page.tsx",
       "source_location": "L45",
       "_origin": "ast",
-      "id": "id_page_chainreceipttag",
       "community": 17,
-      "norm_label": "chainreceipttag()"
+      "norm_label": "chainreceipttag()",
+      "id": "id_page_chainreceipttag"
     },
     {
       "label": "NodeType",
@@ -359,9 +599,9 @@
       "source_file": "frontend/dispatcher/app/(app)/trips/[id]/page.tsx",
       "source_location": "L97",
       "_origin": "ast",
-      "id": "id_page_nodetype",
       "community": 17,
-      "norm_label": "nodetype"
+      "norm_label": "nodetype",
+      "id": "id_page_nodetype"
     },
     {
       "label": "TimelineEventProps",
@@ -369,9 +609,9 @@
       "source_file": "frontend/dispatcher/app/(app)/trips/[id]/page.tsx",
       "source_location": "L99",
       "_origin": "ast",
-      "id": "id_page_timelineeventprops",
       "community": 17,
-      "norm_label": "timelineeventprops"
+      "norm_label": "timelineeventprops",
+      "id": "id_page_timelineeventprops"
     },
     {
       "label": "fmtTs()",
@@ -379,9 +619,9 @@
       "source_file": "frontend/dispatcher/app/(app)/trips/[id]/page.tsx",
       "source_location": "L113",
       "_origin": "ast",
-      "id": "id_page_fmtts",
       "community": 17,
-      "norm_label": "fmtts()"
+      "norm_label": "fmtts()",
+      "id": "id_page_fmtts"
     },
     {
       "label": "TimelineEvent()",
@@ -389,9 +629,9 @@
       "source_file": "frontend/dispatcher/app/(app)/trips/[id]/page.tsx",
       "source_location": "L118",
       "_origin": "ast",
-      "id": "id_page_timelineevent",
       "community": 17,
-      "norm_label": "timelineevent()"
+      "norm_label": "timelineevent()",
+      "id": "id_page_timelineevent"
     },
     {
       "label": "TripDetailPage()",
@@ -399,9 +639,9 @@
       "source_file": "frontend/dispatcher/app/(app)/trips/[id]/page.tsx",
       "source_location": "L204",
       "_origin": "ast",
-      "id": "id_page_tripdetailpage",
       "community": 17,
-      "norm_label": "tripdetailpage()"
+      "norm_label": "tripdetailpage()",
+      "id": "id_page_tripdetailpage"
     },
     {
       "label": "VerifyButton.tsx",
@@ -409,9 +649,9 @@
       "source_file": "frontend/dispatcher/components/blockchain/VerifyButton.tsx",
       "source_location": "L1",
       "_origin": "ast",
-      "id": "blockchain_verifybutton",
       "community": 90,
-      "norm_label": "verifybutton.tsx"
+      "norm_label": "verifybutton.tsx",
+      "id": "blockchain_verifybutton"
     },
     {
       "label": "Props",
@@ -419,9 +659,9 @@
       "source_file": "frontend/dispatcher/components/blockchain/VerifyButton.tsx",
       "source_location": "L10",
       "_origin": "ast",
-      "id": "blockchain_verifybutton_props",
       "community": 90,
-      "norm_label": "props"
+      "norm_label": "props",
+      "id": "blockchain_verifybutton_props"
     },
     {
       "label": "UIState",
@@ -429,9 +669,9 @@
       "source_file": "frontend/dispatcher/components/blockchain/VerifyButton.tsx",
       "source_location": "L19",
       "_origin": "ast",
-      "id": "blockchain_verifybutton_uistate",
       "community": 90,
-      "norm_label": "uistate"
+      "norm_label": "uistate",
+      "id": "blockchain_verifybutton_uistate"
     },
     {
       "label": "SpinnerRing()",
@@ -439,9 +679,9 @@
       "source_file": "frontend/dispatcher/components/blockchain/VerifyButton.tsx",
       "source_location": "L24",
       "_origin": "ast",
-      "id": "blockchain_verifybutton_spinnerring",
       "community": 90,
-      "norm_label": "spinnerring()"
+      "norm_label": "spinnerring()",
+      "id": "blockchain_verifybutton_spinnerring"
     },
     {
       "label": "MismatchReport()",
@@ -449,9 +689,9 @@
       "source_file": "frontend/dispatcher/components/blockchain/VerifyButton.tsx",
       "source_location": "L33",
       "_origin": "ast",
-      "id": "blockchain_verifybutton_mismatchreport",
       "community": 90,
-      "norm_label": "mismatchreport()"
+      "norm_label": "mismatchreport()",
+      "id": "blockchain_verifybutton_mismatchreport"
     },
     {
       "label": "VerifyButton()",
@@ -459,9 +699,9 @@
       "source_file": "frontend/dispatcher/components/blockchain/VerifyButton.tsx",
       "source_location": "L103",
       "_origin": "ast",
-      "id": "blockchain_verifybutton_verifybutton",
       "community": 90,
-      "norm_label": "verifybutton()"
+      "norm_label": "verifybutton()",
+      "id": "blockchain_verifybutton_verifybutton"
     },
     {
       "label": "client.ts",
@@ -469,9 +709,9 @@
       "source_file": "frontend/dispatcher/lib/api/client.ts",
       "source_location": "L1",
       "_origin": "ast",
-      "id": "api_client",
-      "community": 90,
-      "norm_label": "client.ts"
+      "community": 22,
+      "norm_label": "client.ts",
+      "id": "api_client"
     },
     {
       "label": "ApiError",
@@ -479,9 +719,9 @@
       "source_file": "frontend/dispatcher/lib/api/client.ts",
       "source_location": "L12",
       "_origin": "ast",
-      "id": "api_client_apierror",
       "community": 29,
-      "norm_label": "apierror"
+      "norm_label": "apierror",
+      "id": "api_client_apierror"
     },
     {
       "label": ".constructor()",
@@ -489,9 +729,9 @@
       "source_file": "frontend/dispatcher/lib/api/client.ts",
       "source_location": "L13",
       "_origin": "ast",
-      "id": "api_client_apierror_constructor",
       "community": 29,
-      "norm_label": ".constructor()"
+      "norm_label": ".constructor()",
+      "id": "api_client_apierror_constructor"
     },
     {
       "label": "request()",
@@ -499,9 +739,9 @@
       "source_file": "frontend/dispatcher/lib/api/client.ts",
       "source_location": "L22",
       "_origin": "ast",
-      "id": "api_client_request",
-      "community": 90,
-      "norm_label": "request()"
+      "community": 22,
+      "norm_label": "request()",
+      "id": "api_client_request"
     },
     {
       "label": "api",
@@ -509,9 +749,9 @@
       "source_file": "frontend/dispatcher/lib/api/client.ts",
       "source_location": "L69",
       "_origin": "ast",
-      "id": "api_client_api",
-      "community": 90,
-      "norm_label": "api"
+      "community": 22,
+      "norm_label": "api",
+      "id": "api_client_api"
     },
     {
       "label": "settings.json",
@@ -1189,7 +1429,7 @@
       "source_file": "backend/app/auth/dependencies.py",
       "source_location": "L61",
       "_origin": "ast",
-      "community": 24,
+      "community": 101,
       "norm_label": "_fetch_jwks()",
       "id": "auth_dependencies_fetch_jwks"
     },
@@ -1199,7 +1439,7 @@
       "source_file": "backend/app/auth/dependencies.py",
       "source_location": "L68",
       "_origin": "ast",
-      "community": 24,
+      "community": 101,
       "norm_label": "_get_jwks()",
       "id": "auth_dependencies_get_jwks"
     },
@@ -1209,7 +1449,7 @@
       "source_file": "backend/app/auth/dependencies.py",
       "source_location": "L77",
       "_origin": "ast",
-      "community": 24,
+      "community": 101,
       "norm_label": "_get_signing_key()",
       "id": "auth_dependencies_get_signing_key"
     },
@@ -1309,7 +1549,7 @@
       "source_file": "backend/app/auth/dependencies.py",
       "source_location": "L62",
       "_origin": "ast",
-      "community": 24,
+      "community": 101,
       "norm_label": "network request to supabase jwks. called only by _get_jwks.",
       "id": "auth_dependencies_rationale_62"
     },
@@ -1319,7 +1559,7 @@
       "source_file": "backend/app/auth/dependencies.py",
       "source_location": "L69",
       "_origin": "ast",
-      "community": 24,
+      "community": 101,
       "norm_label": "return supabase jwks, re-fetching if the ttl has expired.",
       "id": "auth_dependencies_rationale_69"
     },
@@ -1329,7 +1569,7 @@
       "source_file": "backend/app/auth/dependencies.py",
       "source_location": "L78",
       "_origin": "ast",
-      "community": 24,
+      "community": 101,
       "norm_label": "return the jwk for kid. forces one refresh on cache miss to handle key rotation.",
       "id": "auth_dependencies_rationale_78"
     },
@@ -1609,7 +1849,7 @@
       "source_file": "backend/app/blockchain/critical_fields.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 9,
+      "community": 74,
       "norm_label": "critical_fields.py",
       "id": "blockchain_critical_fields"
     },
@@ -1619,7 +1859,7 @@
       "source_file": "backend/app/blockchain/critical_fields.py",
       "source_location": "L26",
       "_origin": "ast",
-      "community": 9,
+      "community": 74,
       "norm_label": "diff_critical_fields()",
       "id": "blockchain_critical_fields_diff_critical_fields"
     },
@@ -1629,7 +1869,7 @@
       "source_file": "backend/app/blockchain/critical_fields.py",
       "source_location": "L26",
       "_origin": "ast",
-      "community": 9,
+      "community": 74,
       "norm_label": "any",
       "id": "backend_app_blockchain_critical_fields_py_any"
     },
@@ -1639,7 +1879,7 @@
       "source_file": "backend/app/blockchain/critical_fields.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 9,
+      "community": 74,
       "norm_label": "critical-fields lists for vehicle/driver mutations.  a field is 'critical' if a",
       "id": "blockchain_critical_fields_rationale_1"
     },
@@ -1649,7 +1889,7 @@
       "source_file": "backend/app/blockchain/critical_fields.py",
       "source_location": "L31",
       "_origin": "ast",
-      "community": 9,
+      "community": 74,
       "norm_label": "return {field: {\"from\": old, \"to\": new}} for changed critical fields, or none.",
       "id": "blockchain_critical_fields_rationale_31"
     },
@@ -1689,7 +1929,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 9,
+      "community": 1,
       "norm_label": "exception",
       "id": "exception"
     },
@@ -2109,7 +2349,7 @@
       "source_file": "backend/app/core/exceptions.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 9,
+      "community": 1,
       "norm_label": "exceptions.py",
       "id": "core_exceptions"
     },
@@ -2129,7 +2369,7 @@
       "source_file": "backend/app/core/exceptions.py",
       "source_location": "L11",
       "_origin": "ast",
-      "community": 9,
+      "community": 20,
       "norm_label": ".__init__()",
       "id": "core_exceptions_tripconflicterror_init"
     },
@@ -2139,7 +2379,7 @@
       "source_file": "backend/app/core/exceptions.py",
       "source_location": "L19",
       "_origin": "ast",
-      "community": 9,
+      "community": 1,
       "norm_label": "resourcenotfounderror",
       "id": "core_exceptions_resourcenotfounderror"
     },
@@ -2149,7 +2389,7 @@
       "source_file": "backend/app/core/exceptions.py",
       "source_location": "L22",
       "_origin": "ast",
-      "community": 9,
+      "community": 20,
       "norm_label": ".__init__()",
       "id": "core_exceptions_resourcenotfounderror_init"
     },
@@ -2169,7 +2409,7 @@
       "source_file": "backend/app/core/exceptions.py",
       "source_location": "L31",
       "_origin": "ast",
-      "community": 9,
+      "community": 20,
       "norm_label": ".__init__()",
       "id": "core_exceptions_duplicateresourceerror_init"
     },
@@ -2189,7 +2429,7 @@
       "source_file": "backend/app/core/exceptions.py",
       "source_location": "L41",
       "_origin": "ast",
-      "community": 9,
+      "community": 20,
       "norm_label": ".__init__()",
       "id": "core_exceptions_subjectnotvisibleerror_init"
     },
@@ -2199,7 +2439,7 @@
       "source_file": "backend/app/core/exceptions.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 9,
+      "community": 1,
       "norm_label": "domain exceptions raised by the orchestration layer.  endpoints catch these and",
       "id": "core_exceptions_rationale_1"
     },
@@ -2219,7 +2459,7 @@
       "source_file": "backend/app/core/exceptions.py",
       "source_location": "L20",
       "_origin": "ast",
-      "community": 9,
+      "community": 1,
       "norm_label": "raised when a required db record does not exist or is not accessible.",
       "id": "core_exceptions_rationale_20"
     },
@@ -2459,7 +2699,7 @@
       "source_file": "backend/app/db/models/enums.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 18,
+      "community": 2,
       "norm_label": "enums.py",
       "id": "models_enums"
     },
@@ -2469,7 +2709,7 @@
       "source_file": "backend/app/db/models/enums.py",
       "source_location": "L4",
       "_origin": "ast",
-      "community": 25,
+      "community": 61,
       "norm_label": "organizationtype",
       "id": "models_enums_organizationtype"
     },
@@ -2479,7 +2719,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 18,
+      "community": 7,
       "norm_label": "str",
       "id": "str"
     },
@@ -2529,7 +2769,7 @@
       "source_file": "backend/app/db/models/enums.py",
       "source_location": "L45",
       "_origin": "ast",
-      "community": 18,
+      "community": 14,
       "norm_label": "exceptiontype",
       "id": "models_enums_exceptiontype"
     },
@@ -2539,7 +2779,7 @@
       "source_file": "backend/app/db/models/enums.py",
       "source_location": "L66",
       "_origin": "ast",
-      "community": 18,
+      "community": 14,
       "norm_label": "exceptionsource",
       "id": "models_enums_exceptionsource"
     },
@@ -2549,7 +2789,7 @@
       "source_file": "backend/app/db/models/enums.py",
       "source_location": "L72",
       "_origin": "ast",
-      "community": 18,
+      "community": 14,
       "norm_label": "exceptionseverity",
       "id": "models_enums_exceptionseverity"
     },
@@ -2599,7 +2839,7 @@
       "source_file": "backend/app/db/models/enums.py",
       "source_location": "L114",
       "_origin": "ast",
-      "community": 9,
+      "community": 49,
       "norm_label": "drivereventtype",
       "id": "models_enums_drivereventtype"
     },
@@ -2739,7 +2979,7 @@
       "source_file": "backend/app/db/models/handshakes.py",
       "source_location": "L20",
       "_origin": "ast",
-      "community": 1,
+      "community": 25,
       "norm_label": "handshakeevent",
       "id": "models_handshakes_handshakeevent"
     },
@@ -2769,7 +3009,7 @@
       "source_file": "backend/app/db/models/handshakes.py",
       "source_location": "L21",
       "_origin": "ast",
-      "community": 1,
+      "community": 25,
       "norm_label": "one row per handshake per trip. h0, h2, h5 are anchored to hedera; h1, h3, h4 ar",
       "id": "models_handshakes_rationale_21"
     },
@@ -2849,7 +3089,7 @@
       "source_file": "backend/app/db/models/people.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 25,
+      "community": 19,
       "norm_label": "people.py",
       "id": "models_people"
     },
@@ -2859,7 +3099,7 @@
       "source_file": "backend/app/db/models/people.py",
       "source_location": "L16",
       "_origin": "ast",
-      "community": 25,
+      "community": 19,
       "norm_label": "user",
       "id": "models_people_user"
     },
@@ -2869,7 +3109,7 @@
       "source_file": "backend/app/db/models/people.py",
       "source_location": "L36",
       "_origin": "ast",
-      "community": 1,
+      "community": 25,
       "norm_label": "driver",
       "id": "models_people_driver"
     },
@@ -2879,7 +3119,7 @@
       "source_file": "backend/app/db/models/people.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 25,
+      "community": 19,
       "norm_label": "sqlalchemy models for dispatcher users and drivers.",
       "id": "models_people_rationale_1"
     },
@@ -2889,7 +3129,7 @@
       "source_file": "backend/app/db/models/people.py",
       "source_location": "L17",
       "_origin": "ast",
-      "community": 25,
+      "community": 19,
       "norm_label": "dispatcher account. id must equal the supabase auth.users uuid so that     auth.",
       "id": "models_people_rationale_17"
     },
@@ -2899,7 +3139,7 @@
       "source_file": "backend/app/db/models/people.py",
       "source_location": "L37",
       "_origin": "ast",
-      "community": 1,
+      "community": 25,
       "norm_label": "driver entity \u2014 authenticates via phone otp, not email/password.",
       "id": "models_people_rationale_37"
     },
@@ -2949,7 +3189,7 @@
       "source_file": "backend/app/db/models/transit.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 18,
+      "community": 14,
       "norm_label": "transit.py",
       "id": "models_transit"
     },
@@ -2959,7 +3199,7 @@
       "source_file": "backend/app/db/models/transit.py",
       "source_location": "L17",
       "_origin": "ast",
-      "community": 18,
+      "community": 14,
       "norm_label": "checkpoint",
       "id": "models_transit_checkpoint"
     },
@@ -2969,7 +3209,7 @@
       "source_file": "backend/app/db/models/transit.py",
       "source_location": "L45",
       "_origin": "ast",
-      "community": 1,
+      "community": 25,
       "norm_label": "tripexception",
       "id": "models_transit_tripexception"
     },
@@ -2979,7 +3219,7 @@
       "source_file": "backend/app/db/models/transit.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 18,
+      "community": 14,
       "norm_label": "sqlalchemy models for in-transit checkpoints and exceptions.",
       "id": "models_transit_rationale_1"
     },
@@ -2989,7 +3229,7 @@
       "source_file": "backend/app/db/models/transit.py",
       "source_location": "L18",
       "_origin": "ast",
-      "community": 18,
+      "community": 14,
       "norm_label": "driver-logged or pulsit-pulled in-transit event between handshakes.",
       "id": "models_transit_rationale_18"
     },
@@ -2999,7 +3239,7 @@
       "source_file": "backend/app/db/models/transit.py",
       "source_location": "L46",
       "_origin": "ast",
-      "community": 1,
+      "community": 25,
       "norm_label": "anomaly recorded at any point in a trip \u2014 system-detected, driver-raised, or dis",
       "id": "models_transit_rationale_46"
     },
@@ -3249,7 +3489,7 @@
       "source_file": "backend/app/main.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 60,
+      "community": 57,
       "norm_label": "main.py",
       "id": "app_main"
     },
@@ -3259,7 +3499,7 @@
       "source_file": "backend/app/main.py",
       "source_location": "L43",
       "_origin": "ast",
-      "community": 60,
+      "community": 57,
       "norm_label": "health_check()",
       "id": "app_main_health_check"
     },
@@ -3279,7 +3519,7 @@
       "source_file": "backend/app/orchestration/driver_service.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 9,
+      "community": 49,
       "norm_label": "driver_service.py",
       "id": "orchestration_driver_service"
     },
@@ -3289,7 +3529,7 @@
       "source_file": "backend/app/orchestration/driver_service.py",
       "source_location": "L40",
       "_origin": "ast",
-      "community": 9,
+      "community": 49,
       "norm_label": "list_drivers()",
       "id": "orchestration_driver_service_list_drivers"
     },
@@ -3299,7 +3539,7 @@
       "source_file": "backend/app/orchestration/driver_service.py",
       "source_location": "L40",
       "_origin": "ast",
-      "community": 9,
+      "community": 49,
       "norm_label": "asyncsession",
       "id": "backend_app_orchestration_driver_service_py_asyncsession"
     },
@@ -3309,7 +3549,7 @@
       "source_file": "backend/app/orchestration/driver_service.py",
       "source_location": "L40",
       "_origin": "ast",
-      "community": 9,
+      "community": 49,
       "norm_label": "uuid",
       "id": "backend_app_orchestration_driver_service_py_uuid"
     },
@@ -3319,7 +3559,7 @@
       "source_file": "backend/app/orchestration/driver_service.py",
       "source_location": "L40",
       "_origin": "ast",
-      "community": 9,
+      "community": 49,
       "norm_label": "driverread",
       "id": "backend_app_orchestration_driver_service_py_driverread"
     },
@@ -3329,7 +3569,7 @@
       "source_file": "backend/app/orchestration/driver_service.py",
       "source_location": "L52",
       "_origin": "ast",
-      "community": 9,
+      "community": 49,
       "norm_label": "create_driver()",
       "id": "orchestration_driver_service_create_driver"
     },
@@ -3339,7 +3579,7 @@
       "source_file": "backend/app/orchestration/driver_service.py",
       "source_location": "L52",
       "_origin": "ast",
-      "community": 9,
+      "community": 49,
       "norm_label": "drivercreatebody",
       "id": "backend_app_orchestration_driver_service_py_drivercreatebody"
     },
@@ -3349,7 +3589,7 @@
       "source_file": "backend/app/orchestration/driver_service.py",
       "source_location": "L125",
       "_origin": "ast",
-      "community": 9,
+      "community": 49,
       "norm_label": "update_driver()",
       "id": "orchestration_driver_service_update_driver"
     },
@@ -3359,7 +3599,7 @@
       "source_file": "backend/app/orchestration/driver_service.py",
       "source_location": "L125",
       "_origin": "ast",
-      "community": 9,
+      "community": 49,
       "norm_label": "driverupdatebody",
       "id": "backend_app_orchestration_driver_service_py_driverupdatebody"
     },
@@ -3369,7 +3609,7 @@
       "source_file": "backend/app/orchestration/driver_service.py",
       "source_location": "L207",
       "_origin": "ast",
-      "community": 9,
+      "community": 49,
       "norm_label": "get_driver_detail()",
       "id": "orchestration_driver_service_get_driver_detail"
     },
@@ -3379,7 +3619,7 @@
       "source_file": "backend/app/orchestration/driver_service.py",
       "source_location": "L207",
       "_origin": "ast",
-      "community": 9,
+      "community": 49,
       "norm_label": "driverdetailresponse",
       "id": "backend_app_orchestration_driver_service_py_driverdetailresponse"
     },
@@ -3389,7 +3629,7 @@
       "source_file": "backend/app/orchestration/driver_service.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 9,
+      "community": 49,
       "norm_label": "service functions for driver resources.  extracted from resource_service.py \u2014 ow",
       "id": "orchestration_driver_service_rationale_1"
     },
@@ -3399,7 +3639,7 @@
       "source_file": "backend/app/orchestration/resource_service.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 1,
+      "community": 25,
       "norm_label": "resource_service.py",
       "id": "orchestration_resource_service"
     },
@@ -3409,7 +3649,7 @@
       "source_file": "backend/app/orchestration/resource_service.py",
       "source_location": "L35",
       "_origin": "ast",
-      "community": 1,
+      "community": 25,
       "norm_label": "list_precincts()",
       "id": "orchestration_resource_service_list_precincts"
     },
@@ -3419,7 +3659,7 @@
       "source_file": "backend/app/orchestration/resource_service.py",
       "source_location": "L35",
       "_origin": "ast",
-      "community": 1,
+      "community": 25,
       "norm_label": "asyncsession",
       "id": "backend_app_orchestration_resource_service_py_asyncsession"
     },
@@ -3429,7 +3669,7 @@
       "source_file": "backend/app/orchestration/resource_service.py",
       "source_location": "L35",
       "_origin": "ast",
-      "community": 1,
+      "community": 25,
       "norm_label": "precinctread",
       "id": "backend_app_orchestration_resource_service_py_precinctread"
     },
@@ -3439,7 +3679,7 @@
       "source_file": "backend/app/orchestration/resource_service.py",
       "source_location": "L40",
       "_origin": "ast",
-      "community": 1,
+      "community": 25,
       "norm_label": "list_trips()",
       "id": "orchestration_resource_service_list_trips"
     },
@@ -3449,7 +3689,7 @@
       "source_file": "backend/app/orchestration/resource_service.py",
       "source_location": "L40",
       "_origin": "ast",
-      "community": 1,
+      "community": 25,
       "norm_label": "uuid",
       "id": "backend_app_orchestration_resource_service_py_uuid"
     },
@@ -3459,7 +3699,7 @@
       "source_file": "backend/app/orchestration/resource_service.py",
       "source_location": "L40",
       "_origin": "ast",
-      "community": 1,
+      "community": 25,
       "norm_label": "tripstatus",
       "id": "backend_app_orchestration_resource_service_py_tripstatus"
     },
@@ -3469,7 +3709,7 @@
       "source_file": "backend/app/orchestration/resource_service.py",
       "source_location": "L40",
       "_origin": "ast",
-      "community": 1,
+      "community": 25,
       "norm_label": "triplistitemresponse",
       "id": "backend_app_orchestration_resource_service_py_triplistitemresponse"
     },
@@ -3479,7 +3719,7 @@
       "source_file": "backend/app/orchestration/resource_service.py",
       "source_location": "L117",
       "_origin": "ast",
-      "community": 1,
+      "community": 25,
       "norm_label": "get_trip_detail()",
       "id": "orchestration_resource_service_get_trip_detail"
     },
@@ -3489,7 +3729,7 @@
       "source_file": "backend/app/orchestration/resource_service.py",
       "source_location": "L117",
       "_origin": "ast",
-      "community": 1,
+      "community": 25,
       "norm_label": "tripdetailresponse",
       "id": "backend_app_orchestration_resource_service_py_tripdetailresponse"
     },
@@ -3499,7 +3739,7 @@
       "source_file": "backend/app/orchestration/resource_service.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 1,
+      "community": 25,
       "norm_label": "service functions for resource endpoints (precincts and trips).  layering: impor",
       "id": "orchestration_resource_service_rationale_1"
     },
@@ -3509,7 +3749,7 @@
       "source_file": "backend/app/orchestration/resource_service.py",
       "source_location": "L122",
       "_origin": "ast",
-      "community": 1,
+      "community": 25,
       "norm_label": "raises resourcenotfounderror if trip not found or belongs to a different org.",
       "id": "orchestration_resource_service_rationale_122"
     },
@@ -3519,7 +3759,7 @@
       "source_file": "backend/app/orchestration/trip_service.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 53,
+      "community": 1,
       "norm_label": "trip_service.py",
       "id": "orchestration_trip_service"
     },
@@ -3529,7 +3769,7 @@
       "source_file": "backend/app/orchestration/trip_service.py",
       "source_location": "L28",
       "_origin": "ast",
-      "community": 53,
+      "community": 1,
       "norm_label": "_generate_trip_reference()",
       "id": "orchestration_trip_service_generate_trip_reference"
     },
@@ -3539,7 +3779,7 @@
       "source_file": "backend/app/orchestration/trip_service.py",
       "source_location": "L35",
       "_origin": "ast",
-      "community": 53,
+      "community": 1,
       "norm_label": "_fetch_driver()",
       "id": "orchestration_trip_service_fetch_driver"
     },
@@ -3549,7 +3789,7 @@
       "source_file": "backend/app/orchestration/trip_service.py",
       "source_location": "L35",
       "_origin": "ast",
-      "community": 53,
+      "community": 1,
       "norm_label": "asyncsession",
       "id": "backend_app_orchestration_trip_service_py_asyncsession"
     },
@@ -3559,7 +3799,7 @@
       "source_file": "backend/app/orchestration/trip_service.py",
       "source_location": "L35",
       "_origin": "ast",
-      "community": 53,
+      "community": 1,
       "norm_label": "uuid",
       "id": "backend_app_orchestration_trip_service_py_uuid"
     },
@@ -3579,7 +3819,7 @@
       "source_file": "backend/app/orchestration/trip_service.py",
       "source_location": "L53",
       "_origin": "ast",
-      "community": 53,
+      "community": 1,
       "norm_label": "_fetch_vehicle()",
       "id": "orchestration_trip_service_fetch_vehicle"
     },
@@ -3609,7 +3849,7 @@
       "source_file": "backend/app/orchestration/trip_service.py",
       "source_location": "L73",
       "_origin": "ast",
-      "community": 53,
+      "community": 1,
       "norm_label": "_check_order_number_conflict()",
       "id": "orchestration_trip_service_check_order_number_conflict"
     },
@@ -3619,7 +3859,7 @@
       "source_file": "backend/app/orchestration/trip_service.py",
       "source_location": "L102",
       "_origin": "ast",
-      "community": 53,
+      "community": 1,
       "norm_label": "create_trip()",
       "id": "orchestration_trip_service_create_trip"
     },
@@ -3659,7 +3899,7 @@
       "source_file": "backend/app/orchestration/trip_service.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 53,
+      "community": 1,
       "norm_label": "trip orchestration \u2014 create_trip() is the single entry point for trip creation.",
       "id": "orchestration_trip_service_rationale_1"
     },
@@ -3669,7 +3909,7 @@
       "source_file": "backend/app/orchestration/trip_service.py",
       "source_location": "L29",
       "_origin": "ast",
-      "community": 53,
+      "community": 1,
       "norm_label": "return a unique trip reference in the format fp-yyyymmdd-xxxxxxxx.",
       "id": "orchestration_trip_service_rationale_29"
     },
@@ -3679,7 +3919,7 @@
       "source_file": "backend/app/orchestration/trip_service.py",
       "source_location": "L78",
       "_origin": "ast",
-      "community": 53,
+      "community": 1,
       "norm_label": "raise tripconflicterror if an active trip already has this order_number.",
       "id": "orchestration_trip_service_rationale_78"
     },
@@ -3689,7 +3929,7 @@
       "source_file": "backend/app/orchestration/trip_service.py",
       "source_location": "L107",
       "_origin": "ast",
-      "community": 53,
+      "community": 1,
       "norm_label": "create a trip, triptrailer rows, and the h0 handshakeevent atomically.      rais",
       "id": "orchestration_trip_service_rationale_107"
     },
@@ -3969,7 +4209,7 @@
       "source_file": "backend/app/schemas/__init__.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 25,
+      "community": 14,
       "norm_label": "__init__.py",
       "id": "schemas_init"
     },
@@ -3979,7 +4219,7 @@
       "source_file": "backend/app/schemas/__init__.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 25,
+      "community": 14,
       "norm_label": "public re-exports for all freightproof sa pydantic schemas.",
       "id": "schemas_init_rationale_1"
     },
@@ -4409,7 +4649,7 @@
       "source_file": "backend/app/schemas/organisations.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 25,
+      "community": 61,
       "norm_label": "organisations.py",
       "id": "schemas_organisations"
     },
@@ -4419,7 +4659,7 @@
       "source_file": "backend/app/schemas/organisations.py",
       "source_location": "L13",
       "_origin": "ast",
-      "community": 25,
+      "community": 61,
       "norm_label": "organizationbase",
       "id": "schemas_organisations_organizationbase"
     },
@@ -4429,7 +4669,7 @@
       "source_file": "backend/app/schemas/organisations.py",
       "source_location": "L21",
       "_origin": "ast",
-      "community": 25,
+      "community": 61,
       "norm_label": "organizationcreate",
       "id": "schemas_organisations_organizationcreate"
     },
@@ -4439,7 +4679,7 @@
       "source_file": "backend/app/schemas/organisations.py",
       "source_location": "L25",
       "_origin": "ast",
-      "community": 25,
+      "community": 61,
       "norm_label": "organizationupdate",
       "id": "schemas_organisations_organizationupdate"
     },
@@ -4449,7 +4689,7 @@
       "source_file": "backend/app/schemas/organisations.py",
       "source_location": "L33",
       "_origin": "ast",
-      "community": 25,
+      "community": 61,
       "norm_label": "organizationread",
       "id": "schemas_organisations_organizationread"
     },
@@ -4459,7 +4699,7 @@
       "source_file": "backend/app/schemas/organisations.py",
       "source_location": "L38",
       "_origin": "ast",
-      "community": 25,
+      "community": 61,
       "norm_label": "precinctbase",
       "id": "schemas_organisations_precinctbase"
     },
@@ -4469,7 +4709,7 @@
       "source_file": "backend/app/schemas/organisations.py",
       "source_location": "L49",
       "_origin": "ast",
-      "community": 25,
+      "community": 61,
       "norm_label": "precinctcreate",
       "id": "schemas_organisations_precinctcreate"
     },
@@ -4479,7 +4719,7 @@
       "source_file": "backend/app/schemas/organisations.py",
       "source_location": "L53",
       "_origin": "ast",
-      "community": 25,
+      "community": 61,
       "norm_label": "precinctupdate",
       "id": "schemas_organisations_precinctupdate"
     },
@@ -4489,7 +4729,7 @@
       "source_file": "backend/app/schemas/organisations.py",
       "source_location": "L63",
       "_origin": "ast",
-      "community": 25,
+      "community": 61,
       "norm_label": "precinctread",
       "id": "schemas_organisations_precinctread"
     },
@@ -4499,7 +4739,7 @@
       "source_file": "backend/app/schemas/organisations.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 25,
+      "community": 61,
       "norm_label": "pydantic v2 schemas for organization and precinct.",
       "id": "schemas_organisations_rationale_1"
     },
@@ -4509,7 +4749,7 @@
       "source_file": "backend/app/schemas/people.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 5,
+      "community": 18,
       "norm_label": "people.py",
       "id": "schemas_people"
     },
@@ -4519,7 +4759,7 @@
       "source_file": "backend/app/schemas/people.py",
       "source_location": "L12",
       "_origin": "ast",
-      "community": 5,
+      "community": 18,
       "norm_label": "userbase",
       "id": "schemas_people_userbase"
     },
@@ -4529,7 +4769,7 @@
       "source_file": "backend/app/schemas/people.py",
       "source_location": "L21",
       "_origin": "ast",
-      "community": 5,
+      "community": 18,
       "norm_label": "usercreate",
       "id": "schemas_people_usercreate"
     },
@@ -4549,7 +4789,7 @@
       "source_file": "backend/app/schemas/people.py",
       "source_location": "L35",
       "_origin": "ast",
-      "community": 5,
+      "community": 18,
       "norm_label": "userread",
       "id": "schemas_people_userread"
     },
@@ -4559,7 +4799,7 @@
       "source_file": "backend/app/schemas/people.py",
       "source_location": "L41",
       "_origin": "ast",
-      "community": 5,
+      "community": 18,
       "norm_label": "driverbase",
       "id": "schemas_people_driverbase"
     },
@@ -4569,7 +4809,7 @@
       "source_file": "backend/app/schemas/people.py",
       "source_location": "L52",
       "_origin": "ast",
-      "community": 7,
+      "community": 18,
       "norm_label": "drivercreate",
       "id": "schemas_people_drivercreate"
     },
@@ -4579,7 +4819,7 @@
       "source_file": "backend/app/schemas/people.py",
       "source_location": "L55",
       "_origin": "ast",
-      "community": 7,
+      "community": 18,
       "norm_label": ".validate_id_number()",
       "id": "schemas_people_drivercreate_validate_id_number"
     },
@@ -4589,7 +4829,7 @@
       "source_file": "backend/app/schemas/people.py",
       "source_location": "L61",
       "_origin": "ast",
-      "community": 5,
+      "community": 18,
       "norm_label": "drivercreatebody",
       "id": "schemas_people_drivercreatebody"
     },
@@ -4599,7 +4839,7 @@
       "source_file": "backend/app/schemas/people.py",
       "source_location": "L77",
       "_origin": "ast",
-      "community": 5,
+      "community": 18,
       "norm_label": ".validate_id_number()",
       "id": "schemas_people_drivercreatebody_validate_id_number"
     },
@@ -4619,7 +4859,7 @@
       "source_file": "backend/app/schemas/people.py",
       "source_location": "L93",
       "_origin": "ast",
-      "community": 5,
+      "community": 18,
       "norm_label": "driverupdatebody",
       "id": "schemas_people_driverupdatebody"
     },
@@ -4629,7 +4869,7 @@
       "source_file": "backend/app/schemas/people.py",
       "source_location": "L108",
       "_origin": "ast",
-      "community": 5,
+      "community": 18,
       "norm_label": "driverread",
       "id": "schemas_people_driverread"
     },
@@ -4639,7 +4879,7 @@
       "source_file": "backend/app/schemas/people.py",
       "source_location": "L125",
       "_origin": "ast",
-      "community": 5,
+      "community": 18,
       "norm_label": "driverdetailresponse",
       "id": "schemas_people_driverdetailresponse"
     },
@@ -4649,7 +4889,7 @@
       "source_file": "backend/app/schemas/people.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 5,
+      "community": 18,
       "norm_label": "pydantic v2 schemas for user and driver.",
       "id": "schemas_people_rationale_1"
     },
@@ -4659,7 +4899,7 @@
       "source_file": "backend/app/schemas/people.py",
       "source_location": "L62",
       "_origin": "ast",
-      "community": 5,
+      "community": 18,
       "norm_label": "fields the dispatcher submits when registering a new driver.      organization_i",
       "id": "schemas_people_rationale_62"
     },
@@ -4669,7 +4909,7 @@
       "source_file": "backend/app/schemas/people.py",
       "source_location": "L94",
       "_origin": "ast",
-      "community": 5,
+      "community": 18,
       "norm_label": "fields the dispatcher may change via patch /drivers/{id}.      all fields are op",
       "id": "schemas_people_rationale_94"
     },
@@ -4679,7 +4919,7 @@
       "source_file": "backend/app/schemas/people.py",
       "source_location": "L126",
       "_origin": "ast",
-      "community": 5,
+      "community": 18,
       "norm_label": "extended driver shape returned by get /drivers/{id}.      includes the full even",
       "id": "schemas_people_rationale_126"
     },
@@ -4749,7 +4989,7 @@
       "source_file": "backend/app/schemas/transit.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 18,
+      "community": 14,
       "norm_label": "transit.py",
       "id": "schemas_transit"
     },
@@ -4759,7 +4999,7 @@
       "source_file": "backend/app/schemas/transit.py",
       "source_location": "L13",
       "_origin": "ast",
-      "community": 18,
+      "community": 14,
       "norm_label": "checkpointbase",
       "id": "schemas_transit_checkpointbase"
     },
@@ -4769,7 +5009,7 @@
       "source_file": "backend/app/schemas/transit.py",
       "source_location": "L28",
       "_origin": "ast",
-      "community": 18,
+      "community": 14,
       "norm_label": "checkpointcreate",
       "id": "schemas_transit_checkpointcreate"
     },
@@ -4779,7 +5019,7 @@
       "source_file": "backend/app/schemas/transit.py",
       "source_location": "L32",
       "_origin": "ast",
-      "community": 18,
+      "community": 14,
       "norm_label": "checkpointupdate",
       "id": "schemas_transit_checkpointupdate"
     },
@@ -4789,7 +5029,7 @@
       "source_file": "backend/app/schemas/transit.py",
       "source_location": "L39",
       "_origin": "ast",
-      "community": 18,
+      "community": 14,
       "norm_label": "checkpointread",
       "id": "schemas_transit_checkpointread"
     },
@@ -4799,7 +5039,7 @@
       "source_file": "backend/app/schemas/transit.py",
       "source_location": "L45",
       "_origin": "ast",
-      "community": 18,
+      "community": 14,
       "norm_label": "tripexceptionbase",
       "id": "schemas_transit_tripexceptionbase"
     },
@@ -4809,7 +5049,7 @@
       "source_file": "backend/app/schemas/transit.py",
       "source_location": "L58",
       "_origin": "ast",
-      "community": 18,
+      "community": 14,
       "norm_label": "tripexceptioncreate",
       "id": "schemas_transit_tripexceptioncreate"
     },
@@ -4819,7 +5059,7 @@
       "source_file": "backend/app/schemas/transit.py",
       "source_location": "L62",
       "_origin": "ast",
-      "community": 18,
+      "community": 14,
       "norm_label": "tripexceptionupdate",
       "id": "schemas_transit_tripexceptionupdate"
     },
@@ -4829,7 +5069,7 @@
       "source_file": "backend/app/schemas/transit.py",
       "source_location": "L72",
       "_origin": "ast",
-      "community": 18,
+      "community": 14,
       "norm_label": "tripexceptionread",
       "id": "schemas_transit_tripexceptionread"
     },
@@ -4839,7 +5079,7 @@
       "source_file": "backend/app/schemas/transit.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 18,
+      "community": 14,
       "norm_label": "pydantic v2 schemas for checkpoint and tripexception.",
       "id": "schemas_transit_rationale_1"
     },
@@ -4989,7 +5229,7 @@
       "source_file": "backend/app/schemas/trips.py",
       "source_location": "L130",
       "_origin": "ast",
-      "community": 7,
+      "community": 18,
       "norm_label": "tripcreate",
       "id": "schemas_trips_tripcreate"
     },
@@ -4999,7 +5239,7 @@
       "source_file": "backend/app/schemas/trips.py",
       "source_location": "L132",
       "_origin": "ast",
-      "community": 7,
+      "community": 18,
       "norm_label": ".validate_arrival_after_departure()",
       "id": "schemas_trips_tripcreate_validate_arrival_after_departure"
     },
@@ -5299,7 +5539,7 @@
       "source_file": "backend/app/tasks/__init__.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 145,
+      "community": 14,
       "norm_label": "__init__.py",
       "id": "tasks_init"
     },
@@ -5309,7 +5549,7 @@
       "source_file": "backend/app/tasks/__init__.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 145,
+      "community": 14,
       "norm_label": "celery application and task registry.  this module exposes the celery app instan",
       "id": "tasks_init_rationale_1"
     },
@@ -5319,7 +5559,7 @@
       "source_file": "backend/migrations/env.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 14,
+      "community": 99,
       "norm_label": "env.py",
       "id": "migrations_env"
     },
@@ -5329,7 +5569,7 @@
       "source_file": "backend/migrations/env.py",
       "source_location": "L38",
       "_origin": "ast",
-      "community": 14,
+      "community": 99,
       "norm_label": "run_migrations_offline()",
       "id": "migrations_env_run_migrations_offline"
     },
@@ -5339,7 +5579,7 @@
       "source_file": "backend/migrations/env.py",
       "source_location": "L51",
       "_origin": "ast",
-      "community": 14,
+      "community": 99,
       "norm_label": "do_run_migrations()",
       "id": "migrations_env_do_run_migrations"
     },
@@ -5349,7 +5589,7 @@
       "source_file": "backend/migrations/env.py",
       "source_location": "L51",
       "_origin": "ast",
-      "community": 14,
+      "community": 99,
       "norm_label": "connection",
       "id": "connection"
     },
@@ -5359,7 +5599,7 @@
       "source_file": "backend/migrations/env.py",
       "source_location": "L57",
       "_origin": "ast",
-      "community": 14,
+      "community": 99,
       "norm_label": "run_async_migrations()",
       "id": "migrations_env_run_async_migrations"
     },
@@ -5369,7 +5609,7 @@
       "source_file": "backend/migrations/env.py",
       "source_location": "L76",
       "_origin": "ast",
-      "community": 14,
+      "community": 99,
       "norm_label": "run_migrations_online()",
       "id": "migrations_env_run_migrations_online"
     },
@@ -5379,7 +5619,7 @@
       "source_file": "backend/migrations/env.py",
       "source_location": "L39",
       "_origin": "ast",
-      "community": 14,
+      "community": 99,
       "norm_label": "run migrations without a live db connection (outputs sql to stdout).",
       "id": "migrations_env_rationale_39"
     },
@@ -5389,7 +5629,7 @@
       "source_file": "backend/migrations/env.py",
       "source_location": "L58",
       "_origin": "ast",
-      "community": 14,
+      "community": 99,
       "norm_label": "create an async engine and run migrations inside a sync wrapper.      asyncpg ca",
       "id": "migrations_env_rationale_58"
     },
@@ -5399,7 +5639,7 @@
       "source_file": "backend/migrations/env.py",
       "source_location": "L77",
       "_origin": "ast",
-      "community": 14,
+      "community": 99,
       "norm_label": "entry point for online (live connection) migrations.",
       "id": "migrations_env_rationale_77"
     },
@@ -5409,7 +5649,7 @@
       "source_file": "backend/migrations/versions/0001_initial_schema.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 14,
+      "community": 100,
       "norm_label": "0001_initial_schema.py",
       "id": "versions_0001_initial_schema"
     },
@@ -5419,7 +5659,7 @@
       "source_file": "backend/migrations/versions/0001_initial_schema.py",
       "source_location": "L18",
       "_origin": "ast",
-      "community": 14,
+      "community": 100,
       "norm_label": "upgrade()",
       "id": "versions_0001_initial_schema_upgrade"
     },
@@ -5429,7 +5669,7 @@
       "source_file": "backend/migrations/versions/0001_initial_schema.py",
       "source_location": "L485",
       "_origin": "ast",
-      "community": 14,
+      "community": 100,
       "norm_label": "downgrade()",
       "id": "versions_0001_initial_schema_downgrade"
     },
@@ -5439,7 +5679,7 @@
       "source_file": "backend/migrations/versions/0002_driver_substitutions.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 14,
+      "community": 100,
       "norm_label": "0002_driver_substitutions.py",
       "id": "versions_0002_driver_substitutions"
     },
@@ -5449,7 +5689,7 @@
       "source_file": "backend/migrations/versions/0002_driver_substitutions.py",
       "source_location": "L23",
       "_origin": "ast",
-      "community": 14,
+      "community": 100,
       "norm_label": "upgrade()",
       "id": "versions_0002_driver_substitutions_upgrade"
     },
@@ -5459,7 +5699,7 @@
       "source_file": "backend/migrations/versions/0002_driver_substitutions.py",
       "source_location": "L58",
       "_origin": "ast",
-      "community": 14,
+      "community": 100,
       "norm_label": "downgrade()",
       "id": "versions_0002_driver_substitutions_downgrade"
     },
@@ -5469,7 +5709,7 @@
       "source_file": "backend/migrations/versions/0002_tom_supabase_auth_schema.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 14,
+      "community": 53,
       "norm_label": "0002_tom_supabase_auth_schema.py",
       "id": "versions_0002_tom_supabase_auth_schema"
     },
@@ -5479,7 +5719,7 @@
       "source_file": "backend/migrations/versions/0002_tom_supabase_auth_schema.py",
       "source_location": "L27",
       "_origin": "ast",
-      "community": 14,
+      "community": 53,
       "norm_label": "upgrade()",
       "id": "versions_0002_tom_supabase_auth_schema_upgrade"
     },
@@ -5489,7 +5729,7 @@
       "source_file": "backend/migrations/versions/0002_tom_supabase_auth_schema.py",
       "source_location": "L46",
       "_origin": "ast",
-      "community": 14,
+      "community": 53,
       "norm_label": "downgrade()",
       "id": "versions_0002_tom_supabase_auth_schema_downgrade"
     },
@@ -5499,7 +5739,7 @@
       "source_file": "backend/migrations/versions/0003_tom_rls_policies.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 14,
+      "community": 53,
       "norm_label": "0003_tom_rls_policies.py",
       "id": "versions_0003_tom_rls_policies"
     },
@@ -5509,7 +5749,7 @@
       "source_file": "backend/migrations/versions/0003_tom_rls_policies.py",
       "source_location": "L32",
       "_origin": "ast",
-      "community": 14,
+      "community": 53,
       "norm_label": "upgrade()",
       "id": "versions_0003_tom_rls_policies_upgrade"
     },
@@ -5519,7 +5759,7 @@
       "source_file": "backend/migrations/versions/0003_tom_rls_policies.py",
       "source_location": "L505",
       "_origin": "ast",
-      "community": 14,
+      "community": 53,
       "norm_label": "downgrade()",
       "id": "versions_0003_tom_rls_policies_downgrade"
     },
@@ -5529,7 +5769,7 @@
       "source_file": "backend/migrations/versions/2026_05_14_ciaran_add_vehicles_updated_at.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 14,
+      "community": 53,
       "norm_label": "2026_05_14_ciaran_add_vehicles_updated_at.py",
       "id": "versions_2026_05_14_ciaran_add_vehicles_updated_at"
     },
@@ -5539,7 +5779,7 @@
       "source_file": "backend/migrations/versions/2026_05_14_ciaran_add_vehicles_updated_at.py",
       "source_location": "L22",
       "_origin": "ast",
-      "community": 14,
+      "community": 53,
       "norm_label": "upgrade()",
       "id": "versions_2026_05_14_ciaran_add_vehicles_updated_at_upgrade"
     },
@@ -5549,7 +5789,7 @@
       "source_file": "backend/migrations/versions/2026_05_14_ciaran_add_vehicles_updated_at.py",
       "source_location": "L46",
       "_origin": "ast",
-      "community": 14,
+      "community": 53,
       "norm_label": "downgrade()",
       "id": "versions_2026_05_14_ciaran_add_vehicles_updated_at_downgrade"
     },
@@ -5559,7 +5799,7 @@
       "source_file": "backend/migrations/versions/2026_05_16_ciaran_add_missing_updated_at.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 14,
+      "community": 53,
       "norm_label": "2026_05_16_ciaran_add_missing_updated_at.py",
       "id": "versions_2026_05_16_ciaran_add_missing_updated_at"
     },
@@ -5569,7 +5809,7 @@
       "source_file": "backend/migrations/versions/2026_05_16_ciaran_add_missing_updated_at.py",
       "source_location": "L32",
       "_origin": "ast",
-      "community": 14,
+      "community": 53,
       "norm_label": "upgrade()",
       "id": "versions_2026_05_16_ciaran_add_missing_updated_at_upgrade"
     },
@@ -5579,7 +5819,7 @@
       "source_file": "backend/migrations/versions/2026_05_16_ciaran_add_missing_updated_at.py",
       "source_location": "L54",
       "_origin": "ast",
-      "community": 14,
+      "community": 53,
       "norm_label": "downgrade()",
       "id": "versions_2026_05_16_ciaran_add_missing_updated_at_downgrade"
     },
@@ -5859,7 +6099,7 @@
       "source_file": "backend/tests/conftest.py",
       "source_location": "L76",
       "_origin": "ast",
-      "community": 46,
+      "community": 24,
       "norm_label": "make_token()",
       "id": "tests_conftest_make_token"
     },
@@ -5969,7 +6209,7 @@
       "source_file": "backend/tests/conftest.py",
       "source_location": "L83",
       "_origin": "ast",
-      "community": 46,
+      "community": 24,
       "norm_label": "return an es256-signed jwt matching the supabase auth payload shape.      role a",
       "id": "tests_conftest_rationale_83"
     },
@@ -6479,7 +6719,7 @@
       "source_file": "backend/tests/integration/test_drivers_anchor.py",
       "source_location": "L32",
       "_origin": "ast",
-      "community": 25,
+      "community": 60,
       "norm_label": "asyncsession",
       "id": "backend_tests_integration_test_drivers_anchor_py_asyncsession"
     },
@@ -7199,7 +7439,7 @@
       "source_file": "backend/tests/integration/test_vehicles_anchor.py",
       "source_location": "L26",
       "_origin": "ast",
-      "community": 25,
+      "community": 59,
       "norm_label": "asyncsession",
       "id": "backend_tests_integration_test_vehicles_anchor_py_asyncsession"
     },
@@ -7349,7 +7589,7 @@
       "source_file": "backend/tests/unit/test_auth_dependencies.py",
       "source_location": "L26",
       "_origin": "ast",
-      "community": 46,
+      "community": 24,
       "norm_label": "patch_jwks()",
       "id": "unit_test_auth_dependencies_patch_jwks"
     },
@@ -7359,7 +7599,7 @@
       "source_file": "backend/tests/unit/test_auth_dependencies.py",
       "source_location": "L26",
       "_origin": "ast",
-      "community": 46,
+      "community": 24,
       "norm_label": "monkeypatch",
       "id": "backend_tests_unit_test_auth_dependencies_py_monkeypatch"
     },
@@ -7369,7 +7609,7 @@
       "source_file": "backend/tests/unit/test_auth_dependencies.py",
       "source_location": "L34",
       "_origin": "ast",
-      "community": 46,
+      "community": 24,
       "norm_label": "test_decode_token_valid_returns_payload()",
       "id": "unit_test_auth_dependencies_test_decode_token_valid_returns_payload"
     },
@@ -7379,7 +7619,7 @@
       "source_file": "backend/tests/unit/test_auth_dependencies.py",
       "source_location": "L44",
       "_origin": "ast",
-      "community": 46,
+      "community": 24,
       "norm_label": "test_decode_token_expired_raises_401()",
       "id": "unit_test_auth_dependencies_test_decode_token_expired_raises_401"
     },
@@ -7389,7 +7629,7 @@
       "source_file": "backend/tests/unit/test_auth_dependencies.py",
       "source_location": "L54",
       "_origin": "ast",
-      "community": 46,
+      "community": 24,
       "norm_label": "test_decode_token_wrong_key_raises_401()",
       "id": "unit_test_auth_dependencies_test_decode_token_wrong_key_raises_401"
     },
@@ -7409,7 +7649,7 @@
       "source_file": "backend/tests/unit/test_auth_dependencies.py",
       "source_location": "L92",
       "_origin": "ast",
-      "community": 46,
+      "community": 24,
       "norm_label": "test_decode_token_unknown_kid_raises_401()",
       "id": "unit_test_auth_dependencies_test_decode_token_unknown_kid_raises_401"
     },
@@ -7489,7 +7729,7 @@
       "source_file": "backend/tests/unit/test_auth_dependencies.py",
       "source_location": "L27",
       "_origin": "ast",
-      "community": 46,
+      "community": 24,
       "norm_label": "patch _get_jwks for every test in this module \u2014 no supabase network calls.",
       "id": "unit_test_auth_dependencies_rationale_27"
     },
@@ -7559,7 +7799,7 @@
       "source_file": "backend/tests/unit/test_critical_fields.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 9,
+      "community": 74,
       "norm_label": "test_critical_fields.py",
       "id": "unit_test_critical_fields"
     },
@@ -7569,7 +7809,7 @@
       "source_file": "backend/tests/unit/test_critical_fields.py",
       "source_location": "L7",
       "_origin": "ast",
-      "community": 9,
+      "community": 74,
       "norm_label": "test_diff_returns_none_when_no_critical_change()",
       "id": "unit_test_critical_fields_test_diff_returns_none_when_no_critical_change"
     },
@@ -7579,7 +7819,7 @@
       "source_file": "backend/tests/unit/test_critical_fields.py",
       "source_location": "L13",
       "_origin": "ast",
-      "community": 9,
+      "community": 74,
       "norm_label": "test_diff_returns_diff_when_critical_changed()",
       "id": "unit_test_critical_fields_test_diff_returns_diff_when_critical_changed"
     },
@@ -7589,7 +7829,7 @@
       "source_file": "backend/tests/unit/test_critical_fields.py",
       "source_location": "L20",
       "_origin": "ast",
-      "community": 9,
+      "community": 74,
       "norm_label": "test_diff_multiple_critical_fields()",
       "id": "unit_test_critical_fields_test_diff_multiple_critical_fields"
     },
@@ -7599,7 +7839,7 @@
       "source_file": "backend/tests/unit/test_critical_fields.py",
       "source_location": "L30",
       "_origin": "ast",
-      "community": 9,
+      "community": 74,
       "norm_label": "test_diff_handles_missing_keys_as_none()",
       "id": "unit_test_critical_fields_test_diff_handles_missing_keys_as_none"
     },
@@ -7609,7 +7849,7 @@
       "source_file": "backend/tests/unit/test_exceptions.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 9,
+      "community": 1,
       "norm_label": "test_exceptions.py",
       "id": "unit_test_exceptions"
     },
@@ -7619,7 +7859,7 @@
       "source_file": "backend/tests/unit/test_exceptions.py",
       "source_location": "L6",
       "_origin": "ast",
-      "community": 9,
+      "community": 1,
       "norm_label": "test_trip_conflict_error_carries_order_number()",
       "id": "unit_test_exceptions_test_trip_conflict_error_carries_order_number"
     },
@@ -7629,7 +7869,7 @@
       "source_file": "backend/tests/unit/test_exceptions.py",
       "source_location": "L12",
       "_origin": "ast",
-      "community": 9,
+      "community": 1,
       "norm_label": "test_resource_not_found_error_carries_resource_and_id()",
       "id": "unit_test_exceptions_test_resource_not_found_error_carries_resource_and_id"
     },
@@ -7639,7 +7879,7 @@
       "source_file": "backend/tests/unit/test_exceptions.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 9,
+      "community": 1,
       "norm_label": "tests for domain exception classes.",
       "id": "unit_test_exceptions_rationale_1"
     },
@@ -7729,7 +7969,7 @@
       "source_file": "backend/tests/unit/test_hedera_service.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 3,
+      "community": 65,
       "norm_label": "test_hedera_service.py",
       "id": "unit_test_hedera_service"
     },
@@ -7739,7 +7979,7 @@
       "source_file": "backend/tests/unit/test_hedera_service.py",
       "source_location": "L17",
       "_origin": "ast",
-      "community": 3,
+      "community": 65,
       "norm_label": "_fakeadapter",
       "id": "unit_test_hedera_service_fakeadapter"
     },
@@ -7749,7 +7989,7 @@
       "source_file": "backend/tests/unit/test_hedera_service.py",
       "source_location": "L18",
       "_origin": "ast",
-      "community": 3,
+      "community": 65,
       "norm_label": ".__init__()",
       "id": "unit_test_hedera_service_fakeadapter_init"
     },
@@ -7759,7 +7999,7 @@
       "source_file": "backend/tests/unit/test_hedera_service.py",
       "source_location": "L21",
       "_origin": "ast",
-      "community": 3,
+      "community": 65,
       "norm_label": ".submit_message()",
       "id": "unit_test_hedera_service_fakeadapter_submit_message"
     },
@@ -7779,7 +8019,7 @@
       "source_file": "backend/tests/unit/test_hedera_service.py",
       "source_location": "L31",
       "_origin": "ast",
-      "community": 3,
+      "community": 65,
       "norm_label": "test_submit_hash_calls_adapter_with_normalized_hash()",
       "id": "unit_test_hedera_service_test_submit_hash_calls_adapter_with_normalized_hash"
     },
@@ -7789,7 +8029,7 @@
       "source_file": "backend/tests/unit/test_hedera_service.py",
       "source_location": "L47",
       "_origin": "ast",
-      "community": 3,
+      "community": 65,
       "norm_label": "test_submit_hash_rejects_invalid_sha256_hex()",
       "id": "unit_test_hedera_service_test_submit_hash_rejects_invalid_sha256_hex"
     },
@@ -7799,7 +8039,7 @@
       "source_file": "backend/tests/unit/test_hedera_service.py",
       "source_location": "L61",
       "_origin": "ast",
-      "community": 3,
+      "community": 65,
       "norm_label": "test_verify_hash_returns_true_when_message_matches()",
       "id": "unit_test_hedera_service_test_verify_hash_returns_true_when_message_matches"
     },
@@ -7809,7 +8049,7 @@
       "source_file": "backend/tests/unit/test_hedera_service.py",
       "source_location": "L82",
       "_origin": "ast",
-      "community": 3,
+      "community": 65,
       "norm_label": "test_verify_hash_returns_false_when_message_differs()",
       "id": "unit_test_hedera_service_test_verify_hash_returns_false_when_message_differs"
     },
@@ -7819,7 +8059,7 @@
       "source_file": "backend/tests/unit/test_hedera_service.py",
       "source_location": "L101",
       "_origin": "ast",
-      "community": 3,
+      "community": 65,
       "norm_label": "test_verify_hash_raises_on_http_error()",
       "id": "unit_test_hedera_service_test_verify_hash_raises_on_http_error"
     },
@@ -7829,7 +8069,7 @@
       "source_file": "backend/tests/unit/test_hedera_service.py",
       "source_location": "L119",
       "_origin": "ast",
-      "community": 3,
+      "community": 65,
       "norm_label": "test_missing_config_raises()",
       "id": "unit_test_hedera_service_test_missing_config_raises"
     },
@@ -7839,7 +8079,7 @@
       "source_file": "backend/tests/unit/test_hedera_service.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 3,
+      "community": 65,
       "norm_label": "unit tests for hederaservice wrapper.",
       "id": "unit_test_hedera_service_rationale_1"
     },
@@ -8059,7 +8299,7 @@
       "source_file": "backend/tests/unit/test_schema_validators.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 7,
+      "community": 18,
       "norm_label": "test_schema_validators.py",
       "id": "unit_test_schema_validators"
     },
@@ -8069,7 +8309,7 @@
       "source_file": "backend/tests/unit/test_schema_validators.py",
       "source_location": "L15",
       "_origin": "ast",
-      "community": 7,
+      "community": 18,
       "norm_label": "test_driver_id_number_valid()",
       "id": "unit_test_schema_validators_test_driver_id_number_valid"
     },
@@ -8079,7 +8319,7 @@
       "source_file": "backend/tests/unit/test_schema_validators.py",
       "source_location": "L28",
       "_origin": "ast",
-      "community": 7,
+      "community": 18,
       "norm_label": "test_driver_id_number_too_short()",
       "id": "unit_test_schema_validators_test_driver_id_number_too_short"
     },
@@ -8089,7 +8329,7 @@
       "source_file": "backend/tests/unit/test_schema_validators.py",
       "source_location": "L41",
       "_origin": "ast",
-      "community": 7,
+      "community": 18,
       "norm_label": "test_driver_id_number_non_digits()",
       "id": "unit_test_schema_validators_test_driver_id_number_non_digits"
     },
@@ -8099,7 +8339,7 @@
       "source_file": "backend/tests/unit/test_schema_validators.py",
       "source_location": "L58",
       "_origin": "ast",
-      "community": 7,
+      "community": 18,
       "norm_label": "test_trip_arrival_after_departure_valid()",
       "id": "unit_test_schema_validators_test_trip_arrival_after_departure_valid"
     },
@@ -8109,7 +8349,7 @@
       "source_file": "backend/tests/unit/test_schema_validators.py",
       "source_location": "L77",
       "_origin": "ast",
-      "community": 7,
+      "community": 18,
       "norm_label": "test_trip_arrival_before_departure_invalid()",
       "id": "unit_test_schema_validators_test_trip_arrival_before_departure_invalid"
     },
@@ -8119,7 +8359,7 @@
       "source_file": "backend/tests/unit/test_schema_validators.py",
       "source_location": "L96",
       "_origin": "ast",
-      "community": 7,
+      "community": 18,
       "norm_label": "test_trip_only_departure_no_arrival_valid()",
       "id": "unit_test_schema_validators_test_trip_only_departure_no_arrival_valid"
     },
@@ -8159,7 +8399,7 @@
       "source_file": "backend/tests/unit/test_schema_validators.py",
       "source_location": "L157",
       "_origin": "ast",
-      "community": 7,
+      "community": 18,
       "norm_label": "test_merkle_leaf_source_type_valid()",
       "id": "unit_test_schema_validators_test_merkle_leaf_source_type_valid"
     },
@@ -8169,7 +8409,7 @@
       "source_file": "backend/tests/unit/test_schema_validators.py",
       "source_location": "L171",
       "_origin": "ast",
-      "community": 7,
+      "community": 18,
       "norm_label": "test_merkle_leaf_source_type_invalid()",
       "id": "unit_test_schema_validators_test_merkle_leaf_source_type_invalid"
     },
@@ -8179,7 +8419,7 @@
       "source_file": "backend/tests/unit/test_schema_validators.py",
       "source_location": "L206",
       "_origin": "ast",
-      "community": 7,
+      "community": 18,
       "norm_label": "test_trip_create_request_empty_trailer_ids_rejected()",
       "id": "unit_test_schema_validators_test_trip_create_request_empty_trailer_ids_rejected"
     },
@@ -8189,7 +8429,7 @@
       "source_file": "backend/tests/unit/test_schema_validators.py",
       "source_location": "L212",
       "_origin": "ast",
-      "community": 7,
+      "community": 18,
       "norm_label": "test_trip_create_request_single_trailer_accepted()",
       "id": "unit_test_schema_validators_test_trip_create_request_single_trailer_accepted"
     },
@@ -8199,7 +8439,7 @@
       "source_file": "backend/tests/unit/test_schema_validators.py",
       "source_location": "L218",
       "_origin": "ast",
-      "community": 7,
+      "community": 18,
       "norm_label": "test_trip_create_request_duplicate_trailer_ids_rejected()",
       "id": "unit_test_schema_validators_test_trip_create_request_duplicate_trailer_ids_rejected"
     },
@@ -8209,7 +8449,7 @@
       "source_file": "backend/tests/unit/test_schema_validators.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 7,
+      "community": 18,
       "norm_label": "unit tests for the four pydantic v2 schema validators defined in the spec.  run:",
       "id": "unit_test_schema_validators_rationale_1"
     },
@@ -8219,7 +8459,7 @@
       "source_file": "backend/tests/unit/test_schema_validators.py",
       "source_location": "L97",
       "_origin": "ast",
-      "community": 7,
+      "community": 18,
       "norm_label": "validator must not fire when only one of the two fields is provided.",
       "id": "unit_test_schema_validators_rationale_97"
     },
@@ -8409,7 +8649,7 @@
       "source_file": "frontend/dispatcher/app/(app)/fleet/drivers/page.tsx",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 10,
+      "community": 13,
       "norm_label": "page.tsx",
       "id": "drivers_page"
     },
@@ -8419,7 +8659,7 @@
       "source_file": "frontend/dispatcher/app/(app)/fleet/drivers/page.tsx",
       "source_location": "L17",
       "_origin": "ast",
-      "community": 10,
+      "community": 13,
       "norm_label": "columns",
       "id": "drivers_page_columns"
     },
@@ -8429,7 +8669,7 @@
       "source_file": "frontend/dispatcher/app/(app)/fleet/drivers/page.tsx",
       "source_location": "L49",
       "_origin": "ast",
-      "community": 10,
+      "community": 13,
       "norm_label": "driverformstate",
       "id": "drivers_page_driverformstate"
     },
@@ -8439,7 +8679,7 @@
       "source_file": "frontend/dispatcher/app/(app)/fleet/drivers/page.tsx",
       "source_location": "L56",
       "_origin": "ast",
-      "community": 10,
+      "community": 13,
       "norm_label": "empty_form",
       "id": "drivers_page_empty_form"
     },
@@ -8449,7 +8689,7 @@
       "source_file": "frontend/dispatcher/app/(app)/fleet/drivers/page.tsx",
       "source_location": "L63",
       "_origin": "ast",
-      "community": 10,
+      "community": 13,
       "norm_label": "fleetdriverspage()",
       "id": "drivers_page_fleetdriverspage"
     },
@@ -8499,7 +8739,7 @@
       "source_file": "frontend/dispatcher/app/(app)/fleet/vehicles/page.tsx",
       "source_location": "L109",
       "_origin": "ast",
-      "community": 29,
+      "community": 10,
       "norm_label": "fleetvehiclespage()",
       "id": "vehicles_page_fleetvehiclespage"
     },
@@ -8659,7 +8899,7 @@
       "source_file": "frontend/dispatcher/app/(app)/settings/page.tsx",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 66,
+      "community": 30,
       "norm_label": "page.tsx",
       "id": "settings_page"
     },
@@ -8669,7 +8909,7 @@
       "source_file": "frontend/dispatcher/app/(app)/settings/page.tsx",
       "source_location": "L9",
       "_origin": "ast",
-      "community": 66,
+      "community": 30,
       "norm_label": "settingspage()",
       "id": "settings_page_settingspage"
     },
@@ -8849,7 +9089,7 @@
       "source_file": "frontend/dispatcher/app/(public)/login/page.tsx",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 66,
+      "community": 15,
       "norm_label": "page.tsx",
       "id": "frontend_dispatcher_app_public_login_page_tsx_login_page"
     },
@@ -8859,7 +9099,7 @@
       "source_file": "frontend/dispatcher/app/(public)/login/page.tsx",
       "source_location": "L13",
       "_origin": "ast",
-      "community": 66,
+      "community": 15,
       "norm_label": "loginpage()",
       "id": "frontend_dispatcher_app_public_login_page_tsx_login_page_loginpage"
     },
@@ -9069,7 +9309,7 @@
       "source_file": "frontend/dispatcher/components/domain/BlockchainReceipt.tsx",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 42,
+      "community": 56,
       "norm_label": "blockchainreceipt.tsx",
       "id": "domain_blockchainreceipt"
     },
@@ -9079,7 +9319,7 @@
       "source_file": "frontend/dispatcher/components/domain/BlockchainReceipt.tsx",
       "source_location": "L7",
       "_origin": "ast",
-      "community": 42,
+      "community": 56,
       "norm_label": "blockchainreceiptprops",
       "id": "domain_blockchainreceipt_blockchainreceiptprops"
     },
@@ -9089,7 +9329,7 @@
       "source_file": "frontend/dispatcher/components/domain/BlockchainReceipt.tsx",
       "source_location": "L14",
       "_origin": "ast",
-      "community": 42,
+      "community": 56,
       "norm_label": "blockchainreceipt()",
       "id": "domain_blockchainreceipt_blockchainreceipt"
     },
@@ -9119,7 +9359,7 @@
       "source_file": "frontend/dispatcher/components/domain/ChecklistRow.tsx",
       "source_location": "L22",
       "_origin": "ast",
-      "community": 16,
+      "community": 30,
       "norm_label": "checklistrowprops",
       "id": "domain_checklistrow_checklistrowprops"
     },
@@ -9239,7 +9479,7 @@
       "source_file": "frontend/dispatcher/components/domain/HandshakeChain.tsx",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 41,
+      "community": 33,
       "norm_label": "handshakechain.tsx",
       "id": "domain_handshakechain"
     },
@@ -9249,7 +9489,7 @@
       "source_file": "frontend/dispatcher/components/domain/HandshakeChain.tsx",
       "source_location": "L7",
       "_origin": "ast",
-      "community": 41,
+      "community": 33,
       "norm_label": "handshakechainprops",
       "id": "domain_handshakechain_handshakechainprops"
     },
@@ -9259,7 +9499,7 @@
       "source_file": "frontend/dispatcher/components/domain/HandshakeChain.tsx",
       "source_location": "L14",
       "_origin": "ast",
-      "community": 41,
+      "community": 33,
       "norm_label": "statusconfig",
       "id": "domain_handshakechain_statusconfig"
     },
@@ -9279,7 +9519,7 @@
       "source_file": "frontend/dispatcher/components/domain/TimestampWithIcon.tsx",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 42,
+      "community": 56,
       "norm_label": "timestampwithicon.tsx",
       "id": "domain_timestampwithicon"
     },
@@ -9289,7 +9529,7 @@
       "source_file": "frontend/dispatcher/components/domain/TimestampWithIcon.tsx",
       "source_location": "L4",
       "_origin": "ast",
-      "community": 42,
+      "community": 56,
       "norm_label": "timestampwithiconprops",
       "id": "domain_timestampwithicon_timestampwithiconprops"
     },
@@ -9299,7 +9539,7 @@
       "source_file": "frontend/dispatcher/components/domain/TimestampWithIcon.tsx",
       "source_location": "L13",
       "_origin": "ast",
-      "community": 42,
+      "community": 56,
       "norm_label": "timestampwithicon()",
       "id": "domain_timestampwithicon_timestampwithicon"
     },
@@ -9649,7 +9889,7 @@
       "source_file": "frontend/dispatcher/components/ui/Card.tsx",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 99,
+      "community": 15,
       "norm_label": "card.tsx",
       "id": "frontend_dispatcher_components_ui_card_tsx_ui_card"
     },
@@ -9659,7 +9899,7 @@
       "source_file": "frontend/dispatcher/components/ui/Card.tsx",
       "source_location": "L4",
       "_origin": "ast",
-      "community": 99,
+      "community": 15,
       "norm_label": "cardprops",
       "id": "frontend_dispatcher_components_ui_card_tsx_ui_card_cardprops"
     },
@@ -9669,7 +9909,7 @@
       "source_file": "frontend/dispatcher/components/ui/Card.tsx",
       "source_location": "L11",
       "_origin": "ast",
-      "community": 99,
+      "community": 15,
       "norm_label": "variantclasses",
       "id": "frontend_dispatcher_components_ui_card_tsx_ui_card_variantclasses"
     },
@@ -9679,7 +9919,7 @@
       "source_file": "frontend/dispatcher/components/ui/Card.tsx",
       "source_location": "L18",
       "_origin": "ast",
-      "community": 99,
+      "community": 15,
       "norm_label": "card()",
       "id": "frontend_dispatcher_components_ui_card_tsx_ui_card_card"
     },
@@ -9829,7 +10069,7 @@
       "source_file": "frontend/dispatcher/components/ui/Drawer.tsx",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 98,
+      "community": 104,
       "norm_label": "drawer.tsx",
       "id": "frontend_dispatcher_components_ui_drawer_tsx_ui_drawer"
     },
@@ -9839,7 +10079,7 @@
       "source_file": "frontend/dispatcher/components/ui/Drawer.tsx",
       "source_location": "L7",
       "_origin": "ast",
-      "community": 98,
+      "community": 104,
       "norm_label": "drawerprops",
       "id": "frontend_dispatcher_components_ui_drawer_tsx_ui_drawer_drawerprops"
     },
@@ -9849,7 +10089,7 @@
       "source_file": "frontend/dispatcher/components/ui/Drawer.tsx",
       "source_location": "L15",
       "_origin": "ast",
-      "community": 98,
+      "community": 104,
       "norm_label": "panelclasses",
       "id": "frontend_dispatcher_components_ui_drawer_tsx_ui_drawer_panelclasses"
     },
@@ -9859,7 +10099,7 @@
       "source_file": "frontend/dispatcher/components/ui/Drawer.tsx",
       "source_location": "L21",
       "_origin": "ast",
-      "community": 98,
+      "community": 104,
       "norm_label": "drawer()",
       "id": "frontend_dispatcher_components_ui_drawer_tsx_ui_drawer_drawer"
     },
@@ -9979,7 +10219,7 @@
       "source_file": "frontend/dispatcher/components/ui/IconButton.tsx",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 15,
+      "community": 105,
       "norm_label": "iconbutton.tsx",
       "id": "frontend_dispatcher_components_ui_iconbutton_tsx_ui_iconbutton"
     },
@@ -9989,7 +10229,7 @@
       "source_file": "frontend/dispatcher/components/ui/IconButton.tsx",
       "source_location": "L6",
       "_origin": "ast",
-      "community": 15,
+      "community": 105,
       "norm_label": "iconbuttonprops",
       "id": "frontend_dispatcher_components_ui_iconbutton_tsx_ui_iconbutton_iconbuttonprops"
     },
@@ -9999,7 +10239,7 @@
       "source_file": "frontend/dispatcher/components/ui/IconButton.tsx",
       "source_location": "L12",
       "_origin": "ast",
-      "community": 15,
+      "community": 105,
       "norm_label": "sizeclasses",
       "id": "frontend_dispatcher_components_ui_iconbutton_tsx_ui_iconbutton_sizeclasses"
     },
@@ -10009,7 +10249,7 @@
       "source_file": "frontend/dispatcher/components/ui/IconButton.tsx",
       "source_location": "L14",
       "_origin": "ast",
-      "community": 15,
+      "community": 105,
       "norm_label": "iconbutton()",
       "id": "frontend_dispatcher_components_ui_iconbutton_tsx_ui_iconbutton_iconbutton"
     },
@@ -10119,7 +10359,7 @@
       "source_file": "frontend/dispatcher/components/ui/SearchSelect.tsx",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 29,
+      "community": 15,
       "norm_label": "searchselect.tsx",
       "id": "ui_searchselect"
     },
@@ -10129,7 +10369,7 @@
       "source_file": "frontend/dispatcher/components/ui/SearchSelect.tsx",
       "source_location": "L7",
       "_origin": "ast",
-      "community": 29,
+      "community": 15,
       "norm_label": "searchselectoption",
       "id": "ui_searchselect_searchselectoption"
     },
@@ -10139,7 +10379,7 @@
       "source_file": "frontend/dispatcher/components/ui/SearchSelect.tsx",
       "source_location": "L13",
       "_origin": "ast",
-      "community": 29,
+      "community": 15,
       "norm_label": "props",
       "id": "ui_searchselect_props"
     },
@@ -10149,7 +10389,7 @@
       "source_file": "frontend/dispatcher/components/ui/SearchSelect.tsx",
       "source_location": "L29",
       "_origin": "ast",
-      "community": 29,
+      "community": 15,
       "norm_label": "searchselect()",
       "id": "ui_searchselect_searchselect"
     },
@@ -10349,7 +10589,7 @@
       "source_file": "frontend/dispatcher/components/ui/Tabs.tsx",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 15,
+      "community": 108,
       "norm_label": "tabs.tsx",
       "id": "frontend_dispatcher_components_ui_tabs_tsx_ui_tabs"
     },
@@ -10359,7 +10599,7 @@
       "source_file": "frontend/dispatcher/components/ui/Tabs.tsx",
       "source_location": "L6",
       "_origin": "ast",
-      "community": 15,
+      "community": 108,
       "norm_label": "tab",
       "id": "frontend_dispatcher_components_ui_tabs_tsx_ui_tabs_tab"
     },
@@ -10369,7 +10609,7 @@
       "source_file": "frontend/dispatcher/components/ui/Tabs.tsx",
       "source_location": "L12",
       "_origin": "ast",
-      "community": 15,
+      "community": 108,
       "norm_label": "tabsprops",
       "id": "frontend_dispatcher_components_ui_tabs_tsx_ui_tabs_tabsprops"
     },
@@ -10379,7 +10619,7 @@
       "source_file": "frontend/dispatcher/components/ui/Tabs.tsx",
       "source_location": "L19",
       "_origin": "ast",
-      "community": 15,
+      "community": 108,
       "norm_label": "tabs()",
       "id": "frontend_dispatcher_components_ui_tabs_tsx_ui_tabs_tabs"
     },
@@ -10579,7 +10819,7 @@
       "source_file": "frontend/dispatcher/lib/context/AuthContext.tsx",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 90,
+      "community": 22,
       "norm_label": "authcontext.tsx",
       "id": "frontend_dispatcher_lib_context_authcontext_tsx_context_authcontext"
     },
@@ -10589,7 +10829,7 @@
       "source_file": "frontend/dispatcher/lib/context/AuthContext.tsx",
       "source_location": "L8",
       "_origin": "ast",
-      "community": 90,
+      "community": 22,
       "norm_label": "authcontext",
       "id": "frontend_dispatcher_lib_context_authcontext_tsx_context_authcontext_authcontext"
     },
@@ -10599,7 +10839,7 @@
       "source_file": "frontend/dispatcher/lib/context/AuthContext.tsx",
       "source_location": "L10",
       "_origin": "ast",
-      "community": 90,
+      "community": 22,
       "norm_label": "authprovider()",
       "id": "frontend_dispatcher_lib_context_authcontext_tsx_context_authcontext_authprovider"
     },
@@ -10709,7 +10949,7 @@
       "source_file": "frontend/dispatcher/lib/hooks/useBlockchainReceipts.ts",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 90,
+      "community": 16,
       "norm_label": "useblockchainreceipts.ts",
       "id": "hooks_useblockchainreceipts"
     },
@@ -10779,7 +11019,7 @@
       "source_file": "frontend/dispatcher/lib/hooks/useDrivers.ts",
       "source_location": "L16",
       "_origin": "ast",
-      "community": 10,
+      "community": 13,
       "norm_label": "usedrivers()",
       "id": "hooks_usedrivers_usedrivers"
     },
@@ -10929,7 +11169,7 @@
       "source_file": "frontend/dispatcher/lib/hooks/useTripDetail.ts",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 42,
+      "community": 17,
       "norm_label": "usetripdetail.ts",
       "id": "hooks_usetripdetail"
     },
@@ -10939,7 +11179,7 @@
       "source_file": "frontend/dispatcher/lib/hooks/useTripDetail.ts",
       "source_location": "L7",
       "_origin": "ast",
-      "community": 42,
+      "community": 17,
       "norm_label": "usetripdetailresult",
       "id": "hooks_usetripdetail_usetripdetailresult"
     },
@@ -10959,7 +11199,7 @@
       "source_file": "frontend/dispatcher/lib/hooks/useTrips.ts",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 16,
+      "community": 30,
       "norm_label": "usetrips.ts",
       "id": "hooks_usetrips"
     },
@@ -10969,7 +11209,7 @@
       "source_file": "frontend/dispatcher/lib/hooks/useTrips.ts",
       "source_location": "L8",
       "_origin": "ast",
-      "community": 16,
+      "community": 30,
       "norm_label": "tripsfilter",
       "id": "hooks_usetrips_tripsfilter"
     },
@@ -10979,7 +11219,7 @@
       "source_file": "frontend/dispatcher/lib/hooks/useTrips.ts",
       "source_location": "L14",
       "_origin": "ast",
-      "community": 16,
+      "community": 30,
       "norm_label": "usetripsresult",
       "id": "hooks_usetrips_usetripsresult"
     },
@@ -10989,7 +11229,7 @@
       "source_file": "frontend/dispatcher/lib/hooks/useTrips.ts",
       "source_location": "L21",
       "_origin": "ast",
-      "community": 16,
+      "community": 30,
       "norm_label": "empty",
       "id": "hooks_usetrips_empty"
     },
@@ -11029,7 +11269,7 @@
       "source_file": "frontend/dispatcher/lib/hooks/useVehicles.ts",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 42,
+      "community": 90,
       "norm_label": "usevehicles.ts",
       "id": "hooks_usevehicles"
     },
@@ -11039,7 +11279,7 @@
       "source_file": "frontend/dispatcher/lib/hooks/useVehicles.ts",
       "source_location": "L8",
       "_origin": "ast",
-      "community": 42,
+      "community": 90,
       "norm_label": "empty",
       "id": "hooks_usevehicles_empty"
     },
@@ -11049,7 +11289,7 @@
       "source_file": "frontend/dispatcher/lib/hooks/useVehicles.ts",
       "source_location": "L10",
       "_origin": "ast",
-      "community": 42,
+      "community": 90,
       "norm_label": "usevehiclesresult",
       "id": "hooks_usevehicles_usevehiclesresult"
     },
@@ -11059,7 +11299,7 @@
       "source_file": "frontend/dispatcher/lib/hooks/useVehicles.ts",
       "source_location": "L19",
       "_origin": "ast",
-      "community": 29,
+      "community": 10,
       "norm_label": "usevehicles()",
       "id": "hooks_usevehicles_usevehicles"
     },
@@ -11089,7 +11329,7 @@
       "source_file": "frontend/dispatcher/lib/supabase/client.ts",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 90,
+      "community": 22,
       "norm_label": "client.ts",
       "id": "supabase_client"
     },
@@ -11099,7 +11339,7 @@
       "source_file": "frontend/dispatcher/lib/supabase/client.ts",
       "source_location": "L6",
       "_origin": "ast",
-      "community": 90,
+      "community": 22,
       "norm_label": "supabase",
       "id": "supabase_client_supabase"
     },
@@ -12289,7 +12529,7 @@
       "source_file": "frontend/driver-pwa/app/trips/page.tsx",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 27,
+      "community": 110,
       "norm_label": "page.tsx",
       "id": "trips_page"
     },
@@ -12299,7 +12539,7 @@
       "source_file": "frontend/driver-pwa/app/trips/page.tsx",
       "source_location": "L7",
       "_origin": "ast",
-      "community": 27,
+      "community": 110,
       "norm_label": "tripspage()",
       "id": "trips_page_tripspage"
     },
@@ -12379,7 +12619,7 @@
       "source_file": "frontend/driver-pwa/components/ui/Card.tsx",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 108,
+      "community": 93,
       "norm_label": "card.tsx",
       "id": "frontend_driver_pwa_components_ui_card_tsx_ui_card"
     },
@@ -12389,7 +12629,7 @@
       "source_file": "frontend/driver-pwa/components/ui/Card.tsx",
       "source_location": "L4",
       "_origin": "ast",
-      "community": 108,
+      "community": 93,
       "norm_label": "cardprops",
       "id": "frontend_driver_pwa_components_ui_card_tsx_ui_card_cardprops"
     },
@@ -12399,7 +12639,7 @@
       "source_file": "frontend/driver-pwa/components/ui/Card.tsx",
       "source_location": "L11",
       "_origin": "ast",
-      "community": 108,
+      "community": 93,
       "norm_label": "variantclasses",
       "id": "frontend_driver_pwa_components_ui_card_tsx_ui_card_variantclasses"
     },
@@ -12409,7 +12649,7 @@
       "source_file": "frontend/driver-pwa/components/ui/Card.tsx",
       "source_location": "L18",
       "_origin": "ast",
-      "community": 108,
+      "community": 93,
       "norm_label": "card()",
       "id": "frontend_driver_pwa_components_ui_card_tsx_ui_card_card"
     },
@@ -12469,7 +12709,7 @@
       "source_file": "frontend/driver-pwa/components/ui/Drawer.tsx",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 98,
+      "community": 109,
       "norm_label": "drawer.tsx",
       "id": "frontend_driver_pwa_components_ui_drawer_tsx_ui_drawer"
     },
@@ -12479,7 +12719,7 @@
       "source_file": "frontend/driver-pwa/components/ui/Drawer.tsx",
       "source_location": "L7",
       "_origin": "ast",
-      "community": 98,
+      "community": 109,
       "norm_label": "drawerprops",
       "id": "frontend_driver_pwa_components_ui_drawer_tsx_ui_drawer_drawerprops"
     },
@@ -12489,7 +12729,7 @@
       "source_file": "frontend/driver-pwa/components/ui/Drawer.tsx",
       "source_location": "L15",
       "_origin": "ast",
-      "community": 98,
+      "community": 109,
       "norm_label": "panelclasses",
       "id": "frontend_driver_pwa_components_ui_drawer_tsx_ui_drawer_panelclasses"
     },
@@ -12499,7 +12739,7 @@
       "source_file": "frontend/driver-pwa/components/ui/Drawer.tsx",
       "source_location": "L21",
       "_origin": "ast",
-      "community": 98,
+      "community": 109,
       "norm_label": "drawer()",
       "id": "frontend_driver_pwa_components_ui_drawer_tsx_ui_drawer_drawer"
     },
@@ -12539,7 +12779,7 @@
       "source_file": "frontend/driver-pwa/components/ui/IconButton.tsx",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 61,
+      "community": 15,
       "norm_label": "iconbutton.tsx",
       "id": "frontend_driver_pwa_components_ui_iconbutton_tsx_ui_iconbutton"
     },
@@ -12549,7 +12789,7 @@
       "source_file": "frontend/driver-pwa/components/ui/IconButton.tsx",
       "source_location": "L6",
       "_origin": "ast",
-      "community": 61,
+      "community": 15,
       "norm_label": "iconbuttonprops",
       "id": "frontend_driver_pwa_components_ui_iconbutton_tsx_ui_iconbutton_iconbuttonprops"
     },
@@ -12559,7 +12799,7 @@
       "source_file": "frontend/driver-pwa/components/ui/IconButton.tsx",
       "source_location": "L12",
       "_origin": "ast",
-      "community": 61,
+      "community": 15,
       "norm_label": "sizeclasses",
       "id": "frontend_driver_pwa_components_ui_iconbutton_tsx_ui_iconbutton_sizeclasses"
     },
@@ -12569,7 +12809,7 @@
       "source_file": "frontend/driver-pwa/components/ui/IconButton.tsx",
       "source_location": "L14",
       "_origin": "ast",
-      "community": 61,
+      "community": 15,
       "norm_label": "iconbutton()",
       "id": "frontend_driver_pwa_components_ui_iconbutton_tsx_ui_iconbutton_iconbutton"
     },
@@ -12609,7 +12849,7 @@
       "source_file": "frontend/driver-pwa/components/ui/Modal.tsx",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 65,
+      "community": 93,
       "norm_label": "modal.tsx",
       "id": "frontend_driver_pwa_components_ui_modal_tsx_ui_modal"
     },
@@ -12619,7 +12859,7 @@
       "source_file": "frontend/driver-pwa/components/ui/Modal.tsx",
       "source_location": "L7",
       "_origin": "ast",
-      "community": 65,
+      "community": 93,
       "norm_label": "modalprops",
       "id": "frontend_driver_pwa_components_ui_modal_tsx_ui_modal_modalprops"
     },
@@ -12629,7 +12869,7 @@
       "source_file": "frontend/driver-pwa/components/ui/Modal.tsx",
       "source_location": "L16",
       "_origin": "ast",
-      "community": 65,
+      "community": 93,
       "norm_label": "sizeclasses",
       "id": "frontend_driver_pwa_components_ui_modal_tsx_ui_modal_sizeclasses"
     },
@@ -12639,7 +12879,7 @@
       "source_file": "frontend/driver-pwa/components/ui/Modal.tsx",
       "source_location": "L18",
       "_origin": "ast",
-      "community": 65,
+      "community": 93,
       "norm_label": "modal()",
       "id": "frontend_driver_pwa_components_ui_modal_tsx_ui_modal_modal"
     },
@@ -12679,7 +12919,7 @@
       "source_file": "frontend/driver-pwa/components/ui/Spinner.tsx",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 56,
+      "community": 15,
       "norm_label": "spinner.tsx",
       "id": "frontend_driver_pwa_components_ui_spinner_tsx_ui_spinner"
     },
@@ -12689,7 +12929,7 @@
       "source_file": "frontend/driver-pwa/components/ui/Spinner.tsx",
       "source_location": "L3",
       "_origin": "ast",
-      "community": 56,
+      "community": 15,
       "norm_label": "spinnerprops",
       "id": "frontend_driver_pwa_components_ui_spinner_tsx_ui_spinner_spinnerprops"
     },
@@ -12699,7 +12939,7 @@
       "source_file": "frontend/driver-pwa/components/ui/Spinner.tsx",
       "source_location": "L8",
       "_origin": "ast",
-      "community": 56,
+      "community": 15,
       "norm_label": "sizemap",
       "id": "frontend_driver_pwa_components_ui_spinner_tsx_ui_spinner_sizemap"
     },
@@ -12709,7 +12949,7 @@
       "source_file": "frontend/driver-pwa/components/ui/Spinner.tsx",
       "source_location": "L14",
       "_origin": "ast",
-      "community": 56,
+      "community": 15,
       "norm_label": "spinner()",
       "id": "frontend_driver_pwa_components_ui_spinner_tsx_ui_spinner_spinner"
     },
@@ -12719,7 +12959,7 @@
       "source_file": "frontend/driver-pwa/components/ui/Tabs.tsx",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 56,
+      "community": 15,
       "norm_label": "tabs.tsx",
       "id": "frontend_driver_pwa_components_ui_tabs_tsx_ui_tabs"
     },
@@ -12729,7 +12969,7 @@
       "source_file": "frontend/driver-pwa/components/ui/Tabs.tsx",
       "source_location": "L6",
       "_origin": "ast",
-      "community": 56,
+      "community": 15,
       "norm_label": "tab",
       "id": "frontend_driver_pwa_components_ui_tabs_tsx_ui_tabs_tab"
     },
@@ -12739,7 +12979,7 @@
       "source_file": "frontend/driver-pwa/components/ui/Tabs.tsx",
       "source_location": "L12",
       "_origin": "ast",
-      "community": 56,
+      "community": 15,
       "norm_label": "tabsprops",
       "id": "frontend_driver_pwa_components_ui_tabs_tsx_ui_tabs_tabsprops"
     },
@@ -12749,7 +12989,7 @@
       "source_file": "frontend/driver-pwa/components/ui/Tabs.tsx",
       "source_location": "L19",
       "_origin": "ast",
-      "community": 56,
+      "community": 15,
       "norm_label": "tabs()",
       "id": "frontend_driver_pwa_components_ui_tabs_tsx_ui_tabs_tabs"
     },
@@ -12919,7 +13159,7 @@
       "source_file": "frontend/driver-pwa/lib/context/AuthContext.tsx",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 74,
+      "community": 27,
       "norm_label": "authcontext.tsx",
       "id": "frontend_driver_pwa_lib_context_authcontext_tsx_context_authcontext"
     },
@@ -12939,7 +13179,7 @@
       "source_file": "frontend/driver-pwa/lib/context/AuthContext.tsx",
       "source_location": "L13",
       "_origin": "ast",
-      "community": 74,
+      "community": 27,
       "norm_label": "authprovider()",
       "id": "frontend_driver_pwa_lib_context_authcontext_tsx_context_authcontext_authprovider"
     },
@@ -13179,7 +13419,7 @@
       "source_file": "frontend/driver-pwa/lib/hooks/usePushNotifications.ts",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 33,
+      "community": 26,
       "norm_label": "usepushnotifications.ts",
       "id": "hooks_usepushnotifications"
     },
@@ -13189,7 +13429,7 @@
       "source_file": "frontend/driver-pwa/lib/hooks/usePushNotifications.ts",
       "source_location": "L10",
       "_origin": "ast",
-      "community": 33,
+      "community": 26,
       "norm_label": "pushnotificationsstate",
       "id": "hooks_usepushnotifications_pushnotificationsstate"
     },
@@ -13999,7 +14239,7 @@
       "source_file": "frontend/shared/components/blockchain/EventTimeline.tsx",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 42,
+      "community": 90,
       "norm_label": "eventtimeline.tsx",
       "id": "frontend_shared_components_blockchain_eventtimeline_tsx_blockchain_eventtimeline"
     },
@@ -14009,7 +14249,7 @@
       "source_file": "frontend/shared/components/blockchain/EventTimeline.tsx",
       "source_location": "L11",
       "_origin": "ast",
-      "community": 42,
+      "community": 90,
       "norm_label": "event",
       "id": "frontend_shared_components_blockchain_eventtimeline_tsx_blockchain_eventtimeline_event"
     },
@@ -14019,7 +14259,7 @@
       "source_file": "frontend/shared/components/blockchain/EventTimeline.tsx",
       "source_location": "L13",
       "_origin": "ast",
-      "community": 42,
+      "community": 90,
       "norm_label": "props",
       "id": "frontend_shared_components_blockchain_eventtimeline_tsx_blockchain_eventtimeline_props"
     },
@@ -14029,7 +14269,7 @@
       "source_file": "frontend/shared/components/blockchain/EventTimeline.tsx",
       "source_location": "L21",
       "_origin": "ast",
-      "community": 42,
+      "community": 90,
       "norm_label": "describeevent()",
       "id": "frontend_shared_components_blockchain_eventtimeline_tsx_blockchain_eventtimeline_describeevent"
     },
@@ -14039,7 +14279,7 @@
       "source_file": "frontend/shared/components/blockchain/EventTimeline.tsx",
       "source_location": "L32",
       "_origin": "ast",
-      "community": 42,
+      "community": 90,
       "norm_label": "eventtimeline()",
       "id": "frontend_shared_components_blockchain_eventtimeline_tsx_blockchain_eventtimeline_eventtimeline"
     },
@@ -14219,7 +14459,7 @@
       "source_file": "frontend/shared/lib/mocks/checkpoints.ts",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 49,
+      "community": 26,
       "norm_label": "checkpoints.ts",
       "id": "mocks_checkpoints"
     },
@@ -14229,7 +14469,7 @@
       "source_file": "frontend/shared/lib/mocks/checkpoints.ts",
       "source_location": "L4",
       "_origin": "ast",
-      "community": 49,
+      "community": 26,
       "norm_label": "cpid()",
       "id": "mocks_checkpoints_cpid"
     },
@@ -14239,7 +14479,7 @@
       "source_file": "frontend/shared/lib/mocks/checkpoints.ts",
       "source_location": "L8",
       "_origin": "ast",
-      "community": 49,
+      "community": 26,
       "norm_label": "mockcheckpoints",
       "id": "mocks_checkpoints_mockcheckpoints"
     },
@@ -14249,7 +14489,7 @@
       "source_file": "frontend/shared/lib/mocks/drivers.ts",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 74,
+      "community": 27,
       "norm_label": "drivers.ts",
       "id": "mocks_drivers"
     },
@@ -14259,7 +14499,7 @@
       "source_file": "frontend/shared/lib/mocks/drivers.ts",
       "source_location": "L4",
       "_origin": "ast",
-      "community": 74,
+      "community": 27,
       "norm_label": "driverid()",
       "id": "mocks_drivers_driverid"
     },
@@ -14269,7 +14509,7 @@
       "source_file": "frontend/shared/lib/mocks/drivers.ts",
       "source_location": "L6",
       "_origin": "ast",
-      "community": 74,
+      "community": 27,
       "norm_label": "driver_dlamini_id",
       "id": "mocks_drivers_driver_dlamini_id"
     },
@@ -14279,7 +14519,7 @@
       "source_file": "frontend/shared/lib/mocks/drivers.ts",
       "source_location": "L7",
       "_origin": "ast",
-      "community": 74,
+      "community": 27,
       "norm_label": "driver_formby_id",
       "id": "mocks_drivers_driver_formby_id"
     },
@@ -14289,7 +14529,7 @@
       "source_file": "frontend/shared/lib/mocks/drivers.ts",
       "source_location": "L8",
       "_origin": "ast",
-      "community": 74,
+      "community": 27,
       "norm_label": "driver_gultig_id",
       "id": "mocks_drivers_driver_gultig_id"
     },
@@ -14299,7 +14539,7 @@
       "source_file": "frontend/shared/lib/mocks/drivers.ts",
       "source_location": "L9",
       "_origin": "ast",
-      "community": 74,
+      "community": 27,
       "norm_label": "driver_kasongo_id",
       "id": "mocks_drivers_driver_kasongo_id"
     },
@@ -14309,7 +14549,7 @@
       "source_file": "frontend/shared/lib/mocks/drivers.ts",
       "source_location": "L11",
       "_origin": "ast",
-      "community": 74,
+      "community": 27,
       "norm_label": "mockdrivers",
       "id": "mocks_drivers_mockdrivers"
     },
@@ -14339,7 +14579,7 @@
       "source_file": "frontend/shared/lib/mocks/index.ts",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 49,
+      "community": 26,
       "norm_label": "index.ts",
       "id": "mocks_index"
     },
@@ -14639,7 +14879,7 @@
       "source_file": "frontend/shared/lib/mocks/trips.ts",
       "source_location": "L17",
       "_origin": "ast",
-      "community": 33,
+      "community": 26,
       "norm_label": "trip_0041_id",
       "id": "mocks_trips_trip_0041_id"
     },
@@ -14649,7 +14889,7 @@
       "source_file": "frontend/shared/lib/mocks/trips.ts",
       "source_location": "L18",
       "_origin": "ast",
-      "community": 49,
+      "community": 26,
       "norm_label": "trip_0042_id",
       "id": "mocks_trips_trip_0042_id"
     },
@@ -14789,7 +15029,7 @@
       "source_file": "frontend/shared/lib/mocks/trips.ts",
       "source_location": "L475",
       "_origin": "ast",
-      "community": 27,
+      "community": 110,
       "norm_label": "mocktrips",
       "id": "mocks_trips_mocktrips"
     },
@@ -14969,7 +15209,7 @@
       "source_file": "frontend/shared/lib/types/blockchain.ts",
       "source_location": "L14",
       "_origin": "ast",
-      "community": 42,
+      "community": 90,
       "norm_label": "blockchainreceipt",
       "id": "types_blockchain_blockchainreceipt"
     },
@@ -15019,7 +15259,7 @@
       "source_file": "frontend/shared/lib/types/blockchain.ts",
       "source_location": "L45",
       "_origin": "ast",
-      "community": 42,
+      "community": 90,
       "norm_label": "vehicleevent",
       "id": "types_blockchain_vehicleevent"
     },
@@ -15039,7 +15279,7 @@
       "source_file": "frontend/shared/lib/types/checkpoint.ts",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 49,
+      "community": 26,
       "norm_label": "checkpoint.ts",
       "id": "types_checkpoint"
     },
@@ -15049,7 +15289,7 @@
       "source_file": "frontend/shared/lib/types/checkpoint.ts",
       "source_location": "L5",
       "_origin": "ast",
-      "community": 49,
+      "community": 26,
       "norm_label": "checkpointid",
       "id": "types_checkpoint_checkpointid"
     },
@@ -15059,7 +15299,7 @@
       "source_file": "frontend/shared/lib/types/checkpoint.ts",
       "source_location": "L7",
       "_origin": "ast",
-      "community": 49,
+      "community": 26,
       "norm_label": "checkpoint",
       "id": "types_checkpoint_checkpoint"
     },
@@ -15079,7 +15319,7 @@
       "source_file": "frontend/shared/lib/types/driver.ts",
       "source_location": "L7",
       "_origin": "ast",
-      "community": 13,
+      "community": 27,
       "norm_label": "driverid",
       "id": "types_driver_driverid"
     },
@@ -15219,7 +15459,7 @@
       "source_file": "frontend/shared/lib/types/handshake.ts",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 41,
+      "community": 33,
       "norm_label": "handshake.ts",
       "id": "types_handshake"
     },
@@ -15229,7 +15469,7 @@
       "source_file": "frontend/shared/lib/types/handshake.ts",
       "source_location": "L5",
       "_origin": "ast",
-      "community": 41,
+      "community": 27,
       "norm_label": "handshakeeventid",
       "id": "types_handshake_handshakeeventid"
     },
@@ -15249,7 +15489,7 @@
       "source_file": "frontend/shared/lib/types/handshake.ts",
       "source_location": "L11",
       "_origin": "ast",
-      "community": 41,
+      "community": 27,
       "norm_label": "handshaketype",
       "id": "types_handshake_handshaketype"
     },
@@ -15259,7 +15499,7 @@
       "source_file": "frontend/shared/lib/types/handshake.ts",
       "source_location": "L21",
       "_origin": "ast",
-      "community": 41,
+      "community": 33,
       "norm_label": "handshakestatus",
       "id": "types_handshake_handshakestatus"
     },
@@ -15269,7 +15509,7 @@
       "source_file": "frontend/shared/lib/types/handshake.ts",
       "source_location": "L29",
       "_origin": "ast",
-      "community": 41,
+      "community": 33,
       "norm_label": "handshakeevent",
       "id": "types_handshake_handshakeevent"
     },
@@ -15279,7 +15519,7 @@
       "source_file": "frontend/shared/lib/types/handshake.ts",
       "source_location": "L57",
       "_origin": "ast",
-      "community": 41,
+      "community": 33,
       "norm_label": "handshakestep",
       "id": "types_handshake_handshakestep"
     },
@@ -15439,7 +15679,7 @@
       "source_file": "frontend/shared/lib/types/trip.ts",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 42,
+      "community": 17,
       "norm_label": "trip.ts",
       "id": "types_trip"
     },
@@ -15449,7 +15689,7 @@
       "source_file": "frontend/shared/lib/types/trip.ts",
       "source_location": "L11",
       "_origin": "ast",
-      "community": 42,
+      "community": 27,
       "norm_label": "tripid",
       "id": "types_trip_tripid"
     },
@@ -15459,7 +15699,7 @@
       "source_file": "frontend/shared/lib/types/trip.ts",
       "source_location": "L15",
       "_origin": "ast",
-      "community": 16,
+      "community": 30,
       "norm_label": "tripstatus",
       "id": "types_trip_tripstatus"
     },
@@ -15469,7 +15709,7 @@
       "source_file": "frontend/shared/lib/types/trip.ts",
       "source_location": "L30",
       "_origin": "ast",
-      "community": 16,
+      "community": 30,
       "norm_label": "tripsummary",
       "id": "types_trip_tripsummary"
     },
@@ -15479,7 +15719,7 @@
       "source_file": "frontend/shared/lib/types/trip.ts",
       "source_location": "L51",
       "_origin": "ast",
-      "community": 42,
+      "community": 17,
       "norm_label": "trip",
       "id": "types_trip_trip"
     },
@@ -15489,7 +15729,7 @@
       "source_file": "frontend/shared/lib/types/trip.ts",
       "source_location": "L81",
       "_origin": "ast",
-      "community": 42,
+      "community": 17,
       "norm_label": "paginatedlist",
       "id": "types_trip_paginatedlist"
     },
@@ -15499,7 +15739,7 @@
       "source_file": "frontend/shared/lib/types/vehicle.ts",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 42,
+      "community": 90,
       "norm_label": "vehicle.ts",
       "id": "types_vehicle"
     },
@@ -15509,7 +15749,7 @@
       "source_file": "frontend/shared/lib/types/vehicle.ts",
       "source_location": "L7",
       "_origin": "ast",
-      "community": 42,
+      "community": 27,
       "norm_label": "vehicleid",
       "id": "types_vehicle_vehicleid"
     },
@@ -15519,7 +15759,7 @@
       "source_file": "frontend/shared/lib/types/vehicle.ts",
       "source_location": "L9",
       "_origin": "ast",
-      "community": 42,
+      "community": 90,
       "norm_label": "vehicletype",
       "id": "types_vehicle_vehicletype"
     },
@@ -15529,7 +15769,7 @@
       "source_file": "frontend/shared/lib/types/vehicle.ts",
       "source_location": "L11",
       "_origin": "ast",
-      "community": 42,
+      "community": 90,
       "norm_label": "vehicle",
       "id": "types_vehicle_vehicle"
     },
@@ -15539,7 +15779,7 @@
       "source_file": "frontend/shared/lib/types/vehicle.ts",
       "source_location": "L29",
       "_origin": "ast",
-      "community": 42,
+      "community": 90,
       "norm_label": "vehicledetail",
       "id": "types_vehicle_vehicledetail"
     },
@@ -15549,7 +15789,7 @@
       "source_file": "frontend/shared/lib/utils/cn.ts",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 56,
+      "community": 15,
       "norm_label": "cn.ts",
       "id": "utils_cn"
     },
@@ -15886,7 +16126,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 89,
+      "community": 19,
       "norm_label": "trips api router (fastapi)",
       "id": "endpoints_trips_router"
     },
@@ -15899,7 +16139,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 89,
+      "community": 1,
       "norm_label": "create_trip_endpoint (post /trips, handshake 0)",
       "id": "endpoints_trips_create_trip"
     },
@@ -15912,7 +16152,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 89,
+      "community": 19,
       "norm_label": "list_trips_endpoint (get /trips)",
       "id": "endpoints_trips_list_trips"
     },
@@ -15925,7 +16165,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 89,
+      "community": 19,
       "norm_label": "get_trip_detail_endpoint (get /trips/{trip_id})",
       "id": "endpoints_trips_get_trip_detail"
     },
@@ -16159,7 +16399,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 34,
+      "community": 69,
       "norm_label": "popia compliance \u2014 only hashes to blockchain, no pii",
       "id": "concept_popia_compliance"
     },
@@ -16172,7 +16412,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 89,
+      "community": 69,
       "norm_label": "journey lock hash \u2014 sha-256 anchored to hcs at trip creation",
       "id": "concept_journey_lock_hash"
     },
@@ -17004,7 +17244,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 14,
+      "community": 100,
       "norm_label": "driversubstitutionread",
       "id": "schemas_trips_driver_substitution_read"
     },
@@ -19136,7 +19376,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 66,
+      "community": 56,
       "norm_label": "card ui component",
       "id": "ui_card"
     },
@@ -19149,7 +19389,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 42,
+      "community": 56,
       "norm_label": "chip ui component",
       "id": "ui_chip"
     },
@@ -19175,7 +19415,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 30,
+      "community": 10,
       "norm_label": "emptystate ui component",
       "id": "ui_emptystate"
     },
@@ -19513,7 +19753,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 66,
+      "community": 8,
       "norm_label": "useauth hook",
       "id": "hooks_useauth_useauth"
     },
@@ -20521,6 +20761,236 @@
   ],
   "links": [
     {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "plans_2026_06_12_driver_pwa_handshakes",
+      "target": "plans_2026_06_12_driver_pwa_handshakes_driver_pwa_full_handshake_flow_implementation_plan",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L15",
+      "weight": 1.0,
+      "source": "plans_2026_06_12_driver_pwa_handshakes_driver_pwa_full_handshake_flow_implementation_plan",
+      "target": "plans_2026_06_12_driver_pwa_handshakes_design_contract_read_before_any_ui_task_non_negotiable",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L40",
+      "weight": 1.0,
+      "source": "plans_2026_06_12_driver_pwa_handshakes_driver_pwa_full_handshake_flow_implementation_plan",
+      "target": "plans_2026_06_12_driver_pwa_handshakes_engineering_principles_read_before_any_task",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L135",
+      "weight": 1.0,
+      "source": "plans_2026_06_12_driver_pwa_handshakes_driver_pwa_full_handshake_flow_implementation_plan",
+      "target": "plans_2026_06_12_driver_pwa_handshakes_file_map",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L2837",
+      "weight": 1.0,
+      "source": "plans_2026_06_12_driver_pwa_handshakes_driver_pwa_full_handshake_flow_implementation_plan",
+      "target": "plans_2026_06_12_driver_pwa_handshakes_final_verification_run_once_after_all_tasks_are_complete",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L86",
+      "weight": 1.0,
+      "source": "plans_2026_06_12_driver_pwa_handshakes_driver_pwa_full_handshake_flow_implementation_plan",
+      "target": "plans_2026_06_12_driver_pwa_handshakes_forward_compatibility_do_not_build_now_just_don_t_block_it",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L2904",
+      "weight": 1.0,
+      "source": "plans_2026_06_12_driver_pwa_handshakes_driver_pwa_full_handshake_flow_implementation_plan",
+      "target": "plans_2026_06_12_driver_pwa_handshakes_new_env_keys_required",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L123",
+      "weight": 1.0,
+      "source": "plans_2026_06_12_driver_pwa_handshakes_driver_pwa_full_handshake_flow_implementation_plan",
+      "target": "plans_2026_06_12_driver_pwa_handshakes_scope",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L201",
+      "weight": 1.0,
+      "source": "plans_2026_06_12_driver_pwa_handshakes_driver_pwa_full_handshake_flow_implementation_plan",
+      "target": "plans_2026_06_12_driver_pwa_handshakes_task_0_android_native_permissions_sync_script_do_first_apk_prerequisite",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L2088",
+      "weight": 1.0,
+      "source": "plans_2026_06_12_driver_pwa_handshakes_driver_pwa_full_handshake_flow_implementation_plan",
+      "target": "plans_2026_06_12_driver_pwa_handshakes_task_10_h4_destination_gate_in_3_step_components",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L2241",
+      "weight": 1.0,
+      "source": "plans_2026_06_12_driver_pwa_handshakes_driver_pwa_full_handshake_flow_implementation_plan",
+      "target": "plans_2026_06_12_driver_pwa_handshakes_task_11_h5_unloading_6_step_components",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L2555",
+      "weight": 1.0,
+      "source": "plans_2026_06_12_driver_pwa_handshakes_driver_pwa_full_handshake_flow_implementation_plan",
+      "target": "plans_2026_06_12_driver_pwa_handshakes_task_12_in_transit_hub_exception_screen",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L2744",
+      "weight": 1.0,
+      "source": "plans_2026_06_12_driver_pwa_handshakes_driver_pwa_full_handshake_flow_implementation_plan",
+      "target": "plans_2026_06_12_driver_pwa_handshakes_task_13_panic_flow",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L257",
+      "weight": 1.0,
+      "source": "plans_2026_06_12_driver_pwa_handshakes_driver_pwa_full_handshake_flow_implementation_plan",
+      "target": "plans_2026_06_12_driver_pwa_handshakes_task_1_test_infrastructure_authenticated_route_group",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L396",
+      "weight": 1.0,
+      "source": "plans_2026_06_12_driver_pwa_handshakes_driver_pwa_full_handshake_flow_implementation_plan",
+      "target": "plans_2026_06_12_driver_pwa_handshakes_task_2_routes_ts_additions_move_trips_pages_into_app_group",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L564",
+      "weight": 1.0,
+      "source": "plans_2026_06_12_driver_pwa_handshakes_driver_pwa_full_handshake_flow_implementation_plan",
+      "target": "plans_2026_06_12_driver_pwa_handshakes_task_3_evidence_types_usehandshakedraft_hook",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L725",
+      "weight": 1.0,
+      "source": "plans_2026_06_12_driver_pwa_handshakes_driver_pwa_full_handshake_flow_implementation_plan",
+      "target": "plans_2026_06_12_driver_pwa_handshakes_task_4_api_client_useofflinequeue_hook",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L897",
+      "weight": 1.0,
+      "source": "plans_2026_06_12_driver_pwa_handshakes_driver_pwa_full_handshake_flow_implementation_plan",
+      "target": "plans_2026_06_12_driver_pwa_handshakes_task_5_modify_uselocation_shared_handshake_components",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L1300",
+      "weight": 1.0,
+      "source": "plans_2026_06_12_driver_pwa_handshakes_driver_pwa_full_handshake_flow_implementation_plan",
+      "target": "plans_2026_06_12_driver_pwa_handshakes_task_5b_url_driven_navigation_helper_single_source_of_truth",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L1381",
+      "weight": 1.0,
+      "source": "plans_2026_06_12_driver_pwa_handshakes_driver_pwa_full_handshake_flow_implementation_plan",
+      "target": "plans_2026_06_12_driver_pwa_handshakes_task_6_step_dispatcher_page_pp_manifest_mock",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L1536",
+      "weight": 1.0,
+      "source": "plans_2026_06_12_driver_pwa_handshakes_driver_pwa_full_handshake_flow_implementation_plan",
+      "target": "plans_2026_06_12_driver_pwa_handshakes_task_7_h1_origin_gate_in_3_step_components",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L1696",
+      "weight": 1.0,
+      "source": "plans_2026_06_12_driver_pwa_handshakes_driver_pwa_full_handshake_flow_implementation_plan",
+      "target": "plans_2026_06_12_driver_pwa_handshakes_task_8_h2_loading_5_step_components",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md",
+      "source_location": "L1948",
+      "weight": 1.0,
+      "source": "plans_2026_06_12_driver_pwa_handshakes_driver_pwa_full_handshake_flow_implementation_plan",
+      "target": "plans_2026_06_12_driver_pwa_handshakes_task_9_h3_origin_gate_out_3_step_components",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "imports",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -20537,9 +21007,9 @@
       "source_file": "backend/app/integrations/supabase_admin.py",
       "source_location": "L62",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "integrations_supabase_admin",
-      "target": "integrations_supabase_admin_create_dispatcher_auth_user",
-      "confidence_score": 1.0
+      "target": "integrations_supabase_admin_create_dispatcher_auth_user"
     },
     {
       "relation": "contains",
@@ -20599,9 +21069,9 @@
       "source_file": "backend/app/integrations/supabase_admin.py",
       "source_location": "L21",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "integrations_supabase_admin_rationale_21",
-      "target": "integrations_supabase_admin_create_driver_auth_user",
-      "confidence_score": 1.0
+      "target": "integrations_supabase_admin_create_driver_auth_user"
     },
     {
       "relation": "calls",
@@ -20631,9 +21101,9 @@
       "source_file": "backend/app/integrations/supabase_admin.py",
       "source_location": "L62",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "integrations_supabase_admin_create_dispatcher_auth_user",
-      "target": "backend_app_integrations_supabase_admin_py_uuid",
-      "confidence_score": 1.0
+      "target": "backend_app_integrations_supabase_admin_py_uuid"
     },
     {
       "relation": "references",
@@ -20642,9 +21112,9 @@
       "source_file": "backend/app/integrations/supabase_admin.py",
       "source_location": "L62",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "integrations_supabase_admin_create_dispatcher_auth_user",
-      "target": "backend_app_integrations_supabase_admin_py_dispatcherrole",
-      "confidence_score": 1.0
+      "target": "backend_app_integrations_supabase_admin_py_dispatcherrole"
     },
     {
       "relation": "rationale_for",
@@ -20652,9 +21122,9 @@
       "source_file": "backend/app/integrations/supabase_admin.py",
       "source_location": "L68",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "integrations_supabase_admin_rationale_68",
-      "target": "integrations_supabase_admin_create_dispatcher_auth_user",
-      "confidence_score": 1.0
+      "target": "integrations_supabase_admin_create_dispatcher_auth_user"
     },
     {
       "relation": "calls",
@@ -20707,9 +21177,9 @@
       "source_file": "backend/scripts/seed_dispatcher.py",
       "source_location": "L21",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_seed_dispatcher",
-      "target": "backend_scripts_seed_dispatcher_py_uuid",
-      "confidence_score": 1.0
+      "target": "backend_scripts_seed_dispatcher_py_uuid"
     },
     {
       "relation": "contains",
@@ -20717,9 +21187,9 @@
       "source_file": "backend/scripts/seed_dispatcher.py",
       "source_location": "L118",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_seed_dispatcher",
-      "target": "scripts_seed_dispatcher_main",
-      "confidence_score": 1.0
+      "target": "scripts_seed_dispatcher_main"
     },
     {
       "relation": "contains",
@@ -20727,9 +21197,9 @@
       "source_file": "backend/scripts/seed_dispatcher.py",
       "source_location": "L38",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_seed_dispatcher",
-      "target": "scripts_seed_dispatcher_parse_args",
-      "confidence_score": 1.0
+      "target": "scripts_seed_dispatcher_parse_args"
     },
     {
       "relation": "contains",
@@ -20737,9 +21207,9 @@
       "source_file": "backend/scripts/seed_dispatcher.py",
       "source_location": "L58",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_seed_dispatcher",
-      "target": "scripts_seed_dispatcher_resolve_password",
-      "confidence_score": 1.0
+      "target": "scripts_seed_dispatcher_resolve_password"
     },
     {
       "relation": "contains",
@@ -20747,9 +21217,9 @@
       "source_file": "backend/scripts/seed_dispatcher.py",
       "source_location": "L66",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_seed_dispatcher",
-      "target": "scripts_seed_dispatcher_seed_dispatcher",
-      "confidence_score": 1.0
+      "target": "scripts_seed_dispatcher_seed_dispatcher"
     },
     {
       "relation": "rationale_for",
@@ -20757,9 +21227,9 @@
       "source_file": "backend/scripts/seed_dispatcher.py",
       "source_location": "L1",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_seed_dispatcher_rationale_1",
-      "target": "scripts_seed_dispatcher",
-      "confidence_score": 1.0
+      "target": "scripts_seed_dispatcher"
     },
     {
       "relation": "calls",
@@ -20768,9 +21238,9 @@
       "source_file": "backend/scripts/seed_dispatcher.py",
       "source_location": "L119",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_seed_dispatcher_main",
-      "target": "scripts_seed_dispatcher_parse_args",
-      "confidence_score": 1.0
+      "target": "scripts_seed_dispatcher_parse_args"
     },
     {
       "relation": "references",
@@ -20779,9 +21249,9 @@
       "source_file": "backend/scripts/seed_dispatcher.py",
       "source_location": "L38",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_seed_dispatcher_parse_args",
-      "target": "namespace",
-      "confidence_score": 1.0
+      "target": "namespace"
     },
     {
       "relation": "calls",
@@ -20790,9 +21260,9 @@
       "source_file": "backend/scripts/seed_dispatcher.py",
       "source_location": "L130",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_seed_dispatcher_main",
-      "target": "scripts_seed_dispatcher_resolve_password",
-      "confidence_score": 1.0
+      "target": "scripts_seed_dispatcher_resolve_password"
     },
     {
       "relation": "rationale_for",
@@ -20800,9 +21270,9 @@
       "source_file": "backend/scripts/seed_dispatcher.py",
       "source_location": "L59",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_seed_dispatcher_rationale_59",
-      "target": "scripts_seed_dispatcher_resolve_password",
-      "confidence_score": 1.0
+      "target": "scripts_seed_dispatcher_resolve_password"
     },
     {
       "relation": "calls",
@@ -20811,9 +21281,9 @@
       "source_file": "backend/scripts/seed_dispatcher.py",
       "source_location": "L125",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_seed_dispatcher_main",
-      "target": "scripts_seed_dispatcher_seed_dispatcher",
-      "confidence_score": 1.0
+      "target": "scripts_seed_dispatcher_seed_dispatcher"
     },
     {
       "relation": "references",
@@ -20822,9 +21292,9 @@
       "source_file": "backend/scripts/seed_dispatcher.py",
       "source_location": "L66",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_seed_dispatcher_seed_dispatcher",
-      "target": "backend_scripts_seed_dispatcher_py_dispatcherrole",
-      "confidence_score": 1.0
+      "target": "backend_scripts_seed_dispatcher_py_dispatcherrole"
     },
     {
       "relation": "references",
@@ -20833,9 +21303,9 @@
       "source_file": "backend/scripts/seed_dispatcher.py",
       "source_location": "L66",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_seed_dispatcher_seed_dispatcher",
-      "target": "backend_scripts_seed_dispatcher_py_uuid",
-      "confidence_score": 1.0
+      "target": "backend_scripts_seed_dispatcher_py_uuid"
     },
     {
       "relation": "calls",
@@ -20844,9 +21314,9 @@
       "source_file": "backend/scripts/seed_dispatcher.py",
       "source_location": "L121",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_seed_dispatcher_main",
-      "target": "backend_scripts_seed_dispatcher_py_uuid",
-      "confidence_score": 1.0
+      "target": "backend_scripts_seed_dispatcher_py_uuid"
     },
     {
       "relation": "calls",
@@ -20855,9 +21325,9 @@
       "source_file": "backend/scripts/seed_dispatcher.py",
       "source_location": "L129",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_seed_dispatcher_main",
-      "target": "backend_scripts_seed_dispatcher_py_dispatcherrole",
-      "confidence_score": 1.0
+      "target": "backend_scripts_seed_dispatcher_py_dispatcherrole"
     },
     {
       "relation": "contains",
@@ -20865,9 +21335,9 @@
       "source_file": "backend/tests/unit/test_supabase_admin.py",
       "source_location": "L17",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "unit_test_supabase_admin",
-      "target": "unit_test_supabase_admin_mock_async_client",
-      "confidence_score": 1.0
+      "target": "unit_test_supabase_admin_mock_async_client"
     },
     {
       "relation": "contains",
@@ -20875,9 +21345,9 @@
       "source_file": "backend/tests/unit/test_supabase_admin.py",
       "source_location": "L58",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "unit_test_supabase_admin",
-      "target": "unit_test_supabase_admin_test_create_dispatcher_auth_user_duplicate_email_raises",
-      "confidence_score": 1.0
+      "target": "unit_test_supabase_admin_test_create_dispatcher_auth_user_duplicate_email_raises"
     },
     {
       "relation": "contains",
@@ -20885,9 +21355,9 @@
       "source_file": "backend/tests/unit/test_supabase_admin.py",
       "source_location": "L32",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "unit_test_supabase_admin",
-      "target": "unit_test_supabase_admin_test_create_dispatcher_auth_user_returns_uuid_and_sets_role",
-      "confidence_score": 1.0
+      "target": "unit_test_supabase_admin_test_create_dispatcher_auth_user_returns_uuid_and_sets_role"
     },
     {
       "relation": "contains",
@@ -20895,9 +21365,9 @@
       "source_file": "backend/tests/unit/test_supabase_admin.py",
       "source_location": "L76",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "unit_test_supabase_admin",
-      "target": "unit_test_supabase_admin_test_create_dispatcher_auth_user_server_error_raises_valueerror",
-      "confidence_score": 1.0
+      "target": "unit_test_supabase_admin_test_create_dispatcher_auth_user_server_error_raises_valueerror"
     },
     {
       "relation": "rationale_for",
@@ -20905,9 +21375,9 @@
       "source_file": "backend/tests/unit/test_supabase_admin.py",
       "source_location": "L1",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "unit_test_supabase_admin_rationale_1",
-      "target": "unit_test_supabase_admin",
-      "confidence_score": 1.0
+      "target": "unit_test_supabase_admin"
     },
     {
       "relation": "rationale_for",
@@ -20915,9 +21385,9 @@
       "source_file": "backend/tests/unit/test_supabase_admin.py",
       "source_location": "L18",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "unit_test_supabase_admin_rationale_18",
-      "target": "unit_test_supabase_admin_mock_async_client",
-      "confidence_score": 1.0
+      "target": "unit_test_supabase_admin_mock_async_client"
     },
     {
       "relation": "calls",
@@ -20926,9 +21396,9 @@
       "source_file": "backend/tests/unit/test_supabase_admin.py",
       "source_location": "L64",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "unit_test_supabase_admin_test_create_dispatcher_auth_user_duplicate_email_raises",
-      "target": "unit_test_supabase_admin_mock_async_client",
-      "confidence_score": 1.0
+      "target": "unit_test_supabase_admin_mock_async_client"
     },
     {
       "relation": "calls",
@@ -20937,9 +21407,9 @@
       "source_file": "backend/tests/unit/test_supabase_admin.py",
       "source_location": "L39",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "unit_test_supabase_admin_test_create_dispatcher_auth_user_returns_uuid_and_sets_role",
-      "target": "unit_test_supabase_admin_mock_async_client",
-      "confidence_score": 1.0
+      "target": "unit_test_supabase_admin_mock_async_client"
     },
     {
       "relation": "calls",
@@ -20948,9 +21418,9 @@
       "source_file": "backend/tests/unit/test_supabase_admin.py",
       "source_location": "L83",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "unit_test_supabase_admin_test_create_dispatcher_auth_user_server_error_raises_valueerror",
-      "target": "unit_test_supabase_admin_mock_async_client",
-      "confidence_score": 1.0
+      "target": "unit_test_supabase_admin_mock_async_client"
     },
     {
       "relation": "imports_from",
@@ -21568,9 +22038,9 @@
       "source_file": "frontend/dispatcher/app/(app)/trips/[id]/page.tsx",
       "source_location": "L113",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "frontend_dispatcher_app_app_trips_id_page_tsx_id_page",
-      "target": "id_page_fmtts",
-      "confidence_score": 1.0
+      "target": "id_page_fmtts"
     },
     {
       "relation": "contains",
@@ -21805,9 +22275,9 @@
       "source_file": "frontend/dispatcher/app/(app)/trips/[id]/page.tsx",
       "source_location": "L89",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "id_page_chainreceipttag",
-      "target": "id_page_fmtts",
-      "confidence_score": 1.0
+      "target": "id_page_fmtts"
     },
     {
       "relation": "calls",
@@ -21816,9 +22286,9 @@
       "source_file": "frontend/dispatcher/app/(app)/trips/[id]/page.tsx",
       "source_location": "L173",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "id_page_timelineevent",
-      "target": "id_page_fmtts",
-      "confidence_score": 1.0
+      "target": "id_page_fmtts"
     },
     {
       "relation": "calls",
@@ -62335,5 +62805,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "214cd72d449d281e559ae309fcdf3d165c94f64e"
+  "built_at_commit": "564c0b1298823c8524f821e10688b2d5df0166df"
 }

@@ -9,6 +9,7 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { cn } from '@shared/lib/utils/cn'
 import { ROUTES } from '@/lib/constants/routes'
 import type { IconName } from '@/components/ui/Ic'
+import type { DispatcherUser } from '@/lib/types/user'
 
 interface NavItem {
   label: string
@@ -58,6 +59,12 @@ const SETTINGS_ITEM: NavItem = {
   href: ROUTES.settings,
   icon: 'gear',
   activePatterns: ['/settings'],
+}
+
+// Humanizes the DispatcherUser role for display; falls back to the base
+// "Dispatcher" label when the role is the non-admin variant or user is unknown.
+function roleLabel(role: DispatcherUser['role'] | undefined): string {
+  return role === 'admin_dispatcher' ? 'Admin Dispatcher' : 'Dispatcher'
 }
 
 function isActive(pathname: string, patterns: string[]): boolean {
@@ -180,10 +187,15 @@ function SidebarContent({ onClose }: SidebarContentProps) {
           <Ic n="user" s={13} className="text-white/60" />
         </div>
         <div>
-          <div className="text-[12px] font-[600] text-white/85 leading-tight">
-            {user?.full_name ?? 'Dispatcher'}
+          <div className="flex items-center gap-[6px] text-[12px] font-[600] text-white/85 leading-tight">
+            <span>{user?.full_name ?? 'Dispatcher'}</span>
+            {user?.role === 'admin_dispatcher' && (
+              <span className="bg-white/15 text-white/85 text-[9px] font-[700] tracking-[0.04em] rounded-[var(--r-sm)] px-[5px] py-[1px]">
+                ADMIN
+              </span>
+            )}
           </div>
-          <div className="text-[10px] text-white/40">Dispatcher</div>
+          <div className="text-[10px] text-white/40">{roleLabel(user?.role)}</div>
         </div>
       </div>
     </div>

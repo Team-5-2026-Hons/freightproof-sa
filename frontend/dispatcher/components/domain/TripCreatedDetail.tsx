@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { ForensicOnly } from '@/components/blockchain/ForensicOnly'
 import type { Trip } from '@shared/lib/types/trip'
 
 // ── Shared field primitives ───────────────────────────────────────────────────
@@ -122,15 +123,17 @@ export function TripCreatedDetail({ trip }: Props) {
         </Section>
       )}
 
-      {/* Blockchain ─────────────────────────────────────────────────────── */}
+      {/* Blockchain — forensic detail; hidden for non-admin / forensic-off dispatchers. */}
       {receipt && (
-        <Section title="Blockchain">
-          <CopyField label="SHA-256 journey lock hash" value={receipt.data_hash} mono span />
-          <Field     label="Hedera topic ID"  value={isPending ? 'Pending' : receipt.hedera_topic_id} mono />
-          <Field     label="Sequence"         value={isPending ? '—' : `#${receipt.hedera_sequence_number}`} mono />
-          <Field     label="Anchored at"      value={fmtDate(receipt.hedera_consensus_timestamp)} />
-          <CopyField label="Hedera TX ID"     value={receipt.hedera_tx_id} mono span />
-        </Section>
+        <ForensicOnly>
+          <Section title="Blockchain">
+            <CopyField label="SHA-256 journey lock hash" value={receipt.data_hash} mono span />
+            <Field     label="Hedera topic ID"  value={isPending ? 'Pending' : receipt.hedera_topic_id} mono />
+            <Field     label="Sequence"         value={isPending ? '—' : `#${receipt.hedera_sequence_number}`} mono />
+            <Field     label="Anchored at"      value={fmtDate(receipt.hedera_consensus_timestamp)} />
+            <CopyField label="Hedera TX ID"     value={receipt.hedera_tx_id} mono span />
+          </Section>
+        </ForensicOnly>
       )}
 
     </div>

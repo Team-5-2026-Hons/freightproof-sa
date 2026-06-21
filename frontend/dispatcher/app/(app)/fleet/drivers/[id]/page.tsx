@@ -9,6 +9,7 @@ import { Button }  from '@/components/ui/Button'
 import { Ic }      from '@/components/ui/Ic'
 import { InfoRow }   from '@/components/ui/InfoRow'
 import { FormField } from '@/components/ui/FormField'
+import { Switch }    from '@/components/ui/Switch'
 import { BlockchainBadge } from '@/components/blockchain/BlockchainBadge'
 import { EventTimeline }   from '@/components/blockchain/EventTimeline'
 import { ForensicOnly }    from '@/components/blockchain/ForensicOnly'
@@ -149,16 +150,11 @@ export default function DriverDetailPage() {
 
               <div className="flex items-center justify-between py-[6px]">
                 <span className="text-xs font-medium text-surface-on-variant">Active</span>
-                <button
-                  type="button"
-                  onClick={() => setForm((prev) => prev ? { ...prev, is_active: !prev.is_active } : prev)}
-                  className={`relative w-[40px] h-[22px] rounded-full transition-colors duration-200 ${form.is_active ? 'bg-ok' : 'bg-outline-v'}`}
-                >
-                  <span
-                    className="absolute top-[3px] w-[16px] h-[16px] rounded-full bg-white shadow transition-all duration-200"
-                    style={{ left: form.is_active ? '21px' : '3px' }}
-                  />
-                </button>
+                <Switch
+                  checked={form.is_active}
+                  onCheckedChange={(next) => setForm((prev) => prev ? { ...prev, is_active: next } : prev)}
+                  ariaLabel="Driver active"
+                />
               </div>
 
               <div className="flex items-center gap-[5px]">
