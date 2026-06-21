@@ -55,7 +55,11 @@ export default function PanicPage() {
           </p>
         </div>
         <button
-          onClick={() => router.back()}
+          // This state is reachable via cold load, deep link, or refresh —
+          // there may be no meaningful back-history, so router.back() could
+          // land anywhere (or nowhere). Use an explicit replace so the label's
+          // promise ("Return to in-transit") is actually guaranteed.
+          onClick={() => router.replace(ROUTES.inTransit(tripId))}
           className="text-sm text-error-on/70 underline"
         >
           Return to in-transit
