@@ -18,7 +18,10 @@ export async function reverseGeocode(lat: number, lng: number): Promise<string |
   if (!apiKey) return null
 
   try {
-    const resp = await fetch(`${GOOGLE_GEOCODE_URL}?latlng=${lat},${lng}&key=${apiKey}`)
+    // URLSearchParams handles encoding for us — defense-in-depth against malformed
+    // or unexpectedly-charactered coordinates/keys reaching the query string raw.
+    const params = new URLSearchParams({ latlng: `${lat},${lng}`, key: apiKey })
+    const resp = await fetch(`${GOOGLE_GEOCODE_URL}?${params}`)
 
     if (!resp.ok) {
       console.warn(`reverseGeocode: HTTP ${resp.status} from Google Geocoding API`)

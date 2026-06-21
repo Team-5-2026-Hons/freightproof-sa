@@ -22,9 +22,13 @@ export function H1GateArrival({ tripId, draft, onUpdate, onComplete }: H1GateArr
 
     // Fire-and-forget: address is a display-only nice-to-have, must never block
     // the GPS-captured UI state or the Hold-to-confirm button (gated on hasGps alone).
-    void reverseGeocode(lat, lng).then((address) => {
-      if (address !== null) onUpdate({ gateAddress: address })
-    })
+    // reverseGeocode never rejects today, but the no-op catch is a local safety net
+    // in case that invariant is ever broken by a future edit to geocode.ts.
+    void reverseGeocode(lat, lng)
+      .then((address) => {
+        if (address !== null) onUpdate({ gateAddress: address })
+      })
+      .catch(() => {})
   }
 
   return (
