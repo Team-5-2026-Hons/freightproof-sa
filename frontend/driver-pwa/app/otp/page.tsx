@@ -2,7 +2,7 @@
 
 // Required: output: 'export' (Capacitor APK) is incompatible with Server Components.
 
-import { useContext, useState } from 'react'
+import { Suspense, useContext, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { AuthContext } from '@/lib/context/AuthContext'
 import { supabase } from '@/lib/supabase'
@@ -14,7 +14,23 @@ import { IS_DEMO_MODE } from '@/lib/constants/env'
 // Demo mode (default) verifies via AuthContext.signIn so the driver record
 // lands on AuthContext.user before the (app) route guard checks it.
 
+// useSearchParams() opts a page out of static rendering unless wrapped in
+// Suspense — required for the static export (output: 'export') build.
 export default function OtpPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center">
+          <p className="text-sm text-surface-on-variant">Loading…</p>
+        </main>
+      }
+    >
+      <OtpForm />
+    </Suspense>
+  )
+}
+
+function OtpForm() {
   const router = useRouter()
   const auth = useContext(AuthContext)
   const params = useSearchParams()
