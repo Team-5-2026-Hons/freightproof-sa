@@ -31,7 +31,8 @@ function handshakeFromStatus(status: Trip['status']): HandshakeNumber {
     case 'origin_gate_in':   return 1
     case 'loading':          return 2
     case 'origin_gate_out':  return 3
-    // in_transit means H3 is done; H4 is triggered by gate-arrival push, not advance()
+    // in_transit means H3 is done; H4 is reached via the same manual
+    // hold-to-confirm advance() flow as every other handshake.
     case 'in_transit':       return 4
     case 'dest_gate_in':     return 4
     case 'unloading':        return 5
