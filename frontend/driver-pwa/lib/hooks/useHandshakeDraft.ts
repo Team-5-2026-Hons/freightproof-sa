@@ -17,7 +17,10 @@ export function useHandshakeDraft<T extends object>(
   const [draft, setDraft] = useState<T>(() => {
     try {
       const raw = typeof window !== 'undefined' ? localStorage.getItem(key) : null
-      return raw ? (JSON.parse(raw) as T) : initial
+      // Shallow-merge over `initial` rather than returning the parsed value raw —
+      // a draft saved under an older shape of T (e.g. before a field existed) would
+      // otherwise silently omit that field despite the return type claiming it exists.
+      return raw ? { ...initial, ...(JSON.parse(raw) as Partial<T>) } : initial
     } catch {
       return initial
     }
@@ -27,7 +30,14 @@ export function useHandshakeDraft<T extends object>(
     (patch: Partial<T>) => {
       setDraft((prev) => {
         const next = { ...prev, ...patch }
-        try { localStorage.setItem(key, JSON.stringify(next)) } catch { /* storage full */ }
+        try {
+          localStorage.setItem(key, JSON.stringify(next))
+        } catch {
+          // Quota exceeded, private browsing, or storage disabled — draft still
+          // updates in memory, but won't survive a refresh. Surface this since the
+          // hook's entire purpose is persistence across navigation/refresh.
+          console.warn(`useHandshakeDraft: failed to persist draft for key "${key}"`)
+        }
         return next
       })
     },
@@ -35,7 +45,11 @@ export function useHandshakeDraft<T extends object>(
   )
 
   const clearDraft = useCallback(() => {
-    try { localStorage.removeItem(key) } catch { /* ignore */ }
+    try {
+      localStorage.removeItem(key)
+    } catch {
+      console.warn(`useHandshakeDraft: failed to clear stored draft for key "${key}"`)
+    }
     setDraft(initial)
   }, [key, initial])
 

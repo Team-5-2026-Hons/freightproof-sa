@@ -47,4 +47,19 @@ describe('useHandshakeDraft', () => {
     expect(result.current[0]).toEqual(INITIAL)
     expect(localStorage.getItem('fp_draft_trip-1_origin_gate_in')).toBeNull()
   })
+
+  it('falls back to initial value for keys missing from a stale stored draft', () => {
+    // Simulates a draft saved under an older H1Evidence shape, before gateAddress existed.
+    const staleDraft = {
+      gpsLat: -26.09, gpsLng: 28.13, gatePhotoDataUrl: null, capturedAt: '2026-01-01T00:00:00Z',
+    }
+    localStorage.setItem('fp_draft_trip-1_origin_gate_in', JSON.stringify(staleDraft))
+
+    const { result } = renderHook(() =>
+      useHandshakeDraft<H1Evidence>('trip-1', 'origin_gate_in', INITIAL)
+    )
+
+    expect(result.current[0].gateAddress).toBe(INITIAL.gateAddress)
+    expect(result.current[0].gpsLat).toBe(-26.09)
+  })
 })
