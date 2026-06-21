@@ -34,12 +34,10 @@ A single forensic toggle, visible on every dispatcher page, controls blockchain 
 **D3 — Admin differentiators: sidebar badge, top-bar role indicator, forensic-ON styling.**
 (a) Sidebar footer shows the real, humanized role with an **ADMIN** badge for `admin_dispatcher`. (b) The TopBar control shows the role beside the toggle. (c) While forensic mode is ON, the toggle takes the `chain` accent and a small "Forensic view" badge appears, so the admin always knows hashes are currently on screen. (Admin-only *nav* gating was explicitly excluded.)
 
-**D4 — Clean event log for everyone; granular detail is forensic/admin-only.**
-Every dispatcher sees a clean history matching the trip page's `TimelineEvent` restraint: **event title + timestamp only** (e.g. "Licence plate changed · 12 Jun 14:32"), with an optional one-line `meta`. No field values, no hashes in the default view. The **granular "what changed" detail** (humanized `changed_fields`) **and** the `BlockchainBadge` (Hedera seq / HashScan) both render **inside** `ForensicOnly` — visible only to an admin with forensic mode ON. The raw `JSON.stringify`/`<pre>` block is **removed entirely** (no raw-JSON expander).
+**D4 — Split the event timeline: operational facts for everyone, proof for forensics.**
+`changed_fields` is humanized into labelled rows rendered **outside** `ForensicOnly`, visible to every dispatcher as normal history. Only the `BlockchainBadge` (Hedera seq / HashScan link) stays **inside** `ForensicOnly`. The raw `JSON.stringify`/`<pre>` block is **removed entirely** (no raw-JSON expander).
 
-Rationale: the *current* state (plate, licence number, expiry) is already shown in the detail panel, so the timeline's job is "what kind of change happened, and when" — the title carries that. Granular before/after values are audit detail, which keeps the default view clean and narrows PII exposure.
-
-**POPIA:** the event title leaks nothing sensitive. The humanized field detail (forensic-only) must only surface fields already visible to dispatchers elsewhere (e.g. licence number on the driver detail page), and never renders hashes/receipt data outside `ForensicOnly`.
+**POPIA:** the humanizer must only surface fields already visible to dispatchers elsewhere (e.g. licence number already shows on the driver detail page). It must not introduce any new PII surface, and it never renders hashes/receipt data (those remain forensic-gated).
 
 ---
 
@@ -95,19 +93,19 @@ Follow the dispatcher app's existing token vocabulary — `surf*` / `on-surf*` s
 - [ ] In `Sidebar.tsx` footer, replace the hard-coded `"Dispatcher"` string with the humanized `user.role` ("Admin Dispatcher" / "Dispatcher").
 - [ ] When `user.role === 'admin_dispatcher'`, render a small **ADMIN** badge next to the name (bespoke inline badge using tokens; not `Chip`).
 
-### Task 5 — Clean the event timeline; gate detail to forensic
-- [ ] Restyle `EventTimeline.tsx` rows to match the trip page's `TimelineEvent` restraint: a clean card with the event title (reuse the existing `describeEvent`) + timestamp + optional one-line `meta`, using the same token vocabulary (`surf-low` card, `clock` icon, `text-sec` timestamp). This title+timestamp view is visible to **all** dispatchers. (If extracting a shared timeline-row primitive from `trips/[id]/page.tsx` is cheap, do so; otherwise mirror the style — do not restyle the trip page itself.)
+### Task 5 — Split the event timeline
 - [ ] Create `lib/forensic/describeChange.ts`: a pure helper mapping known `changed_fields` keys to friendly labels and returning rows of `{ label, value }`. Handle the value defensively — primitives render as `Label: value`; if a value is an `{ old, new }`-shaped object, render `old → new`. Unknown keys fall back to a humanized key. **Verify the actual `changed_fields` shape against the backend writer** (search `backend/app/orchestration/`/event-creation for where vehicle/driver `changed_fields` is populated) before finalising the value handling.
-- [ ] Render the `describeChange` rows **inside** `ForensicOnly` (admin + forensic ON only), together with `<BlockchainBadge receipt={receipt} />`. **Delete** the `<pre>{JSON.stringify(...)}</pre>` block entirely.
-- [ ] Ensure nothing outside `ForensicOnly` emits field values, hashes, or receipt data — the default row is title + timestamp + optional meta only (POPIA + forensic separation).
+- [ ] In `EventTimeline.tsx`, render the `describeChange` rows **outside** `ForensicOnly` (visible to all dispatchers), beneath the event title/timestamp.
+- [ ] Keep `<BlockchainBadge receipt={receipt} />` **inside** `ForensicOnly`. **Delete** the `<pre>{JSON.stringify(...)}</pre>` block entirely.
+- [ ] Ensure the humanizer never emits hash/receipt fields (POPIA + forensic separation).
 
 ---
 
 ## Final verification (run once, after all tasks)
 
 - [ ] `cd frontend/dispatcher && npm run lint` (or `tsc --noEmit`) — no type errors, no `any`.
-- [ ] Manual, **as `admin_dispatcher`**: sidebar shows name + ADMIN badge; forensic toggle visible in the top bar on trips, vehicles, drivers, and dashboard; toggling ON reveals hashes/HashScan **and the humanized changed-field detail** in the event timeline, plus the "Forensic view" badge; the choice **persists across a page reload**.
-- [ ] Manual, **as regular `dispatcher`**: no forensic toggle, no ADMIN badge, no hashes or field values anywhere; the event timeline shows a **clean title + timestamp log only** (matching the trip timeline's restraint).
+- [ ] Manual, **as `admin_dispatcher`**: sidebar shows name + ADMIN badge; forensic toggle visible in the top bar on trips, vehicles, drivers, and dashboard; toggling ON reveals hashes/HashScan everywhere and shows the "Forensic view" badge; the choice **persists across a page reload**.
+- [ ] Manual, **as regular `dispatcher`**: no forensic toggle, no ADMIN badge, no hashes anywhere; the **friendly change-summary in the event timeline is still visible**.
 - [ ] No raw JSON anywhere in the event timeline.
 - [ ] Desktop + 390px viewport screenshot check against the dispatcher design language (token colours only, no emoji, calm accent use, hierarchy reads at a glance).
 - [ ] Confirm `admin_dispatcher` is the *only* gate — re-run the existing backend suite if any auth file was touched (it should not be): `cd backend && pytest -q`.

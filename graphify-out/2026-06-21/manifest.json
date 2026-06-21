@@ -530,8 +530,8 @@
     "semantic_hash": ""
   },
   "frontend/dispatcher/app/(app)/fleet/drivers/[id]/page.tsx": {
-    "mtime": 1782035773.6491697,
-    "ast_hash": "889e06badab18e3b6521a5b6f084297b",
+    "mtime": 1781726278.6554832,
+    "ast_hash": "5f40a7ff56fc1abbd3177e4a85775afe",
     "semantic_hash": ""
   },
   "frontend/dispatcher/app/(app)/fleet/drivers/page.tsx": {
@@ -540,8 +540,8 @@
     "semantic_hash": ""
   },
   "frontend/dispatcher/app/(app)/fleet/vehicles/[id]/page.tsx": {
-    "mtime": 1782035754.2420936,
-    "ast_hash": "a527254a8a08753ab09f605fc8711a10",
+    "mtime": 1781726306.8260024,
+    "ast_hash": "0598bf45c04492ef0894e8ba07cf8250",
     "semantic_hash": ""
   },
   "frontend/dispatcher/app/(app)/fleet/vehicles/page.tsx": {
@@ -560,8 +560,8 @@
     "semantic_hash": ""
   },
   "frontend/dispatcher/app/(app)/page.tsx": {
-    "mtime": 1782037928.0116858,
-    "ast_hash": "cbddf433164b5a86f5bb1c878b6a43d9",
+    "mtime": 1779044763.5035136,
+    "ast_hash": "f36c691f0fbce71af82136a366b89b66",
     "semantic_hash": ""
   },
   "frontend/dispatcher/app/(app)/settings/page.tsx": {
@@ -610,8 +610,8 @@
     "semantic_hash": ""
   },
   "frontend/dispatcher/components/blockchain/EventTimeline.tsx": {
-    "mtime": 1782033076.4667768,
-    "ast_hash": "556962280fe09e20efb52bef0bb5ea21",
+    "mtime": 1781422098.4356627,
+    "ast_hash": "4f7f6ef69a48137cf7d9c853976e2967",
     "semantic_hash": ""
   },
   "frontend/dispatcher/components/blockchain/ForensicOnly.tsx": {
@@ -622,6 +622,11 @@
   "frontend/dispatcher/components/blockchain/VerifyButton.tsx": {
     "mtime": 1781797994.988501,
     "ast_hash": "8c2fc8bfe3fda8501bd87c68436d37c0",
+    "semantic_hash": ""
+  },
+  "frontend/dispatcher/components/domain/BlockchainReceipt.tsx": {
+    "mtime": 1779035653.1768434,
+    "ast_hash": "ad33f1d43a6ce5907f16c3049510df8c",
     "semantic_hash": ""
   },
   "frontend/dispatcher/components/domain/ChecklistRow.tsx": {
@@ -650,8 +655,8 @@
     "semantic_hash": ""
   },
   "frontend/dispatcher/components/domain/TripCreatedDetail.tsx": {
-    "mtime": 1782039159.1755333,
-    "ast_hash": "4cee2f1275532b77d4888629eec563fa",
+    "mtime": 1779024525.5939217,
+    "ast_hash": "cf34e33339fbc51a3063ee314099dba4",
     "semantic_hash": ""
   },
   "frontend/dispatcher/components/domain/TripIdStamp.tsx": {
@@ -660,8 +665,8 @@
     "semantic_hash": ""
   },
   "frontend/dispatcher/components/layout/DispatcherShell.tsx": {
-    "mtime": 1781855816.8941996,
-    "ast_hash": "382098f202ed9b38fcd4ac66ecc9f64e",
+    "mtime": 1781421923.5641773,
+    "ast_hash": "db66236b473848db72a17346690f6aa1",
     "semantic_hash": ""
   },
   "frontend/dispatcher/components/layout/PageHeader.tsx": {
@@ -675,8 +680,8 @@
     "semantic_hash": ""
   },
   "frontend/dispatcher/components/layout/Sidebar.tsx": {
-    "mtime": 1782034360.6390252,
-    "ast_hash": "dbb4d4740bfb2d6f9efe8f470f38510f",
+    "mtime": 1779044793.765846,
+    "ast_hash": "a3b5707413e266ed48d30c145671627c",
     "semantic_hash": ""
   },
   "frontend/dispatcher/components/ui/Button.tsx": {
@@ -770,8 +775,8 @@
     "semantic_hash": ""
   },
   "frontend/dispatcher/components/ui/StatCard.tsx": {
-    "mtime": 1782037916.5980477,
-    "ast_hash": "e5a2a9bb38b4134a319cc673651f4a4a",
+    "mtime": 1778665533.6649873,
+    "ast_hash": "dc7d19f09519362fa17450f1ee198693",
     "semantic_hash": ""
   },
   "frontend/dispatcher/components/ui/StepRail.tsx": {
@@ -795,8 +800,8 @@
     "semantic_hash": ""
   },
   "frontend/dispatcher/components/ui/TopBar.tsx": {
-    "mtime": 1782037542.9142253,
-    "ast_hash": "3937b9db5d3dceb8c8a9f44855c2a2c5",
+    "mtime": 1778917919.2553527,
+    "ast_hash": "a68a48c936910be10ff6b4acd1ec3194",
     "semantic_hash": ""
   },
   "frontend/dispatcher/eslint.config.mjs": {
@@ -825,8 +830,8 @@
     "semantic_hash": ""
   },
   "frontend/dispatcher/lib/context/ForensicModeContext.tsx": {
-    "mtime": 1781854445.811716,
-    "ast_hash": "70d843826bd1bff568a8dc7ae380b98a",
+    "mtime": 1781421781.5087702,
+    "ast_hash": "ec2e1f8fac0ad9caedc08604cbcc3780",
     "semantic_hash": ""
   },
   "frontend/dispatcher/lib/context/ToastContext.tsx": {
@@ -1552,26 +1557,6 @@
   "spikes/README.md": {
     "mtime": 1776885195.331159,
     "ast_hash": "46d580c2616062038d859f917a5e1902",
-    "semantic_hash": ""
-  },
-  "frontend/dispatcher/components/blockchain/ForensicControls.tsx": {
-    "mtime": 1782037557.140067,
-    "ast_hash": "4bd101c75aa4b884a19b96548a3298fa",
-    "semantic_hash": ""
-  },
-  "frontend/dispatcher/components/ui/Switch.tsx": {
-    "mtime": 1782035545.714702,
-    "ast_hash": "54f2c1bbb0f63efd0704e6a20513e389",
-    "semantic_hash": ""
-  },
-  "frontend/dispatcher/lib/forensic/describeChange.ts": {
-    "mtime": 1782033039.4337194,
-    "ast_hash": "b1e2761e238c571da22ddd019449fdad",
-    "semantic_hash": ""
-  },
-  "docs/superpowers/plans/2026-06-19-dispatcher-forensic-view-ux.md": {
-    "mtime": 1781851985.4870665,
-    "ast_hash": "102f7302fbafeeba778ff17dc497066f",
     "semantic_hash": ""
   }
 }
