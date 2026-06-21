@@ -14,9 +14,8 @@ import { ChecklistRow }   from '@/components/domain/ChecklistRow'
 import type { ColWidths } from '@/components/domain/ChecklistRow'
 import { useTrips }       from '@/lib/hooks/useTrips'
 import { useAuth }        from '@/lib/hooks/useAuth'
-// ITERATION 2: re-enable exceptions — uncomment the two lines below
-// import { useExceptions }  from '@/lib/hooks/useExceptions'
-// import { mockTrips }      from '@shared/lib/mocks/trips'
+import { useExceptions }  from '@/lib/hooks/useExceptions'
+import { mockTrips }      from '@shared/lib/mocks/trips'
 import { usePrecincts }   from '@/lib/hooks/usePrecincts'
 import { useToast }       from '@/lib/hooks/useToast'
 import { ROUTES }         from '@/lib/constants/routes'
@@ -64,7 +63,7 @@ export default function ActiveTripsPage() {
   // Single fetch for all trips — active and closed are derived client-side
   const { trips: allFetchedTrips, isLoading: tripsLoading, error: tripsError, refetch: refetchTrips } = useTrips()
   const { precincts } = usePrecincts()
-  // ITERATION 2: const openExceptions = useExceptions({ resolved: false })
+  const openExceptions = useExceptions({ resolved: false })
 
   useEffect(() => {
     if (tripsError) {
@@ -97,14 +96,13 @@ export default function ActiveTripsPage() {
     return Math.round((onTime.length / withArrival.length) * 100)
   }, [allTrips])
 
-  // ITERATION 2: exception description for the dashboard banner
-  // const exceptionDescription = useMemo(() => {
-  //   return openExceptions.slice(0, 2).map(e => {
-  //     const trip = mockTrips.find(t => t.id === e.trip_id)
-  //     const ref  = trip?.trip_reference ?? 'Unknown'
-  //     return `${ref}: ${e.exception_type.replace(/_/g, ' ')}`
-  //   }).join(' · ')
-  // }, [openExceptions])
+  const exceptionDescription = useMemo(() => {
+    return openExceptions.slice(0, 2).map(e => {
+      const trip = mockTrips.find(t => t.id === e.trip_id)
+      const ref  = trip?.trip_reference ?? 'Unknown'
+      return `${ref}: ${e.exception_type.replace(/_/g, ' ')}`
+    }).join(' · ')
+  }, [openExceptions])
 
   const filteredTrips = useMemo(() => {
     if (!search.trim()) return allTrips
@@ -160,7 +158,7 @@ export default function ActiveTripsPage() {
       {/* Stat strip — shows placeholders while trips are loading */}
       <div className="flex gap-3 px-6 py-4 bg-surf-low shrink-0">
         <StatCard value={String(allTrips.length)}       label="Active trips"      loading={tripsLoading} />
-        {/* ITERATION 2: <StatCard value={String(openExceptions.length)} label="Exceptions today" warn={openExceptions.length > 0} /> */}
+        <StatCard value={String(openExceptions.length)} label="Exceptions today" warn={openExceptions.length > 0} />
         <StatCard value={String(completedCount)}         label="Completed today"   loading={tripsLoading} />
         <StatCard value={`${onTimePercent}%`}            label="On-time rate (30d)" success={onTimePercent >= 90} warn={onTimePercent < 70} loading={tripsLoading} />
       </div>
@@ -187,8 +185,7 @@ export default function ActiveTripsPage() {
           onAction={() => router.push(ROUTES.tripNew)}
         />
 
-        {/* ITERATION 2: exception banner — uncomment block below and restore openExceptions/exceptionDescription */}
-        {/* {openExceptions.length > 0 && (
+        {openExceptions.length > 0 && (
           <div className="flex items-center gap-2 px-6 py-[7px] bg-err/8 border-b border-err/20 shrink-0">
             <Ic n="warn" s={13} className="text-err shrink-0" />
             <span className="text-[12px] font-[600] text-err">
@@ -204,7 +201,7 @@ export default function ActiveTripsPage() {
               Review →
             </button>
           </div>
-        )} */}
+        )}
 
         {/* Table scroll area */}
         <div className="flex-1 overflow-auto">

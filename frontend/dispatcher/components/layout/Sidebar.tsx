@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { X, Shield } from 'lucide-react'
 import { Ic } from '@/components/ui/Ic'
 import { useAuth } from '@/lib/hooks/useAuth'
-// ITERATION 2: import { useExceptions } from '@/lib/hooks/useExceptions'
+import { useExceptions } from '@/lib/hooks/useExceptions'
 import { cn } from '@shared/lib/utils/cn'
 import { ROUTES } from '@/lib/constants/routes'
 import type { IconName } from '@/components/ui/Ic'
@@ -36,7 +36,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'Create Trip',  href: ROUTES.tripNew, icon: 'plus',  activePatterns: ['/trips/new'] },
       { label: 'Trip History', href: ROUTES.history,  icon: 'clock', activePatterns: ['/history'] },
-      // ITERATION 2: { label: 'Exceptions', href: ROUTES.exceptions, icon: 'warn', activePatterns: ['/exceptions'] },
+      { label: 'Exceptions',   href: ROUTES.exceptions, icon: 'warn', activePatterns: ['/exceptions'] },
     ],
   },
   {
@@ -115,17 +115,15 @@ interface SidebarContentProps {
 function SidebarContent({ onClose }: SidebarContentProps) {
   const pathname = usePathname()
   const { user } = useAuth()
-  // ITERATION 2: restore exception badge — uncomment the three lines below and remove `const navGroups = NAV_GROUPS`
-  // const openExceptions = useExceptions({ resolved: false })
-  // const navGroups = NAV_GROUPS.map(g => ({
-  //   ...g,
-  //   items: g.items.map(item =>
-  //     item.href === ROUTES.exceptions && openExceptions.length > 0
-  //       ? { ...item, badge: openExceptions.length }
-  //       : item,
-  //   ),
-  // }))
-  const navGroups = NAV_GROUPS
+  const openExceptions = useExceptions({ resolved: false })
+  const navGroups = NAV_GROUPS.map(g => ({
+    ...g,
+    items: g.items.map(item =>
+      item.href === ROUTES.exceptions && openExceptions.length > 0
+        ? { ...item, badge: openExceptions.length }
+        : item,
+    ),
+  }))
 
   return (
     <div className="flex flex-col h-full bg-primary w-[220px] shrink-0">
