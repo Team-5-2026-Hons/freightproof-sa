@@ -1,27 +1,19 @@
-'use client'
+// frontend/driver-pwa/app/(app)/trip/[id]/panic/submitted/page.tsx
+//
+// Server component (no 'use client'): Next.js requires generateStaticParams to be
+// exported from a server module, but every driver-pwa page must otherwise be a client
+// component (output: 'export' is incompatible with Server Components). This file is the
+// minimal server-side wrapper — all rendering logic lives in PanicSubmittedPageClient.
+import { mockTrips } from '@shared/lib/mocks/trips'
+import PanicSubmittedPageClient from './PanicSubmittedPageClient'
 
-import { useParams, useRouter } from 'next/navigation'
-import { CheckCircle2 } from 'lucide-react'
-import { ROUTES } from '@/lib/constants/routes'
-import { Button } from '@/components/ui/Button'
+// Static export (output: 'export') requires every dynamic segment to declare its
+// param combinations at build time. Trip data is mock-only for now, so we enumerate
+// directly from the fixture set — swap for a real trip-id fetch once Iter 2 lands.
+export function generateStaticParams() {
+  return mockTrips.map((trip) => ({ id: String(trip.id) }))
+}
 
 export default function PanicSubmittedPage() {
-  const { id: tripId } = useParams<{ id: string }>()
-  const router = useRouter()
-
-  return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-6 text-center">
-      <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
-        <CheckCircle2 className="h-10 w-10 text-success" strokeWidth={2} aria-hidden />
-      </div>
-      <h1 className="text-xl font-bold">Alert sent</h1>
-      <p className="text-sm text-surface-on-variant max-w-xs">
-        Your dispatcher has been notified. Stay calm and wait for contact.
-        This event has been recorded and timestamped.
-      </p>
-      <Button size="lg" onClick={() => router.replace(ROUTES.inTransit(tripId))}>
-        Return to in-transit
-      </Button>
-    </main>
-  )
+  return <PanicSubmittedPageClient />
 }
