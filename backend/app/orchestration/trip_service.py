@@ -221,7 +221,7 @@ async def create_trip(
         trip_id=trip_id,
     )
 
-    await db.commit()
+    await db.flush()
     await db.refresh(trip)
     await db.refresh(h0)
     await db.refresh(receipt)

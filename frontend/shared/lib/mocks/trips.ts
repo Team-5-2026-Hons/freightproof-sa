@@ -3,7 +3,6 @@ import type { HandshakeEvent, HandshakeEventId, HandshakeNumber, HandshakeType }
 import type { TripException, ExceptionId } from '@shared/lib/types/exception'
 import { mockDrivers, DRIVER_DLAMINI_ID, DRIVER_FORMBY_ID, DRIVER_GULTIG_ID, DRIVER_KASONGO_ID } from './drivers'
 import { mockHorses, mockTrailers, HORSE_1_ID, HORSE_2_ID, HORSE_3_ID, TRAILER_1_ID, TRAILER_2_ID, TRAILER_3_ID, TRAILER_4_ID, TRAILER_5_ID } from './vehicles'
-import { OPERATOR_ORG_ID, FEDEX_ORG_ID, CGY_ORG_ID } from './principals'
 import { PRECINCT_FEDEX_JHB_ID, PRECINCT_FEDEX_DBN_ID, PRECINCT_CGY_JHB_ID, PRECINCT_CGY_CT_ID } from './precincts'
 
 const tripId = (v: string): TripId => v as unknown as TripId
@@ -482,10 +481,6 @@ export const mockTrips: Trip[] = [
     status: 'closed',
     journey_lock_hash: 'c2956f8a3d1e4b09f72a83c1d4e5b96f2a3c8d0e1f4a7b2c9d6e3f0a1b4c7d2',
     idvs_check_status: 'verified',
-    operator_organization_id: OPERATOR_ORG_ID,
-    client_organization_id: FEDEX_ORG_ID,
-    driver_id: DRIVER_DLAMINI_ID,
-    horse_id: HORSE_1_ID,
     origin_precinct_id: PRECINCT_FEDEX_JHB_ID,
     destination_precinct_id: PRECINCT_FEDEX_DBN_ID,
     pulsit_trip_reference_id: 'PLT-2026-0035',
@@ -512,10 +507,6 @@ export const mockTrips: Trip[] = [
     status: 'created',
     journey_lock_hash: null,
     idvs_check_status: 'pending',
-    operator_organization_id: OPERATOR_ORG_ID,
-    client_organization_id: CGY_ORG_ID,
-    driver_id: DRIVER_GULTIG_ID,
-    horse_id: HORSE_3_ID,
     origin_precinct_id: PRECINCT_CGY_JHB_ID,
     destination_precinct_id: PRECINCT_CGY_CT_ID,
     pulsit_trip_reference_id: null,
@@ -542,10 +533,6 @@ export const mockTrips: Trip[] = [
     status: 'origin_gate_in',
     journey_lock_hash: 'f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6',
     idvs_check_status: 'verified',
-    operator_organization_id: OPERATOR_ORG_ID,
-    client_organization_id: FEDEX_ORG_ID,
-    driver_id: DRIVER_KASONGO_ID,
-    horse_id: HORSE_2_ID,
     origin_precinct_id: PRECINCT_FEDEX_DBN_ID,
     destination_precinct_id: PRECINCT_FEDEX_JHB_ID,
     pulsit_trip_reference_id: 'PLT-2026-0039',
@@ -581,10 +568,6 @@ export const mockTrips: Trip[] = [
     status: 'dest_gate_in',
     journey_lock_hash: 'b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8',
     idvs_check_status: 'verified',
-    operator_organization_id: OPERATOR_ORG_ID,
-    client_organization_id: FEDEX_ORG_ID,
-    driver_id: DRIVER_FORMBY_ID,
-    horse_id: HORSE_2_ID,
     origin_precinct_id: PRECINCT_FEDEX_JHB_ID,
     destination_precinct_id: PRECINCT_FEDEX_DBN_ID,
     pulsit_trip_reference_id: 'PLT-2026-0040',
@@ -628,10 +611,6 @@ export const mockTrips: Trip[] = [
     status: 'in_transit',
     journey_lock_hash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
     idvs_check_status: 'verified',
-    operator_organization_id: OPERATOR_ORG_ID,
-    client_organization_id: FEDEX_ORG_ID,
-    driver_id: DRIVER_DLAMINI_ID,
-    horse_id: HORSE_1_ID,
     origin_precinct_id: PRECINCT_FEDEX_JHB_ID,
     destination_precinct_id: PRECINCT_FEDEX_DBN_ID,
     pulsit_trip_reference_id: 'PLT-2026-0041',
@@ -675,10 +654,6 @@ export const mockTrips: Trip[] = [
     status: 'in_transit',
     journey_lock_hash: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
     idvs_check_status: 'verified',
-    operator_organization_id: OPERATOR_ORG_ID,
-    client_organization_id: FEDEX_ORG_ID,
-    driver_id: DRIVER_FORMBY_ID,
-    horse_id: HORSE_3_ID,
     origin_precinct_id: PRECINCT_FEDEX_JHB_ID,
     destination_precinct_id: PRECINCT_FEDEX_DBN_ID,
     pulsit_trip_reference_id: 'PLT-2026-0042',

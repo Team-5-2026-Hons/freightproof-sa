@@ -15,6 +15,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_dispatcher
+from app.db.models.enums import DispatcherRole
 from app.core.exceptions import ResourceNotFoundError, TripConflictError
 from app.db.models.enums import TripStatus
 from app.db.session import get_db
@@ -92,7 +93,7 @@ async def get_trip_detail_endpoint(
     current_user: UserRead = Depends(get_current_dispatcher),
 ) -> TripDetailResponse:
     try:
-        return await get_trip_detail(
+        detail = await get_trip_detail(
             db=db,
             trip_id=trip_id,
             operator_organization_id=current_user.organization_id,
@@ -102,3 +103,6 @@ async def get_trip_detail_endpoint(
             status_code=http_status.HTTP_404_NOT_FOUND,
             detail=str(exc),
         ) from exc
+    if current_user.role != DispatcherRole.ADMIN_DISPATCHER:
+        detail = detail.model_copy(update={"blockchain_receipts": []})
+    return detail

@@ -55,10 +55,6 @@ export interface Trip {
   status: TripStatus
   journey_lock_hash: string | null
   idvs_check_status: 'pending' | 'verified' | 'failed'
-  operator_organization_id: string
-  client_organization_id: string
-  driver_id: string
-  horse_id: string
   origin_precinct_id: string
   destination_precinct_id: string
   pulsit_trip_reference_id: string | null

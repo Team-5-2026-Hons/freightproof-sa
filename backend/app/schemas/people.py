@@ -6,7 +6,7 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from app.db.models.enums import IdvsStatus
+from app.db.models.enums import DispatcherRole, IdvsStatus
 
 
 class UserBase(BaseModel):
@@ -36,6 +36,8 @@ class UserRead(UserBase):
     id: UUID
     created_at: datetime
     updated_at: datetime
+    # Role is populated from the JWT at request time, not persisted in the DB.
+    role: DispatcherRole = DispatcherRole.DISPATCHER
 
 
 class DriverBase(BaseModel):

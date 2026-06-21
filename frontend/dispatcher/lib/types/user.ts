@@ -15,6 +15,7 @@ export interface DispatcherUser {
   email: string
   full_name: string
   is_active: boolean
+  role: 'dispatcher' | 'admin_dispatcher'
 }
 
 // DriverUser wraps the full Driver record so cross-surface type imports stay consistent.

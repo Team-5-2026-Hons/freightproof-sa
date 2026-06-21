@@ -5,10 +5,11 @@ import Link from 'next/link'
 import { X, Shield } from 'lucide-react'
 import { Ic } from '@/components/ui/Ic'
 import { useAuth } from '@/lib/hooks/useAuth'
-// ITERATION 2: import { useExceptions } from '@/lib/hooks/useExceptions'
+import { useExceptions } from '@/lib/hooks/useExceptions'
 import { cn } from '@shared/lib/utils/cn'
 import { ROUTES } from '@/lib/constants/routes'
 import type { IconName } from '@/components/ui/Ic'
+import type { DispatcherUser } from '@/lib/types/user'
 
 interface NavItem {
   label: string
@@ -35,7 +36,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'Create Trip',  href: ROUTES.tripNew, icon: 'plus',  activePatterns: ['/trips/new'] },
       { label: 'Trip History', href: ROUTES.history,  icon: 'clock', activePatterns: ['/history'] },
-      // ITERATION 2: { label: 'Exceptions', href: ROUTES.exceptions, icon: 'warn', activePatterns: ['/exceptions'] },
+      { label: 'Exceptions',   href: ROUTES.exceptions, icon: 'warn', activePatterns: ['/exceptions'] },
     ],
   },
   {
@@ -58,6 +59,12 @@ const SETTINGS_ITEM: NavItem = {
   href: ROUTES.settings,
   icon: 'gear',
   activePatterns: ['/settings'],
+}
+
+// Humanizes the DispatcherUser role for display; falls back to the base
+// "Dispatcher" label when the role is the non-admin variant or user is unknown.
+function roleLabel(role: DispatcherUser['role'] | undefined): string {
+  return role === 'admin_dispatcher' ? 'Admin Dispatcher' : 'Dispatcher'
 }
 
 function isActive(pathname: string, patterns: string[]): boolean {
@@ -108,17 +115,15 @@ interface SidebarContentProps {
 function SidebarContent({ onClose }: SidebarContentProps) {
   const pathname = usePathname()
   const { user } = useAuth()
-  // ITERATION 2: restore exception badge — uncomment the three lines below and remove `const navGroups = NAV_GROUPS`
-  // const openExceptions = useExceptions({ resolved: false })
-  // const navGroups = NAV_GROUPS.map(g => ({
-  //   ...g,
-  //   items: g.items.map(item =>
-  //     item.href === ROUTES.exceptions && openExceptions.length > 0
-  //       ? { ...item, badge: openExceptions.length }
-  //       : item,
-  //   ),
-  // }))
-  const navGroups = NAV_GROUPS
+  const openExceptions = useExceptions({ resolved: false })
+  const navGroups = NAV_GROUPS.map(g => ({
+    ...g,
+    items: g.items.map(item =>
+      item.href === ROUTES.exceptions && openExceptions.length > 0
+        ? { ...item, badge: openExceptions.length }
+        : item,
+    ),
+  }))
 
   return (
     <div className="flex flex-col h-full bg-primary w-[220px] shrink-0">
@@ -180,10 +185,15 @@ function SidebarContent({ onClose }: SidebarContentProps) {
           <Ic n="user" s={13} className="text-white/60" />
         </div>
         <div>
-          <div className="text-[12px] font-[600] text-white/85 leading-tight">
-            {user?.full_name ?? 'Dispatcher'}
+          <div className="flex items-center gap-[6px] text-[12px] font-[600] text-white/85 leading-tight">
+            <span>{user?.full_name ?? 'Dispatcher'}</span>
+            {user?.role === 'admin_dispatcher' && (
+              <span className="bg-white/15 text-white/85 text-[9px] font-[700] tracking-[0.04em] rounded-[var(--r-sm)] px-[5px] py-[1px]">
+                ADMIN
+              </span>
+            )}
           </div>
-          <div className="text-[10px] text-white/40">Dispatcher</div>
+          <div className="text-[10px] text-white/40">{roleLabel(user?.role)}</div>
         </div>
       </div>
     </div>

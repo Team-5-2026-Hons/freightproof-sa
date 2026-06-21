@@ -236,7 +236,7 @@ class TripCreateRequest(BaseModel):
     client_organization_id: UUID
     driver_id: UUID
     horse_id: UUID
-    trailer_ids: list[UUID] = []
+    trailer_ids: list[UUID] = Field(default_factory=list, min_length=1)
     origin_precinct_id: UUID
     destination_precinct_id: UUID
     template_id: Optional[UUID] = None
@@ -250,6 +250,8 @@ class TripCreateRequest(BaseModel):
         if self.planned_departure_at and self.planned_arrival_at:
             if self.planned_arrival_at <= self.planned_departure_at:
                 raise ValueError("planned_arrival_at must be after planned_departure_at")
+        if len(self.trailer_ids) != len(set(self.trailer_ids)):
+            raise ValueError("trailer_ids must not contain duplicates")
         return self
 
 

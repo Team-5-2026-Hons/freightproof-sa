@@ -34,9 +34,10 @@ export type VerifyResult = {
   current_hash: string | null;
 };
 
+// Mirrors VehicleEventType enum in backend/app/db/models/enums.py exactly.
 export type VehicleEventType =
   | 'created' | 'license_plate_changed' | 'license_disc_renewed'
-  | 'deactivated' | 'cosmetic_update';
+  | 'vin_updated' | 'vehicle_updated' | 'deactivated' | 'cosmetic_update';
 
 export type DriverEventType =
   | 'created' | 'license_renewed' | 'deactivated' | 'cosmetic_update';

@@ -179,3 +179,44 @@ def test_merkle_leaf_source_type_invalid():
             source_type="trip",
             source_id=uuid.uuid4(),
         )
+
+
+# ---------------------------------------------------------------------------
+# TripCreateRequest — trailer_ids: min 1 trailer, no duplicates (CQ-4, CQ-5)
+# ---------------------------------------------------------------------------
+
+import uuid as _uuid
+
+from pydantic import ValidationError
+
+from app.schemas.trips import TripCreateRequest
+
+_ORIGIN = _uuid.uuid4()
+_DEST = _uuid.uuid4()
+_BASE = {
+    "order_number": "ORD-001",
+    "client_organization_id": str(_uuid.uuid4()),
+    "driver_id": str(_uuid.uuid4()),
+    "horse_id": str(_uuid.uuid4()),
+    "origin_precinct_id": str(_ORIGIN),
+    "destination_precinct_id": str(_DEST),
+}
+
+
+def test_trip_create_request_empty_trailer_ids_rejected() -> None:
+    data = {**_BASE, "trailer_ids": []}
+    with pytest.raises(ValidationError):
+        TripCreateRequest.model_validate(data)
+
+
+def test_trip_create_request_single_trailer_accepted() -> None:
+    data = {**_BASE, "trailer_ids": [str(_uuid.uuid4())]}
+    req = TripCreateRequest.model_validate(data)
+    assert len(req.trailer_ids) == 1
+
+
+def test_trip_create_request_duplicate_trailer_ids_rejected() -> None:
+    shared = str(_uuid.uuid4())
+    data = {**_BASE, "trailer_ids": [shared, shared]}
+    with pytest.raises(ValidationError):
+        TripCreateRequest.model_validate(data)

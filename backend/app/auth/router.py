@@ -11,14 +11,13 @@ handled entirely by Supabase Auth on the client side.
 from fastapi import APIRouter, Depends
 
 from app.auth.dependencies import get_current_dispatcher
-from app.db.models.people import User
 from app.schemas.people import UserRead
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.get("/me", response_model=UserRead)
-async def get_me(current_user: User = Depends(get_current_dispatcher)) -> User:
+async def get_me(current_user: UserRead = Depends(get_current_dispatcher)) -> UserRead:
     """Return the authenticated dispatcher's profile.
 
     The frontend uses this as a session health-check on load — if it returns

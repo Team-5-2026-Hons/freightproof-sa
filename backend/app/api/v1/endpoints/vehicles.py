@@ -6,10 +6,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_dispatcher
+from app.db.models.enums import DispatcherRole
 from app.core.exceptions import DuplicateResourceError, ResourceNotFoundError
 from app.db.session import get_db
-from app.orchestration.resource_service import (
-    create_vehicle, get_vehicle_detail, list_vehicles, update_vehicle,
+from app.orchestration.vehicle_service import (
+    list_vehicles, create_vehicle, update_vehicle, get_vehicle_detail,
 )
 from app.schemas.people import UserRead
 from app.schemas.vehicles import VehicleCreateBody, VehicleDetailResponse, VehicleRead, VehicleUpdateBody
@@ -68,10 +69,13 @@ async def get_vehicle_detail_endpoint(
     current_user: UserRead = Depends(get_current_dispatcher),
 ) -> VehicleDetailResponse:
     try:
-        return await get_vehicle_detail(
+        detail = await get_vehicle_detail(
             db=db,
             vehicle_id=vehicle_id,
             organization_id=current_user.organization_id,
         )
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    if current_user.role != DispatcherRole.ADMIN_DISPATCHER:
+        detail = detail.model_copy(update={"receipts": []})
+    return detail
