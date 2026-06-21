@@ -36,6 +36,16 @@
     </application>
 
     <!-- Permissions -->
-
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Camera: every handshake captures gate / waybill / seal / POD photos -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- Location: GPS capture at each gate and bay -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!-- Web-capable: app must still install on devices without a camera (Play Store filter off) -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
 </manifest>

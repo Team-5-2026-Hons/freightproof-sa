@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "cap:sync": "next build && npx cap sync android",
+    "cap:open": "npx cap open android",
+    "cap:run": "next build && npx cap sync android && npx cap run android"
   },
   "dependencies": {
     "next": "^15.0.0",
