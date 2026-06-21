@@ -25,6 +25,9 @@ export interface H3Evidence {
   gpsLng: number | null
   gatePhotoDataUrl: string | null
   sealNumberConfirmed: string | null
+  // Deviation from original plan spec (authorized fix, post Task-9 review): mirrors H4Evidence's
+  // sealVerifiedMatch so H3's "confirm seal" step performs a real comparison against H2's seal, not just free text.
+  sealVerifiedMatch: boolean | null
   capturedAt: string | null
 }
 

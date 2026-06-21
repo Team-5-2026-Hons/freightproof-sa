@@ -26,7 +26,13 @@ export function H3Departure({ tripId, draft, onComplete }: H3DepartureProps) {
           items={[
             { label: 'GPS', value: draft.gpsLat ? `${draft.gpsLat.toFixed(5)}, ${draft.gpsLng?.toFixed(5)}` : null },
             { label: 'Exit photo', value: draft.gatePhotoDataUrl, isImage: true },
-            { label: 'Seal confirmed', value: draft.sealNumberConfirmed },
+            {
+              label: 'Seal confirmed',
+              value:
+                draft.sealNumberConfirmed === null
+                  ? null
+                  : `${draft.sealNumberConfirmed}${draft.sealVerifiedMatch === false ? ' (mismatch)' : ''}`,
+            },
           ]}
         />
       </div>

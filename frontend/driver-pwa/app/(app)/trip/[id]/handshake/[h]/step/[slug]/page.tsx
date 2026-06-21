@@ -33,7 +33,7 @@ import { H5Closed } from '@/components/handshake/steps/H5Closed'
 // must be present here or this literal fails to satisfy H1Evidence.
 const H1_INITIAL: H1Evidence = { gpsLat: null, gpsLng: null, gatePhotoDataUrl: null, gateAddress: null, capturedAt: null }
 const H2_INITIAL: H2Evidence = { gpsLat: null, gpsLng: null, ppManifestParcelCount: null, driverVisualCount: null, waybillPhotoDataUrl: null, sealNumber: null, sealPhotoDataUrl: null, capturedAt: null }
-const H3_INITIAL: H3Evidence = { gpsLat: null, gpsLng: null, gatePhotoDataUrl: null, sealNumberConfirmed: null, capturedAt: null }
+const H3_INITIAL: H3Evidence = { gpsLat: null, gpsLng: null, gatePhotoDataUrl: null, sealNumberConfirmed: null, sealVerifiedMatch: null, capturedAt: null }
 const H4_INITIAL: H4Evidence = { gpsLat: null, gpsLng: null, gatePhotoDataUrl: null, sealVerifiedMatch: null, capturedAt: null }
 const H5_INITIAL: H5Evidence = { waybillHandedOver: null, sealBrokenPhotoDataUrl: null, driverVisualCount: null, podPhotoDataUrl: null, reconciliationNote: null, capturedAt: null }
 
@@ -96,7 +96,7 @@ export default function HandshakeStepPage() {
 
   if (handshakeNum === 3) {
     if (slug === '1-approach-exit')  return <H3ApproachExit {...props} draft={h3Draft} onUpdate={updateH3} onComplete={advance} />
-    if (slug === '2-exit-and-seal')  return <H3ExitSeal     {...props} draft={h3Draft} onUpdate={updateH3} onComplete={advance} />
+    if (slug === '2-exit-and-seal')  return <H3ExitSeal     {...props} draft={h3Draft} h2SealNumber={h2Draft.sealNumber} onUpdate={updateH3} onComplete={advance} />
     if (slug === '3-departure')      return <H3Departure    {...props} draft={h3Draft} onComplete={() => submitAndAdvance('origin_gate_out', h3Draft, clearH3)} />
   }
 
