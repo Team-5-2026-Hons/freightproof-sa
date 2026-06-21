@@ -21,8 +21,8 @@ export function H2Manifest({ tripId, draft, onUpdate, onComplete }: H2ManifestPr
   )
   const ppCount = manifest.parcel_count
   const driverCount = countInput !== '' ? parseInt(countInput, 10) : null
-  const hasMismatch = driverCount !== null && driverCount !== ppCount
   const isReady = driverCount !== null && !isNaN(driverCount)
+  const hasMismatch = isReady && driverCount !== ppCount
 
   function handleConfirm() {
     onUpdate({ ppManifestParcelCount: ppCount, driverVisualCount: driverCount })
@@ -50,7 +50,7 @@ export function H2Manifest({ tripId, draft, onUpdate, onComplete }: H2ManifestPr
         {hasMismatch && (
           <div className="rounded-xl bg-error-container px-4 py-3">
             <p className="text-sm font-medium text-error-on-container">
-              Count mismatch: PP says {ppCount}, you counted {driverCount}. This will be flagged as an exception.
+              Count mismatch: PP says {ppCount}, you counted {driverCount}. This discrepancy will be recorded for review.
             </p>
           </div>
         )}
