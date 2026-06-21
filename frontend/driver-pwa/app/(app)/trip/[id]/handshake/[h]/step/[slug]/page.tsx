@@ -3,8 +3,6 @@
 
 import { useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { HANDSHAKE_NAMES, STEP_NAMES, STEP_SLUGS, HANDSHAKE_STEP_COUNTS } from '@shared/lib/constants/handshake-meta'
-import { StepHeader } from '@/components/handshake/StepHeader'
 import { useHandshakeDraft } from '@/lib/hooks/useHandshakeDraft'
 import { submitHandshake } from '@/lib/api/handshakes'
 import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
@@ -45,10 +43,6 @@ export default function HandshakeStepPage() {
   const { enqueue } = useOfflineQueue()
 
   const handshakeNum = Number(h) as 1 | 2 | 3 | 4 | 5
-  const slugList = STEP_SLUGS[handshakeNum] ?? []
-  const stepIndex = slugList.indexOf(slug)   // 0-based
-  const stepName = STEP_NAMES[handshakeNum]?.[stepIndex] ?? slug
-  const totalSteps = HANDSHAKE_STEP_COUNTS[handshakeNum]
 
   // URL-derived navigation (single source of truth) — see lib/navigation/handshake-flow.ts.
   // The backend stays authoritative for whether the handshake is valid; this only moves
@@ -73,6 +67,11 @@ export default function HandshakeStepPage() {
     try {
       await submitHandshake(tripId, type, evidence)
     } catch {
+      // TODO(backend-integration): submitHandshake failures are treated uniformly here —
+      // a terminal/validation failure (will never succeed) is queued and the draft is
+      // cleared identically to a transient network failure. See the matching TODO in
+      // useOfflineQueue.ts's flush(). Don't fix until submitHandshake can report which
+      // kind of failure occurred.
       enqueue(tripId, type, evidence)
     }
     clearFn()
