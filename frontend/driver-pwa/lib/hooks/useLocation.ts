@@ -47,7 +47,11 @@ export function useLocation(): LocationState {
       setCoords(result)
       setStatus('captured')
       return result
-    } catch {
+    } catch (err) {
+      // Log the underlying GeolocationPositionError reason (permission denied vs.
+      // timeout vs. position unavailable) — these need different driver-facing
+      // remediation, so swallowing the reason silently breaks downstream UX.
+      console.error('[useLocation] capture failed:', err)
       setStatus('error')
       return null
     }
