@@ -103,7 +103,7 @@ export default function HandshakeStepPage() {
   if (handshakeNum === 4) {
     if (slug === '1-approach-dest')    return <H4ApproachDest {...props} draft={h4Draft} onUpdate={updateH4} onComplete={advance} />
     if (slug === '2-dest-entry-photo') return <H4EntryPhoto   {...props} draft={h4Draft} onUpdate={updateH4} onComplete={advance} />
-    if (slug === '3-seal-verify')      return <H4SealVerify   {...props} draft={h4Draft} h2SealNumber={h2Draft.sealNumber} onComplete={() => submitAndAdvance('dest_gate_in', h4Draft, clearH4)} />
+    if (slug === '3-seal-verify')      return <H4SealVerify   {...props} draft={h4Draft} h2SealNumber={h2Draft.sealNumber} onUpdate={updateH4} onComplete={() => submitAndAdvance('dest_gate_in', h4Draft, clearH4)} />
   }
 
   if (handshakeNum === 5) {
