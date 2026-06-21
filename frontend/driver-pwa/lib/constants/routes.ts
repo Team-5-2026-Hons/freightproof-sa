@@ -5,6 +5,7 @@ export const ROUTES = {
   home:     '/',
   login:    '/login',
   settings: '/settings',
+  trips:    '/trips',
 
   handshakeStep: (tripId: string, handshake: number, slug: string) =>
     `/trip/${tripId}/handshake/${handshake}/step/${slug}`,

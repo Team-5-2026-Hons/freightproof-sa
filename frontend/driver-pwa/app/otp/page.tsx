@@ -2,14 +2,21 @@
 
 // Required: output: 'export' (Capacitor APK) is incompatible with Server Components.
 
-import { useState } from 'react'
+import { useContext, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { AuthContext } from '@/lib/context/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { ROUTES } from '@/lib/constants/routes'
+
+// Demo mode (default) verifies via AuthContext.signIn so the driver record
+// lands on AuthContext.user before the (app) route guard checks it.
+const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE !== 'false'
 
 export default function OtpPage() {
   const router = useRouter()
+  const auth = useContext(AuthContext)
   const params = useSearchParams()
   // Phone passed as query param from login page; empty string is safe — verifyOtp will fail gracefully.
   const phone = params.get('phone') ?? ''
@@ -21,6 +28,14 @@ export default function OtpPage() {
     e.preventDefault()
     setLoading(true)
     setError(null)
+
+    if (isDemoMode) {
+      await auth?.signIn({ phone_number: phone, otp: token })
+      setLoading(false)
+      // replace() so the user cannot navigate back to the OTP screen after login.
+      router.replace(ROUTES.trips)
+      return
+    }
 
     const { error: verifyError } = await supabase.auth.verifyOtp({
       phone,
@@ -36,13 +51,13 @@ export default function OtpPage() {
     }
 
     // replace() so the user cannot navigate back to the OTP screen after login.
-    router.replace('/trips')
+    router.replace(ROUTES.trips)
   }
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-6">
-      <h1 className="text-2xl font-semibold mb-2">Enter OTP</h1>
-      <p className="text-sm text-gray-500 mb-8">Sent to {phone}</p>
+      <h1 className="text-2xl font-semibold mb-2 text-surface-on">Enter OTP</h1>
+      <p className="text-sm text-surface-on-variant mb-8">Sent to {phone}</p>
       <form onSubmit={handleVerify} className="w-full max-w-sm flex flex-col gap-4">
         <Input
           label="6-digit code"
@@ -54,7 +69,7 @@ export default function OtpPage() {
           onChange={(e) => setToken(e.target.value.replace(/\D/g, ''))}
           required
         />
-        {error && <p className="text-sm text-red-500">{error}</p>}
+        {error && <p className="text-sm text-error">{error}</p>}
         <Button type="submit" loading={loading} disabled={loading || token.length < 6}>
           {loading ? 'Verifying…' : 'Verify'}
         </Button>
