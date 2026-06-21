@@ -8,11 +8,10 @@ import { AuthContext } from '@/lib/context/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { IS_DEMO_MODE } from '@/lib/constants/env'
 
 // Demo mode (default) drives auth from AuthContext's mock OTP flow so the
-// (app) route guard has a session to check. Flip NEXT_PUBLIC_DEMO_MODE to
-// 'false' once the real Supabase-session -> AuthContext hydration lands.
-const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE !== 'false'
+// (app) route guard has a session to check.
 
 export default function LoginPage() {
   const router = useRouter()
@@ -26,7 +25,7 @@ export default function LoginPage() {
     setLoading(true)
     setError(null)
 
-    if (isDemoMode) {
+    if (IS_DEMO_MODE) {
       await auth?.requestOtp(phone)
       setLoading(false)
       router.push(`/otp?phone=${encodeURIComponent(phone)}`)

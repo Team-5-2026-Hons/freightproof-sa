@@ -9,10 +9,10 @@ import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { ROUTES } from '@/lib/constants/routes'
+import { IS_DEMO_MODE } from '@/lib/constants/env'
 
 // Demo mode (default) verifies via AuthContext.signIn so the driver record
 // lands on AuthContext.user before the (app) route guard checks it.
-const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE !== 'false'
 
 export default function OtpPage() {
   const router = useRouter()
@@ -29,7 +29,7 @@ export default function OtpPage() {
     setLoading(true)
     setError(null)
 
-    if (isDemoMode) {
+    if (IS_DEMO_MODE) {
       await auth?.signIn({ phone_number: phone, otp: token })
       setLoading(false)
       // replace() so the user cannot navigate back to the OTP screen after login.
