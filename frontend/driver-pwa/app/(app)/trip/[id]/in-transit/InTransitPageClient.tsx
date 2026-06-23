@@ -7,6 +7,7 @@ import { mockTrips } from '@shared/lib/mocks/trips'
 import { ROUTES } from '@/lib/constants/routes'
 import { STEP_SLUGS } from '@shared/lib/constants/handshake-meta'
 import { Button } from '@/components/ui/Button'
+import { Card } from '@/components/ui/Card'
 
 export default function InTransitPageClient() {
   const { id: tripId } = useParams<{ id: string }>()
@@ -35,31 +36,29 @@ export default function InTransitPageClient() {
 
       <div className="flex flex-col gap-4 p-4">
         {/* ETA */}
-        <section className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4">
+        <Card variant="section">
           <p className="text-xs text-surface-on-variant mb-1">Planned arrival</p>
-          <p className="text-base font-semibold">
+          <p className="text-base font-semibold text-surface-on">
             {trip.planned_arrival_at
               ? new Date(trip.planned_arrival_at).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })
               : 'Not set'}
           </p>
-        </section>
+        </Card>
 
         {/* Open exceptions */}
         {openExceptions.length > 0 && (
-          <section>
-            <p className="mb-2 text-sm font-semibold text-error">
+          <section className="flex flex-col gap-2">
+            <p className="text-sm font-semibold text-error">
               {openExceptions.length} open exception{openExceptions.length > 1 ? 's' : ''}
             </p>
-            <ul className="flex flex-col gap-2">
-              {openExceptions.map((exc) => (
-                <li key={exc.id} className="rounded-xl bg-error-container/50 px-4 py-3">
-                  <p className="text-xs font-semibold text-error-on-container capitalize">
-                    {exc.exception_type.replace(/_/g, ' ')}
-                  </p>
-                  <p className="text-xs text-surface-on-variant mt-0.5 line-clamp-2">{exc.description}</p>
-                </li>
-              ))}
-            </ul>
+            {openExceptions.map((exc) => (
+              <Card key={exc.id} variant="exception">
+                <p className="text-xs font-semibold text-error-on-container capitalize">
+                  {exc.exception_type.replace(/_/g, ' ')}
+                </p>
+                <p className="text-xs text-surface-on-variant mt-0.5 line-clamp-2">{exc.description}</p>
+              </Card>
+            ))}
           </section>
         )}
 
