@@ -31,11 +31,11 @@ export function nextHandshakeRoute(tripId: string, handshake: Handshake, slug: s
   if (handshake === 3) {
     return ROUTES.inTransit(tripId)
   }
-  // End of H1/H2/H4 — first step of the next handshake.
-  if (handshake < 5) {
-    const next = (handshake + 1) as Handshake
-    return ROUTES.handshakeStep(tripId, next, STEP_SLUGS[next][0])
-  }
   // End of Unloading (H5): the trip is closed — back to the trip list.
-  return ROUTES.trips
+  if (handshake === 5) {
+    return ROUTES.trips
+  }
+  // End of H1/H2/H4 — back to the trip detail page; the driver taps into the
+  // next handshake manually instead of being carried straight into its first step.
+  return ROUTES.tripDetail(tripId)
 }
