@@ -8,10 +8,12 @@ import { ROUTES } from '@/lib/constants/routes'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { tripsForDriver, categorizeTrips } from '@/lib/utils/trip-filters'
 import { tripStatusChip } from '@/lib/utils/trip-status-chip'
+import { handshakeProgress } from '@/lib/utils/handshake-progress'
 import { Card } from '@/components/ui/Card'
 import { Chip } from '@/components/ui/Chip'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { HandshakeProgressBar } from '@/components/trip/HandshakeProgressBar'
 
 const HANDSHAKE_NUMBERS = [1, 2, 3, 4, 5] as const
 
@@ -56,6 +58,8 @@ export function HomeContent() {
 
       <Chip kind={kind} className="self-start">{label}</Chip>
 
+      <HandshakeProgressBar progress={handshakeProgress(trip.handshakes)} />
+
       {trip.status === 'in_transit' && (
         <button
           className="w-full rounded-xl border border-secondary bg-secondary/5 p-3 text-left text-sm font-medium text-secondary"
@@ -70,7 +74,7 @@ export function HomeContent() {
         {HANDSHAKE_NUMBERS.map((n) => (
           <Button
             key={n}
-            variant="secondary"
+            variant="primary"
             size="lg"
             className="justify-start"
             onClick={() => router.push(ROUTES.handshakeStep(String(trip.id), n, STEP_SLUGS[n][0]))}

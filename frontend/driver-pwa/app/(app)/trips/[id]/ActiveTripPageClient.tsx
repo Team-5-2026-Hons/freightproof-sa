@@ -6,9 +6,11 @@ import { mockTrips } from '@shared/lib/mocks/trips'
 import { HANDSHAKE_NAMES, STEP_SLUGS } from '@shared/lib/constants/handshake-meta'
 import { ROUTES } from '@/lib/constants/routes'
 import { tripStatusChip } from '@/lib/utils/trip-status-chip'
+import { handshakeProgress } from '@/lib/utils/handshake-progress'
 import { Card } from '@/components/ui/Card'
 import { Chip } from '@/components/ui/Chip'
 import { Button } from '@/components/ui/Button'
+import { HandshakeProgressBar } from '@/components/trip/HandshakeProgressBar'
 
 const HANDSHAKE_NUMBERS = [1, 2, 3, 4, 5] as const
 
@@ -44,6 +46,8 @@ export default function ActiveTripPageClient() {
         <Chip kind={kind}>{label}</Chip>
       </Card>
 
+      <HandshakeProgressBar progress={handshakeProgress(trip.handshakes)} />
+
       {trip.status === 'in_transit' && (
         <Button variant="secondary" size="lg" onClick={() => router.push(ROUTES.inTransit(String(trip.id)))}>
           In-Transit Hub →
@@ -53,7 +57,11 @@ export default function ActiveTripPageClient() {
       <section className="flex flex-col gap-2">
         <h2 className="text-sm font-medium text-surface-on-variant">Handshakes</h2>
         {HANDSHAKE_NUMBERS.map((n) => (
-          <Card key={n} onClick={() => router.push(ROUTES.handshakeStep(String(trip.id), n, STEP_SLUGS[n][0]))}>
+          <Card
+            key={n}
+            variant="dark"
+            onClick={() => router.push(ROUTES.handshakeStep(String(trip.id), n, STEP_SLUGS[n][0]))}
+          >
             <span className="font-semibold">H{n}:</span> {HANDSHAKE_NAMES[n]}
           </Card>
         ))}
