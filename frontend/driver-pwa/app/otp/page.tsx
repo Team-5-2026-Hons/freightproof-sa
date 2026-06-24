@@ -5,14 +5,9 @@
 import { Suspense, useContext, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { AuthContext } from '@/lib/context/AuthContext'
-import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { ROUTES } from '@/lib/constants/routes'
-import { IS_DEMO_MODE } from '@/lib/constants/env'
-
-// Demo mode (default) verifies via AuthContext.signIn so the driver record
-// lands on AuthContext.user before the (app) route guard checks it.
 
 // useSearchParams() opts a page out of static rendering unless wrapped in
 // Suspense — required for the static export (output: 'export') build.
@@ -34,7 +29,7 @@ function OtpForm() {
   const router = useRouter()
   const auth = useContext(AuthContext)
   const params = useSearchParams()
-  // Phone passed as query param from login page; empty string is safe — verifyOtp will fail gracefully.
+  // Phone passed as query param from login page; empty string is safe — signIn will fail gracefully.
   const phone = params.get('phone') ?? ''
   const [token, setToken] = useState('')
   const [loading, setLoading] = useState(false)
@@ -45,29 +40,15 @@ function OtpForm() {
     setLoading(true)
     setError(null)
 
-    if (IS_DEMO_MODE) {
+    try {
       await auth?.signIn({ phone_number: phone, otp: token })
-      setLoading(false)
       // replace() so the user cannot navigate back to the OTP screen after login.
       router.replace(ROUTES.trips)
-      return
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to verify OTP.')
+    } finally {
+      setLoading(false)
     }
-
-    const { error: verifyError } = await supabase.auth.verifyOtp({
-      phone,
-      token,
-      type: 'sms',
-    })
-
-    setLoading(false)
-
-    if (verifyError) {
-      setError(verifyError.message)
-      return
-    }
-
-    // replace() so the user cannot navigate back to the OTP screen after login.
-    router.replace(ROUTES.trips)
   }
 
   return (
