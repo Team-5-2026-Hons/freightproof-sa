@@ -28,7 +28,7 @@
 
 | Topic | Decision | Change vs brief |
 |---|---|---|
-| **Trip model (D1)** | Lean **Option B** — refactor data model to support multi-leg / multi-client; **demo stays single-client FedEx JHB→DBN**. **Pending Bruce (BQ3).** | Brief said Option C |
+| **Trip model (D1)** | **Option B CONFIRMED (Bruce, 24 Jun — BQ3 resolved).** Refactor data model to support multi-leg / multi-client / multi-origin+destination; **demo stays single-client FedEx JHB→DBN**. Two service models to support: **scheduled break-bulk** (clients deliver to LFG facility) + **ad-hoc collection** (truck visits client sites) — both fold into the multi-stop model. **Loading priority/order** (e.g. FedEx at the door, Courier Guy at the bulkhead) is a recordable attribute, visible to the dispatcher. | Brief said Option C; now firmly B |
 | **Cancellation (B6)** | **IN scope.** Records evidence only (closes the chain). API-driven preferred + **manual fallback button**. | Brief had it OUT |
 | **Forensic view (D2)** | **Admin-dispatcher role** with forensics toggle; normal dispatchers see no blockchain detail. | Brief recommended a plain toggle |
 | **Horse substitution (BQ1)** | **Swap event on the same trip**, not a new trip. | Confirmed |
@@ -105,10 +105,14 @@ Phases map to the vac timeline. Each phase ends with a working demo against trun
 
 | Item | Blocked on |
 |---|---|
-| FP-73 / FP-74 / FP-91 — physical vs on-device signature | **BQ2** |
-| Break-bulk multi-client extension (how far FP-112 goes) | **BQ3** |
-| Horse-substitution working assumption (swap event) | **BQ1** confirm |
-| Return-leg working assumption (new one-way trip) | **BQ5** confirm |
+| FP-73 / FP-74 / FP-91 — physical vs on-device signature | **BQ2** (depot-to-depot POD handover signature still not nailed down) |
+| ~~Break-bulk multi-client extension (how far FP-112 goes)~~ | ~~BQ3~~ **RESOLVED 24 Jun — multi-client IN at model level (Option B). FP-112 proceeds.** |
+| ~~Horse-substitution working assumption (swap event)~~ | ~~BQ1~~ **Reconfirmed 24 Jun — swap event on same trip.** |
+| ~~Return-leg working assumption (new one-way trip)~~ | ~~BQ5~~ **Reconfirmed 24 Jun — recording matters; new one-way trip. Initiation mechanism still TBD in system design.** |
+
+> **Sub-consignment granularity (still open, → July site visit):** does LFG scan each pallet, or
+> only count units + seal the truck? Blocks only the **leaf** (`HandlingUnit` vs unit-count under
+> `Consignment`), **not** the Trip/TripStop/multi-client restructure. See `docs/parcel-traceability.md` §8.
 
 ---
 
