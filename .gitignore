@@ -153,6 +153,15 @@ venv.bak/
 frontend/**/node_modules/
 frontend/**/.next/
 
+# macOS
+.DS_Store
+
+# Local git worktrees (manually copied checkouts, not source)
+.worktrees/
+
+# Spike env files (never commit secrets)
+*.env.spike
+
 # Spyder project settings
 .spyderproject
 .spyproject
