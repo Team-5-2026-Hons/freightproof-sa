@@ -28,6 +28,8 @@ const FIELD_LABELS: Record<string, string> = {
   is_active: 'Active',
   license_expiry: 'Licence expiry',
   license_number_sha256: 'Licence number',
+  gross_vehicle_mass_kg: 'GVM',
+  length_m: 'Length',
 }
 
 // Keys that are bookkeeping/meta, never real changed-field values.

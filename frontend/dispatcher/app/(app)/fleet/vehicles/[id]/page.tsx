@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { TopBar }    from '@/components/ui/TopBar'
 import { Chip }      from '@/components/ui/Chip'
@@ -30,6 +30,10 @@ type EditState = {
   is_active: boolean
 }
 
+const DEFAULT_PANEL_W = 520
+const MIN_PANEL_W = 360
+const MAX_PANEL_W = 720
+
 export default function VehicleDetailPage() {
   const router = useRouter()
   const params = useParams<{ id: string }>()
@@ -39,6 +43,29 @@ export default function VehicleDetailPage() {
   const [form, setForm] = useState<EditState | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [panelWidth, setPanelWidth] = useState(DEFAULT_PANEL_W)
+  const resizeRef = useRef<{ startX: number; startW: number } | null>(null)
+
+  function startResize(e: React.MouseEvent) {
+    e.preventDefault()
+    resizeRef.current = { startX: e.clientX, startW: panelWidth }
+
+    function onMove(ev: MouseEvent) {
+      const r = resizeRef.current
+      if (!r) return
+      const next = r.startW + (ev.clientX - r.startX)
+      setPanelWidth(Math.min(MAX_PANEL_W, Math.max(MIN_PANEL_W, next)))
+    }
+
+    function onUp() {
+      resizeRef.current = null
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
 
   const backButton = (
     <Button
@@ -137,29 +164,34 @@ export default function VehicleDetailPage() {
         left={backButton}
       >
         <Chip type={vehicle.is_active ? 'complete' : 'pending'} label={vehicle.is_active ? 'Active' : 'Inactive'} />
-        {!isEditing && (
-          <Button variant="secondary" size="sm" onClick={startEdit}>
-            Edit
-          </Button>
-        )}
       </TopBar>
 
       <div className="flex flex-1 overflow-hidden">
 
-        {/* LEFT — scrollable immutable history */}
-        <div className="flex-1 overflow-y-auto p-6 bg-surf-lowest">
-          <div className="text-[11px] font-[700] tracking-[0.1em] uppercase text-on-surf-v mb-3">
-            Immutable History
-          </div>
-          <EventTimeline events={vehicle.events} receipts={vehicle.receipts} />
-        </div>
+        {/* LEFT — resizable vehicle info column, widest default + drag-to-resize */}
+        <div
+          style={{ width: panelWidth }}
+          className="relative shrink-0 overflow-y-auto bg-surf-low border-r border-outline-v/20 p-5"
+        >
 
-        {/* RIGHT — fixed 450px info column */}
-        <div className="w-[450px] shrink-0 overflow-y-auto bg-surf-low border-l border-outline-v/20 p-5">
+          {/* Resize handle — hover to reveal, drag to resize (mirrors trip history table columns) */}
+          <div
+            onMouseDown={startResize}
+            className="absolute top-0 right-0 -mr-2 h-full w-4 cursor-col-resize flex items-center justify-center group z-10"
+          >
+            <div className="w-[2px] h-10 rounded-full bg-outline-v/50 opacity-0 group-hover:opacity-100 transition-opacity" />
+          </div>
 
           {/* Vehicle info */}
-          <div className="text-[11px] font-[700] tracking-[0.1em] uppercase text-on-surf-v mb-3">
-            Vehicle Info
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-[11px] font-[700] tracking-[0.1em] uppercase text-on-surf-v">
+              Vehicle Info
+            </div>
+            {!isEditing && (
+              <Button variant="secondary" size="sm" onClick={startEdit}>
+                Edit
+              </Button>
+            )}
           </div>
 
           {isEditing && form ? (
@@ -276,6 +308,14 @@ export default function VehicleDetailPage() {
             </>
           )}
 
+        </div>
+
+        {/* RIGHT — scrollable immutable history, takes remaining space */}
+        <div className="flex-1 overflow-y-auto p-6 bg-surf-lowest">
+          <div className="text-[11px] font-[700] tracking-[0.1em] uppercase text-on-surf-v mb-3">
+            Immutable History
+          </div>
+          <EventTimeline events={vehicle.events} receipts={vehicle.receipts} />
         </div>
       </div>
     </div>

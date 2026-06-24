@@ -1,9 +1,10 @@
 'use client'
 
 // Ordered list of vehicle or driver events.
-// Default view (all dispatchers): a clean card with title + timestamp only —
-// mirrors the trip page's TimelineEvent restraint (surf-low card, clock icon, text-sec timestamp).
-// Forensic detail (admin + forensic mode ON only): BlockchainBadge + humanized changed-fields rows.
+// Default view (all dispatchers): title + timestamp + humanized changed-fields rows —
+// every dispatcher needs to see what actually changed, not just that something did.
+// Forensic detail (admin + forensic mode ON only): BlockchainBadge — the chain-anchoring
+// plumbing, not needed to understand the record itself.
 
 import { Ic } from '@/components/ui/Ic'
 import { BlockchainBadge } from './BlockchainBadge'
@@ -28,7 +29,7 @@ function describeEvent(e: Event): string {
   if (t === 'vin_updated') return 'VIN updated'
   if (t === 'vehicle_updated') return 'Vehicle details updated'
   if (t === 'deactivated') return 'Deactivated'
-  if (t === 'cosmetic_update') return 'Cosmetic update'
+  if (t === 'cosmetic_update') return 'vehicle_id' in e ? 'Vehicle details updated' : 'Cosmetic update'
   return t
 }
 
@@ -64,21 +65,22 @@ export function EventTimeline({ events, receipts, className = '' }: Props) {
                 })}
               </div>
             </div>
-            {/* Hedera ref and changed-fields are forensic detail — admin + forensic mode ON only */}
+            {/* What changed — visible to every dispatcher, not just forensic mode */}
+            {changeRows.length > 0 && (
+              <div className="mt-[8px] space-y-[4px]">
+                {changeRows.map((row) => (
+                  <div key={row.label} className="flex items-baseline justify-between gap-3 text-[12px]">
+                    <span className="text-on-surf-v">{row.label}</span>
+                    <span className="font-[500] text-on-surf text-right">{row.value}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {/* Hedera anchor ref is forensic detail — admin + forensic mode ON only */}
             <ForensicOnly>
               <div className="mt-[8px]">
                 <BlockchainBadge receipt={receipt} />
               </div>
-              {changeRows.length > 0 && (
-                <div className="mt-[8px] space-y-[4px]">
-                  {changeRows.map((row) => (
-                    <div key={row.label} className="flex items-baseline justify-between gap-3 text-[12px]">
-                      <span className="text-on-surf-v">{row.label}</span>
-                      <span className="font-[500] text-on-surf text-right">{row.value}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
             </ForensicOnly>
           </li>
         )

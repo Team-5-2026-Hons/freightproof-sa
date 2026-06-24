@@ -1,84 +1,59 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
-import { Plus } from 'lucide-react'
+import React, { useEffect, useMemo, useState } from 'react'
+import { Plus, AlertCircle } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { TopBar } from '@/components/ui/TopBar'
-import { DataTable } from '@/components/ui/DataTable'
 import { Button } from '@/components/ui/Button'
-import { Chip } from '@/components/ui/Chip'
 import { Modal } from '@/components/ui/Modal'
+import { Spinner } from '@/components/ui/Spinner'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { Ic } from '@/components/ui/Ic'
+import { VehicleCard } from '@/components/vehicles/VehicleCard'
 import { useVehicles } from '@/lib/hooks/useVehicles'
 import { useToast } from '@/lib/hooks/useToast'
 import { api } from '@/lib/api/client'
-import type { Column } from '@/components/ui/DataTable'
+import { cn } from '@shared/lib/utils/cn'
 import type { Vehicle } from '@shared/lib/types/vehicle'
 
-const columns: Column<Vehicle>[] = [
-  {
-    key: 'registration',
-    label: 'Registration',
-    sortable: true,
-    render: (val) => (
-      <span className="font-bold font-mono tracking-[0.05em] text-surface-on">{String(val)}</span>
-    ),
-  },
-  {
-    key: 'vehicle_type',
-    label: 'Type',
-    sortable: true,
-    render: (val) => (
-      <span className="capitalize text-surface-on-variant">{String(val)}</span>
-    ),
-  },
-  {
-    key: 'make',
-    label: 'Make / Model',
-    render: (val, row) => (
-      <span className="text-sm text-surface-on">
-        {[val, row.model].filter(Boolean).join(' ') || '—'}
-      </span>
-    ),
-  },
-  {
-    key: 'year',
-    label: 'Year',
-    render: (val) => (
-      <span className="text-sm text-surface-on-variant">{val ?? '—'}</span>
-    ),
-  },
-  {
-    key: 'length_m',
-    label: 'Length',
-    render: (val, row) => (
-      row.vehicle_type === 'trailer'
-        ? <span className="text-sm font-mono text-surface-on">{val != null ? `${val} m` : '—'}</span>
-        : <span className="text-sm text-surface-on-variant">—</span>
-    ),
-  },
-  {
-    key: 'vin_number',
-    label: 'VIN',
-    render: (val) => (
-      <span className="font-mono text-xs tracking-wider text-surface-on-variant">{val ?? '—'}</span>
-    ),
-  },
-  {
-    key: 'pulsit_device_id',
-    label: 'Pulsit Device',
-    render: (val) => (
-      <span className="font-mono text-xs tracking-wider text-surface-on-variant">{String(val ?? '—')}</span>
-    ),
-  },
-  {
-    key: 'is_active',
-    label: 'Status',
-    sortable: true,
-    render: (val) => (
-      <Chip type={val ? 'complete' : 'pending'} label={val ? 'Active' : 'Inactive'} />
-    ),
-  },
+type TypeFilter = 'all' | 'horse' | 'trailer'
+type StatusFilter = 'all' | 'active' | 'inactive'
+type LengthFilter = 'all' | '6' | '12' | '18'
+type SortOption = 'registration-asc' | 'registration-desc' | 'year-desc' | 'year-asc' | 'licence-asc'
+
+const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+  { value: 'registration-asc', label: 'Registration A–Z' },
+  { value: 'registration-desc', label: 'Registration Z–A' },
+  { value: 'year-desc', label: 'Year — Newest' },
+  { value: 'year-asc', label: 'Year — Oldest' },
+  { value: 'licence-asc', label: 'Licence Disc Expiry — Soonest' },
 ]
+
+function sortVehicles(vehicles: Vehicle[], option: SortOption): Vehicle[] {
+  const sorted = [...vehicles]
+  switch (option) {
+    case 'registration-asc':
+      sorted.sort((a, b) => a.registration.localeCompare(b.registration))
+      break
+    case 'registration-desc':
+      sorted.sort((a, b) => b.registration.localeCompare(a.registration))
+      break
+    case 'year-desc':
+      sorted.sort((a, b) => (b.year ?? -Infinity) - (a.year ?? -Infinity))
+      break
+    case 'year-asc':
+      sorted.sort((a, b) => (a.year ?? Infinity) - (b.year ?? Infinity))
+      break
+    case 'licence-asc':
+      sorted.sort((a, b) => {
+        const aTime = a.licence_disc_expiry ? new Date(a.licence_disc_expiry).getTime() : Infinity
+        const bTime = b.licence_disc_expiry ? new Date(b.licence_disc_expiry).getTime() : Infinity
+        return aTime - bTime
+      })
+      break
+  }
+  return sorted
+}
 
 interface VehicleFormState {
   registration: string
@@ -108,18 +83,52 @@ const EMPTY_FORM: VehicleFormState = {
 
 export default function FleetVehiclesPage(): React.JSX.Element {
   const router = useRouter()
-  const { all: vehicles, isLoading, error: fetchError, refetch } = useVehicles()
+  const { all: vehicles, horses, trailers, isLoading, error: fetchError, refetch } = useVehicles()
   const { notify } = useToast()
   const [modalOpen, setModalOpen] = useState(false)
   const [form, setForm] = useState<VehicleFormState>(EMPTY_FORM)
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [lengthFilter, setLengthFilter] = useState<LengthFilter>('all')
+  const [sortOption, setSortOption] = useState<SortOption>('registration-asc')
+  const [search, setSearch] = useState('')
+
   useEffect(() => {
     if (fetchError) {
       notify({ kind: 'error', title: 'Failed to load vehicles', body: fetchError })
     }
   }, [fetchError, notify])
+
+  const visibleVehicles = useMemo(() => {
+    const byType = typeFilter === 'all' ? vehicles : typeFilter === 'horse' ? horses : trailers
+    const byStatus = byType.filter((v) => {
+      if (statusFilter === 'active') return v.is_active
+      if (statusFilter === 'inactive') return !v.is_active
+      return true
+    })
+    const byLength = lengthFilter === 'all'
+      ? byStatus
+      : byStatus.filter((v) => v.length_m === Number(lengthFilter))
+    const query = search.trim().toLowerCase()
+    const bySearch = query
+      ? byLength.filter((v) =>
+          [v.registration, v.make, v.model, v.vin_number]
+            .filter(Boolean)
+            .some((field) => field!.toLowerCase().includes(query)),
+        )
+      : byLength
+    return sortVehicles(bySearch, sortOption)
+  }, [vehicles, horses, trailers, typeFilter, statusFilter, lengthFilter, search, sortOption])
+
+  function clearFilters(): void {
+    setTypeFilter('all')
+    setStatusFilter('all')
+    setLengthFilter('all')
+    setSearch('')
+  }
 
   function handleChange<K extends keyof VehicleFormState>(field: K, value: VehicleFormState[K]): void {
     setForm((prev) => ({ ...prev, [field]: value }))
@@ -164,16 +173,122 @@ export default function FleetVehiclesPage(): React.JSX.Element {
         </Button>
       </TopBar>
 
-      <div className="flex-1 overflow-y-auto p-6">
-        <DataTable<Vehicle>
-          columns={columns}
-          rows={vehicles}
-          isLoading={isLoading}
-          error={fetchError}
-          onRetry={refetch}
-          onRowClick={(v) => router.push(`/fleet/vehicles/${v.id}`)}
-          empty={{ title: 'No vehicles', body: 'No vehicles registered yet.' }}
-        />
+      <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Type filter — compact segmented control, matches Label-S table-header scale */}
+          <div className="flex items-center gap-[2px] bg-surf-low rounded-md p-[3px] shrink-0">
+            {([
+              { id: 'all', label: `All (${vehicles.length})` },
+              { id: 'horse', label: `Horses (${horses.length})` },
+              { id: 'trailer', label: `Trailers (${trailers.length})` },
+            ] as { id: TypeFilter; label: string }[]).map((opt) => (
+              <button
+                key={opt.id}
+                onClick={() => setTypeFilter(opt.id)}
+                className={cn(
+                  'px-[10px] py-[5px] rounded-[4px] text-[10px] font-[700] tracking-[0.06em] uppercase transition-colors',
+                  typeFilter === opt.id
+                    ? 'bg-surf-lowest text-on-surf shadow-level-1'
+                    : 'text-on-surf-v hover:text-on-surf',
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Search */}
+          <div className="relative flex-1 min-w-[140px]">
+            <Ic n="search" s={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-outline-v" />
+            <input
+              type="text"
+              placeholder="Registration, make, model, VIN…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-8 pr-4 py-2 text-[13px] bg-surf-low rounded-md border border-outline-v/30 text-on-surf placeholder:text-on-surf-v/60 outline-none focus:border-sec focus:bg-surf-lowest transition-colors"
+            />
+          </div>
+
+          <div className="relative shrink-0">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+              className="appearance-none py-2 pl-3 pr-8 text-[13px] bg-surf-low rounded-md border border-outline-v/30 text-on-surf outline-none focus:border-sec focus:bg-surf-lowest transition-colors"
+            >
+              <option value="all">All statuses</option>
+              <option value="active">Active only</option>
+              <option value="inactive">Inactive only</option>
+            </select>
+            <Ic n="chev" s={12} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rotate-90 text-on-surf-v" />
+          </div>
+
+          <div className="relative shrink-0">
+            <select
+              value={lengthFilter}
+              onChange={(e) => setLengthFilter(e.target.value as LengthFilter)}
+              className="appearance-none py-2 pl-3 pr-8 text-[13px] bg-surf-low rounded-md border border-outline-v/30 text-on-surf outline-none focus:border-sec focus:bg-surf-lowest transition-colors"
+            >
+              <option value="all">Any length</option>
+              <option value="6">6 m</option>
+              <option value="12">12 m</option>
+              <option value="18">18 m</option>
+            </select>
+            <Ic n="chev" s={12} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rotate-90 text-on-surf-v" />
+          </div>
+
+          <div className="relative shrink-0">
+            <select
+              value={sortOption}
+              onChange={(e) => setSortOption(e.target.value as SortOption)}
+              className="appearance-none py-2 pl-3 pr-8 text-[13px] bg-surf-low rounded-md border border-outline-v/30 text-on-surf outline-none focus:border-sec focus:bg-surf-lowest transition-colors"
+            >
+              {SORT_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            <Ic n="chev" s={12} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rotate-90 text-on-surf-v" />
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="flex items-center justify-center py-16">
+            <Spinner size="lg" />
+          </div>
+        ) : fetchError ? (
+          <EmptyState
+            icon={<AlertCircle />}
+            title="Failed to load"
+            body={fetchError}
+            cta={
+              <Button size="sm" variant="ghost" onClick={refetch}>
+                Try again
+              </Button>
+            }
+          />
+        ) : vehicles.length === 0 ? (
+          <EmptyState
+            icon={<Ic n="truck" s={32} />}
+            title="No vehicles"
+            body="No vehicles registered yet."
+          />
+        ) : visibleVehicles.length === 0 ? (
+          <EmptyState
+            icon={<Ic n="search" s={32} />}
+            title="No matches"
+            body="No vehicles match your filters."
+            cta={
+              <Button size="sm" variant="ghost" onClick={clearFilters}>
+                Clear filters
+              </Button>
+            }
+          />
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {visibleVehicles.map((v) => (
+              <VehicleCard key={v.id} vehicle={v} onClick={() => router.push(`/fleet/vehicles/${v.id}`)} />
+            ))}
+          </div>
+        )}
       </div>
 
       <Modal
