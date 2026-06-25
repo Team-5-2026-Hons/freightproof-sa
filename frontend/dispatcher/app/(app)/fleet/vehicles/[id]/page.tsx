@@ -16,6 +16,8 @@ import { ForensicOnly }    from '@/components/blockchain/ForensicOnly'
 import { useVehicleDetail } from '@/lib/hooks/useVehicleDetail'
 import { api } from '@/lib/api/client'
 import { ROUTES } from '@/lib/constants/routes'
+import { validateVehicleForm, vinFieldFeedback, VEHICLE_FIELD_ORDER, type VehicleField } from '@shared/lib/validation/vehicle'
+import { VIN_LENGTH } from '@shared/lib/validation/constants'
 
 type EditState = {
   registration: string
@@ -41,6 +43,7 @@ export default function VehicleDetailPage() {
 
   const [isEditing, setIsEditing] = useState(false)
   const [form, setForm] = useState<EditState | null>(null)
+  const [touched, setTouched] = useState<Set<VehicleField>>(new Set())
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [panelWidth, setPanelWidth] = useState(DEFAULT_PANEL_W)
@@ -103,6 +106,16 @@ export default function VehicleDetailPage() {
   const subtitle = [vehicle.make, vehicle.model, vehicle.year ? String(vehicle.year) : null]
     .filter(Boolean).join(' ')
 
+  // Derived on every render — validateVehicleForm is pure and cheap, same
+  // treatment as latestReceipt/typeLabel above. `form` (EditState) satisfies
+  // VehicleFormValues directly since every VehicleField key is typed string
+  // on EditState too.
+  const errors = form ? validateVehicleForm(form) : null
+  const hasErrors = errors ? Object.values(errors).some((e) => e !== null) : false
+  // VIN gets live feedback the moment the user types (not touched-gated): a neutral
+  // character count while still entering, a red error only once it's the wrong shape.
+  const vinFeedback = form ? vinFieldFeedback(form.vin_number) : null
+
   function startEdit() {
     setForm({
       registration: vehicle!.registration,
@@ -116,16 +129,34 @@ export default function VehicleDetailPage() {
       length_m: vehicle!.length_m != null ? String(vehicle!.length_m) : '',
       is_active: vehicle!.is_active,
     })
+    setTouched(new Set())
     setSaveError(null)
     setIsEditing(true)
   }
 
   function handleFieldChange(name: string, value: string) {
     setForm((prev) => prev ? { ...prev, [name]: value } : prev)
+    setTouched((prev) => {
+      const next = new Set(prev)
+      next.add(name as VehicleField)
+      return next
+    })
   }
 
   async function handleSave() {
     if (!form) return
+
+    // Defensive re-validate: the disabled Save button already blocks this
+    // in the common path, but guard here too (e.g. a future Enter-key submit).
+    if (errors && hasErrors) {
+      setTouched(new Set(VEHICLE_FIELD_ORDER))
+      const firstInvalidField = VEHICLE_FIELD_ORDER.find((field) => errors[field] !== null)
+      if (firstInvalidField) {
+        document.querySelector<HTMLInputElement>(`[name="${firstInvalidField}"]`)?.focus()
+      }
+      return
+    }
+
     setSaving(true)
     setSaveError(null)
     try {
@@ -196,14 +227,14 @@ export default function VehicleDetailPage() {
 
           {isEditing && form ? (
             <div className="flex flex-col gap-3 mb-4">
-              <FormField label="Registration"        name="registration"        value={form.registration}        onChange={handleFieldChange} />
-              <FormField label="Pulsit Device ID"    name="pulsit_device_id"    value={form.pulsit_device_id}    onChange={handleFieldChange} />
-              <FormField label="VIN Number"          name="vin_number"          value={form.vin_number}          onChange={handleFieldChange} />
-              <FormField label="Licence Disc Expiry" name="licence_disc_expiry" type="date" value={form.licence_disc_expiry} onChange={handleFieldChange} />
-              <FormField label="Make"  name="make"  value={form.make}  onChange={handleFieldChange} />
-              <FormField label="Model" name="model" value={form.model} onChange={handleFieldChange} />
-              <FormField label="Year"     name="year"                   type="number" value={form.year}                  onChange={handleFieldChange} />
-              <FormField label="GVM (kg)" name="gross_vehicle_mass_kg" type="number" value={form.gross_vehicle_mass_kg} onChange={handleFieldChange} />
+              <FormField label="Registration"        name="registration"        value={form.registration}        onChange={handleFieldChange} error={touched.has('registration') ? errors?.registration ?? undefined : undefined} />
+              <FormField label="Pulsit Device ID"    name="pulsit_device_id"    value={form.pulsit_device_id}    onChange={handleFieldChange} error={touched.has('pulsit_device_id') ? errors?.pulsit_device_id ?? undefined : undefined} />
+              <FormField label="VIN Number"          name="vin_number"          value={form.vin_number}          onChange={handleFieldChange} maxLength={VIN_LENGTH} helperText={vinFeedback?.hint ?? undefined} error={vinFeedback?.error ?? undefined} />
+              <FormField label="Licence Disc Expiry" name="licence_disc_expiry" type="date" value={form.licence_disc_expiry} onChange={handleFieldChange} error={touched.has('licence_disc_expiry') ? errors?.licence_disc_expiry ?? undefined : undefined} />
+              <FormField label="Make"  name="make"  value={form.make}  onChange={handleFieldChange} error={touched.has('make') ? errors?.make ?? undefined : undefined} />
+              <FormField label="Model" name="model" value={form.model} onChange={handleFieldChange} error={touched.has('model') ? errors?.model ?? undefined : undefined} />
+              <FormField label="Year"     name="year"                   type="number" inputMode="numeric" value={form.year}                  onChange={handleFieldChange} error={touched.has('year') ? errors?.year ?? undefined : undefined} />
+              <FormField label="GVM (kg)" name="gross_vehicle_mass_kg" type="number" inputMode="numeric" value={form.gross_vehicle_mass_kg} onChange={handleFieldChange} error={touched.has('gross_vehicle_mass_kg') ? errors?.gross_vehicle_mass_kg ?? undefined : undefined} />
 
               {vehicle.vehicle_type === 'trailer' && (
                 <label className="flex flex-col gap-1">
@@ -233,7 +264,7 @@ export default function VehicleDetailPage() {
               {saveError && <p className="text-sm text-red-500">{saveError}</p>}
 
               <div className="flex gap-[6px]">
-                <Button full loading={saving} onClick={handleSave}>
+                <Button full loading={saving} disabled={hasErrors || saving} onClick={handleSave}>
                   Save
                 </Button>
                 <Button variant="secondary" onClick={() => setIsEditing(false)} disabled={saving}>

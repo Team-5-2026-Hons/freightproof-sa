@@ -9,12 +9,15 @@ import { Modal } from '@/components/ui/Modal'
 import { Spinner } from '@/components/ui/Spinner'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Ic } from '@/components/ui/Ic'
+import { FormField } from '@/components/ui/FormField'
 import { VehicleCard } from '@/components/vehicles/VehicleCard'
 import { useVehicles } from '@/lib/hooks/useVehicles'
 import { useToast } from '@/lib/hooks/useToast'
 import { api } from '@/lib/api/client'
 import { cn } from '@shared/lib/utils/cn'
 import type { Vehicle } from '@shared/lib/types/vehicle'
+import { validateVehicleForm, vinFieldFeedback, VEHICLE_FIELD_ORDER, type VehicleField } from '@shared/lib/validation/vehicle'
+import { VIN_LENGTH } from '@shared/lib/validation/constants'
 
 type TypeFilter = 'all' | 'horse' | 'trailer'
 type StatusFilter = 'all' | 'active' | 'inactive'
@@ -87,6 +90,7 @@ export default function FleetVehiclesPage(): React.JSX.Element {
   const { notify } = useToast()
   const [modalOpen, setModalOpen] = useState(false)
   const [form, setForm] = useState<VehicleFormState>(EMPTY_FORM)
+  const [touched, setTouched] = useState<Set<VehicleField>>(new Set())
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
@@ -95,6 +99,15 @@ export default function FleetVehiclesPage(): React.JSX.Element {
   const [lengthFilter, setLengthFilter] = useState<LengthFilter>('all')
   const [sortOption, setSortOption] = useState<SortOption>('registration-asc')
   const [search, setSearch] = useState('')
+
+  // Derived on every render — validateVehicleForm is pure and cheap. `form`
+  // (VehicleFormState) satisfies VehicleFormValues directly since every
+  // VehicleField key is typed string on VehicleFormState too.
+  const errors = validateVehicleForm(form)
+  const hasErrors = Object.values(errors).some((e) => e !== null)
+  // VIN gets live feedback the moment the user types (not touched-gated): a neutral
+  // character count while still entering, a red error only once it's the wrong shape.
+  const vinFeedback = vinFieldFeedback(form.vin_number)
 
   useEffect(() => {
     if (fetchError) {
@@ -134,13 +147,32 @@ export default function FleetVehiclesPage(): React.JSX.Element {
     setForm((prev) => ({ ...prev, [field]: value }))
   }
 
+  // FormField's onChange is (name: string, value: string) => void; this adapts
+  // it to the generic setter above and marks the field touched for error gating.
+  function handleFieldChange(name: string, value: string): void {
+    handleChange(name as keyof VehicleFormState, value)
+    setTouched((prev) => new Set(prev).add(name as VehicleField))
+  }
+
   function handleClose(): void {
     setModalOpen(false)
     setForm(EMPTY_FORM)
+    setTouched(new Set())
     setFormError(null)
   }
 
   async function handleSubmit(): Promise<void> {
+    // Defensive re-validate: the disabled Save button already blocks this
+    // in the common path, but guard here too (e.g. a future Enter-key submit).
+    if (hasErrors) {
+      setTouched(new Set(VEHICLE_FIELD_ORDER))
+      const firstInvalidField = VEHICLE_FIELD_ORDER.find((field) => errors[field] !== null)
+      if (firstInvalidField) {
+        document.querySelector<HTMLInputElement>(`[name="${firstInvalidField}"]`)?.focus()
+      }
+      return
+    }
+
     setSubmitting(true)
     setFormError(null)
     try {
@@ -301,7 +333,7 @@ export default function FleetVehiclesPage(): React.JSX.Element {
             <Button variant="ghost" size="sm" onClick={handleClose}>
               Cancel
             </Button>
-            <Button size="sm" loading={submitting} onClick={handleSubmit}>
+            <Button size="sm" loading={submitting} disabled={hasErrors || submitting} onClick={handleSubmit}>
               Save Vehicle
             </Button>
           </>
@@ -311,15 +343,15 @@ export default function FleetVehiclesPage(): React.JSX.Element {
           <p className="mb-4 text-sm text-red-500">{formError}</p>
         )}
         <div className="flex flex-col gap-4">
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-surface-on-variant">Registration *</span>
-            <input
-              className="border border-outline-variant rounded-lg px-3 py-2 text-sm bg-surface-container-lowest text-surface-on focus:outline-none focus:ring-2 focus:ring-primary font-mono tracking-widest uppercase"
-              value={form.registration}
-              onChange={(e) => handleChange('registration', e.target.value)}
-              placeholder="CA 123-456"
-            />
-          </label>
+          <FormField
+            label="Registration"
+            name="registration"
+            value={form.registration}
+            onChange={handleFieldChange}
+            placeholder="CA 123-456"
+            required
+            error={touched.has('registration') ? errors.registration ?? undefined : undefined}
+          />
           <label className="flex flex-col gap-1">
             <span className="text-xs font-medium text-surface-on-variant">Type *</span>
             <select
@@ -332,48 +364,44 @@ export default function FleetVehiclesPage(): React.JSX.Element {
             </select>
           </label>
           <div className="grid grid-cols-2 gap-3">
-            <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-surface-on-variant">Make</span>
-              <input
-                className="border border-outline-variant rounded-lg px-3 py-2 text-sm bg-surface-container-lowest text-surface-on focus:outline-none focus:ring-2 focus:ring-primary"
-                value={form.make}
-                onChange={(e) => handleChange('make', e.target.value)}
-                placeholder="Volvo"
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-surface-on-variant">Model</span>
-              <input
-                className="border border-outline-variant rounded-lg px-3 py-2 text-sm bg-surface-container-lowest text-surface-on focus:outline-none focus:ring-2 focus:ring-primary"
-                value={form.model}
-                onChange={(e) => handleChange('model', e.target.value)}
-                placeholder="FH16"
-              />
-            </label>
+            <FormField
+              label="Make"
+              name="make"
+              value={form.make}
+              onChange={handleFieldChange}
+              placeholder="Volvo"
+              error={touched.has('make') ? errors.make ?? undefined : undefined}
+            />
+            <FormField
+              label="Model"
+              name="model"
+              value={form.model}
+              onChange={handleFieldChange}
+              placeholder="FH16"
+              error={touched.has('model') ? errors.model ?? undefined : undefined}
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-surface-on-variant">Year</span>
-              <input
-                type="number"
-                className="border border-outline-variant rounded-lg px-3 py-2 text-sm bg-surface-container-lowest text-surface-on focus:outline-none focus:ring-2 focus:ring-primary"
-                value={form.year}
-                onChange={(e) => handleChange('year', e.target.value)}
-                placeholder="2021"
-                min={1990}
-                max={new Date().getFullYear() + 1}
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-surface-on-variant">GVM (kg)</span>
-              <input
-                type="number"
-                className="border border-outline-variant rounded-lg px-3 py-2 text-sm bg-surface-container-lowest text-surface-on focus:outline-none focus:ring-2 focus:ring-primary"
-                value={form.gross_vehicle_mass_kg}
-                onChange={(e) => handleChange('gross_vehicle_mass_kg', e.target.value)}
-                placeholder="56000"
-              />
-            </label>
+            <FormField
+              label="Year"
+              name="year"
+              type="number"
+              inputMode="numeric"
+              value={form.year}
+              onChange={handleFieldChange}
+              placeholder="2021"
+              error={touched.has('year') ? errors.year ?? undefined : undefined}
+            />
+            <FormField
+              label="GVM (kg)"
+              name="gross_vehicle_mass_kg"
+              type="number"
+              inputMode="numeric"
+              value={form.gross_vehicle_mass_kg}
+              onChange={handleFieldChange}
+              placeholder="56000"
+              error={touched.has('gross_vehicle_mass_kg') ? errors.gross_vehicle_mass_kg ?? undefined : undefined}
+            />
           </div>
           {form.vehicle_type === 'trailer' && (
             <label className="flex flex-col gap-1">
@@ -390,34 +418,33 @@ export default function FleetVehiclesPage(): React.JSX.Element {
               </select>
             </label>
           )}
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-surface-on-variant">VIN Number</span>
-            <input
-              className="border border-outline-variant rounded-lg px-3 py-2 text-sm bg-surface-container-lowest text-surface-on focus:outline-none focus:ring-2 focus:ring-primary font-mono tracking-widest uppercase"
-              value={form.vin_number}
-              onChange={(e) => handleChange('vin_number', e.target.value)}
-              placeholder="WVW ZZZ 1K ZBW 012345"
-              maxLength={17}
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-surface-on-variant">Licence Disc Expiry</span>
-            <input
-              type="date"
-              className="border border-outline-variant rounded-lg px-3 py-2 text-sm bg-surface-container-lowest text-surface-on focus:outline-none focus:ring-2 focus:ring-primary"
-              value={form.licence_disc_expiry}
-              onChange={(e) => handleChange('licence_disc_expiry', e.target.value)}
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-surface-on-variant">Pulsit Device ID *</span>
-            <input
-              className="border border-outline-variant rounded-lg px-3 py-2 text-sm bg-surface-container-lowest text-surface-on focus:outline-none focus:ring-2 focus:ring-primary font-mono"
-              value={form.pulsit_device_id}
-              onChange={(e) => handleChange('pulsit_device_id', e.target.value)}
-              placeholder="PLT-HORSE-001"
-            />
-          </label>
+          <FormField
+            label="VIN Number"
+            name="vin_number"
+            value={form.vin_number}
+            onChange={handleFieldChange}
+            placeholder="WVW ZZZ 1K ZBW 012345"
+            maxLength={VIN_LENGTH}
+            helperText={vinFeedback.hint ?? undefined}
+            error={vinFeedback.error ?? undefined}
+          />
+          <FormField
+            label="Licence Disc Expiry"
+            name="licence_disc_expiry"
+            type="date"
+            value={form.licence_disc_expiry}
+            onChange={handleFieldChange}
+            error={touched.has('licence_disc_expiry') ? errors.licence_disc_expiry ?? undefined : undefined}
+          />
+          <FormField
+            label="Pulsit Device ID"
+            name="pulsit_device_id"
+            value={form.pulsit_device_id}
+            onChange={handleFieldChange}
+            placeholder="PLT-HORSE-001"
+            required
+            error={touched.has('pulsit_device_id') ? errors.pulsit_device_id ?? undefined : undefined}
+          />
         </div>
       </Modal>
     </div>

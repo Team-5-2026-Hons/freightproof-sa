@@ -220,3 +220,67 @@ def test_trip_create_request_duplicate_trailer_ids_rejected() -> None:
     data = {**_BASE, "trailer_ids": [shared, shared]}
     with pytest.raises(ValidationError):
         TripCreateRequest.model_validate(data)
+
+
+# ---------------------------------------------------------------------------
+# Vehicle — VIN/length rules live ONLY on the input bodies, never the read schema.
+# Regression guard: a read schema constrained like an input body makes GET /vehicles
+# 500 on legacy rows whose stored VIN predates the rule (e.g. a sub-17-char VIN).
+# ---------------------------------------------------------------------------
+
+# A 15-char VIN — shorter than the 17-char input rule, representing legacy stored data.
+_LEGACY_SHORT_VIN = "GH698HF7X090002"
+_VALID_VIN = "1HGCM82633A004352"  # 17 alphanumeric chars
+
+
+def _vehicle_read_payload(**overrides) -> dict:
+    base = {
+        "id": _uuid.uuid4(),
+        "organization_id": _uuid.uuid4(),
+        "registration": "CA123456",
+        "vehicle_type": "horse",
+        "pulsit_device_id": "dev-1",
+        "is_active": True,
+        "created_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
+    }
+    return {**base, **overrides}
+
+
+def test_vehicle_read_accepts_legacy_short_vin() -> None:
+    from app.schemas.vehicles import VehicleRead
+
+    read = VehicleRead.model_validate(_vehicle_read_payload(vin_number=_LEGACY_SHORT_VIN))
+
+    assert read.vin_number == _LEGACY_SHORT_VIN
+
+
+def test_vehicle_create_body_rejects_short_vin() -> None:
+    from app.schemas.vehicles import VehicleCreateBody
+
+    with pytest.raises(ValidationError):
+        VehicleCreateBody(
+            registration="CA123456",
+            vehicle_type="horse",
+            pulsit_device_id="dev-1",
+            vin_number=_LEGACY_SHORT_VIN,
+        )
+
+
+def test_vehicle_create_body_accepts_valid_vin() -> None:
+    from app.schemas.vehicles import VehicleCreateBody
+
+    body = VehicleCreateBody(
+        registration="CA123456",
+        vehicle_type="horse",
+        pulsit_device_id="dev-1",
+        vin_number=_VALID_VIN,
+    )
+
+    assert body.vin_number == _VALID_VIN
+
+
+def test_vehicle_update_body_rejects_short_vin() -> None:
+    from app.schemas.vehicles import VehicleUpdateBody
+
+    with pytest.raises(ValidationError):
+        VehicleUpdateBody(vin_number=_LEGACY_SHORT_VIN)

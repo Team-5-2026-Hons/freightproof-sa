@@ -1,15 +1,56 @@
 """Pydantic v2 schemas for Vehicle (horse and trailer)."""
 
 from datetime import date, datetime
+from typing import Annotated, Optional
 from uuid import UUID
-from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 from app.db.models.enums import VehicleType
 
+# Mirrors the DB column widths in app/db/models/vehicles.py — kept here so
+# Pydantic rejects over-length input with a 422 before it ever reaches Postgres
+# (asyncpg raises a raw StringDataRightTruncationError, surfaced as a 500, otherwise).
+_REGISTRATION_MAX_LENGTH = 50
+_PULSIT_DEVICE_ID_MAX_LENGTH = 100
+_MAKE_MODEL_MAX_LENGTH = 100
+
+# VIN is always exactly 17 chars. Per explicit product decision, any alphanumeric
+# 17-char string is accepted — no ISO 3779 I/O/Q exclusion is enforced.
+_VIN_PATTERN = r"^[A-Za-z0-9]{17}$"
+
+_MIN_YEAR = 1900
+
+RegistrationStr = Annotated[
+    str, StringConstraints(min_length=1, max_length=_REGISTRATION_MAX_LENGTH)
+]
+PulsitDeviceIdStr = Annotated[
+    str, StringConstraints(min_length=1, max_length=_PULSIT_DEVICE_ID_MAX_LENGTH)
+]
+VinNumberStr = Annotated[str, StringConstraints(pattern=_VIN_PATTERN)]
+MakeModelStr = Annotated[str, StringConstraints(max_length=_MAKE_MODEL_MAX_LENGTH)]
+
+
+def _validate_year(value: Optional[int]) -> Optional[int]:
+    """Year must be plausible: not before motor vehicles existed, not absurdly in the future.
+
+    Ceiling is computed at validation time (not a static constant) so the schema
+    doesn't need updating every calendar year.
+    """
+    if value is None:
+        return value
+    max_year = datetime.now().year + 1
+    if not (_MIN_YEAR <= value <= max_year):
+        raise ValueError(f"year must be between {_MIN_YEAR} and {max_year}")
+    return value
+
 
 class VehicleBase(BaseModel):
+    # Base shape shared by the read schemas (VehicleRead / VehicleDetailResponse).
+    # Deliberately uses plain, UNCONSTRAINED types: a read model must faithfully echo
+    # whatever is already stored, including legacy rows that predate the input rules
+    # (e.g. a sub-17-char VIN). Length/format/year validation lives only on the input
+    # bodies (VehicleCreateBody / VehicleUpdateBody) so it can't reject existing data on read.
     model_config = ConfigDict(from_attributes=True)
 
     organization_id: UUID
@@ -37,16 +78,21 @@ class VehicleCreateBody(BaseModel):
     """
     model_config = ConfigDict(from_attributes=True)
 
-    registration: str
+    registration: RegistrationStr
     vehicle_type: VehicleType
-    pulsit_device_id: str
-    make: Optional[str] = None
-    model: Optional[str] = None
+    pulsit_device_id: PulsitDeviceIdStr
+    make: Optional[MakeModelStr] = None
+    model: Optional[MakeModelStr] = None
     year: Optional[int] = None
-    vin_number: Optional[str] = None
+    vin_number: Optional[VinNumberStr] = None
     licence_disc_expiry: Optional[date] = None
-    gross_vehicle_mass_kg: Optional[int] = None
+    gross_vehicle_mass_kg: Optional[int] = Field(default=None, gt=0)
     length_m: Optional[int] = None
+
+    @field_validator("year")
+    @classmethod
+    def _check_year(cls, value: Optional[int]) -> Optional[int]:
+        return _validate_year(value)
 
 
 class VehicleUpdate(BaseModel):
@@ -65,16 +111,21 @@ class VehicleUpdateBody(BaseModel):
     """
     model_config = ConfigDict(from_attributes=True)
 
-    registration: Optional[str] = None
-    pulsit_device_id: Optional[str] = None
-    vin_number: Optional[str] = None
+    registration: Optional[RegistrationStr] = None
+    pulsit_device_id: Optional[PulsitDeviceIdStr] = None
+    vin_number: Optional[VinNumberStr] = None
     licence_disc_expiry: Optional[date] = None
-    make: Optional[str] = None
-    model: Optional[str] = None
+    make: Optional[MakeModelStr] = None
+    model: Optional[MakeModelStr] = None
     year: Optional[int] = None
-    gross_vehicle_mass_kg: Optional[int] = None
+    gross_vehicle_mass_kg: Optional[int] = Field(default=None, gt=0)
     length_m: Optional[int] = None
     is_active: Optional[bool] = None
+
+    @field_validator("year")
+    @classmethod
+    def _check_year(cls, value: Optional[int]) -> Optional[int]:
+        return _validate_year(value)
 
 
 class VehicleRead(VehicleBase):
