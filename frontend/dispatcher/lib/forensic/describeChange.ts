@@ -26,6 +26,7 @@ const FIELD_LABELS: Record<string, string> = {
   vin_number: 'VIN',
   licence_disc_expiry: 'Licence disc expiry',
   is_active: 'Active',
+  full_name: 'Full name',
   license_expiry: 'Licence expiry',
   license_number_sha256: 'Licence number',
   gross_vehicle_mass_kg: 'GVM',
@@ -80,10 +81,21 @@ function isFromToShape(value: unknown): value is { from: unknown; to: unknown } 
 export function describeChange(changedFields: Record<string, unknown>): ChangeRow[] {
   if (!changedFields || typeof changedFields !== 'object') return []
 
-  // Cosmetic update: { _no_critical_change: true, _patch: {...} }.
-  // These are meta keys, not named critical fields — summarize, don't iterate _patch.
+  // Cosmetic update: { _no_critical_change: true, _patch: { field: newValue, ... } }.
+  // _patch holds the new values for every non-PII field that was sent in the PATCH
+  // (phone_number and license_number are stripped server-side before storage).
+  // Render the individual fields so the dispatcher can see exactly what changed.
   if (changedFields._no_critical_change === true) {
-    return [{ label: 'Change type', value: 'Cosmetic (non-critical fields updated)' }]
+    const patch = changedFields._patch
+    if (typeof patch === 'object' && patch !== null) {
+      const rows: ChangeRow[] = []
+      for (const [key, value] of Object.entries(patch as Record<string, unknown>)) {
+        rows.push({ label: labelFor(key), value: formatPrimitive(value) })
+      }
+      if (rows.length > 0) return rows
+    }
+    // Fallback: patch was empty or missing (no non-PII fields changed).
+    return [{ label: 'Change type', value: 'Details updated' }]
   }
 
   const rows: ChangeRow[] = []

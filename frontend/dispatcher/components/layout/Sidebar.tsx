@@ -81,11 +81,10 @@ function NavLink({ item, pathname, onClose }: { item: NavItem; pathname: string;
       href={item.href}
       onClick={onClose}
       className={cn(
-        'flex items-center gap-[9px] px-[18px] py-[9px] transition-all duration-[120ms]',
-        'border-l-[3px]',
+        'flex items-center gap-[9px] mx-2 px-[14px] py-[9px] rounded-md transition-all duration-[120ms]',
         active
-          ? 'bg-white/10 border-sec'
-          : 'border-transparent hover:bg-white/[0.06]',
+          ? 'bg-white/[0.13]'
+          : 'hover:bg-white/[0.06]',
       )}
     >
       <Ic

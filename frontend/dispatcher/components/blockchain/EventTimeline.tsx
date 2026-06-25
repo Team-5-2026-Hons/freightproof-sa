@@ -29,7 +29,7 @@ function describeEvent(e: Event): string {
   if (t === 'vin_updated') return 'VIN updated'
   if (t === 'vehicle_updated') return 'Vehicle details updated'
   if (t === 'deactivated') return 'Deactivated'
-  if (t === 'cosmetic_update') return 'vehicle_id' in e ? 'Vehicle details updated' : 'Cosmetic update'
+  if (t === 'cosmetic_update') return 'vehicle_id' in e ? 'Vehicle details updated' : 'Driver details updated'
   return t
 }
 

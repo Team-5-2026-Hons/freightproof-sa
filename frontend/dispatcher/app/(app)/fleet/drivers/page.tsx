@@ -82,7 +82,52 @@ const columns: Column<Driver>[] = [
 ]
 
 type StatusFilter = 'all' | 'active' | 'inactive'
-type ExpirySort = 'none' | 'soonest' | 'latest'
+type SortOption = 'created-desc' | 'created-asc' | 'name-asc' | 'name-desc' | 'expiry-asc' | 'expiry-desc'
+
+const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+  { value: 'created-desc', label: 'Newest first' },
+  { value: 'created-asc',  label: 'Oldest first' },
+  { value: 'name-asc',     label: 'Name A–Z' },
+  { value: 'name-desc',    label: 'Name Z–A' },
+  { value: 'expiry-asc',   label: 'Licence Expiry — Soonest' },
+  { value: 'expiry-desc',  label: 'Licence Expiry — Latest' },
+]
+
+function sortDrivers(drivers: Driver[], option: SortOption): Driver[] {
+  const sorted = [...drivers]
+  switch (option) {
+    case 'created-desc':
+      sorted.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      break
+    case 'created-asc':
+      sorted.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+      break
+    case 'name-asc':
+      sorted.sort((a, b) => a.full_name.localeCompare(b.full_name))
+      break
+    case 'name-desc':
+      sorted.sort((a, b) => b.full_name.localeCompare(a.full_name))
+      break
+    case 'expiry-asc':
+      sorted.sort((a, b) => {
+        // Null expiry always sorts last.
+        if (!a.license_expiry && !b.license_expiry) return 0
+        if (!a.license_expiry) return 1
+        if (!b.license_expiry) return -1
+        return new Date(a.license_expiry).getTime() - new Date(b.license_expiry).getTime()
+      })
+      break
+    case 'expiry-desc':
+      sorted.sort((a, b) => {
+        if (!a.license_expiry && !b.license_expiry) return 0
+        if (!a.license_expiry) return 1
+        if (!b.license_expiry) return -1
+        return new Date(b.license_expiry).getTime() - new Date(a.license_expiry).getTime()
+      })
+      break
+  }
+  return sorted
+}
 
 const EMPTY_FORM: DriverFormValues = {
   full_name: '',
@@ -105,7 +150,7 @@ export default function FleetDriversPage(): React.JSX.Element {
   // List controls — parity with the vehicles page.
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
-  const [expirySort, setExpirySort] = useState<ExpirySort>('none')
+  const [sortOption, setSortOption] = useState<SortOption>('created-desc')
 
   useEffect(() => {
     if (fetchError) {
@@ -132,18 +177,8 @@ export default function FleetDriversPage(): React.JSX.Element {
         d.id_number.includes(q)
       )
     })
-
-    if (expirySort === 'none') return filtered
-
-    return [...filtered].sort((a, b) => {
-      // Null expiry always sorts last regardless of direction.
-      if (!a.license_expiry && !b.license_expiry) return 0
-      if (!a.license_expiry) return 1
-      if (!b.license_expiry) return -1
-      const diff = new Date(a.license_expiry).getTime() - new Date(b.license_expiry).getTime()
-      return expirySort === 'soonest' ? diff : -diff
-    })
-  }, [drivers, search, statusFilter, expirySort])
+    return sortDrivers(filtered, sortOption)
+  }, [drivers, search, statusFilter, sortOption])
 
   function handleChange(field: string, value: string): void {
     setForm((prev) => ({ ...prev, [field]: value }))
@@ -226,13 +261,13 @@ export default function FleetDriversPage(): React.JSX.Element {
 
           <div className="relative shrink-0">
             <select
-              value={expirySort}
-              onChange={(e) => setExpirySort(e.target.value as ExpirySort)}
+              value={sortOption}
+              onChange={(e) => setSortOption(e.target.value as SortOption)}
               className="appearance-none py-2 pl-3 pr-8 text-[13px] bg-surf-low rounded-md border border-outline-v/30 text-on-surf outline-none focus:border-sec focus:bg-surf-lowest transition-colors"
             >
-              <option value="none">Any expiry</option>
-              <option value="soonest">Licence Expiry — Soonest</option>
-              <option value="latest">Licence Expiry — Latest</option>
+              {SORT_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
             </select>
             <Ic n="chev" s={12} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rotate-90 text-on-surf-v" />
           </div>
