@@ -101,8 +101,7 @@ export function DataTable<T extends object>({
               key={i}
               onClick={() => onRowClick?.(row)}
               className={cn(
-                'transition-colors duration-150 hover:bg-surface-container-low',
-                i % 2 === 0 ? 'bg-surface-container-lowest' : 'bg-surface-container-low/50',
+                'bg-surface-container-lowest transition-colors duration-150 hover:bg-surface-container-low',
                 onRowClick && 'cursor-pointer',
               )}
             >

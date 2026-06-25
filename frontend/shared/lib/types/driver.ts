@@ -15,6 +15,8 @@ export interface Driver {
   id_number: string
   phone_number: string
   license_number: string
+  // Returned by both the list and detail endpoints (DriverRead includes it).
+  license_expiry: string | null
   is_active: boolean
   idvs_status: IdvsStatus
   idvs_last_verified_at: string | null
@@ -24,7 +26,6 @@ export interface Driver {
 
 // Extended driver shape returned by GET /api/v1/drivers/:id — includes event/receipt history.
 export interface DriverDetail extends Driver {
-  license_expiry: string | null
   events: DriverEvent[]
   receipts: BlockchainReceipt[]
   trip_ids: string[]

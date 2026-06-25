@@ -128,7 +128,7 @@ function SidebarContent({ onClose }: SidebarContentProps) {
   return (
     <div className="flex flex-col h-full bg-primary w-[220px] shrink-0">
       {/* Header — logo mark + wordmark + eyebrow */}
-      <div className="flex items-center gap-[10px] px-[18px] py-[18px] border-b border-white/[0.08]">
+      <div className="flex items-center gap-[10px] px-[18px] h-[60px] border-b border-white/[0.08]">
         {/* Hex logo mark — bg-sec container, white polygon, sec-coloured circle */}
         <div className="w-8 h-8 bg-primary rounded-md flex items-center justify-center shrink-0">
           <Shield className="w-4 h-4 text-white" />

@@ -7,6 +7,9 @@ export interface AsyncState<T> {
   isLoading: boolean
   error: string | null
   refetch: () => void
+  // Refetches without setting isLoading — use after mutations where the page
+  // should stay visible and update in place (e.g. after a successful save).
+  refetchSilent: () => void
 }
 
 // Backstop ceiling. The API client (lib/api/client.ts) already bounds its own
@@ -40,8 +43,8 @@ export function useAsyncData<T>(
     }
   }, [])
 
-  const run = useCallback(() => {
-    setIsLoading(true)
+  const execute = useCallback((showLoadingSpinner: boolean) => {
+    if (showLoadingSpinner) setIsLoading(true)
     setError(null)
 
     // `settled` ensures exactly one of {success, failure, timeout} updates state — whichever
@@ -71,10 +74,13 @@ export function useAsyncData<T>(
       })
   }, [timeoutMs])
 
+  const run = useCallback(() => execute(true), [execute])
+  const runSilent = useCallback(() => execute(false), [execute])
+
   // Runs on mount and whenever `run` changes (stable while timeoutMs is unchanged).
   useEffect(() => {
     run()
   }, [run])
 
-  return { data, isLoading, error, refetch: run }
+  return { data, isLoading, error, refetch: run, refetchSilent: runSilent }
 }

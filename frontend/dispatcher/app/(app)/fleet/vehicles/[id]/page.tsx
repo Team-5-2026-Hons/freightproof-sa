@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { TopBar }    from '@/components/ui/TopBar'
 import { Chip }      from '@/components/ui/Chip'
@@ -14,6 +14,12 @@ import { BlockchainBadge } from '@/components/blockchain/BlockchainBadge'
 import { EventTimeline }   from '@/components/blockchain/EventTimeline'
 import { ForensicOnly }    from '@/components/blockchain/ForensicOnly'
 import { useVehicleDetail } from '@/lib/hooks/useVehicleDetail'
+import {
+  useResizablePanel,
+  DETAIL_PANEL_DEFAULT_W,
+  DETAIL_PANEL_MIN_W,
+  DETAIL_PANEL_MAX_W,
+} from '@/lib/hooks/useResizablePanel'
 import { api } from '@/lib/api/client'
 import { ROUTES } from '@/lib/constants/routes'
 import { validateVehicleForm, vinFieldFeedback, VEHICLE_FIELD_ORDER, type VehicleField } from '@shared/lib/validation/vehicle'
@@ -32,43 +38,20 @@ type EditState = {
   is_active: boolean
 }
 
-const DEFAULT_PANEL_W = 520
-const MIN_PANEL_W = 360
-const MAX_PANEL_W = 720
-
 export default function VehicleDetailPage() {
   const router = useRouter()
   const params = useParams<{ id: string }>()
-  const { data: vehicle, isLoading, error, refetch } = useVehicleDetail(params.id)
+  const { data: vehicle, isLoading, error, refetchSilent } = useVehicleDetail(params.id)
 
   const [isEditing, setIsEditing] = useState(false)
   const [form, setForm] = useState<EditState | null>(null)
   const [touched, setTouched] = useState<Set<VehicleField>>(new Set())
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [panelWidth, setPanelWidth] = useState(DEFAULT_PANEL_W)
-  const resizeRef = useRef<{ startX: number; startW: number } | null>(null)
-
-  function startResize(e: React.MouseEvent) {
-    e.preventDefault()
-    resizeRef.current = { startX: e.clientX, startW: panelWidth }
-
-    function onMove(ev: MouseEvent) {
-      const r = resizeRef.current
-      if (!r) return
-      const next = r.startW + (ev.clientX - r.startX)
-      setPanelWidth(Math.min(MAX_PANEL_W, Math.max(MIN_PANEL_W, next)))
-    }
-
-    function onUp() {
-      resizeRef.current = null
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-    }
-
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-  }
+  const { width: panelWidth, startResize } = useResizablePanel(
+    DETAIL_PANEL_DEFAULT_W,
+    { min: DETAIL_PANEL_MIN_W, max: DETAIL_PANEL_MAX_W },
+  )
 
   const backButton = (
     <Button
@@ -178,7 +161,7 @@ export default function VehicleDetailPage() {
 
       if (Object.keys(body).length === 0) { setIsEditing(false); return }
       await api.patch(`/api/v1/vehicles/${vehicle!.id}`, body)
-      await refetch()
+      await refetchSilent()
       setIsEditing(false)
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Save failed')
