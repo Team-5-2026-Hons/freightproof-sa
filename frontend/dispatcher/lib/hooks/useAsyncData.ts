@@ -9,7 +9,17 @@ export interface AsyncState<T> {
   refetch: () => void
 }
 
-export function useAsyncData<T>(fetchFn: () => Promise<T>, initial: T): AsyncState<T> {
+// Backstop ceiling. The API client (lib/api/client.ts) already bounds its own
+// session lookup + fetch, so a normal request settles well before this. This timeout
+// only fires if a fetch passed to the hook never settles for any other reason — it
+// guarantees the UI can never get permanently stuck on a loading spinner.
+const DEFAULT_TIMEOUT_MS = 25_000
+
+export function useAsyncData<T>(
+  fetchFn: () => Promise<T>,
+  initial: T,
+  timeoutMs: number = DEFAULT_TIMEOUT_MS,
+): AsyncState<T> {
   const [data, setData] = useState<T>(initial)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -21,34 +31,50 @@ export function useAsyncData<T>(fetchFn: () => Promise<T>, initial: T): AsyncSta
     fetchRef.current = fetchFn
   }, [fetchFn])
 
-  const refetch = useCallback(() => {
+  // Guards against setState after unmount when a slow/timed-out fetch resolves late.
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
+
+  const run = useCallback(() => {
     setIsLoading(true)
     setError(null)
+
+    // `settled` ensures exactly one of {success, failure, timeout} updates state — whichever
+    // happens first wins, and the losers become no-ops.
+    let settled = false
+    const timer = setTimeout(() => {
+      if (settled || !mountedRef.current) return
+      settled = true
+      setError('Request timed out. Please try again.')
+      setIsLoading(false)
+    }, timeoutMs)
+
     fetchRef.current()
       .then((result) => {
+        if (settled || !mountedRef.current) return
+        settled = true
+        clearTimeout(timer)
         setData(result)
         setIsLoading(false)
       })
       .catch((err: unknown) => {
+        if (settled || !mountedRef.current) return
+        settled = true
+        clearTimeout(timer)
         setError(err instanceof Error ? err.message : 'An unexpected error occurred')
         setIsLoading(false)
       })
-  }, [])
+  }, [timeoutMs])
 
-  // Runs once on mount; isLoading/error already at their initial values so no
-  // synchronous setState needed — only async resolution updates state
+  // Runs on mount and whenever `run` changes (stable while timeoutMs is unchanged).
   useEffect(() => {
-    fetchRef.current()
-      .then((result) => {
-        setData(result)
-        setIsLoading(false)
-      })
-      .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : 'An unexpected error occurred')
-        setIsLoading(false)
-      })
-   
-  }, [])
+    run()
+  }, [run])
 
-  return { data, isLoading, error, refetch }
+  return { data, isLoading, error, refetch: run }
 }
