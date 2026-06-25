@@ -20,7 +20,8 @@ def test_canonicalize_is_deterministic_and_sorted():
 
 
 def test_hash_matches_manual_sha256():
-    import hashlib, json
+    import hashlib
+    import json
 
     payload = {"x": 1}
     expected = hashlib.sha256(

@@ -4,7 +4,7 @@ Uses DEMO_MODE auth (Bearer demo) consistent with the rest of the integration su
 HederaService is patched so no real network calls are made.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 import pytest_asyncio

@@ -78,7 +78,11 @@ export function useAsyncData<T>(
   const runSilent = useCallback(() => execute(false), [execute])
 
   // Runs on mount and whenever `run` changes (stable while timeoutMs is unchanged).
+  // run() kicks off async work; the synchronous setIsLoading/setError it triggers are
+  // no-ops on mount (initial state already matches) and only re-fire on a deliberate
+  // refetch, so they cannot cascade. The rule is a blanket heuristic; suppress it here.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     run()
   }, [run])
 

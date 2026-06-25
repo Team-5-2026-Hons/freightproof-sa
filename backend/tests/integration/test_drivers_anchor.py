@@ -10,7 +10,7 @@ HederaService and create_driver_auth_user are patched so no real network calls a
 
 import hashlib
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio

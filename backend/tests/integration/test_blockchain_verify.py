@@ -9,7 +9,7 @@ HederaService is patched so no real network calls are made.
 """
 
 import uuid
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 import pytest_asyncio
