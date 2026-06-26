@@ -18,8 +18,6 @@ from cryptography.hazmat.primitives.asymmetric.ec import SECP256R1, generate_pri
 from fastapi import HTTPException
 from jose import jwt as jose_jwt
 
-import uuid
-from datetime import UTC, datetime
 
 from app.auth.dependencies import _decode_token, _require_dispatcher_role, require_admin_dispatcher
 from app.db.models.enums import DispatcherRole

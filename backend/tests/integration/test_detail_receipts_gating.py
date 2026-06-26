@@ -179,7 +179,7 @@ async def test_driver_detail_strips_receipts_for_dispatcher() -> None:
         return_value=_fake_driver_detail(),
     ):
         async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
+            transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
         ) as client:
             resp = await client.get(
                 f"/api/v1/drivers/{_OBJ_ID}",
@@ -199,7 +199,7 @@ async def test_driver_detail_exposes_receipts_for_admin() -> None:
         return_value=_fake_driver_detail(),
     ):
         async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
+            transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
         ) as client:
             resp = await client.get(
                 f"/api/v1/drivers/{_OBJ_ID}",
@@ -222,7 +222,7 @@ async def test_vehicle_detail_strips_receipts_for_dispatcher() -> None:
         return_value=_fake_vehicle_detail(),
     ):
         async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
+            transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
         ) as client:
             resp = await client.get(
                 f"/api/v1/vehicles/{_OBJ_ID}",
@@ -242,7 +242,7 @@ async def test_vehicle_detail_exposes_receipts_for_admin() -> None:
         return_value=_fake_vehicle_detail(),
     ):
         async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
+            transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
         ) as client:
             resp = await client.get(
                 f"/api/v1/vehicles/{_OBJ_ID}",
@@ -265,7 +265,7 @@ async def test_trip_detail_strips_receipts_for_dispatcher() -> None:
         return_value=_fake_trip_detail(),
     ):
         async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
+            transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
         ) as client:
             resp = await client.get(
                 f"/api/v1/trips/{_OBJ_ID}",
@@ -285,7 +285,7 @@ async def test_trip_detail_exposes_receipts_for_admin() -> None:
         return_value=_fake_trip_detail(),
     ):
         async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
+            transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
         ) as client:
             resp = await client.get(
                 f"/api/v1/trips/{_OBJ_ID}",

@@ -5,6 +5,7 @@ HederaService is patched so no real network calls are made.
 """
 
 import uuid
+from collections.abc import AsyncGenerator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -25,7 +26,7 @@ from app.main import app
 # ── DB override ───────────────────────────────────────────────────────────────
 
 @pytest_asyncio.fixture(autouse=True)
-async def override_get_db(db_session: AsyncSession) -> None:
+async def override_get_db(db_session: AsyncSession) -> AsyncGenerator[None, None]:
     """Wire every endpoint in this module to the rolled-back test session."""
     async def _get_db():
         yield db_session
@@ -154,7 +155,7 @@ async def test_create_trip_writes_blockchain_receipt(db_session: AsyncSession, s
         MockService.return_value = instance
 
         async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
+            transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
         ) as client:
             resp = await client.post(
                 "/api/v1/trips",

@@ -1,4 +1,3 @@
-import pytest
 from app.blockchain.critical_fields import (
     diff_critical_fields, VEHICLE_CRITICAL_FIELDS, DRIVER_CRITICAL_FIELDS,
 )
