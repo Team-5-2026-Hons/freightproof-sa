@@ -97,7 +97,7 @@ async def create_vehicle(
     _canonical_fields = {
         **snapshot,
         "pulsit_device_id_sha256": hashlib.sha256(
-            (snapshot.get("pulsit_device_id") or "").encode("utf-8")
+            str(snapshot.get("pulsit_device_id") or "").encode("utf-8")
         ).hexdigest() if snapshot.get("pulsit_device_id") else None,
     }
     _canonical_fields.pop("pulsit_device_id", None)

@@ -5,6 +5,7 @@ Uses DEMO_MODE auth (Bearer demo) consistent with the rest of the integration su
 HederaService is patched so no real network calls are made.
 """
 
+from collections.abc import AsyncGenerator
 from unittest.mock import patch
 
 import pytest_asyncio
@@ -25,7 +26,7 @@ from app.main import app
 
 
 @pytest_asyncio.fixture(autouse=True)
-async def override_get_db(db_session: AsyncSession) -> None:
+async def override_get_db(db_session: AsyncSession) -> AsyncGenerator[None, None]:
     async def _get_db():
         yield db_session
 
@@ -71,7 +72,7 @@ async def test_cosmetic_only_patch_records_from_to_diff_and_skips_anchor(
 ) -> None:
     """Changing only `make` must produce a real {from, to} diff and no BlockchainReceipt."""
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
+        transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
     ) as client:
         resp = await client.patch(
             f"/api/v1/vehicles/{seed_vehicle.id}",
@@ -117,7 +118,7 @@ async def test_mixed_patch_anchors_only_critical_field(
         MockService.return_value.submit_hash.return_value = fake_receipt
 
         async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
+            transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
         ) as client:
             resp = await client.patch(
                 f"/api/v1/vehicles/{seed_vehicle.id}",

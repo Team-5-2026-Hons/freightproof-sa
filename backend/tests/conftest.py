@@ -14,8 +14,10 @@ Two fixture families live here:
 
 import asyncio
 import base64
+import os
 import uuid
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import AsyncGenerator
 
 import pytest
@@ -28,9 +30,32 @@ from jose import jwt
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
 
-from app.core.config import settings
-from app.db.models import Base
-from app.main import app
+# Provide throwaway config values when no backend/.env is present (e.g. CI), so the app's
+# Settings() can instantiate during tests without real secrets. Gated on .env absence:
+# local dev with a real .env is unaffected, and setdefault never overrides a value already
+# in the environment (so a real CI secret like SUPABASE_SERVICE_ROLE_KEY still wins). The DB
+# integration tests still skip unless TEST_DATABASE_URL is supplied.
+if not (Path(__file__).resolve().parent.parent / ".env").exists():
+    for _key, _val in {
+        "DATABASE_URL": "postgresql+asyncpg://test:test@localhost/test",
+        "REDIS_URL": "redis://localhost:6379/0",
+        "SUPABASE_URL": "https://test.supabase.co",
+        "SUPABASE_ANON_KEY": "test-anon-key",
+        "SUPABASE_JWT_SECRET": "test-jwt-secret",
+        "SUPABASE_SERVICE_ROLE_KEY": "test-service-role-key",
+        "HEDERA_ACCOUNT_ID": "0.0.0",
+        "HEDERA_PRIVATE_KEY": "test-hedera-key",
+        "TWILIO_ACCOUNT_SID": "test-twilio-sid",
+        "TWILIO_AUTH_TOKEN": "test-twilio-token",
+        "TWILIO_FROM_NUMBER": "+10000000000",
+        "SENDGRID_API_KEY": "test-sendgrid-key",
+        "SENDGRID_FROM_EMAIL": "test@example.com",
+    }.items():
+        os.environ.setdefault(_key, _val)
+
+from app.core.config import settings  # noqa: E402
+from app.db.models import Base  # noqa: E402
+from app.main import app  # noqa: E402
 
 # ── Test EC key pair (generated once per process) ─────────────────────────────
 # Used to sign test JWTs with ES256, mirroring how Supabase signs real tokens.

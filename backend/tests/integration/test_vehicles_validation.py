@@ -11,6 +11,7 @@ anchoring, so HederaService is patched for the valid-update-on-critical-field
 cases, matching the pattern in test_vehicles_cosmetic_diff.py.
 """
 
+from collections.abc import AsyncGenerator
 from unittest.mock import patch
 
 import pytest_asyncio
@@ -30,7 +31,7 @@ _VALID_VIN = "1HGCM82633A004352"
 
 
 @pytest_asyncio.fixture(autouse=True)
-async def override_get_db(db_session: AsyncSession) -> None:
+async def override_get_db(db_session: AsyncSession) -> AsyncGenerator[None, None]:
     async def _get_db():
         yield db_session
 
@@ -84,7 +85,7 @@ async def test_create_vehicle_overlength_vin_returns_422(seed_org: None) -> None
     }
 
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
+        transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
     ) as client:
         resp = await client.post(
             "/api/v1/vehicles",
@@ -104,7 +105,7 @@ async def test_create_vehicle_nonalphanumeric_vin_returns_422(seed_org: None) ->
     }
 
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
+        transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
     ) as client:
         resp = await client.post(
             "/api/v1/vehicles",
@@ -124,7 +125,7 @@ async def test_create_vehicle_shortlength_vin_returns_422(seed_org: None) -> Non
     }
 
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
+        transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
     ) as client:
         resp = await client.post(
             "/api/v1/vehicles",
@@ -143,7 +144,7 @@ async def test_create_vehicle_overlength_registration_returns_422(seed_org: None
     }
 
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
+        transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
     ) as client:
         resp = await client.post(
             "/api/v1/vehicles",
@@ -166,7 +167,7 @@ async def test_create_vehicle_valid_vin_returns_201(seed_org: None) -> None:
         MockService.return_value.submit_hash.return_value = _fake_hedera_receipt()
 
         async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
+            transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
         ) as client:
             resp = await client.post(
                 "/api/v1/vehicles",
@@ -188,7 +189,7 @@ async def test_create_vehicle_invalid_year_returns_422(seed_org: None) -> None:
     }
 
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
+        transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
     ) as client:
         resp = await client.post(
             "/api/v1/vehicles",
@@ -208,7 +209,7 @@ async def test_create_vehicle_nonpositive_gvm_returns_422(seed_org: None) -> Non
     }
 
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
+        transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
     ) as client:
         resp = await client.post(
             "/api/v1/vehicles",
@@ -231,7 +232,7 @@ async def test_create_vehicle_invalid_vin_does_not_persist_row(
     }
 
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
+        transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
     ) as client:
         resp = await client.post(
             "/api/v1/vehicles",
@@ -253,7 +254,7 @@ async def test_create_vehicle_invalid_vin_does_not_persist_row(
 
 async def test_update_vehicle_overlength_vin_returns_422(seed_vehicle: Vehicle) -> None:
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
+        transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
     ) as client:
         resp = await client.patch(
             f"/api/v1/vehicles/{seed_vehicle.id}",
@@ -266,7 +267,7 @@ async def test_update_vehicle_overlength_vin_returns_422(seed_vehicle: Vehicle) 
 
 async def test_update_vehicle_nonalphanumeric_vin_returns_422(seed_vehicle: Vehicle) -> None:
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
+        transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
     ) as client:
         resp = await client.patch(
             f"/api/v1/vehicles/{seed_vehicle.id}",
@@ -279,7 +280,7 @@ async def test_update_vehicle_nonalphanumeric_vin_returns_422(seed_vehicle: Vehi
 
 async def test_update_vehicle_wronglength_vin_returns_422(seed_vehicle: Vehicle) -> None:
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
+        transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
     ) as client:
         resp = await client.patch(
             f"/api/v1/vehicles/{seed_vehicle.id}",
@@ -292,7 +293,7 @@ async def test_update_vehicle_wronglength_vin_returns_422(seed_vehicle: Vehicle)
 
 async def test_update_vehicle_overlength_registration_returns_422(seed_vehicle: Vehicle) -> None:
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
+        transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
     ) as client:
         resp = await client.patch(
             f"/api/v1/vehicles/{seed_vehicle.id}",
@@ -308,7 +309,7 @@ async def test_update_vehicle_valid_vin_returns_200(seed_vehicle: Vehicle) -> No
         MockService.return_value.submit_hash.return_value = _fake_hedera_receipt()
 
         async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
+            transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
         ) as client:
             resp = await client.patch(
                 f"/api/v1/vehicles/{seed_vehicle.id}",
@@ -325,7 +326,7 @@ async def test_update_vehicle_invalid_vin_leaves_db_state_unchanged(
 ) -> None:
     """A 422 on PATCH must not partially write the rejected field."""
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
+        transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
     ) as client:
         resp = await client.patch(
             f"/api/v1/vehicles/{seed_vehicle.id}",

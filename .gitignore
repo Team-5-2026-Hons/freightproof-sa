@@ -222,3 +222,6 @@ spikes/fp-23-hedera-sdk/.env.spike
 # Graphify knowledge graph (cache only — graph.json/GRAPH_REPORT.md/graph.html are committed)
 graphify-out/cache/
 .graphify_*
+
+# Claude Code session git worktrees
+.worktrees/

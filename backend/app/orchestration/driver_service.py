@@ -6,6 +6,7 @@ Layering: imports db/, schemas/, core/exceptions, integrations/ only.
 
 import hashlib
 import uuid
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -172,11 +173,15 @@ async def update_driver(
 
     # Exclude license_number plaintext from the cosmetic patch record stored in DB.
     safe_patch = {k: v for k, v in patched.items() if k not in _DRIVER_PII_FIELDS}
+    # diff is dict[str, dict[...]]; the no-change fallback mixes bool/dict values. Give the
+    # fallback its own dict[str, Any] type so `or` doesn't infer it from diff's stricter type.
+    _fallback: dict[str, Any] = {"_no_critical_change": True, "_patch": safe_patch}
+    changed_fields: dict[str, Any] = diff or _fallback
     event = DriverEvent(
         id=uuid.uuid4(),
         driver_id=driver.id,
         event_type=event_type.value,
-        changed_fields=diff or {"_no_critical_change": True, "_patch": safe_patch},
+        changed_fields=changed_fields,
         changed_by_user_id=current_user_id,
     )
     db.add(event)

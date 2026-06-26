@@ -9,6 +9,7 @@ HederaService is patched so no real network calls are made.
 """
 
 import uuid
+from collections.abc import AsyncGenerator
 from unittest.mock import patch
 
 import pytest
@@ -29,7 +30,7 @@ from app.main import app
 # ── DB override ───────────────────────────────────────────────────────────────
 
 @pytest_asyncio.fixture(autouse=True)
-async def override_get_db(db_session: AsyncSession) -> None:
+async def override_get_db(db_session: AsyncSession) -> AsyncGenerator[None, None]:
     """Wire every endpoint in this module to the rolled-back test session."""
     async def _get_db():
         yield db_session
@@ -146,7 +147,7 @@ def _make_trip_payload(seed: dict) -> dict:
 async def test_verify_returns_no_receipt_for_unknown_subject(db_session: AsyncSession, seed_org) -> None:
     """Verify against a subject UUID that has never been anchored → no_receipt."""
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
+        transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
     ) as client:
         resp = await client.post(
             "/api/v1/blockchain/verify",
@@ -181,7 +182,7 @@ async def test_verify_returns_verified_for_anchored_trip(
         MockCreate.return_value.submit_hash.return_value = fake_receipt
 
         async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
+            transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
         ) as client:
             create_resp = await client.post(
                 "/api/v1/trips",
@@ -198,7 +199,7 @@ async def test_verify_returns_verified_for_anchored_trip(
         MockVerify.return_value.verify_hash.return_value = True
 
         async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
+            transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
         ) as client:
             verify_resp = await client.post(
                 "/api/v1/blockchain/verify",
