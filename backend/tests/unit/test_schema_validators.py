@@ -4,8 +4,13 @@ Run: pytest tests/unit/test_schema_validators.py -v
 All four tests FAIL until the relevant schema files are implemented.
 """
 
+import uuid as _uuid
+
 import pytest
 from datetime import datetime, timezone
+from pydantic import ValidationError
+
+from app.schemas.trips import TripCreateRequest
 
 
 # ---------------------------------------------------------------------------
@@ -184,12 +189,6 @@ def test_merkle_leaf_source_type_invalid():
 # ---------------------------------------------------------------------------
 # TripCreateRequest — trailer_ids: min 1 trailer, no duplicates (CQ-4, CQ-5)
 # ---------------------------------------------------------------------------
-
-import uuid as _uuid
-
-from pydantic import ValidationError
-
-from app.schemas.trips import TripCreateRequest
 
 _ORIGIN = _uuid.uuid4()
 _DEST = _uuid.uuid4()

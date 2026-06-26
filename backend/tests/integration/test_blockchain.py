@@ -63,7 +63,7 @@ async def test_receipts_returns_403_for_dispatcher() -> None:
     app.dependency_overrides[get_current_dispatcher] = lambda: _DISPATCHER_USER
 
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
+        transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
     ) as client:
         resp = await client.get(
             "/api/v1/blockchain/receipts",
@@ -87,7 +87,7 @@ async def test_receipts_passes_role_check_for_admin() -> None:
         side_effect=SubjectNotVisibleError("trip", _SUBJECT_ID),
     ):
         async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
+            transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
         ) as client:
             resp = await client.get(
                 "/api/v1/blockchain/receipts",
@@ -128,7 +128,7 @@ async def test_verify_hides_hashes_for_dispatcher() -> None:
         ),
     ):
         async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
+            transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
         ) as client:
             resp = await client.post(
                 "/api/v1/blockchain/verify",
@@ -161,7 +161,7 @@ async def test_verify_exposes_hashes_for_admin() -> None:
         ),
     ):
         async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
+            transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
         ) as client:
             resp = await client.post(
                 "/api/v1/blockchain/verify",

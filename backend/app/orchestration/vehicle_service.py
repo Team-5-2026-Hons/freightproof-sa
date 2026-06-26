@@ -5,6 +5,7 @@ Extracted from resource_service.py — owns list/create/update/detail for Vehicl
 
 import hashlib
 import uuid
+from typing import Any
 
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
@@ -92,7 +93,7 @@ async def create_vehicle(
     _canonical_fields = {
         **snapshot,
         "pulsit_device_id_sha256": hashlib.sha256(
-            (snapshot.get("pulsit_device_id") or "").encode("utf-8")
+            str(snapshot.get("pulsit_device_id") or "").encode("utf-8")
         ).hexdigest() if snapshot.get("pulsit_device_id") else None,
     }
     _canonical_fields.pop("pulsit_device_id", None)
@@ -174,11 +175,15 @@ async def update_vehicle(
             # Multiple critical fields changed simultaneously
             event_type = VehicleEventType.VEHICLE_UPDATED
 
+    # diff is dict[str, dict[...]]; the no-change fallback mixes bool/dict values. Give the
+    # fallback its own dict[str, Any] type so `or` doesn't infer it from diff's stricter type.
+    _fallback: dict[str, Any] = {"_no_critical_change": True, "_patch": patched}
+    changed_fields: dict[str, Any] = diff or _fallback
     event = VehicleEvent(
         id=uuid.uuid4(),
         vehicle_id=vehicle.id,
         event_type=event_type.value,
-        changed_fields=diff or {"_no_critical_change": True, "_patch": patched},
+        changed_fields=changed_fields,
         changed_by_user_id=current_user_id,
     )
     db.add(event)

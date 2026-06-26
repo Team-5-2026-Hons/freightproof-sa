@@ -4,7 +4,8 @@ Uses DEMO_MODE auth (Bearer demo) consistent with the rest of the integration su
 HederaService is patched so no real network calls are made.
 """
 
-from unittest.mock import MagicMock, patch
+from collections.abc import AsyncGenerator
+from unittest.mock import patch
 
 import pytest
 import pytest_asyncio
@@ -23,7 +24,7 @@ from app.main import app
 # ── DB override ───────────────────────────────────────────────────────────────
 
 @pytest_asyncio.fixture(autouse=True)
-async def override_get_db(db_session: AsyncSession) -> None:
+async def override_get_db(db_session: AsyncSession) -> AsyncGenerator[None, None]:
     """Wire every endpoint in this module to the rolled-back test session."""
     async def _get_db():
         yield db_session
@@ -78,7 +79,7 @@ async def test_create_vehicle_writes_event_and_anchor(db_session: AsyncSession, 
         MockService.return_value.submit_hash.return_value = fake_receipt
 
         async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
+            transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
         ) as client:
             resp = await client.post(
                 "/api/v1/vehicles",
@@ -131,7 +132,7 @@ async def test_create_vehicle_payload_json_hashes_pulsit_device_id(
     with patch("app.blockchain.anchor_service.HederaService") as MockService:
         MockService.return_value.submit_hash.return_value = fake_receipt
         async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
+            transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
         ) as client:
             resp = await client.post(
                 "/api/v1/vehicles",
