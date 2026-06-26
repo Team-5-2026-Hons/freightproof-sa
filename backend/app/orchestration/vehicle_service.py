@@ -5,14 +5,15 @@ Extracted from resource_service.py — owns list/create/update/detail for Vehicl
 
 import hashlib
 import uuid
-from typing import Any
 
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.blockchain.anchor_service import anchor_subject
-from app.blockchain.critical_fields import VEHICLE_CRITICAL_FIELDS, diff_critical_fields
+from app.blockchain.critical_fields import (
+    VEHICLE_COSMETIC_FIELDS, VEHICLE_CRITICAL_FIELDS, diff_critical_fields,
+)
 from app.core.exceptions import DuplicateResourceError, ResourceNotFoundError
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import (
@@ -55,6 +56,7 @@ async def create_vehicle(
         vin_number=data.vin_number,
         licence_disc_expiry=data.licence_disc_expiry,
         gross_vehicle_mass_kg=data.gross_vehicle_mass_kg,
+        length_m=data.length_m,
     )
     db.add(vehicle)
     try:
@@ -75,6 +77,8 @@ async def create_vehicle(
         "year": vehicle.year,
         "vin_number": vehicle.vin_number,
         "licence_disc_expiry": vehicle.licence_disc_expiry.isoformat() if vehicle.licence_disc_expiry else None,
+        "gross_vehicle_mass_kg": vehicle.gross_vehicle_mass_kg,
+        "length_m": vehicle.length_m,
         "is_active": vehicle.is_active,
     }
     vehicle_event = VehicleEvent(
@@ -139,10 +143,17 @@ async def update_vehicle(
     old = {
         "registration": vehicle.registration,
         "licence_disc_expiry": vehicle.licence_disc_expiry.isoformat() if vehicle.licence_disc_expiry else None,
-        "vehicle_type": vehicle.vehicle_type.value,
+        # vehicle_type column is String-backed, so a freshly loaded Vehicle holds a
+        # plain str here (not a VehicleType enum) — no .value, or it AttributeErrors.
+        "vehicle_type": vehicle.vehicle_type,
         "vin_number": vehicle.vin_number,
         "pulsit_device_id": vehicle.pulsit_device_id,
         "is_active": vehicle.is_active,
+        "make": vehicle.make,
+        "model": vehicle.model,
+        "year": vehicle.year,
+        "gross_vehicle_mass_kg": vehicle.gross_vehicle_mass_kg,
+        "length_m": vehicle.length_m,
     }
     patched = data.model_dump(exclude_unset=True)
     for field, value in patched.items():
@@ -151,16 +162,24 @@ async def update_vehicle(
     new = {
         "registration": vehicle.registration,
         "licence_disc_expiry": vehicle.licence_disc_expiry.isoformat() if vehicle.licence_disc_expiry else None,
-        "vehicle_type": vehicle.vehicle_type.value,
+        # vehicle_type column is String-backed, so a freshly loaded Vehicle holds a
+        # plain str here (not a VehicleType enum) — no .value, or it AttributeErrors.
+        "vehicle_type": vehicle.vehicle_type,
         "vin_number": vehicle.vin_number,
         "pulsit_device_id": vehicle.pulsit_device_id,
         "is_active": vehicle.is_active,
+        "make": vehicle.make,
+        "model": vehicle.model,
+        "year": vehicle.year,
+        "gross_vehicle_mass_kg": vehicle.gross_vehicle_mass_kg,
+        "length_m": vehicle.length_m,
     }
 
-    diff = diff_critical_fields(old, new, VEHICLE_CRITICAL_FIELDS)
+    critical_diff = diff_critical_fields(old, new, VEHICLE_CRITICAL_FIELDS)
+    full_diff = diff_critical_fields(old, new, VEHICLE_CRITICAL_FIELDS | VEHICLE_COSMETIC_FIELDS)
     event_type = VehicleEventType.COSMETIC_UPDATE
-    if diff is not None:
-        changed = set(diff.keys())
+    if critical_diff is not None:
+        changed = set(critical_diff.keys())
         if "registration" in changed:
             event_type = VehicleEventType.LICENSE_PLATE_CHANGED
         elif "is_active" in changed and not new["is_active"]:
@@ -175,22 +194,18 @@ async def update_vehicle(
             # Multiple critical fields changed simultaneously
             event_type = VehicleEventType.VEHICLE_UPDATED
 
-    # diff is dict[str, dict[...]]; the no-change fallback mixes bool/dict values. Give the
-    # fallback its own dict[str, Any] type so `or` doesn't infer it from diff's stricter type.
-    _fallback: dict[str, Any] = {"_no_critical_change": True, "_patch": patched}
-    changed_fields: dict[str, Any] = diff or _fallback
     event = VehicleEvent(
         id=uuid.uuid4(),
         vehicle_id=vehicle.id,
         event_type=event_type.value,
-        changed_fields=changed_fields,
+        changed_fields=full_diff or {},
         changed_by_user_id=current_user_id,
     )
     db.add(event)
     await db.flush()
 
-    if diff is not None:
-        _canonical_diff = dict(diff)
+    if critical_diff is not None:
+        _canonical_diff = dict(critical_diff)
         if "pulsit_device_id" in _canonical_diff:
             entry = _canonical_diff.pop("pulsit_device_id")
             # entry is {"from": "...", "to": "..."} — hash both sides for POPIA compliance

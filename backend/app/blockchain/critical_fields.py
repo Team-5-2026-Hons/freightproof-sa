@@ -16,6 +16,16 @@ VEHICLE_CRITICAL_FIELDS: frozenset[str] = frozenset({
     "is_active",
 })
 
+# Non-critical vehicle attributes — recorded in the event log for dispatcher visibility
+# but never anchored to Hedera (no fee, no on-chain noise for cosmetic edits).
+VEHICLE_COSMETIC_FIELDS: frozenset[str] = frozenset({
+    "make",
+    "model",
+    "year",
+    "gross_vehicle_mass_kg",
+    "length_m",
+})
+
 DRIVER_CRITICAL_FIELDS: frozenset[str] = frozenset({
     "license_number",
     "license_expiry",

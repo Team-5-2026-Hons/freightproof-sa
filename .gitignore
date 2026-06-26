@@ -152,6 +152,7 @@ venv.bak/
 # Frontend — ignore build artefacts and installed packages across all workspaces
 frontend/**/node_modules/
 frontend/**/.next/
+*.tsbuildinfo
 
 # Spyder project settings
 .spyderproject

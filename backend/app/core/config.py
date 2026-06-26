@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     HEDERA_NETWORK: str = "testnet"
     HEDERA_TOPIC_ID: str = ""
 
+    # Hard ceiling on the submit_hash() SDK call (a real network round-trip with no
+    # built-in timeout). Typical latency is ~4-6s; this bounds the worst case so a
+    # stalled Hedera call fails fast instead of hanging the request indefinitely.
+    HEDERA_SUBMIT_TIMEOUT_SECONDS: float = 15.0
+
     # -------------------------------------------------------------------------
     # Twilio
     # Used to send SMS OTP codes to drivers at trip start/end.

@@ -48,6 +48,14 @@ class HederaSubmitError(HederaServiceError):
     """Raised when submitting a hash to HCS fails."""
 
 
+class HederaTimeoutError(HederaServiceError):
+    """Raised when the submit_hash() call exceeds HEDERA_SUBMIT_TIMEOUT_SECONDS.
+
+    Distinct from HederaSubmitError so callers/logs can tell "Hedera never
+    responded in time" apart from "Hedera responded with a rejection".
+    """
+
+
 class HederaVerifyError(HederaServiceError):
     """Raised when mirror-node verification fails."""
 
