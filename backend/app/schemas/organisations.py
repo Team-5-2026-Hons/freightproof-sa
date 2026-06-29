@@ -44,6 +44,7 @@ class PrecinctBase(BaseModel):
     latitude: Decimal
     longitude: Decimal
     geofence_radius_metres: int = 200
+    is_shared: bool = False
 
 
 class PrecinctCreate(PrecinctBase):
@@ -58,6 +59,7 @@ class PrecinctUpdate(BaseModel):
     latitude: Optional[Decimal] = None
     longitude: Optional[Decimal] = None
     geofence_radius_metres: Optional[int] = None
+    is_shared: Optional[bool] = None
 
 
 class PrecinctRead(PrecinctBase):
