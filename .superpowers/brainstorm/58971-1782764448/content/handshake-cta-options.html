@@ -1,0 +1,98 @@
+<style>
+  .phone { width: 280px; background:#fcf8f9; border-radius:20px; padding:16px; font-family: -apple-system, sans-serif; box-shadow: 0 0 0 1px #c7c6ca; }
+  .phone h4 { margin:0 0 10px; font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:#46464f; font-weight:700; }
+  .stepper { display:flex; align-items:center; margin-bottom:18px; }
+  .dot { width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; flex-shrink:0; }
+  .dot.done { background:#1b1b1c; color:#fff; }
+  .dot.current { background:#0051d5; color:#fff; }
+  .dot.upcoming { background:#fff; color:#46464f; border:2px solid #c7c6ca; }
+  .line { flex:1; height:2px; background:#1b1b1c; margin:0 2px; }
+  .line.dim { background:#c7c6ca; }
+  .section-label { font-size:12px; font-weight:600; color:#46464f; margin-bottom:8px; }
+
+  /* Option A: minimal button, same as today's style but single row */
+  .btn-primary { width:100%; background:#1b1b1c; color:#fff; border-radius:12px; padding:14px 16px; font-weight:700; font-size:14px; display:flex; align-items:center; gap:8px; }
+
+  /* Option B: hero CTA card */
+  .hero-card { background:#0051d5; color:#fff; border-radius:18px; padding:18px; box-shadow: 0 6px 16px rgba(0,81,213,.25); }
+  .hero-top { display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; }
+  .hero-badge { background:rgba(255,255,255,.18); border-radius:999px; padding:3px 10px; font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; }
+  .hero-title { font-size:19px; font-weight:800; margin:6px 0 2px; }
+  .hero-sub { font-size:12px; opacity:.85; margin-bottom:14px; }
+  .hero-cta { background:#fff; color:#0051d5; border-radius:10px; padding:10px 14px; font-weight:700; font-size:13px; display:flex; justify-content:space-between; align-items:center; }
+
+  /* Option C: integrated with stepper, no separate header */
+  .integrated-arrow { display:flex; justify-content:center; margin: -4px 0 8px; }
+  .integrated-card { background:#d8e2ff; border-radius:14px; padding:14px 16px; display:flex; justify-content:space-between; align-items:center; }
+  .integrated-left { display:flex; align-items:center; gap:10px; }
+  .integrated-num { width:30px; height:30px; border-radius:50%; background:#0051d5; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:12px; }
+  .integrated-title { font-weight:700; font-size:14px; color:#001551; }
+  .integrated-chev { color:#0051d5; font-size:18px; }
+</style>
+
+<h2>Which "current step" presentation fits best?</h2>
+<p class="subtitle">Scenario: H1 and H2 are done, driver is mid-way through H3 (Origin Gate-Out). All three options replace today's list (which currently shows H1, H2, H3 as separate tappable rows) with just the single actionable step.</p>
+
+<div class="cards">
+
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="phone">
+        <h4>Handshakes</h4>
+        <div class="btn-primary">H3: Origin Gate-Out &nbsp;→</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A. Minimal (same as today, just 1 row)</h3>
+      <p>Smallest change. Reuses the exact same button style, just filtered to one item under a "Handshakes" heading.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="phone">
+        <h4>Handshakes</h4>
+        <div class="hero-card">
+          <div class="hero-top"><div class="hero-badge">In progress</div></div>
+          <div class="hero-title">H3 · Origin Gate-Out</div>
+          <div class="hero-sub">Exit the loading bay and confirm the seal</div>
+          <div class="hero-cta"><span>Continue</span><span>→</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B. Hero CTA card</h3>
+      <p>A bigger, more prominent "next step" card — its own visual identity, separate from the H1-H5 dots above it. Reads as the main action on the screen.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="phone">
+        <h4>Trip progress</h4>
+        <div class="stepper">
+          <div class="dot done">✓</div><div class="line"></div>
+          <div class="dot done">✓</div><div class="line"></div>
+          <div class="dot current">H3</div><div class="line dim"></div>
+          <div class="dot upcoming">H4</div><div class="line dim"></div>
+          <div class="dot upcoming">H5</div>
+        </div>
+        <div class="integrated-arrow">▾</div>
+        <div class="integrated-card">
+          <div class="integrated-left">
+            <div class="integrated-num">3</div>
+            <div class="integrated-title">Origin Gate-Out</div>
+          </div>
+          <div class="integrated-chev">→</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C. Integrated with the stepper</h3>
+      <p>No separate "Handshakes" section at all — the current step card sits directly under the H1-H5 dots, visually continuing from the highlighted dot. Most compact, reads as one connected progress story.</p>
+    </div>
+  </div>
+
+</div>
+
+<p class="subtitle" style="margin-top:16px">My recommendation: <b>C</b> — it removes a redundant heading ("Handshakes" repeating info the dots already show), keeps everything about trip progress in one visual block, and scales naturally (works the same whether 1 or 4 handshakes are done). Click an option, or tell me in the terminal if you want a mix/variation.</p>
