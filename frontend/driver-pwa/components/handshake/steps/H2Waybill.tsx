@@ -16,7 +16,7 @@ interface H2WaybillProps {
 export function H2Waybill({ tripId, draft, onUpdate, onComplete }: H2WaybillProps) {
   return (
     <main className="flex min-h-screen flex-col">
-      <StepHeader tripId={tripId} handshakeName="Loading" stepName="Photograph Waybill" stepIndex={3} totalSteps={5} />
+      <StepHeader handshakeName="Loading" stepName="Photograph Waybill" stepIndex={3} totalSteps={5} />
       <div className="flex flex-1 flex-col gap-6 p-4">
         <p className="text-sm text-surface-on-variant">
           Photograph the physical waybill. This becomes the legal evidence copy.

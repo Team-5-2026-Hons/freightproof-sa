@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useState, useEffect, useCallback } from 'react'
+import { createContext, useState, useEffect, useCallback, useRef } from 'react'
 import type { AuthState, DriverUser } from '@/lib/types/user'
 import { mockDrivers } from '@shared/lib/mocks/drivers'
 import { supabase } from '@/lib/supabase'
@@ -18,6 +18,14 @@ export const AuthContext = createContext<AuthState | null>(null)
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<DriverUser | null>(null)
   const [isLoading, setIsLoading] = useState(!IS_DEMO_MODE)
+
+  // Tracks the currently-loaded driver id outside React state so the
+  // onAuthStateChange listener (subscribed once, see below) can compare
+  // against it without needing `user` in its dependency array.
+  const userIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    userIdRef.current = user ? String(user.id) : null
+  }, [user])
 
   const fetchProfile = useCallback(async (): Promise<DriverUser | null> => {
     try {
@@ -43,11 +51,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session) {
-        setUser(await fetchProfile())
-      } else {
+      if (!session) {
         setUser(null)
+        return
       }
+      // Supabase can re-fire SIGNED_IN/INITIAL_SESSION for a session that hasn't
+      // actually changed (e.g. its own tab-visibility/multi-tab sync) — only refetch
+      // the driver profile when the signed-in identity is actually different.
+      // Otherwise this creates a new `user` object every time, which cascades into
+      // every consumer keyed on it by reference (e.g. TripContext refetching the
+      // active trip and toggling isLoading on a loop, blanking the page).
+      if (session.user.id === userIdRef.current) return
+      setUser(await fetchProfile())
     })
 
     return () => subscription.unsubscribe()

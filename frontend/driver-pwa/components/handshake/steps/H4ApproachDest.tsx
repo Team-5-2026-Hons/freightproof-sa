@@ -18,7 +18,7 @@ export function H4ApproachDest({ tripId, draft, onUpdate, onComplete }: H4Approa
 
   return (
     <main className="flex min-h-screen flex-col">
-      <StepHeader tripId={tripId} handshakeName="Destination Gate-In" stepName="Destination Gate Arrival" stepIndex={1} totalSteps={3} />
+      <StepHeader handshakeName="Destination Gate-In" stepName="Destination Gate Arrival" stepIndex={1} totalSteps={3} />
       <div className="flex flex-1 flex-col gap-6 p-4">
         <p className="text-sm text-surface-on-variant">
           You have arrived at the destination. Capture your GPS location.

@@ -1,7 +1,7 @@
-// frontend/driver-pwa/app/(app)/trip/[id]/in-transit/InTransitPageClient.tsx
+// frontend/driver-pwa/app/(app)/trip/in-transit/InTransitPageClient.tsx
 'use client'
 
-import { useParams, useRouter } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { ArrowRight, ShieldAlert, ScanFace } from 'lucide-react'
 import { useTrip } from '@/lib/hooks/useTrip'
 import { ROUTES } from '@/lib/constants/routes'
@@ -11,14 +11,8 @@ import { Card } from '@/components/ui/Card'
 import { Spinner } from '@/components/ui/Spinner'
 
 export default function InTransitPageClient() {
-  const { id: tripId } = useParams<{ id: string }>()
   const router = useRouter()
   const { trip, isLoading } = useTrip()
-
-  // Guard against rendering the wrong trip's data: `trip` comes from the driver's
-  // session (TripContext), not this page's URL param. Mirrors the same guard in
-  // PanicPageClient.tsx / LogExceptionPageClient.tsx.
-  const tripVerified = trip !== null && String(trip.id) === tripId
 
   if (isLoading) {
     return (
@@ -28,7 +22,7 @@ export default function InTransitPageClient() {
     )
   }
 
-  if (!tripVerified || trip === null) {
+  if (trip === null) {
     return (
       <main className="flex min-h-screen items-center justify-center p-6">
         <p className="text-sm text-surface-on-variant">Trip not found.</p>
@@ -41,7 +35,7 @@ export default function InTransitPageClient() {
   return (
     <main className="min-h-screen flex flex-col">
       <header className="sticky top-0 bg-surface shadow-ambient-header px-4 py-4">
-        <button onClick={() => router.push(ROUTES.tripDetail(tripId))} className="mb-1 text-sm text-secondary">
+        <button onClick={() => router.push(ROUTES.activeTripDetail)} className="mb-1 text-sm text-secondary">
           ← Trip detail
         </button>
         <h1 className="text-xl font-bold">{trip.trip_reference}</h1>
@@ -81,7 +75,7 @@ export default function InTransitPageClient() {
           variant="secondary"
           size="lg"
           iconLeft={<ScanFace className="h-4 w-4" strokeWidth={2} aria-hidden />}
-          onClick={() => router.push(ROUTES.checkpoint(tripId))}
+          onClick={() => router.push(ROUTES.checkpoint)}
         >
           Log checkpoint
         </Button>
@@ -90,7 +84,7 @@ export default function InTransitPageClient() {
         <Button
           variant="secondary"
           size="lg"
-          onClick={() => router.push(ROUTES.exception(tripId))}
+          onClick={() => router.push(ROUTES.exception)}
         >
           Log exception
         </Button>
@@ -99,14 +93,14 @@ export default function InTransitPageClient() {
         <Button
           size="lg"
           iconRight={<ArrowRight className="h-4 w-4" strokeWidth={2} aria-hidden />}
-          onClick={() => router.push(ROUTES.handshakeStep(tripId, 4, STEP_SLUGS[4][0]))}
+          onClick={() => router.push(ROUTES.handshakeStep(4, STEP_SLUGS[4][0]))}
         >
           Arrive at destination
         </Button>
 
         {/* Panic */}
         <button
-          onClick={() => router.push(ROUTES.panic(tripId))}
+          onClick={() => router.push(ROUTES.panic)}
           className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-error py-4 text-sm font-bold uppercase tracking-widest text-error-on"
         >
           <ShieldAlert className="h-5 w-5" strokeWidth={2} aria-hidden />

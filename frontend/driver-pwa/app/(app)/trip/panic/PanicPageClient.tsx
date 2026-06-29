@@ -1,8 +1,8 @@
-// frontend/driver-pwa/app/(app)/trip/[id]/panic/PanicPageClient.tsx
+// frontend/driver-pwa/app/(app)/trip/panic/PanicPageClient.tsx
 'use client'
 
 import { useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { ShieldAlert, TriangleAlert } from 'lucide-react'
 import { useTrip } from '@/lib/hooks/useTrip'
 import { useLocation } from '@/lib/hooks/useLocation'
@@ -11,20 +11,11 @@ import { HoldButton } from '@/components/handshake/HoldButton'
 import { ROUTES } from '@/lib/constants/routes'
 
 export default function PanicPageClient() {
-  const { id: tripId } = useParams<{ id: string }>()
   const router = useRouter()
-  const { trip, logException } = useTrip()
+  const { trip, isLoading, logException } = useTrip()
   const { capture } = useLocation()
   const { enqueueException } = useOfflineQueue()
   const [sending, setSending] = useState(false)
-
-  // Guard against logging the alert against the wrong trip: `trip` comes from
-  // the driver's session (TripContext), not this page's URL param. If the
-  // session trip is missing or doesn't match the URL, we cannot safely
-  // attribute a panic alert to tripId — render an unavailable state instead
-  // of the hold-to-confirm UI (not just disable it; the action must be
-  // unreachable, not merely discouraged).
-  const tripVerified = trip !== null && String(trip.id) === tripId
 
   async function handlePanic() {
     setSending(true)
@@ -52,10 +43,12 @@ export default function PanicPageClient() {
       console.error('Failed to send panic alert to backend — queued for retry', err)
       if (trip) enqueueException(String(trip.id), { exception_type: 'panic_button', description })
     }
-    router.replace(ROUTES.panicSubmitted(tripId))
+    router.replace(ROUTES.panicSubmitted)
   }
 
-  if (!tripVerified) {
+  if (isLoading) return null
+
+  if (!trip) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-8 bg-error p-6">
         <div className="flex flex-col items-center text-center text-error-on">
@@ -71,7 +64,7 @@ export default function PanicPageClient() {
           // there may be no meaningful back-history, so router.back() could
           // land anywhere (or nowhere). Use an explicit replace so the label's
           // promise ("Return to in-transit") is actually guaranteed.
-          onClick={() => router.replace(ROUTES.inTransit(tripId))}
+          onClick={() => router.replace(ROUTES.inTransit)}
           className="text-sm text-error-on/70 underline"
         >
           Return to in-transit

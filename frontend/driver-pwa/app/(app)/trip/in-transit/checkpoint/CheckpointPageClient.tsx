@@ -1,8 +1,8 @@
-// frontend/driver-pwa/app/(app)/trip/[id]/in-transit/checkpoint/CheckpointPageClient.tsx
+// frontend/driver-pwa/app/(app)/trip/in-transit/checkpoint/CheckpointPageClient.tsx
 'use client'
 
 import { useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { TriangleAlert } from 'lucide-react'
 import { useTrip } from '@/lib/hooks/useTrip'
 import { CameraCapture } from '@/components/handshake/CameraCapture'
@@ -17,7 +17,6 @@ import { logCheckpoint } from '@/lib/api/checkpoints'
 // of the five handshakes — proves the driver and cargo are where they should be
 // between Origin Gate-Out and Destination Gate-In.
 export default function CheckpointPageClient() {
-  const { id: tripId } = useParams<{ id: string }>()
   const router = useRouter()
   const { trip } = useTrip()
 
@@ -30,10 +29,6 @@ export default function CheckpointPageClient() {
   const [isDeviation, setIsDeviation] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState(false)
-
-  // Mirrors the same guard in PanicPageClient.tsx / LogExceptionPageClient.tsx —
-  // `trip` comes from the driver's session, not this page's URL param.
-  const tripVerified = trip !== null && String(trip.id) === tripId
 
   const isReady = gps !== null && selfieDataUrl !== null && cargoPhotoDataUrl !== null
 
@@ -56,7 +51,7 @@ export default function CheckpointPageClient() {
         note: note.trim() || undefined,
         is_deviation: isDeviation,
       })
-      router.push(ROUTES.inTransit(tripId))
+      router.push(ROUTES.inTransit)
     } catch (err) {
       console.error('Failed to log checkpoint', err)
       setSubmitError(true)
@@ -65,7 +60,7 @@ export default function CheckpointPageClient() {
     }
   }
 
-  if (!tripVerified) {
+  if (!trip) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-6">
         <div className="flex w-full flex-col items-center gap-3 rounded-xl bg-error-container px-6 py-8 text-center text-error-on-container">
@@ -77,7 +72,7 @@ export default function CheckpointPageClient() {
           </p>
         </div>
         <button
-          onClick={() => router.replace(ROUTES.inTransit(tripId))}
+          onClick={() => router.replace(ROUTES.inTransit)}
           className="text-sm text-secondary underline"
         >
           Return to in-transit

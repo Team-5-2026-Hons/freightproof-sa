@@ -34,7 +34,6 @@ export function H1GateArrival({ tripId, draft, onUpdate, onComplete }: H1GateArr
   return (
     <main className="flex min-h-screen flex-col">
       <StepHeader
-        tripId={tripId}
         handshakeName="Origin Gate-In"
         stepName="Gate Arrival"
         stepIndex={1}

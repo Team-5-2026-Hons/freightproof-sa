@@ -49,7 +49,7 @@ export default function ActiveTripPageClient() {
       <HandshakeProgressBar progress={handshakeProgress(trip.handshakes)} />
 
       {trip.status === 'in_transit' && (
-        <Button variant="secondary" size="lg" onClick={() => router.push(ROUTES.inTransit(String(trip.id)))}>
+        <Button variant="secondary" size="lg" onClick={() => router.push(ROUTES.inTransit)}>
           In-Transit Hub →
         </Button>
       )}
@@ -60,7 +60,7 @@ export default function ActiveTripPageClient() {
           <Card
             key={n}
             variant="dark"
-            onClick={() => router.push(ROUTES.handshakeStep(String(trip.id), n, STEP_SLUGS[n][0]))}
+            onClick={() => router.push(ROUTES.handshakeStep(n, STEP_SLUGS[n][0]))}
           >
             <span className="font-semibold">H{n}:</span> {HANDSHAKE_NAMES[n]}
           </Card>

@@ -20,7 +20,7 @@ export function H5HandWaybill({ tripId, draft, onUpdate, onComplete }: H5HandWay
 
   return (
     <main className="flex min-h-screen flex-col">
-      <StepHeader tripId={tripId} handshakeName="Unloading" stepName="Hand Waybill Copy" stepIndex={1} totalSteps={6} />
+      <StepHeader handshakeName="Unloading" stepName="Hand Waybill Copy" stepIndex={1} totalSteps={6} />
       <div className="flex flex-1 flex-col gap-6 p-4">
         <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4 flex flex-col gap-2">
           <p className="text-sm font-semibold">Action required</p>

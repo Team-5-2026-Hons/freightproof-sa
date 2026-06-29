@@ -13,7 +13,7 @@ type Handshake = 1 | 2 | 3 | 4 | 5
  * deep link, bookmark, or typo'd URL. Failing loud here prevents silently routing the
  * driver past an entire handshake (see Task 5b review).
  */
-export function nextHandshakeRoute(tripId: string, handshake: Handshake, slug: string): string {
+export function nextHandshakeRoute(handshake: Handshake, slug: string): string {
   const slugs = STEP_SLUGS[handshake]
   const stepIndex = slugs.indexOf(slug)                       // 0-based; -1 if unknown
 
@@ -25,11 +25,11 @@ export function nextHandshakeRoute(tripId: string, handshake: Handshake, slug: s
 
   // Mid-handshake — next step of the same handshake.
   if (!isLastStep) {
-    return ROUTES.handshakeStep(tripId, handshake, slugs[stepIndex + 1])
+    return ROUTES.handshakeStep(handshake, slugs[stepIndex + 1])
   }
   // End of Origin Gate-Out (H3): the driver departs — hand off to the in-transit hub.
   if (handshake === 3) {
-    return ROUTES.inTransit(tripId)
+    return ROUTES.inTransit
   }
   // End of Unloading (H5): the trip is closed — back to the trip list.
   if (handshake === 5) {
@@ -37,5 +37,5 @@ export function nextHandshakeRoute(tripId: string, handshake: Handshake, slug: s
   }
   // End of H1/H2/H4 — back to the trip detail page; the driver taps into the
   // next handshake manually instead of being carried straight into its first step.
-  return ROUTES.tripDetail(tripId)
+  return ROUTES.activeTripDetail
 }

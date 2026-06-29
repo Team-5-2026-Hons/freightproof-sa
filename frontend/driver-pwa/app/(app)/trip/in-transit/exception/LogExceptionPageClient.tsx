@@ -1,8 +1,8 @@
-// frontend/driver-pwa/app/(app)/trip/[id]/in-transit/exception/LogExceptionPageClient.tsx
+// frontend/driver-pwa/app/(app)/trip/in-transit/exception/LogExceptionPageClient.tsx
 'use client'
 
 import { useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { TriangleAlert } from 'lucide-react'
 import { useTrip } from '@/lib/hooks/useTrip'
 import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
@@ -30,21 +30,11 @@ const EXCEPTION_OPTIONS = DRIVER_EXCEPTION_TYPES
   .map((value) => ({ value, label: EXCEPTION_LABELS[value] ?? value }))
 
 export default function LogExceptionPageClient() {
-  const { id: tripId } = useParams<{ id: string }>()
   const router = useRouter()
   const { trip, logException } = useTrip()
   const { enqueueException } = useOfflineQueue()
   const [type, setType] = useState<ExceptionType | null>(null)
   const [description, setDescription] = useState('')
-
-  // Guard against logging the exception against the wrong trip: `trip` comes
-  // from the driver's session (TripContext), not this page's URL param. If
-  // the session trip is missing or doesn't match the URL, we cannot safely
-  // attribute the exception to tripId — render an unavailable state instead
-  // of the exception-type picker (not just disable it; the action must be
-  // unreachable, not merely discouraged). Mirrors the same guard in
-  // PanicPageClient.tsx.
-  const tripVerified = trip !== null && String(trip.id) === tripId
 
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState(false)
@@ -55,7 +45,7 @@ export default function LogExceptionPageClient() {
     setSubmitError(false)
     try {
       await logException(type, { description })
-      router.push(ROUTES.inTransit(tripId))
+      router.push(ROUTES.inTransit)
     } catch (err) {
       console.error('Failed to log exception', err)
       // A 4xx (e.g. wrong driver, validation) will fail identically on retry — show the
@@ -64,7 +54,7 @@ export default function LogExceptionPageClient() {
       const isRetryable = !(err instanceof ApiError) || err.status >= 500
       if (isRetryable) {
         enqueueException(String(trip.id), { exception_type: type, description })
-        router.push(ROUTES.inTransit(tripId))
+        router.push(ROUTES.inTransit)
       } else {
         setSubmitError(true)
       }
@@ -73,7 +63,7 @@ export default function LogExceptionPageClient() {
     }
   }
 
-  if (!tripVerified) {
+  if (!trip) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-6">
         <div className="flex w-full flex-col items-center gap-3 rounded-xl bg-error-container px-6 py-8 text-center text-error-on-container">
@@ -89,7 +79,7 @@ export default function LogExceptionPageClient() {
           // there may be no meaningful back-history, so router.back() could
           // land anywhere (or nowhere). Use an explicit replace so the label's
           // promise ("Return to in-transit") is actually guaranteed.
-          onClick={() => router.replace(ROUTES.inTransit(tripId))}
+          onClick={() => router.replace(ROUTES.inTransit)}
           className="text-sm text-secondary underline"
         >
           Return to in-transit

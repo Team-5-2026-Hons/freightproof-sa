@@ -1,4 +1,4 @@
-// frontend/driver-pwa/app/(app)/trip/[id]/handshake/[h]/step/[slug]/HandshakeStepPageClient.tsx
+// frontend/driver-pwa/app/(app)/trip/handshake/[h]/step/[slug]/HandshakeStepPageClient.tsx
 'use client'
 
 import { useCallback } from 'react'
@@ -8,6 +8,7 @@ import { useTrip } from '@/lib/hooks/useTrip'
 import { submitHandshake } from '@/lib/api/handshakes'
 import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
 import { nextHandshakeRoute } from '@/lib/navigation/handshake-flow'
+import { Spinner } from '@/components/ui/Spinner'
 import type { H1Evidence, H2Evidence, H3Evidence, H4Evidence, H5Evidence } from '@/lib/types/evidence-draft'
 import { H1GateArrival } from '@/components/handshake/steps/H1GateArrival'
 import { H1EntryPhoto } from '@/components/handshake/steps/H1EntryPhoto'
@@ -39,10 +40,10 @@ const H4_INITIAL: H4Evidence = { gpsLat: null, gpsLng: null, gatePhotoDataUrl: n
 const H5_INITIAL: H5Evidence = { waybillHandedOver: null, sealBrokenPhotoDataUrl: null, driverVisualCount: null, podPhotoDataUrl: null, podSignatureDataUrl: null, reconciliationNote: null, capturedAt: null }
 
 export default function HandshakeStepPageClient() {
-  const { id: tripId, h, slug } = useParams<{ id: string; h: string; slug: string }>()
+  const { h, slug } = useParams<{ h: string; slug: string }>()
   const router = useRouter()
   const { enqueue } = useOfflineQueue()
-  const { refetchTrip } = useTrip()
+  const { trip, isLoading, refetchTrip } = useTrip()
 
   const handshakeNum = Number(h) as 1 | 2 | 3 | 4 | 5
 
@@ -51,9 +52,13 @@ export default function HandshakeStepPageClient() {
   // the driver to the next screen. Driving flow from the URL (not TripContext's internal
   // counter) means a refresh or deep-link can never land on the wrong step.
   const advance = useCallback(
-    () => router.push(nextHandshakeRoute(tripId, handshakeNum, slug)),
-    [router, tripId, handshakeNum, slug],
+    () => router.push(nextHandshakeRoute(handshakeNum, slug)),
+    [router, handshakeNum, slug],
   )
+
+  // The trip comes from the driver's session (TripContext), not the URL — the backend
+  // enforces one active trip per driver, so there's nothing left to verify it against.
+  const tripId = trip ? String(trip.id) : ''
 
   const [h1Draft, updateH1, clearH1] = useHandshakeDraft<H1Evidence>(tripId, 'origin_gate_in', H1_INITIAL)
   const [h2Draft, updateH2, clearH2] = useHandshakeDraft<H2Evidence>(tripId, 'loading', H2_INITIAL)
@@ -79,6 +84,22 @@ export default function HandshakeStepPageClient() {
     }
     clearFn()
     advance()
+  }
+
+  if (isLoading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center p-6">
+        <Spinner />
+      </main>
+    )
+  }
+
+  if (!trip) {
+    return (
+      <main className="flex min-h-screen items-center justify-center p-6">
+        <p className="text-sm text-surface-on-variant">Trip not found.</p>
+      </main>
+    )
   }
 
   const props = { tripId }

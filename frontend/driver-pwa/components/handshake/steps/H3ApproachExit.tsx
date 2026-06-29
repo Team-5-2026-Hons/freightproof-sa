@@ -18,7 +18,7 @@ export function H3ApproachExit({ tripId, draft, onUpdate, onComplete }: H3Approa
 
   return (
     <main className="flex min-h-screen flex-col">
-      <StepHeader tripId={tripId} handshakeName="Origin Gate-Out" stepName="Approach Exit Gate" stepIndex={1} totalSteps={3} />
+      <StepHeader handshakeName="Origin Gate-Out" stepName="Approach Exit Gate" stepIndex={1} totalSteps={3} />
       <div className="flex flex-1 flex-col gap-6 p-4">
         <p className="text-sm text-surface-on-variant">
           Capture your GPS location as you approach the exit gate.

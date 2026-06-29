@@ -16,7 +16,7 @@ interface H4EntryPhotoProps {
 export function H4EntryPhoto({ tripId, draft, onUpdate, onComplete }: H4EntryPhotoProps) {
   return (
     <main className="flex min-h-screen flex-col">
-      <StepHeader tripId={tripId} handshakeName="Destination Gate-In" stepName="Entry Photo" stepIndex={2} totalSteps={3} />
+      <StepHeader handshakeName="Destination Gate-In" stepName="Entry Photo" stepIndex={2} totalSteps={3} />
       <div className="flex flex-1 flex-col gap-6 p-4">
         <p className="text-sm text-surface-on-variant">
           Photograph the destination gate entry point.

@@ -1,13 +1,11 @@
-// frontend/driver-pwa/app/(app)/trip/[id]/panic/__tests__/page.test.tsx
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import PanicPage from '../page'
 import { ROUTES } from '@/lib/constants/routes'
 
-// `trip` is provided to PanicPage via useTrip() (session-derived), independent
-// of the URL's tripId param — these tests verify the page-level guard that
-// catches a mismatch between the two before the panic action is reachable.
-const mockUseParams = vi.fn()
+// `trip` is provided to PanicPage via useTrip() (session-derived) — there's no URL
+// param to verify against, so these tests only cover the loading/no-trip states and
+// the handlePanic sequencing.
 const mockUseTrip = vi.fn()
 const mockRouterBack = vi.fn()
 const mockRouterReplace = vi.fn()
@@ -18,7 +16,6 @@ const mockRouterReplace = vi.fn()
 const mockCapture = vi.fn()
 
 vi.mock('next/navigation', () => ({
-  useParams: () => mockUseParams(),
   useRouter: () => ({ back: mockRouterBack, replace: mockRouterReplace, push: vi.fn() }),
 }))
 
@@ -34,15 +31,14 @@ vi.mock('@/lib/hooks/useLocation', () => ({
   }),
 }))
 
-describe('PanicPage trip-mismatch guard', () => {
+describe('PanicPage no-active-trip guard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockCapture.mockResolvedValue({ latitude: -26.09, longitude: 28.13, accuracy: 5 })
   })
 
   it('renders an unavailable state and no hold button when trip is null', () => {
-    mockUseParams.mockReturnValue({ id: 'trip-123' })
-    mockUseTrip.mockReturnValue({ trip: null, logException: vi.fn() })
+    mockUseTrip.mockReturnValue({ trip: null, isLoading: false, logException: vi.fn() })
 
     render(<PanicPage />)
 
@@ -50,19 +46,8 @@ describe('PanicPage trip-mismatch guard', () => {
     expect(screen.queryByText(/send panic/i)).not.toBeInTheDocument()
   })
 
-  it('renders an unavailable state and no hold button when trip.id does not match the URL tripId', () => {
-    mockUseParams.mockReturnValue({ id: 'trip-123' })
-    mockUseTrip.mockReturnValue({ trip: { id: 'trip-999' }, logException: vi.fn() })
-
-    render(<PanicPage />)
-
-    expect(screen.getByText(/unable to verify trip/i)).toBeInTheDocument()
-    expect(screen.queryByText(/send panic/i)).not.toBeInTheDocument()
-  })
-
-  it('renders the normal panic UI with the hold button when trip.id matches the URL tripId', () => {
-    mockUseParams.mockReturnValue({ id: 'trip-123' })
-    mockUseTrip.mockReturnValue({ trip: { id: 'trip-123' }, logException: vi.fn() })
+  it('renders the normal panic UI with the hold button when a trip is present', () => {
+    mockUseTrip.mockReturnValue({ trip: { id: 'trip-123' }, isLoading: false, logException: vi.fn() })
 
     render(<PanicPage />)
 
@@ -71,13 +56,12 @@ describe('PanicPage trip-mismatch guard', () => {
   })
 
   it('fallback "Return to in-transit" button uses router.replace, not router.back', () => {
-    mockUseParams.mockReturnValue({ id: 'trip-123' })
-    mockUseTrip.mockReturnValue({ trip: null, logException: vi.fn() })
+    mockUseTrip.mockReturnValue({ trip: null, isLoading: false, logException: vi.fn() })
 
     render(<PanicPage />)
     fireEvent.click(screen.getByText(/return to in-transit/i))
 
-    expect(mockRouterReplace).toHaveBeenCalledWith(ROUTES.inTransit('trip-123'))
+    expect(mockRouterReplace).toHaveBeenCalledWith(ROUTES.inTransit)
     expect(mockRouterBack).not.toHaveBeenCalled()
   })
 })
@@ -111,9 +95,8 @@ describe('PanicPage handlePanic sequencing', () => {
   }
 
   it('captures GPS, logs the exception with coords, and navigates to panic/submitted', async () => {
-    mockUseParams.mockReturnValue({ id: 'trip-123' })
     const logException = vi.fn()
-    mockUseTrip.mockReturnValue({ trip: { id: 'trip-123' }, logException })
+    mockUseTrip.mockReturnValue({ trip: { id: 'trip-123' }, isLoading: false, logException })
     mockCapture.mockResolvedValue({ latitude: -26.09, longitude: 28.13, accuracy: 5 })
 
     render(<PanicPage />)
@@ -132,13 +115,12 @@ describe('PanicPage handlePanic sequencing', () => {
       'panic_button',
       expect.objectContaining({ gpsLat: -26.09, gpsLng: 28.13 }),
     )
-    expect(mockRouterReplace).toHaveBeenCalledWith(ROUTES.panicSubmitted('trip-123'))
+    expect(mockRouterReplace).toHaveBeenCalledWith(ROUTES.panicSubmitted)
   })
 
   it('still logs and navigates when GPS capture fails (resolves to null)', async () => {
-    mockUseParams.mockReturnValue({ id: 'trip-123' })
     const logException = vi.fn()
-    mockUseTrip.mockReturnValue({ trip: { id: 'trip-123' }, logException })
+    mockUseTrip.mockReturnValue({ trip: { id: 'trip-123' }, isLoading: false, logException })
     mockCapture.mockResolvedValue(null)
 
     render(<PanicPage />)
@@ -154,6 +136,6 @@ describe('PanicPage handlePanic sequencing', () => {
       'panic_button',
       expect.objectContaining({ gpsLat: null, gpsLng: null }),
     )
-    expect(mockRouterReplace).toHaveBeenCalledWith(ROUTES.panicSubmitted('trip-123'))
+    expect(mockRouterReplace).toHaveBeenCalledWith(ROUTES.panicSubmitted)
   })
 })

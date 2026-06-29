@@ -1,31 +1,34 @@
+// frontend/driver-pwa/app/(app)/trips/active/ActiveTripPageClient.tsx
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { PackageSearch } from 'lucide-react'
 import { HANDSHAKE_NAMES, STEP_SLUGS } from '@shared/lib/constants/handshake-meta'
 import { ROUTES } from '@/lib/constants/routes'
 import { useTrip } from '@/lib/hooks/useTrip'
 import { tripStatusChip } from '@/lib/utils/trip-status-chip'
 import { handshakeProgress, visibleHandshakeNumbers } from '@/lib/utils/handshake-progress'
+import { Card } from '@/components/ui/Card'
 import { Chip } from '@/components/ui/Chip'
 import { Button } from '@/components/ui/Button'
-import { EmptyState } from '@/components/ui/EmptyState'
+import { Spinner } from '@/components/ui/Spinner'
 import { HandshakeProgressBar } from '@/components/trip/HandshakeProgressBar'
 
-export function HomeContent() {
+export default function ActiveTripPageClient() {
   const router = useRouter()
   const { trip, isLoading } = useTrip()
 
-  if (isLoading) return null
+  if (isLoading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center p-6">
+        <Spinner />
+      </main>
+    )
+  }
 
   if (!trip) {
     return (
-      <main className="flex min-h-screen flex-col gap-4 p-4">
-        <EmptyState
-          icon={<PackageSearch strokeWidth={1.5} aria-hidden />}
-          title="No active trip right now"
-          body="Your dispatcher hasn’t assigned you a trip yet."
-        />
+      <main className="flex min-h-screen items-center justify-center p-6">
+        <p className="text-sm text-surface-on-variant">Trip not found.</p>
       </main>
     )
   }
@@ -36,36 +39,38 @@ export function HomeContent() {
 
   return (
     <main className="flex min-h-screen flex-col gap-4 p-4">
+      <button onClick={() => router.push(ROUTES.trips)} className="self-start text-sm text-secondary">
+        ← My Trips
+      </button>
+
       <div>
-        <p className="text-xl font-semibold text-surface-on">{trip.trip_reference}</p>
+        <h1 className="text-xl font-semibold text-surface-on">{trip.trip_reference}</h1>
         <p className="text-sm text-surface-on-variant">{trip.order_number}</p>
       </div>
 
-      <Chip kind={kind} className="self-start">{label}</Chip>
+      <Card variant="section">
+        <p className="mb-2 text-sm font-medium text-surface-on">Status</p>
+        <Chip kind={kind}>{label}</Chip>
+      </Card>
 
       <HandshakeProgressBar progress={progress} />
 
       {trip.status === 'in_transit' && (
-        <button
-          className="w-full rounded-xl border border-secondary bg-secondary/5 p-3 text-left text-sm font-medium text-secondary"
-          onClick={() => router.push(ROUTES.inTransit)}
-        >
+        <Button variant="secondary" size="lg" onClick={() => router.push(ROUTES.inTransit)}>
           In-Transit Hub →
-        </button>
+        </Button>
       )}
 
       <section className="flex flex-col gap-2">
         <h2 className="text-sm font-medium text-surface-on-variant">Handshakes</h2>
         {visibleHandshakes.map((n) => (
-          <Button
+          <Card
             key={n}
-            variant="primary"
-            size="lg"
-            className="justify-start"
+            variant="dark"
             onClick={() => router.push(ROUTES.handshakeStep(n, STEP_SLUGS[n][0]))}
           >
             <span className="font-semibold">H{n}:</span> {HANDSHAKE_NAMES[n]}
-          </Button>
+          </Card>
         ))}
       </section>
     </main>

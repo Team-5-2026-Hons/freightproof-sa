@@ -4,14 +4,13 @@ import { useRouter } from 'next/navigation'
 import { ROUTES } from '@/lib/constants/routes'
 
 interface StepHeaderProps {
-  tripId: string
   handshakeName: string
   stepName: string
   stepIndex: number   // 1-based
   totalSteps: number
 }
 
-export function StepHeader({ tripId, handshakeName, stepName, stepIndex, totalSteps }: StepHeaderProps) {
+export function StepHeader({ handshakeName, stepName, stepIndex, totalSteps }: StepHeaderProps) {
   const router = useRouter()
   const progress = (stepIndex / totalSteps) * 100
 
@@ -19,7 +18,7 @@ export function StepHeader({ tripId, handshakeName, stepName, stepIndex, totalSt
     <header className="sticky top-0 z-sticky bg-surface pb-3 pt-4 px-4 shadow-ambient-header">
       <div className="mb-3 flex items-center gap-3">
         <button
-          onClick={() => router.push(ROUTES.tripDetail(tripId))}
+          onClick={() => router.push(ROUTES.activeTripDetail)}
           className="text-sm text-secondary"
         >
           ←

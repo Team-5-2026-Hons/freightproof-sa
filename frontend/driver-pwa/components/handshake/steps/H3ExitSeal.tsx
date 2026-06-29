@@ -43,7 +43,7 @@ export function H3ExitSeal({ tripId, draft, h2SealNumber, onUpdate, onComplete }
 
   return (
     <main className="flex min-h-screen flex-col">
-      <StepHeader tripId={tripId} handshakeName="Origin Gate-Out" stepName="Exit Photo & Seal" stepIndex={2} totalSteps={3} />
+      <StepHeader handshakeName="Origin Gate-Out" stepName="Exit Photo & Seal" stepIndex={2} totalSteps={3} />
       <div className="flex flex-1 flex-col gap-6 p-4">
         <p className="text-sm text-surface-on-variant">
           Photograph the exit gate, then re-enter the seal number to confirm it matches what was set at loading.

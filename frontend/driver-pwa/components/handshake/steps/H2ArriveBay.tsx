@@ -18,7 +18,7 @@ export function H2ArriveBay({ tripId, draft, onUpdate, onComplete }: H2ArriveBay
 
   return (
     <main className="flex min-h-screen flex-col">
-      <StepHeader tripId={tripId} handshakeName="Loading" stepName="Arrive at Bay" stepIndex={1} totalSteps={5} />
+      <StepHeader handshakeName="Loading" stepName="Arrive at Bay" stepIndex={1} totalSteps={5} />
       <div className="flex flex-1 flex-col gap-6 p-4">
         <p className="text-sm text-surface-on-variant">
           Capture your GPS location once you have pulled into the loading bay.

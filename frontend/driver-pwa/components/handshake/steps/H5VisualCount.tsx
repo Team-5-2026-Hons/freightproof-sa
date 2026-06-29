@@ -28,7 +28,7 @@ export function H5VisualCount({ tripId, draft, onUpdate, onComplete, h2Count }: 
 
   return (
     <main className="flex min-h-screen flex-col">
-      <StepHeader tripId={tripId} handshakeName="Unloading" stepName="Visual Count" stepIndex={3} totalSteps={6} />
+      <StepHeader handshakeName="Unloading" stepName="Visual Count" stepIndex={3} totalSteps={6} />
       <div className="flex flex-1 flex-col gap-6 p-4">
         {h2Count !== null && (
           <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4">

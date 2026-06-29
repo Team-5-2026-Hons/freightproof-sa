@@ -8,6 +8,7 @@ import { mockTrips } from '@shared/lib/mocks/trips'
 import type { Trip } from '@shared/lib/types/trip'
 import { ROUTES } from '@/lib/constants/routes'
 import { useAuth } from '@/lib/hooks/useAuth'
+import { useTrip } from '@/lib/hooks/useTrip'
 import { Tabs } from '@/components/ui/Tabs'
 import { Card } from '@/components/ui/Card'
 import { Chip } from '@/components/ui/Chip'
@@ -42,17 +43,25 @@ function TripCard({ trip, onClick }: { trip: Trip; onClick: () => void }) {
 export default function TripsPage() {
   const router = useRouter()
   const { user } = useAuth()
+  const { trip: activeTrip } = useTrip()
   const [tab, setTab] = useState<TabId>('active')
   const [search, setSearch] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
 
-  // TODO Iter 2 backend: replace with GET /driver/trips using authenticated session
+  // No backend endpoint exists yet for a driver's trip history — upcoming/past
+  // stay on mock data until GET /driver/trips (history) is built.
   const driverTrips = useMemo(
     () => (user ? tripsForDriver(mockTrips, user.id) : []),
     [user],
   )
-  const { active, upcoming, past } = useMemo(() => categorizeTrips(driverTrips), [driverTrips])
+  const { upcoming, past } = useMemo(() => categorizeTrips(driverTrips), [driverTrips])
+
+  // The Active tab mirrors the Home screen: backed by the real GET /trips/me/active call.
+  const active = useMemo(
+    () => (activeTrip && !['closed', 'cancelled'].includes(activeTrip.status) ? [activeTrip] : []),
+    [activeTrip],
+  )
 
   const filteredPast = useMemo(
     () => filterPastTrips(past, { dateFrom: dateFrom || null, dateTo: dateTo || null, search }),
@@ -110,7 +119,10 @@ export default function TripsPage() {
         <ul className="flex flex-col gap-3">
           {tripsToShow.map((trip) => (
             <li key={trip.id}>
-              <TripCard trip={trip} onClick={() => router.push(ROUTES.tripDetail(String(trip.id)))} />
+              <TripCard
+                trip={trip}
+                onClick={() => router.push(tab === 'active' ? ROUTES.activeTripDetail : ROUTES.tripDetail(String(trip.id)))}
+              />
             </li>
           ))}
         </ul>

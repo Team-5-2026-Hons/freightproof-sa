@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { handshakeProgress } from '../handshake-progress'
+import { handshakeProgress, visibleHandshakeNumbers } from '../handshake-progress'
 import type { HandshakeEvent, HandshakeEventId, HandshakeNumber, HandshakeStatus, HandshakeType } from '@shared/lib/types/handshake'
 
 const HANDSHAKE_TYPE_BY_SEQ: Record<1 | 2 | 3 | 4 | 5, HandshakeType> = {
@@ -82,5 +82,43 @@ describe('handshakeProgress', () => {
     ])
 
     expect(result).toEqual({ 1: 'completed', 2: 'completed', 3: 'completed', 4: 'upcoming', 5: 'upcoming' })
+  })
+})
+
+describe('visibleHandshakeNumbers', () => {
+  it('shows only H1 before any handshake has started', () => {
+    const progress = handshakeProgress([])
+
+    expect(visibleHandshakeNumbers(progress)).toEqual([1])
+  })
+
+  it('shows H1 and H2 once H1 is in progress', () => {
+    const progress = handshakeProgress([makeEvent(1, 'in_progress')])
+
+    expect(visibleHandshakeNumbers(progress)).toEqual([1, 2])
+  })
+
+  it('shows H1-H3 once H1 and H2 are completed', () => {
+    const progress = handshakeProgress([makeEvent(1, 'completed'), makeEvent(2, 'completed')])
+
+    expect(visibleHandshakeNumbers(progress)).toEqual([1, 2, 3])
+  })
+
+  it('still counts an exception as "started" so the next handshake stays reachable', () => {
+    const progress = handshakeProgress([makeEvent(1, 'exception')])
+
+    expect(visibleHandshakeNumbers(progress)).toEqual([1, 2])
+  })
+
+  it('caps at H5 once every handshake is completed', () => {
+    const progress = handshakeProgress([
+      makeEvent(1, 'completed'),
+      makeEvent(2, 'completed'),
+      makeEvent(3, 'completed'),
+      makeEvent(4, 'completed'),
+      makeEvent(5, 'completed'),
+    ])
+
+    expect(visibleHandshakeNumbers(progress)).toEqual([1, 2, 3, 4, 5])
   })
 })

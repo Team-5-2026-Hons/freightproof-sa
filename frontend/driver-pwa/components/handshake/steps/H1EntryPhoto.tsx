@@ -17,7 +17,6 @@ export function H1EntryPhoto({ tripId, draft, onUpdate, onComplete }: H1EntryPho
   return (
     <main className="flex min-h-screen flex-col">
       <StepHeader
-        tripId={tripId}
         handshakeName="Origin Gate-In"
         stepName="Entry Photo"
         stepIndex={2}

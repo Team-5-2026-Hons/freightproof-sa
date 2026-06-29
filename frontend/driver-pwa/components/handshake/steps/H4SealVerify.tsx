@@ -35,7 +35,7 @@ export function H4SealVerify({ tripId, draft, h2SealNumber, onUpdate, onComplete
 
   return (
     <main className="flex min-h-screen flex-col">
-      <StepHeader tripId={tripId} handshakeName="Destination Gate-In" stepName="Seal Verification" stepIndex={3} totalSteps={3} />
+      <StepHeader handshakeName="Destination Gate-In" stepName="Seal Verification" stepIndex={3} totalSteps={3} />
       <div className="flex flex-1 flex-col gap-6 p-4">
         <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4">
           <p className="text-xs text-surface-on-variant mb-1">Seal set at loading (H2)</p>

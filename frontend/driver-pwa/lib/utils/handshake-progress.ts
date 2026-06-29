@@ -28,3 +28,15 @@ export function handshakeProgress(
 
   return result
 }
+
+// Which handshake numbers the driver should be able to see/act on right now — H1 only
+// until H1 starts, then H1-H2 once H1 starts, etc. The next not-yet-started handshake is
+// always shown alongside everything already underway/done, so the driver always has a
+// button to tap; anything further out stays hidden since it isn't reachable yet.
+export function visibleHandshakeNumbers(
+  progress: Record<1 | 2 | 3 | 4 | 5, HandshakeStageState>,
+): (1 | 2 | 3 | 4 | 5)[] {
+  const startedCount = STAGE_NUMBERS.filter((n) => progress[n] !== 'upcoming').length
+  const reachable = startedCount + 1
+  return STAGE_NUMBERS.filter((n) => n <= reachable)
+}

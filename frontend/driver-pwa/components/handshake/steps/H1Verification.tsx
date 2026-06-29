@@ -27,7 +27,6 @@ export function H1Verification({ tripId, draft, onComplete }: H1VerificationProp
   return (
     <main className="flex min-h-screen flex-col">
       <StepHeader
-        tripId={tripId}
         handshakeName="Origin Gate-In"
         stepName="Verification"
         stepIndex={3}

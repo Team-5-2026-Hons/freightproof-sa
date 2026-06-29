@@ -22,7 +22,7 @@ export function H2Review({ tripId, draft, onComplete }: H2ReviewProps) {
 
   return (
     <main className="flex min-h-screen flex-col">
-      <StepHeader tripId={tripId} handshakeName="Loading" stepName="Review & Submit" stepIndex={5} totalSteps={5} />
+      <StepHeader handshakeName="Loading" stepName="Review & Submit" stepIndex={5} totalSteps={5} />
       <div className="flex flex-1 flex-col gap-6 p-4">
         <p className="text-sm text-surface-on-variant">
           Review all evidence. Hold to submit — H2 will be anchored to Hedera HCS.

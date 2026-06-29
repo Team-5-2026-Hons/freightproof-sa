@@ -1,13 +1,12 @@
-// frontend/driver-pwa/app/(app)/trip/[id]/panic/submitted/PanicSubmittedPageClient.tsx
+// frontend/driver-pwa/app/(app)/trip/panic/submitted/PanicSubmittedPageClient.tsx
 'use client'
 
-import { useParams, useRouter } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { CheckCircle2 } from 'lucide-react'
 import { ROUTES } from '@/lib/constants/routes'
 import { Button } from '@/components/ui/Button'
 
 export default function PanicSubmittedPageClient() {
-  const { id: tripId } = useParams<{ id: string }>()
   const router = useRouter()
 
   return (
@@ -20,7 +19,7 @@ export default function PanicSubmittedPageClient() {
         Your dispatcher has been notified. Stay calm and wait for contact.
         This event has been recorded and timestamped.
       </p>
-      <Button size="lg" onClick={() => router.replace(ROUTES.inTransit(tripId))}>
+      <Button size="lg" onClick={() => router.replace(ROUTES.inTransit)}>
         Return to in-transit
       </Button>
     </main>

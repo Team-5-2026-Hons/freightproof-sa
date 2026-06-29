@@ -30,7 +30,7 @@ export function H5Reconciliation({ tripId, draft, onUpdate, onComplete }: H5Reco
 
   return (
     <main className="flex min-h-screen flex-col">
-      <StepHeader tripId={tripId} handshakeName="Unloading" stepName="Reconciliation" stepIndex={5} totalSteps={6} />
+      <StepHeader handshakeName="Unloading" stepName="Reconciliation" stepIndex={5} totalSteps={6} />
       <div className="flex flex-1 flex-col gap-6 p-4">
         <p className="text-sm text-surface-on-variant">
           Confirm that the unloading is reconciled with the warehouse. Any discrepancies have been logged.

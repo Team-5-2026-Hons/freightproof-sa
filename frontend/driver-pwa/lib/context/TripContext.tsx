@@ -119,13 +119,13 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     if (currentStep < totalSteps) {
       const next = currentStep + 1
       setCurrentStep(next)
-      router.push(ROUTES.handshakeStep(String(trip.id), h, STEP_SLUGS[h][next - 1]))
+      router.push(ROUTES.handshakeStep(h, STEP_SLUGS[h][next - 1]))
       return
     }
 
     // Last step of H3 → in-transit hub (driver departs origin)
     if (currentHandshake === 3) {
-      router.push(ROUTES.inTransit(String(trip.id)))
+      router.push(ROUTES.inTransit)
       return
     }
 
@@ -134,7 +134,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       const nextH = (currentHandshake + 1) as 1 | 2 | 3 | 4 | 5
       setCurrentHandshake(nextH)
       setCurrentStep(1)
-      router.push(ROUTES.handshakeStep(String(trip.id), nextH, STEP_SLUGS[nextH][0]))
+      router.push(ROUTES.handshakeStep(nextH, STEP_SLUGS[nextH][0]))
     }
     // H5 step 6 (closed) handles its own navigation back to home
   }, [trip, currentHandshake, currentStep, totalSteps, router])
@@ -146,13 +146,13 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     if (currentStep > 1) {
       const prev = currentStep - 1
       setCurrentStep(prev)
-      router.push(ROUTES.handshakeStep(String(trip.id), h, STEP_SLUGS[h][prev - 1]))
+      router.push(ROUTES.handshakeStep(h, STEP_SLUGS[h][prev - 1]))
       return
     }
 
     // H4 step 1 goBack → in-transit hub (driver hasn't departed yet)
     if (currentHandshake === 4) {
-      router.push(ROUTES.inTransit(String(trip.id)))
+      router.push(ROUTES.inTransit)
       return
     }
 
@@ -161,7 +161,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       const prevTotal = HANDSHAKE_STEP_COUNTS[prevH]
       setCurrentHandshake(prevH)
       setCurrentStep(prevTotal)
-      router.push(ROUTES.handshakeStep(String(trip.id), prevH, STEP_SLUGS[prevH][prevTotal - 1]))
+      router.push(ROUTES.handshakeStep(prevH, STEP_SLUGS[prevH][prevTotal - 1]))
     }
   }, [trip, currentHandshake, currentStep, router])
 
@@ -194,7 +194,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
 
   const triggerPanic = useCallback(() => {
     if (!trip) return
-    router.push(ROUTES.panic(String(trip.id)))
+    router.push(ROUTES.panic)
   }, [trip, router])
 
   const reset = useCallback(() => {
