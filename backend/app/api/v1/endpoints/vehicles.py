@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import get_current_dispatcher
+from app.auth.dependencies import get_current_dispatcher, require_admin_dispatcher
 from app.blockchain.hedera import HederaServiceError, HederaTimeoutError
 from app.db.models.enums import DispatcherRole
 from app.core.exceptions import DuplicateResourceError, ResourceNotFoundError
@@ -31,7 +31,7 @@ async def list_vehicles_endpoint(
 async def create_vehicle_endpoint(
     body: VehicleCreateBody,
     db: AsyncSession = Depends(get_db),
-    current_user: UserRead = Depends(get_current_dispatcher),
+    current_user: UserRead = Depends(require_admin_dispatcher),
 ) -> VehicleRead:
     try:
         return await create_vehicle(
@@ -53,7 +53,7 @@ async def update_vehicle_endpoint(
     vehicle_id: UUID,
     body: VehicleUpdateBody,
     db: AsyncSession = Depends(get_db),
-    current_user: UserRead = Depends(get_current_dispatcher),
+    current_user: UserRead = Depends(require_admin_dispatcher),
 ) -> VehicleRead:
     try:
         return await update_vehicle(

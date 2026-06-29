@@ -30,6 +30,7 @@ import {
   type DriverField,
   type DriverFormValues,
 } from '@shared/lib/validation/driver'
+import { AdminOnly } from '@/components/auth/AdminOnly'
 
 type EditState = {
   full_name: string
@@ -195,11 +196,13 @@ export default function DriverDetailPage() {
             <div className="text-[11px] font-[700] tracking-[0.1em] uppercase text-on-surf-v">
               Driver Info
             </div>
-            {!isEditing && (
-              <Button variant="secondary" size="sm" onClick={startEdit}>
-                Edit
-              </Button>
-            )}
+            <AdminOnly>
+              {!isEditing && (
+                <Button variant="secondary" size="sm" onClick={startEdit}>
+                  Edit
+                </Button>
+              )}
+            </AdminOnly>
           </div>
 
           {isEditing && form ? (

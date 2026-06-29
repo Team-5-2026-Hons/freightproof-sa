@@ -51,7 +51,7 @@ _DEMO_USER = UserRead(
     is_active=True,
     created_at=_DEMO_NOW,
     updated_at=_DEMO_NOW,
-    role=DispatcherRole.DISPATCHER,
+    role=DispatcherRole.ADMIN_DISPATCHER,
 )
 
 
