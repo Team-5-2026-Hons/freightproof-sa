@@ -4,9 +4,12 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useOfflineQueue } from '../useOfflineQueue'
 import type { H1Evidence } from '@/lib/types/evidence-draft'
 
-// Mock submitHandshake so tests don't hit the network
+// Mock submitHandshake/raiseException so tests don't hit the network
 vi.mock('@/lib/api/handshakes', () => ({
   submitHandshake: vi.fn().mockResolvedValue({ ok: true, eventHash: 'abc' }),
+}))
+vi.mock('@/lib/api/exceptions', () => ({
+  raiseException: vi.fn().mockResolvedValue({ id: 'exc-1' }),
 }))
 
 beforeEach(() => localStorage.clear())
@@ -39,5 +42,32 @@ describe('useOfflineQueue', () => {
     await act(() => result.current.flush())
     expect(submitHandshake).toHaveBeenCalledTimes(1)
     expect(result.current.queueLength).toBe(0)
+  })
+
+  it('enqueueException increments queueLength and persists to localStorage', () => {
+    const { result } = renderHook(() => useOfflineQueue())
+    act(() => result.current.enqueueException('trip-1', { exception_type: 'panic_button', description: 'x' }))
+    expect(result.current.queueLength).toBe(1)
+    const stored = JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')
+    expect(stored[0].kind).toBe('exception')
+    expect(stored[0].tripId).toBe('trip-1')
+  })
+
+  it('flush calls raiseException for a queued exception and clears the queue', async () => {
+    const { raiseException } = await import('@/lib/api/exceptions')
+    const { result } = renderHook(() => useOfflineQueue())
+    act(() => result.current.enqueueException('trip-1', { exception_type: 'panic_button', description: 'x' }))
+    await act(() => result.current.flush())
+    expect(raiseException).toHaveBeenCalledWith('trip-1', { exception_type: 'panic_button', description: 'x' })
+    expect(result.current.queueLength).toBe(0)
+  })
+
+  it('flush retains a failed entry in the queue and keeps unrelated entries', async () => {
+    const { submitHandshake } = await import('@/lib/api/handshakes')
+    vi.mocked(submitHandshake).mockRejectedValueOnce(new Error('network down'))
+    const { result } = renderHook(() => useOfflineQueue())
+    act(() => result.current.enqueue('trip-1', 'origin_gate_in', EVIDENCE))
+    await act(() => result.current.flush())
+    expect(result.current.queueLength).toBe(1)
   })
 })

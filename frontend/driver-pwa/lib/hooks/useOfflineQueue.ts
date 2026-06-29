@@ -3,16 +3,31 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { submitHandshake } from '@/lib/api/handshakes'
+import { raiseException, type RaiseExceptionBody } from '@/lib/api/exceptions'
 import type { HandshakeType } from '@shared/lib/types/handshake'
 import type { HandshakeEvidence } from '@/lib/types/evidence-draft'
 
-interface QueueEntry {
+interface HandshakeQueueEntry {
+  kind: 'handshake'
   id: string
   tripId: string
   handshakeType: HandshakeType
   evidence: HandshakeEvidence
   enqueuedAt: string
 }
+
+// Exceptions (and panic, which is just exception_type: 'panic_button') have no
+// artifact upload step today, so queuing the already-built request body is enough —
+// unlike handshakes, there's no separate "upload then complete" sequence to redo.
+interface ExceptionQueueEntry {
+  kind: 'exception'
+  id: string
+  tripId: string
+  body: RaiseExceptionBody
+  enqueuedAt: string
+}
+
+type QueueEntry = HandshakeQueueEntry | ExceptionQueueEntry
 
 const QUEUE_KEY = 'fp_offline_queue'
 
@@ -38,6 +53,14 @@ function saveQueue(entries: QueueEntry[]): void {
   }
 }
 
+async function sendEntry(entry: QueueEntry): Promise<void> {
+  if (entry.kind === 'handshake') {
+    await submitHandshake(entry.tripId, entry.handshakeType, entry.evidence)
+  } else {
+    await raiseException(entry.tripId, entry.body)
+  }
+}
+
 export function useOfflineQueue() {
   // Lazy initializer reads the persisted queue length on mount rather than
   // defaulting to 0 and correcting it inside an effect (which would trigger
@@ -50,11 +73,11 @@ export function useOfflineQueue() {
     const failed: QueueEntry[] = []
     for (const entry of queue) {
       try {
-        await submitHandshake(entry.tripId, entry.handshakeType, entry.evidence)
+        await sendEntry(entry)
       } catch {
         // TODO(backend-integration): distinguish retryable (network/5xx) from terminal
-        // (4xx/validation) failures once submitHandshake can report which kind occurred —
-        // currently all failures retry indefinitely
+        // (4xx/validation) failures once submitHandshake/raiseException can report which
+        // kind occurred — currently all failures retry indefinitely
         failed.push(entry)
       }
     }
@@ -64,11 +87,21 @@ export function useOfflineQueue() {
 
   const enqueue = useCallback(
     (tripId: string, handshakeType: HandshakeType, evidence: HandshakeEvidence) => {
-      const entry: QueueEntry = {
-        id: crypto.randomUUID(),
-        tripId,
-        handshakeType,
-        evidence,
+      const entry: HandshakeQueueEntry = {
+        kind: 'handshake', id: crypto.randomUUID(), tripId, handshakeType, evidence,
+        enqueuedAt: new Date().toISOString(),
+      }
+      const q = [...loadQueue(), entry]
+      saveQueue(q)
+      setQueueLength(q.length)
+    },
+    [],
+  )
+
+  const enqueueException = useCallback(
+    (tripId: string, body: RaiseExceptionBody) => {
+      const entry: ExceptionQueueEntry = {
+        kind: 'exception', id: crypto.randomUUID(), tripId, body,
         enqueuedAt: new Date().toISOString(),
       }
       const q = [...loadQueue(), entry]
@@ -83,5 +116,5 @@ export function useOfflineQueue() {
     return () => window.removeEventListener('online', flush)
   }, [flush])
 
-  return { queueLength, enqueue, flush }
+  return { queueLength, enqueue, enqueueException, flush }
 }

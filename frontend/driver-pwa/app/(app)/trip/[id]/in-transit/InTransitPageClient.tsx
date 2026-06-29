@@ -2,19 +2,33 @@
 'use client'
 
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowRight, ShieldAlert } from 'lucide-react'
-import { mockTrips } from '@shared/lib/mocks/trips'
+import { ArrowRight, ShieldAlert, ScanFace } from 'lucide-react'
+import { useTrip } from '@/lib/hooks/useTrip'
 import { ROUTES } from '@/lib/constants/routes'
 import { STEP_SLUGS } from '@shared/lib/constants/handshake-meta'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { Spinner } from '@/components/ui/Spinner'
 
 export default function InTransitPageClient() {
   const { id: tripId } = useParams<{ id: string }>()
   const router = useRouter()
-  const trip = mockTrips.find((t) => (t.id as string) === tripId)
+  const { trip, isLoading } = useTrip()
 
-  if (!trip) {
+  // Guard against rendering the wrong trip's data: `trip` comes from the driver's
+  // session (TripContext), not this page's URL param. Mirrors the same guard in
+  // PanicPageClient.tsx / LogExceptionPageClient.tsx.
+  const tripVerified = trip !== null && String(trip.id) === tripId
+
+  if (isLoading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center p-6">
+        <Spinner />
+      </main>
+    )
+  }
+
+  if (!tripVerified || trip === null) {
     return (
       <main className="flex min-h-screen items-center justify-center p-6">
         <p className="text-sm text-surface-on-variant">Trip not found.</p>
@@ -61,6 +75,16 @@ export default function InTransitPageClient() {
             ))}
           </section>
         )}
+
+        {/* Log checkpoint */}
+        <Button
+          variant="secondary"
+          size="lg"
+          iconLeft={<ScanFace className="h-4 w-4" strokeWidth={2} aria-hidden />}
+          onClick={() => router.push(ROUTES.checkpoint(tripId))}
+        >
+          Log checkpoint
+        </Button>
 
         {/* Log exception */}
         <Button

@@ -255,6 +255,45 @@ class TripCreateRequest(BaseModel):
         return self
 
 
+class DeliveryStopManifest(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    delivery_stop: str
+    parcel_count: int
+    parcels: list[ParcelRead]
+
+
+class ManifestResponse(BaseModel):
+    """Full per-parcel manifest — dispatcher only. Never sent to the driver PWA."""
+    model_config = ConfigDict(from_attributes=True)
+
+    trip_id: UUID
+    consignment_id: UUID
+    parcel_perfect_reference: str
+    total_parcel_count: int
+    origin_scan_complete: bool
+    stops: list[DeliveryStopManifest]
+    pulled_at: datetime
+
+
+class LinehaulResponse(BaseModel):
+    """Driver-facing single document — vehicle, driver, consolidated unit count.
+
+    Deliberately excludes per-parcel data and per-stop breakdown — the driver
+    must never see contents or per-parcel detail, only a consolidated unit
+    count (theft-risk rule, 2026-06-24 coordination note).
+    """
+    model_config = ConfigDict(from_attributes=True)
+
+    trip_id: UUID
+    vehicle_registration: str
+    vehicle_type: str
+    driver_full_name: str
+    consolidated_unit_count: int
+    origin_scan_complete: bool
+    pulled_at: datetime
+
+
 class TripDetailResponse(BaseModel):
     """Full trip record returned by POST /trips and GET /trips/{id}. No manifest."""
     model_config = ConfigDict(from_attributes=True)

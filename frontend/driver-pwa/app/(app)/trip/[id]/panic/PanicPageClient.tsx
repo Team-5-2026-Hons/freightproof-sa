@@ -6,6 +6,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { ShieldAlert, TriangleAlert } from 'lucide-react'
 import { useTrip } from '@/lib/hooks/useTrip'
 import { useLocation } from '@/lib/hooks/useLocation'
+import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
 import { HoldButton } from '@/components/handshake/HoldButton'
 import { ROUTES } from '@/lib/constants/routes'
 
@@ -14,6 +15,7 @@ export default function PanicPageClient() {
   const router = useRouter()
   const { trip, logException } = useTrip()
   const { capture } = useLocation()
+  const { enqueueException } = useOfflineQueue()
   const [sending, setSending] = useState(false)
 
   // Guard against logging the alert against the wrong trip: `trip` comes from
@@ -35,12 +37,21 @@ export default function PanicPageClient() {
     // exchange for a complete, defensible payload; `sending` drives a
     // lightweight loading state below so the UI doesn't appear frozen.
     const result = await capture()
-    logException('panic_button', {
-      description: 'Driver activated panic button.',
-      triggeredAt: new Date().toISOString(),
-      gpsLat: result?.latitude ?? null,
-      gpsLng: result?.longitude ?? null,
-    })
+    const description = 'Driver activated panic button.'
+    try {
+      await logException('panic_button', {
+        description,
+        triggeredAt: new Date().toISOString(),
+        gpsLat: result?.latitude ?? null,
+        gpsLng: result?.longitude ?? null,
+      })
+    } catch (err) {
+      // Emergency action — don't strand the driver on this screen if the network call
+      // fails. Queue it for retry on reconnect (same mechanism handshakes use) instead
+      // of just logging and losing it, since this is the one alert that must land.
+      console.error('Failed to send panic alert to backend — queued for retry', err)
+      if (trip) enqueueException(String(trip.id), { exception_type: 'panic_button', description })
+    }
     router.replace(ROUTES.panicSubmitted(tripId))
   }
 

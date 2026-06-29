@@ -5,6 +5,8 @@ import { useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { TriangleAlert } from 'lucide-react'
 import { useTrip } from '@/lib/hooks/useTrip'
+import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
+import { ApiError } from '@/lib/api/client'
 import { ROUTES } from '@/lib/constants/routes'
 import { Button } from '@/components/ui/Button'
 import type { ExceptionType } from '@shared/lib/types/exception'
@@ -31,6 +33,7 @@ export default function LogExceptionPageClient() {
   const { id: tripId } = useParams<{ id: string }>()
   const router = useRouter()
   const { trip, logException } = useTrip()
+  const { enqueueException } = useOfflineQueue()
   const [type, setType] = useState<ExceptionType | null>(null)
   const [description, setDescription] = useState('')
 
@@ -43,10 +46,31 @@ export default function LogExceptionPageClient() {
   // PanicPageClient.tsx.
   const tripVerified = trip !== null && String(trip.id) === tripId
 
-  function handleSubmit() {
-    if (!type) return
-    logException(type, { description })
-    router.push(ROUTES.inTransit(tripId))
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState(false)
+
+  async function handleSubmit() {
+    if (!type || !trip) return
+    setSubmitting(true)
+    setSubmitError(false)
+    try {
+      await logException(type, { description })
+      router.push(ROUTES.inTransit(tripId))
+    } catch (err) {
+      console.error('Failed to log exception', err)
+      // A 4xx (e.g. wrong driver, validation) will fail identically on retry — show the
+      // error and let the driver fix/retry manually. A network failure or 5xx is
+      // retryable, so queue it and let the driver move on; it syncs on reconnect.
+      const isRetryable = !(err instanceof ApiError) || err.status >= 500
+      if (isRetryable) {
+        enqueueException(String(trip.id), { exception_type: type, description })
+        router.push(ROUTES.inTransit(tripId))
+      } else {
+        setSubmitError(true)
+      }
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   if (!tripVerified) {
@@ -103,8 +127,11 @@ export default function LogExceptionPageClient() {
         onChange={(e) => setDescription(e.target.value)}
       />
 
-      <Button size="lg" disabled={!type} onClick={handleSubmit}>
-        Submit exception
+      {submitError && (
+        <p className="mb-3 text-sm text-error">Could not submit — check your connection and try again.</p>
+      )}
+      <Button size="lg" disabled={!type || submitting} onClick={handleSubmit}>
+        {submitting ? 'Submitting…' : 'Submit exception'}
       </Button>
     </main>
   )

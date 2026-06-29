@@ -5,8 +5,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
+from app.api.v1.endpoints.artifacts import router as artifacts_router
 from app.api.v1.endpoints.blockchain import router as blockchain_router
+from app.api.v1.endpoints.checkpoints import router as checkpoints_router
 from app.api.v1.endpoints.drivers import router as drivers_router
+from app.api.v1.endpoints.exceptions import router as exceptions_router
+from app.api.v1.endpoints.handshakes import router as handshakes_router
+from app.api.v1.endpoints.manifest import router as manifest_router
 from app.api.v1.endpoints.precincts import router as precincts_router
 from app.api.v1.endpoints.trips import router as trips_router
 from app.api.v1.endpoints.vehicles import router as vehicles_router
@@ -37,6 +42,11 @@ app.include_router(drivers_router, prefix="/api/v1")
 app.include_router(vehicles_router, prefix="/api/v1")
 app.include_router(precincts_router, prefix="/api/v1")
 app.include_router(blockchain_router, prefix="/api/v1")
+app.include_router(handshakes_router, prefix="/api/v1")
+app.include_router(artifacts_router, prefix="/api/v1")
+app.include_router(exceptions_router, prefix="/api/v1")
+app.include_router(checkpoints_router, prefix="/api/v1")
+app.include_router(manifest_router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["system"])

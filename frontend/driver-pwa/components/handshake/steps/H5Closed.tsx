@@ -16,7 +16,9 @@ export function H5Closed({ tripId, draft, onComplete }: H5ClosedProps) {
   const isReady =
     draft.waybillHandedOver === true &&
     draft.sealBrokenPhotoDataUrl !== null &&
-    draft.driverVisualCount !== null
+    draft.driverVisualCount !== null &&
+    draft.podPhotoDataUrl !== null &&
+    Boolean(draft.podSignatureDataUrl)
 
   // Navigation is owned by the dispatcher: onComplete() triggers submitAndAdvance(),
   // which awaits the real submission, then calls clearH5() and advance() (which routes
@@ -36,7 +38,7 @@ export function H5Closed({ tripId, draft, onComplete }: H5ClosedProps) {
         <div>
           <p className="text-xl font-bold">Trip Complete</p>
           <p className="mt-1 text-sm text-surface-on-variant">
-            All five handshakes are done. Evidence has been anchored to Hedera HCS.
+            All five handshakes are done. Evidence has been recorded.
           </p>
         </div>
       </div>

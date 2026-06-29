@@ -65,6 +65,13 @@ class HandshakeEvent(Base):
         ForeignKey("evidence_artifacts.id", use_alter=True, name="fk_handshake_pod_photo"),
         nullable=True,
     )
+    # Proof of delivery is a photo AND an on-device signature (BQ2 resolved 2026-06-29) —
+    # both are required at H5 completion, not either/or.
+    pod_signature_artifact_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("evidence_artifacts.id", use_alter=True, name="fk_handshake_pod_signature"),
+        nullable=True,
+    )
     parcel_manifest_snapshot: Mapped[Optional[Any]] = mapped_column(JSONB, nullable=True)
     parcel_count_origin: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     parcel_count_destination: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)

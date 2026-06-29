@@ -35,6 +35,9 @@ export interface H4Evidence {
   gpsLat: number | null
   gpsLng: number | null
   gatePhotoDataUrl: string | null
+  // The driver's typed seal entry at destination — backend needs the actual value
+  // (H4CompleteRequest.seal_number_at_destination), not just whether it matched H2's seal.
+  sealNumberAtDestination: string | null
   sealVerifiedMatch: boolean | null
   capturedAt: string | null
 }
@@ -43,7 +46,10 @@ export interface H5Evidence {
   waybillHandedOver: boolean | null
   sealBrokenPhotoDataUrl: string | null
   driverVisualCount: number | null
-  podPhotoDataUrl: string | null   // blocked BQ2 — always null in demo
+  // BQ2 resolved 2026-06-29: proof of delivery is a photo AND an on-device
+  // signature — both required, not either/or.
+  podPhotoDataUrl: string | null
+  podSignatureDataUrl: string | null
   reconciliationNote: string | null
   capturedAt: string | null
 }

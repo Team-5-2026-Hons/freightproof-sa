@@ -14,14 +14,14 @@ from fastapi import status as http_status
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import get_current_dispatcher
+from app.auth.dependencies import get_current_dispatcher, get_current_driver
 from app.db.models.enums import DispatcherRole
 from app.core.exceptions import ResourceNotFoundError, TripConflictError
 from app.db.models.enums import TripStatus
 from app.db.session import get_db
 from app.orchestration.resource_service import get_trip_detail, list_trips
-from app.orchestration.trip_service import create_trip
-from app.schemas.people import UserRead
+from app.orchestration.trip_service import create_trip, get_active_trip_for_driver
+from app.schemas.people import DriverRead, UserRead
 from app.schemas.trips import TripCreateRequest, TripDetailResponse, TripListItemResponse
 
 logger = logging.getLogger(__name__)
@@ -80,6 +80,18 @@ async def list_trips_endpoint(
         operator_organization_id=current_user.organization_id,
         status_filter=status,
     )
+
+
+@router.get(
+    "/me/active",
+    response_model=TripDetailResponse | None,
+    summary="Driver's current active trip",
+)
+async def get_my_active_trip_endpoint(
+    db: AsyncSession = Depends(get_db),
+    current_driver: DriverRead = Depends(get_current_driver),
+) -> TripDetailResponse | None:
+    return await get_active_trip_for_driver(db, driver_id=current_driver.id)
 
 
 @router.get(

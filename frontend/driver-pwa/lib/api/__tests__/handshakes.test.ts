@@ -1,74 +1,140 @@
 // frontend/driver-pwa/lib/api/__tests__/handshakes.test.ts
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import type { H1Evidence } from '@/lib/types/evidence-draft'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import type { H1Evidence, H2Evidence, H5Evidence } from '@/lib/types/evidence-draft'
 
 // submitHandshake reads NEXT_PUBLIC_DEMO_MODE at module load time (IS_DEMO_MODE
 // constant), so it must be set to 'false' before the module is imported in
-// order to exercise the real-backend fetch branch.
-process.env.NEXT_PUBLIC_DEMO_MODE = 'false'
+// order to exercise the real-backend branch.
+vi.mock('@/lib/constants/env', () => ({ IS_DEMO_MODE: false }))
 
-const EVIDENCE: H1Evidence = {
+const mockPost = vi.fn()
+vi.mock('@/lib/api/client', () => ({
+  api: { get: vi.fn(), post: (...args: unknown[]) => mockPost(...args), postForm: vi.fn() },
+}))
+
+// uploadArtifact's data-URL -> Blob conversion is jsdom-incompatible (fetch('data:...')
+// doesn't yield a FormData-appendable Blob in jsdom) and isn't what this file tests —
+// mock it directly so these tests focus on handshakes.ts's orchestration logic.
+const mockUploadArtifact = vi.fn()
+vi.mock('@/lib/api/artifacts', () => ({
+  uploadArtifact: (...args: unknown[]) => mockUploadArtifact(...args),
+}))
+
+const H1_EVIDENCE: H1Evidence = {
   gpsLat: -26.09,
   gpsLng: 28.13,
-  gatePhotoDataUrl: 'data:img',
+  gatePhotoDataUrl: 'data:image/jpeg;base64,AAAA',
   gateAddress: null,
   capturedAt: '2026-06-12T10:00:00Z',
 }
 
+const H2_EVIDENCE: H2Evidence = {
+  gpsLat: -26.09,
+  gpsLng: 28.13,
+  ppManifestParcelCount: 31,
+  driverVisualCount: 31,
+  waybillPhotoDataUrl: 'data:image/jpeg;base64,BBBB',
+  sealNumber: 'AB-1234',
+  sealPhotoDataUrl: 'data:image/jpeg;base64,CCCC',
+  capturedAt: '2026-06-12T10:05:00Z',
+}
+
+const H5_EVIDENCE: H5Evidence = {
+  waybillHandedOver: true,
+  sealBrokenPhotoDataUrl: 'data:image/jpeg;base64,DDDD',
+  driverVisualCount: 31,
+  podPhotoDataUrl: 'data:image/jpeg;base64,EEEE',
+  podSignatureDataUrl: 'data:image/png;base64,FFFF',
+  reconciliationNote: null,
+  capturedAt: '2026-06-12T10:10:00Z',
+}
+
 describe('submitHandshake (real-backend branch)', () => {
   beforeEach(() => {
-    vi.resetModules()
+    vi.clearAllMocks()
   })
 
-  afterEach(() => {
-    vi.unstubAllGlobals()
+  it('uploads the gate photo then completes H1 with the returned artifact id', async () => {
+    mockUploadArtifact.mockResolvedValue({ id: 'artifact-1', file_hash: 'a'.repeat(64) })
+    mockPost.mockResolvedValue({ id: 'trip-1', status: 'origin_gate_in' })
+
+    const { submitHandshake } = await import('../handshakes')
+    const result = await submitHandshake('trip-1', 'origin_gate_in', H1_EVIDENCE)
+
+    expect(result.ok).toBe(true)
+    expect(mockUploadArtifact).toHaveBeenCalledTimes(1)
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/trips/trip-1/handshakes/h1/complete', {
+      driver_phone_lat: -26.09,
+      driver_phone_lng: 28.13,
+      gate_photo_artifact_id: 'artifact-1',
+    })
   })
 
-  it('resolves with the parsed result when the backend returns ok: true', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: () => Promise.resolve({ ok: true, eventHash: 'hash-123' }),
-      }),
+  it('uploads waybill and seal photos then completes H2 with both artifact ids', async () => {
+    mockUploadArtifact
+      .mockResolvedValueOnce({ id: 'waybill-artifact', file_hash: 'a'.repeat(64) })
+      .mockResolvedValueOnce({ id: 'seal-artifact', file_hash: 'b'.repeat(64) })
+    mockPost.mockResolvedValue({ id: 'trip-1', status: 'loading' })
+
+    const { submitHandshake } = await import('../handshakes')
+    await submitHandshake('trip-1', 'loading', H2_EVIDENCE)
+
+    expect(mockUploadArtifact).toHaveBeenCalledTimes(2)
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/trips/trip-1/handshakes/h2/complete', {
+      waybill_photo_artifact_id: 'waybill-artifact',
+      seal_number: 'AB-1234',
+      seal_photo_artifact_id: 'seal-artifact',
+      driver_visual_count: 31,
+    })
+  })
+
+  it('throws when required evidence is missing instead of calling the backend', async () => {
+    const { submitHandshake } = await import('../handshakes')
+    const incomplete: H1Evidence = { ...H1_EVIDENCE, gatePhotoDataUrl: null }
+
+    await expect(submitHandshake('trip-1', 'origin_gate_in', incomplete)).rejects.toThrow(
+      /H1 evidence incomplete/,
     )
+    expect(mockUploadArtifact).not.toHaveBeenCalled()
+    expect(mockPost).not.toHaveBeenCalled()
+  })
+
+  it('propagates a backend rejection from the artifact upload', async () => {
+    mockUploadArtifact.mockRejectedValue(new Error('upload failed: HTTP 500'))
+
     const { submitHandshake } = await import('../handshakes')
 
-    const result = await submitHandshake('trip-1', 'origin_gate_in', EVIDENCE)
-
-    expect(result).toEqual({ ok: true, eventHash: 'hash-123' })
+    await expect(submitHandshake('trip-1', 'origin_gate_in', H1_EVIDENCE)).rejects.toThrow(
+      /upload failed/,
+    )
+    expect(mockPost).not.toHaveBeenCalled()
   })
 
-  it('throws when the HTTP response itself is not ok', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: false,
-        status: 500,
-        json: () => Promise.resolve({}),
-      }),
-    )
-    const { submitHandshake } = await import('../handshakes')
+  it('uploads POD photo and signature then completes H5 with both artifact ids', async () => {
+    mockUploadArtifact
+      .mockResolvedValueOnce({ id: 'pod-photo-artifact', file_hash: 'a'.repeat(64) })
+      .mockResolvedValueOnce({ id: 'pod-signature-artifact', file_hash: 'b'.repeat(64) })
+    mockPost.mockResolvedValue({ id: 'trip-1', status: 'closed' })
 
-    await expect(submitHandshake('trip-1', 'origin_gate_in', EVIDENCE)).rejects.toThrow(
-      /HTTP 500/,
-    )
+    const { submitHandshake } = await import('../handshakes')
+    await submitHandshake('trip-1', 'unloading', H5_EVIDENCE)
+
+    expect(mockUploadArtifact).toHaveBeenCalledTimes(2)
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/trips/trip-1/handshakes/h5/complete', {
+      pod_photo_artifact_id: 'pod-photo-artifact',
+      pod_signature_artifact_id: 'pod-signature-artifact',
+      driver_visual_count: 31,
+      pp_scan_in_count: 31,
+    })
   })
 
-  it('throws when the response is HTTP 200 but the parsed body has ok: false', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: () => Promise.resolve({ ok: false, eventHash: '' }),
-      }),
-    )
+  it('throws H5 incomplete when the signature is missing', async () => {
     const { submitHandshake } = await import('../handshakes')
+    const incomplete: H5Evidence = { ...H5_EVIDENCE, podSignatureDataUrl: null }
 
-    await expect(submitHandshake('trip-1', 'origin_gate_in', EVIDENCE)).rejects.toThrow(
-      /ok: false/,
+    await expect(submitHandshake('trip-1', 'unloading', incomplete)).rejects.toThrow(
+      /H5 evidence incomplete/,
     )
+    expect(mockUploadArtifact).not.toHaveBeenCalled()
   })
 })

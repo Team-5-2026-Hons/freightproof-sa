@@ -18,7 +18,7 @@ interface H4SealVerifyProps {
 }
 
 export function H4SealVerify({ tripId, draft, h2SealNumber, onUpdate, onComplete }: H4SealVerifyProps) {
-  const [input, setInput] = useState(draft.sealVerifiedMatch !== null ? (h2SealNumber ?? '') : '')
+  const [input, setInput] = useState(draft.sealNumberAtDestination ?? '')
   const matches = sealsMatch(input, h2SealNumber)
   const hasInput = input.trim().length > 0
 
@@ -27,7 +27,10 @@ export function H4SealVerify({ tripId, draft, h2SealNumber, onUpdate, onComplete
   // (the literal task snippet never called onUpdate at all, which was a real persistence gap).
   function handleInputChange(value: string) {
     setInput(value)
-    onUpdate({ sealVerifiedMatch: value.trim().length > 0 ? sealsMatch(value, h2SealNumber) : null })
+    onUpdate({
+      sealNumberAtDestination: value,
+      sealVerifiedMatch: value.trim().length > 0 ? sealsMatch(value, h2SealNumber) : null,
+    })
   }
 
   return (

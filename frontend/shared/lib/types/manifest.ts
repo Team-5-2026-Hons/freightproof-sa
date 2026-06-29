@@ -37,3 +37,17 @@ export interface Manifest {
   stops: DeliveryStop[]
   pulled_at: string
 }
+
+// Linehaul: the driver-facing document for the same GET /trips/{id}/manifest endpoint —
+// the backend returns this shape instead of Manifest when the caller is a driver, never
+// including per-parcel data or per-stop breakdown (theft-risk rule: drivers see only a
+// consolidated unit count, never contents). Mirrors backend LinehaulResponse.
+export interface Linehaul {
+  trip_id: string
+  vehicle_registration: string
+  vehicle_type: string
+  driver_full_name: string
+  consolidated_unit_count: number
+  origin_scan_complete: boolean
+  pulled_at: string
+}

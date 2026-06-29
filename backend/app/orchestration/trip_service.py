@@ -18,6 +18,7 @@ from app.db.models.handshakes import HandshakeEvent
 from app.db.models.people import Driver
 from app.db.models.trips import Trip, TripTrailer
 from app.db.models.vehicles import Vehicle
+from app.orchestration.resource_service import get_trip_detail
 from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.handshakes import HandshakeEventRead
 from app.schemas.people import DriverRead, UserRead
@@ -251,3 +252,15 @@ async def create_trip(
         created_at=trip.created_at,
         updated_at=trip.updated_at,
     )
+
+
+async def get_active_trip_for_driver(db: AsyncSession, driver_id: uuid.UUID) -> TripDetailResponse | None:
+    """Return the driver's one active trip, or None. 'Active' excludes closed/cancelled."""
+    inactive = {TripStatus.CLOSED, TripStatus.CANCELLED}
+    result = await db.execute(
+        select(Trip).where(Trip.driver_id == driver_id, Trip.status.notin_(inactive))
+    )
+    trip = result.scalar_one_or_none()
+    if trip is None:
+        return None
+    return await get_trip_detail(db, trip_id=trip.id, operator_organization_id=trip.operator_organization_id)

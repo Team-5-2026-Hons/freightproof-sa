@@ -4,6 +4,7 @@
 import { useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useHandshakeDraft } from '@/lib/hooks/useHandshakeDraft'
+import { useTrip } from '@/lib/hooks/useTrip'
 import { submitHandshake } from '@/lib/api/handshakes'
 import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
 import { nextHandshakeRoute } from '@/lib/navigation/handshake-flow'
@@ -12,7 +13,7 @@ import { H1GateArrival } from '@/components/handshake/steps/H1GateArrival'
 import { H1EntryPhoto } from '@/components/handshake/steps/H1EntryPhoto'
 import { H1Verification } from '@/components/handshake/steps/H1Verification'
 import { H2ArriveBay } from '@/components/handshake/steps/H2ArriveBay'
-import { H2Manifest } from '@/components/handshake/steps/H2Manifest'
+import { H2Linehaul } from '@/components/handshake/steps/H2Linehaul'
 import { H2Waybill } from '@/components/handshake/steps/H2Waybill'
 import { H2Seal } from '@/components/handshake/steps/H2Seal'
 import { H2Review } from '@/components/handshake/steps/H2Review'
@@ -34,13 +35,14 @@ import { H5Closed } from '@/components/handshake/steps/H5Closed'
 const H1_INITIAL: H1Evidence = { gpsLat: null, gpsLng: null, gatePhotoDataUrl: null, gateAddress: null, capturedAt: null }
 const H2_INITIAL: H2Evidence = { gpsLat: null, gpsLng: null, ppManifestParcelCount: null, driverVisualCount: null, waybillPhotoDataUrl: null, sealNumber: null, sealPhotoDataUrl: null, capturedAt: null }
 const H3_INITIAL: H3Evidence = { gpsLat: null, gpsLng: null, gatePhotoDataUrl: null, sealNumberConfirmed: null, sealVerifiedMatch: null, capturedAt: null }
-const H4_INITIAL: H4Evidence = { gpsLat: null, gpsLng: null, gatePhotoDataUrl: null, sealVerifiedMatch: null, capturedAt: null }
-const H5_INITIAL: H5Evidence = { waybillHandedOver: null, sealBrokenPhotoDataUrl: null, driverVisualCount: null, podPhotoDataUrl: null, reconciliationNote: null, capturedAt: null }
+const H4_INITIAL: H4Evidence = { gpsLat: null, gpsLng: null, gatePhotoDataUrl: null, sealNumberAtDestination: null, sealVerifiedMatch: null, capturedAt: null }
+const H5_INITIAL: H5Evidence = { waybillHandedOver: null, sealBrokenPhotoDataUrl: null, driverVisualCount: null, podPhotoDataUrl: null, podSignatureDataUrl: null, reconciliationNote: null, capturedAt: null }
 
 export default function HandshakeStepPageClient() {
   const { id: tripId, h, slug } = useParams<{ id: string; h: string; slug: string }>()
   const router = useRouter()
   const { enqueue } = useOfflineQueue()
+  const { refetchTrip } = useTrip()
 
   const handshakeNum = Number(h) as 1 | 2 | 3 | 4 | 5
 
@@ -66,6 +68,7 @@ export default function HandshakeStepPageClient() {
   ) {
     try {
       await submitHandshake(tripId, type, evidence)
+      await refetchTrip()
     } catch {
       // TODO(backend-integration): submitHandshake failures are treated uniformly here —
       // a terminal/validation failure (will never succeed) is queued and the draft is
@@ -88,7 +91,7 @@ export default function HandshakeStepPageClient() {
 
   if (handshakeNum === 2) {
     if (slug === '1-arrive-bay') return <H2ArriveBay {...props} draft={h2Draft} onUpdate={updateH2} onComplete={advance} />
-    if (slug === '2-manifest')   return <H2Manifest  {...props} draft={h2Draft} onUpdate={updateH2} onComplete={advance} />
+    if (slug === '2-linehaul')   return <H2Linehaul  {...props} draft={h2Draft} onUpdate={updateH2} onComplete={advance} />
     if (slug === '3-waybill')    return <H2Waybill   {...props} draft={h2Draft} onUpdate={updateH2} onComplete={advance} />
     if (slug === '4-seal')       return <H2Seal      {...props} draft={h2Draft} onUpdate={updateH2} onComplete={advance} />
     if (slug === '5-review')     return <H2Review    {...props} draft={h2Draft} onComplete={() => submitAndAdvance('loading', h2Draft, clearH2)} />
@@ -110,7 +113,7 @@ export default function HandshakeStepPageClient() {
     if (slug === '1-hand-waybill')        return <H5HandWaybill    {...props} draft={h5Draft} onUpdate={updateH5} onComplete={advance} />
     if (slug === '2-seal-break-inspection') return <H5SealInspection {...props} draft={h5Draft} onUpdate={updateH5} onComplete={advance} />
     if (slug === '3-visual-count')        return <H5VisualCount    {...props} draft={h5Draft} onUpdate={updateH5} onComplete={advance} h2Count={h2Draft.driverVisualCount} />
-    if (slug === '4-pod-photo')           return <H5PodPhoto       {...props} onComplete={advance} />
+    if (slug === '4-pod-photo')           return <H5PodPhoto       {...props} draft={h5Draft} onUpdate={updateH5} onComplete={advance} />
     if (slug === '5-reconciliation')      return <H5Reconciliation {...props} draft={h5Draft} onUpdate={updateH5} onComplete={advance} />
     if (slug === '6-closed')              return <H5Closed         {...props} draft={h5Draft} onComplete={() => submitAndAdvance('unloading', h5Draft, clearH5)} />
   }
