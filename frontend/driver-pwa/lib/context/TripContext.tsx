@@ -25,7 +25,7 @@ export interface TripState {
   logException: (type: ExceptionType, payload: Record<string, unknown>) => Promise<void>
   triggerPanic: () => void
   reset: () => void
-  refetchTrip: () => Promise<void>
+  refetchTrip: () => Promise<Trip | null>
 }
 
 export const TripContext = createContext<TripState | null>(null)
@@ -66,12 +66,13 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   // containing callback synchronously from an effect causes cascading renders (same
   // anti-pattern AuthContext.tsx avoids); the effect inlines its own fetch instead.
   const refetchTrip = useCallback(async () => {
-    if (IS_DEMO_MODE) { setTrip(mockTrip); return }
-    if (!authCtx?.user) { setTrip(null); setIsLoading(false); return }
+    if (IS_DEMO_MODE) { setTrip(mockTrip); return mockTrip }
+    if (!authCtx?.user) { setTrip(null); setIsLoading(false); return null }
     setIsLoading(true)
     try {
       const fetched = await fetchMyActiveTrip()
       setTrip(fetched)
+      return fetched
     } finally {
       setIsLoading(false)
     }

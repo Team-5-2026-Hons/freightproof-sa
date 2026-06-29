@@ -2,15 +2,15 @@
 
 import { useRouter } from 'next/navigation'
 import { PackageSearch } from 'lucide-react'
-import { HANDSHAKE_NAMES, STEP_SLUGS } from '@shared/lib/constants/handshake-meta'
+import { STEP_SLUGS } from '@shared/lib/constants/handshake-meta'
 import { ROUTES } from '@/lib/constants/routes'
 import { useTrip } from '@/lib/hooks/useTrip'
 import { tripStatusChip } from '@/lib/utils/trip-status-chip'
-import { handshakeProgress, visibleHandshakeNumbers } from '@/lib/utils/handshake-progress'
+import { handshakeProgress, currentHandshakeNumber } from '@/lib/utils/handshake-progress'
 import { Chip } from '@/components/ui/Chip'
-import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { HandshakeProgressBar } from '@/components/trip/HandshakeProgressBar'
+import { CurrentHandshakeCard } from '@/components/trip/CurrentHandshakeCard'
 
 export function HomeContent() {
   const router = useRouter()
@@ -32,7 +32,7 @@ export function HomeContent() {
 
   const { kind, label } = tripStatusChip(trip.status)
   const progress = handshakeProgress(trip.handshakes)
-  const visibleHandshakes = visibleHandshakeNumbers(progress)
+  const current = currentHandshakeNumber(progress)
 
   return (
     <main className="flex min-h-screen flex-col gap-4 p-4">
@@ -54,20 +54,12 @@ export function HomeContent() {
         </button>
       )}
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-medium text-surface-on-variant">Handshakes</h2>
-        {visibleHandshakes.map((n) => (
-          <Button
-            key={n}
-            variant="primary"
-            size="lg"
-            className="justify-start"
-            onClick={() => router.push(ROUTES.handshakeStep(n, STEP_SLUGS[n][0]))}
-          >
-            <span className="font-semibold">H{n}:</span> {HANDSHAKE_NAMES[n]}
-          </Button>
-        ))}
-      </section>
+      {current !== null && (
+        <CurrentHandshakeCard
+          handshakeNumber={current}
+          onSelect={() => router.push(ROUTES.handshakeStep(current, STEP_SLUGS[current][0]))}
+        />
+      )}
     </main>
   )
 }

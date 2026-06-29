@@ -2,6 +2,7 @@
 import { renderHook, act } from '@testing-library/react'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useOfflineQueue } from '../useOfflineQueue'
+import { ApiError } from '@/lib/api/client'
 import type { H1Evidence } from '@/lib/types/evidence-draft'
 
 // Mock submitHandshake/raiseException so tests don't hit the network
@@ -65,6 +66,24 @@ describe('useOfflineQueue', () => {
   it('flush retains a failed entry in the queue and keeps unrelated entries', async () => {
     const { submitHandshake } = await import('@/lib/api/handshakes')
     vi.mocked(submitHandshake).mockRejectedValueOnce(new Error('network down'))
+    const { result } = renderHook(() => useOfflineQueue())
+    act(() => result.current.enqueue('trip-1', 'origin_gate_in', EVIDENCE))
+    await act(() => result.current.flush())
+    expect(result.current.queueLength).toBe(1)
+  })
+
+  it('flush drops a terminal 4xx failure instead of retrying it forever', async () => {
+    const { submitHandshake } = await import('@/lib/api/handshakes')
+    vi.mocked(submitHandshake).mockRejectedValueOnce(new ApiError(422, 'invalid evidence'))
+    const { result } = renderHook(() => useOfflineQueue())
+    act(() => result.current.enqueue('trip-1', 'origin_gate_in', EVIDENCE))
+    await act(() => result.current.flush())
+    expect(result.current.queueLength).toBe(0)
+  })
+
+  it('flush retains an entry on a 5xx ApiError so it can be retried later', async () => {
+    const { submitHandshake } = await import('@/lib/api/handshakes')
+    vi.mocked(submitHandshake).mockRejectedValueOnce(new ApiError(503, 'service unavailable'))
     const { result } = renderHook(() => useOfflineQueue())
     act(() => result.current.enqueue('trip-1', 'origin_gate_in', EVIDENCE))
     await act(() => result.current.flush())

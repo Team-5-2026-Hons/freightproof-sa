@@ -4,6 +4,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { submitHandshake } from '@/lib/api/handshakes'
 import { raiseException, type RaiseExceptionBody } from '@/lib/api/exceptions'
+import { ApiError } from '@/lib/api/client'
 import type { HandshakeType } from '@shared/lib/types/handshake'
 import type { HandshakeEvidence } from '@/lib/types/evidence-draft'
 
@@ -74,10 +75,14 @@ export function useOfflineQueue() {
     for (const entry of queue) {
       try {
         await sendEntry(entry)
-      } catch {
-        // TODO(backend-integration): distinguish retryable (network/5xx) from terminal
-        // (4xx/validation) failures once submitHandshake/raiseException can report which
-        // kind occurred — currently all failures retry indefinitely
+      } catch (err) {
+        // A terminal 4xx (validation failure, or a 409 meaning this exact submission
+        // already succeeded on an earlier attempt) will never succeed on retry — drop it
+        // instead of retrying forever. Network errors and 5xx stay queued.
+        if (err instanceof ApiError && err.status < 500) {
+          console.warn(`useOfflineQueue: dropping terminal failure (${err.status}) for queued entry "${entry.id}"`, err.message)
+          continue
+        }
         failed.push(entry)
       }
     }

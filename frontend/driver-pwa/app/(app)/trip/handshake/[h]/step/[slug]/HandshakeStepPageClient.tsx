@@ -5,11 +5,14 @@ import { useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useHandshakeDraft } from '@/lib/hooks/useHandshakeDraft'
 import { useTrip } from '@/lib/hooks/useTrip'
+import { useToast } from '@/lib/hooks/useToast'
 import { submitHandshake } from '@/lib/api/handshakes'
+import { ApiError } from '@/lib/api/client'
 import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
 import { nextHandshakeRoute } from '@/lib/navigation/handshake-flow'
 import { Spinner } from '@/components/ui/Spinner'
 import type { H1Evidence, H2Evidence, H3Evidence, H4Evidence, H5Evidence } from '@/lib/types/evidence-draft'
+import type { TripStatus } from '@shared/lib/types/trip'
 import { H1GateArrival } from '@/components/handshake/steps/H1GateArrival'
 import { H1EntryPhoto } from '@/components/handshake/steps/H1EntryPhoto'
 import { H1Verification } from '@/components/handshake/steps/H1Verification'
@@ -39,11 +42,34 @@ const H3_INITIAL: H3Evidence = { gpsLat: null, gpsLng: null, gatePhotoDataUrl: n
 const H4_INITIAL: H4Evidence = { gpsLat: null, gpsLng: null, gatePhotoDataUrl: null, sealNumberAtDestination: null, sealVerifiedMatch: null, capturedAt: null }
 const H5_INITIAL: H5Evidence = { waybillHandedOver: null, sealBrokenPhotoDataUrl: null, driverVisualCount: null, podPhotoDataUrl: null, podSignatureDataUrl: null, reconciliationNote: null, capturedAt: null }
 
+type SubmittableHandshakeType = 'origin_gate_in' | 'loading' | 'origin_gate_out' | 'dest_gate_in' | 'unloading'
+
+// The TripStatus a successful submission of each handshake type produces — used to tell a
+// genuine 409 (driver tried to skip ahead / wrong state) apart from a 409 caused by a
+// duplicate submit of a handshake that already succeeded on an earlier attempt.
+const RESULT_STATUS: Record<SubmittableHandshakeType, TripStatus> = {
+  origin_gate_in: 'origin_gate_in',
+  loading: 'loading',
+  origin_gate_out: 'origin_gate_out',
+  dest_gate_in: 'dest_gate_in',
+  unloading: 'unloading',
+}
+
+const STATUS_ORDER: TripStatus[] = [
+  'created', 'origin_gate_in', 'loading', 'origin_gate_out',
+  'in_transit', 'dest_gate_in', 'unloading', 'closed',
+]
+
+function isAtOrPast(status: TripStatus, target: TripStatus): boolean {
+  return STATUS_ORDER.indexOf(status) >= STATUS_ORDER.indexOf(target)
+}
+
 export default function HandshakeStepPageClient() {
   const { h, slug } = useParams<{ h: string; slug: string }>()
   const router = useRouter()
   const { enqueue } = useOfflineQueue()
   const { trip, isLoading, refetchTrip } = useTrip()
+  const { notify } = useToast()
 
   const handshakeNum = Number(h) as 1 | 2 | 3 | 4 | 5
 
@@ -67,23 +93,45 @@ export default function HandshakeStepPageClient() {
   const [h5Draft, updateH5, clearH5] = useHandshakeDraft<H5Evidence>(tripId, 'unloading', H5_INITIAL)
 
   async function submitAndAdvance(
-    type: 'origin_gate_in' | 'loading' | 'origin_gate_out' | 'dest_gate_in' | 'unloading',
+    type: SubmittableHandshakeType,
     evidence: H1Evidence | H2Evidence | H3Evidence | H4Evidence | H5Evidence,
     clearFn: () => void,
   ) {
     try {
       await submitHandshake(tripId, type, evidence)
       await refetchTrip()
-    } catch {
-      // TODO(backend-integration): submitHandshake failures are treated uniformly here —
-      // a terminal/validation failure (will never succeed) is queued and the draft is
-      // cleared identically to a transient network failure. See the matching TODO in
-      // useOfflineQueue.ts's flush(). Don't fix until submitHandshake can report which
-      // kind of failure occurred.
+      clearFn()
+      advance()
+      return
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        // A duplicate submit of a handshake that already succeeded on an earlier attempt
+        // also gets a 409 (trip is no longer in the expected pre-state) — refetch and check
+        // whether that's what happened before treating this as a real failure.
+        const fetched = await refetchTrip()
+        if (fetched && isAtOrPast(fetched.status, RESULT_STATUS[type])) {
+          clearFn()
+          advance()
+          return
+        }
+        notify({
+          kind: 'error',
+          title: 'Could not confirm handshake',
+          body: 'Trip state changed unexpectedly. Please retry from the trip screen.',
+        })
+        return
+      }
+      if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
+        // Terminal failure — retrying the same request will never succeed. Leave the
+        // driver on this screen with their draft intact so they can fix and retry.
+        notify({ kind: 'error', title: 'Could not submit', body: err.message })
+        return
+      }
+      // Network error or 5xx — queue for retry once connectivity/the server recovers.
       enqueue(tripId, type, evidence)
+      clearFn()
+      advance()
     }
-    clearFn()
-    advance()
   }
 
   if (isLoading) {
