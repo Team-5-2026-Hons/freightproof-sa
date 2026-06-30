@@ -223,5 +223,5 @@ spikes/fp-23-hedera-sdk/.env.spike
 graphify-out/cache/
 .graphify_*
 
-# Claude Code session git worktrees
+# Git worktrees (local dev isolation only — never committed)
 .worktrees/

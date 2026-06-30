@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import get_current_dispatcher
+from app.auth.dependencies import get_current_dispatcher, get_current_driver
 from app.db.models.enums import DispatcherRole
 from app.core.exceptions import DuplicateResourceError, ResourceNotFoundError
 from app.db.session import get_db
@@ -25,6 +25,18 @@ async def list_drivers_endpoint(
     current_user: UserRead = Depends(get_current_dispatcher),
 ) -> list[DriverRead]:
     return await list_drivers(db=db, organization_id=current_user.organization_id)
+
+
+@router.get("/me", response_model=DriverRead)
+async def get_my_driver_profile(
+    current_driver: DriverRead = Depends(get_current_driver),
+) -> DriverRead:
+    """Return the authenticated driver's own profile.
+
+    The driver-pwa frontend calls this after Supabase verifyOtp() succeeds to
+    confirm the session and load the driver record for the app shell.
+    """
+    return current_driver
 
 
 @router.post("", response_model=DriverRead, status_code=201)

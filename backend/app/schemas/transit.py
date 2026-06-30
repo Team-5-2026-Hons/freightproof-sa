@@ -29,6 +29,20 @@ class CheckpointCreate(CheckpointBase):
     pass
 
 
+class DriverCheckpointCreateBody(BaseModel):
+    """Slim checkpoint-creation body for the driver endpoint — trip_id comes from the URL path."""
+
+    checkpoint_type: str
+    driver_phone_lat: Optional[Decimal] = None
+    driver_phone_lng: Optional[Decimal] = None
+    horse_gps_lat: Optional[Decimal] = None
+    horse_gps_lng: Optional[Decimal] = None
+    selfie_artifact_id: Optional[UUID] = None
+    cargo_photo_artifact_id: Optional[UUID] = None
+    note: Optional[str] = None
+    is_deviation: bool = False
+
+
 class CheckpointUpdate(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -57,6 +71,14 @@ class TripExceptionBase(BaseModel):
 
 class TripExceptionCreate(TripExceptionBase):
     pass
+
+
+class DriverExceptionCreateBody(BaseModel):
+    """Slim exception-creation body for the driver endpoint — trip_id comes from the URL path."""
+
+    exception_type: ExceptionType
+    description: str
+    supporting_artifact_id: Optional[UUID] = None
 
 
 class TripExceptionUpdate(BaseModel):

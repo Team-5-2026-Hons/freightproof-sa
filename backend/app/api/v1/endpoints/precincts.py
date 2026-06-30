@@ -1,7 +1,7 @@
 """FastAPI router for precinct list endpoint.
 
-GET /precincts — all precincts (origin/destination gates).
-Iteration 1: not yet scoped to the operator's client orgs.
+GET /precincts — precincts owned by the caller's organization plus any
+precinct marked is_shared (origin/destination gates).
 """
 
 from fastapi import APIRouter, Depends
@@ -19,10 +19,10 @@ router = APIRouter(prefix="/precincts", tags=["precincts"])
 @router.get(
     "",
     response_model=list[PrecinctRead],
-    summary="List all physical depots and warehouses (precincts)",
+    summary="List the caller's organization's physical depots and warehouses, plus shared precincts",
 )
 async def list_precincts_endpoint(
     db: AsyncSession = Depends(get_db),
     current_user: UserRead = Depends(get_current_dispatcher),
 ) -> list[PrecinctRead]:
-    return await list_precincts(db=db)
+    return await list_precincts(db=db, organization_id=current_user.organization_id)

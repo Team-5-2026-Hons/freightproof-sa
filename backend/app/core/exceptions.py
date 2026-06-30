@@ -35,6 +35,17 @@ class DuplicateResourceError(Exception):
         self.value = value
 
 
+class HandshakeSequenceError(Exception):
+    """Raised when a handshake is attempted out of order for the trip's current status."""
+
+    def __init__(self, trip_status: str, attempted_handshake: str) -> None:
+        super().__init__(
+            f"Cannot complete {attempted_handshake} while trip status is '{trip_status}'."
+        )
+        self.trip_status = trip_status
+        self.attempted_handshake = attempted_handshake
+
+
 class SubjectNotVisibleError(Exception):
     """Raised when a dispatcher queries a blockchain subject outside their organisation."""
 

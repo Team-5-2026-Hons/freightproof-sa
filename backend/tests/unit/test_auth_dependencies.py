@@ -18,7 +18,12 @@ from cryptography.hazmat.primitives.asymmetric.ec import SECP256R1, generate_pri
 from fastapi import HTTPException
 from jose import jwt as jose_jwt
 
-from app.auth.dependencies import _decode_token, _require_dispatcher_role, require_admin_dispatcher
+from app.auth.dependencies import (
+    _decode_token,
+    _require_dispatcher_role,
+    _require_driver_role,
+    require_admin_dispatcher,
+)
 from app.db.models.enums import DispatcherRole
 from app.schemas.people import UserRead
 from tests.conftest import TEST_KID, make_token, make_jwks
@@ -192,6 +197,39 @@ def test_require_dispatcher_role_raises_403_when_role_missing() -> None:
     assert exc_info.value.status_code == 403
 
 
+# ── _require_driver_role ───────────────────────────────────────────────────────
+
+
+def test_require_driver_role_passes_for_driver() -> None:
+    payload = {"app_metadata": {"role": "driver"}}
+    _require_driver_role(payload)  # does not raise
+
+
+def test_require_driver_role_raises_403_for_dispatcher() -> None:
+    payload = {"app_metadata": {"role": "dispatcher"}}
+
+    with pytest.raises(HTTPException) as exc_info:
+        _require_driver_role(payload)
+
+    assert exc_info.value.status_code == 403
+
+
+def test_require_driver_role_raises_403_when_metadata_missing() -> None:
+    with pytest.raises(HTTPException) as exc_info:
+        _require_driver_role({})
+
+    assert exc_info.value.status_code == 403
+
+
+def test_require_driver_role_raises_403_when_role_missing() -> None:
+    payload: dict[str, object] = {"app_metadata": {}}
+
+    with pytest.raises(HTTPException) as exc_info:
+        _require_driver_role(payload)
+
+    assert exc_info.value.status_code == 403
+
+
 # ── require_admin_dispatcher ──────────────────────────────────────────────────
 
 
@@ -208,5 +246,132 @@ async def test_require_admin_dispatcher_raises_403_for_dispatcher() -> None:
 
     with pytest.raises(HTTPException) as exc_info:
         await require_admin_dispatcher(current_user=user)
+
+    assert exc_info.value.status_code == 403
+
+
+# ── get_current_driver ──────────────────────────────────────────────────────────
+
+
+def _make_driver_row(*, is_active: bool = True) -> object:
+    """Return a stand-in for a Driver ORM row — only the attributes get_current_driver reads."""
+    from datetime import date
+
+    active = is_active  # avoid self-shadowing the class attribute of the same name below
+
+    class _FakeDriver:
+        id = uuid.uuid4()
+        organization_id = uuid.uuid4()
+        full_name = "Test Driver"
+        id_number = "8001015009087"
+        phone_number = "+27821234567"
+        license_number = "DRV-001"
+        license_expiry: date | None = None
+        idvs_status = "pending"
+        idvs_last_verified_at = None
+        is_active = active
+        created_at = _NOW
+        updated_at = _NOW
+
+    return _FakeDriver()
+
+
+@pytest.mark.asyncio
+async def test_get_current_driver_returns_driver_read_for_valid_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from unittest.mock import AsyncMock, MagicMock
+
+    from fastapi.security import HTTPAuthorizationCredentials
+
+    from app.auth.dependencies import get_current_driver
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "DEMO_MODE", False)
+    driver_row = _make_driver_row()
+    token = make_token(sub=str(driver_row.id), role="driver")
+    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+
+    db = AsyncMock()
+    db_result = MagicMock()
+    db_result.scalar_one_or_none.return_value = driver_row
+    db.execute.return_value = db_result
+
+    result = await get_current_driver(credentials=credentials, db=db)
+
+    assert result.id == driver_row.id
+    assert result.phone_number == "+27821234567"
+
+
+@pytest.mark.asyncio
+async def test_get_current_driver_not_found_raises_401(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from unittest.mock import AsyncMock, MagicMock
+
+    from fastapi.security import HTTPAuthorizationCredentials
+
+    from app.auth.dependencies import get_current_driver
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "DEMO_MODE", False)
+    token = make_token(role="driver")
+    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+
+    db = AsyncMock()
+    db_result = MagicMock()
+    db_result.scalar_one_or_none.return_value = None
+    db.execute.return_value = db_result
+
+    with pytest.raises(HTTPException) as exc_info:
+        await get_current_driver(credentials=credentials, db=db)
+
+    assert exc_info.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_get_current_driver_inactive_raises_401(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from unittest.mock import AsyncMock, MagicMock
+
+    from fastapi.security import HTTPAuthorizationCredentials
+
+    from app.auth.dependencies import get_current_driver
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "DEMO_MODE", False)
+    driver_row = _make_driver_row(is_active=False)
+    token = make_token(sub=str(driver_row.id), role="driver")
+    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+
+    db = AsyncMock()
+    db_result = MagicMock()
+    db_result.scalar_one_or_none.return_value = driver_row
+    db.execute.return_value = db_result
+
+    with pytest.raises(HTTPException) as exc_info:
+        await get_current_driver(credentials=credentials, db=db)
+
+    assert exc_info.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_get_current_driver_dispatcher_token_raises_403(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from unittest.mock import AsyncMock
+
+    from fastapi.security import HTTPAuthorizationCredentials
+
+    from app.auth.dependencies import get_current_driver
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "DEMO_MODE", False)
+    token = make_token(role="dispatcher")
+    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await get_current_driver(credentials=credentials, db=AsyncMock())
 
     assert exc_info.value.status_code == 403
