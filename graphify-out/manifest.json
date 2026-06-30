@@ -1573,5 +1573,1680 @@
     "mtime": 1781851985.4870665,
     "ast_hash": "102f7302fbafeeba778ff17dc497066f",
     "semantic_hash": ""
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/.claude/settings.json": {
+    "mtime": 1782580457.491008,
+    "ast_hash": "d1d294cfb5c833b62ee335178d6c7f0c",
+    "semantic_hash": "d1d294cfb5c833b62ee335178d6c7f0c"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/.claude/settings.local.json": {
+    "mtime": 1782400144.4112377,
+    "ast_hash": "4fe5a807810904659be29297ef626082",
+    "semantic_hash": "4fe5a807810904659be29297ef626082"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/__init__.py": {
+    "mtime": 1776885195.3224728,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/api/__init__.py": {
+    "mtime": 1776885195.3226361,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/api/v1/__init__.py": {
+    "mtime": 1776885195.322831,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/api/v1/endpoints/__init__.py": {
+    "mtime": 1776885195.323004,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/api/v1/endpoints/blockchain.py": {
+    "mtime": 1782580457.5076768,
+    "ast_hash": "303d6b1b2e43c7e20a1aeac84a9520b8",
+    "semantic_hash": "303d6b1b2e43c7e20a1aeac84a9520b8"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/api/v1/endpoints/drivers.py": {
+    "mtime": 1782580457.5083852,
+    "ast_hash": "85fb2ef0ce403e2f8b84dc51d2c9d0f7",
+    "semantic_hash": "85fb2ef0ce403e2f8b84dc51d2c9d0f7"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/api/v1/endpoints/precincts.py": {
+    "mtime": 1782580457.509071,
+    "ast_hash": "c1b0d2e9f74172a99d5bc189f2654b75",
+    "semantic_hash": "c1b0d2e9f74172a99d5bc189f2654b75"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/api/v1/endpoints/trips.py": {
+    "mtime": 1782580457.5094788,
+    "ast_hash": "7055d79cd6e86c59bd4dba738f5f00f2",
+    "semantic_hash": "7055d79cd6e86c59bd4dba738f5f00f2"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/api/v1/endpoints/vehicles.py": {
+    "mtime": 1782580457.5099566,
+    "ast_hash": "d4225fb6e4346902737fcba2013a98e8",
+    "semantic_hash": "d4225fb6e4346902737fcba2013a98e8"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/auth/__init__.py": {
+    "mtime": 1776885195.3231654,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/auth/dependencies.py": {
+    "mtime": 1782580457.510608,
+    "ast_hash": "51fc87c66b4325900af76d3fe597c944",
+    "semantic_hash": "51fc87c66b4325900af76d3fe597c944"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/auth/router.py": {
+    "mtime": 1782580457.511075,
+    "ast_hash": "898540e1d229261b72419cdcdfbfe1a5",
+    "semantic_hash": "898540e1d229261b72419cdcdfbfe1a5"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/blockchain/__init__.py": {
+    "mtime": 1782580457.512106,
+    "ast_hash": "6727afd0d73b84a5ea50810fd61249d9",
+    "semantic_hash": "6727afd0d73b84a5ea50810fd61249d9"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/blockchain/anchor_service.py": {
+    "mtime": 1782580457.5125408,
+    "ast_hash": "ae3c007c5eaa32c4a3cc6950d4aa9c32",
+    "semantic_hash": "ae3c007c5eaa32c4a3cc6950d4aa9c32"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/blockchain/critical_fields.py": {
+    "mtime": 1782580457.5132236,
+    "ast_hash": "033891aa7d1d232a1e184505caeb125a",
+    "semantic_hash": "033891aa7d1d232a1e184505caeb125a"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/blockchain/hedera.py": {
+    "mtime": 1782580457.5137339,
+    "ast_hash": "24942c4cb0434bedc416824678b81ea2",
+    "semantic_hash": "24942c4cb0434bedc416824678b81ea2"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/blockchain/subject_visibility.py": {
+    "mtime": 1782580457.5139816,
+    "ast_hash": "0eec9515d9b4fa9f8bc11d6c23f5da63",
+    "semantic_hash": "0eec9515d9b4fa9f8bc11d6c23f5da63"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/core/__init__.py": {
+    "mtime": 1776885195.3235185,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/core/config.py": {
+    "mtime": 1782580457.5149446,
+    "ast_hash": "1bcf3d8afb19625b223460c4de34c549",
+    "semantic_hash": "1bcf3d8afb19625b223460c4de34c549"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/core/exceptions.py": {
+    "mtime": 1782580457.5152335,
+    "ast_hash": "735af82a68b8753d482a0c0d6a116621",
+    "semantic_hash": "735af82a68b8753d482a0c0d6a116621"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/crypto/__init__.py": {
+    "mtime": 1776885195.32385,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/crypto/hashing.py": {
+    "mtime": 1782580457.5155249,
+    "ast_hash": "95238c317ff8c9d9a4e7000e24f2fa6f",
+    "semantic_hash": "95238c317ff8c9d9a4e7000e24f2fa6f"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/db/__init__.py": {
+    "mtime": 1776885195.3240569,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/db/models/__init__.py": {
+    "mtime": 1782580457.5160046,
+    "ast_hash": "aca494ceda1ad90f24220e9b8a98bf15",
+    "semantic_hash": "aca494ceda1ad90f24220e9b8a98bf15"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/db/models/blockchain.py": {
+    "mtime": 1782580457.5165923,
+    "ast_hash": "0486d24436da9221618b08aad6821775",
+    "semantic_hash": "0486d24436da9221618b08aad6821775"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/db/models/enums.py": {
+    "mtime": 1782580457.517212,
+    "ast_hash": "47844c02d5ddfa400b314d631fd2f4b9",
+    "semantic_hash": "47844c02d5ddfa400b314d631fd2f4b9"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/db/models/events.py": {
+    "mtime": 1782580457.5174844,
+    "ast_hash": "7d61613423eca9474961627055355945",
+    "semantic_hash": "7d61613423eca9474961627055355945"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/db/models/evidence.py": {
+    "mtime": 1782580457.5182042,
+    "ast_hash": "a1752ce6c75986e27995867c325ff7b7",
+    "semantic_hash": "a1752ce6c75986e27995867c325ff7b7"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/db/models/handshakes.py": {
+    "mtime": 1782580457.5187962,
+    "ast_hash": "f73eb076aacdaf57d3b884df07dfddde",
+    "semantic_hash": "f73eb076aacdaf57d3b884df07dfddde"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/db/models/organisations.py": {
+    "mtime": 1782580457.51953,
+    "ast_hash": "30d892cd1350f05ddb24f4b2c8131fde",
+    "semantic_hash": "30d892cd1350f05ddb24f4b2c8131fde"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/db/models/people.py": {
+    "mtime": 1782580457.5200005,
+    "ast_hash": "a9fc033b236c682408c1ea2d51acce2b",
+    "semantic_hash": "a9fc033b236c682408c1ea2d51acce2b"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/db/models/sla.py": {
+    "mtime": 1782580457.5208843,
+    "ast_hash": "f6ec178fda411719c75c296c493e9a40",
+    "semantic_hash": "f6ec178fda411719c75c296c493e9a40"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/db/models/transit.py": {
+    "mtime": 1782580457.521836,
+    "ast_hash": "c687de229089361e824d36dfcdbd4671",
+    "semantic_hash": "c687de229089361e824d36dfcdbd4671"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/db/models/trips.py": {
+    "mtime": 1782580457.5226822,
+    "ast_hash": "4c10c0345f3013df9d8de846c78536ed",
+    "semantic_hash": "4c10c0345f3013df9d8de846c78536ed"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/db/models/vehicles.py": {
+    "mtime": 1782580457.523041,
+    "ast_hash": "ecaae4bf13f2a42e6f71d91d98d13791",
+    "semantic_hash": "ecaae4bf13f2a42e6f71d91d98d13791"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/db/session.py": {
+    "mtime": 1782580457.5234685,
+    "ast_hash": "4099d40d29d22436b6f22de561c6778c",
+    "semantic_hash": "4099d40d29d22436b6f22de561c6778c"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/integrations/__init__.py": {
+    "mtime": 1776885195.3247104,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/integrations/supabase_admin.py": {
+    "mtime": 1782580457.5240004,
+    "ast_hash": "9347a9c54cae3c48df25cbc19a6592b9",
+    "semantic_hash": "9347a9c54cae3c48df25cbc19a6592b9"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/main.py": {
+    "mtime": 1782580457.5243914,
+    "ast_hash": "aea986f983f58631d7af2fbffdb55b3f",
+    "semantic_hash": "aea986f983f58631d7af2fbffdb55b3f"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/orchestration/__init__.py": {
+    "mtime": 1776885195.3251,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/orchestration/driver_service.py": {
+    "mtime": 1782580457.5248518,
+    "ast_hash": "067d3bb788abee27a2925cf252188c52",
+    "semantic_hash": "067d3bb788abee27a2925cf252188c52"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/orchestration/resource_service.py": {
+    "mtime": 1782580457.525161,
+    "ast_hash": "979ecbef9479de9bcafca2747e75b31d",
+    "semantic_hash": "979ecbef9479de9bcafca2747e75b31d"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/orchestration/trip_service.py": {
+    "mtime": 1782580457.5253782,
+    "ast_hash": "b56e932743c9d58541cf64e545f3228e",
+    "semantic_hash": "b56e932743c9d58541cf64e545f3228e"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/orchestration/vehicle_service.py": {
+    "mtime": 1782580457.5257566,
+    "ast_hash": "6705d21fb7169abf926c0c9d7896b1de",
+    "semantic_hash": "6705d21fb7169abf926c0c9d7896b1de"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/orchestration/verification_service.py": {
+    "mtime": 1782580457.5261035,
+    "ast_hash": "f88f777e1d0bb938d0a9ecc4541a28a2",
+    "semantic_hash": "f88f777e1d0bb938d0a9ecc4541a28a2"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/schemas/__init__.py": {
+    "mtime": 1777818540.748392,
+    "ast_hash": "f24285d4b7ecac181c29d572cd0b7793",
+    "semantic_hash": "f24285d4b7ecac181c29d572cd0b7793"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/schemas/blockchain.py": {
+    "mtime": 1782580457.5265174,
+    "ast_hash": "d03cae78fb33bbd8f2d98441f32cfbe6",
+    "semantic_hash": "d03cae78fb33bbd8f2d98441f32cfbe6"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/schemas/events.py": {
+    "mtime": 1782580457.526842,
+    "ast_hash": "a7e8cf7b7edb6bece571338fb9369808",
+    "semantic_hash": "a7e8cf7b7edb6bece571338fb9369808"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/schemas/evidence.py": {
+    "mtime": 1777818480.657261,
+    "ast_hash": "011e67a1b41de342dff1925425bb999e",
+    "semantic_hash": "011e67a1b41de342dff1925425bb999e"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/schemas/handshakes.py": {
+    "mtime": 1777818418.3720367,
+    "ast_hash": "bf27bc5973ad8662de249d3f62e2a753",
+    "semantic_hash": "bf27bc5973ad8662de249d3f62e2a753"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/schemas/organisations.py": {
+    "mtime": 1777818206.8294196,
+    "ast_hash": "15104b16b016b24eec35746c79c74e17",
+    "semantic_hash": "15104b16b016b24eec35746c79c74e17"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/schemas/people.py": {
+    "mtime": 1782580457.5272877,
+    "ast_hash": "98e305f28941618e89234165a38736fe",
+    "semantic_hash": "98e305f28941618e89234165a38736fe"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/schemas/sla.py": {
+    "mtime": 1777818520.58124,
+    "ast_hash": "9e24427cc6f335e6eee7a41c2504924a",
+    "semantic_hash": "9e24427cc6f335e6eee7a41c2504924a"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/schemas/transit.py": {
+    "mtime": 1777818470.7228553,
+    "ast_hash": "d15f366ad2d8e95f54227ce12ef97765",
+    "semantic_hash": "d15f366ad2d8e95f54227ce12ef97765"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/schemas/trips.py": {
+    "mtime": 1782580457.5278451,
+    "ast_hash": "e98a27e523645a4e3c1b2970dba5ccdb",
+    "semantic_hash": "e98a27e523645a4e3c1b2970dba5ccdb"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/schemas/vehicles.py": {
+    "mtime": 1782580457.5285327,
+    "ast_hash": "73868593d520aa0946612bfe75ee74e4",
+    "semantic_hash": "73868593d520aa0946612bfe75ee74e4"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/storage/__init__.py": {
+    "mtime": 1776885195.3253307,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/app/tasks/__init__.py": {
+    "mtime": 1776885195.3256443,
+    "ast_hash": "f4846ea038c42bf3b361036eed9bb2d1",
+    "semantic_hash": "f4846ea038c42bf3b361036eed9bb2d1"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/migrations/env.py": {
+    "mtime": 1776885195.3258853,
+    "ast_hash": "2788a1e2a494b89a1b7b73dca0533d60",
+    "semantic_hash": "2788a1e2a494b89a1b7b73dca0533d60"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/migrations/versions/0001_initial_schema.py": {
+    "mtime": 1777818993.289321,
+    "ast_hash": "1aa707845341d79e32ef15a22b1af12d",
+    "semantic_hash": "1aa707845341d79e32ef15a22b1af12d"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/migrations/versions/0002_driver_substitutions.py": {
+    "mtime": 1782580457.530192,
+    "ast_hash": "b86f1b49539b68b35f233cbd3979eaec",
+    "semantic_hash": "b86f1b49539b68b35f233cbd3979eaec"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/migrations/versions/0002_tom_supabase_auth_schema.py": {
+    "mtime": 1782580457.530593,
+    "ast_hash": "69d85ad840450d901b2887b56cad1678",
+    "semantic_hash": "69d85ad840450d901b2887b56cad1678"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/migrations/versions/0003_tom_rls_policies.py": {
+    "mtime": 1782580457.53153,
+    "ast_hash": "b8f8d50d411443e01227d3a2c344480d",
+    "semantic_hash": "b8f8d50d411443e01227d3a2c344480d"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/migrations/versions/2026_05_14_ciaran_add_vehicles_updated_at.py": {
+    "mtime": 1782580457.5319557,
+    "ast_hash": "658c4e347810d39549b8afd6afc9d425",
+    "semantic_hash": "658c4e347810d39549b8afd6afc9d425"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/migrations/versions/2026_05_16_ciaran_add_missing_updated_at.py": {
+    "mtime": 1782580457.532314,
+    "ast_hash": "3efe996fb478db46b693a2b284432a01",
+    "semantic_hash": "3efe996fb478db46b693a2b284432a01"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/migrations/versions/2026_05_16_ciaran_add_precincts_updated_at.py": {
+    "mtime": 1782580457.5329192,
+    "ast_hash": "04b0a784351c1f322a4fde7e11cd7735",
+    "semantic_hash": "04b0a784351c1f322a4fde7e11cd7735"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/migrations/versions/2026_05_16_ciaran_add_vehicle_attributes.py": {
+    "mtime": 1782580457.5334108,
+    "ast_hash": "49b9f43bc7872e9a4fec656614f6457f",
+    "semantic_hash": "49b9f43bc7872e9a4fec656614f6457f"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/migrations/versions/2026_05_17_ciaran_add_driver_license_expiry.py": {
+    "mtime": 1782580457.5339823,
+    "ast_hash": "8e4bac43573cb079c0441e53b628ceb6",
+    "semantic_hash": "8e4bac43573cb079c0441e53b628ceb6"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/migrations/versions/2026_05_17_ciaran_add_vehicle_driver_events.py": {
+    "mtime": 1782580457.5343025,
+    "ast_hash": "f77950e99f3c17ede2d8892ccad19871",
+    "semantic_hash": "f77950e99f3c17ede2d8892ccad19871"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/migrations/versions/2026_05_17_ciaran_add_vehicle_length_m.py": {
+    "mtime": 1782580457.5346773,
+    "ast_hash": "32f56343db2aa88143174dfb21a27687",
+    "semantic_hash": "32f56343db2aa88143174dfb21a27687"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/migrations/versions/2026_05_17_ciaran_extend_blockchain_receipts_for_subjects.py": {
+    "mtime": 1782580457.5351574,
+    "ast_hash": "a1faef7fcc2ecf7311e42fa2185c9aec",
+    "semantic_hash": "a1faef7fcc2ecf7311e42fa2185c9aec"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/scripts/seed_demo.py": {
+    "mtime": 1782580457.53817,
+    "ast_hash": "3d92ade441582fe78a32449b2c3352f4",
+    "semantic_hash": "3d92ade441582fe78a32449b2c3352f4"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/scripts/seed_dispatcher.py": {
+    "mtime": 1782580457.5390408,
+    "ast_hash": "c4542c8cfe2d4b01693bc4db072b416c",
+    "semantic_hash": "c4542c8cfe2d4b01693bc4db072b416c"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/test_db.py": {
+    "mtime": 1782580457.5394428,
+    "ast_hash": "22beab03b6732b08084b81045c07cc74",
+    "semantic_hash": "22beab03b6732b08084b81045c07cc74"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/tests/__init__.py": {
+    "mtime": 1776885195.3264642,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/tests/conftest.py": {
+    "mtime": 1782580457.5402763,
+    "ast_hash": "4ff89b38c384649756f762974e3dc539",
+    "semantic_hash": "4ff89b38c384649756f762974e3dc539"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/tests/integration/__init__.py": {
+    "mtime": 1776885195.3266191,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/tests/integration/test_auth_router.py": {
+    "mtime": 1782580457.5408218,
+    "ast_hash": "78c29b26f0d0adf5eb1c3d02ccf08f1b",
+    "semantic_hash": "78c29b26f0d0adf5eb1c3d02ccf08f1b"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/tests/integration/test_blockchain.py": {
+    "mtime": 1782580457.5413167,
+    "ast_hash": "7fc415130bd70c517a92630f2afcec3c",
+    "semantic_hash": "7fc415130bd70c517a92630f2afcec3c"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/tests/integration/test_blockchain_verify.py": {
+    "mtime": 1782580457.541868,
+    "ast_hash": "8e9737999072ec82297663753145a1f7",
+    "semantic_hash": "8e9737999072ec82297663753145a1f7"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/tests/integration/test_detail_receipts_gating.py": {
+    "mtime": 1782580457.54246,
+    "ast_hash": "69d2e8c6d39ddc6912644ebb898161cc",
+    "semantic_hash": "69d2e8c6d39ddc6912644ebb898161cc"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/tests/integration/test_drivers.py": {
+    "mtime": 1782580457.5428164,
+    "ast_hash": "611163dcc9d5d6010dec126a57aaa627",
+    "semantic_hash": "611163dcc9d5d6010dec126a57aaa627"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/tests/integration/test_drivers_anchor.py": {
+    "mtime": 1782580457.5431938,
+    "ast_hash": "2dbfeb7a30878c5dc6f0865059f40dd7",
+    "semantic_hash": "2dbfeb7a30878c5dc6f0865059f40dd7"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/tests/integration/test_precincts.py": {
+    "mtime": 1782580457.543396,
+    "ast_hash": "439ea0f0aa3a0901d5c52f37a3c856ed",
+    "semantic_hash": "439ea0f0aa3a0901d5c52f37a3c856ed"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/tests/integration/test_trips.py": {
+    "mtime": 1782580457.5437584,
+    "ast_hash": "fc54226a59345a8e1f91028415785ea1",
+    "semantic_hash": "fc54226a59345a8e1f91028415785ea1"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/tests/integration/test_trips_anchor.py": {
+    "mtime": 1782580457.5441356,
+    "ast_hash": "80474ce04b89cfe556271936a29a2d70",
+    "semantic_hash": "80474ce04b89cfe556271936a29a2d70"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/tests/integration/test_vehicle_cross_org.py": {
+    "mtime": 1782580457.544465,
+    "ast_hash": "cf9dc636ef77447d435ac1dd9e7999be",
+    "semantic_hash": "cf9dc636ef77447d435ac1dd9e7999be"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/tests/integration/test_vehicles.py": {
+    "mtime": 1782580457.5447557,
+    "ast_hash": "fc330ad688a79b3b728eba6157cd6bd6",
+    "semantic_hash": "fc330ad688a79b3b728eba6157cd6bd6"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/tests/integration/test_vehicles_anchor.py": {
+    "mtime": 1782580457.545303,
+    "ast_hash": "9dde251edbbf3a4f905dd22b82ccc8f4",
+    "semantic_hash": "9dde251edbbf3a4f905dd22b82ccc8f4"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/tests/integration/test_vehicles_cosmetic_diff.py": {
+    "mtime": 1782580457.5462306,
+    "ast_hash": "733a54f1c67c31341755fe9eb5ad4159",
+    "semantic_hash": "733a54f1c67c31341755fe9eb5ad4159"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/tests/integration/test_vehicles_validation.py": {
+    "mtime": 1782580457.5465562,
+    "ast_hash": "d30b9802743d9228f14e49db57982f6b",
+    "semantic_hash": "d30b9802743d9228f14e49db57982f6b"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/tests/unit/__init__.py": {
+    "mtime": 1776885195.326781,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/tests/unit/test_anchor_service.py": {
+    "mtime": 1782580457.5472305,
+    "ast_hash": "4f7e1c02641829673c0b38098dbaaffd",
+    "semantic_hash": "4f7e1c02641829673c0b38098dbaaffd"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/tests/unit/test_anchor_service_timeout.py": {
+    "mtime": 1782580457.5482597,
+    "ast_hash": "62040d6f8c47b7c36a54c562227eb183",
+    "semantic_hash": "62040d6f8c47b7c36a54c562227eb183"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/tests/unit/test_auth_dependencies.py": {
+    "mtime": 1782580457.5490017,
+    "ast_hash": "9fd5749d64dfe3edd1082dc831c2301c",
+    "semantic_hash": "9fd5749d64dfe3edd1082dc831c2301c"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/tests/unit/test_auth_jwks_cache.py": {
+    "mtime": 1782580457.5499434,
+    "ast_hash": "419ec49325b46f7521a001e34cab7ab6",
+    "semantic_hash": "419ec49325b46f7521a001e34cab7ab6"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/tests/unit/test_critical_fields.py": {
+    "mtime": 1782580457.5505111,
+    "ast_hash": "e2a0c961bafbfba835d644d283b881b0",
+    "semantic_hash": "e2a0c961bafbfba835d644d283b881b0"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/tests/unit/test_exceptions.py": {
+    "mtime": 1782580457.5507126,
+    "ast_hash": "8ea565f99c99f2f7e97fe8a57df402b3",
+    "semantic_hash": "8ea565f99c99f2f7e97fe8a57df402b3"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/tests/unit/test_hashing.py": {
+    "mtime": 1782580457.5513422,
+    "ast_hash": "d326cefb54ded1f5abc46bf3d84cd80c",
+    "semantic_hash": "d326cefb54ded1f5abc46bf3d84cd80c"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/tests/unit/test_hedera_service.py": {
+    "mtime": 1782580457.5519457,
+    "ast_hash": "435ab8b762ee9d6d88782e72105301ce",
+    "semantic_hash": "435ab8b762ee9d6d88782e72105301ce"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/tests/unit/test_model_schema_v6.py": {
+    "mtime": 1778076915.0761502,
+    "ast_hash": "9e19da8ea5c553f685aeadf21b84b8b0",
+    "semantic_hash": "9e19da8ea5c553f685aeadf21b84b8b0"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/tests/unit/test_schema_validators.py": {
+    "mtime": 1782580457.5526626,
+    "ast_hash": "69645d40e52f22119e172b8b8ece7689",
+    "semantic_hash": "69645d40e52f22119e172b8b8ece7689"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/tests/unit/test_subject_visibility.py": {
+    "mtime": 1782580457.553079,
+    "ast_hash": "a511fd3ddac170be449d2dc7022319e7",
+    "semantic_hash": "a511fd3ddac170be449d2dc7022319e7"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/tests/unit/test_supabase_admin.py": {
+    "mtime": 1782580457.55354,
+    "ast_hash": "0e664479e4a57cf226c131900bdc2cc7",
+    "semantic_hash": "0e664479e4a57cf226c131900bdc2cc7"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/tests/unit/test_verification_service.py": {
+    "mtime": 1782580457.55384,
+    "ast_hash": "d28ee8985b0888723e4ef00ea99113e6",
+    "semantic_hash": "d28ee8985b0888723e4ef00ea99113e6"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/app/(app)/dev/tokens/page.tsx": {
+    "mtime": 1782580457.587655,
+    "ast_hash": "c270ac73be753fe2d5d675187c2cc947",
+    "semantic_hash": "c270ac73be753fe2d5d675187c2cc947"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/app/(app)/exceptions/[id]/page.tsx": {
+    "mtime": 1782580457.5882137,
+    "ast_hash": "6ae2f7fa63bfa62c6bc77f53fcb5c039",
+    "semantic_hash": "6ae2f7fa63bfa62c6bc77f53fcb5c039"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/app/(app)/exceptions/page.tsx": {
+    "mtime": 1782580457.5886745,
+    "ast_hash": "04744434192bf55bc27200fd40129485",
+    "semantic_hash": "04744434192bf55bc27200fd40129485"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/app/(app)/fleet/drivers/[id]/page.tsx": {
+    "mtime": 1782580457.5894015,
+    "ast_hash": "53a321f483a6e15a37666f3d37c17d91",
+    "semantic_hash": "53a321f483a6e15a37666f3d37c17d91"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/app/(app)/fleet/drivers/page.tsx": {
+    "mtime": 1782580457.590048,
+    "ast_hash": "5cf5e43b8ac99cf74d5b66458062321f",
+    "semantic_hash": "5cf5e43b8ac99cf74d5b66458062321f"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/app/(app)/fleet/vehicles/[id]/page.tsx": {
+    "mtime": 1782580457.5912004,
+    "ast_hash": "f7ff6876952c895edd5b987f0b1238e2",
+    "semantic_hash": "f7ff6876952c895edd5b987f0b1238e2"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/app/(app)/fleet/vehicles/page.tsx": {
+    "mtime": 1782580457.5922027,
+    "ast_hash": "ddbe769a56a22ed87575507e5bf4487d",
+    "semantic_hash": "ddbe769a56a22ed87575507e5bf4487d"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/app/(app)/history/page.tsx": {
+    "mtime": 1782580457.5932162,
+    "ast_hash": "8906716eff89acd68adcbffabd79f0fc",
+    "semantic_hash": "8906716eff89acd68adcbffabd79f0fc"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/app/(app)/layout.tsx": {
+    "mtime": 1782580457.5941162,
+    "ast_hash": "194c3b7dcfebf09c498115a6d19d5028",
+    "semantic_hash": "194c3b7dcfebf09c498115a6d19d5028"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/app/(app)/page.tsx": {
+    "mtime": 1782580457.595295,
+    "ast_hash": "c69486cb0ddb28a9b257161222104748",
+    "semantic_hash": "c69486cb0ddb28a9b257161222104748"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/app/(app)/settings/page.tsx": {
+    "mtime": 1782580457.59574,
+    "ast_hash": "8bf178d39b197882f84c8b45cba5e1dc",
+    "semantic_hash": "8bf178d39b197882f84c8b45cba5e1dc"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/app/(app)/sla/page.tsx": {
+    "mtime": 1782580457.5963905,
+    "ast_hash": "466f7b788b7ef473dcacbcf6af7ebcf7",
+    "semantic_hash": "466f7b788b7ef473dcacbcf6af7ebcf7"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/app/(app)/trips/[id]/page.tsx": {
+    "mtime": 1782580457.5970852,
+    "ast_hash": "9636b5596077edc89316b0bb71708a3b",
+    "semantic_hash": "9636b5596077edc89316b0bb71708a3b"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/app/(app)/trips/new/page.tsx": {
+    "mtime": 1782580457.5981283,
+    "ast_hash": "f47ec739d037903a165d13e41ea3f34b",
+    "semantic_hash": "f47ec739d037903a165d13e41ea3f34b"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/app/(public)/layout.tsx": {
+    "mtime": 1782580457.5991943,
+    "ast_hash": "6e9cf88df1e5dfa712e826681849a125",
+    "semantic_hash": "6e9cf88df1e5dfa712e826681849a125"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/app/(public)/login/page.tsx": {
+    "mtime": 1782580457.5997863,
+    "ast_hash": "37c7b7acbe19f8077ccb1ddd83c8009a",
+    "semantic_hash": "37c7b7acbe19f8077ccb1ddd83c8009a"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/app/dev/design/page.tsx": {
+    "mtime": 1782580457.600364,
+    "ast_hash": "54ab9f94c585da3dba1080eaf0543f6d",
+    "semantic_hash": "54ab9f94c585da3dba1080eaf0543f6d"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/app/layout.tsx": {
+    "mtime": 1782580457.6051636,
+    "ast_hash": "4a7571e098cffab1d3e9a8ba408539ea",
+    "semantic_hash": "4a7571e098cffab1d3e9a8ba408539ea"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/blockchain/BlockchainBadge.tsx": {
+    "mtime": 1782580457.6058328,
+    "ast_hash": "25c5945d8682daa11e848d6600b5a270",
+    "semantic_hash": "25c5945d8682daa11e848d6600b5a270"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/blockchain/EventTimeline.tsx": {
+    "mtime": 1782580457.6061757,
+    "ast_hash": "a3218af9d475af4ae6916347e70b95da",
+    "semantic_hash": "a3218af9d475af4ae6916347e70b95da"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/blockchain/ForensicControls.tsx": {
+    "mtime": 1782580457.6065965,
+    "ast_hash": "4bd101c75aa4b884a19b96548a3298fa",
+    "semantic_hash": "4bd101c75aa4b884a19b96548a3298fa"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/blockchain/ForensicOnly.tsx": {
+    "mtime": 1782580457.6069381,
+    "ast_hash": "d6d25cd69396b445f8f4b20929acc1c4",
+    "semantic_hash": "d6d25cd69396b445f8f4b20929acc1c4"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/blockchain/VerifyButton.tsx": {
+    "mtime": 1782580457.607419,
+    "ast_hash": "8c2fc8bfe3fda8501bd87c68436d37c0",
+    "semantic_hash": "8c2fc8bfe3fda8501bd87c68436d37c0"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/domain/ChecklistRow.tsx": {
+    "mtime": 1782580457.6080658,
+    "ast_hash": "01d187e4fc0a7e7a0c51aff100a3a0a1",
+    "semantic_hash": "01d187e4fc0a7e7a0c51aff100a3a0a1"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/domain/EvidencePacket.tsx": {
+    "mtime": 1782580457.6082935,
+    "ast_hash": "ce31d18604020bc916addfcc47813ddf",
+    "semantic_hash": "ce31d18604020bc916addfcc47813ddf"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/domain/ExceptionBanner.tsx": {
+    "mtime": 1782580457.608488,
+    "ast_hash": "c473eec0b52fc358e9074d357010a500",
+    "semantic_hash": "c473eec0b52fc358e9074d357010a500"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/domain/HandshakeChain.tsx": {
+    "mtime": 1782580457.6087046,
+    "ast_hash": "8d61c4d658fdd29d22f12f87a35282ef",
+    "semantic_hash": "8d61c4d658fdd29d22f12f87a35282ef"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/domain/TimestampWithIcon.tsx": {
+    "mtime": 1782580457.6089022,
+    "ast_hash": "0216b2bd1983983d9b024cff413b7882",
+    "semantic_hash": "0216b2bd1983983d9b024cff413b7882"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/domain/TripCreatedDetail.tsx": {
+    "mtime": 1782580457.6095333,
+    "ast_hash": "4cee2f1275532b77d4888629eec563fa",
+    "semantic_hash": "4cee2f1275532b77d4888629eec563fa"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/domain/TripIdStamp.tsx": {
+    "mtime": 1782580457.6098475,
+    "ast_hash": "707ff809634f1174c235d131838caaff",
+    "semantic_hash": "707ff809634f1174c235d131838caaff"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/layout/DispatcherShell.tsx": {
+    "mtime": 1782580457.6105168,
+    "ast_hash": "382098f202ed9b38fcd4ac66ecc9f64e",
+    "semantic_hash": "382098f202ed9b38fcd4ac66ecc9f64e"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/layout/PageHeader.tsx": {
+    "mtime": 1782580457.6108804,
+    "ast_hash": "6656841ed851c52bb757f0732caf398f",
+    "semantic_hash": "6656841ed851c52bb757f0732caf398f"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/layout/PageShell.tsx": {
+    "mtime": 1782580457.6112535,
+    "ast_hash": "21bc6a2bee2581c53b0f9f1968fc465f",
+    "semantic_hash": "21bc6a2bee2581c53b0f9f1968fc465f"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/layout/Sidebar.tsx": {
+    "mtime": 1782580457.6117487,
+    "ast_hash": "2d813abc25e018edcd7b277ed9358a72",
+    "semantic_hash": "2d813abc25e018edcd7b277ed9358a72"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/ui/Button.tsx": {
+    "mtime": 1782580457.6122336,
+    "ast_hash": "7303ef7cc644abe31eb07d6268651ac1",
+    "semantic_hash": "7303ef7cc644abe31eb07d6268651ac1"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/ui/Card.tsx": {
+    "mtime": 1782580457.6125705,
+    "ast_hash": "0942824d072cd188e76148990323e118",
+    "semantic_hash": "0942824d072cd188e76148990323e118"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/ui/Chip.tsx": {
+    "mtime": 1782580457.6129477,
+    "ast_hash": "aa179b2b18f3c40ddce3831bf3e9b666",
+    "semantic_hash": "aa179b2b18f3c40ddce3831bf3e9b666"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/ui/DataTable.tsx": {
+    "mtime": 1782580457.6135654,
+    "ast_hash": "7a301b862a6b1a3e542b638db66f7e67",
+    "semantic_hash": "7a301b862a6b1a3e542b638db66f7e67"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/ui/DateRangePicker.tsx": {
+    "mtime": 1782580457.6138475,
+    "ast_hash": "1e9939af6e987380b0c9e3968d4b7f52",
+    "semantic_hash": "1e9939af6e987380b0c9e3968d4b7f52"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/ui/Drawer.tsx": {
+    "mtime": 1782580457.6143544,
+    "ast_hash": "273d03a98fb58c09fc9b3527eaccdf24",
+    "semantic_hash": "273d03a98fb58c09fc9b3527eaccdf24"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/ui/EmptyState.tsx": {
+    "mtime": 1782580457.6150713,
+    "ast_hash": "850bdc01611dac91542d935c4e05093e",
+    "semantic_hash": "850bdc01611dac91542d935c4e05093e"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/ui/FormField.tsx": {
+    "mtime": 1782580457.615548,
+    "ast_hash": "e468cca731c3ff1fb13866ec285e3ceb",
+    "semantic_hash": "e468cca731c3ff1fb13866ec285e3ceb"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/ui/Ic.tsx": {
+    "mtime": 1782580457.6160488,
+    "ast_hash": "5a44858beba750510020e8a8ac5d3afa",
+    "semantic_hash": "5a44858beba750510020e8a8ac5d3afa"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/ui/IconButton.tsx": {
+    "mtime": 1782580457.6164677,
+    "ast_hash": "2a13bf2fa7386ba3bad92e4bb4e82912",
+    "semantic_hash": "2a13bf2fa7386ba3bad92e4bb4e82912"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/ui/InfoRow.tsx": {
+    "mtime": 1782580457.6167607,
+    "ast_hash": "472ae8aa0f3f71cacfc4ee423e76860a",
+    "semantic_hash": "472ae8aa0f3f71cacfc4ee423e76860a"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/ui/Input.tsx": {
+    "mtime": 1782580457.616971,
+    "ast_hash": "83ef74198bd69035a5f51fdf877cf5a7",
+    "semantic_hash": "83ef74198bd69035a5f51fdf877cf5a7"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/ui/Modal.tsx": {
+    "mtime": 1782580457.6171844,
+    "ast_hash": "1c5a2ad93196c7ad051242d5be73be03",
+    "semantic_hash": "1c5a2ad93196c7ad051242d5be73be03"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/ui/SearchSelect.tsx": {
+    "mtime": 1782580457.6175861,
+    "ast_hash": "897d84be7d368ebeecf51a8d4724943b",
+    "semantic_hash": "897d84be7d368ebeecf51a8d4724943b"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/ui/SecHead.tsx": {
+    "mtime": 1782580457.6178186,
+    "ast_hash": "ad7fbfec996f4d7629022b357259335f",
+    "semantic_hash": "ad7fbfec996f4d7629022b357259335f"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/ui/Select.tsx": {
+    "mtime": 1782580457.6183147,
+    "ast_hash": "db9f3784ff94c506d94c5c80c9a5e45d",
+    "semantic_hash": "db9f3784ff94c506d94c5c80c9a5e45d"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/ui/Skeleton.tsx": {
+    "mtime": 1782580457.6188002,
+    "ast_hash": "c39f154026fb2a5828941b5e9d038287",
+    "semantic_hash": "c39f154026fb2a5828941b5e9d038287"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/ui/Spinner.tsx": {
+    "mtime": 1782580457.6190367,
+    "ast_hash": "b903bbfba44efb82f69285e4333c94c5",
+    "semantic_hash": "b903bbfba44efb82f69285e4333c94c5"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/ui/StatCard.tsx": {
+    "mtime": 1782580457.6194322,
+    "ast_hash": "e5a2a9bb38b4134a319cc673651f4a4a",
+    "semantic_hash": "e5a2a9bb38b4134a319cc673651f4a4a"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/ui/StepRail.tsx": {
+    "mtime": 1782580457.619657,
+    "ast_hash": "a94352f19b576c4fcf40a2f0b5661783",
+    "semantic_hash": "a94352f19b576c4fcf40a2f0b5661783"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/ui/Switch.tsx": {
+    "mtime": 1782580457.6200528,
+    "ast_hash": "54f2c1bbb0f63efd0704e6a20513e389",
+    "semantic_hash": "54f2c1bbb0f63efd0704e6a20513e389"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/ui/Tabs.tsx": {
+    "mtime": 1782580457.6203384,
+    "ast_hash": "9088eb83bf98c73061345718082d0951",
+    "semantic_hash": "9088eb83bf98c73061345718082d0951"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/ui/TextArea.tsx": {
+    "mtime": 1782580457.6206508,
+    "ast_hash": "3e8a601e3d9d91f38ee7819190cb6b8f",
+    "semantic_hash": "3e8a601e3d9d91f38ee7819190cb6b8f"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/ui/Toast.tsx": {
+    "mtime": 1782580457.6212041,
+    "ast_hash": "ec897ba68d2f8068a6d71d8d9c2f0267",
+    "semantic_hash": "ec897ba68d2f8068a6d71d8d9c2f0267"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/ui/TopBar.tsx": {
+    "mtime": 1782580457.6218915,
+    "ast_hash": "3937b9db5d3dceb8c8a9f44855c2a2c5",
+    "semantic_hash": "3937b9db5d3dceb8c8a9f44855c2a2c5"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/components/vehicles/VehicleCard.tsx": {
+    "mtime": 1782580457.6224096,
+    "ast_hash": "c7d1fb1925f1f2852686efbdeb5a2c99",
+    "semantic_hash": "c7d1fb1925f1f2852686efbdeb5a2c99"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/eslint.config.mjs": {
+    "mtime": 1782580457.6232111,
+    "ast_hash": "f45851ca153815e1982ef897194aae5b",
+    "semantic_hash": "f45851ca153815e1982ef897194aae5b"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/lib/api/client.ts": {
+    "mtime": 1782580457.623765,
+    "ast_hash": "aaa772902fd765db258d31c535be7dd8",
+    "semantic_hash": "aaa772902fd765db258d31c535be7dd8"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/lib/constants/routes.ts": {
+    "mtime": 1782580457.6241283,
+    "ast_hash": "67b4ad4039f3dd0e0799c3bd9057ef7f",
+    "semantic_hash": "67b4ad4039f3dd0e0799c3bd9057ef7f"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/lib/constants/status-meta.ts": {
+    "mtime": 1782580457.624345,
+    "ast_hash": "87c7ef64e80d59194e41fb22bd7dd7ab",
+    "semantic_hash": "87c7ef64e80d59194e41fb22bd7dd7ab"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/lib/context/AuthContext.tsx": {
+    "mtime": 1782580457.6247299,
+    "ast_hash": "1593ca6eecb7458b4713a1c2aee36961",
+    "semantic_hash": "1593ca6eecb7458b4713a1c2aee36961"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/lib/context/ForensicModeContext.tsx": {
+    "mtime": 1782580457.6251502,
+    "ast_hash": "70d843826bd1bff568a8dc7ae380b98a",
+    "semantic_hash": "70d843826bd1bff568a8dc7ae380b98a"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/lib/context/ToastContext.tsx": {
+    "mtime": 1782580457.6253498,
+    "ast_hash": "6827f5ec90d493de8b8e8ffdb794b916",
+    "semantic_hash": "6827f5ec90d493de8b8e8ffdb794b916"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/lib/forensic/describeChange.ts": {
+    "mtime": 1782580457.6258304,
+    "ast_hash": "df01b2fb2fb79aa03cc02aa0826ea8ea",
+    "semantic_hash": "df01b2fb2fb79aa03cc02aa0826ea8ea"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/lib/hooks/useAsyncData.ts": {
+    "mtime": 1782580457.6262524,
+    "ast_hash": "c1fc5bcd31636e61fd7ed6a0524a4c75",
+    "semantic_hash": "c1fc5bcd31636e61fd7ed6a0524a4c75"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/lib/hooks/useAuth.ts": {
+    "mtime": 1782580457.6264632,
+    "ast_hash": "85b28a49dedf5c5fbbd99c4f2c2ba7a4",
+    "semantic_hash": "85b28a49dedf5c5fbbd99c4f2c2ba7a4"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/lib/hooks/useBlockchainReceipts.ts": {
+    "mtime": 1782580457.626728,
+    "ast_hash": "5800ccf022ba721a3249dbcc778b9f3f",
+    "semantic_hash": "5800ccf022ba721a3249dbcc778b9f3f"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/lib/hooks/useDriverDetail.ts": {
+    "mtime": 1782580457.627045,
+    "ast_hash": "85046f5f3ebebffbaaecfad6822ee93b",
+    "semantic_hash": "85046f5f3ebebffbaaecfad6822ee93b"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/lib/hooks/useDrivers.ts": {
+    "mtime": 1782580457.6273458,
+    "ast_hash": "059df68406470c24be402d5058d0df2c",
+    "semantic_hash": "059df68406470c24be402d5058d0df2c"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/lib/hooks/useExceptions.ts": {
+    "mtime": 1782580457.627704,
+    "ast_hash": "dda42c3f582dd28f41c08ab36b488570",
+    "semantic_hash": "dda42c3f582dd28f41c08ab36b488570"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/lib/hooks/usePrecincts.ts": {
+    "mtime": 1782580457.6280043,
+    "ast_hash": "db54c226d1bf9a8fa65287ed9711baa9",
+    "semantic_hash": "db54c226d1bf9a8fa65287ed9711baa9"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/lib/hooks/useResizablePanel.ts": {
+    "mtime": 1782580457.6283817,
+    "ast_hash": "894b908b41144011ca2af28e2188da70",
+    "semantic_hash": "894b908b41144011ca2af28e2188da70"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/lib/hooks/useSLAMetrics.ts": {
+    "mtime": 1782580457.6286955,
+    "ast_hash": "9ef8d499cbb01c96a6aa8d54d97bb1f2",
+    "semantic_hash": "9ef8d499cbb01c96a6aa8d54d97bb1f2"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/lib/hooks/useStepIndicator.ts": {
+    "mtime": 1782580457.6289642,
+    "ast_hash": "ea5610e1da7ce5456b05d717dee73217",
+    "semantic_hash": "ea5610e1da7ce5456b05d717dee73217"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/lib/hooks/useToast.ts": {
+    "mtime": 1782580457.6291769,
+    "ast_hash": "16fd3c2cdd00f7eebce4e377037c9a99",
+    "semantic_hash": "16fd3c2cdd00f7eebce4e377037c9a99"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/lib/hooks/useTripDetail.ts": {
+    "mtime": 1782580457.6294687,
+    "ast_hash": "c76cbe97a6608aab67151145ee8b820b",
+    "semantic_hash": "c76cbe97a6608aab67151145ee8b820b"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/lib/hooks/useTrips.ts": {
+    "mtime": 1782580457.6297853,
+    "ast_hash": "a97c268d5ece89f6abb1b3087f68643e",
+    "semantic_hash": "a97c268d5ece89f6abb1b3087f68643e"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/lib/hooks/useVehicleDetail.ts": {
+    "mtime": 1782580457.6303449,
+    "ast_hash": "0d48ee88e19b8053a173fd835f9ca736",
+    "semantic_hash": "0d48ee88e19b8053a173fd835f9ca736"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/lib/hooks/useVehicles.ts": {
+    "mtime": 1782580457.6306236,
+    "ast_hash": "574bb0a55aa3596367e1755b0d83dcd3",
+    "semantic_hash": "574bb0a55aa3596367e1755b0d83dcd3"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/lib/hooks/useVerify.ts": {
+    "mtime": 1782580457.6308951,
+    "ast_hash": "787bcb9ef4de07a3d5f2e463b1b45fdf",
+    "semantic_hash": "787bcb9ef4de07a3d5f2e463b1b45fdf"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/lib/supabase/client.ts": {
+    "mtime": 1782580457.6313255,
+    "ast_hash": "b04a71d31a09eee3db6a120846edafff",
+    "semantic_hash": "b04a71d31a09eee3db6a120846edafff"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/lib/types/date-range.ts": {
+    "mtime": 1782580457.631563,
+    "ast_hash": "fe6896f44af9f7ebdf5cf8f1836213dd",
+    "semantic_hash": "fe6896f44af9f7ebdf5cf8f1836213dd"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/lib/types/user.ts": {
+    "mtime": 1782580457.6318316,
+    "ast_hash": "4738c05c6e4a16477fffe13b5727d987",
+    "semantic_hash": "4738c05c6e4a16477fffe13b5727d987"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/next-env.d.ts": {
+    "mtime": 1776885195.3290265,
+    "ast_hash": "ba64ff7d54714a8f64db89b1003207d8",
+    "semantic_hash": "ba64ff7d54714a8f64db89b1003207d8"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/next.config.js": {
+    "mtime": 1782580457.6320968,
+    "ast_hash": "fd37e91425ad85c93a904a88c6e1fab4",
+    "semantic_hash": "fd37e91425ad85c93a904a88c6e1fab4"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/package.json": {
+    "mtime": 1782580457.6337252,
+    "ast_hash": "b459df4eaf9dcec042e94f3c1a40483f",
+    "semantic_hash": "b459df4eaf9dcec042e94f3c1a40483f"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/postcss.config.js": {
+    "mtime": 1776885195.3295665,
+    "ast_hash": "8640f9b2e6475cc3f5b1ff4548925765",
+    "semantic_hash": "8640f9b2e6475cc3f5b1ff4548925765"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/tailwind.config.ts": {
+    "mtime": 1782580457.6347542,
+    "ast_hash": "79feecffdd4f6c02090fc5b198526528",
+    "semantic_hash": "79feecffdd4f6c02090fc5b198526528"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/dispatcher/tsconfig.json": {
+    "mtime": 1782580457.6352756,
+    "ast_hash": "3cd63b0b872b97a93ca0551b2586ecf2",
+    "semantic_hash": "3cd63b0b872b97a93ca0551b2586ecf2"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/android/app/build.gradle": {
+    "mtime": 1782580457.6367033,
+    "ast_hash": "a6cbb566bc82805932e6523516cde44b",
+    "semantic_hash": "a6cbb566bc82805932e6523516cde44b"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/android/app/capacitor.build.gradle": {
+    "mtime": 1782580457.6368823,
+    "ast_hash": "cefaa2481bb5940583f273b7c850a120",
+    "semantic_hash": "cefaa2481bb5940583f273b7c850a120"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/android/app/src/androidTest/java/com/getcapacitor/myapp/ExampleInstrumentedTest.java": {
+    "mtime": 1782580457.6375928,
+    "ast_hash": "fbaf7cc870c663eb52dcf218531c439d",
+    "semantic_hash": "fbaf7cc870c663eb52dcf218531c439d"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/android/app/src/main/assets/capacitor.config.json": {
+    "mtime": 1778488323.1631944,
+    "ast_hash": "c3256b226d4ff995eabdee9721f327ad",
+    "semantic_hash": "c3256b226d4ff995eabdee9721f327ad"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/android/app/src/main/assets/capacitor.plugins.json": {
+    "mtime": 1778488323.1818624,
+    "ast_hash": "276ad8dd61bc6d7966d91a9d3ce4df6a",
+    "semantic_hash": "276ad8dd61bc6d7966d91a9d3ce4df6a"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/android/app/src/main/java/za/ac/uct/freightproof/driver/MainActivity.java": {
+    "mtime": 1782580457.6384232,
+    "ast_hash": "98acce7b6388ac061b1023c96f5f05da",
+    "semantic_hash": "98acce7b6388ac061b1023c96f5f05da"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/android/app/src/test/java/com/getcapacitor/myapp/ExampleUnitTest.java": {
+    "mtime": 1782580457.6517975,
+    "ast_hash": "e91b4501c14da821682fa5c26a16d616",
+    "semantic_hash": "e91b4501c14da821682fa5c26a16d616"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/android/build.gradle": {
+    "mtime": 1782580457.6519628,
+    "ast_hash": "e5f1d2316416cc59540e87130ff0bf75",
+    "semantic_hash": "e5f1d2316416cc59540e87130ff0bf75"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/android/capacitor-cordova-android-plugins/build.gradle": {
+    "mtime": 1778488323.1932425,
+    "ast_hash": "13a885b925f99b619845018a13d508d3",
+    "semantic_hash": "13a885b925f99b619845018a13d508d3"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/android/capacitor-cordova-android-plugins/cordova.variables.gradle": {
+    "mtime": 1778488323.193397,
+    "ast_hash": "299becb7733b8720b74d289e3cb837f1",
+    "semantic_hash": "299becb7733b8720b74d289e3cb837f1"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/android/capacitor.settings.gradle": {
+    "mtime": 1782580457.6521425,
+    "ast_hash": "79669c0410df79819b83626ee8030c7f",
+    "semantic_hash": "79669c0410df79819b83626ee8030c7f"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/android/gradlew": {
+    "mtime": 1782580457.6537476,
+    "ast_hash": "0f777a49c656b3aba9ed0634916e8b4c",
+    "semantic_hash": "0f777a49c656b3aba9ed0634916e8b4c"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/android/settings.gradle": {
+    "mtime": 1782580457.6540961,
+    "ast_hash": "f6cd925b3f859e23c3d819fe2459e0e4",
+    "semantic_hash": "f6cd925b3f859e23c3d819fe2459e0e4"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/android/variables.gradle": {
+    "mtime": 1782580457.6542683,
+    "ast_hash": "d1e86fb0649ce4226bfb023e806aa6d8",
+    "semantic_hash": "d1e86fb0649ce4226bfb023e806aa6d8"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/app/dev/tokens/page.tsx": {
+    "mtime": 1782580457.654625,
+    "ast_hash": "3c06982b9d3b0fde2bf2300f652860c8",
+    "semantic_hash": "3c06982b9d3b0fde2bf2300f652860c8"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/app/layout.tsx": {
+    "mtime": 1782580457.6549954,
+    "ast_hash": "0024f106ae3c40ee3a710e5f98004450",
+    "semantic_hash": "0024f106ae3c40ee3a710e5f98004450"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/app/login/page.tsx": {
+    "mtime": 1782580457.6551619,
+    "ast_hash": "3e861dceab630e264559f2a8a8f0e6c6",
+    "semantic_hash": "3e861dceab630e264559f2a8a8f0e6c6"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/app/otp/page.tsx": {
+    "mtime": 1782580457.6553466,
+    "ast_hash": "851b1fb3c3b2b77219a0f73a9223a0df",
+    "semantic_hash": "851b1fb3c3b2b77219a0f73a9223a0df"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/app/page.tsx": {
+    "mtime": 1782580457.6555598,
+    "ast_hash": "2ea93532ddb094a136389b28044b2218",
+    "semantic_hash": "2ea93532ddb094a136389b28044b2218"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/app/sw.ts": {
+    "mtime": 1782580457.6557841,
+    "ast_hash": "66c5d741c9fa037a919db53f8f237279",
+    "semantic_hash": "66c5d741c9fa037a919db53f8f237279"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/app/trips/[id]/handshake/[step]/page.tsx": {
+    "mtime": 1782580457.6564379,
+    "ast_hash": "30f50275b6c79bc957f6aeaea5336bb0",
+    "semantic_hash": "30f50275b6c79bc957f6aeaea5336bb0"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/app/trips/[id]/page.tsx": {
+    "mtime": 1782580457.6573935,
+    "ast_hash": "f93451d95bff8afecccf422b643276dc",
+    "semantic_hash": "f93451d95bff8afecccf422b643276dc"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/app/trips/page.tsx": {
+    "mtime": 1782580457.657833,
+    "ast_hash": "197169deaa00a50f70e6cdd789751a7b",
+    "semantic_hash": "197169deaa00a50f70e6cdd789751a7b"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/capacitor.config.ts": {
+    "mtime": 1782580457.6583793,
+    "ast_hash": "3aa56737452ebd3b0e92a24114c8974d",
+    "semantic_hash": "3aa56737452ebd3b0e92a24114c8974d"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/components/ui/Button.tsx": {
+    "mtime": 1782580457.6591392,
+    "ast_hash": "1dabf65712ecfec16e55a7787e23a906",
+    "semantic_hash": "1dabf65712ecfec16e55a7787e23a906"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/components/ui/Card.tsx": {
+    "mtime": 1782580457.6594107,
+    "ast_hash": "0942824d072cd188e76148990323e118",
+    "semantic_hash": "0942824d072cd188e76148990323e118"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/components/ui/Chip.tsx": {
+    "mtime": 1782580457.659823,
+    "ast_hash": "38613fa03428de56da64cb6697c1e83c",
+    "semantic_hash": "38613fa03428de56da64cb6697c1e83c"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/components/ui/Drawer.tsx": {
+    "mtime": 1782580457.6600218,
+    "ast_hash": "273d03a98fb58c09fc9b3527eaccdf24",
+    "semantic_hash": "273d03a98fb58c09fc9b3527eaccdf24"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/components/ui/EmptyState.tsx": {
+    "mtime": 1782580457.6602545,
+    "ast_hash": "850bdc01611dac91542d935c4e05093e",
+    "semantic_hash": "850bdc01611dac91542d935c4e05093e"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/components/ui/IconButton.tsx": {
+    "mtime": 1782580457.660474,
+    "ast_hash": "2a13bf2fa7386ba3bad92e4bb4e82912",
+    "semantic_hash": "2a13bf2fa7386ba3bad92e4bb4e82912"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/components/ui/Input.tsx": {
+    "mtime": 1782580457.66064,
+    "ast_hash": "83ef74198bd69035a5f51fdf877cf5a7",
+    "semantic_hash": "83ef74198bd69035a5f51fdf877cf5a7"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/components/ui/Modal.tsx": {
+    "mtime": 1782580457.6608388,
+    "ast_hash": "1c5a2ad93196c7ad051242d5be73be03",
+    "semantic_hash": "1c5a2ad93196c7ad051242d5be73be03"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/components/ui/Skeleton.tsx": {
+    "mtime": 1782580457.6610518,
+    "ast_hash": "c39f154026fb2a5828941b5e9d038287",
+    "semantic_hash": "c39f154026fb2a5828941b5e9d038287"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/components/ui/Spinner.tsx": {
+    "mtime": 1782580457.6612391,
+    "ast_hash": "b903bbfba44efb82f69285e4333c94c5",
+    "semantic_hash": "b903bbfba44efb82f69285e4333c94c5"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/components/ui/Tabs.tsx": {
+    "mtime": 1782580457.6614265,
+    "ast_hash": "9088eb83bf98c73061345718082d0951",
+    "semantic_hash": "9088eb83bf98c73061345718082d0951"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/components/ui/TextArea.tsx": {
+    "mtime": 1782580457.6616108,
+    "ast_hash": "3e8a601e3d9d91f38ee7819190cb6b8f",
+    "semantic_hash": "3e8a601e3d9d91f38ee7819190cb6b8f"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/components/ui/Toast.tsx": {
+    "mtime": 1782580457.6618097,
+    "ast_hash": "ec897ba68d2f8068a6d71d8d9c2f0267",
+    "semantic_hash": "ec897ba68d2f8068a6d71d8d9c2f0267"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/eslint.config.mjs": {
+    "mtime": 1782580457.662118,
+    "ast_hash": "1feb1b5a4637b0dbbc07bedc897ef043",
+    "semantic_hash": "1feb1b5a4637b0dbbc07bedc897ef043"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/lib/constants/routes.ts": {
+    "mtime": 1782580457.6626384,
+    "ast_hash": "710f5c166f85f4e91c5ce73905d7293d",
+    "semantic_hash": "710f5c166f85f4e91c5ce73905d7293d"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/lib/constants/status-meta.ts": {
+    "mtime": 1782580457.6628437,
+    "ast_hash": "87c7ef64e80d59194e41fb22bd7dd7ab",
+    "semantic_hash": "87c7ef64e80d59194e41fb22bd7dd7ab"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/lib/context/AuthContext.tsx": {
+    "mtime": 1782580457.6636934,
+    "ast_hash": "cd094683c032096a66da3776fdce3af1",
+    "semantic_hash": "cd094683c032096a66da3776fdce3af1"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/lib/context/ToastContext.tsx": {
+    "mtime": 1782580457.6640673,
+    "ast_hash": "ea36ef86b5e17c748a0639ffafdfb533",
+    "semantic_hash": "ea36ef86b5e17c748a0639ffafdfb533"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/lib/context/TripContext.tsx": {
+    "mtime": 1782580457.664306,
+    "ast_hash": "6c3098102adf63d6bd247183545f7058",
+    "semantic_hash": "6c3098102adf63d6bd247183545f7058"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/lib/hooks/useAuth.ts": {
+    "mtime": 1782580457.664517,
+    "ast_hash": "85b28a49dedf5c5fbbd99c4f2c2ba7a4",
+    "semantic_hash": "85b28a49dedf5c5fbbd99c4f2c2ba7a4"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/lib/hooks/useExceptions.ts": {
+    "mtime": 1782580457.664659,
+    "ast_hash": "dda42c3f582dd28f41c08ab36b488570",
+    "semantic_hash": "dda42c3f582dd28f41c08ab36b488570"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/lib/hooks/useHoldToConfirm.ts": {
+    "mtime": 1782580457.6649628,
+    "ast_hash": "39d20b12958aeb697a030e98169dc1e2",
+    "semantic_hash": "39d20b12958aeb697a030e98169dc1e2"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/lib/hooks/useLocation.ts": {
+    "mtime": 1782580457.6652598,
+    "ast_hash": "aaa8a6206a91af6ec4d5902c38cdd519",
+    "semantic_hash": "aaa8a6206a91af6ec4d5902c38cdd519"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/lib/hooks/usePushNotifications.ts": {
+    "mtime": 1782580457.665611,
+    "ast_hash": "33101086c551a3c9fa309599c6e4a5f8",
+    "semantic_hash": "33101086c551a3c9fa309599c6e4a5f8"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/lib/hooks/useStepIndicator.ts": {
+    "mtime": 1782580457.6657698,
+    "ast_hash": "ea5610e1da7ce5456b05d717dee73217",
+    "semantic_hash": "ea5610e1da7ce5456b05d717dee73217"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/lib/hooks/useToast.ts": {
+    "mtime": 1782580457.6659145,
+    "ast_hash": "16fd3c2cdd00f7eebce4e377037c9a99",
+    "semantic_hash": "16fd3c2cdd00f7eebce4e377037c9a99"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/lib/hooks/useTrip.ts": {
+    "mtime": 1782580457.6662054,
+    "ast_hash": "f2065165d69276f538f99033308a061f",
+    "semantic_hash": "f2065165d69276f538f99033308a061f"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/lib/supabase.ts": {
+    "mtime": 1782580457.6665006,
+    "ast_hash": "d8cde037a3ef3547a833afc7319b1212",
+    "semantic_hash": "d8cde037a3ef3547a833afc7319b1212"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/lib/types/user.ts": {
+    "mtime": 1782580457.6670306,
+    "ast_hash": "c9945c5b9e947f15e1fc8f8ecfe380e4",
+    "semantic_hash": "c9945c5b9e947f15e1fc8f8ecfe380e4"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/next-env.d.ts": {
+    "mtime": 1782580457.6671345,
+    "ast_hash": "ba64ff7d54714a8f64db89b1003207d8",
+    "semantic_hash": "ba64ff7d54714a8f64db89b1003207d8"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/next.config.ts": {
+    "mtime": 1782580457.667504,
+    "ast_hash": "87957a1baf19b10157b2931b84d99e9c",
+    "semantic_hash": "87957a1baf19b10157b2931b84d99e9c"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/package.json": {
+    "mtime": 1782580457.6682155,
+    "ast_hash": "e703d7301bd6d5b2ab2f79be57b83f31",
+    "semantic_hash": "e703d7301bd6d5b2ab2f79be57b83f31"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/postcss.config.js": {
+    "mtime": 1782580457.6683187,
+    "ast_hash": "8640f9b2e6475cc3f5b1ff4548925765",
+    "semantic_hash": "8640f9b2e6475cc3f5b1ff4548925765"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/tailwind.config.ts": {
+    "mtime": 1782580457.670051,
+    "ast_hash": "690d473dc17f85e2285176d3cad8fd11",
+    "semantic_hash": "690d473dc17f85e2285176d3cad8fd11"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/tsconfig.json": {
+    "mtime": 1782580457.6703622,
+    "ast_hash": "46fa09b511522615c9f0c822d1758a84",
+    "semantic_hash": "46fa09b511522615c9f0c822d1758a84"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/shared/components/blockchain/BlockchainBadge.tsx": {
+    "mtime": 1782580457.672494,
+    "ast_hash": "60ffba19e283d5e08606ae277079c57d",
+    "semantic_hash": "60ffba19e283d5e08606ae277079c57d"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/shared/components/blockchain/EventTimeline.tsx": {
+    "mtime": 1782580457.673053,
+    "ast_hash": "d54efd28edd20ecd43f3b5de36182bde",
+    "semantic_hash": "d54efd28edd20ecd43f3b5de36182bde"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/shared/lib/constants/copy.ts": {
+    "mtime": 1782580457.6734962,
+    "ast_hash": "ddbe45d7934f118bc557bd2cc0c768e1",
+    "semantic_hash": "ddbe45d7934f118bc557bd2cc0c768e1"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/shared/lib/constants/handshake-meta.ts": {
+    "mtime": 1782580457.6741192,
+    "ast_hash": "a1f64ab928af981581a2a8f654fe3ea1",
+    "semantic_hash": "a1f64ab928af981581a2a8f654fe3ea1"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/shared/lib/constants/status-meta.ts": {
+    "mtime": 1782580457.674653,
+    "ast_hash": "0efe7d09a761ec985cb71ef28e1b69bf",
+    "semantic_hash": "0efe7d09a761ec985cb71ef28e1b69bf"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/shared/lib/mocks/checkpoints.ts": {
+    "mtime": 1782580457.6752114,
+    "ast_hash": "a35aa6740aef8d72786b51310b65a8f2",
+    "semantic_hash": "a35aa6740aef8d72786b51310b65a8f2"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/shared/lib/mocks/drivers.ts": {
+    "mtime": 1782580457.6756332,
+    "ast_hash": "2f9273ce40fabd20b53a49e574f8f302",
+    "semantic_hash": "2f9273ce40fabd20b53a49e574f8f302"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/shared/lib/mocks/exceptions.ts": {
+    "mtime": 1782580457.6769094,
+    "ast_hash": "b08018f69ef9faced8a43fc6658aea54",
+    "semantic_hash": "b08018f69ef9faced8a43fc6658aea54"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/shared/lib/mocks/index.ts": {
+    "mtime": 1782580457.6774716,
+    "ast_hash": "de267b41fa544e9aa35e9f795c7a8099",
+    "semantic_hash": "de267b41fa544e9aa35e9f795c7a8099"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/shared/lib/mocks/manifests.ts": {
+    "mtime": 1782580457.6778448,
+    "ast_hash": "5ecf0f33b7ae81f7274de924879c870e",
+    "semantic_hash": "5ecf0f33b7ae81f7274de924879c870e"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/shared/lib/mocks/precincts.ts": {
+    "mtime": 1782580457.678054,
+    "ast_hash": "18b87923a06e04a1bd40c03f8524c623",
+    "semantic_hash": "18b87923a06e04a1bd40c03f8524c623"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/shared/lib/mocks/principals.ts": {
+    "mtime": 1782580457.678318,
+    "ast_hash": "c631f79fee57390040ab324986acbbff",
+    "semantic_hash": "c631f79fee57390040ab324986acbbff"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/shared/lib/mocks/trips.ts": {
+    "mtime": 1782580457.678865,
+    "ast_hash": "a38a2af45ec99a10ba91cc0bf2da2699",
+    "semantic_hash": "a38a2af45ec99a10ba91cc0bf2da2699"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/shared/lib/mocks/vehicles.ts": {
+    "mtime": 1782580457.6791887,
+    "ast_hash": "78e5b6384d78f8baefdceed0a7e6f491",
+    "semantic_hash": "78e5b6384d78f8baefdceed0a7e6f491"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/shared/lib/types/blockchain.ts": {
+    "mtime": 1782580457.6802373,
+    "ast_hash": "5efa62cda4898360d7d30215dcb8384f",
+    "semantic_hash": "5efa62cda4898360d7d30215dcb8384f"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/shared/lib/types/checkpoint.ts": {
+    "mtime": 1782580457.680573,
+    "ast_hash": "1ed8befaa788a15ed2d42afb17f62bb2",
+    "semantic_hash": "1ed8befaa788a15ed2d42afb17f62bb2"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/shared/lib/types/driver.ts": {
+    "mtime": 1782580457.6813993,
+    "ast_hash": "82f15aed6b43c38ce1ad9d0a7f7f01d9",
+    "semantic_hash": "82f15aed6b43c38ce1ad9d0a7f7f01d9"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/shared/lib/types/evidence.ts": {
+    "mtime": 1782580457.681798,
+    "ast_hash": "f68877bd2f249b5554bffa33439bfb04",
+    "semantic_hash": "f68877bd2f249b5554bffa33439bfb04"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/shared/lib/types/exception.ts": {
+    "mtime": 1782580457.6825113,
+    "ast_hash": "e9113c141af93c9f1e02a1eff85eff9b",
+    "semantic_hash": "e9113c141af93c9f1e02a1eff85eff9b"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/shared/lib/types/handshake.ts": {
+    "mtime": 1782580457.6831722,
+    "ast_hash": "41b9786ca27afcc719c56538db0f3e4c",
+    "semantic_hash": "41b9786ca27afcc719c56538db0f3e4c"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/shared/lib/types/manifest.ts": {
+    "mtime": 1782580457.6834862,
+    "ast_hash": "c1a86334672f49825530270cc1b25d6a",
+    "semantic_hash": "c1a86334672f49825530270cc1b25d6a"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/shared/lib/types/precinct.ts": {
+    "mtime": 1782580457.6847835,
+    "ast_hash": "4f923dc73c9e82c547f9005c9393d572",
+    "semantic_hash": "4f923dc73c9e82c547f9005c9393d572"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/shared/lib/types/seal.ts": {
+    "mtime": 1782580457.6851776,
+    "ast_hash": "c87d024082ce74954d1bae5136d03f5a",
+    "semantic_hash": "c87d024082ce74954d1bae5136d03f5a"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/shared/lib/types/trip.ts": {
+    "mtime": 1782580457.6855464,
+    "ast_hash": "84ee879130ec48fa67ef7b9b5020397b",
+    "semantic_hash": "84ee879130ec48fa67ef7b9b5020397b"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/shared/lib/types/vehicle.ts": {
+    "mtime": 1782580457.6858773,
+    "ast_hash": "31cf1bfa74aed587e5a2842002ebcac3",
+    "semantic_hash": "31cf1bfa74aed587e5a2842002ebcac3"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/shared/lib/utils/cn.ts": {
+    "mtime": 1782580457.6862657,
+    "ast_hash": "d469a9441f29003c7ea377cb4a70fef9",
+    "semantic_hash": "d469a9441f29003c7ea377cb4a70fef9"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/shared/lib/validation/constants.ts": {
+    "mtime": 1782580457.6869166,
+    "ast_hash": "5a093c57616f38a1bec3e1c885b9bc2a",
+    "semantic_hash": "5a093c57616f38a1bec3e1c885b9bc2a"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/shared/lib/validation/driver.ts": {
+    "mtime": 1782580457.6877372,
+    "ast_hash": "7be9ee090e51d0a687d67294b7f82008",
+    "semantic_hash": "7be9ee090e51d0a687d67294b7f82008"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/shared/lib/validation/rules.ts": {
+    "mtime": 1782580457.6881087,
+    "ast_hash": "94858f54585a638b93e6a35994058220",
+    "semantic_hash": "94858f54585a638b93e6a35994058220"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/shared/lib/validation/vehicle.ts": {
+    "mtime": 1782580457.6884947,
+    "ast_hash": "79a0d1cb8a77f63797ff7b20047980cb",
+    "semantic_hash": "79a0d1cb8a77f63797ff7b20047980cb"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/shared/lib/z-index.ts": {
+    "mtime": 1782580457.6887221,
+    "ast_hash": "62c176d881ca6597822975420efb9b32",
+    "semantic_hash": "62c176d881ca6597822975420efb9b32"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/shared/tsconfig.json": {
+    "mtime": 1782580457.6890347,
+    "ast_hash": "cd4d07c40136781a765460e5feab8f86",
+    "semantic_hash": "cd4d07c40136781a765460e5feab8f86"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/rewrite_design.py": {
+    "mtime": 1778083309.0,
+    "ast_hash": "6a224b3fa5d4e3fd71b219f0693329ae",
+    "semantic_hash": "6a224b3fa5d4e3fd71b219f0693329ae"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/.github/workflows/ci.yml": {
+    "mtime": 1782580457.4917226,
+    "ast_hash": "5019131b3209ddbfa10ded8893ce6f7e",
+    "semantic_hash": "5019131b3209ddbfa10ded8893ce6f7e"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/CLAUDE.md": {
+    "mtime": 1782580457.4965088,
+    "ast_hash": "c856e96b40559474e3b74b7a94cb2381",
+    "semantic_hash": "c856e96b40559474e3b74b7a94cb2381"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/README.md": {
+    "mtime": 1782580457.499481,
+    "ast_hash": "3c4ea121cb24c7283ac6e830ae3b5840",
+    "semantic_hash": "3c4ea121cb24c7283ac6e830ae3b5840"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/docs/api_contract_dispatcher_driver.md": {
+    "mtime": 1782580457.5290642,
+    "ast_hash": "240bd681076bfb5ca4b3216d9f39231c",
+    "semantic_hash": "240bd681076bfb5ca4b3216d9f39231c"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/docs/superpowers/plans/2026-05-13-post-trips-endpoint.md": {
+    "mtime": 1782580457.5296478,
+    "ast_hash": "461b39c9872e14d89a2633ea5531e6d4",
+    "semantic_hash": "461b39c9872e14d89a2633ea5531e6d4"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/requirements.txt": {
+    "mtime": 1782580457.537437,
+    "ast_hash": "43d0cae4c8a21a33595589ae53e249f8",
+    "semantic_hash": "43d0cae4c8a21a33595589ae53e249f8"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/backend/scripts/README.md": {
+    "mtime": 1776885195.3263304,
+    "ast_hash": "c3f822b18ffef9520df698a58e6c509e",
+    "semantic_hash": "c3f822b18ffef9520df698a58e6c509e"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/docs/FreightProof_Frontend_Spec_v1.md": {
+    "mtime": 1782580457.5560806,
+    "ast_hash": "226a7c3c4d0e4f7f211cec85633383f7",
+    "semantic_hash": "226a7c3c4d0e4f7f211cec85633383f7"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/docs/FreightProof_Full_Picture_v6.md": {
+    "mtime": 1778076534.6374316,
+    "ast_hash": "3e1d979fc1187d07571c8774c751d065",
+    "semantic_hash": "3e1d979fc1187d07571c8774c751d065"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/docs/README.md": {
+    "mtime": 1776885195.3279338,
+    "ast_hash": "f545b56a417dd483497ca57516dd28b3",
+    "semantic_hash": "f545b56a417dd483497ca57516dd28b3"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/docs/db-models.md": {
+    "mtime": 1782580457.556855,
+    "ast_hash": "8b5204d3d3c23a2d492340a3a05a03b8",
+    "semantic_hash": "8b5204d3d3c23a2d492340a3a05a03b8"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/docs/design-notes/2026-06-24-driver-app-linehaul.md": {
+    "mtime": 1782580457.5575032,
+    "ast_hash": "e48cb6797b30afffcdb1efe6be94b9a1",
+    "semantic_hash": "e48cb6797b30afffcdb1efe6be94b9a1"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/docs/design-notes/2026-06-24-multi-stop-handshakes.md": {
+    "mtime": 1782580457.5580883,
+    "ast_hash": "fc28a232069f4c498cb8c8a15a85520b",
+    "semantic_hash": "fc28a232069f4c498cb8c8a15a85520b"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/docs/glossary.md": {
+    "mtime": 1782580457.5587516,
+    "ast_hash": "4826a57837aa0622c8795bca4b0eebd0",
+    "semantic_hash": "4826a57837aa0622c8795bca4b0eebd0"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/docs/iter2_kickoff_meeting.md": {
+    "mtime": 1782580457.5599425,
+    "ast_hash": "7b0e0353c5a835563b8cce56a334650c",
+    "semantic_hash": "7b0e0353c5a835563b8cce56a334650c"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/docs/iteration2_master_plan.md": {
+    "mtime": 1782580457.560583,
+    "ast_hash": "487a585f769809d61525a0cf35afd33a",
+    "semantic_hash": "487a585f769809d61525a0cf35afd33a"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/docs/iteration_1_erd.txt": {
+    "mtime": 1782580457.5610359,
+    "ast_hash": "3afffa8300caad5334ac13b75cbb3a4e",
+    "semantic_hash": "3afffa8300caad5334ac13b75cbb3a4e"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/docs/parcel-traceability.md": {
+    "mtime": 1782580457.5618951,
+    "ast_hash": "479889c5890b8abc3640580134b1e321",
+    "semantic_hash": "479889c5890b8abc3640580134b1e321"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/docs/scope-boundaries.md": {
+    "mtime": 1782580457.5718684,
+    "ast_hash": "2db13b00c8081974598a7eee1817ee0d",
+    "semantic_hash": "2db13b00c8081974598a7eee1817ee0d"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/docs/superpowers/plans/2026-05-03-db-schema.md": {
+    "mtime": 1777814948.4544096,
+    "ast_hash": "5775f951a8d63ed04ffa9038cb402663",
+    "semantic_hash": "5775f951a8d63ed04ffa9038cb402663"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/docs/superpowers/plans/2026-05-09-frontend-phase-0.md": {
+    "mtime": 1782580457.572937,
+    "ast_hash": "97f862d3e57809954bd68058310e2ec0",
+    "semantic_hash": "97f862d3e57809954bd68058310e2ec0"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/docs/superpowers/plans/2026-05-10-design-system-refresh.md": {
+    "mtime": 1782580457.5736406,
+    "ast_hash": "7668bf691abff8efe136b7ebce3dbc1b",
+    "semantic_hash": "7668bf691abff8efe136b7ebce3dbc1b"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/docs/superpowers/plans/2026-05-12-dispatcher-phase-1.md": {
+    "mtime": 1782580457.5743685,
+    "ast_hash": "4365b7b172a6c164937d576d6c7d342b",
+    "semantic_hash": "4365b7b172a6c164937d576d6c7d342b"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/docs/superpowers/plans/2026-05-13-backend-frontend-integration.md": {
+    "mtime": 1782580457.5748227,
+    "ast_hash": "faa548d6261d6a7a78c77ba361575756",
+    "semantic_hash": "faa548d6261d6a7a78c77ba361575756"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/docs/superpowers/plans/2026-05-13-dispatcher-ui-redesign.md": {
+    "mtime": 1782580457.5759354,
+    "ast_hash": "441dcaa753dbd02cd4e1a86977813a73",
+    "semantic_hash": "441dcaa753dbd02cd4e1a86977813a73"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/docs/superpowers/plans/2026-05-14-create-driver-vehicle.md": {
+    "mtime": 1782580457.5764153,
+    "ast_hash": "9e8a3ec592b2ee50eee2b8c3f3e99da0",
+    "semantic_hash": "9e8a3ec592b2ee50eee2b8c3f3e99da0"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/docs/superpowers/plans/2026-05-16-hedera-on-chain-recording.md": {
+    "mtime": 1782580457.5778127,
+    "ast_hash": "cbce612834c2ddbf3305dd0b8d140bcb",
+    "semantic_hash": "cbce612834c2ddbf3305dd0b8d140bcb"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/docs/superpowers/plans/2026-06-10-hardening-and-iter2-foundations.md": {
+    "mtime": 1782580457.5784447,
+    "ast_hash": "b605b06784fdbd3d6b4311fb62271a88",
+    "semantic_hash": "b605b06784fdbd3d6b4311fb62271a88"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/docs/superpowers/plans/2026-06-12-driver-pwa-handshakes.md": {
+    "mtime": 1782580457.5794933,
+    "ast_hash": "b1483e96f7a9e31cc0b2adcfe80053a6",
+    "semantic_hash": "b1483e96f7a9e31cc0b2adcfe80053a6"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/docs/superpowers/plans/2026-06-13-fp115-forensic-mode.md": {
+    "mtime": 1782580457.5800166,
+    "ast_hash": "2ed6f66eb6b4abd2b7cd7d8ef6a41f10",
+    "semantic_hash": "2ed6f66eb6b4abd2b7cd7d8ef6a41f10"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/docs/superpowers/plans/2026-06-19-dispatcher-forensic-view-ux.md": {
+    "mtime": 1782580457.5804982,
+    "ast_hash": "19a19c21a4ce0136d280b6fd07a99cbc",
+    "semantic_hash": "19a19c21a4ce0136d280b6fd07a99cbc"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/docs/superpowers/plans/2026-06-24-fp112-tripstop.md": {
+    "mtime": 1782580457.580918,
+    "ast_hash": "5b62506aa1080837dce33096ac628a6c",
+    "semantic_hash": "5b62506aa1080837dce33096ac628a6c"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/docs/superpowers/specs/2026-05-13-dispatcher-ui-redesign.md": {
+    "mtime": 1782580457.5813816,
+    "ast_hash": "35b48e0552438e5e0ab72d8b4ead595b",
+    "semantic_hash": "35b48e0552438e5e0ab72d8b4ead595b"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/docs/superpowers/specs/2026-05-16-hedera-on-chain-recording-design.md": {
+    "mtime": 1782580457.581798,
+    "ast_hash": "6670670232b7c6dae259e854d52748ba",
+    "semantic_hash": "6670670232b7c6dae259e854d52748ba"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/docs/superpowers/specs/2026-06-24-vehicle-detail-redesign-design.md": {
+    "mtime": 1782580457.582363,
+    "ast_hash": "7886de3ac9bb1e347badfec6c4d1bbe1",
+    "semantic_hash": "7886de3ac9bb1e347badfec6c4d1bbe1"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/docs/superpowers/specs/2026-06-25-admin-only-fleet-mutations-design.md": {
+    "mtime": 1782580457.5828383,
+    "ast_hash": "492d0b84237b4771701d1b89ee316f8b",
+    "semantic_hash": "492d0b84237b4771701d1b89ee316f8b"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/docs/superpowers/specs/2026-06-25-driver-pages-parity-design.md": {
+    "mtime": 1782580457.5833244,
+    "ast_hash": "0972144358df82faf1b3ec269051d4db",
+    "semantic_hash": "0972144358df82faf1b3ec269051d4db"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/docs/superpowers/specs/2026-06-25-driver-popia-erasure-design.md": {
+    "mtime": 1782580457.583662,
+    "ast_hash": "aa9f52ffeb7005ca23a4002f947d6ba9",
+    "semantic_hash": "aa9f52ffeb7005ca23a4002f947d6ba9"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/docs/superpowers/specs/2026-06-25-input-validation-and-error-feedback.md": {
+    "mtime": 1782580457.5840843,
+    "ast_hash": "1721018f4accd6a4271116ebf6175784",
+    "semantic_hash": "1721018f4accd6a4271116ebf6175784"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/DESIGN_SYSTEM.md": {
+    "mtime": 1782580457.586589,
+    "ast_hash": "6f1dcf8fd3a1254330b8a13e796ac243",
+    "semantic_hash": "6f1dcf8fd3a1254330b8a13e796ac243"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/client-portal/README.md": {
+    "mtime": 1776885195.328221,
+    "ast_hash": "434489b8e972ae15be308de8db7e2efb",
+    "semantic_hash": "434489b8e972ae15be308de8db7e2efb"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/frontend/driver-pwa/README.md": {
+    "mtime": 1782580457.635958,
+    "ast_hash": "082c9565bc3421536a3ee8c1fd7ec59a",
+    "semantic_hash": "082c9565bc3421536a3ee8c1fd7ec59a"
+  },
+  "/Users/ciaranformby/Desktop/freightproof-sa-4/spikes/README.md": {
+    "mtime": 1776885195.331159,
+    "ast_hash": "46d580c2616062038d859f917a5e1902",
+    "semantic_hash": "46d580c2616062038d859f917a5e1902"
   }
 }

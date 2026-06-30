@@ -81,11 +81,10 @@ function NavLink({ item, pathname, onClose }: { item: NavItem; pathname: string;
       href={item.href}
       onClick={onClose}
       className={cn(
-        'flex items-center gap-[9px] px-[18px] py-[9px] transition-all duration-[120ms]',
-        'border-l-[3px]',
+        'flex items-center gap-[9px] mx-2 px-[14px] py-[9px] rounded-md transition-all duration-[120ms]',
         active
-          ? 'bg-white/10 border-sec'
-          : 'border-transparent hover:bg-white/[0.06]',
+          ? 'bg-white/[0.13]'
+          : 'hover:bg-white/[0.06]',
       )}
     >
       <Ic
@@ -128,7 +127,7 @@ function SidebarContent({ onClose }: SidebarContentProps) {
   return (
     <div className="flex flex-col h-full bg-primary w-[220px] shrink-0">
       {/* Header — logo mark + wordmark + eyebrow */}
-      <div className="flex items-center gap-[10px] px-[18px] py-[18px] border-b border-white/[0.08]">
+      <div className="flex items-center gap-[10px] px-[18px] h-[60px] border-b border-white/[0.08]">
         {/* Hex logo mark — bg-sec container, white polygon, sec-coloured circle */}
         <div className="w-8 h-8 bg-primary rounded-md flex items-center justify-center shrink-0">
           <Shield className="w-4 h-4 text-white" />

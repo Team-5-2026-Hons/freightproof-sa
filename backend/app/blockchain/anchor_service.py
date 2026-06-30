@@ -4,17 +4,22 @@ This is the single function called sync today and async via Celery later.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
+import logging
 import uuid
 from datetime import datetime
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.blockchain.hedera import HederaService
+from app.blockchain.hedera import HederaService, HederaTimeoutError
+from app.core.config import settings
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import BlockchainReceiptType, SubjectType
+
+logger = logging.getLogger(__name__)
 
 
 def canonicalize_payload(payload: dict[str, Any]) -> str:
@@ -58,15 +63,36 @@ async def anchor_subject(
 ) -> BlockchainReceipt:
     """Hash the payload, submit to HCS, persist a BlockchainReceipt, return it.
 
-    Blocks ~4-6s on the Hedera SDK call. The caller is responsible for whether this
-    runs inside an HTTP request handler (demo path) or a Celery task (production path).
+    Typical latency ~4-6s on the Hedera SDK call. The caller is responsible for
+    whether this runs inside an HTTP request handler (demo path) or a Celery task
+    (production path).
 
-    Raises any HederaServiceError uncaught — the caller transaction should roll back.
+    submit_hash() is a synchronous SDK call with no built-in timeout, so it runs in
+    a worker thread (asyncio.to_thread) bounded by HEDERA_SUBMIT_TIMEOUT_SECONDS —
+    without this, a stalled Hedera/network call blocks the event loop indefinitely,
+    hanging every request the server is handling, not just this one.
+
+    Raises any HederaServiceError uncaught (including HederaTimeoutError on
+    timeout) — the caller transaction should roll back.
     """
     data_hash = compute_payload_hash(canonical_payload)
 
     service = hedera_service or HederaService()
-    hedera_receipt = service.submit_hash(data_hash)
+    timeout = settings.HEDERA_SUBMIT_TIMEOUT_SECONDS
+    try:
+        hedera_receipt = await asyncio.wait_for(
+            asyncio.to_thread(service.submit_hash, data_hash),
+            timeout=timeout,
+        )
+    except asyncio.TimeoutError as exc:
+        logger.error(
+            "Hedera submit_hash timed out after %.1fs (subject_type=%s, subject_id=%s)",
+            timeout, subject_type.value, subject_id,
+        )
+        raise HederaTimeoutError(
+            f"Hedera anchoring did not respond within {timeout:.0f}s. "
+            "The change was not saved — please retry."
+        ) from exc
 
     receipt = BlockchainReceipt(
         id=uuid.uuid4(),
