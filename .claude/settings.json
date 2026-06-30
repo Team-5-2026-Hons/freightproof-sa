@@ -80,7 +80,8 @@
       "Bash(sed -n '38,50p' /tmp/merge_preview.txt)",
       "Bash(sed -n '198,215p' /tmp/merge_preview.txt)",
       "Bash(sed -n '689,705p' /tmp/merge_preview.txt)",
-      "Bash(sed -n '1439,1455p' /tmp/merge_preview.txt)"
+      "Bash(sed -n '1439,1455p' /tmp/merge_preview.txt)",
+      "Bash(xargs cat *)"
     ],
     "additionalDirectories": [
       "/private/tmp"

@@ -7,33 +7,45 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "cap:sync": "next build && npx cap sync android",
+    "cap:open": "npx cap open android",
+    "cap:run": "next build && npx cap sync android && npx cap run android"
   },
   "dependencies": {
+    "@capacitor-community/background-geolocation": "^1.2.0",
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/camera": "^6.0.0",
+    "@capacitor/core": "^6.0.0",
+    "@capacitor/geolocation": "^6.0.0",
+    "@capacitor/push-notifications": "^6.0.0",
+    "@serwist/next": "^9.0.0",
+    "@supabase/supabase-js": "^2.43.0",
+    "framer-motion": "^12.40.0",
+    "lucide-react": "1.14.0",
     "next": "^15.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "lucide-react": "1.14.0",
-    "@serwist/next": "^9.0.0",
-    "serwist": "^9.0.0",
-    "@capacitor/core": "^6.0.0",
-    "@capacitor/android": "^6.0.0",
-    "@capacitor/camera": "^6.0.0",
-    "@capacitor/geolocation": "^6.0.0",
-    "@capacitor/push-notifications": "^6.0.0",
-    "@capacitor-community/background-geolocation": "^1.2.0",
-    "@supabase/supabase-js": "^2.43.0"
+    "serwist": "^9.0.0"
   },
   "devDependencies": {
     "@capacitor/cli": "^6.0.0",
+    "@testing-library/jest-dom": "^6.4.0",
+    "@testing-library/react": "^16.0.0",
     "@types/node": "^20.12.12",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "@vitest/ui": "^2.0.0",
     "autoprefixer": "^10.4.19",
     "eslint": "^9.39.4",
     "eslint-config-next": "^16.2.6",
+    "jsdom": "^24.0.0",
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.3",
-    "typescript": "^5.5.0"
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
   }
 }

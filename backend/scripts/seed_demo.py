@@ -77,9 +77,12 @@ async def seed():
             ("Cape Town Depot (Epping)",    Decimal("-33.9249"), Decimal("18.4241")),
             ("Johannesburg Depot (Linbro)", Decimal("-26.2041"), Decimal("28.0473")),
         ]:
+            # is_shared=True: demo client's depots must stay visible to the
+            # demo operator dispatcher under the new per-org precinct scoping.
             await upsert(Precinct, Precinct.name, name,
                          name=name, principal_organization_id=_DEMO_CLIENT_ORG_ID,
-                         latitude=lat, longitude=lng, geofence_radius_metres=200)
+                         latitude=lat, longitude=lng, geofence_radius_metres=200,
+                         is_shared=True)
 
         await db.commit()
         print("Demo seed complete")

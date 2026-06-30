@@ -16,6 +16,7 @@ export const TRIP_0039_ID = tripId('9a0b1c2d-3e4f-4a5b-8c7d-8e9f0a1b2c3d')
 export const TRIP_0040_ID = tripId('0b1c2d3e-4f5a-4b6c-8d8e-9f0a1b2c3d4e')
 export const TRIP_0041_ID = tripId('1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f')
 export const TRIP_0042_ID = tripId('2d3e4f5a-6b7c-4d8e-9f0a-1b2c3d4e5f6a')
+export const TRIP_0043_ID = tripId('3e4f5a6b-7c8d-4e9f-8a0b-1c2d3e4f5a6b')
 
 // Returns a fully-null pending HandshakeEvent — used for not-yet-started handshakes.
 function pendingHE(
@@ -687,5 +688,36 @@ export const mockTrips: Trip[] = [
     ],
     created_at: '2026-05-08T14:00:00Z',
     updated_at: '2026-05-09T07:41:00Z',
+  },
+
+  // TRP-2026-0043 — created, not yet started (upcoming for Dlamini)
+  {
+    id: TRIP_0043_ID,
+    trip_reference: 'TRP-2026-0043',
+    order_number: 'FX-ORD-2026-0043',
+    status: 'created',
+    journey_lock_hash: null,
+    idvs_check_status: 'pending',
+    origin_precinct_id: PRECINCT_FEDEX_JHB_ID,
+    destination_precinct_id: PRECINCT_FEDEX_DBN_ID,
+    pulsit_trip_reference_id: null,
+    planned_departure_at: '2026-06-25T07:00:00Z',
+    actual_departure_at: null,
+    planned_arrival_at: '2026-06-25T16:00:00Z',
+    actual_arrival_at: null,
+    closed_at: null,
+    driver: mockDrivers.find(d => d.id === DRIVER_DLAMINI_ID) ?? null,
+    // HORSE_2_ID, not HORSE_1_ID: HORSE_1_ID is already committed to TRP-2026-0041
+    // (in_transit, no actual_arrival_at/closed_at) — reusing it here would imply the
+    // same horse is simultaneously still on the road and assigned to a new future trip.
+    // HORSE_2_ID's only open assignment (TRP-2026-0040) is at dest_gate_in, the
+    // second-to-last handshake, making it the most-resolved open conflict in the mock set.
+    horse: mockHorses.find(h => h.id === HORSE_2_ID) ?? null,
+    trailers: mockTrailers.filter(t => t.id === TRAILER_2_ID),
+    handshakes: [],
+    exceptions: [],
+    blockchain_receipts: [],
+    created_at: '2026-06-22T09:00:00Z',
+    updated_at: '2026-06-22T09:00:00Z',
   },
 ]

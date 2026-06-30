@@ -1,5 +1,6 @@
 """Pydantic v2 schemas for HandshakeEvent and TrailerGpsSnapshot."""
 
+import re
 from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
@@ -43,6 +44,7 @@ class HandshakeEventUpdate(BaseModel):
     waybill_photo_artifact_id: Optional[UUID] = None
     gate_photo_artifact_id: Optional[UUID] = None
     pod_photo_artifact_id: Optional[UUID] = None
+    pod_signature_artifact_id: Optional[UUID] = None
     parcel_manifest_snapshot: Optional[Any] = None
     parcel_count_origin: Optional[int] = None
     parcel_count_destination: Optional[int] = None
@@ -67,6 +69,7 @@ class HandshakeEventRead(HandshakeEventBase):
     waybill_photo_artifact_id: Optional[UUID] = None
     gate_photo_artifact_id: Optional[UUID] = None
     pod_photo_artifact_id: Optional[UUID] = None
+    pod_signature_artifact_id: Optional[UUID] = None
     parcel_manifest_snapshot: Optional[Any] = None
     parcel_count_origin: Optional[int] = None
     parcel_count_destination: Optional[int] = None
@@ -96,3 +99,54 @@ class TrailerGpsSnapshotCreate(TrailerGpsSnapshotBase):
 class TrailerGpsSnapshotRead(TrailerGpsSnapshotBase):
     id: UUID
     created_at: datetime
+
+
+_SEAL_PATTERN = re.compile(r"^[A-Z]{2}-\d{4}$")
+
+
+def _validate_seal_format(v: str) -> str:
+    if not _SEAL_PATTERN.match(v):
+        raise ValueError("seal number must be in format XX-#### (e.g. AB-1234)")
+    return v
+
+
+class H1CompleteRequest(BaseModel):
+    driver_phone_lat: Decimal
+    driver_phone_lng: Decimal
+    gate_photo_artifact_id: UUID
+
+
+class H2CompleteRequest(BaseModel):
+    waybill_photo_artifact_id: UUID
+    seal_number: str
+    seal_photo_artifact_id: UUID
+    driver_visual_count: int
+
+    @field_validator("seal_number")
+    @classmethod
+    def validate_seal_number(cls, v: str) -> str:
+        return _validate_seal_format(v)
+
+
+class H3CompleteRequest(BaseModel):
+    gate_exit_photo_artifact_id: UUID
+    guard_verified_seal: bool
+
+
+class H4CompleteRequest(BaseModel):
+    gate_entry_photo_artifact_id: UUID
+    seal_number_at_destination: str
+
+    @field_validator("seal_number_at_destination")
+    @classmethod
+    def validate_seal_number(cls, v: str) -> str:
+        return _validate_seal_format(v)
+
+
+class H5CompleteRequest(BaseModel):
+    # BQ2 resolved 2026-06-29: proof of delivery is a photo AND an on-device
+    # signature — both required, not either/or.
+    pod_photo_artifact_id: UUID
+    pod_signature_artifact_id: UUID
+    driver_visual_count: int
+    pp_scan_in_count: int

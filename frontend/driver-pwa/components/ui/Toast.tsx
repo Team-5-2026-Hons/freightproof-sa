@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, type ReactNode } from 'react'
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { X, CheckCircle2, AlertTriangle, Info, ShieldAlert } from 'lucide-react'
 import { cn } from '@shared/lib/utils/cn'
 
@@ -28,6 +29,7 @@ const kindConfig: Record<ToastKind, { icon: ReactNode; accent: string; role: 'st
 
 function ToastItem({ toast, onDismiss }: ToastItemProps) {
   const { icon, accent, role } = kindConfig[toast.kind]
+  const reduceMotion = useReducedMotion()
 
   useEffect(() => {
     if (toast.sticky || toast.kind === 'error') return
@@ -36,8 +38,13 @@ function ToastItem({ toast, onDismiss }: ToastItemProps) {
   }, [toast, onDismiss])
 
   return (
-    <div
+    <motion.div
       role={role}
+      layout
+      initial={reduceMotion ? false : { opacity: 0, y: 12, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={reduceMotion ? { opacity: 0 } : { opacity: 0, x: 24, transition: { duration: 0.15 } }}
+      transition={{ duration: 0.2, ease: 'easeOut' }}
       className={cn(
         'flex items-start gap-3 w-full max-w-sm px-4 py-3 pr-3',
         'bg-surface-container-lowest rounded-xl shadow-ambient',
@@ -57,7 +64,7 @@ function ToastItem({ toast, onDismiss }: ToastItemProps) {
       >
         <X className="w-3 h-3" />
       </button>
-    </div>
+    </motion.div>
   )
 }
 
@@ -66,7 +73,7 @@ interface ToastViewportProps {
   onDismiss: (id: string) => void
 }
 
-// Render once inside DispatcherShell. Consumers call useToast().notify() — never render this directly.
+// Render once inside ToastProvider. Consumers call useToast().notify() — never render this directly.
 export function ToastViewport({ toasts, onDismiss }: ToastViewportProps) {
   return (
     <div
@@ -74,9 +81,11 @@ export function ToastViewport({ toasts, onDismiss }: ToastViewportProps) {
       aria-atomic="false"
       className="fixed bottom-6 right-6 z-[80] flex flex-col gap-3 items-end"
     >
-      {toasts.slice(0, 3).map((toast) => (
-        <ToastItem key={toast.id} toast={toast} onDismiss={onDismiss} />
-      ))}
+      <AnimatePresence initial={false}>
+        {toasts.slice(0, 3).map((toast) => (
+          <ToastItem key={toast.id} toast={toast} onDismiss={onDismiss} />
+        ))}
+      </AnimatePresence>
     </div>
   )
 }

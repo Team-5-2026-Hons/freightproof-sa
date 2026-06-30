@@ -27,16 +27,17 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.db.models.enums import DispatcherRole
-from app.db.models.people import User
+from app.db.models.enums import DispatcherRole, IdvsStatus
+from app.db.models.people import Driver, User
 from app.db.session import get_db
-from app.schemas.people import UserRead
+from app.schemas.people import DriverRead, UserRead
 
 _bearer = HTTPBearer(auto_error=False)
 
 _ALGORITHMS = ["ES256"]
 _AUDIENCE = "authenticated"
 _DISPATCHER_ROLES = {DispatcherRole.DISPATCHER, DispatcherRole.ADMIN_DISPATCHER}
+_DRIVER_ROLE = "driver"
 
 # Fixed stub identity used in DEMO_MODE — must match the org created by DB seeds.
 _DEMO_USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
@@ -52,6 +53,23 @@ _DEMO_USER = UserRead(
     created_at=_DEMO_NOW,
     updated_at=_DEMO_NOW,
     role=DispatcherRole.ADMIN_DISPATCHER,
+)
+
+_DEMO_DRIVER_ID = uuid.UUID("00000000-0000-0000-0000-000000000003")
+
+_DEMO_DRIVER = DriverRead(
+    id=_DEMO_DRIVER_ID,
+    organization_id=_DEMO_ORG_ID,
+    full_name="Demo Driver",
+    id_number="8001015009087",
+    phone_number="+27800000000",
+    license_number="DEMO-001",
+    license_expiry=None,
+    idvs_status=IdvsStatus.VERIFIED,
+    idvs_last_verified_at=_DEMO_NOW,
+    is_active=True,
+    created_at=_DEMO_NOW,
+    updated_at=_DEMO_NOW,
 )
 
 
@@ -156,6 +174,19 @@ def _require_dispatcher_role(payload: dict) -> DispatcherRole:
     return role
 
 
+def _require_driver_role(payload: dict) -> None:
+    """Raise HTTP 403 unless the JWT's app_metadata.role is "driver".
+
+    Mirrors _require_dispatcher_role — role lives in app_metadata (set by
+    service_role at account creation), never in user_metadata.
+    """
+    if (payload.get("app_metadata") or {}).get("role") != _DRIVER_ROLE:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Driver role required.",
+        )
+
+
 async def get_current_dispatcher(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
     db: AsyncSession = Depends(get_db),
@@ -218,6 +249,56 @@ async def require_admin_dispatcher(
             detail="Admin dispatcher role required.",
         )
     return current_user
+
+
+async def get_current_driver(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+    db: AsyncSession = Depends(get_db),
+) -> DriverRead:
+    """Return the authenticated driver for the current request, or raise 401/403.
+
+    Used as a FastAPI dependency:
+        async def my_endpoint(driver: DriverRead = Depends(get_current_driver)):
+    """
+    if settings.DEMO_MODE:
+        return _DEMO_DRIVER
+
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Missing authentication credentials.",
+        )
+
+    payload = _decode_token(credentials.credentials)
+    _require_driver_role(payload)
+
+    try:
+        driver_id = uuid.UUID(payload["sub"])
+    except (KeyError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token subject is missing or not a valid UUID.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    result = await db.execute(select(Driver).where(Driver.id == driver_id))
+    driver = result.scalar_one_or_none()
+
+    if driver is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Driver account not found.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if not driver.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Driver account is inactive.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return DriverRead.model_validate(driver)
 
 
 # Guard: DEMO_MODE must never be enabled in production — it bypasses all authentication.

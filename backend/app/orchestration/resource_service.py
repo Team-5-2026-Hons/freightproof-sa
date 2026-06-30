@@ -32,8 +32,20 @@ from app.schemas.trips import TripDetailResponse, TripListItemResponse
 from app.schemas.vehicles import VehicleRead
 
 
-async def list_precincts(db: AsyncSession) -> list[PrecinctRead]:
-    result = await db.execute(select(Precinct).order_by(Precinct.name))
+async def list_precincts(db: AsyncSession, organization_id: uuid.UUID) -> list[PrecinctRead]:
+    """Return precincts owned by organization_id, plus any precinct marked is_shared.
+
+    Precincts default to private to their principal_organization_id — a precinct
+    is only visible to other orgs' dispatchers if explicitly opted in via is_shared.
+    """
+    result = await db.execute(
+        select(Precinct)
+        .where(
+            (Precinct.principal_organization_id == organization_id)
+            | (Precinct.is_shared.is_(True))
+        )
+        .order_by(Precinct.name)
+    )
     return [PrecinctRead.model_validate(p) for p in result.scalars().all()]
 
 
