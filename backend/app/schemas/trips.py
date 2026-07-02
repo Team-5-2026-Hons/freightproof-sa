@@ -308,16 +308,29 @@ class DeliveryStopManifest(BaseModel):
     parcels: list[ParcelRead]
 
 
+class ConsignmentManifest(BaseModel):
+    """One consignment's slice of the manifest — multi-client trips return one per client
+    booking (FP-112). Grouping by consignment is what lets evidence be cut per client."""
+    model_config = ConfigDict(from_attributes=True)
+
+    consignment_id: UUID
+    parcel_perfect_reference: str
+    client_organization_id: UUID
+    # Consolidated-unit grain (pallets) — dispatcher-entered, distinct from parcel grain.
+    unit_count_expected: Optional[int] = None
+    total_parcel_count: int
+    origin_scan_complete: bool
+    stops: list[DeliveryStopManifest]
+
+
 class ManifestResponse(BaseModel):
     """Full per-parcel manifest — dispatcher only. Never sent to the driver PWA."""
     model_config = ConfigDict(from_attributes=True)
 
     trip_id: UUID
-    consignment_id: UUID
-    parcel_perfect_reference: str
     total_parcel_count: int
     origin_scan_complete: bool
-    stops: list[DeliveryStopManifest]
+    consignments: list[ConsignmentManifest]
     pulled_at: datetime
 
 

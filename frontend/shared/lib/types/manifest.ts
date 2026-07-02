@@ -20,21 +20,31 @@ export interface Parcel {
   updated_at: string
 }
 
-// Parcels grouped by delivery stop — the shape the driver sees on the H2 loading screen.
+// Parcels grouped by delivery stop — dispatcher-only view; the driver's H2 screen only
+// ever receives Linehaul, never per-stop/per-parcel detail.
 export interface DeliveryStop {
   delivery_stop: string
   parcel_count: number
   parcels: Parcel[]
 }
 
-export interface Manifest {
-  trip_id: string
+// One consignment's slice of the manifest — multi-client trips return one per client (FP-112).
+export interface ConsignmentManifest {
   consignment_id: string
   parcel_perfect_reference: string
+  client_organization_id: string
+  // Consolidated-unit grain (pallets) — distinct from parcel grain.
+  unit_count_expected: number | null
   total_parcel_count: number
-  // True once every parcel has a pp_scan_out_at timestamp from Parcel Perfect.
   origin_scan_complete: boolean
   stops: DeliveryStop[]
+}
+
+export interface Manifest {
+  trip_id: string
+  total_parcel_count: number
+  origin_scan_complete: boolean
+  consignments: ConsignmentManifest[]
   pulled_at: string
 }
 
