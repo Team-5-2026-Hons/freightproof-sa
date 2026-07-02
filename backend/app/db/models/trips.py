@@ -7,7 +7,7 @@ from typing import Any, Optional
 
 from sqlalchemy import (
     Boolean, DateTime, ForeignKey, Integer, Numeric,
-    PrimaryKeyConstraint, String, Text,
+    PrimaryKeyConstraint, String, Text, UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -67,6 +67,23 @@ class Consignment(Base):
     slot_time_origin: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     slot_time_destination: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     pp_raw_json: Mapped[Optional[Any]] = mapped_column(JSONB, nullable=True)
+    # The stop realising this consignment's origin/destination on the assigned trip's route.
+    # A TripStop has no inherent role — it's an origin/destination only via these links (FP-112).
+    pickup_stop_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("trip_stops.id"), nullable=True
+    )
+    delivery_stop_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("trip_stops.id"), nullable=True
+    )
+    # Recorded evidence only (door vs bulkhead) — FreightProof records freight position,
+    # it does not enforce loading order (scope-boundaries.md §3).
+    load_priority: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # Consolidated-unit grain (pallets), distinct from parcel-grain parcel_count_expected.
+    # PP cannot supply this — pallet grain is LFG's — so it's populated outside the PP pull.
+    unit_count_expected: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # Snapshot of the PP waybill's "manifest" field (last manifest number), distinct from
+    # parcel_perfect_reference which is the PP waybill number itself.
+    pp_manifest_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
@@ -105,8 +122,9 @@ class Trip(Base):
     operator_organization_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False
     )
-    client_organization_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False
+    # Nullable: client now lives per-consignment (multi-client trips have no single client_organization_id).
+    client_organization_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=True
     )
     driver_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("drivers.id"), nullable=False
@@ -114,11 +132,12 @@ class Trip(Base):
     horse_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("vehicles.id"), nullable=False
     )
-    origin_precinct_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("precincts.id"), nullable=False
+    # Nullable: derived convenience (= precinct of the earliest/latest TripStop) for multi-stop trips.
+    origin_precinct_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("precincts.id"), nullable=True
     )
-    destination_precinct_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("precincts.id"), nullable=False
+    destination_precinct_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("precincts.id"), nullable=True
     )
     pulsit_trip_reference_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     template_id: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -140,6 +159,33 @@ class Trip(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
     closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class TripStop(Base):
+    """A sequenced waypoint on a trip's route.
+
+    No origin/destination type is stored here — the same physical stop can be an
+    origin for one consignment and a destination for another. Role is derived from
+    which Consignment rows point pickup_stop_id/delivery_stop_id at this stop.
+    """
+
+    __tablename__ = "trip_stops"
+    __table_args__ = (
+        UniqueConstraint("trip_id", "sequence", name="uq_trip_stops_trip_id_sequence"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    trip_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("trips.id"), nullable=False)
+    precinct_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("precincts.id"), nullable=False
+    )
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    slot_time: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
 
 
 class TripTrailer(Base):
