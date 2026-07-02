@@ -2,5 +2,15 @@
   "built_at": "2026-06-27",
   "input_tokens": 0,
   "output_tokens": 0,
-  "model": "claude-sonnet-4-6"
+  "model": "claude-sonnet-4-6",
+  "runs": [
+    {
+      "date": "2026-07-02T13:27:53.259688+00:00",
+      "input_tokens": 823416,
+      "output_tokens": 0,
+      "files": 190
+    }
+  ],
+  "total_input_tokens": 823416,
+  "total_output_tokens": 0
 }
