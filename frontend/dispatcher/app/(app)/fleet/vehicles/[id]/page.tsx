@@ -24,6 +24,7 @@ import { api } from '@/lib/api/client'
 import { ROUTES } from '@/lib/constants/routes'
 import { validateVehicleForm, vinFieldFeedback, VEHICLE_FIELD_ORDER, type VehicleField } from '@shared/lib/validation/vehicle'
 import { VIN_LENGTH } from '@shared/lib/validation/constants'
+import { AdminOnly } from '@/components/auth/AdminOnly'
 
 type EditState = {
   registration: string
@@ -201,11 +202,13 @@ export default function VehicleDetailPage() {
             <div className="text-[11px] font-[700] tracking-[0.1em] uppercase text-on-surf-v">
               Vehicle Info
             </div>
-            {!isEditing && (
-              <Button variant="secondary" size="sm" onClick={startEdit}>
-                Edit
-              </Button>
-            )}
+            <AdminOnly>
+              {!isEditing && (
+                <Button variant="secondary" size="sm" onClick={startEdit}>
+                  Edit
+                </Button>
+              )}
+            </AdminOnly>
           </div>
 
           {isEditing && form ? (

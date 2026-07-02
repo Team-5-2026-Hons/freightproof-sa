@@ -52,7 +52,7 @@ _DEMO_USER = UserRead(
     is_active=True,
     created_at=_DEMO_NOW,
     updated_at=_DEMO_NOW,
-    role=DispatcherRole.DISPATCHER,
+    role=DispatcherRole.ADMIN_DISPATCHER,
 )
 
 _DEMO_DRIVER_ID = uuid.UUID("00000000-0000-0000-0000-000000000003")

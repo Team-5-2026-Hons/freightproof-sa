@@ -1,0 +1,13 @@
+getPlacesByName Request,,,,,,,
+SOAP,JSON,Type,Length,Format,Mandatory,Description,Notes
+name,name,string,[50],,M,name or partial name in place list to search for,
+getPlacesByName Response,,,,,,,
+SOAP,JSON,Type,Length,Format,Mandatory,Description,Notes
+errorcode,errorcode,Integer,,,,An integer errorcode. If 0 then there was no error else an error occurred,
+errormessage,errormessage,String,[500],,,The error message if errorcode is a non-zero value,
+results,results,Array,[..],,,An array of results which will always have a single element if non-null,
+getPlacesByName Response[results],,,,,,,
+SOAP,JSON,Type,Length,Format,Mandatory,Description,Notes
+town,town,string,,,,returns a list of places/towns,
+place,place,integer,,,,town name,
+pcode,pcode,string,,,,internal identifier for place/town,

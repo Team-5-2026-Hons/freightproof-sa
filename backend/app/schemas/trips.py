@@ -57,6 +57,11 @@ class ConsignmentBase(BaseModel):
     slot_time_origin: Optional[datetime] = None
     slot_time_destination: Optional[datetime] = None
     pp_raw_json: Optional[Any] = None
+    pickup_stop_id: Optional[UUID] = None
+    delivery_stop_id: Optional[UUID] = None
+    load_priority: Optional[int] = None
+    unit_count_expected: Optional[int] = None
+    pp_manifest_number: Optional[int] = None
 
 
 class ConsignmentCreate(ConsignmentBase):
@@ -71,6 +76,11 @@ class ConsignmentUpdate(BaseModel):
     slot_time_origin: Optional[datetime] = None
     slot_time_destination: Optional[datetime] = None
     pp_raw_json: Optional[Any] = None
+    pickup_stop_id: Optional[UUID] = None
+    delivery_stop_id: Optional[UUID] = None
+    load_priority: Optional[int] = None
+    unit_count_expected: Optional[int] = None
+    pp_manifest_number: Optional[int] = None
 
 
 class ConsignmentRead(ConsignmentBase):
@@ -229,24 +239,59 @@ class DriverSubstitutionRead(DriverSubstitutionBase):
     created_at: datetime
 
 
+class TripStopBase(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    precinct_id: UUID
+    sequence: int = Field(..., ge=0)
+    slot_time: Optional[datetime] = None
+    notes: Optional[str] = None
+
+
+class TripStopCreate(TripStopBase):
+    pass
+
+
+class TripStopRead(TripStopBase):
+    id: UUID
+    trip_id: UUID
+    created_at: datetime
+    updated_at: datetime
+
+
 class TripCreateRequest(BaseModel):
     """Dispatcher-facing trip creation payload — excludes auto-generated and JWT-derived fields."""
 
     order_number: str = Field(..., min_length=1)
-    client_organization_id: UUID
+    # Nullable: a multi-stop/multi-client trip has no single client_organization_id
+    # (client lives per-consignment instead) — FP-112.
+    client_organization_id: Optional[UUID] = None
     driver_id: UUID
     horse_id: UUID
     trailer_ids: list[UUID] = Field(default_factory=list, min_length=1)
-    origin_precinct_id: UUID
-    destination_precinct_id: UUID
+    # Required only when `stops` is omitted (single-leg back-compat path, FP-112 A.3).
+    origin_precinct_id: Optional[UUID] = None
+    destination_precinct_id: Optional[UUID] = None
+    # Explicit multi-stop route. When omitted, create_trip() synthesises two stops
+    # from origin_precinct_id/destination_precinct_id (FP-112 A.3).
+    stops: Optional[list[TripStopCreate]] = Field(default=None, min_length=2)
     template_id: Optional[UUID] = None
     planned_departure_at: Optional[datetime] = None
     planned_arrival_at: Optional[datetime] = None
 
     @model_validator(mode="after")
     def validate_request(self) -> "TripCreateRequest":
-        if self.origin_precinct_id == self.destination_precinct_id:
-            raise ValueError("origin and destination precincts must differ")
+        if self.stops is None:
+            if self.origin_precinct_id is None or self.destination_precinct_id is None:
+                raise ValueError(
+                    "origin_precinct_id and destination_precinct_id are required when stops is omitted"
+                )
+            if self.origin_precinct_id == self.destination_precinct_id:
+                raise ValueError("origin and destination precincts must differ")
+        else:
+            sequences = [stop.sequence for stop in self.stops]
+            if len(sequences) != len(set(sequences)):
+                raise ValueError("stop sequence numbers must be unique")
         if self.planned_departure_at and self.planned_arrival_at:
             if self.planned_arrival_at <= self.planned_departure_at:
                 raise ValueError("planned_arrival_at must be after planned_departure_at")
@@ -309,6 +354,7 @@ class TripDetailResponse(BaseModel):
     trailers: list[VehicleRead]
     origin_precinct_id: UUID
     destination_precinct_id: UUID
+    stops: list[TripStopRead]
     pulsit_trip_reference_id: Optional[str] = None
     planned_departure_at: Optional[datetime] = None
     actual_departure_at: Optional[datetime] = None
