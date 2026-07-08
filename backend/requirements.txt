@@ -43,5 +43,6 @@ pillow>=11.0.0,<12.0.0
 # Dev & testing
 pytest>=8.3.0,<9.0.0
 pytest-asyncio>=0.24.0,<1.0.0
+respx>=0.21.0,<1.0.0  # httpx transport mock — PP client unit tests
 ruff>=0.7.0,<1.0.0
 mypy>=1.13.0,<2.0.0

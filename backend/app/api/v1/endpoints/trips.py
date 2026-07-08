@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_dispatcher, get_current_driver
 from app.db.models.enums import DispatcherRole
-from app.core.exceptions import ResourceNotFoundError, TripConflictError
+from app.core.exceptions import PPSyncError, ResourceNotFoundError, TripConflictError
 from app.db.models.enums import TripStatus
 from app.db.session import get_db
 from app.orchestration.resource_service import get_trip_detail, list_trips
@@ -47,6 +47,11 @@ async def create_trip_endpoint(
     """
     try:
         return await create_trip(db=db, payload=payload, current_user=current_user)
+    except PPSyncError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Parcel Perfect sync failed: {exc.reason}",
+        ) from exc
     except TripConflictError as exc:
         raise HTTPException(
             status_code=http_status.HTTP_409_CONFLICT,

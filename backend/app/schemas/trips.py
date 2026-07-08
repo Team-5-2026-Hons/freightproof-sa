@@ -242,6 +242,7 @@ class TripCreateRequest(BaseModel):
     template_id: Optional[UUID] = None
     planned_departure_at: Optional[datetime] = None
     planned_arrival_at: Optional[datetime] = None
+    pp_reference: Optional[str] = Field(None, min_length=1, max_length=50)  # Parcel Perfect waybill number; triggers consignment sync at creation
 
     @model_validator(mode="after")
     def validate_request(self) -> "TripCreateRequest":

@@ -4,8 +4,11 @@ Layering: this module imports from db/, crypto/, and schemas/ only.
 It must never import from api/ or auth/.
 """
 
+import logging
 import uuid
 from datetime import UTC, datetime
+
+logger = logging.getLogger(__name__)
 
 from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -176,6 +179,28 @@ async def create_trip(
     # in SQLAlchemy's unit-of-work topological sort. Without an explicit flush here,
     # the sort can emit the HandshakeEvent INSERT before trips, violating the FK.
     await db.flush()
+
+    # Pull PP waybill data and persist Consignment + Parcel rows when a reference
+    # is supplied. Local import prevents a circular dependency at module load:
+    # trip_service → consignment_service → parcel_perfect would create a load-time cycle.
+    if payload.pp_reference:
+        from app.orchestration.consignment_service import fetch_and_sync_consignment
+        from app.core.exceptions import PPSyncError
+        try:
+            await fetch_and_sync_consignment(
+                db,
+                pp_reference=payload.pp_reference,
+                client_organization_id=payload.client_organization_id,
+                trip_id=trip.id,
+                origin_precinct_id=payload.origin_precinct_id,
+                destination_precinct_id=payload.destination_precinct_id,
+            )
+        except Exception as exc:
+            # PP failures (bad waybill, network error) must not create a trip
+            # with missing consignment data. Re-raise as PPSyncError so the
+            # endpoint can return a 422 with a meaningful message.
+            logger.error("PP sync failed for pp_ref=%s: %s", payload.pp_reference, exc)
+            raise PPSyncError(payload.pp_reference, str(exc)) from exc
 
     # 5. Create the H0 HandshakeEvent (Trip Creation handshake).
     h0 = HandshakeEvent(
