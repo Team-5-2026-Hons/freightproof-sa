@@ -24,9 +24,8 @@ export function H4ApproachDest({ tripId, draft, onUpdate, onComplete }: H4Approa
           You have arrived at the destination. Capture your GPS location.
         </p>
         <GpsCapture captured={hasGps} onCapture={(lat, lng) => onUpdate({ gpsLat: lat, gpsLng: lng, capturedAt: new Date().toISOString() })} />
-        {hasGps && <p className="text-xs text-surface-on-variant">{draft.gpsLat?.toFixed(5)}, {draft.gpsLng?.toFixed(5)}</p>}
       </div>
-      <div className="flex justify-center p-6">
+      <div className="flex justify-center px-6 pt-6 pb-safe">
         <HoldButton label="Hold to confirm" onConfirm={onComplete} disabled={!hasGps} />
       </div>
     </main>

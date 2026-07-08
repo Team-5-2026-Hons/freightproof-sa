@@ -6,6 +6,7 @@ import { StepHeader } from '@/components/handshake/StepHeader'
 import { Input } from '@/components/ui/Input'
 import { HoldButton } from '@/components/handshake/HoldButton'
 import { Spinner } from '@/components/ui/Spinner'
+import { Button } from '@/components/ui/Button'
 import { fetchLinehaul } from '@/lib/api/manifest'
 import type { Linehaul } from '@shared/lib/types/manifest'
 import type { H2Evidence } from '@/lib/types/evidence-draft'
@@ -27,6 +28,10 @@ export function H2Linehaul({ tripId, draft, onUpdate, onComplete }: H2LinehaulPr
   const [countInput, setCountInput] = useState(
     draft.driverVisualCount !== null ? String(draft.driverVisualCount) : '',
   )
+  // Bumped by the retry button to re-run the effect below — the fetch otherwise only
+  // ever fires once per mount, leaving the driver stuck on a dead-end error with no
+  // way to recover short of navigating away and back.
+  const [retryCount, setRetryCount] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -35,7 +40,17 @@ export function H2Linehaul({ tripId, draft, onUpdate, onComplete }: H2LinehaulPr
       .catch(() => { if (!cancelled) setError(true) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [tripId])
+  }, [tripId, retryCount])
+
+  // Reset loading/error state from the retry button's click handler, not inside the
+  // effect body — synchronous setState at the top of an effect triggers a cascading
+  // re-render (react-hooks/set-state-in-effect). The initial loading=true/error=false
+  // values already cover the first mount; only a retry needs an explicit reset.
+  function handleRetry() {
+    setError(false)
+    setLoading(true)
+    setRetryCount((count) => count + 1)
+  }
 
   const unitCount = linehaul?.consolidated_unit_count ?? null
   const driverCount = countInput !== '' ? parseInt(countInput, 10) : null
@@ -55,7 +70,12 @@ export function H2Linehaul({ tripId, draft, onUpdate, onComplete }: H2LinehaulPr
         {loading ? (
           <Spinner />
         ) : error || linehaul === null ? (
-          <p className="text-sm text-error">Could not load the Linehaul document — check connection and retry.</p>
+          <div className="flex flex-col items-start gap-3">
+            <p className="text-sm text-error">Could not load the Linehaul document — check connection and retry.</p>
+            <Button variant="secondary" onClick={handleRetry}>
+              Retry
+            </Button>
+          </div>
         ) : (
           <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4">
             <p className="mb-1 text-xs text-surface-on-variant">Vehicle</p>
@@ -82,7 +102,7 @@ export function H2Linehaul({ tripId, draft, onUpdate, onComplete }: H2LinehaulPr
           </div>
         )}
       </div>
-      <div className="flex justify-center p-6">
+      <div className="flex justify-center px-6 pt-6 pb-safe">
         <HoldButton label="Confirm count" onConfirm={handleConfirm} disabled={!isReady} />
       </div>
     </main>

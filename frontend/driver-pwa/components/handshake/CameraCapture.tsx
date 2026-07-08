@@ -59,13 +59,16 @@ export function CameraCapture({ label, dataUrl, onCapture }: CameraCaptureProps)
             animate={{ opacity: 1, scale: 1 }}
             exit={reduceMotion ? undefined : { opacity: 0, scale: 0.96 }}
             transition={{ duration: 0.22, ease: 'easeOut' }}
-            className="relative rounded-xl overflow-hidden"
+            // Fixed aspect-video frame + border so the preview reads as a bounded card instead of
+            // an unframed image merging with the page at whatever height the photo happens to be.
+            className="relative aspect-video w-full rounded-xl overflow-hidden border border-outline-variant/40 bg-surface-container-low"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={dataUrl} alt={label} className="w-full max-h-48 object-cover" />
+            <img src={dataUrl} alt={label} className="h-full w-full object-cover" />
             <button
               onClick={handleCapture}
-              className="absolute bottom-2 right-2 rounded-full bg-surface-container-highest/90 px-3 py-1 text-xs font-medium"
+              // Shadow lifts the chip off the photo so it reads as a floating control, not part of the image.
+              className="absolute bottom-2 right-2 rounded-full bg-surface-container-highest/90 px-3 py-1 text-xs font-medium shadow-ambient-sm"
             >
               Retake
             </button>

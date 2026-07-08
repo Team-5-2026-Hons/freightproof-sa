@@ -52,7 +52,7 @@ export function H5VisualCount({ tripId, draft, onUpdate, onComplete, h2Count }: 
           </div>
         )}
       </div>
-      <div className="flex justify-center p-6">
+      <div className="flex justify-center px-6 pt-6 pb-safe">
         <HoldButton label="Confirm count" onConfirm={handleConfirm} disabled={!isValidCount} />
       </div>
     </main>

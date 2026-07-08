@@ -32,7 +32,7 @@ export function H1EntryPhoto({ tripId, draft, onUpdate, onComplete }: H1EntryPho
           onCapture={(dataUrl) => onUpdate({ gatePhotoDataUrl: dataUrl })}
         />
       </div>
-      <div className="flex justify-center p-6">
+      <div className="flex justify-center px-6 pt-6 pb-safe">
         <HoldButton
           label="Hold to confirm"
           onConfirm={onComplete}

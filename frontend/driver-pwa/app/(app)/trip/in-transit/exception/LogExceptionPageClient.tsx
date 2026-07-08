@@ -5,10 +5,13 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { TriangleAlert } from 'lucide-react'
 import { useTrip } from '@/lib/hooks/useTrip'
+import { useToast } from '@/lib/hooks/useToast'
 import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
 import { ApiError } from '@/lib/api/client'
 import { ROUTES } from '@/lib/constants/routes'
 import { Button } from '@/components/ui/Button'
+import { TextArea } from '@/components/ui/TextArea'
+import { SubpageHeader } from '@/components/layout/SubpageHeader'
 import type { ExceptionType } from '@shared/lib/types/exception'
 import { DRIVER_EXCEPTION_TYPES } from '@shared/lib/constants/status-meta'
 
@@ -32,6 +35,7 @@ const EXCEPTION_OPTIONS = DRIVER_EXCEPTION_TYPES
 export default function LogExceptionPageClient() {
   const router = useRouter()
   const { trip, logException } = useTrip()
+  const { notify } = useToast()
   const { enqueueException } = useOfflineQueue()
   const [type, setType] = useState<ExceptionType | null>(null)
   const [description, setDescription] = useState('')
@@ -45,6 +49,14 @@ export default function LogExceptionPageClient() {
     setSubmitError(false)
     try {
       await logException(type, { description })
+      // Receipt (UX Task 5b): name the chosen category so the driver has explicit proof
+      // the report registered before landing back on the hub, where it now also appears
+      // in the open-exceptions list (TripContext appends it on logException).
+      notify({
+        kind: 'success',
+        title: 'Exception recorded',
+        body: `${EXCEPTION_LABELS[type] ?? type} — now listed under this trip's open exceptions.`,
+      })
       router.push(ROUTES.inTransit)
     } catch (err) {
       console.error('Failed to log exception', err)
@@ -89,40 +101,48 @@ export default function LogExceptionPageClient() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col p-4">
-      <button onClick={() => router.back()} className="mb-4 text-sm text-secondary">← Back</button>
-      <h1 className="text-xl font-bold mb-6">Log Exception</h1>
-
-      <div className="flex flex-col gap-3 mb-6">
-        {EXCEPTION_OPTIONS.map((opt) => (
-          <button
-            key={opt.value}
-            onClick={() => setType(opt.value)}
-            className={`rounded-xl border px-4 py-3 text-left text-sm font-medium transition-colors ${
-              type === opt.value
-                ? 'border-secondary bg-secondary/10 text-secondary'
-                : 'border-outline-variant bg-surface-container-lowest text-surface-on'
-            }`}
-          >
-            {opt.label}
-          </button>
-        ))}
-      </div>
-
-      <textarea
-        className="mb-6 w-full rounded-xl border border-outline-variant bg-surface-container-low p-3 text-sm resize-none"
-        rows={4}
-        placeholder="Describe what happened (optional)"
-        value={description}
-        onChange={(e) => setDescription(e.target.value)}
+    <main className="flex min-h-screen flex-col">
+      {/* Named destination (not router.back()): guarantees where the driver lands
+          regardless of history, matching the hub's own back-link pattern. */}
+      <SubpageHeader
+        title="Log Exception"
+        backLabel="In-Transit Hub"
+        onBack={() => router.push(ROUTES.inTransit)}
       />
+      <div className="flex flex-1 flex-col p-4">
+        <div className="flex flex-col gap-3 mb-6">
+          {EXCEPTION_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setType(opt.value)}
+              className={`rounded-xl border px-4 py-3 text-left text-sm font-medium transition-colors ${
+                type === opt.value
+                  ? 'border-secondary bg-secondary/10 text-secondary'
+                  : 'border-outline-variant bg-surface-container-lowest text-surface-on'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
 
-      {submitError && (
-        <p className="mb-3 text-sm text-error">Could not submit — check your connection and try again.</p>
-      )}
-      <Button size="lg" disabled={!type || submitting} onClick={handleSubmit}>
-        {submitting ? 'Submitting…' : 'Submit exception'}
-      </Button>
+        <TextArea
+          label="Description"
+          helperText="Optional"
+          className="mb-6"
+          rows={4}
+          placeholder="Describe what happened (optional)"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+        />
+
+        {submitError && (
+          <p className="mb-3 text-sm text-error">Could not submit — check your connection and try again.</p>
+        )}
+        <Button size="lg" disabled={!type || submitting} onClick={handleSubmit}>
+          {submitting ? 'Submitting…' : 'Submit exception'}
+        </Button>
+      </div>
     </main>
   )
 }

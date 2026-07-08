@@ -2,7 +2,7 @@
 
 import { useEffect, type ReactNode } from 'react'
 import { X } from 'lucide-react'
-import { cn } from '@shared/lib/utils/cn'
+import { cn } from '@/lib/utils'
 
 interface DrawerProps {
   open: boolean
@@ -18,6 +18,18 @@ const panelClasses = {
   bottom: { container: 'bottom-0 left-0 w-full rounded-t-2xl max-h-[85vh]',  open: 'translate-y-0',  closed: 'translate-y-full'  },
 }
 
+// NOTE (deviation from @radix-ui/react-dialog): the drawer is kept mounted at
+// all times and only translated off-canvas via CSS — NavDrawer/ProfilePanel
+// render it unconditionally from AppShell and rely on that to avoid remounting
+// their contents on every open/close. Radix's Dialog.Content, ported with
+// `forceMount` to get the same "stays mounted while closed" contract, runs
+// `hideOthers(content)` in a mount-only effect (empty dep array) inside
+// DialogContentModal — meaning it would aria-hide the entire rest of the app
+// the instant AppShell mounts, permanently, since the drawer never unmounts to
+// trigger the cleanup. That's a correctness regression, not a style one, so
+// this component stays hand-rolled (see packet STOP CONDITIONS) — restyled
+// onto the shared cn()/theme tokens and the zIndex scale, everything else the
+// same as the pre-migration implementation.
 export function Drawer({ open, onClose, side = 'right', children, title }: DrawerProps) {
   useEffect(() => {
     if (!open) return
@@ -32,14 +44,20 @@ export function Drawer({ open, onClose, side = 'right', children, title }: Drawe
     <>
       {open && (
         <div
-          className="fixed inset-0 bg-black/40 z-[40] transition-opacity duration-200"
+          className="fixed inset-0 bg-black/40 z-overlay transition-opacity duration-200"
           onClick={onClose}
           aria-hidden="true"
         />
       )}
       <div
+        // The panel stays mounted while closed (only translated off-canvas), so
+        // without these attributes screen readers and find-in-page would surface
+        // its contents on every screen. React 19 supports the `inert` boolean
+        // prop natively; both attributes are omitted entirely while open.
+        aria-hidden={open ? undefined : true}
+        inert={open ? undefined : true}
         className={cn(
-          'fixed bg-surface-container-lowest shadow-ambient z-[50]',
+          'fixed bg-surface-container-lowest shadow-ambient z-modal',
           'transition-transform duration-300 ease-out overflow-y-auto',
           container,
           open ? openClass : closed,

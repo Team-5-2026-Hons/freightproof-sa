@@ -9,6 +9,8 @@ import { CameraCapture } from '@/components/handshake/CameraCapture'
 import { GpsCapture } from '@/components/handshake/GpsCapture'
 import { HoldButton } from '@/components/handshake/HoldButton'
 import { Button } from '@/components/ui/Button'
+import { TextArea } from '@/components/ui/TextArea'
+import { SubpageHeader } from '@/components/layout/SubpageHeader'
 import { ROUTES } from '@/lib/constants/routes'
 import { uploadArtifact } from '@/lib/api/artifacts'
 import { logCheckpoint } from '@/lib/api/checkpoints'
@@ -82,46 +84,56 @@ export default function CheckpointPageClient() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col p-4">
-      <button onClick={() => router.back()} className="mb-4 text-sm text-secondary">← Back</button>
-      <h1 className="text-xl font-bold mb-1">Log Checkpoint</h1>
-      <p className="mb-6 text-sm text-surface-on-variant">
-        Capture a selfie and a cargo photo to confirm your location and load mid-transit.
-      </p>
+    <main className="flex min-h-screen flex-col">
+      <SubpageHeader
+        title="Log Checkpoint"
+        backLabel="In-Transit Hub"
+        onBack={() => router.push(ROUTES.inTransit)}
+      />
+      {/* pb-8 keeps the hold button clear of the note textarea on short viewports —
+          min-h-screen alone lets the footer controls crowd the form when it overflows. */}
+      <div className="flex flex-1 flex-col p-4 pb-8">
+        <p className="mb-6 text-sm text-surface-on-variant">
+          Capture a selfie and a cargo photo to confirm your location and load mid-transit.
+        </p>
 
-      <div className="flex flex-col gap-6 mb-6">
-        <GpsCapture onCapture={(lat, lng) => setGps({ latitude: lat, longitude: lng })} captured={gps !== null} />
-        <CameraCapture label="Selfie" dataUrl={selfieDataUrl} onCapture={setSelfieDataUrl} />
-        <CameraCapture label="Cargo photo" dataUrl={cargoPhotoDataUrl} onCapture={setCargoPhotoDataUrl} />
+        <div className="flex flex-col gap-6 mb-6">
+          <GpsCapture onCapture={(lat, lng) => setGps({ latitude: lat, longitude: lng })} captured={gps !== null} />
+          <CameraCapture label="Selfie" dataUrl={selfieDataUrl} onCapture={setSelfieDataUrl} />
+          <CameraCapture label="Cargo photo" dataUrl={cargoPhotoDataUrl} onCapture={setCargoPhotoDataUrl} />
 
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={isDeviation}
-            onChange={(e) => setIsDeviation(e.target.checked)}
-            className="h-4 w-4"
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={isDeviation}
+              onChange={(e) => setIsDeviation(e.target.checked)}
+              className="h-4 w-4"
+            />
+            This is a route deviation
+          </label>
+
+          <TextArea
+            label="Note"
+            helperText="Optional"
+            rows={3}
+            placeholder="Note (optional)"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
           />
-          This is a route deviation
-        </label>
+        </div>
 
-        <textarea
-          className="w-full rounded-xl border border-outline-variant bg-surface-container-low p-3 text-sm resize-none"
-          rows={3}
-          placeholder="Note (optional)"
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-        />
+        {submitError && (
+          <p className="mb-3 text-sm text-error">Could not submit — check your connection and try again.</p>
+        )}
+        <div className="flex flex-col items-center pb-safe">
+          <div className="flex justify-center">
+            <HoldButton label={submitting ? 'Submitting…' : 'Hold to confirm'} onConfirm={handleSubmit} disabled={!isReady || submitting} />
+          </div>
+          <Button variant="secondary" size="lg" className="mt-4" onClick={() => router.back()}>
+            Cancel
+          </Button>
+        </div>
       </div>
-
-      {submitError && (
-        <p className="mb-3 text-sm text-error">Could not submit — check your connection and try again.</p>
-      )}
-      <div className="flex justify-center">
-        <HoldButton label={submitting ? 'Submitting…' : 'Hold to confirm'} onConfirm={handleSubmit} disabled={!isReady || submitting} />
-      </div>
-      <Button variant="secondary" size="lg" className="mt-4" onClick={() => router.back()}>
-        Cancel
-      </Button>
     </main>
   )
 }

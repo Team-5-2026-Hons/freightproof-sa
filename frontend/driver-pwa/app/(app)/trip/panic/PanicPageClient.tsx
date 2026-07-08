@@ -74,7 +74,7 @@ export default function PanicPageClient() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-8 bg-error p-6">
+    <main className="flex min-h-screen flex-col items-center justify-center gap-8 bg-error px-6 pt-6 pb-safe">
       <div className="flex flex-col items-center text-center text-error-on">
         <ShieldAlert className="mb-4 h-14 w-14" strokeWidth={1.5} aria-hidden />
         <h1 className="mb-2 text-2xl font-bold">Panic Alert</h1>
@@ -98,7 +98,7 @@ export default function PanicPageClient() {
         onClick={() => router.back()}
         className="text-sm text-error-on/70 underline"
       >
-        Cancel — return to in-transit
+        Cancel
       </button>
     </main>
   )

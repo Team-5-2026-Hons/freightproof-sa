@@ -3,7 +3,7 @@
 import { useEffect, type ReactNode } from 'react'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { X, CheckCircle2, AlertTriangle, Info, ShieldAlert } from 'lucide-react'
-import { cn } from '@shared/lib/utils/cn'
+import { cn } from '@/lib/utils'
 
 export type ToastKind = 'info' | 'success' | 'warning' | 'error'
 
@@ -79,7 +79,12 @@ export function ToastViewport({ toasts, onDismiss }: ToastViewportProps) {
     <div
       aria-live="polite"
       aria-atomic="false"
-      className="fixed bottom-6 right-6 z-[80] flex flex-col gap-3 items-end"
+      className={cn(
+        'fixed inset-x-0 bottom-0 z-toast flex flex-col items-center gap-3',
+        'px-4 pb-6 sm:items-end sm:px-6',
+        // env() keeps the stack clear of Android's gesture bar / home indicator.
+        'pb-[calc(1.5rem+env(safe-area-inset-bottom))]',
+      )}
     >
       <AnimatePresence initial={false}>
         {toasts.slice(0, 3).map((toast) => (

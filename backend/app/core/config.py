@@ -90,8 +90,9 @@ class Settings(BaseSettings):
     PULSE_API_KEY: str = ""
     PULSE_API_URL: str = ""
     PP_USE_MOCK: bool = True
-    PP_API_KEY: str = ""       # Parcel Perfect login email / username
-    PP_API_PASSWORD: str = ""  # Parcel Perfect login password (used in MD5 auth flow)
+    PP_API_KEY: str = ""        # Parcel Perfect login email / username
+    PP_API_PASSWORD: str = ""   # Parcel Perfect login password (used in MD5 auth flow)
+    PP_API_TOKEN: str = ""      # Pre-issued token (skips salt/MD5 flow when set)
     PP_API_URL: str = ""
     PP_POLL_INTERVAL_SECONDS: int = 60
 

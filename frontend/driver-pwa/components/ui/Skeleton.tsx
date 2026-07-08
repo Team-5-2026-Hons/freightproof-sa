@@ -1,6 +1,6 @@
 'use client'
 
-import { cn } from '@shared/lib/utils/cn'
+import { cn } from '@/lib/utils'
 
 interface SkeletonProps {
   variant?: 'text' | 'block' | 'card'
@@ -10,7 +10,7 @@ interface SkeletonProps {
 
 export function Skeleton({ variant = 'block', lines = 1, className }: SkeletonProps) {
   // Shimmer animation is suppressed automatically via globals.css prefers-reduced-motion rule.
-  const base = 'bg-surface-container-high animate-pulse rounded-xl'
+  const base = 'bg-muted animate-pulse rounded-xl'
 
   if (variant === 'text') {
     return (

@@ -29,7 +29,9 @@ export function H2Review({ tripId, draft, onComplete }: H2ReviewProps) {
         </p>
         <EvidenceReview
           items={[
-            { label: 'GPS', value: draft.gpsLat ? `${draft.gpsLat.toFixed(5)}, ${draft.gpsLng?.toFixed(5)}` : null },
+            // Raw coordinates are noise to a driver — a "Captured" receipt is enough here;
+            // the exact lat/lng stays in the draft for the backend payload.
+            { label: 'GPS', value: draft.gpsLat !== null ? 'Captured' : null },
             { label: 'PP parcel count', value: draft.ppManifestParcelCount !== null ? String(draft.ppManifestParcelCount) : null },
             { label: 'Your visual count', value: draft.driverVisualCount !== null ? String(draft.driverVisualCount) : null },
             { label: 'Waybill photo', value: draft.waybillPhotoDataUrl, isImage: true },
@@ -38,7 +40,7 @@ export function H2Review({ tripId, draft, onComplete }: H2ReviewProps) {
           ]}
         />
       </div>
-      <div className="flex justify-center p-6">
+      <div className="flex justify-center px-6 pt-6 pb-safe">
         <HoldButton label="Submit H2" onConfirm={onComplete} disabled={!isReady} />
       </div>
     </main>
