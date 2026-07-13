@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_driver
+from app.blockchain.hedera import HederaServiceError, HederaTimeoutError
 from app.core.exceptions import HandshakeSequenceError, ResourceNotFoundError
 from app.db.models.enums import HandshakeType
 from app.db.models.handshakes import HandshakeEvent
@@ -52,6 +53,10 @@ async def complete_h2_endpoint(
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except HandshakeSequenceError as exc:
         raise HTTPException(status_code=http_status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except HederaTimeoutError as exc:
+        raise HTTPException(status_code=http_status.HTTP_504_GATEWAY_TIMEOUT, detail=str(exc)) from exc
+    except HederaServiceError as exc:
+        raise HTTPException(status_code=http_status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
 
 @router.post("/h3/complete", response_model=TripDetailResponse)
@@ -99,6 +104,10 @@ async def complete_h5_endpoint(
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except HandshakeSequenceError as exc:
         raise HTTPException(status_code=http_status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except HederaTimeoutError as exc:
+        raise HTTPException(status_code=http_status.HTTP_504_GATEWAY_TIMEOUT, detail=str(exc)) from exc
+    except HederaServiceError as exc:
+        raise HTTPException(status_code=http_status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
 
 @router.get("/{handshake_type}", response_model=HandshakeEventRead)

@@ -104,6 +104,7 @@ class SubjectType(str, enum.Enum):
     DRIVER          = "driver"
     VEHICLE_EVENT   = "vehicle_event"
     DRIVER_EVENT    = "driver_event"
+    HANDSHAKE_EVENT = "handshake_event"
 
 
 class VehicleEventType(str, enum.Enum):
