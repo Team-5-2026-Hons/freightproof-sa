@@ -4,6 +4,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { ShieldAlert } from 'lucide-react'
 import { STEP_SLUGS } from '@shared/lib/constants/handshake-meta'
 import { ROUTES } from '@/lib/constants/routes'
+import { IconButton } from '@/components/ui/IconButton'
 
 interface StepHeaderProps {
   handshakeName: string
@@ -56,17 +57,17 @@ export function StepHeader({ handshakeName, stepName, stepIndex, totalSteps }: S
           {stepIndex}/{totalSteps}
         </span>
         {/* A driver under threat mid-handshake (gate, loading bay) must reach panic
-            without first backing out to the trip hub. Plain button rather than
-            IconButton: cn() doesn't merge Tailwind conflicts, so IconButton's
-            default text colour could override text-error. h-11/w-11 = 44px, the
-            minimum touch target for a stressed, gloved hand. */}
-        <button
+            without first backing out to the trip hub. IconButton (size="md" = 44px,
+            the minimum touch target for a stressed, gloved hand): its cn() uses
+            tailwind-merge, which resolves the text-error/hover:bg-error-container
+            override against IconButton's own default text/hover classes correctly,
+            so there's no risk of the default color winning instead. */}
+        <IconButton
+          icon={<ShieldAlert className="h-5 w-5" strokeWidth={2} aria-hidden />}
           onClick={() => router.push(ROUTES.panic)}
           aria-label="Emergency — open panic alert"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-error transition-colors hover:bg-error-container/40 active:scale-95"
-        >
-          <ShieldAlert className="h-5 w-5" strokeWidth={2} aria-hidden />
-        </button>
+          className="text-error hover:bg-error-container/40"
+        />
       </div>
       <div className="h-1 w-full rounded-full bg-surface-container-highest overflow-hidden">
         <div

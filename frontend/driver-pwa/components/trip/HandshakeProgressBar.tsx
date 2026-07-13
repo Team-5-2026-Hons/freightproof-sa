@@ -1,7 +1,7 @@
 import { Check, AlertTriangle } from 'lucide-react'
 import { HANDSHAKE_NAMES } from '@shared/lib/constants/handshake-meta'
 import type { HandshakeStageState } from '@/lib/utils/handshake-progress'
-import { cn } from '@shared/lib/utils/cn'
+import { cn } from '@/lib/utils'
 
 interface HandshakeProgressBarProps {
   progress: Record<1 | 2 | 3 | 4 | 5, HandshakeStageState>

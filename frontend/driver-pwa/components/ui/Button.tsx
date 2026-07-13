@@ -23,7 +23,11 @@ const buttonVariants = cva(
         danger:    'bg-error-container text-error-on-container shadow-ambient-sm hover:opacity-90',
       },
       size: {
-        sm: 'px-4 py-2 text-xs min-h-[36px] gap-1.5',
+        // 44px is the app's documented touch-target minimum (see IconButton/Switch/
+        // SubpageHeader) — sm was 36px, below it. Padding/text stay compact; only the
+        // hit area grows, so dense sm buttons (filter toggles, inline pill actions)
+        // still read as "small" while staying tappable one-handed in a truck.
+        sm: 'px-4 py-2 text-xs min-h-[44px] gap-1.5',
         md: 'px-6 py-3 text-sm min-h-[44px] gap-2',
         lg: 'px-6 py-4 text-sm min-h-[52px] gap-2 w-full',
       },

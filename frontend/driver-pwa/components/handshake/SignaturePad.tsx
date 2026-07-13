@@ -2,6 +2,7 @@
 
 import { useRef, useState, useCallback, useEffect } from 'react'
 import { RotateCcw } from 'lucide-react'
+import { Button } from '@/components/ui/Button'
 
 interface SignaturePadProps {
   label: string
@@ -89,13 +90,15 @@ export function SignaturePad({ label, dataUrl, onCapture }: SignaturePadProps) {
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium">{label}</p>
         {(hasStrokes || dataUrl) && (
-          <button
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            iconLeft={<RotateCcw className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />}
             onClick={handleClear}
-            className="flex items-center gap-1 text-xs text-surface-on-variant"
           >
-            <RotateCcw className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
             Clear
-          </button>
+          </Button>
         )}
       </div>
       <canvas

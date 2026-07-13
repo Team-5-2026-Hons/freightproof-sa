@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { useHoldToConfirm } from '@/lib/hooks/useHoldToConfirm'
 import { getTapToConfirmPref } from '@/lib/constants/preferences'
-import { cn } from '@shared/lib/utils/cn'
+import { cn } from '@/lib/utils'
 
 // Flourish duration shared by the dispatch-delay timeout and the scale transition below —
 // kept as a single constant so the two can never drift apart.

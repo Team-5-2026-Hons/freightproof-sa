@@ -132,13 +132,11 @@ function OtpForm() {
         >
           {cooldownActive ? `Resend in ${cooldown}s` : 'Resend code'}
         </Button>
-        <button
-          type="button"
-          onClick={() => router.push(ROUTES.login)}
-          className="self-center text-sm text-secondary underline underline-offset-2"
-        >
+        {/* Full-width to match its ghost sibling (Resend code) above it, rather than
+            the old centered small-text link — both are now the same shadcn Button. */}
+        <Button type="button" variant="ghost" onClick={() => router.push(ROUTES.login)}>
           Wrong number? Go back
-        </button>
+        </Button>
       </form>
     </main>
   )

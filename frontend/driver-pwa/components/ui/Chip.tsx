@@ -25,11 +25,14 @@ interface ChipProps extends VariantProps<typeof chipVariants> {
   children: ReactNode
   animated?: boolean
   className?: string
+  // Native title tooltip — used by AnchorBadge to surface a full event hash on hover
+  // without cluttering the compact pill label itself.
+  title?: string
 }
 
-export function Chip({ kind, icon, children, animated = false, className }: ChipProps) {
+export function Chip({ kind, icon, children, animated = false, className, title }: ChipProps) {
   return (
-    <span className={cn(chipVariants({ kind }), className)}>
+    <span title={title} className={cn(chipVariants({ kind }), className)}>
       {icon ?? (
         <span className={cn('w-1.5 h-1.5 rounded-full bg-current opacity-70', animated && 'animate-pulse')} />
       )}

@@ -5,6 +5,7 @@ import { Capacitor } from '@capacitor/core'
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
 import { Camera as CameraIcon } from 'lucide-react'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
+import { Button } from '@/components/ui/Button'
 
 interface CameraCaptureProps {
   label: string
@@ -65,13 +66,19 @@ export function CameraCapture({ label, dataUrl, onCapture }: CameraCaptureProps)
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={dataUrl} alt={label} className="h-full w-full object-cover" />
-            <button
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
               onClick={handleCapture}
-              // Shadow lifts the chip off the photo so it reads as a floating control, not part of the image.
-              className="absolute bottom-2 right-2 rounded-full bg-surface-container-highest/90 px-3 py-1 text-xs font-medium shadow-ambient-sm"
+              // Overrides ghost's uppercase/bold/transparent defaults back to the original
+              // floating pill look: rounded-full, a visible scrim so it reads over any
+              // photo, and normal-case/font-medium text. Shadow lifts it off the photo so
+              // it reads as a floating control, not part of the image.
+              className="absolute bottom-2 right-2 rounded-full bg-surface-container-highest/90 font-medium normal-case tracking-normal shadow-ambient-sm hover:bg-surface-container-highest"
             >
               Retake
-            </button>
+            </Button>
           </motion.div>
         ) : (
           <motion.button

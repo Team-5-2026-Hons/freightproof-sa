@@ -4,6 +4,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { submitHandshake } from '@/lib/api/handshakes'
 import { raiseException, type RaiseExceptionBody } from '@/lib/api/exceptions'
+import { submitCheckpoint, type CheckpointEvidence } from '@/lib/api/checkpoints'
 import { ApiError } from '@/lib/api/client'
 import type { HandshakeType } from '@shared/lib/types/handshake'
 import type { HandshakeEvidence } from '@/lib/types/evidence-draft'
@@ -28,7 +29,18 @@ interface ExceptionQueueEntry {
   enqueuedAt: string
 }
 
-type QueueEntry = HandshakeQueueEntry | ExceptionQueueEntry
+// Checkpoints (like exceptions) have no separate "upload then complete" sequence of
+// their own to redo — submitCheckpoint already does the artifact upload + API call as
+// one unit, so queuing the raw captured evidence is enough for a full replay.
+interface CheckpointQueueEntry {
+  kind: 'checkpoint'
+  id: string
+  tripId: string
+  evidence: CheckpointEvidence
+  enqueuedAt: string
+}
+
+type QueueEntry = HandshakeQueueEntry | ExceptionQueueEntry | CheckpointQueueEntry
 
 const QUEUE_KEY = 'fp_offline_queue'
 
@@ -57,6 +69,8 @@ function saveQueue(entries: QueueEntry[]): void {
 async function sendEntry(entry: QueueEntry): Promise<void> {
   if (entry.kind === 'handshake') {
     await submitHandshake(entry.tripId, entry.handshakeType, entry.evidence)
+  } else if (entry.kind === 'checkpoint') {
+    await submitCheckpoint(entry.tripId, entry.evidence)
   } else {
     await raiseException(entry.tripId, entry.body)
   }
@@ -116,10 +130,23 @@ export function useOfflineQueue() {
     [],
   )
 
+  const enqueueCheckpoint = useCallback(
+    (tripId: string, evidence: CheckpointEvidence) => {
+      const entry: CheckpointQueueEntry = {
+        kind: 'checkpoint', id: crypto.randomUUID(), tripId, evidence,
+        enqueuedAt: new Date().toISOString(),
+      }
+      const q = [...loadQueue(), entry]
+      saveQueue(q)
+      setQueueLength(q.length)
+    },
+    [],
+  )
+
   useEffect(() => {
     window.addEventListener('online', flush)
     return () => window.removeEventListener('online', flush)
   }, [flush])
 
-  return { queueLength, enqueue, enqueueException, flush }
+  return { queueLength, enqueue, enqueueException, enqueueCheckpoint, flush }
 }

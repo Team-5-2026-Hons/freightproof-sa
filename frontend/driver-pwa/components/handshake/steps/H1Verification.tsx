@@ -36,7 +36,11 @@ export function H1Verification({ tripId, draft, onComplete }: H1VerificationProp
       />
       <div className="flex flex-1 flex-col gap-6 p-4">
         <p className="text-sm text-surface-on-variant">
-          Review your evidence. Hold to submit — this anchors H1 to the blockchain.
+          {/* H1 is a feeder handshake — the backend only anchors H2 (Loading) and H5
+              (Unloading) to Hedera HCS. This evidence still matters: it's what those
+              anchored handshakes are built on. */}
+          Review your evidence. Hold to submit — this records the evidence that
+          supports your anchored Loading and Unloading handshakes.
         </p>
         <EvidenceReview items={items} />
       </div>

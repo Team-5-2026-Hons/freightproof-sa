@@ -4,7 +4,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowRight, ShieldAlert, ScanFace } from 'lucide-react'
-import { cn } from '@shared/lib/utils/cn'
+import { cn } from '@/lib/utils'
 import { useTrip } from '@/lib/hooks/useTrip'
 import { ROUTES } from '@/lib/constants/routes'
 import { STEP_SLUGS } from '@shared/lib/constants/handshake-meta'
@@ -129,13 +129,15 @@ export default function InTransitPageClient() {
         </Button>
 
         {/* Panic */}
-        <button
+        <Button
+          variant="danger"
+          size="lg"
+          className="mt-2"
+          iconLeft={<ShieldAlert className="h-5 w-5" strokeWidth={2} aria-hidden />}
           onClick={() => router.push(ROUTES.panic)}
-          className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-error py-4 text-sm font-bold uppercase tracking-widest text-error-on"
         >
-          <ShieldAlert className="h-5 w-5" strokeWidth={2} aria-hidden />
           Panic
-        </button>
+        </Button>
       </div>
     </main>
   )

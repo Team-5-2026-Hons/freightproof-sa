@@ -86,16 +86,17 @@ export default function LogExceptionPageClient() {
             Return to in-transit and try again.
           </p>
         </div>
-        <button
+        <Button
+          type="button"
+          variant="ghost"
           // This state is reachable via cold load, deep link, or refresh —
           // there may be no meaningful back-history, so router.back() could
           // land anywhere (or nowhere). Use an explicit replace so the label's
           // promise ("Return to in-transit") is actually guaranteed.
           onClick={() => router.replace(ROUTES.inTransit)}
-          className="text-sm text-secondary underline"
         >
           Return to in-transit
-        </button>
+        </Button>
       </main>
     )
   }

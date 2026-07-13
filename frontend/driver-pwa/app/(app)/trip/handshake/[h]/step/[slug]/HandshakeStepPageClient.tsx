@@ -11,6 +11,7 @@ import { submitHandshake } from '@/lib/api/handshakes'
 import { ApiError } from '@/lib/api/client'
 import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
 import { nextHandshakeRoute } from '@/lib/navigation/handshake-flow'
+import { IS_DEMO_MODE } from '@/lib/constants/env'
 import { HANDSHAKE_NAMES } from '@shared/lib/constants/handshake-meta'
 import { Spinner } from '@/components/ui/Spinner'
 import type { H1Evidence, H2Evidence, H3Evidence, H4Evidence, H5Evidence } from '@/lib/types/evidence-draft'
@@ -66,6 +67,13 @@ function isAtOrPast(status: TripStatus, target: TripStatus): boolean {
   return STATUS_ORDER.indexOf(status) >= STATUS_ORDER.indexOf(target)
 }
 
+// The backend only anchors H2 (loading) and H5 (unloading) to Hedera HCS — H1/H3/H4
+// are unanchored "feeder" handshakes by design (see H1Verification's copy). Used to
+// decide whether the completion receipt can honestly claim anchoring.
+function isAnchoredHandshakeType(type: SubmittableHandshakeType): boolean {
+  return type === 'loading' || type === 'unloading'
+}
+
 export default function HandshakeStepPageClient() {
   const { h, slug } = useParams<{ h: string; slug: string }>()
   const router = useRouter()
@@ -103,14 +111,18 @@ export default function HandshakeStepPageClient() {
   // Completion receipt (UX Task 5a): every exit from submitAndAdvance that means "your
   // evidence is safely captured" fires this before the redirect — without it the driver
   // lands back on the trip page with zero confirmation, the biggest trust gap found in
-  // the UX walkthrough. Wording claims device-local storage only: demo mode never syncs
-  // to the server or chain, so the receipt must not imply it did.
-  function notifyHandshakeRecorded() {
+  // the UX walkthrough. `anchored` must only be true for a real (non-demo), non-queued
+  // H2/H5 success — demo mode never syncs to the server or chain, and a queued submit
+  // hasn't reached the backend yet, so both keep the "stored on this device" wording
+  // instead of falsely claiming a Hedera anchor.
+  function notifyHandshakeRecorded(anchored: boolean) {
     const savedAt = new Date().toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })
     notify({
       kind: 'success',
       title: `${HANDSHAKE_NAMES[handshakeNum]} recorded`,
-      body: `Saved ${savedAt} — evidence stored on this device.`,
+      body: anchored
+        ? `Saved ${savedAt} — evidence recorded and anchored to Hedera HCS.`
+        : `Saved ${savedAt} — evidence stored on this device.`,
     })
   }
 
@@ -128,12 +140,17 @@ export default function HandshakeStepPageClient() {
     evidence: H1Evidence | H2Evidence | H3Evidence | H4Evidence | H5Evidence,
     clearFn: () => void,
   ) {
+    // Real (non-demo) submission of an anchored handshake type is the only path that
+    // can honestly claim a Hedera anchor — demo mode short-circuits before hitting the
+    // backend at all (see submitHandshake), so it never actually anchors anything.
+    const anchored = !IS_DEMO_MODE && isAnchoredHandshakeType(type)
+
     try {
       await submitHandshake(tripId, type, evidence)
       await refetchTrip()
       syncSealReference(type, evidence)
       clearFn()
-      notifyHandshakeRecorded()
+      notifyHandshakeRecorded(anchored)
       advance()
       return
     } catch (err) {
@@ -146,7 +163,7 @@ export default function HandshakeStepPageClient() {
           syncSealReference(type, evidence)
           clearFn()
           // The earlier attempt did record the evidence — the driver still deserves the receipt.
-          notifyHandshakeRecorded()
+          notifyHandshakeRecorded(anchored)
           advance()
           return
         }
@@ -165,11 +182,12 @@ export default function HandshakeStepPageClient() {
       }
       // Network error or 5xx — queue for retry once connectivity/the server recovers.
       // The receipt's "stored on this device" wording is literally true here: the
-      // evidence sits in the offline queue until it syncs.
+      // evidence sits in the offline queue until it syncs — always false, even for
+      // H2/H5, since it hasn't reached the backend (or Hedera) yet.
       enqueue(tripId, type, evidence)
       syncSealReference(type, evidence)
       clearFn()
-      notifyHandshakeRecorded()
+      notifyHandshakeRecorded(false)
       advance()
     }
   }
