@@ -1,0 +1,20 @@
+getDefItems Request
+SOAP,JSON,Type,Length,Format,Mandatory,Description,Notes
+s_name,name,string,[30],string,M,default content item name,Requires that the courier has configured default content items for the client
+getDefItems Response
+SOAP,JSON,Type,Length,Format,Mandatory,Description,Notes
+errorcode,errorcode,integer,,,,An integer errorcode. If 0 then there was no error else an error occurred,
+errormessage,errormessage,string,,,,The error message if errorcode is a non-zero value,
+results,results,array,[..],,,An array of results which will always have a single element if non-null,
+getDefItems Response[results]
+SOAP,JSON,Type,Length,Format,Mandatory,Description,Notes
+defitem,defitem,integer,,,,unique default item number,
+name,name,string,[30],,,item name,
+dim1,dim1,integer,,,,length,
+dim2,dim2,integer,,,,width,
+dim3,dim3,integer,,,,height,
+actkg,actkg,float,,,,total mass of item,
+amount,amount,float,,,,item amount,
+partno,partno,string,[20],,,unique customer part number,
+itemvalue,itemvalue,float,,,,item value,
+accnum,accnum,string,[6],,,account number,

@@ -59,6 +59,10 @@ async def _reconstruct_trip_payload(
             select(TripTrailer.trailer_id).where(TripTrailer.trip_id == trip_id)
         )
     ).scalars().all()
+    if trip.origin_precinct_id is None or trip.destination_precinct_id is None:
+        # Precincts are set at trip creation; a receipt shouldn't exist before that,
+        # but treat it like the other reconstruct_* helpers' not-found case either way.
+        return None
     return compute_trip_canonical_payload(
         trip_id=trip.id,
         order_number=trip.order_number,

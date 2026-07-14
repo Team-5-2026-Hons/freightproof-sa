@@ -1,0 +1,12 @@
+getSecureToken Request,,,,,,,
+SOAP,JSON,Type,Length,Format,Mandatory,Description,Notes
+s_email,email,string,[50],,M ,The username - normally an email address - used for authentication,
+s_password,password,string,[32],MD5,M,The md5 hash of password+salt,
+getSecureToken Response,,,,,,,
+SOAP,JSON,Type,Length,Format,Mandatory,Description,Notes
+errorcode,errorcode,Integer,,,,An integer errorcode. If 0 then there was no error else an error occurred,
+errormessage,errormessage,String,[500],,,The error message if errorcode is a non-zero value,
+results,results,Array,[..],,,An array of results which will always have a single element if non-null,
+getSecureToken Response[results],,,,,,,
+SOAP,JSON,Type,Length,Format,Mandatory,Description,Notes
+tokenid,tokenid,string,[40],SHA1,,The token to be used with all subsequent requests,

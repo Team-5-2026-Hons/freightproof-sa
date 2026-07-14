@@ -19,13 +19,13 @@ from app.crypto.hashing import compute_journey_lock_hash, compute_trip_canonical
 from app.db.models.enums import BlockchainReceiptType, HandshakeStatus, HandshakeType, IdvsStatus, SubjectType, TripStatus, VehicleType
 from app.db.models.handshakes import HandshakeEvent
 from app.db.models.people import Driver
-from app.db.models.trips import Trip, TripTrailer
+from app.db.models.trips import Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.orchestration.resource_service import get_trip_detail
 from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.handshakes import HandshakeEventRead
 from app.schemas.people import DriverRead, UserRead
-from app.schemas.trips import TripCreateRequest, TripDetailResponse
+from app.schemas.trips import TripCreateRequest, TripDetailResponse, TripStopCreate, TripStopRead
 from app.schemas.vehicles import VehicleRead
 
 
@@ -108,7 +108,7 @@ async def create_trip(
     payload: TripCreateRequest,
     current_user: UserRead,
 ) -> TripDetailResponse:
-    """Create a Trip, TripTrailer rows, and the H0 HandshakeEvent atomically.
+    """Create a Trip, TripTrailer rows, TripStop rows, and the H0 HandshakeEvent atomically.
 
     Raises:
         ResourceNotFoundError: if driver, horse, or any trailer is not found/inactive.
@@ -142,7 +142,8 @@ async def create_trip(
         db, payload.order_number, current_user.organization_id
     )
 
-    # 3. Create the Trip row.
+    # 3. Create the Trip row. origin/destination_precinct_id are set below once the
+    #    route's stops are known (they're a derived convenience, not authoritative — FP-112).
     trip_id = uuid.uuid4()
     trip = Trip(
         id=trip_id,
@@ -152,8 +153,6 @@ async def create_trip(
         client_organization_id=payload.client_organization_id,
         driver_id=payload.driver_id,
         horse_id=payload.horse_id,
-        origin_precinct_id=payload.origin_precinct_id,
-        destination_precinct_id=payload.destination_precinct_id,
         template_id=payload.template_id,
         planned_departure_at=payload.planned_departure_at,
         planned_arrival_at=payload.planned_arrival_at,
@@ -174,11 +173,38 @@ async def create_trip(
             )
         )
 
-    # Flush trip + trailers before adding the HandshakeEvent. The evidence_artifacts
+    # 5. Create TripStop rows — the explicit route if given, else synthesise the
+    #    back-compat single-leg pair from origin/destination precincts (FP-112 A.3).
+    #    Consignment pickup/delivery-stop linking is not wired here: no code path
+    #    creates Consignment rows during trip creation yet (no PP integration/consignment
+    #    payload exists) — that link will be made when that path is built.
+    stop_specs: list[TripStopCreate] = payload.stops or [
+        TripStopCreate(precinct_id=payload.origin_precinct_id, sequence=0),
+        TripStopCreate(precinct_id=payload.destination_precinct_id, sequence=1),
+    ]
+    trip_stops = [
+        TripStop(
+            trip_id=trip_id,
+            precinct_id=spec.precinct_id,
+            sequence=spec.sequence,
+            slot_time=spec.slot_time,
+            notes=spec.notes,
+        )
+        for spec in stop_specs
+    ]
+    for stop in trip_stops:
+        db.add(stop)
+    trip_stops.sort(key=lambda s: s.sequence)
+    trip.origin_precinct_id = trip_stops[0].precinct_id
+    trip.destination_precinct_id = trip_stops[-1].precinct_id
+
+    # Flush trip + trailers + stops before adding the HandshakeEvent. The evidence_artifacts
     # table has a use_alter=True FK back to trips, creating a circular dependency
     # in SQLAlchemy's unit-of-work topological sort. Without an explicit flush here,
     # the sort can emit the HandshakeEvent INSERT before trips, violating the FK.
     await db.flush()
+    for stop in trip_stops:
+        await db.refresh(stop)
 
     # Pull PP waybill data and persist Consignment + Parcel rows when a reference
     # is supplied. Local import prevents a circular dependency at module load:
@@ -192,8 +218,8 @@ async def create_trip(
                 pp_reference=payload.pp_reference,
                 client_organization_id=payload.client_organization_id,
                 trip_id=trip.id,
-                origin_precinct_id=payload.origin_precinct_id,
-                destination_precinct_id=payload.destination_precinct_id,
+                origin_precinct_id=trip.origin_precinct_id,
+                destination_precinct_id=trip.destination_precinct_id,
             )
         except Exception as exc:
             # PP failures (bad waybill, network error) must not create a trip
@@ -202,7 +228,7 @@ async def create_trip(
             logger.error("PP sync failed for pp_ref=%s: %s", payload.pp_reference, exc)
             raise PPSyncError(payload.pp_reference, str(exc)) from exc
 
-    # 5. Create the H0 HandshakeEvent (Trip Creation handshake).
+    # 6. Create the H0 HandshakeEvent (Trip Creation handshake).
     h0 = HandshakeEvent(
         trip_id=trip_id,
         handshake_type=HandshakeType.TRIP_CREATION,
@@ -212,15 +238,19 @@ async def create_trip(
     db.add(h0)
     await db.flush()
 
-    # 6. Compute journey lock hash over the immutable trip parameters.
+    # 7. Compute journey lock hash over the immutable trip parameters.
+    #    Uses trip.origin/destination_precinct_id (derived from the stop route, always set)
+    #    rather than payload.origin/destination_precinct_id, which are None on the explicit-
+    #    stops path. Payload shape is unchanged from pre-FP-112 — FP-113 extends it to cover
+    #    the full route; no real multi-stop trip should be anchored before that lands.
     lock_hash = compute_journey_lock_hash(
         trip_id=trip_id,
         order_number=payload.order_number,
         driver_id=payload.driver_id,
         horse_id=payload.horse_id,
         trailer_ids=payload.trailer_ids,
-        origin_precinct_id=payload.origin_precinct_id,
-        destination_precinct_id=payload.destination_precinct_id,
+        origin_precinct_id=trip.origin_precinct_id,
+        destination_precinct_id=trip.destination_precinct_id,
         created_by_user_id=current_user.id,
         created_at=trip.created_at,
     )
@@ -230,8 +260,8 @@ async def create_trip(
         driver_id=payload.driver_id,
         horse_id=payload.horse_id,
         trailer_ids=payload.trailer_ids,
-        origin_precinct_id=payload.origin_precinct_id,
-        destination_precinct_id=payload.destination_precinct_id,
+        origin_precinct_id=trip.origin_precinct_id,
+        destination_precinct_id=trip.destination_precinct_id,
         created_by_user_id=current_user.id,
         created_at=trip.created_at,
     )
@@ -252,7 +282,7 @@ async def create_trip(
     await db.refresh(h0)
     await db.refresh(receipt)
 
-    # 7. Assemble and return the response (no ORM relationships — fetch separately).
+    # 8. Assemble and return the response (no ORM relationships — fetch separately).
     return TripDetailResponse(
         id=trip.id,
         trip_reference=trip.trip_reference,
@@ -265,6 +295,7 @@ async def create_trip(
         trailers=[VehicleRead.model_validate(v) for v in trailers],
         origin_precinct_id=trip.origin_precinct_id,
         destination_precinct_id=trip.destination_precinct_id,
+        stops=[TripStopRead.model_validate(s) for s in trip_stops],
         pulsit_trip_reference_id=trip.pulsit_trip_reference_id,
         planned_departure_at=trip.planned_departure_at,
         actual_departure_at=trip.actual_departure_at,

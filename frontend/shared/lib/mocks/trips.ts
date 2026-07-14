@@ -1,4 +1,4 @@
-import type { Trip, TripId, BlockchainReceipt } from '@shared/lib/types/trip'
+import type { Trip, TripId, BlockchainReceipt, TripStop } from '@shared/lib/types/trip'
 import type { HandshakeEvent, HandshakeEventId, HandshakeNumber, HandshakeType } from '@shared/lib/types/handshake'
 import type { TripException, ExceptionId } from '@shared/lib/types/exception'
 import { mockDrivers, DRIVER_DLAMINI_ID, DRIVER_FORMBY_ID, DRIVER_GULTIG_ID, DRIVER_KASONGO_ID } from './drivers'
@@ -39,6 +39,16 @@ function pendingHE(
     event_hash: null, blockchain_receipt_id: null, completed_at: null,
     created_at: at, updated_at: at,
   }
+}
+
+// Two-stop route matching the trip's origin/destination — the FP-112 degenerate case
+// every pre-multi-stop mock trip represents.
+function twoStops(trip: TripId, originPrecinct: string, destPrecinct: string, at: string): TripStop[] {
+  return [originPrecinct, destPrecinct].map((precinct_id, sequence) => ({
+    id: `${trip}-stop-${sequence}`,
+    trip_id: trip, precinct_id, sequence,
+    slot_time: null, notes: null, created_at: at, updated_at: at,
+  }))
 }
 
 // ─── TRP-2026-0035 · closed · Dlamini · FedEx JHB → DBN ──────────────────────
@@ -484,6 +494,7 @@ export const mockTrips: Trip[] = [
     idvs_check_status: 'verified',
     origin_precinct_id: PRECINCT_FEDEX_JHB_ID,
     destination_precinct_id: PRECINCT_FEDEX_DBN_ID,
+    stops: twoStops(TRIP_0035_ID, PRECINCT_FEDEX_JHB_ID, PRECINCT_FEDEX_DBN_ID, '2026-05-03T06:00:00Z'),
     pulsit_trip_reference_id: 'PLT-2026-0035',
     planned_departure_at: '2026-05-03T09:00:00Z',
     actual_departure_at: '2026-05-03T09:30:00Z',
@@ -510,6 +521,7 @@ export const mockTrips: Trip[] = [
     idvs_check_status: 'pending',
     origin_precinct_id: PRECINCT_CGY_JHB_ID,
     destination_precinct_id: PRECINCT_CGY_CT_ID,
+    stops: twoStops(TRIP_0038_ID, PRECINCT_CGY_JHB_ID, PRECINCT_CGY_CT_ID, '2026-05-09T06:00:00Z'),
     pulsit_trip_reference_id: null,
     planned_departure_at: '2026-05-09T10:00:00Z',
     actual_departure_at: null,
@@ -536,6 +548,7 @@ export const mockTrips: Trip[] = [
     idvs_check_status: 'verified',
     origin_precinct_id: PRECINCT_FEDEX_DBN_ID,
     destination_precinct_id: PRECINCT_FEDEX_JHB_ID,
+    stops: twoStops(TRIP_0039_ID, PRECINCT_FEDEX_DBN_ID, PRECINCT_FEDEX_JHB_ID, '2026-05-09T04:30:00Z'),
     pulsit_trip_reference_id: 'PLT-2026-0039',
     planned_departure_at: '2026-05-09T08:00:00Z',
     actual_departure_at: null,
@@ -571,6 +584,7 @@ export const mockTrips: Trip[] = [
     idvs_check_status: 'verified',
     origin_precinct_id: PRECINCT_FEDEX_JHB_ID,
     destination_precinct_id: PRECINCT_FEDEX_DBN_ID,
+    stops: twoStops(TRIP_0040_ID, PRECINCT_FEDEX_JHB_ID, PRECINCT_FEDEX_DBN_ID, '2026-05-08T06:00:00Z'),
     pulsit_trip_reference_id: 'PLT-2026-0040',
     planned_departure_at: '2026-05-08T09:00:00Z',
     actual_departure_at: '2026-05-08T09:22:00Z',
@@ -614,6 +628,7 @@ export const mockTrips: Trip[] = [
     idvs_check_status: 'verified',
     origin_precinct_id: PRECINCT_FEDEX_JHB_ID,
     destination_precinct_id: PRECINCT_FEDEX_DBN_ID,
+    stops: twoStops(TRIP_0041_ID, PRECINCT_FEDEX_JHB_ID, PRECINCT_FEDEX_DBN_ID, '2026-05-09T05:30:00Z'),
     pulsit_trip_reference_id: 'PLT-2026-0041',
     planned_departure_at: '2026-05-09T08:00:00Z',
     actual_departure_at: '2026-05-09T08:32:00Z',
@@ -657,6 +672,7 @@ export const mockTrips: Trip[] = [
     idvs_check_status: 'verified',
     origin_precinct_id: PRECINCT_FEDEX_JHB_ID,
     destination_precinct_id: PRECINCT_FEDEX_DBN_ID,
+    stops: twoStops(TRIP_0042_ID, PRECINCT_FEDEX_JHB_ID, PRECINCT_FEDEX_DBN_ID, '2026-05-08T14:00:00Z'),
     pulsit_trip_reference_id: 'PLT-2026-0042',
     planned_departure_at: '2026-05-08T17:00:00Z',
     actual_departure_at: '2026-05-08T17:10:00Z',
@@ -700,6 +716,7 @@ export const mockTrips: Trip[] = [
     idvs_check_status: 'pending',
     origin_precinct_id: PRECINCT_FEDEX_JHB_ID,
     destination_precinct_id: PRECINCT_FEDEX_DBN_ID,
+    stops: twoStops(TRIP_0043_ID, PRECINCT_FEDEX_JHB_ID, PRECINCT_FEDEX_DBN_ID, '2026-06-22T09:00:00Z'),
     pulsit_trip_reference_id: null,
     planned_departure_at: '2026-06-25T07:00:00Z',
     actual_departure_at: null,

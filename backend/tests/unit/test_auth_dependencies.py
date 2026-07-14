@@ -9,7 +9,8 @@ to return a test EC public key, avoiding any network calls to Supabase.
 
 import base64
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+from typing import Protocol
 
 import pytest
 from cryptography.hazmat.backends import default_backend
@@ -253,10 +254,25 @@ async def test_require_admin_dispatcher_raises_403_for_dispatcher() -> None:
 # ── get_current_driver ──────────────────────────────────────────────────────────
 
 
-def _make_driver_row(*, is_active: bool = True) -> object:
-    """Return a stand-in for a Driver ORM row — only the attributes get_current_driver reads."""
-    from datetime import date
+class _DriverRowLike(Protocol):
+    """Attribute shape get_current_driver reads off a Driver ORM row."""
 
+    id: uuid.UUID
+    organization_id: uuid.UUID
+    full_name: str
+    id_number: str
+    phone_number: str
+    license_number: str
+    license_expiry: date | None
+    idvs_status: str
+    idvs_last_verified_at: datetime | None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+def _make_driver_row(*, is_active: bool = True) -> _DriverRowLike:
+    """Return a stand-in for a Driver ORM row — only the attributes get_current_driver reads."""
     active = is_active  # avoid self-shadowing the class attribute of the same name below
 
     class _FakeDriver:
@@ -268,7 +284,7 @@ def _make_driver_row(*, is_active: bool = True) -> object:
         license_number = "DRV-001"
         license_expiry: date | None = None
         idvs_status = "pending"
-        idvs_last_verified_at = None
+        idvs_last_verified_at: datetime | None = None
         is_active = active
         created_at = _NOW
         updated_at = _NOW

@@ -66,6 +66,8 @@ class TripExceptionBase(BaseModel):
     description: str
     handshake_event_id: Optional[UUID] = None
     checkpoint_id: Optional[UUID] = None
+    consignment_id: Optional[UUID] = None
+    trip_stop_id: Optional[UUID] = None
     supporting_artifact_id: Optional[UUID] = None
 
 

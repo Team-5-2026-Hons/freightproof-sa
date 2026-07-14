@@ -20,6 +20,7 @@ from app.db.models.trips import (  # noqa: E402,F401
     DriverSubstitution,
     Parcel,
     Trip,
+    TripStop,
     TripTemplate,
     TripTrailer,
 )

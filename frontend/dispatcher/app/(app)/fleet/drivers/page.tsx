@@ -24,6 +24,7 @@ import {
   type DriverFormValues,
 } from '@shared/lib/validation/driver'
 import { SA_ID_LENGTH } from '@shared/lib/validation/constants'
+import { AdminOnly } from '@/components/auth/AdminOnly'
 
 // Days until a date string expires — negative means already expired.
 function daysUntil(dateStr: string | null): number | null {
@@ -227,9 +228,11 @@ export default function FleetDriversPage(): React.JSX.Element {
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <TopBar title="Drivers">
-        <Button size="sm" iconLeft={<Plus className="w-4 h-4" />} onClick={() => setModalOpen(true)}>
-          Add Driver
-        </Button>
+        <AdminOnly>
+          <Button size="sm" iconLeft={<Plus className="w-4 h-4" />} onClick={() => setModalOpen(true)}>
+            Add Driver
+          </Button>
+        </AdminOnly>
       </TopBar>
 
       <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4">

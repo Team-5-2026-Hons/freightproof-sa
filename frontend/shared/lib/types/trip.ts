@@ -24,6 +24,19 @@ export type TripStatus =
   | 'cancelled'        // Trip was cancelled before completion
   | 'exception_hold'   // Trip is paused pending resolution of a critical exception
 
+// A sequenced waypoint on the trip's route (FP-112). Role (origin/destination) is not
+// stored — it is derived per consignment. Mirrors backend TripStopRead.
+export interface TripStop {
+  id: string
+  trip_id: string
+  precinct_id: string
+  sequence: number
+  slot_time: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
 // Lightweight shape for list views (GET /trips).
 // Nests full driver/horse/trailers — confirmed by API contract §4.1.
 // open_exception_count is derived by the backend service layer.
@@ -57,6 +70,7 @@ export interface Trip {
   idvs_check_status: 'pending' | 'verified' | 'failed'
   origin_precinct_id: string
   destination_precinct_id: string
+  stops: TripStop[]
   pulsit_trip_reference_id: string | null
   planned_departure_at: string | null
   actual_departure_at: string | null

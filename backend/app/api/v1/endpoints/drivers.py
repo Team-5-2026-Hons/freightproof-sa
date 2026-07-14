@@ -5,7 +5,11 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import get_current_dispatcher, get_current_driver
+from app.auth.dependencies import (
+    get_current_dispatcher,
+    get_current_driver,
+    require_admin_dispatcher,
+)
 from app.db.models.enums import DispatcherRole
 from app.core.exceptions import DuplicateResourceError, ResourceNotFoundError
 from app.db.session import get_db
@@ -43,7 +47,7 @@ async def get_my_driver_profile(
 async def create_driver_endpoint(
     body: DriverCreateBody,
     db: AsyncSession = Depends(get_db),
-    current_user: UserRead = Depends(get_current_dispatcher),
+    current_user: UserRead = Depends(require_admin_dispatcher),
 ) -> DriverRead:
     try:
         return await create_driver(
@@ -63,7 +67,7 @@ async def update_driver_endpoint(
     driver_id: UUID,
     body: DriverUpdateBody,
     db: AsyncSession = Depends(get_db),
-    current_user: UserRead = Depends(get_current_dispatcher),
+    current_user: UserRead = Depends(require_admin_dispatcher),
 ) -> DriverRead:
     try:
         return await update_driver(

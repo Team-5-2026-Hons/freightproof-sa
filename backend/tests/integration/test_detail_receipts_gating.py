@@ -147,6 +147,7 @@ def _fake_trip_detail() -> TripDetailResponse:
         trailers=[],
         origin_precinct_id=uuid.uuid4(),
         destination_precinct_id=uuid.uuid4(),
+        stops=[],
         pulsit_trip_reference_id=None,
         planned_departure_at=None,
         actual_departure_at=None,
