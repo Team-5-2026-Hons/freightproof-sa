@@ -7,6 +7,7 @@ import { ROUTES } from '@/lib/constants/routes'
 import { useTrip } from '@/lib/hooks/useTrip'
 import { tripStatusChip } from '@/lib/utils/trip-status-chip'
 import { handshakeProgress, currentHandshakeNumber } from '@/lib/utils/handshake-progress'
+import { Button } from '@/components/ui/Button'
 import { Chip } from '@/components/ui/Chip'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { HandshakeProgressBar } from '@/components/trip/HandshakeProgressBar'
@@ -46,12 +47,12 @@ export function HomeContent() {
       <HandshakeProgressBar progress={progress} />
 
       {trip.status === 'in_transit' && (
-        <button
-          className="w-full rounded-xl border border-secondary bg-secondary/5 p-3 text-left text-sm font-medium text-secondary"
-          onClick={() => router.push(ROUTES.inTransit)}
-        >
+        // Mirrors TripDetailView's identical control exactly — same shortcut, same
+        // shadcn Button (variant="secondary" size="lg"), so the two trip-detail
+        // surfaces (Home and Trip Detail) don't hand-duplicate their own button styles.
+        <Button variant="secondary" size="lg" onClick={() => router.push(ROUTES.inTransit)}>
           In-Transit Hub →
-        </button>
+        </Button>
       )}
 
       {current !== null && (

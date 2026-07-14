@@ -7,23 +7,33 @@ Each function:
   2. Mutates the HandshakeEvent + Trip rows.
   3. Returns the updated TripDetailResponse.
 
-Hedera anchoring is intentionally NOT called here yet (H2/H5 normally queue an
-HCS receipt anchor per api_contract_dispatcher_driver.md §3.4) — that work is
-deferred. event_hash is computed and stored so the anchor call is a drop-in
-follow-up, not a redesign.
+H2 (Loading) and H5 (Unloading) are anchored to Hedera HCS per
+api_contract_dispatcher_driver.md §3.4: a JSON-native canonical payload is
+built (compute_h2_canonical_payload / compute_h5_canonical_payload), hashed
+via the shared compute_payload_hash() (app/blockchain/anchor_service.py — the
+same hasher trips and vehicles use, so there is one canonical-hash
+implementation, not another copy), then anchor_subject() submits it to Hedera,
+persists a BlockchainReceipt, and event.blockchain_receipt_id is set to it.
+anchor_subject() raises HederaTimeoutError/HederaServiceError uncaught on
+failure — callers (the handshake endpoints) map these to 504/502, and because
+the anchor call happens before the corresponding Trip.status transition below,
+a failed anchor leaves the trip in its prior state rather than half-advanced.
+H1, H3, H4 remain unanchored feeders by design — they record cross-checks
+(GPS, guard sign-off, seal continuity) that support the anchored H2/H5
+handshakes but are not themselves committed to chain.
 """
 
-import hashlib
-import json
 import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.blockchain.anchor_service import anchor_subject, compute_payload_hash
 from app.core.exceptions import HandshakeSequenceError, ResourceNotFoundError
 from app.db.models.enums import (
-    ExceptionSeverity, ExceptionSource, ExceptionType, HandshakeStatus, HandshakeType, TripStatus,
+    BlockchainReceiptType, ExceptionSeverity, ExceptionSource, ExceptionType, HandshakeStatus,
+    HandshakeType, SubjectType, TripStatus,
 )
 from app.db.models.handshakes import HandshakeEvent
 from app.db.models.transit import TripException
@@ -68,11 +78,6 @@ async def _get_handshake_event(db: AsyncSession, *, trip_id: uuid.UUID, handshak
     return event
 
 
-def _compute_event_hash(payload: dict) -> str:
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-
-
 async def advance_h1(
     db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID, payload: H1CompleteRequest,
 ) -> TripDetailResponse:
@@ -98,6 +103,27 @@ async def advance_h1(
     return await get_trip_detail(db, trip_id=trip_id, operator_organization_id=trip.operator_organization_id)
 
 
+def compute_h2_canonical_payload(
+    *, handshake_event_id: uuid.UUID, trip_id: uuid.UUID, seal_number: str, driver_visual_count: int,
+) -> dict[str, str | int]:
+    """Canonical H2 (Loading) payload anchored to Hedera.
+
+    JSON-native (UUIDs stringified explicitly) so compute_payload_hash's plain
+    json.dumps (no default=str fallback) never has to guess how to serialize a
+    value. Deliberately excludes GPS, photos, and artifact IDs — only hashes of
+    evidence belong on-chain, never GPS/PII (POPIA); completed_at is excluded
+    too, to avoid datetime round-trip fragility when verification reconstructs
+    this payload later.
+    """
+    return {
+        "handshake_event_id": str(handshake_event_id),
+        "trip_id": str(trip_id),
+        "handshake_type": "loading",
+        "seal_number": seal_number,
+        "driver_visual_count": driver_visual_count,
+    }
+
+
 async def advance_h2(
     db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID, payload: H2CompleteRequest,
 ) -> TripDetailResponse:
@@ -111,15 +137,27 @@ async def advance_h2(
     event.seal_number = payload.seal_number
     event.seal_photo_artifact_id = payload.seal_photo_artifact_id
     event.driver_visual_count = payload.driver_visual_count
-    event.event_hash = _compute_event_hash({
-        "trip_id": str(trip_id), "seal_number": payload.seal_number,
-        "driver_visual_count": payload.driver_visual_count,
-    })
+
+    canonical_payload = compute_h2_canonical_payload(
+        handshake_event_id=event.id, trip_id=trip_id,
+        seal_number=payload.seal_number, driver_visual_count=payload.driver_visual_count,
+    )
+    event.event_hash = compute_payload_hash(canonical_payload)
+
+    # Anchor before flipping trip.status: anchor_subject() raises uncaught on
+    # Hedera failure, so if it fails the trip never advances to LOADING — the
+    # driver retries H2 cleanly instead of the record silently drifting ahead
+    # of what's actually anchored.
+    receipt = await anchor_subject(
+        db, subject_type=SubjectType.HANDSHAKE_EVENT, subject_id=event.id,
+        canonical_payload=canonical_payload, receipt_type=BlockchainReceiptType.PICKUP,
+        trip_id=trip_id,
+    )
+    event.blockchain_receipt_id = receipt.id
+
     event.status = HandshakeStatus.COMPLETED
     event.completed_at = datetime.now(UTC)
 
-    # Hedera pickup receipt anchor is deferred (see module docstring) — when
-    # that work starts, queue it here with event.event_hash as the payload.
     trip.status = TripStatus.LOADING
     await db.flush()
 
@@ -188,6 +226,25 @@ async def advance_h4(
     return await get_trip_detail(db, trip_id=trip_id, operator_organization_id=trip.operator_organization_id)
 
 
+def compute_h5_canonical_payload(
+    *, handshake_event_id: uuid.UUID, trip_id: uuid.UUID, pp_scan_in_count: int, driver_visual_count: int,
+) -> dict[str, str | int]:
+    """Canonical H5 (Unloading) payload anchored to Hedera.
+
+    Anchored unconditionally, independent of whether the counts match — a
+    mismatch is evidence in its own right (recorded separately as a
+    TripException), not a reason to withhold the anchor. Same POPIA/JSON-native
+    rules as compute_h2_canonical_payload: no GPS/photos/PII, no completed_at.
+    """
+    return {
+        "handshake_event_id": str(handshake_event_id),
+        "trip_id": str(trip_id),
+        "handshake_type": "unloading",
+        "pp_scan_in_count": pp_scan_in_count,
+        "driver_visual_count": driver_visual_count,
+    }
+
+
 async def advance_h5(
     db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID, payload: H5CompleteRequest,
 ) -> TripDetailResponse:
@@ -209,10 +266,22 @@ async def advance_h5(
     event.pod_signature_artifact_id = payload.pod_signature_artifact_id
     event.driver_visual_count = payload.driver_visual_count
     event.parcel_count_destination = payload.pp_scan_in_count
-    event.event_hash = _compute_event_hash({
-        "trip_id": str(trip_id), "pp_scan_in_count": payload.pp_scan_in_count,
-        "driver_visual_count": payload.driver_visual_count,
-    })
+
+    canonical_payload = compute_h5_canonical_payload(
+        handshake_event_id=event.id, trip_id=trip_id,
+        pp_scan_in_count=payload.pp_scan_in_count, driver_visual_count=payload.driver_visual_count,
+    )
+    event.event_hash = compute_payload_hash(canonical_payload)
+
+    # Anchor before flipping trip.status, same rollback-safety rationale as H2.
+    # Runs regardless of the count-mismatch branch below — the anchor commits
+    # exactly what the driver/PP attested at unload, match or not.
+    receipt = await anchor_subject(
+        db, subject_type=SubjectType.HANDSHAKE_EVENT, subject_id=event.id,
+        canonical_payload=canonical_payload, receipt_type=BlockchainReceiptType.DELIVERY,
+        trip_id=trip_id,
+    )
+    event.blockchain_receipt_id = receipt.id
     event.completed_at = datetime.now(UTC)
 
     counts_match = (
@@ -238,7 +307,6 @@ async def advance_h5(
     trip.status = TripStatus.CLOSED
     trip.closed_at = datetime.now(UTC)
     trip.actual_arrival_at = trip.actual_arrival_at or datetime.now(UTC)
-    # Hedera delivery receipt anchor is deferred (see module docstring).
     await db.flush()
 
     return await get_trip_detail(db, trip_id=trip_id, operator_organization_id=trip.operator_organization_id)

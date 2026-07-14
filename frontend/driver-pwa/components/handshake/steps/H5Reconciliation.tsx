@@ -53,7 +53,7 @@ export function H5Reconciliation({ tripId, draft, onUpdate, onComplete }: H5Reco
           </div>
         </div>
       </div>
-      <div className="flex justify-center p-6">
+      <div className="flex justify-center px-6 pt-6 pb-safe">
         <HoldButton label="Confirm reconciliation" onConfirm={handleConfirm} />
       </div>
     </main>

@@ -24,7 +24,8 @@ export function H1EntryPhoto({ tripId, draft, onUpdate, onComplete }: H1EntryPho
       />
       <div className="flex flex-1 flex-col gap-6 p-4">
         <p className="text-sm text-surface-on-variant">
-          Photograph the gate entry point. This photo is anchored as evidence of your arrival.
+          {/* H1 is an unanchored feeder handshake — don't claim blockchain anchoring here. */}
+          Photograph the gate entry point. This photo is recorded as evidence of your arrival.
         </p>
         <CameraCapture
           label="Gate entry photo"
@@ -32,7 +33,7 @@ export function H1EntryPhoto({ tripId, draft, onUpdate, onComplete }: H1EntryPho
           onCapture={(dataUrl) => onUpdate({ gatePhotoDataUrl: dataUrl })}
         />
       </div>
-      <div className="flex justify-center p-6">
+      <div className="flex justify-center px-6 pt-6 pb-safe">
         <HoldButton
           label="Hold to confirm"
           onConfirm={onComplete}

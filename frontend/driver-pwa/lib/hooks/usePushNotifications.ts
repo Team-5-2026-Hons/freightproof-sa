@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Capacitor } from '@capacitor/core'
 import { PushNotifications } from '@capacitor/push-notifications'
 import { STEP_SLUGS } from '@shared/lib/constants/handshake-meta'
-import { TRIP_0041_ID } from '@shared/lib/mocks/trips'
+import { ROUTES } from '@/lib/constants/routes'
 
 export interface PushNotificationsState {
   // Simulates a GATE_ARRIVAL push for dev use on the /_dev/tokens page.
@@ -13,10 +13,11 @@ export interface PushNotificationsState {
   simulateGateArrival: (handshake: 1 | 4) => void
 }
 
-export function usePushNotifications(tripId?: string): PushNotificationsState {
+// The route itself never carries a trip id (see ROUTES.handshakeStep in
+// lib/constants/routes.ts) — the backend enforces one active trip per driver, so "which
+// trip" always comes from TripContext, never from the push payload or the URL.
+export function usePushNotifications(): PushNotificationsState {
   const router = useRouter()
-  // Fall back to canonical demo trip when called from outside the trip context (e.g. /_dev/tokens).
-  const resolvedTripId = tripId ?? String(TRIP_0041_ID)
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return
@@ -29,18 +30,18 @@ export function usePushNotifications(tripId?: string): PushNotificationsState {
       if (notification.data?.type !== 'GATE_ARRIVAL') return
       const handshake = notification.data.handshake as 1 | 4
       const slug = STEP_SLUGS[handshake][0]
-      router.push(`/trip/${resolvedTripId}/handshake/${handshake}/step/${slug}`)
+      router.push(ROUTES.handshakeStep(handshake, slug))
     })
 
     return () => {
       listenerPromise.then(l => l.remove())
     }
-  }, [router, resolvedTripId])
+  }, [router])
 
   const simulateGateArrival = useCallback((handshake: 1 | 4) => {
     const slug = STEP_SLUGS[handshake][0]
-    router.push(`/trip/${resolvedTripId}/handshake/${handshake}/step/${slug}`)
-  }, [router, resolvedTripId])
+    router.push(ROUTES.handshakeStep(handshake, slug))
+  }, [router])
 
   return { simulateGateArrival }
 }

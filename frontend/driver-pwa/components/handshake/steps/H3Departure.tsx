@@ -24,7 +24,9 @@ export function H3Departure({ tripId, draft, onComplete }: H3DepartureProps) {
         </p>
         <EvidenceReview
           items={[
-            { label: 'GPS', value: draft.gpsLat ? `${draft.gpsLat.toFixed(5)}, ${draft.gpsLng?.toFixed(5)}` : null },
+            // Raw coordinates are noise to a driver — a "Captured" receipt is enough here;
+            // the exact lat/lng stays in the draft for the backend payload.
+            { label: 'GPS', value: draft.gpsLat !== null ? 'Captured' : null },
             { label: 'Exit photo', value: draft.gatePhotoDataUrl, isImage: true },
             {
               label: 'Seal confirmed',
@@ -36,7 +38,7 @@ export function H3Departure({ tripId, draft, onComplete }: H3DepartureProps) {
           ]}
         />
       </div>
-      <div className="flex justify-center p-6">
+      <div className="flex justify-center px-6 pt-6 pb-safe">
         <HoldButton label="Depart" onConfirm={onComplete} disabled={!isReady} />
       </div>
     </main>

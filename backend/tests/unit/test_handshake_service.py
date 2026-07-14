@@ -3,14 +3,18 @@
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
+from unittest.mock import MagicMock
 
 import pytest
 import pytest_asyncio
+from sqlalchemy import select
 
+from app.blockchain.hedera import HederaReceipt
 from app.core.exceptions import HandshakeSequenceError, ResourceNotFoundError
+from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import (
-    ArtifactType, ExceptionSeverity, ExceptionType, HandshakeStatus, HandshakeType, IdvsStatus,
-    OrganizationType, TripStatus, VehicleType,
+    ArtifactType, BlockchainReceiptType, ExceptionSeverity, ExceptionType, HandshakeStatus,
+    HandshakeType, IdvsStatus, OrganizationType, TripStatus, VehicleType,
 )
 from app.db.models.evidence import EvidenceArtifact
 from app.db.models.handshakes import HandshakeEvent
@@ -20,6 +24,25 @@ from app.db.models.trips import Trip
 from app.db.models.vehicles import Vehicle
 from app.orchestration.handshake_service import advance_h1, advance_h2, advance_h3, advance_h4, advance_h5
 from app.schemas.handshakes import H1CompleteRequest, H2CompleteRequest, H3CompleteRequest, H4CompleteRequest, H5CompleteRequest
+
+
+@pytest.fixture(autouse=True)
+def stub_hedera_service(monkeypatch):
+    """H2/H5 now anchor to Hedera via anchor_subject(), which builds its own
+    HederaService() when advance_h2/advance_h5 don't pass one in (they don't —
+    same no-injection shape as trip_service.create_trip). These tests use a
+    real (rolled-back) db_session but must not touch the real Hedera SDK, so
+    the SDK wrapper class is patched at the import boundary anchor_service
+    uses it through, matching tests/integration/test_trips_anchor.py.
+    """
+    mock_cls = MagicMock()
+    mock_cls.return_value.submit_hash.return_value = HederaReceipt(
+        topic_id="0.0.12345", sequence_number=1,
+        consensus_timestamp="1715865600.000000000",
+        transaction_id="0.0.12345@1715865600.000000000",
+    )
+    monkeypatch.setattr("app.blockchain.anchor_service.HederaService", mock_cls)
+    return mock_cls
 
 
 @pytest_asyncio.fixture
@@ -151,7 +174,13 @@ async def test_advance_h2_happy_path_stores_seal_and_hash(db_session, trip_fixtu
     h2 = next(h for h in result.handshakes if h.handshake_type == HandshakeType.LOADING)
     assert h2.seal_number == "AB-1234"
     assert h2.event_hash is not None
-    assert h2.blockchain_receipt_id is None  # Hedera anchoring deferred — not this plan
+    assert h2.blockchain_receipt_id is not None
+
+    receipt = (await db_session.execute(
+        select(BlockchainReceipt).where(BlockchainReceipt.id == h2.blockchain_receipt_id)
+    )).scalar_one()
+    assert receipt.data_hash == h2.event_hash
+    assert receipt.receipt_type == BlockchainReceiptType.PICKUP
 
 
 @pytest.mark.asyncio
@@ -197,6 +226,15 @@ async def test_advance_h5_matching_counts_closes_trip(db_session, trip_fixture):
     assert result.closed_at is not None
     assert result.exceptions == []
 
+    h5 = next(h for h in result.handshakes if h.handshake_type == HandshakeType.UNLOADING)
+    assert h5.blockchain_receipt_id is not None
+
+    receipt = (await db_session.execute(
+        select(BlockchainReceipt).where(BlockchainReceipt.id == h5.blockchain_receipt_id)
+    )).scalar_one()
+    assert receipt.data_hash == h5.event_hash
+    assert receipt.receipt_type == BlockchainReceiptType.DELIVERY
+
 
 @pytest.mark.asyncio
 async def test_advance_h5_count_mismatch_creates_exception_but_still_closes(db_session, trip_fixture):
@@ -210,4 +248,8 @@ async def test_advance_h5_count_mismatch_creates_exception_but_still_closes(db_s
     ))
     assert result.status == TripStatus.CLOSED
     assert len(result.exceptions) == 1
+
+    h5 = next(h for h in result.handshakes if h.handshake_type == HandshakeType.UNLOADING)
+    assert h5.status == HandshakeStatus.EXCEPTION
+    assert h5.blockchain_receipt_id is not None  # anchored despite the mismatch — the mismatch is evidence too
     assert result.exceptions[0].exception_type == ExceptionType.WAYBILL_COUNT_MISMATCH

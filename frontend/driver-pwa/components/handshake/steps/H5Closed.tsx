@@ -42,7 +42,7 @@ export function H5Closed({ tripId, draft, onComplete }: H5ClosedProps) {
           </p>
         </div>
       </div>
-      <div className="flex justify-center p-6">
+      <div className="flex justify-center px-6 pt-6 pb-safe">
         <HoldButton label="Close trip" onConfirm={handleClose} disabled={!isReady} />
       </div>
     </main>

@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from 'react'
 import { Menu, CircleUserRound } from 'lucide-react'
 import { NavDrawer } from './NavDrawer'
+import { OfflineBanner } from './OfflineBanner'
 import { ProfilePanel } from './ProfilePanel'
 import { IconButton } from '@/components/ui/IconButton'
 
@@ -22,6 +23,9 @@ export function AppShell({ title = 'FreightProof', children }: AppShellProps) {
         <p className="text-sm font-bold text-surface-on">{title}</p>
         <IconButton icon={<CircleUserRound className="h-5 w-5" aria-hidden />} aria-label="Open driver profile" onClick={() => { setNavOpen(false); setProfileOpen(true) }} />
       </header>
+
+      {/* Drivers work through signal dead zones — surface connectivity loss on every shell screen. */}
+      <OfflineBanner />
 
       <div className="flex-1">{children}</div>
 

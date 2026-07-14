@@ -1,18 +1,50 @@
 // frontend/driver-pwa/app/(app)/trip/in-transit/InTransitPageClient.tsx
 'use client'
 
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowRight, ShieldAlert, ScanFace } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { useTrip } from '@/lib/hooks/useTrip'
 import { ROUTES } from '@/lib/constants/routes'
 import { STEP_SLUGS } from '@shared/lib/constants/handshake-meta'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Spinner } from '@/components/ui/Spinner'
+import { SubpageHeader } from '@/components/layout/SubpageHeader'
+import type { TripException } from '@shared/lib/types/exception'
+
+interface ExceptionCardProps {
+  exception: TripException
+}
+
+// A native <button> (not the Card component) so the expand/collapse toggle is
+// keyboard-operable and announces its state via aria-expanded — long exception and
+// dispatcher-note descriptions were previously clamped with no way to read the rest.
+// Styling mirrors Card variant="exception".
+function ExceptionCard({ exception }: ExceptionCardProps) {
+  const [expanded, setExpanded] = useState(false)
+  return (
+    <button
+      type="button"
+      aria-expanded={expanded}
+      onClick={() => setExpanded((prev) => !prev)}
+      className="w-full rounded-xl border-l-4 border-error bg-surface-container-lowest p-5 text-left shadow-ambient"
+    >
+      <p className="text-xs font-semibold text-error-on-container capitalize">
+        {exception.exception_type.replace(/_/g, ' ')}
+      </p>
+      {/* clamped only while collapsed — a tap reveals the full description */}
+      <p className={cn('text-xs text-surface-on-variant mt-0.5', !expanded && 'line-clamp-2')}>
+        {exception.description}
+      </p>
+    </button>
+  )
+}
 
 export default function InTransitPageClient() {
   const router = useRouter()
-  const { trip, isLoading } = useTrip()
+  const { trip, isLoading, exceptions } = useTrip()
 
   if (isLoading) {
     return (
@@ -30,17 +62,20 @@ export default function InTransitPageClient() {
     )
   }
 
-  const openExceptions = trip.exceptions.filter((e) => !e.resolved)
+  // Read the CONTEXT exceptions list, not trip.exceptions: the context value is the
+  // trip's fetched/mock exceptions plus everything logged this session (TripContext
+  // appends on logException), so a just-submitted exception shows up here immediately.
+  // trip.exceptions is only a fetch-time snapshot and would silently drop it.
+  const openExceptions = exceptions.filter((e) => !e.resolved)
 
   return (
     <main className="min-h-screen flex flex-col">
-      <header className="sticky top-0 bg-surface shadow-ambient-header px-4 py-4">
-        <button onClick={() => router.push(ROUTES.activeTripDetail)} className="mb-1 text-sm text-secondary">
-          ← Trip detail
-        </button>
-        <h1 className="text-xl font-bold">{trip.trip_reference}</h1>
-        <p className="text-sm text-surface-on-variant">In Transit</p>
-      </header>
+      <SubpageHeader
+        title={trip.trip_reference}
+        backLabel="Trip detail"
+        onBack={() => router.push(ROUTES.activeTripDetail)}
+        right={<span className="text-xs text-surface-on-variant">In Transit</span>}
+      />
 
       <div className="flex flex-col gap-4 p-4">
         {/* ETA */}
@@ -60,12 +95,7 @@ export default function InTransitPageClient() {
               {openExceptions.length} open exception{openExceptions.length > 1 ? 's' : ''}
             </p>
             {openExceptions.map((exc) => (
-              <Card key={exc.id} variant="exception">
-                <p className="text-xs font-semibold text-error-on-container capitalize">
-                  {exc.exception_type.replace(/_/g, ' ')}
-                </p>
-                <p className="text-xs text-surface-on-variant mt-0.5 line-clamp-2">{exc.description}</p>
-              </Card>
+              <ExceptionCard key={exc.id} exception={exc} />
             ))}
           </section>
         )}
@@ -99,13 +129,15 @@ export default function InTransitPageClient() {
         </Button>
 
         {/* Panic */}
-        <button
+        <Button
+          variant="danger"
+          size="lg"
+          className="mt-2"
+          iconLeft={<ShieldAlert className="h-5 w-5" strokeWidth={2} aria-hidden />}
           onClick={() => router.push(ROUTES.panic)}
-          className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-error py-4 text-sm font-bold uppercase tracking-widest text-error-on"
         >
-          <ShieldAlert className="h-5 w-5" strokeWidth={2} aria-hidden />
           Panic
-        </button>
+        </Button>
       </div>
     </main>
   )

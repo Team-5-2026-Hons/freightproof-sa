@@ -4,12 +4,15 @@
 import { useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useHandshakeDraft } from '@/lib/hooks/useHandshakeDraft'
+import { useSealReference } from '@/lib/hooks/useSealReference'
 import { useTrip } from '@/lib/hooks/useTrip'
 import { useToast } from '@/lib/hooks/useToast'
 import { submitHandshake } from '@/lib/api/handshakes'
 import { ApiError } from '@/lib/api/client'
 import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
 import { nextHandshakeRoute } from '@/lib/navigation/handshake-flow'
+import { IS_DEMO_MODE } from '@/lib/constants/env'
+import { HANDSHAKE_NAMES } from '@shared/lib/constants/handshake-meta'
 import { Spinner } from '@/components/ui/Spinner'
 import type { H1Evidence, H2Evidence, H3Evidence, H4Evidence, H5Evidence } from '@/lib/types/evidence-draft'
 import type { TripStatus } from '@shared/lib/types/trip'
@@ -64,6 +67,13 @@ function isAtOrPast(status: TripStatus, target: TripStatus): boolean {
   return STATUS_ORDER.indexOf(status) >= STATUS_ORDER.indexOf(target)
 }
 
+// The backend only anchors H2 (loading) and H5 (unloading) to Hedera HCS — H1/H3/H4
+// are unanchored "feeder" handshakes by design (see H1Verification's copy). Used to
+// decide whether the completion receipt can honestly claim anchoring.
+function isAnchoredHandshakeType(type: SubmittableHandshakeType): boolean {
+  return type === 'loading' || type === 'unloading'
+}
+
 export default function HandshakeStepPageClient() {
   const { h, slug } = useParams<{ h: string; slug: string }>()
   const router = useRouter()
@@ -92,15 +102,55 @@ export default function HandshakeStepPageClient() {
   const [h4Draft, updateH4, clearH4] = useHandshakeDraft<H4Evidence>(tripId, 'dest_gate_in', H4_INITIAL)
   const [h5Draft, updateH5, clearH5] = useHandshakeDraft<H5Evidence>(tripId, 'unloading', H5_INITIAL)
 
+  // Durable per-trip reference to the seal set at loading — outlives h2Draft, which
+  // submitAndAdvance clears the moment H2 submits successfully. H3/H4 read this (falling
+  // back to h2Draft.sealNumber for the in-H2 case, e.g. before H2 has been submitted).
+  const [sealReference, setSealReference, clearSealReference] = useSealReference(tripId)
+  const h2SealNumber = sealReference ?? h2Draft.sealNumber
+
+  // Completion receipt (UX Task 5a): every exit from submitAndAdvance that means "your
+  // evidence is safely captured" fires this before the redirect — without it the driver
+  // lands back on the trip page with zero confirmation, the biggest trust gap found in
+  // the UX walkthrough. `anchored` must only be true for a real (non-demo), non-queued
+  // H2/H5 success — demo mode never syncs to the server or chain, and a queued submit
+  // hasn't reached the backend yet, so both keep the "stored on this device" wording
+  // instead of falsely claiming a Hedera anchor.
+  function notifyHandshakeRecorded(anchored: boolean) {
+    const savedAt = new Date().toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })
+    notify({
+      kind: 'success',
+      title: `${HANDSHAKE_NAMES[handshakeNum]} recorded`,
+      body: anchored
+        ? `Saved ${savedAt} — evidence recorded and anchored to Hedera HCS.`
+        : `Saved ${savedAt} — evidence stored on this device.`,
+    })
+  }
+
+  // Runs immediately before a handshake's draft is cleared on every success path. H2
+  // (loading) sets the durable seal reference here — BEFORE clearFn() runs — so H3/H4
+  // still have something to compare against once h2Draft is gone. H5 (unloading) is the
+  // trip closing, so the reference is torn down here rather than living on for a future trip.
+  function syncSealReference(type: SubmittableHandshakeType, evidence: H1Evidence | H2Evidence | H3Evidence | H4Evidence | H5Evidence) {
+    if (type === 'loading') setSealReference((evidence as H2Evidence).sealNumber)
+    if (type === 'unloading') clearSealReference()
+  }
+
   async function submitAndAdvance(
     type: SubmittableHandshakeType,
     evidence: H1Evidence | H2Evidence | H3Evidence | H4Evidence | H5Evidence,
     clearFn: () => void,
   ) {
+    // Real (non-demo) submission of an anchored handshake type is the only path that
+    // can honestly claim a Hedera anchor — demo mode short-circuits before hitting the
+    // backend at all (see submitHandshake), so it never actually anchors anything.
+    const anchored = !IS_DEMO_MODE && isAnchoredHandshakeType(type)
+
     try {
       await submitHandshake(tripId, type, evidence)
       await refetchTrip()
+      syncSealReference(type, evidence)
       clearFn()
+      notifyHandshakeRecorded(anchored)
       advance()
       return
     } catch (err) {
@@ -110,7 +160,10 @@ export default function HandshakeStepPageClient() {
         // whether that's what happened before treating this as a real failure.
         const fetched = await refetchTrip()
         if (fetched && isAtOrPast(fetched.status, RESULT_STATUS[type])) {
+          syncSealReference(type, evidence)
           clearFn()
+          // The earlier attempt did record the evidence — the driver still deserves the receipt.
+          notifyHandshakeRecorded(anchored)
           advance()
           return
         }
@@ -128,8 +181,13 @@ export default function HandshakeStepPageClient() {
         return
       }
       // Network error or 5xx — queue for retry once connectivity/the server recovers.
+      // The receipt's "stored on this device" wording is literally true here: the
+      // evidence sits in the offline queue until it syncs — always false, even for
+      // H2/H5, since it hasn't reached the backend (or Hedera) yet.
       enqueue(tripId, type, evidence)
+      syncSealReference(type, evidence)
       clearFn()
+      notifyHandshakeRecorded(false)
       advance()
     }
   }
@@ -168,14 +226,14 @@ export default function HandshakeStepPageClient() {
 
   if (handshakeNum === 3) {
     if (slug === '1-approach-exit')  return <H3ApproachExit {...props} draft={h3Draft} onUpdate={updateH3} onComplete={advance} />
-    if (slug === '2-exit-and-seal')  return <H3ExitSeal     {...props} draft={h3Draft} h2SealNumber={h2Draft.sealNumber} onUpdate={updateH3} onComplete={advance} />
+    if (slug === '2-exit-and-seal')  return <H3ExitSeal     {...props} draft={h3Draft} h2SealNumber={h2SealNumber} onUpdate={updateH3} onComplete={advance} />
     if (slug === '3-departure')      return <H3Departure    {...props} draft={h3Draft} onComplete={() => submitAndAdvance('origin_gate_out', h3Draft, clearH3)} />
   }
 
   if (handshakeNum === 4) {
     if (slug === '1-approach-dest')    return <H4ApproachDest {...props} draft={h4Draft} onUpdate={updateH4} onComplete={advance} />
     if (slug === '2-dest-entry-photo') return <H4EntryPhoto   {...props} draft={h4Draft} onUpdate={updateH4} onComplete={advance} />
-    if (slug === '3-seal-verify')      return <H4SealVerify   {...props} draft={h4Draft} h2SealNumber={h2Draft.sealNumber} onUpdate={updateH4} onComplete={() => submitAndAdvance('dest_gate_in', h4Draft, clearH4)} />
+    if (slug === '3-seal-verify')      return <H4SealVerify   {...props} draft={h4Draft} h2SealNumber={h2SealNumber} onUpdate={updateH4} onComplete={() => submitAndAdvance('dest_gate_in', h4Draft, clearH4)} />
   }
 
   if (handshakeNum === 5) {

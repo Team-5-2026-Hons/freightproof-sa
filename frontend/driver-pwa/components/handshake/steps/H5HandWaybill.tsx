@@ -29,7 +29,7 @@ export function H5HandWaybill({ tripId, draft, onUpdate, onComplete }: H5HandWay
           </p>
         </div>
       </div>
-      <div className="flex justify-center p-6">
+      <div className="flex justify-center px-6 pt-6 pb-safe">
         <HoldButton label="Waybill handed over" onConfirm={handleConfirm} />
       </div>
     </main>

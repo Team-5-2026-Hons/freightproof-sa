@@ -1,59 +1,75 @@
 'use client'
 
-import { useEffect, useRef, type ReactNode } from 'react'
+import { type ReactNode } from 'react'
+import * as DialogPrimitive from '@radix-ui/react-dialog'
+import { cva, type VariantProps } from 'class-variance-authority'
 import { X } from 'lucide-react'
-import { cn } from '@shared/lib/utils/cn'
+import { cn } from '@/lib/utils'
 
-interface ModalProps {
+const contentVariants = cva(
+  cn(
+    'fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-modal',
+    'w-[calc(100%-2rem)] rounded-xl bg-surface-container-lowest shadow-ambient p-0',
+    'focus:outline-none',
+    'data-[state=open]:animate-in data-[state=closed]:animate-out',
+    'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
+    'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
+  ),
+  {
+    variants: {
+      size: {
+        sm: 'max-w-sm',
+        md: 'max-w-lg',
+        lg: 'max-w-2xl',
+      },
+    },
+    defaultVariants: { size: 'md' },
+  },
+)
+
+interface ModalProps extends VariantProps<typeof contentVariants> {
   open: boolean
   onClose: () => void
   title: string
   children: ReactNode
   footer?: ReactNode
-  size?: 'sm' | 'md' | 'lg'
 }
 
-const sizeClasses = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl' }
-
 export function Modal({ open, onClose, title, children, footer, size = 'md' }: ModalProps) {
-  const dialogRef = useRef<HTMLDialogElement>(null)
-
-  useEffect(() => {
-    const dialog = dialogRef.current
-    if (!dialog) return
-    if (open) { dialog.showModal() } else { dialog.close() }
-  }, [open])
-
-  if (!open) return null
-
   return (
-    <dialog
-      ref={dialogRef}
-      onClose={onClose}
-      className={cn(
-        'w-full m-auto rounded-xl bg-surface-container-lowest shadow-ambient p-0',
-        'backdrop:bg-black/40',
-        sizeClasses[size],
-      )}
-    >
-      <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant/20">
-        <h2 className="text-lg font-bold text-surface-on">{title}</h2>
-        <button
-          onClick={onClose}
-          aria-label="Close modal"
-          className="w-8 h-8 flex items-center justify-center rounded-xl text-surface-on-variant hover:bg-surface-container-low transition-colors"
-        >
-          <X className="w-4 h-4" />
-        </button>
-      </div>
+    <DialogPrimitive.Root open={open} onOpenChange={(next) => { if (!next) onClose() }}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay
+          className={cn(
+            'fixed inset-0 bg-black/40 z-modal',
+            'data-[state=open]:animate-in data-[state=closed]:animate-out',
+            'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
+          )}
+        />
+        <DialogPrimitive.Content className={cn(contentVariants({ size }))}>
+          <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant/20">
+            <DialogPrimitive.Title asChild>
+              <h2 className="text-lg font-bold text-surface-on">{title}</h2>
+            </DialogPrimitive.Title>
+            <DialogPrimitive.Close asChild>
+              <button
+                aria-label="Close modal"
+                className="w-8 h-8 flex items-center justify-center rounded-xl text-surface-on-variant hover:bg-surface-container-low transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </DialogPrimitive.Close>
+          </div>
 
-      <div className="px-6 py-5 text-sm text-surface-on leading-relaxed">{children}</div>
+          <div className="px-6 py-5 text-sm text-surface-on leading-relaxed">{children}</div>
 
-      {footer && (
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-outline-variant/20">
-          {footer}
-        </div>
-      )}
-    </dialog>
+          {footer && (
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-outline-variant/20">
+              {footer}
+            </div>
+          )}
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   )
 }
