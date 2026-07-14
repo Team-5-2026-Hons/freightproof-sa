@@ -179,7 +179,7 @@
       "source_file": "backend/app/api/v1/endpoints/blockchain.py",
       "source_location": "L24",
       "_origin": "ast",
-      "community": 21,
+      "community": 30,
       "norm_label": "blockchainreceiptread",
       "id": "backend_app_api_v1_endpoints_blockchain_py_blockchainreceiptread"
     },
@@ -1869,7 +1869,7 @@
       "source_file": "backend/app/db/models/enums.py",
       "source_location": "L4",
       "_origin": "ast",
-      "community": 21,
+      "community": 23,
       "norm_label": "dispatcherrole",
       "id": "models_enums_dispatcherrole"
     },
@@ -2029,7 +2029,7 @@
       "source_file": "backend/app/db/models/enums.py",
       "source_location": "L141",
       "_origin": "ast",
-      "community": 21,
+      "community": 11,
       "norm_label": "idvsstatus",
       "id": "models_enums_idvsstatus"
     },
@@ -2539,7 +2539,7 @@
       "source_file": "backend/app/db/models/vehicles.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 30,
+      "community": 9,
       "norm_label": "vehicles.py",
       "id": "models_vehicles"
     },
@@ -2549,7 +2549,7 @@
       "source_file": "backend/app/db/models/vehicles.py",
       "source_location": "L16",
       "_origin": "ast",
-      "community": 30,
+      "community": 9,
       "norm_label": "vehicle",
       "id": "models_vehicles_vehicle"
     },
@@ -2559,7 +2559,7 @@
       "source_file": "backend/app/db/models/vehicles.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 30,
+      "community": 9,
       "norm_label": "sqlalchemy model for vehicles (horses and trailers unified).",
       "id": "models_vehicles_rationale_1"
     },
@@ -2569,7 +2569,7 @@
       "source_file": "backend/app/db/models/vehicles.py",
       "source_location": "L17",
       "_origin": "ast",
-      "community": 30,
+      "community": 9,
       "norm_label": "horse (cab) or trailer \u2014 distinguished by vehicle_type.      a single pulsit dev",
       "id": "models_vehicles_rationale_17"
     },
@@ -2959,7 +2959,7 @@
       "source_file": "backend/app/orchestration/resource_service.py",
       "source_location": "L117",
       "_origin": "ast",
-      "community": 11,
+      "community": 55,
       "norm_label": "tripdetailresponse",
       "id": "backend_app_orchestration_resource_service_py_tripdetailresponse"
     },
@@ -3039,7 +3039,7 @@
       "source_file": "backend/app/orchestration/trip_service.py",
       "source_location": "L35",
       "_origin": "ast",
-      "community": 23,
+      "community": 30,
       "norm_label": "driver",
       "id": "driver"
     },
@@ -3979,7 +3979,7 @@
       "source_file": "backend/app/schemas/people.py",
       "source_location": "L95",
       "_origin": "ast",
-      "community": 21,
+      "community": 30,
       "norm_label": "driverupdatebody",
       "id": "schemas_people_driverupdatebody"
     },
@@ -4019,7 +4019,7 @@
       "source_file": "backend/app/schemas/people.py",
       "source_location": "L64",
       "_origin": "ast",
-      "community": 30,
+      "community": 21,
       "norm_label": "fields the dispatcher submits when registering a new driver.      organization_i",
       "id": "schemas_people_rationale_64"
     },
@@ -4469,7 +4469,7 @@
       "source_file": "backend/app/schemas/trips.py",
       "source_location": "L258",
       "_origin": "ast",
-      "community": 21,
+      "community": 30,
       "norm_label": "tripdetailresponse",
       "id": "schemas_trips_tripdetailresponse"
     },
@@ -4509,7 +4509,7 @@
       "source_file": "backend/app/schemas/trips.py",
       "source_location": "L259",
       "_origin": "ast",
-      "community": 21,
+      "community": 30,
       "norm_label": "full trip record returned by post /trips and get /trips/{id}. no manifest.",
       "id": "schemas_trips_rationale_259"
     },
@@ -5969,7 +5969,7 @@
       "source_file": "backend/tests/integration/test_detail_receipts_gating.py",
       "source_location": "L33",
       "_origin": "ast",
-      "community": 21,
+      "community": 30,
       "norm_label": "_make_user()",
       "id": "integration_test_detail_receipts_gating_make_user"
     },
@@ -5979,7 +5979,7 @@
       "source_file": "backend/tests/integration/test_detail_receipts_gating.py",
       "source_location": "L33",
       "_origin": "ast",
-      "community": 21,
+      "community": 30,
       "norm_label": "dispatcherrole",
       "id": "backend_tests_integration_test_detail_receipts_gating_py_dispatcherrole"
     },
@@ -5989,7 +5989,7 @@
       "source_file": "backend/tests/integration/test_detail_receipts_gating.py",
       "source_location": "L33",
       "_origin": "ast",
-      "community": 21,
+      "community": 30,
       "norm_label": "userread",
       "id": "backend_tests_integration_test_detail_receipts_gating_py_userread"
     },
@@ -6019,7 +6019,7 @@
       "source_file": "backend/tests/integration/test_detail_receipts_gating.py",
       "source_location": "L65",
       "_origin": "ast",
-      "community": 21,
+      "community": 30,
       "norm_label": "driverdetailresponse",
       "id": "backend_tests_integration_test_detail_receipts_gating_py_driverdetailresponse"
     },
@@ -6039,7 +6039,7 @@
       "source_file": "backend/tests/integration/test_detail_receipts_gating.py",
       "source_location": "L85",
       "_origin": "ast",
-      "community": 21,
+      "community": 30,
       "norm_label": "vehicledetailresponse",
       "id": "backend_tests_integration_test_detail_receipts_gating_py_vehicledetailresponse"
     },
@@ -6449,7 +6449,7 @@
       "source_file": "backend/tests/integration/test_trips.py",
       "source_location": "L30",
       "_origin": "ast",
-      "community": 30,
+      "community": 36,
       "norm_label": "asyncsession",
       "id": "backend_tests_integration_test_trips_py_asyncsession"
     },
@@ -8269,7 +8269,7 @@
       "source_file": "backend/tests/unit/test_schema_validators.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 237,
+      "community": 21,
       "norm_label": "test_schema_validators.py",
       "id": "unit_test_schema_validators"
     },
@@ -8309,7 +8309,7 @@
       "source_file": "backend/tests/unit/test_schema_validators.py",
       "source_location": "L63",
       "_origin": "ast",
-      "community": 237,
+      "community": 21,
       "norm_label": "test_trip_arrival_after_departure_valid()",
       "id": "unit_test_schema_validators_test_trip_arrival_after_departure_valid"
     },
@@ -8319,7 +8319,7 @@
       "source_file": "backend/tests/unit/test_schema_validators.py",
       "source_location": "L82",
       "_origin": "ast",
-      "community": 237,
+      "community": 21,
       "norm_label": "test_trip_arrival_before_departure_invalid()",
       "id": "unit_test_schema_validators_test_trip_arrival_before_departure_invalid"
     },
@@ -8329,7 +8329,7 @@
       "source_file": "backend/tests/unit/test_schema_validators.py",
       "source_location": "L101",
       "_origin": "ast",
-      "community": 237,
+      "community": 21,
       "norm_label": "test_trip_only_departure_no_arrival_valid()",
       "id": "unit_test_schema_validators_test_trip_only_departure_no_arrival_valid"
     },
@@ -8359,7 +8359,7 @@
       "source_file": "backend/tests/unit/test_schema_validators.py",
       "source_location": "L162",
       "_origin": "ast",
-      "community": 237,
+      "community": 21,
       "norm_label": "test_merkle_leaf_source_type_valid()",
       "id": "unit_test_schema_validators_test_merkle_leaf_source_type_valid"
     },
@@ -8369,7 +8369,7 @@
       "source_file": "backend/tests/unit/test_schema_validators.py",
       "source_location": "L205",
       "_origin": "ast",
-      "community": 237,
+      "community": 21,
       "norm_label": "test_trip_create_request_empty_trailer_ids_rejected()",
       "id": "unit_test_schema_validators_test_trip_create_request_empty_trailer_ids_rejected"
     },
@@ -8379,7 +8379,7 @@
       "source_file": "backend/tests/unit/test_schema_validators.py",
       "source_location": "L211",
       "_origin": "ast",
-      "community": 237,
+      "community": 21,
       "norm_label": "test_trip_create_request_single_trailer_accepted()",
       "id": "unit_test_schema_validators_test_trip_create_request_single_trailer_accepted"
     },
@@ -8389,7 +8389,7 @@
       "source_file": "backend/tests/unit/test_schema_validators.py",
       "source_location": "L235",
       "_origin": "ast",
-      "community": 237,
+      "community": 21,
       "norm_label": "_vehicle_read_payload()",
       "id": "unit_test_schema_validators_vehicle_read_payload"
     },
@@ -8399,7 +8399,7 @@
       "source_file": "backend/tests/unit/test_schema_validators.py",
       "source_location": "L248",
       "_origin": "ast",
-      "community": 237,
+      "community": 21,
       "norm_label": "test_vehicle_read_accepts_legacy_short_vin()",
       "id": "unit_test_schema_validators_test_vehicle_read_accepts_legacy_short_vin"
     },
@@ -8409,7 +8409,7 @@
       "source_file": "backend/tests/unit/test_schema_validators.py",
       "source_location": "L256",
       "_origin": "ast",
-      "community": 237,
+      "community": 21,
       "norm_label": "test_vehicle_create_body_rejects_short_vin()",
       "id": "unit_test_schema_validators_test_vehicle_create_body_rejects_short_vin"
     },
@@ -8419,7 +8419,7 @@
       "source_file": "backend/tests/unit/test_schema_validators.py",
       "source_location": "L268",
       "_origin": "ast",
-      "community": 237,
+      "community": 21,
       "norm_label": "test_vehicle_create_body_accepts_valid_vin()",
       "id": "unit_test_schema_validators_test_vehicle_create_body_accepts_valid_vin"
     },
@@ -8429,7 +8429,7 @@
       "source_file": "backend/tests/unit/test_schema_validators.py",
       "source_location": "L281",
       "_origin": "ast",
-      "community": 237,
+      "community": 21,
       "norm_label": "test_vehicle_update_body_rejects_short_vin()",
       "id": "unit_test_schema_validators_test_vehicle_update_body_rejects_short_vin"
     },
@@ -8439,7 +8439,7 @@
       "source_file": "backend/tests/unit/test_schema_validators.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 237,
+      "community": 21,
       "norm_label": "unit tests for the four pydantic v2 schema validators defined in the spec.  run:",
       "id": "unit_test_schema_validators_rationale_1"
     },
@@ -8449,7 +8449,7 @@
       "source_file": "backend/tests/unit/test_schema_validators.py",
       "source_location": "L102",
       "_origin": "ast",
-      "community": 237,
+      "community": 21,
       "norm_label": "validator must not fire when only one of the two fields is provided.",
       "id": "unit_test_schema_validators_rationale_102"
     },
@@ -27668,9 +27668,9 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
+      "id": "base",
       "community": 2,
-      "norm_label": "base",
-      "id": "base"
+      "norm_label": "base"
     },
     {
       "label": "Consignment",
@@ -27678,9 +27678,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L20",
       "_origin": "ast",
+      "id": "consignment",
       "community": 43,
-      "norm_label": "consignment",
-      "id": "consignment"
+      "norm_label": "consignment"
     },
     {
       "label": "Parcel",
@@ -27688,9 +27688,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L20",
       "_origin": "ast",
+      "id": "parcel",
       "community": 43,
-      "norm_label": "parcel",
-      "id": "parcel"
+      "norm_label": "parcel"
     },
     {
       "label": "ManifestResponse",
@@ -27698,9 +27698,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L42",
       "_origin": "ast",
+      "id": "manifestresponse",
       "community": 43,
-      "norm_label": "manifestresponse",
-      "id": "manifestresponse"
+      "norm_label": "manifestresponse"
     },
     {
       "label": "LinehaulResponse",
@@ -27708,9 +27708,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L86",
       "_origin": "ast",
+      "id": "linehaulresponse",
       "community": 43,
-      "norm_label": "linehaulresponse",
-      "id": "linehaulresponse"
+      "norm_label": "linehaulresponse"
     },
     {
       "label": "All consignments on the trip, each with its parcels. Multi-client trips have",
@@ -27718,9 +27718,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L23",
       "_origin": "ast",
+      "id": "orchestration_manifest_service_rationale_23",
       "community": 43,
-      "norm_label": "all consignments on the trip, each with its parcels. multi-client trips have",
-      "id": "orchestration_manifest_service_rationale_23"
+      "norm_label": "all consignments on the trip, each with its parcels. multi-client trips have"
     },
     {
       "label": "SubjectType",
@@ -27728,9 +27728,9 @@
       "source_file": "backend/app/orchestration/verification_service.py",
       "source_location": "L32",
       "_origin": "ast",
+      "id": "subjecttype",
       "community": 28,
-      "norm_label": "subjecttype",
-      "id": "subjecttype"
+      "norm_label": "subjecttype"
     },
     {
       "label": "BlockchainReceipt",
@@ -27738,9 +27738,9 @@
       "source_file": "backend/app/orchestration/verification_service.py",
       "source_location": "L32",
       "_origin": "ast",
+      "id": "blockchainreceipt",
       "community": 28,
-      "norm_label": "blockchainreceipt",
-      "id": "blockchainreceipt"
+      "norm_label": "blockchainreceipt"
     },
     {
       "label": "Any",
@@ -27748,9 +27748,9 @@
       "source_file": "backend/app/orchestration/verification_service.py",
       "source_location": "L47",
       "_origin": "ast",
+      "id": "any",
       "community": 28,
-      "norm_label": "any",
-      "id": "any"
+      "norm_label": "any"
     },
     {
       "label": "HederaService",
@@ -27758,9 +27758,9 @@
       "source_file": "backend/app/orchestration/verification_service.py",
       "source_location": "L119",
       "_origin": "ast",
+      "id": "hederaservice",
       "community": 28,
-      "norm_label": "hederaservice",
-      "id": "hederaservice"
+      "norm_label": "hederaservice"
     },
     {
       "label": "ConsignmentManifest",
@@ -27768,9 +27768,9 @@
       "source_file": "backend/app/schemas/trips.py",
       "source_location": "L311",
       "_origin": "ast",
+      "id": "schemas_trips_consignmentmanifest",
       "community": 43,
-      "norm_label": "consignmentmanifest",
-      "id": "schemas_trips_consignmentmanifest"
+      "norm_label": "consignmentmanifest"
     },
     {
       "label": "2026_07_02_ciaran_add_exception_scoping.py",
@@ -27778,9 +27778,9 @@
       "source_file": "backend/migrations/versions/2026_07_02_ciaran_add_exception_scoping.py",
       "source_location": "L1",
       "_origin": "ast",
+      "id": "versions_2026_07_02_ciaran_add_exception_scoping",
       "community": 165,
-      "norm_label": "2026_07_02_ciaran_add_exception_scoping.py",
-      "id": "versions_2026_07_02_ciaran_add_exception_scoping"
+      "norm_label": "2026_07_02_ciaran_add_exception_scoping.py"
     },
     {
       "label": "upgrade()",
@@ -27788,9 +27788,9 @@
       "source_file": "backend/migrations/versions/2026_07_02_ciaran_add_exception_scoping.py",
       "source_location": "L21",
       "_origin": "ast",
+      "id": "versions_2026_07_02_ciaran_add_exception_scoping_upgrade",
       "community": 165,
-      "norm_label": "upgrade()",
-      "id": "versions_2026_07_02_ciaran_add_exception_scoping_upgrade"
+      "norm_label": "upgrade()"
     },
     {
       "label": "downgrade()",
@@ -27798,9 +27798,9 @@
       "source_file": "backend/migrations/versions/2026_07_02_ciaran_add_exception_scoping.py",
       "source_location": "L32",
       "_origin": "ast",
+      "id": "versions_2026_07_02_ciaran_add_exception_scoping_downgrade",
       "community": 165,
-      "norm_label": "downgrade()",
-      "id": "versions_2026_07_02_ciaran_add_exception_scoping_downgrade"
+      "norm_label": "downgrade()"
     },
     {
       "label": "BlockchainReceiptRead",
@@ -27808,9 +27808,9 @@
       "source_file": "backend/tests/integration/test_detail_receipts_gating.py",
       "source_location": "L50",
       "_origin": "ast",
-      "community": 21,
-      "norm_label": "blockchainreceiptread",
-      "id": "blockchainreceiptread"
+      "id": "blockchainreceiptread",
+      "community": 30,
+      "norm_label": "blockchainreceiptread"
     },
     {
       "label": "TripDetailResponse",
@@ -27818,9 +27818,9 @@
       "source_file": "backend/tests/integration/test_detail_receipts_gating.py",
       "source_location": "L107",
       "_origin": "ast",
-      "community": 21,
-      "norm_label": "tripdetailresponse",
-      "id": "tripdetailresponse"
+      "id": "tripdetailresponse",
+      "community": 30,
+      "norm_label": "tripdetailresponse"
     },
     {
       "label": "test_exception_scoping.py",
@@ -27828,9 +27828,9 @@
       "source_file": "backend/tests/integration/test_exception_scoping.py",
       "source_location": "L1",
       "_origin": "ast",
+      "id": "integration_test_exception_scoping",
       "community": 71,
-      "norm_label": "test_exception_scoping.py",
-      "id": "integration_test_exception_scoping"
+      "norm_label": "test_exception_scoping.py"
     },
     {
       "label": "override_get_db()",
@@ -27838,9 +27838,9 @@
       "source_file": "backend/tests/integration/test_exception_scoping.py",
       "source_location": "L29",
       "_origin": "ast",
+      "id": "integration_test_exception_scoping_override_get_db",
       "community": 71,
-      "norm_label": "override_get_db()",
-      "id": "integration_test_exception_scoping_override_get_db"
+      "norm_label": "override_get_db()"
     },
     {
       "label": "seed_trip_with_consignment_and_stop()",
@@ -27848,9 +27848,9 @@
       "source_file": "backend/tests/integration/test_exception_scoping.py",
       "source_location": "L38",
       "_origin": "ast",
+      "id": "integration_test_exception_scoping_seed_trip_with_consignment_and_stop",
       "community": 71,
-      "norm_label": "seed_trip_with_consignment_and_stop()",
-      "id": "integration_test_exception_scoping_seed_trip_with_consignment_and_stop"
+      "norm_label": "seed_trip_with_consignment_and_stop()"
     },
     {
       "label": "test_get_trip_detail_returns_exception_scoping_fields()",
@@ -27858,9 +27858,9 @@
       "source_file": "backend/tests/integration/test_exception_scoping.py",
       "source_location": "L83",
       "_origin": "ast",
+      "id": "integration_test_exception_scoping_test_get_trip_detail_returns_exception_scoping_fields",
       "community": 55,
-      "norm_label": "test_get_trip_detail_returns_exception_scoping_fields()",
-      "id": "integration_test_exception_scoping_test_get_trip_detail_returns_exception_scoping_fields"
+      "norm_label": "test_get_trip_detail_returns_exception_scoping_fields()"
     },
     {
       "label": "AsyncClient",
@@ -27868,9 +27868,9 @@
       "source_file": "backend/tests/integration/test_exception_scoping.py",
       "source_location": "L83",
       "_origin": "ast",
+      "id": "backend_tests_integration_test_exception_scoping_py_asyncclient",
       "community": 55,
-      "norm_label": "asyncclient",
-      "id": "backend_tests_integration_test_exception_scoping_py_asyncclient"
+      "norm_label": "asyncclient"
     },
     {
       "label": "Integration test for consignment_id/trip_stop_id scoping FKs on TripException (F",
@@ -27878,9 +27878,9 @@
       "source_file": "backend/tests/integration/test_exception_scoping.py",
       "source_location": "L1",
       "_origin": "ast",
+      "id": "integration_test_exception_scoping_rationale_1",
       "community": 71,
-      "norm_label": "integration test for consignment_id/trip_stop_id scoping fks on tripexception (f",
-      "id": "integration_test_exception_scoping_rationale_1"
+      "norm_label": "integration test for consignment_id/trip_stop_id scoping fks on tripexception (f"
     },
     {
       "label": "seed_trip_with_two_consignments()",
@@ -27888,9 +27888,9 @@
       "source_file": "backend/tests/integration/test_manifest.py",
       "source_location": "L137",
       "_origin": "ast",
+      "id": "integration_test_manifest_seed_trip_with_two_consignments",
       "community": 61,
-      "norm_label": "seed_trip_with_two_consignments()",
-      "id": "integration_test_manifest_seed_trip_with_two_consignments"
+      "norm_label": "seed_trip_with_two_consignments()"
     },
     {
       "label": "test_dispatcher_manifest_multi_consignment_returns_all()",
@@ -27898,9 +27898,9 @@
       "source_file": "backend/tests/integration/test_manifest.py",
       "source_location": "L191",
       "_origin": "ast",
+      "id": "integration_test_manifest_test_dispatcher_manifest_multi_consignment_returns_all",
       "community": 61,
-      "norm_label": "test_dispatcher_manifest_multi_consignment_returns_all()",
-      "id": "integration_test_manifest_test_dispatcher_manifest_multi_consignment_returns_all"
+      "norm_label": "test_dispatcher_manifest_multi_consignment_returns_all()"
     },
     {
       "label": "test_driver_linehaul_multi_consignment_sums_unit_counts()",
@@ -27908,9 +27908,9 @@
       "source_file": "backend/tests/integration/test_manifest.py",
       "source_location": "L208",
       "_origin": "ast",
+      "id": "integration_test_manifest_test_driver_linehaul_multi_consignment_sums_unit_counts",
       "community": 61,
-      "norm_label": "test_driver_linehaul_multi_consignment_sums_unit_counts()",
-      "id": "integration_test_manifest_test_driver_linehaul_multi_consignment_sums_unit_counts"
+      "norm_label": "test_driver_linehaul_multi_consignment_sums_unit_counts()"
     },
     {
       "label": "test_driver_linehaul_falls_back_to_parcel_count_when_no_unit_counts()",
@@ -27918,9 +27918,9 @@
       "source_file": "backend/tests/integration/test_manifest.py",
       "source_location": "L224",
       "_origin": "ast",
+      "id": "integration_test_manifest_test_driver_linehaul_falls_back_to_parcel_count_when_no_unit_counts",
       "community": 61,
-      "norm_label": "test_driver_linehaul_falls_back_to_parcel_count_when_no_unit_counts()",
-      "id": "integration_test_manifest_test_driver_linehaul_falls_back_to_parcel_count_when_no_unit_counts"
+      "norm_label": "test_driver_linehaul_falls_back_to_parcel_count_when_no_unit_counts()"
     },
     {
       "label": "seed_trip_with_mixed_unit_counts()",
@@ -27928,9 +27928,9 @@
       "source_file": "backend/tests/integration/test_manifest.py",
       "source_location": "L238",
       "_origin": "ast",
+      "id": "integration_test_manifest_seed_trip_with_mixed_unit_counts",
       "community": 61,
-      "norm_label": "seed_trip_with_mixed_unit_counts()",
-      "id": "integration_test_manifest_seed_trip_with_mixed_unit_counts"
+      "norm_label": "seed_trip_with_mixed_unit_counts()"
     },
     {
       "label": "test_driver_linehaul_mixed_unit_counts_applies_fallback_per_consignment()",
@@ -27938,9 +27938,9 @@
       "source_file": "backend/tests/integration/test_manifest.py",
       "source_location": "L296",
       "_origin": "ast",
+      "id": "integration_test_manifest_test_driver_linehaul_mixed_unit_counts_applies_fallback_per_consignment",
       "community": 61,
-      "norm_label": "test_driver_linehaul_mixed_unit_counts_applies_fallback_per_consignment()",
-      "id": "integration_test_manifest_test_driver_linehaul_mixed_unit_counts_applies_fallback_per_consignment"
+      "norm_label": "test_driver_linehaul_mixed_unit_counts_applies_fallback_per_consignment()"
     },
     {
       "label": "One FP-112 consignment with unit_count_expected set, one legacy consignment",
@@ -27948,9 +27948,9 @@
       "source_file": "backend/tests/integration/test_manifest.py",
       "source_location": "L239",
       "_origin": "ast",
+      "id": "integration_test_manifest_rationale_239",
       "community": 61,
-      "norm_label": "one fp-112 consignment with unit_count_expected set, one legacy consignment",
-      "id": "integration_test_manifest_rationale_239"
+      "norm_label": "one fp-112 consignment with unit_count_expected set, one legacy consignment"
     },
     {
       "label": "MonkeyPatch",
@@ -27958,9 +27958,9 @@
       "source_file": "backend/tests/unit/test_auth_dependencies.py",
       "source_location": "L49",
       "_origin": "ast",
+      "id": "monkeypatch",
       "community": 42,
-      "norm_label": "monkeypatch",
-      "id": "monkeypatch"
+      "norm_label": "monkeypatch"
     },
     {
       "label": "_DriverRowLike",
@@ -27968,9 +27968,9 @@
       "source_file": "backend/tests/unit/test_auth_dependencies.py",
       "source_location": "L257",
       "_origin": "ast",
+      "id": "unit_test_auth_dependencies_driverrowlike",
       "community": 42,
-      "norm_label": "_driverrowlike",
-      "id": "unit_test_auth_dependencies_driverrowlike"
+      "norm_label": "_driverrowlike"
     },
     {
       "label": "Attribute shape get_current_driver reads off a Driver ORM row.",
@@ -27978,9 +27978,9 @@
       "source_file": "backend/tests/unit/test_auth_dependencies.py",
       "source_location": "L258",
       "_origin": "ast",
+      "id": "unit_test_auth_dependencies_rationale_258",
       "community": 42,
-      "norm_label": "attribute shape get_current_driver reads off a driver orm row.",
-      "id": "unit_test_auth_dependencies_rationale_258"
+      "norm_label": "attribute shape get_current_driver reads off a driver orm row."
     },
     {
       "label": "page.tsx",
@@ -27988,9 +27988,9 @@
       "source_file": "frontend/dispatcher/app/(app)/trips/[id]/page.tsx",
       "source_location": "L1",
       "_origin": "ast",
+      "id": "id_page",
       "community": 10,
-      "norm_label": "page.tsx",
-      "id": "id_page"
+      "norm_label": "page.tsx"
     },
     {
       "label": "fmtTs()",
@@ -27998,9 +27998,9 @@
       "source_file": "frontend/dispatcher/app/(app)/trips/[id]/page.tsx",
       "source_location": "L113",
       "_origin": "ast",
+      "id": "id_page_fmtts",
       "community": 10,
-      "norm_label": "fmtts()",
-      "id": "id_page_fmtts"
+      "norm_label": "fmtts()"
     },
     {
       "label": "twoStops()",
@@ -28008,9 +28008,9 @@
       "source_file": "frontend/shared/lib/mocks/trips.ts",
       "source_location": "L46",
       "_origin": "ast",
+      "id": "mocks_trips_twostops",
       "community": 27,
-      "norm_label": "twostops()",
-      "id": "mocks_trips_twostops"
+      "norm_label": "twostops()"
     },
     {
       "label": "ConsignmentManifest",
@@ -28018,9 +28018,9 @@
       "source_file": "frontend/shared/lib/types/manifest.ts",
       "source_location": "L32",
       "_origin": "ast",
+      "id": "types_manifest_consignmentmanifest",
       "community": 68,
-      "norm_label": "consignmentmanifest",
-      "id": "types_manifest_consignmentmanifest"
+      "norm_label": "consignmentmanifest"
     },
     {
       "label": "TripStop",
@@ -28028,9 +28028,9 @@
       "source_file": "frontend/shared/lib/types/trip.ts",
       "source_location": "L29",
       "_origin": "ast",
+      "id": "types_trip_tripstop",
       "community": 27,
-      "norm_label": "tripstop",
-      "id": "types_trip_tripstop"
+      "norm_label": "tripstop"
     },
     {
       "label": "update-graph.sh",
@@ -28042,9 +28042,9 @@
         "kind": "file"
       },
       "_origin": "ast",
+      "id": "scripts_update_graph",
       "community": 182,
-      "norm_label": "update-graph.sh",
-      "id": "scripts_update_graph"
+      "norm_label": "update-graph.sh"
     },
     {
       "label": "update-graph.sh script",
@@ -28056,9 +28056,9 @@
         "kind": "bash_entrypoint"
       },
       "_origin": "ast",
+      "id": "users_ciaranformby_desktop_freightproof_sa_4_scripts_update_graph_sh__entry",
       "community": 182,
-      "norm_label": "update-graph.sh script",
-      "id": "users_ciaranformby_desktop_freightproof_sa_4_scripts_update_graph_sh__entry"
+      "norm_label": "update-graph.sh script"
     },
     {
       "label": "Dispatcher API Endpoints",
@@ -28069,9 +28069,9 @@
       "captured_at": "2026-05-10",
       "author": "Claude Code (Tim Gultig session)",
       "contributor": null,
+      "id": "api_contract_dispatcher_driver_dispatcher_endpoints",
       "community": 119,
-      "norm_label": "dispatcher api endpoints",
-      "id": "api_contract_dispatcher_driver_dispatcher_endpoints"
+      "norm_label": "dispatcher api endpoints"
     },
     {
       "label": "Driver API Endpoints",
@@ -28082,9 +28082,9 @@
       "captured_at": "2026-05-10",
       "author": "Claude Code (Tim Gultig session)",
       "contributor": null,
+      "id": "api_contract_dispatcher_driver_driver_endpoints",
       "community": 188,
-      "norm_label": "driver api endpoints",
-      "id": "api_contract_dispatcher_driver_driver_endpoints"
+      "norm_label": "driver api endpoints"
     },
     {
       "label": "FreightProof Technical Architecture v1",
@@ -28095,9 +28095,9 @@
       "captured_at": "2026-07-06",
       "author": "Ciaran",
       "contributor": "Claude",
+      "id": "technical_full_picture_v1_architecture",
       "community": 119,
-      "norm_label": "freightproof technical architecture v1",
-      "id": "technical_full_picture_v1_architecture"
+      "norm_label": "freightproof technical architecture v1"
     },
     {
       "label": "Work-Package Roadmap MVP Spec",
@@ -28108,9 +28108,9 @@
       "captured_at": "2026-07-10",
       "author": null,
       "contributor": null,
+      "id": "wp_roadmap_mvp_spec_roadmap",
       "community": 119,
-      "norm_label": "work-package roadmap mvp spec",
-      "id": "wp_roadmap_mvp_spec_roadmap"
+      "norm_label": "work-package roadmap mvp spec"
     },
     {
       "label": "Backend Simplicity & API Efficiency Audit",
@@ -28121,9 +28121,9 @@
       "captured_at": "2026-07-10",
       "author": "Ciaran",
       "contributor": null,
+      "id": "audit_2026_07_10_audit_findings",
       "community": 119,
-      "norm_label": "backend simplicity & api efficiency audit",
-      "id": "audit_2026_07_10_audit_findings"
+      "norm_label": "backend simplicity & api efficiency audit"
     },
     {
       "label": "FP-112 Alignment Execution Plan",
@@ -28134,9 +28134,9 @@
       "captured_at": "2026-07-02",
       "author": "Ciaran",
       "contributor": null,
+      "id": "fp112_alignment_plan",
       "community": 119,
-      "norm_label": "fp-112 alignment execution plan",
-      "id": "fp112_alignment_plan"
+      "norm_label": "fp-112 alignment execution plan"
     },
     {
       "label": "H1 Origin Gate-In Geofence Verdict Design",
@@ -28147,9 +28147,9 @@
       "captured_at": "2026-07-13",
       "author": "Ciaran",
       "contributor": null,
+      "id": "h1_geofence_verdict_design",
       "community": 31,
-      "norm_label": "h1 origin gate-in geofence verdict design",
-      "id": "h1_geofence_verdict_design"
+      "norm_label": "h1 origin gate-in geofence verdict design"
     },
     {
       "label": "Supabase Env Var Fallback Issue",
@@ -28160,9 +28160,9 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
+      "id": "known_issues_supabase_env_fallback",
       "community": 8,
-      "norm_label": "supabase env var fallback issue",
-      "id": "known_issues_supabase_env_fallback"
+      "norm_label": "supabase env var fallback issue"
     },
     {
       "label": "dispatcher/lib/supabase/client.ts",
@@ -28173,9 +28173,9 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
+      "id": "dispatcher_supabase_client",
       "community": 8,
-      "norm_label": "dispatcher/lib/supabase/client.ts",
-      "id": "dispatcher_supabase_client"
+      "norm_label": "dispatcher/lib/supabase/client.ts"
     },
     {
       "label": "Node Version Pinning Issue",
@@ -28186,9 +28186,9 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
+      "id": "known_issues_node_version_pinning",
       "community": 85,
-      "norm_label": "node version pinning issue",
-      "id": "known_issues_node_version_pinning"
+      "norm_label": "node version pinning issue"
     },
     {
       "label": "README.md",
@@ -28199,9 +28199,9 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
+      "id": "readme_md",
       "community": 85,
-      "norm_label": "readme.md",
-      "id": "readme_md"
+      "norm_label": "readme.md"
     },
     {
       "label": "CLAUDE.md",
@@ -28212,9 +28212,9 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
+      "id": "claude_md",
       "community": 85,
-      "norm_label": "claude.md",
-      "id": "claude_md"
+      "norm_label": "claude.md"
     },
     {
       "label": ".nvmrc",
@@ -28225,9 +28225,9 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
+      "id": "nvmrc",
       "community": 85,
-      "norm_label": ".nvmrc",
-      "id": "nvmrc"
+      "norm_label": ".nvmrc"
     }
   ],
   "links": [
@@ -35312,9 +35312,9 @@
       "source_file": "backend/tests/unit/test_auth_dependencies.py",
       "source_location": "L257",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "unit_test_auth_dependencies_driverrowlike",
-      "target": "protocol"
+      "target": "protocol",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -43539,9 +43539,9 @@
       "source_file": "backend/app/db/models/transit.py",
       "source_location": "L17",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "models_transit_checkpoint",
-      "target": "base"
+      "target": "base",
+      "confidence_score": 1.0
     },
     {
       "relation": "rationale_for",
@@ -43619,9 +43619,9 @@
       "source_file": "backend/tests/integration/test_exception_scoping.py",
       "source_location": "L19",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "backend_tests_integration_test_exception_scoping_py_asyncclient",
-      "target": "models_transit_tripexception"
+      "target": "models_transit_tripexception",
+      "confidence_score": 0.5
     },
     {
       "relation": "calls",
@@ -43650,9 +43650,9 @@
       "source_file": "backend/app/db/models/transit.py",
       "source_location": "L45",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "models_transit_tripexception",
-      "target": "base"
+      "target": "base",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -44336,9 +44336,9 @@
       "source_file": "backend/tests/integration/test_exception_scoping.py",
       "source_location": "L23",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "integration_test_exception_scoping",
-      "target": "app_main"
+      "target": "app_main",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports_from",
@@ -47567,9 +47567,9 @@
       "source_file": "backend/app/schemas/trips.py",
       "source_location": "L311",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "schemas_trips_consignmentmanifest",
-      "target": "basemodel"
+      "target": "basemodel",
+      "confidence_score": 1.0
     },
     {
       "relation": "inherits",
@@ -49333,9 +49333,9 @@
       "source_file": "backend/app/schemas/trips.py",
       "source_location": "L311",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "schemas_trips",
-      "target": "schemas_trips_consignmentmanifest"
+      "target": "schemas_trips_consignmentmanifest",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -49783,9 +49783,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L17",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "backend_app_orchestration_manifest_service_py_asyncsession",
-      "target": "schemas_trips_parcelread"
+      "target": "schemas_trips_parcelread",
+      "confidence_score": 0.5
     },
     {
       "relation": "uses",
@@ -49793,9 +49793,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L17",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "backend_app_orchestration_manifest_service_py_uuid",
-      "target": "schemas_trips_parcelread"
+      "target": "schemas_trips_parcelread",
+      "confidence_score": 0.5
     },
     {
       "relation": "uses",
@@ -49803,9 +49803,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L17",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "consignment",
-      "target": "schemas_trips_parcelread"
+      "target": "schemas_trips_parcelread",
+      "confidence_score": 0.5
     },
     {
       "relation": "uses",
@@ -49813,9 +49813,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L17",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "linehaulresponse",
-      "target": "schemas_trips_parcelread"
+      "target": "schemas_trips_parcelread",
+      "confidence_score": 0.5
     },
     {
       "relation": "uses",
@@ -49823,9 +49823,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L17",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "manifestresponse",
-      "target": "schemas_trips_parcelread"
+      "target": "schemas_trips_parcelread",
+      "confidence_score": 0.5
     },
     {
       "relation": "uses",
@@ -49833,9 +49833,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L17",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "parcel",
-      "target": "schemas_trips_parcelread"
+      "target": "schemas_trips_parcelread",
+      "confidence_score": 0.5
     },
     {
       "relation": "uses",
@@ -50128,9 +50128,9 @@
       "source_file": "backend/tests/integration/test_detail_receipts_gating.py",
       "source_location": "L24",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "backend_tests_integration_test_detail_receipts_gating_py_dispatcherrole",
-      "target": "schemas_trips_tripdetailresponse"
+      "target": "schemas_trips_tripdetailresponse",
+      "confidence_score": 0.5
     },
     {
       "relation": "uses",
@@ -50138,9 +50138,9 @@
       "source_file": "backend/tests/integration/test_detail_receipts_gating.py",
       "source_location": "L24",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "backend_tests_integration_test_detail_receipts_gating_py_userread",
-      "target": "schemas_trips_tripdetailresponse"
+      "target": "schemas_trips_tripdetailresponse",
+      "confidence_score": 0.5
     },
     {
       "relation": "uses",
@@ -50148,9 +50148,9 @@
       "source_file": "backend/tests/integration/test_detail_receipts_gating.py",
       "source_location": "L24",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "blockchainreceiptread",
-      "target": "schemas_trips_tripdetailresponse"
+      "target": "schemas_trips_tripdetailresponse",
+      "confidence_score": 0.5
     },
     {
       "relation": "uses",
@@ -50158,9 +50158,9 @@
       "source_file": "backend/tests/integration/test_detail_receipts_gating.py",
       "source_location": "L24",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "driverdetailresponse",
-      "target": "schemas_trips_tripdetailresponse"
+      "target": "schemas_trips_tripdetailresponse",
+      "confidence_score": 0.5
     },
     {
       "relation": "shares_data_with",
@@ -50248,9 +50248,9 @@
       "source_file": "backend/tests/integration/test_detail_receipts_gating.py",
       "source_location": "L24",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "tripdetailresponse",
-      "target": "schemas_trips_tripdetailresponse"
+      "target": "schemas_trips_tripdetailresponse",
+      "confidence_score": 0.5
     },
     {
       "relation": "uses",
@@ -50258,9 +50258,9 @@
       "source_file": "backend/tests/integration/test_detail_receipts_gating.py",
       "source_location": "L24",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "vehicledetailresponse",
-      "target": "schemas_trips_tripdetailresponse"
+      "target": "schemas_trips_tripdetailresponse",
+      "confidence_score": 0.5
     },
     {
       "relation": "contains",
@@ -51055,9 +51055,9 @@
       "source_file": "backend/tests/integration/test_exception_scoping.py",
       "source_location": "L25",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "integration_test_exception_scoping",
-      "target": "tests_conftest"
+      "target": "tests_conftest",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports_from",
@@ -52359,9 +52359,9 @@
       "source_file": "backend/tests/integration/test_detail_receipts_gating.py",
       "source_location": "L65",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "integration_test_detail_receipts_gating_fake_driver_detail",
-      "target": "driverdetailresponse"
+      "target": "driverdetailresponse",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -52413,9 +52413,9 @@
       "source_file": "backend/tests/integration/test_detail_receipts_gating.py",
       "source_location": "L85",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "integration_test_detail_receipts_gating_fake_vehicle_detail",
-      "target": "vehicledetailresponse"
+      "target": "vehicledetailresponse",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -54384,9 +54384,9 @@
       "source_file": "backend/tests/unit/test_auth_dependencies.py",
       "source_location": "L257",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "unit_test_auth_dependencies",
-      "target": "unit_test_auth_dependencies_driverrowlike"
+      "target": "unit_test_auth_dependencies_driverrowlike",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -70211,9 +70211,9 @@
       "source_file": "frontend/shared/lib/mocks/manifests.ts",
       "source_location": "L3",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "mocks_manifests",
-      "target": "mocks_principals_fedex_org_id"
+      "target": "mocks_principals_fedex_org_id",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports_from",
@@ -70265,9 +70265,9 @@
       "source_file": "frontend/shared/lib/mocks/manifests.ts",
       "source_location": "L148",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "mocks_manifests",
-      "target": "schemas_trips_consignmentmanifest"
+      "target": "schemas_trips_consignmentmanifest",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports_from",
@@ -70287,9 +70287,9 @@
       "source_file": "frontend/shared/lib/mocks/manifests.ts",
       "source_location": "L1",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "mocks_manifests",
-      "target": "types_manifest_consignmentmanifest"
+      "target": "types_manifest_consignmentmanifest",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports",
@@ -70842,9 +70842,9 @@
       "source_file": "frontend/shared/lib/mocks/trips.ts",
       "source_location": "L46",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "mocks_trips",
-      "target": "mocks_trips_twostops"
+      "target": "mocks_trips_twostops",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports_from",
@@ -71095,9 +71095,9 @@
       "source_file": "frontend/shared/lib/mocks/trips.ts",
       "source_location": "L1",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "mocks_trips",
-      "target": "types_trip_tripstop"
+      "target": "types_trip_tripstop",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -72150,9 +72150,9 @@
       "source_file": "frontend/shared/lib/types/manifest.ts",
       "source_location": "L32",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "types_manifest",
-      "target": "types_manifest_consignmentmanifest"
+      "target": "types_manifest_consignmentmanifest",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -72332,9 +72332,9 @@
       "source_file": "frontend/driver-pwa/lib/utils/__tests__/trip-filters.test.ts",
       "source_location": "L3",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "tests_trip_filters_test",
-      "target": "types_trip"
+      "target": "types_trip",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -72382,9 +72382,9 @@
       "source_file": "frontend/shared/lib/types/trip.ts",
       "source_location": "L29",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "types_trip",
-      "target": "types_trip_tripstop"
+      "target": "types_trip_tripstop",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -79325,9 +79325,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L20",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "orchestration_manifest_service_load_consignment_and_parcels",
-      "target": "consignment"
+      "target": "consignment",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -79347,9 +79347,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L20",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "orchestration_manifest_service_load_consignment_and_parcels",
-      "target": "parcel"
+      "target": "parcel",
+      "confidence_score": 1.0
     },
     {
       "relation": "rationale_for",
@@ -79357,9 +79357,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L23",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "orchestration_manifest_service_rationale_23",
-      "target": "orchestration_manifest_service_load_consignment_and_parcels"
+      "target": "orchestration_manifest_service_load_consignment_and_parcels",
+      "confidence_score": 1.0
     },
     {
       "relation": "uses",
@@ -79367,9 +79367,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L16",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "backend_app_orchestration_manifest_service_py_asyncsession",
-      "target": "schemas_trips_consignmentmanifest"
+      "target": "schemas_trips_consignmentmanifest",
+      "confidence_score": 0.5
     },
     {
       "relation": "uses",
@@ -79377,9 +79377,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L16",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "backend_app_orchestration_manifest_service_py_asyncsession",
-      "target": "schemas_trips_deliverystopmanifest"
+      "target": "schemas_trips_deliverystopmanifest",
+      "confidence_score": 0.5
     },
     {
       "relation": "uses",
@@ -79387,9 +79387,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L16",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "backend_app_orchestration_manifest_service_py_asyncsession",
-      "target": "schemas_trips_linehaulresponse"
+      "target": "schemas_trips_linehaulresponse",
+      "confidence_score": 0.5
     },
     {
       "relation": "uses",
@@ -79397,9 +79397,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L16",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "backend_app_orchestration_manifest_service_py_asyncsession",
-      "target": "schemas_trips_manifestresponse"
+      "target": "schemas_trips_manifestresponse",
+      "confidence_score": 0.5
     },
     {
       "relation": "references",
@@ -79429,9 +79429,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L16",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "backend_app_orchestration_manifest_service_py_uuid",
-      "target": "schemas_trips_consignmentmanifest"
+      "target": "schemas_trips_consignmentmanifest",
+      "confidence_score": 0.5
     },
     {
       "relation": "uses",
@@ -79439,9 +79439,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L16",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "backend_app_orchestration_manifest_service_py_uuid",
-      "target": "schemas_trips_deliverystopmanifest"
+      "target": "schemas_trips_deliverystopmanifest",
+      "confidence_score": 0.5
     },
     {
       "relation": "uses",
@@ -79449,9 +79449,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L16",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "backend_app_orchestration_manifest_service_py_uuid",
-      "target": "schemas_trips_linehaulresponse"
+      "target": "schemas_trips_linehaulresponse",
+      "confidence_score": 0.5
     },
     {
       "relation": "uses",
@@ -79459,9 +79459,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L16",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "backend_app_orchestration_manifest_service_py_uuid",
-      "target": "schemas_trips_manifestresponse"
+      "target": "schemas_trips_manifestresponse",
+      "confidence_score": 0.5
     },
     {
       "relation": "references",
@@ -79909,9 +79909,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L16",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "consignment",
-      "target": "schemas_trips_deliverystopmanifest"
+      "target": "schemas_trips_deliverystopmanifest",
+      "confidence_score": 0.5
     },
     {
       "relation": "uses",
@@ -79919,9 +79919,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L16",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "linehaulresponse",
-      "target": "schemas_trips_deliverystopmanifest"
+      "target": "schemas_trips_deliverystopmanifest",
+      "confidence_score": 0.5
     },
     {
       "relation": "uses",
@@ -79929,9 +79929,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L16",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "manifestresponse",
-      "target": "schemas_trips_deliverystopmanifest"
+      "target": "schemas_trips_deliverystopmanifest",
+      "confidence_score": 0.5
     },
     {
       "relation": "uses",
@@ -79939,9 +79939,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L16",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "parcel",
-      "target": "schemas_trips_deliverystopmanifest"
+      "target": "schemas_trips_deliverystopmanifest",
+      "confidence_score": 0.5
     },
     {
       "relation": "uses",
@@ -79949,9 +79949,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L16",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "consignment",
-      "target": "schemas_trips_manifestresponse"
+      "target": "schemas_trips_manifestresponse",
+      "confidence_score": 0.5
     },
     {
       "relation": "uses",
@@ -79959,9 +79959,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L16",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "linehaulresponse",
-      "target": "schemas_trips_manifestresponse"
+      "target": "schemas_trips_manifestresponse",
+      "confidence_score": 0.5
     },
     {
       "relation": "uses",
@@ -79969,9 +79969,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L16",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "manifestresponse",
-      "target": "schemas_trips_manifestresponse"
+      "target": "schemas_trips_manifestresponse",
+      "confidence_score": 0.5
     },
     {
       "relation": "uses",
@@ -79979,9 +79979,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L16",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "parcel",
-      "target": "schemas_trips_manifestresponse"
+      "target": "schemas_trips_manifestresponse",
+      "confidence_score": 0.5
     },
     {
       "relation": "semantically_similar_to",
@@ -80019,9 +80019,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L16",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "consignment",
-      "target": "schemas_trips_linehaulresponse"
+      "target": "schemas_trips_linehaulresponse",
+      "confidence_score": 0.5
     },
     {
       "relation": "uses",
@@ -80029,9 +80029,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L16",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "linehaulresponse",
-      "target": "schemas_trips_linehaulresponse"
+      "target": "schemas_trips_linehaulresponse",
+      "confidence_score": 0.5
     },
     {
       "relation": "uses",
@@ -80039,9 +80039,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L16",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "manifestresponse",
-      "target": "schemas_trips_linehaulresponse"
+      "target": "schemas_trips_linehaulresponse",
+      "confidence_score": 0.5
     },
     {
       "relation": "uses",
@@ -80049,9 +80049,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L16",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "parcel",
-      "target": "schemas_trips_linehaulresponse"
+      "target": "schemas_trips_linehaulresponse",
+      "confidence_score": 0.5
     },
     {
       "relation": "rationale_for",
@@ -80079,9 +80079,9 @@
       "source_file": "backend/app/schemas/trips.py",
       "source_location": "L312",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "schemas_trips_rationale_312",
-      "target": "schemas_trips_consignmentmanifest"
+      "target": "schemas_trips_consignmentmanifest",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -81400,9 +81400,9 @@
       "source_file": "backend/tests/integration/test_manifest.py",
       "source_location": "L238",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "integration_test_manifest",
-      "target": "integration_test_manifest_seed_trip_with_mixed_unit_counts"
+      "target": "integration_test_manifest_seed_trip_with_mixed_unit_counts",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -81410,9 +81410,9 @@
       "source_file": "backend/tests/integration/test_manifest.py",
       "source_location": "L137",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "integration_test_manifest",
-      "target": "integration_test_manifest_seed_trip_with_two_consignments"
+      "target": "integration_test_manifest_seed_trip_with_two_consignments",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -81440,9 +81440,9 @@
       "source_file": "backend/tests/integration/test_manifest.py",
       "source_location": "L191",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "integration_test_manifest",
-      "target": "integration_test_manifest_test_dispatcher_manifest_multi_consignment_returns_all"
+      "target": "integration_test_manifest_test_dispatcher_manifest_multi_consignment_returns_all",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -81460,9 +81460,9 @@
       "source_file": "backend/tests/integration/test_manifest.py",
       "source_location": "L224",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "integration_test_manifest",
-      "target": "integration_test_manifest_test_driver_linehaul_falls_back_to_parcel_count_when_no_unit_counts"
+      "target": "integration_test_manifest_test_driver_linehaul_falls_back_to_parcel_count_when_no_unit_counts",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -81470,9 +81470,9 @@
       "source_file": "backend/tests/integration/test_manifest.py",
       "source_location": "L296",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "integration_test_manifest",
-      "target": "integration_test_manifest_test_driver_linehaul_mixed_unit_counts_applies_fallback_per_consignment"
+      "target": "integration_test_manifest_test_driver_linehaul_mixed_unit_counts_applies_fallback_per_consignment",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -81480,9 +81480,9 @@
       "source_file": "backend/tests/integration/test_manifest.py",
       "source_location": "L208",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "integration_test_manifest",
-      "target": "integration_test_manifest_test_driver_linehaul_multi_consignment_sums_unit_counts"
+      "target": "integration_test_manifest_test_driver_linehaul_multi_consignment_sums_unit_counts",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -81565,9 +81565,9 @@
       "source_file": "backend/tests/integration/test_manifest.py",
       "source_location": "L191",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "integration_test_manifest_test_dispatcher_manifest_multi_consignment_returns_all",
-      "target": "backend_tests_integration_test_manifest_py_asyncclient"
+      "target": "backend_tests_integration_test_manifest_py_asyncclient",
+      "confidence_score": 1.0
     },
     {
       "relation": "references",
@@ -81576,9 +81576,9 @@
       "source_file": "backend/tests/integration/test_manifest.py",
       "source_location": "L224",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "integration_test_manifest_test_driver_linehaul_falls_back_to_parcel_count_when_no_unit_counts",
-      "target": "backend_tests_integration_test_manifest_py_asyncclient"
+      "target": "backend_tests_integration_test_manifest_py_asyncclient",
+      "confidence_score": 1.0
     },
     {
       "relation": "references",
@@ -81587,9 +81587,9 @@
       "source_file": "backend/tests/integration/test_manifest.py",
       "source_location": "L296",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "integration_test_manifest_test_driver_linehaul_mixed_unit_counts_applies_fallback_per_consignment",
-      "target": "backend_tests_integration_test_manifest_py_asyncclient"
+      "target": "backend_tests_integration_test_manifest_py_asyncclient",
+      "confidence_score": 1.0
     },
     {
       "relation": "references",
@@ -81598,9 +81598,9 @@
       "source_file": "backend/tests/integration/test_manifest.py",
       "source_location": "L208",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "integration_test_manifest_test_driver_linehaul_multi_consignment_sums_unit_counts",
-      "target": "backend_tests_integration_test_manifest_py_asyncclient"
+      "target": "backend_tests_integration_test_manifest_py_asyncclient",
+      "confidence_score": 1.0
     },
     {
       "relation": "references",
@@ -81734,9 +81734,9 @@
       "source_file": "backend/tests/unit/test_auth_dependencies.py",
       "source_location": "L274",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "unit_test_auth_dependencies_make_driver_row",
-      "target": "unit_test_auth_dependencies_driverrowlike"
+      "target": "unit_test_auth_dependencies_driverrowlike",
+      "confidence_score": 1.0
     },
     {
       "relation": "rationale_for",
@@ -88821,9 +88821,9 @@
       "source_file": "frontend/dispatcher/app/(app)/trips/[id]/page.tsx",
       "source_location": "L11",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "id_page",
-      "target": "constants_routes_routes"
+      "target": "constants_routes_routes",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports",
@@ -91325,9 +91325,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L16",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "consignment",
-      "target": "schemas_trips_consignmentmanifest"
+      "target": "schemas_trips_consignmentmanifest",
+      "confidence_score": 0.5
     },
     {
       "relation": "calls",
@@ -91368,9 +91368,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L16",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "parcel",
-      "target": "schemas_trips_consignmentmanifest"
+      "target": "schemas_trips_consignmentmanifest",
+      "confidence_score": 0.5
     },
     {
       "relation": "uses",
@@ -91378,9 +91378,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L16",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "manifestresponse",
-      "target": "schemas_trips_consignmentmanifest"
+      "target": "schemas_trips_consignmentmanifest",
+      "confidence_score": 0.5
     },
     {
       "relation": "uses",
@@ -91388,9 +91388,9 @@
       "source_file": "backend/app/orchestration/manifest_service.py",
       "source_location": "L16",
       "weight": 0.8,
-      "confidence_score": 0.5,
       "source": "linehaulresponse",
-      "target": "schemas_trips_consignmentmanifest"
+      "target": "schemas_trips_consignmentmanifest",
+      "confidence_score": 0.5
     },
     {
       "relation": "contains",
@@ -91398,9 +91398,9 @@
       "source_file": "backend/migrations/versions/2026_07_02_ciaran_add_exception_scoping.py",
       "source_location": "L32",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "versions_2026_07_02_ciaran_add_exception_scoping",
-      "target": "versions_2026_07_02_ciaran_add_exception_scoping_downgrade"
+      "target": "versions_2026_07_02_ciaran_add_exception_scoping_downgrade",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -91408,9 +91408,9 @@
       "source_file": "backend/migrations/versions/2026_07_02_ciaran_add_exception_scoping.py",
       "source_location": "L21",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "versions_2026_07_02_ciaran_add_exception_scoping",
-      "target": "versions_2026_07_02_ciaran_add_exception_scoping_upgrade"
+      "target": "versions_2026_07_02_ciaran_add_exception_scoping_upgrade",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -91418,9 +91418,9 @@
       "source_file": "backend/tests/integration/test_exception_scoping.py",
       "source_location": "L29",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "integration_test_exception_scoping",
-      "target": "integration_test_exception_scoping_override_get_db"
+      "target": "integration_test_exception_scoping_override_get_db",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -91428,9 +91428,9 @@
       "source_file": "backend/tests/integration/test_exception_scoping.py",
       "source_location": "L38",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "integration_test_exception_scoping",
-      "target": "integration_test_exception_scoping_seed_trip_with_consignment_and_stop"
+      "target": "integration_test_exception_scoping_seed_trip_with_consignment_and_stop",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -91438,9 +91438,9 @@
       "source_file": "backend/tests/integration/test_exception_scoping.py",
       "source_location": "L83",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "integration_test_exception_scoping",
-      "target": "integration_test_exception_scoping_test_get_trip_detail_returns_exception_scoping_fields"
+      "target": "integration_test_exception_scoping_test_get_trip_detail_returns_exception_scoping_fields",
+      "confidence_score": 1.0
     },
     {
       "relation": "rationale_for",
@@ -91448,9 +91448,9 @@
       "source_file": "backend/tests/integration/test_exception_scoping.py",
       "source_location": "L1",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "integration_test_exception_scoping_rationale_1",
-      "target": "integration_test_exception_scoping"
+      "target": "integration_test_exception_scoping",
+      "confidence_score": 1.0
     },
     {
       "relation": "references",
@@ -91459,9 +91459,9 @@
       "source_file": "backend/tests/integration/test_exception_scoping.py",
       "source_location": "L83",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "integration_test_exception_scoping_test_get_trip_detail_returns_exception_scoping_fields",
-      "target": "backend_tests_integration_test_exception_scoping_py_asyncclient"
+      "target": "backend_tests_integration_test_exception_scoping_py_asyncclient",
+      "confidence_score": 1.0
     },
     {
       "relation": "rationale_for",
@@ -91469,9 +91469,9 @@
       "source_file": "backend/tests/integration/test_manifest.py",
       "source_location": "L239",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "integration_test_manifest_rationale_239",
-      "target": "integration_test_manifest_seed_trip_with_mixed_unit_counts"
+      "target": "integration_test_manifest_seed_trip_with_mixed_unit_counts",
+      "confidence_score": 1.0
     },
     {
       "relation": "rationale_for",
@@ -91479,9 +91479,9 @@
       "source_file": "backend/tests/unit/test_auth_dependencies.py",
       "source_location": "L258",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "unit_test_auth_dependencies_rationale_258",
-      "target": "unit_test_auth_dependencies_driverrowlike"
+      "target": "unit_test_auth_dependencies_driverrowlike",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -91499,9 +91499,9 @@
       "source_file": "scripts/update-graph.sh",
       "source_location": "L1",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "scripts_update_graph",
-      "target": "users_ciaranformby_desktop_freightproof_sa_4_scripts_update_graph_sh__entry"
+      "target": "users_ciaranformby_desktop_freightproof_sa_4_scripts_update_graph_sh__entry",
+      "confidence_score": 1.0
     },
     {
       "relation": "references",
