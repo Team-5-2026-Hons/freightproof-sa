@@ -39,7 +39,7 @@ export function H5PodPhoto({ tripId, draft, onUpdate, onComplete }: H5PodPhotoPr
           onCapture={(dataUrl) => onUpdate({ podSignatureDataUrl: dataUrl || null })}
         />
       </div>
-      <div className="flex justify-center p-6">
+      <div className="flex justify-center px-6 pt-6 pb-safe">
         <HoldButton label="Confirm POD" onConfirm={onComplete} disabled={!isReady} />
       </div>
     </main>

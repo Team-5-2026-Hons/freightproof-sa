@@ -2,6 +2,46 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  /*
+   * shadcn/ui theme variables, mapped onto the app's existing Material-3-derived
+   * hex palette (see tailwind.config.ts `colors`) so both vocabularies render
+   * identically. HSL triplets (no hsl() wrapper) per shadcn convention — consumed
+   * as hsl(var(--foo)) in tailwind.config.ts.
+   */
+  :root {
+    --background: 345 40% 98%;      /* surface #fcf8f9 */
+    --foreground: 240 2% 11%;       /* surface-on #1b1b1c */
+
+    --card: 0 0% 100%;              /* surface-container-lowest #ffffff */
+    --card-foreground: 240 2% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 2% 11%;
+
+    --primary: 240 2% 11%;          /* #1b1b1c */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 340 14% 96%;       /* surface-container-low #f6f3f4 */
+    --secondary-foreground: 240 2% 11%;
+
+    --muted: 340 14% 96%;           /* #f6f3f4 */
+    --muted-foreground: 240 6% 29%; /* surface-on-variant #46464f */
+
+    --accent: 217 100% 42%;         /* secondary blue #0051d5 */
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 75% 42%;       /* error #ba1a1a */
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 255 4% 78%;           /* outline-variant #c7c6ca */
+    --input: 255 4% 78%;
+    --ring: 217 100% 42%;           /* #0051d5 */
+
+    --radius: 14px;
+  }
+}
+
 @layer utilities {
   .glass-nav {
     background: rgba(252, 248, 249, 0.8);
@@ -21,7 +61,7 @@
 
 @layer base {
   :focus-visible {
-    outline: 2px solid #0051d5;
+    outline: 2px solid hsl(var(--ring));
     outline-offset: 2px;
     border-radius: 4px;
   }

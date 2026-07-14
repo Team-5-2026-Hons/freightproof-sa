@@ -5,13 +5,17 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { TriangleAlert } from 'lucide-react'
 import { useTrip } from '@/lib/hooks/useTrip'
+import { useToast } from '@/lib/hooks/useToast'
+import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
 import { CameraCapture } from '@/components/handshake/CameraCapture'
 import { GpsCapture } from '@/components/handshake/GpsCapture'
 import { HoldButton } from '@/components/handshake/HoldButton'
 import { Button } from '@/components/ui/Button'
+import { TextArea } from '@/components/ui/TextArea'
+import { SubpageHeader } from '@/components/layout/SubpageHeader'
 import { ROUTES } from '@/lib/constants/routes'
-import { uploadArtifact } from '@/lib/api/artifacts'
-import { logCheckpoint } from '@/lib/api/checkpoints'
+import { ApiError } from '@/lib/api/client'
+import { submitCheckpoint, type CheckpointEvidence } from '@/lib/api/checkpoints'
 
 // Driver-initiated periodic in-transit capture (selfie + cargo photo), independent
 // of the five handshakes — proves the driver and cargo are where they should be
@@ -19,6 +23,8 @@ import { logCheckpoint } from '@/lib/api/checkpoints'
 export default function CheckpointPageClient() {
   const router = useRouter()
   const { trip } = useTrip()
+  const { notify } = useToast()
+  const { enqueueCheckpoint } = useOfflineQueue()
 
   // GpsCapture owns its own internal useLocation() instance — coords are lifted
   // here via its onCapture callback, not read from a second, independent hook call.
@@ -36,25 +42,39 @@ export default function CheckpointPageClient() {
     if (!isReady || !trip) return
     setSubmitting(true)
     setSubmitError(false)
+
+    const evidence: CheckpointEvidence = {
+      gpsLat: gps!.latitude,
+      gpsLng: gps!.longitude,
+      selfieDataUrl: selfieDataUrl!,
+      cargoPhotoDataUrl: cargoPhotoDataUrl!,
+      note: note.trim(),
+      isDeviation,
+      capturedAt: new Date().toISOString(),
+    }
+
     try {
-      const capturedAt = new Date().toISOString()
-      const [selfie, cargoPhoto] = await Promise.all([
-        uploadArtifact({ tripId: String(trip.id), artifactType: 'photo', dataUrl: selfieDataUrl!, capturedAt }),
-        uploadArtifact({ tripId: String(trip.id), artifactType: 'photo', dataUrl: cargoPhotoDataUrl!, capturedAt }),
-      ])
-      await logCheckpoint(String(trip.id), {
-        checkpoint_type: 'manual',
-        driver_phone_lat: gps?.latitude,
-        driver_phone_lng: gps?.longitude,
-        selfie_artifact_id: selfie.id,
-        cargo_photo_artifact_id: cargoPhoto.id,
-        note: note.trim() || undefined,
-        is_deviation: isDeviation,
-      })
+      await submitCheckpoint(String(trip.id), evidence)
       router.push(ROUTES.inTransit)
     } catch (err) {
-      console.error('Failed to log checkpoint', err)
-      setSubmitError(true)
+      // A 4xx (validation failure) will fail identically on retry — leave the driver
+      // here with the inline error so they can fix/retry manually. A network failure
+      // or 5xx is retryable, so queue it (same offline-queue pattern handshakes and
+      // exceptions use) and let the driver move on; it syncs on reconnect.
+      const isRetryable = !(err instanceof ApiError) || err.status >= 500
+      if (isRetryable) {
+        console.error('Failed to log checkpoint — queued for retry', err)
+        enqueueCheckpoint(String(trip.id), evidence)
+        notify({
+          kind: 'success',
+          title: 'Checkpoint recorded',
+          body: 'Saved — evidence stored on this device.',
+        })
+        router.push(ROUTES.inTransit)
+      } else {
+        console.error('Failed to log checkpoint', err)
+        setSubmitError(true)
+      }
     } finally {
       setSubmitting(false)
     }
@@ -71,57 +91,64 @@ export default function CheckpointPageClient() {
             Return to in-transit and try again.
           </p>
         </div>
-        <button
-          onClick={() => router.replace(ROUTES.inTransit)}
-          className="text-sm text-secondary underline"
-        >
+        <Button type="button" variant="ghost" onClick={() => router.replace(ROUTES.inTransit)}>
           Return to in-transit
-        </button>
+        </Button>
       </main>
     )
   }
 
   return (
-    <main className="flex min-h-screen flex-col p-4">
-      <button onClick={() => router.back()} className="mb-4 text-sm text-secondary">← Back</button>
-      <h1 className="text-xl font-bold mb-1">Log Checkpoint</h1>
-      <p className="mb-6 text-sm text-surface-on-variant">
-        Capture a selfie and a cargo photo to confirm your location and load mid-transit.
-      </p>
+    <main className="flex min-h-screen flex-col">
+      <SubpageHeader
+        title="Log Checkpoint"
+        backLabel="In-Transit Hub"
+        onBack={() => router.push(ROUTES.inTransit)}
+      />
+      {/* pb-8 keeps the hold button clear of the note textarea on short viewports —
+          min-h-screen alone lets the footer controls crowd the form when it overflows. */}
+      <div className="flex flex-1 flex-col p-4 pb-8">
+        <p className="mb-6 text-sm text-surface-on-variant">
+          Capture a selfie and a cargo photo to confirm your location and load mid-transit.
+        </p>
 
-      <div className="flex flex-col gap-6 mb-6">
-        <GpsCapture onCapture={(lat, lng) => setGps({ latitude: lat, longitude: lng })} captured={gps !== null} />
-        <CameraCapture label="Selfie" dataUrl={selfieDataUrl} onCapture={setSelfieDataUrl} />
-        <CameraCapture label="Cargo photo" dataUrl={cargoPhotoDataUrl} onCapture={setCargoPhotoDataUrl} />
+        <div className="flex flex-col gap-6 mb-6">
+          <GpsCapture onCapture={(lat, lng) => setGps({ latitude: lat, longitude: lng })} captured={gps !== null} />
+          <CameraCapture label="Selfie" dataUrl={selfieDataUrl} onCapture={setSelfieDataUrl} />
+          <CameraCapture label="Cargo photo" dataUrl={cargoPhotoDataUrl} onCapture={setCargoPhotoDataUrl} />
 
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={isDeviation}
-            onChange={(e) => setIsDeviation(e.target.checked)}
-            className="h-4 w-4"
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={isDeviation}
+              onChange={(e) => setIsDeviation(e.target.checked)}
+              className="h-4 w-4"
+            />
+            This is a route deviation
+          </label>
+
+          <TextArea
+            label="Note"
+            helperText="Optional"
+            rows={3}
+            placeholder="Note (optional)"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
           />
-          This is a route deviation
-        </label>
+        </div>
 
-        <textarea
-          className="w-full rounded-xl border border-outline-variant bg-surface-container-low p-3 text-sm resize-none"
-          rows={3}
-          placeholder="Note (optional)"
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-        />
+        {submitError && (
+          <p className="mb-3 text-sm text-error">Could not submit — check your connection and try again.</p>
+        )}
+        <div className="flex flex-col items-center pb-safe">
+          <div className="flex justify-center">
+            <HoldButton label={submitting ? 'Submitting…' : 'Hold to confirm'} onConfirm={handleSubmit} disabled={!isReady || submitting} />
+          </div>
+          <Button variant="secondary" size="lg" className="mt-4" onClick={() => router.back()}>
+            Cancel
+          </Button>
+        </div>
       </div>
-
-      {submitError && (
-        <p className="mb-3 text-sm text-error">Could not submit — check your connection and try again.</p>
-      )}
-      <div className="flex justify-center">
-        <HoldButton label={submitting ? 'Submitting…' : 'Hold to confirm'} onConfirm={handleSubmit} disabled={!isReady || submitting} />
-      </div>
-      <Button variant="secondary" size="lg" className="mt-4" onClick={() => router.back()}>
-        Cancel
-      </Button>
     </main>
   )
 }

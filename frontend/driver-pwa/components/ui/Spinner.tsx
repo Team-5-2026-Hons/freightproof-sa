@@ -1,4 +1,4 @@
-import { cn } from '@shared/lib/utils/cn'
+import { cn } from '@/lib/utils'
 
 interface SpinnerProps {
   size?: 'sm' | 'md' | 'lg'
@@ -17,7 +17,7 @@ export function Spinner({ size = 'md', className }: SpinnerProps) {
       role="status"
       aria-label="Loading"
       className={cn(
-        'inline-block rounded-full border-surface-container-highest border-t-secondary animate-spin',
+        'inline-block rounded-full border-muted border-t-accent animate-spin',
         sizeMap[size],
         className,
       )}

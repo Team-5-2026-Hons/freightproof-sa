@@ -1,4 +1,5 @@
 import type { Config } from 'tailwindcss'
+import animate from 'tailwindcss-animate'
 
 const config: Config = {
   content: [
@@ -9,6 +10,39 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        // ── shadcn/ui CSS-variable-driven tokens ──
+        // Names picked to avoid clobbering the hex-object tokens below (e.g. the
+        // existing `primary`/`secondary`/`surface` scales, which every screen
+        // still uses via classes like bg-surface-container-lowest). Values come
+        // from app/globals.css :root, mapped onto the same hex palette.
+        background:   'hsl(var(--background))',
+        foreground:   'hsl(var(--foreground))',
+        card: {
+          DEFAULT:    'hsl(var(--card))',
+          foreground: 'hsl(var(--card-foreground))',
+        },
+        popover: {
+          DEFAULT:    'hsl(var(--popover))',
+          foreground: 'hsl(var(--popover-foreground))',
+        },
+        muted: {
+          DEFAULT:    'hsl(var(--muted))',
+          foreground: 'hsl(var(--muted-foreground))',
+        },
+        accent: {
+          DEFAULT:    'hsl(var(--accent))',
+          foreground: 'hsl(var(--accent-foreground))',
+        },
+        destructive: {
+          DEFAULT:    'hsl(var(--destructive))',
+          foreground: 'hsl(var(--destructive-foreground))',
+        },
+        input: 'hsl(var(--input))',
+        ring:  'hsl(var(--ring))',
+        // Sets the default `border` utility color. Same value as outline-variant
+        // (#c7c6ca / hsl(var(--border))), which existing components already
+        // reference explicitly via border-outline-variant.
+        border: 'hsl(var(--border))',
         // Target vocabulary for new components going forward (mirrors frontend/dispatcher's already-completed migration). Not yet consumed in driver-pwa — adopted incrementally as components are rebuilt.
         // ── Design-system shorthand tokens — mirror CSS variable names exactly ──
         canvas:       '#0a0a0c',
@@ -121,9 +155,24 @@ const config: Config = {
         toast:   '80',
         panic:   '100',
       },
+
+      keyframes: {
+        'accordion-down': {
+          from: { height: '0' },
+          to: { height: 'var(--radix-accordion-content-height)' },
+        },
+        'accordion-up': {
+          from: { height: 'var(--radix-accordion-content-height)' },
+          to: { height: '0' },
+        },
+      },
+      animation: {
+        'accordion-down': 'accordion-down 0.2s ease-out',
+        'accordion-up': 'accordion-up 0.2s ease-out',
+      },
     },
   },
-  plugins: [],
+  plugins: [animate],
 }
 
 export default config

@@ -13,11 +13,19 @@ import { IS_DEMO_MODE } from '@/lib/constants/env'
 // Supabase auth user's UUID.
 const MOCK_DRIVER: DriverUser = mockDrivers[0]
 
+// Marks an active demo session so a page refresh doesn't log the demo user out
+// mid-walkthrough. sessionStorage (not localStorage) on purpose: closing the
+// tab still ends the demo. Exported for tests only.
+export const DEMO_SESSION_KEY = 'fp:demo-session'
+
 export const AuthContext = createContext<AuthState | null>(null)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<DriverUser | null>(null)
-  const [isLoading, setIsLoading] = useState(!IS_DEMO_MODE)
+  // Starts true in both modes so guarded routes wait for session restoration
+  // (Supabase getSession in real mode, sessionStorage in demo mode) instead of
+  // flashing to /login on refresh.
+  const [isLoading, setIsLoading] = useState(true)
 
   // Tracks the currently-loaded driver id outside React state so the
   // onAuthStateChange listener (subscribed once, see below) can compare
@@ -37,6 +45,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error('Failed to fetch driver profile', err)
       return null
     }
+  }, [])
+
+  // Demo mode: on app load, restore the mock session if this tab signed in
+  // before — otherwise a refresh mid-demo logs the stakeholder out. Effects
+  // only run client-side, so sessionStorage is safe under output: 'export'.
+  useEffect(() => {
+    if (!IS_DEMO_MODE) return
+
+    // Deliberate one-time mount hydration from sessionStorage. A lazy useState
+    // initializer would mismatch the prerendered shell (output: 'export' renders
+    // with user = null), and useSyncExternalStore doesn't fit because signIn/
+    // signOut also set this state imperatively. The cascade this rule guards
+    // against is bounded to a single intentional re-render.
+    /* eslint-disable react-hooks/set-state-in-effect */
+    if (sessionStorage.getItem(DEMO_SESSION_KEY) === 'true') {
+      setUser(MOCK_DRIVER)
+    }
+    setIsLoading(false)
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [])
 
   // On app load, check whether a Supabase session already exists (e.g. page refresh).
@@ -95,6 +122,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (IS_DEMO_MODE) {
       await new Promise(resolve => setTimeout(resolve, 600))
+      // Persist so the demo session survives a page refresh (see DEMO_SESSION_KEY).
+      sessionStorage.setItem(DEMO_SESSION_KEY, 'true')
       setUser(MOCK_DRIVER)
       setIsLoading(false)
       return
@@ -115,7 +144,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [fetchProfile])
 
   const signOut = useCallback(async () => {
-    if (!IS_DEMO_MODE) {
+    if (IS_DEMO_MODE) {
+      // End the persisted demo session so the next load lands on /login.
+      sessionStorage.removeItem(DEMO_SESSION_KEY)
+    } else {
       await supabase.auth.signOut()
     }
     setUser(null)

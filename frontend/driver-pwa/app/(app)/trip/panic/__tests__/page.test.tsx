@@ -15,6 +15,11 @@ const mockRouterReplace = vi.fn()
 // reference a mutable function.
 const mockCapture = vi.fn()
 
+// Fix 2 (panic over-promise): asserted directly in the "queued" sequencing tests below
+// so a failed logException can be told apart from an enqueued one without hitting real
+// localStorage.
+const mockEnqueueException = vi.fn()
+
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ back: mockRouterBack, replace: mockRouterReplace, push: vi.fn() }),
 }))
@@ -29,6 +34,10 @@ vi.mock('@/lib/hooks/useLocation', () => ({
     status: 'idle',
     capture: mockCapture,
   }),
+}))
+
+vi.mock('@/lib/hooks/useOfflineQueue', () => ({
+  useOfflineQueue: () => ({ enqueueException: mockEnqueueException }),
 }))
 
 describe('PanicPage no-active-trip guard', () => {
@@ -137,5 +146,30 @@ describe('PanicPage handlePanic sequencing', () => {
       expect.objectContaining({ gpsLat: null, gpsLng: null }),
     )
     expect(mockRouterReplace).toHaveBeenCalledWith(ROUTES.panicSubmitted)
+  })
+
+  // Fix 2 (panic over-promise): when the backend call fails, the alert is queued
+  // on-device instead of silently lost — and PanicSubmittedPageClient must be told so
+  // it doesn't claim the dispatcher was notified when nothing has actually sent.
+  it('queues the alert and navigates with the queued flag when logException fails', async () => {
+    const logException = vi.fn().mockRejectedValue(new Error('network unreachable'))
+    mockUseTrip.mockReturnValue({ trip: { id: 'trip-123' }, isLoading: false, logException })
+    mockCapture.mockResolvedValue({ latitude: -26.09, longitude: 28.13, accuracy: 5 })
+
+    render(<PanicPage />)
+    pressAndHoldPanicButton()
+
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(mockEnqueueException).toHaveBeenCalledWith('trip-123', {
+      exception_type: 'panic_button',
+      description: 'Driver activated panic button.',
+    })
+    expect(mockRouterReplace).toHaveBeenCalledWith(ROUTES.panicSubmittedUrl(true))
+    expect(mockRouterReplace).toHaveBeenCalledWith(`${ROUTES.panicSubmitted}?queued=1`)
   })
 })

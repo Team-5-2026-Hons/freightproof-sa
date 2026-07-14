@@ -8,6 +8,13 @@
 // Capacitor APK), which requires every dynamic segment to be enumerable at build
 // time — a real trip's UUID never is.
 
+const PANIC_SUBMITTED_PATH = '/trip/panic/submitted'
+
+// Query param panic/submitted reads via useSearchParams() to tell a panic alert that
+// actually reached the backend apart from one only queued on-device (no signal at
+// submit time) — see ROUTES.panicSubmittedUrl and PanicSubmittedPageClient.
+export const PANIC_QUEUED_PARAM = 'queued'
+
 export const ROUTES = {
   home:     '/',
   login:    '/login',
@@ -27,7 +34,13 @@ export const ROUTES = {
   exception:  '/trip/in-transit/exception',
 
   panic:          '/trip/panic',
-  panicSubmitted: '/trip/panic/submitted',
+  panicSubmitted: PANIC_SUBMITTED_PATH,
+  // The plain path (no query) means the alert actually sent — matches the previous
+  // unconditional navigation. `queued=1` means it couldn't reach the backend and was
+  // stored on-device instead, so PanicSubmittedPageClient can show honest copy rather
+  // than always claiming the dispatcher was notified.
+  panicSubmittedUrl: (queued: boolean) =>
+    queued ? `${PANIC_SUBMITTED_PATH}?${PANIC_QUEUED_PARAM}=1` : PANIC_SUBMITTED_PATH,
 
   devTokens: '/dev/tokens',
 } as const

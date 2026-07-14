@@ -44,16 +44,11 @@ export function H1GateArrival({ tripId, draft, onUpdate, onComplete }: H1GateArr
           Capture your GPS location at the origin gate to record your arrival position.
         </p>
         <GpsCapture captured={hasGps} onCapture={handleGpsCapture} />
-        {hasGps && (
-          <p className="text-xs text-surface-on-variant">
-            {draft.gpsLat?.toFixed(5)}, {draft.gpsLng?.toFixed(5)}
-          </p>
-        )}
         {draft.gateAddress && (
           <p className="text-xs text-surface-on-variant">{draft.gateAddress}</p>
         )}
       </div>
-      <div className="flex justify-center p-6">
+      <div className="flex justify-center px-6 pt-6 pb-safe">
         <HoldButton label="Hold to confirm" onConfirm={onComplete} disabled={!hasGps} />
       </div>
     </main>

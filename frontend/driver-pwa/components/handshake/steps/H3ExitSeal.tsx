@@ -75,7 +75,7 @@ export function H3ExitSeal({ tripId, draft, h2SealNumber, onUpdate, onComplete }
           </div>
         )}
       </div>
-      <div className="flex justify-center p-6">
+      <div className="flex justify-center px-6 pt-6 pb-safe">
         <HoldButton label="Hold to confirm" onConfirm={onComplete} disabled={!isReady} />
       </div>
     </main>

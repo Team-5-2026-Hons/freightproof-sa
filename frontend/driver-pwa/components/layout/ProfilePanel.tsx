@@ -1,10 +1,11 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { LogOut, Phone, Truck as TruckIcon } from 'lucide-react'
 import { Drawer } from '@/components/ui/Drawer'
 import { Button } from '@/components/ui/Button'
+import { Modal } from '@/components/ui/Modal'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { mockTrips } from '@shared/lib/mocks/trips'
 import { tripsForDriver, categorizeTrips } from '@/lib/utils/trip-filters'
@@ -18,6 +19,9 @@ interface ProfilePanelProps {
 export function ProfilePanel({ open, onClose }: ProfilePanelProps) {
   const { user, signOut } = useAuth()
   const router = useRouter()
+  // Logout needs confirmation: an accidental tap from the roadside costs the
+  // driver a full WhatsApp-OTP round trip to sign back in.
+  const [confirmLogoutOpen, setConfirmLogoutOpen] = useState(false)
 
   // Drawer keeps children mounted and toggles visibility via CSS transform (not
   // conditional rendering), so this recomputes on every re-render of whatever
@@ -42,6 +46,7 @@ export function ProfilePanel({ open, onClose }: ProfilePanelProps) {
 
   async function handleLogout() {
     await signOut()
+    setConfirmLogoutOpen(false)
     onClose()
     router.replace(ROUTES.login)
   }
@@ -75,10 +80,29 @@ export function ProfilePanel({ open, onClose }: ProfilePanelProps) {
           </div>
         </div>
 
-        <Button variant="danger" size="md" iconLeft={<LogOut className="h-4 w-4" aria-hidden />} onClick={handleLogout}>
+        <Button variant="danger" size="md" iconLeft={<LogOut className="h-4 w-4" aria-hidden />} onClick={() => setConfirmLogoutOpen(true)}>
           Log out
         </Button>
       </div>
+
+      <Modal
+        open={confirmLogoutOpen}
+        onClose={() => setConfirmLogoutOpen(false)}
+        title="Log out?"
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" size="md" onClick={() => setConfirmLogoutOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="danger" size="md" onClick={handleLogout}>
+              Log out
+            </Button>
+          </>
+        }
+      >
+        You&rsquo;ll need a new OTP to sign back in.
+      </Modal>
     </Drawer>
   )
 }

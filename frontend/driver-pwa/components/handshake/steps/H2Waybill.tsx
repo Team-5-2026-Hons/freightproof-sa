@@ -27,7 +27,7 @@ export function H2Waybill({ tripId, draft, onUpdate, onComplete }: H2WaybillProp
           onCapture={(dataUrl) => onUpdate({ waybillPhotoDataUrl: dataUrl })}
         />
       </div>
-      <div className="flex justify-center p-6">
+      <div className="flex justify-center px-6 pt-6 pb-safe">
         <HoldButton label="Hold to confirm" onConfirm={onComplete} disabled={!draft.waybillPhotoDataUrl} />
       </div>
     </main>

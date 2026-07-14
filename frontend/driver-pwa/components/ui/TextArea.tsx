@@ -1,7 +1,7 @@
 'use client'
 
-import { type TextareaHTMLAttributes, useState } from 'react'
-import { cn } from '@shared/lib/utils/cn'
+import { type TextareaHTMLAttributes, useState, forwardRef } from 'react'
+import { cn } from '@/lib/utils'
 
 interface TextAreaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   label: string
@@ -9,7 +9,10 @@ interface TextAreaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   error?: string
 }
 
-export function TextArea({ label, helperText, error, className, id, ...props }: TextAreaProps) {
+export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(function TextArea(
+  { label, helperText, error, className, id, ...props },
+  ref,
+) {
   const [touched, setTouched] = useState(false)
   const inputId = id ?? label.toLowerCase().replace(/\s+/g, '-')
   const showError = touched && error
@@ -23,24 +26,26 @@ export function TextArea({ label, helperText, error, className, id, ...props }: 
         {label}
       </label>
       <textarea
+        ref={ref}
         id={inputId}
         onBlur={() => setTouched(true)}
         className={cn(
-          'w-full rounded-xl px-4 py-3 text-sm font-medium text-surface-on',
-          'bg-surface-container-low border border-outline-variant/30',
-          'placeholder:text-surface-on-variant/50 resize-none',
-          'focus:outline-none focus:border-secondary focus:bg-surface-container-lowest',
+          'w-full rounded-xl px-4 py-3 text-sm font-medium text-foreground',
+          'bg-muted border border-input',
+          'placeholder:text-muted-foreground/70 resize-none',
+          'focus:outline-none focus:border-ring focus:bg-card',
           'transition-colors duration-150 min-h-[120px]',
-          showError && 'border-error focus:border-error',
+          'disabled:opacity-40 disabled:cursor-not-allowed',
+          showError && 'border-destructive focus:border-destructive',
           className,
         )}
         {...props}
       />
       {showError ? (
-        <p className="text-xs text-error font-medium">{error}</p>
+        <p className="text-xs text-destructive font-medium">{error}</p>
       ) : helperText ? (
-        <p className="text-xs text-surface-on-variant">{helperText}</p>
+        <p className="text-xs text-muted-foreground">{helperText}</p>
       ) : null}
     </div>
   )
-}
+})

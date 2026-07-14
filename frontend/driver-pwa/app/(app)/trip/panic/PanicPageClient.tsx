@@ -8,6 +8,7 @@ import { useTrip } from '@/lib/hooks/useTrip'
 import { useLocation } from '@/lib/hooks/useLocation'
 import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
 import { HoldButton } from '@/components/handshake/HoldButton'
+import { Button } from '@/components/ui/Button'
 import { ROUTES } from '@/lib/constants/routes'
 
 export default function PanicPageClient() {
@@ -29,6 +30,10 @@ export default function PanicPageClient() {
     // lightweight loading state below so the UI doesn't appear frozen.
     const result = await capture()
     const description = 'Driver activated panic button.'
+    // Tracks whether the alert actually reached the backend vs. was only queued
+    // on-device — PanicSubmittedPageClient needs this to avoid claiming "your
+    // dispatcher has been notified" when nothing has actually sent yet.
+    let queued = false
     try {
       await logException('panic_button', {
         description,
@@ -42,8 +47,9 @@ export default function PanicPageClient() {
       // of just logging and losing it, since this is the one alert that must land.
       console.error('Failed to send panic alert to backend — queued for retry', err)
       if (trip) enqueueException(String(trip.id), { exception_type: 'panic_button', description })
+      queued = true
     }
-    router.replace(ROUTES.panicSubmitted)
+    router.replace(ROUTES.panicSubmittedUrl(queued))
   }
 
   if (isLoading) return null
@@ -59,22 +65,27 @@ export default function PanicPageClient() {
             Contact dispatch directly for emergency assistance.
           </p>
         </div>
-        <button
+        <Button
+          type="button"
+          variant="ghost"
           // This state is reachable via cold load, deep link, or refresh —
           // there may be no meaningful back-history, so router.back() could
           // land anywhere (or nowhere). Use an explicit replace so the label's
           // promise ("Return to in-transit") is actually guaranteed.
           onClick={() => router.replace(ROUTES.inTransit)}
-          className="text-sm text-error-on/70 underline"
+          // Ghost's default text-secondary/hover:bg-secondary/10 is unreadable on this
+          // screen's bg-error backdrop — override to the same dim error-on tone the raw
+          // button used, keeping the visual intent while gaining the shared Button.
+          className="text-error-on/70 hover:bg-error-on/10"
         >
           Return to in-transit
-        </button>
+        </Button>
       </main>
     )
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-8 bg-error p-6">
+    <main className="flex min-h-screen flex-col items-center justify-center gap-8 bg-error px-6 pt-6 pb-safe">
       <div className="flex flex-col items-center text-center text-error-on">
         <ShieldAlert className="mb-4 h-14 w-14" strokeWidth={1.5} aria-hidden />
         <h1 className="mb-2 text-2xl font-bold">Panic Alert</h1>
@@ -94,12 +105,14 @@ export default function PanicPageClient() {
         onConfirm={handlePanic}
         variant="danger"
       />
-      <button
+      <Button
+        type="button"
+        variant="ghost"
         onClick={() => router.back()}
-        className="text-sm text-error-on/70 underline"
+        className="text-error-on/70 hover:bg-error-on/10"
       >
-        Cancel — return to in-transit
-      </button>
+        Cancel
+      </Button>
     </main>
   )
 }

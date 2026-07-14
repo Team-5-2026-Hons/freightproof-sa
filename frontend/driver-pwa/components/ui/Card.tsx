@@ -1,25 +1,26 @@
-import { type ReactNode } from 'react'
-import { cn } from '@shared/lib/utils/cn'
+import { type ReactNode, type KeyboardEvent } from 'react'
+import { cva, type VariantProps } from 'class-variance-authority'
+import { cn } from '@/lib/utils'
 
-interface CardProps {
-  variant?: 'default' | 'exception' | 'selected' | 'section' | 'dark'
-  children: ReactNode
-  className?: string
-  onClick?: () => void
-}
+const cardVariants = cva('rounded-xl p-5', {
+  variants: {
+    variant: {
+      default:   'bg-surface-container-lowest shadow-ambient',
+      exception: 'bg-surface-container-lowest shadow-ambient border-l-4 border-error',
+      selected:  'bg-secondary-fixed shadow-ambient-sm',
+      section:   'bg-surface-container-low',
+      dark:      'bg-primary text-primary-on shadow-ambient',
+    },
+  },
+  defaultVariants: {
+    variant: 'default',
+  },
+})
 
-const variantClasses: Record<NonNullable<CardProps['variant']>, string> = {
-  default:   'bg-surface-container-lowest shadow-ambient',
-  exception: 'bg-surface-container-lowest shadow-ambient border-l-4 border-error',
-  selected:  'bg-secondary-fixed shadow-ambient-sm',
-  section:   'bg-surface-container-low',
-  dark:      'bg-primary text-primary-on shadow-ambient',
-}
-
-// Per-variant hover — kept out of variantClasses so it's only applied when
+// Per-variant hover — kept separate from cardVariants so it's only applied when
 // interactive, but still scoped to the variant (a flat hover override appended
 // via className loses the cascade to this same-specificity base class).
-const hoverClasses: Record<NonNullable<CardProps['variant']>, string> = {
+const hoverClasses: Record<NonNullable<VariantProps<typeof cardVariants>['variant']>, string> = {
   default:   'hover:bg-surface-container-high',
   exception: 'hover:bg-surface-container-high',
   selected:  'hover:bg-surface-container-high',
@@ -27,22 +28,29 @@ const hoverClasses: Record<NonNullable<CardProps['variant']>, string> = {
   dark:      'hover:bg-primary/90',
 }
 
+interface CardProps extends VariantProps<typeof cardVariants> {
+  children: ReactNode
+  className?: string
+  onClick?: () => void
+}
+
 export function Card({ variant = 'default', children, className, onClick }: CardProps) {
   const isInteractive = onClick !== undefined
+  const resolvedVariant = variant ?? 'default'
+
+  function handleKeyDown(e: KeyboardEvent<HTMLDivElement>) {
+    if (e.key === 'Enter' || e.key === ' ') onClick?.()
+  }
+
   return (
     <div
       role={isInteractive ? 'button' : undefined}
       tabIndex={isInteractive ? 0 : undefined}
       onClick={onClick}
-      onKeyDown={
-        isInteractive
-          ? (e) => { if (e.key === 'Enter' || e.key === ' ') onClick() }
-          : undefined
-      }
+      onKeyDown={isInteractive ? handleKeyDown : undefined}
       className={cn(
-        'rounded-xl p-5',
-        variantClasses[variant],
-        isInteractive && cn('cursor-pointer transition-colors duration-150', hoverClasses[variant]),
+        cardVariants({ variant }),
+        isInteractive && cn('cursor-pointer transition-colors duration-150', hoverClasses[resolvedVariant]),
         className,
       )}
     >

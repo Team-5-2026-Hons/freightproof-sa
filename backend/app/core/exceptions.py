@@ -53,3 +53,12 @@ class SubjectNotVisibleError(Exception):
         self.subject_type = subject_type
         self.subject_id = subject_id
         super().__init__(f"Subject {subject_type}/{subject_id} not visible to caller's org")
+
+
+class PPSyncError(Exception):
+    """Raised when the Parcel Perfect sync fails during trip creation."""
+
+    def __init__(self, pp_reference: str, reason: str) -> None:
+        self.pp_reference = pp_reference
+        self.reason = reason
+        super().__init__(f"PP sync failed for {pp_reference!r}: {reason}")

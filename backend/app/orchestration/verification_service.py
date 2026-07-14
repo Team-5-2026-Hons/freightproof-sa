@@ -17,8 +17,10 @@ from app.blockchain.hedera import HederaService, HederaServiceError
 from app.crypto.hashing import compute_trip_canonical_payload
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.events import DriverEvent, VehicleEvent
-from app.db.models.enums import SubjectType, VerifyStatus
+from app.db.models.enums import HandshakeType, SubjectType, VerifyStatus
+from app.db.models.handshakes import HandshakeEvent
 from app.db.models.trips import Trip, TripTrailer
+from app.orchestration.handshake_service import compute_h2_canonical_payload, compute_h5_canonical_payload
 
 
 @dataclass(frozen=True)
@@ -110,6 +112,45 @@ async def _reconstruct_driver_event_payload(
     }
 
 
+async def _reconstruct_handshake_event_payload(
+    db: AsyncSession, event_id: uuid.UUID
+) -> dict[str, Any] | None:
+    """Rebuild the exact canonical payload anchored at H2/H5, from the live row.
+
+    Reuses compute_h2_canonical_payload/compute_h5_canonical_payload from
+    handshake_service directly — one payload-shape definition, not a second
+    copy that could drift from what was actually anchored. Any handshake_type
+    other than LOADING/UNLOADING (H1/H3/H4, and H0 trip_creation) was never
+    anchored as SubjectType.HANDSHAKE_EVENT, so it returns None and the caller
+    falls through to NO_RECEIPT.
+    """
+    event = (
+        await db.execute(select(HandshakeEvent).where(HandshakeEvent.id == event_id))
+    ).scalar_one_or_none()
+    if event is None:
+        return None
+    if event.handshake_type == HandshakeType.LOADING:
+        # seal_number/driver_visual_count are nullable columns (not yet completed),
+        # but a receipt only ever exists once H2 anchored them — both must be set
+        # by then. If either is still None here, treat it like NO_RECEIPT rather
+        # than hash a payload that could never match what was actually anchored.
+        if event.seal_number is None or event.driver_visual_count is None:
+            return None
+        return compute_h2_canonical_payload(
+            handshake_event_id=event.id, trip_id=event.trip_id,
+            seal_number=event.seal_number, driver_visual_count=event.driver_visual_count,
+        )
+    if event.handshake_type == HandshakeType.UNLOADING:
+        if event.parcel_count_destination is None or event.driver_visual_count is None:
+            return None
+        return compute_h5_canonical_payload(
+            handshake_event_id=event.id, trip_id=event.trip_id,
+            pp_scan_in_count=event.parcel_count_destination,
+            driver_visual_count=event.driver_visual_count,
+        )
+    return None
+
+
 def _hash_payload(payload: dict[str, Any]) -> str:
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -139,6 +180,11 @@ async def verify_subject(
         current_hash = _hash_payload(rebuilt)
     elif subject_type == SubjectType.DRIVER_EVENT:
         rebuilt = await _reconstruct_driver_event_payload(db, subject_id)
+        if rebuilt is None:
+            return VerifyOutcome(status=VerifyStatus.NO_RECEIPT, receipt=receipt)
+        current_hash = _hash_payload(rebuilt)
+    elif subject_type == SubjectType.HANDSHAKE_EVENT:
+        rebuilt = await _reconstruct_handshake_event_payload(db, subject_id)
         if rebuilt is None:
             return VerifyOutcome(status=VerifyStatus.NO_RECEIPT, receipt=receipt)
         current_hash = _hash_payload(rebuilt)

@@ -4,7 +4,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { Home, Truck, Settings } from 'lucide-react'
 import { Drawer } from '@/components/ui/Drawer'
 import { ROUTES } from '@/lib/constants/routes'
-import { cn } from '@shared/lib/utils/cn'
+import { cn } from '@/lib/utils'
 
 interface NavDrawerProps {
   open: boolean

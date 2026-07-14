@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
-import { cn } from '@shared/lib/utils/cn'
+import { cn } from '@/lib/utils'
 import { COUNTRY_CODES, type CountryCode } from '@/lib/constants/country-codes'
 
 interface CountryCodeSelectProps {
@@ -60,15 +60,15 @@ export function CountryCodeSelect({ value, onChange, className }: CountryCodeSel
         aria-haspopup="listbox"
         aria-expanded={open}
         className={cn(
-          'flex items-center gap-1.5 rounded-xl px-3 py-3 text-sm font-medium text-surface-on',
-          'bg-surface-container-low border border-outline-variant/30',
-          'focus:outline-none focus:border-secondary focus:bg-surface-container-lowest',
+          'flex items-center gap-1.5 rounded-xl px-3 py-3 text-sm font-medium text-foreground',
+          'bg-muted border border-input',
+          'focus:outline-none focus:border-ring focus:bg-card',
           'transition-colors duration-150 min-h-[44px]',
         )}
       >
         <span aria-hidden="true">{value.flag}</span>
         <span>{value.dialCode}</span>
-        <ChevronDown className="w-3.5 h-3.5 text-surface-on-variant" />
+        <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
       </button>
 
       {open && (
@@ -76,7 +76,7 @@ export function CountryCodeSelect({ value, onChange, className }: CountryCodeSel
           role="listbox"
           className={cn(
             'absolute z-10 mt-1 w-64 max-h-72 overflow-y-auto rounded-xl',
-            'bg-surface-container-lowest border border-outline-variant/30 shadow-ambient',
+            'bg-card border border-input shadow-ambient',
           )}
         >
           <input
@@ -86,9 +86,9 @@ export function CountryCodeSelect({ value, onChange, className }: CountryCodeSel
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search country or code"
             className={cn(
-              'w-full px-4 py-3 text-sm bg-transparent text-surface-on',
-              'placeholder:text-surface-on-variant/50',
-              'border-b border-outline-variant/30 focus:outline-none',
+              'w-full px-4 py-3 text-sm bg-transparent text-foreground',
+              'placeholder:text-muted-foreground/50',
+              'border-b border-input focus:outline-none',
             )}
           />
           <ul>
