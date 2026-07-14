@@ -2,7 +2,9 @@
 
 **Date:** 2026-07-14
 **Branch:** Ciaran
-**Status:** Design — reviewed with Ciaran 2026-07-14; awaiting implementation plan
+**Status:** Design — reviewed with Ciaran 2026-07-14; revised same day after Tim's
+`feature/gps-warehouse-geofencing` merged to `dev` (PR #29) and into `Ciaran`; awaiting
+implementation plan
 **Supersedes:** the wizard's current Step 1 ("Order & Cargo") data model. Aligns with FP-112 (multi-consignment), WP7 (journey lock v2), WP8 (linehaul completion), the H1 geofence spec (2026-07-13), and the PP architecture review (2026-07-02).
 
 ## Problem
@@ -25,10 +27,15 @@ current dispatcher wizard and backend contract have drifted apart:
    dispatcher's *own* org as `client_organization_id` — the operator posing as the client.
 4. **Hedera failures look like bugs.** No handler maps `HederaServiceError`, so an anchor
    outage during creation surfaces as a raw 500.
-5. **PP integration shape.** Tim's branch (`feature/gps-warehouse-geofencing`) adds a
-   *singular* `pp_reference` to `TripCreateRequest`; FP-112's model is multi-consignment.
-   His `fetch_and_sync_consignment` call can also pass a `None`
-   `client_organization_id` into a non-nullable column (latent crash).
+5. **PP integration shape.** Tim's PP work is now **merged to `dev`** (PR #29): a
+   *singular* `pp_reference` on `TripCreateRequest`, `fetch_and_sync_consignment`,
+   `PPSyncError → 422` wiring, and the `PP_USE_MOCK` client factory. FP-112's model is
+   multi-consignment, so the singular field is live API surface that this spec replaces.
+   The merged `create_trip` also passes a possibly-`None` `client_organization_id` into
+   a non-nullable `Consignment` column — dormant today (the wizard never sends
+   `pp_reference`), but a crash for any caller that sends `pp_reference` without a
+   client org. The merged sync also does not populate `unit_count_expected`, so the
+   driver-linehaul gap (#2) remains even on the PP path.
 
 ## Goals
 
@@ -75,7 +82,7 @@ current dispatcher wizard and backend contract have drifted apart:
 | Driver visibility | Weight, receiver, commodity, value **never** reach the driver | Theft-risk rule: driver sees `LinehaulResponse` only (vehicle, driver, consolidated unit count, scan status). PP detail surfaces only on dispatcher screens. |
 | Trailers | **0 trailers valid** (`min_length=0`; remove empty-list raise in hashing) | Rigid trucks with integrated bodies are legitimate single units. Wizard's SA road-regs logic was right; backend follows. |
 | Client organization | **Derived from PP `accnum` → `Organization.pp_account_number`** (new column); warn-don't-fail on no match | Operator org already comes from the JWT (correct, keep). The client is the PP account holder per waybill. Sender/receiver (`origpers`/`destpers`) are waybill parties, not orgs — snapshot only. |
-| Hedera at creation | **Fail-closed** (unchanged), plus map `HederaServiceError` → HTTP 503 | The journey lock *is* the trip's evidentiary identity; nothing operational is blocked at creation (dispatcher retries). Settled position: H1 spec ("`anchor_subject` is fail-closed and must stay that way") + WP5 (outbox later). Handshakes stay fail-open. |
+| Hedera at creation | **Fail-closed** (unchanged), with `HederaTimeoutError` → 504 and `HederaServiceError` → 502 | The journey lock *is* the trip's evidentiary identity; nothing operational is blocked at creation (dispatcher retries). **Team policy (settled 2026-07-14): H0 is the *only* fail-closed anchor; H1–H5 are all fail-open** — a handshake must never be blocked by a chain outage; it records for visibility, gets a pending receipt, and re-anchors later. Hedera is verification of the record, not a gate on it. The merged H2/H5 (PR #29) anchor fail-closed and must be converted to `anchor_subject_fail_open` — a work item outside this spec (see Coordination flags). |
 | PP failure at creation | **Fail-closed** (Tim's `PPSyncError` → 422, kept) | A trip whose cargo plan couldn't be pulled has no manifest, no linehaul, no evidence value. |
 | PP mock strategy | **Fixture library behind the existing `get_pp_client()` factory**, plus mock-only `get_waybills_by_manifest()` | Same seam Tim built (`PP_USE_MOCK`). Real client never implements the manifest lookup, so the codebase stays honest about what PP v28 actually offers. |
 | Empty legs (repositioning runs) | **`trip_type: loaded \| empty_leg` in the data model + wizard toggle now; driver-app flow deferred** | Cheap to structure now, painful to retrofit once `consignments ≥ 1` and the WP7 lock payload bake in the loaded assumption. Whether an empty leg carries a seal / H2+H5 is an unresolved domain question — deferred with it. |
@@ -169,10 +176,12 @@ an unmapped PP account is an admin gap, not a reason to block a trip.
 
 ### Component 4 — Error mapping (`api/v1/endpoints/trips.py`)
 
-- `PPSyncError` → 422 with the PP message (Tim's intent, wired for the list case).
-- `HederaServiceError` → **503** `"Blockchain anchoring is unavailable — the trip was not
-  created. Please retry."` — distinguishes an infrastructure outage from a code bug and
-  makes fail-closed legible to the dispatcher.
+- `PPSyncError` → 422 with the PP message (already merged; extend detail to name the
+  failing reference when syncing a list).
+- `HederaTimeoutError` → **504**, `HederaServiceError` → **502**, detail
+  `"Blockchain anchoring is unavailable — the trip was not created. Please retry."` —
+  same convention the merged handshake endpoints use, so an infrastructure outage is
+  distinguishable from a code bug across the whole API.
 
 ### Component 5 — Dispatcher wizard (`dispatcher/app/(app)/trips/new/page.tsx`)
 
@@ -307,11 +316,23 @@ Driver app: GET linehaul ──▶ consolidated_unit_count = Σ unit_count_expec
 
 ## Coordination flags
 
-- **Tim (`feature/gps-warehouse-geofencing`, unmerged):** `TripCreateRequest.pp_reference`
-  → superseded by `consignments[]`; `fetch_and_sync_consignment` signature changes
-  (drops caller-supplied `client_organization_id`, adds unit count + manifest capture);
-  his `MockParcelPerfectClient` grows the fixture set. Agree the shape **before** either
-  branch merges to `dev` to avoid a schema fight.
+- **Tim (PP work now merged to `dev`, PR #29):** this spec **removes** the live
+  `TripCreateRequest.pp_reference` field in favour of `consignments[]` (nothing ships a
+  client that sends it — the wizard never did — so no back-compat shim; his integration
+  tests that post `pp_reference` get updated to the list shape). It also changes the
+  merged `fetch_and_sync_consignment` signature (drops caller-supplied
+  `client_organization_id` in favour of accnum resolution; adds unit count + manifest
+  capture) and grows his `MockParcelPerfectClient` fixture set. Tim should review the
+  implementation PR — his code, his tests.
+- **Handshake anchor policy (settled 2026-07-14, Ciaran): H0 fail-closed, H1–H5 fail-open.**
+  Rationale: a handshake must still be recorded for visibility when Hedera is down; the
+  chain verifies authenticity of the record, it does not gate the record. Resulting work
+  item (not this spec — Tim's code): convert the merged H2/H5 anchoring from
+  `anchor_subject` to `anchor_subject_fail_open` (pending receipt + structured log, per
+  the H1 spec's Component 6), drop the 504/502 anchor-failure responses from the
+  handshake endpoints, and fix the `handshake_service.py` module docstring. Trip creation
+  keeps 504/502 — it is the one place anchor failure legitimately aborts the request.
+  WP5's outbox later absorbs the fail-open retry loop; it is consistent with this policy.
 - **Chiko (WP7 / FP-113):** the empty-trailer relaxation touches shared
   `crypto/hashing.py`; land it as a tiny standalone change or fold it into WP7 — Chiko's
   call, but it must not wait behind WP7 (the wizard needs it).
@@ -323,7 +344,7 @@ Driver app: GET linehaul ──▶ consolidated_unit_count = Σ unit_count_expec
 - **Journey-lock payload change (`trip_type`)** joins the trailer relaxation in the WP7
   coordination with Chiko — both alter the canonical payload, so they should land as one
   hashing change, not two.
-- **New `.env` keys:** none (PP keys exist on Tim's branch; mock is the default).
+- **New `.env` keys:** none (PP keys are on `dev` since PR #29; mock is the default).
 - **Docs to update after implementation:** technical full-picture (F2/F3 status),
   `api_contract_dispatcher_driver.md` (new PP endpoints, TripCreateRequest shape).
 
