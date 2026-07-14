@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     DATABASE_URL: str
 
+    # Separate async PostgreSQL URL for integration tests.
+    # Must point at a throwaway database — tests create and drop tables.
+    # Leave empty to skip integration tests automatically.
+    TEST_DATABASE_URL: str = ""
+
     # -------------------------------------------------------------------------
     # Redis
     # Used by Celery as both the broker and result backend, and directly
@@ -41,6 +46,11 @@ class Settings(BaseSettings):
     HEDERA_NETWORK: str = "testnet"
     HEDERA_TOPIC_ID: str = ""
 
+    # Hard ceiling on the submit_hash() SDK call (a real network round-trip with no
+    # built-in timeout). Typical latency is ~4-6s; this bounds the worst case so a
+    # stalled Hedera call fails fast instead of hanging the request indefinitely.
+    HEDERA_SUBMIT_TIMEOUT_SECONDS: float = 15.0
+
     # -------------------------------------------------------------------------
     # Twilio
     # Used to send SMS OTP codes to drivers at trip start/end.
@@ -57,15 +67,16 @@ class Settings(BaseSettings):
     SENDGRID_FROM_EMAIL: str
 
     # -------------------------------------------------------------------------
-    # JWT Authentication
-    # Split into access/refresh horizons to support token rotation.
-    # Access: 8 hours matches a standard dispatcher shift.
-    # Refresh: 24 hours allows a driver to stay logged in across a full trip day.
+    # Supabase Auth
+    # JWT_SECRET: signs all tokens issued by Supabase Auth — used by FastAPI to
+    # verify incoming Bearer tokens locally without a network round-trip.
+    # Found in Supabase dashboard: Settings → API → JWT Secret.
+    # SERVICE_ROLE_KEY: grants full DB + Auth admin access; used server-side
+    # only (e.g. creating auth users, setting app_metadata). Never sent to
+    # the browser.
     # -------------------------------------------------------------------------
-    JWT_SECRET_KEY: str
-    JWT_ALGORITHM: str = "HS256"
-    JWT_ACCESS_TOKEN_EXPIRE_HOURS: int = 8
-    JWT_REFRESH_TOKEN_EXPIRE_HOURS: int = 24
+    SUPABASE_JWT_SECRET: str
+    SUPABASE_SERVICE_ROLE_KEY: str
 
     # -------------------------------------------------------------------------
     # Integration mock toggles
@@ -79,7 +90,9 @@ class Settings(BaseSettings):
     PULSE_API_KEY: str = ""
     PULSE_API_URL: str = ""
     PP_USE_MOCK: bool = True
-    PP_API_KEY: str = ""
+    PP_API_KEY: str = ""        # Parcel Perfect login email / username
+    PP_API_PASSWORD: str = ""   # Parcel Perfect login password (used in MD5 auth flow)
+    PP_API_TOKEN: str = ""      # Pre-issued token (skips salt/MD5 flow when set)
     PP_API_URL: str = ""
     PP_POLL_INTERVAL_SECONDS: int = 60
 
@@ -115,7 +128,13 @@ class Settings(BaseSettings):
     # In local dev, pydantic-settings reads from backend/.env automatically.
     # In Docker / production, values come from the container's environment and
     # env_file is effectively ignored (the file won't be present in the image).
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    # extra="ignore" prevents validation errors if .env contains keys that are
+    # no longer in this model (e.g. after a config field is removed or renamed).
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
 
 # Single shared instance — import this wherever config values are needed.
