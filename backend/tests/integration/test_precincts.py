@@ -104,7 +104,7 @@ async def test_list_precincts_excludes_other_org_non_shared(db_session: AsyncSes
     await db_session.flush()
 
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
+        transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
     ) as client:
         resp = await client.get(
             "/api/v1/precincts",
@@ -128,7 +128,7 @@ async def test_list_precincts_includes_own_org_non_shared(db_session: AsyncSessi
     await db_session.flush()
 
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
+        transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
     ) as client:
         resp = await client.get(
             "/api/v1/precincts",
