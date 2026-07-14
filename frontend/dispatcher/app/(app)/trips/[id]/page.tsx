@@ -419,6 +419,34 @@ export default function TripDetailPage() {
           </div>
 
           <div className="text-[11px] font-[700] tracking-[0.1em] uppercase text-on-surf-v mb-2">
+            Route
+          </div>
+          <div className="bg-surf-lowest rounded-md p-[10px_12px] mb-4 text-[13px] shadow-level-2">
+            {[...trip.stops].sort((a, b) => a.sequence - b.sequence).map((stop, i, arr) => {
+              const precinct = precincts.find(p => p.id === stop.precinct_id)
+              const name = precinct?.name.split('—')[0]?.trim() ?? '—'
+              return (
+                <div
+                  key={stop.id}
+                  className={`flex items-start gap-[8px] py-[6px]${i < arr.length - 1 ? ' border-b border-outline-v/20' : ''}`}
+                >
+                  <span className="w-[18px] h-[18px] rounded-full bg-surf-high text-on-surf-v text-[10px] font-[700] flex items-center justify-center shrink-0 mt-[1px]">
+                    {stop.sequence + 1}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-[500] text-on-surf truncate">{name}</div>
+                    {stop.slot_time && (
+                      <div className="text-[11px] text-on-surf-v tabular-nums">
+                        Slot {fmtTs(stop.slot_time)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          <div className="text-[11px] font-[700] tracking-[0.1em] uppercase text-on-surf-v mb-2">
             Cargo
           </div>
           <div className="bg-surf-lowest rounded-md p-[10px_12px] mb-4 text-[13px] shadow-level-2">

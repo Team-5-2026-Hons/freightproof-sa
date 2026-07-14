@@ -61,6 +61,16 @@ class TripException(Base):
     checkpoint_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("checkpoints.id"), nullable=True
     )
+    # Scope an exception to one client's cargo / one stop on the route, so a multi-client
+    # evidence chain can be cut per client (v7 §6.1: a FedEx discrepancy must not surface
+    # in Courier Guy's evidence PDF). Nullable: trip-level exceptions stay unscoped, and
+    # nothing populates these yet — handshakes learn their stop in the iter-3 per-stop refactor.
+    consignment_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("consignments.id"), nullable=True
+    )
+    trip_stop_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("trip_stops.id"), nullable=True
+    )
     exception_type: Mapped[ExceptionType] = mapped_column(String(50), nullable=False)
     source: Mapped[ExceptionSource] = mapped_column(String(20), nullable=False)
     severity: Mapped[ExceptionSeverity] = mapped_column(String(20), nullable=False)

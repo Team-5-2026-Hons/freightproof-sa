@@ -16,6 +16,7 @@ function makeTrip(overrides: Partial<Trip>): Trip {
     idvs_check_status: 'pending',
     origin_precinct_id: 'origin-1',
     destination_precinct_id: 'dest-1',
+    stops: [],
     pulsit_trip_reference_id: null,
     planned_departure_at: '2026-06-20T08:00:00Z',
     actual_departure_at: null,
