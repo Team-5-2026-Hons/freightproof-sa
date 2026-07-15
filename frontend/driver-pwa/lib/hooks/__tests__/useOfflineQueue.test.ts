@@ -8,7 +8,7 @@ import type { CheckpointEvidence } from '@/lib/api/checkpoints'
 
 // Mock submitHandshake/raiseException/submitCheckpoint so tests don't hit the network
 vi.mock('@/lib/api/handshakes', () => ({
-  submitHandshake: vi.fn().mockResolvedValue({ ok: true, eventHash: 'abc' }),
+  submitHandshake: vi.fn().mockResolvedValue({ ok: true, eventHash: 'abc', trip: null }),
 }))
 vi.mock('@/lib/api/exceptions', () => ({
   raiseException: vi.fn().mockResolvedValue({ id: 'exc-1' }),
@@ -199,7 +199,7 @@ describe('useOfflineQueue', () => {
       const { submitHandshake } = await import('@/lib/api/handshakes')
       let resolveSubmit!: () => void
       vi.mocked(submitHandshake).mockImplementationOnce(
-        () => new Promise((resolve) => { resolveSubmit = () => resolve({ ok: true, eventHash: 'abc' }) }),
+        () => new Promise((resolve) => { resolveSubmit = () => resolve({ ok: true, eventHash: 'abc', trip: null }) }),
       )
 
       const { result } = renderHook(() => useOfflineQueue())

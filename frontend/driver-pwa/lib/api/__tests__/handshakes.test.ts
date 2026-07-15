@@ -63,11 +63,15 @@ describe('submitHandshake (real-backend branch)', () => {
 
     expect(result.ok).toBe(true)
     expect(mockUploadArtifact).toHaveBeenCalledTimes(1)
-    expect(mockPost).toHaveBeenCalledWith('/api/v1/trips/trip-1/handshakes/h1/complete', {
-      driver_phone_lat: -26.09,
-      driver_phone_lng: 28.13,
-      gate_photo_artifact_id: 'artifact-1',
-    })
+    expect(mockPost).toHaveBeenCalledWith(
+      '/api/v1/trips/trip-1/handshakes/h1/complete',
+      {
+        driver_phone_lat: -26.09,
+        driver_phone_lng: 28.13,
+        gate_photo_artifact_id: 'artifact-1',
+      },
+      { timeoutMs: 30_000 },
+    )
   })
 
   it('uploads waybill and seal photos then completes H2 with both artifact ids', async () => {
@@ -80,12 +84,43 @@ describe('submitHandshake (real-backend branch)', () => {
     await submitHandshake('trip-1', 'loading', H2_EVIDENCE)
 
     expect(mockUploadArtifact).toHaveBeenCalledTimes(2)
-    expect(mockPost).toHaveBeenCalledWith('/api/v1/trips/trip-1/handshakes/h2/complete', {
-      waybill_photo_artifact_id: 'waybill-artifact',
-      seal_number: 'AB-1234',
-      seal_photo_artifact_id: 'seal-artifact',
-      driver_visual_count: 31,
+    expect(mockPost).toHaveBeenCalledWith(
+      '/api/v1/trips/trip-1/handshakes/h2/complete',
+      {
+        waybill_photo_artifact_id: 'waybill-artifact',
+        seal_number: 'AB-1234',
+        seal_photo_artifact_id: 'seal-artifact',
+        driver_visual_count: 31,
+      },
+      { timeoutMs: 30_000 },
+    )
+  })
+
+  it('completes H3 with the confirmed seal for server-side comparison', async () => {
+    mockUploadArtifact.mockResolvedValue({ id: 'exit-artifact', file_hash: 'a'.repeat(64) })
+    mockPost.mockResolvedValue({ id: 'trip-1', status: 'in_transit' })
+
+    const { submitHandshake } = await import('../handshakes')
+    await submitHandshake('trip-1', 'origin_gate_out', {
+      gpsLat: null,
+      gpsLng: null,
+      gatePhotoDataUrl: 'data:image/jpeg;base64,GGGG',
+      sealNumberConfirmed: ' AB-1234 ',
+      // null = the device-local seal reference was lost — must NOT become
+      // guard_verified_seal: false (the server compares the confirmed seal instead).
+      sealVerifiedMatch: null,
+      capturedAt: '2026-06-12T10:07:00Z',
     })
+
+    expect(mockPost).toHaveBeenCalledWith(
+      '/api/v1/trips/trip-1/handshakes/h3/complete',
+      {
+        gate_exit_photo_artifact_id: 'exit-artifact',
+        guard_verified_seal: false,
+        seal_number_confirmed: 'AB-1234',
+      },
+      { timeoutMs: 30_000 },
+    )
   })
 
   it('throws when required evidence is missing instead of calling the backend', async () => {
@@ -120,12 +155,16 @@ describe('submitHandshake (real-backend branch)', () => {
     await submitHandshake('trip-1', 'unloading', H5_EVIDENCE)
 
     expect(mockUploadArtifact).toHaveBeenCalledTimes(2)
-    expect(mockPost).toHaveBeenCalledWith('/api/v1/trips/trip-1/handshakes/h5/complete', {
-      pod_photo_artifact_id: 'pod-photo-artifact',
-      pod_signature_artifact_id: 'pod-signature-artifact',
-      driver_visual_count: 31,
-      pp_scan_in_count: 31,
-    })
+    expect(mockPost).toHaveBeenCalledWith(
+      '/api/v1/trips/trip-1/handshakes/h5/complete',
+      {
+        pod_photo_artifact_id: 'pod-photo-artifact',
+        pod_signature_artifact_id: 'pod-signature-artifact',
+        driver_visual_count: 31,
+        pp_scan_in_count: 31,
+      },
+      { timeoutMs: 30_000 },
+    )
   })
 
   it('throws H5 incomplete when the signature is missing', async () => {

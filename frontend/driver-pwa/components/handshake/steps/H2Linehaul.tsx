@@ -54,11 +54,17 @@ export function H2Linehaul({ tripId, draft, onUpdate, onComplete }: H2LinehaulPr
 
   const unitCount = linehaul?.consolidated_unit_count ?? null
   const driverCount = countInput !== '' ? parseInt(countInput, 10) : null
-  const isReady = driverCount !== null && !isNaN(driverCount) && unitCount !== null
-  const hasMismatch = isReady && driverCount !== unitCount
+  const hasDriverCount = driverCount !== null && !isNaN(driverCount)
+  // 404 (fetchLinehaul resolved null) means no Linehaul document exists for this trip —
+  // a normal state (any trip without a Parcel Perfect reference), not a failure. The
+  // driver can still proceed on a valid visual count alone; a real fetch error cannot.
+  const noLinehaulDocument = !loading && !error && linehaul === null
+  const isReady = hasDriverCount && (unitCount !== null || noLinehaulDocument)
+  // Only meaningful once a real Linehaul unit count exists to compare against.
+  const hasMismatch = hasDriverCount && unitCount !== null && driverCount !== unitCount
 
   function handleConfirm() {
-    if (unitCount === null) return
+    if (!hasDriverCount) return
     onUpdate({ ppManifestParcelCount: unitCount, driverVisualCount: driverCount })
     onComplete()
   }
@@ -69,12 +75,18 @@ export function H2Linehaul({ tripId, draft, onUpdate, onComplete }: H2LinehaulPr
       <div className="flex flex-1 flex-col gap-6 p-4">
         {loading ? (
           <Spinner />
-        ) : error || linehaul === null ? (
+        ) : error ? (
           <div className="flex flex-col items-start gap-3">
             <p className="text-sm text-error">Could not load the Linehaul document — check connection and retry.</p>
             <Button variant="secondary" onClick={handleRetry}>
               Retry
             </Button>
+          </div>
+        ) : linehaul === null ? (
+          <div className="rounded-xl bg-surface-container-low px-4 py-3">
+            <p className="text-sm text-surface-on-variant">
+              No Linehaul document is available for this trip. Record your own count — it will be used as the reference.
+            </p>
           </div>
         ) : (
           <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4">

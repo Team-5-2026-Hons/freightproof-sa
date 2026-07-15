@@ -22,6 +22,13 @@ async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
   return res.blob()
 }
 
+// Multipart photo uploads over a driver's mobile/cellular connection can genuinely take
+// longer than the default 12s request ceiling — this must be generous enough that a
+// slow-but-succeeding upload doesn't get aborted client-side while the backend is still
+// receiving it (which previously misreported "stored on this device" for evidence that
+// actually made it to the server).
+const ARTIFACT_UPLOAD_TIMEOUT_MS = 30_000
+
 export async function uploadArtifact(params: UploadArtifactParams): Promise<UploadedArtifact> {
   const blob = await dataUrlToBlob(params.dataUrl)
 
@@ -33,5 +40,5 @@ export async function uploadArtifact(params: UploadArtifactParams): Promise<Uplo
   if (params.capturedLng != null) form.append('captured_lng', String(params.capturedLng))
   form.append('file', blob, `${params.artifactType}.jpg`)
 
-  return api.postForm<UploadedArtifact>('/api/v1/artifacts', form)
+  return api.postForm<UploadedArtifact>('/api/v1/artifacts', form, { timeoutMs: ARTIFACT_UPLOAD_TIMEOUT_MS })
 }

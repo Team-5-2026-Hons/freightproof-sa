@@ -63,8 +63,22 @@ async function resolveToken(): Promise<string | null> {
   return session?.access_token ?? null
 }
 
-async function request<T>(path: string, init: RequestInit = {}, isFormData = false): Promise<T> {
+// Per-call override of the default request ceiling. Some endpoints (handshake
+// completes that anchor to Hedera server-side, multipart photo uploads on mobile
+// networks) legitimately take longer than the 12s default — callers that know this
+// pass a bigger budget rather than the wrapper guessing per-path.
+export interface RequestOptions {
+  timeoutMs?: number
+}
+
+async function request<T>(
+  path: string,
+  init: RequestInit = {},
+  isFormData = false,
+  opts: RequestOptions = {},
+): Promise<T> {
   const url = `${BASE_URL}${path}`
+  const timeoutMs = opts.timeoutMs ?? REQUEST_TIMEOUT_MS
 
   const token = await resolveToken()
 
@@ -77,13 +91,13 @@ async function request<T>(path: string, init: RequestInit = {}, isFormData = fal
 
   let res: Response
   try {
-    res = await fetch(url, { ...init, headers, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
+    res = await fetch(url, { ...init, headers, signal: AbortSignal.timeout(timeoutMs) })
   } catch (err) {
     // AbortSignal.timeout rejects with a DOMException named 'TimeoutError' once the
     // ceiling is hit — this is what previously let a stalled socket hang an evidence
     // submit forever with no error and no feedback to the driver.
     if (err instanceof DOMException && err.name === 'TimeoutError') {
-      throw new ApiError(0, `Request to ${url} timed out after ${REQUEST_TIMEOUT_MS}ms`)
+      throw new ApiError(0, `Request to ${url} timed out after ${timeoutMs}ms`)
     }
     throw err
   }
@@ -102,9 +116,9 @@ async function request<T>(path: string, init: RequestInit = {}, isFormData = fal
 }
 
 export const api = {
-  get: <T>(path: string): Promise<T> => request<T>(path),
-  post: <T>(path: string, body?: unknown): Promise<T> =>
-    request<T>(path, { method: 'POST', body: body !== undefined ? JSON.stringify(body) : undefined }),
-  postForm: <T>(path: string, form: FormData): Promise<T> =>
-    request<T>(path, { method: 'POST', body: form }, true),
+  get: <T>(path: string, opts?: RequestOptions): Promise<T> => request<T>(path, {}, false, opts),
+  post: <T>(path: string, body?: unknown, opts?: RequestOptions): Promise<T> =>
+    request<T>(path, { method: 'POST', body: body !== undefined ? JSON.stringify(body) : undefined }, false, opts),
+  postForm: <T>(path: string, form: FormData, opts?: RequestOptions): Promise<T> =>
+    request<T>(path, { method: 'POST', body: form }, true, opts),
 }

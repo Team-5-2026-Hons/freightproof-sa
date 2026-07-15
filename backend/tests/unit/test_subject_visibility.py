@@ -34,6 +34,34 @@ async def test_invisible_subject_raises() -> None:
 
 
 @pytest.mark.asyncio
+async def test_handshake_event_subject_visible_does_not_raise() -> None:
+    """H2/H5 anchor receipts carry subject_type=handshake_event — the visibility
+    gate must resolve them via the owning trip's operator organisation (this
+    branch was missing, so dispatchers got 404 verifying driver anchors)."""
+    db = AsyncMock()
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = uuid.uuid4()
+    db.execute.return_value = result
+    await assert_subject_visible(
+        db, subject_type=SubjectType.HANDSHAKE_EVENT,
+        subject_id=uuid.uuid4(), organization_id=uuid.uuid4(),
+    )
+
+
+@pytest.mark.asyncio
+async def test_handshake_event_outside_org_raises() -> None:
+    db = AsyncMock()
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = None
+    db.execute.return_value = result
+    with pytest.raises(SubjectNotVisibleError):
+        await assert_subject_visible(
+            db, subject_type=SubjectType.HANDSHAKE_EVENT,
+            subject_id=uuid.uuid4(), organization_id=uuid.uuid4(),
+        )
+
+
+@pytest.mark.asyncio
 async def test_unknown_subject_type_raises() -> None:
     db = AsyncMock()
     with pytest.raises(SubjectNotVisibleError):

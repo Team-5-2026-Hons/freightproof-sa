@@ -131,6 +131,12 @@ class H2CompleteRequest(BaseModel):
 class H3CompleteRequest(BaseModel):
     gate_exit_photo_artifact_id: UUID
     guard_verified_seal: bool
+    # Seal number the driver re-entered at the exit gate. Optional for backward
+    # compatibility; when present the server compares it against H2's committed
+    # seal (authoritative), superseding the client-computed guard_verified_seal.
+    # Free-form (no XX-#### pattern): a mistyped confirmation is itself evidence
+    # of a mismatch and must be recordable, not rejected with a 422.
+    seal_number_confirmed: str | None = None
 
 
 class H4CompleteRequest(BaseModel):

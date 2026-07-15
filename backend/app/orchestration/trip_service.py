@@ -311,12 +311,21 @@ async def create_trip(
 
 
 async def get_active_trip_for_driver(db: AsyncSession, driver_id: uuid.UUID) -> TripDetailResponse | None:
-    """Return the driver's one active trip, or None. 'Active' excludes closed/cancelled."""
+    """Return the driver's most recent active trip, or None. 'Active' excludes closed/cancelled.
+
+    Nothing at trip creation stops a dispatcher assigning a second trip while the
+    driver's current one sits in exception_hold, so more than one active row can
+    legitimately exist — scalar_one_or_none() would turn that into a 500 for the
+    driver. Order by created_at and take the newest instead: the driver acts on
+    the latest assignment while the dispatcher resolves the held one.
+    """
     inactive = {TripStatus.CLOSED, TripStatus.CANCELLED}
     result = await db.execute(
-        select(Trip).where(Trip.driver_id == driver_id, Trip.status.notin_(inactive))
+        select(Trip)
+        .where(Trip.driver_id == driver_id, Trip.status.notin_(inactive))
+        .order_by(Trip.created_at.desc())
     )
-    trip = result.scalar_one_or_none()
+    trip = result.scalars().first()
     if trip is None:
         return None
     return await get_trip_detail(db, trip_id=trip.id, operator_organization_id=trip.operator_organization_id)

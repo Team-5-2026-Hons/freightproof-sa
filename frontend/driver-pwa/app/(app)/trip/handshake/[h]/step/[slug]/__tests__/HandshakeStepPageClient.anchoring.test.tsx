@@ -84,7 +84,7 @@ describe('HandshakeStepPageClient anchoring receipt copy — real mode', () => {
 
   it('a real H2 (loading) success with the Hedera receipt back claims the anchor', async () => {
     mockUseParams.mockReturnValue({ h: '2', slug: '5-review' })
-    mockSubmitHandshake.mockResolvedValue(undefined)
+    mockSubmitHandshake.mockResolvedValue({ ok: true, eventHash: '', trip: null })
     // recordedNotice reads the refetched trip's own handshake row — receipt present.
     mockRefetchTrip.mockResolvedValue({
       id: 'trip-1', status: 'loading',
@@ -107,7 +107,7 @@ describe('HandshakeStepPageClient anchoring receipt copy — real mode', () => {
 
   it('a real H5 (unloading) success with the receipt back also claims the anchor', async () => {
     mockUseParams.mockReturnValue({ h: '5', slug: '6-closed' })
-    mockSubmitHandshake.mockResolvedValue(undefined)
+    mockSubmitHandshake.mockResolvedValue({ ok: true, eventHash: '', trip: null })
     mockRefetchTrip.mockResolvedValue({
       id: 'trip-1', status: 'unloading',
       handshakes: [{ sequence_number: 5, event_hash: 'b'.repeat(64), blockchain_receipt_id: 'receipt-2' }],
@@ -129,7 +129,7 @@ describe('HandshakeStepPageClient anchoring receipt copy — real mode', () => {
 
   it('a real H2 success whose receipt has not come back yet says anchoring is in progress, not anchored', async () => {
     mockUseParams.mockReturnValue({ h: '2', slug: '5-review' })
-    mockSubmitHandshake.mockResolvedValue(undefined)
+    mockSubmitHandshake.mockResolvedValue({ ok: true, eventHash: '', trip: null })
     // Hash captured but no blockchain_receipt_id yet — claiming "anchored" here
     // would be dishonest; the driver is pointed at the trip screen's AnchorProgress.
     mockRefetchTrip.mockResolvedValue({

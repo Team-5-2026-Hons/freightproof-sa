@@ -195,6 +195,83 @@ async def test_advance_h3_happy_path_sets_in_transit(db_session, trip_fixture):
 
 
 @pytest.mark.asyncio
+async def test_wrong_state_with_db_loaded_str_status_raises_sequence_error():
+    """Regression: Trip.status is a String(30) column, so DB-loaded trips carry a
+    plain str. The old code called .value on it, turning every out-of-sequence
+    submit into an AttributeError (HTTP 500) instead of HandshakeSequenceError (409).
+    Pure unit test — mocks the session so the str-typed status is guaranteed."""
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from app.orchestration.handshake_service import _load_trip_for_handshake
+
+    db = AsyncMock()
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = SimpleNamespace(status="loading")
+    db.execute.return_value = result
+
+    with pytest.raises(HandshakeSequenceError) as exc_info:
+        await _load_trip_for_handshake(
+            db, trip_id=uuid.uuid4(), driver_id=uuid.uuid4(),
+            expected_status=TripStatus.ORIGIN_GATE_IN, handshake_label="H2 Loading",
+        )
+    assert exc_info.value.trip_status == "loading"
+
+
+@pytest.mark.asyncio
+async def test_advance_h3_guard_refused_creates_exception_but_departs(db_session, trip_fixture):
+    trip, driver = trip_fixture
+    await _advance_to_loading(db_session, trip, driver)
+
+    result = await advance_h3(db_session, trip_id=trip.id, driver_id=driver.id, payload=H3CompleteRequest(
+        gate_exit_photo_artifact_id=await _make_artifact(db_session, trip.id), guard_verified_seal=False,
+    ))
+
+    assert result.status == TripStatus.IN_TRANSIT  # recorded, not held — H3 is a feeder
+    assert len(result.exceptions) == 1
+    assert result.exceptions[0].exception_type == ExceptionType.SEAL_MISMATCH
+    assert result.exceptions[0].severity == ExceptionSeverity.CRITICAL
+    h3 = next(h for h in result.handshakes if h.handshake_type == HandshakeType.ORIGIN_GATE_OUT)
+    assert h3.status == HandshakeStatus.EXCEPTION
+
+
+@pytest.mark.asyncio
+async def test_advance_h3_confirmed_seal_mismatch_creates_exception(db_session, trip_fixture):
+    trip, driver = trip_fixture
+    await _advance_to_loading(db_session, trip, driver)  # H2 seal is AB-1234
+
+    result = await advance_h3(db_session, trip_id=trip.id, driver_id=driver.id, payload=H3CompleteRequest(
+        gate_exit_photo_artifact_id=await _make_artifact(db_session, trip.id),
+        guard_verified_seal=True, seal_number_confirmed="ZZ-9999",
+    ))
+
+    assert result.status == TripStatus.IN_TRANSIT
+    assert len(result.exceptions) == 1
+    assert result.exceptions[0].exception_type == ExceptionType.SEAL_MISMATCH
+    h3 = next(h for h in result.handshakes if h.handshake_type == HandshakeType.ORIGIN_GATE_OUT)
+    assert h3.seal_number == "ZZ-9999"
+
+
+@pytest.mark.asyncio
+async def test_advance_h3_confirmed_seal_match_supersedes_guard_flag(db_session, trip_fixture):
+    """The server-side comparison against H2's committed seal is authoritative:
+    a device that lost its local seal reference sends guard_verified_seal=False,
+    which must not create a false mismatch when the re-entered seal matches."""
+    trip, driver = trip_fixture
+    await _advance_to_loading(db_session, trip, driver)  # H2 seal is AB-1234
+
+    result = await advance_h3(db_session, trip_id=trip.id, driver_id=driver.id, payload=H3CompleteRequest(
+        gate_exit_photo_artifact_id=await _make_artifact(db_session, trip.id),
+        guard_verified_seal=False, seal_number_confirmed="ab-1234 ",  # normalised before compare
+    ))
+
+    assert result.status == TripStatus.IN_TRANSIT
+    assert result.exceptions == []
+    h3 = next(h for h in result.handshakes if h.handshake_type == HandshakeType.ORIGIN_GATE_OUT)
+    assert h3.status == HandshakeStatus.COMPLETED
+
+
+@pytest.mark.asyncio
 async def test_advance_h4_matching_seal_sets_dest_gate_in(db_session, trip_fixture):
     trip, driver = trip_fixture
     result = await _advance_to_dest_gate_in(db_session, trip, driver, seal="AB-1234")

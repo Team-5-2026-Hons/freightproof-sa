@@ -29,9 +29,39 @@ describe('fetchLinehaul (Fix 8: demo-mode gate)', () => {
     await vi.advanceTimersByTimeAsync(500)
     const result = await promise
 
-    expect(result.trip_id).toBe('trip-1')
-    expect(result.consolidated_unit_count).toBeGreaterThan(0)
+    expect(result?.trip_id).toBe('trip-1')
+    expect(result?.consolidated_unit_count).toBeGreaterThan(0)
     expect(mockGet).not.toHaveBeenCalled()
+  })
+
+  it('returns null on a 404 — a trip with no Linehaul document, not a failure', async () => {
+    vi.doMock('@/lib/constants/env', () => ({ IS_DEMO_MODE: false }))
+    const mockGet = vi.fn()
+    // Spread the real module so ApiError (needed for the 404 branch's instanceof
+    // check) survives the mock — only `api` is replaced.
+    vi.doMock('@/lib/api/client', async (importOriginal) => ({
+      ...(await importOriginal<typeof import('@/lib/api/client')>()),
+      api: { get: (...args: unknown[]) => mockGet(...args), post: vi.fn(), postForm: vi.fn() },
+    }))
+    const { ApiError } = await import('@/lib/api/client')
+    mockGet.mockRejectedValue(new ApiError(404, 'Trip has no consignments'))
+
+    const { fetchLinehaul } = await import('../manifest')
+    await expect(fetchLinehaul('trip-1')).resolves.toBeNull()
+  })
+
+  it('still throws on non-404 errors so the retry UI fires', async () => {
+    vi.doMock('@/lib/constants/env', () => ({ IS_DEMO_MODE: false }))
+    const mockGet = vi.fn()
+    vi.doMock('@/lib/api/client', async (importOriginal) => ({
+      ...(await importOriginal<typeof import('@/lib/api/client')>()),
+      api: { get: (...args: unknown[]) => mockGet(...args), post: vi.fn(), postForm: vi.fn() },
+    }))
+    const { ApiError } = await import('@/lib/api/client')
+    mockGet.mockRejectedValue(new ApiError(500, 'boom'))
+
+    const { fetchLinehaul } = await import('../manifest')
+    await expect(fetchLinehaul('trip-1')).rejects.toThrow('boom')
   })
 
   it('calls the real manifest endpoint in the real-backend branch', async () => {

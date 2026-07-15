@@ -12,6 +12,7 @@ import { Chip } from '@/components/ui/Chip'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { HandshakeProgressBar } from '@/components/trip/HandshakeProgressBar'
 import { CurrentHandshakeCard } from '@/components/trip/CurrentHandshakeCard'
+import { HoldNotice } from '@/components/trip/HoldNotice'
 
 export function HomeContent() {
   const router = useRouter()
@@ -55,11 +56,17 @@ export function HomeContent() {
         </Button>
       )}
 
-      {current !== null && (
-        <CurrentHandshakeCard
-          handshakeNumber={current}
-          onSelect={() => router.push(ROUTES.handshakeStep(current, STEP_SLUGS[current][0]))}
-        />
+      {/* A held trip (H4 seal mismatch) must not offer the next handshake — any
+          submit while on hold 409s. HoldNotice explains the pause instead. */}
+      {trip.status === 'exception_hold' ? (
+        <HoldNotice />
+      ) : (
+        current !== null && (
+          <CurrentHandshakeCard
+            handshakeNumber={current}
+            onSelect={() => router.push(ROUTES.handshakeStep(current, STEP_SLUGS[current][0]))}
+          />
+        )
       )}
     </main>
   )

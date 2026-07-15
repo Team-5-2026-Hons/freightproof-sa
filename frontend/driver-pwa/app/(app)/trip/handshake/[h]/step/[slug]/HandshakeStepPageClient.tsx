@@ -12,8 +12,11 @@ import { ApiError } from '@/lib/api/client'
 import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
 import { nextHandshakeRoute } from '@/lib/navigation/handshake-flow'
 import { IS_DEMO_MODE } from '@/lib/constants/env'
+import { ROUTES } from '@/lib/constants/routes'
 import { HANDSHAKE_NAMES } from '@shared/lib/constants/handshake-meta'
 import { Spinner } from '@/components/ui/Spinner'
+import { Button } from '@/components/ui/Button'
+import { HoldNotice } from '@/components/trip/HoldNotice'
 import type { H1Evidence, H2Evidence, H3Evidence, H4Evidence, H5Evidence } from '@/lib/types/evidence-draft'
 import type { Trip, TripStatus } from '@shared/lib/types/trip'
 import { H1GateArrival } from '@/components/handshake/steps/H1GateArrival'
@@ -129,11 +132,11 @@ export default function HandshakeStepPageClient() {
   type RecordedNotice = 'anchored' | 'anchoring' | 'plain'
 
   // Whether a just-completed real submit's evidence actually has its Hedera receipt
-  // back yet — checked against the freshest Trip in hand (the refetchTrip() result;
-  // submitHandshake's own return value is a bare { ok, eventHash } wrapper that
-  // discards the backend's actual updated-Trip response body, so refetchTrip() is the
-  // only source of truth available here). Demo mode and non-anchored handshake types
-  // never anchor at all, so they short-circuit to 'plain' without needing a Trip.
+  // back yet — checked against the freshest Trip in hand. Prefer the trip returned by
+  // the complete call itself: after H5 the trip is CLOSED, so refetchTrip() (which
+  // reads /trips/me/active) returns null and could never confirm the anchor. Demo mode
+  // and non-anchored handshake types never anchor at all, so they short-circuit to
+  // 'plain' without needing a Trip.
   function recordedNotice(type: SubmittableHandshakeType, freshTrip: Trip | null): RecordedNotice {
     if (IS_DEMO_MODE || !isAnchoredHandshakeType(type)) return 'plain'
     const handshake = freshTrip?.handshakes.find((hs) => hs.sequence_number === handshakeNum)
@@ -155,6 +158,17 @@ export default function HandshakeStepPageClient() {
     notify({ kind: 'success', title: `${HANDSHAKE_NAMES[handshakeNum]} recorded`, body })
   }
 
+  // Fired when a submit lands but the backend put the trip on exception hold (H4 seal
+  // mismatch). The evidence WAS recorded — but advancing to the next handshake would
+  // only 409; the driver needs to know the trip is paused, not see a success receipt.
+  function notifyTripOnHold() {
+    notify({
+      kind: 'error',
+      title: 'Seal mismatch recorded',
+      body: 'The destination seal does not match the seal set at loading. The trip is on hold for dispatcher review.',
+    })
+  }
+
   // Runs immediately before a handshake's draft is cleared on every success path. H2
   // (loading) sets the durable seal reference here — BEFORE clearFn() runs — so H3/H4
   // still have something to compare against once h2Draft is gone. H5 (unloading) is the
@@ -170,11 +184,16 @@ export default function HandshakeStepPageClient() {
     clearFn: () => void,
   ) {
     try {
-      await submitHandshake(tripId, type, evidence)
+      const submitted = await submitHandshake(tripId, type, evidence)
       const fresh = await refetchTrip()
       syncSealReference(type, evidence)
       clearFn()
-      notifyHandshakeRecorded(recordedNotice(type, fresh))
+      if ((submitted.trip ?? fresh)?.status === 'exception_hold') {
+        notifyTripOnHold()
+        router.push(ROUTES.activeTripDetail)
+        return
+      }
+      notifyHandshakeRecorded(recordedNotice(type, submitted.trip ?? fresh))
       advance()
       return
     } catch (err) {
@@ -183,6 +202,13 @@ export default function HandshakeStepPageClient() {
         // also gets a 409 (trip is no longer in the expected pre-state) — refetch and check
         // whether that's what happened before treating this as a real failure.
         const fetched = await refetchTrip()
+        if (fetched?.status === 'exception_hold') {
+          // e.g. the driver reached H5 before the app learned about an H4 hold — nothing
+          // here is retryable, so route to the trip screen where HoldNotice explains.
+          notifyTripOnHold()
+          router.push(ROUTES.activeTripDetail)
+          return
+        }
         if (fetched && isAtOrPast(fetched.status, RESULT_STATUS[type])) {
           syncSealReference(type, evidence)
           clearFn()
@@ -231,6 +257,19 @@ export default function HandshakeStepPageClient() {
     return (
       <main className="flex min-h-screen items-center justify-center p-6">
         <p className="text-sm text-surface-on-variant">Trip not found.</p>
+      </main>
+    )
+  }
+
+  // Blocks every step screen (including deep links) while the trip is held — any
+  // handshake submit in this state can only 409, so there's nothing to do here.
+  if (trip.status === 'exception_hold') {
+    return (
+      <main className="flex min-h-screen flex-col justify-center gap-4 p-6">
+        <HoldNotice />
+        <Button variant="secondary" size="lg" onClick={() => router.push(ROUTES.activeTripDetail)}>
+          View trip
+        </Button>
       </main>
     )
   }

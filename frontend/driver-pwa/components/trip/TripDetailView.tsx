@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button'
 import { SubpageHeader } from '@/components/layout/SubpageHeader'
 import { HandshakeProgressBar } from '@/components/trip/HandshakeProgressBar'
 import { CurrentHandshakeCard } from '@/components/trip/CurrentHandshakeCard'
+import { HoldNotice } from '@/components/trip/HoldNotice'
 import { AnchorBadge } from '@/components/blockchain/AnchorBadge'
 import { AnchorProgress } from '@/components/blockchain/AnchorProgress'
 
@@ -40,6 +41,9 @@ export function TripDetailView({
   const { kind, label } = tripStatusChip(trip.status)
   const progress = handshakeProgress(trip.handshakes)
   const current = currentHandshakeNumber(progress)
+  // A held trip (H4 seal mismatch) must not offer any handshake CTA — submits in
+  // this state can only 409. Both branches below swap their CTA for HoldNotice.
+  const onHold = trip.status === 'exception_hold'
 
   // Which of the two anchored handshakes (H2/H5) qualify for a row in the non-showAll
   // "Evidence anchors" section: the handshake record must exist for this trip AND
@@ -76,6 +80,8 @@ export function TripDetailView({
           </Button>
         )}
 
+        {onHold && <HoldNotice />}
+
         {showAllHandshakes ? (
           <section className="flex flex-col gap-2">
             <h2 className="text-sm font-medium text-surface-on-variant">Handshakes</h2>
@@ -91,7 +97,7 @@ export function TripDetailView({
                 <Card
                   key={n}
                   variant={isCurrent ? 'dark' : isCompleted ? 'default' : 'section'}
-                  onClick={isCurrent ? () => onSelectHandshake(n) : undefined}
+                  onClick={isCurrent && !onHold ? () => onSelectHandshake(n) : undefined}
                   className={!isCurrent && !isCompleted ? 'opacity-50' : undefined}
                 >
                   <div className="flex items-center justify-between gap-3">
@@ -116,7 +122,7 @@ export function TripDetailView({
           </section>
         ) : (
           <>
-            {current !== null && (
+            {!onHold && current !== null && (
               <CurrentHandshakeCard
                 handshakeNumber={current}
                 onSelect={() => onSelectHandshake(current)}

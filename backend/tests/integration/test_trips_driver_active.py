@@ -110,3 +110,52 @@ async def test_active_trip_excludes_closed_trips(client: AsyncClient, db_session
     resp = await client.get("/api/v1/trips/me/active", headers=auth_header(token))
     assert resp.status_code == 200
     assert resp.json() is None
+
+
+async def test_two_active_trips_returns_newest_not_500(client: AsyncClient, db_session):
+    """A dispatcher can assign a second trip while the first sits in exception_hold —
+    the driver endpoint must return the newest assignment, not crash on multiple rows."""
+    from datetime import UTC, datetime, timedelta
+
+    org = Organization(id=uuid.uuid4(), name="Org", org_type=OrganizationType.OPERATOR)
+    client_org = Organization(id=uuid.uuid4(), name="Client", org_type=OrganizationType.PRINCIPAL)
+    db_session.add_all([org, client_org])
+    await db_session.flush()
+    user = User(id=uuid.uuid4(), organization_id=org.id, email="d@test.co.za", full_name="D")
+    driver = Driver(
+        id=uuid.uuid4(), organization_id=org.id, full_name="Driver",
+        id_number="8001015009087", phone_number="+27821234567", license_number="DRV-1",
+    )
+    horse = Vehicle(
+        id=uuid.uuid4(), organization_id=org.id, vehicle_type=VehicleType.HORSE,
+        registration="ABC123GP", pulsit_device_id="PUL-1",
+    )
+    origin = Precinct(id=uuid.uuid4(), name="O", principal_organization_id=client_org.id, latitude="0", longitude="0")
+    dest = Precinct(id=uuid.uuid4(), name="D", principal_organization_id=client_org.id, latitude="1", longitude="1")
+    db_session.add_all([user, driver, horse, origin, dest])
+    await db_session.flush()
+
+    held = Trip(
+        id=uuid.uuid4(), trip_reference="FP-TEST-HELD", order_number="ORD-HELD",
+        operator_organization_id=org.id, client_organization_id=client_org.id,
+        driver_id=driver.id, horse_id=horse.id,
+        origin_precinct_id=origin.id, destination_precinct_id=dest.id,
+        status=TripStatus.EXCEPTION_HOLD, idvs_check_status=IdvsStatus.VERIFIED,
+        created_by_user_id=user.id,
+        created_at=datetime.now(UTC) - timedelta(hours=2),
+    )
+    newer = Trip(
+        id=uuid.uuid4(), trip_reference="FP-TEST-NEWER", order_number="ORD-NEWER",
+        operator_organization_id=org.id, client_organization_id=client_org.id,
+        driver_id=driver.id, horse_id=horse.id,
+        origin_precinct_id=origin.id, destination_precinct_id=dest.id,
+        status=TripStatus.CREATED, idvs_check_status=IdvsStatus.VERIFIED,
+        created_by_user_id=user.id,
+    )
+    db_session.add_all([held, newer])
+    await db_session.flush()
+
+    token = make_token(sub=str(driver.id), role="driver")
+    resp = await client.get("/api/v1/trips/me/active", headers=auth_header(token))
+    assert resp.status_code == 200
+    assert resp.json()["id"] == str(newer.id)

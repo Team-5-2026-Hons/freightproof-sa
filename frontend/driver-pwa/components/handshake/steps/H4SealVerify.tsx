@@ -7,6 +7,7 @@ import { StepHeader } from '@/components/handshake/StepHeader'
 import { Input } from '@/components/ui/Input'
 import { HoldButton } from '@/components/handshake/HoldButton'
 import { sealsMatch } from './H3ExitSeal'
+import { isValidSealFormat } from '@/lib/utils/seal-format'
 import type { H4Evidence } from '@/lib/types/evidence-draft'
 
 interface H4SealVerifyProps {
@@ -29,6 +30,10 @@ const NULL_REFERENCE_NOTE = 'No seal is on record from loading. The number you e
 export function H4SealVerify({ tripId, draft, h2SealNumber, onUpdate, onComplete }: H4SealVerifyProps) {
   const [input, setInput] = useState(draft.sealNumberAtDestination ?? '')
   const hasInput = input.trim().length > 0
+  // The backend 422s any destination seal not matching XX-#### before the mismatch
+  // comparison even runs — so both the submit AND flag paths need a valid format.
+  const formatValid = isValidSealFormat(input)
+  const showFormatHint = hasInput && !formatValid
 
   // Three-way verification state. null (indeterminate) means either the driver hasn't typed yet or
   // there is no H2 reference seal to compare against — in neither case is it a mismatch. Only a real
@@ -43,10 +48,13 @@ export function H4SealVerify({ tripId, draft, h2SealNumber, onUpdate, onComplete
   // Persist sealVerifiedMatch alongside the live indicator so the dispatcher's submitAndAdvance
   // reads an up-to-date draft when onComplete fires — matches H3's handleSealInput pattern.
   function handleInputChange(value: string) {
-    setInput(value)
+    // Uppercase like H3ExitSeal's handleSealInput — seals are printed uppercase and
+    // the backend's format check accepts only uppercase letters.
+    const upper = value.toUpperCase()
+    setInput(upper)
     onUpdate({
-      sealNumberAtDestination: value,
-      sealVerifiedMatch: computeMatch(value),
+      sealNumberAtDestination: upper,
+      sealVerifiedMatch: computeMatch(upper),
     })
   }
 
@@ -88,13 +96,18 @@ export function H4SealVerify({ tripId, draft, h2SealNumber, onUpdate, onComplete
             <p className="text-sm font-medium text-surface-on-variant">{NULL_REFERENCE_NOTE}</p>
           </div>
         )}
+        {showFormatHint && (
+          <p className="text-sm text-error">
+            Seal number must look like AB-1234 (two letters, four digits).
+          </p>
+        )}
       </div>
       <div className="flex justify-center px-6 pt-6 pb-safe">
         <HoldButton
           label={matches === false ? HOLD_LABEL_FLAG : HOLD_LABEL_SUBMIT}
           variant={matches === false ? 'danger' : 'primary'}
           onConfirm={onComplete}
-          disabled={!hasInput}
+          disabled={!formatValid}
         />
       </div>
     </main>

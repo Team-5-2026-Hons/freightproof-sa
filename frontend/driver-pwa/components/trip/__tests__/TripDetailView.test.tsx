@@ -50,6 +50,7 @@ function makeTrip(status: TripStatus = 'origin_gate_out'): Trip {
     planned_departure_at: null, actual_departure_at: null,
     planned_arrival_at: null, actual_arrival_at: null,
     closed_at: null,
+    stops: [],
     driver: null, horse: null, trailers: [],
     handshakes: [
       makeHandshake(1, 'completed'),
@@ -117,6 +118,40 @@ describe('TripDetailView', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /origin gate-out/i }))
     expect(onSelectHandshake).toHaveBeenCalledWith(3)
+  })
+
+  it('exception_hold suppresses the current-handshake CTA and shows the hold notice (live view)', () => {
+    const onSelectHandshake = vi.fn()
+    render(
+      <TripDetailView
+        trip={makeTrip('exception_hold')}
+        onBack={vi.fn()}
+        onInTransitHub={vi.fn()}
+        onSelectHandshake={onSelectHandshake}
+        showAllHandshakes={false}
+      />,
+    )
+
+    expect(screen.getByText('Trip on hold')).toBeInTheDocument()
+    // No handshake CTA — submits while held can only 409.
+    expect(screen.queryByRole('button', { name: /origin gate-out/i })).not.toBeInTheDocument()
+  })
+
+  it('exception_hold makes the current handshake card non-tappable (showAllHandshakes)', () => {
+    const onSelectHandshake = vi.fn()
+    render(
+      <TripDetailView
+        trip={makeTrip('exception_hold')}
+        onBack={vi.fn()}
+        onInTransitHub={vi.fn()}
+        onSelectHandshake={onSelectHandshake}
+        showAllHandshakes
+      />,
+    )
+
+    expect(screen.getByText('Trip on hold')).toBeInTheDocument()
+    // The current (H3) card renders but is no longer a button.
+    expect(screen.getByText(/H3:/).closest('[role="button"]')).toBeNull()
   })
 
   it('shows the In-Transit Hub shortcut only while the trip is in_transit', () => {
