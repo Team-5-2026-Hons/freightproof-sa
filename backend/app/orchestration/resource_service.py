@@ -21,14 +21,14 @@ from app.db.models.handshakes import HandshakeEvent
 from app.db.models.organisations import Precinct
 from app.db.models.people import Driver
 from app.db.models.transit import TripException
-from app.db.models.trips import Trip, TripTrailer
+from app.db.models.trips import Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.handshakes import HandshakeEventRead
 from app.schemas.organisations import PrecinctRead
 from app.schemas.people import DriverRead
 from app.schemas.transit import TripExceptionRead
-from app.schemas.trips import TripDetailResponse, TripListItemResponse
+from app.schemas.trips import TripDetailResponse, TripListItemResponse, TripStopRead
 from app.schemas.vehicles import VehicleRead
 
 
@@ -195,6 +195,11 @@ async def get_trip_detail(
     )
     receipts = receipts_result.scalars().all()
 
+    stops_result = await db.execute(
+        select(TripStop).where(TripStop.trip_id == trip_id).order_by(TripStop.sequence)
+    )
+    stops = stops_result.scalars().all()
+
     return TripDetailResponse(
         id=trip.id,
         trip_reference=trip.trip_reference,
@@ -207,6 +212,7 @@ async def get_trip_detail(
         trailers=[VehicleRead.model_validate(v) for v in trailers],
         origin_precinct_id=trip.origin_precinct_id,
         destination_precinct_id=trip.destination_precinct_id,
+        stops=[TripStopRead.model_validate(s) for s in stops],
         pulsit_trip_reference_id=trip.pulsit_trip_reference_id,
         planned_departure_at=trip.planned_departure_at,
         actual_departure_at=trip.actual_departure_at,

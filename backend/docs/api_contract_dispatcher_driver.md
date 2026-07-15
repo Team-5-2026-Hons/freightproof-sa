@@ -584,6 +584,12 @@ class TripDetailResponse(BaseModel):
 
 ### 4.3 `ManifestResponse`
 
+Restructured for multi-consignment trips, FP-112 alignment 2026-07-02. A trip can now
+have multiple `Consignment` rows (multi-client trips) — the manifest is grouped
+per-consignment rather than assuming exactly one consignment per trip, and each
+consignment's slice carries its own `client_organization_id` and consolidated-unit
+count (`unit_count_expected`, pallets — distinct from parcel-grain `total_parcel_count`).
+
 ```python
 # app/schemas/trips.py
 
@@ -595,16 +601,27 @@ class DeliveryStopManifest(BaseModel):
     parcels: list[ParcelRead]
 
 
+class ConsignmentManifest(BaseModel):
+    """One consignment's slice of the manifest — one per client booking on the trip."""
+    model_config = ConfigDict(from_attributes=True)
+
+    consignment_id: UUID
+    parcel_perfect_reference: str
+    client_organization_id: UUID
+    unit_count_expected: Optional[int] = None   # consolidated-unit (pallet) grain
+    total_parcel_count: int
+    origin_scan_complete: bool                  # True once all this consignment's parcels have pp_scan_out_at
+    stops: list[DeliveryStopManifest]           # grouped by delivery_stop
+
+
 class ManifestResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     trip_id: UUID
-    consignment_id: UUID
-    parcel_perfect_reference: str
-    total_parcel_count: int
-    origin_scan_complete: bool          # True once all parcels have pp_scan_out_at
-    stops: list[DeliveryStopManifest]   # grouped by delivery_stop
-    pulled_at: datetime                 # when FreightProof last fetched from PP
+    total_parcel_count: int              # sum across all consignments on the trip
+    origin_scan_complete: bool           # True once all parcels across all consignments have pp_scan_out_at
+    consignments: list[ConsignmentManifest]
+    pulled_at: datetime                  # latest updated_at across all consignments on the trip
 ```
 
 ### 4.4 Handshake request bodies

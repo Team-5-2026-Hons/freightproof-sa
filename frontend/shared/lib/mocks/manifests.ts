@@ -1,5 +1,6 @@
-import type { Manifest, ParcelId, Parcel, ParcelStatus } from '@shared/lib/types/manifest'
+import type { Manifest, ConsignmentManifest, ParcelId, Parcel, ParcelStatus } from '@shared/lib/types/manifest'
 import { TRIP_0040_ID, TRIP_0041_ID, TRIP_0042_ID } from './trips'
+import { FEDEX_ORG_ID } from './principals'
 
 const parcelId = (v: string): ParcelId => v as unknown as ParcelId
 
@@ -29,13 +30,13 @@ function parcel(
 
 const CONSIGNMENT_0041 = 'cons-pp-2026-0041'
 
-export const mockManifest0041: Manifest = {
-  trip_id: TRIP_0041_ID,
+const CONSIGNMENT_MANIFEST_0041: ConsignmentManifest = {
   consignment_id: CONSIGNMENT_0041,
   parcel_perfect_reference: 'PP-2026-FX-0041',
+  client_organization_id: FEDEX_ORG_ID,
+  unit_count_expected: 3,
   total_parcel_count: 27,
   origin_scan_complete: true,
-  pulled_at: '2026-05-09T07:05:00Z',
   stops: [
     {
       delivery_stop: 'Pinetown, Durban',
@@ -85,17 +86,25 @@ export const mockManifest0041: Manifest = {
   ],
 }
 
+export const mockManifest0041: Manifest = {
+  trip_id: TRIP_0041_ID,
+  total_parcel_count: 27,
+  origin_scan_complete: true,
+  pulled_at: '2026-05-09T07:05:00Z',
+  consignments: [CONSIGNMENT_MANIFEST_0041],
+}
+
 // ─── TRP-2026-0042 · 42 parcels · FedEx JHB → DBN ────────────────────────────
 
 const CONSIGNMENT_0042 = 'cons-pp-2026-0042'
 
-export const mockManifest0042: Manifest = {
-  trip_id: TRIP_0042_ID,
+const CONSIGNMENT_MANIFEST_0042: ConsignmentManifest = {
   consignment_id: CONSIGNMENT_0042,
   parcel_perfect_reference: 'PP-2026-FX-0042',
+  client_organization_id: FEDEX_ORG_ID,
+  unit_count_expected: 5,
   total_parcel_count: 42,
   origin_scan_complete: true,
-  pulled_at: '2026-05-08T15:20:00Z',
   stops: [
     {
       delivery_stop: 'Morningside, Durban',
@@ -124,17 +133,25 @@ export const mockManifest0042: Manifest = {
   ],
 }
 
+export const mockManifest0042: Manifest = {
+  trip_id: TRIP_0042_ID,
+  total_parcel_count: 42,
+  origin_scan_complete: true,
+  pulled_at: '2026-05-08T15:20:00Z',
+  consignments: [CONSIGNMENT_MANIFEST_0042],
+}
+
 // ─── TRP-2026-0040 · 32 parcels · FedEx JHB → DBN (dest_gate_in) ─────────────
 
 const CONSIGNMENT_0040 = 'cons-pp-2026-0040'
 
-export const mockManifest0040: Manifest = {
-  trip_id: TRIP_0040_ID,
+const CONSIGNMENT_MANIFEST_0040: ConsignmentManifest = {
   consignment_id: CONSIGNMENT_0040,
   parcel_perfect_reference: 'PP-2026-FX-0040',
+  client_organization_id: FEDEX_ORG_ID,
+  unit_count_expected: 4,
   total_parcel_count: 32,
   origin_scan_complete: true,
-  pulled_at: '2026-05-08T07:20:00Z',
   stops: [
     {
       delivery_stop: 'Riverhorse Valley, Durban',
@@ -149,6 +166,14 @@ export const mockManifest0040: Manifest = {
       )),
     },
   ],
+}
+
+export const mockManifest0040: Manifest = {
+  trip_id: TRIP_0040_ID,
+  total_parcel_count: 32,
+  origin_scan_complete: true,
+  pulled_at: '2026-05-08T07:20:00Z',
+  consignments: [CONSIGNMENT_MANIFEST_0040],
 }
 
 export const mockManifests: Manifest[] = [mockManifest0040, mockManifest0041, mockManifest0042]

@@ -18,6 +18,7 @@ import { cn } from '@shared/lib/utils/cn'
 import type { Vehicle } from '@shared/lib/types/vehicle'
 import { validateVehicleForm, vinFieldFeedback, VEHICLE_FIELD_ORDER, type VehicleField } from '@shared/lib/validation/vehicle'
 import { VIN_LENGTH } from '@shared/lib/validation/constants'
+import { AdminOnly } from '@/components/auth/AdminOnly'
 
 type TypeFilter = 'all' | 'horse' | 'trailer'
 type StatusFilter = 'all' | 'active' | 'inactive'
@@ -200,9 +201,11 @@ export default function FleetVehiclesPage(): React.JSX.Element {
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <TopBar title="Vehicles">
-        <Button size="sm" iconLeft={<Plus className="w-4 h-4" />} onClick={() => setModalOpen(true)}>
-          Add Vehicle
-        </Button>
+        <AdminOnly>
+          <Button size="sm" iconLeft={<Plus className="w-4 h-4" />} onClick={() => setModalOpen(true)}>
+            Add Vehicle
+          </Button>
+        </AdminOnly>
       </TopBar>
 
       <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4">
