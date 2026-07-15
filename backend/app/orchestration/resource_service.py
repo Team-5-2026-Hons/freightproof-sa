@@ -11,7 +11,7 @@ Driver and vehicle service functions have been extracted to:
 import uuid
 from collections import defaultdict
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ResourceNotFoundError
@@ -170,11 +170,28 @@ async def get_trip_detail(
     )
     exceptions = exc_result.scalars().all()
 
+    # H2/H5 anchor a HANDSHAKE_EVENT-subject receipt (not a TRIP-subject one —
+    # see handshake_service.py advance_h2/advance_h5), so a TRIP-only filter here
+    # silently hid every driver-anchored pickup/delivery receipt from the
+    # dispatcher's per-trip evidence view. Reuse the handshake ids already
+    # fetched above (no extra query) and OR in their receipts alongside the
+    # trip's own — additive only, TRIP-subject behaviour is unchanged.
+    handshake_event_ids = [h.id for h in handshakes]
     receipts_result = await db.execute(
-        select(BlockchainReceipt).where(
-            BlockchainReceipt.subject_type == SubjectType.TRIP,
-            BlockchainReceipt.subject_id == trip_id,
+        select(BlockchainReceipt)
+        .where(
+            or_(
+                and_(
+                    BlockchainReceipt.subject_type == SubjectType.TRIP,
+                    BlockchainReceipt.subject_id == trip_id,
+                ),
+                and_(
+                    BlockchainReceipt.subject_type == SubjectType.HANDSHAKE_EVENT,
+                    BlockchainReceipt.subject_id.in_(handshake_event_ids),
+                ),
+            )
         )
+        .order_by(BlockchainReceipt.created_at, BlockchainReceipt.id)
     )
     receipts = receipts_result.scalars().all()
 

@@ -30,16 +30,31 @@ export interface TripState {
 
 export const TripContext = createContext<TripState | null>(null)
 
-function handshakeFromStatus(status: Trip['status']): HandshakeNumber {
+// Trip.status records the handshake that was just COMPLETED, not one in progress —
+// confirmed in backend/app/orchestration/handshake_service.py: advance_h1 sets
+// status='origin_gate_in' when H1 finishes, advance_h2 sets 'loading' when H2
+// finishes, advance_h3 sets 'in_transit' directly when H3 finishes (the backend
+// never actually persists 'origin_gate_out' as a Trip.status value — it jumps
+// straight from 'loading' to 'in_transit'), advance_h4 sets 'dest_gate_in' (or
+// 'exception_hold' on a seal mismatch) when H4 finishes, advance_h5 sets 'closed'
+// when H5 finishes. So this must map each status to the NEXT actionable handshake
+// — one past the one already done. Mapping a status to "that handshake number" (as
+// this used to) replays an already-completed handshake every time the app reloads,
+// freezing driver progress. Exported (named) for unit testing.
+export function handshakeFromStatus(status: Trip['status']): HandshakeNumber {
   switch (status) {
     case 'created':          return 1
-    case 'origin_gate_in':   return 1
-    case 'loading':          return 2
-    case 'origin_gate_out':  return 3
+    case 'origin_gate_in':   return 2
+    case 'loading':          return 3
+    // Defensive: the backend currently never persists this status (H3 completion
+    // jumps straight to 'in_transit'), but map it correctly in case that changes.
+    case 'origin_gate_out':  return 4
     // in_transit means H3 is done; H4 is reached via the same manual
     // hold-to-confirm advance() flow as every other handshake.
     case 'in_transit':       return 4
-    case 'dest_gate_in':     return 4
+    case 'dest_gate_in':     return 5
+    // Defensive: the backend currently never persists this status (H5 completion
+    // jumps straight to 'closed'), but map it correctly in case that changes.
     case 'unloading':        return 5
     default:                 return 1
   }

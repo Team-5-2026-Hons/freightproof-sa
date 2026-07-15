@@ -123,4 +123,24 @@ describe('HandshakeStepPageClient completion receipt (5a)', () => {
     )
     expect(mockRouterPush).toHaveBeenCalledWith(ROUTES.activeTripDetail)
   })
+
+  // Objective 2: a local validation Error (thrown by submitHandshake BEFORE any network
+  // call, e.g. "H1 evidence incomplete — …") can never succeed on retry — it must not be
+  // queued as offline evidence, and the driver must stay on screen rather than being
+  // routed forward with a false "evidence stored on this device" receipt.
+  it('does not enqueue a local validation Error — surfaces an error toast and stays on screen', async () => {
+    mockSubmitHandshake.mockRejectedValue(new Error('H1 evidence incomplete — GPS and gate photo are required.'))
+
+    render(<HandshakeStepPageClient />)
+    fireEvent.click(screen.getByText('complete-final-step'))
+
+    await waitFor(() =>
+      expect(mockNotify).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'error', body: 'H1 evidence incomplete — GPS and gate photo are required.' }),
+      ),
+    )
+    expect(mockEnqueue).not.toHaveBeenCalled()
+    expect(mockNotify).not.toHaveBeenCalledWith(expect.objectContaining({ kind: 'success' }))
+    expect(mockRouterPush).not.toHaveBeenCalled()
+  })
 })

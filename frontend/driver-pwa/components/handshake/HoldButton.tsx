@@ -5,6 +5,7 @@ import { motion, useReducedMotion } from 'framer-motion'
 import { useHoldToConfirm } from '@/lib/hooks/useHoldToConfirm'
 import { getTapToConfirmPref } from '@/lib/constants/preferences'
 import { cn } from '@/lib/utils'
+import { Spinner } from '@/components/ui/Spinner'
 
 // Flourish duration shared by the dispatch-delay timeout and the scale transition below —
 // kept as a single constant so the two can never drift apart.
@@ -21,10 +22,18 @@ const ARM_TIMEOUT_MS = 3000
 // to avoid clipping outside the ring (e.g. "SUBMIT (FLAG MISMATCH)").
 const LONG_LABEL_CHARS = 12
 
+// onConfirm may be a fire-and-forget handler or an async one (e.g. submitAndAdvance,
+// which uploads photos and calls the backend — can take seconds). Narrower than
+// `unknown` so we can detect a returned promise without an `any`/`unknown` cast at the
+// call site.
+function isPromiseLike(value: void | Promise<void>): value is Promise<void> {
+  return typeof value === 'object' && value !== null && typeof (value as Promise<void>).then === 'function'
+}
+
 interface HoldButtonProps {
   label: string
   durationMs?: number
-  onConfirm: () => void
+  onConfirm: () => void | Promise<void>
   disabled?: boolean
   variant?: 'primary' | 'danger'
 }
@@ -37,6 +46,10 @@ export function HoldButton({
   variant = 'primary',
 }: HoldButtonProps) {
   const [isDispatching, setIsDispatching] = useState(false)
+  // True while an async onConfirm's returned promise is still pending — distinct from
+  // isDispatching (the brief flourish before onConfirm is even called). Keeps the driver
+  // from seeing a dead button during a multi-second upload+submit and from retriggering it.
+  const [isBusy, setIsBusy] = useState(false)
   const [showHint, setShowHint] = useState(false)
   const [isArmed, setIsArmed] = useState(false)
   // Read the accessibility pref once on mount — it only takes effect on the next
@@ -85,7 +98,23 @@ export function HoldButton({
       flourishTimeoutRef.current = null
       if (!isMountedRef.current) return
       setIsDispatching(false)
-      onConfirm()
+      const result = onConfirm()
+      if (isPromiseLike(result)) {
+        setIsBusy(true)
+        result.then(
+          () => {
+            if (isMountedRef.current) setIsBusy(false)
+          },
+          (err: unknown) => {
+            if (isMountedRef.current) setIsBusy(false)
+            // Never swallow the rejection silently. submitAndAdvance never rejects by
+            // design (it handles its own errors internally), so this only fires if some
+            // other onConfirm implementation breaks that contract — surface it for
+            // debugging rather than losing it.
+            console.error('HoldButton: onConfirm rejected', err)
+          },
+        )
+      }
     }, reduceMotion ? 0 : FLOURISH_DURATION_MS)
   }, [onConfirm, reduceMotion])
 
@@ -94,14 +123,17 @@ export function HoldButton({
     handleConfirm,
   )
 
-  // Re-entry guard: while the flourish is pending, ignore new press gestures so a second
-  // hold can't complete and schedule a second timeout (which would double-fire onConfirm).
+  // Re-entry guard: while the flourish is pending or a prior submit is still in flight
+  // (isBusy), ignore new press gestures so a second hold can't schedule a duplicate
+  // onConfirm call — the `disabled` attribute covers real pointers, but this guard is
+  // the one that actually stops it (jsdom's fireEvent, and some assistive tech, can
+  // still dispatch events at a disabled element).
   const handlePressStart = useCallback(() => {
-    if (isDispatching) return
+    if (isDispatching || isBusy) return
     pressActiveRef.current = true
     setShowHint(false) // a fresh press supersedes any visible hint
     onPressStart()
-  }, [isDispatching, onPressStart])
+  }, [isDispatching, isBusy, onPressStart])
 
   const handlePressEnd = useCallback(() => {
     onPressEnd()
@@ -128,7 +160,7 @@ export function HoldButton({
 
   // Two-tap accessibility path: first tap arms, second (while armed) confirms.
   const handleTap = useCallback(() => {
-    if (isDispatching) return
+    if (isDispatching || isBusy) return
     if (isArmed) {
       disarm()
       handleConfirm()
@@ -140,7 +172,7 @@ export function HoldButton({
       if (!isMountedRef.current) return
       setIsArmed(false)
     }, ARM_TIMEOUT_MS)
-  }, [isDispatching, isArmed, disarm, handleConfirm])
+  }, [isDispatching, isBusy, isArmed, disarm, handleConfirm])
 
   const circumference = 2 * Math.PI * 26 // r=26
   const strokeDashoffset = circumference * (1 - progress)
@@ -152,7 +184,8 @@ export function HoldButton({
   const hintVisible = showHint && !isPressing && !isDispatching
 
   let buttonLabel = label
-  if (isDispatching) buttonLabel = 'Confirmed'
+  if (isBusy) buttonLabel = 'Submitting…'
+  else if (isDispatching) buttonLabel = 'Confirmed'
   else if (tapToConfirm && isArmed) buttonLabel = 'Tap again to confirm'
   else if (isPressing) buttonLabel = 'Hold…'
   else if (hintVisible) buttonLabel = 'Keep holding…'
@@ -173,7 +206,7 @@ export function HoldButton({
     <div className="relative flex flex-col items-center">
       <motion.button
         {...pointerHandlers}
-        disabled={disabled || isDispatching}
+        disabled={disabled || isDispatching || isBusy}
         animate={isDispatching ? { scale: [1, 1.15, 1] } : { scale: 1 }}
         transition={{ duration: FLOURISH_DURATION_MS / 1000, ease: 'easeOut' }}
         className={cn(
@@ -194,8 +227,16 @@ export function HoldButton({
             />
           )}
         </svg>
-        <span className={cn('relative z-10 text-center font-bold uppercase tracking-wider text-white leading-tight px-2', labelSizeClass)}>
-          {buttonLabel}
+        <span className="relative z-10 flex flex-col items-center gap-1.5 px-2">
+          {isBusy && <Spinner size="sm" className="border-white/30 border-t-white" />}
+          <span
+            className={cn(
+              'text-center font-bold uppercase tracking-wider text-white leading-tight',
+              labelSizeClass,
+            )}
+          >
+            {buttonLabel}
+          </span>
         </span>
       </motion.button>
 

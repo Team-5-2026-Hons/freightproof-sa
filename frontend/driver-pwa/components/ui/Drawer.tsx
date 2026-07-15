@@ -19,9 +19,10 @@ const panelClasses = {
 }
 
 // NOTE (deviation from @radix-ui/react-dialog): the drawer is kept mounted at
-// all times and only translated off-canvas via CSS — NavDrawer/ProfilePanel
-// render it unconditionally from AppShell and rely on that to avoid remounting
-// their contents on every open/close. Radix's Dialog.Content, ported with
+// all times and only translated off-canvas via CSS — ProfilePanel (its one
+// remaining consumer since the hamburger + NavDrawer were replaced by
+// BottomNav) renders it unconditionally from AppShell and relies on that to
+// avoid remounting its contents on every open/close. Radix's Dialog.Content, ported with
 // `forceMount` to get the same "stays mounted while closed" contract, runs
 // `hideOthers(content)` in a mount-only effect (empty dep array) inside
 // DialogContentModal — meaning it would aria-hide the entire rest of the app

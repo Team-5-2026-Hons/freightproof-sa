@@ -15,7 +15,7 @@ import { IS_DEMO_MODE } from '@/lib/constants/env'
 import { HANDSHAKE_NAMES } from '@shared/lib/constants/handshake-meta'
 import { Spinner } from '@/components/ui/Spinner'
 import type { H1Evidence, H2Evidence, H3Evidence, H4Evidence, H5Evidence } from '@/lib/types/evidence-draft'
-import type { TripStatus } from '@shared/lib/types/trip'
+import type { Trip, TripStatus } from '@shared/lib/types/trip'
 import { H1GateArrival } from '@/components/handshake/steps/H1GateArrival'
 import { H1EntryPhoto } from '@/components/handshake/steps/H1EntryPhoto'
 import { H1Verification } from '@/components/handshake/steps/H1Verification'
@@ -74,6 +74,18 @@ function isAnchoredHandshakeType(type: SubmittableHandshakeType): boolean {
   return type === 'loading' || type === 'unloading'
 }
 
+// Whether a submitAndAdvance failure is plausibly transient — worth queuing for retry
+// once connectivity/the server recovers. A local validation Error thrown by
+// submitHandshake BEFORE any network call (e.g. "H1 evidence incomplete — GPS and gate
+// photo are required.") or a terminal 4xx can never succeed by simply retrying; queuing
+// those would hand the driver a misleading "evidence stored on this device" receipt for
+// evidence that was never actually valid. Exported (pure, no I/O) so it's unit-testable
+// on its own without exercising the whole submit flow.
+export function isQueueableFailure(err: unknown): boolean {
+  if (err instanceof ApiError) return err.status === 0 || err.status >= 500
+  return err instanceof TypeError
+}
+
 export default function HandshakeStepPageClient() {
   const { h, slug } = useParams<{ h: string; slug: string }>()
   const router = useRouter()
@@ -108,22 +120,39 @@ export default function HandshakeStepPageClient() {
   const [sealReference, setSealReference, clearSealReference] = useSealReference(tripId)
   const h2SealNumber = sealReference ?? h2Draft.sealNumber
 
+  // Three receipt copies, from most to least specific: a real anchored handshake with
+  // its Hedera receipt back, a real anchored handshake still waiting on that receipt
+  // (anchor-before-status-flip means this should be rare, but the backend hasn't
+  // guaranteed synchronous confirmation, so claiming "anchored" here would be
+  // dishonest), and the plain "recorded" copy for demo mode / unanchored H1/H3/H4 /
+  // the offline-queue path (evidence never reached the backend at all yet).
+  type RecordedNotice = 'anchored' | 'anchoring' | 'plain'
+
+  // Whether a just-completed real submit's evidence actually has its Hedera receipt
+  // back yet — checked against the freshest Trip in hand (the refetchTrip() result;
+  // submitHandshake's own return value is a bare { ok, eventHash } wrapper that
+  // discards the backend's actual updated-Trip response body, so refetchTrip() is the
+  // only source of truth available here). Demo mode and non-anchored handshake types
+  // never anchor at all, so they short-circuit to 'plain' without needing a Trip.
+  function recordedNotice(type: SubmittableHandshakeType, freshTrip: Trip | null): RecordedNotice {
+    if (IS_DEMO_MODE || !isAnchoredHandshakeType(type)) return 'plain'
+    const handshake = freshTrip?.handshakes.find((hs) => hs.sequence_number === handshakeNum)
+    return handshake?.blockchain_receipt_id ? 'anchored' : 'anchoring'
+  }
+
   // Completion receipt (UX Task 5a): every exit from submitAndAdvance that means "your
   // evidence is safely captured" fires this before the redirect — without it the driver
   // lands back on the trip page with zero confirmation, the biggest trust gap found in
-  // the UX walkthrough. `anchored` must only be true for a real (non-demo), non-queued
-  // H2/H5 success — demo mode never syncs to the server or chain, and a queued submit
-  // hasn't reached the backend yet, so both keep the "stored on this device" wording
-  // instead of falsely claiming a Hedera anchor.
-  function notifyHandshakeRecorded(anchored: boolean) {
+  // the UX walkthrough.
+  function notifyHandshakeRecorded(notice: RecordedNotice) {
     const savedAt = new Date().toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })
-    notify({
-      kind: 'success',
-      title: `${HANDSHAKE_NAMES[handshakeNum]} recorded`,
-      body: anchored
+    const body =
+      notice === 'anchored'
         ? `Saved ${savedAt} — evidence recorded and anchored to Hedera HCS.`
-        : `Saved ${savedAt} — evidence stored on this device.`,
-    })
+        : notice === 'anchoring'
+          ? `Saved ${savedAt} — evidence recorded — Hedera anchoring in progress. Track it on your trip screen.`
+          : `Saved ${savedAt} — evidence stored on this device.`
+    notify({ kind: 'success', title: `${HANDSHAKE_NAMES[handshakeNum]} recorded`, body })
   }
 
   // Runs immediately before a handshake's draft is cleared on every success path. H2
@@ -140,17 +169,12 @@ export default function HandshakeStepPageClient() {
     evidence: H1Evidence | H2Evidence | H3Evidence | H4Evidence | H5Evidence,
     clearFn: () => void,
   ) {
-    // Real (non-demo) submission of an anchored handshake type is the only path that
-    // can honestly claim a Hedera anchor — demo mode short-circuits before hitting the
-    // backend at all (see submitHandshake), so it never actually anchors anything.
-    const anchored = !IS_DEMO_MODE && isAnchoredHandshakeType(type)
-
     try {
       await submitHandshake(tripId, type, evidence)
-      await refetchTrip()
+      const fresh = await refetchTrip()
       syncSealReference(type, evidence)
       clearFn()
-      notifyHandshakeRecorded(anchored)
+      notifyHandshakeRecorded(recordedNotice(type, fresh))
       advance()
       return
     } catch (err) {
@@ -163,7 +187,7 @@ export default function HandshakeStepPageClient() {
           syncSealReference(type, evidence)
           clearFn()
           // The earlier attempt did record the evidence — the driver still deserves the receipt.
-          notifyHandshakeRecorded(anchored)
+          notifyHandshakeRecorded(recordedNotice(type, fetched))
           advance()
           return
         }
@@ -174,21 +198,24 @@ export default function HandshakeStepPageClient() {
         })
         return
       }
-      if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
-        // Terminal failure — retrying the same request will never succeed. Leave the
-        // driver on this screen with their draft intact so they can fix and retry.
-        notify({ kind: 'error', title: 'Could not submit', body: err.message })
+      if (isQueueableFailure(err)) {
+        // Network error or 5xx — queue for retry once connectivity/the server recovers.
+        // The receipt's "stored on this device" wording is literally true here: the
+        // evidence sits in the offline queue until it syncs — always 'plain', even for
+        // H2/H5, since it hasn't reached the backend (or Hedera) yet.
+        enqueue(tripId, type, evidence)
+        syncSealReference(type, evidence)
+        clearFn()
+        notifyHandshakeRecorded('plain')
+        advance()
         return
       }
-      // Network error or 5xx — queue for retry once connectivity/the server recovers.
-      // The receipt's "stored on this device" wording is literally true here: the
-      // evidence sits in the offline queue until it syncs — always false, even for
-      // H2/H5, since it hasn't reached the backend (or Hedera) yet.
-      enqueue(tripId, type, evidence)
-      syncSealReference(type, evidence)
-      clearFn()
-      notifyHandshakeRecorded(false)
-      advance()
+      // Terminal failure — either a client-side 4xx, or a local validation Error thrown
+      // by submitHandshake before any network call. Neither can ever succeed on retry,
+      // so queuing it would be dishonest. Leave the driver on this screen with their
+      // draft intact so they can fix and retry.
+      const message = err instanceof Error ? err.message : 'Could not submit. Please try again.'
+      notify({ kind: 'error', title: 'Could not submit', body: message })
     }
   }
 

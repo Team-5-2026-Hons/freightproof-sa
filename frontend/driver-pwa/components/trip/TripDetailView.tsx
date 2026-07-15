@@ -11,6 +11,7 @@ import { SubpageHeader } from '@/components/layout/SubpageHeader'
 import { HandshakeProgressBar } from '@/components/trip/HandshakeProgressBar'
 import { CurrentHandshakeCard } from '@/components/trip/CurrentHandshakeCard'
 import { AnchorBadge } from '@/components/blockchain/AnchorBadge'
+import { AnchorProgress } from '@/components/blockchain/AnchorProgress'
 
 // The only two handshakes the backend anchors to Hedera HCS — see AnchorBadge.
 const ANCHORED_HANDSHAKE_NUMBERS = new Set([2, 5])
@@ -39,6 +40,18 @@ export function TripDetailView({
   const { kind, label } = tripStatusChip(trip.status)
   const progress = handshakeProgress(trip.handshakes)
   const current = currentHandshakeNumber(progress)
+
+  // Which of the two anchored handshakes (H2/H5) qualify for a row in the non-showAll
+  // "Evidence anchors" section: the handshake record must exist for this trip AND
+  // already carry an event_hash (unset means it hasn't reached that point yet, or it's
+  // one of the unanchored feeder handshakes, which ANCHORED_HANDSHAKE_NUMBERS excludes
+  // anyway). Computed here, once, so the section-presence check and the .map() below
+  // agree without recomputing .find() twice per handshake.
+  const anchoredHandshakeRows = HANDSHAKE_NUMBERS.filter((n) => {
+    if (!ANCHORED_HANDSHAKE_NUMBERS.has(n)) return false
+    const handshake = trip.handshakes.find((hs) => hs.sequence_number === n)
+    return handshake?.event_hash != null
+  })
 
   return (
     <main className="flex min-h-screen flex-col">
@@ -102,12 +115,46 @@ export function TripDetailView({
             })}
           </section>
         ) : (
-          current !== null && (
-            <CurrentHandshakeCard
-              handshakeNumber={current}
-              onSelect={() => onSelectHandshake(current)}
-            />
-          )
+          <>
+            {current !== null && (
+              <CurrentHandshakeCard
+                handshakeNumber={current}
+                onSelect={() => onSelectHandshake(current)}
+              />
+            )}
+
+            {/* Real active-trip data (showAllHandshakes=false) previously had no way to
+                surface Hedera anchor status at all — AnchorBadge only ever mounted in the
+                mock-fixture showAllHandshakes branch above. Additive, read-only: unlike the
+                showAll rows these are never tappable (no onClick on Card) per the
+                current-handshake-only design (docs/superpowers/specs/2026-06-29-driver-pwa-
+                current-handshake-only-design.md) — navigation stays reserved for the single
+                current handshake card above. Renders nothing, not even the header, when
+                neither H2 nor H5 has an event_hash yet. AnchorProgress (not AnchorBadge) is
+                used here — a driver on the real trip screen benefits from seeing WHERE in
+                the anchoring pipeline their evidence sits, not just a one-word chip; the
+                mock-fixture showAll branch above keeps the compact AnchorBadge unchanged. */}
+            {anchoredHandshakeRows.length > 0 && (
+              <section className="flex flex-col gap-2">
+                <h2 className="text-sm font-medium text-surface-on-variant">Evidence anchors</h2>
+                {anchoredHandshakeRows.map((n) => {
+                  const handshake = trip.handshakes.find((hs) => hs.sequence_number === n)
+                  return (
+                    <Card key={n} variant="section">
+                      <span>
+                        <span className="font-semibold">H{n}:</span> {HANDSHAKE_NAMES[n]}
+                      </span>
+                      <AnchorProgress
+                        eventHash={handshake?.event_hash ?? null}
+                        receiptId={handshake?.blockchain_receipt_id ?? null}
+                        className="mt-2"
+                      />
+                    </Card>
+                  )
+                })}
+              </section>
+            )}
+          </>
         )}
       </div>
     </main>

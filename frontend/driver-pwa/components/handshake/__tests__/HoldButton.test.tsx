@@ -159,3 +159,101 @@ describe('HoldButton — tap-to-confirm mode (1c)', () => {
     expect(onConfirm).toHaveBeenCalledTimes(1)
   })
 })
+
+// Objective 1: onConfirm may now be async (submitAndAdvance uploads photos + calls the
+// backend, which can take seconds). Without a visible busy state the driver sees a dead
+// button and can trigger duplicate submits by holding again.
+describe('HoldButton — busy state for async onConfirm (Objective 1)', () => {
+  function completeHold(button: HTMLElement) {
+    fireEvent.pointerDown(button)
+    act(() => {
+      vi.advanceTimersByTime(HOLD_MS)
+    })
+    fireEvent.pointerUp(button)
+    act(() => {
+      vi.advanceTimersByTime(FLOURISH_MS)
+    })
+  }
+
+  it('enters a busy state (disabled + spinner) while the returned promise is pending, and clears it on resolve', async () => {
+    vi.useFakeTimers()
+    let resolveConfirm!: () => void
+    const onConfirm = vi.fn(() => new Promise<void>((resolve) => { resolveConfirm = resolve }))
+    render(<HoldButton label="Confirm" durationMs={HOLD_MS} onConfirm={onConfirm} />)
+
+    const button = screen.getByRole('button')
+    completeHold(button)
+
+    expect(onConfirm).toHaveBeenCalledTimes(1)
+    expect(button).toBeDisabled()
+    expect(screen.getByText('Submitting…')).toBeInTheDocument()
+    expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
+
+    await act(async () => {
+      resolveConfirm()
+      await Promise.resolve()
+    })
+
+    expect(button).not.toBeDisabled()
+    expect(screen.queryByText('Submitting…')).not.toBeInTheDocument()
+  })
+
+  it('releases the busy state on rejection and surfaces the error instead of swallowing it', async () => {
+    vi.useFakeTimers()
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    let rejectConfirm!: (err: Error) => void
+    const onConfirm = vi.fn(() => new Promise<void>((_resolve, reject) => { rejectConfirm = reject }))
+    render(<HoldButton label="Confirm" durationMs={HOLD_MS} onConfirm={onConfirm} />)
+
+    const button = screen.getByRole('button')
+    completeHold(button)
+    expect(button).toBeDisabled()
+
+    const err = new Error('boom')
+    await act(async () => {
+      rejectConfirm(err)
+      // Allow the rejection handler's microtask to run.
+      await Promise.resolve()
+    })
+
+    expect(button).not.toBeDisabled()
+    expect(consoleErrorSpy).toHaveBeenCalledWith('HoldButton: onConfirm rejected', err)
+
+    consoleErrorSpy.mockRestore()
+  })
+
+  it('does not retrigger onConfirm while a prior submit is still in flight', async () => {
+    vi.useFakeTimers()
+    let resolveConfirm!: () => void
+    const onConfirm = vi.fn(() => new Promise<void>((resolve) => { resolveConfirm = resolve }))
+    render(<HoldButton label="Confirm" durationMs={HOLD_MS} onConfirm={onConfirm} />)
+
+    const button = screen.getByRole('button')
+    completeHold(button)
+    expect(onConfirm).toHaveBeenCalledTimes(1)
+
+    // The button is disabled, but exercise the internal re-entry guard directly (not just
+    // the disabled attribute) — jsdom's fireEvent can still dispatch pointer events at a
+    // disabled element.
+    completeHold(button)
+    expect(onConfirm).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      resolveConfirm()
+      await Promise.resolve()
+    })
+  })
+
+  it('a synchronous (non-promise) onConfirm never enters a busy state', () => {
+    vi.useFakeTimers()
+    const onConfirm = vi.fn()
+    render(<HoldButton label="Confirm" durationMs={HOLD_MS} onConfirm={onConfirm} />)
+
+    const button = screen.getByRole('button')
+    completeHold(button)
+
+    expect(onConfirm).toHaveBeenCalledTimes(1)
+    expect(button).not.toBeDisabled()
+    expect(screen.queryByText('Submitting…')).not.toBeInTheDocument()
+  })
+})

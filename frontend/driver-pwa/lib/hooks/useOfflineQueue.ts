@@ -1,7 +1,7 @@
 // frontend/driver-pwa/lib/hooks/useOfflineQueue.ts
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { submitHandshake } from '@/lib/api/handshakes'
 import { raiseException, type RaiseExceptionBody } from '@/lib/api/exceptions'
 import { submitCheckpoint, type CheckpointEvidence } from '@/lib/api/checkpoints'
@@ -82,26 +82,39 @@ export function useOfflineQueue() {
   // an avoidable cascading re-render — flagged by react-hooks/set-state-in-effect).
   const [queueLength, setQueueLength] = useState(() => loadQueue().length)
 
+  // Guards against overlapping flush runs — mount, the 'online' event, and a
+  // visibility-change back to 'visible' can all fire within the same tick (e.g. the
+  // driver switches back to the tab right as connectivity returns), and a second
+  // concurrent pass would re-send entries the first pass hasn't removed from
+  // localStorage yet.
+  const flushingRef = useRef(false)
+
   const flush = useCallback(async () => {
-    const queue = loadQueue()
-    if (queue.length === 0) return
-    const failed: QueueEntry[] = []
-    for (const entry of queue) {
-      try {
-        await sendEntry(entry)
-      } catch (err) {
-        // A terminal 4xx (validation failure, or a 409 meaning this exact submission
-        // already succeeded on an earlier attempt) will never succeed on retry — drop it
-        // instead of retrying forever. Network errors and 5xx stay queued.
-        if (err instanceof ApiError && err.status < 500) {
-          console.warn(`useOfflineQueue: dropping terminal failure (${err.status}) for queued entry "${entry.id}"`, err.message)
-          continue
+    if (flushingRef.current) return
+    flushingRef.current = true
+    try {
+      const queue = loadQueue()
+      if (queue.length === 0) return
+      const failed: QueueEntry[] = []
+      for (const entry of queue) {
+        try {
+          await sendEntry(entry)
+        } catch (err) {
+          // A terminal 4xx (validation failure, or a 409 meaning this exact submission
+          // already succeeded on an earlier attempt) will never succeed on retry — drop it
+          // instead of retrying forever. Network errors and 5xx stay queued.
+          if (err instanceof ApiError && err.status < 500) {
+            console.warn(`useOfflineQueue: dropping terminal failure (${err.status}) for queued entry "${entry.id}"`, err.message)
+            continue
+          }
+          failed.push(entry)
         }
-        failed.push(entry)
       }
+      saveQueue(failed)
+      setQueueLength(failed.length)
+    } finally {
+      flushingRef.current = false
     }
-    saveQueue(failed)
-    setQueueLength(failed.length)
   }, [])
 
   const enqueue = useCallback(
@@ -144,8 +157,22 @@ export function useOfflineQueue() {
   )
 
   useEffect(() => {
+    // The 'online' event alone misses entries queued while the browser still believed
+    // it was online (backend down, or a run of 5xxs) — those never see an 'online' event
+    // fire and would otherwise sit in localStorage indefinitely. A mount-time attempt and
+    // a flush on returning to the tab (visibilitychange → 'visible') catch that case.
+    void flush()
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') void flush()
+    }
+
     window.addEventListener('online', flush)
-    return () => window.removeEventListener('online', flush)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      window.removeEventListener('online', flush)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
   }, [flush])
 
   return { queueLength, enqueue, enqueueException, enqueueCheckpoint, flush }
