@@ -113,7 +113,6 @@ def _validate_seal_format(v: str) -> str:
 class H1CompleteRequest(BaseModel):
     driver_phone_lat: Decimal
     driver_phone_lng: Decimal
-    gate_photo_artifact_id: UUID
 
 
 class H2CompleteRequest(BaseModel):
@@ -129,7 +128,6 @@ class H2CompleteRequest(BaseModel):
 
 
 class H3CompleteRequest(BaseModel):
-    gate_exit_photo_artifact_id: UUID
     guard_verified_seal: bool
     # Seal number the driver re-entered at the exit gate. Optional for backward
     # compatibility; when present the server compares it against H2's committed
@@ -140,7 +138,6 @@ class H3CompleteRequest(BaseModel):
 
 
 class H4CompleteRequest(BaseModel):
-    gate_entry_photo_artifact_id: UUID
     seal_number_at_destination: str
 
     @field_validator("seal_number_at_destination")

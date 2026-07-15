@@ -28,7 +28,7 @@ beforeEach(() => {
 // gateAddress added to H1Evidence (Task 3) — included here as null since this
 // fixture predates that field, same fix applied to useHandshakeDraft.test.ts.
 const EVIDENCE: H1Evidence = {
-  gpsLat: -26.09, gpsLng: 28.13, gatePhotoDataUrl: 'data:img', gateAddress: null, capturedAt: '2026-06-12T10:00:00Z',
+  gpsLat: -26.09, gpsLng: 28.13, gateAddress: null, capturedAt: '2026-06-12T10:00:00Z',
 }
 
 const CHECKPOINT_EVIDENCE: CheckpointEvidence = {

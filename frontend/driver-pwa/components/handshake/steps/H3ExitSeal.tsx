@@ -3,7 +3,6 @@
 
 import { CheckCircle2, Info, XCircle } from 'lucide-react'
 import { StepHeader } from '@/components/handshake/StepHeader'
-import { CameraCapture } from '@/components/handshake/CameraCapture'
 import { Input } from '@/components/ui/Input'
 import { HoldButton } from '@/components/handshake/HoldButton'
 import type { H3Evidence } from '@/lib/types/evidence-draft'
@@ -33,7 +32,7 @@ export function H3ExitSeal({ tripId, draft, h2SealNumber, onUpdate, onComplete }
   // compares the submitted seal against H2's committed seal either way; only a real
   // local reference that fails to match should show the mismatch flag.
   const matches = h2SealNumber === null ? null : sealsMatch(input, h2SealNumber)
-  const isReady = draft.gatePhotoDataUrl !== null && hasInput
+  const isReady = hasInput
 
   function handleSealInput(value: string) {
     const upper = value.toUpperCase()
@@ -50,16 +49,11 @@ export function H3ExitSeal({ tripId, draft, h2SealNumber, onUpdate, onComplete }
 
   return (
     <main className="flex min-h-screen flex-col">
-      <StepHeader handshakeName="Origin Gate-Out" stepName="Exit Photo & Seal" stepIndex={2} totalSteps={3} />
+      <StepHeader handshakeName="Origin Gate-Out" stepName="Confirm Seal" stepIndex={2} totalSteps={3} />
       <div className="flex flex-1 flex-col gap-6 p-4">
         <p className="text-sm text-surface-on-variant">
-          Photograph the exit gate, then re-enter the seal number to confirm it matches what was set at loading.
+          Re-enter the seal number to confirm it matches what was set at loading.
         </p>
-        <CameraCapture
-          label="Exit gate photo"
-          dataUrl={draft.gatePhotoDataUrl}
-          onCapture={(dataUrl) => onUpdate({ gatePhotoDataUrl: dataUrl })}
-        />
         <Input
           label="Confirm seal number"
           placeholder="e.g. FP-1234"

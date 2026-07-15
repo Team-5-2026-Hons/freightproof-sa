@@ -102,7 +102,6 @@ async def _make_artifact(db_session, trip_id):
 async def _advance_to_loading(db_session, trip, driver):
     await advance_h1(db_session, trip_id=trip.id, driver_id=driver.id, payload=H1CompleteRequest(
         driver_phone_lat=Decimal("0"), driver_phone_lng=Decimal("0"),
-        gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
     ))
     await advance_h2(db_session, trip_id=trip.id, driver_id=driver.id, payload=H2CompleteRequest(
         waybill_photo_artifact_id=await _make_artifact(db_session, trip.id), seal_number="AB-1234",
@@ -113,14 +112,14 @@ async def _advance_to_loading(db_session, trip, driver):
 async def _advance_to_in_transit(db_session, trip, driver):
     await _advance_to_loading(db_session, trip, driver)
     await advance_h3(db_session, trip_id=trip.id, driver_id=driver.id, payload=H3CompleteRequest(
-        gate_exit_photo_artifact_id=await _make_artifact(db_session, trip.id), guard_verified_seal=True,
+        guard_verified_seal=True,
     ))
 
 
 async def _advance_to_dest_gate_in(db_session, trip, driver, seal="AB-1234"):
     await _advance_to_in_transit(db_session, trip, driver)
     return await advance_h4(db_session, trip_id=trip.id, driver_id=driver.id, payload=H4CompleteRequest(
-        gate_entry_photo_artifact_id=await _make_artifact(db_session, trip.id), seal_number_at_destination=seal,
+        seal_number_at_destination=seal,
     ))
 
 
@@ -129,7 +128,6 @@ async def test_advance_h1_happy_path_sets_trip_status(db_session, trip_fixture):
     trip, driver = trip_fixture
     payload = H1CompleteRequest(
         driver_phone_lat=Decimal("0.0001"), driver_phone_lng=Decimal("0.0001"),
-        gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
     )
     result = await advance_h1(db_session, trip_id=trip.id, driver_id=driver.id, payload=payload)
     assert result.status == TripStatus.ORIGIN_GATE_IN
@@ -142,7 +140,6 @@ async def test_advance_h1_wrong_state_raises_sequence_error(db_session, trip_fix
     await db_session.flush()
     payload = H1CompleteRequest(
         driver_phone_lat=Decimal("0"), driver_phone_lng=Decimal("0"),
-        gate_photo_artifact_id=uuid.uuid4(),
     )
     with pytest.raises(HandshakeSequenceError):
         await advance_h1(db_session, trip_id=trip.id, driver_id=driver.id, payload=payload)
@@ -152,7 +149,6 @@ async def test_advance_h1_wrong_state_raises_sequence_error(db_session, trip_fix
 async def test_advance_h1_unknown_trip_raises_not_found(db_session):
     payload = H1CompleteRequest(
         driver_phone_lat=Decimal("0"), driver_phone_lng=Decimal("0"),
-        gate_photo_artifact_id=uuid.uuid4(),
     )
     with pytest.raises(ResourceNotFoundError):
         await advance_h1(db_session, trip_id=uuid.uuid4(), driver_id=uuid.uuid4(), payload=payload)
@@ -163,7 +159,6 @@ async def test_advance_h2_happy_path_stores_seal_and_hash(db_session, trip_fixtu
     trip, driver = trip_fixture
     await advance_h1(db_session, trip_id=trip.id, driver_id=driver.id, payload=H1CompleteRequest(
         driver_phone_lat=Decimal("0"), driver_phone_lng=Decimal("0"),
-        gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
     ))
 
     result = await advance_h2(db_session, trip_id=trip.id, driver_id=driver.id, payload=H2CompleteRequest(
@@ -189,7 +184,7 @@ async def test_advance_h3_happy_path_sets_in_transit(db_session, trip_fixture):
     await _advance_to_loading(db_session, trip, driver)
 
     result = await advance_h3(db_session, trip_id=trip.id, driver_id=driver.id, payload=H3CompleteRequest(
-        gate_exit_photo_artifact_id=await _make_artifact(db_session, trip.id), guard_verified_seal=True,
+        guard_verified_seal=True,
     ))
     assert result.status == TripStatus.IN_TRANSIT
 
@@ -224,7 +219,7 @@ async def test_advance_h3_guard_refused_creates_exception_but_departs(db_session
     await _advance_to_loading(db_session, trip, driver)
 
     result = await advance_h3(db_session, trip_id=trip.id, driver_id=driver.id, payload=H3CompleteRequest(
-        gate_exit_photo_artifact_id=await _make_artifact(db_session, trip.id), guard_verified_seal=False,
+        guard_verified_seal=False,
     ))
 
     assert result.status == TripStatus.IN_TRANSIT  # recorded, not held — H3 is a feeder
@@ -241,7 +236,6 @@ async def test_advance_h3_confirmed_seal_mismatch_creates_exception(db_session, 
     await _advance_to_loading(db_session, trip, driver)  # H2 seal is AB-1234
 
     result = await advance_h3(db_session, trip_id=trip.id, driver_id=driver.id, payload=H3CompleteRequest(
-        gate_exit_photo_artifact_id=await _make_artifact(db_session, trip.id),
         guard_verified_seal=True, seal_number_confirmed="ZZ-9999",
     ))
 
@@ -261,7 +255,6 @@ async def test_advance_h3_confirmed_seal_match_supersedes_guard_flag(db_session,
     await _advance_to_loading(db_session, trip, driver)  # H2 seal is AB-1234
 
     result = await advance_h3(db_session, trip_id=trip.id, driver_id=driver.id, payload=H3CompleteRequest(
-        gate_exit_photo_artifact_id=await _make_artifact(db_session, trip.id),
         guard_verified_seal=False, seal_number_confirmed="ab-1234 ",  # normalised before compare
     ))
 

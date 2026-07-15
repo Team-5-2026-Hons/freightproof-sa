@@ -8,7 +8,6 @@ import type { Trip } from '@shared/lib/types/trip'
 export interface H1CompleteRequest {
   driver_phone_lat: number
   driver_phone_lng: number
-  gate_photo_artifact_id: string
 }
 
 export interface H2CompleteRequest {
@@ -19,7 +18,6 @@ export interface H2CompleteRequest {
 }
 
 export interface H3CompleteRequest {
-  gate_exit_photo_artifact_id: string
   guard_verified_seal: boolean
   // Mirrors backend H3CompleteRequest.seal_number_confirmed: optional, free-form.
   // When present the server compares it against H2's committed seal (authoritative),
@@ -28,7 +26,6 @@ export interface H3CompleteRequest {
 }
 
 export interface H4CompleteRequest {
-  gate_entry_photo_artifact_id: string
   seal_number_at_destination: string
 }
 

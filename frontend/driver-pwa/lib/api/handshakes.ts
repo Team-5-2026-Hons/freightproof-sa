@@ -41,15 +41,11 @@ export async function submitHandshake(
   switch (handshakeType) {
     case 'origin_gate_in': {
       const e = evidence as H1Evidence
-      if (e.gpsLat === null || e.gpsLng === null || e.gatePhotoDataUrl === null) {
-        throw new Error('H1 evidence incomplete — GPS and gate photo are required.')
+      if (e.gpsLat === null || e.gpsLng === null) {
+        throw new Error('H1 evidence incomplete — GPS is required.')
       }
-      const photo = await uploadArtifact({
-        tripId, artifactType: 'photo', dataUrl: e.gatePhotoDataUrl,
-        capturedAt, capturedLat: e.gpsLat, capturedLng: e.gpsLng,
-      })
       updatedTrip = await completeH1(tripId, {
-        driver_phone_lat: e.gpsLat, driver_phone_lng: e.gpsLng, gate_photo_artifact_id: photo.id,
+        driver_phone_lat: e.gpsLat, driver_phone_lng: e.gpsLng,
       })
       break
     }
@@ -70,12 +66,7 @@ export async function submitHandshake(
     }
     case 'origin_gate_out': {
       const e = evidence as H3Evidence
-      if (e.gatePhotoDataUrl === null) {
-        throw new Error('H3 evidence incomplete — exit gate photo is required.')
-      }
-      const photo = await uploadArtifact({ tripId, artifactType: 'photo', dataUrl: e.gatePhotoDataUrl, capturedAt })
       updatedTrip = await completeH3(tripId, {
-        gate_exit_photo_artifact_id: photo.id,
         // The boolean is only a fallback: the server compares seal_number_confirmed
         // against H2's committed seal (authoritative) whenever it's present. sealVerifiedMatch
         // is computed against a device-local seal reference (useSealReference) that can be
@@ -89,12 +80,11 @@ export async function submitHandshake(
     }
     case 'dest_gate_in': {
       const e = evidence as H4Evidence
-      if (e.gatePhotoDataUrl === null || e.sealNumberAtDestination === null) {
-        throw new Error('H4 evidence incomplete — entry photo and seal number are required.')
+      if (e.sealNumberAtDestination === null) {
+        throw new Error('H4 evidence incomplete — seal number is required.')
       }
-      const photo = await uploadArtifact({ tripId, artifactType: 'photo', dataUrl: e.gatePhotoDataUrl, capturedAt })
       updatedTrip = await completeH4(tripId, {
-        gate_entry_photo_artifact_id: photo.id, seal_number_at_destination: e.sealNumberAtDestination,
+        seal_number_at_destination: e.sealNumberAtDestination,
       })
       break
     }

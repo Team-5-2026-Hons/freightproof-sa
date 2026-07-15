@@ -98,7 +98,6 @@ async def advance_h1(
     # rather than faked, so dispatchers see an honest "not yet cross-checked" state.
     event.driver_phone_lat = payload.driver_phone_lat
     event.driver_phone_lng = payload.driver_phone_lng
-    event.gate_photo_artifact_id = payload.gate_photo_artifact_id
     event.status = HandshakeStatus.COMPLETED
     event.completed_at = datetime.now(UTC)
 
@@ -182,7 +181,6 @@ async def advance_h3(
     )
     event = await _get_handshake_event(db, trip_id=trip_id, handshake_type=HandshakeType.ORIGIN_GATE_OUT)
 
-    event.gate_photo_artifact_id = payload.gate_exit_photo_artifact_id
     event.completed_at = datetime.now(UTC)
     # Pulsit geofence departure confirmation is out of scope until the Pulsit
     # integration lands; pulsit_geofence_confirmed stays null until then.
@@ -248,7 +246,6 @@ async def advance_h4(
     )
     h2_event = h2_result.scalar_one()
 
-    event.gate_photo_artifact_id = payload.gate_entry_photo_artifact_id
     event.seal_number = payload.seal_number_at_destination
     event.completed_at = datetime.now(UTC)
 

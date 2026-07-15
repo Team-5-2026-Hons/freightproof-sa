@@ -13,7 +13,7 @@ interface H1VerificationProps {
 }
 
 export function H1Verification({ tripId, draft, onComplete }: H1VerificationProps) {
-  const isReady = draft.gpsLat !== null && draft.gatePhotoDataUrl !== null
+  const isReady = draft.gpsLat !== null
 
   // Address is an optional, best-effort field (no key configured yet, or the
   // geocode lookup failed) — omit it entirely rather than showing EvidenceReview's
@@ -23,7 +23,6 @@ export function H1Verification({ tripId, draft, onComplete }: H1VerificationProp
     // the exact lat/lng stays in the draft for the backend payload.
     { label: 'GPS location', value: draft.gpsLat !== null ? 'Captured' : null },
     ...(draft.gateAddress ? [{ label: 'Address', value: draft.gateAddress }] : []),
-    { label: 'Entry photo', value: draft.gatePhotoDataUrl, isImage: true },
   ]
 
   return (
@@ -31,8 +30,8 @@ export function H1Verification({ tripId, draft, onComplete }: H1VerificationProp
       <StepHeader
         handshakeName="Origin Gate-In"
         stepName="Verification"
-        stepIndex={3}
-        totalSteps={3}
+        stepIndex={2}
+        totalSteps={2}
       />
       <div className="flex flex-1 flex-col gap-6 p-4">
         <p className="text-sm text-surface-on-variant">

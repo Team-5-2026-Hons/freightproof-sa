@@ -62,17 +62,17 @@ describe('StepHeader', () => {
 
   describe('back navigation — mid-handshake (stepIndex > 1)', () => {
     it('labels the back button "Back to previous step"', () => {
-      // H1's steps: ['1-approach-gate', '2-entry-photo', '3-verification'] — stepIndex 2
-      // is '2-entry-photo', so back should land on step 1's slug, '1-approach-gate'.
-      mockUseParams.mockReturnValue({ h: '1', slug: '2-entry-photo' })
-      renderHeader(2, 3)
+      // H1's steps: ['1-approach-gate', '2-verification'] — stepIndex 2
+      // is '2-verification', so back should land on step 1's slug, '1-approach-gate'.
+      mockUseParams.mockReturnValue({ h: '1', slug: '2-verification' })
+      renderHeader(2, 2)
 
       expect(screen.getByRole('button', { name: 'Back to previous step' })).toBeInTheDocument()
     })
 
     it('goes to the previous step of the SAME handshake, not out of it', () => {
-      mockUseParams.mockReturnValue({ h: '1', slug: '2-entry-photo' })
-      renderHeader(2, 3)
+      mockUseParams.mockReturnValue({ h: '1', slug: '2-verification' })
+      renderHeader(2, 2)
 
       fireEvent.click(screen.getByRole('button', { name: 'Back to previous step' }))
 

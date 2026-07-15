@@ -46,7 +46,6 @@ vi.mock('@/lib/api/handshakes', () => ({
 // submit-and-advance branch, not step internals. The step under test
 // (H4SealVerify, the FINAL step of handshake 4) exposes its onComplete.
 vi.mock('@/components/handshake/steps/H1GateArrival', () => ({ H1GateArrival: () => null }))
-vi.mock('@/components/handshake/steps/H1EntryPhoto', () => ({ H1EntryPhoto: () => null }))
 vi.mock('@/components/handshake/steps/H1Verification', () => ({ H1Verification: () => null }))
 vi.mock('@/components/handshake/steps/H2ArriveBay', () => ({ H2ArriveBay: () => null }))
 vi.mock('@/components/handshake/steps/H2Linehaul', () => ({ H2Linehaul: () => null }))
@@ -57,7 +56,6 @@ vi.mock('@/components/handshake/steps/H3ApproachExit', () => ({ H3ApproachExit: 
 vi.mock('@/components/handshake/steps/H3ExitSeal', () => ({ H3ExitSeal: () => null }))
 vi.mock('@/components/handshake/steps/H3Departure', () => ({ H3Departure: () => null }))
 vi.mock('@/components/handshake/steps/H4ApproachDest', () => ({ H4ApproachDest: () => null }))
-vi.mock('@/components/handshake/steps/H4EntryPhoto', () => ({ H4EntryPhoto: () => null }))
 vi.mock('@/components/handshake/steps/H4SealVerify', () => ({
   H4SealVerify: ({ onComplete }: { onComplete: () => void }) => (
     <button onClick={onComplete}>complete-final-step</button>
@@ -74,7 +72,7 @@ describe('HandshakeStepPageClient completion receipt (5a)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     // Final step of handshake 4 — the walkthrough's silent-return case.
-    mockUseParams.mockReturnValue({ h: '4', slug: '3-seal-verify' })
+    mockUseParams.mockReturnValue({ h: '4', slug: '2-seal-verify' })
     mockRefetchTrip.mockResolvedValue({ id: 'trip-1', status: 'dest_gate_in' })
   })
 
@@ -129,14 +127,14 @@ describe('HandshakeStepPageClient completion receipt (5a)', () => {
   // queued as offline evidence, and the driver must stay on screen rather than being
   // routed forward with a false "evidence stored on this device" receipt.
   it('does not enqueue a local validation Error — surfaces an error toast and stays on screen', async () => {
-    mockSubmitHandshake.mockRejectedValue(new Error('H1 evidence incomplete — GPS and gate photo are required.'))
+    mockSubmitHandshake.mockRejectedValue(new Error('H1 evidence incomplete — GPS is required.'))
 
     render(<HandshakeStepPageClient />)
     fireEvent.click(screen.getByText('complete-final-step'))
 
     await waitFor(() =>
       expect(mockNotify).toHaveBeenCalledWith(
-        expect.objectContaining({ kind: 'error', body: 'H1 evidence incomplete — GPS and gate photo are required.' }),
+        expect.objectContaining({ kind: 'error', body: 'H1 evidence incomplete — GPS is required.' }),
       ),
     )
     expect(mockEnqueue).not.toHaveBeenCalled()

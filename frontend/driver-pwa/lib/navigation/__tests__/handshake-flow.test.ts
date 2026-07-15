@@ -4,10 +4,10 @@ import { nextHandshakeRoute } from '../handshake-flow'
 describe('nextHandshakeRoute', () => {
   it('advances to the next step within a handshake', () => {
     expect(nextHandshakeRoute(1, '1-approach-gate'))
-      .toBe('/trip/handshake/1/step/2-entry-photo')
+      .toBe('/trip/handshake/1/step/2-verification')
   })
   it('returns to the trip detail page at the end of H1, instead of rolling into H2', () => {
-    expect(nextHandshakeRoute(1, '3-verification'))
+    expect(nextHandshakeRoute(1, '2-verification'))
       .toBe('/trips/active')
   })
   it('returns to the trip detail page at the end of H2, instead of rolling into H3', () => {
@@ -15,7 +15,7 @@ describe('nextHandshakeRoute', () => {
       .toBe('/trips/active')
   })
   it('returns to the trip detail page at the end of H4, instead of rolling into H5', () => {
-    expect(nextHandshakeRoute(4, '3-seal-verify'))
+    expect(nextHandshakeRoute(4, '2-seal-verify'))
       .toBe('/trips/active')
   })
   it('throws on an unrecognized step slug instead of silently skipping the handshake', () => {

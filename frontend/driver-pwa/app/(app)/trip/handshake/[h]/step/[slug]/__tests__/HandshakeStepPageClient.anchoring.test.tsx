@@ -53,7 +53,6 @@ vi.mock('@/lib/api/handshakes', () => ({
 // test), matching the stubbing pattern in HandshakeStepPageClient.test.tsx and
 // SealReferencePersistence.test.tsx.
 vi.mock('@/components/handshake/steps/H1GateArrival', () => ({ H1GateArrival: () => null }))
-vi.mock('@/components/handshake/steps/H1EntryPhoto', () => ({ H1EntryPhoto: () => null }))
 vi.mock('@/components/handshake/steps/H1Verification', () => ({ H1Verification: () => null }))
 vi.mock('@/components/handshake/steps/H2ArriveBay', () => ({ H2ArriveBay: () => null }))
 vi.mock('@/components/handshake/steps/H2Linehaul', () => ({ H2Linehaul: () => null }))
@@ -66,7 +65,6 @@ vi.mock('@/components/handshake/steps/H3ApproachExit', () => ({ H3ApproachExit: 
 vi.mock('@/components/handshake/steps/H3ExitSeal', () => ({ H3ExitSeal: () => null }))
 vi.mock('@/components/handshake/steps/H3Departure', () => ({ H3Departure: () => null }))
 vi.mock('@/components/handshake/steps/H4ApproachDest', () => ({ H4ApproachDest: () => null }))
-vi.mock('@/components/handshake/steps/H4EntryPhoto', () => ({ H4EntryPhoto: () => null }))
 vi.mock('@/components/handshake/steps/H4SealVerify', () => ({ H4SealVerify: () => null }))
 vi.mock('@/components/handshake/steps/H5HandWaybill', () => ({ H5HandWaybill: () => null }))
 vi.mock('@/components/handshake/steps/H5SealInspection', () => ({ H5SealInspection: () => null }))

@@ -37,7 +37,7 @@ export function H1GateArrival({ tripId, draft, onUpdate, onComplete }: H1GateArr
         handshakeName="Origin Gate-In"
         stepName="Gate Arrival"
         stepIndex={1}
-        totalSteps={3}
+        totalSteps={2}
       />
       <div className="flex flex-1 flex-col gap-6 p-4">
         <p className="text-sm text-surface-on-variant">

@@ -91,10 +91,7 @@ def _fake_hedera_receipt() -> HederaReceipt:
 async def _complete_h1(client: AsyncClient, db_session, trip, token) -> None:
     resp = await client.post(
         f"/api/v1/trips/{trip.id}/handshakes/h1/complete",
-        json={
-            "driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001",
-            "gate_photo_artifact_id": await _make_artifact(db_session, trip.id),
-        },
+        json={"driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001"},
         headers=auth_header(token),
     )
     assert resp.status_code == 200

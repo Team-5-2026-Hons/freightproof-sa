@@ -23,7 +23,6 @@ vi.mock('@/lib/api/artifacts', () => ({
 const H1_EVIDENCE: H1Evidence = {
   gpsLat: -26.09,
   gpsLng: 28.13,
-  gatePhotoDataUrl: 'data:image/jpeg;base64,AAAA',
   gateAddress: null,
   capturedAt: '2026-06-12T10:00:00Z',
 }
@@ -54,21 +53,19 @@ describe('submitHandshake (real-backend branch)', () => {
     vi.clearAllMocks()
   })
 
-  it('uploads the gate photo then completes H1 with the returned artifact id', async () => {
-    mockUploadArtifact.mockResolvedValue({ id: 'artifact-1', file_hash: 'a'.repeat(64) })
+  it('completes H1 with GPS only, no artifact upload', async () => {
     mockPost.mockResolvedValue({ id: 'trip-1', status: 'origin_gate_in' })
 
     const { submitHandshake } = await import('../handshakes')
     const result = await submitHandshake('trip-1', 'origin_gate_in', H1_EVIDENCE)
 
     expect(result.ok).toBe(true)
-    expect(mockUploadArtifact).toHaveBeenCalledTimes(1)
+    expect(mockUploadArtifact).not.toHaveBeenCalled()
     expect(mockPost).toHaveBeenCalledWith(
       '/api/v1/trips/trip-1/handshakes/h1/complete',
       {
         driver_phone_lat: -26.09,
         driver_phone_lng: 28.13,
-        gate_photo_artifact_id: 'artifact-1',
       },
       { timeoutMs: 30_000 },
     )
@@ -96,15 +93,13 @@ describe('submitHandshake (real-backend branch)', () => {
     )
   })
 
-  it('completes H3 with the confirmed seal for server-side comparison', async () => {
-    mockUploadArtifact.mockResolvedValue({ id: 'exit-artifact', file_hash: 'a'.repeat(64) })
+  it('completes H3 with the confirmed seal for server-side comparison, no artifact upload', async () => {
     mockPost.mockResolvedValue({ id: 'trip-1', status: 'in_transit' })
 
     const { submitHandshake } = await import('../handshakes')
     await submitHandshake('trip-1', 'origin_gate_out', {
       gpsLat: null,
       gpsLng: null,
-      gatePhotoDataUrl: 'data:image/jpeg;base64,GGGG',
       sealNumberConfirmed: ' AB-1234 ',
       // null = the device-local seal reference was lost — must NOT become
       // guard_verified_seal: false (the server compares the confirmed seal instead).
@@ -112,10 +107,10 @@ describe('submitHandshake (real-backend branch)', () => {
       capturedAt: '2026-06-12T10:07:00Z',
     })
 
+    expect(mockUploadArtifact).not.toHaveBeenCalled()
     expect(mockPost).toHaveBeenCalledWith(
       '/api/v1/trips/trip-1/handshakes/h3/complete',
       {
-        gate_exit_photo_artifact_id: 'exit-artifact',
         guard_verified_seal: false,
         seal_number_confirmed: 'AB-1234',
       },
@@ -125,7 +120,7 @@ describe('submitHandshake (real-backend branch)', () => {
 
   it('throws when required evidence is missing instead of calling the backend', async () => {
     const { submitHandshake } = await import('../handshakes')
-    const incomplete: H1Evidence = { ...H1_EVIDENCE, gatePhotoDataUrl: null }
+    const incomplete: H1Evidence = { ...H1_EVIDENCE, gpsLat: null }
 
     await expect(submitHandshake('trip-1', 'origin_gate_in', incomplete)).rejects.toThrow(
       /H1 evidence incomplete/,
@@ -139,7 +134,7 @@ describe('submitHandshake (real-backend branch)', () => {
 
     const { submitHandshake } = await import('../handshakes')
 
-    await expect(submitHandshake('trip-1', 'origin_gate_in', H1_EVIDENCE)).rejects.toThrow(
+    await expect(submitHandshake('trip-1', 'loading', H2_EVIDENCE)).rejects.toThrow(
       /upload failed/,
     )
     expect(mockPost).not.toHaveBeenCalled()

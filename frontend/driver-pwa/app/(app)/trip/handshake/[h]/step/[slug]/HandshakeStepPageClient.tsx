@@ -20,7 +20,6 @@ import { HoldNotice } from '@/components/trip/HoldNotice'
 import type { H1Evidence, H2Evidence, H3Evidence, H4Evidence, H5Evidence } from '@/lib/types/evidence-draft'
 import type { Trip, TripStatus } from '@shared/lib/types/trip'
 import { H1GateArrival } from '@/components/handshake/steps/H1GateArrival'
-import { H1EntryPhoto } from '@/components/handshake/steps/H1EntryPhoto'
 import { H1Verification } from '@/components/handshake/steps/H1Verification'
 import { H2ArriveBay } from '@/components/handshake/steps/H2ArriveBay'
 import { H2Linehaul } from '@/components/handshake/steps/H2Linehaul'
@@ -31,7 +30,6 @@ import { H3ApproachExit } from '@/components/handshake/steps/H3ApproachExit'
 import { H3ExitSeal } from '@/components/handshake/steps/H3ExitSeal'
 import { H3Departure } from '@/components/handshake/steps/H3Departure'
 import { H4ApproachDest } from '@/components/handshake/steps/H4ApproachDest'
-import { H4EntryPhoto } from '@/components/handshake/steps/H4EntryPhoto'
 import { H4SealVerify } from '@/components/handshake/steps/H4SealVerify'
 import { H5HandWaybill } from '@/components/handshake/steps/H5HandWaybill'
 import { H5SealInspection } from '@/components/handshake/steps/H5SealInspection'
@@ -42,10 +40,10 @@ import { H5Closed } from '@/components/handshake/steps/H5Closed'
 
 // gateAddress is a required field on H1Evidence (reverse-geocoded display value, display-only) —
 // must be present here or this literal fails to satisfy H1Evidence.
-const H1_INITIAL: H1Evidence = { gpsLat: null, gpsLng: null, gatePhotoDataUrl: null, gateAddress: null, capturedAt: null }
+const H1_INITIAL: H1Evidence = { gpsLat: null, gpsLng: null, gateAddress: null, capturedAt: null }
 const H2_INITIAL: H2Evidence = { gpsLat: null, gpsLng: null, ppManifestParcelCount: null, driverVisualCount: null, waybillPhotoDataUrl: null, sealNumber: null, sealPhotoDataUrl: null, capturedAt: null }
-const H3_INITIAL: H3Evidence = { gpsLat: null, gpsLng: null, gatePhotoDataUrl: null, sealNumberConfirmed: null, sealVerifiedMatch: null, capturedAt: null }
-const H4_INITIAL: H4Evidence = { gpsLat: null, gpsLng: null, gatePhotoDataUrl: null, sealNumberAtDestination: null, sealVerifiedMatch: null, capturedAt: null }
+const H3_INITIAL: H3Evidence = { gpsLat: null, gpsLng: null, sealNumberConfirmed: null, sealVerifiedMatch: null, capturedAt: null }
+const H4_INITIAL: H4Evidence = { gpsLat: null, gpsLng: null, sealNumberAtDestination: null, sealVerifiedMatch: null, capturedAt: null }
 const H5_INITIAL: H5Evidence = { waybillHandedOver: null, sealBrokenPhotoDataUrl: null, driverVisualCount: null, podPhotoDataUrl: null, podSignatureDataUrl: null, reconciliationNote: null, capturedAt: null }
 
 type SubmittableHandshakeType = 'origin_gate_in' | 'loading' | 'origin_gate_out' | 'dest_gate_in' | 'unloading'
@@ -278,8 +276,7 @@ export default function HandshakeStepPageClient() {
 
   if (handshakeNum === 1) {
     if (slug === '1-approach-gate') return <H1GateArrival {...props} draft={h1Draft} onUpdate={updateH1} onComplete={advance} />
-    if (slug === '2-entry-photo')   return <H1EntryPhoto  {...props} draft={h1Draft} onUpdate={updateH1} onComplete={advance} />
-    if (slug === '3-verification')  return <H1Verification {...props} draft={h1Draft} onComplete={() => submitAndAdvance('origin_gate_in', h1Draft, clearH1)} />
+    if (slug === '2-verification')  return <H1Verification {...props} draft={h1Draft} onComplete={() => submitAndAdvance('origin_gate_in', h1Draft, clearH1)} />
   }
 
   if (handshakeNum === 2) {
@@ -297,9 +294,8 @@ export default function HandshakeStepPageClient() {
   }
 
   if (handshakeNum === 4) {
-    if (slug === '1-approach-dest')    return <H4ApproachDest {...props} draft={h4Draft} onUpdate={updateH4} onComplete={advance} />
-    if (slug === '2-dest-entry-photo') return <H4EntryPhoto   {...props} draft={h4Draft} onUpdate={updateH4} onComplete={advance} />
-    if (slug === '3-seal-verify')      return <H4SealVerify   {...props} draft={h4Draft} h2SealNumber={h2SealNumber} onUpdate={updateH4} onComplete={() => submitAndAdvance('dest_gate_in', h4Draft, clearH4)} />
+    if (slug === '1-approach-dest') return <H4ApproachDest {...props} draft={h4Draft} onUpdate={updateH4} onComplete={advance} />
+    if (slug === '2-seal-verify')   return <H4SealVerify   {...props} draft={h4Draft} h2SealNumber={h2SealNumber} onUpdate={updateH4} onComplete={() => submitAndAdvance('dest_gate_in', h4Draft, clearH4)} />
   }
 
   if (handshakeNum === 5) {
