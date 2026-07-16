@@ -16,6 +16,7 @@ from app.integrations.parcel_perfect import (
     MOCK_WAYBILL_RESPONSE,
     MockParcelPerfectClient,
     ParcelPerfectClient,
+    PPWaybillNotFoundError,
     get_pp_client,
 )
 
@@ -210,13 +211,20 @@ async def test_pp_error_response_raises_value_error(pp_settings):
 @pytest.mark.asyncio
 async def test_mock_client_returns_fixture():
     """MockParcelPerfectClient.get_single_waybill returns MOCK_WAYBILL_RESPONSE
-    regardless of the waybill number, without any HTTP call."""
+    for its registered waybill number, without any HTTP call.
+
+    The mock is now fixture-library-backed (keyed by waybill number) rather than
+    returning one fixture unconditionally — see test_pp_mock.py for not-found parity
+    coverage against the full library.
+    """
     client = MockParcelPerfectClient()
-    result = await client.get_single_waybill("anything")
+    result = await client.get_single_waybill("MOCKWAY001")
 
     # Verify against the module-level constant so the test stays in sync if the
-    # fixture changes.
-    assert result is MOCK_WAYBILL_RESPONSE
+    # fixture changes. Equality, not identity: the mock returns a defensive
+    # deep copy so caller mutations can't corrupt the shared fixture.
+    assert result == MOCK_WAYBILL_RESPONSE
+    assert result is not MOCK_WAYBILL_RESPONSE
     assert result.details.waybill == "MOCKWAY001"
     assert len(result.tracks) == 2
 
@@ -244,7 +252,11 @@ def test_get_pp_client_real_mode(monkeypatch):
 @pytest.mark.asyncio
 @respx.mock
 async def test_get_single_waybill_empty_results_raises(pp_settings):
-    """PP returning errorcode=0 with an empty results list must raise ValueError."""
+    """PP returning errorcode=0 with an empty results list is PP's "no matching
+    waybill" signal, and must raise PPWaybillNotFoundError — distinct from the
+    generic ValueError used for genuine API/auth errors (see
+    test_pp_error_response_raises_value_error) — so callers can fail closed on
+    an actual not-found without conflating it with transport failures."""
     empty_resp = json.dumps({"errorcode": 0, "errormessage": "", "results": []})
     respx.get(url__startswith=_PP_BASE).mock(
         side_effect=[
@@ -254,7 +266,7 @@ async def test_get_single_waybill_empty_results_raises(pp_settings):
         ]
     )
     client = ParcelPerfectClient()
-    with pytest.raises(ValueError, match="empty results"):
+    with pytest.raises(PPWaybillNotFoundError):
         await client.get_single_waybill("WAY_EMPTY")
 
 

@@ -8,15 +8,14 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-logger = logging.getLogger(__name__)
-
 from sqlalchemy import exists, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.blockchain.anchor_service import anchor_subject
-from app.core.exceptions import ResourceNotFoundError, TripConflictError
+from app.core.exceptions import PPSyncError, ResourceNotFoundError, TripConflictError
 from app.crypto.hashing import compute_journey_lock_hash, compute_trip_canonical_payload
-from app.db.models.enums import BlockchainReceiptType, HandshakeStatus, HandshakeType, IdvsStatus, SubjectType, TripStatus, VehicleType
+from app.db.models.enums import BlockchainReceiptType, HandshakeStatus, HandshakeType, IdvsStatus, SubjectType, TripStatus, TripType, VehicleType
 from app.db.models.handshakes import HandshakeEvent
 from app.db.models.people import Driver
 from app.db.models.trips import Trip, TripStop, TripTrailer
@@ -25,8 +24,10 @@ from app.orchestration.resource_service import get_trip_detail
 from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.handshakes import HandshakeEventRead
 from app.schemas.people import DriverRead, UserRead
-from app.schemas.trips import TripCreateRequest, TripDetailResponse, TripStopCreate, TripStopRead
+from app.schemas.trips import ConsignmentRead, TripCreateRequest, TripDetailResponse, TripStopCreate, TripStopRead
 from app.schemas.vehicles import VehicleRead
+
+logger = logging.getLogger(__name__)
 
 
 def _generate_trip_reference() -> str:
@@ -150,13 +151,14 @@ async def create_trip(
         trip_reference=_generate_trip_reference(),
         order_number=payload.order_number,
         operator_organization_id=current_user.organization_id,
-        client_organization_id=payload.client_organization_id,
+        client_organization_id=None,
         driver_id=payload.driver_id,
         horse_id=payload.horse_id,
         template_id=payload.template_id,
         planned_departure_at=payload.planned_departure_at,
         planned_arrival_at=payload.planned_arrival_at,
         status=TripStatus.CREATED,
+        trip_type=payload.trip_type.value,
         idvs_check_status=IdvsStatus.PENDING,
         created_by_user_id=current_user.id,
     )
@@ -175,9 +177,9 @@ async def create_trip(
 
     # 5. Create TripStop rows — the explicit route if given, else synthesise the
     #    back-compat single-leg pair from origin/destination precincts (FP-112 A.3).
-    #    Consignment pickup/delivery-stop linking is not wired here: no code path
-    #    creates Consignment rows during trip creation yet (no PP integration/consignment
-    #    payload exists) — that link will be made when that path is built.
+    #    Consignment rows ARE created below (PP sync loop), but their
+    #    pickup_stop_id/delivery_stop_id linkage to these stops is not wired yet —
+    #    that mapping lands when per-consignment stop assignment is built.
     stop_specs: list[TripStopCreate] = payload.stops or [
         TripStopCreate(precinct_id=payload.origin_precinct_id, sequence=0),
         TripStopCreate(precinct_id=payload.destination_precinct_id, sequence=1),
@@ -206,27 +208,42 @@ async def create_trip(
     for stop in trip_stops:
         await db.refresh(stop)
 
-    # Pull PP waybill data and persist Consignment + Parcel rows when a reference
-    # is supplied. Local import prevents a circular dependency at module load:
-    # trip_service → consignment_service → parcel_perfect would create a load-time cycle.
-    if payload.pp_reference:
-        from app.orchestration.consignment_service import fetch_and_sync_consignment
-        from app.core.exceptions import PPSyncError
-        try:
-            await fetch_and_sync_consignment(
-                db,
-                pp_reference=payload.pp_reference,
-                client_organization_id=payload.client_organization_id,
-                trip_id=trip.id,
-                origin_precinct_id=trip.origin_precinct_id,
-                destination_precinct_id=trip.destination_precinct_id,
-            )
-        except Exception as exc:
-            # PP failures (bad waybill, network error) must not create a trip
-            # with missing consignment data. Re-raise as PPSyncError so the
-            # endpoint can return a 422 with a meaningful message.
-            logger.error("PP sync failed for pp_ref=%s: %s", payload.pp_reference, exc)
-            raise PPSyncError(payload.pp_reference, str(exc)) from exc
+    # Sync every consignment from PP (loaded trips). Fail-closed and atomic: any PP
+    # error rolls back the whole trip — a trip whose cargo plan couldn't be pulled
+    # has no manifest, no linehaul, and no evidence value. Local import avoids a
+    # module-load cycle (trip_service → consignment_service → parcel_perfect).
+    consignment_results: list["ConsignmentSyncResult"] = []
+    if payload.consignments:
+        from app.orchestration.consignment_service import ConsignmentSyncResult, fetch_and_sync_consignment
+
+        for entry in payload.consignments:
+            try:
+                consignment_results.append(
+                    await fetch_and_sync_consignment(
+                        db,
+                        pp_reference=entry.pp_reference,
+                        trip_id=trip.id,
+                        unit_count_expected=entry.unit_count_expected,
+                        origin_precinct_id=trip.origin_precinct_id,
+                        destination_precinct_id=trip.destination_precinct_id,
+                    )
+                )
+            except SQLAlchemyError:
+                # DB faults are not PP faults — re-raise unchanged so the endpoint's
+                # SQLAlchemyError handler keeps its 500 semantics instead of a misleading 422.
+                await db.rollback()
+                raise
+            except Exception as exc:
+                # PP failures (bad waybill, network error) must not create a trip
+                # with missing consignment data. Explicit rollback undoes the Trip/
+                # TripStop/TripTrailer rows already flushed above — get_db() rolls
+                # back on exception in production, but this keeps the guarantee
+                # session-implementation-independent (e.g. under test overrides
+                # that don't replicate that behaviour). Re-raised as PPSyncError so
+                # the endpoint can return a 422 with a meaningful message.
+                logger.error("PP sync failed for pp_ref=%s: %s", entry.pp_reference, exc)
+                await db.rollback()
+                raise PPSyncError(entry.pp_reference, str(exc)) from exc
 
     # 6. Create the H0 HandshakeEvent (Trip Creation handshake).
     h0 = HandshakeEvent(
@@ -253,6 +270,7 @@ async def create_trip(
         destination_precinct_id=trip.destination_precinct_id,
         created_by_user_id=current_user.id,
         created_at=trip.created_at,
+        trip_type=payload.trip_type.value,
     )
     canonical = compute_trip_canonical_payload(
         trip_id=trip_id,
@@ -264,6 +282,7 @@ async def create_trip(
         destination_precinct_id=trip.destination_precinct_id,
         created_by_user_id=current_user.id,
         created_at=trip.created_at,
+        trip_type=payload.trip_type.value,
     )
     trip.journey_lock_hash = lock_hash
 
@@ -288,6 +307,7 @@ async def create_trip(
         trip_reference=trip.trip_reference,
         order_number=trip.order_number,
         status=trip.status,
+        trip_type=TripType(trip.trip_type),
         journey_lock_hash=trip.journey_lock_hash,
         idvs_check_status=trip.idvs_check_status,
         driver=DriverRead.model_validate(driver),
@@ -296,6 +316,7 @@ async def create_trip(
         origin_precinct_id=trip.origin_precinct_id,
         destination_precinct_id=trip.destination_precinct_id,
         stops=[TripStopRead.model_validate(s) for s in trip_stops],
+        consignments=[ConsignmentRead.model_validate(r.consignment) for r in consignment_results],
         pulsit_trip_reference_id=trip.pulsit_trip_reference_id,
         planned_departure_at=trip.planned_departure_at,
         actual_departure_at=trip.actual_departure_at,
@@ -305,6 +326,7 @@ async def create_trip(
         handshakes=[HandshakeEventRead.model_validate(h0)],
         exceptions=[],
         blockchain_receipts=[BlockchainReceiptRead.model_validate(receipt)],
+        warnings=[r.warning for r in consignment_results if r.warning],
         created_at=trip.created_at,
         updated_at=trip.updated_at,
     )

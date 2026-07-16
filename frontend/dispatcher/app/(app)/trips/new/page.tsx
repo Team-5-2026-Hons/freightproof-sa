@@ -8,27 +8,33 @@ import { Button }        from '@/components/ui/Button'
 import { StepRail }      from '@/components/ui/StepRail'
 import { SearchSelect }  from '@/components/ui/SearchSelect'
 import { useToast }      from '@/lib/hooks/useToast'
-import { useAuth }       from '@/lib/hooks/useAuth'
 import { ROUTES }        from '@/lib/constants/routes'
 import { useDrivers }    from '@/lib/hooks/useDrivers'
 import { useVehicles }   from '@/lib/hooks/useVehicles'
 import { usePrecincts }  from '@/lib/hooks/usePrecincts'
+import { usePpCapabilities } from '@/lib/hooks/usePpCapabilities'
 import { COPY }          from '@shared/lib/constants/copy'
 import { cn }            from '@shared/lib/utils/cn'
 import { api, ApiError } from '@/lib/api/client'
-import type { Trip }     from '@shared/lib/types/trip'
+import type { Trip, TripCreatePayload } from '@shared/lib/types/trip'
 import type { Vehicle }  from '@shared/lib/types/vehicle'
+import type { PPWaybillSummary } from '@shared/lib/types/pp'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const STEP_NAMES = ['Order & Cargo', 'Crew & Vehicle', 'Route & Schedule', 'Review']
+const STEP_NAMES = ['Order & Waybills', 'Crew & Vehicle', 'Route & Schedule', 'Review']
 
 
-// Underline input style — Material 3 filled field look
-const inp =
-  'w-full bg-surf-low border-0 border-b-2 border-outline-v rounded-t-sm ' +
+// Underline input style — Material 3 filled field look. Split into base + border
+// variants because cn() is a plain join (no tailwind-merge): stacking border-err on
+// top of border-outline-v would leave the winner to stylesheet order.
+const inpBase =
+  'w-full bg-surf-low border-0 border-b-2 rounded-t-sm ' +
   'px-3 py-[10px] text-[14px] text-on-surf font-[Inter,sans-serif] ' +
-  'outline-none focus:bg-sec-c focus:border-sec transition-all duration-150'
+  'outline-none focus:bg-sec-c transition-all duration-150'
+const inp    = `${inpBase} border-outline-v focus:border-sec`
+// Invalid-field variant — native-input counterpart of SearchSelect's error prop.
+const inpErr = `${inpBase} border-err focus:border-err`
 
 // ── Local helpers ─────────────────────────────────────────────────────────────
 
@@ -107,6 +113,25 @@ function fmtDateTime(iso: string): string {
 
 // ── Step 2 helpers ────────────────────────────────────────────────────────────
 
+// Row state for one PP waybill in the Step 1 form. unitCount is kept as the raw input
+// string (not parsed) so a dispatcher can clear/retype it without fighting NaN coercion;
+// it is parsed once, on submit / validation. `id` is a stable client-side identity so
+// async lookup results land on the row they were requested for — matching by array
+// index would misdirect an in-flight response onto whichever row shifted into that
+// slot after a removal. Never sent to the backend.
+interface WaybillRow {
+  id: string
+  reference: string
+  unitCount: string
+  summary: PPWaybillSummary | null
+  error: string | null
+  loading: boolean
+}
+
+function emptyWaybillRow(): WaybillRow {
+  return { id: crypto.randomUUID(), reference: '', unitCount: '', summary: null, error: null, loading: false }
+}
+
 function MiniField({ label, value, mono = false }: { label: string; value: string | null | undefined; mono?: boolean }) {
   return (
     <div>
@@ -148,22 +173,23 @@ function trailerCombo(selected: Vehicle[]): { valid: boolean; message: string } 
 export default function TripNewPage() {
   const router = useRouter()
   const { notify } = useToast()
-  const { user } = useAuth()
 
   const { drivers } = useDrivers()
   const { horses, trailers } = useVehicles()
   const { precincts } = usePrecincts()
+  const caps = usePpCapabilities()
 
   const [step, setStep]               = useState(1)  // 1–4
   const [loading, setLoading]         = useState(false)
   const [showErrors, setShowErrors]   = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
 
-  // Step 1 — Order & Cargo
+  // Step 1 — Order & Waybills
   const [orderNumber, setOrderNumber] = useState('')
-  const [commodity,   setCommodity]   = useState('')
-  const [weightKg,    setWeightKg]    = useState('')
-  const [unitCount,   setUnitCount]   = useState('')
+  const [isEmptyLeg,   setIsEmptyLeg]   = useState(false)
+  const [waybills,     setWaybills]     = useState<WaybillRow[]>([emptyWaybillRow()])
+  const [manifestNo,   setManifestNo]   = useState('')
+  const [manifestBusy, setManifestBusy] = useState(false)
 
   // Step 2 — Crew & Vehicle
   const [driverId,      setDriverId]      = useState('')
@@ -176,9 +202,6 @@ export default function TripNewPage() {
   const [destId,           setDestId]           = useState('')
   const [plannedDeparture, setPlannedDeparture] = useState('')
   const [expectedArrival,  setExpectedArrival]  = useState('')
-  const [showReceiver,     setShowReceiver]     = useState(false)
-  const [receiverName,     setReceiverName]     = useState('')
-  const [receiverContact,  setReceiverContact]  = useState('')
 
   // Step 2 derived values
   const selectedDriver        = drivers.find(d => d.id === driverId) ?? null
@@ -198,10 +221,19 @@ export default function TripNewPage() {
   const arrivalNotAfterDepart = !!plannedDeparture && !!expectedArrival
     && new Date(expectedArrival) <= new Date(plannedDeparture)
 
+  // Waybills step is skipped entirely for an empty leg; otherwise every row needs a
+  // reference and a unit count ≥ 1, and references must be unique within the trip.
+  const waybillsValid = isEmptyLeg || (
+    waybills.length > 0 &&
+    waybills.every(r => r.reference.trim() && parseInt(r.unitCount, 10) >= 1) &&
+    new Set(waybills.map(r => r.reference.trim())).size === waybills.length
+  )
+  const totalUnits = waybills.reduce((sum, r) => sum + (parseInt(r.unitCount, 10) || 0), 0)
+
   // stepValid[N] → whether step N passes validation (1-indexed, index 0 unused)
   const stepValid = [
     true,
-    !!(orderNumber && commodity && weightKg && unitCount),
+    !!(orderNumber && waybillsValid),
     !!(driverId && horseId && comboResult.valid),
     !!(originId && destId && !sameLocation && plannedDeparture && expectedArrival && !arrivalNotAfterDepart),
     true,
@@ -209,6 +241,46 @@ export default function TripNewPage() {
 
   const toggleTrailer = (id: string) =>
     setTrailerIds(prev => prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id])
+
+  // Looks up a single waybill reference against Parcel Perfect on blur. A lookup failure
+  // is non-blocking — the reference is re-verified server-side on submit — so the
+  // dispatcher can still proceed with just the reference and a manually entered unit count.
+  // Matches by row id, not array index: if the row is removed while the request is in
+  // flight, the map is a no-op instead of contaminating whichever row shifted into its slot.
+  async function lookupRow(row: WaybillRow) {
+    const ref = row.reference.trim()
+    if (!ref) return
+    setWaybills(rows => rows.map(r => r.id === row.id ? { ...r, loading: true, error: null } : r))
+    try {
+      const summary = await api.get<PPWaybillSummary>(`/api/v1/pp/waybills/${encodeURIComponent(ref)}`)
+      setWaybills(rows => rows.map(r => r.id === row.id ? { ...r, summary, loading: false } : r))
+    } catch (err) {
+      const msg = err instanceof ApiError && err.status === 404
+        ? 'Waybill not found in Parcel Perfect'
+        : 'Lookup failed — you can still submit; the reference is verified on create'
+      setWaybills(rows => rows.map(r => r.id === row.id ? { ...r, summary: null, error: msg, loading: false } : r))
+    }
+  }
+
+  // Bulk-fetch every waybill on a PP manifest. Only rendered when the backend reports
+  // manifest_lookup support (mock PP client today — see usePpCapabilities).
+  async function fetchManifest() {
+    const n = parseInt(manifestNo, 10)
+    if (isNaN(n)) return
+    setManifestBusy(true)
+    try {
+      const summaries = await api.get<PPWaybillSummary[]>(`/api/v1/pp/manifests/${n}`)
+      if (summaries.length > 0) {
+        setWaybills(summaries.map(s => ({
+          id: crypto.randomUUID(), reference: s.waybill, unitCount: '', summary: s, error: null, loading: false,
+        })))
+      }
+    } catch {
+      notify({ kind: 'error', title: 'Manifest not found' })
+    } finally {
+      setManifestBusy(false)
+    }
+  }
 
   const handleNext = () => {
     if (!stepValid[step]) { setShowErrors(true); return }
@@ -226,19 +298,23 @@ export default function TripNewPage() {
     try {
       await api.post<Trip>('/api/v1/trips', {
         order_number: orderNumber,
-        client_organization_id: user?.organization_id,
+        trip_type: isEmptyLeg ? 'empty_leg' : 'loaded',
         driver_id: driverId,
         horse_id: horseId,
         trailer_ids: trailerIds,
         origin_precinct_id: originId,
         destination_precinct_id: destId,
+        consignments: isEmptyLeg ? [] : waybills.map(r => ({
+          pp_reference: r.reference.trim(),
+          unit_count_expected: parseInt(r.unitCount, 10),
+        })),
         planned_departure_at: plannedDeparture
           ? new Date(plannedDeparture).toISOString()
           : null,
         planned_arrival_at: expectedArrival
           ? new Date(expectedArrival).toISOString()
           : null,
-      })
+      } satisfies TripCreatePayload)
       notify({ kind: 'success', title: COPY.toast.tripCreated })
       router.push(ROUTES.home)
     } catch (err) {
@@ -246,6 +322,10 @@ export default function TripNewPage() {
         notify({ kind: 'error', title: 'Order number already active for this operator' })
       } else if (err instanceof ApiError && err.status === 404) {
         notify({ kind: 'error', title: 'Driver or vehicle not found — check fleet data' })
+      } else if (err instanceof ApiError && err.status === 422) {
+        notify({ kind: 'error', title: 'Parcel Perfect rejected a waybill — check the references' })
+      } else if (err instanceof ApiError && (err.status === 502 || err.status === 504)) {
+        notify({ kind: 'error', title: 'Blockchain anchoring unavailable — trip was not created. Try again.' })
       } else {
         notify({ kind: 'error', title: 'Failed to create trip. Please try again.' })
       }
@@ -288,11 +368,11 @@ export default function TripNewPage() {
           step === 4 ? 'max-w-4xl' : 'max-w-2xl',
         )}>
 
-          {/* ── Step 1: Order & Cargo ──────────────────────────────────────── */}
+          {/* ── Step 1: Order & Waybills ───────────────────────────────────── */}
           {step === 1 && (
             <>
               <FormCard>
-                <CardTitle icon="file">Order Details</CardTitle>
+                <CardTitle icon="file">Order</CardTitle>
                 <Lbl>Order Number *</Lbl>
                 <input
                   value={orderNumber}
@@ -300,44 +380,120 @@ export default function TripNewPage() {
                   placeholder="e.g. FDX-JHB-DBN-8821"
                   className={inp}
                 />
+                <label className="flex items-center gap-2 mt-4 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isEmptyLeg}
+                    onChange={e => setIsEmptyLeg(e.target.checked)}
+                    className="w-4 h-4 accent-sec"
+                  />
+                  <span className="text-[13px] font-[600] text-on-surf">
+                    Empty leg (repositioning — no cargo)
+                  </span>
+                </label>
               </FormCard>
 
-              <FormCard>
-                <CardTitle icon="box">Cargo Details</CardTitle>
-                <div className="mb-[14px]">
-                  <Lbl>Commodity description *</Lbl>
-                  <input
-                    value={commodity}
-                    onChange={e => setCommodity(e.target.value)}
-                    placeholder="e.g. Steel coils"
-                    className={inp}
-                  />
-                </div>
-                <div className="flex gap-3 mb-[14px]">
-                  <div className="flex-1">
-                    <Lbl>Total weight (kg) *</Lbl>
-                    <input
-                      type="number"
-                      min="0"
-                      value={weightKg}
-                      onChange={e => setWeightKg(e.target.value)}
-                      placeholder="0"
-                      className={inp}
-                    />
-                  </div>
-                  <div className="flex-1">
-                    <Lbl>Unit count *</Lbl>
-                    <input
-                      type="number"
-                      min="1"
-                      value={unitCount}
-                      onChange={e => setUnitCount(e.target.value)}
-                      placeholder="0"
-                      className={inp}
-                    />
-                  </div>
-                </div>
-              </FormCard>
+              {!isEmptyLeg && (
+                <FormCard>
+                  <CardTitle icon="box">Waybills (Parcel Perfect)</CardTitle>
+
+                  {caps.manifest_lookup && (
+                    <div className="flex gap-2 items-end mb-4 pb-4 border-b border-outline-v/20">
+                      <div className="flex-1">
+                        <Lbl>Fetch by manifest number</Lbl>
+                        <input
+                          value={manifestNo}
+                          onChange={e => setManifestNo(e.target.value)}
+                          placeholder="e.g. 69"
+                          className={inp}
+                        />
+                      </div>
+                      <Button variant="secondary" onClick={fetchManifest} loading={manifestBusy}>
+                        Fetch waybills
+                      </Button>
+                    </div>
+                  )}
+
+                  {waybills.map(row => {
+                    // Display-only per-row invalid flags, gated by showErrors like the
+                    // Step 2/3 field errors. Mirrors waybillsValid's rules exactly.
+                    const ref          = row.reference.trim()
+                    const refBlank     = showErrors && !ref
+                    const refDup       = showErrors && !!ref &&
+                      waybills.filter(r => r.reference.trim() === ref).length > 1
+                    const unitsInvalid = showErrors && !(parseInt(row.unitCount, 10) >= 1)
+                    const rowMsg = [
+                      refBlank ? 'Enter a waybill reference' : refDup ? 'Duplicate reference' : null,
+                      unitsInvalid ? 'Units must be at least 1' : null,
+                    ].filter(Boolean).join(' · ')
+                    return (
+                    <div key={row.id} className="mb-4">
+                      <div className="flex gap-3">
+                        <div className="flex-[2]">
+                          <Lbl>PP waybill reference *</Lbl>
+                          <input
+                            value={row.reference}
+                            onChange={e => setWaybills(rows => rows.map(r =>
+                              r.id === row.id ? { ...r, reference: e.target.value, summary: null, error: null } : r,
+                            ))}
+                            onBlur={() => lookupRow(row)}
+                            placeholder="e.g. WAY001"
+                            className={refBlank || refDup ? inpErr : inp}
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <Lbl>Expected units (pallets) *</Lbl>
+                          <input
+                            type="number"
+                            min="1"
+                            value={row.unitCount}
+                            onChange={e => setWaybills(rows => rows.map(r =>
+                              r.id === row.id ? { ...r, unitCount: e.target.value } : r,
+                            ))}
+                            placeholder="0"
+                            className={unitsInvalid ? inpErr : inp}
+                          />
+                        </div>
+                        {waybills.length > 1 && (
+                          <button
+                            type="button"
+                            className="text-err text-[12px] font-[600] self-end pb-2"
+                            onClick={() => setWaybills(rows => rows.filter(r => r.id !== row.id))}
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                      {rowMsg && (
+                        <p className="text-[11px] text-err mt-1 font-[500]">{rowMsg}</p>
+                      )}
+                      {row.loading && (
+                        <p className="text-[11px] text-on-surf-v mt-1">Checking Parcel Perfect…</p>
+                      )}
+                      {row.error && (
+                        <p className="text-[11px] text-err mt-1 font-[500]">{row.error}</p>
+                      )}
+                      {row.summary && (
+                        <div className="rounded-lg bg-surf-low p-[10px_12px] border border-outline-v/20 mt-2 grid grid-cols-4 gap-x-4">
+                          <MiniField label="Customer" value={row.summary.customer_name} />
+                          <MiniField label="Parcels"  value={String(row.summary.parcel_count)} mono />
+                          <MiniField label="Weight"   value={row.summary.weight_kg != null ? `${row.summary.weight_kg} kg` : null} mono />
+                          <MiniField label="Dest"     value={row.summary.dest_town} />
+                        </div>
+                      )}
+                    </div>
+                    )
+                  })}
+
+                  <button
+                    type="button"
+                    className="text-[13px] font-[600] text-sec hover:opacity-75 transition-opacity"
+                    onClick={() => setWaybills(rows => [...rows, emptyWaybillRow()])}
+                  >
+                    + Add waybill
+                  </button>
+                </FormCard>
+              )}
             </>
           )}
 
@@ -581,39 +737,6 @@ export default function TripNewPage() {
                   )}
                 </div>
               </div>
-
-              <div className="border-t border-outline-v/20 pt-[14px]">
-                <button
-                  type="button"
-                  onClick={() => setShowReceiver(r => !r)}
-                  className="flex items-center gap-1.5 text-[13px] font-[600] text-sec hover:opacity-75 transition-opacity mb-3"
-                >
-                  <Ic n={showReceiver ? 'chev' : 'plus'} s={14} className={cn('text-sec', showReceiver ? 'rotate-90' : '')} />
-                  {showReceiver ? 'Remove receiver contact' : 'Add receiver contact'}
-                </button>
-                {showReceiver && (
-                  <div className="flex gap-3">
-                    <div className="flex-1">
-                      <Lbl>Receiver name</Lbl>
-                      <input
-                        value={receiverName}
-                        onChange={e => setReceiverName(e.target.value)}
-                        placeholder="e.g. Warehouse Manager"
-                        className={inp}
-                      />
-                    </div>
-                    <div className="flex-1">
-                      <Lbl>Phone or email</Lbl>
-                      <input
-                        value={receiverContact}
-                        onChange={e => setReceiverContact(e.target.value)}
-                        placeholder="e.g. 011 555 0123"
-                        className={inp}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
             </FormCard>
           )}
 
@@ -622,13 +745,33 @@ export default function TripNewPage() {
             <div className="flex gap-5 items-start">
               {/* Left: review cards */}
               <div className="flex-1 min-w-0 flex flex-col gap-4">
-                <ReviewSection title="Order & Cargo" onEdit={() => setStep(1)}>
+                <ReviewSection title="Order & Waybills" onEdit={() => setStep(1)}>
                   <ReviewRows rows={[
-                    { label: 'Order',     value: orderNumber,          mono: true },
-                    { label: 'Commodity', value: commodity },
-                    { label: 'Weight',    value: `${weightKg} kg`,     mono: true },
-                    { label: 'Units',     value: unitCount,            mono: true },
+                    { label: 'Order', value: orderNumber || '—', mono: true },
                   ]} />
+                  {isEmptyLeg ? (
+                    <div className="flex items-start gap-3 py-2">
+                      <span className="text-[11px] text-on-surf-v w-24 shrink-0 pt-px">Cargo</span>
+                      <span className="text-[13px] font-[600] text-on-surf">Empty leg</span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col pt-1">
+                      {waybills.map(row => (
+                        <div key={row.id} className="py-2 border-b border-outline-v/10 last:border-0">
+                          <div className="text-[13px] font-[600] text-on-surf">
+                            {row.summary
+                              ? `${row.reference} · ${row.summary.customer_name} · ${row.summary.parcel_count} parcels`
+                                + (row.summary.weight_kg != null ? ` · ${row.summary.weight_kg} kg` : '')
+                                + ` → ${row.summary.dest_town} · ${row.unitCount || '0'} units`
+                              : `${row.reference || '—'} · ${row.unitCount || '0'} units`}
+                          </div>
+                          {row.summary && (
+                            <div className="text-[10px] text-on-surf-v mt-[2px]">from Parcel Perfect</div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </ReviewSection>
 
                 <ReviewSection title="Crew & Vehicle" onEdit={() => setStep(2)}>
@@ -647,15 +790,6 @@ export default function TripNewPage() {
                     { label: 'Est. arrival', value: fmtDateTime(expectedArrival),  mono: true },
                   ]} />
                 </ReviewSection>
-
-                {showReceiver && (receiverName || receiverContact) && (
-                  <ReviewSection title="Receiver" onEdit={() => setStep(3)}>
-                    <ReviewRows rows={[
-                      { label: 'Name',    value: receiverName    || '—' },
-                      { label: 'Contact', value: receiverContact || '—' },
-                    ]} />
-                  </ReviewSection>
-                )}
               </div>
 
               {/* Right: dark trip summary + CTA */}
@@ -676,8 +810,9 @@ export default function TripNewPage() {
                   ['Route',     originName !== '—' && destName !== '—'
                                   ? `${originName} → ${destName}` : '—', false],
                   ['Departure', fmtDateTime(plannedDeparture), true],
-                  ['Cargo',     weightKg && unitCount
-                                  ? `${unitCount} units · ${weightKg} kg` : '—', false],
+                  ['Cargo',     isEmptyLeg
+                                  ? 'Empty leg'
+                                  : `${waybills.length} waybill(s) · ${totalUnits} units`, false],
                 ] as [string, string, boolean][]).map(([label, value, mono]) => (
                   <div
                     key={label}

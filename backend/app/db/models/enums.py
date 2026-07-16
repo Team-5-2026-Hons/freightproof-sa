@@ -30,6 +30,12 @@ class TripStatus(str, enum.Enum):
     EXCEPTION_HOLD   = "exception_hold"
 
 
+class TripType(str, enum.Enum):
+    """Loaded = normal cargo run; empty_leg = repositioning, no consignments."""
+    LOADED    = "loaded"
+    EMPTY_LEG = "empty_leg"
+
+
 class HandshakeType(str, enum.Enum):
     TRIP_CREATION   = "trip_creation"
     ORIGIN_GATE_IN  = "origin_gate_in"

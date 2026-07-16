@@ -10,8 +10,6 @@ import pytest
 from datetime import datetime, timezone
 from pydantic import ValidationError
 
-from app.schemas.trips import TripCreateRequest
-
 
 # ---------------------------------------------------------------------------
 # DriverCreate — id_number must be exactly 13 digits
@@ -187,40 +185,16 @@ def test_merkle_leaf_source_type_invalid():
 
 
 # ---------------------------------------------------------------------------
-# TripCreateRequest — trailer_ids: min 1 trailer, no duplicates (CQ-4, CQ-5)
-# ---------------------------------------------------------------------------
-
-_ORIGIN = _uuid.uuid4()
-_DEST = _uuid.uuid4()
-_BASE = {
-    "order_number": "ORD-001",
-    "client_organization_id": str(_uuid.uuid4()),
-    "driver_id": str(_uuid.uuid4()),
-    "horse_id": str(_uuid.uuid4()),
-    "origin_precinct_id": str(_ORIGIN),
-    "destination_precinct_id": str(_DEST),
-}
-
-
-def test_trip_create_request_empty_trailer_ids_rejected() -> None:
-    data = {**_BASE, "trailer_ids": []}
-    with pytest.raises(ValidationError):
-        TripCreateRequest.model_validate(data)
-
-
-def test_trip_create_request_single_trailer_accepted() -> None:
-    data = {**_BASE, "trailer_ids": [str(_uuid.uuid4())]}
-    req = TripCreateRequest.model_validate(data)
-    assert len(req.trailer_ids) == 1
-
-
-def test_trip_create_request_duplicate_trailer_ids_rejected() -> None:
-    shared = str(_uuid.uuid4())
-    data = {**_BASE, "trailer_ids": [shared, shared]}
-    with pytest.raises(ValidationError):
-        TripCreateRequest.model_validate(data)
-
-
+# TripCreateRequest — trailer_ids/consignment validators moved to
+# tests/unit/test_trip_schemas.py (trip-creation redesign, Task 3):
+#   - empty-trailer-ids-rejected: deleted — trailer_ids no longer has min_length=1
+#     (see test_zero_trailers_valid, which asserts the opposite).
+#   - single-trailer-accepted: deleted — redundant with the valid-payload cases
+#     already covered in test_trip_schemas.py.
+#   - duplicate-trailer-ids-rejected: moved to
+#     test_trip_schemas.py::test_duplicate_trailer_ids_rejected (adjusted to
+#     include a consignments list, now required because trip_type defaults to
+#     TripType.LOADED).
 # ---------------------------------------------------------------------------
 # Vehicle — VIN/length rules live ONLY on the input bodies, never the read schema.
 # Regression guard: a read schema constrained like an input body makes GET /vehicles

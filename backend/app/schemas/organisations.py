@@ -5,7 +5,7 @@ from decimal import Decimal
 from uuid import UUID
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.db.models.enums import OrganizationType
 
@@ -16,6 +16,9 @@ class OrganizationBase(BaseModel):
     name: str
     org_type: OrganizationType
     contact_email: Optional[str] = None
+    # PP client account number — resolves inbound consignments' accnum to this org.
+    # max_length mirrors the String(6) DB column (PP account numbers are 6 chars).
+    pp_account_number: Optional[str] = Field(None, max_length=6)
 
 
 class OrganizationCreate(OrganizationBase):

@@ -13,6 +13,7 @@ PP JSON call shape (all GET):
 token_id is omitted only for Auth.getSalt and Auth.getSecureToken.
 """
 
+import copy
 import hashlib
 import json
 import logging
@@ -39,6 +40,24 @@ logger = logging.getLogger(__name__)
 # the current traffic level; add asyncio.Lock if this becomes a bottleneck.
 # ---------------------------------------------------------------------------
 _cached_token: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Errors and capability flags
+# ---------------------------------------------------------------------------
+
+
+class PPWaybillNotFoundError(Exception):
+    """Raised when PP has no waybill for the given reference."""
+
+    def __init__(self, waybill_number: str) -> None:
+        self.waybill_number = waybill_number
+        super().__init__(f"Waybill {waybill_number!r} not found in Parcel Perfect")
+
+
+class PPUnsupportedError(Exception):
+    """Raised when a capability doesn't exist on the real PP v28 API."""
+
 
 # ---------------------------------------------------------------------------
 # HTTP timeout for all PP calls.
@@ -114,6 +133,11 @@ class PPWaybillDetails:
     failtype: Optional[str]
     # Client reference on the waybill
     client_reference: str
+    # Customer account holding the booking — resolves the client Organization.
+    accnum: str = ""
+    custname: str = ""
+    # PP "last manifest number"; 0/absent = not manifested → normalised to None.
+    manifest: Optional[int] = None
 
 
 @dataclass
@@ -160,6 +184,9 @@ MOCK_WAYBILL_RESPONSE = PPWaybillResponse(
         poddate="",
         failtype=None,
         client_reference="MOCKREF001",
+        accnum="MOCK01",
+        custname="CGY Logistics",
+        manifest=69,
     ),
     contents=[
         PPContents(item=1, description="General Cargo", actmass=10.0, pieces=2),
@@ -172,21 +199,128 @@ MOCK_WAYBILL_RESPONSE = PPWaybillResponse(
 )
 
 
+def _mock_waybill(
+    *,
+    waybill: str,
+    accnum: str,
+    custname: str,
+    manifest: Optional[int],
+    parcel_count: int,
+    contents: list[PPContents],
+    dest_town: str,
+    dest_person: str,
+    weight_kg: float,
+    declared_value: Optional[float] = None,
+    poddate: str = "",
+    failtype: Optional[str] = None,
+) -> PPWaybillResponse:
+    """Fixture factory — field shapes strictly follow the v28 getSingleWaybill spec."""
+    return PPWaybillResponse(
+        details=PPWaybillDetails(
+            waybill=waybill,
+            waydate="01.07.2026",
+            pieces=parcel_count,
+            duedate="03.07.2026",
+            declared_value=declared_value,
+            dest_address="1 Delivery Road",
+            dest_town=dest_town,
+            dest_person=dest_person,
+            dest_contact="0210000001",
+            orig_person="CGY Warehouse",
+            orig_town="JOHANNESBURG",
+            orig_address="1 Depot Street, Linbro Park",
+            service="ONX",
+            actual_weight_kg=weight_kg,
+            freight_total=None,
+            poddate=poddate,
+            failtype=failtype,
+            client_reference=f"REF-{waybill}",
+            accnum=accnum,
+            custname=custname,
+            manifest=manifest,
+        ),
+        contents=contents,
+        tracks=[
+            PPTrack(trackno=f"{waybill}{n:04d}", parcelno=n, item=1)
+            for n in range(1, parcel_count + 1)
+        ],
+        wayrefs=[],
+    )
+
+
+# accnum "MOCK01" maps to the seeded demo principal org; "UNMAP9" deliberately
+# has no Organization row — it exercises the unmapped-client warning path.
+MOCK_WAYBILLS: dict[str, PPWaybillResponse] = {
+    w.details.waybill: w
+    for w in [
+        _mock_waybill(waybill="WAY001", accnum="MOCK01", custname="CGY Logistics",
+                      manifest=69, parcel_count=5, dest_town="DURBAN",
+                      dest_person="DC Receiving", weight_kg=620.0, declared_value=15000.0,
+                      contents=[PPContents(item=1, description="Steel brackets", actmass=620.0, pieces=5)]),
+        _mock_waybill(waybill="WAY002", accnum="MOCK01", custname="CGY Logistics",
+                      manifest=69, parcel_count=14, dest_town="DURBAN",
+                      dest_person="DC Receiving", weight_kg=210.5,
+                      contents=[PPContents(item=1, description="Electronics", actmass=180.5, pieces=10),
+                                PPContents(item=2, description="Cables", actmass=30.0, pieces=4)]),
+        _mock_waybill(waybill="WAY003", accnum="MOCK01", custname="CGY Logistics",
+                      manifest=69, parcel_count=1, dest_town="PINETOWN",
+                      dest_person="Store 12", weight_kg=8.0,
+                      contents=[PPContents(item=1, description="Documents", actmass=8.0, pieces=1)]),
+        _mock_waybill(waybill="WAY004", accnum="UNMAP9", custname="Unmapped Client (Pty) Ltd",
+                      manifest=70, parcel_count=3, dest_town="CAPE TOWN",
+                      dest_person="Goods Inwards", weight_kg=95.0,
+                      contents=[PPContents(item=1, description="Textiles", actmass=95.0, pieces=3)]),
+        _mock_waybill(waybill="WAY005", accnum="MOCK01", custname="CGY Logistics",
+                      manifest=70, parcel_count=2, dest_town="CAPE TOWN",
+                      dest_person="Goods Inwards", weight_kg=1450.0, declared_value=80000.0,
+                      contents=[PPContents(item=1, description="Machine parts", actmass=1450.0, pieces=2)]),
+        _mock_waybill(waybill="WAYPOD1", accnum="MOCK01", custname="CGY Logistics",
+                      manifest=None, parcel_count=2, dest_town="DURBAN",
+                      dest_person="DC Receiving", weight_kg=44.0, poddate="10.07.2026",
+                      contents=[PPContents(item=1, description="Spares", actmass=44.0, pieces=2)]),
+        _mock_waybill(waybill="WAYFAIL1", accnum="MOCK01", custname="CGY Logistics",
+                      manifest=None, parcel_count=1, dest_town="DURBAN",
+                      dest_person="DC Receiving", weight_kg=12.0, failtype="Receiver not home",
+                      contents=[PPContents(item=1, description="Samples", actmass=12.0, pieces=1)]),
+    ]
+}
+# Back-compat: existing tests reference MOCKWAY001 / MOCK_WAYBILL_RESPONSE.
+MOCK_WAYBILLS[MOCK_WAYBILL_RESPONSE.details.waybill] = MOCK_WAYBILL_RESPONSE
+
+
 # ---------------------------------------------------------------------------
 # Mock client
 # ---------------------------------------------------------------------------
 
 
 class MockParcelPerfectClient:
-    """Drop-in stub that returns MOCK_WAYBILL_RESPONSE without any network call.
+    """Fixture-backed stub — no network. PP_USE_MOCK=True selects it via get_pp_client().
 
-    Used when PP_USE_MOCK=True so developers and CI can work without PP credentials.
+    Unknown references raise PPWaybillNotFoundError, matching the real client, so
+    the fail-closed 422 path behaves identically in dev/CI and against live PP.
     """
 
+    supports_manifest_lookup: bool = True
+
     async def get_single_waybill(self, waybill_number: str) -> PPWaybillResponse:
-        """Return the module-level mock fixture unconditionally."""
+        """Look up the waybill in the fixture library; raise if unregistered."""
         logger.info("MockParcelPerfectClient.get_single_waybill waybill=%s", waybill_number)
-        return MOCK_WAYBILL_RESPONSE
+        try:
+            # Deep copy: callers may mutate results; module-level fixtures must stay pristine.
+            return copy.deepcopy(MOCK_WAYBILLS[waybill_number])
+        except KeyError as exc:
+            raise PPWaybillNotFoundError(waybill_number) from exc
+
+    async def get_waybills_by_manifest(self, manifest_number: int) -> list[PPWaybillResponse]:
+        """ASPIRATIONAL — PP v28 has no such endpoint (ask #1, July visit).
+        Mock-only so the wizard can demo manifest-keyed trip creation."""
+        # Deep copy: callers may mutate results; module-level fixtures must stay pristine.
+        return copy.deepcopy(
+            sorted(
+                (w for w in MOCK_WAYBILLS.values() if w.details.manifest == manifest_number),
+                key=lambda w: w.details.waybill,
+            )
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -200,6 +334,13 @@ class ParcelPerfectClient:
     Auth is performed lazily on the first call and the token is cached
     at module level for subsequent calls within the same process.
     """
+
+    supports_manifest_lookup: bool = False
+
+    async def get_waybills_by_manifest(self, manifest_number: int) -> list[PPWaybillResponse]:
+        raise PPUnsupportedError(
+            "PP v28 exposes no manifest-contents endpoint — requested from PP (ask #1, July visit)"
+        )
 
     async def _make_call(
         self,
@@ -340,6 +481,11 @@ class ParcelPerfectClient:
             failtype=failtype,
             # Client reference (first wayref, if present — also stored in wayrefs list)
             client_reference=details_raw.get("reference", ""),
+            # Customer account / name — resolves the client Organization downstream.
+            accnum=details_raw.get("accnum", ""),
+            custname=details_raw.get("custname", ""),
+            # 0 or absent means "not yet manifested" — normalise to None.
+            manifest=int(m) if (m := details_raw.get("manifest")) and int(m) > 0 else None,
         )
 
         contents = [
@@ -408,7 +554,11 @@ class ParcelPerfectClient:
                 raise
 
         if not results:
-            raise ValueError(f"PP returned empty results for waybill {waybill_number}")
+            # Empty results with errorcode 0 is PP's "no matching waybill" signal —
+            # distinguish this from genuine API/auth errors (raised above as ValueError)
+            # so callers can fail closed on a real not-found without conflating it
+            # with transport/auth failures.
+            raise PPWaybillNotFoundError(waybill_number)
 
         return self._parse_waybill_response(results[0])
 

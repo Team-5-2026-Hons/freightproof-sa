@@ -98,12 +98,12 @@ async def seed_data(db_session: AsyncSession):
 def _single_leg_payload(seed: dict, order_number: str = "ORD-SINGLE-001") -> dict:
     return {
         "order_number": order_number,
-        "client_organization_id": str(seed["client_org_id"]),
         "driver_id": str(seed["driver_id"]),
         "horse_id": str(seed["horse_id"]),
         "trailer_ids": [str(seed["trailer_id"])],
         "origin_precinct_id": str(seed["origin_id"]),
         "destination_precinct_id": str(seed["destination_id"]),
+        "consignments": [{"pp_reference": "MOCKWAY001", "unit_count_expected": 2}],
     }
 
 
@@ -118,6 +118,7 @@ def _multi_stop_payload(seed: dict, order_number: str = "ORD-MULTI-001") -> dict
             {"precinct_id": str(seed["midpoint_id"]), "sequence": 1},
             {"precinct_id": str(seed["destination_id"]), "sequence": 2},
         ],
+        "consignments": [{"pp_reference": "MOCKWAY001", "unit_count_expected": 2}],
     }
 
 

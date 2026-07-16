@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.orchestration.consignment_service import ConsignmentSyncResult
 from app.tasks.parcel_perfect import _sync_all_active
 
 
@@ -111,16 +112,17 @@ async def test_sync_all_active_calls_fetch_for_each_consignment() -> None:
         patch(
             "app.tasks.parcel_perfect.fetch_and_sync_consignment",
             new_callable=AsyncMock,
-            return_value=updated,
+            return_value=ConsignmentSyncResult(consignment=updated, warning=None),
         ) as mock_fetch,
     ):
         result = await _sync_all_active()
 
     # fetch_and_sync_consignment must be called exactly once for the one consignment.
+    # client_organization_id is no longer caller-supplied — it is derived from
+    # the PP waybill's accnum inside fetch_and_sync_consignment.
     mock_fetch.assert_awaited_once_with(
         db=db,
         pp_reference=consignment.parcel_perfect_reference,
-        client_organization_id=consignment.client_organization_id,
         trip_id=consignment.trip_id,
     )
 
@@ -197,7 +199,7 @@ async def test_sync_all_active_detects_new_pod_after_sync() -> None:
         patch(
             "app.tasks.parcel_perfect.fetch_and_sync_consignment",
             new_callable=AsyncMock,
-            return_value=updated,
+            return_value=ConsignmentSyncResult(consignment=updated, warning=None),
         ) as mock_fetch,
     ):
         result = await _sync_all_active()
@@ -230,7 +232,12 @@ async def test_sync_all_active_continues_on_single_failure() -> None:
     # First call raises; second returns an unconfirmed consignment (no poddate).
     updated = _make_consignment("WAY002")
     updated.pp_raw_json = {"details": {"poddate": ""}}
-    mock_fetch = AsyncMock(side_effect=[ValueError("PP not found"), updated])
+    mock_fetch = AsyncMock(
+        side_effect=[
+            ValueError("PP not found"),
+            ConsignmentSyncResult(consignment=updated, warning=None),
+        ]
+    )
 
     with (
         patch("app.tasks.parcel_perfect.create_async_engine", return_value=engine),
