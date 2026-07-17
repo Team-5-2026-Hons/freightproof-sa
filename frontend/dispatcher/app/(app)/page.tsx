@@ -29,21 +29,24 @@ const ACTIVE_STATUSES: TripStatus[] = [
 
 type ColId = keyof ColWidths
 
-const COL_HEADERS: { id: ColId | 'progress'; label: string }[] = [
-  { id: 'tripId',   label: 'TRIP ID'        },
-  { id: 'order',    label: 'ORDER'          },
-  { id: 'driver',   label: 'DRIVER / HORSE' },
-  { id: 'route',    label: 'ROUTE'          },
-  { id: 'progress', label: 'PROGRESS'       },
-  { id: 'status',   label: 'STATUS'         },
+const COL_HEADERS: { id: ColId; label: string }[] = [
+  { id: 'createdAt', label: 'CREATED'        },
+  { id: 'tripId',    label: 'TRIP ID'        },
+  { id: 'order',     label: 'ORDER'          },
+  { id: 'driver',    label: 'DRIVER / HORSE' },
+  { id: 'route',     label: 'ROUTE'          },
+  { id: 'progress',  label: 'PROGRESS'       },
+  { id: 'status',    label: 'STATUS'         },
 ]
 
 const INITIAL_COL_WIDTHS: ColWidths = {
-  tripId: 155,
-  order:  155,
-  driver: 150,
-  route:  130,
-  status: 120,
+  createdAt: 60,
+  tripId:    242,
+  order:     155,
+  driver:    150,
+  route:     130,
+  progress:  300,
+  status:    120,
 }
 
 const MIN_COL_W = 80
@@ -121,7 +124,7 @@ export default function ActiveTripsPage() {
     function onMove(ev: MouseEvent) {
       const r = resizeRef.current
       if (!r) return
-      setColWidths(p => ({ ...p, [r.id]: Math.max(MIN_COL_W, r.startW + ev.clientX - r.startX) }))
+      setColWidths(p => ({ ...p, [r.id]: Math.max(MIN_COL_W, r.startW + (ev.clientX - r.startX)) }))
     }
 
     function onUp() {
@@ -224,29 +227,28 @@ export default function ActiveTripsPage() {
             <div className="min-w-[700px]">
 
               {/* Sticky column header */}
-              <div className="sticky top-0 flex gap-3 px-6 py-[7px] bg-surf-low border-b border-outline-v/10 select-none">
-                {COL_HEADERS.map(col =>
-                  col.id === 'progress' ? (
-                    <div key="progress" className="flex-1 text-[10px] font-[700] tracking-[0.1em] uppercase text-on-surf-v">
-                      {col.label}
-                    </div>
-                  ) : (
+              <div className="sticky top-0 flex px-6 py-[7px] bg-surf-low border-b border-outline-v/10 divide-x divide-outline/30 select-none">
+                {COL_HEADERS.map(col => {
+                  // Symmetric padding (rather than a flex gap) keeps the divider
+                  // line centred between columns instead of flush against text.
+                  const padCls = col.id === 'createdAt' ? 'pr-[6px]' : col.id === 'status' ? 'pl-[6px]' : 'px-[6px]'
+                  return (
                     <div
                       key={col.id}
-                      style={{ width: colWidths[col.id as ColId], flexShrink: 0 }}
-                      className="relative group text-[10px] font-[700] tracking-[0.1em] uppercase text-on-surf-v"
+                      style={{ width: colWidths[col.id], flexShrink: 0 }}
+                      className={`relative group ${padCls} text-[10px] font-[700] tracking-[0.1em] uppercase text-on-surf-v`}
                     >
                       {col.label}
                       {/* Resize handle — hover to reveal, drag to resize */}
                       <div
-                        onMouseDown={e => startResize(col.id as ColId, e)}
+                        onMouseDown={e => startResize(col.id, e)}
                         className="absolute right-0 top-0 h-full w-4 cursor-col-resize flex items-center justify-center"
                       >
                         <div className="w-[2px] h-3 rounded-full bg-outline-v/50 opacity-0 group-hover:opacity-100 transition-opacity" />
                       </div>
                     </div>
                   )
-                )}
+                })}
               </div>
 
               {/* Rows */}

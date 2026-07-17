@@ -210,11 +210,17 @@ export default function TripDetailPage() {
   const { precincts } = usePrecincts()
   const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null)
 
+  // Closed/cancelled trips only ever appear in trip history, so route back there;
+  // every other status lives on the active-trips dashboard.
+  const backTarget = trip && (trip.status === 'closed' || trip.status === 'cancelled')
+    ? ROUTES.history
+    : ROUTES.home
+
   const backButton = (
     <Button
       variant="secondary"
       size="sm"
-      onClick={() => router.push(ROUTES.home)}
+      onClick={() => router.push(backTarget)}
       iconLeft={<Ic n="back" s={14} className="text-on-surf" />}
     >
       Back

@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { Calendar, ChevronDown } from 'lucide-react'
+import { Calendar } from 'lucide-react'
 import { cn } from '@shared/lib/utils/cn'
+import { Ic } from './Ic'
 import type { DateRange } from '@/lib/types/date-range'
 
 export type { DateRange }
@@ -28,25 +29,25 @@ export function DateRangePicker({ value, onChange, presets = DEFAULT_PRESETS, cl
   const [open, setOpen] = useState(false)
 
   return (
-    <div className={cn('relative', className)}>
+    <div className={cn('relative shrink-0', className)}>
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-surface-container-lowest border border-outline-variant/30 text-surface-on hover:bg-surface-container-low transition-colors shadow-ambient-sm"
+        className="flex items-center gap-2 py-2 pl-3 pr-3 text-[13px] bg-surf-low rounded-md border border-outline-v/30 text-on-surf outline-none focus:border-sec focus:bg-surf-lowest transition-colors"
       >
-        <Calendar className="w-4 h-4 text-surface-on-variant" />
+        <Calendar className="w-[14px] h-[14px] text-outline-v shrink-0" />
         <span>{value.from} → {value.to}</span>
-        <ChevronDown className={cn('w-4 h-4 text-surface-on-variant transition-transform', open && 'rotate-180')} />
+        <Ic n="chev" s={12} className={cn('shrink-0 text-on-surf-v transition-transform', open && 'rotate-90')} />
       </button>
 
       {open && (
-        <div className="absolute top-full mt-2 left-0 z-[10] bg-surface-container-lowest rounded-xl shadow-ambient border border-outline-variant/20 p-4 min-w-[280px]">
+        <div className="absolute top-full mt-1 left-0 z-[10] bg-surf-lowest rounded-lg shadow-level-5 p-4 min-w-[280px]">
           {presets.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-4">
               {presets.map((preset) => (
                 <button
                   key={preset.label}
                   onClick={() => { onChange(preset.range); setOpen(false) }}
-                  className="px-3 py-1 rounded-full text-xs font-bold bg-surface-container-low text-surface-on-variant hover:bg-secondary/10 hover:text-secondary transition-colors"
+                  className="px-3 py-1 rounded-full text-[11px] font-[700] bg-surf-low text-on-surf-v hover:bg-sec-c hover:text-sec transition-colors"
                 >
                   {preset.label}
                 </button>
@@ -55,26 +56,26 @@ export function DateRangePicker({ value, onChange, presets = DEFAULT_PRESETS, cl
           )}
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-bold uppercase tracking-wider text-surface-on-variant">From</label>
+              <label className="text-[11px] font-[700] uppercase tracking-wider text-on-surf-v">From</label>
               <input
                 type="date"
                 value={value.from}
                 onChange={(e) => onChange({ ...value, from: e.target.value })}
-                className="w-full rounded-lg px-3 py-2 text-sm bg-surface-container-low border border-outline-variant/30 text-surface-on focus:outline-none focus:border-secondary"
+                className="w-full rounded-md px-3 py-2 text-[13px] bg-surf-low border border-outline-v/30 text-on-surf outline-none focus:border-sec"
               />
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-bold uppercase tracking-wider text-surface-on-variant">To</label>
+              <label className="text-[11px] font-[700] uppercase tracking-wider text-on-surf-v">To</label>
               <input
                 type="date"
                 value={value.to}
                 onChange={(e) => onChange({ ...value, to: e.target.value })}
-                className="w-full rounded-lg px-3 py-2 text-sm bg-surface-container-low border border-outline-variant/30 text-surface-on focus:outline-none focus:border-secondary"
+                className="w-full rounded-md px-3 py-2 text-[13px] bg-surf-low border border-outline-v/30 text-on-surf outline-none focus:border-sec"
               />
             </div>
             <button
               onClick={() => setOpen(false)}
-              className="w-full py-2 rounded-xl bg-primary text-primary-on text-sm font-bold uppercase tracking-wider"
+              className="w-full py-2 rounded-md bg-primary text-primary-on text-[13px] font-[700] uppercase tracking-wider"
             >
               Apply
             </button>

@@ -12,10 +12,12 @@ import type { Precinct } from '@shared/lib/types/precinct'
 import { cn } from '@shared/lib/utils/cn'
 
 export interface ColWidths {
+  createdAt: number
   tripId: number
   order:  number
   driver: number
   route:  number
+  progress: number
   status: number
 }
 
@@ -24,6 +26,9 @@ interface ChecklistRowProps {
   colWidths: ColWidths
   precincts: Precinct[]
   className?: string
+  // History table hides the handshake progress chain — trips there are already
+  // complete or cancelled, so only whether exceptions occurred still matters.
+  showProgress?: boolean
 }
 
 const STATUS_HINT: Record<TripStatus, string> = {
@@ -68,6 +73,10 @@ const IN_PROGRESS_HS: Record<TripStatus, number | null> = {
   cancelled:       null,
 }
 
+function formatShortDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short' })
+}
+
 // Synthesise the six handshake nodes needed by HandshakeChain from TripStatus alone.
 // TripSummary doesn't carry full HandshakeEvent objects, so we build minimal stubs.
 function chainNodesFromStatus(status: TripStatus): HandshakeEvent[] {
@@ -94,7 +103,7 @@ function chainNodesFromStatus(status: TripStatus): HandshakeEvent[] {
   })
 }
 
-export function ChecklistRow({ trip, colWidths, precincts, className }: ChecklistRowProps) {
+export function ChecklistRow({ trip, colWidths, precincts, className, showProgress = true }: ChecklistRowProps) {
   const router = useRouter()
   const statusMeta = TRIP_STATUS_META[trip.status]
 
@@ -120,52 +129,70 @@ export function ChecklistRow({ trip, colWidths, precincts, className }: Checklis
       onClick={navigate}
       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') navigate() }}
       className={cn(
-        'w-full flex items-center gap-3 px-6 py-3 text-left',
+        'w-full flex items-center px-6 py-3 text-left',
         'bg-surf-lowest cursor-pointer transition-colors duration-[120ms]',
-        'hover:bg-surf-low',
+        'hover:bg-surf-low divide-x divide-outline/30',
         // Left border accent draws the eye when a trip needs attention
         trip.open_exception_count > 0 && 'border-l-4 border-err',
         className,
       )}
     >
+      {/* Date created — small, subtle, reference only */}
+      <div style={{ width: colWidths.createdAt }} className="shrink-0 pr-[6px] text-[11px] text-on-surf-v tabular-nums">
+        {formatShortDate(trip.created_at)}
+      </div>
+
       {/* Trip ID */}
-      <div style={{ width: colWidths.tripId }} className="shrink-0 overflow-hidden text-[13px] font-[600] text-sec tabular-nums tracking-[0.05em]">
+      <div style={{ width: colWidths.tripId }} className="shrink-0 overflow-hidden px-[6px] text-[13px] font-[600] text-sec tabular-nums tracking-[0.05em]">
         <TripIdStamp tripReference={trip.trip_reference} />
       </div>
 
       {/* Order number */}
-      <div style={{ width: colWidths.order }} className="shrink-0 text-[11px] text-on-surf-v tabular-nums tracking-[0.03em] truncate">
+      <div style={{ width: colWidths.order }} className="shrink-0 px-[6px] text-[11px] text-on-surf-v tabular-nums tracking-[0.03em] truncate">
         {trip.order_number}
       </div>
 
       {/* Driver + Horse */}
-      <div style={{ width: colWidths.driver }} className="shrink-0 min-w-0">
+      <div style={{ width: colWidths.driver }} className="shrink-0 min-w-0 px-[6px]">
         <div className="text-[14px] font-[600] text-on-surf truncate">{trip.driver.full_name}</div>
         <div className="text-[11px] text-on-surf-v tabular-nums tracking-[0.04em] truncate">
           {trip.horse?.registration ?? '—'}
         </div>
       </div>
 
-      {/* Route */}
-      <div style={{ width: colWidths.route }} className="shrink-0 text-[13px] font-[600] text-on-surf truncate">
-        {originShort} → {destShort}
+      {/* Route — origin/destination stacked so neither gets cut off in a narrow column */}
+      <div style={{ width: colWidths.route }} className="shrink-0 min-w-0 px-[6px]">
+        <div className="text-[13px] font-[600] text-on-surf truncate">{originShort}</div>
+        <div className="text-[11px] text-on-surf-v truncate">↓ {destShort}</div>
       </div>
 
-      {/* Progress */}
-      <div className="flex-1 flex items-center gap-2 min-w-0">
-        <HandshakeChain handshakes={chainNodes} compact />
-        <span className={cn(
-          'text-[11px] truncate',
-          trip.open_exception_count > 0 ? 'text-warn' :
-          trip.status === 'closed'       ? 'text-ok'   :
-                                           'text-on-surf-v',
-        )}>
-          {hint}
-        </span>
-      </div>
+      {/* Progress (active table) or Exceptions-only summary (history table).
+          A real width + resize handle, like every other column — not flex-1 — so
+          growing a neighbour can't silently steal its space and clip its content. */}
+      {showProgress ? (
+        <div style={{ width: colWidths.progress }} className="shrink-0 flex items-center gap-2 min-w-0 overflow-hidden px-[6px]">
+          <HandshakeChain handshakes={chainNodes} compact className="shrink-0" />
+          <span className={cn(
+            'text-[11px] truncate',
+            trip.open_exception_count > 0 ? 'text-warn' :
+            trip.status === 'closed'       ? 'text-ok'   :
+                                             'text-on-surf-v',
+          )}>
+            {hint}
+          </span>
+        </div>
+      ) : (
+        <div style={{ width: colWidths.progress }} className="shrink-0 flex items-center min-w-0 px-[6px]">
+          {trip.open_exception_count > 0 ? (
+            <span className="text-[11px] font-[600] text-warn truncate">{hint}</span>
+          ) : (
+            <span className="text-[11px] font-[600] text-ok">No exceptions</span>
+          )}
+        </div>
+      )}
 
       {/* Status chip */}
-      <div style={{ width: colWidths.status }} className="shrink-0">
+      <div style={{ width: colWidths.status }} className="shrink-0 pl-[6px]">
         <Chip type={statusMeta.chipType} label={statusMeta.label} />
       </div>
     </div>

@@ -16,13 +16,34 @@ import { usePpCapabilities } from '@/lib/hooks/usePpCapabilities'
 import { COPY }          from '@shared/lib/constants/copy'
 import { cn }            from '@shared/lib/utils/cn'
 import { api, ApiError } from '@/lib/api/client'
-import type { Trip, TripCreatePayload } from '@shared/lib/types/trip'
+import type { Trip, TripCreatePayload, TripSummary } from '@shared/lib/types/trip'
 import type { Vehicle }  from '@shared/lib/types/vehicle'
 import type { PPWaybillSummary } from '@shared/lib/types/pp'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const STEP_NAMES = ['Order & Waybills', 'Crew & Vehicle', 'Route & Schedule', 'Review']
+
+// POST /trips waits synchronously on the PP sync and the Hedera anchor (the backend's own
+// fail-closed budget runs to ~15-20s), so it can legitimately outlive the api client's
+// global 12s ceiling. Bound the create call above that budget: if it still times out the
+// backend is genuinely unreachable, and handleSubmit reconciles against the trips list so
+// the dispatcher always gets a definitive created / not-created answer.
+const TRIP_CREATE_TIMEOUT_MS = 30_000
+
+// Ground-truth lookup after a create timeout. Trip creation is atomic on the backend
+// (any failure rolls the whole trip back), so the order number is either in the trips
+// list or the trip does not exist — never "maybe".
+async function findCreatedTrip(orderNumber: string): Promise<TripSummary | null> {
+  try {
+    const trips = await api.get<TripSummary[]>('/api/v1/trips')
+    return trips.find(t => t.order_number === orderNumber) ?? null
+  } catch {
+    // The lookup itself is unreachable → treat as not created; a retry against an
+    // actually-created trip is caught by the backend's duplicate-order 409 guard.
+    return null
+  }
+}
 
 
 // Underline input style — Material 3 filled field look. Split into base + border
@@ -296,7 +317,7 @@ export default function TripNewPage() {
   const handleSubmit = async () => {
     setLoading(true)
     try {
-      await api.post<Trip>('/api/v1/trips', {
+      const created = await api.post<Trip>('/api/v1/trips', {
         order_number: orderNumber,
         trip_type: isEmptyLeg ? 'empty_leg' : 'loaded',
         driver_id: driverId,
@@ -314,11 +335,21 @@ export default function TripNewPage() {
         planned_arrival_at: expectedArrival
           ? new Date(expectedArrival).toISOString()
           : null,
-      } satisfies TripCreatePayload)
+      } satisfies TripCreatePayload, { timeoutMs: TRIP_CREATE_TIMEOUT_MS })
       notify({ kind: 'success', title: COPY.toast.tripCreated })
-      router.push(ROUTES.home)
+      router.push(ROUTES.tripDetail(created.id))
     } catch (err) {
-      if (err instanceof ApiError && err.status === 409) {
+      if (err instanceof ApiError && err.status === 0) {
+        // Client-side timeout past the backend's fail-closed budget — resolve the
+        // ambiguity with a ground-truth lookup rather than telling the dispatcher "maybe".
+        const existing = await findCreatedTrip(orderNumber)
+        if (existing) {
+          notify({ kind: 'success', title: COPY.toast.tripCreated })
+          router.push(ROUTES.tripDetail(existing.id))
+          return
+        }
+        notify({ kind: 'error', title: 'The server took too long to respond — the trip was not created. Please try again.' })
+      } else if (err instanceof ApiError && err.status === 409) {
         notify({ kind: 'error', title: 'Order number already active for this operator' })
       } else if (err instanceof ApiError && err.status === 404) {
         notify({ kind: 'error', title: 'Driver or vehicle not found — check fleet data' })
