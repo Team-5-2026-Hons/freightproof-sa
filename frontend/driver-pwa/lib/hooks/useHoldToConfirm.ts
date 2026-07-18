@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 
 export interface HoldToConfirmState {
   isPressing: boolean
@@ -23,6 +23,20 @@ export function useHoldToConfirm(durationMs: number, onConfirm: () => void): Hol
     setIsPressing(false)
     setProgress(0)
     confirmedRef.current = false
+  }, [])
+
+  // Unmount cleanup: the interval lives in a ref and is only ever cleared by clear(),
+  // which nothing calls if the consumer unmounts mid-hold (e.g. a route change while
+  // pressing). Without this, the interval keeps ticking after unmount — calling
+  // setState on a dead component and, worse, firing onConfirm (the dangerous action
+  // being guarded by the hold) up to durationMs later. HoldButton happens to shield
+  // itself with its own isMountedRef, but the hook must be safe for ANY consumer.
+  // Only the interval is cleared here — no setState in an unmount cleanup.
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current)
+      intervalRef.current = null
+    }
   }, [])
 
   const onPressStart = useCallback(() => {

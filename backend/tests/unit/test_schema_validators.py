@@ -283,3 +283,80 @@ def test_vehicle_update_body_rejects_short_vin() -> None:
 
     with pytest.raises(ValidationError):
         VehicleUpdateBody(vin_number=_LEGACY_SHORT_VIN)
+
+
+# ---------------------------------------------------------------------------
+# DriverExceptionCreateBody — gps_lat/gps_lng: both-or-neither, lat -90..90,
+# lng -180..180. Covers the panic-button GPS-drop bug: the driver endpoint must
+# reject a partial fix rather than silently store a nonsense coordinate.
+# ---------------------------------------------------------------------------
+
+def test_exception_gps_both_provided_is_valid() -> None:
+    from app.schemas.transit import DriverExceptionCreateBody
+
+    body = DriverExceptionCreateBody(
+        exception_type="panic_button",
+        description="Driver activated panic button.",
+        gps_lat="-26.0942000",
+        gps_lng="28.1342000",
+    )
+    assert body.gps_lat is not None
+    assert body.gps_lng is not None
+
+
+def test_exception_gps_neither_provided_is_valid() -> None:
+    """GPS capture can fail client-side — an exception must still be raisable with no fix."""
+    from app.schemas.transit import DriverExceptionCreateBody
+
+    body = DriverExceptionCreateBody(
+        exception_type="panic_button",
+        description="Driver activated panic button.",
+    )
+    assert body.gps_lat is None
+    assert body.gps_lng is None
+
+
+def test_exception_gps_lat_only_rejected() -> None:
+    from app.schemas.transit import DriverExceptionCreateBody
+
+    with pytest.raises(ValidationError):
+        DriverExceptionCreateBody(
+            exception_type="panic_button",
+            description="x",
+            gps_lat="-26.0942000",
+        )
+
+
+def test_exception_gps_lng_only_rejected() -> None:
+    from app.schemas.transit import DriverExceptionCreateBody
+
+    with pytest.raises(ValidationError):
+        DriverExceptionCreateBody(
+            exception_type="panic_button",
+            description="x",
+            gps_lng="28.1342000",
+        )
+
+
+def test_exception_gps_lat_out_of_range_rejected() -> None:
+    from app.schemas.transit import DriverExceptionCreateBody
+
+    with pytest.raises(ValidationError):
+        DriverExceptionCreateBody(
+            exception_type="panic_button",
+            description="x",
+            gps_lat="91.0000000",
+            gps_lng="28.1342000",
+        )
+
+
+def test_exception_gps_lng_out_of_range_rejected() -> None:
+    from app.schemas.transit import DriverExceptionCreateBody
+
+    with pytest.raises(ValidationError):
+        DriverExceptionCreateBody(
+            exception_type="panic_button",
+            description="x",
+            gps_lat="-26.0942000",
+            gps_lng="-181.0000000",
+        )

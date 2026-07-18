@@ -43,6 +43,12 @@ export interface TripException {
   handshake_event_id: string | null
   checkpoint_id: string | null
   supporting_artifact_id: string | null
+  // Driver-phone GPS fix captured when the exception was raised (panic button today).
+  // OPTIONAL (not just nullable) so existing dispatcher code and fixtures that predate
+  // these columns keep compiling unchanged — matches Checkpoint's number|null lat/lng
+  // convention in checkpoint.ts. POPIA: stays in Postgres, never anchored to Hedera.
+  gps_lat?: number | null
+  gps_lng?: number | null
   resolved: boolean
   resolved_by_user_id: string | null
   resolved_at: string | null

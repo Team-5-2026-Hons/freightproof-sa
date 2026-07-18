@@ -49,4 +49,21 @@ describe('Drawer accessibility-tree hygiene', () => {
     expect(panel).not.toHaveAttribute('aria-hidden')
     expect(panel).not.toHaveAttribute('inert')
   })
+
+  it('gives the close button a 44px hit area (touch-target minimum)', () => {
+    render(
+      <Drawer open onClose={vi.fn()} title="Driver Profile">
+        <p>Panel body</p>
+      </Drawer>,
+    )
+
+    const close = screen.getByRole('button', { name: 'Close drawer' })
+
+    // Audit fix: was w-8 h-8 (32px), under the app's documented 44px touch-target
+    // minimum (Button/IconButton/Switch). w-11 h-11 with -m-1.5 keeps the layout box
+    // at its original 32px while the tappable area meets the minimum.
+    expect(close.className).toContain('w-11')
+    expect(close.className).toContain('h-11')
+    expect(close.className).toContain('-m-1.5')
+  })
 })

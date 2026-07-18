@@ -52,9 +52,14 @@ export function Modal({ open, onClose, title, children, footer, size = 'md' }: M
               <h2 className="text-lg font-bold text-surface-on">{title}</h2>
             </DialogPrimitive.Title>
             <DialogPrimitive.Close asChild>
+              {/* w-11 (44px) meets the app's documented touch-target minimum (see
+                  Button/IconButton/Switch) — the old w-8 (32px) was under it. -m-1.5
+                  cancels the extra 12px so the layout box stays the 32px it always was:
+                  header height and icon position are unchanged, only the tappable area
+                  grows (the same pad-don't-grow pattern Switch documents). */}
               <button
                 aria-label="Close modal"
-                className="w-8 h-8 flex items-center justify-center rounded-xl text-surface-on-variant hover:bg-surface-container-low transition-colors"
+                className="w-11 h-11 -m-1.5 flex items-center justify-center rounded-xl text-surface-on-variant hover:bg-surface-container-low transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>

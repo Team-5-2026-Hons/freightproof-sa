@@ -67,10 +67,15 @@ export function Drawer({ open, onClose, side = 'right', children, title }: Drawe
         {title && (
           <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant/20">
             <h2 className="text-base font-bold text-surface-on">{title}</h2>
+            {/* w-11 (44px) meets the app's documented touch-target minimum (see
+                Button/IconButton/Switch) — the old w-8 (32px) was under it. -m-1.5
+                cancels the extra 12px so the layout box stays the 32px it always was:
+                header height and icon position are unchanged, only the tappable area
+                grows (the same pad-don't-grow pattern Switch documents). */}
             <button
               onClick={onClose}
               aria-label="Close drawer"
-              className="w-8 h-8 flex items-center justify-center rounded-xl text-surface-on-variant hover:bg-surface-container-low transition-colors"
+              className="w-11 h-11 -m-1.5 flex items-center justify-center rounded-xl text-surface-on-variant hover:bg-surface-container-low transition-colors"
             >
               <X className="w-4 h-4" />
             </button>

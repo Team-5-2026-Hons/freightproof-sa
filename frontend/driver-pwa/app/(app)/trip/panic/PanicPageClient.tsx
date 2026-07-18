@@ -9,6 +9,7 @@ import { useLocation } from '@/lib/hooks/useLocation'
 import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
 import { HoldButton } from '@/components/handshake/HoldButton'
 import { Button } from '@/components/ui/Button'
+import { Spinner } from '@/components/ui/Spinner'
 import { ROUTES } from '@/lib/constants/routes'
 
 export default function PanicPageClient() {
@@ -45,14 +46,34 @@ export default function PanicPageClient() {
       // Emergency action — don't strand the driver on this screen if the network call
       // fails. Queue it for retry on reconnect (same mechanism handshakes use) instead
       // of just logging and losing it, since this is the one alert that must land.
+      // The captured GPS fix goes into the queued body too — the retry must carry the
+      // same evidence the live send would have, or the "location will be included"
+      // promise silently breaks exactly when the driver is offline and most at risk.
       console.error('Failed to send panic alert to backend — queued for retry', err)
-      if (trip) enqueueException(String(trip.id), { exception_type: 'panic_button', description })
+      if (trip) {
+        enqueueException(String(trip.id), {
+          exception_type: 'panic_button',
+          description,
+          // Both-or-neither: the backend 422s a partial fix, which would make the
+          // queue drop this entry as a terminal failure — send the pair or nothing.
+          ...(result ? { gps_lat: result.latitude, gps_lng: result.longitude } : {}),
+        })
+      }
       queued = true
     }
     router.replace(ROUTES.panicSubmittedUrl(queued))
   }
 
-  if (isLoading) return null
+  if (isLoading) {
+    // A blank screen here reads as a dead app — on the PANIC page of all places,
+    // the driver must see the app is alive. Same centered-spinner treatment as
+    // InTransitPageClient's loading state.
+    return (
+      <main className="flex min-h-screen items-center justify-center p-6">
+        <Spinner />
+      </main>
+    )
+  }
 
   if (!trip) {
     return (
@@ -108,7 +129,10 @@ export default function PanicPageClient() {
       <Button
         type="button"
         variant="ghost"
-        onClick={() => router.back()}
+        // Same reasoning as the !trip branch above: this page is reachable via cold
+        // load or deep link, where router.back() has no meaningful history to pop —
+        // replace to the in-transit hub so Cancel always lands somewhere sensible.
+        onClick={() => router.replace(ROUTES.inTransit)}
         className="text-error-on/70 hover:bg-error-on/10"
       >
         Cancel

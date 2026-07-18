@@ -66,6 +66,14 @@ export default function LogExceptionPageClient() {
       const isRetryable = !(err instanceof ApiError) || err.status >= 500
       if (isRetryable) {
         enqueueException(String(trip.id), { exception_type: type, description })
+        // Receipt parity with CheckpointPageClient's identical queue path: without a
+        // toast the driver lands back on the hub with zero evidence the report
+        // registered anywhere — indistinguishable from a silent failure.
+        notify({
+          kind: 'success',
+          title: 'Report saved',
+          body: 'Stored on this device — it will sync when you’re back online.',
+        })
         router.push(ROUTES.inTransit)
       } else {
         setSubmitError(true)
@@ -138,7 +146,12 @@ export default function LogExceptionPageClient() {
         />
 
         {submitError && (
-          <p className="mb-3 text-sm text-error">Could not submit — check your connection and try again.</p>
+          // This branch only renders on a terminal 4xx — retrying with the same input
+          // cannot succeed, so "check your connection" would be actively misleading here
+          // (the connection worked; the server said no).
+          <p className="mb-3 text-sm text-error">
+            Could not submit — the report was not accepted. Review the details or contact your dispatcher.
+          </p>
         )}
         <Button size="lg" disabled={!type || submitting} onClick={handleSubmit}>
           {submitting ? 'Submitting…' : 'Submit exception'}

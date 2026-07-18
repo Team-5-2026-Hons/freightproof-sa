@@ -54,7 +54,10 @@ export function H2Linehaul({ tripId, draft, onUpdate, onComplete }: H2LinehaulPr
 
   const unitCount = linehaul?.consolidated_unit_count ?? null
   const driverCount = countInput !== '' ? parseInt(countInput, 10) : null
-  const hasDriverCount = driverCount !== null && !isNaN(driverCount)
+  // >= 0, not > 0: an empty load (0) is a legitimate, flaggable observation — the driver
+  // reporting "nothing was loaded" is exactly the kind of evidence this app records. A
+  // negative count is physically meaningless, so it can never be ready to submit.
+  const hasDriverCount = driverCount !== null && !isNaN(driverCount) && driverCount >= 0
   // 404 (fetchLinehaul resolved null) means no Linehaul document exists for this trip —
   // a normal state (any trip without a Parcel Perfect reference), not a failure. The
   // driver can still proceed on a valid visual count alone; a real fetch error cannot.
@@ -102,6 +105,10 @@ export function H2Linehaul({ tripId, draft, onUpdate, onComplete }: H2LinehaulPr
           label="Your visual count"
           type="number"
           inputMode="numeric"
+          // min backs up the >= 0 readiness check at the browser/keyboard level (numeric
+          // keypads suppress the minus key when min is non-negative); the JS check above
+          // remains the real gate since min alone doesn't stop typed/pasted negatives.
+          min={0}
           placeholder="Count units physically"
           value={countInput}
           onChange={(e) => setCountInput(e.target.value)}

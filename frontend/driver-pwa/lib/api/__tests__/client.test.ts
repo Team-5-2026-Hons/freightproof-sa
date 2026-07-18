@@ -6,9 +6,15 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 const mockGetSession = vi.fn()
 const mockGetAccessToken = vi.fn()
+const mockRefreshSession = vi.fn()
 
 vi.mock('@/lib/supabase', () => ({
-  supabase: { auth: { getSession: (...args: unknown[]) => mockGetSession(...args) } },
+  supabase: {
+    auth: {
+      getSession: (...args: unknown[]) => mockGetSession(...args),
+      refreshSession: (...args: unknown[]) => mockRefreshSession(...args),
+    },
+  },
   getAccessToken: () => mockGetAccessToken(),
 }))
 
@@ -113,6 +119,86 @@ describe('api client', () => {
     const [, init] = fetchSpy.mock.calls[0]
     expect(init.body).toBe(form)
     expect((init.headers as Record<string, string>)['Content-Type']).toBeUndefined()
+
+    vi.unstubAllGlobals()
+  })
+
+  it('on a 401, force-refreshes the session and retries once with the new token', async () => {
+    mockRefreshSession.mockResolvedValue({
+      data: { session: { access_token: 'refreshed-token' } },
+      error: null,
+    })
+    const fetchSpy = vi
+      .fn()
+      // First attempt: the cached token has expired server-side.
+      .mockResolvedValueOnce({ ok: false, status: 401, statusText: 'Unauthorized', json: () => Promise.resolve({ detail: 'Token expired' }) })
+      // Retry: succeeds with the refreshed token.
+      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ id: 'trip-1' }) })
+    vi.stubGlobal('fetch', fetchSpy)
+
+    const { api } = await import('../client')
+    const result = await api.get('/api/v1/trips/me/active')
+
+    expect(result).toEqual({ id: 'trip-1' })
+    expect(mockRefreshSession).toHaveBeenCalledTimes(1)
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+    const [, retryInit] = fetchSpy.mock.calls[1]
+    expect((retryInit.headers as Record<string, string>).Authorization).toBe('Bearer refreshed-token')
+
+    vi.unstubAllGlobals()
+  })
+
+  it('on a 401, throws the ApiError and never retries twice when refreshSession fails', async () => {
+    mockRefreshSession.mockResolvedValue({
+      data: { session: null },
+      error: { message: 'refresh token expired' },
+    })
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      statusText: 'Unauthorized',
+      json: () => Promise.resolve({ detail: 'Token expired' }),
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+
+    const { api, ApiError } = await import('../client')
+
+    await expect(api.get('/api/v1/trips/me/active')).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 401,
+    })
+    // Exactly one fetch: refreshSession failing must not trigger a retry attempt.
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    expect(mockRefreshSession).toHaveBeenCalledTimes(1)
+    await expect(api.get('/api/v1/trips/me/active')).rejects.toBeInstanceOf(ApiError)
+
+    vi.unstubAllGlobals()
+  })
+
+  it('on a 401, throws the ApiError and never retries twice when the retry itself 401s', async () => {
+    mockRefreshSession.mockResolvedValue({
+      data: { session: { access_token: 'refreshed-token' } },
+      error: null,
+    })
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      statusText: 'Unauthorized',
+      json: () => Promise.resolve({ detail: 'Still unauthorized' }),
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+
+    const { api, ApiError } = await import('../client')
+
+    await expect(api.get('/api/v1/trips/me/active')).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 401,
+    })
+    // Exactly two fetches (original + the single allowed retry) — a second 401 must
+    // not trigger a second refresh/retry cycle.
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+    expect(mockRefreshSession).toHaveBeenCalledTimes(1)
+    await expect(api.get('/api/v1/trips/me/active')).rejects.toBeInstanceOf(ApiError)
 
     vi.unstubAllGlobals()
   })

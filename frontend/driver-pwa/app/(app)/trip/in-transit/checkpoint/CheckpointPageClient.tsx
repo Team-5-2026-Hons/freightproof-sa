@@ -117,7 +117,11 @@ export default function CheckpointPageClient() {
           <CameraCapture label="Selfie" dataUrl={selfieDataUrl} onCapture={setSelfieDataUrl} />
           <CameraCapture label="Cargo photo" dataUrl={cargoPhotoDataUrl} onCapture={setCargoPhotoDataUrl} />
 
-          <label className="flex items-center gap-2 text-sm">
+          {/* The visual checkbox stays 16px, but the whole label is the tap target —
+              min-h-[44px] meets the app's documented 44px minimum touch target (same
+              pattern Switch.tsx documents: grow the hit area, not the control, so it
+              doesn't look oversized next to its text). */}
+          <label className="flex min-h-[44px] cursor-pointer select-none items-center gap-3 text-sm">
             <input
               type="checkbox"
               checked={isDeviation}
@@ -138,7 +142,12 @@ export default function CheckpointPageClient() {
         </div>
 
         {submitError && (
-          <p className="mb-3 text-sm text-error">Could not submit — check your connection and try again.</p>
+          // This branch only renders on a terminal 4xx — retrying with the same input
+          // cannot succeed, so "check your connection" would be actively misleading here
+          // (the connection worked; the server said no).
+          <p className="mb-3 text-sm text-error">
+            Could not submit — the checkpoint was not accepted. Review the details or contact your dispatcher.
+          </p>
         )}
         <div className="flex flex-col items-center pb-safe">
           <div className="flex justify-center">

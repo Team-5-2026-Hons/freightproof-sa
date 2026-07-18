@@ -5,7 +5,7 @@ from decimal import Decimal
 from uuid import UUID
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.db.models.enums import ExceptionSeverity, ExceptionSource, ExceptionType
 
@@ -56,6 +56,16 @@ class CheckpointRead(CheckpointBase):
     created_at: datetime
 
 
+def _validate_gps_pair(lat: Optional[Decimal], lng: Optional[Decimal]) -> None:
+    """A GPS fix is one atomic reading — accepting only one axis would silently persist
+    a nonsense coordinate (e.g. a latitude with no matching longitude) that can never be
+    plotted or defended as evidence. Shared by TripExceptionBase (dispatcher-facing
+    Create/Read) and the driver's slim create body so both reject a partial fix
+    identically."""
+    if (lat is None) != (lng is None):
+        raise ValueError("gps_lat and gps_lng must both be provided or both omitted")
+
+
 class TripExceptionBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -69,6 +79,16 @@ class TripExceptionBase(BaseModel):
     consignment_id: Optional[UUID] = None
     trip_stop_id: Optional[UUID] = None
     supporting_artifact_id: Optional[UUID] = None
+    # Driver-phone GPS fix at the moment the exception was raised. Mirrors
+    # Checkpoint.driver_phone_lat/_lng's Numeric(10,7) precision (db/models/transit.py).
+    # POPIA: personal location data — stays in Postgres, never anchored to Hedera.
+    gps_lat: Optional[Decimal] = Field(default=None, ge=Decimal("-90"), le=Decimal("90"))
+    gps_lng: Optional[Decimal] = Field(default=None, ge=Decimal("-180"), le=Decimal("180"))
+
+    @model_validator(mode="after")
+    def validate_gps_pair(self) -> "TripExceptionBase":
+        _validate_gps_pair(self.gps_lat, self.gps_lng)
+        return self
 
 
 class TripExceptionCreate(TripExceptionBase):
@@ -81,6 +101,17 @@ class DriverExceptionCreateBody(BaseModel):
     exception_type: ExceptionType
     description: str
     supporting_artifact_id: Optional[UUID] = None
+    # Captured client-side by useLocation() on the panic page — see
+    # frontend/driver-pwa/app/(app)/trip/panic/PanicPageClient.tsx. Optional because
+    # not every driver-raised exception type captures GPS (only panic today), and a
+    # capture failure must not block the alert itself from sending.
+    gps_lat: Optional[Decimal] = Field(default=None, ge=Decimal("-90"), le=Decimal("90"))
+    gps_lng: Optional[Decimal] = Field(default=None, ge=Decimal("-180"), le=Decimal("180"))
+
+    @model_validator(mode="after")
+    def validate_gps_pair(self) -> "DriverExceptionCreateBody":
+        _validate_gps_pair(self.gps_lat, self.gps_lng)
+        return self
 
 
 class TripExceptionUpdate(BaseModel):

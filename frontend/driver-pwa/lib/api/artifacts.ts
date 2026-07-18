@@ -1,5 +1,5 @@
 // frontend/driver-pwa/lib/api/artifacts.ts
-import { api } from './client'
+import { api, ApiError } from './client'
 
 export interface UploadedArtifact {
   id: string
@@ -29,8 +29,23 @@ async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
 // actually made it to the server).
 const ARTIFACT_UPLOAD_TIMEOUT_MS = 30_000
 
+// Client-side mirror of the backend's artifact size cap. The backend is the source of
+// truth — backend/app/orchestration/artifact_service.py (MAX_FILE_SIZE_BYTES); keep the
+// two in sync if that limit ever changes. Checked BEFORE any network call so an
+// oversized photo fails in milliseconds instead of burning a full 30s mobile-data
+// upload into a guaranteed rejection.
+export const MAX_ARTIFACT_UPLOAD_BYTES = 10 * 1024 * 1024
+
 export async function uploadArtifact(params: UploadArtifactParams): Promise<UploadedArtifact> {
   const blob = await dataUrlToBlob(params.dataUrl)
+
+  // Synthetic 413 (never emitted by the fetch wrapper itself) keeps this failure
+  // TERMINAL: offline-queue classification (isQueueableFailure) only retries status 0
+  // and >=500, and an oversized photo can never shrink on retry — the driver has to
+  // retake it, so queueing would be dishonest.
+  if (blob.size > MAX_ARTIFACT_UPLOAD_BYTES) {
+    throw new ApiError(413, 'Photo is too large to upload — retake it.')
+  }
 
   const form = new FormData()
   form.append('trip_id', params.tripId)

@@ -18,7 +18,9 @@ interface H5VisualCountProps {
 export function H5VisualCount({ tripId, draft, onUpdate, onComplete, h2Count }: H5VisualCountProps) {
   const [input, setInput] = useState(draft.driverVisualCount !== null ? String(draft.driverVisualCount) : '')
   const count = input !== '' ? parseInt(input, 10) : null
-  const isValidCount = count !== null && !isNaN(count)
+  // >= 0, not > 0: unloading zero parcels is a legitimate, flaggable observation (a fully
+  // pilfered load); a negative count is physically meaningless and never submittable.
+  const isValidCount = count !== null && !isNaN(count) && count >= 0
   const hasMismatch = isValidCount && h2Count !== null && count !== h2Count
 
   function handleConfirm() {
@@ -40,6 +42,10 @@ export function H5VisualCount({ tripId, draft, onUpdate, onComplete, h2Count }: 
           label="Your visual count at destination"
           type="number"
           inputMode="numeric"
+          // min backs up the >= 0 readiness check at the browser/keyboard level (numeric
+          // keypads suppress the minus key when min is non-negative); the JS check above
+          // remains the real gate since min alone doesn't stop typed/pasted negatives.
+          min={0}
           placeholder="Count unloaded parcels"
           value={input}
           onChange={(e) => setInput(e.target.value)}

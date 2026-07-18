@@ -10,6 +10,7 @@ import { handshakeProgress, currentHandshakeNumber } from '@/lib/utils/handshake
 import { Button } from '@/components/ui/Button'
 import { Chip } from '@/components/ui/Chip'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { Spinner } from '@/components/ui/Spinner'
 import { HandshakeProgressBar } from '@/components/trip/HandshakeProgressBar'
 import { CurrentHandshakeCard } from '@/components/trip/CurrentHandshakeCard'
 import { HoldNotice } from '@/components/trip/HoldNotice'
@@ -18,7 +19,16 @@ export function HomeContent() {
   const router = useRouter()
   const { trip, isLoading } = useTrip()
 
-  if (isLoading) return null
+  if (isLoading) {
+    // Canonical loading state — identical markup to ActiveTripPageClient and
+    // InTransitPageClient. Returning null here flashed a blank screen on every
+    // cold load of Home, which reads as a crash on a slow connection.
+    return (
+      <main className="flex min-h-screen items-center justify-center p-6">
+        <Spinner />
+      </main>
+    )
+  }
 
   if (!trip) {
     return (

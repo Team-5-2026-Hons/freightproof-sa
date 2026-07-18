@@ -57,10 +57,17 @@ function ToastItem({ toast, onDismiss }: ToastItemProps) {
         <p className="text-sm font-bold text-surface-on">{toast.title}</p>
         {toast.body && <p className="text-xs text-surface-on-variant mt-0.5 leading-relaxed">{toast.body}</p>}
       </div>
+      {/* w-11 (44px) meets the app's documented touch-target minimum (see Button/
+          IconButton/Switch) — critical here because sticky/error toasts never
+          auto-dismiss, so this button is their ONLY exit, and it was 24px. -m-2.5
+          cancels the extra 20px so the layout box stays the 24px it always was: the
+          toast's visual footprint doesn't inflate, the hit area just bleeds ~10px
+          into the surrounding padding/content (the pad-don't-grow pattern Switch
+          documents). Icon stays w-3 h-3 so the glyph doesn't shout over the message. */}
       <button
         onClick={() => onDismiss(toast.id)}
         aria-label="Dismiss notification"
-        className="w-6 h-6 flex items-center justify-center rounded-lg text-surface-on-variant hover:bg-surface-container-low shrink-0 transition-colors"
+        className="w-11 h-11 -m-2.5 flex items-center justify-center rounded-lg text-surface-on-variant hover:bg-surface-container-low shrink-0 transition-colors"
       >
         <X className="w-3 h-3" />
       </button>

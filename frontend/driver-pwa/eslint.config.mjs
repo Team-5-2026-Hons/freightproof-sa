@@ -1,11 +1,24 @@
-import coreWebVitals from "eslint-config-next/core-web-vitals";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+import { FlatCompat } from "@eslint/eslintrc";
 
-// eslint-config-next 16 exports a flat config array — spread directly, no FlatCompat needed.
+// eslint-config-next 16 shipped a native flat-config array (no FlatCompat needed), but
+// that version doesn't support next@15 (see package.json — pinned back to ^15.5.20 to
+// match this project's next@^15.0.0). eslint-config-next 15 still ships its rules in the
+// legacy .eslintrc `extends` format, so FlatCompat is required to bridge it into ESLint
+// 9's flat config — this is the same bridge Next.js's own `create-next-app` scaffold uses
+// for a next@15 + ESLint 9 project.
+const compat = new FlatCompat({
+  baseDirectory: path.dirname(fileURLToPath(import.meta.url)),
+});
+
 const eslintConfig = [
   {
-    ignores: [".next/**", "out/**", "node_modules/**", "android/app/src/main/assets/**", "public/sw.js", "tsconfig.tsbuildinfo"]
+    // android/**, ios/** (native Capacitor build output) and out/** (static export
+    // output) are generated, not authored — linting them is noise, not signal.
+    ignores: [".next/**", "out/**", "node_modules/**", "android/**", "ios/**", "public/sw.js", "tsconfig.tsbuildinfo"]
   },
-  ...coreWebVitals,
+  ...compat.extends("next/core-web-vitals"),
   {
     rules: {
       "no-restricted-syntax": [

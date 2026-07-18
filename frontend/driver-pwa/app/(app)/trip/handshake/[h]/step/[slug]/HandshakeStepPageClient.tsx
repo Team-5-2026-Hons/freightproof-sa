@@ -1,7 +1,7 @@
 // frontend/driver-pwa/app/(app)/trip/handshake/[h]/step/[slug]/HandshakeStepPageClient.tsx
 'use client'
 
-import { useCallback } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useHandshakeDraft } from '@/lib/hooks/useHandshakeDraft'
 import { useSealReference } from '@/lib/hooks/useSealReference'
@@ -87,11 +87,108 @@ export function isQueueableFailure(err: unknown): boolean {
   return err instanceof TypeError
 }
 
+// Thin gate: decides WHETHER the step screen renders at all, before any hook that
+// depends on a real trip ever mounts. See the Fix 1 comment below — this split exists
+// specifically so useHandshakeDraft/useSealReference (owned by HandshakeStepContent)
+// can never mount with an empty tripId.
 export default function HandshakeStepPageClient() {
+  const router = useRouter()
+  const { trip, isLoading } = useTrip()
+
+  // Fix 2 (submit-triggered spinner/"not found" flash): tracks whether a handshake
+  // submit (submitAndAdvance, defined in HandshakeStepContent) is currently in flight.
+  // submitAndAdvance awaits refetchTrip(), which toggles TripContext's SHARED isLoading
+  // — without this flag, every H1–H5 submit would replace the step UI (including
+  // HoldButton's own "Submitting…" progress state) with a full-screen spinner flash for
+  // however long the refetch takes. It is only ever reset back to false on the branches
+  // where the driver stays on THIS screen (see submitAndAdvance) — every success path
+  // navigates to a different top-level route (ROUTES.activeTripDetail / inTransit /
+  // trips — see nextHandshakeRoute), so this whole component unmounts and discards the
+  // flag naturally. Resetting it eagerly on those paths would race the very render this
+  // flag exists to cover (see lastTripRef below) — a batched setTrip(null) landing in
+  // the same commit as setIsSubmitting(false) would flash "Trip not found" anyway.
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Fix 2 (H5 case): once H5 (unloading) submits, refetchTrip() legitimately returns
+  // null — the trip just closed, so GET /trips/me/active has nothing left to return —
+  // while the success toast fires and advance() navigates to ROUTES.trips. Without a
+  // fallback, the render in that window falls into the `!trip` branch and flashes
+  // "Trip not found" before the navigation actually takes effect. Caching the last
+  // known non-null trip lets the step UI (H5Closed) stay on screen for that window
+  // instead — the component navigates away moments later regardless. The ref is
+  // written in an effect (post-commit), never during render: a render-time write is
+  // unsafe under React 19 concurrent rendering (react-hooks v6's refs rule rejects
+  // it), and the setState-during-render alternative loops whenever useTrip() yields
+  // a fresh object identity per call. Post-commit timing is sufficient — the
+  // fallback is only ever read mid-submit, long after the trip-bearing render
+  // committed.
+  const lastTripRef = useRef<Trip | null>(null)
+  useEffect(() => {
+    if (trip) lastTripRef.current = trip
+  }, [trip])
+
+  // Fix 1 (CRITICAL evidence-wipe bug): the (app) layout only gates children on auth,
+  // not on TripContext.isLoading — so a hard reload, PWA relaunch, or a
+  // push-notification deep link straight into a handshake step can mount this page
+  // while `trip` is still null. useHandshakeDraft/useSealReference key their
+  // localStorage reads off tripId inside a useState LAZY initializer that only ever
+  // runs on first mount — if they mounted with tripId = '' before the trip loaded,
+  // they'd read the WRONG storage keys, start empty, and then the driver's very next
+  // updateDraft() call would overwrite the CORRECT (real-tripId) key with that empty
+  // state — permanently erasing any previously captured photos/GPS/seal evidence. The
+  // fix: HandshakeStepContent (the only thing that calls those hooks) never mounts
+  // until `trip` is a real, non-null object, so their first mount always sees the real
+  // tripId.
+  if (isLoading && !isSubmitting) {
+    return (
+      <main className="flex min-h-screen items-center justify-center p-6">
+        <Spinner />
+      </main>
+    )
+  }
+
+  const activeTrip = trip ?? (isSubmitting ? lastTripRef.current : null)
+
+  if (!activeTrip) {
+    return (
+      <main className="flex min-h-screen items-center justify-center p-6">
+        <p className="text-sm text-surface-on-variant">Trip not found.</p>
+      </main>
+    )
+  }
+
+  // Blocks every step screen (including deep links) while the trip is held — any
+  // handshake submit in this state can only 409, so there's nothing to do here.
+  if (activeTrip.status === 'exception_hold') {
+    return (
+      <main className="flex min-h-screen flex-col justify-center gap-4 p-6">
+        <HoldNotice />
+        <Button variant="secondary" size="lg" onClick={() => router.push(ROUTES.activeTripDetail)}>
+          View trip
+        </Button>
+      </main>
+    )
+  }
+
+  return (
+    <HandshakeStepContent trip={activeTrip} setIsSubmitting={setIsSubmitting} />
+  )
+}
+
+interface HandshakeStepContentProps {
+  trip: Trip
+  setIsSubmitting: (isSubmitting: boolean) => void
+}
+
+// Everything that actually needs a real, non-null trip lives here — most importantly
+// useHandshakeDraft/useSealReference (see Fix 1 above). `trip` arriving as a required
+// prop rather than being read from useTrip() directly is what makes those hooks safe:
+// this component simply doesn't exist until the gate above has one to hand it.
+function HandshakeStepContent({ trip, setIsSubmitting }: HandshakeStepContentProps) {
   const { h, slug } = useParams<{ h: string; slug: string }>()
   const router = useRouter()
   const { enqueue } = useOfflineQueue()
-  const { trip, isLoading, refetchTrip } = useTrip()
+  const { refetchTrip } = useTrip()
   const { notify } = useToast()
 
   const handshakeNum = Number(h) as 1 | 2 | 3 | 4 | 5
@@ -107,7 +204,10 @@ export default function HandshakeStepPageClient() {
 
   // The trip comes from the driver's session (TripContext), not the URL — the backend
   // enforces one active trip per driver, so there's nothing left to verify it against.
-  const tripId = trip ? String(trip.id) : ''
+  // `trip` is a required prop here (never null) — see the gate in
+  // HandshakeStepPageClient, which is what guarantees these hooks below always key off
+  // the real tripId on their first mount.
+  const tripId = String(trip.id)
 
   const [h1Draft, updateH1, clearH1] = useHandshakeDraft<H1Evidence>(tripId, 'origin_gate_in', H1_INITIAL)
   const [h2Draft, updateH2, clearH2] = useHandshakeDraft<H2Evidence>(tripId, 'loading', H2_INITIAL)
@@ -181,6 +281,12 @@ export default function HandshakeStepPageClient() {
     evidence: H1Evidence | H2Evidence | H3Evidence | H4Evidence | H5Evidence,
     clearFn: () => void,
   ) {
+    // Fix 2: flips on for the whole submit. Every success/queue path below navigates to
+    // a different top-level route and never resets this back to false itself — the
+    // component unmounts on the way there, discarding it for free. Only the two
+    // stay-on-this-screen failure branches reset it explicitly, since the driver can
+    // retry from here and a later isLoading toggle should show the spinner normally.
+    setIsSubmitting(true)
     try {
       const submitted = await submitHandshake(tripId, type, evidence)
       const fresh = await refetchTrip()
@@ -215,6 +321,9 @@ export default function HandshakeStepPageClient() {
           advance()
           return
         }
+        // Staying on this exact screen — a genuinely fresh attempt can happen next, so
+        // a later isLoading toggle should show the spinner as normal again.
+        setIsSubmitting(false)
         notify({
           kind: 'error',
           title: 'Could not confirm handshake',
@@ -237,39 +346,12 @@ export default function HandshakeStepPageClient() {
       // Terminal failure — either a client-side 4xx, or a local validation Error thrown
       // by submitHandshake before any network call. Neither can ever succeed on retry,
       // so queuing it would be dishonest. Leave the driver on this screen with their
-      // draft intact so they can fix and retry.
+      // draft intact so they can fix and retry — and since they're staying here, a
+      // later isLoading toggle should behave normally again.
+      setIsSubmitting(false)
       const message = err instanceof Error ? err.message : 'Could not submit. Please try again.'
       notify({ kind: 'error', title: 'Could not submit', body: message })
     }
-  }
-
-  if (isLoading) {
-    return (
-      <main className="flex min-h-screen items-center justify-center p-6">
-        <Spinner />
-      </main>
-    )
-  }
-
-  if (!trip) {
-    return (
-      <main className="flex min-h-screen items-center justify-center p-6">
-        <p className="text-sm text-surface-on-variant">Trip not found.</p>
-      </main>
-    )
-  }
-
-  // Blocks every step screen (including deep links) while the trip is held — any
-  // handshake submit in this state can only 409, so there's nothing to do here.
-  if (trip.status === 'exception_hold') {
-    return (
-      <main className="flex min-h-screen flex-col justify-center gap-4 p-6">
-        <HoldNotice />
-        <Button variant="secondary" size="lg" onClick={() => router.push(ROUTES.activeTripDetail)}>
-          View trip
-        </Button>
-      </main>
-    )
   }
 
   const props = { tripId }

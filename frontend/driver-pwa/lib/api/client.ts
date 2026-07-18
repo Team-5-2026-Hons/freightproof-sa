@@ -76,11 +76,19 @@ async function request<T>(
   init: RequestInit = {},
   isFormData = false,
   opts: RequestOptions = {},
+  // Set only on the internal one-shot 401 retry below — its presence *is* the "already
+  // retried" flag, so a retried request can never retry again even if the refreshed
+  // token itself comes back 401.
+  retryToken?: string,
 ): Promise<T> {
   const url = `${BASE_URL}${path}`
   const timeoutMs = opts.timeoutMs ?? REQUEST_TIMEOUT_MS
 
-  const token = await resolveToken()
+  // On the retry we already hold a freshly refreshed token from refreshSession() —
+  // use it directly rather than calling resolveToken() again. resolveToken()'s hot
+  // path reads the cache that onAuthStateChange updates asynchronously, which isn't
+  // guaranteed to have caught up yet and would risk retrying with the same stale token.
+  const token = retryToken ?? (await resolveToken())
 
   const headers: Record<string, string> = {
     // FormData sets its own multipart boundary — never set Content-Type ourselves for it.
@@ -100,6 +108,34 @@ async function request<T>(
       throw new ApiError(0, `Request to ${url} timed out after ${timeoutMs}ms`)
     }
     throw err
+  }
+
+  // A 401 usually means the access token expired between resolveToken() and the
+  // backend validating it, or the cache was simply stale — not that the session is
+  // truly invalid. Force one refresh and retry exactly once with the new token; a
+  // fresh AbortSignal.timeout(timeoutMs) is created for the retry by the recursive
+  // call, so the per-request timeout ceiling still applies to it.
+  if (res.status === 401 && retryToken === undefined) {
+    // Bounded like every other auth call in this file: refreshSession() hits the
+    // network and can wedge exactly the way getSession() used to — an unbounded await
+    // here would hang the submit the 401 interrupted. On any refresh failure
+    // (error result, timeout, throw) we fall through WITHOUT retrying so the driver
+    // gets the original 401 — and the recursive retry sits outside the try so its own
+    // failures (e.g. a genuine 422 on the retried request) are never masked as a 401.
+    let freshToken: string | null = null
+    try {
+      const { data, error } = await withTimeout(
+        supabase.auth.refreshSession(),
+        SESSION_TIMEOUT_MS,
+        'Auth session refresh',
+      )
+      if (!error) freshToken = data.session?.access_token ?? null
+    } catch (refreshErr) {
+      console.warn('[api] token refresh after 401 failed — surfacing the original 401:', refreshErr)
+    }
+    if (freshToken) {
+      return request<T>(path, init, isFormData, opts, freshToken)
+    }
   }
 
   if (!res.ok) {

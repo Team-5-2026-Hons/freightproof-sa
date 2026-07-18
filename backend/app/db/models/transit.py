@@ -78,6 +78,14 @@ class TripException(Base):
     supporting_artifact_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("evidence_artifacts.id"), nullable=True
     )
+    # Driver-phone GPS fix captured at the moment the exception was raised (e.g. a
+    # panic-button hold) — mirrors Checkpoint.driver_phone_lat/_lng's Numeric(10,7)
+    # naming and precision above. Nullable: system- and dispatcher-raised exceptions
+    # never have a driver phone fix to attach. POPIA: personal location data stays in
+    # Postgres only — exceptions are not anchored to Hedera today, so these columns
+    # must never be read into any hash/anchoring path.
+    gps_lat: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
+    gps_lng: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     resolved: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     resolved_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True

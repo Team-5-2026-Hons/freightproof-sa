@@ -57,13 +57,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // initializer would mismatch the prerendered shell (output: 'export' renders
     // with user = null), and useSyncExternalStore doesn't fit because signIn/
     // signOut also set this state imperatively. The cascade this rule guards
-    // against is bounded to a single intentional re-render.
-    /* eslint-disable react-hooks/set-state-in-effect */
+    // against is bounded to a single intentional re-render. (react-hooks v6's
+    // set-state-in-effect rule flags this pattern; the pinned v5 toolchain has no
+    // such rule, so no disable directive — an unknown-rule directive is itself a
+    // lint error under v5. Re-add the disable if the plugin is ever bumped to v6.)
     if (sessionStorage.getItem(DEMO_SESSION_KEY) === 'true') {
       setUser(MOCK_DRIVER)
     }
     setIsLoading(false)
-    /* eslint-enable react-hooks/set-state-in-effect */
   }, [])
 
   // On app load, check whether a Supabase session already exists (e.g. page refresh).
