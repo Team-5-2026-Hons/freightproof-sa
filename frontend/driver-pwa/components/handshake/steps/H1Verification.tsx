@@ -27,12 +27,7 @@ export function H1Verification({ tripId, draft, onComplete }: H1VerificationProp
 
   return (
     <main className="flex min-h-screen flex-col">
-      <StepHeader
-        handshakeName="Origin Gate-In"
-        stepName="Verification"
-        stepIndex={2}
-        totalSteps={2}
-      />
+      <StepHeader handshake={1} step={2} />
       <div className="flex flex-1 flex-col gap-6 p-4">
         <p className="text-sm text-surface-on-variant">
           {/* H1 is a feeder handshake — the backend only anchors H2 (Loading) and H5

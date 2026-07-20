@@ -12,10 +12,13 @@ import uuid
 from datetime import datetime
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.blockchain.hedera import HederaService, HederaTimeoutError
+from app.blockchain.hedera import HederaService
+from app.blockchain.subject_visibility import assert_subject_visible
 from app.core.config import settings
+from app.core.exceptions import HederaTimeoutError
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import BlockchainReceiptType, SubjectType
 
@@ -112,3 +115,30 @@ async def anchor_subject(
     db.add(receipt)
     await db.flush()
     return receipt
+
+
+async def list_receipts_for_subject(
+    db: AsyncSession,
+    *,
+    subject_type: SubjectType,
+    subject_id: uuid.UUID,
+    organization_id: uuid.UUID,
+) -> list[BlockchainReceipt]:
+    """Return all BlockchainReceipts for a subject, newest first.
+
+    Visibility is checked here (not by the caller) so dispatchers can never
+    list receipts for a subject outside their organisation — raises
+    SubjectNotVisibleError, which the endpoint maps to 404.
+    """
+    await assert_subject_visible(
+        db, subject_type=subject_type, subject_id=subject_id, organization_id=organization_id,
+    )
+    result = await db.execute(
+        select(BlockchainReceipt)
+        .where(
+            BlockchainReceipt.subject_type == subject_type,
+            BlockchainReceipt.subject_id == subject_id,
+        )
+        .order_by(BlockchainReceipt.created_at.desc())
+    )
+    return list(result.scalars().all())

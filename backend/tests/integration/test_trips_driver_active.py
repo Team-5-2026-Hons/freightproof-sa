@@ -5,7 +5,10 @@ import uuid
 import pytest_asyncio
 from httpx import AsyncClient
 
-from app.db.models.enums import IdvsStatus, OrganizationType, TripStatus, VehicleType
+from app.db.models.blockchain import BlockchainReceipt
+from app.db.models.enums import (
+    BlockchainReceiptType, IdvsStatus, OrganizationType, SubjectType, TripStatus, VehicleType,
+)
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.trips import Trip
@@ -159,3 +162,57 @@ async def test_two_active_trips_returns_newest_not_500(client: AsyncClient, db_s
     resp = await client.get("/api/v1/trips/me/active", headers=auth_header(token))
     assert resp.status_code == 200
     assert resp.json()["id"] == str(newer.id)
+
+
+async def test_active_trip_includes_receipts_for_driver(client: AsyncClient, db_session):
+    """Pins the deliberate asymmetry with GET /trips/{id}: the driver's own active
+    trip must keep its blockchain_receipts (PWA anchor UI renders them), unlike the
+    dispatcher detail endpoint which strips receipts for non-admin roles."""
+    org = Organization(id=uuid.uuid4(), name="Org", org_type=OrganizationType.OPERATOR)
+    client_org = Organization(id=uuid.uuid4(), name="Client", org_type=OrganizationType.PRINCIPAL)
+    db_session.add_all([org, client_org])
+    await db_session.flush()
+    user = User(id=uuid.uuid4(), organization_id=org.id, email="d@test.co.za", full_name="D")
+    driver = Driver(
+        id=uuid.uuid4(), organization_id=org.id, full_name="Driver",
+        id_number="8001015009087", phone_number="+27821234567", license_number="DRV-1",
+    )
+    horse = Vehicle(
+        id=uuid.uuid4(), organization_id=org.id, vehicle_type=VehicleType.HORSE,
+        registration="ABC123GP", pulsit_device_id="PUL-1",
+    )
+    origin = Precinct(id=uuid.uuid4(), name="O", principal_organization_id=client_org.id, latitude="0", longitude="0")
+    dest = Precinct(id=uuid.uuid4(), name="D", principal_organization_id=client_org.id, latitude="1", longitude="1")
+    db_session.add_all([user, driver, horse, origin, dest])
+    await db_session.flush()
+    trip = Trip(
+        id=uuid.uuid4(), trip_reference="FP-TEST-RECEIPTS", order_number="ORD-RECEIPTS",
+        operator_organization_id=org.id, client_organization_id=client_org.id,
+        driver_id=driver.id, horse_id=horse.id,
+        origin_precinct_id=origin.id, destination_precinct_id=dest.id,
+        status=TripStatus.LOADING, idvs_check_status=IdvsStatus.VERIFIED,
+        created_by_user_id=user.id,
+    )
+    db_session.add(trip)
+    await db_session.flush()
+    # Simulate the H0 journey-lock anchor recorded at trip creation.
+    h0_receipt = BlockchainReceipt(
+        id=uuid.uuid4(), trip_id=trip.id,
+        subject_type=SubjectType.TRIP, subject_id=trip.id,
+        receipt_type=BlockchainReceiptType.JOURNEY_LOCK,
+        data_hash="a" * 64,
+        payload_json={"note": "h0-journey-lock-test-receipt"},
+    )
+    db_session.add(h0_receipt)
+    await db_session.flush()
+
+    token = make_token(sub=str(driver.id), role="driver")
+    resp = await client.get("/api/v1/trips/me/active", headers=auth_header(token))
+    assert resp.status_code == 200
+
+    body = resp.json()
+    assert "blockchain_receipts" in body
+    # anchored seed trip -> at least the H0 anchor receipt must be visible.
+    assert isinstance(body["blockchain_receipts"], list)
+    assert len(body["blockchain_receipts"]) >= 1
+    assert body["blockchain_receipts"][0]["id"] == str(h0_receipt.id)

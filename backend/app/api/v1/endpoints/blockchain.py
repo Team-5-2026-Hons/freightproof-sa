@@ -3,15 +3,13 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_dispatcher, require_admin_dispatcher
-from app.db.models.enums import DispatcherRole
+from app.blockchain.anchor_service import list_receipts_for_subject
 from app.blockchain.subject_visibility import assert_subject_visible
 from app.core.exceptions import SubjectNotVisibleError
-from app.db.models.blockchain import BlockchainReceipt
-from app.db.models.enums import SubjectType
+from app.db.models.enums import DispatcherRole, SubjectType
 from app.db.session import get_db
 from app.orchestration.verification_service import verify_subject
 from app.schemas.blockchain import BlockchainReceiptRead, VerifyRequest, VerifyResponse
@@ -28,21 +26,13 @@ async def list_receipts(
     current_user: UserRead = Depends(require_admin_dispatcher),
 ) -> list[BlockchainReceiptRead]:
     try:
-        await assert_subject_visible(
+        receipts = await list_receipts_for_subject(
             db, subject_type=subject_type,
             subject_id=subject_id, organization_id=current_user.organization_id,
         )
     except SubjectNotVisibleError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blockchain subject not found")
-    result = await db.execute(
-        select(BlockchainReceipt)
-        .where(
-            BlockchainReceipt.subject_type == subject_type,
-            BlockchainReceipt.subject_id == subject_id,
-        )
-        .order_by(BlockchainReceipt.created_at.desc())
-    )
-    return [BlockchainReceiptRead.model_validate(r) for r in result.scalars().all()]
+    return [BlockchainReceiptRead.model_validate(r) for r in receipts]
 
 
 @router.post("/verify", response_model=VerifyResponse)

@@ -74,7 +74,7 @@ export function H2Linehaul({ tripId, draft, onUpdate, onComplete }: H2LinehaulPr
 
   return (
     <main className="flex min-h-screen flex-col">
-      <StepHeader handshakeName="Loading" stepName="Confirm Linehaul" stepIndex={2} totalSteps={5} />
+      <StepHeader handshake={2} step={2} />
       <div className="flex flex-1 flex-col gap-6 p-4">
         {loading ? (
           <Spinner />

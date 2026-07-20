@@ -165,10 +165,30 @@ const config: Config = {
           from: { height: 'var(--radix-accordion-content-height)' },
           to: { height: '0' },
         },
+        'fade-in-scale': {
+          from: { opacity: '0', transform: 'scale(0.95)' },
+          to: { opacity: '1', transform: 'scale(1)' },
+        },
+        'toast-in': {
+          from: { opacity: '0', transform: 'translateY(8px) scale(0.97)' },
+          to: { opacity: '1', transform: 'translateY(0) scale(1)' },
+        },
+        'confirm-pulse': {
+          '0%, 100%': { transform: 'scale(1)' },
+          '50%': { transform: 'scale(1.15)' },
+        },
+        'radar-pulse': {
+          from: { transform: 'scale(1)', opacity: '0.6' },
+          to: { transform: 'scale(1.8)', opacity: '0' },
+        },
       },
       animation: {
         'accordion-down': 'accordion-down 0.2s ease-out',
         'accordion-up': 'accordion-up 0.2s ease-out',
+        'fade-in-scale': 'fade-in-scale 200ms ease-out',
+        'toast-in': 'toast-in 250ms ease-out',
+        'confirm-pulse': 'confirm-pulse 400ms ease-in-out',
+        'radar-pulse': 'radar-pulse 1.2s ease-out infinite',
       },
     },
   },

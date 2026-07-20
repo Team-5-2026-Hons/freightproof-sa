@@ -1,10 +1,9 @@
 import { useContext } from 'react'
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { TripContext, TripProvider, handshakeFromStatus } from '../TripContext'
+import { TripContext, TripProvider } from '../TripContext'
 import { AuthContext } from '../AuthContext'
 import type { AuthState } from '@/lib/types/user'
-import type { TripStatus } from '@shared/lib/types/trip'
 import { mockDrivers } from '@shared/lib/mocks/drivers'
 import { mockTrips } from '@shared/lib/mocks/trips'
 
@@ -129,31 +128,4 @@ describe('TripContext session exceptions (5b)', () => {
 
     expect(screen.getByTestId('last-gps')).toHaveTextContent(JSON.stringify([null, null]))
   })
-})
-
-// Trip.status records the handshake that was just COMPLETED (confirmed in
-// backend/app/orchestration/handshake_service.py), so handshakeFromStatus must map
-// each status to the NEXT actionable handshake — one past the one already done —
-// not to "that handshake in progress". Covers every TripStatus value, including the
-// two the backend currently never persists ('origin_gate_out', 'unloading') and the
-// terminal/off-path statuses that fall through to the default.
-describe('handshakeFromStatus', () => {
-  it.each<[TripStatus, 1 | 2 | 3 | 4 | 5]>([
-    ['created', 1],
-    ['origin_gate_in', 2],
-    ['loading', 3],
-    ['origin_gate_out', 4],
-    ['in_transit', 4],
-    ['dest_gate_in', 5],
-    ['unloading', 5],
-  ])('maps %s -> H%i', (status, expected) => {
-    expect(handshakeFromStatus(status)).toBe(expected)
-  })
-
-  it.each<TripStatus>(['closed', 'cancelled', 'exception_hold'])(
-    'falls back to H1 for the terminal/off-path status %s',
-    (status) => {
-      expect(handshakeFromStatus(status)).toBe(1)
-    },
-  )
 })

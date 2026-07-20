@@ -6,9 +6,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_dispatcher, require_admin_dispatcher
-from app.blockchain.hedera import HederaServiceError, HederaTimeoutError
 from app.db.models.enums import DispatcherRole
-from app.core.exceptions import DuplicateResourceError, ResourceNotFoundError
+from app.core.exceptions import (
+    DuplicateResourceError,
+    HederaServiceError,
+    HederaTimeoutError,
+    ResourceNotFoundError,
+)
 from app.db.session import get_db
 from app.orchestration.vehicle_service import (
     list_vehicles, create_vehicle, update_vehicle, get_vehicle_detail,

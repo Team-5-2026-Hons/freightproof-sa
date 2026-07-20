@@ -153,7 +153,7 @@ export default function CheckpointPageClient() {
           <div className="flex justify-center">
             <HoldButton label={submitting ? 'Submitting…' : 'Hold to confirm'} onConfirm={handleSubmit} disabled={!isReady || submitting} />
           </div>
-          <Button variant="secondary" size="lg" className="mt-4" onClick={() => router.back()}>
+          <Button variant="secondary" size="lg" className="mt-4" onClick={() => router.push(ROUTES.inTransit)}>
             Cancel
           </Button>
         </div>

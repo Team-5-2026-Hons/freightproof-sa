@@ -7,21 +7,7 @@ import { render, screen, fireEvent, act, cleanup } from '@testing-library/react'
 import { HoldButton } from '../HoldButton'
 import { setTapToConfirmPref, PREF_TAP_TO_CONFIRM } from '@/lib/constants/preferences'
 
-// framer-motion's useReducedMotion touches window.matchMedia, which jsdom omits.
-// Provide a no-op stub so the component renders without throwing in the test env.
 beforeEach(() => {
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-      matches: false,
-      media: query,
-      onchange: null,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    })) as unknown as typeof window.matchMedia
-  }
   window.localStorage.clear()
 })
 

@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { motion, useReducedMotion } from 'framer-motion'
 import { useHoldToConfirm } from '@/lib/hooks/useHoldToConfirm'
 import { getTapToConfirmPref } from '@/lib/constants/preferences'
 import { cn } from '@/lib/utils'
@@ -55,7 +54,6 @@ export function HoldButton({
   // Read the accessibility pref once on mount — it only takes effect on the next
   // mounted confirm button, matching the "applies next time" note in settings.
   const [tapToConfirm] = useState(() => getTapToConfirmPref())
-  const reduceMotion = useReducedMotion()
   const flourishTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const hintTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const armTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -115,8 +113,8 @@ export function HoldButton({
           },
         )
       }
-    }, reduceMotion ? 0 : FLOURISH_DURATION_MS)
-  }, [onConfirm, reduceMotion])
+    }, FLOURISH_DURATION_MS)
+  }, [onConfirm])
 
   const { isPressing, progress, onPressStart, onPressEnd } = useHoldToConfirm(
     durationMs,
@@ -204,15 +202,14 @@ export function HoldButton({
   return (
     // Relative wrapper reserves room for the helper line so the button never shifts.
     <div className="relative flex flex-col items-center">
-      <motion.button
+      <button
         {...pointerHandlers}
         disabled={disabled || isDispatching || isBusy}
-        animate={isDispatching ? { scale: [1, 1.15, 1] } : { scale: 1 }}
-        transition={{ duration: FLOURISH_DURATION_MS / 1000, ease: 'easeOut' }}
         className={cn(
           'relative flex h-24 w-24 items-center justify-center rounded-full',
           'select-none touch-none transition-opacity disabled:opacity-40',
           variant === 'primary' ? 'bg-primary' : 'bg-error',
+          isDispatching && 'animate-confirm-pulse motion-reduce:animate-none',
         )}
       >
         <svg className="absolute inset-0 -rotate-90" viewBox="0 0 60 60">
@@ -238,7 +235,7 @@ export function HoldButton({
             {buttonLabel}
           </span>
         </span>
-      </motion.button>
+      </button>
 
       {/* Absolutely positioned so it never nudges the button when it appears/disappears. */}
       {hintVisible && (

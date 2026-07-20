@@ -57,7 +57,7 @@ export function H3ExitSeal({ tripId, draft, h2SealNumber, onUpdate, onComplete }
 
   return (
     <main className="flex min-h-screen flex-col">
-      <StepHeader handshakeName="Origin Gate-Out" stepName="Confirm Seal" stepIndex={2} totalSteps={3} />
+      <StepHeader handshake={3} step={2} />
       <div className="flex flex-1 flex-col gap-6 p-4">
         <p className="text-sm text-surface-on-variant">
           Re-enter the seal number to confirm it matches what was set at loading.

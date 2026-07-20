@@ -328,4 +328,9 @@ async def get_active_trip_for_driver(db: AsyncSession, driver_id: uuid.UUID) -> 
     trip = result.scalars().first()
     if trip is None:
         return None
+    # Deliberate asymmetry with GET /trips/{id} (which strips receipts for
+    # non-admin dispatchers): the driver's own active trip keeps its
+    # blockchain_receipts because the PWA anchor UI renders them. Receipts
+    # carry hashes/tx ids only — no PII (POPIA-safe). Covered by
+    # test_active_trip_includes_receipts_for_driver.
     return await get_trip_detail(db, trip_id=trip.id, operator_organization_id=trip.operator_organization_id)

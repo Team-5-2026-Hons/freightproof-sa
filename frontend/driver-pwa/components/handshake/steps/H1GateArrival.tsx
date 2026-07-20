@@ -33,12 +33,7 @@ export function H1GateArrival({ tripId, draft, onUpdate, onComplete }: H1GateArr
 
   return (
     <main className="flex min-h-screen flex-col">
-      <StepHeader
-        handshakeName="Origin Gate-In"
-        stepName="Gate Arrival"
-        stepIndex={1}
-        totalSteps={2}
-      />
+      <StepHeader handshake={1} step={1} />
       <div className="flex flex-1 flex-col gap-6 p-4">
         <p className="text-sm text-surface-on-variant">
           Capture your GPS location at the origin gate to record your arrival position.

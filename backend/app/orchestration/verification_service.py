@@ -14,7 +14,8 @@ from typing import Any
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.blockchain.hedera import HederaService, HederaServiceError
+from app.blockchain.hedera import HederaService
+from app.core.exceptions import HederaServiceError
 from app.crypto.hashing import compute_trip_canonical_payload
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.events import DriverEvent, VehicleEvent

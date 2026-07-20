@@ -16,7 +16,7 @@ interface H5SealInspectionProps {
 export function H5SealInspection({ tripId, draft, onUpdate, onComplete }: H5SealInspectionProps) {
   return (
     <main className="flex min-h-screen flex-col">
-      <StepHeader handshakeName="Unloading" stepName="Wait for Inspection" stepIndex={2} totalSteps={6} />
+      <StepHeader handshake={5} step={2} />
       <div className="flex flex-1 flex-col gap-6 p-4">
         <p className="text-sm text-surface-on-variant">
           Wait for the warehouse to inspect and break the seal. Photograph the broken seal as evidence.

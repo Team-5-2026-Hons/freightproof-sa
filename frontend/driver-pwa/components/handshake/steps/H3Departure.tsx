@@ -17,7 +17,7 @@ export function H3Departure({ tripId, draft, onComplete }: H3DepartureProps) {
 
   return (
     <main className="flex min-h-screen flex-col">
-      <StepHeader handshakeName="Origin Gate-Out" stepName="Confirm Departure" stepIndex={3} totalSteps={3} />
+      <StepHeader handshake={3} step={3} />
       <div className="flex flex-1 flex-col gap-6 p-4">
         <p className="text-sm text-surface-on-variant">
           You are about to depart. Hold to submit — your departure is recorded and you are now in transit.

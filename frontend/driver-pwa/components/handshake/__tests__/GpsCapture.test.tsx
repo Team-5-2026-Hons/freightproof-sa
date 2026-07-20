@@ -3,7 +3,7 @@
 // Covers the fix that replaces a bare "Retry GPS" with reason-specific remediation:
 // permission_denied must tell the driver retrying won't help until they fix the OS
 // permission, while timeout/position_unavailable point them at open sky instead.
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { GpsCapture } from '../GpsCapture'
 import { useLocation } from '@/lib/hooks/useLocation'
@@ -11,22 +11,6 @@ import { useLocation } from '@/lib/hooks/useLocation'
 vi.mock('@/lib/hooks/useLocation', () => ({
   useLocation: vi.fn(),
 }))
-
-// framer-motion's useReducedMotion touches window.matchMedia, which jsdom omits.
-beforeEach(() => {
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-      matches: false,
-      media: query,
-      onchange: null,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    })) as unknown as typeof window.matchMedia
-  }
-})
 
 function mockUseLocation(overrides: Partial<ReturnType<typeof useLocation>>) {
   vi.mocked(useLocation).mockReturnValue({

@@ -25,6 +25,15 @@ if (process.env.NODE_ENV === "production") {
   }
 }
 
+// Read package.json version once, reused for the SW precache revision and the
+// NEXT_PUBLIC_APP_VERSION env injection. The precache revision is the package version,
+// bumped as a deliberate signal rather than a value that churns on every build (a build
+// timestamp would force every installed client to re-download all 74 route entries on
+// every deploy, even ones with no content change).
+const { version: packageJsonVersion } = JSON.parse(
+  fs.readFileSync(path.join(process.cwd(), "package.json"), "utf-8"),
+) as { version: string };
+
 const nextConfig: NextConfig = {
   output: "export",
   // Required for output: 'export' — Next.js image optimisation uses a server; static export cannot.
@@ -39,6 +48,9 @@ const nextConfig: NextConfig = {
   // file's lint state from blocking everyone's production build. Flagged for the team:
   // consider re-enabling once those two are resolved.
   eslint: { ignoreDuringBuilds: true },
+  env: {
+    NEXT_PUBLIC_APP_VERSION: packageJsonVersion,
+  },
 };
 
 // ── Offline navigation precache (FIX 3) ──────────────────────────────────────────────
@@ -75,7 +87,6 @@ const STATIC_ROUTES = [
   "/login",
   "/otp",
   "/settings",
-  "/dev/tokens",
   "/trip/in-transit",
   "/trip/in-transit/checkpoint",
   "/trip/in-transit/exception",
@@ -109,14 +120,6 @@ const TRIP_DETAIL_ROUTES = MOCK_TRIP_IDS.map((id) => `/trips/${id}`);
 
 const PRECACHED_ROUTES = [...STATIC_ROUTES, ...HANDSHAKE_ROUTES, ...TRIP_DETAIL_ROUTES];
 
-// Revision for route entries: the package version, bumped as a deliberate signal rather
-// than a value that churns on every build (a build timestamp would force every installed
-// client to re-download all 74 route entries on every deploy, even ones with no content
-// change).
-const { version: APP_VERSION } = JSON.parse(
-  fs.readFileSync(path.join(process.cwd(), "package.json"), "utf-8"),
-) as { version: string };
-
 // Each route is precached under its exact exported filename — `<route>.html` (the full
 // document, needed to satisfy a hard/cold navigation) AND `<route>.txt` (the RSC flight
 // payload Next's App Router client fetches for an in-app soft navigation to a route that
@@ -131,8 +134,8 @@ const { version: APP_VERSION } = JSON.parse(
 function routeToPrecacheEntries(route: string): { url: string; revision: string }[] {
   const base = route === "/" ? "/index" : route;
   return [
-    { url: `${base}.html`, revision: APP_VERSION },
-    { url: `${base}.txt`, revision: APP_VERSION },
+    { url: `${base}.html`, revision: packageJsonVersion },
+    { url: `${base}.txt`, revision: packageJsonVersion },
   ];
 }
 

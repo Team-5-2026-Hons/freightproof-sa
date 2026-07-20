@@ -41,7 +41,6 @@ if not (Path(__file__).resolve().parent.parent / ".env").exists():
         "REDIS_URL": "redis://localhost:6379/0",
         "SUPABASE_URL": "https://test.supabase.co",
         "SUPABASE_ANON_KEY": "test-anon-key",
-        "SUPABASE_JWT_SECRET": "test-jwt-secret",
         "SUPABASE_SERVICE_ROLE_KEY": "test-service-role-key",
         "HEDERA_ACCOUNT_ID": "0.0.0",
         "HEDERA_PRIVATE_KEY": "test-hedera-key",

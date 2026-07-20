@@ -4,7 +4,6 @@ import { useState, useCallback } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
 import { Camera as CameraIcon } from 'lucide-react'
-import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/lib/hooks/useToast'
 
@@ -113,7 +112,6 @@ async function fileToCompressedJpegDataUrl(file: File): Promise<string> {
 
 export function CameraCapture({ label, dataUrl, onCapture }: CameraCaptureProps) {
   const [isCapturing, setIsCapturing] = useState(false)
-  const reduceMotion = useReducedMotion()
   const { notify } = useToast()
 
   const notifyCaptureFailed = useCallback(() => {
@@ -206,49 +204,38 @@ export function CameraCapture({ label, dataUrl, onCapture }: CameraCaptureProps)
   return (
     <div className="flex flex-col gap-2">
       <p className="text-sm font-medium">{label}</p>
-      <AnimatePresence mode="wait" initial={false}>
-        {dataUrl ? (
-          <motion.div
-            key="captured"
-            initial={reduceMotion ? false : { opacity: 0, scale: 0.96 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={reduceMotion ? undefined : { opacity: 0, scale: 0.96 }}
-            transition={{ duration: 0.22, ease: 'easeOut' }}
-            // Fixed aspect-video frame + border so the preview reads as a bounded card instead of
-            // an unframed image merging with the page at whatever height the photo happens to be.
-            className="relative aspect-video w-full rounded-xl overflow-hidden border border-outline-variant/40 bg-surface-container-low"
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={dataUrl} alt={label} className="h-full w-full object-cover" />
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={handleCapture}
-              // Overrides ghost's uppercase/bold/transparent defaults back to the original
-              // floating pill look: rounded-full, a visible scrim so it reads over any
-              // photo, and normal-case/font-medium text. Shadow lifts it off the photo so
-              // it reads as a floating control, not part of the image.
-              className="absolute bottom-2 right-2 rounded-full bg-surface-container-highest/90 font-medium normal-case tracking-normal shadow-ambient-sm hover:bg-surface-container-highest"
-            >
-              Retake
-            </Button>
-          </motion.div>
-        ) : (
-          <motion.button
-            key="empty"
-            initial={reduceMotion ? false : { opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={reduceMotion ? undefined : { opacity: 0 }}
+      {dataUrl ? (
+        <div
+          // Fixed aspect-video frame + border so the preview reads as a bounded card instead of
+          // an unframed image merging with the page at whatever height the photo happens to be.
+          className="relative aspect-video w-full rounded-xl overflow-hidden border border-outline-variant/40 bg-surface-container-low animate-fade-in-scale motion-reduce:animate-none"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={dataUrl} alt={label} className="h-full w-full object-cover" />
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
             onClick={handleCapture}
-            disabled={isCapturing}
-            className="flex h-32 w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-outline-variant bg-surface-container-low text-sm text-surface-on-variant disabled:opacity-60"
+            // Overrides ghost's uppercase/bold/transparent defaults back to the original
+            // floating pill look: rounded-full, a visible scrim so it reads over any
+            // photo, and normal-case/font-medium text. Shadow lifts it off the photo so
+            // it reads as a floating control, not part of the image.
+            className="absolute bottom-2 right-2 rounded-full bg-surface-container-highest/90 font-medium normal-case tracking-normal shadow-ambient-sm hover:bg-surface-container-highest"
           >
-            <CameraIcon className="h-6 w-6" strokeWidth={1.5} aria-hidden />
-            {isCapturing ? 'Opening camera…' : 'Tap to photograph'}
-          </motion.button>
-        )}
-      </AnimatePresence>
+            Retake
+          </Button>
+        </div>
+      ) : (
+        <button
+          onClick={handleCapture}
+          disabled={isCapturing}
+          className="flex h-32 w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-outline-variant bg-surface-container-low text-sm text-surface-on-variant disabled:opacity-60 animate-fade-in-scale motion-reduce:animate-none"
+        >
+          <CameraIcon className="h-6 w-6" strokeWidth={1.5} aria-hidden />
+          {isCapturing ? 'Opening camera…' : 'Tap to photograph'}
+        </button>
+      )}
     </div>
   )
 }

@@ -51,12 +51,6 @@
 	<string>FreightProof saves captured evidence photos to your library.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>FreightProof records your location at custody handshakes and checkpoints as trip evidence.</string>
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>FreightProof tracks trip location in the background to detect warehouse arrival and departure while a trip is active.</string>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>location</string>
-	</array>
 	<!-- DEV ONLY: permits plain-http backend (http://<LAN-IP>:8000) during development. Remove before TestFlight/App Store submission. -->
 	<key>NSAppTransportSecurity</key>
 	<dict>

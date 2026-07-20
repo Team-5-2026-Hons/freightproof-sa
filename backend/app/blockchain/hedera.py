@@ -12,12 +12,16 @@ to blockchain for POPIA compliance.
 from __future__ import annotations
 
 import base64
+import logging
 import re
 from dataclasses import dataclass
 from typing import Protocol
 
 import httpx
 
+from app.core.exceptions import HederaServiceError
+
+logger = logging.getLogger(__name__)
 
 SHA256_HEX_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
@@ -32,10 +36,6 @@ class HederaReceipt:
     transaction_id: str | None
 
 
-class HederaServiceError(Exception):
-    """Base exception for Hedera service failures."""
-
-
 class HederaConfigError(HederaServiceError):
     """Raised when required Hedera configuration is missing or invalid."""
 
@@ -46,14 +46,6 @@ class HederaDependencyError(HederaServiceError):
 
 class HederaSubmitError(HederaServiceError):
     """Raised when submitting a hash to HCS fails."""
-
-
-class HederaTimeoutError(HederaServiceError):
-    """Raised when the submit_hash() call exceeds HEDERA_SUBMIT_TIMEOUT_SECONDS.
-
-    Distinct from HederaSubmitError so callers/logs can tell "Hedera never
-    responded in time" apart from "Hedera responded with a rejection".
-    """
 
 
 class HederaVerifyError(HederaServiceError):
@@ -123,7 +115,10 @@ class _SdkHederaAdapter:
             maybe_timestamp = getattr(tx_record, "consensusTimestamp", None)
             if maybe_timestamp is not None:
                 consensus_timestamp = str(maybe_timestamp)
-        except Exception:
+        except Exception as exc:  # pragma: no cover - defensive parse of SDK record
+            # Anchoring already succeeded at this point; a missing consensus
+            # timestamp degrades the receipt, so record why instead of hiding it.
+            logger.warning("Could not read consensus timestamp from tx record: %s", exc)
             consensus_timestamp = None
 
         # receipt.topicId can be Java null (pyjnius maps it to Python None) on

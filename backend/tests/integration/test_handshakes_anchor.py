@@ -15,7 +15,8 @@ import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy import select
 
-from app.blockchain.hedera import HederaReceipt, HederaTimeoutError
+from app.blockchain.hedera import HederaReceipt
+from app.core.exceptions import HederaTimeoutError
 from app.db.models.enums import ArtifactType, IdvsStatus, OrganizationType, TripStatus, VehicleType
 from app.db.models.evidence import EvidenceArtifact
 from app.db.models.organisations import Organization, Precinct

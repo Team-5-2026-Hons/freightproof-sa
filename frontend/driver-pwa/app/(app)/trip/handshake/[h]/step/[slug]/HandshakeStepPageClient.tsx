@@ -13,6 +13,7 @@ import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
 import { nextHandshakeRoute } from '@/lib/navigation/handshake-flow'
 import { IS_DEMO_MODE } from '@/lib/constants/env'
 import { ROUTES } from '@/lib/constants/routes'
+import { formatTime } from '@/lib/utils/format-time'
 import { HANDSHAKE_NAMES } from '@shared/lib/constants/handshake-meta'
 import { Spinner } from '@/components/ui/Spinner'
 import { Button } from '@/components/ui/Button'
@@ -246,7 +247,7 @@ function HandshakeStepContent({ trip, setIsSubmitting }: HandshakeStepContentPro
   // lands back on the trip page with zero confirmation, the biggest trust gap found in
   // the UX walkthrough.
   function notifyHandshakeRecorded(notice: RecordedNotice) {
-    const savedAt = new Date().toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })
+    const savedAt = formatTime(new Date())
     const body =
       notice === 'anchored'
         ? `Saved ${savedAt} — evidence recorded and anchored to Hedera HCS.`

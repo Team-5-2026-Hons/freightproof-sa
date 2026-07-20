@@ -4,6 +4,7 @@
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from app.core.config import settings
 from app.api.v1.endpoints.artifacts import router as artifacts_router
 from app.api.v1.endpoints.blockchain import router as blockchain_router
@@ -49,10 +50,16 @@ app.include_router(checkpoints_router, prefix="/api/v1")
 app.include_router(manifest_router, prefix="/api/v1")
 
 
-@app.get("/health", tags=["system"])
-async def health_check():
-    return {
-        "status": "ok",
-        "environment": settings.ENVIRONMENT,
-        "version": "0.1.0",
-    }
+class HealthResponse(BaseModel):
+    status: str
+    environment: str
+    version: str
+
+
+@app.get("/health", tags=["system"], response_model=HealthResponse)
+async def health_check() -> HealthResponse:
+    return HealthResponse(
+        status="ok",
+        environment=settings.ENVIRONMENT,
+        version="0.1.0",
+    )

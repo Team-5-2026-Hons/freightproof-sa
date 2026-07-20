@@ -22,7 +22,7 @@ export function H2Review({ tripId, draft, onComplete }: H2ReviewProps) {
 
   return (
     <main className="flex min-h-screen flex-col">
-      <StepHeader handshakeName="Loading" stepName="Review & Submit" stepIndex={5} totalSteps={5} />
+      <StepHeader handshake={2} step={5} />
       <div className="flex flex-1 flex-col gap-6 p-4">
         {/* True as of the H2/H5 Hedera anchoring backend work — H2 (Loading) is one of
             only two handshakes the backend actually anchors, so this claim stays. */}

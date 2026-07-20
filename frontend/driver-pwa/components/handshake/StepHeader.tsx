@@ -1,41 +1,40 @@
 'use client'
 
-import { useParams, useRouter } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { ShieldAlert } from 'lucide-react'
 import { STEP_SLUGS } from '@shared/lib/constants/handshake-meta'
+import type { HandshakeNumber } from '@shared/lib/types/handshake'
+import { useStepIndicator } from '@/lib/hooks/useStepIndicator'
 import { ROUTES } from '@/lib/constants/routes'
 import { IconButton } from '@/components/ui/IconButton'
 
 interface StepHeaderProps {
-  handshakeName: string
-  stepName: string
-  stepIndex: number   // 1-based
-  totalSteps: number
+  handshake: HandshakeNumber
+  step: number   // 1-based
 }
 
-export function StepHeader({ handshakeName, stepName, stepIndex, totalSteps }: StepHeaderProps) {
+export function StepHeader({ handshake, step }: StepHeaderProps) {
   const router = useRouter()
-  // StepHeader only ever renders inside /trip/handshake/[h]/step/[slug] (see every
-  // H*.tsx step component) — reading the handshake number from the route here, rather
-  // than threading a new prop through all ~20 step components, keeps this a one-file fix.
-  const { h } = useParams<{ h: string }>()
-  const handshakeNum = Number(h) as 1 | 2 | 3 | 4 | 5
-  const progress = (stepIndex / totalSteps) * 100
+  // Labels/counts are derived from shared handshake metadata via this hook, rather
+  // than passed in as props, so every step component's header stays in sync with a
+  // single source of truth (STEP_NAMES/HANDSHAKE_STEP_COUNTS in @shared).
+  const { handshakeName, stepName, current, total } = useStepIndicator(handshake, step)
+  const progress = (current / total) * 100
 
   // Mid-handshake (not the first step): back goes to the previous step of the SAME
   // handshake, not out of it entirely — the old behavior exited the whole handshake from
   // every step, discarding the driver's place. Drafts persist in localStorage
   // (useHandshakeDraft), so stepping back and forward again is always safe.
   function handleBack() {
-    if (stepIndex > 1) {
-      const slugs = STEP_SLUGS[handshakeNum]
-      router.push(ROUTES.handshakeStep(handshakeNum, slugs[stepIndex - 2]))
+    if (current > 1) {
+      const slugs = STEP_SLUGS[handshake as 1 | 2 | 3 | 4 | 5]
+      router.push(ROUTES.handshakeStep(handshake as 1 | 2 | 3 | 4 | 5, slugs[current - 2]))
     } else {
       router.push(ROUTES.activeTripDetail)
     }
   }
 
-  const backLabel = stepIndex > 1 ? 'Back to previous step' : 'Back to trip'
+  const backLabel = current > 1 ? 'Back to previous step' : 'Back to trip'
 
   return (
     <header className="sticky top-0 z-sticky bg-surface pb-3 pt-4 px-4 shadow-ambient-header">
@@ -54,7 +53,7 @@ export function StepHeader({ handshakeName, stepName, stepIndex, totalSteps }: S
           <p className="text-base font-semibold leading-tight truncate">{stepName}</p>
         </div>
         <span className="text-xs text-surface-on-variant tabular-nums">
-          {stepIndex}/{totalSteps}
+          {current}/{total}
         </span>
         {/* A driver under threat mid-handshake (gate, loading bay) must reach panic
             without first backing out to the trip hub. IconButton (size="md" = 44px,

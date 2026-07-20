@@ -5,6 +5,7 @@
 // this is a richer sibling for surfaces with room for a 3-row pipeline view — it
 // shows WHERE a handshake's evidence sits in the Hedera anchoring pipeline, not
 // just whether the whole thing is done.
+import { useEffect, useState } from 'react'
 import { CheckCircle2, Circle, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -16,6 +17,11 @@ interface AnchorProgressProps {
 
 const HASH_PREFIX_LEN = 8
 const HASH_SUFFIX_LEN = 8
+
+// Hedera consensus is normally seconds, but a slow/congested connection can stretch
+// well past that. Past this threshold we reassure the driver their evidence is
+// already safe on-device rather than let a silent spinner look like a stall.
+const LONG_WAIT_MS = 15_000
 
 // Truncates a 64-char SHA-256 event hash (or a Hedera receipt id) to "first8…last8"
 // for compact display — mirrors AnchorBadge's truncateHash. The full value is never
@@ -35,10 +41,27 @@ function truncateHash(value: string): string {
 // (feeder handshake, or this handshake hasn't completed), and showing a pipeline
 // here would wrongly imply something is in flight.
 export function AnchorProgress({ eventHash, receiptId, className }: AnchorProgressProps) {
+  // anchored is derived from props, not local state, so it's available before the
+  // `!eventHash` early return below — hooks must run unconditionally on every render.
+  const anchored = receiptId !== null
+
+  const [longWait, setLongWait] = useState(false)
+  useEffect(() => {
+    if (anchored) {
+      // Anchor completed (or this render started anchored) — nothing to wait on.
+      // Also covers a fresh anchoring cycle for a NEW event: `anchored` flipping
+      // false → true clears the in-flight timer via the cleanup below, and flipping
+      // true → false here re-arms a new LONG_WAIT_MS timer for the new pending state.
+      setLongWait(false)
+      return
+    }
+    const timer = setTimeout(() => setLongWait(true), LONG_WAIT_MS)
+    return () => clearTimeout(timer)
+  }, [anchored])
+
   if (!eventHash) return null
 
   const truncatedHash = truncateHash(eventHash)
-  const anchored = receiptId !== null
   const truncatedReceipt = receiptId ? truncateHash(receiptId) : null
 
   return (
@@ -68,6 +91,15 @@ export function AnchorProgress({ eventHash, receiptId, className }: AnchorProgre
           Submitted to Hedera HCS
         </span>
       </li>
+
+      {!anchored && longWait && (
+        <li className="pl-6">
+          <p className="text-xs text-surface-on-variant">
+            Still anchoring — Hedera consensus can take a minute on a slow connection.
+            Your evidence is already saved on this device.
+          </p>
+        </li>
+      )}
 
       <li
         className="flex items-center gap-2"

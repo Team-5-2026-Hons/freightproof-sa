@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useState, useCallback, useRef } from 'react'
+import { createContext, useState, useCallback } from 'react'
 import { ToastViewport, type ToastData } from '@/components/ui/Toast'
 import { Z } from '@shared/lib/z-index'
 
@@ -15,27 +15,22 @@ export interface ToastState {
 export const ToastContext = createContext<ToastState | null>(null)
 
 const MAX_TOASTS = 3
-// Auto-dismiss delay matches the ToastItem internal timer in Toast.tsx (4 000 ms).
-// Kept here so ToastProvider can also track timers for dismiss() cancellation.
-const AUTO_DISMISS_MS = 4000
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastData[]>([])
-  const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
+  // Auto-dismiss is owned entirely by ToastItem (components/ui/Toast.tsx): its internal
+  // timer plays the CSS leave transition, then calls this dismiss. A second provider-side
+  // timer here used to call dismiss directly and unmount the item before its exit
+  // animation could ever play — single ownership keeps the fade-out alive.
   const dismiss = useCallback((id: string) => {
-    clearTimeout(timers.current[id])
-    delete timers.current[id]
     setToasts(prev => prev.filter(t => t.id !== id))
   }, [])
 
   const notify = useCallback((toast: Omit<ToastData, 'id'>) => {
     const id = crypto.randomUUID()
     setToasts(prev => [...prev, { ...toast, id }].slice(-MAX_TOASTS))
-    if (!toast.sticky && toast.kind !== 'error') {
-      timers.current[id] = setTimeout(() => dismiss(id), AUTO_DISMISS_MS)
-    }
-  }, [dismiss])
+  }, [])
 
   return (
     <ToastContext.Provider value={{ toasts, notify, dismiss }}>

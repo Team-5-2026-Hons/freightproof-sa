@@ -83,6 +83,32 @@ async def _get_handshake_event(db: AsyncSession, *, trip_id: uuid.UUID, handshak
     return event
 
 
+async def get_handshake_detail(
+    db: AsyncSession, *, trip_id: uuid.UUID, handshake_type: HandshakeType, driver_id: uuid.UUID,
+) -> HandshakeEvent:
+    """Scoped to the calling driver's own trip — without this, any active driver
+    could read another driver's GPS, seal, and count data for any trip_id they
+    came across (e.g. from a gate QR code or dispatch chatter). Raises
+    ResourceNotFoundError (mapped to 404, not 403, by the caller) on a
+    trip-ownership mismatch so the response never confirms another driver's
+    trip exists."""
+    trip_result = await db.execute(
+        select(Trip).where(Trip.id == trip_id, Trip.driver_id == driver_id)
+    )
+    if trip_result.scalar_one_or_none() is None:
+        raise ResourceNotFoundError("Trip", str(trip_id))
+
+    result = await db.execute(
+        select(HandshakeEvent).where(
+            HandshakeEvent.trip_id == trip_id, HandshakeEvent.handshake_type == handshake_type,
+        )
+    )
+    event = result.scalar_one_or_none()
+    if event is None:
+        raise ResourceNotFoundError("HandshakeEvent", handshake_type.value)
+    return event
+
+
 async def advance_h1(
     db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID, payload: H1CompleteRequest,
 ) -> TripDetailResponse:

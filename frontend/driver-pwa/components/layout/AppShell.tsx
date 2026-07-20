@@ -1,17 +1,27 @@
 'use client'
 
 import { useState, type ReactNode } from 'react'
+import { usePathname } from 'next/navigation'
 import { OfflineBanner } from './OfflineBanner'
 import { ProfilePanel } from './ProfilePanel'
 import { BottomNav } from './BottomNav'
 
+// Shell header titles for top-level nav destinations. Handshake/trip sub-flows
+// render their own StepHeader, so the fallback brand title is correct there.
+const ROUTE_TITLES: Record<string, string> = {
+  '/': 'Home',
+  '/trips': 'Trips',
+  '/settings': 'Settings',
+}
+
 interface AppShellProps {
-  title?: string
   children: ReactNode
 }
 
-export function AppShell({ title = 'FreightProof', children }: AppShellProps) {
+export function AppShell({ children }: AppShellProps) {
   const [profileOpen, setProfileOpen] = useState(false)
+  const pathname = usePathname()
+  const title = ROUTE_TITLES[pathname] ?? 'FreightProof'
 
   return (
     <div className="flex min-h-screen flex-col">
