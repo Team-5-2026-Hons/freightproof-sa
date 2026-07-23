@@ -7,14 +7,14 @@ API. Adds nullable gps_lat/gps_lng columns, matching Checkpoint.driver_phone_lat
 _lng's Numeric(10,7) precision and naming convention (backend/app/db/models/transit.py).
 
 Revision ID: tim_add_exception_gps
-Revises: ciaran_add_exception_scoping
+Revises: 2026_07_14_ciaran_tcr
 Create Date: 2026-07-17
 """
 from alembic import op
 import sqlalchemy as sa
 
 revision = "tim_add_exception_gps"
-down_revision = "ciaran_add_exception_scoping"
+down_revision = "2026_07_14_ciaran_tcr"
 branch_labels = None
 depends_on = None
 
