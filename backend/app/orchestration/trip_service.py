@@ -300,6 +300,13 @@ async def create_trip(
     await db.refresh(trip)
     await db.refresh(h0)
     await db.refresh(receipt)
+    # Consignment rows were flushed inside fetch_and_sync_consignment but never refreshed,
+    # so their DB-generated created_at/updated_at stay expired. ConsignmentRead below reads
+    # those columns; without a refresh the attribute access triggers a lazy reload in a sync
+    # context (Pydantic model_validate) → MissingGreenlet → an unhandled 500. Refresh here,
+    # mirroring the trip/handshake/receipt refreshes above.
+    for result in consignment_results:
+        await db.refresh(result.consignment)
 
     # 8. Assemble and return the response (no ORM relationships — fetch separately).
     return TripDetailResponse(

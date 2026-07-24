@@ -132,25 +132,49 @@ function fmtDateTime(iso: string): string {
   })
 }
 
+// Splits a datetime-local value into separate date/time strings for a field-level
+// preview — keeps the single combined input (consistent with the rest of the app,
+// which has no split date+time pattern) while still making the exact moment picked
+// unambiguous at a glance.
+function fmtDateTimeParts(value: string): { date: string; time: string } | null {
+  if (!value) return null
+  const d = new Date(value)
+  return {
+    date: d.toLocaleDateString('en-ZA', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }),
+    time: d.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' }),
+  }
+}
+
 // ── Step 2 helpers ────────────────────────────────────────────────────────────
 
-// Row state for one PP waybill in the Step 1 form. unitCount is kept as the raw input
-// string (not parsed) so a dispatcher can clear/retype it without fighting NaN coercion;
-// it is parsed once, on submit / validation. `id` is a stable client-side identity so
-// async lookup results land on the row they were requested for — matching by array
-// index would misdirect an in-flight response onto whichever row shifted into that
-// slot after a removal. Never sent to the backend.
-interface WaybillRow {
+// A waybill confirmed onto the trip. Reference and summary are locked in once added —
+// they can only get here via a successful PP pull or a manifest fetch, both of which
+// supply real PP data. unitCount is the one field a dispatcher may still edit; kept as
+// the raw input string (not parsed) so it can be cleared/retyped without fighting NaN
+// coercion — parsed once, on submit / validation. `id` is a stable client-side identity,
+// never sent to the backend.
+interface AddedWaybill {
   id: string
   reference: string
   unitCount: string
-  summary: PPWaybillSummary | null
-  error: string | null
-  loading: boolean
+  summary: PPWaybillSummary
 }
 
-function emptyWaybillRow(): WaybillRow {
-  return { id: crypto.randomUUID(), reference: '', unitCount: '', summary: null, error: null, loading: false }
+// The single in-progress search/pull attempt. Only one is ever displayed at a time, so
+// this is one slot, not an array. 'duplicate' fires when the pulled reference is already
+// in addedWaybills. unitCount here is the pending value shown on the result card before
+// Add commits it into an AddedWaybill.
+type PullStatus = 'idle' | 'loading' | 'success' | 'duplicate' | 'error'
+
+interface PullState {
+  status: PullStatus
+  summary: PPWaybillSummary | null
+  unitCount: string
+  errorMessage: string | null
+}
+
+function emptyPullState(): PullState {
+  return { status: 'idle', summary: null, unitCount: '', errorMessage: null }
 }
 
 function MiniField({ label, value, mono = false }: { label: string; value: string | null | undefined; mono?: boolean }) {
@@ -206,11 +230,13 @@ export default function TripNewPage() {
   const [showConfirm, setShowConfirm] = useState(false)
 
   // Step 1 — Order & Waybills
-  const [orderNumber, setOrderNumber] = useState('')
-  const [isEmptyLeg,   setIsEmptyLeg]   = useState(false)
-  const [waybills,     setWaybills]     = useState<WaybillRow[]>([emptyWaybillRow()])
-  const [manifestNo,   setManifestNo]   = useState('')
-  const [manifestBusy, setManifestBusy] = useState(false)
+  const [orderNumber,   setOrderNumber]   = useState('')
+  const [isEmptyLeg,    setIsEmptyLeg]    = useState(false)
+  const [addedWaybills, setAddedWaybills] = useState<AddedWaybill[]>([])
+  const [searchRef,     setSearchRef]     = useState('')
+  const [pull,          setPull]          = useState<PullState>(emptyPullState())
+  const [manifestNo,    setManifestNo]    = useState('')
+  const [manifestBusy,  setManifestBusy]  = useState(false)
 
   // Step 2 — Crew & Vehicle
   const [driverId,      setDriverId]      = useState('')
@@ -241,15 +267,17 @@ export default function TripNewPage() {
   const sameLocation          = !!originId && originId === destId
   const arrivalNotAfterDepart = !!plannedDeparture && !!expectedArrival
     && new Date(expectedArrival) <= new Date(plannedDeparture)
+  const orderBlank            = showErrors && !orderNumber
 
-  // Waybills step is skipped entirely for an empty leg; otherwise every row needs a
-  // reference and a unit count ≥ 1, and references must be unique within the trip.
+  // Waybills step is skipped entirely for an empty leg; otherwise at least one waybill
+  // must be added, each with a unit count ≥ 1. Reference validity and uniqueness no
+  // longer need checking here — every entry in addedWaybills got there via a successful
+  // PP pull or manifest fetch, and pullWaybill already refuses to re-add a duplicate.
   const waybillsValid = isEmptyLeg || (
-    waybills.length > 0 &&
-    waybills.every(r => r.reference.trim() && parseInt(r.unitCount, 10) >= 1) &&
-    new Set(waybills.map(r => r.reference.trim())).size === waybills.length
+    addedWaybills.length > 0 &&
+    addedWaybills.every(r => parseInt(r.unitCount, 10) >= 1)
   )
-  const totalUnits = waybills.reduce((sum, r) => sum + (parseInt(r.unitCount, 10) || 0), 0)
+  const totalUnits = addedWaybills.reduce((sum, r) => sum + (parseInt(r.unitCount, 10) || 0), 0)
 
   // stepValid[N] → whether step N passes validation (1-indexed, index 0 unused)
   const stepValid = [
@@ -263,28 +291,61 @@ export default function TripNewPage() {
   const toggleTrailer = (id: string) =>
     setTrailerIds(prev => prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id])
 
-  // Looks up a single waybill reference against Parcel Perfect on blur. A lookup failure
-  // is non-blocking — the reference is re-verified server-side on submit — so the
-  // dispatcher can still proceed with just the reference and a manually entered unit count.
-  // Matches by row id, not array index: if the row is removed while the request is in
-  // flight, the map is a no-op instead of contaminating whichever row shifted into its slot.
-  async function lookupRow(row: WaybillRow) {
-    const ref = row.reference.trim()
+  // Pulls a single waybill reference from Parcel Perfect. Add is only ever enabled from
+  // a 'success' pull — there is no manual/unverified path. This supersedes the old
+  // wizard-time fail-open behavior: submit already fail-closes on an unverifiable
+  // reference (PPSyncError → 422, whole trip rolled back), so a provisional add here
+  // could never reach an anchored trip anyway.
+  async function pullWaybill() {
+    const ref = searchRef.trim()
     if (!ref) return
-    setWaybills(rows => rows.map(r => r.id === row.id ? { ...r, loading: true, error: null } : r))
+    if (addedWaybills.some(w => w.reference === ref)) {
+      setPull({ status: 'duplicate', summary: null, unitCount: '', errorMessage: null })
+      return
+    }
+    setPull({ status: 'loading', summary: null, unitCount: '', errorMessage: null })
     try {
       const summary = await api.get<PPWaybillSummary>(`/api/v1/pp/waybills/${encodeURIComponent(ref)}`)
-      setWaybills(rows => rows.map(r => r.id === row.id ? { ...r, summary, loading: false } : r))
+      setPull({ status: 'success', summary, unitCount: String(summary.parcel_count), errorMessage: null })
     } catch (err) {
       const msg = err instanceof ApiError && err.status === 404
         ? 'Waybill not found in Parcel Perfect'
-        : 'Lookup failed — you can still submit; the reference is verified on create'
-      setWaybills(rows => rows.map(r => r.id === row.id ? { ...r, summary: null, error: msg, loading: false } : r))
+        : 'Lookup failed. Try again.'
+      setPull({ status: 'error', summary: null, unitCount: '', errorMessage: msg })
     }
   }
 
+  // Commits the current successful pull into the added list, keyed off PP's own
+  // waybill string (not the raw search text) so casing/whitespace always matches what
+  // PP actually holds. Resets the search bar for the next reference.
+  function addWaybill() {
+    if (pull.status !== 'success' || !pull.summary) return
+    const summary = pull.summary
+    setAddedWaybills(rows => [...rows, {
+      id: crypto.randomUUID(),
+      reference: summary.waybill,
+      unitCount: pull.unitCount,
+      summary,
+    }])
+    setSearchRef('')
+    setPull(emptyPullState())
+  }
+
+  function removeWaybill(id: string) {
+    setAddedWaybills(rows => rows.filter(r => r.id !== id))
+  }
+
+  function updateAddedUnits(id: string, value: string) {
+    setAddedWaybills(rows => rows.map(r => r.id === id ? { ...r, unitCount: value } : r))
+  }
+
   // Bulk-fetch every waybill on a PP manifest. Only rendered when the backend reports
-  // manifest_lookup support (mock PP client today — see usePpCapabilities).
+  // manifest_lookup support (mock PP client today — see usePpCapabilities). Every
+  // returned waybill is already a successful PP response, so all of them are appended
+  // straight to the added list — no per-item confirm step, that's the entire point of
+  // keying a whole truck from one number. Appends rather than replaces: overwriting
+  // addedWaybills here would silently discard anything the dispatcher already added
+  // by hand. Anything already in the list (same reference) is skipped, not duplicated.
   async function fetchManifest() {
     const n = parseInt(manifestNo, 10)
     if (isNaN(n)) return
@@ -292,9 +353,18 @@ export default function TripNewPage() {
     try {
       const summaries = await api.get<PPWaybillSummary[]>(`/api/v1/pp/manifests/${n}`)
       if (summaries.length > 0) {
-        setWaybills(summaries.map(s => ({
-          id: crypto.randomUUID(), reference: s.waybill, unitCount: '', summary: s, error: null, loading: false,
-        })))
+        setAddedWaybills(rows => {
+          const existingRefs = new Set(rows.map(r => r.reference))
+          const newRows = summaries
+            .filter(s => !existingRefs.has(s.waybill))
+            .map(s => ({
+              id: crypto.randomUUID(),
+              reference: s.waybill,
+              unitCount: String(s.parcel_count),
+              summary: s,
+            }))
+          return [...rows, ...newRows]
+        })
       }
     } catch {
       notify({ kind: 'error', title: 'Manifest not found' })
@@ -325,8 +395,8 @@ export default function TripNewPage() {
         trailer_ids: trailerIds,
         origin_precinct_id: originId,
         destination_precinct_id: destId,
-        consignments: isEmptyLeg ? [] : waybills.map(r => ({
-          pp_reference: r.reference.trim(),
+        consignments: isEmptyLeg ? [] : addedWaybills.map(r => ({
+          pp_reference: r.reference,
           unit_count_expected: parseInt(r.unitCount, 10),
         })),
         planned_departure_at: plannedDeparture
@@ -373,6 +443,8 @@ export default function TripNewPage() {
     .join(', ') || 'None'
   const originName = precincts.find(p => p.id === originId)?.name ?? '—'
   const destName   = precincts.find(p => p.id === destId)?.name ?? '—'
+  const departureParts = fmtDateTimeParts(plannedDeparture)
+  const arrivalParts   = fmtDateTimeParts(expectedArrival)
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -409,8 +481,11 @@ export default function TripNewPage() {
                   value={orderNumber}
                   onChange={e => setOrderNumber(e.target.value)}
                   placeholder="e.g. FDX-JHB-DBN-8821"
-                  className={inp}
+                  className={orderBlank ? inpErr : inp}
                 />
+                {orderBlank && (
+                  <p className="text-[11px] text-err mt-1 font-[500]">Enter an order number</p>
+                )}
                 <label className="flex items-center gap-2 mt-4 cursor-pointer">
                   <input
                     type="checkbox"
@@ -419,7 +494,7 @@ export default function TripNewPage() {
                     className="w-4 h-4 accent-sec"
                   />
                   <span className="text-[13px] font-[600] text-on-surf">
-                    Empty leg (repositioning — no cargo)
+                    Empty leg (repositioning, no cargo)
                   </span>
                 </label>
               </FormCard>
@@ -445,84 +520,112 @@ export default function TripNewPage() {
                     </div>
                   )}
 
-                  {waybills.map(row => {
-                    // Display-only per-row invalid flags, gated by showErrors like the
-                    // Step 2/3 field errors. Mirrors waybillsValid's rules exactly.
-                    const ref          = row.reference.trim()
-                    const refBlank     = showErrors && !ref
-                    const refDup       = showErrors && !!ref &&
-                      waybills.filter(r => r.reference.trim() === ref).length > 1
-                    const unitsInvalid = showErrors && !(parseInt(row.unitCount, 10) >= 1)
-                    const rowMsg = [
-                      refBlank ? 'Enter a waybill reference' : refDup ? 'Duplicate reference' : null,
-                      unitsInvalid ? 'Units must be at least 1' : null,
-                    ].filter(Boolean).join(' · ')
-                    return (
-                    <div key={row.id} className="mb-4">
-                      <div className="flex gap-3">
-                        <div className="flex-[2]">
-                          <Lbl>PP waybill reference *</Lbl>
-                          <input
-                            value={row.reference}
-                            onChange={e => setWaybills(rows => rows.map(r =>
-                              r.id === row.id ? { ...r, reference: e.target.value, summary: null, error: null } : r,
-                            ))}
-                            onBlur={() => lookupRow(row)}
-                            placeholder="e.g. WAY001"
-                            className={refBlank || refDup ? inpErr : inp}
-                          />
-                        </div>
+                  <div className="flex gap-2 items-end">
+                    <div className="flex-1">
+                      <Lbl>PP waybill reference</Lbl>
+                      <input
+                        value={searchRef}
+                        onChange={e => { setSearchRef(e.target.value); setPull(emptyPullState()) }}
+                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); pullWaybill() } }}
+                        placeholder="e.g. WAY001"
+                        className={inp}
+                      />
+                    </div>
+                    <Button
+                      variant="secondary"
+                      iconLeft={<Ic n="search" s={14} />}
+                      onClick={pullWaybill}
+                      loading={pull.status === 'loading'}
+                      disabled={!searchRef.trim()}
+                    >
+                      Pull
+                    </Button>
+                  </div>
+
+                  {pull.status === 'duplicate' && (
+                    <p className="text-[11px] text-on-surf-v mt-2">Already added to this trip</p>
+                  )}
+
+                  {pull.status === 'error' && (
+                    <p className="text-[11px] text-err mt-2 font-[500]">{pull.errorMessage}</p>
+                  )}
+
+                  {pull.status === 'success' && pull.summary && (
+                    <div className="rounded-lg bg-surf-low border border-outline-v/20 p-4 mt-3">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Ic n="file" s={14} className="text-sec" />
+                        <span className="text-[13px] font-[700] text-on-surf tabular-nums tracking-[0.04em]">
+                          {pull.summary.waybill}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-4 gap-x-4 mb-3">
+                        <MiniField label="Customer" value={pull.summary.customer_name} />
+                        <MiniField label="Parcels"  value={String(pull.summary.parcel_count)} mono />
+                        <MiniField label="Weight"   value={pull.summary.weight_kg != null ? `${pull.summary.weight_kg} kg` : null} mono />
+                        <MiniField label="Dest"     value={pull.summary.dest_town} />
+                      </div>
+                      <div className="flex gap-3 items-end">
                         <div className="flex-1">
-                          <Lbl>Expected units (pallets) *</Lbl>
+                          <Lbl>Expected units (pallets)</Lbl>
                           <input
                             type="number"
                             min="1"
-                            value={row.unitCount}
-                            onChange={e => setWaybills(rows => rows.map(r =>
-                              r.id === row.id ? { ...r, unitCount: e.target.value } : r,
-                            ))}
-                            placeholder="0"
-                            className={unitsInvalid ? inpErr : inp}
+                            value={pull.unitCount}
+                            onChange={e => setPull(p => ({ ...p, unitCount: e.target.value }))}
+                            className={inp}
                           />
                         </div>
-                        {waybills.length > 1 && (
-                          <button
-                            type="button"
-                            className="text-err text-[12px] font-[600] self-end pb-2"
-                            onClick={() => setWaybills(rows => rows.filter(r => r.id !== row.id))}
-                          >
-                            Remove
-                          </button>
-                        )}
+                        <Button onClick={addWaybill}>+ Add</Button>
                       </div>
-                      {rowMsg && (
-                        <p className="text-[11px] text-err mt-1 font-[500]">{rowMsg}</p>
-                      )}
-                      {row.loading && (
-                        <p className="text-[11px] text-on-surf-v mt-1">Checking Parcel Perfect…</p>
-                      )}
-                      {row.error && (
-                        <p className="text-[11px] text-err mt-1 font-[500]">{row.error}</p>
-                      )}
-                      {row.summary && (
-                        <div className="rounded-lg bg-surf-low p-[10px_12px] border border-outline-v/20 mt-2 grid grid-cols-4 gap-x-4">
-                          <MiniField label="Customer" value={row.summary.customer_name} />
-                          <MiniField label="Parcels"  value={String(row.summary.parcel_count)} mono />
-                          <MiniField label="Weight"   value={row.summary.weight_kg != null ? `${row.summary.weight_kg} kg` : null} mono />
-                          <MiniField label="Dest"     value={row.summary.dest_town} />
-                        </div>
-                      )}
                     </div>
-                    )
-                  })}
+                  )}
 
-                  <button
-                    type="button"
-                    className="text-[13px] font-[600] text-sec hover:opacity-75 transition-opacity"
-                    onClick={() => setWaybills(rows => [...rows, emptyWaybillRow()])}
-                  >
-                    + Add waybill
-                  </button>
+                  {addedWaybills.length > 0 && (
+                    <div className="flex flex-col gap-3 mt-4 pt-4 border-t border-outline-v/20">
+                      {addedWaybills.map(row => {
+                        const unitsInvalid = showErrors && !(parseInt(row.unitCount, 10) >= 1)
+                        return (
+                          <div key={row.id} className="rounded-lg bg-surf-low border border-outline-v/20 p-4">
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-2">
+                                <Ic n="check" s={14} className="text-ok" />
+                                <span className="text-[13px] font-[700] text-on-surf tabular-nums tracking-[0.04em]">
+                                  {row.reference}
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                className="text-err text-[12px] font-[600]"
+                                onClick={() => removeWaybill(row.id)}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                            <div className="grid grid-cols-4 gap-x-4 mb-3">
+                              <MiniField label="Customer" value={row.summary.customer_name} />
+                              <MiniField label="Parcels"  value={String(row.summary.parcel_count)} mono />
+                              <MiniField label="Weight"   value={row.summary.weight_kg != null ? `${row.summary.weight_kg} kg` : null} mono />
+                              <MiniField label="Dest"     value={row.summary.dest_town} />
+                            </div>
+                            <div className="w-32">
+                              <Lbl>Expected units (pallets)</Lbl>
+                              <input
+                                type="number"
+                                min="1"
+                                value={row.unitCount}
+                                onChange={e => updateAddedUnits(row.id, e.target.value)}
+                                className={unitsInvalid ? inpErr : inp}
+                              />
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  {showErrors && addedWaybills.length === 0 && (
+                    <p className="text-[11px] text-err mt-3 font-[500]">Add at least one waybill</p>
+                  )}
                 </FormCard>
               )}
             </>
@@ -716,29 +819,39 @@ export default function TripNewPage() {
               <div className="flex gap-3 mb-[14px]">
                 <div className="flex-1">
                   <Lbl>Origin Precinct *</Lbl>
-                  <select
+                  <SearchSelect
+                    options={precincts.map(p => ({
+                      value: p.id as string,
+                      label: p.name,
+                      sublabel: p.address ?? undefined,
+                    }))}
                     value={originId}
-                    onChange={e => setOriginId(e.target.value)}
-                    className={inp}
-                  >
-                    <option value="">Select origin…</option>
-                    {precincts.map(p => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </select>
+                    onChange={setOriginId}
+                    placeholder="Select origin…"
+                    searchPlaceholder="Search precincts…"
+                    error={showErrors && !originId}
+                  />
+                  {showErrors && !originId && (
+                    <p className="text-[11px] text-err mt-1 font-[500]">Please select an origin precinct.</p>
+                  )}
                 </div>
                 <div className="flex-1">
                   <Lbl>Destination Precinct *</Lbl>
-                  <select
+                  <SearchSelect
+                    options={precincts.map(p => ({
+                      value: p.id as string,
+                      label: p.name,
+                      sublabel: p.address ?? undefined,
+                    }))}
                     value={destId}
-                    onChange={e => setDestId(e.target.value)}
-                    className={inp}
-                  >
-                    <option value="">Select destination…</option>
-                    {precincts.map(p => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </select>
+                    onChange={setDestId}
+                    placeholder="Select destination…"
+                    searchPlaceholder="Search precincts…"
+                    error={showErrors && (!destId || sameLocation)}
+                  />
+                  {showErrors && !destId && (
+                    <p className="text-[11px] text-err mt-1 font-[500]">Please select a destination precinct.</p>
+                  )}
                   {showErrors && sameLocation && (
                     <p className="text-[11px] text-err mt-1 font-[500]">Must differ from origin.</p>
                   )}
@@ -754,6 +867,11 @@ export default function TripNewPage() {
                     onChange={e => setPlannedDeparture(e.target.value)}
                     className={inp}
                   />
+                  {departureParts && (
+                    <p className="text-[11px] text-on-surf-v mt-1">
+                      <span className="font-[600] text-on-surf">{departureParts.date}</span> · {departureParts.time}
+                    </p>
+                  )}
                 </div>
                 <div className="flex-1">
                   <Lbl>Expected Arrival *</Lbl>
@@ -763,6 +881,11 @@ export default function TripNewPage() {
                     onChange={e => setExpectedArrival(e.target.value)}
                     className={inp}
                   />
+                  {arrivalParts && (
+                    <p className="text-[11px] text-on-surf-v mt-1">
+                      <span className="font-[600] text-on-surf">{arrivalParts.date}</span> · {arrivalParts.time}
+                    </p>
+                  )}
                   {showErrors && arrivalNotAfterDepart && (
                     <p className="text-[11px] text-err mt-1 font-[500]">Must be after departure.</p>
                   )}
@@ -786,21 +909,32 @@ export default function TripNewPage() {
                       <span className="text-[13px] font-[600] text-on-surf">Empty leg</span>
                     </div>
                   ) : (
-                    <div className="flex flex-col pt-1">
-                      {waybills.map(row => (
-                        <div key={row.id} className="py-2 border-b border-outline-v/10 last:border-0">
-                          <div className="text-[13px] font-[600] text-on-surf">
-                            {row.summary
-                              ? `${row.reference} · ${row.summary.customer_name} · ${row.summary.parcel_count} parcels`
-                                + (row.summary.weight_kg != null ? ` · ${row.summary.weight_kg} kg` : '')
-                                + ` → ${row.summary.dest_town} · ${row.unitCount || '0'} units`
-                              : `${row.reference || '—'} · ${row.unitCount || '0'} units`}
+                    <div className="mt-3 pt-3 border-t border-outline-v/20">
+                      <div className="text-[11px] font-[700] tracking-[0.08em] uppercase text-on-surf-v mb-3">
+                        Waybills
+                      </div>
+                      <div className="flex flex-col gap-3">
+                        {addedWaybills.map(row => (
+                          <div key={row.id} className="rounded-lg bg-surf-low border border-outline-v/20 p-4">
+                            <div className="flex items-center gap-2 mb-3">
+                              <Ic n="file" s={14} className="text-sec" />
+                              <span className="text-[13px] font-[700] text-on-surf tabular-nums tracking-[0.04em]">
+                                {row.reference}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-4 gap-x-4">
+                              <MiniField label="Customer" value={row.summary.customer_name} />
+                              <MiniField label="Parcels"  value={String(row.summary.parcel_count)} mono />
+                              <MiniField label="Weight"   value={row.summary.weight_kg != null ? `${row.summary.weight_kg} kg` : null} mono />
+                              <MiniField label="Dest"     value={row.summary.dest_town} />
+                            </div>
+                            <div className="flex items-center justify-between mt-3 pt-3 border-t border-outline-v/10">
+                              <span className="text-[10px] text-on-surf-v">from Parcel Perfect</span>
+                              <span className="text-[12px] font-[700] text-on-surf tabular-nums">{row.unitCount || '0'} units</span>
+                            </div>
                           </div>
-                          {row.summary && (
-                            <div className="text-[10px] text-on-surf-v mt-[2px]">from Parcel Perfect</div>
-                          )}
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
                   )}
                 </ReviewSection>
@@ -816,8 +950,8 @@ export default function TripNewPage() {
                 <ReviewSection title="Route & Schedule" onEdit={() => setStep(3)}>
                   <ReviewRows rows={[
                     { label: 'Origin',       value: originName },
-                    { label: 'Destination',  value: destName },
                     { label: 'Departure',    value: fmtDateTime(plannedDeparture), mono: true },
+                    { label: 'Destination',  value: destName },
                     { label: 'Est. arrival', value: fmtDateTime(expectedArrival),  mono: true },
                   ]} />
                 </ReviewSection>
@@ -843,7 +977,7 @@ export default function TripNewPage() {
                   ['Departure', fmtDateTime(plannedDeparture), true],
                   ['Cargo',     isEmptyLeg
                                   ? 'Empty leg'
-                                  : `${waybills.length} waybill(s) · ${totalUnits} units`, false],
+                                  : `${addedWaybills.length} waybill(s) · ${totalUnits} units`, false],
                 ] as [string, string, boolean][]).map(([label, value, mono]) => (
                   <div
                     key={label}
