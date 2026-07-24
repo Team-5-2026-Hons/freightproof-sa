@@ -47,8 +47,14 @@ async def _latest_receipt(
 
 
 async def _reconstruct_trip_payload(
-    db: AsyncSession, trip_id: uuid.UUID
+    db: AsyncSession, trip_id: uuid.UUID, *, anchored_payload: dict[str, Any] | None
 ) -> dict[str, Any] | None:
+    """Rebuild the canonical trip payload from live DB rows, version-dispatching trip_type.
+
+    trip_type is only included if the originally anchored payload had it. Older
+    trips were anchored before trip_type existed, so recomputing with it set would
+    change the hash and produce a false DB_MISMATCH ("tampering") on untouched rows.
+    """
     trip = (
         await db.execute(select(Trip).where(Trip.id == trip_id))
     ).scalar_one_or_none()
@@ -63,6 +69,7 @@ async def _reconstruct_trip_payload(
         # Precincts are set at trip creation; a receipt shouldn't exist before that,
         # but treat it like the other reconstruct_* helpers' not-found case either way.
         return None
+    include_trip_type = bool(anchored_payload) and "trip_type" in anchored_payload
     return compute_trip_canonical_payload(
         trip_id=trip.id,
         order_number=trip.order_number,
@@ -73,6 +80,7 @@ async def _reconstruct_trip_payload(
         destination_precinct_id=trip.destination_precinct_id,
         created_by_user_id=trip.created_by_user_id,
         created_at=trip.created_at,
+        trip_type=trip.trip_type if include_trip_type else None,
     )
 
 
@@ -169,7 +177,9 @@ async def verify_subject(
         return VerifyOutcome(status=VerifyStatus.NO_RECEIPT)
 
     if subject_type == SubjectType.TRIP:
-        rebuilt = await _reconstruct_trip_payload(db, subject_id)
+        rebuilt = await _reconstruct_trip_payload(
+            db, subject_id, anchored_payload=receipt.payload_json
+        )
         if rebuilt is None:
             return VerifyOutcome(status=VerifyStatus.NO_RECEIPT, receipt=receipt)
         current_hash = _hash_payload(rebuilt)

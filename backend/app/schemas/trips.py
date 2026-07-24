@@ -7,7 +7,7 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.db.models.enums import IdvsStatus, ParcelStatus, TripStatus
+from app.db.models.enums import IdvsStatus, ParcelStatus, TripStatus, TripType
 from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.handshakes import HandshakeEventRead
 from app.schemas.people import DriverRead
@@ -49,7 +49,9 @@ class ConsignmentBase(BaseModel):
 
     trip_id: Optional[UUID] = None
     parcel_perfect_reference: str
-    client_organization_id: UUID
+    # Resolved from the PP accnum at sync time; may be unknown (NULL in DB) when
+    # no org matches — a creation warning, not an error, so reads must accept it.
+    client_organization_id: Optional[UUID] = None
     origin_precinct_id: Optional[UUID] = None
     destination_precinct_id: Optional[UUID] = None
     declared_value: Optional[Decimal] = None
@@ -186,6 +188,7 @@ class TripListItemResponse(BaseModel):
     trip_reference: str
     order_number: str
     status: TripStatus
+    trip_type: TripType
     driver: DriverRead
     horse: VehicleRead
     trailers: list[VehicleRead]
@@ -259,16 +262,22 @@ class TripStopRead(TripStopBase):
     updated_at: datetime
 
 
+class TripConsignmentInput(BaseModel):
+    """One waybill on the trip. pp_reference is the PP waybill number (string[24]
+    in the v28 spec); unit_count_expected is the dispatcher-entered consolidated
+    unit (pallet) count — PP has no pallet grain, so this cannot be derived."""
+
+    pp_reference: str = Field(..., min_length=1, max_length=24)
+    unit_count_expected: int = Field(..., ge=1)
+
+
 class TripCreateRequest(BaseModel):
     """Dispatcher-facing trip creation payload — excludes auto-generated and JWT-derived fields."""
 
     order_number: str = Field(..., min_length=1)
-    # Nullable: a multi-stop/multi-client trip has no single client_organization_id
-    # (client lives per-consignment instead) — FP-112.
-    client_organization_id: Optional[UUID] = None
     driver_id: UUID
     horse_id: UUID
-    trailer_ids: list[UUID] = Field(default_factory=list, min_length=1)
+    trailer_ids: list[UUID] = Field(default_factory=list)
     # Required only when `stops` is omitted (single-leg back-compat path, FP-112 A.3).
     origin_precinct_id: Optional[UUID] = None
     destination_precinct_id: Optional[UUID] = None
@@ -278,7 +287,10 @@ class TripCreateRequest(BaseModel):
     template_id: Optional[UUID] = None
     planned_departure_at: Optional[datetime] = None
     planned_arrival_at: Optional[datetime] = None
-    pp_reference: Optional[str] = Field(None, min_length=1, max_length=50)  # Parcel Perfect waybill number; triggers consignment sync at creation
+    trip_type: TripType = TripType.LOADED
+    # PP waybill references + dispatcher-entered unit counts. Client org is now
+    # derived per-consignment from the PP accnum, not carried on the trip itself.
+    consignments: list[TripConsignmentInput] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_request(self) -> "TripCreateRequest":
@@ -298,6 +310,13 @@ class TripCreateRequest(BaseModel):
                 raise ValueError("planned_arrival_at must be after planned_departure_at")
         if len(self.trailer_ids) != len(set(self.trailer_ids)):
             raise ValueError("trailer_ids must not contain duplicates")
+        if self.trip_type == TripType.LOADED and not self.consignments:
+            raise ValueError("a loaded trip requires at least one consignment (PP waybill)")
+        if self.trip_type == TripType.EMPTY_LEG and self.consignments:
+            raise ValueError("an empty leg cannot carry consignments")
+        refs = [c.pp_reference for c in self.consignments]
+        if len(refs) != len(set(refs)):
+            raise ValueError("duplicate pp_reference values in consignments")
         return self
 
 
@@ -316,7 +335,9 @@ class ConsignmentManifest(BaseModel):
 
     consignment_id: UUID
     parcel_perfect_reference: str
-    client_organization_id: UUID
+    # Nullable: resolved from the PP accnum at sync time — an unmapped accnum
+    # leaves this NULL on the consignment (creation warning, not an error).
+    client_organization_id: Optional[UUID] = None
     # Consolidated-unit grain (pallets) — dispatcher-entered, distinct from parcel grain.
     unit_count_expected: Optional[int] = None
     total_parcel_count: int
@@ -361,6 +382,7 @@ class TripDetailResponse(BaseModel):
     trip_reference: str
     order_number: str
     status: TripStatus
+    trip_type: TripType
     journey_lock_hash: Optional[str] = None
     idvs_check_status: IdvsStatus
     driver: DriverRead
@@ -369,6 +391,7 @@ class TripDetailResponse(BaseModel):
     origin_precinct_id: UUID
     destination_precinct_id: UUID
     stops: list[TripStopRead]
+    consignments: list[ConsignmentRead] = []
     pulsit_trip_reference_id: Optional[str] = None
     planned_departure_at: Optional[datetime] = None
     actual_departure_at: Optional[datetime] = None
@@ -378,5 +401,8 @@ class TripDetailResponse(BaseModel):
     handshakes: list[HandshakeEventRead]
     exceptions: list[TripExceptionRead]
     blockchain_receipts: list[BlockchainReceiptRead]
+    # Creation-transient: populated by POST /trips (e.g. PP sync degraded-mode
+    # warnings). Always [] on GET — never persisted.
+    warnings: list[str] = []
     created_at: datetime
     updated_at: datetime

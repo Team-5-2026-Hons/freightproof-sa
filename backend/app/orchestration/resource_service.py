@@ -16,19 +16,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ResourceNotFoundError
 from app.db.models.blockchain import BlockchainReceipt
-from app.db.models.enums import SubjectType, TripStatus
+from app.db.models.enums import SubjectType, TripStatus, TripType
 from app.db.models.handshakes import HandshakeEvent
 from app.db.models.organisations import Precinct
 from app.db.models.people import Driver
 from app.db.models.transit import TripException
-from app.db.models.trips import Trip, TripStop, TripTrailer
+from app.db.models.trips import Consignment, Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.handshakes import HandshakeEventRead
 from app.schemas.organisations import PrecinctRead
 from app.schemas.people import DriverRead
 from app.schemas.transit import TripExceptionRead
-from app.schemas.trips import TripDetailResponse, TripListItemResponse, TripStopRead
+from app.schemas.trips import ConsignmentRead, TripDetailResponse, TripListItemResponse, TripStopRead
 from app.schemas.vehicles import VehicleRead
 
 
@@ -109,6 +109,7 @@ async def list_trips(
             trip_reference=t.trip_reference,
             order_number=t.order_number,
             status=t.status,
+            trip_type=TripType(t.trip_type),
             driver=DriverRead.model_validate(drivers_by_id[t.driver_id]),
             horse=VehicleRead.model_validate(horses_by_id[t.horse_id]),
             trailers=[VehicleRead.model_validate(v) for v in trailers_by_trip.get(t.id, [])],
@@ -183,11 +184,22 @@ async def get_trip_detail(
     )
     stops = stops_result.scalars().all()
 
+    # id tiebreaker: consignments inserted in one transaction share the same
+    # created_at (Postgres now() is per-transaction), so created_at alone is
+    # non-deterministic across reads.
+    consignments_result = await db.execute(
+        select(Consignment)
+        .where(Consignment.trip_id == trip_id)
+        .order_by(Consignment.created_at, Consignment.id)
+    )
+    consignments = consignments_result.scalars().all()
+
     return TripDetailResponse(
         id=trip.id,
         trip_reference=trip.trip_reference,
         order_number=trip.order_number,
         status=trip.status,
+        trip_type=TripType(trip.trip_type),
         journey_lock_hash=trip.journey_lock_hash,
         idvs_check_status=trip.idvs_check_status,
         driver=DriverRead.model_validate(driver),
@@ -196,6 +208,7 @@ async def get_trip_detail(
         origin_precinct_id=trip.origin_precinct_id,
         destination_precinct_id=trip.destination_precinct_id,
         stops=[TripStopRead.model_validate(s) for s in stops],
+        consignments=[ConsignmentRead.model_validate(c) for c in consignments],
         pulsit_trip_reference_id=trip.pulsit_trip_reference_id,
         planned_departure_at=trip.planned_departure_at,
         actual_departure_at=trip.actual_departure_at,
@@ -205,6 +218,7 @@ async def get_trip_detail(
         handshakes=[HandshakeEventRead.model_validate(h) for h in handshakes],
         exceptions=[TripExceptionRead.model_validate(e) for e in exceptions],
         blockchain_receipts=[BlockchainReceiptRead.model_validate(r) for r in receipts],
+        warnings=[],
         created_at=trip.created_at,
         updated_at=trip.updated_at,
     )

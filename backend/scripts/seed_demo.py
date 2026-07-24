@@ -43,7 +43,8 @@ async def seed():
         await upsert(Organization, Organization.id, _DEMO_CLIENT_ORG_ID,
                      id=_DEMO_CLIENT_ORG_ID, name="FreightProof Demo Client",
                      org_type=OrganizationType.PRINCIPAL,
-                     contact_email="client@demo.freightproof.co.za")
+                     contact_email="client@demo.freightproof.co.za",
+                     pp_account_number="MOCK01")
 
         await db.flush()
 

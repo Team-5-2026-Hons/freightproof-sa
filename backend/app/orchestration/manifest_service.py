@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ResourceNotFoundError
+from app.db.models.enums import TripType
 from app.db.models.people import Driver
 from app.db.models.trips import Consignment, Parcel, Trip
 from app.db.models.vehicles import Vehicle
@@ -45,8 +46,16 @@ async def get_manifest_for_dispatcher(
     trip_result = await db.execute(
         select(Trip).where(Trip.id == trip_id, Trip.operator_organization_id == operator_organization_id)
     )
-    if trip_result.scalar_one_or_none() is None:
+    trip = trip_result.scalar_one_or_none()
+    if trip is None:
         raise ResourceNotFoundError("Trip", str(trip_id))
+
+    if trip.trip_type == TripType.EMPTY_LEG.value:
+        # Repositioning run: no cargo by definition — a defined zero, not a 404.
+        return ManifestResponse(
+            trip_id=trip_id, total_parcel_count=0, origin_scan_complete=False,
+            consignments=[], pulled_at=trip.updated_at,
+        )
 
     loaded = await _load_consignments_and_parcels(db, trip_id)
 
@@ -93,12 +102,24 @@ async def get_linehaul_for_driver(
     if trip is None:
         raise ResourceNotFoundError("Trip", str(trip_id))
 
-    loaded = await _load_consignments_and_parcels(db, trip_id)
-
     horse_result = await db.execute(select(Vehicle).where(Vehicle.id == trip.horse_id))
     horse = horse_result.scalar_one()
     driver_result = await db.execute(select(Driver).where(Driver.id == trip.driver_id))
     driver = driver_result.scalar_one()
+
+    if trip.trip_type == TripType.EMPTY_LEG.value:
+        # Repositioning run: no cargo by definition — a defined zero, not a 404.
+        return LinehaulResponse(
+            trip_id=trip_id,
+            vehicle_registration=horse.registration,
+            vehicle_type=str(horse.vehicle_type),
+            driver_full_name=driver.full_name,
+            consolidated_unit_count=0,
+            origin_scan_complete=False,
+            pulled_at=trip.updated_at,
+        )
+
+    loaded = await _load_consignments_and_parcels(db, trip_id)
 
     # Consolidated-unit grain (pallets), summed across all consignments — the driver counts
     # pallets, never parcels (Bruce, 24 Jun). Legacy fallback applies per-consignment: each

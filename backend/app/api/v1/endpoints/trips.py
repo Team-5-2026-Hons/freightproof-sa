@@ -15,9 +15,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_dispatcher, get_current_driver
-from app.db.models.enums import DispatcherRole
+from app.blockchain.hedera import HederaServiceError, HederaTimeoutError
 from app.core.exceptions import PPSyncError, ResourceNotFoundError, TripConflictError
-from app.db.models.enums import TripStatus
+from app.db.models.enums import DispatcherRole, TripStatus
 from app.db.session import get_db
 from app.orchestration.resource_service import get_trip_detail, list_trips
 from app.orchestration.trip_service import create_trip, get_active_trip_for_driver
@@ -61,6 +61,17 @@ async def create_trip_endpoint(
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND,
             detail=str(exc),
+        ) from exc
+    except HederaTimeoutError as exc:
+        raise HTTPException(
+            status_code=http_status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="Blockchain anchoring timed out — the trip was not created. Please retry.",
+        ) from exc
+    except HederaServiceError as exc:
+        logger.error("Hedera anchoring failed during trip creation: %s", exc)
+        raise HTTPException(
+            status_code=http_status.HTTP_502_BAD_GATEWAY,
+            detail="Blockchain anchoring is unavailable — the trip was not created. Please retry.",
         ) from exc
     except SQLAlchemyError as exc:
         logger.exception("Database error during trip creation")

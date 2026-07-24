@@ -3,8 +3,6 @@ import json
 import uuid
 from datetime import UTC, datetime
 
-import pytest
-
 from app.crypto.hashing import compute_journey_lock_hash, compute_trip_canonical_payload
 
 
@@ -67,8 +65,27 @@ def test_canonical_payload_matches_hash():
     assert compute_journey_lock_hash(**args) == expected
 
 
-def test_raises_on_empty_trailers():
+def test_empty_trailer_list_produces_stable_hash():
     args = _fixed_args()
     args["trailer_ids"] = []
-    with pytest.raises(ValueError, match="trailer_ids must not be empty"):
-        compute_journey_lock_hash(**args)
+
+    h1 = compute_journey_lock_hash(**args)
+    h2 = compute_journey_lock_hash(**args)
+
+    assert h1 == h2
+    assert len(h1) == 64
+
+
+def test_trip_type_changes_hash_only_when_provided():
+    args = _fixed_args()
+
+    without = compute_journey_lock_hash(**args)
+    with_type = compute_journey_lock_hash(**args, trip_type="loaded")
+
+    assert without != with_type
+
+
+def test_payload_omits_trip_type_key_when_none():
+    payload = compute_trip_canonical_payload(**_fixed_args())
+
+    assert "trip_type" not in payload

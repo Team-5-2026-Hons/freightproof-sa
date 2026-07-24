@@ -103,12 +103,19 @@ async def _sync_all_active() -> dict[str, Any]:
                 continue
 
             try:
-                updated = await fetch_and_sync_consignment(
+                sync_result = await fetch_and_sync_consignment(
                     db=db,
                     pp_reference=consignment.parcel_perfect_reference,
-                    client_organization_id=consignment.client_organization_id,
                     trip_id=consignment.trip_id,
                 )
+                if sync_result.warning:
+                    logger.warning(
+                        "pp_sync: consignment id=%s pp_reference=%s: %s",
+                        consignment.id,
+                        consignment.parcel_perfect_reference,
+                        sync_result.warning,
+                    )
+                updated = sync_result.consignment
                 await db.commit()
                 synced += 1
 

@@ -14,7 +14,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from app.db.models import Base
-from app.db.models.enums import IdvsStatus, ParcelStatus, TripStatus
+from app.db.models.enums import IdvsStatus, ParcelStatus, TripStatus, TripType
 
 
 class TripTemplate(Base):
@@ -53,8 +53,10 @@ class Consignment(Base):
         UUID(as_uuid=True), ForeignKey("trips.id"), nullable=True
     )
     parcel_perfect_reference: Mapped[str] = mapped_column(String(100), nullable=False)
-    client_organization_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False
+    # Nullable: resolved from the PP account number (Organization.pp_account_number)
+    # during consignment sync, not caller-supplied — may be unresolved (warning, not error).
+    client_organization_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=True
     )
     origin_precinct_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("precincts.id"), nullable=True
@@ -144,6 +146,7 @@ class Trip(Base):
         UUID(as_uuid=True), ForeignKey("trip_templates.id"), nullable=True
     )
     status: Mapped[TripStatus] = mapped_column(String(30), nullable=False, server_default="created")
+    trip_type: Mapped[str] = mapped_column(String(20), nullable=False, server_default=TripType.LOADED.value)
     journey_lock_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     idvs_check_status: Mapped[IdvsStatus] = mapped_column(String(20), nullable=False, server_default="pending")
     idvs_checked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

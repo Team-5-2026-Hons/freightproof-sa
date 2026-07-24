@@ -80,21 +80,29 @@ async function send(
   init: RequestInit,
   headers: Record<string, string>,
   retry: boolean,
+  timeoutMs: number,
 ): Promise<Response> {
   const maxAttempts = retry ? 2 : 1
   let res: Response | null = null
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      res = await fetch(url, { ...init, headers, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
+      res = await fetch(url, { ...init, headers, signal: AbortSignal.timeout(timeoutMs) })
       break
     } catch (err) {
       // A timeout means the socket stalled rather than cleanly dropped. The retry exists
       // only for the immediate NSURLErrorNetworkConnectionLost dead-keep-alive case, so
       // don't spend a second full timeout window — surface it now as a clear error.
       if (err instanceof DOMException && err.name === 'TimeoutError') {
-        throw new ApiError(0, `Request to ${url} timed out after ${REQUEST_TIMEOUT_MS}ms`)
+        throw new ApiError(0, `Request to ${url} timed out after ${timeoutMs}ms`)
       }
-      if (attempt >= maxAttempts) throw err
+      if (attempt >= maxAttempts) {
+        // Any other fetch-level failure (connection reset, DNS failure, offline) is just
+        // as ambiguous as a timeout — the request may have already reached the server.
+        // Normalise it to the same ApiError(0, ...) shape so callers can reconcile every
+        // "did it actually happen?" failure the same way, not only clean timeouts.
+        const message = err instanceof Error ? err.message : String(err)
+        throw new ApiError(0, `Request to ${url} failed: ${message}`)
+      }
       await new Promise(resolve => setTimeout(resolve, NETWORK_RETRY_DELAY_MS))
     }
   }
@@ -106,13 +114,14 @@ async function send(
 async function request<T>(
   path: string,
   init: RequestInit = {},
-  opts: { retry?: boolean } = {},
+  opts: { retry?: boolean; timeoutMs?: number } = {},
 ): Promise<T> {
   const url = `${BASE_URL}${path}`
   const retry = opts.retry ?? false
+  const timeoutMs = opts.timeoutMs ?? REQUEST_TIMEOUT_MS
 
   let token = await resolveToken()
-  let res = await send(url, init, buildHeaders(token, init), retry)
+  let res = await send(url, init, buildHeaders(token, init), retry, timeoutMs)
 
   // 401 recovery. The cached token is normally kept fresh by the background auto-refresh, but
   // after a long idle (timers throttled while the tab was backgrounded) it can be stale, so the
@@ -131,7 +140,7 @@ async function request<T>(
     // wasn't a recoverable expiry (e.g. a revoked session), so don't waste a second round-trip.
     if (refreshed && refreshed !== token) {
       token = refreshed
-      res = await send(url, init, buildHeaders(token, init), retry)
+      res = await send(url, init, buildHeaders(token, init), retry, timeoutMs)
     }
     if (res.status === 401) {
       // signOut's local session clear succeeds even if its network call fails, so swallow that
@@ -158,8 +167,14 @@ export const api = {
   get: <T>(path: string): Promise<T> => request<T>(path, {}, { retry: true }),
   // POSTs are not retried by default (a dropped connection may have already mutated state).
   // Pass { idempotent: true } for read-only POSTs (e.g. /blockchain/verify) to opt in.
-  post: <T>(path: string, body: unknown, opts?: { idempotent?: boolean }): Promise<T> =>
-    request<T>(path, { method: 'POST', body: JSON.stringify(body) }, { retry: opts?.idempotent ?? false }),
+  // timeoutMs overrides the 12s ceiling for calls whose backend legitimately works longer
+  // (trip creation waits synchronously on the Hedera anchor).
+  post: <T>(path: string, body: unknown, opts?: { idempotent?: boolean; timeoutMs?: number }): Promise<T> =>
+    request<T>(
+      path,
+      { method: 'POST', body: JSON.stringify(body) },
+      { retry: opts?.idempotent ?? false, timeoutMs: opts?.timeoutMs },
+    ),
   patch: <T>(path: string, body: unknown): Promise<T> =>
     request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
 }

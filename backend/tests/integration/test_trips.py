@@ -6,16 +6,19 @@ dependency returns a fixed user whose organization_id is _DEMO_ORG_ID.
 """
 
 import uuid
+from unittest.mock import MagicMock, patch
+
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from app.blockchain.hedera import HederaSubmitError, HederaTimeoutError
 from app.main import app
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.vehicles import Vehicle
-from app.db.models.trips import Trip, TripTrailer
+from app.db.models.trips import Consignment, Parcel, Trip, TripStop, TripTrailer
 from app.db.models.handshakes import HandshakeEvent
 from app.db.models.enums import (
     HandshakeStatus, HandshakeType, IdvsStatus,
@@ -123,12 +126,12 @@ async def seed_data(db_session: AsyncSession):
 def _make_payload(seed: dict) -> dict:
     return {
         "order_number": "ORD-TEST-001",
-        "client_organization_id": str(seed["client_org_id"]),
         "driver_id": str(seed["driver_id"]),
         "horse_id": str(seed["horse_id"]),
         "trailer_ids": [str(seed["trailer_id"])],
         "origin_precinct_id": str(seed["origin_id"]),
         "destination_precinct_id": str(seed["destination_id"]),
+        "consignments": [{"pp_reference": "MOCKWAY001", "unit_count_expected": 2}],
     }
 
 
@@ -258,8 +261,13 @@ async def test_create_trip_404_unknown_driver(seed_data, db_session):
     assert "Driver" in resp.json()["detail"]
 
 
-async def test_create_trip_422_no_trailers(seed_data, db_session):
+async def test_create_trip_zero_trailers(seed_data, db_session):
+    """A trip with no trailers is valid — rigid trucks and integrated bodies run
+    without trailers (empty trailer list is a valid canonical value, see
+    crypto/hashing.py). This supersedes the old 422-on-empty-trailers expectation,
+    which predates that decision."""
     payload = _make_payload(seed_data)
+    payload["order_number"] = "ORD-NOTRAILER-001"
     payload["trailer_ids"] = []
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
@@ -267,7 +275,17 @@ async def test_create_trip_422_no_trailers(seed_data, db_session):
         resp = await client.post(
             "/api/v1/trips", json=payload, headers={"Authorization": "Bearer demo"}
         )
-    assert resp.status_code == 422
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["trailers"] == []
+    assert body["journey_lock_hash"] is not None
+    assert len(body["journey_lock_hash"]) == 64
+
+    trip_id = uuid.UUID(body["id"])
+    trailer_rows = (
+        await db_session.execute(select(TripTrailer).where(TripTrailer.trip_id == trip_id))
+    ).scalars().all()
+    assert trailer_rows == []
 
 
 async def test_create_trip_422_same_origin_and_destination(seed_data, db_session):
@@ -294,6 +312,69 @@ async def test_create_trip_403_without_demo_mode(seed_data, db_session, monkeypa
             json=_make_payload(seed_data),
         )
     assert resp.status_code == 403
+
+
+async def _post_trip_with_hedera_failure(payload: dict, side_effect: Exception):
+    """POST /trips with HederaService patched so submit_hash raises side_effect.
+
+    Patch target follows test_trips_anchor.py — anchor_service instantiates
+    HederaService itself, so the class is patched where anchor_service imports it.
+    """
+    with patch("app.blockchain.anchor_service.HederaService") as MockService:
+        instance = MagicMock()
+        instance.submit_hash.side_effect = side_effect
+        MockService.return_value = instance
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            return await client.post(
+                "/api/v1/trips", json=payload, headers={"Authorization": "Bearer demo"}
+            )
+
+
+async def _assert_no_trip_persisted(db_session: AsyncSession, order_number: str) -> None:
+    """Assert fail-closed H0: nothing survives a failed anchoring attempt.
+
+    The autouse get_db override yields the test session without the
+    rollback-on-exception that production get_db performs, so the flushed-but-
+    unanchored Trip row is still pending here. Mirror production's rollback
+    first — if trip_service had committed mid-way (breaking atomicity), the
+    row would survive this rollback and the assertion would catch it.
+    """
+    await db_session.rollback()
+    row = (
+        await db_session.execute(select(Trip).where(Trip.order_number == order_number))
+    ).scalar_one_or_none()
+    assert row is None
+
+
+async def test_create_trip_hedera_timeout_returns_504_and_no_trip(seed_data, db_session):
+    payload = _make_payload(seed_data)
+    payload["order_number"] = "ORD-HEDERA-TIMEOUT-001"
+
+    resp = await _post_trip_with_hedera_failure(
+        payload, HederaTimeoutError("Hedera anchoring did not respond in time")
+    )
+
+    assert resp.status_code == 504
+    assert "retry" in resp.json()["detail"].lower()
+    await _assert_no_trip_persisted(db_session, "ORD-HEDERA-TIMEOUT-001")
+
+
+async def test_create_trip_hedera_service_error_returns_502_and_no_trip(seed_data, db_session):
+    payload = _make_payload(seed_data)
+    payload["order_number"] = "ORD-HEDERA-DOWN-001"
+
+    # HederaSubmitError subclasses HederaServiceError — the realistic failure
+    # shape for the endpoint's generic HederaServiceError → 502 handler.
+    resp = await _post_trip_with_hedera_failure(
+        payload, HederaSubmitError("Failed to submit hash to Hedera HCS.")
+    )
+
+    assert resp.status_code == 502
+    assert "retry" in resp.json()["detail"].lower()
+    await _assert_no_trip_persisted(db_session, "ORD-HEDERA-DOWN-001")
 
 
 async def test_list_trips_empty_returns_200(seed_data, db_session):
@@ -384,3 +465,125 @@ async def test_get_trip_detail_not_found_returns_404(seed_data, db_session):
             headers={"Authorization": "Bearer demo"},
         )
     assert resp.status_code == 404
+
+
+# ─── Consignment loop / empty legs (trip-creation-redesign Task 6) ─────────────
+
+async def test_create_trip_persists_consignments_and_parcels(seed_data, db_session):
+    """POST with two consignments persists a Consignment row per waybill (with the
+    dispatcher-entered unit_count_expected) and a Parcel row per PP track."""
+    payload = _make_payload(seed_data)
+    payload["order_number"] = "ORD-CONSIGN-001"
+    payload["consignments"] = [
+        {"pp_reference": "MOCKWAY001", "unit_count_expected": 2},
+        {"pp_reference": "WAY001", "unit_count_expected": 4},
+    ]
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        resp = await client.post(
+            "/api/v1/trips", json=payload, headers={"Authorization": "Bearer demo"},
+        )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert len(body["consignments"]) == 2
+
+    trip_id = uuid.UUID(body["id"])
+    consignment_rows = (
+        await db_session.execute(select(Consignment).where(Consignment.trip_id == trip_id))
+    ).scalars().all()
+    assert len(consignment_rows) == 2
+
+    by_ref = {c.parcel_perfect_reference: c for c in consignment_rows}
+    assert by_ref["MOCKWAY001"].unit_count_expected == 2
+    assert by_ref["WAY001"].unit_count_expected == 4
+
+    parcel_rows = (
+        await db_session.execute(
+            select(Parcel).where(Parcel.consignment_id.in_([c.id for c in consignment_rows]))
+        )
+    ).scalars().all()
+    barcodes = {p.barcode for p in parcel_rows}
+    expected_barcodes = {"MOCKWAY0010001", "MOCKWAY0010002"} | {
+        f"WAY001{n:04d}" for n in range(1, 6)
+    }
+    assert barcodes == expected_barcodes
+
+
+async def test_create_trip_unknown_waybill_rolls_back_everything(seed_data, db_session):
+    """A PP waybill that doesn't resolve must roll back the whole trip — atomicity,
+    not a partially-created trip with no manifest."""
+    payload = _make_payload(seed_data)
+    payload["order_number"] = "ORD-ROLLBACK-001"
+    payload["consignments"] = [{"pp_reference": "NOPE999", "unit_count_expected": 1}]
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        resp = await client.post(
+            "/api/v1/trips", json=payload, headers={"Authorization": "Bearer demo"},
+        )
+    assert resp.status_code == 422
+
+    trip_rows = (
+        await db_session.execute(select(Trip).where(Trip.order_number == "ORD-ROLLBACK-001"))
+    ).scalars().all()
+    assert trip_rows == []
+    stop_rows = (await db_session.execute(select(TripStop))).scalars().all()
+    assert stop_rows == []
+    consignment_rows = (await db_session.execute(select(Consignment))).scalars().all()
+    assert consignment_rows == []
+    handshake_rows = (await db_session.execute(select(HandshakeEvent))).scalars().all()
+    assert handshake_rows == []
+
+
+async def test_create_trip_unmapped_accnum_returns_warning(seed_data, db_session):
+    """WAY004's accnum (UNMAP9) has no matching Organization — the consignment is
+    still saved (client_organization_id NULL) with a non-fatal warning surfaced."""
+    payload = _make_payload(seed_data)
+    payload["order_number"] = "ORD-WARN-001"
+    payload["consignments"] = [{"pp_reference": "WAY004", "unit_count_expected": 3}]
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        resp = await client.post(
+            "/api/v1/trips", json=payload, headers={"Authorization": "Bearer demo"},
+        )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert len(body["warnings"]) >= 1
+    assert any("UNMAP9" in w for w in body["warnings"])
+
+    trip_id = uuid.UUID(body["id"])
+    consignment_row = (
+        await db_session.execute(select(Consignment).where(Consignment.trip_id == trip_id))
+    ).scalar_one()
+    assert consignment_row.client_organization_id is None
+
+
+async def test_create_empty_leg_no_consignments_no_pp_call(seed_data, db_session, monkeypatch):
+    """An empty-leg trip (no consignments) must never touch Parcel Perfect."""
+    def _raise(*args, **kwargs):
+        raise AssertionError("PP client must not be called for an empty-leg trip")
+
+    monkeypatch.setattr("app.orchestration.consignment_service.get_pp_client", _raise)
+
+    payload = _make_payload(seed_data)
+    payload["order_number"] = "ORD-EMPTY-001"
+    payload["trip_type"] = "empty_leg"
+    payload["consignments"] = []
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        resp = await client.post(
+            "/api/v1/trips", json=payload, headers={"Authorization": "Bearer demo"},
+        )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["trip_type"] == "empty_leg"
+
+    trip_id = uuid.UUID(body["id"])
+    consignment_rows = (
+        await db_session.execute(select(Consignment).where(Consignment.trip_id == trip_id))
+    ).scalars().all()
+    assert consignment_rows == []

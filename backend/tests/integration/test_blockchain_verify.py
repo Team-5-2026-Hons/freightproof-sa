@@ -132,12 +132,12 @@ def _make_trip_payload(seed: dict) -> dict:
     """Build a valid POST /trips request body from seeded IDs."""
     return {
         "order_number": "ORD-VFY-001",
-        "client_organization_id": str(seed["client_org_id"]),
         "driver_id": str(seed["driver_id"]),
         "horse_id": str(seed["horse_id"]),
         "trailer_ids": [str(seed["trailer_id"])],
         "origin_precinct_id": str(seed["origin_id"]),
         "destination_precinct_id": str(seed["destination_id"]),
+        "consignments": [{"pp_reference": "MOCKWAY001", "unit_count_expected": 2}],
     }
 
 

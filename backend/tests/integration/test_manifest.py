@@ -5,7 +5,7 @@ import uuid
 import pytest_asyncio
 from httpx import AsyncClient
 
-from app.db.models.enums import IdvsStatus, OrganizationType, ParcelStatus, TripStatus, VehicleType
+from app.db.models.enums import IdvsStatus, OrganizationType, ParcelStatus, TripStatus, TripType, VehicleType
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.trips import Consignment, Parcel, Trip
@@ -306,3 +306,123 @@ async def test_driver_linehaul_mixed_unit_counts_applies_fallback_per_consignmen
 
     assert resp.status_code == 200
     assert resp.json()["consolidated_unit_count"] == 15
+
+
+@pytest_asyncio.fixture
+async def seed_empty_leg_trip(db_session):
+    """Repositioning run — no consignments by construction (Task 6 schema guard)."""
+    org = Organization(id=uuid.uuid4(), name="Org", org_type=OrganizationType.OPERATOR)
+    db_session.add(org)
+    await db_session.flush()
+    user = User(id=uuid.uuid4(), organization_id=org.id, email="d4@test.co.za", full_name="D4")
+    driver = Driver(
+        id=uuid.uuid4(), organization_id=org.id, full_name="Driver4",
+        id_number="8001015009090", phone_number="+27821234570", license_number="DRV-4",
+    )
+    horse = Vehicle(
+        id=uuid.uuid4(), organization_id=org.id, vehicle_type=VehicleType.HORSE,
+        registration="EMP123GP", pulsit_device_id="PUL-4",
+    )
+    origin = Precinct(id=uuid.uuid4(), name="O4", principal_organization_id=org.id, latitude="0", longitude="0")
+    dest = Precinct(id=uuid.uuid4(), name="D4", principal_organization_id=org.id, latitude="1", longitude="1")
+    db_session.add_all([user, driver, horse, origin, dest])
+    await db_session.flush()
+    trip = Trip(
+        id=uuid.uuid4(), trip_reference="FP-TEST-8", order_number="ORD-8",
+        operator_organization_id=org.id, client_organization_id=None,
+        driver_id=driver.id, horse_id=horse.id,
+        origin_precinct_id=origin.id, destination_precinct_id=dest.id,
+        status=TripStatus.LOADING, idvs_check_status=IdvsStatus.VERIFIED,
+        created_by_user_id=user.id, trip_type=TripType.EMPTY_LEG.value,
+    )
+    db_session.add(trip)
+    await db_session.flush()
+    return trip, driver, user, org
+
+
+async def test_driver_linehaul_empty_leg_returns_zero_not_404(
+    client: AsyncClient, seed_empty_leg_trip,
+):
+    # Empty leg = repositioning run, no cargo by definition — a defined zero response,
+    # not a 404 (which would otherwise fire because there are no consignments to load).
+    trip, driver, _user, _org = seed_empty_leg_trip
+
+    token = make_token(sub=str(driver.id), role="driver")
+    resp = await client.get(f"/api/v1/trips/{trip.id}/manifest", headers=auth_header(token))
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["consolidated_unit_count"] == 0
+    assert body["vehicle_registration"] == "EMP123GP"
+
+
+async def test_dispatcher_manifest_empty_leg_returns_empty_list_not_404(
+    client: AsyncClient, seed_empty_leg_trip,
+):
+    trip, _driver, user, org = seed_empty_leg_trip
+    token = make_token(sub=str(user.id), role="dispatcher", org_id=str(org.id))
+
+    resp = await client.get(f"/api/v1/trips/{trip.id}/manifest", headers=auth_header(token))
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["consignments"] == []
+    assert body["total_parcel_count"] == 0
+
+
+@pytest_asyncio.fixture
+async def seed_trip_with_unmapped_client_consignment(db_session):
+    """Consignment whose PP accnum didn't resolve to a known org — client_organization_id
+    is NULL in the DB (a creation warning, not an error). The manifest read must not 500."""
+    org = Organization(id=uuid.uuid4(), name="Org", org_type=OrganizationType.OPERATOR)
+    db_session.add(org)
+    await db_session.flush()
+    user = User(id=uuid.uuid4(), organization_id=org.id, email="d5@test.co.za", full_name="D5")
+    driver = Driver(
+        id=uuid.uuid4(), organization_id=org.id, full_name="Driver5",
+        id_number="8001015009091", phone_number="+27821234571", license_number="DRV-5",
+    )
+    horse = Vehicle(
+        id=uuid.uuid4(), organization_id=org.id, vehicle_type=VehicleType.HORSE,
+        registration="UNM123GP", pulsit_device_id="PUL-5",
+    )
+    origin = Precinct(id=uuid.uuid4(), name="O5", principal_organization_id=org.id, latitude="0", longitude="0")
+    dest = Precinct(id=uuid.uuid4(), name="D5", principal_organization_id=org.id, latitude="1", longitude="1")
+    db_session.add_all([user, driver, horse, origin, dest])
+    await db_session.flush()
+    trip = Trip(
+        id=uuid.uuid4(), trip_reference="FP-TEST-9", order_number="ORD-9",
+        operator_organization_id=org.id, client_organization_id=None,
+        driver_id=driver.id, horse_id=horse.id,
+        origin_precinct_id=origin.id, destination_precinct_id=dest.id,
+        status=TripStatus.LOADING, idvs_check_status=IdvsStatus.VERIFIED,
+        created_by_user_id=user.id,
+    )
+    db_session.add(trip)
+    await db_session.flush()
+
+    consignment = Consignment(
+        id=uuid.uuid4(), trip_id=trip.id, parcel_perfect_reference="PP-UNMAPPED",
+        client_organization_id=None, parcel_count_expected=1,
+    )
+    db_session.add(consignment)
+    await db_session.flush()
+    db_session.add(Parcel(
+        id=uuid.uuid4(), consignment_id=consignment.id, barcode="BC-UNMAPPED",
+        delivery_stop="Stop A", status=ParcelStatus.SCANNED_OUT,
+    ))
+    await db_session.flush()
+    return trip, driver, user, org
+
+
+async def test_dispatcher_manifest_with_null_client_org_returns_200_not_500(
+    client: AsyncClient, seed_trip_with_unmapped_client_consignment,
+):
+    trip, _driver, user, org = seed_trip_with_unmapped_client_consignment
+    token = make_token(sub=str(user.id), role="dispatcher", org_id=str(org.id))
+
+    resp = await client.get(f"/api/v1/trips/{trip.id}/manifest", headers=auth_header(token))
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["consignments"][0]["client_organization_id"] is None

@@ -8,27 +8,54 @@ import { Button }        from '@/components/ui/Button'
 import { StepRail }      from '@/components/ui/StepRail'
 import { SearchSelect }  from '@/components/ui/SearchSelect'
 import { useToast }      from '@/lib/hooks/useToast'
-import { useAuth }       from '@/lib/hooks/useAuth'
 import { ROUTES }        from '@/lib/constants/routes'
 import { useDrivers }    from '@/lib/hooks/useDrivers'
 import { useVehicles }   from '@/lib/hooks/useVehicles'
 import { usePrecincts }  from '@/lib/hooks/usePrecincts'
+import { usePpCapabilities } from '@/lib/hooks/usePpCapabilities'
 import { COPY }          from '@shared/lib/constants/copy'
 import { cn }            from '@shared/lib/utils/cn'
 import { api, ApiError } from '@/lib/api/client'
-import type { Trip }     from '@shared/lib/types/trip'
+import type { Trip, TripCreatePayload, TripSummary } from '@shared/lib/types/trip'
 import type { Vehicle }  from '@shared/lib/types/vehicle'
+import type { PPWaybillSummary } from '@shared/lib/types/pp'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const STEP_NAMES = ['Order & Cargo', 'Crew & Vehicle', 'Route & Schedule', 'Review']
+const STEP_NAMES = ['Order & Waybills', 'Crew & Vehicle', 'Route & Schedule', 'Review']
+
+// POST /trips waits synchronously on the PP sync and the Hedera anchor (the backend's own
+// fail-closed budget runs to ~15-20s), so it can legitimately outlive the api client's
+// global 12s ceiling. Bound the create call above that budget: if it still times out the
+// backend is genuinely unreachable, and handleSubmit reconciles against the trips list so
+// the dispatcher always gets a definitive created / not-created answer.
+const TRIP_CREATE_TIMEOUT_MS = 30_000
+
+// Ground-truth lookup after a create timeout. Trip creation is atomic on the backend
+// (any failure rolls the whole trip back), so the order number is either in the trips
+// list or the trip does not exist — never "maybe".
+async function findCreatedTrip(orderNumber: string): Promise<TripSummary | null> {
+  try {
+    const trips = await api.get<TripSummary[]>('/api/v1/trips')
+    return trips.find(t => t.order_number === orderNumber) ?? null
+  } catch {
+    // The lookup itself is unreachable → treat as not created; a retry against an
+    // actually-created trip is caught by the backend's duplicate-order 409 guard.
+    return null
+  }
+}
 
 
-// Underline input style — Material 3 filled field look
-const inp =
-  'w-full bg-surf-low border-0 border-b-2 border-outline-v rounded-t-sm ' +
+// Underline input style — Material 3 filled field look. Split into base + border
+// variants because cn() is a plain join (no tailwind-merge): stacking border-err on
+// top of border-outline-v would leave the winner to stylesheet order.
+const inpBase =
+  'w-full bg-surf-low border-0 border-b-2 rounded-t-sm ' +
   'px-3 py-[10px] text-[14px] text-on-surf font-[Inter,sans-serif] ' +
-  'outline-none focus:bg-sec-c focus:border-sec transition-all duration-150'
+  'outline-none focus:bg-sec-c transition-all duration-150'
+const inp    = `${inpBase} border-outline-v focus:border-sec`
+// Invalid-field variant — native-input counterpart of SearchSelect's error prop.
+const inpErr = `${inpBase} border-err focus:border-err`
 
 // ── Local helpers ─────────────────────────────────────────────────────────────
 
@@ -105,7 +132,50 @@ function fmtDateTime(iso: string): string {
   })
 }
 
+// Splits a datetime-local value into separate date/time strings for a field-level
+// preview — keeps the single combined input (consistent with the rest of the app,
+// which has no split date+time pattern) while still making the exact moment picked
+// unambiguous at a glance.
+function fmtDateTimeParts(value: string): { date: string; time: string } | null {
+  if (!value) return null
+  const d = new Date(value)
+  return {
+    date: d.toLocaleDateString('en-ZA', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }),
+    time: d.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' }),
+  }
+}
+
 // ── Step 2 helpers ────────────────────────────────────────────────────────────
+
+// A waybill confirmed onto the trip. Reference and summary are locked in once added —
+// they can only get here via a successful PP pull or a manifest fetch, both of which
+// supply real PP data. unitCount is the one field a dispatcher may still edit; kept as
+// the raw input string (not parsed) so it can be cleared/retyped without fighting NaN
+// coercion — parsed once, on submit / validation. `id` is a stable client-side identity,
+// never sent to the backend.
+interface AddedWaybill {
+  id: string
+  reference: string
+  unitCount: string
+  summary: PPWaybillSummary
+}
+
+// The single in-progress search/pull attempt. Only one is ever displayed at a time, so
+// this is one slot, not an array. 'duplicate' fires when the pulled reference is already
+// in addedWaybills. unitCount here is the pending value shown on the result card before
+// Add commits it into an AddedWaybill.
+type PullStatus = 'idle' | 'loading' | 'success' | 'duplicate' | 'error'
+
+interface PullState {
+  status: PullStatus
+  summary: PPWaybillSummary | null
+  unitCount: string
+  errorMessage: string | null
+}
+
+function emptyPullState(): PullState {
+  return { status: 'idle', summary: null, unitCount: '', errorMessage: null }
+}
 
 function MiniField({ label, value, mono = false }: { label: string; value: string | null | undefined; mono?: boolean }) {
   return (
@@ -148,22 +218,25 @@ function trailerCombo(selected: Vehicle[]): { valid: boolean; message: string } 
 export default function TripNewPage() {
   const router = useRouter()
   const { notify } = useToast()
-  const { user } = useAuth()
 
   const { drivers } = useDrivers()
   const { horses, trailers } = useVehicles()
   const { precincts } = usePrecincts()
+  const caps = usePpCapabilities()
 
   const [step, setStep]               = useState(1)  // 1–4
   const [loading, setLoading]         = useState(false)
   const [showErrors, setShowErrors]   = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
 
-  // Step 1 — Order & Cargo
-  const [orderNumber, setOrderNumber] = useState('')
-  const [commodity,   setCommodity]   = useState('')
-  const [weightKg,    setWeightKg]    = useState('')
-  const [unitCount,   setUnitCount]   = useState('')
+  // Step 1 — Order & Waybills
+  const [orderNumber,   setOrderNumber]   = useState('')
+  const [isEmptyLeg,    setIsEmptyLeg]    = useState(false)
+  const [addedWaybills, setAddedWaybills] = useState<AddedWaybill[]>([])
+  const [searchRef,     setSearchRef]     = useState('')
+  const [pull,          setPull]          = useState<PullState>(emptyPullState())
+  const [manifestNo,    setManifestNo]    = useState('')
+  const [manifestBusy,  setManifestBusy]  = useState(false)
 
   // Step 2 — Crew & Vehicle
   const [driverId,      setDriverId]      = useState('')
@@ -176,9 +249,6 @@ export default function TripNewPage() {
   const [destId,           setDestId]           = useState('')
   const [plannedDeparture, setPlannedDeparture] = useState('')
   const [expectedArrival,  setExpectedArrival]  = useState('')
-  const [showReceiver,     setShowReceiver]     = useState(false)
-  const [receiverName,     setReceiverName]     = useState('')
-  const [receiverContact,  setReceiverContact]  = useState('')
 
   // Step 2 derived values
   const selectedDriver        = drivers.find(d => d.id === driverId) ?? null
@@ -197,11 +267,22 @@ export default function TripNewPage() {
   const sameLocation          = !!originId && originId === destId
   const arrivalNotAfterDepart = !!plannedDeparture && !!expectedArrival
     && new Date(expectedArrival) <= new Date(plannedDeparture)
+  const orderBlank            = showErrors && !orderNumber
+
+  // Waybills step is skipped entirely for an empty leg; otherwise at least one waybill
+  // must be added, each with a unit count ≥ 1. Reference validity and uniqueness no
+  // longer need checking here — every entry in addedWaybills got there via a successful
+  // PP pull or manifest fetch, and pullWaybill already refuses to re-add a duplicate.
+  const waybillsValid = isEmptyLeg || (
+    addedWaybills.length > 0 &&
+    addedWaybills.every(r => parseInt(r.unitCount, 10) >= 1)
+  )
+  const totalUnits = addedWaybills.reduce((sum, r) => sum + (parseInt(r.unitCount, 10) || 0), 0)
 
   // stepValid[N] → whether step N passes validation (1-indexed, index 0 unused)
   const stepValid = [
     true,
-    !!(orderNumber && commodity && weightKg && unitCount),
+    !!(orderNumber && waybillsValid),
     !!(driverId && horseId && comboResult.valid),
     !!(originId && destId && !sameLocation && plannedDeparture && expectedArrival && !arrivalNotAfterDepart),
     true,
@@ -209,6 +290,88 @@ export default function TripNewPage() {
 
   const toggleTrailer = (id: string) =>
     setTrailerIds(prev => prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id])
+
+  // Pulls a single waybill reference from Parcel Perfect. Add is only ever enabled from
+  // a 'success' pull — there is no manual/unverified path. This supersedes the old
+  // wizard-time fail-open behavior: submit already fail-closes on an unverifiable
+  // reference (PPSyncError → 422, whole trip rolled back), so a provisional add here
+  // could never reach an anchored trip anyway.
+  async function pullWaybill() {
+    const ref = searchRef.trim()
+    if (!ref) return
+    if (addedWaybills.some(w => w.reference === ref)) {
+      setPull({ status: 'duplicate', summary: null, unitCount: '', errorMessage: null })
+      return
+    }
+    setPull({ status: 'loading', summary: null, unitCount: '', errorMessage: null })
+    try {
+      const summary = await api.get<PPWaybillSummary>(`/api/v1/pp/waybills/${encodeURIComponent(ref)}`)
+      setPull({ status: 'success', summary, unitCount: String(summary.parcel_count), errorMessage: null })
+    } catch (err) {
+      const msg = err instanceof ApiError && err.status === 404
+        ? 'Waybill not found in Parcel Perfect'
+        : 'Lookup failed. Try again.'
+      setPull({ status: 'error', summary: null, unitCount: '', errorMessage: msg })
+    }
+  }
+
+  // Commits the current successful pull into the added list, keyed off PP's own
+  // waybill string (not the raw search text) so casing/whitespace always matches what
+  // PP actually holds. Resets the search bar for the next reference.
+  function addWaybill() {
+    if (pull.status !== 'success' || !pull.summary) return
+    const summary = pull.summary
+    setAddedWaybills(rows => [...rows, {
+      id: crypto.randomUUID(),
+      reference: summary.waybill,
+      unitCount: pull.unitCount,
+      summary,
+    }])
+    setSearchRef('')
+    setPull(emptyPullState())
+  }
+
+  function removeWaybill(id: string) {
+    setAddedWaybills(rows => rows.filter(r => r.id !== id))
+  }
+
+  function updateAddedUnits(id: string, value: string) {
+    setAddedWaybills(rows => rows.map(r => r.id === id ? { ...r, unitCount: value } : r))
+  }
+
+  // Bulk-fetch every waybill on a PP manifest. Only rendered when the backend reports
+  // manifest_lookup support (mock PP client today — see usePpCapabilities). Every
+  // returned waybill is already a successful PP response, so all of them are appended
+  // straight to the added list — no per-item confirm step, that's the entire point of
+  // keying a whole truck from one number. Appends rather than replaces: overwriting
+  // addedWaybills here would silently discard anything the dispatcher already added
+  // by hand. Anything already in the list (same reference) is skipped, not duplicated.
+  async function fetchManifest() {
+    const n = parseInt(manifestNo, 10)
+    if (isNaN(n)) return
+    setManifestBusy(true)
+    try {
+      const summaries = await api.get<PPWaybillSummary[]>(`/api/v1/pp/manifests/${n}`)
+      if (summaries.length > 0) {
+        setAddedWaybills(rows => {
+          const existingRefs = new Set(rows.map(r => r.reference))
+          const newRows = summaries
+            .filter(s => !existingRefs.has(s.waybill))
+            .map(s => ({
+              id: crypto.randomUUID(),
+              reference: s.waybill,
+              unitCount: String(s.parcel_count),
+              summary: s,
+            }))
+          return [...rows, ...newRows]
+        })
+      }
+    } catch {
+      notify({ kind: 'error', title: 'Manifest not found' })
+    } finally {
+      setManifestBusy(false)
+    }
+  }
 
   const handleNext = () => {
     if (!stepValid[step]) { setShowErrors(true); return }
@@ -224,28 +387,46 @@ export default function TripNewPage() {
   const handleSubmit = async () => {
     setLoading(true)
     try {
-      await api.post<Trip>('/api/v1/trips', {
+      const created = await api.post<Trip>('/api/v1/trips', {
         order_number: orderNumber,
-        client_organization_id: user?.organization_id,
+        trip_type: isEmptyLeg ? 'empty_leg' : 'loaded',
         driver_id: driverId,
         horse_id: horseId,
         trailer_ids: trailerIds,
         origin_precinct_id: originId,
         destination_precinct_id: destId,
+        consignments: isEmptyLeg ? [] : addedWaybills.map(r => ({
+          pp_reference: r.reference,
+          unit_count_expected: parseInt(r.unitCount, 10),
+        })),
         planned_departure_at: plannedDeparture
           ? new Date(plannedDeparture).toISOString()
           : null,
         planned_arrival_at: expectedArrival
           ? new Date(expectedArrival).toISOString()
           : null,
-      })
+      } satisfies TripCreatePayload, { timeoutMs: TRIP_CREATE_TIMEOUT_MS })
       notify({ kind: 'success', title: COPY.toast.tripCreated })
-      router.push(ROUTES.home)
+      router.push(ROUTES.tripDetail(created.id))
     } catch (err) {
-      if (err instanceof ApiError && err.status === 409) {
+      if (err instanceof ApiError && err.status === 0) {
+        // Client-side timeout past the backend's fail-closed budget — resolve the
+        // ambiguity with a ground-truth lookup rather than telling the dispatcher "maybe".
+        const existing = await findCreatedTrip(orderNumber)
+        if (existing) {
+          notify({ kind: 'success', title: COPY.toast.tripCreated })
+          router.push(ROUTES.tripDetail(existing.id))
+          return
+        }
+        notify({ kind: 'error', title: 'The server took too long to respond — the trip was not created. Please try again.' })
+      } else if (err instanceof ApiError && err.status === 409) {
         notify({ kind: 'error', title: 'Order number already active for this operator' })
       } else if (err instanceof ApiError && err.status === 404) {
         notify({ kind: 'error', title: 'Driver or vehicle not found — check fleet data' })
+      } else if (err instanceof ApiError && err.status === 422) {
+        notify({ kind: 'error', title: 'Parcel Perfect rejected a waybill — check the references' })
+      } else if (err instanceof ApiError && (err.status === 502 || err.status === 504)) {
+        notify({ kind: 'error', title: 'Blockchain anchoring unavailable — trip was not created. Try again.' })
       } else {
         notify({ kind: 'error', title: 'Failed to create trip. Please try again.' })
       }
@@ -262,6 +443,8 @@ export default function TripNewPage() {
     .join(', ') || 'None'
   const originName = precincts.find(p => p.id === originId)?.name ?? '—'
   const destName   = precincts.find(p => p.id === destId)?.name ?? '—'
+  const departureParts = fmtDateTimeParts(plannedDeparture)
+  const arrivalParts   = fmtDateTimeParts(expectedArrival)
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -288,56 +471,163 @@ export default function TripNewPage() {
           step === 4 ? 'max-w-4xl' : 'max-w-2xl',
         )}>
 
-          {/* ── Step 1: Order & Cargo ──────────────────────────────────────── */}
+          {/* ── Step 1: Order & Waybills ───────────────────────────────────── */}
           {step === 1 && (
             <>
               <FormCard>
-                <CardTitle icon="file">Order Details</CardTitle>
+                <CardTitle icon="file">Order</CardTitle>
                 <Lbl>Order Number *</Lbl>
                 <input
                   value={orderNumber}
                   onChange={e => setOrderNumber(e.target.value)}
                   placeholder="e.g. FDX-JHB-DBN-8821"
-                  className={inp}
+                  className={orderBlank ? inpErr : inp}
                 />
+                {orderBlank && (
+                  <p className="text-[11px] text-err mt-1 font-[500]">Enter an order number</p>
+                )}
+                <label className="flex items-center gap-2 mt-4 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isEmptyLeg}
+                    onChange={e => setIsEmptyLeg(e.target.checked)}
+                    className="w-4 h-4 accent-sec"
+                  />
+                  <span className="text-[13px] font-[600] text-on-surf">
+                    Empty leg (repositioning, no cargo)
+                  </span>
+                </label>
               </FormCard>
 
-              <FormCard>
-                <CardTitle icon="box">Cargo Details</CardTitle>
-                <div className="mb-[14px]">
-                  <Lbl>Commodity description *</Lbl>
-                  <input
-                    value={commodity}
-                    onChange={e => setCommodity(e.target.value)}
-                    placeholder="e.g. Steel coils"
-                    className={inp}
-                  />
-                </div>
-                <div className="flex gap-3 mb-[14px]">
-                  <div className="flex-1">
-                    <Lbl>Total weight (kg) *</Lbl>
-                    <input
-                      type="number"
-                      min="0"
-                      value={weightKg}
-                      onChange={e => setWeightKg(e.target.value)}
-                      placeholder="0"
-                      className={inp}
-                    />
+              {!isEmptyLeg && (
+                <FormCard>
+                  <CardTitle icon="box">Waybills (Parcel Perfect)</CardTitle>
+
+                  {caps.manifest_lookup && (
+                    <div className="flex gap-2 items-end mb-4 pb-4 border-b border-outline-v/20">
+                      <div className="flex-1">
+                        <Lbl>Fetch by manifest number</Lbl>
+                        <input
+                          value={manifestNo}
+                          onChange={e => setManifestNo(e.target.value)}
+                          placeholder="e.g. 69"
+                          className={inp}
+                        />
+                      </div>
+                      <Button variant="secondary" onClick={fetchManifest} loading={manifestBusy}>
+                        Fetch waybills
+                      </Button>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2 items-end">
+                    <div className="flex-1">
+                      <Lbl>PP waybill reference</Lbl>
+                      <input
+                        value={searchRef}
+                        onChange={e => { setSearchRef(e.target.value); setPull(emptyPullState()) }}
+                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); pullWaybill() } }}
+                        placeholder="e.g. WAY001"
+                        className={inp}
+                      />
+                    </div>
+                    <Button
+                      variant="secondary"
+                      iconLeft={<Ic n="search" s={14} />}
+                      onClick={pullWaybill}
+                      loading={pull.status === 'loading'}
+                      disabled={!searchRef.trim()}
+                    >
+                      Pull
+                    </Button>
                   </div>
-                  <div className="flex-1">
-                    <Lbl>Unit count *</Lbl>
-                    <input
-                      type="number"
-                      min="1"
-                      value={unitCount}
-                      onChange={e => setUnitCount(e.target.value)}
-                      placeholder="0"
-                      className={inp}
-                    />
-                  </div>
-                </div>
-              </FormCard>
+
+                  {pull.status === 'duplicate' && (
+                    <p className="text-[11px] text-on-surf-v mt-2">Already added to this trip</p>
+                  )}
+
+                  {pull.status === 'error' && (
+                    <p className="text-[11px] text-err mt-2 font-[500]">{pull.errorMessage}</p>
+                  )}
+
+                  {pull.status === 'success' && pull.summary && (
+                    <div className="rounded-lg bg-surf-low border border-outline-v/20 p-4 mt-3">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Ic n="file" s={14} className="text-sec" />
+                        <span className="text-[13px] font-[700] text-on-surf tabular-nums tracking-[0.04em]">
+                          {pull.summary.waybill}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-4 gap-x-4 mb-3">
+                        <MiniField label="Customer" value={pull.summary.customer_name} />
+                        <MiniField label="Parcels"  value={String(pull.summary.parcel_count)} mono />
+                        <MiniField label="Weight"   value={pull.summary.weight_kg != null ? `${pull.summary.weight_kg} kg` : null} mono />
+                        <MiniField label="Dest"     value={pull.summary.dest_town} />
+                      </div>
+                      <div className="flex gap-3 items-end">
+                        <div className="flex-1">
+                          <Lbl>Expected units (pallets)</Lbl>
+                          <input
+                            type="number"
+                            min="1"
+                            value={pull.unitCount}
+                            onChange={e => setPull(p => ({ ...p, unitCount: e.target.value }))}
+                            className={inp}
+                          />
+                        </div>
+                        <Button onClick={addWaybill}>+ Add</Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {addedWaybills.length > 0 && (
+                    <div className="flex flex-col gap-3 mt-4 pt-4 border-t border-outline-v/20">
+                      {addedWaybills.map(row => {
+                        const unitsInvalid = showErrors && !(parseInt(row.unitCount, 10) >= 1)
+                        return (
+                          <div key={row.id} className="rounded-lg bg-surf-low border border-outline-v/20 p-4">
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-2">
+                                <Ic n="check" s={14} className="text-ok" />
+                                <span className="text-[13px] font-[700] text-on-surf tabular-nums tracking-[0.04em]">
+                                  {row.reference}
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                className="text-err text-[12px] font-[600]"
+                                onClick={() => removeWaybill(row.id)}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                            <div className="grid grid-cols-4 gap-x-4 mb-3">
+                              <MiniField label="Customer" value={row.summary.customer_name} />
+                              <MiniField label="Parcels"  value={String(row.summary.parcel_count)} mono />
+                              <MiniField label="Weight"   value={row.summary.weight_kg != null ? `${row.summary.weight_kg} kg` : null} mono />
+                              <MiniField label="Dest"     value={row.summary.dest_town} />
+                            </div>
+                            <div className="w-32">
+                              <Lbl>Expected units (pallets)</Lbl>
+                              <input
+                                type="number"
+                                min="1"
+                                value={row.unitCount}
+                                onChange={e => updateAddedUnits(row.id, e.target.value)}
+                                className={unitsInvalid ? inpErr : inp}
+                              />
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  {showErrors && addedWaybills.length === 0 && (
+                    <p className="text-[11px] text-err mt-3 font-[500]">Add at least one waybill</p>
+                  )}
+                </FormCard>
+              )}
             </>
           )}
 
@@ -529,29 +819,39 @@ export default function TripNewPage() {
               <div className="flex gap-3 mb-[14px]">
                 <div className="flex-1">
                   <Lbl>Origin Precinct *</Lbl>
-                  <select
+                  <SearchSelect
+                    options={precincts.map(p => ({
+                      value: p.id as string,
+                      label: p.name,
+                      sublabel: p.address ?? undefined,
+                    }))}
                     value={originId}
-                    onChange={e => setOriginId(e.target.value)}
-                    className={inp}
-                  >
-                    <option value="">Select origin…</option>
-                    {precincts.map(p => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </select>
+                    onChange={setOriginId}
+                    placeholder="Select origin…"
+                    searchPlaceholder="Search precincts…"
+                    error={showErrors && !originId}
+                  />
+                  {showErrors && !originId && (
+                    <p className="text-[11px] text-err mt-1 font-[500]">Please select an origin precinct.</p>
+                  )}
                 </div>
                 <div className="flex-1">
                   <Lbl>Destination Precinct *</Lbl>
-                  <select
+                  <SearchSelect
+                    options={precincts.map(p => ({
+                      value: p.id as string,
+                      label: p.name,
+                      sublabel: p.address ?? undefined,
+                    }))}
                     value={destId}
-                    onChange={e => setDestId(e.target.value)}
-                    className={inp}
-                  >
-                    <option value="">Select destination…</option>
-                    {precincts.map(p => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </select>
+                    onChange={setDestId}
+                    placeholder="Select destination…"
+                    searchPlaceholder="Search precincts…"
+                    error={showErrors && (!destId || sameLocation)}
+                  />
+                  {showErrors && !destId && (
+                    <p className="text-[11px] text-err mt-1 font-[500]">Please select a destination precinct.</p>
+                  )}
                   {showErrors && sameLocation && (
                     <p className="text-[11px] text-err mt-1 font-[500]">Must differ from origin.</p>
                   )}
@@ -567,6 +867,11 @@ export default function TripNewPage() {
                     onChange={e => setPlannedDeparture(e.target.value)}
                     className={inp}
                   />
+                  {departureParts && (
+                    <p className="text-[11px] text-on-surf-v mt-1">
+                      <span className="font-[600] text-on-surf">{departureParts.date}</span> · {departureParts.time}
+                    </p>
+                  )}
                 </div>
                 <div className="flex-1">
                   <Lbl>Expected Arrival *</Lbl>
@@ -576,43 +881,15 @@ export default function TripNewPage() {
                     onChange={e => setExpectedArrival(e.target.value)}
                     className={inp}
                   />
+                  {arrivalParts && (
+                    <p className="text-[11px] text-on-surf-v mt-1">
+                      <span className="font-[600] text-on-surf">{arrivalParts.date}</span> · {arrivalParts.time}
+                    </p>
+                  )}
                   {showErrors && arrivalNotAfterDepart && (
                     <p className="text-[11px] text-err mt-1 font-[500]">Must be after departure.</p>
                   )}
                 </div>
-              </div>
-
-              <div className="border-t border-outline-v/20 pt-[14px]">
-                <button
-                  type="button"
-                  onClick={() => setShowReceiver(r => !r)}
-                  className="flex items-center gap-1.5 text-[13px] font-[600] text-sec hover:opacity-75 transition-opacity mb-3"
-                >
-                  <Ic n={showReceiver ? 'chev' : 'plus'} s={14} className={cn('text-sec', showReceiver ? 'rotate-90' : '')} />
-                  {showReceiver ? 'Remove receiver contact' : 'Add receiver contact'}
-                </button>
-                {showReceiver && (
-                  <div className="flex gap-3">
-                    <div className="flex-1">
-                      <Lbl>Receiver name</Lbl>
-                      <input
-                        value={receiverName}
-                        onChange={e => setReceiverName(e.target.value)}
-                        placeholder="e.g. Warehouse Manager"
-                        className={inp}
-                      />
-                    </div>
-                    <div className="flex-1">
-                      <Lbl>Phone or email</Lbl>
-                      <input
-                        value={receiverContact}
-                        onChange={e => setReceiverContact(e.target.value)}
-                        placeholder="e.g. 011 555 0123"
-                        className={inp}
-                      />
-                    </div>
-                  </div>
-                )}
               </div>
             </FormCard>
           )}
@@ -622,13 +899,44 @@ export default function TripNewPage() {
             <div className="flex gap-5 items-start">
               {/* Left: review cards */}
               <div className="flex-1 min-w-0 flex flex-col gap-4">
-                <ReviewSection title="Order & Cargo" onEdit={() => setStep(1)}>
+                <ReviewSection title="Order & Waybills" onEdit={() => setStep(1)}>
                   <ReviewRows rows={[
-                    { label: 'Order',     value: orderNumber,          mono: true },
-                    { label: 'Commodity', value: commodity },
-                    { label: 'Weight',    value: `${weightKg} kg`,     mono: true },
-                    { label: 'Units',     value: unitCount,            mono: true },
+                    { label: 'Order', value: orderNumber || '—', mono: true },
                   ]} />
+                  {isEmptyLeg ? (
+                    <div className="flex items-start gap-3 py-2">
+                      <span className="text-[11px] text-on-surf-v w-24 shrink-0 pt-px">Cargo</span>
+                      <span className="text-[13px] font-[600] text-on-surf">Empty leg</span>
+                    </div>
+                  ) : (
+                    <div className="mt-3 pt-3 border-t border-outline-v/20">
+                      <div className="text-[11px] font-[700] tracking-[0.08em] uppercase text-on-surf-v mb-3">
+                        Waybills
+                      </div>
+                      <div className="flex flex-col gap-3">
+                        {addedWaybills.map(row => (
+                          <div key={row.id} className="rounded-lg bg-surf-low border border-outline-v/20 p-4">
+                            <div className="flex items-center gap-2 mb-3">
+                              <Ic n="file" s={14} className="text-sec" />
+                              <span className="text-[13px] font-[700] text-on-surf tabular-nums tracking-[0.04em]">
+                                {row.reference}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-4 gap-x-4">
+                              <MiniField label="Customer" value={row.summary.customer_name} />
+                              <MiniField label="Parcels"  value={String(row.summary.parcel_count)} mono />
+                              <MiniField label="Weight"   value={row.summary.weight_kg != null ? `${row.summary.weight_kg} kg` : null} mono />
+                              <MiniField label="Dest"     value={row.summary.dest_town} />
+                            </div>
+                            <div className="flex items-center justify-between mt-3 pt-3 border-t border-outline-v/10">
+                              <span className="text-[10px] text-on-surf-v">from Parcel Perfect</span>
+                              <span className="text-[12px] font-[700] text-on-surf tabular-nums">{row.unitCount || '0'} units</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </ReviewSection>
 
                 <ReviewSection title="Crew & Vehicle" onEdit={() => setStep(2)}>
@@ -642,20 +950,11 @@ export default function TripNewPage() {
                 <ReviewSection title="Route & Schedule" onEdit={() => setStep(3)}>
                   <ReviewRows rows={[
                     { label: 'Origin',       value: originName },
-                    { label: 'Destination',  value: destName },
                     { label: 'Departure',    value: fmtDateTime(plannedDeparture), mono: true },
+                    { label: 'Destination',  value: destName },
                     { label: 'Est. arrival', value: fmtDateTime(expectedArrival),  mono: true },
                   ]} />
                 </ReviewSection>
-
-                {showReceiver && (receiverName || receiverContact) && (
-                  <ReviewSection title="Receiver" onEdit={() => setStep(3)}>
-                    <ReviewRows rows={[
-                      { label: 'Name',    value: receiverName    || '—' },
-                      { label: 'Contact', value: receiverContact || '—' },
-                    ]} />
-                  </ReviewSection>
-                )}
               </div>
 
               {/* Right: dark trip summary + CTA */}
@@ -676,8 +975,9 @@ export default function TripNewPage() {
                   ['Route',     originName !== '—' && destName !== '—'
                                   ? `${originName} → ${destName}` : '—', false],
                   ['Departure', fmtDateTime(plannedDeparture), true],
-                  ['Cargo',     weightKg && unitCount
-                                  ? `${unitCount} units · ${weightKg} kg` : '—', false],
+                  ['Cargo',     isEmptyLeg
+                                  ? 'Empty leg'
+                                  : `${addedWaybills.length} waybill(s) · ${totalUnits} units`, false],
                 ] as [string, string, boolean][]).map(([label, value, mono]) => (
                   <div
                     key={label}

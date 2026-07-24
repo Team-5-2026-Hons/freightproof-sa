@@ -4,6 +4,17 @@
 **Branch:** Ciaran
 **Status:** Design — awaiting review before implementation plan
 
+> **Addendum 2026-07-14 (post PR #29):** Two premises below are stale. (1) H2/H5 are no
+> longer unanchored — Tim's merge anchors them via `anchor_subject`, but **fail-closed
+> in-request** (anchor failure → 504/502, handshake blocked). (2) Team policy is now
+> settled (Ciaran, 2026-07-14): **H0 is the only fail-closed anchor; H1–H5 are all
+> fail-open** — a handshake records regardless of chain availability; Hedera verifies the
+> record, it does not gate it. This spec's fail-open design for H1 (Component 6,
+> `anchor_subject_fail_open`) is therefore confirmed as the pattern, and converting the
+> merged H2/H5 to it is a new work item (tracked in the 2026-07-14 trip-creation redesign
+> spec, Coordination flags). Radar item 5 ("anchor H2/H5 … will copy this pattern") is
+> superseded accordingly: they already anchor, they just use the wrong failure mode.
+
 ## Problem
 
 The Origin Gate-In handshake (driver-app "H1", backend `HandshakeType.ORIGIN_GATE_IN`)
