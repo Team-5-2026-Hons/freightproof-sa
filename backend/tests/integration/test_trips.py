@@ -13,7 +13,8 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.blockchain.hedera import HederaSubmitError, HederaTimeoutError
+from app.blockchain.hedera import HederaSubmitError
+from app.core.exceptions import HederaTimeoutError
 from app.main import app
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
