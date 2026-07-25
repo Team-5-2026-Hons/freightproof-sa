@@ -30,7 +30,10 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
         id={inputId}
         onBlur={() => setTouched(true)}
         className={cn(
-          'w-full rounded-xl px-4 py-3 text-sm font-medium text-foreground',
+          // text-base (16px), not text-sm: iOS auto-zooms the viewport when a focused
+          // input's font-size is under 16px — this is a packaged app, so that zoom
+          // never resets and leaves the whole screen stuck zoomed in.
+          'w-full rounded-xl px-4 py-3 text-base font-medium text-foreground',
           'bg-muted border border-input',
           'placeholder:text-muted-foreground/70',
           'focus:outline-none focus:border-ring focus:bg-card',

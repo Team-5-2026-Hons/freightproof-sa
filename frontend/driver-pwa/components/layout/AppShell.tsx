@@ -24,17 +24,26 @@ export function AppShell({ children }: AppShellProps) {
   const title = ROUTE_TITLES[pathname] ?? 'FreightProof'
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="sticky top-0 z-sticky flex h-14 items-center justify-center border-b border-outline-variant/20 bg-surface-container-lowest px-2 shadow-ambient-header">
+    // h-dvh (not min-h-screen): pins this frame to exactly one screen's height so the
+    // header and BottomNav never move. Previously this was min-h-screen with no upper
+    // bound, and every page rendered as {children} below also declared its own
+    // min-h-screen — the two stacked, so the frame always grew past one viewport no
+    // matter how little content a page had, forcing the whole document to scroll (the
+    // header included) instead of just the content between the fixed header and nav.
+    <div className="flex h-dvh flex-col">
+      <header className="flex h-14 shrink-0 items-center justify-center border-b border-outline-variant/20 bg-surface-container-lowest px-2 shadow-ambient-header">
         <p className="text-sm font-bold text-surface-on">{title}</p>
       </header>
 
       {/* Drivers work through signal dead zones — surface connectivity loss on every shell screen. */}
       <OfflineBanner />
 
-      {/* pb-28 clears the floating BottomNav pill, which overlays fixed-to-viewport
-          rather than participating in normal document flow. */}
-      <div className="flex-1 pb-28">{children}</div>
+      {/* The only scrollable region in the shell — overflow-y-auto here (not on the
+          document) is what keeps the header and BottomNav locked in place while a
+          page's content scrolls underneath them. pb-28 clears the floating BottomNav
+          pill, which overlays fixed-to-viewport rather than participating in normal
+          document flow. */}
+      <div className="flex-1 overflow-y-auto pb-28">{children}</div>
 
       <BottomNav onProfileClick={() => setProfileOpen(true)} />
       <ProfilePanel open={profileOpen} onClose={() => setProfileOpen(false)} />

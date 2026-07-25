@@ -16,9 +16,16 @@ import { ToastProvider } from '@/lib/context/ToastContext'
 // insets (env(safe-area-inset-*) below only resolves to non-zero values with this set) —
 // without it every bottom-anchored control (HoldButton, panic Cancel) sits flush against
 // the gesture bar with zero clearance.
+//
+// maximumScale/userScalable lock pinch-zoom: this ships as a packaged native app shell
+// (Capacitor), not a browsable page, so iOS's WKWebView must render at a fixed 1:1 scale
+// like any other native screen. Without this lock, focusing any <16px input triggers
+// iOS's automatic zoom-to-focused-field, and the app is left zoomed in with no way back out.
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
   viewportFit: 'cover',
 }
 

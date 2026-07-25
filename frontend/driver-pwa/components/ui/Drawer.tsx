@@ -39,6 +39,19 @@ export function Drawer({ open, onClose, side = 'right', children, title }: Drawe
     return () => document.removeEventListener('keydown', handleKey)
   }, [open, onClose])
 
+  // Locks the page behind the drawer while it's open — without this, the drawer sits
+  // on top of a still-scrollable AppShell content region, so a swipe that lands
+  // outside the panel scrolls the Home/Trips/Settings page underneath it instead of
+  // (or as well as) the drawer, which reads as the whole screen being "unlocked".
+  useEffect(() => {
+    if (!open) return
+    const { overflow } = document.body.style
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = overflow
+    }
+  }, [open])
+
   const { container, open: openClass, closed } = panelClasses[side]
 
   return (

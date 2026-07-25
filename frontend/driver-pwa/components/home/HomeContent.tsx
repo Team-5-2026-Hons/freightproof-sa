@@ -23,8 +23,13 @@ export function HomeContent() {
     // Canonical loading state — identical markup to ActiveTripPageClient and
     // InTransitPageClient. Returning null here flashed a blank screen on every
     // cold load of Home, which reads as a crash on a slow connection.
+    //
+    // h-full, not min-h-screen: AppShell (the only caller) already owns the fixed,
+    // locked-to-viewport frame and gives this component a sized, scrollable slot to
+    // fill — a second min-h-screen here would stack on top of AppShell's own and push
+    // every Home render past one screen regardless of how little content it has.
     return (
-      <main className="flex min-h-screen items-center justify-center p-6">
+      <main className="flex h-full items-center justify-center p-6">
         <Spinner />
       </main>
     )
@@ -32,7 +37,7 @@ export function HomeContent() {
 
   if (!trip) {
     return (
-      <main className="flex min-h-screen flex-col gap-4 p-4">
+      <main className="flex h-full flex-col gap-4 p-4">
         <EmptyState
           icon={<PackageSearch strokeWidth={1.5} aria-hidden />}
           title="No active trip right now"
@@ -47,7 +52,7 @@ export function HomeContent() {
   const current = currentHandshakeNumber(progress)
 
   return (
-    <main className="flex min-h-screen flex-col gap-4 p-4">
+    <main className="flex flex-col gap-4 p-4">
       <div>
         <p className="text-xl font-semibold text-surface-on">{trip.trip_reference}</p>
         <p className="text-sm text-surface-on-variant">{trip.order_number}</p>

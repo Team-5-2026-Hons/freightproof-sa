@@ -89,7 +89,11 @@ export default function TripsPage() {
   const activeFilterCount = [dateFrom, dateTo, search].filter((v) => v.trim() !== '').length
 
   return (
-    <main className="flex min-h-screen flex-col gap-4 p-4">
+    // No min-h-screen — AppShell (the only caller, via app/(app)/layout.tsx) already
+    // owns the fixed, locked-to-viewport frame and gives this page a sized,
+    // scrollable slot; see AppShell.tsx for why stacking a second min-h-screen here
+    // forced every visit to scroll regardless of how many trips there were to show.
+    <main className="flex flex-col gap-4 p-4">
       <h1 className="text-xl font-semibold text-surface-on">My Trips</h1>
 
       <Tabs
