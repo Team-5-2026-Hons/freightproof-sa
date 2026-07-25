@@ -72,6 +72,53 @@ describe('LogExceptionPageClient submit receipt (5b)', () => {
   })
 })
 
+// Audit fixes: the offline-queue success path previously navigated away with NO receipt
+// (unlike CheckpointPageClient's identical path), and the terminal-4xx branch showed
+// "check your connection" copy precisely where the code knows retrying won't help.
+
+describe('LogExceptionPageClient failure feedback (audit fixes)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('on a network failure, queues the exception, fires the saved-on-device toast, and advances to the hub', async () => {
+    const logException = vi.fn().mockRejectedValue(new TypeError('network unreachable'))
+    mockUseTrip.mockReturnValue({ trip: { id: 'trip-1' }, logException })
+
+    render(<LogExceptionPageClient />)
+    fireEvent.click(screen.getByText('Cargo damage'))
+    fireEvent.click(screen.getByText('Submit exception'))
+
+    await waitFor(() => expect(mockRouterPush).toHaveBeenCalledWith(ROUTES.inTransit))
+    expect(mockEnqueueException).toHaveBeenCalledWith('trip-1', {
+      exception_type: 'cargo_damage',
+      description: '',
+    })
+    expect(mockNotify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'success',
+        title: 'Report saved',
+        body: expect.stringContaining('sync'),
+      }),
+    )
+  })
+
+  it('shows honest not-accepted copy (not connection copy) on a terminal 4xx', async () => {
+    const logException = vi.fn().mockRejectedValue(new ApiError(422, 'invalid'))
+    mockUseTrip.mockReturnValue({ trip: { id: 'trip-1' }, logException })
+
+    render(<LogExceptionPageClient />)
+    fireEvent.click(screen.getByText('Cargo damage'))
+    fireEvent.click(screen.getByText('Submit exception'))
+
+    await waitFor(() =>
+      expect(screen.getByText(/the report was not accepted/i)).toBeInTheDocument(),
+    )
+    expect(screen.queryByText(/check your connection/i)).not.toBeInTheDocument()
+    expect(mockEnqueueException).not.toHaveBeenCalled()
+  })
+})
+
 describe('LogExceptionPageClient back link (5d)', () => {
   beforeEach(() => {
     vi.clearAllMocks()

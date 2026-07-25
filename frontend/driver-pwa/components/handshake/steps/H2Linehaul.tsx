@@ -54,27 +54,42 @@ export function H2Linehaul({ tripId, draft, onUpdate, onComplete }: H2LinehaulPr
 
   const unitCount = linehaul?.consolidated_unit_count ?? null
   const driverCount = countInput !== '' ? parseInt(countInput, 10) : null
-  const isReady = driverCount !== null && !isNaN(driverCount) && unitCount !== null
-  const hasMismatch = isReady && driverCount !== unitCount
+  // >= 0, not > 0: an empty load (0) is a legitimate, flaggable observation — the driver
+  // reporting "nothing was loaded" is exactly the kind of evidence this app records. A
+  // negative count is physically meaningless, so it can never be ready to submit.
+  const hasDriverCount = driverCount !== null && !isNaN(driverCount) && driverCount >= 0
+  // 404 (fetchLinehaul resolved null) means no Linehaul document exists for this trip —
+  // a normal state (any trip without a Parcel Perfect reference), not a failure. The
+  // driver can still proceed on a valid visual count alone; a real fetch error cannot.
+  const noLinehaulDocument = !loading && !error && linehaul === null
+  const isReady = hasDriverCount && (unitCount !== null || noLinehaulDocument)
+  // Only meaningful once a real Linehaul unit count exists to compare against.
+  const hasMismatch = hasDriverCount && unitCount !== null && driverCount !== unitCount
 
   function handleConfirm() {
-    if (unitCount === null) return
+    if (!hasDriverCount) return
     onUpdate({ ppManifestParcelCount: unitCount, driverVisualCount: driverCount })
     onComplete()
   }
 
   return (
     <main className="flex min-h-screen flex-col">
-      <StepHeader handshakeName="Loading" stepName="Confirm Linehaul" stepIndex={2} totalSteps={5} />
+      <StepHeader handshake={2} step={2} />
       <div className="flex flex-1 flex-col gap-6 p-4">
         {loading ? (
           <Spinner />
-        ) : error || linehaul === null ? (
+        ) : error ? (
           <div className="flex flex-col items-start gap-3">
             <p className="text-sm text-error">Could not load the Linehaul document — check connection and retry.</p>
             <Button variant="secondary" onClick={handleRetry}>
               Retry
             </Button>
+          </div>
+        ) : linehaul === null ? (
+          <div className="rounded-xl bg-surface-container-low px-4 py-3">
+            <p className="text-sm text-surface-on-variant">
+              No Linehaul document is available for this trip. Record your own count — it will be used as the reference.
+            </p>
           </div>
         ) : (
           <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4">
@@ -90,6 +105,10 @@ export function H2Linehaul({ tripId, draft, onUpdate, onComplete }: H2LinehaulPr
           label="Your visual count"
           type="number"
           inputMode="numeric"
+          // min backs up the >= 0 readiness check at the browser/keyboard level (numeric
+          // keypads suppress the minus key when min is non-negative); the JS check above
+          // remains the real gate since min alone doesn't stop typed/pasted negatives.
+          min={0}
           placeholder="Count units physically"
           value={countInput}
           onChange={(e) => setCountInput(e.target.value)}

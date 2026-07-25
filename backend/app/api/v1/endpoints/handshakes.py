@@ -4,17 +4,20 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi import status as http_status
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_driver
-from app.blockchain.hedera import HederaServiceError, HederaTimeoutError
-from app.core.exceptions import HandshakeSequenceError, ResourceNotFoundError
+from app.core.exceptions import (
+    HandshakeSequenceError,
+    HederaServiceError,
+    HederaTimeoutError,
+    ResourceNotFoundError,
+)
 from app.db.models.enums import HandshakeType
-from app.db.models.handshakes import HandshakeEvent
-from app.db.models.trips import Trip
 from app.db.session import get_db
-from app.orchestration.handshake_service import advance_h1, advance_h2, advance_h3, advance_h4, advance_h5
+from app.orchestration.handshake_service import (
+    advance_h1, advance_h2, advance_h3, advance_h4, advance_h5, get_handshake_detail,
+)
 from app.schemas.handshakes import (
     H1CompleteRequest, H2CompleteRequest, H3CompleteRequest, H4CompleteRequest, H5CompleteRequest,
     HandshakeEventRead,
@@ -117,22 +120,10 @@ async def get_handshake_detail_endpoint(
     db: AsyncSession = Depends(get_db),
     current_driver: DriverRead = Depends(get_current_driver),
 ) -> HandshakeEventRead:
-    """Scoped to the calling driver's own trip — without this, any active driver
-    could read another driver's GPS, seal, and count data for any trip_id they
-    came across (e.g. from a gate QR code or dispatch chatter). 404, not 403, on
-    a mismatch so the response never confirms another driver's trip exists."""
-    trip_result = await db.execute(
-        select(Trip).where(Trip.id == trip_id, Trip.driver_id == current_driver.id)
-    )
-    if trip_result.scalar_one_or_none() is None:
-        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Trip not found.")
-
-    result = await db.execute(
-        select(HandshakeEvent).where(
-            HandshakeEvent.trip_id == trip_id, HandshakeEvent.handshake_type == handshake_type,
+    try:
+        event = await get_handshake_detail(
+            db, trip_id=trip_id, handshake_type=handshake_type, driver_id=current_driver.id,
         )
-    )
-    event = result.scalar_one_or_none()
-    if event is None:
-        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Handshake not found.")
+    except ResourceNotFoundError as exc:
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return HandshakeEventRead.model_validate(event)

@@ -119,7 +119,6 @@ async def _make_artifact(db_session, trip_id):
 async def _advance_to_loading(db_session, trip, driver):
     await advance_h1(db_session, trip_id=trip.id, driver_id=driver.id, payload=H1CompleteRequest(
         driver_phone_lat=Decimal("0"), driver_phone_lng=Decimal("0"),
-        gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
     ))
     return await advance_h2(db_session, trip_id=trip.id, driver_id=driver.id, payload=H2CompleteRequest(
         waybill_photo_artifact_id=await _make_artifact(db_session, trip.id), seal_number="AB-1234",
@@ -130,10 +129,10 @@ async def _advance_to_loading(db_session, trip, driver):
 async def _advance_to_dest_gate_in(db_session, trip, driver):
     await _advance_to_loading(db_session, trip, driver)
     await advance_h3(db_session, trip_id=trip.id, driver_id=driver.id, payload=H3CompleteRequest(
-        gate_exit_photo_artifact_id=await _make_artifact(db_session, trip.id), guard_verified_seal=True,
+        guard_verified_seal=True,
     ))
     return await advance_h4(db_session, trip_id=trip.id, driver_id=driver.id, payload=H4CompleteRequest(
-        gate_entry_photo_artifact_id=await _make_artifact(db_session, trip.id), seal_number_at_destination="AB-1234",
+        seal_number_at_destination="AB-1234",
     ))
 
 

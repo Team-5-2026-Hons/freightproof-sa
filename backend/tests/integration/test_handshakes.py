@@ -1,13 +1,11 @@
 """Integration tests for the H1-H5 handshake endpoints and the polling GET."""
 
 import uuid
-from datetime import UTC, datetime
 
 import pytest_asyncio
 from httpx import AsyncClient
 
-from app.db.models.enums import ArtifactType, IdvsStatus, OrganizationType, TripStatus, VehicleType
-from app.db.models.evidence import EvidenceArtifact
+from app.db.models.enums import IdvsStatus, OrganizationType, TripStatus, VehicleType
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.trips import Trip
@@ -59,29 +57,13 @@ async def seed_trip(db_session):
     return trip, driver
 
 
-async def _make_artifact(db_session, trip_id) -> str:
-    artifact = EvidenceArtifact(
-        id=uuid.uuid4(), trip_id=trip_id, artifact_type=ArtifactType.PHOTO,
-        s3_key=f"{trip_id}/{uuid.uuid4()}", s3_bucket="evidence-artifacts",
-        file_hash="a" * 64, mime_type="image/jpeg",
-        captured_at=datetime.now(UTC),
-    )
-    db_session.add(artifact)
-    await db_session.flush()
-    return str(artifact.id)
-
-
 async def test_h1_complete_returns_200(client: AsyncClient, db_session, seed_trip):
     trip, driver = seed_trip
     token = make_token(sub=str(driver.id), role="driver")
-    artifact_id = await _make_artifact(db_session, trip.id)
 
     resp = await client.post(
         f"/api/v1/trips/{trip.id}/handshakes/h1/complete",
-        json={
-            "driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001",
-            "gate_photo_artifact_id": artifact_id,
-        },
+        json={"driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001"},
         headers=auth_header(token),
     )
     assert resp.status_code == 200
@@ -96,10 +78,7 @@ async def test_h1_wrong_state_returns_409(client: AsyncClient, db_session, seed_
 
     resp = await client.post(
         f"/api/v1/trips/{trip.id}/handshakes/h1/complete",
-        json={
-            "driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001",
-            "gate_photo_artifact_id": str(uuid.uuid4()),
-        },
+        json={"driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001"},
         headers=auth_header(token),
     )
     assert resp.status_code == 409
@@ -112,10 +91,7 @@ async def test_h1_unknown_driver_token_returns_401(client: AsyncClient, seed_tri
 
     resp = await client.post(
         f"/api/v1/trips/{trip.id}/handshakes/h1/complete",
-        json={
-            "driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001",
-            "gate_photo_artifact_id": str(uuid.uuid4()),
-        },
+        json={"driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001"},
         headers=auth_header(token),
     )
     assert resp.status_code == 401  # other_driver doesn't exist as a Driver row -> get_current_driver 401s first
@@ -124,14 +100,10 @@ async def test_h1_unknown_driver_token_returns_401(client: AsyncClient, seed_tri
 async def test_get_handshake_detail_returns_event(client: AsyncClient, db_session, seed_trip):
     trip, driver = seed_trip
     token = make_token(sub=str(driver.id), role="driver")
-    artifact_id = await _make_artifact(db_session, trip.id)
 
     await client.post(
         f"/api/v1/trips/{trip.id}/handshakes/h1/complete",
-        json={
-            "driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001",
-            "gate_photo_artifact_id": artifact_id,
-        },
+        json={"driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001"},
         headers=auth_header(token),
     )
     resp = await client.get(
@@ -157,14 +129,10 @@ async def test_get_handshake_detail_other_driver_returns_404(client: AsyncClient
     """A driver must not be able to read another driver's handshake data (GPS, seal, counts)
     by guessing/observing a trip_id that isn't their own — see security review finding."""
     trip, driver = seed_trip
-    artifact_id = await _make_artifact(db_session, trip.id)
     owner_token = make_token(sub=str(driver.id), role="driver")
     await client.post(
         f"/api/v1/trips/{trip.id}/handshakes/h1/complete",
-        json={
-            "driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001",
-            "gate_photo_artifact_id": artifact_id,
-        },
+        json={"driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001"},
         headers=auth_header(owner_token),
     )
 

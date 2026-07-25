@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import SubjectNotVisibleError
 from app.db.models.enums import SubjectType
 from app.db.models.events import DriverEvent, VehicleEvent
+from app.db.models.handshakes import HandshakeEvent
 from app.db.models.people import Driver
 from app.db.models.trips import Trip
 from app.db.models.vehicles import Vehicle
@@ -56,6 +57,17 @@ async def assert_subject_visible(
             .where(
                 DriverEvent.id == subject_id,
                 Driver.organization_id == organization_id,
+            )
+        )
+    elif subject_type == SubjectType.HANDSHAKE_EVENT:
+        # H2/H5 anchor receipts with the handshake event as subject — scoped to
+        # the org operating the trip the handshake belongs to.
+        query = (
+            select(HandshakeEvent.id)
+            .join(Trip, Trip.id == HandshakeEvent.trip_id)
+            .where(
+                HandshakeEvent.id == subject_id,
+                Trip.operator_organization_id == organization_id,
             )
         )
     else:

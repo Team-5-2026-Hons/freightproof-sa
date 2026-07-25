@@ -73,6 +73,30 @@ describe('PanicPage no-active-trip guard', () => {
     expect(mockRouterReplace).toHaveBeenCalledWith(ROUTES.inTransit)
     expect(mockRouterBack).not.toHaveBeenCalled()
   })
+
+  // A blank screen on the PANIC page reads as a dead app at the worst possible
+  // moment — the loading state must render a visible spinner, not `return null`.
+  it('renders a spinner (not a blank screen) while the trip is loading', () => {
+    mockUseTrip.mockReturnValue({ trip: null, isLoading: true, logException: vi.fn() })
+
+    render(<PanicPage />)
+
+    expect(screen.getByRole('status')).toBeInTheDocument()
+    expect(screen.queryByText(/send panic/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/unable to verify trip/i)).not.toBeInTheDocument()
+  })
+
+  // Cold load / deep link means the panic page may have no back-history — the main
+  // Cancel button must replace to the in-transit hub, never pop an empty stack.
+  it('main Cancel button uses router.replace to in-transit, not router.back', () => {
+    mockUseTrip.mockReturnValue({ trip: { id: 'trip-123' }, isLoading: false, logException: vi.fn() })
+
+    render(<PanicPage />)
+    fireEvent.click(screen.getByText(/cancel/i))
+
+    expect(mockRouterReplace).toHaveBeenCalledWith(ROUTES.inTransit)
+    expect(mockRouterBack).not.toHaveBeenCalled()
+  })
 })
 
 describe('PanicPage handlePanic sequencing', () => {
@@ -165,11 +189,38 @@ describe('PanicPage handlePanic sequencing', () => {
       await Promise.resolve()
     })
 
+    // The queued body must carry the captured GPS pair too — a retry that sends
+    // without location would break the page's "location will be included" promise
+    // precisely in the offline case panic queuing exists for.
+    expect(mockEnqueueException).toHaveBeenCalledWith('trip-123', {
+      exception_type: 'panic_button',
+      description: 'Driver activated panic button.',
+      gps_lat: -26.09,
+      gps_lng: 28.13,
+    })
+    expect(mockRouterReplace).toHaveBeenCalledWith(ROUTES.panicSubmittedUrl(true))
+    expect(mockRouterReplace).toHaveBeenCalledWith(`${ROUTES.panicSubmitted}?queued=1`)
+  })
+
+  it('queued body omits GPS entirely when capture failed — never a partial fix', async () => {
+    const logException = vi.fn().mockRejectedValue(new Error('network unreachable'))
+    mockUseTrip.mockReturnValue({ trip: { id: 'trip-123' }, isLoading: false, logException })
+    mockCapture.mockResolvedValue(null)
+
+    render(<PanicPage />)
+    pressAndHoldPanicButton()
+
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    // No gps_lat/gps_lng keys at all — the backend 422s a partial fix, which would
+    // make the offline queue drop the panic entry as a terminal failure.
     expect(mockEnqueueException).toHaveBeenCalledWith('trip-123', {
       exception_type: 'panic_button',
       description: 'Driver activated panic button.',
     })
-    expect(mockRouterReplace).toHaveBeenCalledWith(ROUTES.panicSubmittedUrl(true))
-    expect(mockRouterReplace).toHaveBeenCalledWith(`${ROUTES.panicSubmitted}?queued=1`)
   })
 })

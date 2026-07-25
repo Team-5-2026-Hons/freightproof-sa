@@ -13,11 +13,11 @@ interface H3DepartureProps {
 }
 
 export function H3Departure({ tripId, draft, onComplete }: H3DepartureProps) {
-  const isReady = draft.gpsLat !== null && draft.gatePhotoDataUrl !== null && draft.sealNumberConfirmed !== null
+  const isReady = draft.gpsLat !== null && draft.sealNumberConfirmed !== null
 
   return (
     <main className="flex min-h-screen flex-col">
-      <StepHeader handshakeName="Origin Gate-Out" stepName="Confirm Departure" stepIndex={3} totalSteps={3} />
+      <StepHeader handshake={3} step={3} />
       <div className="flex flex-1 flex-col gap-6 p-4">
         <p className="text-sm text-surface-on-variant">
           You are about to depart. Hold to submit — your departure is recorded and you are now in transit.
@@ -27,7 +27,6 @@ export function H3Departure({ tripId, draft, onComplete }: H3DepartureProps) {
             // Raw coordinates are noise to a driver — a "Captured" receipt is enough here;
             // the exact lat/lng stays in the draft for the backend payload.
             { label: 'GPS', value: draft.gpsLat !== null ? 'Captured' : null },
-            { label: 'Exit photo', value: draft.gatePhotoDataUrl, isImage: true },
             {
               label: 'Seal confirmed',
               value:

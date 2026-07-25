@@ -109,15 +109,40 @@ describe('CheckpointPageClient offline queue (Fix 3)', () => {
     expect(screen.queryByText(/could not submit/i)).not.toBeInTheDocument()
   })
 
-  it('on a 4xx, keeps the driver on the page with the inline error and does not queue', async () => {
+  it('on a 4xx, keeps the driver on the page with honest not-accepted copy and does not queue', async () => {
     mockSubmitCheckpoint.mockRejectedValue(new ApiError(422, 'invalid checkpoint'))
 
     render(<CheckpointPageClient />)
     fillCaptures()
     fireEvent.click(screen.getByText('Hold to confirm'))
 
-    await waitFor(() => expect(screen.getByText(/could not submit — check your connection/i)).toBeInTheDocument())
+    // Audit fix: the 4xx branch previously showed "check your connection" — misleading
+    // exactly where the code knows retrying won't help.
+    await waitFor(() =>
+      expect(screen.getByText(/the checkpoint was not accepted/i)).toBeInTheDocument(),
+    )
+    expect(screen.queryByText(/check your connection/i)).not.toBeInTheDocument()
     expect(mockEnqueueCheckpoint).not.toHaveBeenCalled()
     expect(mockRouterPush).not.toHaveBeenCalled()
+  })
+})
+
+describe('CheckpointPageClient route-deviation checkbox (audit fix)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockUseTrip.mockReturnValue({ trip: { id: 'trip-1' } })
+  })
+
+  it('wraps the 16px checkbox in a label meeting the 44px minimum touch target', () => {
+    render(<CheckpointPageClient />)
+
+    const checkbox = screen.getByRole('checkbox', { name: /route deviation/i })
+    const labelEl = checkbox.closest('label')
+
+    // min-h-[44px] is the app's documented minimum touch target (Switch.tsx/Button.tsx);
+    // the visual checkbox itself intentionally stays 16px (h-4 w-4).
+    expect(labelEl).not.toBeNull()
+    expect(labelEl?.className).toContain('min-h-[44px]')
+    expect(checkbox.className).toContain('h-4')
   })
 })

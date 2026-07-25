@@ -40,7 +40,7 @@ export function Tabs({ tabs, active, onChange, className }: TabsProps) {
               'text-surface-on-variant hover:text-surface-on hover:bg-surface-container',
               'data-[state=active]:bg-surface-container-lowest data-[state=active]:text-surface-on',
               'data-[state=active]:shadow-ambient-sm data-[state=active]:hover:bg-surface-container-lowest',
-              'focus-visible:outline-none',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1',
             )}
           >
             {tab.icon}

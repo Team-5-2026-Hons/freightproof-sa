@@ -13,10 +13,20 @@
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
+        <!-- Black status bar (theme-default grey replaced) to match the app's
+             near-black design system. windowLightStatusBar is intentionally NOT
+             set, so status bar icons stay their default light color and remain
+             legible against the black background. -->
+        <item name="android:statusBarColor">@android:color/black</item>
     </style>
 
 
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
         <item name="android:background">@drawable/splash</item>
+        <!-- AndroidManifest.xml sets this as MainActivity's actual theme (no
+             post-splash setTheme() call exists in MainActivity.java), so this —
+             not AppTheme.NoActionBar — is what determines the status bar color
+             the driver actually sees at runtime. -->
+        <item name="android:statusBarColor">@android:color/black</item>
     </style>
 </resources>

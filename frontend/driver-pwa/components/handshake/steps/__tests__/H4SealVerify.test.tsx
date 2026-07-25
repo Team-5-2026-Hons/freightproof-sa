@@ -8,7 +8,7 @@ import type { H4Evidence } from '@/lib/types/evidence-draft'
 // component mounts under jsdom.
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
-  useParams: () => ({ h: '4', slug: '3-seal-verify' }),
+  useParams: () => ({ h: '4', slug: '2-seal-verify' }),
 }))
 
 // Task 2a: a null H2 reference seal (a data gap at loading, not the driver's fault) must not
@@ -23,7 +23,6 @@ function makeDraft(overrides: Partial<H4Evidence> = {}): H4Evidence {
   return {
     gpsLat: null,
     gpsLng: null,
-    gatePhotoDataUrl: null,
     sealNumberAtDestination: null,
     sealVerifiedMatch: null,
     capturedAt: null,

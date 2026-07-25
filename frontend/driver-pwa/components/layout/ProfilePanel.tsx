@@ -40,7 +40,11 @@ export function ProfilePanel({ open, onClose }: ProfilePanelProps) {
     const currentVehicle = active[0]?.horse ?? null
 
     return { driverTrips, active, past, currentVehicle }
-  }, [user?.id])
+    // The full `user` object, not `user?.id`: the memo body reads `user`, and a
+    // narrower dep hides that from the linter. Identity churn is bounded — `user`
+    // is auth-event state, not a per-render object — so recompute frequency is
+    // unchanged in practice.
+  }, [user])
 
   if (!user) return null
 

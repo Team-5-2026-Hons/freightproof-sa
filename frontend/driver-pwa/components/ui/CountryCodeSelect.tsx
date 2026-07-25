@@ -86,7 +86,8 @@ export function CountryCodeSelect({ value, onChange, className }: CountryCodeSel
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search country or code"
             className={cn(
-              'w-full px-4 py-3 text-sm bg-transparent text-foreground',
+              // text-base, not text-sm — see components/ui/Input.tsx for why (iOS zoom-on-focus).
+              'w-full px-4 py-3 text-base bg-transparent text-foreground',
               'placeholder:text-muted-foreground/50',
               'border-b border-input focus:outline-none',
             )}

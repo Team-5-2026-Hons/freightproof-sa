@@ -23,7 +23,6 @@ vi.mock('@/lib/api/artifacts', () => ({
 const H1_EVIDENCE: H1Evidence = {
   gpsLat: -26.09,
   gpsLng: 28.13,
-  gatePhotoDataUrl: 'data:image/jpeg;base64,AAAA',
   gateAddress: null,
   capturedAt: '2026-06-12T10:00:00Z',
 }
@@ -54,20 +53,22 @@ describe('submitHandshake (real-backend branch)', () => {
     vi.clearAllMocks()
   })
 
-  it('uploads the gate photo then completes H1 with the returned artifact id', async () => {
-    mockUploadArtifact.mockResolvedValue({ id: 'artifact-1', file_hash: 'a'.repeat(64) })
+  it('completes H1 with GPS only, no artifact upload', async () => {
     mockPost.mockResolvedValue({ id: 'trip-1', status: 'origin_gate_in' })
 
     const { submitHandshake } = await import('../handshakes')
     const result = await submitHandshake('trip-1', 'origin_gate_in', H1_EVIDENCE)
 
     expect(result.ok).toBe(true)
-    expect(mockUploadArtifact).toHaveBeenCalledTimes(1)
-    expect(mockPost).toHaveBeenCalledWith('/api/v1/trips/trip-1/handshakes/h1/complete', {
-      driver_phone_lat: -26.09,
-      driver_phone_lng: 28.13,
-      gate_photo_artifact_id: 'artifact-1',
-    })
+    expect(mockUploadArtifact).not.toHaveBeenCalled()
+    expect(mockPost).toHaveBeenCalledWith(
+      '/api/v1/trips/trip-1/handshakes/h1/complete',
+      {
+        driver_phone_lat: -26.09,
+        driver_phone_lng: 28.13,
+      },
+      { timeoutMs: 30_000 },
+    )
   })
 
   it('uploads waybill and seal photos then completes H2 with both artifact ids', async () => {
@@ -80,17 +81,46 @@ describe('submitHandshake (real-backend branch)', () => {
     await submitHandshake('trip-1', 'loading', H2_EVIDENCE)
 
     expect(mockUploadArtifact).toHaveBeenCalledTimes(2)
-    expect(mockPost).toHaveBeenCalledWith('/api/v1/trips/trip-1/handshakes/h2/complete', {
-      waybill_photo_artifact_id: 'waybill-artifact',
-      seal_number: 'AB-1234',
-      seal_photo_artifact_id: 'seal-artifact',
-      driver_visual_count: 31,
+    expect(mockPost).toHaveBeenCalledWith(
+      '/api/v1/trips/trip-1/handshakes/h2/complete',
+      {
+        waybill_photo_artifact_id: 'waybill-artifact',
+        seal_number: 'AB-1234',
+        seal_photo_artifact_id: 'seal-artifact',
+        driver_visual_count: 31,
+      },
+      { timeoutMs: 30_000 },
+    )
+  })
+
+  it('completes H3 with the confirmed seal for server-side comparison, no artifact upload', async () => {
+    mockPost.mockResolvedValue({ id: 'trip-1', status: 'in_transit' })
+
+    const { submitHandshake } = await import('../handshakes')
+    await submitHandshake('trip-1', 'origin_gate_out', {
+      gpsLat: null,
+      gpsLng: null,
+      sealNumberConfirmed: ' AB-1234 ',
+      // null = the device-local seal reference was lost — must NOT become
+      // guard_verified_seal: false (the server compares the confirmed seal instead).
+      sealVerifiedMatch: null,
+      capturedAt: '2026-06-12T10:07:00Z',
     })
+
+    expect(mockUploadArtifact).not.toHaveBeenCalled()
+    expect(mockPost).toHaveBeenCalledWith(
+      '/api/v1/trips/trip-1/handshakes/h3/complete',
+      {
+        guard_verified_seal: false,
+        seal_number_confirmed: 'AB-1234',
+      },
+      { timeoutMs: 30_000 },
+    )
   })
 
   it('throws when required evidence is missing instead of calling the backend', async () => {
     const { submitHandshake } = await import('../handshakes')
-    const incomplete: H1Evidence = { ...H1_EVIDENCE, gatePhotoDataUrl: null }
+    const incomplete: H1Evidence = { ...H1_EVIDENCE, gpsLat: null }
 
     await expect(submitHandshake('trip-1', 'origin_gate_in', incomplete)).rejects.toThrow(
       /H1 evidence incomplete/,
@@ -104,7 +134,7 @@ describe('submitHandshake (real-backend branch)', () => {
 
     const { submitHandshake } = await import('../handshakes')
 
-    await expect(submitHandshake('trip-1', 'origin_gate_in', H1_EVIDENCE)).rejects.toThrow(
+    await expect(submitHandshake('trip-1', 'loading', H2_EVIDENCE)).rejects.toThrow(
       /upload failed/,
     )
     expect(mockPost).not.toHaveBeenCalled()
@@ -120,12 +150,16 @@ describe('submitHandshake (real-backend branch)', () => {
     await submitHandshake('trip-1', 'unloading', H5_EVIDENCE)
 
     expect(mockUploadArtifact).toHaveBeenCalledTimes(2)
-    expect(mockPost).toHaveBeenCalledWith('/api/v1/trips/trip-1/handshakes/h5/complete', {
-      pod_photo_artifact_id: 'pod-photo-artifact',
-      pod_signature_artifact_id: 'pod-signature-artifact',
-      driver_visual_count: 31,
-      pp_scan_in_count: 31,
-    })
+    expect(mockPost).toHaveBeenCalledWith(
+      '/api/v1/trips/trip-1/handshakes/h5/complete',
+      {
+        pod_photo_artifact_id: 'pod-photo-artifact',
+        pod_signature_artifact_id: 'pod-signature-artifact',
+        driver_visual_count: 31,
+        pp_scan_in_count: 31,
+      },
+      { timeoutMs: 30_000 },
+    )
   })
 
   it('throws H5 incomplete when the signature is missing', async () => {

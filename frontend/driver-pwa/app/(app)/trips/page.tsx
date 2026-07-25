@@ -18,20 +18,12 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { tripsForDriver, categorizeTrips, filterPastTrips } from '@/lib/utils/trip-filters'
 import { tripStatusChip } from '@/lib/utils/trip-status-chip'
 import { precinctName } from '@/lib/utils/precinct-name'
+import { formatDateTime } from '@/lib/utils/format-time'
 
 type TabId = 'active' | 'upcoming' | 'past'
 
-// en-ZA departure format for trip cards, e.g. "Wed 2 Jul, 06:00".
-const DEPARTURE_FORMAT = new Intl.DateTimeFormat('en-ZA', {
-  weekday: 'short',
-  day: 'numeric',
-  month: 'short',
-  hour: '2-digit',
-  minute: '2-digit',
-})
-
 function formatDeparture(planned: string | null): string {
-  return planned ? DEPARTURE_FORMAT.format(new Date(planned)) : 'Departure not scheduled'
+  return planned ? formatDateTime(planned) : 'Departure not scheduled'
 }
 
 const EMPTY_STATE_COPY: Record<TabId, { title: string; body: string }> = {
@@ -97,7 +89,11 @@ export default function TripsPage() {
   const activeFilterCount = [dateFrom, dateTo, search].filter((v) => v.trim() !== '').length
 
   return (
-    <main className="flex min-h-screen flex-col gap-4 p-4">
+    // No min-h-screen — AppShell (the only caller, via app/(app)/layout.tsx) already
+    // owns the fixed, locked-to-viewport frame and gives this page a sized,
+    // scrollable slot; see AppShell.tsx for why stacking a second min-h-screen here
+    // forced every visit to scroll regardless of how many trips there were to show.
+    <main className="flex flex-col gap-4 p-4">
       <h1 className="text-xl font-semibold text-surface-on">My Trips</h1>
 
       <Tabs

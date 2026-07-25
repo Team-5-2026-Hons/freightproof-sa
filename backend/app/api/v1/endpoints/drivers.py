@@ -11,7 +11,12 @@ from app.auth.dependencies import (
     require_admin_dispatcher,
 )
 from app.db.models.enums import DispatcherRole
-from app.core.exceptions import DuplicateResourceError, ResourceNotFoundError
+from app.core.exceptions import (
+    DuplicateResourceError,
+    HederaServiceError,
+    HederaTimeoutError,
+    ResourceNotFoundError,
+)
 from app.db.session import get_db
 from app.orchestration.driver_service import (
     list_drivers, create_driver, update_driver, get_driver_detail,
@@ -60,6 +65,10 @@ async def create_driver_endpoint(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    except HederaTimeoutError as exc:
+        raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=str(exc))
+    except HederaServiceError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
 
 
 @router.patch("/{driver_id}", response_model=DriverRead)
@@ -79,6 +88,10 @@ async def update_driver_endpoint(
         )
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except HederaTimeoutError as exc:
+        raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=str(exc))
+    except HederaServiceError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
 
 
 @router.get("/{driver_id}", response_model=DriverDetailResponse)

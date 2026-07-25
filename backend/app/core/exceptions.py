@@ -62,3 +62,15 @@ class PPSyncError(Exception):
         self.pp_reference = pp_reference
         self.reason = reason
         super().__init__(f"PP sync failed for {pp_reference!r}: {reason}")
+
+
+class HederaServiceError(Exception):
+    """Base exception for Hedera service failures."""
+
+
+class HederaTimeoutError(HederaServiceError):
+    """Raised when the submit_hash() call exceeds HEDERA_SUBMIT_TIMEOUT_SECONDS.
+
+    Distinct from HederaSubmitError so callers/logs can tell "Hedera never
+    responded in time" apart from "Hedera responded with a rejection".
+    """

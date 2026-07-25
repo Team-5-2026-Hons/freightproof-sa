@@ -3,7 +3,6 @@
 export interface H1Evidence {
   gpsLat: number | null
   gpsLng: number | null
-  gatePhotoDataUrl: string | null
   // Populated via Google Geocoding API reverse-lookup of gpsLat/gpsLng — display-only, not sent to a backend yet.
   gateAddress: string | null
   capturedAt: string | null
@@ -23,7 +22,6 @@ export interface H2Evidence {
 export interface H3Evidence {
   gpsLat: number | null
   gpsLng: number | null
-  gatePhotoDataUrl: string | null
   sealNumberConfirmed: string | null
   // Deviation from original plan spec (authorized fix, post Task-9 review): mirrors H4Evidence's
   // sealVerifiedMatch so H3's "confirm seal" step performs a real comparison against H2's seal, not just free text.
@@ -34,7 +32,6 @@ export interface H3Evidence {
 export interface H4Evidence {
   gpsLat: number | null
   gpsLng: number | null
-  gatePhotoDataUrl: string | null
   // The driver's typed seal entry at destination — backend needs the actual value
   // (H4CompleteRequest.seal_number_at_destination), not just whether it matched H2's seal.
   sealNumberAtDestination: string | null

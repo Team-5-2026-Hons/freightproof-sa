@@ -30,7 +30,8 @@ export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(function 
         id={inputId}
         onBlur={() => setTouched(true)}
         className={cn(
-          'w-full rounded-xl px-4 py-3 text-sm font-medium text-foreground',
+          // text-base, not text-sm — see components/ui/Input.tsx for why (iOS zoom-on-focus).
+          'w-full rounded-xl px-4 py-3 text-base font-medium text-foreground',
           'bg-muted border border-input',
           'placeholder:text-muted-foreground/70 resize-none',
           'focus:outline-none focus:border-ring focus:bg-card',

@@ -23,7 +23,7 @@ export function H5PodPhoto({ tripId, draft, onUpdate, onComplete }: H5PodPhotoPr
 
   return (
     <main className="flex min-h-screen flex-col">
-      <StepHeader handshakeName="Unloading" stepName="Photograph POD" stepIndex={4} totalSteps={6} />
+      <StepHeader handshake={5} step={4} />
       <div className="flex flex-1 flex-col gap-6 p-4">
         <p className="text-sm text-surface-on-variant">
           Photograph the delivered cargo, then have the receiver sign to confirm delivery.

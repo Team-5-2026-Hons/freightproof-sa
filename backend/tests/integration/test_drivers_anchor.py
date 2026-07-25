@@ -20,9 +20,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import _DEMO_ORG_ID, _DEMO_USER_ID
 from app.blockchain.hedera import HederaReceipt
-from app.db.models.enums import OrganizationType
+from app.core.exceptions import HederaServiceError, HederaTimeoutError
+from app.db.models.enums import IdvsStatus, OrganizationType
 from app.db.models.organisations import Organization
-from app.db.models.people import User
+from app.db.models.people import Driver, User
 from app.db.session import get_db
 from app.main import app
 
@@ -64,6 +65,22 @@ async def seed_org(db_session: AsyncSession) -> None:
     await db_session.flush()
 
 
+@pytest_asyncio.fixture
+async def seed_driver(db_session: AsyncSession, seed_org) -> Driver:
+    """Insert a driver directly (bypassing the anchored create-endpoint) for PATCH tests."""
+    driver = Driver(
+        organization_id=_DEMO_ORG_ID,
+        full_name="Existing Driver",
+        id_number="8001015009087",
+        phone_number="+27821234567",
+        license_number="DRV-EXIST-001",
+        idvs_status=IdvsStatus.PENDING,
+    )
+    db_session.add(driver)
+    await db_session.flush()
+    return driver
+
+
 # ── Test ──────────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
@@ -88,7 +105,7 @@ async def test_create_driver_does_not_anchor_pii(db_session: AsyncSession, seed_
 
     with (
         patch(
-            "app.orchestration.resource_service.create_driver_auth_user",
+            "app.orchestration.driver_service.create_driver_auth_user",
             new_callable=AsyncMock,
             return_value=fake_driver_id,
         ),
@@ -140,3 +157,117 @@ async def test_create_driver_does_not_anchor_pii(db_session: AsyncSession, seed_
     assert expected_hash in receipts_str, (
         "license_number SHA-256 hash not found in blockchain receipt"
     )
+
+
+# ── C1: Hedera failures map to 504/502, not a bare 500 ─────────────────────────
+#
+# create_driver/update_driver call anchor_subject() -> HederaService.submit_hash()
+# synchronously inside the request. A stalled or rejecting Hedera call must not
+# surface as an opaque 500 — the driver-pwa/dispatcher need to know whether a
+# retry might help (504) or the anchor itself was rejected (502).
+
+@pytest.mark.asyncio
+async def test_create_driver_hedera_timeout_returns_504(db_session: AsyncSession, seed_org) -> None:
+    driver_payload = {
+        "full_name": "Timeout Driver",
+        "id_number": "9001015009082",
+        "phone_number": "+27820000002",
+        "license_number": "DRV-TIMEOUT-001",
+    }
+    fake_driver_id = uuid.uuid4()
+
+    with (
+        patch(
+            "app.orchestration.driver_service.create_driver_auth_user",
+            new_callable=AsyncMock,
+            return_value=fake_driver_id,
+        ),
+        patch("app.blockchain.anchor_service.HederaService") as MockService,
+    ):
+        MockService.return_value.submit_hash.side_effect = HederaTimeoutError(
+            "mirror node timed out"
+        )
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
+        ) as client:
+            resp = await client.post(
+                "/api/v1/drivers",
+                json=driver_payload,
+                headers={"Authorization": "Bearer demo"},
+            )
+
+    assert resp.status_code == 504
+
+
+@pytest.mark.asyncio
+async def test_create_driver_hedera_service_error_returns_502(db_session: AsyncSession, seed_org) -> None:
+    driver_payload = {
+        "full_name": "Service Error Driver",
+        "id_number": "9001015009083",
+        "phone_number": "+27820000003",
+        "license_number": "DRV-SVCERR-001",
+    }
+    fake_driver_id = uuid.uuid4()
+
+    with (
+        patch(
+            "app.orchestration.driver_service.create_driver_auth_user",
+            new_callable=AsyncMock,
+            return_value=fake_driver_id,
+        ),
+        patch("app.blockchain.anchor_service.HederaService") as MockService,
+    ):
+        MockService.return_value.submit_hash.side_effect = HederaServiceError("submit failed")
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
+        ) as client:
+            resp = await client.post(
+                "/api/v1/drivers",
+                json=driver_payload,
+                headers={"Authorization": "Bearer demo"},
+            )
+
+    assert resp.status_code == 502
+
+
+@pytest.mark.asyncio
+async def test_update_driver_hedera_timeout_returns_504(
+    db_session: AsyncSession, seed_driver: Driver
+) -> None:
+    """is_active is a critical field — toggling it forces update_driver to anchor."""
+    with patch("app.blockchain.anchor_service.HederaService") as MockService:
+        MockService.return_value.submit_hash.side_effect = HederaTimeoutError(
+            "mirror node timed out"
+        )
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
+        ) as client:
+            resp = await client.patch(
+                f"/api/v1/drivers/{seed_driver.id}",
+                json={"is_active": False},
+                headers={"Authorization": "Bearer demo"},
+            )
+
+    assert resp.status_code == 504
+
+
+@pytest.mark.asyncio
+async def test_update_driver_hedera_service_error_returns_502(
+    db_session: AsyncSession, seed_driver: Driver
+) -> None:
+    with patch("app.blockchain.anchor_service.HederaService") as MockService:
+        MockService.return_value.submit_hash.side_effect = HederaServiceError("submit failed")
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
+        ) as client:
+            resp = await client.patch(
+                f"/api/v1/drivers/{seed_driver.id}",
+                json={"is_active": False},
+                headers={"Authorization": "Bearer demo"},
+            )
+
+    assert resp.status_code == 502
