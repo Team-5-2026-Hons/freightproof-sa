@@ -25,7 +25,9 @@ export default function SettingsPage() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col gap-4 p-4">
+    // No min-h-screen — see app/(app)/trips/page.tsx for why (AppShell already owns
+    // the locked viewport frame).
+    <main className="flex flex-col gap-4 p-4">
       <h1 className="text-xl font-semibold text-surface-on">Settings</h1>
 
       <Card variant="section">

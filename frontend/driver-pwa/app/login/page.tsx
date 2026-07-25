@@ -84,7 +84,8 @@ export default function LoginPage() {
               onChange={handleLocalNumberChange}
               required
               className={[
-                'flex-1 rounded-xl px-4 py-3 text-sm font-medium text-surface-on',
+                // text-base, not text-sm — see components/ui/Input.tsx for why (iOS zoom-on-focus).
+                'flex-1 rounded-xl px-4 py-3 text-base font-medium text-surface-on',
                 'bg-surface-container-low border border-outline-variant/30',
                 'placeholder:text-surface-on-variant/50',
                 'focus:outline-none focus:border-secondary focus:bg-surface-container-lowest',

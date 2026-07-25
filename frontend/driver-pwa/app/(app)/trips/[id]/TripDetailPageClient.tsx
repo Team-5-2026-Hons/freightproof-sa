@@ -1,4 +1,4 @@
-// frontend/driver-pwa/app/(app)/trips/[id]/ActiveTripPageClient.tsx
+// frontend/driver-pwa/app/(app)/trips/[id]/TripDetailPageClient.tsx
 'use client'
 
 import { useParams, useRouter } from 'next/navigation'
@@ -7,7 +7,7 @@ import { STEP_SLUGS } from '@shared/lib/constants/handshake-meta'
 import { ROUTES } from '@/lib/constants/routes'
 import { TripDetailView } from '@/components/trip/TripDetailView'
 
-export default function ActiveTripPageClient() {
+export default function TripDetailPageClient() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
   // TODO Iter 2 backend: fetch from GET /driver/trips/{id}

@@ -53,10 +53,15 @@ async def _load_trip_for_handshake(
     trip = result.scalar_one_or_none()
     if trip is None:
         raise ResourceNotFoundError("Trip", str(trip_id))
-    if trip.status in (TripStatus.CANCELLED, TripStatus.CLOSED):
-        raise HandshakeSequenceError(trip.status.value, handshake_label)
-    if trip.status != expected_status:
-        raise HandshakeSequenceError(trip.status.value, handshake_label)
+    # Trip.status is a plain String(30) column, so a DB-loaded trip yields a str
+    # here while a trip mutated earlier in this session may hold the TripStatus
+    # enum. Normalise before branching — calling .value on the str crashed every
+    # out-of-sequence submit with a 500 instead of the intended 409.
+    current_status = TripStatus(trip.status)
+    if current_status in (TripStatus.CANCELLED, TripStatus.CLOSED):
+        raise HandshakeSequenceError(current_status.value, handshake_label)
+    if current_status != expected_status:
+        raise HandshakeSequenceError(current_status.value, handshake_label)
     return trip
 
 
@@ -78,6 +83,32 @@ async def _get_handshake_event(db: AsyncSession, *, trip_id: uuid.UUID, handshak
     return event
 
 
+async def get_handshake_detail(
+    db: AsyncSession, *, trip_id: uuid.UUID, handshake_type: HandshakeType, driver_id: uuid.UUID,
+) -> HandshakeEvent:
+    """Scoped to the calling driver's own trip — without this, any active driver
+    could read another driver's GPS, seal, and count data for any trip_id they
+    came across (e.g. from a gate QR code or dispatch chatter). Raises
+    ResourceNotFoundError (mapped to 404, not 403, by the caller) on a
+    trip-ownership mismatch so the response never confirms another driver's
+    trip exists."""
+    trip_result = await db.execute(
+        select(Trip).where(Trip.id == trip_id, Trip.driver_id == driver_id)
+    )
+    if trip_result.scalar_one_or_none() is None:
+        raise ResourceNotFoundError("Trip", str(trip_id))
+
+    result = await db.execute(
+        select(HandshakeEvent).where(
+            HandshakeEvent.trip_id == trip_id, HandshakeEvent.handshake_type == handshake_type,
+        )
+    )
+    event = result.scalar_one_or_none()
+    if event is None:
+        raise ResourceNotFoundError("HandshakeEvent", handshake_type.value)
+    return event
+
+
 async def advance_h1(
     db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID, payload: H1CompleteRequest,
 ) -> TripDetailResponse:
@@ -93,7 +124,6 @@ async def advance_h1(
     # rather than faked, so dispatchers see an honest "not yet cross-checked" state.
     event.driver_phone_lat = payload.driver_phone_lat
     event.driver_phone_lng = payload.driver_phone_lng
-    event.gate_photo_artifact_id = payload.gate_photo_artifact_id
     event.status = HandshakeStatus.COMPLETED
     event.completed_at = datetime.now(UTC)
 
@@ -164,6 +194,10 @@ async def advance_h2(
     return await get_trip_detail(db, trip_id=trip_id, operator_organization_id=trip.operator_organization_id)
 
 
+def _normalized_seal(seal: str) -> str:
+    return seal.strip().upper()
+
+
 async def advance_h3(
     db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID, payload: H3CompleteRequest,
 ) -> TripDetailResponse:
@@ -173,11 +207,47 @@ async def advance_h3(
     )
     event = await _get_handshake_event(db, trip_id=trip_id, handshake_type=HandshakeType.ORIGIN_GATE_OUT)
 
-    event.gate_photo_artifact_id = payload.gate_exit_photo_artifact_id
-    event.status = HandshakeStatus.COMPLETED
     event.completed_at = datetime.now(UTC)
     # Pulsit geofence departure confirmation is out of scope until the Pulsit
     # integration lands; pulsit_geofence_confirmed stays null until then.
+
+    # Exit-gate seal continuity. When the driver re-entered the seal number, the
+    # server compares it against H2's committed seal — the authoritative copy —
+    # exactly like advance_h4 does at destination; the client-computed
+    # guard_verified_seal bool depends on a device-local reference that can be
+    # lost (reinstall, cleared storage) and must not create false mismatches.
+    # Only when no re-entered seal was sent does the guard's attestation decide.
+    seal_mismatch_description: str | None = None
+    if payload.seal_number_confirmed is not None:
+        h2_result = await db.execute(
+            select(HandshakeEvent).where(
+                HandshakeEvent.trip_id == trip_id, HandshakeEvent.handshake_type == HandshakeType.LOADING,
+            )
+        )
+        h2_event = h2_result.scalar_one()
+        confirmed = _normalized_seal(payload.seal_number_confirmed)
+        event.seal_number = confirmed
+        if confirmed != _normalized_seal(h2_event.seal_number or ""):
+            seal_mismatch_description = (
+                f"Seal at origin gate-out ('{confirmed}') does not match "
+                f"the seal committed at loading ('{h2_event.seal_number}')."
+            )
+    elif not payload.guard_verified_seal:
+        seal_mismatch_description = "Exit-gate guard could not verify the seal at origin gate-out."
+
+    if seal_mismatch_description is not None:
+        # Recorded as evidence, but the trip still departs — H3 is an unanchored
+        # feeder and FreightProof records custody events, it doesn't hold gates.
+        # This differs from H4's seal mismatch (destination), which holds the trip.
+        event.status = HandshakeStatus.EXCEPTION
+        db.add(TripException(
+            trip_id=trip_id, handshake_event_id=event.id,
+            exception_type=ExceptionType.SEAL_MISMATCH, source=ExceptionSource.DRIVER,
+            severity=ExceptionSeverity.CRITICAL,
+            description=seal_mismatch_description,
+        ))
+    else:
+        event.status = HandshakeStatus.COMPLETED
 
     trip.status = TripStatus.IN_TRANSIT
     trip.actual_departure_at = datetime.now(UTC)
@@ -202,7 +272,6 @@ async def advance_h4(
     )
     h2_event = h2_result.scalar_one()
 
-    event.gate_photo_artifact_id = payload.gate_entry_photo_artifact_id
     event.seal_number = payload.seal_number_at_destination
     event.completed_at = datetime.now(UTC)
 

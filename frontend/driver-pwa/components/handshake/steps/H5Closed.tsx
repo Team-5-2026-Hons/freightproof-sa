@@ -30,7 +30,7 @@ export function H5Closed({ tripId, draft, onComplete }: H5ClosedProps) {
 
   return (
     <main className="flex min-h-screen flex-col">
-      <StepHeader handshakeName="Unloading" stepName="Trip Closed" stepIndex={6} totalSteps={6} />
+      <StepHeader handshake={5} step={6} />
       <div className="flex flex-1 flex-col items-center justify-center gap-6 p-4 text-center">
         <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
           <CheckCircle2 className="h-10 w-10 text-success" strokeWidth={2} aria-hidden />

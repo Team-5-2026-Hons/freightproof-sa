@@ -41,7 +41,7 @@ celery.conf.beat_schedule = {
 
 # Explicit import registers the parcel_perfect tasks with the Celery registry.
 # autodiscover_tasks() only scans for a tasks.py in each listed package; it will not
-# find sibling modules like parcel_perfect.py without this explicit import.
-# The sync_active_consignments name is re-exported so it is reachable from this
-# package and Pylance treats the import as used.
-from app.tasks.parcel_perfect import sync_active_consignments  # type: ignore[reportUnusedImport]
+# find sibling modules like parcel_perfect.py without this explicit import. It must
+# stay below `celery = Celery(...)` above, since parcel_perfect.py imports `celery`
+# back from this module (E402 is a false positive on a required circular-import guard).
+from app.tasks.parcel_perfect import sync_active_consignments as sync_active_consignments  # noqa: E402

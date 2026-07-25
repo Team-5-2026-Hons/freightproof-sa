@@ -33,7 +33,6 @@ vi.mock('@/lib/api/handshakes', () => ({ submitHandshake: (...args: unknown[]) =
 // Everything except the steps under test is a no-op stub — parallel work touches step
 // internals constantly, and this suite only cares about the seal-reference plumbing.
 vi.mock('@/components/handshake/steps/H1GateArrival', () => ({ H1GateArrival: () => null }))
-vi.mock('@/components/handshake/steps/H1EntryPhoto', () => ({ H1EntryPhoto: () => null }))
 vi.mock('@/components/handshake/steps/H1Verification', () => ({ H1Verification: () => null }))
 vi.mock('@/components/handshake/steps/H2ArriveBay', () => ({ H2ArriveBay: () => null }))
 vi.mock('@/components/handshake/steps/H2Linehaul', () => ({ H2Linehaul: () => null }))
@@ -48,7 +47,6 @@ vi.mock('@/components/handshake/steps/H3ExitSeal', () => ({
 }))
 vi.mock('@/components/handshake/steps/H3Departure', () => ({ H3Departure: () => null }))
 vi.mock('@/components/handshake/steps/H4ApproachDest', () => ({ H4ApproachDest: () => null }))
-vi.mock('@/components/handshake/steps/H4EntryPhoto', () => ({ H4EntryPhoto: () => null }))
 vi.mock('@/components/handshake/steps/H4SealVerify', () => ({
   H4SealVerify: ({ h2SealNumber }: { h2SealNumber: string | null }) => <p>h4-seal:{h2SealNumber ?? 'null'}</p>,
 }))
@@ -106,7 +104,7 @@ describe('seal reference survives past h2Draft being cleared', () => {
   it('(b) H4 also receives the non-null reference', async () => {
     localStorage.setItem(sealReferenceKey(), 'FP-9999')
 
-    mockUseParams.mockReturnValue({ h: '4', slug: '3-seal-verify' })
+    mockUseParams.mockReturnValue({ h: '4', slug: '2-seal-verify' })
     render(<HandshakeStepPageClient />)
 
     expect(await screen.findByText('h4-seal:FP-9999')).toBeInTheDocument()

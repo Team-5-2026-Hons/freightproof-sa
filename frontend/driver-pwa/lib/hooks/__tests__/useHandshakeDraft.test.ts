@@ -7,7 +7,7 @@ import type { H1Evidence } from '@/lib/types/evidence-draft'
 // gateAddress added to H1Evidence (reverse-geocoded address, consumed by Task 7) —
 // included here as null since this fixture predates that field.
 const INITIAL: H1Evidence = {
-  gpsLat: null, gpsLng: null, gatePhotoDataUrl: null, gateAddress: null, capturedAt: null,
+  gpsLat: null, gpsLng: null, gateAddress: null, capturedAt: null,
 }
 
 beforeEach(() => localStorage.clear())

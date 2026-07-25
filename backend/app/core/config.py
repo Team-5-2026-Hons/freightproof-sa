@@ -52,30 +52,25 @@ class Settings(BaseSettings):
     HEDERA_SUBMIT_TIMEOUT_SECONDS: float = 15.0
 
     # -------------------------------------------------------------------------
-    # Twilio
-    # Used to send SMS OTP codes to drivers at trip start/end.
+    # Twilio — NOT YET IMPLEMENTED (no client code). Optional until the SMS
+    # integration lands; required-ness should return with the feature.
     # -------------------------------------------------------------------------
-    TWILIO_ACCOUNT_SID: str
-    TWILIO_AUTH_TOKEN: str
-    TWILIO_FROM_NUMBER: str
+    TWILIO_ACCOUNT_SID: str = ""
+    TWILIO_AUTH_TOKEN: str = ""
+    TWILIO_FROM_NUMBER: str = ""
 
     # -------------------------------------------------------------------------
-    # SendGrid
-    # Used to email PDF evidence reports to dispatchers and clients.
+    # SendGrid — NOT YET IMPLEMENTED (no client code). Same deal.
     # -------------------------------------------------------------------------
-    SENDGRID_API_KEY: str
-    SENDGRID_FROM_EMAIL: str
+    SENDGRID_API_KEY: str = ""
+    SENDGRID_FROM_EMAIL: str = ""
 
     # -------------------------------------------------------------------------
     # Supabase Auth
-    # JWT_SECRET: signs all tokens issued by Supabase Auth — used by FastAPI to
-    # verify incoming Bearer tokens locally without a network round-trip.
-    # Found in Supabase dashboard: Settings → API → JWT Secret.
     # SERVICE_ROLE_KEY: grants full DB + Auth admin access; used server-side
     # only (e.g. creating auth users, setting app_metadata). Never sent to
     # the browser.
     # -------------------------------------------------------------------------
-    SUPABASE_JWT_SECRET: str
     SUPABASE_SERVICE_ROLE_KEY: str
 
     # -------------------------------------------------------------------------
@@ -97,19 +92,9 @@ class Settings(BaseSettings):
     PP_POLL_INTERVAL_SECONDS: int = 60
 
     # -------------------------------------------------------------------------
-    # AWS / S3
-    # af-south-1 keeps evidence data in South Africa per POPIA requirements.
-    # -------------------------------------------------------------------------
-    AWS_ACCESS_KEY_ID: str = ""
-    AWS_SECRET_ACCESS_KEY: str = ""
-    AWS_REGION: str = "af-south-1"
-    S3_BUCKET_NAME: str = ""
-
-    # -------------------------------------------------------------------------
     # Runtime config
-    # GPS_TOLERANCE_METRES: max deviation from expected gate coordinates before
-    # a handshake is flagged as location-mismatched.
     # -------------------------------------------------------------------------
+    # Used by the (upcoming) H1/H4 gate geofence check — see feature/gps-warehouse-geofencing.
     GPS_TOLERANCE_METRES: int = 50
     DEMO_MODE: bool = False
 

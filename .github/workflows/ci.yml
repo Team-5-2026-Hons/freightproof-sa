@@ -32,12 +32,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: pip-${{ hashFiles('backend/requirements.txt') }}
+          key: pip-${{ hashFiles('backend/requirements-dev.txt') }}
           restore-keys: pip-
 
       - name: Install dependencies
         working-directory: backend
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-dev.txt
 
       - name: Lint — ruff
         working-directory: backend

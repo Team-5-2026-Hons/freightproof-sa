@@ -34,8 +34,12 @@ function renderOtpPage() {
   )
 }
 
-function getOtpInput() {
-  return screen.getByLabelText(/6-digit code/i)
+// The OTP entry is now six separate one-digit boxes (OtpInput) rather than a single
+// text field. iOS's one-time-code autofill (and a manual paste) both deliver the
+// whole code as one change event on whichever box is focused — same as this fixture
+// simulates by firing a multi-character change on the first box.
+function getFirstOtpBox() {
+  return screen.getByLabelText(/digit 1 of 6/i)
 }
 
 describe('OtpPage resend cooldown', () => {
@@ -119,7 +123,7 @@ describe('OtpPage auto-submit and navigation', () => {
     renderOtpPage()
 
     await act(async () => {
-      fireEvent.change(getOtpInput(), { target: { value: '123456' } })
+      fireEvent.change(getFirstOtpBox(), { target: { value: '123456' } })
     })
 
     expect(mockSignIn).toHaveBeenCalledWith({ phone_number: PHONE, otp: '123456' })
@@ -132,7 +136,7 @@ describe('OtpPage auto-submit and navigation', () => {
       () => new Promise<void>((resolve) => { resolveSignIn = resolve }),
     )
     renderOtpPage()
-    const input = getOtpInput()
+    const input = getFirstOtpBox()
 
     await act(async () => {
       fireEvent.change(input, { target: { value: '123456' } })
@@ -153,7 +157,7 @@ describe('OtpPage auto-submit and navigation', () => {
     renderOtpPage()
 
     await act(async () => {
-      fireEvent.change(getOtpInput(), { target: { value: '12345' } })
+      fireEvent.change(getFirstOtpBox(), { target: { value: '12345' } })
     })
 
     expect(mockSignIn).not.toHaveBeenCalled()

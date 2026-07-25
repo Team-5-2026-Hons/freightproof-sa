@@ -12,8 +12,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.blockchain.anchor_service import anchor_subject
-from app.blockchain.hedera import HederaTimeoutError
 from app.core.config import settings
+from app.core.exceptions import HederaTimeoutError
 from app.db.models.enums import BlockchainReceiptType, SubjectType
 
 

@@ -7,6 +7,7 @@ import { ArrowRight, ShieldAlert, ScanFace } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTrip } from '@/lib/hooks/useTrip'
 import { ROUTES } from '@/lib/constants/routes'
+import { formatTime } from '@/lib/utils/format-time'
 import { STEP_SLUGS } from '@shared/lib/constants/handshake-meta'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -82,9 +83,7 @@ export default function InTransitPageClient() {
         <Card variant="section">
           <p className="text-xs text-surface-on-variant mb-1">Planned arrival</p>
           <p className="text-base font-semibold text-surface-on">
-            {trip.planned_arrival_at
-              ? new Date(trip.planned_arrival_at).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })
-              : 'Not set'}
+            {trip.planned_arrival_at ? formatTime(trip.planned_arrival_at) : 'Not set'}
           </p>
         </Card>
 

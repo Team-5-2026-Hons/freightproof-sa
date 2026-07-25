@@ -22,7 +22,6 @@ function makeDraft(overrides: Partial<H4Evidence> = {}): H4Evidence {
   return {
     gpsLat: null,
     gpsLng: null,
-    gatePhotoDataUrl: null,
     sealNumberAtDestination: null,
     sealVerifiedMatch: null,
     capturedAt: null,

@@ -10,18 +10,34 @@ import { handshakeProgress, currentHandshakeNumber } from '@/lib/utils/handshake
 import { Button } from '@/components/ui/Button'
 import { Chip } from '@/components/ui/Chip'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { Spinner } from '@/components/ui/Spinner'
 import { HandshakeProgressBar } from '@/components/trip/HandshakeProgressBar'
 import { CurrentHandshakeCard } from '@/components/trip/CurrentHandshakeCard'
+import { HoldNotice } from '@/components/trip/HoldNotice'
 
 export function HomeContent() {
   const router = useRouter()
   const { trip, isLoading } = useTrip()
 
-  if (isLoading) return null
+  if (isLoading) {
+    // Canonical loading state — identical markup to ActiveTripPageClient and
+    // InTransitPageClient. Returning null here flashed a blank screen on every
+    // cold load of Home, which reads as a crash on a slow connection.
+    //
+    // h-full, not min-h-screen: AppShell (the only caller) already owns the fixed,
+    // locked-to-viewport frame and gives this component a sized, scrollable slot to
+    // fill — a second min-h-screen here would stack on top of AppShell's own and push
+    // every Home render past one screen regardless of how little content it has.
+    return (
+      <main className="flex h-full items-center justify-center p-6">
+        <Spinner />
+      </main>
+    )
+  }
 
   if (!trip) {
     return (
-      <main className="flex min-h-screen flex-col gap-4 p-4">
+      <main className="flex h-full flex-col gap-4 p-4">
         <EmptyState
           icon={<PackageSearch strokeWidth={1.5} aria-hidden />}
           title="No active trip right now"
@@ -36,7 +52,7 @@ export function HomeContent() {
   const current = currentHandshakeNumber(progress)
 
   return (
-    <main className="flex min-h-screen flex-col gap-4 p-4">
+    <main className="flex flex-col gap-4 p-4">
       <div>
         <p className="text-xl font-semibold text-surface-on">{trip.trip_reference}</p>
         <p className="text-sm text-surface-on-variant">{trip.order_number}</p>
@@ -55,11 +71,17 @@ export function HomeContent() {
         </Button>
       )}
 
-      {current !== null && (
-        <CurrentHandshakeCard
-          handshakeNumber={current}
-          onSelect={() => router.push(ROUTES.handshakeStep(current, STEP_SLUGS[current][0]))}
-        />
+      {/* A held trip (H4 seal mismatch) must not offer the next handshake — any
+          submit while on hold 409s. HoldNotice explains the pause instead. */}
+      {trip.status === 'exception_hold' ? (
+        <HoldNotice />
+      ) : (
+        current !== null && (
+          <CurrentHandshakeCard
+            handshakeNumber={current}
+            onSelect={() => router.push(ROUTES.handshakeStep(current, STEP_SLUGS[current][0]))}
+          />
+        )
       )}
     </main>
   )

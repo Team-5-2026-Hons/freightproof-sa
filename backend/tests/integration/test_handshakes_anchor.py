@@ -15,7 +15,8 @@ import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy import select
 
-from app.blockchain.hedera import HederaReceipt, HederaTimeoutError
+from app.blockchain.hedera import HederaReceipt
+from app.core.exceptions import HederaTimeoutError
 from app.db.models.enums import ArtifactType, IdvsStatus, OrganizationType, TripStatus, VehicleType
 from app.db.models.evidence import EvidenceArtifact
 from app.db.models.organisations import Organization, Precinct
@@ -91,10 +92,7 @@ def _fake_hedera_receipt() -> HederaReceipt:
 async def _complete_h1(client: AsyncClient, db_session, trip, token) -> None:
     resp = await client.post(
         f"/api/v1/trips/{trip.id}/handshakes/h1/complete",
-        json={
-            "driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001",
-            "gate_photo_artifact_id": await _make_artifact(db_session, trip.id),
-        },
+        json={"driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001"},
         headers=auth_header(token),
     )
     assert resp.status_code == 200
@@ -168,3 +166,50 @@ async def test_h2_complete_hedera_timeout_returns_504_and_trip_unchanged(
     db_session.expire_all()
     refreshed = (await db_session.execute(select(Trip).where(Trip.id == trip.id))).scalar_one()
     assert refreshed.status == TripStatus.ORIGIN_GATE_IN  # H2 never advanced the trip to LOADING
+
+
+async def test_trip_detail_lists_h2_handshake_receipt_for_dispatcher(
+    client: AsyncClient, db_session, seed_trip,
+):
+    """The driver→dispatcher anchoring link: after H2 anchors, GET /trips/{id}
+    (the dispatcher portal's data source) must list the HANDSHAKE_EVENT receipt
+    in blockchain_receipts. resource_service.get_trip_detail used to filter
+    subject_type == TRIP only, silently hiding every driver-anchored receipt
+    from the dispatcher's per-trip evidence view."""
+    trip, driver = seed_trip
+    driver_token = make_token(sub=str(driver.id), role="driver")
+    await _complete_h1(client, db_session, trip, driver_token)
+    waybill_id = await _make_artifact(db_session, trip.id)
+    seal_photo_id = await _make_artifact(db_session, trip.id)
+
+    with patch("app.blockchain.anchor_service.HederaService") as MockService:
+        MockService.return_value.submit_hash.return_value = _fake_hedera_receipt()
+        h2_resp = await client.post(
+            f"/api/v1/trips/{trip.id}/handshakes/h2/complete",
+            json=_h2_payload(waybill_id, seal_photo_id),
+            headers=auth_header(driver_token),
+        )
+    assert h2_resp.status_code == 200
+    h2 = next(h for h in h2_resp.json()["handshakes"] if h["handshake_type"] == "loading")
+
+    # Receipts are role-gated (FP-115): only admin_dispatcher sees the full list,
+    # so the read side authenticates as an admin in the trip's operator org.
+    admin = User(
+        id=uuid.uuid4(), organization_id=trip.operator_organization_id,
+        email="admin@test.co.za", full_name="Admin",
+    )
+    db_session.add(admin)
+    await db_session.flush()
+    admin_token = make_token(
+        sub=str(admin.id), role="admin_dispatcher",
+        org_id=str(trip.operator_organization_id),
+    )
+
+    detail_resp = await client.get(f"/api/v1/trips/{trip.id}", headers=auth_header(admin_token))
+
+    assert detail_resp.status_code == 200
+    receipts = detail_resp.json()["blockchain_receipts"]
+    handshake_receipts = [r for r in receipts if r["subject_type"] == "handshake_event"]
+    assert len(handshake_receipts) == 1
+    assert handshake_receipts[0]["subject_id"] == h2["id"]
+    assert handshake_receipts[0]["id"] == h2["blockchain_receipt_id"]

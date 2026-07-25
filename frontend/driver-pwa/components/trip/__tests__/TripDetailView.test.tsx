@@ -1,5 +1,5 @@
 // frontend/driver-pwa/components/trip/__tests__/TripDetailView.test.tsx
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 import { TripDetailView } from '../TripDetailView'
 import type { Trip, TripId, TripStatus } from '@shared/lib/types/trip'
@@ -50,6 +50,7 @@ function makeTrip(status: TripStatus = 'origin_gate_out'): Trip {
     planned_departure_at: null, actual_departure_at: null,
     planned_arrival_at: null, actual_arrival_at: null,
     closed_at: null,
+    stops: [],
     driver: null, horse: null, trailers: [],
     handshakes: [
       makeHandshake(1, 'completed'),
@@ -117,6 +118,40 @@ describe('TripDetailView', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /origin gate-out/i }))
     expect(onSelectHandshake).toHaveBeenCalledWith(3)
+  })
+
+  it('exception_hold suppresses the current-handshake CTA and shows the hold notice (live view)', () => {
+    const onSelectHandshake = vi.fn()
+    render(
+      <TripDetailView
+        trip={makeTrip('exception_hold')}
+        onBack={vi.fn()}
+        onInTransitHub={vi.fn()}
+        onSelectHandshake={onSelectHandshake}
+        showAllHandshakes={false}
+      />,
+    )
+
+    expect(screen.getByText('Trip on hold')).toBeInTheDocument()
+    // No handshake CTA — submits while held can only 409.
+    expect(screen.queryByRole('button', { name: /origin gate-out/i })).not.toBeInTheDocument()
+  })
+
+  it('exception_hold makes the current handshake card non-tappable (showAllHandshakes)', () => {
+    const onSelectHandshake = vi.fn()
+    render(
+      <TripDetailView
+        trip={makeTrip('exception_hold')}
+        onBack={vi.fn()}
+        onInTransitHub={vi.fn()}
+        onSelectHandshake={onSelectHandshake}
+        showAllHandshakes
+      />,
+    )
+
+    expect(screen.getByText('Trip on hold')).toBeInTheDocument()
+    // The current (H3) card renders but is no longer a button.
+    expect(screen.getByText(/H3:/).closest('[role="button"]')).toBeNull()
   })
 
   it('shows the In-Transit Hub shortcut only while the trip is in_transit', () => {
@@ -190,6 +225,94 @@ describe('TripDetailView', () => {
     // no anchored/anchoring copy should ever appear for it.
     expect(screen.queryByText('Anchored')).not.toBeInTheDocument()
     expect(screen.queryByText('Anchoring…')).not.toBeInTheDocument()
+  })
+
+  it('shows a complete AnchorProgress pipeline for H2 in real-data mode (showAllHandshakes=false) when event_hash + receipt id are set', () => {
+    const anchoredTrip = makeTrip()
+    anchoredTrip.handshakes = [
+      makeHandshake(1, 'completed'),
+      makeHandshake(2, 'completed', {
+        event_hash: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2',
+        blockchain_receipt_id: 'bcr-0035-h2',
+      }),
+      makeHandshake(3, 'in_progress'),
+      makeHandshake(4, 'pending'),
+      makeHandshake(5, 'pending'),
+    ]
+
+    render(
+      <TripDetailView
+        trip={anchoredTrip}
+        onBack={vi.fn()}
+        onInTransitHub={vi.fn()}
+        onSelectHandshake={vi.fn()}
+        showAllHandshakes={false}
+      />,
+    )
+
+    expect(screen.getByText('Evidence anchors')).toBeInTheDocument()
+    // AnchorProgress (not AnchorBadge) renders in the real-data branch — all three
+    // pipeline rows read complete, with the receipt id shown on the third row.
+    expect(screen.getByText(/Evidence hashed/)).toBeInTheDocument()
+    expect(screen.getByText('Submitted to Hedera HCS')).toBeInTheDocument()
+    expect(screen.getByText(/Anchor receipt recorded — bcr-0035-h2/)).toBeInTheDocument()
+    // Evidence anchor rows are not tappable — the current-handshake-only design reserves
+    // navigation for the single current-handshake card, not these read-only rows.
+    expect(screen.getByText(/H2:/).closest('[role="button"]')).toBeNull()
+  })
+
+  it('shows an in-progress AnchorProgress pipeline in real-data mode when event_hash is set but the Hedera receipt id has not come back yet', () => {
+    const anchoringTrip = makeTrip('unloading')
+    anchoringTrip.handshakes = [
+      makeHandshake(1, 'completed'),
+      makeHandshake(2, 'completed', {
+        event_hash: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2',
+        blockchain_receipt_id: 'bcr-0035-h2',
+      }),
+      makeHandshake(3, 'completed'),
+      makeHandshake(4, 'completed'),
+      makeHandshake(5, 'in_progress', {
+        event_hash: 'f0e1d2c3b4a5968778695a4b3c2d1e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d',
+        blockchain_receipt_id: null,
+      }),
+    ]
+
+    render(
+      <TripDetailView
+        trip={anchoringTrip}
+        onBack={vi.fn()}
+        onInTransitHub={vi.fn()}
+        onSelectHandshake={vi.fn()}
+        showAllHandshakes={false}
+      />,
+    )
+
+    // This fixture's H2 is already anchored, so scope to H5's card specifically —
+    // its pipeline is still in progress: the Hedera-submission row is present (its
+    // exact "complete" vs "in progress" state is AnchorProgress's own unit-tested
+    // concern) and the receipt row has not yet gained a receipt id suffix.
+    const h5Card = screen.getByText(/H5:/).closest('div')!
+    expect(within(h5Card).getByText('Submitted to Hedera HCS')).toBeInTheDocument()
+    expect(within(h5Card).getByText('Anchor receipt recorded')).toBeInTheDocument()
+    expect(within(h5Card).queryByText(/Anchor receipt recorded — /)).not.toBeInTheDocument()
+  })
+
+  it('renders no "Evidence anchors" section in real-data mode when neither H2 nor H5 has an event_hash', () => {
+    render(
+      <TripDetailView
+        trip={makeTrip()}
+        onBack={vi.fn()}
+        onInTransitHub={vi.fn()}
+        onSelectHandshake={vi.fn()}
+        showAllHandshakes={false}
+      />,
+    )
+
+    // Default fixture's H2 is 'completed' but carries no event_hash/receipt — no
+    // section header (not even an empty one) and no pipeline copy should appear.
+    expect(screen.queryByText('Evidence anchors')).not.toBeInTheDocument()
+    expect(screen.queryByText('Evidence hashed', { exact: false })).not.toBeInTheDocument()
+    expect(screen.queryByText('Submitted to Hedera HCS')).not.toBeInTheDocument()
   })
 
   it('back button in SubpageHeader calls onBack', () => {

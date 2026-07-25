@@ -4,6 +4,7 @@ Returns one of: verified, db_mismatch, hedera_mismatch, no_receipt, error.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import uuid
@@ -13,7 +14,8 @@ from typing import Any
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.blockchain.hedera import HederaService, HederaServiceError
+from app.blockchain.hedera import HederaService
+from app.core.exceptions import HederaServiceError
 from app.crypto.hashing import compute_trip_canonical_payload
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.events import DriverEvent, VehicleEvent
@@ -215,7 +217,11 @@ async def verify_subject(
 
     service = hedera_service or HederaService()
     try:
-        match = service.verify_hash(
+        # verify_hash() is a synchronous httpx GET to the Hedera mirror node (up to a
+        # 10s timeout) — run it off the event loop so a slow mirror node stalls only
+        # this request, not every other request the server is handling.
+        match = await asyncio.to_thread(
+            service.verify_hash,
             receipt.hedera_topic_id,
             receipt.hedera_sequence_number,
             receipt.data_hash,

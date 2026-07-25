@@ -8,6 +8,7 @@ from httpx import AsyncClient
 from app.db.models.enums import IdvsStatus, OrganizationType, TripStatus, VehicleType
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
+from app.db.models.transit import TripException
 from app.db.models.trips import Trip
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
@@ -70,6 +71,57 @@ async def test_driver_raises_panic_exception(client: AsyncClient, seed_trip):
     body = resp.json()
     assert body["severity"] == "critical"
     assert body["source"] == "driver"
+
+
+async def test_driver_raises_panic_exception_with_gps_persists_coordinates(
+    client: AsyncClient, db_session, seed_trip,
+):
+    """Regression guard for the panic-button GPS-drop bug: the API must accept
+    gps_lat/gps_lng and the row actually in the DB must carry them — not just the
+    response body, since a response-only check would miss a service-layer that
+    validates the field but never passes it to the model."""
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/exceptions",
+        json={
+            "exception_type": "panic_button",
+            "description": "Driver pressed panic button.",
+            "gps_lat": "-26.0942000",
+            "gps_lng": "28.1342000",
+        },
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["gps_lat"] == "-26.0942000" or float(body["gps_lat"]) == -26.0942
+    assert body["gps_lng"] == "28.1342000" or float(body["gps_lng"]) == 28.1342
+
+    row = await db_session.get(TripException, uuid.UUID(body["id"]))
+    assert row is not None
+    assert float(row.gps_lat) == -26.0942
+    assert float(row.gps_lng) == 28.1342
+
+
+async def test_driver_raises_exception_with_lat_only_returns_422(client: AsyncClient, seed_trip):
+    """Both-or-neither is enforced at the schema layer — a partial fix must never
+    reach the DB as a nonsense (lat, no lng) coordinate."""
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/exceptions",
+        json={
+            "exception_type": "panic_button",
+            "description": "Driver pressed panic button.",
+            "gps_lat": "-26.0942000",
+        },
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 422
 
 
 async def test_driver_cannot_raise_exception_on_someone_elses_trip(client: AsyncClient, db_session, seed_trip):
