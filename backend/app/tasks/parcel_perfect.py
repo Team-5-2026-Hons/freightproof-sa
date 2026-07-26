@@ -79,7 +79,7 @@ async def _sync_all_active() -> dict[str, Any]:
             .join(Trip, Trip.id == Consignment.trip_id)
             .where(Trip.status.in_(_ACTIVE_STATUSES))
         )
-        consignments: list[Consignment] = result.scalars().all()
+        consignments: list[Consignment] = list(result.scalars().all())
 
         logger.info(
             "pp_sync: found %d active consignment(s) to refresh",
