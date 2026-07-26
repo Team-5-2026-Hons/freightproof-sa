@@ -79,10 +79,11 @@ async def test_receipts_passes_role_check_for_admin() -> None:
     """Admin dispatcher passes the role gate; unknown subject yields 404 from visibility check."""
     app.dependency_overrides[get_current_dispatcher] = lambda: _ADMIN_USER
 
-    # Patch assert_subject_visible to raise SubjectNotVisibleError — avoids needing a DB
-    # and confirms the admin passed the role gate before reaching the visibility check.
+    # Patch assert_subject_visible where list_receipts_for_subject actually calls it
+    # (anchor_service's own import binding, not the endpoints module's) — avoids needing
+    # a DB and confirms the admin passed the role gate before reaching the visibility check.
     with patch(
-        "app.api.v1.endpoints.blockchain.assert_subject_visible",
+        "app.blockchain.anchor_service.assert_subject_visible",
         new_callable=AsyncMock,
         side_effect=SubjectNotVisibleError("trip", _SUBJECT_ID),
     ):
