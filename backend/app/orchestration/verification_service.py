@@ -71,7 +71,7 @@ async def _reconstruct_trip_payload(
         # Precincts are set at trip creation; a receipt shouldn't exist before that,
         # but treat it like the other reconstruct_* helpers' not-found case either way.
         return None
-    include_trip_type = bool(anchored_payload) and "trip_type" in anchored_payload
+    include_trip_type = anchored_payload is not None and "trip_type" in anchored_payload
     return compute_trip_canonical_payload(
         trip_id=trip.id,
         order_number=trip.order_number,

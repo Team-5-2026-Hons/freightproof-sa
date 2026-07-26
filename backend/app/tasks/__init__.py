@@ -15,7 +15,7 @@ from app.core.config import settings
 
 # Broker + result backend both point at Redis. The scaffolding uses the same
 # Redis instance for both — Sprint 1 has no need to separate them.
-celery = Celery(
+celery: Celery = Celery(
     "freightproof",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,

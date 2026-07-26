@@ -16,7 +16,7 @@ from httpx import ASGITransport, AsyncClient
 from app.auth.dependencies import get_current_dispatcher
 from app.db.models.enums import (
     BlockchainReceiptType, DispatcherRole, IdvsStatus, SubjectType,
-    TripStatus, VehicleType,
+    TripStatus, TripType, VehicleType,
 )
 from app.main import app
 from app.schemas.blockchain import BlockchainReceiptRead
@@ -140,6 +140,7 @@ def _fake_trip_detail() -> TripDetailResponse:
         trip_reference="FP-001",
         order_number="ORD-001",
         status=TripStatus.CREATED,
+        trip_type=TripType.LOADED,
         journey_lock_hash=None,
         idvs_check_status=IdvsStatus.PENDING,
         driver=driver,

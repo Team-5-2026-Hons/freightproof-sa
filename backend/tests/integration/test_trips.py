@@ -327,7 +327,7 @@ async def _post_trip_with_hedera_failure(payload: dict, side_effect: Exception):
         MockService.return_value = instance
 
         async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
+            transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
         ) as client:
             return await client.post(
                 "/api/v1/trips", json=payload, headers={"Authorization": "Bearer demo"}
