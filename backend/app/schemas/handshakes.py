@@ -8,30 +8,28 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from app.db.models.enums import HandshakeStatus, HandshakeType
+from app.db.models.enums import PhaseStatus, PhaseType
 
 
 class HandshakeEventBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     trip_id: UUID
-    handshake_type: HandshakeType
+    phase_type: PhaseType
     sequence_number: int
 
 
 class HandshakeEventCreate(HandshakeEventBase):
-    @field_validator("sequence_number")
-    @classmethod
-    def validate_sequence_number(cls, v: int) -> int:
-        if v < 0 or v > 5:
-            raise ValueError("sequence_number must be between 0 and 5 (H0–H5)")
-        return v
+    # No sequence bound. `0 <= v <= 5` encoded "H0–H5" as a schema rule; a
+    # three-stop cross-dock legitimately reaches sequence 10, and the length of a
+    # plan is a property of the trip's stops, not of any enum.
+    pass
 
 
 class HandshakeEventUpdate(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    status: Optional[HandshakeStatus] = None
+    status: Optional[PhaseStatus] = None
     dispatcher_override_user_id: Optional[UUID] = None
     dispatcher_override_note: Optional[str] = None
     driver_phone_lat: Optional[Decimal] = None
@@ -56,7 +54,7 @@ class HandshakeEventUpdate(BaseModel):
 
 class HandshakeEventRead(HandshakeEventBase):
     id: UUID
-    status: HandshakeStatus
+    status: PhaseStatus
     dispatcher_override_user_id: Optional[UUID] = None
     dispatcher_override_note: Optional[str] = None
     driver_phone_lat: Optional[Decimal] = None
@@ -84,7 +82,7 @@ class HandshakeEventRead(HandshakeEventBase):
 class TrailerGpsSnapshotBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    handshake_event_id: UUID
+    phase_event_id: UUID
     trailer_id: UUID
     pulsit_device_id: str
     lat: Decimal

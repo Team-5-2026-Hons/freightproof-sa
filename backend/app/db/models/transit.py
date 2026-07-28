@@ -15,7 +15,7 @@ from app.db.models.enums import ExceptionSeverity, ExceptionSource, ExceptionTyp
 
 
 class Checkpoint(Base):
-    """Driver-logged or Pulsit-pulled in-transit event between handshakes."""
+    """Driver-logged or Pulsit-pulled in-transit event between phases."""
 
     __tablename__ = "checkpoints"
 
@@ -55,8 +55,8 @@ class TripException(Base):
     trip_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("trips.id"), nullable=False
     )
-    handshake_event_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("handshake_events.id"), nullable=True
+    phase_event_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("phase_events.id"), nullable=True
     )
     checkpoint_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("checkpoints.id"), nullable=True
@@ -64,7 +64,8 @@ class TripException(Base):
     # Scope an exception to one client's cargo / one stop on the route, so a multi-client
     # evidence chain can be cut per client (v7 §6.1: a FedEx discrepancy must not surface
     # in Courier Guy's evidence PDF). Nullable: trip-level exceptions stay unscoped, and
-    # nothing populates these yet — handshakes learn their stop in the iter-3 per-stop refactor.
+    # nothing populates these yet — phases learn their stop via PhaseEvent.trip_stop_id,
+    # introduced by this same phase refactor.
     consignment_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("consignments.id"), nullable=True
     )

@@ -30,7 +30,7 @@ from app.db.models.blockchain import (  # noqa: E402,F401
     MerkleBatch,
     MerkleBatchLeaf,
 )
-from app.db.models.handshakes import HandshakeEvent, TrailerGpsSnapshot  # noqa: E402,F401
+from app.db.models.phases import PhaseEvent, TrailerGpsSnapshot  # noqa: E402,F401
 from app.db.models.transit import Checkpoint, TripException  # noqa: E402,F401
 from app.db.models.sla import SlaConfig  # noqa: E402,F401
 from app.db.models.events import DriverEvent, VehicleEvent  # noqa: E402,F401

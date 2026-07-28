@@ -107,7 +107,7 @@ async def test_get_handshake_detail_returns_event(client: AsyncClient, db_sessio
         headers=auth_header(token),
     )
     resp = await client.get(
-        f"/api/v1/trips/{trip.id}/handshakes/origin_gate_in",
+        f"/api/v1/trips/{trip.id}/handshakes/activation",
         headers=auth_header(token),
     )
     assert resp.status_code == 200
@@ -148,7 +148,7 @@ async def test_get_handshake_detail_other_driver_returns_404(client: AsyncClient
 
     other_token = make_token(sub=str(other_driver.id), role="driver")
     resp = await client.get(
-        f"/api/v1/trips/{trip.id}/handshakes/origin_gate_in",
+        f"/api/v1/trips/{trip.id}/handshakes/activation",
         headers=auth_header(other_token),
     )
     assert resp.status_code == 404

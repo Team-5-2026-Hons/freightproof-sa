@@ -19,11 +19,11 @@ from sqlalchemy import select
 from app.blockchain.hedera import HederaReceipt
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import (
-    ArtifactType, BlockchainReceiptType, HandshakeStatus, HandshakeType, IdvsStatus,
+    ArtifactType, BlockchainReceiptType, PhaseStatus, PhaseType, IdvsStatus,
     OrganizationType, SubjectType, TripStatus, VehicleType, VerifyStatus,
 )
 from app.db.models.evidence import EvidenceArtifact
-from app.db.models.handshakes import HandshakeEvent
+from app.db.models.phases import PhaseEvent
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.trips import Trip
@@ -95,9 +95,9 @@ async def trip_fixture(db_session):
     db_session.add(trip)
     await db_session.flush()
 
-    h0 = HandshakeEvent(
-        trip_id=trip.id, handshake_type=HandshakeType.TRIP_CREATION,
-        sequence_number=0, status=HandshakeStatus.COMPLETED,
+    h0 = PhaseEvent(
+        trip_id=trip.id, phase_type=PhaseType.TRIP_CREATION,
+        sequence_number=0, status=PhaseStatus.COMPLETED,
     )
     db_session.add(h0)
     await db_session.flush()
@@ -176,12 +176,12 @@ async def test_advance_h2_anchors_with_pickup_receipt_type(db_session, trip_fixt
 
     result = await _advance_to_loading(db_session, trip, driver)
 
-    h2 = next(h for h in result.handshakes if h.handshake_type == HandshakeType.LOADING)
+    h2 = next(h for h in result.handshakes if h.phase_type == PhaseType.LOADING)
     receipt = (await db_session.execute(
         select(BlockchainReceipt).where(BlockchainReceipt.id == h2.blockchain_receipt_id)
     )).scalar_one()
 
-    assert receipt.subject_type == SubjectType.HANDSHAKE_EVENT
+    assert receipt.subject_type == SubjectType.PHASE_EVENT
     assert receipt.receipt_type == BlockchainReceiptType.PICKUP
     assert receipt.data_hash == h2.event_hash
 
@@ -197,12 +197,12 @@ async def test_advance_h5_anchors_with_delivery_receipt_type(db_session, trip_fi
         driver_visual_count=42, pp_scan_in_count=42,
     ))
 
-    h5 = next(h for h in result.handshakes if h.handshake_type == HandshakeType.UNLOADING)
+    h5 = next(h for h in result.handshakes if h.phase_type == PhaseType.CONFIRMATION)
     receipt = (await db_session.execute(
         select(BlockchainReceipt).where(BlockchainReceipt.id == h5.blockchain_receipt_id)
     )).scalar_one()
 
-    assert receipt.subject_type == SubjectType.HANDSHAKE_EVENT
+    assert receipt.subject_type == SubjectType.PHASE_EVENT
     assert receipt.receipt_type == BlockchainReceiptType.DELIVERY
     assert receipt.data_hash == h5.event_hash
 
@@ -218,8 +218,8 @@ async def test_advance_h5_anchors_even_on_count_mismatch(db_session, trip_fixtur
         driver_visual_count=40, pp_scan_in_count=42,
     ))
 
-    h5 = next(h for h in result.handshakes if h.handshake_type == HandshakeType.UNLOADING)
-    assert h5.status == HandshakeStatus.EXCEPTION
+    h5 = next(h for h in result.handshakes if h.phase_type == PhaseType.CONFIRMATION)
+    assert h5.status == PhaseStatus.EXCEPTION
     assert h5.blockchain_receipt_id is not None
 
 
@@ -229,13 +229,13 @@ async def test_advance_h5_anchors_even_on_count_mismatch(db_session, trip_fixtur
 async def test_verify_subject_after_h2_reconstructs_matching_payload(db_session, trip_fixture):
     trip, driver = trip_fixture
     result = await _advance_to_loading(db_session, trip, driver)
-    h2 = next(h for h in result.handshakes if h.handshake_type == HandshakeType.LOADING)
+    h2 = next(h for h in result.handshakes if h.phase_type == PhaseType.LOADING)
 
     stub_service = MagicMock()
     stub_service.verify_hash.return_value = True
 
     outcome = await verify_subject(
-        db_session, subject_type=SubjectType.HANDSHAKE_EVENT, subject_id=h2.id,
+        db_session, subject_type=SubjectType.PHASE_EVENT, subject_id=h2.id,
         hedera_service=stub_service,
     )
 
@@ -254,13 +254,13 @@ async def test_verify_subject_after_h5_reconstructs_matching_payload(db_session,
         pod_signature_artifact_id=await _make_artifact(db_session, trip.id),
         driver_visual_count=42, pp_scan_in_count=42,
     ))
-    h5 = next(h for h in result.handshakes if h.handshake_type == HandshakeType.UNLOADING)
+    h5 = next(h for h in result.handshakes if h.phase_type == PhaseType.CONFIRMATION)
 
     stub_service = MagicMock()
     stub_service.verify_hash.return_value = True
 
     outcome = await verify_subject(
-        db_session, subject_type=SubjectType.HANDSHAKE_EVENT, subject_id=h5.id,
+        db_session, subject_type=SubjectType.PHASE_EVENT, subject_id=h5.id,
         hedera_service=stub_service,
     )
 

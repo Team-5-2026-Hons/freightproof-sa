@@ -4,8 +4,9 @@ Critical POPIA constraint: personal data (full_name, id_number, phone_number,
 license_number) must never appear in the anchored payload_json. Only the
 SHA-256 hash of the license_number is permitted on-chain.
 
-Uses DEMO_MODE auth (Bearer demo) consistent with the rest of the integration suite.
-HederaService and create_driver_auth_user are patched so no real network calls are made.
+Uses signed JWTs (see tests/conftest.py) consistent with the rest of the
+integration suite. HederaService and create_driver_auth_user are patched so
+no real network calls are made.
 """
 
 import hashlib
@@ -15,10 +16,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
+from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import _DEMO_ORG_ID, _DEMO_USER_ID
 from app.blockchain.hedera import HederaReceipt
 from app.core.exceptions import HederaServiceError, HederaTimeoutError
 from app.db.models.enums import IdvsStatus, OrganizationType
@@ -26,6 +26,8 @@ from app.db.models.organisations import Organization
 from app.db.models.people import Driver, User
 from app.db.session import get_db
 from app.main import app
+
+from tests.conftest import auth_header, make_token
 
 
 # ── DB override ───────────────────────────────────────────────────────────────
@@ -44,32 +46,34 @@ async def override_get_db(db_session: AsyncSession) -> AsyncGenerator[None, None
 # ── Seed fixtures ─────────────────────────────────────────────────────────────
 
 @pytest_asyncio.fixture
-async def seed_org(db_session: AsyncSession) -> None:
-    """Insert the operator org and demo user required by DEMO_MODE auth."""
+async def seed_org(db_session: AsyncSession):
+    """Insert the operator org and dispatcher user required by auth."""
     operator_org = Organization(
-        id=_DEMO_ORG_ID,
+        id=uuid.uuid4(),
         name="Demo Operator",
         org_type=OrganizationType.OPERATOR,
     )
     db_session.add(operator_org)
     await db_session.flush()
 
-    demo_user = User(
-        id=_DEMO_USER_ID,
-        organization_id=_DEMO_ORG_ID,
+    dispatcher_user = User(
+        id=uuid.uuid4(),
+        organization_id=operator_org.id,
         email="demo-dispatcher@freightproof.co.za",
         full_name="Demo Dispatcher",
         is_active=True,
     )
-    db_session.add(demo_user)
+    db_session.add(dispatcher_user)
     await db_session.flush()
+    return operator_org, dispatcher_user
 
 
 @pytest_asyncio.fixture
 async def seed_driver(db_session: AsyncSession, seed_org) -> Driver:
     """Insert a driver directly (bypassing the anchored create-endpoint) for PATCH tests."""
+    org, _user = seed_org
     driver = Driver(
-        organization_id=_DEMO_ORG_ID,
+        organization_id=org.id,
         full_name="Existing Driver",
         id_number="8001015009087",
         phone_number="+27821234567",
@@ -84,8 +88,12 @@ async def seed_driver(db_session: AsyncSession, seed_org) -> Driver:
 # ── Test ──────────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_create_driver_does_not_anchor_pii(db_session: AsyncSession, seed_org) -> None:
+async def test_create_driver_does_not_anchor_pii(
+    client: AsyncClient, db_session: AsyncSession, seed_org
+) -> None:
     """Critical POPIA test: no PII appears in the anchored payload_json."""
+    org, user = seed_org
+    headers = auth_header(make_token(sub=str(user.id), role="admin_dispatcher", org_id=str(org.id)))
     driver_payload = {
         "full_name": "Thabo Anchor Nkosi",
         "id_number": "9001015009081",
@@ -113,21 +121,18 @@ async def test_create_driver_does_not_anchor_pii(db_session: AsyncSession, seed_
     ):
         MockService.return_value.submit_hash.return_value = fake_receipt
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
-        ) as client:
-            resp = await client.post(
-                "/api/v1/drivers",
-                json=driver_payload,
-                headers={"Authorization": "Bearer demo"},
-            )
-            assert resp.status_code == 201
-            driver = resp.json()
+        resp = await client.post(
+            "/api/v1/drivers",
+            json=driver_payload,
+            headers=headers,
+        )
+        assert resp.status_code == 201
+        driver = resp.json()
 
-            detail_resp = await client.get(
-                f"/api/v1/drivers/{driver['id']}",
-                headers={"Authorization": "Bearer demo"},
-            )
+        detail_resp = await client.get(
+            f"/api/v1/drivers/{driver['id']}",
+            headers=headers,
+        )
 
     assert detail_resp.status_code == 200
     body = detail_resp.json()
@@ -167,7 +172,11 @@ async def test_create_driver_does_not_anchor_pii(db_session: AsyncSession, seed_
 # retry might help (504) or the anchor itself was rejected (502).
 
 @pytest.mark.asyncio
-async def test_create_driver_hedera_timeout_returns_504(db_session: AsyncSession, seed_org) -> None:
+async def test_create_driver_hedera_timeout_returns_504(
+    client: AsyncClient, db_session: AsyncSession, seed_org
+) -> None:
+    org, user = seed_org
+    headers = auth_header(make_token(sub=str(user.id), role="admin_dispatcher", org_id=str(org.id)))
     driver_payload = {
         "full_name": "Timeout Driver",
         "id_number": "9001015009082",
@@ -188,20 +197,21 @@ async def test_create_driver_hedera_timeout_returns_504(db_session: AsyncSession
             "mirror node timed out"
         )
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
-        ) as client:
-            resp = await client.post(
-                "/api/v1/drivers",
-                json=driver_payload,
-                headers={"Authorization": "Bearer demo"},
-            )
+        resp = await client.post(
+            "/api/v1/drivers",
+            json=driver_payload,
+            headers=headers,
+        )
 
     assert resp.status_code == 504
 
 
 @pytest.mark.asyncio
-async def test_create_driver_hedera_service_error_returns_502(db_session: AsyncSession, seed_org) -> None:
+async def test_create_driver_hedera_service_error_returns_502(
+    client: AsyncClient, db_session: AsyncSession, seed_org
+) -> None:
+    org, user = seed_org
+    headers = auth_header(make_token(sub=str(user.id), role="admin_dispatcher", org_id=str(org.id)))
     driver_payload = {
         "full_name": "Service Error Driver",
         "id_number": "9001015009083",
@@ -220,54 +230,49 @@ async def test_create_driver_hedera_service_error_returns_502(db_session: AsyncS
     ):
         MockService.return_value.submit_hash.side_effect = HederaServiceError("submit failed")
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
-        ) as client:
-            resp = await client.post(
-                "/api/v1/drivers",
-                json=driver_payload,
-                headers={"Authorization": "Bearer demo"},
-            )
+        resp = await client.post(
+            "/api/v1/drivers",
+            json=driver_payload,
+            headers=headers,
+        )
 
     assert resp.status_code == 502
 
 
 @pytest.mark.asyncio
 async def test_update_driver_hedera_timeout_returns_504(
-    db_session: AsyncSession, seed_driver: Driver
+    client: AsyncClient, db_session: AsyncSession, seed_org, seed_driver: Driver
 ) -> None:
     """is_active is a critical field — toggling it forces update_driver to anchor."""
+    org, user = seed_org
+    headers = auth_header(make_token(sub=str(user.id), role="admin_dispatcher", org_id=str(org.id)))
     with patch("app.blockchain.anchor_service.HederaService") as MockService:
         MockService.return_value.submit_hash.side_effect = HederaTimeoutError(
             "mirror node timed out"
         )
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
-        ) as client:
-            resp = await client.patch(
-                f"/api/v1/drivers/{seed_driver.id}",
-                json={"is_active": False},
-                headers={"Authorization": "Bearer demo"},
-            )
+        resp = await client.patch(
+            f"/api/v1/drivers/{seed_driver.id}",
+            json={"is_active": False},
+            headers=headers,
+        )
 
     assert resp.status_code == 504
 
 
 @pytest.mark.asyncio
 async def test_update_driver_hedera_service_error_returns_502(
-    db_session: AsyncSession, seed_driver: Driver
+    client: AsyncClient, db_session: AsyncSession, seed_org, seed_driver: Driver
 ) -> None:
+    org, user = seed_org
+    headers = auth_header(make_token(sub=str(user.id), role="admin_dispatcher", org_id=str(org.id)))
     with patch("app.blockchain.anchor_service.HederaService") as MockService:
         MockService.return_value.submit_hash.side_effect = HederaServiceError("submit failed")
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
-        ) as client:
-            resp = await client.patch(
-                f"/api/v1/drivers/{seed_driver.id}",
-                json={"is_active": False},
-                headers={"Authorization": "Bearer demo"},
-            )
+        resp = await client.patch(
+            f"/api/v1/drivers/{seed_driver.id}",
+            json={"is_active": False},
+            headers=headers,
+        )
 
     assert resp.status_code == 502

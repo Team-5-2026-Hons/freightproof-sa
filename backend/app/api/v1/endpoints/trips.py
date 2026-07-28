@@ -47,7 +47,7 @@ async def create_trip_endpoint(
 ) -> TripDetailResponse:
     """Idempotency: one active trip per order_number per operator org is enforced.
     A second POST with the same order_number returns 409 until the first trip is closed.
-    The H0 HandshakeEvent (Trip Creation) is created atomically with the trip row.
+    The H0 PhaseEvent (Trip Creation) is created atomically with the trip row.
     Journey lock hash is computed here and anchored to Hedera HCS asynchronously.
     """
     try:

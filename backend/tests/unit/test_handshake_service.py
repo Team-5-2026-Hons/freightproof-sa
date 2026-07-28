@@ -13,11 +13,11 @@ from app.blockchain.hedera import HederaReceipt
 from app.core.exceptions import HandshakeSequenceError, ResourceNotFoundError
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import (
-    ArtifactType, BlockchainReceiptType, ExceptionSeverity, ExceptionType, HandshakeStatus,
-    HandshakeType, IdvsStatus, OrganizationType, TripStatus, VehicleType,
+    ArtifactType, BlockchainReceiptType, ExceptionSeverity, ExceptionType, PhaseStatus,
+    PhaseType, IdvsStatus, OrganizationType, TripStatus, VehicleType,
 )
 from app.db.models.evidence import EvidenceArtifact
-from app.db.models.handshakes import HandshakeEvent
+from app.db.models.phases import PhaseEvent
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.trips import Trip
@@ -77,9 +77,9 @@ async def trip_fixture(db_session):
     db_session.add(trip)
     await db_session.flush()
 
-    h0 = HandshakeEvent(
-        trip_id=trip.id, handshake_type=HandshakeType.TRIP_CREATION,
-        sequence_number=0, status=HandshakeStatus.COMPLETED,
+    h0 = PhaseEvent(
+        trip_id=trip.id, phase_type=PhaseType.TRIP_CREATION,
+        sequence_number=0, status=PhaseStatus.COMPLETED,
     )
     db_session.add(h0)
     await db_session.flush()
@@ -88,7 +88,7 @@ async def trip_fixture(db_session):
 
 
 async def _make_artifact(db_session, trip_id):
-    """Insert a real EvidenceArtifact row — handshake_events FK-references this table."""
+    """Insert a real EvidenceArtifact row — phase_events FK-references this table."""
     artifact = EvidenceArtifact(
         id=uuid.uuid4(), trip_id=trip_id, artifact_type=ArtifactType.PHOTO,
         s3_key=f"{trip_id}/{uuid.uuid4()}", s3_bucket="evidence-artifacts",
@@ -166,7 +166,7 @@ async def test_advance_h2_happy_path_stores_seal_and_hash(db_session, trip_fixtu
         seal_photo_artifact_id=await _make_artifact(db_session, trip.id), driver_visual_count=42,
     ))
     assert result.status == TripStatus.LOADING
-    h2 = next(h for h in result.handshakes if h.handshake_type == HandshakeType.LOADING)
+    h2 = next(h for h in result.handshakes if h.phase_type == PhaseType.LOADING)
     assert h2.seal_number == "AB-1234"
     assert h2.event_hash is not None
     assert h2.blockchain_receipt_id is not None
@@ -226,8 +226,8 @@ async def test_advance_h3_guard_refused_creates_exception_but_departs(db_session
     assert len(result.exceptions) == 1
     assert result.exceptions[0].exception_type == ExceptionType.SEAL_MISMATCH
     assert result.exceptions[0].severity == ExceptionSeverity.CRITICAL
-    h3 = next(h for h in result.handshakes if h.handshake_type == HandshakeType.ORIGIN_GATE_OUT)
-    assert h3.status == HandshakeStatus.EXCEPTION
+    h3 = next(h for h in result.handshakes if h.phase_type == PhaseType.DEPARTURE)
+    assert h3.status == PhaseStatus.EXCEPTION
 
 
 @pytest.mark.asyncio
@@ -242,7 +242,7 @@ async def test_advance_h3_confirmed_seal_mismatch_creates_exception(db_session, 
     assert result.status == TripStatus.IN_TRANSIT
     assert len(result.exceptions) == 1
     assert result.exceptions[0].exception_type == ExceptionType.SEAL_MISMATCH
-    h3 = next(h for h in result.handshakes if h.handshake_type == HandshakeType.ORIGIN_GATE_OUT)
+    h3 = next(h for h in result.handshakes if h.phase_type == PhaseType.DEPARTURE)
     assert h3.seal_number == "ZZ-9999"
 
 
@@ -260,8 +260,8 @@ async def test_advance_h3_confirmed_seal_match_supersedes_guard_flag(db_session,
 
     assert result.status == TripStatus.IN_TRANSIT
     assert result.exceptions == []
-    h3 = next(h for h in result.handshakes if h.handshake_type == HandshakeType.ORIGIN_GATE_OUT)
-    assert h3.status == HandshakeStatus.COMPLETED
+    h3 = next(h for h in result.handshakes if h.phase_type == PhaseType.DEPARTURE)
+    assert h3.status == PhaseStatus.COMPLETED
 
 
 @pytest.mark.asyncio
@@ -296,7 +296,7 @@ async def test_advance_h5_matching_counts_closes_trip(db_session, trip_fixture):
     assert result.closed_at is not None
     assert result.exceptions == []
 
-    h5 = next(h for h in result.handshakes if h.handshake_type == HandshakeType.UNLOADING)
+    h5 = next(h for h in result.handshakes if h.phase_type == PhaseType.CONFIRMATION)
     assert h5.blockchain_receipt_id is not None
 
     receipt = (await db_session.execute(
@@ -319,7 +319,7 @@ async def test_advance_h5_count_mismatch_creates_exception_but_still_closes(db_s
     assert result.status == TripStatus.CLOSED
     assert len(result.exceptions) == 1
 
-    h5 = next(h for h in result.handshakes if h.handshake_type == HandshakeType.UNLOADING)
-    assert h5.status == HandshakeStatus.EXCEPTION
+    h5 = next(h for h in result.handshakes if h.phase_type == PhaseType.CONFIRMATION)
+    assert h5.status == PhaseStatus.EXCEPTION
     assert h5.blockchain_receipt_id is not None  # anchored despite the mismatch — the mismatch is evidence too
     assert result.exceptions[0].exception_type == ExceptionType.WAYBILL_COUNT_MISMATCH

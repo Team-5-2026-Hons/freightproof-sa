@@ -32,10 +32,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.blockchain.anchor_service import anchor_subject, compute_payload_hash
 from app.core.exceptions import HandshakeSequenceError, ResourceNotFoundError
 from app.db.models.enums import (
-    BlockchainReceiptType, ExceptionSeverity, ExceptionSource, ExceptionType, HandshakeStatus,
-    HandshakeType, SubjectType, TripStatus,
+    BlockchainReceiptType, ExceptionSeverity, ExceptionSource, ExceptionType, PhaseStatus,
+    PhaseType, SubjectType, TripStatus,
 )
-from app.db.models.handshakes import HandshakeEvent
+from app.db.models.phases import PhaseEvent
 from app.db.models.transit import TripException
 from app.db.models.trips import Trip
 from app.orchestration.resource_service import get_trip_detail
@@ -65,18 +65,18 @@ async def _load_trip_for_handshake(
     return trip
 
 
-async def _get_handshake_event(db: AsyncSession, *, trip_id: uuid.UUID, handshake_type: HandshakeType) -> HandshakeEvent:
+async def _get_handshake_event(db: AsyncSession, *, trip_id: uuid.UUID, handshake_type: PhaseType) -> PhaseEvent:
     result = await db.execute(
-        select(HandshakeEvent).where(
-            HandshakeEvent.trip_id == trip_id, HandshakeEvent.handshake_type == handshake_type,
+        select(PhaseEvent).where(
+            PhaseEvent.trip_id == trip_id, PhaseEvent.phase_type == handshake_type,
         )
     )
     event = result.scalar_one_or_none()
     if event is None:
-        sequence_number = list(HandshakeType).index(handshake_type)
-        event = HandshakeEvent(
-            trip_id=trip_id, handshake_type=handshake_type,
-            sequence_number=sequence_number, status=HandshakeStatus.PENDING,
+        sequence_number = list(PhaseType).index(handshake_type)
+        event = PhaseEvent(
+            trip_id=trip_id, phase_type=handshake_type,
+            sequence_number=sequence_number, status=PhaseStatus.PENDING,
         )
         db.add(event)
         await db.flush()
@@ -84,8 +84,8 @@ async def _get_handshake_event(db: AsyncSession, *, trip_id: uuid.UUID, handshak
 
 
 async def get_handshake_detail(
-    db: AsyncSession, *, trip_id: uuid.UUID, handshake_type: HandshakeType, driver_id: uuid.UUID,
-) -> HandshakeEvent:
+    db: AsyncSession, *, trip_id: uuid.UUID, handshake_type: PhaseType, driver_id: uuid.UUID,
+) -> PhaseEvent:
     """Scoped to the calling driver's own trip — without this, any active driver
     could read another driver's GPS, seal, and count data for any trip_id they
     came across (e.g. from a gate QR code or dispatch chatter). Raises
@@ -99,8 +99,8 @@ async def get_handshake_detail(
         raise ResourceNotFoundError("Trip", str(trip_id))
 
     result = await db.execute(
-        select(HandshakeEvent).where(
-            HandshakeEvent.trip_id == trip_id, HandshakeEvent.handshake_type == handshake_type,
+        select(PhaseEvent).where(
+            PhaseEvent.trip_id == trip_id, PhaseEvent.phase_type == handshake_type,
         )
     )
     event = result.scalar_one_or_none()
@@ -116,7 +116,7 @@ async def advance_h1(
         db, trip_id=trip_id, driver_id=driver_id,
         expected_status=TripStatus.CREATED, handshake_label="H1 Origin Gate-In",
     )
-    event = await _get_handshake_event(db, trip_id=trip_id, handshake_type=HandshakeType.ORIGIN_GATE_IN)
+    event = await _get_handshake_event(db, trip_id=trip_id, handshake_type=PhaseType.ACTIVATION)
 
     # GPS cross-reference against Pulsit horse GPS is a feeder check (H1 is not
     # anchored to Hedera) — Pulsit integration itself is out of scope for this
@@ -124,7 +124,7 @@ async def advance_h1(
     # rather than faked, so dispatchers see an honest "not yet cross-checked" state.
     event.driver_phone_lat = payload.driver_phone_lat
     event.driver_phone_lng = payload.driver_phone_lng
-    event.status = HandshakeStatus.COMPLETED
+    event.status = PhaseStatus.COMPLETED
     event.completed_at = datetime.now(UTC)
 
     trip.status = TripStatus.ORIGIN_GATE_IN
@@ -161,7 +161,7 @@ async def advance_h2(
         db, trip_id=trip_id, driver_id=driver_id,
         expected_status=TripStatus.ORIGIN_GATE_IN, handshake_label="H2 Loading",
     )
-    event = await _get_handshake_event(db, trip_id=trip_id, handshake_type=HandshakeType.LOADING)
+    event = await _get_handshake_event(db, trip_id=trip_id, handshake_type=PhaseType.LOADING)
 
     event.waybill_photo_artifact_id = payload.waybill_photo_artifact_id
     event.seal_number = payload.seal_number
@@ -179,13 +179,13 @@ async def advance_h2(
     # driver retries H2 cleanly instead of the record silently drifting ahead
     # of what's actually anchored.
     receipt = await anchor_subject(
-        db, subject_type=SubjectType.HANDSHAKE_EVENT, subject_id=event.id,
+        db, subject_type=SubjectType.PHASE_EVENT, subject_id=event.id,
         canonical_payload=canonical_payload, receipt_type=BlockchainReceiptType.PICKUP,
         trip_id=trip_id,
     )
     event.blockchain_receipt_id = receipt.id
 
-    event.status = HandshakeStatus.COMPLETED
+    event.status = PhaseStatus.COMPLETED
     event.completed_at = datetime.now(UTC)
 
     trip.status = TripStatus.LOADING
@@ -205,7 +205,7 @@ async def advance_h3(
         db, trip_id=trip_id, driver_id=driver_id,
         expected_status=TripStatus.LOADING, handshake_label="H3 Origin Gate-Out",
     )
-    event = await _get_handshake_event(db, trip_id=trip_id, handshake_type=HandshakeType.ORIGIN_GATE_OUT)
+    event = await _get_handshake_event(db, trip_id=trip_id, handshake_type=PhaseType.DEPARTURE)
 
     event.completed_at = datetime.now(UTC)
     # Pulsit geofence departure confirmation is out of scope until the Pulsit
@@ -220,8 +220,8 @@ async def advance_h3(
     seal_mismatch_description: str | None = None
     if payload.seal_number_confirmed is not None:
         h2_result = await db.execute(
-            select(HandshakeEvent).where(
-                HandshakeEvent.trip_id == trip_id, HandshakeEvent.handshake_type == HandshakeType.LOADING,
+            select(PhaseEvent).where(
+                PhaseEvent.trip_id == trip_id, PhaseEvent.phase_type == PhaseType.LOADING,
             )
         )
         h2_event = h2_result.scalar_one()
@@ -239,15 +239,15 @@ async def advance_h3(
         # Recorded as evidence, but the trip still departs — H3 is an unanchored
         # feeder and FreightProof records custody events, it doesn't hold gates.
         # This differs from H4's seal mismatch (destination), which holds the trip.
-        event.status = HandshakeStatus.EXCEPTION
+        event.status = PhaseStatus.EXCEPTION
         db.add(TripException(
-            trip_id=trip_id, handshake_event_id=event.id,
+            trip_id=trip_id, phase_event_id=event.id,
             exception_type=ExceptionType.SEAL_MISMATCH, source=ExceptionSource.DRIVER,
             severity=ExceptionSeverity.CRITICAL,
             description=seal_mismatch_description,
         ))
     else:
-        event.status = HandshakeStatus.COMPLETED
+        event.status = PhaseStatus.COMPLETED
 
     trip.status = TripStatus.IN_TRANSIT
     trip.actual_departure_at = datetime.now(UTC)
@@ -263,11 +263,11 @@ async def advance_h4(
         db, trip_id=trip_id, driver_id=driver_id,
         expected_status=TripStatus.IN_TRANSIT, handshake_label="H4 Destination Gate-In",
     )
-    event = await _get_handshake_event(db, trip_id=trip_id, handshake_type=HandshakeType.DEST_GATE_IN)
+    event = await _get_handshake_event(db, trip_id=trip_id, handshake_type=PhaseType.UNLOADING)
 
     h2_result = await db.execute(
-        select(HandshakeEvent).where(
-            HandshakeEvent.trip_id == trip_id, HandshakeEvent.handshake_type == HandshakeType.LOADING,
+        select(PhaseEvent).where(
+            PhaseEvent.trip_id == trip_id, PhaseEvent.phase_type == PhaseType.LOADING,
         )
     )
     h2_event = h2_result.scalar_one()
@@ -276,10 +276,10 @@ async def advance_h4(
     event.completed_at = datetime.now(UTC)
 
     if payload.seal_number_at_destination != h2_event.seal_number:
-        event.status = HandshakeStatus.EXCEPTION
+        event.status = PhaseStatus.EXCEPTION
         trip.status = TripStatus.EXCEPTION_HOLD
         db.add(TripException(
-            trip_id=trip_id, handshake_event_id=event.id,
+            trip_id=trip_id, phase_event_id=event.id,
             exception_type=ExceptionType.SEAL_MISMATCH, source=ExceptionSource.SYSTEM,
             severity=ExceptionSeverity.CRITICAL,
             description=(
@@ -288,7 +288,7 @@ async def advance_h4(
             ),
         ))
     else:
-        event.status = HandshakeStatus.COMPLETED
+        event.status = PhaseStatus.COMPLETED
         trip.status = TripStatus.DEST_GATE_IN
 
     await db.flush()
@@ -321,11 +321,11 @@ async def advance_h5(
         db, trip_id=trip_id, driver_id=driver_id,
         expected_status=TripStatus.DEST_GATE_IN, handshake_label="H5 Unloading",
     )
-    event = await _get_handshake_event(db, trip_id=trip_id, handshake_type=HandshakeType.UNLOADING)
+    event = await _get_handshake_event(db, trip_id=trip_id, handshake_type=PhaseType.CONFIRMATION)
 
     h2_result = await db.execute(
-        select(HandshakeEvent).where(
-            HandshakeEvent.trip_id == trip_id, HandshakeEvent.handshake_type == HandshakeType.LOADING,
+        select(PhaseEvent).where(
+            PhaseEvent.trip_id == trip_id, PhaseEvent.phase_type == PhaseType.LOADING,
         )
     )
     h2_event = h2_result.scalar_one()
@@ -346,7 +346,7 @@ async def advance_h5(
     # Runs regardless of the count-mismatch branch below — the anchor commits
     # exactly what the driver/PP attested at unload, match or not.
     receipt = await anchor_subject(
-        db, subject_type=SubjectType.HANDSHAKE_EVENT, subject_id=event.id,
+        db, subject_type=SubjectType.PHASE_EVENT, subject_id=event.id,
         canonical_payload=canonical_payload, receipt_type=BlockchainReceiptType.DELIVERY,
         trip_id=trip_id,
     )
@@ -358,7 +358,7 @@ async def advance_h5(
     )
     if not counts_match:
         db.add(TripException(
-            trip_id=trip_id, handshake_event_id=event.id,
+            trip_id=trip_id, phase_event_id=event.id,
             exception_type=ExceptionType.WAYBILL_COUNT_MISMATCH, source=ExceptionSource.SYSTEM,
             severity=ExceptionSeverity.WARNING,
             description=(
@@ -366,9 +366,9 @@ async def advance_h5(
                 f"PP scan-in={payload.pp_scan_in_count}, driver visual={payload.driver_visual_count}."
             ),
         ))
-        event.status = HandshakeStatus.EXCEPTION
+        event.status = PhaseStatus.EXCEPTION
     else:
-        event.status = HandshakeStatus.COMPLETED
+        event.status = PhaseStatus.COMPLETED
 
     # A count mismatch is a WARNING, not a hold — the trip still closes; the
     # dispatcher reconciles afterward. This differs from H4's seal mismatch

@@ -146,6 +146,13 @@ class Trip(Base):
         UUID(as_uuid=True), ForeignKey("trip_templates.id"), nullable=True
     )
     status: Mapped[TripStatus] = mapped_column(String(30), nullable=False, server_default="created")
+    # Denormalised caches of the ledger derivation (D6), maintained on every phase
+    # completion so list views don't recompute across every trip. READ PATHS ONLY.
+    # No write path may branch on these: the ledger is the truth, and a stored
+    # position can drift from what actually happened — which is the entire reason
+    # this refactor exists.
+    current_phase: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    current_stop: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     trip_type: Mapped[str] = mapped_column(String(20), nullable=False, server_default=TripType.LOADED.value)
     journey_lock_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     idvs_check_status: Mapped[IdvsStatus] = mapped_column(String(20), nullable=False, server_default="pending")

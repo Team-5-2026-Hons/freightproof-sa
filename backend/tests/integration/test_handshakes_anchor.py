@@ -128,7 +128,7 @@ async def test_h2_complete_anchors_and_returns_event_hash(client: AsyncClient, d
 
     assert resp.status_code == 200
     body = resp.json()
-    h2 = next(h for h in body["handshakes"] if h["handshake_type"] == "loading")
+    h2 = next(h for h in body["handshakes"] if h["phase_type"] == "loading")
     assert h2["event_hash"] is not None
     assert h2["blockchain_receipt_id"] is not None
 
@@ -172,7 +172,7 @@ async def test_trip_detail_lists_h2_handshake_receipt_for_dispatcher(
     client: AsyncClient, db_session, seed_trip,
 ):
     """The driver→dispatcher anchoring link: after H2 anchors, GET /trips/{id}
-    (the dispatcher portal's data source) must list the HANDSHAKE_EVENT receipt
+    (the dispatcher portal's data source) must list the PHASE_EVENT receipt
     in blockchain_receipts. resource_service.get_trip_detail used to filter
     subject_type == TRIP only, silently hiding every driver-anchored receipt
     from the dispatcher's per-trip evidence view."""
@@ -190,7 +190,7 @@ async def test_trip_detail_lists_h2_handshake_receipt_for_dispatcher(
             headers=auth_header(driver_token),
         )
     assert h2_resp.status_code == 200
-    h2 = next(h for h in h2_resp.json()["handshakes"] if h["handshake_type"] == "loading")
+    h2 = next(h for h in h2_resp.json()["handshakes"] if h["phase_type"] == "loading")
 
     # Receipts are role-gated (FP-115): only admin_dispatcher sees the full list,
     # so the read side authenticates as an admin in the trip's operator org.
@@ -209,7 +209,7 @@ async def test_trip_detail_lists_h2_handshake_receipt_for_dispatcher(
 
     assert detail_resp.status_code == 200
     receipts = detail_resp.json()["blockchain_receipts"]
-    handshake_receipts = [r for r in receipts if r["subject_type"] == "handshake_event"]
+    handshake_receipts = [r for r in receipts if r["subject_type"] == "phase_event"]
     assert len(handshake_receipts) == 1
     assert handshake_receipts[0]["subject_id"] == h2["id"]
     assert handshake_receipts[0]["id"] == h2["blockchain_receipt_id"]

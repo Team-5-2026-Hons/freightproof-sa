@@ -15,8 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.blockchain.anchor_service import anchor_subject
 from app.core.exceptions import PPSyncError, ResourceNotFoundError, TripConflictError
 from app.crypto.hashing import compute_journey_lock_hash, compute_trip_canonical_payload
-from app.db.models.enums import BlockchainReceiptType, HandshakeStatus, HandshakeType, IdvsStatus, SubjectType, TripStatus, TripType, VehicleType
-from app.db.models.handshakes import HandshakeEvent
+from app.db.models.enums import BlockchainReceiptType, IdvsStatus, PhaseStatus, PhaseType, SubjectType, TripStatus, TripType, VehicleType
+from app.db.models.phases import PhaseEvent
 from app.db.models.people import Driver
 from app.db.models.trips import Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
@@ -200,10 +200,10 @@ async def create_trip(
     trip.origin_precinct_id = trip_stops[0].precinct_id
     trip.destination_precinct_id = trip_stops[-1].precinct_id
 
-    # Flush trip + trailers + stops before adding the HandshakeEvent. The evidence_artifacts
+    # Flush trip + trailers + stops before adding the PhaseEvent. The evidence_artifacts
     # table has a use_alter=True FK back to trips, creating a circular dependency
     # in SQLAlchemy's unit-of-work topological sort. Without an explicit flush here,
-    # the sort can emit the HandshakeEvent INSERT before trips, violating the FK.
+    # the sort can emit the PhaseEvent INSERT before trips, violating the FK.
     await db.flush()
     for stop in trip_stops:
         await db.refresh(stop)
@@ -246,11 +246,11 @@ async def create_trip(
                 raise PPSyncError(entry.pp_reference, str(exc)) from exc
 
     # 6. Create the H0 HandshakeEvent (Trip Creation handshake).
-    h0 = HandshakeEvent(
+    h0 = PhaseEvent(
         trip_id=trip_id,
-        handshake_type=HandshakeType.TRIP_CREATION,
+        phase_type=PhaseType.TRIP_CREATION,
         sequence_number=0,
-        status=HandshakeStatus.PENDING,
+        status=PhaseStatus.PENDING,
     )
     db.add(h0)
     await db.flush()

@@ -13,7 +13,7 @@ from app.core.exceptions import (
     HederaTimeoutError,
     ResourceNotFoundError,
 )
-from app.db.models.enums import HandshakeType
+from app.db.models.enums import PhaseType
 from app.db.session import get_db
 from app.orchestration.handshake_service import (
     advance_h1, advance_h2, advance_h3, advance_h4, advance_h5, get_handshake_detail,
@@ -116,7 +116,7 @@ async def complete_h5_endpoint(
 @router.get("/{handshake_type}", response_model=HandshakeEventRead)
 async def get_handshake_detail_endpoint(
     trip_id: UUID,
-    handshake_type: HandshakeType,
+    handshake_type: PhaseType,
     db: AsyncSession = Depends(get_db),
     current_driver: DriverRead = Depends(get_current_driver),
 ) -> HandshakeEventRead:

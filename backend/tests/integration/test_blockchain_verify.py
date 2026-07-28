@@ -4,7 +4,7 @@ Covers:
   no_receipt  — subject UUID with no anchored receipt in the DB
   verified    — anchored trip whose DB hash matches and whose Hedera hash confirms
 
-Uses DEMO_MODE auth (Bearer demo) consistent with the rest of the integration suite.
+Uses a real signed JWT via the shared `client` fixture (see tests/conftest.py).
 HederaService is patched so no real network calls are made.
 """
 
@@ -14,10 +14,9 @@ from unittest.mock import patch
 
 import pytest
 import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
+from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import _DEMO_ORG_ID, _DEMO_USER_ID
 from app.blockchain.hedera import HederaReceipt
 from app.db.models.enums import IdvsStatus, OrganizationType, VehicleType
 from app.db.models.organisations import Organization, Precinct
@@ -25,6 +24,8 @@ from app.db.models.people import Driver, User
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
 from app.main import app
+
+from tests.conftest import auth_header, make_token
 
 
 # ── DB override ───────────────────────────────────────────────────────────────
@@ -43,30 +44,33 @@ async def override_get_db(db_session: AsyncSession) -> AsyncGenerator[None, None
 # ── Seed fixtures ─────────────────────────────────────────────────────────────
 
 @pytest_asyncio.fixture
-async def seed_org(db_session: AsyncSession) -> None:
-    """Insert the operator org and demo user required by DEMO_MODE auth."""
+async def seed_org(db_session: AsyncSession) -> dict:
+    """Insert the operator org and a dispatcher user in that org."""
     operator_org = Organization(
-        id=_DEMO_ORG_ID,
+        id=uuid.uuid4(),
         name="Demo Operator",
         org_type=OrganizationType.OPERATOR,
     )
     db_session.add(operator_org)
     await db_session.flush()
 
-    demo_user = User(
-        id=_DEMO_USER_ID,
-        organization_id=_DEMO_ORG_ID,
+    user = User(
+        id=uuid.uuid4(),
+        organization_id=operator_org.id,
         email="demo-dispatcher@freightproof.co.za",
         full_name="Demo Dispatcher",
         is_active=True,
     )
-    db_session.add(demo_user)
+    db_session.add(user)
     await db_session.flush()
+
+    return {"org": operator_org, "user": user}
 
 
 @pytest_asyncio.fixture
-async def seed_trip_data(db_session: AsyncSession, seed_org) -> dict:
+async def seed_trip_data(db_session: AsyncSession, seed_org: dict) -> dict:
     """Insert the minimal rows required by POST /trips and yield their IDs."""
+    operator_org = seed_org["org"]
     client_org = Organization(
         id=uuid.uuid4(),
         name="Verify Client",
@@ -94,7 +98,7 @@ async def seed_trip_data(db_session: AsyncSession, seed_org) -> dict:
 
     driver = Driver(
         id=uuid.uuid4(),
-        organization_id=_DEMO_ORG_ID,
+        organization_id=operator_org.id,
         full_name="Verify Test Driver",
         id_number="8001015009087",
         phone_number="+27821111111",
@@ -103,14 +107,14 @@ async def seed_trip_data(db_session: AsyncSession, seed_org) -> dict:
     )
     horse = Vehicle(
         id=uuid.uuid4(),
-        organization_id=_DEMO_ORG_ID,
+        organization_id=operator_org.id,
         registration="WC VFY-001",
         vehicle_type=VehicleType.HORSE,
         pulsit_device_id="PLT-VFY-HORSE",
     )
     trailer = Vehicle(
         id=uuid.uuid4(),
-        organization_id=_DEMO_ORG_ID,
+        organization_id=operator_org.id,
         registration="WC VFY-002",
         vehicle_type=VehicleType.TRAILER,
         pulsit_device_id="PLT-VFY-TRAILER",
@@ -119,6 +123,8 @@ async def seed_trip_data(db_session: AsyncSession, seed_org) -> dict:
     await db_session.flush()
 
     return {
+        "org": operator_org,
+        "user": seed_org["user"],
         "client_org_id": client_org.id,
         "origin_id": origin.id,
         "destination_id": destination.id,
@@ -141,19 +147,24 @@ def _make_trip_payload(seed: dict) -> dict:
     }
 
 
+def _auth_headers(seed: dict) -> dict:
+    return auth_header(
+        make_token(sub=str(seed["user"].id), role="dispatcher", org_id=str(seed["org"].id))
+    )
+
+
 # ── Tests ──────────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_verify_returns_no_receipt_for_unknown_subject(db_session: AsyncSession, seed_org) -> None:
+async def test_verify_returns_no_receipt_for_unknown_subject(
+    client: AsyncClient, db_session: AsyncSession, seed_org: dict
+) -> None:
     """Verify against a subject UUID that has never been anchored → no_receipt."""
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
-    ) as client:
-        resp = await client.post(
-            "/api/v1/blockchain/verify",
-            json={"subject_type": "trip", "subject_id": str(uuid.uuid4())},
-            headers={"Authorization": "Bearer demo"},
-        )
+    resp = await client.post(
+        "/api/v1/blockchain/verify",
+        json={"subject_type": "trip", "subject_id": str(uuid.uuid4())},
+        headers=_auth_headers(seed_org),
+    )
 
     assert resp.status_code == 200
     assert resp.json()["status"] == "no_receipt"
@@ -161,7 +172,7 @@ async def test_verify_returns_no_receipt_for_unknown_subject(db_session: AsyncSe
 
 @pytest.mark.asyncio
 async def test_verify_returns_verified_for_anchored_trip(
-    db_session: AsyncSession, seed_trip_data: dict
+    client: AsyncClient, db_session: AsyncSession, seed_trip_data: dict
 ) -> None:
     """Create a trip (anchored), then verify → verified.
 
@@ -181,14 +192,11 @@ async def test_verify_returns_verified_for_anchored_trip(
     with patch("app.blockchain.anchor_service.HederaService") as MockCreate:
         MockCreate.return_value.submit_hash.return_value = fake_receipt
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
-        ) as client:
-            create_resp = await client.post(
-                "/api/v1/trips",
-                json=_make_trip_payload(seed_trip_data),
-                headers={"Authorization": "Bearer demo"},
-            )
+        create_resp = await client.post(
+            "/api/v1/trips",
+            json=_make_trip_payload(seed_trip_data),
+            headers=_auth_headers(seed_trip_data),
+        )
 
     assert create_resp.status_code == 201
     trip_id = create_resp.json()["id"]
@@ -198,14 +206,11 @@ async def test_verify_returns_verified_for_anchored_trip(
     with patch("app.orchestration.verification_service.HederaService") as MockVerify:
         MockVerify.return_value.verify_hash.return_value = True
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
-        ) as client:
-            verify_resp = await client.post(
-                "/api/v1/blockchain/verify",
-                json={"subject_type": "trip", "subject_id": trip_id},
-                headers={"Authorization": "Bearer demo"},
-            )
+        verify_resp = await client.post(
+            "/api/v1/blockchain/verify",
+            json={"subject_type": "trip", "subject_id": trip_id},
+            headers=_auth_headers(seed_trip_data),
+        )
 
     assert verify_resp.status_code == 200
     assert verify_resp.json()["status"] == "verified"
