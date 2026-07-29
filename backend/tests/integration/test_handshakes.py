@@ -5,10 +5,11 @@ import uuid
 import pytest_asyncio
 from httpx import AsyncClient
 
-from app.db.models.enums import IdvsStatus, OrganizationType, TripStatus, VehicleType
+from app.db.models.enums import IdvsStatus, OrganizationType, PhaseStatus, PhaseType, TripStatus, VehicleType
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
-from app.db.models.trips import Trip
+from app.db.models.phases import PhaseEvent
+from app.db.models.trips import Trip, TripStop
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
 from app.main import app
@@ -54,6 +55,31 @@ async def seed_trip(db_session):
     )
     db_session.add(trip)
     await db_session.flush()
+
+    # Hand-built single-leg phase plan, mirroring what create_trip actually
+    # produces: the plan generator (task 2.1) writes every row `pending` at
+    # trip creation, but create_trip then completes TRIP_CREATION (h0) inline
+    # once its Hedera anchor succeeds (see trip_service.create_trip) — so h0
+    # is seeded COMPLETED here and every driver-facing row stays PENDING
+    # before any endpoint call (the deleted _get_handshake_event no longer
+    # creates them on demand). IN_TRANSIT (P4) is included: advance_departure
+    # auto-completes it as a stopgap until real checkpoint-Merkle-batch wiring
+    # lands — see _auto_complete_in_transit's docstring in phase_service.py.
+    stop0 = TripStop(trip_id=trip.id, precinct_id=origin.id, sequence=0)
+    stop1 = TripStop(trip_id=trip.id, precinct_id=dest.id, sequence=1)
+    db_session.add_all([stop0, stop1])
+    await db_session.flush()
+    db_session.add_all([
+        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.TRIP_CREATION, sequence_number=0, status=PhaseStatus.COMPLETED),
+        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.ACTIVATION, trip_stop_id=stop0.id, sequence_number=1, status=PhaseStatus.PENDING),
+        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.LOADING, trip_stop_id=stop0.id, sequence_number=2, status=PhaseStatus.PENDING),
+        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.DEPARTURE, trip_stop_id=stop0.id, sequence_number=3, status=PhaseStatus.PENDING),
+        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.IN_TRANSIT, trip_stop_id=stop0.id, sequence_number=4, status=PhaseStatus.PENDING),
+        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.UNLOADING, trip_stop_id=stop1.id, sequence_number=5, status=PhaseStatus.PENDING),
+        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.CONFIRMATION, trip_stop_id=stop1.id, sequence_number=6, status=PhaseStatus.PENDING),
+    ])
+    await db_session.flush()
+
     return trip, driver
 
 
@@ -63,22 +89,22 @@ async def test_h1_complete_returns_200(client: AsyncClient, db_session, seed_tri
 
     resp = await client.post(
         f"/api/v1/trips/{trip.id}/handshakes/h1/complete",
-        json={"driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001"},
+        json={"driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001", "idempotency_key": str(uuid.uuid4())},
         headers=auth_header(token),
     )
     assert resp.status_code == 200
-    assert resp.json()["status"] == "origin_gate_in"
+    assert resp.json()["status"] == "active"
 
 
 async def test_h1_wrong_state_returns_409(client: AsyncClient, db_session, seed_trip):
     trip, driver = seed_trip
-    trip.status = TripStatus.IN_TRANSIT
+    trip.status = TripStatus.EXCEPTION_HOLD
     await db_session.flush()
     token = make_token(sub=str(driver.id), role="driver")
 
     resp = await client.post(
         f"/api/v1/trips/{trip.id}/handshakes/h1/complete",
-        json={"driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001"},
+        json={"driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001", "idempotency_key": str(uuid.uuid4())},
         headers=auth_header(token),
     )
     assert resp.status_code == 409
@@ -91,7 +117,7 @@ async def test_h1_unknown_driver_token_returns_401(client: AsyncClient, seed_tri
 
     resp = await client.post(
         f"/api/v1/trips/{trip.id}/handshakes/h1/complete",
-        json={"driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001"},
+        json={"driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001", "idempotency_key": str(uuid.uuid4())},
         headers=auth_header(token),
     )
     assert resp.status_code == 401  # other_driver doesn't exist as a Driver row -> get_current_driver 401s first
@@ -103,7 +129,7 @@ async def test_get_handshake_detail_returns_event(client: AsyncClient, db_sessio
 
     await client.post(
         f"/api/v1/trips/{trip.id}/handshakes/h1/complete",
-        json={"driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001"},
+        json={"driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001", "idempotency_key": str(uuid.uuid4())},
         headers=auth_header(token),
     )
     resp = await client.get(
@@ -114,12 +140,17 @@ async def test_get_handshake_detail_returns_event(client: AsyncClient, db_sessio
     assert resp.json()["status"] == "completed"
 
 
-async def test_get_handshake_detail_not_found_returns_404(client: AsyncClient, seed_trip):
-    trip, driver = seed_trip
+async def test_get_handshake_detail_unknown_trip_returns_404(client: AsyncClient, seed_trip):
+    """Every valid phase_type now always has a PhaseEvent row from trip creation
+    (task 2.1), so a not-yet-reached phase_type on a real trip returns 200
+    (status 'pending'), not 404 — the old create-on-demand premise this test
+    used to exercise is gone (T2). 404 now comes from trip-ownership/existence
+    checks only, exercised here and in the other-driver test below."""
+    driver = seed_trip[1]
     token = make_token(sub=str(driver.id), role="driver")
 
     resp = await client.get(
-        f"/api/v1/trips/{trip.id}/handshakes/unloading",
+        f"/api/v1/trips/{uuid.uuid4()}/handshakes/unloading",
         headers=auth_header(token),
     )
     assert resp.status_code == 404
@@ -132,7 +163,7 @@ async def test_get_handshake_detail_other_driver_returns_404(client: AsyncClient
     owner_token = make_token(sub=str(driver.id), role="driver")
     await client.post(
         f"/api/v1/trips/{trip.id}/handshakes/h1/complete",
-        json={"driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001"},
+        json={"driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001", "idempotency_key": str(uuid.uuid4())},
         headers=auth_header(owner_token),
     )
 

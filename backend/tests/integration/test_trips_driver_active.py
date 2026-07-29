@@ -68,7 +68,7 @@ async def test_active_trip_returns_trip_when_one_exists(client: AsyncClient, db_
         operator_organization_id=org.id, client_organization_id=client_org.id,
         driver_id=driver.id, horse_id=horse.id,
         origin_precinct_id=origin.id, destination_precinct_id=dest.id,
-        status=TripStatus.LOADING, idvs_check_status=IdvsStatus.VERIFIED,
+        status=TripStatus.ACTIVE, idvs_check_status=IdvsStatus.VERIFIED,
         created_by_user_id=user.id,
     )
     db_session.add(trip)
@@ -190,7 +190,7 @@ async def test_active_trip_includes_receipts_for_driver(client: AsyncClient, db_
         operator_organization_id=org.id, client_organization_id=client_org.id,
         driver_id=driver.id, horse_id=horse.id,
         origin_precinct_id=origin.id, destination_precinct_id=dest.id,
-        status=TripStatus.LOADING, idvs_check_status=IdvsStatus.VERIFIED,
+        status=TripStatus.ACTIVE, idvs_check_status=IdvsStatus.VERIFIED,
         created_by_user_id=user.id,
     )
     db_session.add(trip)

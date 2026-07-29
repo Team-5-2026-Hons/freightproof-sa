@@ -7,25 +7,33 @@ It must never import from api/ or auth/.
 import logging
 import uuid
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import exists, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.blockchain.anchor_service import anchor_subject
+from app.blockchain.anchor_service import anchor_subject, compute_payload_hash
 from app.core.exceptions import PPSyncError, ResourceNotFoundError, TripConflictError
 from app.crypto.hashing import compute_journey_lock_hash, compute_trip_canonical_payload
-from app.db.models.enums import BlockchainReceiptType, IdvsStatus, PhaseStatus, PhaseType, SubjectType, TripStatus, TripType, VehicleType
+from app.db.models.enums import AnchorStatus, BlockchainReceiptType, IdvsStatus, PhaseStatus, SubjectType, TripStatus, TripType, VehicleType
 from app.db.models.phases import PhaseEvent
 from app.db.models.people import Driver
 from app.db.models.trips import Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
+from app.orchestration.phase_plan import ANCHORED_PHASES, PlanStop, build_phase_plan
 from app.orchestration.resource_service import get_trip_detail
 from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.handshakes import HandshakeEventRead
 from app.schemas.people import DriverRead, UserRead
 from app.schemas.trips import ConsignmentRead, TripCreateRequest, TripDetailResponse, TripStopCreate, TripStopRead
 from app.schemas.vehicles import VehicleRead
+
+if TYPE_CHECKING:
+    # Type-only — the runtime import stays local to create_trip (see below) to
+    # avoid a module-load cycle (trip_service -> consignment_service -> trip_service).
+    # A TYPE_CHECKING-only import carries no such risk: it never executes at runtime.
+    from app.orchestration.consignment_service import ConsignmentSyncResult
 
 logger = logging.getLogger(__name__)
 
@@ -81,14 +89,11 @@ async def _check_order_number_conflict(
     operator_org_id: uuid.UUID,
 ) -> None:
     """Raise TripConflictError if an active trip already has this order_number."""
+    # Coarse set post-Stage-2.2 (T6) — the old per-handshake TripStatus values
+    # are gone; ACTIVE now covers everything between activation and closing.
     active_statuses = [
         TripStatus.CREATED,
-        TripStatus.ORIGIN_GATE_IN,
-        TripStatus.LOADING,
-        TripStatus.ORIGIN_GATE_OUT,
-        TripStatus.IN_TRANSIT,
-        TripStatus.DEST_GATE_IN,
-        TripStatus.UNLOADING,
+        TripStatus.ACTIVE,
         TripStatus.EXCEPTION_HOLD,
     ]
     conflict_exists = await db.execute(
@@ -104,12 +109,56 @@ async def _check_order_number_conflict(
         raise TripConflictError(order_number)
 
 
+def _build_phase_events(
+    trip_id: uuid.UUID,
+    trip_stops: list[TripStop],
+    consignment_results: list["ConsignmentSyncResult"],
+) -> list[PhaseEvent]:
+    """Turn a trip's stops + synced consignments into its full committed phase plan.
+
+    Pure: takes plain in-memory objects (already-flushed TripStop rows with real
+    ids, and the consignment sync results with pickup/delivery stops stamped),
+    returns unattached PhaseEvent objects. Caller (create_trip) does db.add()/flush()
+    — kept out of this function so it stays unit-testable without a session.
+    """
+    stop_id_by_sequence = {s.sequence: s.id for s in trip_stops}
+    plan_stops = [
+        PlanStop(
+            sequence=stop.sequence,
+            picks_up=any(r.consignment.pickup_stop_id == stop.id for r in consignment_results),
+            drops_off=any(r.consignment.delivery_stop_id == stop.id for r in consignment_results),
+        )
+        for stop in trip_stops
+    ]
+    planned_phases = build_phase_plan(plan_stops)
+
+    return [
+        PhaseEvent(
+            trip_id=trip_id,
+            phase_type=row.phase_type,
+            sequence_number=row.sequence_number,
+            trip_stop_id=(
+                stop_id_by_sequence[row.stop_sequence] if row.stop_sequence is not None else None
+            ),
+            status=PhaseStatus.PENDING,
+            anchor_status=(
+                AnchorStatus.PENDING if row.phase_type in ANCHORED_PHASES else AnchorStatus.NOT_REQUIRED
+            ),
+        )
+        for row in planned_phases
+    ]
+
+
 async def create_trip(
     db: AsyncSession,
     payload: TripCreateRequest,
     current_user: UserRead,
 ) -> TripDetailResponse:
-    """Create a Trip, TripTrailer rows, TripStop rows, and the H0 HandshakeEvent atomically.
+    """Create a Trip, TripTrailer rows, TripStop rows, and the trip's full committed
+    phase plan atomically — every PhaseEvent row the trip will ever need (H0/
+    trip_creation plus activation/loading/departure/in_transit/unloading/confirmation
+    per stop), all `pending` at creation, H0 included. H0 is `phase_events[0]`,
+    guaranteed by build_phase_plan to be `trip_creation` at sequence 0.
 
     Raises:
         ResourceNotFoundError: if driver, horse, or any trailer is not found/inactive.
@@ -177,9 +226,10 @@ async def create_trip(
 
     # 5. Create TripStop rows — the explicit route if given, else synthesise the
     #    back-compat single-leg pair from origin/destination precincts (FP-112 A.3).
-    #    Consignment rows ARE created below (PP sync loop), but their
-    #    pickup_stop_id/delivery_stop_id linkage to these stops is not wired yet —
-    #    that mapping lands when per-consignment stop assignment is built.
+    #    Consignment rows ARE created below (PP sync loop); their pickup_stop_id/
+    #    delivery_stop_id are stamped stop-0 -> stop-last once synced (see below) —
+    #    TripConsignmentInput has no per-consignment stop reference yet, so every
+    #    consignment runs the full route until that schema gap is closed.
     stop_specs: list[TripStopCreate] = payload.stops or [
         TripStopCreate(precinct_id=payload.origin_precinct_id, sequence=0),
         TripStopCreate(precinct_id=payload.destination_precinct_id, sequence=1),
@@ -214,7 +264,7 @@ async def create_trip(
     # module-load cycle (trip_service → consignment_service → parcel_perfect).
     consignment_results: list["ConsignmentSyncResult"] = []
     if payload.consignments:
-        from app.orchestration.consignment_service import ConsignmentSyncResult, fetch_and_sync_consignment
+        from app.orchestration.consignment_service import fetch_and_sync_consignment
 
         for entry in payload.consignments:
             try:
@@ -245,15 +295,28 @@ async def create_trip(
                 await db.rollback()
                 raise PPSyncError(entry.pp_reference, str(exc)) from exc
 
-    # 6. Create the H0 HandshakeEvent (Trip Creation handshake).
-    h0 = PhaseEvent(
-        trip_id=trip_id,
-        phase_type=PhaseType.TRIP_CREATION,
-        sequence_number=0,
-        status=PhaseStatus.PENDING,
-    )
-    db.add(h0)
+    # Stamp the route onto every synced consignment: stop-0 pickup, stop-last
+    # delivery. TripConsignmentInput (schemas/trips.py) carries no per-consignment
+    # stop reference yet (pre-existing schema gap, flagged at (5) above) — every
+    # consignment therefore runs the full route until that's extended. build_phase_plan
+    # below reads these two fields to decide which stops load/unload.
+    for result in consignment_results:
+        result.consignment.pickup_stop_id = trip_stops[0].id
+        result.consignment.delivery_stop_id = trip_stops[-1].id
+
+    # 6. Build and write the trip's full committed phase plan (parent plan D5/D6).
+    #    Every phase row for every stop is created here, `pending`, in plan order —
+    #    a later task's completion engine fills them in one at a time. No code path
+    #    outside create_trip may insert a PhaseEvent after this stage lands (not yet
+    #    enforced beyond convention — a later stage may want a DB-level guard).
+    phase_events = _build_phase_events(trip_id, trip_stops, consignment_results)
+    for event in phase_events:
+        db.add(event)
     await db.flush()
+
+    # trip_creation is always sequence 0 with a NULL stop (D3) — build_phase_plan
+    # guarantees this, so h0 is simply the first row of the plan just written.
+    h0 = phase_events[0]
 
     # 7. Compute journey lock hash over the immutable trip parameters.
     #    Uses trip.origin/destination_precinct_id (derived from the stop route, always set)
@@ -295,6 +358,18 @@ async def create_trip(
         receipt_type=BlockchainReceiptType.JOURNEY_LOCK,
         trip_id=trip_id,
     )
+
+    # H0 (trip_creation) completes inline, right here: reaching this line means
+    # anchor_subject succeeded (it's fail-closed — a failure raises and rolls back
+    # the whole trip above), so trip creation itself IS h0's completion event.
+    # Without this, h0 stays PENDING forever and _gate_and_load's "all lower
+    # sequence_numbers resolved" check blocks every later phase permanently,
+    # since h0 is sequence 0 — the lowest possible.
+    h0.status = PhaseStatus.COMPLETED
+    h0.completed_at = datetime.now(UTC)
+    h0.blockchain_receipt_id = receipt.id
+    h0.event_hash = compute_payload_hash(canonical)
+    h0.anchor_status = AnchorStatus.ANCHORED
 
     await db.flush()
     await db.refresh(trip)

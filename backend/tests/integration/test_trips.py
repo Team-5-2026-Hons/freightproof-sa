@@ -22,7 +22,7 @@ from app.db.models.vehicles import Vehicle
 from app.db.models.trips import Consignment, Parcel, Trip, TripStop, TripTrailer
 from app.db.models.phases import PhaseEvent
 from app.db.models.enums import (
-    PhaseStatus, PhaseType, IdvsStatus,
+    AnchorStatus, PhaseStatus, PhaseType, IdvsStatus,
     OrganizationType, TripStatus, VehicleType,
 )
 from app.db.session import get_db
@@ -170,7 +170,9 @@ async def test_create_trip_response_shape(client: AsyncClient, seed_data, db_ses
     assert body["idvs_check_status"] == "pending"
     assert len(body["handshakes"]) == 1
     assert body["handshakes"][0]["phase_type"] == "trip_creation"
-    assert body["handshakes"][0]["status"] == "pending"
+    # h0 completes inline in create_trip once its anchor succeeds (Stage 2
+    # final-review fix) — it's never "pending" in a real response.
+    assert body["handshakes"][0]["status"] == "completed"
     assert body["handshakes"][0]["sequence_number"] == 0
     assert len(body["trailers"]) == 1
     assert body["exceptions"] == []
@@ -210,6 +212,16 @@ async def test_create_trip_writes_trailer_snapshot_to_db(client: AsyncClient, se
 
 
 async def test_create_trip_writes_h0_handshake_to_db(client: AsyncClient, seed_data, db_session):
+    """create_trip now writes the full committed phase plan (Stage 2.1), not just
+    H0 — filter to trip_creation specifically; row-count coverage of the full plan
+    lives in test_create_trip_writes_full_pending_plan / test_create_trip_multistop.py.
+
+    h0 is asserted COMPLETED (not PENDING): create_trip completes it inline once
+    its Hedera anchor succeeds, since reaching that point means trip creation
+    itself IS h0's completion event — see trip_service.create_trip. Leaving h0
+    PENDING would permanently block every later phase, since _gate_and_load
+    (phase_service.py) requires every lower-sequence_number row resolved and h0
+    is sequence 0, the lowest possible."""
     resp = await client.post(
         "/api/v1/trips",
         json=_make_payload(seed_data),
@@ -219,12 +231,18 @@ async def test_create_trip_writes_h0_handshake_to_db(client: AsyncClient, seed_d
 
     h0_row = (
         await db_session.execute(
-            select(PhaseEvent).where(PhaseEvent.trip_id == trip_id)
+            select(PhaseEvent).where(
+                PhaseEvent.trip_id == trip_id, PhaseEvent.phase_type == PhaseType.TRIP_CREATION
+            )
         )
     ).scalar_one()
     assert h0_row.phase_type == PhaseType.TRIP_CREATION
     assert h0_row.sequence_number == 0
-    assert h0_row.status == PhaseStatus.PENDING
+    assert h0_row.status == PhaseStatus.COMPLETED
+    assert h0_row.completed_at is not None
+    assert h0_row.blockchain_receipt_id is not None
+    assert h0_row.event_hash is not None
+    assert h0_row.anchor_status == AnchorStatus.ANCHORED
 
 
 async def test_create_trip_409_on_duplicate_order_number(client: AsyncClient, seed_data, db_session):
@@ -396,12 +414,15 @@ async def test_list_trips_status_filter(client: AsyncClient, seed_data, db_sessi
         "/api/v1/trips?status=created",
         headers=_auth_headers(seed_data),
     )
-    resp_in_transit = await client.get(
-        "/api/v1/trips?status=in_transit",
+    # TripStatus.IN_TRANSIT (a LEGACY per-handshake value) was deleted in Stage
+    # 2.2/T6 — CLOSED is the coarse-model equivalent of "a status this
+    # freshly-created trip cannot have yet".
+    resp_closed = await client.get(
+        "/api/v1/trips?status=closed",
         headers=_auth_headers(seed_data),
     )
     assert len(resp_created.json()) == 1
-    assert resp_in_transit.json() == []
+    assert resp_closed.json() == []
 
 
 async def test_get_trip_detail_returns_200(client: AsyncClient, seed_data, db_session):
@@ -418,7 +439,10 @@ async def test_get_trip_detail_returns_200(client: AsyncClient, seed_data, db_se
     body = resp.json()
     assert resp.status_code == 200
     assert body["id"] == trip_id
-    assert len(body["handshakes"]) == 1
+    # create_trip now writes the full 7-row committed phase plan for this
+    # single-leg (2-stop) trip (Stage 2.1), and get_trip_detail returns every
+    # PhaseEvent row — not just H0 — ordered by sequence_number.
+    assert len(body["handshakes"]) == 7
     assert body["handshakes"][0]["phase_type"] == "trip_creation"
 
 

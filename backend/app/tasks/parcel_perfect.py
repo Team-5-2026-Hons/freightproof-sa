@@ -27,14 +27,11 @@ logger = logging.getLogger(__name__)
 # CLOSED, CANCELLED, and EXCEPTION_HOLD are excluded: closed trips are
 # immutable evidence records; cancelled trips have no active cargo; held
 # trips may be legally sensitive and should not be auto-refreshed.
+# Coarse set post-Stage-2.2 (T6) — ACTIVE now covers every old per-handshake
+# value (ORIGIN_GATE_IN..UNLOADING) that used to enumerate this frozenset.
 _ACTIVE_STATUSES: frozenset[TripStatus] = frozenset({
     TripStatus.CREATED,
-    TripStatus.ORIGIN_GATE_IN,
-    TripStatus.LOADING,
-    TripStatus.ORIGIN_GATE_OUT,
-    TripStatus.IN_TRANSIT,
-    TripStatus.DEST_GATE_IN,
-    TripStatus.UNLOADING,
+    TripStatus.ACTIVE,
 })
 
 

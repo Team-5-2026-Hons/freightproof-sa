@@ -22,7 +22,9 @@ from app.db.models.events import DriverEvent, VehicleEvent
 from app.db.models.enums import PhaseType, SubjectType, VerifyStatus
 from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Trip, TripTrailer
-from app.orchestration.handshake_service import compute_h2_canonical_payload, compute_h5_canonical_payload
+from app.orchestration.phase_service import (
+    compute_confirmation_canonical_payload, compute_departure_canonical_payload,
+)
 
 
 @dataclass(frozen=True)
@@ -122,39 +124,42 @@ async def _reconstruct_driver_event_payload(
     }
 
 
-async def _reconstruct_handshake_event_payload(
+async def _reconstruct_phase_event_payload(
     db: AsyncSession, event_id: uuid.UUID
 ) -> dict[str, Any] | None:
-    """Rebuild the exact canonical payload anchored at H2/H5, from the live row.
+    """Rebuild the exact canonical payload anchored at departure/confirmation, from the live row.
 
-    Reuses compute_h2_canonical_payload/compute_h5_canonical_payload from
-    handshake_service directly — one payload-shape definition, not a second
-    copy that could drift from what was actually anchored. Any handshake_type
-    other than LOADING/UNLOADING (H1/H3/H4, and H0 trip_creation) was never
-    anchored as SubjectType.PHASE_EVENT, so it returns None and the caller
-    falls through to NO_RECEIPT.
+    Reuses compute_departure_canonical_payload/compute_confirmation_canonical_payload
+    from phase_service directly — one payload-shape definition, not a second
+    copy that could drift from what was actually anchored. Any phase_type
+    other than DEPARTURE/CONFIRMATION (activation, loading, unloading, and
+    trip_creation) was never anchored as SubjectType.PHASE_EVENT, so it
+    returns None and the caller falls through to NO_RECEIPT.
+
+    Task 2.6 (D7/T5) moved the seal — and the anchor with it — from loading to
+    departure, so this dispatches on PhaseType.DEPARTURE, not LOADING, and no
+    longer needs driver_visual_count (which stays on loading, unanchored).
     """
     event = (
         await db.execute(select(PhaseEvent).where(PhaseEvent.id == event_id))
     ).scalar_one_or_none()
     if event is None:
         return None
-    if event.phase_type == PhaseType.LOADING:
-        # seal_number/driver_visual_count are nullable columns (not yet completed),
-        # but a receipt only ever exists once H2 anchored them — both must be set
-        # by then. If either is still None here, treat it like NO_RECEIPT rather
-        # than hash a payload that could never match what was actually anchored.
-        if event.seal_number is None or event.driver_visual_count is None:
+    if event.phase_type == PhaseType.DEPARTURE:
+        # seal_number is a nullable column (not yet completed), but a receipt
+        # only ever exists once departure anchored it. If it's still None here,
+        # treat it like NO_RECEIPT rather than hash a payload that could never
+        # match what was actually anchored.
+        if event.seal_number is None:
             return None
-        return compute_h2_canonical_payload(
-            handshake_event_id=event.id, trip_id=event.trip_id,
-            seal_number=event.seal_number, driver_visual_count=event.driver_visual_count,
+        return compute_departure_canonical_payload(
+            phase_event_id=event.id, trip_id=event.trip_id, seal_number=event.seal_number,
         )
     if event.phase_type == PhaseType.CONFIRMATION:
         if event.parcel_count_destination is None or event.driver_visual_count is None:
             return None
-        return compute_h5_canonical_payload(
-            handshake_event_id=event.id, trip_id=event.trip_id,
+        return compute_confirmation_canonical_payload(
+            phase_event_id=event.id, trip_id=event.trip_id,
             pp_scan_in_count=event.parcel_count_destination,
             driver_visual_count=event.driver_visual_count,
         )
@@ -196,7 +201,7 @@ async def verify_subject(
             return VerifyOutcome(status=VerifyStatus.NO_RECEIPT, receipt=receipt)
         current_hash = _hash_payload(rebuilt)
     elif subject_type == SubjectType.PHASE_EVENT:
-        rebuilt = await _reconstruct_handshake_event_payload(db, subject_id)
+        rebuilt = await _reconstruct_phase_event_payload(db, subject_id)
         if rebuilt is None:
             return VerifyOutcome(status=VerifyStatus.NO_RECEIPT, receipt=receipt)
         current_hash = _hash_payload(rebuilt)

@@ -35,13 +35,17 @@ class DuplicateResourceError(Exception):
         self.value = value
 
 
-class HandshakeSequenceError(Exception):
-    """Raised when a handshake is attempted out of order for the trip's current status."""
+class PhaseSequenceError(Exception):
+    """Raised when a phase is completed out of order (gated on the phase plan, not trip.status).
+
+    `trip_status` is a reason clause, not necessarily a bare TripStatus value —
+    the two call sites in phase_service.py's _gate_and_load have different real
+    causes (trip closed/cancelled/held vs. an earlier phase still unresolved)
+    and each passes a clause describing its own cause accurately.
+    """
 
     def __init__(self, trip_status: str, attempted_handshake: str) -> None:
-        super().__init__(
-            f"Cannot complete {attempted_handshake} while trip status is '{trip_status}'."
-        )
+        super().__init__(f"Cannot complete {attempted_handshake}: {trip_status}.")
         self.trip_status = trip_status
         self.attempted_handshake = attempted_handshake
 

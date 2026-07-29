@@ -18,12 +18,16 @@ class VehicleType(str, enum.Enum):
 
 
 class TripStatus(str, enum.Enum):
-    """Coarse trip lifecycle. The phase ledger — not this field — sequences a trip.
+    """Coarse trip lifecycle. The phase ledger (PhaseEvent) — not this field —
+    sequences a trip.
 
-    CREATED / ACTIVE / CLOSED (+ CANCELLED, EXCEPTION_HOLD) are the whole model
-    after Stage 2. The LEGACY values below are still assigned by advance_h1..h5,
-    which Stage 2.2 replaces with advance_phase(); they are deleted with it.
-    Nothing new may branch on a LEGACY value.
+    CREATED / ACTIVE / CLOSED (+ CANCELLED, EXCEPTION_HOLD) are the whole
+    model as of Stage 2.2, which replaced the old fine-grained per-handshake
+    values (ORIGIN_GATE_IN/LOADING/ORIGIN_GATE_OUT/IN_TRANSIT/DEST_GATE_IN/
+    UNLOADING) with advance_activation..advance_confirmation gating on
+    PhaseEvent.sequence_number instead. Nothing may branch on trip.status for
+    sequencing — only for the coarse created/active/closed/cancelled/held
+    description.
     """
 
     CREATED          = "created"
@@ -31,14 +35,6 @@ class TripStatus(str, enum.Enum):
     CLOSED           = "closed"
     CANCELLED        = "cancelled"
     EXCEPTION_HOLD   = "exception_hold"
-
-    # LEGACY (H-model) — assigned only by advance_h1..h5. Deleted in Stage 2.2.
-    ORIGIN_GATE_IN   = "origin_gate_in"
-    LOADING          = "loading"
-    ORIGIN_GATE_OUT  = "origin_gate_out"
-    IN_TRANSIT       = "in_transit"
-    DEST_GATE_IN     = "dest_gate_in"
-    UNLOADING        = "unloading"
 
 
 class TripType(str, enum.Enum):

@@ -6,7 +6,7 @@ from decimal import Decimal
 from uuid import UUID
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.db.models.enums import PhaseStatus, PhaseType
 
@@ -111,13 +111,36 @@ def _validate_seal_format(v: str) -> str:
 class H1CompleteRequest(BaseModel):
     driver_phone_lat: Decimal
     driver_phone_lng: Decimal
+    # The driver app's offline-queue entry id, echoed back on replay (task 2.4).
+    # Stored on the PhaseEvent row unconditionally; a resubmitted completion
+    # with the same key returns the current state instead of erroring or
+    # duplicating — drivers lose signal, replay is normal, not exceptional.
+    idempotency_key: str = Field(..., min_length=1)
 
 
 class H2CompleteRequest(BaseModel):
+    # D7/T5: the seal (waybill photo, seal number, seal photo) is applied at
+    # departure now, not loading — see H3CompleteRequest. Loading only ever
+    # captures the driver's own visual parcel count.
+    driver_visual_count: int
+    idempotency_key: str = Field(..., min_length=1)
+
+
+class H3CompleteRequest(BaseModel):
+    # D7/T5: the seal is applied HERE, at departure — the driver photographs
+    # the waybill and seal as they physically close the trailer at exit.
     waybill_photo_artifact_id: UUID
     seal_number: str
     seal_photo_artifact_id: UUID
-    driver_visual_count: int
+    guard_verified_seal: bool
+    # Seal number the driver re-entered at the exit gate. Optional for backward
+    # compatibility; when present the server compares it against THIS SAME
+    # request's committed seal_number (authoritative), superseding the
+    # client-computed guard_verified_seal. Free-form (no XX-#### pattern): a
+    # mistyped confirmation is itself evidence of a mismatch and must be
+    # recordable, not rejected with a 422.
+    seal_number_confirmed: str | None = None
+    idempotency_key: str = Field(..., min_length=1)
 
     @field_validator("seal_number")
     @classmethod
@@ -125,18 +148,9 @@ class H2CompleteRequest(BaseModel):
         return _validate_seal_format(v)
 
 
-class H3CompleteRequest(BaseModel):
-    guard_verified_seal: bool
-    # Seal number the driver re-entered at the exit gate. Optional for backward
-    # compatibility; when present the server compares it against H2's committed
-    # seal (authoritative), superseding the client-computed guard_verified_seal.
-    # Free-form (no XX-#### pattern): a mistyped confirmation is itself evidence
-    # of a mismatch and must be recordable, not rejected with a 422.
-    seal_number_confirmed: str | None = None
-
-
 class H4CompleteRequest(BaseModel):
     seal_number_at_destination: str
+    idempotency_key: str = Field(..., min_length=1)
 
     @field_validator("seal_number_at_destination")
     @classmethod
@@ -151,3 +165,4 @@ class H5CompleteRequest(BaseModel):
     pod_signature_artifact_id: UUID
     driver_visual_count: int
     pp_scan_in_count: int
+    idempotency_key: str = Field(..., min_length=1)
