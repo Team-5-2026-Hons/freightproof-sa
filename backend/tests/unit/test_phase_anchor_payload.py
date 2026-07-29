@@ -37,8 +37,9 @@ from app.orchestration.phase_service import (
     compute_confirmation_canonical_payload, compute_departure_canonical_payload,
 )
 from app.orchestration.verification_service import verify_subject
-from app.schemas.handshakes import (
-    H1CompleteRequest, H2CompleteRequest, H3CompleteRequest, H4CompleteRequest, H5CompleteRequest,
+from app.schemas.phases import (
+    ActivationCompleteRequest, ConfirmationCompleteRequest, DepartureCompleteRequest,
+    LoadingCompleteRequest, UnloadingCompleteRequest,
 )
 
 # Fields that must never appear in an anchored handshake payload — GPS, photos,
@@ -159,17 +160,17 @@ async def _advance_to_departure(db_session, trip, driver, phases):
     departure, so this is now the helper that produces an anchored handshake."""
     await advance_activation(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["activation"].id,
-        payload=H1CompleteRequest(
+        payload=ActivationCompleteRequest(phase_type=PhaseType.ACTIVATION, 
             driver_phone_lat=Decimal("0"), driver_phone_lng=Decimal("0"), idempotency_key=str(uuid.uuid4()),
         ),
     )
     await advance_loading(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["loading"].id,
-        payload=H2CompleteRequest(driver_visual_count=42, idempotency_key=str(uuid.uuid4())),
+        payload=LoadingCompleteRequest(phase_type=PhaseType.LOADING, driver_visual_count=42, idempotency_key=str(uuid.uuid4())),
     )
     return await advance_departure(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["departure"].id,
-        payload=H3CompleteRequest(
+        payload=DepartureCompleteRequest(phase_type=PhaseType.DEPARTURE, 
             waybill_photo_artifact_id=await _make_artifact(db_session, trip.id), seal_number="AB-1234",
             seal_photo_artifact_id=await _make_artifact(db_session, trip.id),
             guard_verified_seal=True, idempotency_key=str(uuid.uuid4()),
@@ -181,7 +182,7 @@ async def _advance_to_unloading(db_session, trip, driver, phases):
     await _advance_to_departure(db_session, trip, driver, phases)
     return await advance_unloading(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading"].id,
-        payload=H4CompleteRequest(seal_number_at_destination="AB-1234", idempotency_key=str(uuid.uuid4())),
+        payload=UnloadingCompleteRequest(phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-1234", idempotency_key=str(uuid.uuid4())),
     )
 
 
@@ -229,7 +230,7 @@ async def test_advance_departure_anchors_with_pickup_receipt_type(db_session, tr
 
     result = await _advance_to_departure(db_session, trip, driver, phases)
 
-    departure = next(h for h in result.handshakes if h.phase_type == PhaseType.DEPARTURE)
+    departure = next(h for h in result.phases if h.phase_type == PhaseType.DEPARTURE)
     receipt = (await db_session.execute(
         select(BlockchainReceipt).where(BlockchainReceipt.id == departure.blockchain_receipt_id)
     )).scalar_one()
@@ -246,14 +247,14 @@ async def test_advance_confirmation_anchors_with_delivery_receipt_type(db_sessio
 
     result = await advance_confirmation(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["confirmation"].id,
-        payload=H5CompleteRequest(
+        payload=ConfirmationCompleteRequest(phase_type=PhaseType.CONFIRMATION, 
             pod_photo_artifact_id=await _make_artifact(db_session, trip.id),
             pod_signature_artifact_id=await _make_artifact(db_session, trip.id),
             driver_visual_count=42, pp_scan_in_count=42, idempotency_key=str(uuid.uuid4()),
         ),
     )
 
-    h5 = next(h for h in result.handshakes if h.phase_type == PhaseType.CONFIRMATION)
+    h5 = next(h for h in result.phases if h.phase_type == PhaseType.CONFIRMATION)
     receipt = (await db_session.execute(
         select(BlockchainReceipt).where(BlockchainReceipt.id == h5.blockchain_receipt_id)
     )).scalar_one()
@@ -270,14 +271,14 @@ async def test_advance_confirmation_anchors_even_on_count_mismatch(db_session, t
 
     result = await advance_confirmation(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["confirmation"].id,
-        payload=H5CompleteRequest(
+        payload=ConfirmationCompleteRequest(phase_type=PhaseType.CONFIRMATION, 
             pod_photo_artifact_id=await _make_artifact(db_session, trip.id),
             pod_signature_artifact_id=await _make_artifact(db_session, trip.id),
             driver_visual_count=40, pp_scan_in_count=42, idempotency_key=str(uuid.uuid4()),
         ),
     )
 
-    h5 = next(h for h in result.handshakes if h.phase_type == PhaseType.CONFIRMATION)
+    h5 = next(h for h in result.phases if h.phase_type == PhaseType.CONFIRMATION)
     assert h5.status == PhaseStatus.EXCEPTION
     assert h5.blockchain_receipt_id is not None
 
@@ -291,7 +292,7 @@ async def test_verify_subject_after_departure_reconstructs_matching_payload(db_s
     seal (and the anchor) actually live post-refactor."""
     trip, driver, phases = trip_fixture
     result = await _advance_to_departure(db_session, trip, driver, phases)
-    departure = next(h for h in result.handshakes if h.phase_type == PhaseType.DEPARTURE)
+    departure = next(h for h in result.phases if h.phase_type == PhaseType.DEPARTURE)
 
     stub_service = MagicMock()
     stub_service.verify_hash.return_value = True
@@ -313,13 +314,13 @@ async def test_verify_subject_after_confirmation_reconstructs_matching_payload(d
     await _advance_to_unloading(db_session, trip, driver, phases)
     result = await advance_confirmation(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["confirmation"].id,
-        payload=H5CompleteRequest(
+        payload=ConfirmationCompleteRequest(phase_type=PhaseType.CONFIRMATION, 
             pod_photo_artifact_id=await _make_artifact(db_session, trip.id),
             pod_signature_artifact_id=await _make_artifact(db_session, trip.id),
             driver_visual_count=42, pp_scan_in_count=42, idempotency_key=str(uuid.uuid4()),
         ),
     )
-    h5 = next(h for h in result.handshakes if h.phase_type == PhaseType.CONFIRMATION)
+    h5 = next(h for h in result.phases if h.phase_type == PhaseType.CONFIRMATION)
 
     stub_service = MagicMock()
     stub_service.verify_hash.return_value = True

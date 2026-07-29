@@ -78,3 +78,21 @@ class HederaTimeoutError(HederaServiceError):
     Distinct from HederaSubmitError so callers/logs can tell "Hedera never
     responded in time" apart from "Hedera responded with a rejection".
     """
+
+
+class PhaseTypeMismatchError(Exception):
+    """Raised when a completion payload's phase_type does not match the addressed row's.
+
+    A client bug, not a sequencing problem: the driver app resolved a phase_event_id
+    and then sent the wrong shape for it (or addressed a phase — trip_creation,
+    in_transit — that no driver action completes). Distinct from PhaseSequenceError
+    so the 409 body says which of the two actually happened.
+    """
+
+    def __init__(self, expected: str, received: str) -> None:
+        super().__init__(
+            f"Payload phase_type='{received}' does not match the addressed phase, "
+            f"which is '{expected}'."
+        )
+        self.expected = expected
+        self.received = received

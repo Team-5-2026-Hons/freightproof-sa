@@ -168,12 +168,15 @@ async def test_create_trip_response_shape(client: AsyncClient, seed_data, db_ses
     assert body["trip_reference"].startswith("FP-")
     assert len(body["journey_lock_hash"]) == 64
     assert body["idvs_check_status"] == "pending"
-    assert len(body["handshakes"]) == 1
-    assert body["handshakes"][0]["phase_type"] == "trip_creation"
+    # POST /trips now returns the trip's whole committed phase plan (Stage 3.4),
+    # not just the single trip_creation row — this fixture's single-leg
+    # (2-stop) trip yields 7 rows (length is data, but this fixture's own).
+    assert len(body["phases"]) == 7
+    assert body["phases"][0]["phase_type"] == "trip_creation"
     # h0 completes inline in create_trip once its anchor succeeds (Stage 2
     # final-review fix) — it's never "pending" in a real response.
-    assert body["handshakes"][0]["status"] == "completed"
-    assert body["handshakes"][0]["sequence_number"] == 0
+    assert body["phases"][0]["status"] == "completed"
+    assert body["phases"][0]["sequence_number"] == 0
     assert len(body["trailers"]) == 1
     assert body["exceptions"] == []
     assert body["blockchain_receipts"] == []
@@ -442,8 +445,83 @@ async def test_get_trip_detail_returns_200(client: AsyncClient, seed_data, db_se
     # create_trip now writes the full 7-row committed phase plan for this
     # single-leg (2-stop) trip (Stage 2.1), and get_trip_detail returns every
     # PhaseEvent row — not just H0 — ordered by sequence_number.
-    assert len(body["handshakes"]) == 7
-    assert body["handshakes"][0]["phase_type"] == "trip_creation"
+    assert len(body["phases"]) == 7
+    assert body["phases"][0]["phase_type"] == "trip_creation"
+
+
+def _assert_derived_phase_fields_populated(phases: list[dict]) -> None:
+    """stop_sequence and step_recipe are PhaseEventRead.from_event()'s two
+    derived fields (a TripStop join and a static lookup respectively) —
+    model_validate() alone leaves both silently empty/None, which is exactly
+    why from_event() exists instead. Not asserting an exact step_recipe list:
+    tests/unit/test_phase_meta_contract.py already owns the recipe contents,
+    this only proves the field is populated rather than silently empty."""
+    trip_creation = next(p for p in phases if p["phase_type"] == "trip_creation")
+    assert trip_creation["stop_sequence"] is None
+    assert trip_creation["step_recipe"] == []
+
+    activation = next(p for p in phases if p["phase_type"] == "activation")
+    assert activation["stop_sequence"] is not None
+    assert len(activation["step_recipe"]) > 0
+
+
+async def test_create_trip_response_populates_derived_phase_fields(
+    client: AsyncClient, seed_data, db_session,
+):
+    """Guards trip_service.create_trip's own from_event() call site (POST
+    /trips) — one of PhaseEventRead.from_event()'s three separate call sites,
+    each of which builds its own stop map by hand. Nothing else in the suite
+    reads stop_sequence/step_recipe off body["phases"] — existing tests only
+    check phase_type/status/sequence_number/event_hash — so a regression to
+    plain model_validate() here would silently null every stop_sequence and
+    stay green everywhere else (the same failure shape as Stage 2's NEW-10)."""
+    resp = await client.post(
+        "/api/v1/trips",
+        json=_make_payload(seed_data),
+        headers=_auth_headers(seed_data),
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+
+    _assert_derived_phase_fields_populated(body["phases"])
+
+
+async def test_get_trip_detail_phases_agree_with_creation_response(
+    client: AsyncClient, seed_data, db_session,
+):
+    """Guards resource_service.get_trip_detail's from_event() call site (GET
+    /trips/{id}) the same way the test above guards create_trip's — and, since
+    both endpoints serve the same trip here, additionally proves POST and GET
+    describe the SAME plan (the actual dispatcher-contract consistency task 3.4
+    fixed, not merely that each path independently populates something)."""
+    create_resp = await client.post(
+        "/api/v1/trips",
+        json=_make_payload(seed_data),
+        headers=_auth_headers(seed_data),
+    )
+    assert create_resp.status_code == 201
+    post_body = create_resp.json()
+    trip_id = post_body["id"]
+
+    get_resp = await client.get(
+        f"/api/v1/trips/{trip_id}",
+        headers=_auth_headers(seed_data),
+    )
+    assert get_resp.status_code == 200
+    get_body = get_resp.json()
+
+    _assert_derived_phase_fields_populated(get_body["phases"])
+
+    # Same trip, same plan: POST's and GET's stop_sequence-by-phase must agree,
+    # keyed by (phase_type, sequence_number) since that pair is unique within
+    # one trip's plan and doesn't depend on row ordering matching exactly.
+    post_stop_sequences = {
+        (p["phase_type"], p["sequence_number"]): p["stop_sequence"] for p in post_body["phases"]
+    }
+    get_stop_sequences = {
+        (p["phase_type"], p["sequence_number"]): p["stop_sequence"] for p in get_body["phases"]
+    }
+    assert post_stop_sequences == get_stop_sequences
 
 
 async def test_get_trip_detail_not_found_returns_404(client: AsyncClient, seed_data, db_session):

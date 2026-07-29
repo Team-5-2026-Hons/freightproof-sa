@@ -24,7 +24,7 @@ from app.db.models.transit import TripException
 from app.db.models.trips import Consignment, Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.schemas.blockchain import BlockchainReceiptRead
-from app.schemas.handshakes import HandshakeEventRead
+from app.schemas.phases import PhaseEventRead
 from app.schemas.organisations import PrecinctRead
 from app.schemas.people import DriverRead
 from app.schemas.transit import TripExceptionRead
@@ -164,7 +164,7 @@ async def get_trip_detail(
         .where(PhaseEvent.trip_id == trip_id)
         .order_by(PhaseEvent.sequence_number)
     )
-    handshakes = hs_result.scalars().all()
+    phase_events = hs_result.scalars().all()
 
     exc_result = await db.execute(
         select(TripException).where(TripException.trip_id == trip_id)
@@ -174,10 +174,10 @@ async def get_trip_detail(
     # H3/H5 anchor a PHASE_EVENT-subject receipt (not a TRIP-subject one —
     # see phase_service.py advance_departure/advance_confirmation), so a TRIP-only filter here
     # silently hid every driver-anchored pickup/delivery receipt from the
-    # dispatcher's per-trip evidence view. Reuse the handshake ids already
+    # dispatcher's per-trip evidence view. Reuse the phase event ids already
     # fetched above (no extra query) and OR in their receipts alongside the
     # trip's own — additive only, TRIP-subject behaviour is unchanged.
-    phase_event_ids = [h.id for h in handshakes]
+    phase_event_ids = [h.id for h in phase_events]
     receipts_result = await db.execute(
         select(BlockchainReceipt)
         .where(
@@ -200,6 +200,10 @@ async def get_trip_detail(
         select(TripStop).where(TripStop.trip_id == trip_id).order_by(TripStop.sequence)
     )
     stops = stops_result.scalars().all()
+
+    # PhaseEventRead.stop_sequence is a join, not a column — build the map from
+    # the stops already fetched rather than issuing a second query.
+    stop_sequence_by_id = {s.id: s.sequence for s in stops}
 
     # id tiebreaker: consignments inserted in one transaction share the same
     # created_at (Postgres now() is per-transaction), so created_at alone is
@@ -232,7 +236,10 @@ async def get_trip_detail(
         planned_arrival_at=trip.planned_arrival_at,
         actual_arrival_at=trip.actual_arrival_at,
         closed_at=trip.closed_at,
-        handshakes=[HandshakeEventRead.model_validate(h) for h in handshakes],
+        phases=[
+            PhaseEventRead.from_event(e, stop_sequence_by_id=stop_sequence_by_id)
+            for e in phase_events
+        ],
         exceptions=[TripExceptionRead.model_validate(e) for e in exceptions],
         blockchain_receipts=[BlockchainReceiptRead.model_validate(r) for r in receipts],
         warnings=[],

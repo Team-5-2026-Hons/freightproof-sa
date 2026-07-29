@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.db.models.enums import IdvsStatus, ParcelStatus, TripStatus, TripType
 from app.schemas.blockchain import BlockchainReceiptRead
-from app.schemas.handshakes import HandshakeEventRead
+from app.schemas.phases import PhaseEventRead
 from app.schemas.people import DriverRead
 from app.schemas.transit import TripExceptionRead
 from app.schemas.vehicles import VehicleRead
@@ -398,7 +398,7 @@ class TripDetailResponse(BaseModel):
     planned_arrival_at: Optional[datetime] = None
     actual_arrival_at: Optional[datetime] = None
     closed_at: Optional[datetime] = None
-    handshakes: list[HandshakeEventRead]
+    phases: list[PhaseEventRead]
     exceptions: list[TripExceptionRead]
     blockchain_receipts: list[BlockchainReceiptRead]
     # Creation-transient: populated by POST /trips (e.g. PP sync degraded-mode

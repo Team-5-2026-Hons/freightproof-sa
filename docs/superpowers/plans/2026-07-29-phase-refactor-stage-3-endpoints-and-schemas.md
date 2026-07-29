@@ -1407,8 +1407,172 @@ can be done later."* Both belong in a **Stage 3-B plan** written after the ~2026
 
 ## Findings ledger
 
-*Fill in after execution, same discipline as Stages 1 and 2.* At minimum record: the suite numbers
-before and after; whether S2 survived review or was vetoed; the `/phases/next` vs `/next-phase` route
-spelling actually shipped (task 3.3 step 2's note); what
-`test_complete_addressing_in_transit_row_returns_409` was renamed to once its real status code was
-observed; and every defect found in this plan's own literal code.
+Executed 2026-07-29 under `superpowers:subagent-driven-development` — one fresh Sonnet subagent per
+task, each reviewed on Opus against spec and quality before the next was dispatched, plus a whole-diff
+review across all six tasks afterwards (Stage 2's NEW-10 lesson: per-task review cannot see cross-task
+seams).
+
+### 3.x — Suite numbers after Stage 3
+
+| Metric | Before (Stage 2 exit) | After |
+|---|---|---|
+| Whole suite passed | 339 | **356** |
+| Whole suite failed | 7 | **7** |
+| Whole suite skipped | 0 | **0** |
+| `tests/unit` passed | 201 | 205 (after 3.1) → see whole-suite figure |
+
+`ruff check .` → *All checks passed!* · `mypy .` → *Success: no issues found in 161 source files* ·
+`python -c "import app.main"` → `IMPORTS-OK` · route dump → exactly three phase routes, zero handshake
+routes.
+
+**The 7 known-red failures are unchanged in name and cause** — the same set named in §Prerequisites.
+`test_create_trip_response_shape` is still red for its pre-existing unmocked-Hedera reason
+(`blockchain_receipts != []`); its `handshakes`→`phases` assertions were rewritten and now pass, and
+no claim is made that the test was fixed.
+
+**Frontend gates:** `frontend/dispatcher` `tsc --noEmit` and `eslint .` both clean. **`frontend/driver-pwa`'s
+gates did not actually execute** — `tsc`, `eslint` and `vitest` all report `command not found` (its
+`node_modules` is not installed), and `npm` still exited 0, which reads as a false green. Nothing under
+`frontend/` was edited this stage, so this blocked nothing, but it is recorded as *not run* rather than
+as passing, and it needs an `npm install` before anyone relies on that gate.
+
+### Decisions S1–S8 — outcome
+
+All eight executed as written; none vetoed or amended.
+
+- **S1** — `_find_loading_for_leg` implemented byte-for-byte as given; nearest-preceding, leg-scoped.
+  Single-leg behaviour byte-identical (no pre-existing single-leg test needed editing, which was the
+  fence's own check).
+- **S2 — survived review, not vetoed.** The backend owns `STEP_SLUGS` and serves `step_recipe`; the
+  drift guard parses the TS file. The guard was proven to *bite* (a deliberately altered slug was
+  confirmed to fail the test, then restored) rather than merely proven green.
+- **S3–S8** — as specified. **Route spelling shipped: `GET /api/v1/trips/{trip_id}/phases/next`**, i.e.
+  the `/phases/next` option, not the parent plan's `/next-phase`. Stage 5's driver app and the
+  frozen-contract TS must use this string.
+- **`test_complete_addressing_in_transit_row_returns_409` was renamed to
+  `test_complete_addressing_in_transit_row_returns_422`.** Observed, not guessed: `in_transit` and
+  `trip_creation` are absent from the discriminated union, so Pydantic rejects them with
+  `union_tag_invalid`, which FastAPI renders as **422**. No `in_transit` union member was added — that
+  would harden NEW-8's stopgap into contract.
+
+### Defects found in this plan's own literal code (fixed during execution)
+
+- **NEW-11 — 🔴 the plan's task 3.0 step-1 test could never have failed for the stated reason.** Its
+  literal body called `advance_confirmation` directly on a fresh cross-dock fixture, but `_gate_and_load`
+  raises `PhaseSequenceError` while rows 1-9 are unresolved — so it would have failed *before* reaching
+  the `MultipleResultsFound` it existed to prove. It also referenced a fixture `cross_dock_trip`
+  returning `(trip, events)`; the real one is `cross_dock_trip_fixture` returning
+  `(trip, driver, phases: dict[str, PhaseEvent])`. Corrected before dispatch: both tests now walk the
+  trip via the file's existing `_walk_cross_dock_leg1_unloading_to_leg2_departure` helper first. The
+  corrected test was confirmed to fail with `MultipleResultsFound` before the fix and pass after.
+- **NEW-12 — 🔴 Security: `complete_phase()` checked phase type before ownership.** Found in the
+  whole-diff review of task 3.3. `_load_phase_event` scopes by `trip_id` only, so
+  `PhaseTypeMismatchError` — whose 409 body names the row's real `phase_type` — returned *ahead of* any
+  driver-ownership check. A driver holding another driver's `trip_id` + `phase_event_id` (the exact
+  threat model the deleted `get_handshake_detail` docstring named: "a gate QR code or dispatch chatter")
+  could probe a foreign trip's plan by sending a deliberately wrong `phase_type` and reading the error.
+  **Fixed:** `complete_phase` now calls `_load_trip_for_driver` first, so a non-owner gets the same 404
+  as for a nonexistent trip. Locked in by
+  `test_complete_with_wrong_phase_type_on_another_drivers_trip_returns_404`, which also asserts the
+  response body does not contain the row's phase type.
+- **NEW-13 — task 3.3's step-4 verification was scheduled before the code that makes it possible.**
+  The plan puts the "app imports, dump three routes, zero handshake routes" check at the end of task
+  3.3, but `app/schemas/trips.py`, `resource_service.py` and `trip_service.py` still import the module
+  task 3.2 deleted, and are only repaired in **task 3.4**. `import app.main` is therefore broken from
+  3.2 through 3.3 by construction. No fence was changed and no file moved between tasks; the check was
+  deferred and run immediately after 3.4, where it passed.
+- **NEW-14 — the plan's file lists omitted two files that the refactor breaks.**
+  `tests/unit/test_phase_anchor_payload.py` imports `app.schemas.handshakes` and reads
+  `result.handshakes` at six sites, and is named in no task. `test_create_trip_multistop.py` was
+  described as needing "the same rename", but line ~364 POSTs to the deleted
+  `/handshakes/h1/complete` and needed a genuine route retarget — and it is the regression guard for
+  Stage 2's NEW-10 (a created trip must be immediately advanceable), so weakening it was not an option.
+  Both folded into task 3.5.
+- **NEW-15 — coverage seam invisible to every per-task review.** `PhaseEventRead.from_event()` has
+  three call sites, each building its own stop map: the phases endpoint, `get_trip_detail`, and
+  `create_trip`. Only the first was covered. `stop_sequence`/`step_recipe` are exactly the fields
+  `model_validate()` leaves silently empty, and the latter two sites *are* the dispatcher contract
+  Stage 4 is built on. A regression on either would have left the whole suite green. Closed with
+  `test_create_trip_response_populates_derived_phase_fields` and
+  `test_get_trip_detail_phases_agree_with_creation_response` (which also asserts POST and GET describe
+  the same plan — the consistency bug task 3.4 fixed, previously unguarded). **Both passed on first
+  run: a coverage gap, not a live bug.**
+- **NEW-16 — a vacuous assertion in the new idempotency test.**
+  `test_replayed_complete_returns_200_and_does_not_duplicate` asserted `len(rows) == 1` after a
+  *primary-key* lookup — true by construction, and would have passed even if the replay had written an
+  entire extra plan. Strengthened to count the trip's phase rows across the replay and to assert
+  `completed_at` does not move.
+
+### NEW-17 — 🔴 S1's origin baseline is wrong on a multi-pickup → multi-drop trip
+
+Raised by Ciaran 2026-07-29, after the stage's tasks were complete; verified against
+`build_phase_plan` the same day. **Not fixed — recorded, because it is a product decision, not a
+mechanical one.**
+
+S1 defines `origin_count` as the nearest preceding `LOADING`. That is correct for the 3-stop hub shape
+it was reasoned against, where the final leg genuinely carries the final stop's cargo. It is **wrong**
+for a trip that picks up at several stops and *then* delivers at several — e.g. collect at Fedex JHB
+(stop 0) and RTT JHB (stop 1), deliver at RTT DBN (stop 2) and Fedex DBN (stop 3), a realistic LIFO
+load order.
+
+`build_phase_plan` handles that shape correctly — 13 rows, two `LOADING`, two `UNLOADING` — so
+generation is not the problem. The problem is reconciliation:
+
+```
+ 0 trip_creation  1 activation(0)  2 loading(0)  3 departure(0)  4 in_transit(0)
+ 5 loading(1)     6 departure(1)   7 in_transit(1)
+ 8 unloading(2)   9 departure(2)  10 in_transit(2)
+11 unloading(3)  12 confirmation(3)
+-> confirmation at seq 12 (stop 3 = Fedex DBN).
+-> S1 resolves LOADING seq 5 = stop 1 = RTT JHB.  WRONG CONSIGNMENT.
+```
+
+The final leg (stop 2 → stop 3) has **no loading of its own**, so "nearest preceding" reaches back to
+an unrelated pickup. The consequence is worse than the gap already recorded under S1's "known
+limitation": it does not merely skip a check, it **raises a false `WAYBILL_COUNT_MISMATCH` on a
+correct delivery**, which is an evidence-integrity problem — the ledger would record an anomaly that
+did not happen.
+
+**The fix is not a better sequence heuristic.** Reconciliation must be **per consignment**, not per
+leg. The data already exists: `Consignment.pickup_stop_id` / `delivery_stop_id` answer "what was
+loaded for this delivery" directly, with no inference from `sequence_number`. This belongs to
+**F1 / Stage 3-B (server-side reconciliation)** in §Out of scope, and this finding raises its
+priority: it should land before any real multi-pickup trip is run through the system. Until then,
+S1 is safe only on single-leg and hub-shaped trips.
+
+Not a Stage 3 regression — the pre-existing trip-wide `.scalar_one()` would have raised
+`MultipleResultsFound` on this shape rather than producing a wrong answer. Stage 3 turned a crash into
+a plausible-but-wrong number, which is arguably harder to notice; recorded here so it is not.
+
+### Carried into Stage 4 / later
+
+- **NEW-8's `_auto_complete_in_transit` stopgap** — unchanged this stage, deliberately. `in_transit` is
+  not driver-addressable and must stay that way until real checkpoint-Merkle-batch completion (parent
+  D2) lands. Still unowned, still needs a ticket.
+- **Server-side reconciliation (F1)** and **fatter anchor payloads (F4)** — deferred to a Stage 3-B
+  plan per §Out of scope, recorded there in full. S1's known limitation belongs to the first: an
+  intermediate `unloading` performs seal continuity but **no count reconciliation at all**, so
+  mid-route deliveries are never count-checked.
+- **`frontend/driver-pwa` dependencies are not installed**, so its gate silently no-ops. Fix before
+  Stage 5 relies on it.
+- **`frontend/shared/lib/types/handshake.ts`** — legacy, untouched as instructed, still awaiting its
+  last consumer's removal in Stages 4/5.
+- `TripConsignmentInput`'s missing per-consignment stop reference, multi-seal-layer modelling, and
+  immutability RLS guards — all unchanged from Stage 2's carry-forward.
+
+### "Done when" — assessment
+
+**Met.** A driver-authenticated client walks a 7-row single-leg plan entirely over live HTTP —
+`GET /phases`, then `POST /phases/{id}/complete` for each driver-addressable phase with ids resolved
+from the plan response — reaching `status == "closed"`, with `GET /phases/next` tracking the ledger and
+returning `null` at the end (`test_full_single_leg_walk_over_http_closes_the_trip`,
+`test_next_phase_tracks_the_ledger_and_returns_null_when_closed`). `stop_sequence`, `anchor_status` and
+`step_recipe` are populated on all three read paths. No `/handshakes` route remains in the app.
+
+**Stage 2's unmet "Done when" is now met:** the 11-row cross-dock plan walks its final phase and closes
+the trip (`test_cross_dock_plan_walks_to_closed`), which NEW-9 had blocked.
+
+One qualification, recorded rather than glossed: the cross-dock proof runs off a fixture that sets
+per-consignment stop references directly, because `TripConsignmentInput` still cannot express
+cross-dock routing over HTTP (carried from Stage 2, task 2.1a). The 11-row walk is proven at the
+service layer; the *HTTP* walk is proven on the 7-row single-leg shape.

@@ -1,13 +1,18 @@
-"""Integration tests: departure/confirmation handshake completion anchors to
+"""Integration tests: departure/confirmation phase completion anchors to
 Hedera HCS. D7/T5 (task 2.6) moved the anchor whole from loading to
-departure — see H3CompleteRequest/advance_departure in
-app/schemas/handshakes.py and app/orchestration/phase_service.py.
+departure — see DepartureCompleteRequest/advance_departure in
+app/schemas/phases.py and app/orchestration/phase_service.py.
 
 Mirrors tests/integration/test_trips_anchor.py's approach (patch HederaService
 at the app.blockchain.anchor_service import boundary) applied to the
-driver-JWT-authenticated handshake endpoints exercised in
-tests/integration/test_handshakes.py — this file reuses that module's seeding
-fixtures rather than DEMO_MODE auth, since H1-H5 require a real Driver row.
+driver-JWT-authenticated phase endpoints exercised in
+tests/integration/test_phases.py — this file reuses that module's seeding
+fixtures rather than DEMO_MODE auth, since these phases require a real Driver row.
+
+Filename kept as test_handshakes_anchor.py (not renamed to test_phases_anchor.py)
+because it tests anchoring POLICY (fail-open, receipt types, dispatcher-visible
+receipts), not routing — the routing surface itself is covered by
+tests/integration/test_phases.py.
 """
 
 import uuid
@@ -116,10 +121,23 @@ def _fake_hedera_receipt() -> HederaReceipt:
     )
 
 
+async def _phase_event_id(client: AsyncClient, trip_id, token, phase_type: str) -> str:
+    """Resolve a row's id from a real GET /phases call — never a hardcoded id
+    or a sequence-to-id mapping."""
+    resp = await client.get(f"/api/v1/trips/{trip_id}/phases", headers=auth_header(token))
+    row = next(p for p in resp.json() if p["phase_type"] == phase_type)
+    return row["id"]
+
+
 async def _complete_h1(client: AsyncClient, db_session, trip, token) -> None:
+    phase_event_id = await _phase_event_id(client, trip.id, token, "activation")
     resp = await client.post(
-        f"/api/v1/trips/{trip.id}/handshakes/h1/complete",
-        json={"driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001", "idempotency_key": str(uuid.uuid4())},
+        f"/api/v1/trips/{trip.id}/phases/{phase_event_id}/complete",
+        json={
+            "phase_type": "activation",
+            "driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001",
+            "idempotency_key": str(uuid.uuid4()),
+        },
         headers=auth_header(token),
     )
     assert resp.status_code == 200
@@ -128,13 +146,14 @@ async def _complete_h1(client: AsyncClient, db_session, trip, token) -> None:
 def _h2_payload() -> dict:
     # D7/T5 (task 2.6): loading no longer carries the seal — only the driver's
     # own visual count.
-    return {"driver_visual_count": 42, "idempotency_key": str(uuid.uuid4())}
+    return {"phase_type": "loading", "driver_visual_count": 42, "idempotency_key": str(uuid.uuid4())}
 
 
 def _h3_payload(waybill_id: str, seal_photo_id: str, **overrides: object) -> dict:
     # D7/T5: the seal (waybill photo, seal number, seal photo) is applied at
     # departure now, not loading.
     payload = {
+        "phase_type": "departure",
         "waybill_photo_artifact_id": waybill_id,
         "seal_number": "AB-1234",
         "seal_photo_artifact_id": seal_photo_id,
@@ -146,8 +165,9 @@ def _h3_payload(waybill_id: str, seal_photo_id: str, **overrides: object) -> dic
 
 
 async def _complete_h2(client: AsyncClient, db_session, trip, token) -> None:
+    phase_event_id = await _phase_event_id(client, trip.id, token, "loading")
     resp = await client.post(
-        f"/api/v1/trips/{trip.id}/handshakes/h2/complete",
+        f"/api/v1/trips/{trip.id}/phases/{phase_event_id}/complete",
         json=_h2_payload(),
         headers=auth_header(token),
     )
@@ -155,11 +175,11 @@ async def _complete_h2(client: AsyncClient, db_session, trip, token) -> None:
 
 
 async def test_h3_complete_anchors_and_returns_event_hash(client: AsyncClient, db_session, seed_trip):
-    """POST h3/complete → 200, with event_hash + blockchain_receipt_id set on
-    the DEPARTURE handshake in the response — the fields the driver-pwa's
+    """POST departure/complete → 200, with event_hash + blockchain_receipt_id set
+    on the DEPARTURE row in the response — the fields the driver-pwa's
     "anchored" badge reads. D7/T5 (task 2.6): the anchor moved whole from
     loading to departure, so this is now where it's produced; the loading
-    handshake in the same response must stay unanchored (regression guard
+    row in the same response must stay unanchored (regression guard
     that the anchor really moved, not just got duplicated)."""
     trip, driver = seed_trip
     token = make_token(sub=str(driver.id), role="driver")
@@ -167,23 +187,24 @@ async def test_h3_complete_anchors_and_returns_event_hash(client: AsyncClient, d
     await _complete_h2(client, db_session, trip, token)
     waybill_id = await _make_artifact(db_session, trip.id)
     seal_photo_id = await _make_artifact(db_session, trip.id)
+    departure_id = await _phase_event_id(client, trip.id, token, "departure")
 
     with patch("app.blockchain.anchor_service.HederaService") as MockService:
         MockService.return_value.submit_hash.return_value = _fake_hedera_receipt()
 
         resp = await client.post(
-            f"/api/v1/trips/{trip.id}/handshakes/h3/complete",
+            f"/api/v1/trips/{trip.id}/phases/{departure_id}/complete",
             json=_h3_payload(waybill_id, seal_photo_id),
             headers=auth_header(token),
         )
 
     assert resp.status_code == 200
     body = resp.json()
-    departure = next(h for h in body["handshakes"] if h["phase_type"] == "departure")
+    departure = next(h for h in body["phases"] if h["phase_type"] == "departure")
     assert departure["event_hash"] is not None
     assert departure["blockchain_receipt_id"] is not None
 
-    h2 = next(h for h in body["handshakes"] if h["phase_type"] == "loading")
+    h2 = next(h for h in body["phases"] if h["phase_type"] == "loading")
     assert h2["event_hash"] is None
     assert h2["blockchain_receipt_id"] is None
 
@@ -193,10 +214,11 @@ async def test_h3_complete_hedera_failure_still_returns_200_fail_open(
 ):
     """D7 (task 2.5's fail-open policy, wired into advance_departure for the
     first time in task 2.6): unlike the old H2 fail-closed anchor, a Hedera
-    failure during H3 must NOT block the phase from completing or the trip
-    from advancing — the seal event already happened. No 504/502 here; the
-    endpoint doesn't even catch HederaTimeoutError/HederaServiceError for h3,
-    because advance_departure -> _anchor_or_fail_open never lets one escape.
+    failure during departure completion must NOT block the phase from
+    completing or the trip from advancing — the seal event already happened.
+    No 504/502 here; the endpoint doesn't even catch
+    HederaTimeoutError/HederaServiceError for departure, because
+    advance_departure -> _anchor_or_fail_open never lets one escape.
     """
     trip, driver = seed_trip
     token = make_token(sub=str(driver.id), role="driver")
@@ -204,19 +226,20 @@ async def test_h3_complete_hedera_failure_still_returns_200_fail_open(
     await _complete_h2(client, db_session, trip, token)
     waybill_id = await _make_artifact(db_session, trip.id)
     seal_photo_id = await _make_artifact(db_session, trip.id)
+    departure_id = await _phase_event_id(client, trip.id, token, "departure")
 
     with patch("app.blockchain.anchor_service.HederaService") as MockService:
         MockService.return_value.submit_hash.side_effect = HederaTimeoutError("Simulated Hedera timeout")
 
         resp = await client.post(
-            f"/api/v1/trips/{trip.id}/handshakes/h3/complete",
+            f"/api/v1/trips/{trip.id}/phases/{departure_id}/complete",
             json=_h3_payload(waybill_id, seal_photo_id),
             headers=auth_header(token),
         )
 
     assert resp.status_code == 200
     body = resp.json()
-    departure = next(h for h in body["handshakes"] if h["phase_type"] == "departure")
+    departure = next(h for h in body["phases"] if h["phase_type"] == "departure")
     assert departure["status"] == "completed"
     assert departure["blockchain_receipt_id"] is None  # retry owed, not raised
     # Read the trip's advancement straight off the response body rather than
@@ -230,27 +253,28 @@ async def test_h3_complete_hedera_failure_still_returns_200_fail_open(
 async def test_trip_detail_lists_h3_handshake_receipt_for_dispatcher(
     client: AsyncClient, db_session, seed_trip,
 ):
-    """The driver→dispatcher anchoring link: after H3 anchors, GET /trips/{id}
-    (the dispatcher portal's data source) must list the PHASE_EVENT receipt
-    in blockchain_receipts. resource_service.get_trip_detail used to filter
-    subject_type == TRIP only, silently hiding every driver-anchored receipt
-    from the dispatcher's per-trip evidence view."""
+    """The driver→dispatcher anchoring link: after departure anchors, GET
+    /trips/{id} (the dispatcher portal's data source) must list the
+    PHASE_EVENT receipt in blockchain_receipts. resource_service.get_trip_detail
+    used to filter subject_type == TRIP only, silently hiding every
+    driver-anchored receipt from the dispatcher's per-trip evidence view."""
     trip, driver = seed_trip
     driver_token = make_token(sub=str(driver.id), role="driver")
     await _complete_h1(client, db_session, trip, driver_token)
     await _complete_h2(client, db_session, trip, driver_token)
     waybill_id = await _make_artifact(db_session, trip.id)
     seal_photo_id = await _make_artifact(db_session, trip.id)
+    departure_id = await _phase_event_id(client, trip.id, driver_token, "departure")
 
     with patch("app.blockchain.anchor_service.HederaService") as MockService:
         MockService.return_value.submit_hash.return_value = _fake_hedera_receipt()
         h3_resp = await client.post(
-            f"/api/v1/trips/{trip.id}/handshakes/h3/complete",
+            f"/api/v1/trips/{trip.id}/phases/{departure_id}/complete",
             json=_h3_payload(waybill_id, seal_photo_id),
             headers=auth_header(driver_token),
         )
     assert h3_resp.status_code == 200
-    departure = next(h for h in h3_resp.json()["handshakes"] if h["phase_type"] == "departure")
+    departure = next(h for h in h3_resp.json()["phases"] if h["phase_type"] == "departure")
 
     # Receipts are role-gated (FP-115): only admin_dispatcher sees the full list,
     # so the read side authenticates as an admin in the trip's operator org.

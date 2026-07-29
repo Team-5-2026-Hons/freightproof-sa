@@ -46,6 +46,7 @@ phases but are not themselves committed to chain.
 
 import logging
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -53,7 +54,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.blockchain.anchor_service import anchor_subject, compute_payload_hash
-from app.core.exceptions import HederaServiceError, HederaTimeoutError, PhaseSequenceError, ResourceNotFoundError
+from app.core.exceptions import (
+    HederaServiceError, HederaTimeoutError, PhaseSequenceError, PhaseTypeMismatchError,
+    ResourceNotFoundError,
+)
 from app.db.models.enums import (
     AnchorStatus, BlockchainReceiptType, ExceptionSeverity, ExceptionSource, ExceptionType,
     PhaseStatus, PhaseType, SubjectType, TripStatus,
@@ -62,8 +66,9 @@ from app.db.models.phases import PhaseEvent
 from app.db.models.transit import TripException
 from app.db.models.trips import Trip, TripStop
 from app.orchestration.resource_service import get_trip_detail
-from app.schemas.handshakes import (
-    H1CompleteRequest, H2CompleteRequest, H3CompleteRequest, H4CompleteRequest, H5CompleteRequest,
+from app.schemas.phases import (
+    ActivationCompleteRequest, ConfirmationCompleteRequest, DepartureCompleteRequest,
+    LoadingCompleteRequest, PhaseCompleteRequest, UnloadingCompleteRequest,
 )
 from app.schemas.trips import TripDetailResponse
 
@@ -222,38 +227,9 @@ async def _finish_phase(
     return await get_trip_detail(db, trip_id=trip.id, operator_organization_id=trip.operator_organization_id)
 
 
-async def get_handshake_detail(
-    db: AsyncSession, *, trip_id: uuid.UUID, handshake_type: PhaseType, driver_id: uuid.UUID,
-) -> PhaseEvent:
-    """Scoped to the calling driver's own trip — without this, any active driver
-    could read another driver's GPS, seal, and count data for any trip_id they
-    came across (e.g. from a gate QR code or dispatch chatter). Raises
-    ResourceNotFoundError (mapped to 404, not 403, by the caller) on a
-    trip-ownership mismatch so the response never confirms another driver's
-    trip exists.
-
-    Unchanged (trip_id, phase_type) lookup — retires whole in Stage 3.1 when
-    the phase_event_id-addressed GET route lands (T2's own carve-out)."""
-    trip_result = await db.execute(
-        select(Trip).where(Trip.id == trip_id, Trip.driver_id == driver_id)
-    )
-    if trip_result.scalar_one_or_none() is None:
-        raise ResourceNotFoundError("Trip", str(trip_id))
-
-    result = await db.execute(
-        select(PhaseEvent).where(
-            PhaseEvent.trip_id == trip_id, PhaseEvent.phase_type == handshake_type,
-        )
-    )
-    event = result.scalar_one_or_none()
-    if event is None:
-        raise ResourceNotFoundError("HandshakeEvent", handshake_type.value)
-    return event
-
-
 async def advance_activation(
     db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID, phase_event_id: uuid.UUID,
-    payload: H1CompleteRequest,
+    payload: ActivationCompleteRequest,
 ) -> TripDetailResponse:
     gated = await _gate_and_load(
         db, trip_id=trip_id, driver_id=driver_id, phase_event_id=phase_event_id,
@@ -302,7 +278,7 @@ def compute_departure_canonical_payload(
 
 async def advance_loading(
     db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID, phase_event_id: uuid.UUID,
-    payload: H2CompleteRequest,
+    payload: LoadingCompleteRequest,
 ) -> TripDetailResponse:
     gated = await _gate_and_load(
         db, trip_id=trip_id, driver_id=driver_id, phase_event_id=phase_event_id,
@@ -384,9 +360,43 @@ async def _find_departure_for_leg(
     return departure
 
 
+async def _find_loading_for_leg(
+    db: AsyncSession, *, trip_id: uuid.UUID, before_sequence: int,
+) -> PhaseEvent:
+    """The LOADING row that loaded the leg ending at `before_sequence` — decision S1.
+
+    Same shape and same reason as _find_departure_for_leg: a cross-dock trip has
+    several LOADING rows, so a trip-wide phase_type lookup raises
+    MultipleResultsFound (NEW-9 in Stage 2's Findings ledger).
+
+    Semantics, not just mechanics: confirmation reconciles what was loaded onto
+    the FINAL leg against what arrived at the final stop. Cargo picked up earlier
+    and dropped at an intermediate stop left the vehicle before this leg began —
+    counting it would guarantee a false mismatch. Cargo dropped mid-route is not
+    count-reconciled at all today; that is F1 / Stage 3.3, deliberately deferred.
+
+    Caller contract: `before_sequence` must be the sequence_number of the
+    confirmation's OWN row. Passing anything else silently resolves the wrong leg.
+    """
+    result = await db.execute(
+        select(PhaseEvent)
+        .where(
+            PhaseEvent.trip_id == trip_id,
+            PhaseEvent.phase_type == PhaseType.LOADING,
+            PhaseEvent.sequence_number < before_sequence,
+        )
+        .order_by(PhaseEvent.sequence_number.desc())
+        .limit(1)
+    )
+    loading = result.scalar_one_or_none()
+    if loading is None:
+        raise ResourceNotFoundError("PhaseEvent", "loading")
+    return loading
+
+
 async def advance_departure(
     db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID, phase_event_id: uuid.UUID,
-    payload: H3CompleteRequest,
+    payload: DepartureCompleteRequest,
 ) -> TripDetailResponse:
     gated = await _gate_and_load(
         db, trip_id=trip_id, driver_id=driver_id, phase_event_id=phase_event_id,
@@ -456,7 +466,7 @@ async def advance_departure(
 
 async def advance_unloading(
     db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID, phase_event_id: uuid.UUID,
-    payload: H4CompleteRequest,
+    payload: UnloadingCompleteRequest,
 ) -> TripDetailResponse:
     gated = await _gate_and_load(
         db, trip_id=trip_id, driver_id=driver_id, phase_event_id=phase_event_id,
@@ -523,7 +533,7 @@ def compute_confirmation_canonical_payload(
 
 async def advance_confirmation(
     db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID, phase_event_id: uuid.UUID,
-    payload: H5CompleteRequest,
+    payload: ConfirmationCompleteRequest,
 ) -> TripDetailResponse:
     gated = await _gate_and_load(
         db, trip_id=trip_id, driver_id=driver_id, phase_event_id=phase_event_id,
@@ -533,16 +543,12 @@ async def advance_confirmation(
         return gated
     trip, event = gated
 
-    # Origin-count baseline is unaffected by T5 — driver_visual_count never
-    # moves off advance_loading, so this keeps reading the trip's LOADING row
-    # exactly as today (unchanged for the rest of this stage too, per T5's text).
-    h2_result = await db.execute(
-        select(PhaseEvent).where(
-            PhaseEvent.trip_id == trip_id, PhaseEvent.phase_type == PhaseType.LOADING,
-        )
+    # S1 / NEW-9: this leg's loading, not the trip's. A trip-wide phase_type
+    # lookup raised MultipleResultsFound on every real cross-dock trip.
+    loading_event = await _find_loading_for_leg(
+        db, trip_id=trip_id, before_sequence=event.sequence_number,
     )
-    h2_event = h2_result.scalar_one()
-    origin_count = h2_event.driver_visual_count
+    origin_count = loading_event.driver_visual_count
 
     event.pod_photo_artifact_id = payload.pod_photo_artifact_id
     event.pod_signature_artifact_id = payload.pod_signature_artifact_id
@@ -587,3 +593,89 @@ async def advance_confirmation(
     trip.actual_arrival_at = trip.actual_arrival_at or datetime.now(UTC)
 
     return await _finish_phase(db, trip=trip, event=event, idempotency_key=payload.idempotency_key)
+
+
+# Decision S6: the single entry point the API calls. The five wrappers stay —
+# each writes genuinely different evidence (Stage 2's T1) — but the phase-type
+# dispatch and the body/row cross-check live exactly once, here.
+# Per-wrapper payload types differ, so the table is typed by its shared contract
+# rather than per-member: complete_phase has already proven actual == payload.phase_type
+# before dispatching, which is the check a precise signature would have given us.
+_WrapperFn = Callable[..., Awaitable[TripDetailResponse]]
+_WRAPPER_BY_PHASE_TYPE: dict[PhaseType, _WrapperFn] = {
+    PhaseType.ACTIVATION: advance_activation,
+    PhaseType.LOADING: advance_loading,
+    PhaseType.DEPARTURE: advance_departure,
+    PhaseType.UNLOADING: advance_unloading,
+    PhaseType.CONFIRMATION: advance_confirmation,
+}
+
+
+async def complete_phase(
+    db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID,
+    phase_event_id: uuid.UUID, payload: PhaseCompleteRequest,
+) -> TripDetailResponse:
+    """Complete the addressed phase. Idempotent by payload.idempotency_key.
+
+    Raises PhaseTypeMismatchError when the body's phase_type does not match the
+    addressed row's — including when the row is trip_creation or in_transit,
+    neither of which any driver action completes (create_trip writes the first;
+    advance_departure's NEW-8 stopgap writes the second).
+    """
+    # Ownership BEFORE the type cross-check, not after. The wrappers below all
+    # gate on it too, but PhaseTypeMismatchError returns ahead of them, and its
+    # 409 body names the row's real phase_type — so without this line a driver
+    # holding someone else's trip_id/phase_event_id could probe a foreign trip's
+    # plan by sending a deliberately wrong phase_type and reading the error.
+    # A non-owner must get the same 404 as for a trip that does not exist.
+    await _load_trip_for_driver(db, trip_id=trip_id, driver_id=driver_id)
+    event = await _load_phase_event(db, trip_id=trip_id, phase_event_id=phase_event_id)
+    actual = PhaseType(event.phase_type)
+    if actual != payload.phase_type:
+        raise PhaseTypeMismatchError(expected=actual.value, received=payload.phase_type.value)
+
+    wrapper = _WRAPPER_BY_PHASE_TYPE.get(actual)
+    if wrapper is None:
+        # Unreachable via the API (the union has no member for these types), but
+        # a direct service caller must get the same clear error, not a KeyError.
+        raise PhaseTypeMismatchError(expected=actual.value, received=payload.phase_type.value)
+
+    return await wrapper(
+        db, trip_id=trip_id, driver_id=driver_id,
+        phase_event_id=phase_event_id, payload=payload,
+    )
+
+
+async def next_phase(
+    db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID,
+) -> PhaseEvent | None:
+    """The lowest-sequence unresolved row — decision S7.
+
+    Re-derived from the ledger, never read off trip.current_phase: the cache is a
+    cache (parent §2.3), and if it ever diverges this endpoint tells the truth
+    instead of laundering the divergence. Returns None for a closed trip.
+    """
+    await _load_trip_for_driver(db, trip_id=trip_id, driver_id=driver_id)
+    result = await db.execute(
+        select(PhaseEvent)
+        .where(PhaseEvent.trip_id == trip_id)
+        .order_by(PhaseEvent.sequence_number)
+    )
+    for event in result.scalars().all():
+        if not _is_resolved(PhaseStatus(event.status)):
+            return event
+    return None
+
+
+async def list_phases(
+    db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID,
+) -> list[PhaseEvent]:
+    """The trip's committed plan, in plan order. Length is data — never sliced,
+    never padded to six."""
+    await _load_trip_for_driver(db, trip_id=trip_id, driver_id=driver_id)
+    result = await db.execute(
+        select(PhaseEvent)
+        .where(PhaseEvent.trip_id == trip_id)
+        .order_by(PhaseEvent.sequence_number)
+    )
+    return list(result.scalars().all())

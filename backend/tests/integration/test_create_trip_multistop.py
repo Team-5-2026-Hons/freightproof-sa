@@ -360,9 +360,24 @@ async def test_create_trip_output_is_immediately_advanceable(client: AsyncClient
     trip_id = create_resp.json()["id"]
 
     driver_token = make_token(sub=str(seed_data["driver_id"]), role="driver")
+
+    # Resolve the activation row's real id from a live GET /phases call —
+    # never a hardcoded id or an assumed sequence-to-id mapping. The route
+    # itself is retargeted from the deleted /handshakes/h1/complete to the
+    # new phase-plan endpoint (task 3.3).
+    phases_resp = await client.get(
+        f"/api/v1/trips/{trip_id}/phases",
+        headers=auth_header(driver_token),
+    )
+    assert phases_resp.status_code == 200
+    activation_id = next(
+        p["id"] for p in phases_resp.json() if p["phase_type"] == "activation"
+    )
+
     h1_resp = await client.post(
-        f"/api/v1/trips/{trip_id}/handshakes/h1/complete",
+        f"/api/v1/trips/{trip_id}/phases/{activation_id}/complete",
         json={
+            "phase_type": "activation",
             "driver_phone_lat": "0.0001",
             "driver_phone_lng": "0.0001",
             "idempotency_key": str(uuid.uuid4()),

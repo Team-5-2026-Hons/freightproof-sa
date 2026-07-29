@@ -24,7 +24,7 @@ from app.db.models.vehicles import Vehicle
 from app.orchestration.phase_plan import ANCHORED_PHASES, PlanStop, build_phase_plan
 from app.orchestration.resource_service import get_trip_detail
 from app.schemas.blockchain import BlockchainReceiptRead
-from app.schemas.handshakes import HandshakeEventRead
+from app.schemas.phases import PhaseEventRead
 from app.schemas.people import DriverRead, UserRead
 from app.schemas.trips import ConsignmentRead, TripCreateRequest, TripDetailResponse, TripStopCreate, TripStopRead
 from app.schemas.vehicles import VehicleRead
@@ -405,7 +405,13 @@ async def create_trip(
         planned_arrival_at=trip.planned_arrival_at,
         actual_arrival_at=trip.actual_arrival_at,
         closed_at=trip.closed_at,
-        handshakes=[HandshakeEventRead.model_validate(h0)],
+        # The full committed plan, not just H0. POST and GET must describe the same
+        # trip: returning one row here while GET /trips/{id} returns seven made the
+        # phase list look like it grew between two reads of an unchanged trip.
+        phases=[
+            PhaseEventRead.from_event(e, stop_sequence_by_id={s.id: s.sequence for s in trip_stops})
+            for e in phase_events
+        ],
         exceptions=[],
         blockchain_receipts=[BlockchainReceiptRead.model_validate(receipt)],
         warnings=[r.warning for r in consignment_results if r.warning],

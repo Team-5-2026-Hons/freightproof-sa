@@ -155,7 +155,7 @@ def _fake_trip_detail() -> TripDetailResponse:
         planned_arrival_at=None,
         actual_arrival_at=None,
         closed_at=None,
-        handshakes=[],
+        phases=[],
         exceptions=[],
         blockchain_receipts=[_fake_receipt()],
         created_at=_NOW,
