@@ -77,9 +77,9 @@ export default function SLAPage() {
           </Card>
 
           <Card className="p-5">
-            <p className="text-[11px] font-[700] uppercase tracking-[0.1em] text-on-surf-v mb-4">Handshake completion rate</p>
+            <p className="text-[11px] font-[700] uppercase tracking-[0.1em] text-on-surf-v mb-4">Phase completion rate</p>
             {metrics ? (
-              <p className="text-[28px] font-[800] text-on-surf">{metrics.handshakeCompletionPct}%</p>
+              <p className="text-[28px] font-[800] text-on-surf">{metrics.phaseCompletionPct}%</p>
             ) : (
               <EmptyState icon={<Ic n="check" s={24} className="text-on-surf-v" />} title="No data" body="No trips in this period." />
             )}

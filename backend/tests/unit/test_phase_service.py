@@ -754,7 +754,7 @@ async def test_confirmation_anchors_fail_open_on_hedera_timeout(
     propagate; see test_departure_anchors_fail_open_on_hedera_timeout below
     for the equivalent proof at departure (task 2.6, where _anchor_or_fail_open
     was wired in for the first time). The phase (and, via
-    _recompute_position, the trip) still completes; only anchor_status records
+    recompute_position, the trip) still completes; only anchor_status records
     the retry-owed debt. Parametrized over both exception types
     _anchor_or_fail_open's except clause catches — HederaServiceError is the
     parent of HederaTimeoutError, so both branches are cheap insurance against
@@ -810,7 +810,7 @@ async def test_advance_confirmation_count_mismatch_creates_exception_but_still_c
 @pytest.mark.asyncio
 async def test_replayed_confirmation_that_closed_trip_is_idempotent_not_409(db_session, trip_fixture):
     """The count-mismatch branch sets the confirmation row to EXCEPTION and
-    lets the trip close (_recompute_position finds nothing unresolved left).
+    lets the trip close (recompute_position finds nothing unresolved left).
     A replay of that exact completion (same phase_event_id/idempotency_key)
     must still return the idempotent 200 Task 2.4 promises — not a 409 from
     the trip.status == CLOSED check, which the replay short-circuit must run

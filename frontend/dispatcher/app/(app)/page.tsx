@@ -22,10 +22,10 @@ import { ROUTES }         from '@/lib/constants/routes'
 import { COPY }           from '@shared/lib/constants/copy'
 import type { TripStatus } from '@shared/lib/types/trip'
 
-const ACTIVE_STATUSES: TripStatus[] = [
-  'created', 'origin_gate_in', 'loading', 'origin_gate_out',
-  'in_transit', 'dest_gate_in', 'unloading', 'exception_hold',
-]
+// Coarse since Stage 2 (parent §2.3): `active` is every trip between creation and
+// closure. The old list enumerated six per-step statuses from the pre-phase model
+// that no longer exist, so every advanced trip silently disappeared from this dashboard.
+const ACTIVE_STATUSES: TripStatus[] = ['created', 'active', 'exception_hold']
 
 type ColId = keyof ColWidths
 

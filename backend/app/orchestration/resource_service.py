@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ResourceNotFoundError
 from app.db.models.blockchain import BlockchainReceipt
-from app.db.models.enums import SubjectType, TripStatus, TripType
+from app.db.models.enums import PhaseStatus, SubjectType, TripStatus, TripType
 from app.db.models.phases import PhaseEvent
 from app.db.models.organisations import Precinct
 from app.db.models.people import Driver
@@ -103,6 +103,24 @@ async def list_trips(
     )
     exc_counts: dict[uuid.UUID, int] = {row[0]: row[1] for row in exc_result.all()}
 
+    # Same batching shape as exc_counts above: one grouped query for the page.
+    # `completed` here means "resolved" in the ledger's sense — an overridden phase
+    # will never be revisited either, so it counts as done for a progress bar.
+    plan_result = await db.execute(
+        select(
+            PhaseEvent.trip_id,
+            func.count(PhaseEvent.id),
+            func.count(PhaseEvent.id).filter(
+                PhaseEvent.status.in_([PhaseStatus.COMPLETED, PhaseStatus.OVERRIDDEN])
+            ),
+        )
+        .where(PhaseEvent.trip_id.in_(trip_ids))
+        .group_by(PhaseEvent.trip_id)
+    )
+    plan_counts: dict[uuid.UUID, tuple[int, int]] = {
+        row[0]: (row[1], row[2]) for row in plan_result.all()
+    }
+
     return [
         TripListItemResponse(
             id=t.id,
@@ -120,6 +138,10 @@ async def list_trips(
             planned_arrival_at=t.planned_arrival_at,
             actual_arrival_at=t.actual_arrival_at,
             open_exception_count=exc_counts.get(t.id, 0),
+            current_phase=t.current_phase,
+            current_stop=t.current_stop,
+            phase_total=plan_counts.get(t.id, (0, 0))[0],
+            phase_completed=plan_counts.get(t.id, (0, 0))[1],
             created_at=t.created_at,
             updated_at=t.updated_at,
         )
@@ -236,6 +258,8 @@ async def get_trip_detail(
         planned_arrival_at=trip.planned_arrival_at,
         actual_arrival_at=trip.actual_arrival_at,
         closed_at=trip.closed_at,
+        current_phase=trip.current_phase,
+        current_stop=trip.current_stop,
         phases=[
             PhaseEventRead.from_event(e, stop_sequence_by_id=stop_sequence_by_id)
             for e in phase_events

@@ -119,41 +119,7 @@ export interface PhaseStep {
   displayName: string
 }
 
-// Trip detail under the phase model — mirrors backend TripDetailResponse once Stage 3.2
-// lands. Differs from ./trip.ts Trip in exactly three ways:
-//   - `handshakes: HandshakeEvent[]`  becomes  `phases: PhaseDescriptor[]`
-//   - `status` narrows to the coarse set
-//   - `current_phase` / `current_stop` appear as denormalised caches (parent D6)
-//
-// current_phase and current_stop are CACHES of the ledger derivation, never sources of
-// truth. Read paths may use them for lists and filters; no write path may branch on them.
-export interface TripWithPhases {
-  id: TripId
-  trip_reference: string
-  order_number: string
-  status: CoarseTripStatus
-  trip_type: TripType
-  journey_lock_hash: string | null
-  idvs_check_status: 'pending' | 'verified' | 'failed'
-  origin_precinct_id: string
-  destination_precinct_id: string
-  stops: TripStop[]
-  consignments: ConsignmentRead[]
-  pulsit_trip_reference_id: string | null
-  planned_departure_at: string | null
-  actual_departure_at: string | null
-  planned_arrival_at: string | null
-  actual_arrival_at: string | null
-  closed_at: string | null
-  driver: Driver | null
-  horse: Vehicle | null
-  trailers: Vehicle[]
-  phases: PhaseDescriptor[]
-  current_phase: PhaseType | null
-  current_stop: number | null
-  exceptions: TripException[]
-  blockchain_receipts: BlockchainReceipt[]
-  warnings: string[]
-  created_at: string
-  updated_at: string
-}
+// Trip detail under the phase model lives in ./trip.ts as `Trip` — this file used to
+// carry a forward declaration of it (`TripWithPhases`) while the old handshake-shaped
+// Trip still existed. Stage 4 cut that over, so the forward declaration is gone:
+// two structurally identical interfaces is exactly the halfway state to avoid.

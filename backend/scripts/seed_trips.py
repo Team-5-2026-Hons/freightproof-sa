@@ -19,13 +19,14 @@ Usage:
 
 import asyncio
 import uuid
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import settings
 from app.db.models.enums import (
-    AnchorStatus, IdvsStatus, PhaseStatus, TripStatus, TripType, VehicleType,
+    AnchorStatus, IdvsStatus, PhaseStatus, PhaseType, TripStatus, TripType, VehicleType,
 )
 from app.db.models.organisations import Precinct
 from app.db.models.people import Driver, User
@@ -37,6 +38,8 @@ from app.orchestration.phase_plan import ANCHORED_PHASES, PlanStop, build_phase_
 _CPT = "Cape Town Depot (Epping)"
 _BFN = "Bloemfontein Depot (Hamilton)"
 _JHB = "Johannesburg Depot (Linbro)"
+# Format enforced by schemas/phases.py _SEAL_PATTERN — XX-####.
+_DEMO_SEAL = "FP-4471"
 
 
 async def _reference(db: AsyncSession):
@@ -64,12 +67,20 @@ async def _reference(db: AsyncSession):
 async def _seed_trip(
     db: AsyncSession, *, reference, trip_reference: str, order_number: str,
     precinct_names: list[str], consignment_legs: list[tuple[str, int, int]],
+    advance_through: int | None = None,
 ) -> Trip:
     """Create one trip: stops, trailer link, consignments, and the full phase plan.
 
     `consignment_legs` is [(pp_reference, pickup_stop_seq, delivery_stop_seq), ...].
     A stop's routing role is derived from these, exactly as Stage 2.1 will derive it
     from the real consignment rows — the generator never sees a stop "type".
+
+    `advance_through` marks every row up to and including that sequence_number as
+    COMPLETED and sets the trip ACTIVE (U9). It exists so the dispatcher has an
+    in-flight trip to render: both other seeds are all-PENDING, which never shows a
+    derived-active marker on screen. It deliberately does NOT go through
+    advance_phase — see this module's docstring — so it writes evidence fields
+    directly and performs no gating, anchoring or reconciliation.
     """
     user, driver, horse, trailer, precincts = reference
 
@@ -137,12 +148,45 @@ async def _seed_trip(
         ))
 
     # Cache seeded from the ledger, never independently: the current phase is the
-    # lowest-sequence row that is not completed, which on a fresh plan is row 0.
-    trip.current_phase = plan[0].phase_type.value
-    trip.current_stop = plan[0].stop_sequence
+    # lowest-sequence row that is not resolved.
+    events = sorted(
+        (await db.execute(
+            select(PhaseEvent).where(PhaseEvent.trip_id == trip.id)
+        )).scalars().all(),
+        key=lambda e: e.sequence_number,
+    )
+
+    if advance_through is not None:
+        walked_at = datetime(2026, 7, 30, 6, 0, tzinfo=UTC)
+        for event in events:
+            if event.sequence_number > advance_through:
+                break
+            event.status = PhaseStatus.COMPLETED
+            event.completed_at = walked_at + timedelta(minutes=event.sequence_number * 20)
+            # Evidence the dispatcher's panels actually read, written only where the
+            # phase model says it is captured: the seal at departure (D7/§2.6), the
+            # driver's count at loading. Nothing here is anchored.
+            if event.phase_type == PhaseType.DEPARTURE:
+                event.seal_number = _DEMO_SEAL
+            elif event.phase_type == PhaseType.LOADING:
+                event.driver_visual_count = 12
+                event.parcel_count_origin = 12
+        trip.status = TripStatus.ACTIVE
+
+    current = next((e for e in events if e.status != PhaseStatus.COMPLETED), None)
+    # event.phase_type comes back as a plain str after the bulk PhaseEvent insert
+    # (insertmanyvalues repopulates every column from the RETURNING row, not just
+    # server-generated ones) — coerce before .value, matching the same guard in
+    # complete_phase (phase_service.py: `actual = PhaseType(event.phase_type)`).
+    trip.current_phase = PhaseType(current.phase_type).value if current is not None else None
+    trip.current_stop = (
+        None if current is None or current.trip_stop_id is None
+        else next(s.sequence for s in stops if s.id == current.trip_stop_id)
+    )
     await db.flush()
 
-    print(f"  {trip_reference:<22} {len(plan):>2} phases  ({len(stops)} stops)")
+    print(f"  {trip_reference:<22} {len(plan):>2} phases  ({len(stops)} stops)"
+          f"{'' if advance_through is None else f'  advanced through seq {advance_through}'}")
     return trip
 
 
@@ -168,6 +212,23 @@ async def seed() -> None:
                     ("MOCKWB0003", 1, 2),   # B: dropped at the hub
                     ("MOCKWB0004", 2, 3),   # C: collected at the hub
                 ],
+            )
+            # The in-flight trip. Same 3-stop cross-dock shape as XDOCK (11 rows),
+            # walked through seq 4 — trip_creation, activation, loading, departure
+            # and the leg-1 in_transit are done; the trip sits at `unloading` at
+            # stop 2. This is the trip a reviewer is walked through: it is the only
+            # seed on which the derived-active marker, the coarse `active` status
+            # filter, and a real seal + parcel count are all visible at once.
+            await _seed_trip(
+                db, reference=reference,
+                trip_reference="FP-DEMO-ACTIVE-0001", order_number="ORD-DEMO-ACTIVE-0001",
+                precinct_names=[_CPT, _BFN, _JHB],
+                consignment_legs=[
+                    ("MOCKWB0005", 1, 3),   # A: straight through
+                    ("MOCKWB0006", 1, 2),   # B: dropped at the hub
+                    ("MOCKWB0007", 2, 3),   # C: collected at the hub
+                ],
+                advance_through=4,
             )
             await db.commit()
             print("Trip seed complete.")

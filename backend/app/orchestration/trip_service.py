@@ -22,6 +22,7 @@ from app.db.models.people import Driver
 from app.db.models.trips import Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.orchestration.phase_plan import ANCHORED_PHASES, PlanStop, build_phase_plan
+from app.orchestration.phase_service import recompute_position
 from app.orchestration.resource_service import get_trip_detail
 from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.phases import PhaseEventRead
@@ -371,6 +372,12 @@ async def create_trip(
     h0.event_hash = compute_payload_hash(canonical)
     h0.anchor_status = AnchorStatus.ANCHORED
 
+    # U4: derive the cache from the ledger now that h0 is resolved. Note this call
+    # would also CLOSE a trip whose every phase is resolved — unreachable here,
+    # because build_phase_plan always emits at least `activation` after h0, and the
+    # test asserts status is still CREATED so the day that changes it fails loudly.
+    await recompute_position(db, trip)
+
     await db.flush()
     await db.refresh(trip)
     await db.refresh(h0)
@@ -405,6 +412,8 @@ async def create_trip(
         planned_arrival_at=trip.planned_arrival_at,
         actual_arrival_at=trip.actual_arrival_at,
         closed_at=trip.closed_at,
+        current_phase=trip.current_phase,
+        current_stop=trip.current_stop,
         # The full committed plan, not just H0. POST and GET must describe the same
         # trip: returning one row here while GET /trips/{id} returns seven made the
         # phase list look like it grew between two reads of an unchanged trip.

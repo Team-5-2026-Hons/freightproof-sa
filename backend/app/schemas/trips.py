@@ -199,6 +199,14 @@ class TripListItemResponse(BaseModel):
     planned_arrival_at: Optional[datetime] = None
     actual_arrival_at: Optional[datetime] = None
     open_exception_count: int
+    # The list view carries no phase plan, so it cannot derive position at all —
+    # these four are the only thing that lets a row read "Unloading · stop 2 · 6/11".
+    # phase_total is the plan's OWN length: 7 on a single-leg trip, 11 on a
+    # cross-dock one. Nothing may assume either number.
+    current_phase: Optional[str] = None
+    current_stop: Optional[int] = None
+    phase_total: int
+    phase_completed: int
     created_at: datetime
     updated_at: datetime
 
@@ -398,6 +406,11 @@ class TripDetailResponse(BaseModel):
     planned_arrival_at: Optional[datetime] = None
     actual_arrival_at: Optional[datetime] = None
     closed_at: Optional[datetime] = None
+    # Denormalised position cache (parent D6). READ PATH ONLY — the ledger in
+    # `phases` below is the truth, and the dispatcher's trip-detail view derives
+    # the active phase from it. These exist so list views need not recompute.
+    current_phase: Optional[str] = None
+    current_stop: Optional[int] = None
     phases: list[PhaseEventRead]
     exceptions: list[TripExceptionRead]
     blockchain_receipts: list[BlockchainReceiptRead]

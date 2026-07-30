@@ -156,10 +156,14 @@ async def _gate_and_load(
     return trip, event
 
 
-async def _recompute_position(db: AsyncSession, trip: Trip) -> None:
-    """Steps 8-9 of parent §2.4. trip_stop_id is a FK, not the sequence int
-    D6 wants cached — the join to TripStop.sequence is why this can't be a
-    plain PhaseEvent-only query."""
+async def recompute_position(db: AsyncSession, trip: Trip) -> None:
+    """Steps 8-9 of parent §2.4. Public because create_trip must seed the cache the
+    moment the plan exists (U4) — before this, a freshly created trip reported
+    current_phase = NULL until its first advance.
+
+    trip_stop_id is a FK, not the sequence int D6 wants cached — the join to
+    TripStop.sequence is why this can't be a plain PhaseEvent-only query.
+    """
     result = await db.execute(
         select(PhaseEvent.phase_type, PhaseEvent.status, TripStop.sequence)
         .outerjoin(TripStop, TripStop.id == PhaseEvent.trip_stop_id)
@@ -222,7 +226,7 @@ async def _finish_phase(
 ) -> TripDetailResponse:
     event.idempotency_key = idempotency_key
     event.completed_at = event.completed_at or datetime.now(UTC)
-    await _recompute_position(db, trip)
+    await recompute_position(db, trip)
     await db.flush()
     return await get_trip_detail(db, trip_id=trip.id, operator_organization_id=trip.operator_organization_id)
 
@@ -501,7 +505,7 @@ async def advance_unloading(
     else:
         event.status = PhaseStatus.COMPLETED
         # No LEGACY trip.status assignment here (DEST_GATE_IN is deleted, T6) —
-        # the trip simply stays ACTIVE; _recompute_position derives the ledger
+        # the trip simply stays ACTIVE; recompute_position derives the ledger
         # position generically.
 
     return await _finish_phase(db, trip=trip, event=event, idempotency_key=payload.idempotency_key)
@@ -587,7 +591,7 @@ async def advance_confirmation(
         event.status = PhaseStatus.COMPLETED
 
     # No explicit trip.status = CLOSED / closed_at here anymore — this is
-    # confirmation's real point: _recompute_position (called inside
+    # confirmation's real point: recompute_position (called inside
     # _finish_phase) finds no unresolved rows left and closes the trip
     # generically, instead of this wrapper hardcoding "I am always last."
     trip.actual_arrival_at = trip.actual_arrival_at or datetime.now(UTC)

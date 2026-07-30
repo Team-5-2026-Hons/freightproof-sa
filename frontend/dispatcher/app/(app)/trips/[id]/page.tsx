@@ -11,24 +11,17 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { ROUTES }     from '@/lib/constants/routes'
 import { useTripDetail }  from '@/lib/hooks/useTripDetail'
 import { usePrecincts }   from '@/lib/hooks/usePrecincts'
-import { TRIP_STATUS_META } from '@shared/lib/constants/status-meta'
-import { HANDSHAKE_NAMES }  from '@shared/lib/constants/handshake-meta'
+import { PHASE_NAMES }      from '@shared/lib/constants/phase-meta'
 import { VerifyButton }       from '@/components/blockchain/VerifyButton'
 import { ForensicOnly }       from '@/components/blockchain/ForensicOnly'
 import { TripCreatedDetail }  from '@/components/domain/TripCreatedDetail'
-import type { HandshakeNumber } from '@shared/lib/types/handshake'
+import {
+  activePhase, anchorTally, currentSealNumber, nodeTypeFor, originParcelCount,
+  sortedPlan, tripChipMeta,
+} from '@/lib/phase/derive'
+import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { Trip } from '@shared/lib/types/trip'
 import type { BlockchainReceipt, BlockchainReceiptType, VerifyResult } from '@shared/lib/types/blockchain'
-
-// Maps trip status to which sequence number is currently the active (in-progress) handshake.
-// `in_transit` has no active handshake (vehicle is on the road between H3 and H4).
-const ACTIVE_HS_FOR_STATUS: Partial<Record<string, number>> = {
-  origin_gate_in:  1,
-  loading:         2,
-  origin_gate_out: 3,
-  dest_gate_in:    4,
-  unloading:       5,
-}
 
 // ── Blockchain chain tag ──────────────────────────────────────────────────────
 const HASHSCAN_BASE =
@@ -254,45 +247,55 @@ export default function TripDetailPage() {
     )
   }
 
-  const statusMeta     = TRIP_STATUS_META[trip.status]
   const originPrecinct = precincts.find(p => p.id === trip.origin_precinct_id)
   const destPrecinct   = precincts.find(p => p.id === trip.destination_precinct_id)
 
   const originShort = originPrecinct?.name.split('—')[0]?.trim() ?? '—'
   const destShort   = destPrecinct?.name.split('—')[0]?.trim() ?? '—'
 
-  const sealNumber = trip.handshakes.find(h => h.seal_number)?.seal_number
+  const plan          = sortedPlan(trip.phases)
+  const active        = activePhase(trip.phases)
+  const tripCreation  = plan.find(p => p.phase_type === 'trip_creation') ?? null
 
-  const activeHsNum = ACTIVE_HS_FOR_STATUS[trip.status]
+  // U13: the chip names the phase — `Unloading` when active, `⚠ Unloading` when held.
+  // Derived from the ledger, NOT from the trip's denormalised position cache — U3's
+  // fence. The list view is allowed that cache because it has no plan; this page has
+  // one, so it must use it.
+  const statusMeta = tripChipMeta(trip.status, active?.phase_type ?? null)
 
-  const allSorted = [...trip.handshakes].sort((a, b) => a.sequence_number - b.sequence_number)
-  const tripCreationHs = allSorted.find(h => h.sequence_number === 0)
-  const sortedHandshakes = allSorted.filter(h => h.sequence_number > 0)
+  // Everything except trip_creation, which is rendered above the loop as the trip's
+  // opening event. Filtered by TYPE, not by plan position — the plan index is data
+  // and an index-based lookup would silently pick the wrong row on any plan that
+  // ever started elsewhere.
+  const timelinePhases = plan.filter(p => p.phase_type !== 'trip_creation')
 
-  const loadingHs = sortedHandshakes.find(h => h.sequence_number === 2)
-  // Parcel count: prefer the loading handshake scan count; 0 until loading is completed
-  const parcelCount = loadingHs?.parcel_count_origin ?? 0
+  const sealNumber  = currentSealNumber(trip.phases)
+  const originLoad  = plan.find(p => p.phase_type === 'loading') ?? null
+  const parcelCount = originParcelCount(trip.phases) ?? 0
+  const tally       = anchorTally(trip.phases)
 
-  const anchoredCount = trip.blockchain_receipts.length
+  // A phase is anchored to a STOP, not to "origin or destination" — a cross-dock
+  // trip has three, and an index-threshold guess cannot express the middle one.
+  function precinctForStop(stopSequence: number | null): string {
+    if (stopSequence === null) return '—'
+    // `trip` is narrowed above, but TS does not carry that narrowing into a nested
+    // function declaration (it could be called later, after a hypothetical reassignment) —
+    // the `!` is required here, not a shortcut around a real possibly-null case.
+    const stop = trip!.stops.find(s => s.sequence === stopSequence)
+    const precinct = stop ? precincts.find(p => p.id === stop.precinct_id) : undefined
+    return precinct?.name.split('—')[0]?.trim() ?? '—'
+  }
 
   type TimelineItem = {
-    seqNum: number
-    nodeType: NodeType
+    phase: PhaseDescriptor
+    nodeType: ReturnType<typeof nodeTypeFor>
     exceptions: Trip['exceptions']
   }
-  const timelineItems: TimelineItem[] = sortedHandshakes.map(hs => {
-    let nodeType: NodeType
-    if (hs.status === 'completed' || hs.status === 'overridden') {
-      nodeType = 'done'
-    } else if (hs.status === 'exception') {
-      nodeType = 'warn'
-    } else if (hs.status === 'in_progress' || hs.sequence_number === activeHsNum) {
-      nodeType = 'active'
-    } else {
-      nodeType = 'pending'
-    }
-    return { seqNum: hs.sequence_number, nodeType, exceptions: [] }
-  })
+  const timelineItems: TimelineItem[] = timelinePhases.map(phase => ({
+    phase,
+    nodeType: nodeTypeFor(phase, active?.phase_event_id ?? null),
+    exceptions: [],
+  }))
   for (const exc of trip.exceptions) {
     const targetIdx = timelineItems.findLastIndex(i => i.nodeType === 'done' || i.nodeType === 'warn')
     if (targetIdx >= 0) timelineItems[targetIdx].exceptions.push(exc)
@@ -317,56 +320,65 @@ export default function TripDetailPage() {
           <TimelineEvent
             nodeType="done"
             nodeLabel="0"
-            isLast={sortedHandshakes.length === 0}
+            isLast={timelinePhases.length === 0}
             label="Trip Created"
             meta="Dispatcher"
             detail={`${trip.order_number} · ${trip.driver?.full_name ?? '—'} · ${trip.horse?.registration ?? '—'} · ${parcelCount} parcels`}
-            timestamp={tripCreationHs?.completed_at ?? trip.created_at}
+            timestamp={tripCreation?.completed_at ?? trip.created_at}
             chainReceipt={trip.blockchain_receipts[0]}
             expandedContent={<TripCreatedDetail trip={trip} />}
           />
 
           {timelineItems.map((item, idx) => {
-            const hs     = sortedHandshakes[idx]
-            const hsName = HANDSHAKE_NAMES[hs.sequence_number as HandshakeNumber]
+            const phase = item.phase
+            const name  = PHASE_NAMES[phase.phase_type]
             const isLastItem = idx === timelineItems.length - 1
 
-            const locationPart = hs.sequence_number <= 3 ? originShort : destShort
-            const meta = hs.completed_at
-              ? locationPart
-              : item.nodeType === 'active' ? 'In progress'
-              : item.nodeType === 'warn'   ? 'Exception'
-              : 'Pending'
+            // The same phase TYPE occurs more than once on a multi-stop plan, so the
+            // stop is what disambiguates two `Loading` rows — never the index.
+            const stopLabel = phase.stop_sequence === null
+              ? ''
+              : `Stop ${phase.stop_sequence} · ${precinctForStop(phase.stop_sequence)}`
+            const meta = phase.completed_at
+              ? stopLabel
+              : item.nodeType === 'active' ? `In progress${stopLabel ? ` · ${stopLabel}` : ''}`
+              : item.nodeType === 'warn'   ? `Exception${stopLabel ? ` · ${stopLabel}` : ''}`
+              : `Pending${stopLabel ? ` · ${stopLabel}` : ''}`
 
             const detailParts: string[] = []
-            if (hs.pulsit_geofence_confirmed === true)  detailParts.push('Pulsit geofence confirmed ✓')
-            if (hs.pulsit_geofence_confirmed === false)  detailParts.push('Pulsit geofence mismatch ✗')
-            if (hs.parcel_count_origin !== null)  detailParts.push(`${hs.parcel_count_origin} parcels`)
-            if (hs.seal_number)                   detailParts.push(`Seal ${hs.seal_number}`)
+            if (phase.pulsit_geofence_confirmed === true)  detailParts.push('Pulsit geofence confirmed ✓')
+            if (phase.pulsit_geofence_confirmed === false) detailParts.push('Pulsit geofence mismatch ✗')
+            if (phase.parcel_count_origin !== null) detailParts.push(`${phase.parcel_count_origin} parcels`)
+            // Each departure shows its OWN seal, so a cross-dock trip visibly carries
+            // a different seal per leg. That is the multi-stop proof on screen.
+            if (phase.seal_number)                  detailParts.push(`Seal ${phase.seal_number}`)
+            // Fail-open (parent D7): a completed phase whose anchor failed still owes
+            // a receipt, and must never read as an unqualified success.
+            if (phase.anchor_status === 'failed')   detailParts.push('⚠ Anchor failed — receipt owed')
             const detail = detailParts.length > 0 ? detailParts.join(' · ') : undefined
 
-            const linkedReceipt = hs.blockchain_receipt_id
-              ? trip.blockchain_receipts.find(r => r.id === hs.blockchain_receipt_id)
+            const linkedReceipt = phase.blockchain_receipt_id
+              ? trip.blockchain_receipts.find(r => r.id === phase.blockchain_receipt_id)
               : undefined
 
             const excItems = item.exceptions
 
             return (
-              <div key={hs.id}>
+              <div key={phase.phase_event_id}>
                 <TimelineEvent
                   nodeType={item.nodeType}
-                  nodeLabel={hs.sequence_number}
+                  nodeLabel={phase.sequence_number}
                   isLast={isLastItem && excItems.length === 0}
                   label={
                     item.nodeType === 'active'
-                      ? `${hsName} — IN PROGRESS`
+                      ? `${name} — IN PROGRESS`
                       : item.nodeType === 'pending'
-                      ? `${hsName} — PENDING`
-                      : hsName
+                      ? `${name} — PENDING`
+                      : name
                   }
                   meta={meta}
                   detail={detail}
-                  timestamp={hs.completed_at ?? undefined}
+                  timestamp={phase.completed_at ?? undefined}
                   chainReceipt={linkedReceipt}
                 />
                 {excItems.map((exc, ei) => (
@@ -457,7 +469,7 @@ export default function TripDetailPage() {
           </div>
           <div className="bg-surf-lowest rounded-md p-[10px_12px] mb-4 text-[13px] shadow-level-2">
             <div className="font-[600] text-on-surf">{parcelCount} parcels</div>
-            {loadingHs?.status === 'completed' && (
+            {originLoad?.status === 'completed' && (
               <div className="text-[11px] text-ok mt-[3px] flex items-center gap-1">
                 <Ic n="check" s={11} className="text-ok" />
                 All scanned out at origin ✓
@@ -483,9 +495,14 @@ export default function TripDetailPage() {
                   <div className="flex items-center gap-[5px] mb-1">
                     <Ic n="hex" s={12} className={iconCl} />
                     <span className={`text-[11px] font-[500] tracking-[0.04em] ${labelCl}`}>
-                      {anchoredCount} of {sortedHandshakes.length + 1} receipts anchored
+                      {tally.anchored} of {tally.owed} receipts anchored
                     </span>
                   </div>
+                  {tally.failed > 0 && (
+                    <div className="text-[11px] font-[600] text-warn mb-1">
+                      ⚠ {tally.failed} anchor{tally.failed > 1 ? 's' : ''} failed — receipt{tally.failed > 1 ? 's' : ''} still owed
+                    </div>
+                  )}
                   {trip.blockchain_receipts.slice(0, 3).map(r => (
                     <div key={r.id} className={`text-[11px] tracking-[0.03em] truncate tabular-nums ${subCl}`}>
                       {r.hedera_topic_id} #{r.hedera_sequence_number}

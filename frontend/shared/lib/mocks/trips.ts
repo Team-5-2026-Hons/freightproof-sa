@@ -1,12 +1,12 @@
 import type { Trip, TripId, BlockchainReceipt, TripStop } from '@shared/lib/types/trip'
-import type { HandshakeEvent, HandshakeEventId, HandshakeNumber, HandshakeType } from '@shared/lib/types/handshake'
+import type { PhaseDescriptor, PhaseType } from '@shared/lib/types/phase'
 import type { TripException, ExceptionId } from '@shared/lib/types/exception'
+import { makePhasePlan, type PlanStopInput } from './phase-trips'
 import { mockDrivers, DRIVER_DLAMINI_ID, DRIVER_FORMBY_ID, DRIVER_GULTIG_ID, DRIVER_KASONGO_ID } from './drivers'
 import { mockHorses, mockTrailers, HORSE_1_ID, HORSE_2_ID, HORSE_3_ID, TRAILER_1_ID, TRAILER_2_ID, TRAILER_3_ID, TRAILER_4_ID, TRAILER_5_ID } from './vehicles'
 import { PRECINCT_FEDEX_JHB_ID, PRECINCT_FEDEX_DBN_ID, PRECINCT_CGY_JHB_ID, PRECINCT_CGY_CT_ID } from './precincts'
 
 const tripId = (v: string): TripId => v as unknown as TripId
-const heId = (v: string): HandshakeEventId => v as unknown as HandshakeEventId
 const excId = (v: string): ExceptionId => v as unknown as ExceptionId
 
 // Exported so exceptions.ts, checkpoints.ts, and manifests.ts can reference trips by ID.
@@ -18,29 +18,6 @@ export const TRIP_0041_ID = tripId('1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f')
 export const TRIP_0042_ID = tripId('2d3e4f5a-6b7c-4d8e-9f0a-1b2c3d4e5f6a')
 export const TRIP_0043_ID = tripId('3e4f5a6b-7c8d-4e9f-8a0b-1c2d3e4f5a6b')
 
-// Returns a fully-null pending HandshakeEvent — used for not-yet-started handshakes.
-function pendingHE(
-  id: string,
-  trip: TripId,
-  type: HandshakeType,
-  seq: HandshakeNumber,
-  at: string,
-): HandshakeEvent {
-  return {
-    id: heId(id), trip_id: trip, handshake_type: type, sequence_number: seq,
-    status: 'pending',
-    dispatcher_override_user_id: null, dispatcher_override_note: null,
-    driver_phone_lat: null, driver_phone_lng: null,
-    horse_gps_lat: null, horse_gps_lng: null,
-    pulsit_geofence_confirmed: null,
-    seal_number: null, seal_photo_artifact_id: null,
-    waybill_photo_artifact_id: null, gate_photo_artifact_id: null, pod_photo_artifact_id: null,
-    parcel_count_origin: null, parcel_count_destination: null, driver_visual_count: null,
-    event_hash: null, blockchain_receipt_id: null, completed_at: null,
-    created_at: at, updated_at: at,
-  }
-}
-
 // Two-stop route matching the trip's origin/destination — the FP-112 degenerate case
 // every pre-multi-stop mock trip represents.
 function twoStops(trip: TripId, originPrecinct: string, destPrecinct: string, at: string): TripStop[] {
@@ -51,79 +28,66 @@ function twoStops(trip: TripId, originPrecinct: string, destPrecinct: string, at
   }))
 }
 
+// A trip's stops in the shape the plan generator needs. Every mock trip here is a
+// two-stop run (see twoStops above), so every plan is the 7-row single-leg shape —
+// the degenerate case of the multi-stop plan, not a special one.
+function planStops(stops: TripStop[]): PlanStopInput[] {
+  return stops.map((s, i) => ({
+    trip_stop_id: s.id,
+    sequence: s.sequence,
+    picks_up: i === 0,
+    drops_off: i === stops.length - 1,
+  }))
+}
+
+// Mark the plan as walked through `throughSequence` inclusive, and attach the
+// evidence the dispatcher's panels read. Mirrors what the backend writes: the seal
+// at DEPARTURE (parent D7/§2.6, never at loading), the count at LOADING.
+function walkPlan(
+  plan: PhaseDescriptor[],
+  throughSequence: number,
+  at: string,
+  evidence?: { seal?: string; count?: number },
+): PhaseDescriptor[] {
+  return plan.map(phase => {
+    if (phase.sequence_number > throughSequence) return phase
+    return {
+      ...phase,
+      status: 'completed' as const,
+      completed_at: at,
+      anchor_status: phase.anchor_status === 'not_required' ? 'not_required' : 'anchored',
+      seal_number: phase.phase_type === 'departure' ? evidence?.seal ?? null : phase.seal_number,
+      driver_visual_count:
+        phase.phase_type === 'loading' ? evidence?.count ?? null : phase.driver_visual_count,
+      parcel_count_origin:
+        phase.phase_type === 'loading' ? evidence?.count ?? null : phase.parcel_count_origin,
+    }
+  })
+}
+
+// current_phase / current_stop, derived from the plan exactly as the backend derives
+// them — never set independently, or the mock would model a cache that had drifted.
+function positionOf(plan: PhaseDescriptor[]): {
+  current_phase: PhaseType | null
+  current_stop: number | null
+} {
+  const next = plan.find(p => p.status !== 'completed' && p.status !== 'overridden')
+  return {
+    current_phase: next?.phase_type ?? null,
+    current_stop: next?.stop_sequence ?? null,
+  }
+}
+
 // ─── TRP-2026-0035 · closed · Dlamini · FedEx JHB → DBN ──────────────────────
 
-const HANDSHAKES_0035: HandshakeEvent[] = [
-  {
-    id: heId('aa003500-0000-4000-8001-000000000001'), trip_id: TRIP_0035_ID,
-    handshake_type: 'trip_creation', sequence_number: 0, status: 'completed',
-    dispatcher_override_user_id: null, dispatcher_override_note: null,
-    driver_phone_lat: null, driver_phone_lng: null, horse_gps_lat: null, horse_gps_lng: null,
-    pulsit_geofence_confirmed: null, seal_number: null, seal_photo_artifact_id: null,
-    waybill_photo_artifact_id: null, gate_photo_artifact_id: null, pod_photo_artifact_id: null,
-    parcel_count_origin: null, parcel_count_destination: null, driver_visual_count: null,
-    event_hash: 'c2956f8a3d1e4b09f72a83c1d4e5b96f2a3c8d0e1f4a7b2c9d6e3f0a1b4c7d2',
-    blockchain_receipt_id: 'bcr-0035-h0',
-    completed_at: '2026-05-03T06:05:00Z', created_at: '2026-05-03T06:00:00Z', updated_at: '2026-05-03T06:05:00Z',
-  },
-  {
-    id: heId('aa003500-0000-4001-8001-000000000002'), trip_id: TRIP_0035_ID,
-    handshake_type: 'origin_gate_in', sequence_number: 1, status: 'completed',
-    dispatcher_override_user_id: null, dispatcher_override_note: null,
-    driver_phone_lat: -26.0942, driver_phone_lng: 28.1342, horse_gps_lat: -26.0940, horse_gps_lng: 28.1340,
-    pulsit_geofence_confirmed: true, seal_number: null, seal_photo_artifact_id: null,
-    waybill_photo_artifact_id: null, gate_photo_artifact_id: 'art-0035-gate-in',
-    pod_photo_artifact_id: null, parcel_count_origin: null, parcel_count_destination: null, driver_visual_count: null,
-    event_hash: null, blockchain_receipt_id: null,
-    completed_at: '2026-05-03T07:02:00Z', created_at: '2026-05-03T06:45:00Z', updated_at: '2026-05-03T07:02:00Z',
-  },
-  {
-    id: heId('aa003500-0000-4002-8001-000000000003'), trip_id: TRIP_0035_ID,
-    handshake_type: 'loading', sequence_number: 2, status: 'completed',
-    dispatcher_override_user_id: null, dispatcher_override_note: null,
-    driver_phone_lat: -26.0942, driver_phone_lng: 28.1342, horse_gps_lat: -26.0942, horse_gps_lng: 28.1342,
-    pulsit_geofence_confirmed: true, seal_number: 'FP-0035', seal_photo_artifact_id: 'art-0035-seal',
-    waybill_photo_artifact_id: 'art-0035-waybill', gate_photo_artifact_id: null, pod_photo_artifact_id: null,
-    parcel_count_origin: 31, parcel_count_destination: null, driver_visual_count: 31,
-    event_hash: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2',
-    blockchain_receipt_id: 'bcr-0035-h2',
-    completed_at: '2026-05-03T09:10:00Z', created_at: '2026-05-03T07:15:00Z', updated_at: '2026-05-03T09:10:00Z',
-  },
-  {
-    id: heId('aa003500-0000-4003-8001-000000000004'), trip_id: TRIP_0035_ID,
-    handshake_type: 'origin_gate_out', sequence_number: 3, status: 'completed',
-    dispatcher_override_user_id: null, dispatcher_override_note: null,
-    driver_phone_lat: -26.0942, driver_phone_lng: 28.1342, horse_gps_lat: -26.0940, horse_gps_lng: 28.1338,
-    pulsit_geofence_confirmed: true, seal_number: 'FP-0035', seal_photo_artifact_id: null,
-    waybill_photo_artifact_id: null, gate_photo_artifact_id: 'art-0035-gate-out', pod_photo_artifact_id: null,
-    parcel_count_origin: null, parcel_count_destination: null, driver_visual_count: null,
-    event_hash: null, blockchain_receipt_id: null,
-    completed_at: '2026-05-03T09:30:00Z', created_at: '2026-05-03T09:15:00Z', updated_at: '2026-05-03T09:30:00Z',
-  },
-  {
-    id: heId('aa003500-0000-4004-8001-000000000005'), trip_id: TRIP_0035_ID,
-    handshake_type: 'dest_gate_in', sequence_number: 4, status: 'completed',
-    dispatcher_override_user_id: null, dispatcher_override_note: null,
-    driver_phone_lat: -29.7942, driver_phone_lng: 30.9820, horse_gps_lat: -29.7940, horse_gps_lng: 30.9818,
-    pulsit_geofence_confirmed: true, seal_number: 'FP-0035', seal_photo_artifact_id: null,
-    waybill_photo_artifact_id: null, gate_photo_artifact_id: 'art-0035-dest-gate-in', pod_photo_artifact_id: null,
-    parcel_count_origin: null, parcel_count_destination: null, driver_visual_count: null,
-    event_hash: null, blockchain_receipt_id: null,
-    completed_at: '2026-05-03T17:15:00Z', created_at: '2026-05-03T17:00:00Z', updated_at: '2026-05-03T17:15:00Z',
-  },
-  {
-    id: heId('aa003500-0000-4005-8001-000000000006'), trip_id: TRIP_0035_ID,
-    handshake_type: 'unloading', sequence_number: 5, status: 'completed',
-    dispatcher_override_user_id: null, dispatcher_override_note: null,
-    driver_phone_lat: -29.7942, driver_phone_lng: 30.9820, horse_gps_lat: -29.7942, horse_gps_lng: 30.9820,
-    pulsit_geofence_confirmed: null, seal_number: null, seal_photo_artifact_id: null,
-    waybill_photo_artifact_id: null, gate_photo_artifact_id: null, pod_photo_artifact_id: 'art-0035-pod',
-    parcel_count_origin: 31, parcel_count_destination: 31, driver_visual_count: 31,
-    event_hash: 'd4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5',
-    blockchain_receipt_id: 'bcr-0035-h5',
-    completed_at: '2026-05-03T19:45:00Z', created_at: '2026-05-03T17:30:00Z', updated_at: '2026-05-03T19:45:00Z',
-  },
-]
+const STOPS_0035 = twoStops(TRIP_0035_ID, PRECINCT_FEDEX_JHB_ID, PRECINCT_FEDEX_DBN_ID, '2026-05-03T06:00:00Z')
+
+const PLAN_0035 = walkPlan(
+  makePhasePlan(TRIP_0035_ID, planStops(STOPS_0035), '2026-05-03T06:00:00Z', 'aa003500-0000-4000-8001'),
+  6,
+  '2026-05-03T19:45:00Z',
+  { seal: 'FP-1234', count: 18 },
+)
 
 const EXCEPTIONS_0035: TripException[] = [
   {
@@ -181,26 +145,23 @@ const RECEIPTS_0035: BlockchainReceipt[] = [
 
 // ─── TRP-2026-0038 · created · Gultig · Courier Guy JHB → CT ─────────────────
 
-const HANDSHAKES_0038: HandshakeEvent[] = [
-  {
-    id: heId('aa003800-0000-4000-8001-000000000001'), trip_id: TRIP_0038_ID,
-    handshake_type: 'trip_creation', sequence_number: 0, status: 'in_progress',
-    dispatcher_override_user_id: null, dispatcher_override_note: null,
-    driver_phone_lat: null, driver_phone_lng: null, horse_gps_lat: null, horse_gps_lng: null,
-    pulsit_geofence_confirmed: null, seal_number: null, seal_photo_artifact_id: null,
-    waybill_photo_artifact_id: null, gate_photo_artifact_id: null, pod_photo_artifact_id: null,
-    parcel_count_origin: null, parcel_count_destination: null, driver_visual_count: null,
-    event_hash: null, blockchain_receipt_id: null,
-    completed_at: null, created_at: '2026-05-09T06:00:00Z', updated_at: '2026-05-09T06:00:00Z',
-  },
-  pendingHE('aa003800-0000-4001-8001-000000000002', TRIP_0038_ID, 'origin_gate_in', 1, '2026-05-09T06:00:00Z'),
-  pendingHE('aa003800-0000-4002-8001-000000000003', TRIP_0038_ID, 'loading', 2, '2026-05-09T06:00:00Z'),
-  pendingHE('aa003800-0000-4003-8001-000000000004', TRIP_0038_ID, 'origin_gate_out', 3, '2026-05-09T06:00:00Z'),
-  pendingHE('aa003800-0000-4004-8001-000000000005', TRIP_0038_ID, 'dest_gate_in', 4, '2026-05-09T06:00:00Z'),
-  pendingHE('aa003800-0000-4005-8001-000000000006', TRIP_0038_ID, 'unloading', 5, '2026-05-09T06:00:00Z'),
-]
+const STOPS_0038 = twoStops(TRIP_0038_ID, PRECINCT_CGY_JHB_ID, PRECINCT_CGY_CT_ID, '2026-05-09T06:00:00Z')
 
-// ─── TRP-2026-0039 · origin_gate_in · Kasongo · FedEx DBN → JHB ──────────────
+const PLAN_0038 = walkPlan(
+  makePhasePlan(TRIP_0038_ID, planStops(STOPS_0038), '2026-05-09T06:00:00Z', 'aa003800-0000-4000-8001'),
+  0,
+  '2026-05-09T06:00:00Z',
+)
+
+// ─── TRP-2026-0039 · active (was origin_gate_in) · Kasongo · FedEx DBN → JHB ─
+
+const STOPS_0039 = twoStops(TRIP_0039_ID, PRECINCT_FEDEX_DBN_ID, PRECINCT_FEDEX_JHB_ID, '2026-05-09T04:30:00Z')
+
+const PLAN_0039 = walkPlan(
+  makePhasePlan(TRIP_0039_ID, planStops(STOPS_0039), '2026-05-09T04:30:00Z', 'aa003900-0000-4000-8001'),
+  0,
+  '2026-05-09T04:32:00Z',
+)
 
 const EXCEPTIONS_0039: TripException[] = [
   {
@@ -216,38 +177,16 @@ const EXCEPTIONS_0039: TripException[] = [
   },
 ]
 
-const HANDSHAKES_0039: HandshakeEvent[] = [
-  {
-    id: heId('aa003900-0000-4000-8001-000000000001'), trip_id: TRIP_0039_ID,
-    handshake_type: 'trip_creation', sequence_number: 0, status: 'completed',
-    dispatcher_override_user_id: null, dispatcher_override_note: null,
-    driver_phone_lat: null, driver_phone_lng: null, horse_gps_lat: null, horse_gps_lng: null,
-    pulsit_geofence_confirmed: null, seal_number: null, seal_photo_artifact_id: null,
-    waybill_photo_artifact_id: null, gate_photo_artifact_id: null, pod_photo_artifact_id: null,
-    parcel_count_origin: null, parcel_count_destination: null, driver_visual_count: null,
-    event_hash: 'f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6',
-    blockchain_receipt_id: 'bcr-0039-h0',
-    completed_at: '2026-05-09T04:32:00Z', created_at: '2026-05-09T04:30:00Z', updated_at: '2026-05-09T04:32:00Z',
-  },
-  {
-    id: heId('aa003900-0000-4001-8001-000000000002'), trip_id: TRIP_0039_ID,
-    handshake_type: 'origin_gate_in', sequence_number: 1, status: 'exception',
-    dispatcher_override_user_id: null, dispatcher_override_note: null,
-    driver_phone_lat: -29.7942, driver_phone_lng: 30.9820, horse_gps_lat: -29.7978, horse_gps_lng: 30.9856,
-    pulsit_geofence_confirmed: false,
-    seal_number: null, seal_photo_artifact_id: null,
-    waybill_photo_artifact_id: null, gate_photo_artifact_id: 'art-0039-gate-in', pod_photo_artifact_id: null,
-    parcel_count_origin: null, parcel_count_destination: null, driver_visual_count: null,
-    event_hash: null, blockchain_receipt_id: null,
-    completed_at: null, created_at: '2026-05-09T07:00:00Z', updated_at: '2026-05-09T07:04:00Z',
-  },
-  pendingHE('aa003900-0000-4002-8001-000000000003', TRIP_0039_ID, 'loading', 2, '2026-05-09T04:30:00Z'),
-  pendingHE('aa003900-0000-4003-8001-000000000004', TRIP_0039_ID, 'origin_gate_out', 3, '2026-05-09T04:30:00Z'),
-  pendingHE('aa003900-0000-4004-8001-000000000005', TRIP_0039_ID, 'dest_gate_in', 4, '2026-05-09T04:30:00Z'),
-  pendingHE('aa003900-0000-4005-8001-000000000006', TRIP_0039_ID, 'unloading', 5, '2026-05-09T04:30:00Z'),
-]
+// ─── TRP-2026-0040 · active (was dest_gate_in) · Formby · FedEx JHB → DBN ────
 
-// ─── TRP-2026-0040 · dest_gate_in · Formby · FedEx JHB → DBN ────────────────
+const STOPS_0040 = twoStops(TRIP_0040_ID, PRECINCT_FEDEX_JHB_ID, PRECINCT_FEDEX_DBN_ID, '2026-05-08T06:00:00Z')
+
+const PLAN_0040 = walkPlan(
+  makePhasePlan(TRIP_0040_ID, planStops(STOPS_0040), '2026-05-08T06:00:00Z', 'aa004000-0000-4000-8001'),
+  4,
+  '2026-05-09T17:00:00Z',
+  { seal: 'FP-9012', count: 30 },
+)
 
 const EXCEPTIONS_0040: TripException[] = [
   {
@@ -264,68 +203,16 @@ const EXCEPTIONS_0040: TripException[] = [
   },
 ]
 
-const HANDSHAKES_0040: HandshakeEvent[] = [
-  {
-    id: heId('aa004000-0000-4000-8001-000000000001'), trip_id: TRIP_0040_ID,
-    handshake_type: 'trip_creation', sequence_number: 0, status: 'completed',
-    dispatcher_override_user_id: null, dispatcher_override_note: null,
-    driver_phone_lat: null, driver_phone_lng: null, horse_gps_lat: null, horse_gps_lng: null,
-    pulsit_geofence_confirmed: null, seal_number: null, seal_photo_artifact_id: null,
-    waybill_photo_artifact_id: null, gate_photo_artifact_id: null, pod_photo_artifact_id: null,
-    parcel_count_origin: null, parcel_count_destination: null, driver_visual_count: null,
-    event_hash: 'b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8',
-    blockchain_receipt_id: 'bcr-0040-h0',
-    completed_at: '2026-05-08T06:02:00Z', created_at: '2026-05-08T06:00:00Z', updated_at: '2026-05-08T06:02:00Z',
-  },
-  {
-    id: heId('aa004000-0000-4001-8001-000000000002'), trip_id: TRIP_0040_ID,
-    handshake_type: 'origin_gate_in', sequence_number: 1, status: 'completed',
-    dispatcher_override_user_id: null, dispatcher_override_note: null,
-    driver_phone_lat: -26.0942, driver_phone_lng: 28.1342, horse_gps_lat: -26.0941, horse_gps_lng: 28.1341,
-    pulsit_geofence_confirmed: true, seal_number: null, seal_photo_artifact_id: null,
-    waybill_photo_artifact_id: null, gate_photo_artifact_id: 'art-0040-gate-in', pod_photo_artifact_id: null,
-    parcel_count_origin: null, parcel_count_destination: null, driver_visual_count: null,
-    event_hash: null, blockchain_receipt_id: null,
-    completed_at: '2026-05-08T07:05:00Z', created_at: '2026-05-08T06:50:00Z', updated_at: '2026-05-08T07:05:00Z',
-  },
-  {
-    id: heId('aa004000-0000-4002-8001-000000000003'), trip_id: TRIP_0040_ID,
-    handshake_type: 'loading', sequence_number: 2, status: 'completed',
-    dispatcher_override_user_id: null, dispatcher_override_note: null,
-    driver_phone_lat: -26.0942, driver_phone_lng: 28.1342, horse_gps_lat: -26.0942, horse_gps_lng: 28.1342,
-    pulsit_geofence_confirmed: true, seal_number: 'FP-0040', seal_photo_artifact_id: 'art-0040-seal',
-    waybill_photo_artifact_id: 'art-0040-waybill', gate_photo_artifact_id: null, pod_photo_artifact_id: null,
-    parcel_count_origin: 32, parcel_count_destination: null, driver_visual_count: 32,
-    event_hash: 'e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9',
-    blockchain_receipt_id: 'bcr-0040-h2',
-    completed_at: '2026-05-08T09:00:00Z', created_at: '2026-05-08T07:20:00Z', updated_at: '2026-05-08T09:00:00Z',
-  },
-  {
-    id: heId('aa004000-0000-4003-8001-000000000004'), trip_id: TRIP_0040_ID,
-    handshake_type: 'origin_gate_out', sequence_number: 3, status: 'completed',
-    dispatcher_override_user_id: null, dispatcher_override_note: null,
-    driver_phone_lat: -26.0942, driver_phone_lng: 28.1342, horse_gps_lat: -26.0940, horse_gps_lng: 28.1340,
-    pulsit_geofence_confirmed: true, seal_number: 'FP-0040', seal_photo_artifact_id: null,
-    waybill_photo_artifact_id: null, gate_photo_artifact_id: 'art-0040-gate-out', pod_photo_artifact_id: null,
-    parcel_count_origin: null, parcel_count_destination: null, driver_visual_count: null,
-    event_hash: null, blockchain_receipt_id: null,
-    completed_at: '2026-05-08T09:22:00Z', created_at: '2026-05-08T09:05:00Z', updated_at: '2026-05-08T09:22:00Z',
-  },
-  {
-    id: heId('aa004000-0000-4004-8001-000000000005'), trip_id: TRIP_0040_ID,
-    handshake_type: 'dest_gate_in', sequence_number: 4, status: 'in_progress',
-    dispatcher_override_user_id: null, dispatcher_override_note: null,
-    driver_phone_lat: -29.7942, driver_phone_lng: 30.9820, horse_gps_lat: -29.7942, horse_gps_lng: 30.9820,
-    pulsit_geofence_confirmed: true, seal_number: 'FP-0040', seal_photo_artifact_id: null,
-    waybill_photo_artifact_id: null, gate_photo_artifact_id: 'art-0040-dest-gate-in', pod_photo_artifact_id: null,
-    parcel_count_origin: null, parcel_count_destination: null, driver_visual_count: null,
-    event_hash: null, blockchain_receipt_id: null,
-    completed_at: null, created_at: '2026-05-09T17:00:00Z', updated_at: '2026-05-09T17:05:00Z',
-  },
-  pendingHE('aa004000-0000-4005-8001-000000000006', TRIP_0040_ID, 'unloading', 5, '2026-05-08T06:00:00Z'),
-]
+// ─── TRP-2026-0041 · active (was in_transit) · Dlamini · FedEx JHB → DBN (CANONICAL) ─
 
-// ─── TRP-2026-0041 · in_transit · Dlamini · FedEx JHB → DBN (CANONICAL) ─────
+const STOPS_0041 = twoStops(TRIP_0041_ID, PRECINCT_FEDEX_JHB_ID, PRECINCT_FEDEX_DBN_ID, '2026-05-09T05:30:00Z')
+
+const PLAN_0041 = walkPlan(
+  makePhasePlan(TRIP_0041_ID, planStops(STOPS_0041), '2026-05-09T05:30:00Z', 'd1004100-0000-4000-8000'),
+  3,
+  '2026-05-09T08:10:00Z',
+  { seal: 'FP-3456', count: 24 },
+)
 
 const EXCEPTIONS_0041: TripException[] = [
   {
@@ -352,58 +239,16 @@ const EXCEPTIONS_0041: TripException[] = [
   },
 ]
 
-const HANDSHAKES_0041: HandshakeEvent[] = [
-  {
-    id: heId('aa004100-0000-4000-8001-000000000001'), trip_id: TRIP_0041_ID,
-    handshake_type: 'trip_creation', sequence_number: 0, status: 'completed',
-    dispatcher_override_user_id: null, dispatcher_override_note: null,
-    driver_phone_lat: null, driver_phone_lng: null, horse_gps_lat: null, horse_gps_lng: null,
-    pulsit_geofence_confirmed: null, seal_number: null, seal_photo_artifact_id: null,
-    waybill_photo_artifact_id: null, gate_photo_artifact_id: null, pod_photo_artifact_id: null,
-    parcel_count_origin: null, parcel_count_destination: null, driver_visual_count: null,
-    event_hash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
-    blockchain_receipt_id: 'bcr-0041-h0',
-    completed_at: '2026-05-09T05:32:00Z', created_at: '2026-05-09T05:30:00Z', updated_at: '2026-05-09T05:32:00Z',
-  },
-  {
-    id: heId('aa004100-0000-4001-8001-000000000002'), trip_id: TRIP_0041_ID,
-    handshake_type: 'origin_gate_in', sequence_number: 1, status: 'completed',
-    dispatcher_override_user_id: null, dispatcher_override_note: null,
-    driver_phone_lat: -26.0942, driver_phone_lng: 28.1342, horse_gps_lat: -26.0943, horse_gps_lng: 28.1341,
-    pulsit_geofence_confirmed: true, seal_number: null, seal_photo_artifact_id: null,
-    waybill_photo_artifact_id: null, gate_photo_artifact_id: 'art-0041-gate-in', pod_photo_artifact_id: null,
-    parcel_count_origin: null, parcel_count_destination: null, driver_visual_count: null,
-    event_hash: null, blockchain_receipt_id: null,
-    completed_at: '2026-05-09T06:50:00Z', created_at: '2026-05-09T06:40:00Z', updated_at: '2026-05-09T06:50:00Z',
-  },
-  {
-    id: heId('aa004100-0000-4002-8001-000000000003'), trip_id: TRIP_0041_ID,
-    handshake_type: 'loading', sequence_number: 2, status: 'completed',
-    dispatcher_override_user_id: null, dispatcher_override_note: null,
-    driver_phone_lat: -26.0942, driver_phone_lng: 28.1342, horse_gps_lat: -26.0942, horse_gps_lng: 28.1342,
-    pulsit_geofence_confirmed: true, seal_number: 'FP-1234', seal_photo_artifact_id: 'art-0041-seal',
-    waybill_photo_artifact_id: 'art-0041-waybill', gate_photo_artifact_id: null, pod_photo_artifact_id: null,
-    parcel_count_origin: 27, parcel_count_destination: null, driver_visual_count: 27,
-    event_hash: 'a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3',
-    blockchain_receipt_id: 'bcr-0041-h2',
-    completed_at: '2026-05-09T08:18:00Z', created_at: '2026-05-09T07:05:00Z', updated_at: '2026-05-09T08:18:00Z',
-  },
-  {
-    id: heId('aa004100-0000-4003-8001-000000000004'), trip_id: TRIP_0041_ID,
-    handshake_type: 'origin_gate_out', sequence_number: 3, status: 'completed',
-    dispatcher_override_user_id: null, dispatcher_override_note: null,
-    driver_phone_lat: -26.0942, driver_phone_lng: 28.1342, horse_gps_lat: -26.0940, horse_gps_lng: 28.1339,
-    pulsit_geofence_confirmed: true, seal_number: 'FP-1234', seal_photo_artifact_id: null,
-    waybill_photo_artifact_id: null, gate_photo_artifact_id: 'art-0041-gate-out', pod_photo_artifact_id: null,
-    parcel_count_origin: null, parcel_count_destination: null, driver_visual_count: null,
-    event_hash: null, blockchain_receipt_id: null,
-    completed_at: '2026-05-09T08:32:00Z', created_at: '2026-05-09T08:20:00Z', updated_at: '2026-05-09T08:32:00Z',
-  },
-  pendingHE('aa004100-0000-4004-8001-000000000005', TRIP_0041_ID, 'dest_gate_in', 4, '2026-05-09T05:30:00Z'),
-  pendingHE('aa004100-0000-4005-8001-000000000006', TRIP_0041_ID, 'unloading', 5, '2026-05-09T05:30:00Z'),
-]
+// ─── TRP-2026-0042 · active (was in_transit) · Formby · FedEx JHB → DBN ──────
 
-// ─── TRP-2026-0042 · in_transit · Formby · FedEx JHB → DBN ──────────────────
+const STOPS_0042 = twoStops(TRIP_0042_ID, PRECINCT_FEDEX_JHB_ID, PRECINCT_FEDEX_DBN_ID, '2026-05-08T14:00:00Z')
+
+const PLAN_0042 = walkPlan(
+  makePhasePlan(TRIP_0042_ID, planStops(STOPS_0042), '2026-05-08T14:00:00Z', 'd1004200-0000-4000-8000'),
+  3,
+  '2026-05-08T17:10:00Z',
+  { seal: 'FP-5678', count: 42 },
+)
 
 const EXCEPTIONS_0042: TripException[] = [
   {
@@ -430,56 +275,15 @@ const EXCEPTIONS_0042: TripException[] = [
   },
 ]
 
-const HANDSHAKES_0042: HandshakeEvent[] = [
-  {
-    id: heId('aa004200-0000-4000-8001-000000000001'), trip_id: TRIP_0042_ID,
-    handshake_type: 'trip_creation', sequence_number: 0, status: 'completed',
-    dispatcher_override_user_id: null, dispatcher_override_note: null,
-    driver_phone_lat: null, driver_phone_lng: null, horse_gps_lat: null, horse_gps_lng: null,
-    pulsit_geofence_confirmed: null, seal_number: null, seal_photo_artifact_id: null,
-    waybill_photo_artifact_id: null, gate_photo_artifact_id: null, pod_photo_artifact_id: null,
-    parcel_count_origin: null, parcel_count_destination: null, driver_visual_count: null,
-    event_hash: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
-    blockchain_receipt_id: 'bcr-0042-h0',
-    completed_at: '2026-05-08T14:02:00Z', created_at: '2026-05-08T14:00:00Z', updated_at: '2026-05-08T14:02:00Z',
-  },
-  {
-    id: heId('aa004200-0000-4001-8001-000000000002'), trip_id: TRIP_0042_ID,
-    handshake_type: 'origin_gate_in', sequence_number: 1, status: 'completed',
-    dispatcher_override_user_id: null, dispatcher_override_note: null,
-    driver_phone_lat: -26.0942, driver_phone_lng: 28.1342, horse_gps_lat: -26.0941, horse_gps_lng: 28.1340,
-    pulsit_geofence_confirmed: true, seal_number: null, seal_photo_artifact_id: null,
-    waybill_photo_artifact_id: null, gate_photo_artifact_id: 'art-0042-gate-in', pod_photo_artifact_id: null,
-    parcel_count_origin: null, parcel_count_destination: null, driver_visual_count: null,
-    event_hash: null, blockchain_receipt_id: null,
-    completed_at: '2026-05-08T15:05:00Z', created_at: '2026-05-08T14:55:00Z', updated_at: '2026-05-08T15:05:00Z',
-  },
-  {
-    id: heId('aa004200-0000-4002-8001-000000000003'), trip_id: TRIP_0042_ID,
-    handshake_type: 'loading', sequence_number: 2, status: 'completed',
-    dispatcher_override_user_id: null, dispatcher_override_note: null,
-    driver_phone_lat: -26.0942, driver_phone_lng: 28.1342, horse_gps_lat: -26.0942, horse_gps_lng: 28.1342,
-    pulsit_geofence_confirmed: true, seal_number: 'FP-5678', seal_photo_artifact_id: 'art-0042-seal',
-    waybill_photo_artifact_id: 'art-0042-waybill', gate_photo_artifact_id: null, pod_photo_artifact_id: null,
-    parcel_count_origin: 42, parcel_count_destination: null, driver_visual_count: 40,
-    event_hash: '3f79bb7b435b05321651daefd374cdc681dc06faa65e374e38337b88ca046dea',
-    blockchain_receipt_id: 'bcr-0042-h2',
-    completed_at: '2026-05-08T16:48:00Z', created_at: '2026-05-08T15:20:00Z', updated_at: '2026-05-08T16:48:00Z',
-  },
-  {
-    id: heId('aa004200-0000-4003-8001-000000000004'), trip_id: TRIP_0042_ID,
-    handshake_type: 'origin_gate_out', sequence_number: 3, status: 'completed',
-    dispatcher_override_user_id: null, dispatcher_override_note: null,
-    driver_phone_lat: -26.0942, driver_phone_lng: 28.1342, horse_gps_lat: -26.0940, horse_gps_lng: 28.1338,
-    pulsit_geofence_confirmed: true, seal_number: 'FP-5678', seal_photo_artifact_id: null,
-    waybill_photo_artifact_id: null, gate_photo_artifact_id: 'art-0042-gate-out', pod_photo_artifact_id: null,
-    parcel_count_origin: null, parcel_count_destination: null, driver_visual_count: null,
-    event_hash: null, blockchain_receipt_id: null,
-    completed_at: '2026-05-08T17:10:00Z', created_at: '2026-05-08T16:55:00Z', updated_at: '2026-05-08T17:10:00Z',
-  },
-  pendingHE('aa004200-0000-4004-8001-000000000005', TRIP_0042_ID, 'dest_gate_in', 4, '2026-05-08T14:00:00Z'),
-  pendingHE('aa004200-0000-4005-8001-000000000006', TRIP_0042_ID, 'unloading', 5, '2026-05-08T14:00:00Z'),
-]
+// ─── TRP-2026-0043 · created, not yet started (upcoming for Dlamini) ────────
+
+const STOPS_0043 = twoStops(TRIP_0043_ID, PRECINCT_FEDEX_JHB_ID, PRECINCT_FEDEX_DBN_ID, '2026-06-22T09:00:00Z')
+
+const PLAN_0043 = walkPlan(
+  makePhasePlan(TRIP_0043_ID, planStops(STOPS_0043), '2026-06-22T09:00:00Z', 'd1004300-0000-4000-8000'),
+  0,
+  '2026-06-22T09:00:00Z',
+)
 
 // ─── Trip objects ──────────────────────────────────────────────────────────────
 
@@ -495,7 +299,7 @@ export const mockTrips: Trip[] = [
     idvs_check_status: 'verified',
     origin_precinct_id: PRECINCT_FEDEX_JHB_ID,
     destination_precinct_id: PRECINCT_FEDEX_DBN_ID,
-    stops: twoStops(TRIP_0035_ID, PRECINCT_FEDEX_JHB_ID, PRECINCT_FEDEX_DBN_ID, '2026-05-03T06:00:00Z'),
+    stops: STOPS_0035,
     consignments: [],
     pulsit_trip_reference_id: 'PLT-2026-0035',
     planned_departure_at: '2026-05-03T09:00:00Z',
@@ -506,7 +310,8 @@ export const mockTrips: Trip[] = [
     driver: mockDrivers.find(d => d.id === DRIVER_DLAMINI_ID) ?? null,
     horse: mockHorses.find(h => h.id === HORSE_1_ID) ?? null,
     trailers: mockTrailers.filter(t => t.id === TRAILER_1_ID),
-    handshakes: HANDSHAKES_0035,
+    phases: PLAN_0035,
+    ...positionOf(PLAN_0035),
     exceptions: EXCEPTIONS_0035,
     blockchain_receipts: RECEIPTS_0035,
     warnings: [],
@@ -525,7 +330,7 @@ export const mockTrips: Trip[] = [
     idvs_check_status: 'pending',
     origin_precinct_id: PRECINCT_CGY_JHB_ID,
     destination_precinct_id: PRECINCT_CGY_CT_ID,
-    stops: twoStops(TRIP_0038_ID, PRECINCT_CGY_JHB_ID, PRECINCT_CGY_CT_ID, '2026-05-09T06:00:00Z'),
+    stops: STOPS_0038,
     consignments: [],
     pulsit_trip_reference_id: null,
     planned_departure_at: '2026-05-09T10:00:00Z',
@@ -536,7 +341,8 @@ export const mockTrips: Trip[] = [
     driver: mockDrivers.find(d => d.id === DRIVER_GULTIG_ID) ?? null,
     horse: mockHorses.find(h => h.id === HORSE_3_ID) ?? null,
     trailers: mockTrailers.filter(t => t.id === TRAILER_5_ID),
-    handshakes: HANDSHAKES_0038,
+    phases: PLAN_0038,
+    ...positionOf(PLAN_0038),
     exceptions: [],
     blockchain_receipts: [],
     warnings: [],
@@ -544,18 +350,18 @@ export const mockTrips: Trip[] = [
     updated_at: '2026-05-09T06:00:00Z',
   },
 
-  // TRP-2026-0039 — origin_gate_in
+  // TRP-2026-0039 — active (was origin_gate_in)
   {
     id: TRIP_0039_ID,
     trip_reference: 'TRP-2026-0039',
     order_number: 'FX-ORD-2026-0039',
-    status: 'origin_gate_in',
+    status: 'active',
     trip_type: 'loaded',
     journey_lock_hash: 'f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6',
     idvs_check_status: 'verified',
     origin_precinct_id: PRECINCT_FEDEX_DBN_ID,
     destination_precinct_id: PRECINCT_FEDEX_JHB_ID,
-    stops: twoStops(TRIP_0039_ID, PRECINCT_FEDEX_DBN_ID, PRECINCT_FEDEX_JHB_ID, '2026-05-09T04:30:00Z'),
+    stops: STOPS_0039,
     consignments: [],
     pulsit_trip_reference_id: 'PLT-2026-0039',
     planned_departure_at: '2026-05-09T08:00:00Z',
@@ -566,7 +372,8 @@ export const mockTrips: Trip[] = [
     driver: mockDrivers.find(d => d.id === DRIVER_KASONGO_ID) ?? null,
     horse: mockHorses.find(h => h.id === HORSE_2_ID) ?? null,
     trailers: mockTrailers.filter(t => t.id === TRAILER_3_ID || t.id === TRAILER_4_ID),
-    handshakes: HANDSHAKES_0039,
+    phases: PLAN_0039,
+    ...positionOf(PLAN_0039),
     exceptions: EXCEPTIONS_0039,
     blockchain_receipts: [
       {
@@ -583,18 +390,18 @@ export const mockTrips: Trip[] = [
     updated_at: '2026-05-09T07:04:00Z',
   },
 
-  // TRP-2026-0040 — dest_gate_in
+  // TRP-2026-0040 — active (was dest_gate_in)
   {
     id: TRIP_0040_ID,
     trip_reference: 'TRP-2026-0040',
     order_number: 'FX-ORD-2026-0040',
-    status: 'dest_gate_in',
+    status: 'active',
     trip_type: 'loaded',
     journey_lock_hash: 'b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8',
     idvs_check_status: 'verified',
     origin_precinct_id: PRECINCT_FEDEX_JHB_ID,
     destination_precinct_id: PRECINCT_FEDEX_DBN_ID,
-    stops: twoStops(TRIP_0040_ID, PRECINCT_FEDEX_JHB_ID, PRECINCT_FEDEX_DBN_ID, '2026-05-08T06:00:00Z'),
+    stops: STOPS_0040,
     consignments: [],
     pulsit_trip_reference_id: 'PLT-2026-0040',
     planned_departure_at: '2026-05-08T09:00:00Z',
@@ -605,7 +412,8 @@ export const mockTrips: Trip[] = [
     driver: mockDrivers.find(d => d.id === DRIVER_FORMBY_ID) ?? null,
     horse: mockHorses.find(h => h.id === HORSE_2_ID) ?? null,
     trailers: mockTrailers.filter(t => t.id === TRAILER_2_ID),
-    handshakes: HANDSHAKES_0040,
+    phases: PLAN_0040,
+    ...positionOf(PLAN_0040),
     exceptions: EXCEPTIONS_0040,
     blockchain_receipts: [
       {
@@ -630,18 +438,18 @@ export const mockTrips: Trip[] = [
     updated_at: '2026-05-09T17:05:00Z',
   },
 
-  // TRP-2026-0041 — in_transit (CANONICAL DEMO TRIP)
+  // TRP-2026-0041 — active (was in_transit) (CANONICAL DEMO TRIP)
   {
     id: TRIP_0041_ID,
     trip_reference: 'TRP-2026-0041',
     order_number: 'FX-ORD-2026-0041',
-    status: 'in_transit',
+    status: 'active',
     trip_type: 'loaded',
     journey_lock_hash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
     idvs_check_status: 'verified',
     origin_precinct_id: PRECINCT_FEDEX_JHB_ID,
     destination_precinct_id: PRECINCT_FEDEX_DBN_ID,
-    stops: twoStops(TRIP_0041_ID, PRECINCT_FEDEX_JHB_ID, PRECINCT_FEDEX_DBN_ID, '2026-05-09T05:30:00Z'),
+    stops: STOPS_0041,
     consignments: [],
     pulsit_trip_reference_id: 'PLT-2026-0041',
     planned_departure_at: '2026-05-09T08:00:00Z',
@@ -652,7 +460,8 @@ export const mockTrips: Trip[] = [
     driver: mockDrivers.find(d => d.id === DRIVER_DLAMINI_ID) ?? null,
     horse: mockHorses.find(h => h.id === HORSE_1_ID) ?? null,
     trailers: mockTrailers.filter(t => t.id === TRAILER_2_ID || t.id === TRAILER_3_ID),
-    handshakes: HANDSHAKES_0041,
+    phases: PLAN_0041,
+    ...positionOf(PLAN_0041),
     exceptions: EXCEPTIONS_0041,
     blockchain_receipts: [
       {
@@ -677,18 +486,18 @@ export const mockTrips: Trip[] = [
     updated_at: '2026-05-09T13:35:00Z',
   },
 
-  // TRP-2026-0042 — in_transit
+  // TRP-2026-0042 — active (was in_transit)
   {
     id: TRIP_0042_ID,
     trip_reference: 'TRP-2026-0042',
     order_number: 'FX-ORD-2026-0042',
-    status: 'in_transit',
+    status: 'active',
     trip_type: 'loaded',
     journey_lock_hash: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
     idvs_check_status: 'verified',
     origin_precinct_id: PRECINCT_FEDEX_JHB_ID,
     destination_precinct_id: PRECINCT_FEDEX_DBN_ID,
-    stops: twoStops(TRIP_0042_ID, PRECINCT_FEDEX_JHB_ID, PRECINCT_FEDEX_DBN_ID, '2026-05-08T14:00:00Z'),
+    stops: STOPS_0042,
     consignments: [],
     pulsit_trip_reference_id: 'PLT-2026-0042',
     planned_departure_at: '2026-05-08T17:00:00Z',
@@ -699,7 +508,8 @@ export const mockTrips: Trip[] = [
     driver: mockDrivers.find(d => d.id === DRIVER_FORMBY_ID) ?? null,
     horse: mockHorses.find(h => h.id === HORSE_3_ID) ?? null,
     trailers: mockTrailers.filter(t => t.id === TRAILER_4_ID),
-    handshakes: HANDSHAKES_0042,
+    phases: PLAN_0042,
+    ...positionOf(PLAN_0042),
     exceptions: EXCEPTIONS_0042,
     blockchain_receipts: [
       {
@@ -735,7 +545,7 @@ export const mockTrips: Trip[] = [
     idvs_check_status: 'pending',
     origin_precinct_id: PRECINCT_FEDEX_JHB_ID,
     destination_precinct_id: PRECINCT_FEDEX_DBN_ID,
-    stops: twoStops(TRIP_0043_ID, PRECINCT_FEDEX_JHB_ID, PRECINCT_FEDEX_DBN_ID, '2026-06-22T09:00:00Z'),
+    stops: STOPS_0043,
     consignments: [],
     pulsit_trip_reference_id: null,
     planned_departure_at: '2026-06-25T07:00:00Z',
@@ -745,13 +555,14 @@ export const mockTrips: Trip[] = [
     closed_at: null,
     driver: mockDrivers.find(d => d.id === DRIVER_DLAMINI_ID) ?? null,
     // HORSE_2_ID, not HORSE_1_ID: HORSE_1_ID is already committed to TRP-2026-0041
-    // (in_transit, no actual_arrival_at/closed_at) — reusing it here would imply the
+    // (active, no actual_arrival_at/closed_at) — reusing it here would imply the
     // same horse is simultaneously still on the road and assigned to a new future trip.
-    // HORSE_2_ID's only open assignment (TRP-2026-0040) is at dest_gate_in, the
-    // second-to-last handshake, making it the most-resolved open conflict in the mock set.
+    // HORSE_2_ID's only open assignment (TRP-2026-0040) is near the end of its plan,
+    // making it the most-resolved open conflict in the mock set.
     horse: mockHorses.find(h => h.id === HORSE_2_ID) ?? null,
     trailers: mockTrailers.filter(t => t.id === TRAILER_2_ID),
-    handshakes: [],
+    phases: PLAN_0043,
+    ...positionOf(PLAN_0043),
     exceptions: [],
     blockchain_receipts: [],
     warnings: [],

@@ -1,10 +1,10 @@
-// Phase-shaped trip mocks — the artifact that unblocks driver-pwa work against the
-// frozen contract before the live endpoints exist (parent plan §6.2, the Tim Gate).
+// The phase plan generator and its canonical fixtures.
 //
-// Deliberately a NEW file rather than a rewrite of ./trips.ts: that file has 14 consumers
-// across both apps and `Trip.handshakes` has 6 more, so changing its shape in place would
-// break both builds immediately. The handshake-shaped mocks stay until their last consumer
-// goes in Stages 4 and 5. Add alongside; subtract later.
+// Written at Stage 0.4 as the artifact that unblocked driver-pwa work against the frozen
+// contract before the live endpoints existed (parent plan §6.2, the Tim Gate). Stage 4 cut
+// ./trips.ts over to the phase model, and that file now builds its mocks with makePhasePlan
+// below — so this is the one generator, not a parallel one. If it and
+// orchestration/phase_plan.build_phase_plan ever disagree, the backend wins.
 
 import type { PhaseDescriptor, PhaseEventId, PhaseType } from '@shared/lib/types/phase'
 import { ANCHORED_PHASES, STEP_SLUGS } from '@shared/lib/constants/phase-meta'

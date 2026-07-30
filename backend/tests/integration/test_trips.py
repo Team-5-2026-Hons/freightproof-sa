@@ -640,3 +640,45 @@ async def test_create_empty_leg_no_consignments_no_pp_call(client: AsyncClient, 
         await db_session.execute(select(Consignment).where(Consignment.trip_id == trip_id))
     ).scalars().all()
     assert consignment_rows == []
+
+
+async def test_create_trip_response_carries_seeded_position_cache(client: AsyncClient, seed_data, db_session):
+    """U4: create_trip completes h0 inline but never seeded trip.current_phase,
+    so a freshly created trip reported no current phase at all until its first
+    advance. The cache must be derived the moment the plan exists."""
+    resp = await client.post(
+        "/api/v1/trips",
+        json=_make_payload(seed_data),
+        headers=_auth_headers(seed_data),
+    )
+
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["status"] == "created"
+    assert body["current_phase"] == "activation"
+    # Stop sequences are 0-indexed (origin=0, destination=1) — activation
+    # happens at the origin stop, sequence 0.
+    assert body["current_stop"] == 0
+
+
+async def test_trip_list_item_carries_plan_counts(client: AsyncClient, seed_data, db_session):
+    """U3: TripListItemResponse has no phase plan, so the dashboard cannot show
+    plan-driven progress without these. phase_total is the plan's own length —
+    never 6, never 7 as a constant."""
+    create = await client.post(
+        "/api/v1/trips",
+        json=_make_payload(seed_data),
+        headers=_auth_headers(seed_data),
+    )
+    created = create.json()
+
+    resp = await client.get("/api/v1/trips", headers=_auth_headers(seed_data))
+
+    assert resp.status_code == 200
+    row = next(t for t in resp.json() if t["id"] == created["id"])
+    assert row["phase_total"] == len(created["phases"])
+    assert row["phase_completed"] == 1          # trip_creation only
+    assert row["current_phase"] == "activation"
+    # Stop sequences are 0-indexed (origin=0, destination=1) — activation
+    # happens at the origin stop, sequence 0.
+    assert row["current_stop"] == 0

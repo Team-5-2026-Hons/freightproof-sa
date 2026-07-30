@@ -5,7 +5,7 @@ import { ForensicOnly } from '@/components/blockchain/ForensicOnly'
 import type { Trip } from '@shared/lib/types/trip'
 
 // ── Shared field primitives ───────────────────────────────────────────────────
-// These establish the pattern for future handshake detail components.
+// These establish the pattern for future per-phase detail components.
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
