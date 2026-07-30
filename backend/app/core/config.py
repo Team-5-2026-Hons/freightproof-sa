@@ -73,6 +73,11 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     SUPABASE_SERVICE_ROLE_KEY: str
 
+    # Evidence images are fetched by the dispatcher's browser straight from Storage via a
+    # short-lived signed URL. Kept deliberately short: for its lifetime the URL is a bearer
+    # capability that carries no further auth check.
+    EVIDENCE_SIGNED_URL_TTL_SECONDS: int = 300
+
     # -------------------------------------------------------------------------
     # Integration mock toggles
     # True = use local mock, False = call real external API.

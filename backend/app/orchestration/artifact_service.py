@@ -7,12 +7,13 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.exceptions import ResourceNotFoundError
 from app.db.models.evidence import EvidenceArtifact
 from app.db.models.enums import ArtifactType
 from app.db.models.trips import Trip
-from app.schemas.evidence import EvidenceArtifactRead
-from app.storage.supabase_storage import upload_evidence_file
+from app.schemas.evidence import EvidenceArtifactRead, EvidenceArtifactWithUrl
+from app.storage.supabase_storage import create_signed_url, upload_evidence_file
 
 MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
 
@@ -60,3 +61,40 @@ async def create_artifact(
     await db.flush()
     await db.refresh(artifact)
     return EvidenceArtifactRead.model_validate(artifact)
+
+
+async def list_artifacts_for_trip(
+    db: AsyncSession, trip_id: uuid.UUID, *, operator_organization_id: uuid.UUID,
+) -> list[EvidenceArtifactWithUrl]:
+    """Every artifact on one trip, each with a freshly minted signed URL.
+
+    Tenancy is enforced in the trip lookup, mirroring get_manifest_for_dispatcher: a trip
+    belonging to another operator is indistinguishable from one that does not exist.
+    """
+    trip_result = await db.execute(
+        select(Trip).where(Trip.id == trip_id, Trip.operator_organization_id == operator_organization_id)
+    )
+    if trip_result.scalar_one_or_none() is None:
+        raise ResourceNotFoundError("Trip", str(trip_id))
+
+    artifacts_result = await db.execute(
+        select(EvidenceArtifact)
+        .where(EvidenceArtifact.trip_id == trip_id)
+        .order_by(EvidenceArtifact.captured_at)
+    )
+
+    out: list[EvidenceArtifactWithUrl] = []
+    for artifact in artifacts_result.scalars().all():
+        signed_url = await create_signed_url(
+            s3_bucket=artifact.s3_bucket,
+            s3_key=artifact.s3_key,
+            ttl_seconds=settings.EVIDENCE_SIGNED_URL_TTL_SECONDS,
+        )
+        # model_copy rather than a model_validate(update=...) kwarg: model_validate has no
+        # such parameter in Pydantic v2, and signed_url is not an ORM attribute to read.
+        out.append(
+            EvidenceArtifactWithUrl.model_validate(artifact).model_copy(
+                update={"signed_url": signed_url}
+            )
+        )
+    return out

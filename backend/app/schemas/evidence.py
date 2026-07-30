@@ -41,3 +41,16 @@ class EvidenceArtifactUpdate(BaseModel):
 class EvidenceArtifactRead(EvidenceArtifactBase):
     id: UUID
     created_at: datetime
+
+
+class EvidenceArtifactWithUrl(EvidenceArtifactRead):
+    """Dispatcher read shape: metadata plus a short-lived signed URL.
+
+    A subclass rather than a field on EvidenceArtifactRead, because that schema is the
+    driver PWA's POST response and the driver has no business receiving read URLs.
+
+    signed_url is None when Storage declined to sign — the artifact is still evidence and
+    its hash still stands, so the row is returned with the image unavailable.
+    """
+
+    signed_url: Optional[str] = None
