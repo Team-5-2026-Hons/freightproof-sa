@@ -8,19 +8,33 @@ import { Button }     from '@/components/ui/Button'
 import { Spinner }    from '@/components/ui/Spinner'
 import { Ic }         from '@/components/ui/Ic'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { InfoRow }    from '@/components/ui/InfoRow'
 import { ROUTES }     from '@/lib/constants/routes'
 import { useTripDetail }  from '@/lib/hooks/useTripDetail'
 import { usePrecincts }   from '@/lib/hooks/usePrecincts'
+import { useTripArtifacts } from '@/lib/hooks/useTripArtifacts'
+import {
+  useResizablePanel,
+  DETAIL_PANEL_DEFAULT_W,
+  DETAIL_PANEL_MIN_W,
+  DETAIL_PANEL_MAX_W,
+} from '@/lib/hooks/useResizablePanel'
 import { PHASE_NAMES }      from '@shared/lib/constants/phase-meta'
 import { VerifyButton }       from '@/components/blockchain/VerifyButton'
 import { ForensicOnly }       from '@/components/blockchain/ForensicOnly'
 import { TripCreatedDetail }  from '@/components/domain/TripCreatedDetail'
+import { ActivationDetail }   from '@/components/domain/ActivationDetail'
+import { DepartureDetail }    from '@/components/domain/DepartureDetail'
+import { ConfirmationDetail } from '@/components/domain/ConfirmationDetail'
+import { InTransitTimeline }  from '@/components/domain/InTransitTimeline'
+import { ManifestPanel }      from '@/components/domain/ManifestPanel'
 import {
   activePhase, anchorTally, currentSealNumber, nodeTypeFor, originParcelCount,
   sortedPlan, tripChipMeta,
 } from '@/lib/phase/derive'
-import type { PhaseDescriptor } from '@shared/lib/types/phase'
+import type { PhaseDescriptor, PhaseEventId } from '@shared/lib/types/phase'
 import type { Trip } from '@shared/lib/types/trip'
+import type { Precinct } from '@shared/lib/types/precinct'
 import type { BlockchainReceipt, BlockchainReceiptType, VerifyResult } from '@shared/lib/types/blockchain'
 
 // ── Blockchain chain tag ──────────────────────────────────────────────────────
@@ -101,6 +115,12 @@ interface TimelineEventProps {
   excText?: string
   resText?: string
   expandedContent?: React.ReactNode
+  // Rendered unconditionally, unlike expandedContent which needs a click.
+  alwaysExpandedContent?: React.ReactNode
+  statusPill?: React.ReactNode
+  // When set, the card opens the manifest panel instead of (or as well as) toggling
+  // expandedContent — loading/unloading cards have no expandedContent of their own.
+  onCardClick?: () => void
 }
 
 function fmtTs(iso: string): string {
@@ -111,10 +131,14 @@ function fmtTs(iso: string): string {
 function TimelineEvent({
   nodeType, nodeLabel, isLast,
   label, meta, detail, timestamp,
-  chainReceipt, excText, resText, expandedContent,
+  chainReceipt, excText, resText, expandedContent, alwaysExpandedContent,
+  statusPill, onCardClick,
 }: TimelineEventProps) {
   const [isExpanded, setIsExpanded] = useState(false)
-  const isExpandable = !!expandedContent
+  const isExpandable  = !!expandedContent
+  // A card is interactive either because it expands in place, or because it opens the
+  // manifest panel (loading/unloading, which have no expandedContent of their own).
+  const isInteractive = isExpandable || !!onCardClick
 
   const nodeStyle: Record<NodeType, string> = {
     done:    'bg-ok text-white',
@@ -153,12 +177,19 @@ function TimelineEvent({
 
       <div className="flex-1 mb-3">
         <div
-          className={`rounded-lg px-4 py-3 ${cardStyle[nodeType]} ${isExpandable ? 'cursor-pointer transition-shadow duration-150 hover:shadow-md active:shadow-sm select-none' : ''}`}
-          onClick={isExpandable ? () => setIsExpanded(e => !e) : undefined}
+          className={`rounded-lg px-4 py-3 ${cardStyle[nodeType]} ${isInteractive ? 'cursor-pointer transition-shadow duration-150 hover:shadow-md active:shadow-sm select-none' : ''}`}
+          onClick={
+            onCardClick ? onCardClick
+            : isExpandable ? () => setIsExpanded(e => !e)
+            : undefined
+          }
         >
           <div className="flex items-start justify-between gap-3 mb-[5px]">
-            <div className={`text-[15px] font-[700] leading-snug ${nodeType === 'pending' ? 'text-on-surf-v' : 'text-on-surf'}`}>
-              {label}
+            <div className="flex items-center gap-[8px] min-w-0">
+              <div className={`text-[15px] font-[700] leading-snug ${nodeType === 'pending' ? 'text-on-surf-v' : 'text-on-surf'}`}>
+                {label}
+              </div>
+              {statusPill}
             </div>
             {timestamp && (
               <div className="flex items-center gap-[4px] shrink-0 tabular-nums text-[12px] font-[700] text-sec">
@@ -187,6 +218,7 @@ function TimelineEvent({
           )}
           {chainReceipt && <ForensicOnly><ChainReceiptTag receipt={chainReceipt} /></ForensicOnly>}
           {isExpanded && expandedContent}
+          {alwaysExpandedContent}
         </div>
       </div>
     </div>
@@ -201,7 +233,13 @@ export default function TripDetailPage() {
   const tripId = routeParams.id as string
   const { trip, isLoading, error } = useTripDetail(tripId)
   const { precincts } = usePrecincts()
+  const { byId: artifactsById } = useTripArtifacts(tripId)
   const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null)
+
+  const [selectedManifestPhase, setSelectedManifestPhase] = useState<PhaseEventId | null>(null)
+  const { width: manifestWidth, startResize: startManifestResize } = useResizablePanel(
+    DETAIL_PANEL_DEFAULT_W, { min: DETAIL_PANEL_MIN_W, max: DETAIL_PANEL_MAX_W },
+  )
 
   // Closed/cancelled trips only ever appear in trip history, so route back there;
   // every other status lives on the active-trips dashboard.
@@ -257,6 +295,15 @@ export default function TripDetailPage() {
   const active        = activePhase(trip.phases)
   const tripCreation  = plan.find(p => p.phase_type === 'trip_creation') ?? null
 
+  // Resolved from the plan by id, never held as an object in state — a refetch replaces
+  // the descriptors and a captured object would go stale. This is also what lets two
+  // `loading` occurrences on a cross-dock plan open their OWN manifest slice: the id is
+  // unique per phase event, so keying on it (rather than phase_type or plan index) can
+  // never conflate the origin load with a mid-route reload.
+  const selectedManifest = selectedManifestPhase
+    ? plan.find(p => p.phase_event_id === selectedManifestPhase) ?? null
+    : null
+
   // U13: the chip names the phase — `Unloading` when active, `⚠ Unloading` when held.
   // Derived from the ledger, NOT from the trip's denormalised position cache — U3's
   // fence. The list view is allowed that cache because it has no plan; this page has
@@ -286,6 +333,14 @@ export default function TripDetailPage() {
     return precinct?.name.split('—')[0]?.trim() ?? '—'
   }
 
+  // precinctForStop returns a display name; the detail cards need the record itself
+  // (coordinates, geofence radius, address).
+  function precinctRecordForStop(stopSequence: number | null): Precinct | undefined {
+    if (stopSequence === null) return undefined
+    const stop = trip!.stops.find(s => s.sequence === stopSequence)
+    return stop ? precincts.find(p => p.id === stop.precinct_id) : undefined
+  }
+
   type TimelineItem = {
     phase: PhaseDescriptor
     nodeType: ReturnType<typeof nodeTypeFor>
@@ -296,6 +351,12 @@ export default function TripDetailPage() {
     nodeType: nodeTypeFor(phase, active?.phase_event_id ?? null),
     exceptions: [],
   }))
+  // APPROXIMATE, and knowingly so. Exceptions are bolted onto the last done/warn row
+  // because the shared TripException type still declares `handshake_event_id` while the
+  // backend has moved to `phase_event_id` (schemas/transit.py). Once Stage 5 renames
+  // that field, attach by exc.phase_event_id and delete this loop. Until then the
+  // in-transit timeline shows index-guessed placement, which must not be presented as
+  // phase-accurate.
   for (const exc of trip.exceptions) {
     const targetIdx = timelineItems.findLastIndex(i => i.nodeType === 'done' || i.nodeType === 'warn')
     if (targetIdx >= 0) timelineItems[targetIdx].exceptions.push(exc)
@@ -315,7 +376,7 @@ export default function TripDetailPage() {
       <div className="flex flex-1 overflow-hidden">
 
         {/* ── LEFT: Timeline ── */}
-        <div className="flex-1 overflow-y-auto p-6 bg-surf-lowest">
+        <div className="flex-1 min-w-[420px] overflow-y-auto p-6 bg-surf-lowest">
 
           <TimelineEvent
             nodeType="done"
@@ -339,11 +400,9 @@ export default function TripDetailPage() {
             const stopLabel = phase.stop_sequence === null
               ? ''
               : `Stop ${phase.stop_sequence} · ${precinctForStop(phase.stop_sequence)}`
-            const meta = phase.completed_at
-              ? stopLabel
-              : item.nodeType === 'active' ? `In progress${stopLabel ? ` · ${stopLabel}` : ''}`
-              : item.nodeType === 'warn'   ? `Exception${stopLabel ? ` · ${stopLabel}` : ''}`
-              : `Pending${stopLabel ? ` · ${stopLabel}` : ''}`
+            // Status now lives in the pill, so meta carries the stop only — leaving the
+            // status word here printed it twice.
+            const meta = stopLabel
 
             const detailParts: string[] = []
             if (phase.pulsit_geofence_confirmed === true)  detailParts.push('Pulsit geofence confirmed ✓')
@@ -369,17 +428,58 @@ export default function TripDetailPage() {
                   nodeType={item.nodeType}
                   nodeLabel={phase.sequence_number}
                   isLast={isLastItem && excItems.length === 0}
-                  label={
-                    item.nodeType === 'active'
-                      ? `${name} — IN PROGRESS`
-                      : item.nodeType === 'pending'
-                      ? `${name} — PENDING`
-                      : name
+                  label={name}
+                  statusPill={
+                    item.nodeType === 'active'  ? <Chip type="transit" label="In progress" /> :
+                    item.nodeType === 'pending' ? <Chip type="pending" label="Pending" /> :
+                    item.nodeType === 'warn'    ? <Chip type="exception" label="Exception" /> :
+                    undefined
                   }
                   meta={meta}
                   detail={detail}
                   timestamp={phase.completed_at ?? undefined}
                   chainReceipt={linkedReceipt}
+                  expandedContent={
+                    phase.phase_type === 'activation'
+                      ? <ActivationDetail
+                          phase={phase}
+                          trip={trip}
+                          precinct={precinctRecordForStop(phase.stop_sequence)}
+                          artifactsById={artifactsById}
+                        />
+                    : phase.phase_type === 'departure'
+                      ? <DepartureDetail
+                          phase={phase}
+                          precinct={precinctRecordForStop(phase.stop_sequence)}
+                          artifactsById={artifactsById}
+                        />
+                    : phase.phase_type === 'confirmation'
+                      ? <ConfirmationDetail
+                          phase={phase}
+                          precinct={precinctRecordForStop(phase.stop_sequence)}
+                          artifactsById={artifactsById}
+                        />
+                    : undefined
+                  }
+                  alwaysExpandedContent={
+                    phase.phase_type === 'in_transit'
+                      ? <InTransitTimeline
+                          phase={phase}
+                          exceptions={item.exceptions}
+                          originName={precinctForStop(phase.stop_sequence)}
+                          destinationName={precinctForStop(
+                            phase.stop_sequence === null ? null : phase.stop_sequence + 1,
+                          )}
+                        />
+                      : undefined
+                  }
+                  onCardClick={
+                    phase.phase_type === 'loading' || phase.phase_type === 'unloading'
+                      ? () => setSelectedManifestPhase(
+                          current => current === phase.phase_event_id ? null : phase.phase_event_id,
+                        )
+                      : undefined
+                  }
                 />
                 {excItems.map((exc, ei) => (
                   <TimelineEvent
@@ -402,30 +502,40 @@ export default function TripDetailPage() {
           })}
         </div>
 
+        {/* ── MIDDLE: Manifest panel (only while a loading/unloading card is selected) ── */}
+        {selectedManifest && (
+          <ManifestPanel
+            tripId={trip.id as string}
+            mode={selectedManifest.phase_type === 'loading' ? 'loading' : 'unloading'}
+            heading={`Manifest · ${PHASE_NAMES[selectedManifest.phase_type]}${
+              selectedManifest.stop_sequence === null
+                ? ''
+                : ` · Stop ${selectedManifest.stop_sequence} · ${precinctForStop(selectedManifest.stop_sequence)}`
+            }`}
+            width={manifestWidth}
+            onStartResize={startManifestResize}
+            onClose={() => setSelectedManifestPhase(null)}
+            parcelCountDestination={selectedManifest.parcel_count_destination}
+            driverVisualCount={selectedManifest.driver_visual_count}
+          />
+        )}
+
         {/* ── RIGHT: Sidebar ── */}
-        <div className="w-[256px] bg-surf-low p-5 overflow-y-auto shrink-0 border-l border-outline-v/20">
+        <div className={`w-[256px] bg-surf-low p-5 overflow-y-auto shrink-0 border-l border-outline-v/20${
+          selectedManifest ? ' hidden xl:block' : ''
+        }`}>
 
           <div className="text-[11px] font-[700] tracking-[0.1em] uppercase text-on-surf-v mb-3">
             Trip Info
           </div>
           <div className="bg-surf-lowest rounded-lg p-[12px_14px] mb-4 shadow-level-2">
-            {([
-              { label: 'Order',       value: trip.order_number,             mono: true  },
-              { label: 'Driver',      value: trip.driver?.full_name ?? '—', mono: false },
-              { label: 'Horse',       value: trip.horse?.registration ?? '—', mono: true },
-              { label: 'Origin',      value: originShort,                   mono: false },
-              { label: 'Destination', value: destShort,                     mono: false },
-            ] as const).map((row, i, arr) => (
-              <div
-                key={row.label}
-                className={`flex justify-between items-start gap-3 py-[8px] text-[13px]${i < arr.length - 1 ? ' border-b border-outline-v/20' : ''}`}
-              >
-                <span className="text-[11px] text-on-surf-v shrink-0 pt-[1px]">{row.label}</span>
-                <span className={`text-right${row.mono ? ' tabular-nums tracking-[0.05em] font-[600] text-on-surf' : ' font-[500] text-on-surf'}`}>
-                  {row.value}
-                </span>
-              </div>
-            ))}
+            <div>
+              <InfoRow label="Order"       value={trip.order_number}                mono />
+              <InfoRow label="Driver"      value={trip.driver?.full_name ?? '—'} />
+              <InfoRow label="Horse"       value={trip.horse?.registration ?? '—'}  mono />
+              <InfoRow label="Origin"      value={originShort} />
+              <InfoRow label="Destination" value={destShort} />
+            </div>
             {sealNumber && (
               <div className="flex justify-between items-center pt-[8px] mt-[2px] border-t border-outline-v/20 text-[13px]">
                 <span className="text-[11px] text-on-surf-v shrink-0">Seal</span>
@@ -468,7 +578,12 @@ export default function TripDetailPage() {
             Cargo
           </div>
           <div className="bg-surf-lowest rounded-md p-[10px_12px] mb-4 text-[13px] shadow-level-2">
-            <div className="font-[600] text-on-surf">{parcelCount} parcels</div>
+            <div className="font-[600] text-on-surf tabular-nums">
+              {trip.consignments.length} waybill{trip.consignments.length === 1 ? '' : 's'}
+            </div>
+            <div className="text-[11px] text-on-surf-v tabular-nums mt-[2px]">
+              {parcelCount} parcels
+            </div>
             {originLoad?.status === 'completed' && (
               <div className="text-[11px] text-ok mt-[3px] flex items-center gap-1">
                 <Ic n="check" s={11} className="text-ok" />

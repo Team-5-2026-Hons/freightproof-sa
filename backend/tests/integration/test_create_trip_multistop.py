@@ -371,7 +371,7 @@ async def test_create_trip_output_is_immediately_advanceable(client: AsyncClient
     )
     assert phases_resp.status_code == 200
     activation_id = next(
-        p["id"] for p in phases_resp.json() if p["phase_type"] == "activation"
+        p["phase_event_id"] for p in phases_resp.json() if p["phase_type"] == "activation"
     )
 
     h1_resp = await client.post(

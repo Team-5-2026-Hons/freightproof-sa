@@ -126,7 +126,7 @@ async def _phase_event_id(client: AsyncClient, trip_id, token, phase_type: str) 
     or a sequence-to-id mapping."""
     resp = await client.get(f"/api/v1/trips/{trip_id}/phases", headers=auth_header(token))
     row = next(p for p in resp.json() if p["phase_type"] == phase_type)
-    return row["id"]
+    return row["phase_event_id"]
 
 
 async def _complete_h1(client: AsyncClient, db_session, trip, token) -> None:
@@ -295,5 +295,5 @@ async def test_trip_detail_lists_h3_handshake_receipt_for_dispatcher(
     receipts = detail_resp.json()["blockchain_receipts"]
     handshake_receipts = [r for r in receipts if r["subject_type"] == "phase_event"]
     assert len(handshake_receipts) == 1
-    assert handshake_receipts[0]["subject_id"] == departure["id"]
+    assert handshake_receipts[0]["subject_id"] == departure["phase_event_id"]
     assert handshake_receipts[0]["id"] == departure["blockchain_receipt_id"]

@@ -9,7 +9,6 @@ rather than as columns.
 
 import re
 from datetime import datetime
-from decimal import Decimal
 from typing import Annotated, Any, Literal, Optional, Union
 from uuid import UUID
 
@@ -38,7 +37,15 @@ class PhaseEventRead(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    id: UUID
+    # Wire name is `phase_event_id`, matching the shared frontend contract
+    # (frontend/shared/lib/types/phase.ts) — this is the phase's own identity,
+    # not a foreign key pointing at one (contrast
+    # TrailerGpsSnapshotBase.phase_event_id below, which IS an FK and is
+    # unaffected by this alias). serialization_alias only changes the OUTBOUND
+    # key: model_validate(event)/from_attributes still binds the ORM's `id`
+    # attribute by field name, and FastAPI serialises response models with
+    # by_alias=True by default, so `id` never reaches the JSON body.
+    id: UUID = Field(..., serialization_alias="phase_event_id")
     trip_id: UUID
     phase_type: PhaseType
     sequence_number: int
@@ -60,10 +67,10 @@ class PhaseEventRead(BaseModel):
 
     dispatcher_override_user_id: Optional[UUID] = None
     dispatcher_override_note: Optional[str] = None
-    driver_phone_lat: Optional[Decimal] = None
-    driver_phone_lng: Optional[Decimal] = None
-    horse_gps_lat: Optional[Decimal] = None
-    horse_gps_lng: Optional[Decimal] = None
+    driver_phone_lat: Optional[float] = None
+    driver_phone_lng: Optional[float] = None
+    horse_gps_lat: Optional[float] = None
+    horse_gps_lng: Optional[float] = None
     pulsit_geofence_confirmed: Optional[bool] = None
     seal_number: Optional[str] = None
     seal_photo_artifact_id: Optional[UUID] = None
@@ -104,8 +111,8 @@ class TrailerGpsSnapshotBase(BaseModel):
     phase_event_id: UUID
     trailer_id: UUID
     pulsit_device_id: str
-    lat: Decimal
-    lng: Decimal
+    lat: float
+    lng: float
     captured_at: datetime
 
 
@@ -127,8 +134,8 @@ class _PhaseCompleteBase(BaseModel):
 
 class ActivationCompleteRequest(_PhaseCompleteBase):
     phase_type: Literal[PhaseType.ACTIVATION]
-    driver_phone_lat: Decimal
-    driver_phone_lng: Decimal
+    driver_phone_lat: float
+    driver_phone_lng: float
 
 
 class LoadingCompleteRequest(_PhaseCompleteBase):

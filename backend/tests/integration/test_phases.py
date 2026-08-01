@@ -128,7 +128,7 @@ async def _phase_id(client: AsyncClient, trip_id, token, phase_type: str) -> str
     or an assumed sequence-to-id mapping."""
     resp = await client.get(f"/api/v1/trips/{trip_id}/phases", headers=auth_header(token))
     row = next(p for p in resp.json() if p["phase_type"] == phase_type)
-    return row["id"]
+    return row["phase_event_id"]
 
 
 # ── Ported from test_handshakes.py: activation completion over the new route ──

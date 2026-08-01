@@ -1,7 +1,6 @@
 """Pydantic v2 schemas for Organization and Precinct."""
 
 from datetime import datetime
-from decimal import Decimal
 from uuid import UUID
 from typing import Optional
 
@@ -44,8 +43,12 @@ class PrecinctBase(BaseModel):
     name: str
     principal_organization_id: UUID
     address: Optional[str] = None
-    latitude: Decimal
-    longitude: Decimal
+    # Numeric(10,7) in the DB; float is exact here since a GPS coordinate is at
+    # most 10 significant digits and float64 carries ~15.65 — see schema fix
+    # notes. Decimal would serialise to a JSON string, which the frontend
+    # (a `number` type) can't call .toFixed() on.
+    latitude: float
+    longitude: float
     geofence_radius_metres: int = 200
     is_shared: bool = False
 
@@ -59,8 +62,8 @@ class PrecinctUpdate(BaseModel):
 
     name: Optional[str] = None
     address: Optional[str] = None
-    latitude: Optional[Decimal] = None
-    longitude: Optional[Decimal] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     geofence_radius_metres: Optional[int] = None
     is_shared: Optional[bool] = None
 

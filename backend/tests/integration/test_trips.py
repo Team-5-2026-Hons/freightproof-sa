@@ -449,6 +449,46 @@ async def test_get_trip_detail_returns_200(client: AsyncClient, seed_data, db_se
     assert body["phases"][0]["phase_type"] == "trip_creation"
 
 
+async def test_get_trip_detail_phases_carry_phase_event_id(
+    client: AsyncClient, seed_data, db_session,
+):
+    """PhaseEventRead's own identity field must serialise as `phase_event_id`,
+    matching the shared frontend contract (frontend/shared/lib/types/phase.ts) —
+    NOT `id`, the DB column name. The dispatcher keys manifest-panel selection
+    and "in progress" rendering on this exact key (lib/phase/derive.ts,
+    app/(app)/trips/[id]/page.tsx); a silent drift back to `id` reintroduces
+    that bug without any TypeScript error, since the unchecked `as Promise<T>`
+    cast in lib/api/client.ts would just make phase_event_id undefined at
+    runtime. Also asserts the value is a REAL row id, not merely present."""
+    create_resp = await client.post(
+        "/api/v1/trips",
+        json=_make_payload(seed_data),
+        headers=_auth_headers(seed_data),
+    )
+    trip_id = create_resp.json()["id"]
+
+    resp = await client.get(
+        f"/api/v1/trips/{trip_id}",
+        headers=_auth_headers(seed_data),
+    )
+    body = resp.json()
+    assert resp.status_code == 200
+
+    phase = body["phases"][0]
+    assert "phase_event_id" in phase
+    assert "id" not in phase
+
+    row = (
+        await db_session.execute(
+            select(PhaseEvent).where(
+                PhaseEvent.trip_id == uuid.UUID(trip_id),
+                PhaseEvent.sequence_number == phase["sequence_number"],
+            )
+        )
+    ).scalar_one()
+    assert uuid.UUID(phase["phase_event_id"]) == row.id
+
+
 def _assert_derived_phase_fields_populated(phases: list[dict]) -> None:
     """stop_sequence and step_recipe are PhaseEventRead.from_event()'s two
     derived fields (a TripStop join and a static lookup respectively) —
