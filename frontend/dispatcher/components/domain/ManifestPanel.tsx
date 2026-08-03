@@ -60,7 +60,7 @@ export function ManifestPanel({
             every occurrence of this panel shows the same parcels. Saying so is cheaper than
             a dispatcher inferring a per-stop breakdown that does not exist. */}
         <div className="text-[10px] text-on-surf-v mb-3 leading-snug">
-          Full trip manifest — Parcel Perfect does not break parcels down per stop.
+          This is the full trip manifest. Parcel Perfect does not break parcels down per stop.
         </div>
 
         {/* These counts come from the unloading phase itself, not from the manifest fetch —

@@ -422,6 +422,14 @@ export default function TripDetailPage() {
 
             const excItems = item.exceptions
 
+            // A pending phase is a future event: it has no evidence yet, so it must not
+            // expand, must not open the manifest panel, and must not even LOOK clickable.
+            const isPending = item.nodeType === 'pending'
+            // In-transit's own mini timeline already states "Arrived {destination}" with
+            // this exact time, so the card-level timestamp is redundant and easy to misread
+            // as the leg's departure time. Every other phase type keeps it.
+            const cardTimestamp = phase.phase_type === 'in_transit' ? undefined : phase.completed_at ?? undefined
+
             return (
               <div key={phase.phase_event_id}>
                 <TimelineEvent
@@ -437,10 +445,11 @@ export default function TripDetailPage() {
                   }
                   meta={meta}
                   detail={detail}
-                  timestamp={phase.completed_at ?? undefined}
+                  timestamp={cardTimestamp}
                   chainReceipt={linkedReceipt}
                   expandedContent={
-                    phase.phase_type === 'activation'
+                    isPending ? undefined
+                    : phase.phase_type === 'activation'
                       ? <ActivationDetail
                           phase={phase}
                           trip={trip}
@@ -462,7 +471,8 @@ export default function TripDetailPage() {
                     : undefined
                   }
                   alwaysExpandedContent={
-                    phase.phase_type === 'in_transit'
+                    isPending ? undefined
+                    : phase.phase_type === 'in_transit'
                       ? <InTransitTimeline
                           phase={phase}
                           exceptions={item.exceptions}
@@ -474,7 +484,8 @@ export default function TripDetailPage() {
                       : undefined
                   }
                   onCardClick={
-                    phase.phase_type === 'loading' || phase.phase_type === 'unloading'
+                    isPending ? undefined
+                    : phase.phase_type === 'loading' || phase.phase_type === 'unloading'
                       ? () => setSelectedManifestPhase(
                           current => current === phase.phase_event_id ? null : phase.phase_event_id,
                         )
