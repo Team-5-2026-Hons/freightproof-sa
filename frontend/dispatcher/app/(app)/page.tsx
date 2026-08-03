@@ -61,7 +61,36 @@ export default function ActiveTripsPage() {
   const { notify } = useToast()
   const [search, setSearch] = useState('')
   const [colWidths, setColWidths] = useState<ColWidths>(INITIAL_COL_WIDTHS)
-  const resizeRef = useRef<{ id: ColId; startX: number; startW: number } | null>(null)
+  const resizeRef = useRef<{ id: ColId; startX: number; startW: number; startScale: number } | null>(null)
+
+  // Columns stay fixed-width (and manually resizable) up to this total; past it we
+  // stretch every column proportionally to fill the extra space on wide monitors
+  // instead of leaving it blank to the right of the table.
+  const scrollAreaRef = useRef<HTMLDivElement>(null)
+  const [containerWidth, setContainerWidth] = useState(0)
+
+  useEffect(() => {
+    const el = scrollAreaRef.current
+    if (!el) return
+    const observer = new ResizeObserver(entries => setContainerWidth(entries[0].contentRect.width))
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  const totalColWidth = useMemo(
+    () => Object.values(colWidths).reduce((sum, w) => sum + w, 0),
+    [colWidths],
+  )
+
+  const colScale = containerWidth > totalColWidth ? containerWidth / totalColWidth : 1
+
+  // Rendered widths only — resize-drag math above always reads/writes the raw
+  // (unscaled) colWidths, so dragging a handle behaves identically at any scale.
+  const scaledColWidths = useMemo(() => {
+    if (colScale === 1) return colWidths
+    const entries = Object.entries(colWidths) as [ColId, number][]
+    return Object.fromEntries(entries.map(([id, w]) => [id, w * colScale])) as unknown as ColWidths
+  }, [colWidths, colScale])
 
   // Single fetch for all trips — active and closed are derived client-side
   const { trips: allFetchedTrips, isLoading: tripsLoading, error: tripsError, refetch: refetchTrips } = useTrips()
@@ -119,12 +148,15 @@ export default function ActiveTripsPage() {
 
   function startResize(id: ColId, e: React.MouseEvent) {
     e.preventDefault()
-    resizeRef.current = { id, startX: e.clientX, startW: colWidths[id] }
+    resizeRef.current = { id, startX: e.clientX, startW: colWidths[id], startScale: colScale }
 
     function onMove(ev: MouseEvent) {
       const r = resizeRef.current
       if (!r) return
-      setColWidths(p => ({ ...p, [r.id]: Math.max(MIN_COL_W, r.startW + (ev.clientX - r.startX)) }))
+      // Divide the mouse delta by the scale in effect at drag start so the column
+      // edge tracks the cursor 1:1 even when columns are stretched to fill a wide screen.
+      const rawDelta = (ev.clientX - r.startX) / r.startScale
+      setColWidths(p => ({ ...p, [r.id]: Math.max(MIN_COL_W, r.startW + rawDelta) }))
     }
 
     function onUp() {
@@ -207,7 +239,7 @@ export default function ActiveTripsPage() {
         )}
 
         {/* Table scroll area */}
-        <div className="flex-1 overflow-auto">
+        <div ref={scrollAreaRef} className="flex-1 overflow-auto">
           {tripsLoading ? (
             <div className="flex items-center justify-center py-16">
               <Spinner size="lg" />
@@ -224,7 +256,7 @@ export default function ActiveTripsPage() {
               </Button>
             </div>
           ) : (
-            <div className="min-w-[700px]">
+            <div style={{ minWidth: totalColWidth }}>
 
               {/* Sticky column header */}
               <div className="sticky top-0 flex px-6 py-[7px] bg-surf-low border-b border-outline-v/10 divide-x divide-outline/30 select-none">
@@ -235,7 +267,7 @@ export default function ActiveTripsPage() {
                   return (
                     <div
                       key={col.id}
-                      style={{ width: colWidths[col.id], flexShrink: 0 }}
+                      style={{ width: scaledColWidths[col.id], flexShrink: 0 }}
                       className={`relative group ${padCls} text-[10px] font-[700] tracking-[0.1em] uppercase text-on-surf-v`}
                     >
                       {col.label}
@@ -271,7 +303,7 @@ export default function ActiveTripsPage() {
                   </div>
                 ) : (
                   filteredTrips.map(trip => (
-                    <ChecklistRow key={trip.id} trip={trip} colWidths={colWidths} precincts={precincts} />
+                    <ChecklistRow key={trip.id} trip={trip} colWidths={scaledColWidths} precincts={precincts} />
                   ))
                 )}
               </div>

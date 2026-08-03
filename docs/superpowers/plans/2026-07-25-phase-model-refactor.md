@@ -888,6 +888,31 @@ on Stage 5 landing.
 **These do not block starting.** Design so they are swappable, and state the simulation honestly in
 the demo script (6.2).
 
+### Still open — code gaps found after Stage 4, scheduled into Stage 6 *(added 2026-08-01)*
+
+Found by a post-Stage-4 audit of the error and lifecycle paths. **All are scheduled as numbered tasks
+in `docs/superpowers/plans/2026-08-01-phase-refactor-stage-6-hardening-and-demo.md`** — listed here so
+they are indexed in the artifact this project is defended from, not only in the stage plan. The
+plain-English version of each, with reproduction steps, is `docs/phase-model-explained.md` §9.
+
+8. 🔴 **`EXCEPTION_HOLD` is a permanent dead-end.** `PhaseStatus.OVERRIDDEN`, `TripStatus.CANCELLED`
+   and the `dispatcher_override_*` columns are modelled and **read by the gating logic**, but written
+   by nothing — there is no override, cancel, or release path anywhere. A trip that detects seal
+   tampering at the destination can never be completed, closed, cancelled or released. **This is the
+   product's headline scenario, and it has no recovery.** Stage 6 task 6.0.
+9. 🔴 **Empty-leg trips cannot close.** No `loading` row is generated, and `advance_confirmation`'s
+   `_find_loading_for_leg` raises rather than returning `None` → permanent 404. Stage 6 task 6.1.
+   *(Stage 2 §421 verified empty legs at plan **generation** and signed off; the completion path was
+   never checked, and `_find_loading_for_leg` arrived later in Stage 3.)*
+10. 🟠 **No row locking anywhere in the codebase.** Two concurrent completions of one phase both pass
+    the gate and **both submit to Hedera before the uniqueness check fires** — and a DB rollback
+    cannot un-submit an on-chain message. Stage 6 task 6.2.
+11. 🟡 **Inconsistent error mapping.** `phases.py` has no `SQLAlchemyError` handler (`trips.py` does),
+    and `main.py` has **no global exception handler at all**. Stage 6 task 6.3.
+
+**8 and 9 block the parent's own Stage 6 "Done when".** A held trip and an empty-leg trip cannot be
+walked end-to-end, so "demoable from a cold start" is unreachable until both are closed.
+
 ---
 
 ## 11. Stage-plan template
