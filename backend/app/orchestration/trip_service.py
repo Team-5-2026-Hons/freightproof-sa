@@ -14,7 +14,12 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.blockchain.anchor_service import anchor_subject, compute_payload_hash
-from app.core.exceptions import PPSyncError, ResourceNotFoundError, TripConflictError
+from app.core.exceptions import (
+    ConsignmentAlreadyAssignedError,
+    PPSyncError,
+    ResourceNotFoundError,
+    TripConflictError,
+)
 from app.crypto.hashing import compute_journey_lock_hash, compute_trip_canonical_payload
 from app.db.models.enums import AnchorStatus, BlockchainReceiptType, IdvsStatus, PhaseStatus, SubjectType, TripStatus, TripType, VehicleType
 from app.db.models.phases import PhaseEvent
@@ -282,6 +287,14 @@ async def create_trip(
             except SQLAlchemyError:
                 # DB faults are not PP faults — re-raise unchanged so the endpoint's
                 # SQLAlchemyError handler keeps its 500 semantics instead of a misleading 422.
+                await db.rollback()
+                raise
+            except ConsignmentAlreadyAssignedError:
+                # Nor is this a PP fault: PP answered, and the waybill is real. The
+                # conflict is ours, so it must not be relabelled as a PP sync failure -
+                # a dispatcher told "Parcel Perfect rejected a waybill" would go and
+                # check PP, where they would find nothing wrong. Rolled back for the
+                # same reason as below, then re-raised for the endpoint's 409.
                 await db.rollback()
                 raise
             except Exception as exc:

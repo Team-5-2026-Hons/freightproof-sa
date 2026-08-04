@@ -69,13 +69,23 @@ describe('nodeTypeFor', () => {
     expect(nodeTypeFor(plan[3], active?.phase_event_id ?? null)).toBe('warn')
   })
 
-  it('marks resolved, active and pending phases distinctly', () => {
+  it('marks resolved, next and pending phases distinctly', () => {
     const plan = walk(SINGLE_LEG_PHASE_PLAN, 2)
     const activeId = activePhase(plan)?.phase_event_id ?? null
 
     expect(nodeTypeFor(plan[2], activeId)).toBe('done')
-    expect(nodeTypeFor(plan[3], activeId)).toBe('active')
+    // The ledger's current gate, but still `pending` — nothing has actually
+    // started, so this must not read as `active`.
+    expect(nodeTypeFor(plan[3], activeId)).toBe('next')
     expect(nodeTypeFor(plan[4], activeId)).toBe('pending')
+  })
+
+  it('marks the current phase active only once it is genuinely in_progress', () => {
+    const plan = walk(SINGLE_LEG_PHASE_PLAN, 2).map(p =>
+      p.sequence_number === 3 ? { ...p, status: 'in_progress' as const } : p)
+    const activeId = activePhase(plan)?.phase_event_id ?? null
+
+    expect(nodeTypeFor(plan[3], activeId)).toBe('active')
   })
 })
 

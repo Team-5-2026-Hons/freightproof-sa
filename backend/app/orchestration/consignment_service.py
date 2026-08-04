@@ -17,9 +17,10 @@ from typing import Any, Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import ConsignmentAlreadyAssignedError
 from app.db.models.enums import ParcelStatus
 from app.db.models.organisations import Organization
-from app.db.models.trips import Consignment, Parcel
+from app.db.models.trips import Consignment, Parcel, Trip
 from app.integrations.parcel_perfect import PPWaybillResponse, get_pp_client
 
 logger = logging.getLogger(__name__)
@@ -33,11 +34,15 @@ class ConsignmentSyncResult:
     warning: str | None  # e.g. unmapped PP account — surfaced, never fatal
 
 
-def _serialise_waybill(w: PPWaybillResponse) -> dict[str, Any]:
+def serialise_waybill(w: PPWaybillResponse) -> dict[str, Any]:
     """Convert a PPWaybillResponse to a JSON-safe dict for storage in pp_raw_json.
 
     Dataclasses are not JSON-serialisable by default, so we flatten each nested
     object into plain dicts. Stored verbatim in JSONB — no lossy type coercion.
+
+    Public so scripts/seed_trips.py writes byte-identical pp_raw_json to what a
+    real trip creation writes: a seed that stores a different shape from the live
+    path is a seed that hides bugs in whatever reads that column.
     """
     return {
         "details": {
@@ -129,6 +134,27 @@ async def fetch_and_sync_consignment(
     )
     consignment: Optional[Consignment] = existing_result.scalar_one_or_none()
 
+    # Step 2a: Refuse to move a consignment between trips.
+    # Without this the caller's own restamping of pickup/delivery stops (see
+    # trip_service.create_trip) silently rewrites the OWNING trip's route basis -
+    # a trip that is already anchored. Same trip_id is not a conflict: that is the
+    # Celery refresh poll re-syncing a consignment onto the trip it already has.
+    if (
+        consignment is not None
+        and consignment.trip_id is not None
+        and trip_id is not None
+        and consignment.trip_id != trip_id
+    ):
+        owner_result = await db.execute(
+            select(Trip.trip_reference).where(Trip.id == consignment.trip_id)
+        )
+        owner_reference = owner_result.scalar_one_or_none()
+        logger.warning(
+            "Rejected reassignment of consignment pp_reference=%s from trip %s to trip %s",
+            pp_reference, consignment.trip_id, trip_id,
+        )
+        raise ConsignmentAlreadyAssignedError(pp_reference, owner_reference or str(consignment.trip_id))
+
     # Step 3: Resolve the client org from the waybill's PP account number.
     # accnum is PP's source of truth for client attribution — the caller no
     # longer supplies client_organization_id. Skipped when the consignment is
@@ -151,7 +177,7 @@ async def fetch_and_sync_consignment(
             )
             logger.warning(warning)
 
-    raw_json: dict[str, Any] = _serialise_waybill(waybill)
+    raw_json: dict[str, Any] = serialise_waybill(waybill)
     parcel_count: int = len(waybill.tracks)
     # declared_value from PP arrives as float | None; Numeric(15,2) accepts Decimal.
     declared_value: Optional[Decimal] = (

@@ -635,6 +635,40 @@ async def test_create_trip_unknown_waybill_rolls_back_everything(client: AsyncCl
     assert handshake_rows == []
 
 
+async def test_create_trip_409_on_waybill_already_assigned_to_another_trip(
+    client: AsyncClient, seed_data, db_session,
+):
+    """A PP waybill already on trip A cannot be pulled onto trip B.
+
+    Without this rejection, create_trip's post-sync step restamps the existing
+    Consignment row's pickup/delivery stops onto the SECOND trip's route - quietly
+    corrupting the first (already-anchored) trip's phase-plan basis. The second
+    trip must get a 409 that names the owning trip, and trip B's rollback must be
+    total: no Trip/TripStop/PhaseEvent rows left behind by the rejected attempt.
+    """
+    payload = _make_payload(seed_data)
+    payload["order_number"] = "ORD-REUSE-A"
+    first = await client.post(
+        "/api/v1/trips", json=payload, headers=_auth_headers(seed_data),
+    )
+    assert first.status_code == 201
+    first_trip_reference = first.json()["trip_reference"]
+
+    payload["order_number"] = "ORD-REUSE-B"
+    second = await client.post(
+        "/api/v1/trips", json=payload, headers=_auth_headers(seed_data),
+    )
+
+    assert second.status_code == 409
+    assert first_trip_reference in second.json()["detail"]
+    assert "MOCKWAY001" in second.json()["detail"]
+
+    trip_b_rows = (
+        await db_session.execute(select(Trip).where(Trip.order_number == "ORD-REUSE-B"))
+    ).scalars().all()
+    assert trip_b_rows == []
+
+
 async def test_create_trip_unmapped_accnum_returns_warning(client: AsyncClient, seed_data, db_session):
     """WAY004's accnum (UNMAP9) has no matching Organization — the consignment is
     still saved (client_organization_id NULL) with a non-fatal warning surfaced."""

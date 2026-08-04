@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_dispatcher, get_current_driver
 from app.core.exceptions import (
+    ConsignmentAlreadyAssignedError,
     HederaServiceError,
     HederaTimeoutError,
     PPSyncError,
@@ -52,6 +53,13 @@ async def create_trip_endpoint(
     """
     try:
         return await create_trip(db=db, payload=payload, current_user=current_user)
+    except ConsignmentAlreadyAssignedError as exc:
+        # Ordered before PPSyncError purely for readability - the two are unrelated
+        # types, so this is not a subclass-shadowing concern.
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
     except PPSyncError as exc:
         raise HTTPException(
             status_code=422,

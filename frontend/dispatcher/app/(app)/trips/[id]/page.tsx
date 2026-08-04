@@ -101,7 +101,11 @@ function ChainReceiptTag({ receipt }: { receipt: BlockchainReceipt }) {
 }
 
 // ── Single timeline event ─────────────────────────────────────────────────────
-type NodeType = 'done' | 'active' | 'warn' | 'cp' | 'pending'
+// 'next' vs 'active': see PhaseNodeType's doc comment in lib/phase/derive.ts —
+// 'next' is the ledger's current gate with nothing yet done, 'active' is genuinely
+// under way. Keeping the distinction here too, not just in the shared derivation,
+// is what stops the trip-created-a-week-ahead phase from rendering as in-progress.
+type NodeType = 'done' | 'active' | 'next' | 'warn' | 'cp' | 'pending'
 
 interface TimelineEventProps {
   nodeType: NodeType
@@ -143,6 +147,9 @@ function TimelineEvent({
   const nodeStyle: Record<NodeType, string> = {
     done:    'bg-ok text-white',
     active:  'bg-sec text-white animate-pulse',
+    // Outlined, not filled — a filled/pulsing node reads as work already under way,
+    // which is exactly the misleading state this type exists to avoid.
+    next:    'bg-surf-lowest text-sec border-2 border-sec',
     warn:    'bg-warn-c text-warn-onc',
     cp:      'bg-surf-high text-on-surf-v',
     pending: 'bg-surf-high text-on-surf-v border border-outline-v',
@@ -150,6 +157,7 @@ function TimelineEvent({
   const lineStyle: Record<NodeType, string> = {
     done:    'bg-ok/40',
     active:  'bg-outline-v/30',
+    next:    'bg-outline-v/30',
     warn:    'bg-outline-v/30',
     cp:      'bg-ok/40',
     pending: 'bg-outline-v/30',
@@ -157,6 +165,10 @@ function TimelineEvent({
   const cardStyle: Record<NodeType, string> = {
     done:    'bg-surf-low',
     active:  'bg-sec-c border border-sec/20',
+    // Same idea as nodeStyle: a light outline says "this is what we're waiting
+    // on", the solid sec-c fill used by `active` says "in progress" — which
+    // nothing has done yet for a `next` phase.
+    next:    'bg-surf-low border border-sec/30',
     warn:    'bg-warn-c/40 border border-warn/20',
     cp:      'bg-surf-low',
     pending: 'border border-dashed border-outline-v/40',
@@ -341,6 +353,23 @@ export default function TripDetailPage() {
     return stop ? precincts.find(p => p.id === stop.precinct_id) : undefined
   }
 
+  // Role (origin/destination) is derived, not stored (FP-112) — "Stop 0" told the
+  // dispatcher nothing, so the first and last waypoint on the plan are labelled by
+  // role and only a genuine mid-route leg falls back to a numbered "Stop N". Ranked
+  // by POSITION among the trip's own stops, never by the raw sequence value —
+  // real trip creation numbers stops from 0 (trip_service.py) but seeded demo data
+  // numbers them from 1 (seed_trips.py), so comparing against a literal 0 or 1
+  // silently breaks on whichever convention it wasn't written for.
+  function stopRoleLabel(stopSequence: number | null): string {
+    if (stopSequence === null) return ''
+    const sorted = [...trip!.stops].sort((a, b) => a.sequence - b.sequence)
+    const rank = sorted.findIndex(s => s.sequence === stopSequence)
+    if (rank === -1) return ''
+    if (rank === 0) return 'Origin'
+    if (rank === sorted.length - 1) return 'Destination'
+    return `Stop ${rank + 1}`
+  }
+
   type TimelineItem = {
     phase: PhaseDescriptor
     nodeType: ReturnType<typeof nodeTypeFor>
@@ -399,7 +428,7 @@ export default function TripDetailPage() {
             // stop is what disambiguates two `Loading` rows — never the index.
             const stopLabel = phase.stop_sequence === null
               ? ''
-              : `Stop ${phase.stop_sequence} · ${precinctForStop(phase.stop_sequence)}`
+              : `${stopRoleLabel(phase.stop_sequence)} · ${precinctForStop(phase.stop_sequence)}`
             // Status now lives in the pill, so meta carries the stop only — leaving the
             // status word here printed it twice.
             const meta = stopLabel
@@ -439,6 +468,10 @@ export default function TripDetailPage() {
                   label={name}
                   statusPill={
                     item.nodeType === 'active'  ? <Chip type="transit" label="In progress" /> :
+                    // The ledger's current gate, but nothing has actually started — a
+                    // trip created a week ahead must not claim its first phase is
+                    // already under way just because it's next in line.
+                    item.nodeType === 'next'    ? <Chip type="pending" label="Next" /> :
                     item.nodeType === 'pending' ? <Chip type="pending" label="Pending" /> :
                     item.nodeType === 'warn'    ? <Chip type="exception" label="Exception" /> :
                     undefined
@@ -521,7 +554,7 @@ export default function TripDetailPage() {
             heading={`Manifest · ${PHASE_NAMES[selectedManifest.phase_type]}${
               selectedManifest.stop_sequence === null
                 ? ''
-                : ` · Stop ${selectedManifest.stop_sequence} · ${precinctForStop(selectedManifest.stop_sequence)}`
+                : ` · ${stopRoleLabel(selectedManifest.stop_sequence)} · ${precinctForStop(selectedManifest.stop_sequence)}`
             }`}
             width={manifestWidth}
             onStartResize={startManifestResize}

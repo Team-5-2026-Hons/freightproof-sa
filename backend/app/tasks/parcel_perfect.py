@@ -85,7 +85,7 @@ async def _sync_all_active() -> dict[str, Any]:
 
         for consignment in consignments:
             # Skip consignments where PP already confirmed delivery in a prior poll.
-            # poddate is written into pp_raw_json by _serialise_waybill() on every sync,
+            # poddate is written into pp_raw_json by serialise_waybill() on every sync,
             # so a non-empty value here means PP has definitively closed the delivery.
             prior_poddate: str = (
                 (consignment.pp_raw_json or {}).get("details", {}).get("poddate", "")

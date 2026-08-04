@@ -35,6 +35,20 @@ function formatShortDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short' })
 }
 
+// Role (origin/destination) is derived, not stored (FP-112). This list payload
+// (TripSummary) carries current_stop but no total stop count, so only two cases
+// are provable without it: stop 0 is always the origin, and `confirmation` only
+// ever fires on the trip's LAST stop (backend/app/orchestration/phase_plan.py —
+// `build_phase_plan`, the else-branch reached solely when `i == last_index`).
+// Everything else might genuinely be a mid-route stop on a cross-dock plan, so it
+// falls back to a numbered "Stop N" rather than risk mislabelling it "Destination".
+function stopRoleLabel(trip: TripSummary): string {
+  if (trip.current_stop === null) return ''
+  if (trip.current_stop === 0) return 'Origin'
+  if (trip.current_phase === 'confirmation') return 'Destination'
+  return `Stop ${trip.current_stop + 1}`
+}
+
 // What the row says the trip is doing. Exceptions win: a dispatcher must see them
 // before anything else. Otherwise the coarse status covers the terminal states and
 // current_phase covers everything in between — derived server-side from the ledger,
@@ -47,7 +61,8 @@ function progressHint(trip: TripSummary): string {
   if (trip.status === 'cancelled') return 'Cancelled'
   if (trip.current_phase === null) return 'Pending start'
 
-  const stop = trip.current_stop === null ? '' : ` · stop ${trip.current_stop}`
+  const role = stopRoleLabel(trip)
+  const stop = role ? ` · ${role}` : ''
   return `${PHASE_NAMES[trip.current_phase]}${stop} · ${trip.phase_completed}/${trip.phase_total}`
 }
 

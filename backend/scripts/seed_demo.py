@@ -1,7 +1,8 @@
 """Seed reference data into a clean database, on real Supabase Auth.
 
-Reference data only — two organizations, one dispatcher, two drivers, two vehicles,
-three precincts. Trips and their phase ledgers come from scripts/seed_trips.py.
+Reference data only - two organizations, one dispatcher, four drivers, seven vehicles
+(three horses, four trailers), three precincts. Trips and their phase ledgers come
+from scripts/seed_trips.py.
 
 Why this is a rewrite and not an edit: migration 0002 added
 users.id -> auth.users(id) and drivers.id -> auth.users(id), so the previous
@@ -50,15 +51,29 @@ _DISPATCHER_EMAIL = "demo-dispatcher@freightproof.co.za"
 _DISPATCHER_NAME = "Demo Dispatcher"
 
 # (full_name, id_number, phone, license_number)
+# Four, not two: scripts/seed_trips.py gives each demo trip its own driver, so the
+# dispatcher's trip list distinguishes trips by who is driving rather than showing
+# the same name four times. Also gives the creation wizard a real dropdown.
 _DRIVERS = [
     ("Sipho Dlamini", "8001015009087", "+27821234567", "DRV-001"),
     ("Thabo Mokoena", "7505105008083", "+27829876543", "DRV-002"),
+    ("Nomsa Khumalo", "8809124807081", "+27834567890", "DRV-003"),
+    ("Riaan van Wyk", "7902285015086", "+27825550118", "DRV-004"),
 ]
 
 # (registration, vehicle_type, pulsit_device_id)
+# One horse and one trailer per demo trip. Distinct pulsit_device_ids matter beyond
+# cosmetics: TripTrailer snapshots the device id at creation, so trips sharing one
+# trailer would all carry an identical snapshot and the evidence chain would never
+# demonstrate that the snapshot is per-trip.
 _VEHICLES = [
     ("CA 123-456", VehicleType.HORSE, "PLT-HORSE-001"),
+    ("CJ 456-789", VehicleType.HORSE, "PLT-HORSE-002"),
+    ("CY 234-901", VehicleType.HORSE, "PLT-HORSE-003"),
     ("CA 789-012", VehicleType.TRAILER, "PLT-TRAILER-001"),
+    ("CJ 012-345", VehicleType.TRAILER, "PLT-TRAILER-002"),
+    ("CY 567-234", VehicleType.TRAILER, "PLT-TRAILER-003"),
+    ("CF 890-123", VehicleType.TRAILER, "PLT-TRAILER-004"),
 ]
 
 # (name, lat, lng). Three, not two: the cross-dock demo trip needs a middle stop.

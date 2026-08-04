@@ -68,6 +68,28 @@ class PPSyncError(Exception):
         super().__init__(f"PP sync failed for {pp_reference!r}: {reason}")
 
 
+class ConsignmentAlreadyAssignedError(Exception):
+    """Raised when a PP waybill is put on a second trip while still on its first.
+
+    A consignment is cargo, and cargo is on exactly one trip. Silently reusing the
+    reference does not merely duplicate a row - the second trip's creation restamps
+    the existing consignment's pickup/delivery stops onto its own route, rewriting
+    the FIRST trip's phase-plan basis after that trip was already anchored. That is
+    evidence changing under a closed record, so this fails closed.
+
+    Distinct from PPSyncError: Parcel Perfect answered correctly and the waybill is
+    real. The conflict is ours, and the caller maps it to 409, not 422.
+    """
+
+    def __init__(self, pp_reference: str, trip_reference: str) -> None:
+        self.pp_reference = pp_reference
+        self.trip_reference = trip_reference
+        super().__init__(
+            f"Waybill {pp_reference!r} is already assigned to trip {trip_reference}. "
+            "A consignment belongs to one trip - remove it there first, or use a different waybill."
+        )
+
+
 class HederaServiceError(Exception):
     """Base exception for Hedera service failures."""
 

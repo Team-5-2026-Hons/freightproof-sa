@@ -15,8 +15,15 @@ import type { CoarseTripStatus, PhaseDescriptor, PhaseEventId, PhaseStatus, Phas
 import { PHASE_NAMES } from '@shared/lib/constants/phase-meta'
 import { TRIP_STATUS_META, type StatusMeta } from '@shared/lib/constants/status-meta'
 
-/** How a phase renders in the timeline and in the chain. */
-export type PhaseNodeType = 'done' | 'active' | 'warn' | 'pending'
+/** How a phase renders in the timeline and in the chain.
+ *
+ * `active` and `next` are both "this is the phase the ledger is waiting on" —
+ * the distinction is whether real work has actually begun. The backend never
+ * writes `in_progress` today (every phase goes pending -> completed in one
+ * step), so `active` is currently unreachable in practice; `next` is what a
+ * freshly-created trip's activation phase gets instead of the misleading
+ * "in progress" treatment. */
+export type PhaseNodeType = 'done' | 'active' | 'next' | 'warn' | 'pending'
 
 /** One node in a PhaseChain. Normalised so the trip LIST (which has counts but no
  *  plan) and any plan-holding caller can feed the same component — see U6. */
@@ -54,8 +61,14 @@ export function nodeTypeFor(
   // Checked before the active test on purpose: an exception phase IS the active one
   // (it blocks the plan), and it must never render as ordinary progress.
   if (phase.status === 'exception') return 'warn'
+  // Genuinely started (e.g. a driver has opened the step but not yet submitted it).
+  // Reserved for a real in_progress write, which nothing server-side performs today —
+  // see the PhaseNodeType doc comment.
   if (phase.status === 'in_progress') return 'active'
-  return phase.phase_event_id === activePhaseEventId ? 'active' : 'pending'
+  // The ledger's current gate, but still `pending`: nothing has happened yet. A trip
+  // created a week ahead must not show its first phase as already under way just
+  // because it is next in line — that reads as active work when there is none.
+  return phase.phase_event_id === activePhaseEventId ? 'next' : 'pending'
 }
 
 /** Completed share of the plan, 0-100. Denominator is the plan's OWN length, which
