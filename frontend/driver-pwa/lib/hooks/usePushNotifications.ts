@@ -4,18 +4,28 @@ import { useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Capacitor } from '@capacitor/core'
 import { PushNotifications } from '@capacitor/push-notifications'
-import { STEP_SLUGS } from '@shared/lib/constants/handshake-meta'
-import { ROUTES } from '@/lib/constants/routes'
+import { STEP_SLUGS } from '@shared/lib/constants/phase-meta'
+import { phaseStepRoute } from '@/lib/phase'
+import type { PhaseType } from '@shared/lib/types/phase'
+
+// The two "gate arrival" phase types under the phase model — activation (origin gate)
+// and in_transit (destination arrival, components/phase/steps/in_transit/Arrival.tsx).
+// Replaces the old fixed handshake numbers 1 | 4 (origin_gate_in / dest_gate_in): a
+// gate-arrival push always lands the driver on that phase's FIRST step, and phase_type
+// is the stable, semantic identifier now — not an ordinal that only made sense under
+// the old five-handshake enum.
+export type GateArrivalPhaseType = Extract<PhaseType, 'activation' | 'in_transit'>
 
 export interface PushNotificationsState {
   // Simulates a GATE_ARRIVAL push for dev use on the /_dev/tokens page.
   // On a real device this is triggered by FCM via the backend.
-  simulateGateArrival: (handshake: 1 | 4) => void
+  simulateGateArrival: (phaseType: GateArrivalPhaseType) => void
 }
 
-// The route itself never carries a trip id (see ROUTES.handshakeStep in
-// lib/constants/routes.ts) — the backend enforces one active trip per driver, so "which
-// trip" always comes from TripContext, never from the push payload or the URL.
+// The route itself never carries a trip id (see lib/constants/routes.ts's header note,
+// which lib/phase/routes.ts's phaseStepRoute inherits) — the backend enforces one active
+// trip per driver, so "which trip" always comes from TripContext, never from the push
+// payload or the URL.
 export function usePushNotifications(): PushNotificationsState {
   const router = useRouter()
 
@@ -28,9 +38,9 @@ export function usePushNotifications(): PushNotificationsState {
 
     const listenerPromise = PushNotifications.addListener('pushNotificationReceived', notification => {
       if (notification.data?.type !== 'GATE_ARRIVAL') return
-      const handshake = notification.data.handshake as 1 | 4
-      const slug = STEP_SLUGS[handshake][0]
-      router.push(ROUTES.handshakeStep(handshake, slug))
+      const phaseType = notification.data.phase_type as GateArrivalPhaseType
+      const slug = STEP_SLUGS[phaseType][0]
+      router.push(phaseStepRoute(phaseType, slug))
     })
 
     return () => {
@@ -38,9 +48,9 @@ export function usePushNotifications(): PushNotificationsState {
     }
   }, [router])
 
-  const simulateGateArrival = useCallback((handshake: 1 | 4) => {
-    const slug = STEP_SLUGS[handshake][0]
-    router.push(ROUTES.handshakeStep(handshake, slug))
+  const simulateGateArrival = useCallback((phaseType: GateArrivalPhaseType) => {
+    const slug = STEP_SLUGS[phaseType][0]
+    router.push(phaseStepRoute(phaseType, slug))
   }, [router])
 
   return { simulateGateArrival }

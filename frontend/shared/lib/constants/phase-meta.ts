@@ -22,14 +22,19 @@ export const PHASE_NAMES: Record<PhaseType, string> = {
 
 // An empty recipe means no driver interaction:
 //   trip_creation — dispatcher-side, before the driver is involved at all.
-//   loading       — system-observed via the Parcel Perfect poll. The driver never enters
-//                   or sees a cargo count (F1): if the expected number is visible, a
-//                   "match" proves nothing. The server reconciles privately at
-//                   confirmation and returns only a verdict.
+//   loading       — NOT empty (below). advance_loading (orchestration/phase_service.py)
+//                   requires driver_visual_count and is the only entry point in the
+//                   phase dispatch table that can complete this phase, so an empty
+//                   recipe here would make `loading` uncompletable. advance_confirmation
+//                   later reads that stored count as origin_count for its three-way
+//                   reconciliation verdict. The driver enters this count BLIND — no
+//                   expected value, no Parcel Perfect figure, no mismatch banner — which
+//                   is what F1 actually requires: it forbids showing the driver an
+//                   expected count, not the driver entering their own.
 export const STEP_SLUGS: Record<PhaseType, readonly string[]> = {
   trip_creation: [],
   activation: ['1-approach-gate', '2-verification'],
-  loading: [],
+  loading: ['1-visual-count'],
   departure: ['1-approach-exit', '2-capture-seal', '3-waybill', '4-departure'],
   in_transit: ['1-arrival'],
   unloading: ['1-hand-waybill', '2-seal-verify', '3-seal-break-inspection', '4-visual-count'],
@@ -39,7 +44,7 @@ export const STEP_SLUGS: Record<PhaseType, readonly string[]> = {
 export const STEP_NAMES: Record<PhaseType, readonly string[]> = {
   trip_creation: [],
   activation: ['Gate Arrival', 'Verification'],
-  loading: [],
+  loading: ['Visual Count'],
   departure: ['Approach Exit Gate', 'Capture Seal', 'Photograph Waybill', 'Confirm Departure'],
   in_transit: ['Arrival'],
   unloading: ['Hand Waybill Copy', 'Verify Seal', 'Wait for Inspection', 'Visual Count'],

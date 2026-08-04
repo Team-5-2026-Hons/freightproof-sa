@@ -39,6 +39,12 @@ function Probe() {
   const last = ctx.exceptions[ctx.exceptions.length - 1]
   return (
     <div>
+      {/* Mirrors TripContext.real.test.tsx's own Probe: the ONLY reliable signal that
+          TripProvider's async trip load (a Promise.resolve().then() microtask, even in
+          demo mode — see TripContext.tsx's mount effect) has actually landed. The
+          buttons below are static and mount immediately regardless of load state, so
+          waiting on their mere presence is not enough — see renderAndWaitForTrip. */}
+      <span data-testid="trip-loaded">{ctx.trip ? 'yes' : 'no'}</span>
       <span data-testid="exception-count">{ctx.exceptions.length}</span>
       {/* JSON.stringify keeps null ("null") distinguishable from undefined ("") so the
           GPS tests below can tell "explicitly no fix" apart from "field missing". */}
@@ -67,14 +73,29 @@ function Probe() {
   )
 }
 
-function renderWithProviders() {
-  return render(
+// Root cause of the intermittent "demo logException carries the GPS pair" failure:
+// TripProvider seeds `trip` asynchronously (a microtask, even in demo mode — see
+// TripContext.tsx's mount effect), but Probe's buttons render unconditionally from
+// the very first paint, before that microtask has necessarily run. The old
+// `await waitFor(() => screen.getByText('log-panic-with-gps'))` only proved the
+// STATIC button existed — true on every render, load state notwithstanding — so a
+// click could race ahead of the trip load. logException's demo branch starts with
+// `if (!trip) return`, so a premature click silently no-ops: no exception is
+// appended, and the GPS assertion fails against an empty list. Under the full suite
+// (more concurrent microtask/scheduler activity in the same worker) that race lands
+// unfavourably often enough to be visible; in isolation it usually doesn't. The fix
+// is to wait on a signal that actually reflects `ctx.trip` being set — exactly what
+// TripContext.real.test.tsx's renderAndWaitForTrip already does correctly — rather
+// than a retry, a skip, or a longer timeout.
+async function renderAndWaitForTrip() {
+  render(
     <AuthContext.Provider value={authValue}>
       <TripProvider>
         <Probe />
       </TripProvider>
     </AuthContext.Provider>,
   )
+  await waitFor(() => expect(screen.getByTestId('trip-loaded')).toHaveTextContent('yes'))
 }
 
 describe('TripContext session exceptions (5b)', () => {
@@ -83,16 +104,13 @@ describe('TripContext session exceptions (5b)', () => {
   })
 
   it('seeds exceptions from the active trip fixture', async () => {
-    renderWithProviders()
+    await renderAndWaitForTrip()
 
-    await waitFor(() =>
-      expect(screen.getByTestId('exception-count')).toHaveTextContent(String(activeTrip.exceptions.length)),
-    )
+    expect(screen.getByTestId('exception-count')).toHaveTextContent(String(activeTrip.exceptions.length))
   })
 
   it('logException appends the new exception to the context value', async () => {
-    renderWithProviders()
-    await waitFor(() => screen.getByText('log-exception'))
+    await renderAndWaitForTrip()
 
     await act(async () => {
       fireEvent.click(screen.getByText('log-exception'))
@@ -108,8 +126,7 @@ describe('TripContext session exceptions (5b)', () => {
   // lives in TripContext.real.test.tsx (IS_DEMO_MODE is a module-level mock, so
   // demo and real branches need separate files — same split as AuthContext).
   it('demo logException carries the GPS pair into the local exception record', async () => {
-    renderWithProviders()
-    await waitFor(() => screen.getByText('log-panic-with-gps'))
+    await renderAndWaitForTrip()
 
     await act(async () => {
       fireEvent.click(screen.getByText('log-panic-with-gps'))
@@ -119,8 +136,7 @@ describe('TripContext session exceptions (5b)', () => {
   })
 
   it('demo logException records null GPS (not a partial fix) when no coordinates are passed', async () => {
-    renderWithProviders()
-    await waitFor(() => screen.getByText('log-exception'))
+    await renderAndWaitForTrip()
 
     await act(async () => {
       fireEvent.click(screen.getByText('log-exception'))

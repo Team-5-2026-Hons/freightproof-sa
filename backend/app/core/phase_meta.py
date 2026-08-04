@@ -19,13 +19,23 @@ from app.db.models.enums import PhaseType
 #   in_transit    — closed by departure today (NEW-8 stopgap) and by checkpoint
 #                   Merkle batches once those exist (parent D2); either way the
 #                   driver never drives it through a capture flow.
-#   loading       — system-observed via the Parcel Perfect poll. The driver must
-#                   never see the expected count (F1): if the number is on screen,
-#                   a "match" proves nothing.
+#
+# loading is NOT empty (Stage 5, D11). It was, on the reading that the phase is
+# wholly system-observed via the Parcel Perfect poll — but advance_loading()
+# requires driver_visual_count, is the only dispatch-table entry that can close
+# this phase, and nothing else in the codebase calls it, so an empty recipe left
+# `loading` uncompletable and starved advance_confirmation() of the origin_count
+# its three-way reconciliation verdict compares against.
+#
+# This does not weaken F1. F1 forbids showing the driver an EXPECTED count, not
+# the driver entering their own: the count is entered blind — no expected value,
+# no Parcel Perfect figure, no mismatch banner — and the server reconciles it
+# privately. A count typed while the target number is on screen proves nothing;
+# a blind one is exactly what makes the reconciliation meaningful.
 STEP_SLUGS: dict[PhaseType, tuple[str, ...]] = {
     PhaseType.TRIP_CREATION: (),
     PhaseType.ACTIVATION: ("1-approach-gate", "2-verification"),
-    PhaseType.LOADING: (),
+    PhaseType.LOADING: ("1-visual-count",),
     PhaseType.DEPARTURE: ("1-approach-exit", "2-capture-seal", "3-waybill", "4-departure"),
     PhaseType.IN_TRANSIT: ("1-arrival",),
     PhaseType.UNLOADING: (

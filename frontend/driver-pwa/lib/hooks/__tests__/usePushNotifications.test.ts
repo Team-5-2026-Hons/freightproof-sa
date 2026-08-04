@@ -1,14 +1,13 @@
 // frontend/driver-pwa/lib/hooks/__tests__/usePushNotifications.test.ts
 //
-// Task 2: the deep link built by this hook must match the real route shape
-// (/trip/handshake/[h]/step/[slug] — no trip id segment, see lib/constants/routes.ts).
-// A stale hand-rolled template previously included a trip id, which 404s under the
-// static export (every dynamic segment must be statically enumerable, and a real
-// trip's UUID never is).
+// The deep link built by this hook must match the real phase-step route shape
+// (/trip/phase/[type]/step/[slug] — no trip id segment, see lib/phase/routes.ts and
+// lib/constants/routes.ts's header note on the same constraint). A stale hand-rolled
+// template with a trip id would 404 under the static export (every dynamic segment
+// must be statically enumerable, and a real trip's UUID never is).
 import { renderHook, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { usePushNotifications } from '../usePushNotifications'
-import { ROUTES } from '@/lib/constants/routes'
 
 const mockPush = vi.fn()
 
@@ -33,20 +32,20 @@ beforeEach(() => {
 })
 
 describe('usePushNotifications', () => {
-  it('simulateGateArrival routes to the real handshake-step shape (no trip id segment)', () => {
+  it('simulateGateArrival routes to activation\'s first step (origin gate)', () => {
     const { result } = renderHook(() => usePushNotifications())
 
-    act(() => result.current.simulateGateArrival(1))
+    act(() => result.current.simulateGateArrival('activation'))
 
-    expect(mockPush).toHaveBeenCalledWith(ROUTES.handshakeStep(1, '1-approach-gate'))
+    expect(mockPush).toHaveBeenCalledWith('/trip/phase/activation/step/1-approach-gate')
     expect(mockPush).not.toHaveBeenCalledWith(expect.stringContaining('/trip/undefined/'))
   })
 
-  it('builds the correct route for handshake 4', () => {
+  it('simulateGateArrival routes to in_transit\'s first step (destination arrival)', () => {
     const { result } = renderHook(() => usePushNotifications())
 
-    act(() => result.current.simulateGateArrival(4))
+    act(() => result.current.simulateGateArrival('in_transit'))
 
-    expect(mockPush).toHaveBeenCalledWith(ROUTES.handshakeStep(4, '1-approach-dest'))
+    expect(mockPush).toHaveBeenCalledWith('/trip/phase/in_transit/step/1-arrival')
   })
 })

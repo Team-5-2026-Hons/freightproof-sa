@@ -104,6 +104,10 @@ export interface PhaseDescriptor {
 
   event_hash: string | null
   blockchain_receipt_id: string | null
+  // Backend serialises this on PhaseEventRead (schemas/phases.py) so a client can
+  // reconcile its offline capture queue against what the server actually recorded —
+  // omitted from this shared type until now, a live contract drift.
+  idempotency_key: string | null
   completed_at: string | null
   created_at: string
   updated_at: string

@@ -57,7 +57,7 @@ function createdException(overrides: Partial<TripException>): TripException {
     source: 'driver',
     severity: 'critical',
     description: 'Driver activated panic button.',
-    handshake_event_id: null,
+    phase_event_id: null,
     checkpoint_id: null,
     supporting_artifact_id: null,
     gps_lat: null,

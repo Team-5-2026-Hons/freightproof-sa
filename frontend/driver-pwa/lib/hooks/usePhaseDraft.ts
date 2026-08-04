@@ -1,18 +1,26 @@
-// frontend/driver-pwa/lib/hooks/useHandshakeDraft.ts
+// frontend/driver-pwa/lib/hooks/usePhaseDraft.ts
 'use client'
 
 import { useState, useCallback } from 'react'
-import type { HandshakeType } from '@shared/lib/types/handshake'
 
-const storageKey = (tripId: string, type: HandshakeType): string =>
-  `fp_draft_${tripId}_${type}`
+const storageKey = (tripId: string, phaseEventId: string): string =>
+  `fp_draft_${tripId}_${phaseEventId}`
 
-export function useHandshakeDraft<T extends object>(
+// Renamed from useHandshakeDraft, which keyed its storage on (tripId, handshakeType) —
+// a fixed 1-5 handshake enum where each type occurred at most once per trip. Under the
+// phase model a trip's plan LENGTH IS DATA (parent plan §2.2) and a phase_type can
+// recur: a three-stop cross-dock visits `unloading` up to three times. Keying by
+// phase_type alone, as the old hook did, would collide every occurrence of that type
+// onto the SAME localStorage key — a driver's seal entry at the first `unloading`
+// would silently leak into (or get clobbered by) the draft for the second. Keying on
+// phase_event_id — a real per-row UUID, unique even across repeated phase types —
+// is exactly what this rename exists to prevent that collision.
+export function usePhaseDraft<T extends object>(
   tripId: string,
-  handshakeType: HandshakeType,
+  phaseEventId: string,
   initial: T,
 ): [draft: T, updateDraft: (patch: Partial<T>) => void, clearDraft: () => void] {
-  const key = storageKey(tripId, handshakeType)
+  const key = storageKey(tripId, phaseEventId)
 
   const [draft, setDraft] = useState<T>(() => {
     try {
@@ -41,7 +49,7 @@ export function useHandshakeDraft<T extends object>(
           // Quota exceeded, private browsing, or storage disabled — draft still
           // updates in memory, but won't survive a refresh. Surface this since the
           // hook's entire purpose is persistence across navigation/refresh.
-          console.warn(`useHandshakeDraft: failed to persist draft for key "${key}"`)
+          console.warn(`usePhaseDraft: failed to persist draft for key "${key}"`)
         }
         return next
       })
@@ -53,7 +61,7 @@ export function useHandshakeDraft<T extends object>(
     try {
       localStorage.removeItem(key)
     } catch {
-      console.warn(`useHandshakeDraft: failed to clear stored draft for key "${key}"`)
+      console.warn(`usePhaseDraft: failed to clear stored draft for key "${key}"`)
     }
     setDraft(initial)
   }, [key, initial])

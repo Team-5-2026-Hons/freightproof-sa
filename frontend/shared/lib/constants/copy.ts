@@ -33,7 +33,6 @@ export const COPY = {
     addNote:            'Add note',
     exportPdf:          'Export PDF',
     signOut:            'Sign out',
-    startTrip:          'Start trip · Begin Handshake 1',
     logCheckpoint:      'Log checkpoint',
     reportException:    'Report exception',
     uploadDocument:     'Upload document',
@@ -55,7 +54,7 @@ export const COPY = {
   },
 
   confirm: {
-    panicHold:    'Hold to send panic alert',
+    panicHold:    'Swipe to send panic alert',
     panicSent:    'Panic alert sent · Dispatcher and reaction company notified',
     overrideNote: 'Describe why you are overriding this exception',
     resolveNote:  'Describe how this exception was resolved',

@@ -12,11 +12,13 @@ function makeTrip(overrides: Partial<Trip>): Trip {
     trip_reference: 'TRP-TEST-0001',
     order_number: 'ORD-0001',
     status: 'created',
+    trip_type: 'loaded',
     journey_lock_hash: null,
     idvs_check_status: 'pending',
     origin_precinct_id: 'origin-1',
     destination_precinct_id: 'dest-1',
     stops: [],
+    consignments: [],
     pulsit_trip_reference_id: null,
     planned_departure_at: '2026-06-20T08:00:00Z',
     actual_departure_at: null,
@@ -26,9 +28,12 @@ function makeTrip(overrides: Partial<Trip>): Trip {
     driver: null,
     horse: null,
     trailers: [],
-    handshakes: [],
+    phases: [],
+    current_phase: null,
+    current_stop: null,
     exceptions: [],
     blockchain_receipts: [],
+    warnings: [],
     created_at: '2026-06-20T07:00:00Z',
     updated_at: '2026-06-20T07:00:00Z',
     ...overrides,
@@ -50,7 +55,7 @@ describe('tripsForDriver', () => {
 
 describe('categorizeTrips', () => {
   it('puts non-terminal, non-created trips in active', () => {
-    const trips = [makeTrip({ id: 't1' as TripId, status: 'in_transit' })]
+    const trips = [makeTrip({ id: 't1' as TripId, status: 'active' })]
 
     const { active } = categorizeTrips(trips)
 

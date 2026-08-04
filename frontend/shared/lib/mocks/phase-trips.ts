@@ -58,6 +58,7 @@ function pendingPhase(
     driver_visual_count: null,
     event_hash: null,
     blockchain_receipt_id: null,
+    idempotency_key: null,
     completed_at: null,
     created_at: at,
     updated_at: at,

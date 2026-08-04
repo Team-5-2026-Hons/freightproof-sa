@@ -3,12 +3,12 @@ import { renderHook, act, waitFor } from '@testing-library/react'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useOfflineQueue, __resetOfflineQueueStoreForTests } from '../useOfflineQueue'
 import { ApiError } from '@/lib/api/client'
-import type { H1Evidence } from '@/lib/types/evidence-draft'
+import type { ActivationEvidence } from '@/lib/types/evidence-draft'
 import type { CheckpointEvidence } from '@/lib/api/checkpoints'
 
-// Mock submitHandshake/raiseException/submitCheckpoint so tests don't hit the network
-vi.mock('@/lib/api/handshakes', () => ({
-  submitHandshake: vi.fn().mockResolvedValue({ ok: true, eventHash: 'abc', trip: null }),
+// Mock submitPhase/raiseException/submitCheckpoint so tests don't hit the network
+vi.mock('@/lib/api/phases', () => ({
+  submitPhase: vi.fn().mockResolvedValue({ ok: true, trip: null, phaseStatus: 'completed' }),
 }))
 vi.mock('@/lib/api/exceptions', () => ({
   raiseException: vi.fn().mockResolvedValue({ id: 'exc-1' }),
@@ -29,9 +29,7 @@ beforeEach(() => {
   vi.clearAllMocks()
 })
 
-// gateAddress added to H1Evidence (Task 3) — included here as null since this
-// fixture predates that field, same fix applied to useHandshakeDraft.test.ts.
-const EVIDENCE: H1Evidence = {
+const EVIDENCE: ActivationEvidence = {
   gpsLat: -26.09, gpsLng: 28.13, gateAddress: null, capturedAt: '2026-06-12T10:00:00Z',
 }
 
@@ -47,22 +45,79 @@ describe('useOfflineQueue', () => {
     expect(result.current.queueLength).toBe(0)
   })
 
-  it('enqueue increments queueLength and persists to localStorage', () => {
+  it('enqueuePhase increments queueLength and persists to localStorage', () => {
     const { result } = renderHook(() => useOfflineQueue())
-    act(() => result.current.enqueue('trip-1', 'origin_gate_in', EVIDENCE))
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE))
     expect(result.current.queueLength).toBe(1)
     const stored = JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')
     expect(stored).toHaveLength(1)
     expect(stored[0].tripId).toBe('trip-1')
+    expect(stored[0].phaseEventId).toBe('phase-event-1')
+    expect(stored[0].phaseType).toBe('activation')
   })
 
-  it('flush calls submitHandshake for each entry and clears the queue', async () => {
-    const { submitHandshake } = await import('@/lib/api/handshakes')
+  // Task 5.3: the entry's own id (generated once, at enqueue time) IS the idempotency
+  // key sent to the server — proving that wiring here, at the point the entry is built.
+  it('enqueuePhase stamps the entry id as its own idempotencyKey', () => {
     const { result } = renderHook(() => useOfflineQueue())
-    act(() => result.current.enqueue('trip-1', 'origin_gate_in', EVIDENCE))
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE))
+    const stored = JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')
+    expect(stored[0].idempotencyKey).toBe(stored[0].id)
+    expect(typeof stored[0].idempotencyKey).toBe('string')
+    expect(stored[0].idempotencyKey.length).toBeGreaterThan(0)
+  })
+
+  it('flush calls submitPhase for each entry and clears the queue', async () => {
+    const { submitPhase } = await import('@/lib/api/phases')
+    const { result } = renderHook(() => useOfflineQueue())
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE))
     await act(() => result.current.flush())
-    expect(submitHandshake).toHaveBeenCalledTimes(1)
+    expect(submitPhase).toHaveBeenCalledTimes(1)
     expect(result.current.queueLength).toBe(0)
+  })
+
+  // Task 5.3: the same idempotency_key must reach the server on a retry as on the
+  // first attempt — a queued entry is never rebuilt with a fresh key between flushes.
+  it('sends the same idempotency_key on a retry as on the first attempt', async () => {
+    const { submitPhase } = await import('@/lib/api/phases')
+    vi.mocked(submitPhase).mockRejectedValueOnce(new ApiError(0, 'timed out'))
+    const { result } = renderHook(() => useOfflineQueue())
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE))
+
+    await act(() => result.current.flush())
+    expect(result.current.queueLength).toBe(1) // transient failure — still queued
+
+    await act(() => result.current.flush())
+    expect(result.current.queueLength).toBe(0) // second attempt succeeds
+
+    expect(submitPhase).toHaveBeenCalledTimes(2)
+    const firstKey = vi.mocked(submitPhase).mock.calls[0][4]
+    const secondKey = vi.mocked(submitPhase).mock.calls[1][4]
+    expect(firstKey).toBe(secondKey)
+  })
+
+  // The server dedupes a replay against an already-resolved phase and still returns a
+  // plain 200 (`_gate_and_load`'s short-circuit, phase_service.py:108-134) — submitPhase
+  // surfaces that as `phaseStatus`, not as a thrown error, so from the queue's point of
+  // view this is an ordinary successful send: the entry is dequeued once, cleanly, with
+  // no retry loop and no drop-notification — it must not be double-counted as a fresh
+  // completion needing special handling.
+  it('offline replay of an already-completed phase is a plain, one-time dequeue — not a fresh completion, not a drop', async () => {
+    const { submitPhase } = await import('@/lib/api/phases')
+    vi.mocked(submitPhase).mockResolvedValueOnce({ ok: true, trip: null, phaseStatus: 'completed' })
+    const { result } = renderHook(() => useOfflineQueue())
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE))
+
+    await act(() => result.current.flush())
+
+    expect(submitPhase).toHaveBeenCalledTimes(1)
+    expect(result.current.queueLength).toBe(0)
+    expect(result.current.droppedCount).toBe(0)
+
+    // A second flush pass with nothing left queued must not re-send anything — proves
+    // the completed replay was truly disposed of, not left half-resolved.
+    await act(() => result.current.flush())
+    expect(submitPhase).toHaveBeenCalledTimes(1)
   })
 
   it('enqueueException increments queueLength and persists to localStorage', () => {
@@ -84,34 +139,34 @@ describe('useOfflineQueue', () => {
   })
 
   it('flush retains a failed entry in the queue and keeps unrelated entries', async () => {
-    const { submitHandshake } = await import('@/lib/api/handshakes')
-    vi.mocked(submitHandshake).mockRejectedValueOnce(new Error('network down'))
+    const { submitPhase } = await import('@/lib/api/phases')
+    vi.mocked(submitPhase).mockRejectedValueOnce(new Error('network down'))
     const { result } = renderHook(() => useOfflineQueue())
-    act(() => result.current.enqueue('trip-1', 'origin_gate_in', EVIDENCE))
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE))
     await act(() => result.current.flush())
     expect(result.current.queueLength).toBe(1)
   })
 
   it('flush drops a terminal 4xx failure instead of retrying it forever', async () => {
-    const { submitHandshake } = await import('@/lib/api/handshakes')
-    vi.mocked(submitHandshake).mockRejectedValueOnce(new ApiError(422, 'invalid evidence'))
+    const { submitPhase } = await import('@/lib/api/phases')
+    vi.mocked(submitPhase).mockRejectedValueOnce(new ApiError(422, 'invalid evidence'))
     const { result } = renderHook(() => useOfflineQueue())
-    act(() => result.current.enqueue('trip-1', 'origin_gate_in', EVIDENCE))
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE))
     await act(() => result.current.flush())
     expect(result.current.queueLength).toBe(0)
   })
 
   it('flush retains an entry on a 5xx ApiError so it can be retried later', async () => {
-    const { submitHandshake } = await import('@/lib/api/handshakes')
-    vi.mocked(submitHandshake).mockRejectedValueOnce(new ApiError(503, 'service unavailable'))
+    const { submitPhase } = await import('@/lib/api/phases')
+    vi.mocked(submitPhase).mockRejectedValueOnce(new ApiError(503, 'service unavailable'))
     const { result } = renderHook(() => useOfflineQueue())
-    act(() => result.current.enqueue('trip-1', 'origin_gate_in', EVIDENCE))
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE))
     await act(() => result.current.flush())
     expect(result.current.queueLength).toBe(1)
   })
 
   // Fix 3: checkpoints now enqueue and replay through the same offline-queue contract
-  // as handshakes and exceptions.
+  // as phases and exceptions.
   it('enqueueCheckpoint increments queueLength and persists to localStorage', () => {
     const { result } = renderHook(() => useOfflineQueue())
     act(() => result.current.enqueueCheckpoint('trip-1', CHECKPOINT_EVIDENCE))
@@ -148,27 +203,28 @@ describe('useOfflineQueue', () => {
     }
 
     it('flushes once on mount', async () => {
-      const { submitHandshake } = await import('@/lib/api/handshakes')
+      const { submitPhase } = await import('@/lib/api/phases')
       // Seed a queue entry directly in storage (standing in for "queued on a prior visit")
       // so mount has something to flush.
       localStorage.setItem('fp_offline_queue', JSON.stringify([{
-        kind: 'handshake', id: 'entry-1', tripId: 'trip-1', handshakeType: 'origin_gate_in',
-        evidence: EVIDENCE, enqueuedAt: '2026-06-12T10:00:00Z',
+        kind: 'phase', id: 'entry-1', tripId: 'trip-1', phaseEventId: 'phase-event-1',
+        phaseType: 'activation', evidence: EVIDENCE, idempotencyKey: 'entry-1',
+        enqueuedAt: '2026-06-12T10:00:00Z',
       }]))
 
       const { result } = renderHook(() => useOfflineQueue())
 
-      await waitFor(() => expect(submitHandshake).toHaveBeenCalledTimes(1))
+      await waitFor(() => expect(submitPhase).toHaveBeenCalledTimes(1))
       await waitFor(() => expect(result.current.queueLength).toBe(0))
     })
 
     it('flushes when the document becomes visible again', async () => {
-      const { submitHandshake } = await import('@/lib/api/handshakes')
+      const { submitPhase } = await import('@/lib/api/phases')
       const { result } = renderHook(() => useOfflineQueue())
       // Let the mount-time flush (empty queue, no-op) settle before seeding the queue.
       await act(() => Promise.resolve())
 
-      act(() => result.current.enqueue('trip-1', 'origin_gate_in', EVIDENCE))
+      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE))
       expect(result.current.queueLength).toBe(1)
 
       setVisibility('visible')
@@ -177,17 +233,17 @@ describe('useOfflineQueue', () => {
         await Promise.resolve()
       })
 
-      await waitFor(() => expect(submitHandshake).toHaveBeenCalledTimes(1))
+      await waitFor(() => expect(submitPhase).toHaveBeenCalledTimes(1))
       await waitFor(() => expect(result.current.queueLength).toBe(0))
     })
 
     it('does not flush on a visibilitychange to "hidden"', async () => {
-      const { submitHandshake } = await import('@/lib/api/handshakes')
+      const { submitPhase } = await import('@/lib/api/phases')
       const { result } = renderHook(() => useOfflineQueue())
       await act(() => Promise.resolve())
 
-      act(() => result.current.enqueue('trip-1', 'origin_gate_in', EVIDENCE))
-      vi.mocked(submitHandshake).mockClear()
+      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE))
+      vi.mocked(submitPhase).mockClear()
 
       setVisibility('hidden')
       await act(async () => {
@@ -195,7 +251,7 @@ describe('useOfflineQueue', () => {
         await Promise.resolve()
       })
 
-      expect(submitHandshake).not.toHaveBeenCalled()
+      expect(submitPhase).not.toHaveBeenCalled()
       expect(result.current.queueLength).toBe(1)
     })
 
@@ -204,12 +260,12 @@ describe('useOfflineQueue', () => {
     // The old drop condition (`status < 500`) matched 0 and permanently discarded any
     // entry that timed out during flush, silently losing captured evidence.
     it('flush retains an entry that fails with a status-0 timeout ApiError', async () => {
-      const { submitHandshake } = await import('@/lib/api/handshakes')
-      vi.mocked(submitHandshake).mockRejectedValueOnce(new ApiError(0, 'Request timed out after 12000ms'))
+      const { submitPhase } = await import('@/lib/api/phases')
+      vi.mocked(submitPhase).mockRejectedValueOnce(new ApiError(0, 'Request timed out after 12000ms'))
       const { result } = renderHook(() => useOfflineQueue())
       await act(() => Promise.resolve())
 
-      act(() => result.current.enqueue('trip-1', 'origin_gate_in', EVIDENCE))
+      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE))
       await act(() => result.current.flush())
 
       expect(result.current.queueLength).toBe(1)
@@ -224,19 +280,19 @@ describe('useOfflineQueue', () => {
     // silently erased that evidence. The fix removes only the entries the flush
     // actually disposed of from the *current* stored queue.
     it('flush preserves an entry enqueued while a send was in flight', async () => {
-      const { submitHandshake } = await import('@/lib/api/handshakes')
+      const { submitPhase } = await import('@/lib/api/phases')
       const { raiseException } = await import('@/lib/api/exceptions')
       let resolveSubmit!: () => void
-      vi.mocked(submitHandshake).mockImplementationOnce(
-        () => new Promise((resolve) => { resolveSubmit = () => resolve({ ok: true, eventHash: 'abc', trip: null }) }),
+      vi.mocked(submitPhase).mockImplementationOnce(
+        () => new Promise((resolve) => { resolveSubmit = () => resolve({ ok: true, trip: null, phaseStatus: 'completed' }) }),
       )
 
       const { result } = renderHook(() => useOfflineQueue())
       await act(() => Promise.resolve())
 
-      act(() => result.current.enqueue('trip-1', 'origin_gate_in', EVIDENCE))
+      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE))
 
-      // Start a flush that hangs on the handshake send, then enqueue a second entry
+      // Start a flush that hangs on the phase send, then enqueue a second entry
       // mid-flight — exactly what happens when a driver logs an exception while a
       // queued photo upload is replaying in the background.
       const flushPromise = result.current.flush()
@@ -247,7 +303,7 @@ describe('useOfflineQueue', () => {
         await flushPromise
       })
 
-      // The handshake entry flushed away; the mid-flush exception must survive in
+      // The phase entry flushed away; the mid-flush exception must survive in
       // storage rather than being erased by the flush's final write.
       expect(result.current.queueLength).toBe(1)
       const stored = JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]') as Array<{ kind: string; tripId: string }>
@@ -257,23 +313,23 @@ describe('useOfflineQueue', () => {
       // The hung send resolved successfully — it must not have been re-sent, and the
       // mid-flush exception must not have been sent by THIS flush (its snapshot
       // predates the enqueue).
-      expect(submitHandshake).toHaveBeenCalledTimes(1)
+      expect(submitPhase).toHaveBeenCalledTimes(1)
       expect(raiseException).not.toHaveBeenCalled()
     })
 
     it('guards against overlapping flush runs — a second concurrent call is a no-op while one is in flight', async () => {
-      const { submitHandshake } = await import('@/lib/api/handshakes')
+      const { submitPhase } = await import('@/lib/api/phases')
       let resolveSubmit!: () => void
-      vi.mocked(submitHandshake).mockImplementationOnce(
-        () => new Promise((resolve) => { resolveSubmit = () => resolve({ ok: true, eventHash: 'abc', trip: null }) }),
+      vi.mocked(submitPhase).mockImplementationOnce(
+        () => new Promise((resolve) => { resolveSubmit = () => resolve({ ok: true, trip: null, phaseStatus: 'completed' }) }),
       )
 
       const { result } = renderHook(() => useOfflineQueue())
       await act(() => Promise.resolve())
 
-      act(() => result.current.enqueue('trip-1', 'origin_gate_in', EVIDENCE))
+      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE))
 
-      // Kick off a flush that will hang on the in-flight submitHandshake call, then fire a
+      // Kick off a flush that will hang on the in-flight submitPhase call, then fire a
       // second flush before the first resolves — the guard should make the second call a
       // pure no-op rather than re-sending the same entry concurrently.
       let firstFlushDone = false
@@ -281,7 +337,7 @@ describe('useOfflineQueue', () => {
       await act(() => result.current.flush())
 
       expect(firstFlushDone).toBe(false)
-      expect(submitHandshake).toHaveBeenCalledTimes(1)
+      expect(submitPhase).toHaveBeenCalledTimes(1)
 
       await act(async () => {
         resolveSubmit()
@@ -299,10 +355,10 @@ describe('useOfflineQueue', () => {
   // double-submitting, the same evidence.
   describe('cross-instance coordination', () => {
     it('a second hook instance cannot start a flush while another instance is mid-flush', async () => {
-      const { submitHandshake } = await import('@/lib/api/handshakes')
+      const { submitPhase } = await import('@/lib/api/phases')
       let resolveSubmit!: () => void
-      vi.mocked(submitHandshake).mockImplementationOnce(
-        () => new Promise((resolve) => { resolveSubmit = () => resolve({ ok: true, eventHash: 'abc', trip: null }) }),
+      vi.mocked(submitPhase).mockImplementationOnce(
+        () => new Promise((resolve) => { resolveSubmit = () => resolve({ ok: true, trip: null, phaseStatus: 'completed' }) }),
       )
 
       // Two concurrently-mounted instances — banner + page, exactly the production shape.
@@ -310,7 +366,7 @@ describe('useOfflineQueue', () => {
       const second = renderHook(() => useOfflineQueue())
       await act(() => Promise.resolve())
 
-      act(() => first.result.current.enqueue('trip-1', 'origin_gate_in', EVIDENCE))
+      act(() => first.result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE))
 
       // Instance A's flush hangs on the in-flight send; instance B's flush must be a
       // pure no-op against the shared module-scope mutex, not a concurrent re-send.
@@ -319,7 +375,7 @@ describe('useOfflineQueue', () => {
       await act(() => second.result.current.flush())
 
       expect(firstFlushDone).toBe(false)
-      expect(submitHandshake).toHaveBeenCalledTimes(1)
+      expect(submitPhase).toHaveBeenCalledTimes(1)
 
       await act(async () => {
         resolveSubmit()
@@ -336,7 +392,7 @@ describe('useOfflineQueue', () => {
       const second = renderHook(() => useOfflineQueue())
       await act(() => Promise.resolve())
 
-      act(() => first.result.current.enqueue('trip-1', 'origin_gate_in', EVIDENCE))
+      act(() => first.result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE))
 
       expect(second.result.current.queueLength).toBe(1)
     })
@@ -346,12 +402,12 @@ describe('useOfflineQueue', () => {
   // though their captured evidence was permanently discarded.
   describe('drop notifications', () => {
     it('a non-409 terminal drop increments droppedCount, and dismissDropped clears it', async () => {
-      const { submitHandshake } = await import('@/lib/api/handshakes')
-      vi.mocked(submitHandshake).mockRejectedValueOnce(new ApiError(422, 'invalid evidence'))
+      const { submitPhase } = await import('@/lib/api/phases')
+      vi.mocked(submitPhase).mockRejectedValueOnce(new ApiError(422, 'invalid evidence'))
       const { result } = renderHook(() => useOfflineQueue())
       await act(() => Promise.resolve())
 
-      act(() => result.current.enqueue('trip-1', 'origin_gate_in', EVIDENCE))
+      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE))
       await act(() => result.current.flush())
 
       expect(result.current.queueLength).toBe(0)
@@ -363,12 +419,12 @@ describe('useOfflineQueue', () => {
     })
 
     it('a 409 drop stays silent — the earlier attempt already succeeded server-side', async () => {
-      const { submitHandshake } = await import('@/lib/api/handshakes')
-      vi.mocked(submitHandshake).mockRejectedValueOnce(new ApiError(409, 'already submitted'))
+      const { submitPhase } = await import('@/lib/api/phases')
+      vi.mocked(submitPhase).mockRejectedValueOnce(new ApiError(409, 'already submitted'))
       const { result } = renderHook(() => useOfflineQueue())
       await act(() => Promise.resolve())
 
-      act(() => result.current.enqueue('trip-1', 'origin_gate_in', EVIDENCE))
+      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE))
       await act(() => result.current.flush())
 
       // Dropped from the queue (correct — the evidence landed on a prior attempt),

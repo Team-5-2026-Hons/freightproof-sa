@@ -40,7 +40,7 @@ export interface TripException {
   source: ExceptionSource
   severity: ExceptionSeverity
   description: string
-  handshake_event_id: string | null
+  phase_event_id: string | null
   checkpoint_id: string | null
   supporting_artifact_id: string | null
   // Driver-phone GPS fix captured when the exception was raised (panic button today).

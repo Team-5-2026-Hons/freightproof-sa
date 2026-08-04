@@ -18,10 +18,10 @@ describe('isFullBleedRoute', () => {
     expect(isFullBleedRoute('/trips/2c9f1e0a-0000-4000-8000-000000000001')).toBe(true)
   })
 
-  it('still exempts panic (bare full-bleed) and handshake steps (own StepHeader)', () => {
+  it('still exempts panic (bare full-bleed) and phase steps (own StepHeader)', () => {
     expect(isFullBleedRoute('/trip/panic')).toBe(true)
     expect(isFullBleedRoute('/trip/panic/submitted')).toBe(true)
-    expect(isFullBleedRoute('/trip/handshake/1/step/1-approach-gate')).toBe(true)
+    expect(isFullBleedRoute('/trip/phase/activation/step/1-approach-gate')).toBe(true)
   })
 
   it('does NOT exempt the bare trips list — it has no SubpageHeader and keeps AppShell', () => {
