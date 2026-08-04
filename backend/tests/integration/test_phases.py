@@ -12,12 +12,12 @@ these are not reinvented here.
 """
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import pytest_asyncio
 from httpx import AsyncClient
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from app.blockchain.hedera import HederaReceipt
 from app.db.models.enums import (
@@ -69,6 +69,10 @@ async def seed_trip(db_session):
         driver_id=driver.id, horse_id=horse.id,
         origin_precinct_id=origin.id, destination_precinct_id=dest.id,
         status=TripStatus.CREATED, idvs_check_status=IdvsStatus.VERIFIED,
+        # Activation is gated on the trip being due (phase_service._reject_if_not_due) and
+        # an unscheduled trip is deliberately unstartable, so this fixture books itself for
+        # today — which is what it always meant: a trip a driver is about to run.
+        planned_departure_at=datetime.now(UTC),
         created_by_user_id=user.id,
     )
     db_session.add(trip)
@@ -168,6 +172,156 @@ async def test_activation_complete_wrong_state_returns_409(client: AsyncClient, 
         headers=auth_header(token),
     )
     assert resp.status_code == 409
+
+
+async def test_activation_before_the_scheduled_day_returns_409(client: AsyncClient, db_session, seed_trip):
+    """A driver cannot start a trip days before it is due.
+
+    The trip is otherwise perfectly startable — right driver, right phase, nothing
+    unresolved before it — so a 409 here can only be the date gate.
+    """
+    trip, driver = seed_trip
+    trip.planned_departure_at = datetime.now(UTC) + timedelta(days=8)
+    await db_session.flush()
+    token = make_token(sub=str(driver.id), role="driver")
+    activation_id = await _phase_id(client, trip.id, token, "activation")
+
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{activation_id}/complete",
+        json={
+            "phase_type": "activation",
+            "driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001",
+            "idempotency_key": str(uuid.uuid4()),
+        },
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 409
+    # The date has to reach the driver — a bare "conflict" tells them nothing about
+    # when to come back, and the PWA surfaces this detail verbatim.
+    assert "scheduled for" in resp.json()["detail"]
+
+    await db_session.refresh(trip)
+    assert trip.status == TripStatus.CREATED
+
+
+async def test_activation_with_no_schedule_at_all_returns_409(client: AsyncClient, db_session, seed_trip):
+    """An unscheduled trip is treated as not-yet-due, not as always-allowed.
+
+    Letting these through would mean the rule silently does nothing on exactly the
+    records least under control — a dispatcher data gap, not a green light.
+    """
+    trip, driver = seed_trip
+    trip.planned_departure_at = None
+    await db_session.execute(
+        update(TripStop).where(TripStop.trip_id == trip.id).values(slot_time=None)
+    )
+    await db_session.flush()
+    token = make_token(sub=str(driver.id), role="driver")
+    activation_id = await _phase_id(client, trip.id, token, "activation")
+
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{activation_id}/complete",
+        json={
+            "phase_type": "activation",
+            "driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001",
+            "idempotency_key": str(uuid.uuid4()),
+        },
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 409
+    assert "no scheduled departure date" in resp.json()["detail"]
+
+
+async def test_activation_falls_back_to_the_first_stop_slot_when_the_trip_has_no_planned_departure(
+    client: AsyncClient, db_session, seed_trip,
+):
+    """planned_departure_at is nullable; a multi-stop trip can carry its timing on stops."""
+    trip, driver = seed_trip
+    trip.planned_departure_at = None
+    await db_session.execute(
+        update(TripStop).where(TripStop.trip_id == trip.id).values(slot_time=datetime.now(UTC))
+    )
+    await db_session.flush()
+    token = make_token(sub=str(driver.id), role="driver")
+    activation_id = await _phase_id(client, trip.id, token, "activation")
+
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{activation_id}/complete",
+        json={
+            "phase_type": "activation",
+            "driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001",
+            "idempotency_key": str(uuid.uuid4()),
+        },
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 200
+
+
+async def test_activation_after_the_scheduled_day_is_allowed(client: AsyncClient, db_session, seed_trip):
+    """Running late is not blocked. A delayed trip still needs its evidence captured;
+    refusing it would only push the driver to work around the system entirely."""
+    trip, driver = seed_trip
+    trip.planned_departure_at = datetime.now(UTC) - timedelta(days=3)
+    await db_session.flush()
+    token = make_token(sub=str(driver.id), role="driver")
+    activation_id = await _phase_id(client, trip.id, token, "activation")
+
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{activation_id}/complete",
+        json={
+            "phase_type": "activation",
+            "driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001",
+            "idempotency_key": str(uuid.uuid4()),
+        },
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 200
+
+
+async def test_later_phases_are_not_date_gated(client: AsyncClient, db_session, seed_trip):
+    """The gate is on STARTING a trip, not on every phase.
+
+    A trip that legitimately runs past midnight must not have its remaining phases
+    rejected the next day — which is exactly what would happen if this check lived in
+    _gate_and_load instead of advance_activation.
+    """
+    trip, driver = seed_trip
+    # Activation already done yesterday; the plan now sits at loading.
+    trip.planned_departure_at = datetime.now(UTC) - timedelta(days=1)
+    await db_session.flush()
+    token = make_token(sub=str(driver.id), role="driver")
+    activation_id = await _phase_id(client, trip.id, token, "activation")
+    await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{activation_id}/complete",
+        json={
+            "phase_type": "activation",
+            "driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001",
+            "idempotency_key": str(uuid.uuid4()),
+        },
+        headers=auth_header(token),
+    )
+
+    # Now push the schedule far into the future. Loading must still be completable:
+    # the trip is already underway, and the date gate has no say over it.
+    trip.planned_departure_at = datetime.now(UTC) + timedelta(days=30)
+    await db_session.flush()
+    loading_id = await _phase_id(client, trip.id, token, "loading")
+
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{loading_id}/complete",
+        json={
+            "phase_type": "loading",
+            "driver_visual_count": 5,
+            "idempotency_key": str(uuid.uuid4()),
+        },
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 200
 
 
 async def test_activation_complete_unknown_driver_token_returns_401(client: AsyncClient, db_session, seed_trip):

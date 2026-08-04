@@ -40,13 +40,13 @@ export default function SettingsPage() {
         <p className="text-sm font-medium text-surface-on">Accessibility</p>
         <div className="mt-3 flex items-center justify-between gap-4">
           <label htmlFor="tap-to-confirm" className="text-sm text-surface-on-variant">
-            Tap to confirm instead of press and hold
+            Tap to confirm instead of swipe
           </label>
           <Switch
             id="tap-to-confirm"
             checked={tapToConfirm}
             onCheckedChange={toggleTapToConfirm}
-            aria-label="Tap to confirm instead of press and hold"
+            aria-label="Tap to confirm instead of swipe"
           />
         </div>
         <p className="mt-2 text-xs text-surface-on-variant">

@@ -57,6 +57,18 @@
   .pb-safe {
     padding-bottom: env(safe-area-inset-bottom, 20px);
   }
+
+  /* iOS/Android status-bar clearance for top chrome. viewportFit:'cover'
+     (app/layout.tsx) is what makes env(safe-area-inset-top) resolve to a real value —
+     and it is also why a sticky header at top:0 otherwise draws UNDERNEATH the iOS
+     notch/Dynamic Island, putting the back button on top of the clock. Deliberately the
+     raw inset with no padding of its own (unlike .pb-safe's 20px fallback, which exists
+     because a gesture bar needs clearance even when the inset reads 0): callers keep
+     owning their own visual padding on an inner element, so two padding-top declarations
+     never race on one node. */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
 }
 
 @layer base {
@@ -68,10 +80,31 @@
 
   /* Belt-and-braces against horizontal scroll in the packaged iOS/Android shell —
      the viewport lock (app/layout.tsx) stops zoom-driven overflow, this catches
-     anything else that ever renders wider than the screen. */
-  html, body {
+     anything else that ever renders wider than the screen.
+
+     Deliberately on html ONLY, never on body. `overflow-x: hidden` forces the other
+     axis's used value from `visible` to `auto`, which makes that element a scroll
+     container. On body that silently broke every `position: sticky` header in the app
+     (SubpageHeader's back button, StepHeader): sticky positions against the nearest
+     scrollport ancestor, so those headers were sticking to the BODY box — which has
+     auto height and therefore never scrolls internally — while the viewport scrolled
+     the whole body past them. The header scrolled away with the page instead of
+     staying locked at the top. On html the value propagates to the viewport instead
+     (the root element's own used overflow stays `visible`), so nothing between the
+     viewport and a sticky header is a scroll container. */
+  html {
     overflow-x: hidden;
+  }
+
+  body {
     max-width: 100vw;
+  }
+
+  /* No rubber-band overscroll: this ships as a packaged native shell, and screens are
+     sized to exactly one viewport (h-dvh / min-h-dvh), so a bounce reveals nothing but
+     background and reads as the app coming unstuck. */
+  html, body {
+    overscroll-behavior: none;
   }
 }
 

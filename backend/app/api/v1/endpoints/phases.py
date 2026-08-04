@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import get_current_driver
 from app.core.exceptions import (
     PhaseSequenceError,
+    PhaseTooEarlyError,
     PhaseTypeMismatchError,
     ResourceNotFoundError,
 )
@@ -96,5 +97,9 @@ async def complete_phase_endpoint(
         )
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except (PhaseSequenceError, PhaseTypeMismatchError) as exc:
+    except (PhaseSequenceError, PhaseTooEarlyError, PhaseTypeMismatchError) as exc:
+        # PhaseTooEarlyError joins the 409 family rather than getting a status of its own:
+        # like the others it means "the request is well-formed, the trip's state says no".
+        # Its detail string is written to be read by the driver, and the PWA surfaces it
+        # verbatim, so the date reaches the person who needs it.
         raise HTTPException(status_code=http_status.HTTP_409_CONFLICT, detail=str(exc)) from exc

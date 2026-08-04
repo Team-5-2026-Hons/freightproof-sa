@@ -1,7 +1,7 @@
 """Unit tests for the phase completion engine (advance_activation..advance_confirmation)."""
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
 
@@ -28,12 +28,19 @@ from app.db.models.vehicles import Vehicle
 from app.orchestration.phase_plan import PlanStop, build_phase_plan
 from app.orchestration.phase_service import (
     advance_activation, advance_confirmation, advance_departure, advance_loading, advance_unloading,
-    complete_phase, next_phase,
+    complete_phase, is_before_scheduled_day, next_phase, operating_day,
 )
 from app.schemas.phases import (
     ActivationCompleteRequest, ConfirmationCompleteRequest, DepartureCompleteRequest,
     LoadingCompleteRequest, UnloadingCompleteRequest,
 )
+
+# Activation is gated on the trip actually being due (phase_service._reject_if_not_due),
+# and a trip carrying no schedule at all is deliberately unstartable. Every fixture below
+# therefore books its trip for today — which is what these fixtures always meant: a trip a
+# driver is about to run. Computed per-run, not pinned to a literal date, so the suite
+# does not quietly start failing the day after it was written.
+_SCHEDULED_TODAY = datetime.now(UTC)
 
 
 @pytest.fixture(autouse=True)
@@ -99,6 +106,7 @@ async def trip_fixture(db_session):
         driver_id=driver.id, horse_id=horse.id,
         origin_precinct_id=origin.id, destination_precinct_id=dest.id,
         status=TripStatus.CREATED, idvs_check_status=IdvsStatus.VERIFIED,
+        planned_departure_at=_SCHEDULED_TODAY,
         created_by_user_id=user.id,
     )
     db_session.add(trip)
@@ -572,6 +580,7 @@ async def multi_leg_trip_fixture(db_session):
         driver_id=driver.id, horse_id=horse.id,
         origin_precinct_id=p0.id, destination_precinct_id=p2.id,
         status=TripStatus.CREATED, idvs_check_status=IdvsStatus.VERIFIED,
+        planned_departure_at=_SCHEDULED_TODAY,
         created_by_user_id=user.id,
     )
     db_session.add(trip)
@@ -955,6 +964,7 @@ async def cross_dock_trip_fixture(db_session):
         driver_id=driver.id, horse_id=horse.id,
         origin_precinct_id=p0.id, destination_precinct_id=p2.id,
         status=TripStatus.CREATED, idvs_check_status=IdvsStatus.VERIFIED,
+        planned_departure_at=_SCHEDULED_TODAY,
         created_by_user_id=user.id,
     )
     db_session.add(trip)
@@ -1238,3 +1248,49 @@ async def test_next_phase_derives_from_ledger_not_from_trip_current_phase(db_ses
     assert event is not None
     assert event.id == phases["loading"].id
     assert event.phase_type == PhaseType.LOADING
+
+
+# ── Activation date gate: a trip cannot be started before the day it is due ──
+#
+# Pure logic, no DB — the two helpers below are the whole rule, and testing them
+# directly is what makes the timezone decision provable rather than asserted.
+
+def test_operating_day_uses_the_operator_timezone_not_utc():
+    # 23:00 UTC on the 4th is 01:00 SAST on the 5th. Comparing UTC dates here would
+    # tell a driver their legitimately-scheduled early-morning trip is a day early.
+    late_utc = datetime(2026, 8, 4, 23, 0, tzinfo=UTC)
+
+    assert operating_day(late_utc) == date(2026, 8, 5)
+
+
+def test_operating_day_reads_a_naive_datetime_as_utc():
+    # Not as server-local time: the same trip must gate identically whichever machine
+    # answers the request.
+    naive = datetime(2026, 8, 4, 23, 0)
+
+    assert operating_day(naive) == operating_day(datetime(2026, 8, 4, 23, 0, tzinfo=UTC))
+
+
+def test_is_before_scheduled_day_blocks_an_earlier_calendar_day():
+    now = datetime(2026, 8, 4, 12, 0, tzinfo=UTC)
+    scheduled = datetime(2026, 8, 12, 6, 0, tzinfo=UTC)
+
+    assert is_before_scheduled_day(now, scheduled) is True
+
+
+def test_is_before_scheduled_day_allows_any_time_on_the_scheduled_day():
+    # 02:00 SAST against an 08:00 slot is a driver ahead of schedule, not a driver on
+    # the wrong day — the chosen rule is same-calendar-day, not same-minute.
+    now = datetime(2026, 8, 12, 0, 0, tzinfo=UTC)      # 02:00 SAST
+    scheduled = datetime(2026, 8, 12, 6, 0, tzinfo=UTC)  # 08:00 SAST
+
+    assert is_before_scheduled_day(now, scheduled) is False
+
+
+def test_is_before_scheduled_day_allows_a_late_start():
+    # A delayed trip still needs its evidence captured. Blocking it would only push the
+    # driver to work around the system, which is the opposite of what this app is for.
+    now = datetime(2026, 8, 20, 6, 0, tzinfo=UTC)
+    scheduled = datetime(2026, 8, 12, 6, 0, tzinfo=UTC)
+
+    assert is_before_scheduled_day(now, scheduled) is False

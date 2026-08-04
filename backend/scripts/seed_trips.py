@@ -31,7 +31,7 @@ Usage:
 import asyncio
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Literal, Optional
 
@@ -157,6 +157,70 @@ SEEDED_WAYBILL_REFERENCES: frozenset[str] = frozenset(
 # bug reports impossible to compare.
 _WALK_STARTED_AT = datetime(2026, 7, 30, 6, 0, tzinfo=UTC)
 _MINUTES_PER_PHASE = 20
+
+# Every seeded trip now carries a real schedule, because activation is gated on it:
+# phase_service._reject_if_not_due refuses to start a trip before its scheduled day, and
+# treats a trip with no schedule at all as not-yet-due. Seeding without these would make
+# every demo trip permanently unstartable.
+_OPERATING_TZ = timezone(timedelta(hours=settings.OPERATIONS_UTC_OFFSET_HOURS))
+# 06:00 local is the shift start these depots run to, and it puts the whole scheduled
+# day comfortably ahead of whenever the seed is actually run.
+_DEPARTURE_HOUR = 6
+# Cape Town to Johannesburg is a long-haul day; the exact figure only has to be plausible
+# and to order the stop slots sensibly.
+_TRIP_DURATION_HOURS = 10
+
+
+def _scheduled_departure_for(spec: _TripSpec) -> datetime:
+    """When this trip is booked to leave.
+
+    Split on whether the trip has already been walked, because the two cases need
+    opposite things. A walked trip's evidence is timestamped from _WALK_STARTED_AT, so
+    its schedule has to sit on that same fixed day or the trip claims to depart today
+    while its own phase rows say last week. An UN-walked trip is the one a driver is
+    meant to pick up and start, so it has to be scheduled for the day the seed is run —
+    pin it to a fixed date and the demo stops working the next morning.
+    """
+    if spec.advance_through is not None:
+        return _WALK_STARTED_AT
+
+    today_local = datetime.now(_OPERATING_TZ).date()
+    return datetime(
+        today_local.year, today_local.month, today_local.day,
+        _DEPARTURE_HOUR, 0, tzinfo=_OPERATING_TZ,
+    ).astimezone(UTC)
+
+# build_phase_plan always emits trip_creation first, at sequence 0 with a NULL stop
+# (D3). Named rather than spelled 0 inline because resolved_sequences() below turns
+# on it and the reason it is special is not obvious from the literal.
+TRIP_CREATION_SEQUENCE = 0
+
+
+def resolved_sequences(spec: _TripSpec, plan_length: int) -> set[int]:
+    """Sequence numbers a seeded trip starts life with already COMPLETED.
+
+    ALWAYS includes trip_creation, whether or not the spec walks any further.
+    Creating the trip IS P0's completion event, which is why create_trip() resolves
+    it inline the moment its anchor succeeds (orchestration/trip_service.py) with
+    the warning that names this exact bug: "Without this, h0 stays PENDING forever
+    and _gate_and_load's 'all lower sequence_numbers resolved' check blocks every
+    later phase permanently, since h0 is sequence 0 - the lowest possible."
+
+    The seeder writes rows directly and so never reached that line. A seeded trip
+    with P0 pending is un-walkable from both ends: the driver app derives P0 as the
+    current phase, renders it as "Trip Created" with an empty step recipe and no way
+    forward, and any completion the driver did manage to submit would 409 on the
+    unresolved earlier phase. Seeded P0 stays UNANCHORED (anchor_status PENDING) -
+    this resolves the ledger row, it does not fake a Hedera receipt, per this
+    module's docstring.
+    """
+    if spec.advance_through is None:
+        return {TRIP_CREATION_SEQUENCE}
+
+    walk_limit = (
+        plan_length - 1 if spec.advance_through == _ADVANCE_ALL else spec.advance_through
+    )
+    return {TRIP_CREATION_SEQUENCE} | set(range(walk_limit + 1))
 
 
 def _fixture(pp_reference: str) -> PPWaybillResponse:
@@ -319,6 +383,7 @@ async def _seed_trip(
     evidence directly. It deliberately does NOT go through advance_phase - see this
     module's docstring - so it performs no gating, anchoring or reconciliation.
     """
+    departure_at = _scheduled_departure_for(spec)
     trip = Trip(
         id=uuid.uuid4(),
         trip_reference=spec.trip_reference,
@@ -329,13 +394,23 @@ async def _seed_trip(
         status=TripStatus.CREATED,
         trip_type=TripType.LOADED.value,
         idvs_check_status=IdvsStatus.VERIFIED,
+        planned_departure_at=departure_at,
+        planned_arrival_at=departure_at + timedelta(hours=_TRIP_DURATION_HOURS),
         created_by_user_id=user.id,
     )
     db.add(trip)
     await db.flush()
 
+    # Stop slots spread evenly across the planned run. They are not decoration: they are
+    # the fallback activation gates on when planned_departure_at is null, so seeding them
+    # exercises that path instead of leaving it only ever covered by tests.
+    leg_count = max(len(spec.precinct_names) - 1, 1)
+    hours_per_leg = _TRIP_DURATION_HOURS / leg_count
     stops = [
-        TripStop(id=uuid.uuid4(), trip_id=trip.id, precinct_id=precincts[name].id, sequence=i + 1)
+        TripStop(
+            id=uuid.uuid4(), trip_id=trip.id, precinct_id=precincts[name].id, sequence=i + 1,
+            slot_time=departure_at + timedelta(hours=hours_per_leg * i),
+        )
         for i, name in enumerate(spec.precinct_names)
     ]
     db.add_all(stops)
@@ -391,26 +466,28 @@ async def _seed_trip(
     precinct_by_stop_id = {s.id: precincts[name]
                            for s, name in zip(stops, spec.precinct_names, strict=True)}
 
-    if spec.advance_through is not None:
-        walk_limit = (
-            events[-1].sequence_number if spec.advance_through == _ADVANCE_ALL
-            else spec.advance_through
+    # Which rows start resolved is a decision, not a loop bound - resolved_sequences()
+    # owns it so the "P0 is always complete" rule is unit-testable without a database
+    # (tests/unit/test_seed_fixtures.py) rather than buried in this walk. Note this
+    # is now unconditional: even a spec with advance_through=None resolves P0.
+    resolved = resolved_sequences(spec, len(events))
+    for event in events:
+        if event.sequence_number not in resolved:
+            continue
+        event.status = PhaseStatus.COMPLETED
+        event.completed_at = (
+            _WALK_STARTED_AT + timedelta(minutes=event.sequence_number * _MINUTES_PER_PHASE)
         )
-        for event in events:
-            if event.sequence_number > walk_limit:
-                break
-            event.status = PhaseStatus.COMPLETED
-            event.completed_at = (
-                _WALK_STARTED_AT + timedelta(minutes=event.sequence_number * _MINUTES_PER_PHASE)
-            )
-            _apply_walk_evidence(
-                event, spec=spec,
-                stop_sequence=None if event.trip_stop_id is None
-                else stop_sequence_by_id[event.trip_stop_id],
-                precinct=None if event.trip_stop_id is None
-                else precinct_by_stop_id[event.trip_stop_id],
-                loaded_at=loaded_at, delivered_at=delivered_at,
-            )
+        # A no-op for trip_creation - it has no phase-specific evidence branch, which
+        # is the point: P0 is resolved by the trip existing, not by driver capture.
+        _apply_walk_evidence(
+            event, spec=spec,
+            stop_sequence=None if event.trip_stop_id is None
+            else stop_sequence_by_id[event.trip_stop_id],
+            precinct=None if event.trip_stop_id is None
+            else precinct_by_stop_id[event.trip_stop_id],
+            loaded_at=loaded_at, delivered_at=delivered_at,
+        )
 
     current = next((e for e in events if e.status != PhaseStatus.COMPLETED), None)
     # event.phase_type comes back as a plain str after the bulk PhaseEvent insert

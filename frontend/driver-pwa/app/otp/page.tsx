@@ -22,7 +22,7 @@ export default function OtpPage() {
   return (
     <Suspense
       fallback={
-        <main className="flex min-h-screen items-center justify-center">
+        <main className="flex min-h-dvh items-center justify-center">
           <p className="text-sm text-surface-on-variant">Loading…</p>
         </main>
       }
@@ -104,7 +104,7 @@ function OtpForm() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-6">
+    <main className="flex min-h-dvh flex-col items-center justify-center p-6">
       <h1 className="text-2xl font-semibold mb-2 text-surface-on">Enter OTP</h1>
       <p className="text-sm text-surface-on-variant mb-8">Sent to {phone}</p>
       <form onSubmit={handleVerify} className="w-full max-w-sm flex flex-col gap-4">

@@ -85,7 +85,7 @@ export default function LogExceptionPageClient() {
 
   if (!trip) {
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-6">
+      <main className="flex min-h-dvh flex-col items-center justify-center gap-6 p-6">
         <div className="flex w-full flex-col items-center gap-3 rounded-xl bg-error-container px-6 py-8 text-center text-error-on-container">
           <TriangleAlert className="h-10 w-10" strokeWidth={1.5} aria-hidden />
           <h1 className="text-lg font-bold">Unable to verify trip</h1>
@@ -110,7 +110,7 @@ export default function LogExceptionPageClient() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col">
+    <main className="flex min-h-dvh flex-col">
       {/* Named destination (not router.back()): guarantees where the driver lands
           regardless of history, matching the hub's own back-link pattern. */}
       <SubpageHeader

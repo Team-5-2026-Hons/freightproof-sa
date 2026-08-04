@@ -13,7 +13,7 @@ persisted/not-persisted — a mocked session can't prove that.
 """
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -21,8 +21,8 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import select
 
-from app.core.exceptions import HederaTimeoutError, PPSyncError
-from app.db.models.enums import AnchorStatus, DispatcherRole, OrganizationType, PhaseStatus, PhaseType, TripType, VehicleType
+from app.core.exceptions import HederaTimeoutError, PPSyncError, ResourceNotFoundError
+from app.db.models.enums import AnchorStatus, DispatcherRole, OrganizationType, PhaseStatus, PhaseType, TripStatus, TripType, VehicleType
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.phases import PhaseEvent
@@ -449,3 +449,218 @@ async def test_create_trip_anchor_failure_still_rolls_back_whole_trip(db_session
     )).scalars().all()
     assert trips == []
     assert events == []
+
+
+# ── Driver trip reads (which trip is "current", and the driver's own list) ─────
+#
+# These use the real (rolled-back) db_session for the same reason as the P0 test above:
+# the behaviour under test is an ORDER BY and a WHERE clause. A mocked session would only
+# replay whatever order the mock was handed, proving nothing about the query itself.
+
+def _driver_trip(
+    *, org, client_org, user, driver, horse, origin, dest, reference, status, created_at=None,
+):
+    return Trip(
+        id=uuid.uuid4(), trip_reference=reference, order_number=f"ORD-{reference}",
+        operator_organization_id=org.id, client_organization_id=client_org.id,
+        driver_id=driver.id, horse_id=horse.id,
+        origin_precinct_id=origin.id, destination_precinct_id=dest.id,
+        status=status, created_by_user_id=user.id,
+        **({"created_at": created_at} if created_at is not None else {}),
+    )
+
+
+@pytest.mark.asyncio
+async def test_active_trip_prefers_activated_trip_over_newer_assignment(
+    db_session, create_trip_seed,
+) -> None:
+    """The reported bug's root cause, at the service level.
+
+    Two trips exist: one the driver activated three hours ago, and one the dispatcher
+    assigned since. Ordering by created_at alone handed back the newer CREATED row, so the
+    PWA's Home and Active tab showed an un-activated assignment while the trip the driver
+    was actually driving vanished from view.
+    """
+    from app.orchestration.trip_service import get_active_trip_for_driver
+
+    operator_org, user, driver, horse, origin, dest = create_trip_seed
+    client_org = (await db_session.execute(
+        select(Organization).where(Organization.org_type == OrganizationType.PRINCIPAL)
+    )).scalars().first()
+    now = datetime.now(UTC)
+
+    activated = _driver_trip(
+        org=operator_org, client_org=client_org, user=user, driver=driver, horse=horse,
+        origin=origin, dest=dest, reference="FP-UNIT-ACTIVATED", status=TripStatus.ACTIVE,
+        created_at=now - timedelta(hours=3),
+    )
+    newer_assignment = _driver_trip(
+        org=operator_org, client_org=client_org, user=user, driver=driver, horse=horse,
+        origin=origin, dest=dest, reference="FP-UNIT-ASSIGNED", status=TripStatus.CREATED,
+        created_at=now - timedelta(minutes=5),
+    )
+    db_session.add_all([activated, newer_assignment])
+    await db_session.flush()
+
+    current = await get_active_trip_for_driver(db_session, driver_id=driver.id)
+
+    assert current is not None
+    assert current.trip_reference == "FP-UNIT-ACTIVATED"
+
+
+@pytest.mark.asyncio
+async def test_active_trip_falls_back_to_created_when_nothing_activated(
+    db_session, create_trip_seed,
+) -> None:
+    """CREATED stays eligible: Activation (which is what flips CREATED -> ACTIVE) is
+    reached through this trip, so a driver holding only an assignment must still get it."""
+    from app.orchestration.trip_service import get_active_trip_for_driver
+
+    operator_org, user, driver, horse, origin, dest = create_trip_seed
+    client_org = (await db_session.execute(
+        select(Organization).where(Organization.org_type == OrganizationType.PRINCIPAL)
+    )).scalars().first()
+
+    assignment = _driver_trip(
+        org=operator_org, client_org=client_org, user=user, driver=driver, horse=horse,
+        origin=origin, dest=dest, reference="FP-UNIT-ONLY-ASSIGNED", status=TripStatus.CREATED,
+    )
+    db_session.add(assignment)
+    await db_session.flush()
+
+    current = await get_active_trip_for_driver(db_session, driver_id=driver.id)
+
+    assert current is not None
+    assert current.trip_reference == "FP-UNIT-ONLY-ASSIGNED"
+
+
+@pytest.mark.asyncio
+async def test_active_trip_ignores_terminal_trips(db_session, create_trip_seed) -> None:
+    from app.orchestration.trip_service import get_active_trip_for_driver
+
+    operator_org, user, driver, horse, origin, dest = create_trip_seed
+    client_org = (await db_session.execute(
+        select(Organization).where(Organization.org_type == OrganizationType.PRINCIPAL)
+    )).scalars().first()
+
+    db_session.add_all([
+        _driver_trip(
+            org=operator_org, client_org=client_org, user=user, driver=driver, horse=horse,
+            origin=origin, dest=dest, reference="FP-UNIT-CLOSED", status=TripStatus.CLOSED,
+        ),
+        _driver_trip(
+            org=operator_org, client_org=client_org, user=user, driver=driver, horse=horse,
+            origin=origin, dest=dest, reference="FP-UNIT-CANCELLED", status=TripStatus.CANCELLED,
+        ),
+    ])
+    await db_session.flush()
+
+    assert await get_active_trip_for_driver(db_session, driver_id=driver.id) is None
+
+
+@pytest.mark.asyncio
+async def test_list_trips_for_driver_returns_all_statuses_newest_first(
+    db_session, create_trip_seed,
+) -> None:
+    """Terminal trips are included on purpose — the PWA's Past tab is built from them,
+    and grouping is the client's job."""
+    from app.orchestration.trip_service import list_trips_for_driver
+
+    operator_org, user, driver, horse, origin, dest = create_trip_seed
+    client_org = (await db_session.execute(
+        select(Organization).where(Organization.org_type == OrganizationType.PRINCIPAL)
+    )).scalars().first()
+    now = datetime.now(UTC)
+
+    db_session.add_all([
+        _driver_trip(
+            org=operator_org, client_org=client_org, user=user, driver=driver, horse=horse,
+            origin=origin, dest=dest, reference="FP-UNIT-L-CLOSED", status=TripStatus.CLOSED,
+            created_at=now - timedelta(days=2),
+        ),
+        _driver_trip(
+            org=operator_org, client_org=client_org, user=user, driver=driver, horse=horse,
+            origin=origin, dest=dest, reference="FP-UNIT-L-ACTIVE", status=TripStatus.ACTIVE,
+            created_at=now - timedelta(hours=4),
+        ),
+        _driver_trip(
+            org=operator_org, client_org=client_org, user=user, driver=driver, horse=horse,
+            origin=origin, dest=dest, reference="FP-UNIT-L-CREATED", status=TripStatus.CREATED,
+            created_at=now - timedelta(minutes=10),
+        ),
+    ])
+    await db_session.flush()
+
+    rows = await list_trips_for_driver(db_session, driver_id=driver.id)
+
+    assert [r.trip_reference for r in rows] == [
+        "FP-UNIT-L-CREATED", "FP-UNIT-L-ACTIVE", "FP-UNIT-L-CLOSED",
+    ]
+    # Precinct names are resolved server-side so the PWA card need not guess from a UUID.
+    assert rows[0].origin_precinct_name == "Origin"
+    assert rows[0].destination_precinct_name == "Dest"
+
+
+@pytest.mark.asyncio
+async def test_list_trips_for_driver_scopes_to_that_driver(db_session, create_trip_seed) -> None:
+    """driver_id is the whole authorisation boundary for GET /trips/me."""
+    from app.orchestration.trip_service import list_trips_for_driver
+
+    operator_org, user, driver, horse, origin, dest = create_trip_seed
+    client_org = (await db_session.execute(
+        select(Organization).where(Organization.org_type == OrganizationType.PRINCIPAL)
+    )).scalars().first()
+
+    other_driver = Driver(
+        id=uuid.uuid4(), organization_id=operator_org.id, full_name="Other",
+        id_number="9002026009088", phone_number="+27829999999", license_number="DRV-2",
+    )
+    db_session.add(other_driver)
+    await db_session.flush()
+
+    db_session.add_all([
+        _driver_trip(
+            org=operator_org, client_org=client_org, user=user, driver=driver, horse=horse,
+            origin=origin, dest=dest, reference="FP-UNIT-MINE", status=TripStatus.CREATED,
+        ),
+        _driver_trip(
+            org=operator_org, client_org=client_org, user=user, driver=other_driver, horse=horse,
+            origin=origin, dest=dest, reference="FP-UNIT-THEIRS", status=TripStatus.CREATED,
+        ),
+    ])
+    await db_session.flush()
+
+    rows = await list_trips_for_driver(db_session, driver_id=driver.id)
+
+    assert [r.trip_reference for r in rows] == ["FP-UNIT-MINE"]
+
+
+@pytest.mark.asyncio
+async def test_own_trip_detail_rejects_another_drivers_trip(db_session, create_trip_seed) -> None:
+    """404 (ResourceNotFoundError), not a 403: a distinguishable refusal would confirm the
+    trip exists and let a driver probe for real trip ids."""
+    from app.orchestration.trip_service import get_own_trip_detail_for_driver
+
+    operator_org, user, driver, horse, origin, dest = create_trip_seed
+    client_org = (await db_session.execute(
+        select(Organization).where(Organization.org_type == OrganizationType.PRINCIPAL)
+    )).scalars().first()
+
+    other_driver = Driver(
+        id=uuid.uuid4(), organization_id=operator_org.id, full_name="Other",
+        id_number="9002026009088", phone_number="+27829999999", license_number="DRV-2",
+    )
+    db_session.add(other_driver)
+    await db_session.flush()
+
+    their_trip = _driver_trip(
+        org=operator_org, client_org=client_org, user=user, driver=other_driver, horse=horse,
+        origin=origin, dest=dest, reference="FP-UNIT-NOT-MINE", status=TripStatus.ACTIVE,
+    )
+    db_session.add(their_trip)
+    await db_session.flush()
+
+    with pytest.raises(ResourceNotFoundError):
+        await get_own_trip_detail_for_driver(
+            db_session, driver_id=driver.id, trip_id=their_trip.id
+        )

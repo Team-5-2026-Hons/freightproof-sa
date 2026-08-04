@@ -23,7 +23,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   if (auth?.isLoading || !auth?.user) {
     return (
-      <main className="flex min-h-screen items-center justify-center">
+      <main className="flex min-h-dvh items-center justify-center">
         <p className="text-sm text-surface-on-variant">Loading…</p>
       </main>
     )

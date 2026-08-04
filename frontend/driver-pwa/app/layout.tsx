@@ -14,7 +14,7 @@ import { ToastProvider } from '@/lib/context/ToastContext'
 
 // viewportFit: 'cover' lets content draw under the Android WebView's notch/gesture-bar
 // insets (env(safe-area-inset-*) below only resolves to non-zero values with this set) —
-// without it every bottom-anchored control (HoldButton, panic Cancel) sits flush against
+// without it every bottom-anchored control (SwipeToConfirm, panic Cancel) sits flush against
 // the gesture bar with zero clearance.
 //
 // maximumScale/userScalable lock pinch-zoom: this ships as a packaged native app shell

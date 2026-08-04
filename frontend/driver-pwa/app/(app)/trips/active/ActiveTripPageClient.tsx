@@ -2,11 +2,21 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { STEP_SLUGS } from '@shared/lib/constants/handshake-meta'
+import type { PhaseDescriptor } from '@shared/lib/types/phase'
+import { stepsFor, phaseStepRoute } from '@/lib/phase'
 import { ROUTES } from '@/lib/constants/routes'
 import { useTrip } from '@/lib/hooks/useTrip'
 import { Spinner } from '@/components/ui/Spinner'
 import { TripDetailView } from '@/components/trip/TripDetailView'
+
+// Route to the first step of the selected phase's own recipe. Mirrors
+// PhaseStepPageClient.tsx's local currentStepRoute — lib/phase/ itself stays the
+// only export surface for sequencing, this is just route composition, kept local to
+// each caller the same way that file keeps its own.
+function firstStepRoute(phase: PhaseDescriptor): string {
+  const steps = stepsFor(phase)
+  return steps.length > 0 ? phaseStepRoute(phase.phase_type, steps[0].slug) : ROUTES.activeTripDetail
+}
 
 export default function ActiveTripPageClient() {
   const router = useRouter()
@@ -14,7 +24,7 @@ export default function ActiveTripPageClient() {
 
   if (isLoading) {
     return (
-      <main className="flex min-h-screen items-center justify-center p-6">
+      <main className="flex min-h-dvh items-center justify-center p-6">
         <Spinner />
       </main>
     )
@@ -22,7 +32,7 @@ export default function ActiveTripPageClient() {
 
   if (!trip) {
     return (
-      <main className="flex min-h-screen items-center justify-center p-6">
+      <main className="flex min-h-dvh items-center justify-center p-6">
         <p className="text-sm text-surface-on-variant">Trip not found.</p>
       </main>
     )
@@ -33,10 +43,11 @@ export default function ActiveTripPageClient() {
       trip={trip}
       onBack={() => router.push(ROUTES.trips)}
       onInTransitHub={() => router.push(ROUTES.inTransit)}
-      onSelectHandshake={(n) => router.push(ROUTES.handshakeStep(n, STEP_SLUGS[n][0]))}
-      // The real, session-derived trip shows only the single current handshake
-      // (docs/superpowers/specs/2026-06-29-driver-pwa-current-handshake-only-design.md).
-      showAllHandshakes={false}
+      onSelectPhase={(phase) => router.push(firstStepRoute(phase))}
+      // The real, session-derived trip shows only the single current phase
+      // (docs/superpowers/specs/2026-06-29-driver-pwa-current-handshake-only-design.md,
+      // unchanged design intent under the phase model).
+      showAllPhases={false}
     />
   )
 }

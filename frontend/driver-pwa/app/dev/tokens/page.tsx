@@ -67,20 +67,20 @@ export default function TokensPage() {
       <section className="mb-8">
         <h2 className="text-base font-bold text-surface-on mb-1">Push Notification Simulation</h2>
         <p className="text-xs text-surface-on-variant mb-4 leading-relaxed">
-          Simulates a GATE_ARRIVAL push. Navigates to handshake step for TRP-2026-0041.
+          Simulates a GATE_ARRIVAL push. Navigates to the phase step for TRP-2026-0041.
         </p>
         <div className="flex flex-col gap-3">
           <button
-            onClick={() => simulateGateArrival(1)}
+            onClick={() => simulateGateArrival('activation')}
             className="w-full min-h-[52px] rounded-xl bg-primary text-primary-on font-bold text-sm uppercase tracking-wider shadow-ambient active:scale-[0.98] transition-all duration-200"
           >
-            Simulate Gate Arrival — Handshake 1
+            Simulate Gate Arrival — Activation (Origin)
           </button>
           <button
-            onClick={() => simulateGateArrival(4)}
+            onClick={() => simulateGateArrival('in_transit')}
             className="w-full min-h-[52px] rounded-xl bg-secondary text-secondary-on font-bold text-sm uppercase tracking-wider shadow-ambient active:scale-[0.98] transition-all duration-200"
           >
-            Simulate Gate Arrival — Handshake 4
+            Simulate Gate Arrival — In Transit (Destination)
           </button>
         </div>
       </section>

@@ -1,33 +1,48 @@
 // Pure filtering/categorization utilities for the driver's trip list.
 // No I/O, no React — consumed by the Trips-list page and Home page (separate tasks).
+//
+// Generic over the trip shape rather than fixed to @shared's Trip: the list page now
+// reads DriverTripSummary rows from GET /trips/me, while demo mode and the Home page
+// still pass full Trip objects. Each function constrains only the fields it actually
+// reads, so both shapes satisfy it and neither is weakened.
 
 import type { Trip } from '@shared/lib/types/trip'
+import type { CoarseTripStatus } from '@shared/lib/types/phase'
 import type { DriverId } from '@shared/lib/types/driver'
 
-// "Active" here is a display grouping only — it reflects the existing
-// TripStatus state machine (a driver has at most one non-terminal,
-// non-'created' trip at a time in practice). No new enforcement is added.
-const TERMINAL_STATUSES: Trip['status'][] = ['closed', 'cancelled']
+// A trip is "active" only once the DRIVER has activated it — completing the Activation
+// phase is what flips the backend's coarse status from 'created' to 'active'
+// (orchestration/phase_service.advance_activation). So 'created' is an assignment the
+// dispatcher has made and the driver has not started: it belongs in Upcoming, never in
+// Active. 'exception_hold' is still the trip the driver is on, just blocked from
+// advancing, so it groups with Active.
+const TERMINAL_STATUSES: readonly CoarseTripStatus[] = ['closed', 'cancelled']
+const UPCOMING_STATUS: CoarseTripStatus = 'created'
 
 export function tripsForDriver(trips: Trip[], driverId: DriverId): Trip[] {
   return trips.filter((t) => t.driver?.id === driverId)
 }
 
-export interface CategorizedTrips {
-  active: Trip[]
-  upcoming: Trip[]
-  past: Trip[]
+export interface CategorizedTrips<T> {
+  active: T[]
+  upcoming: T[]
+  past: T[]
 }
 
-export function categorizeTrips(trips: Trip[]): CategorizedTrips {
-  const active: Trip[] = []
-  const upcoming: Trip[] = []
-  const past: Trip[] = []
+// Minimum a row must carry to be grouped into a tab.
+interface HasStatus {
+  status: CoarseTripStatus
+}
+
+export function categorizeTrips<T extends HasStatus>(trips: readonly T[]): CategorizedTrips<T> {
+  const active: T[] = []
+  const upcoming: T[] = []
+  const past: T[] = []
 
   for (const trip of trips) {
     if (TERMINAL_STATUSES.includes(trip.status)) {
       past.push(trip)
-    } else if (trip.status === 'created') {
+    } else if (trip.status === UPCOMING_STATUS) {
       upcoming.push(trip)
     } else {
       active.push(trip)
@@ -40,10 +55,24 @@ export function categorizeTrips(trips: Trip[]): CategorizedTrips {
 export interface PastTripFilters {
   dateFrom: string | null // ISO date, inclusive
   dateTo: string | null // ISO date, inclusive
-  search: string // matches origin/destination precinct id, case-insensitive
+  search: string // matches origin/destination precinct name or id, case-insensitive
 }
 
-export function filterPastTrips(trips: Trip[], filters: PastTripFilters): Trip[] {
+// Minimum a row must carry to be date-filtered and text-searched. Precinct names are
+// optional so a full Trip (which has ids only) still satisfies the constraint.
+interface PastTripFields {
+  actual_arrival_at: string | null
+  planned_arrival_at: string | null
+  origin_precinct_id: string | null
+  destination_precinct_id: string | null
+  origin_precinct_name?: string | null
+  destination_precinct_name?: string | null
+}
+
+export function filterPastTrips<T extends PastTripFields>(
+  trips: readonly T[],
+  filters: PastTripFilters,
+): T[] {
   return trips.filter((trip) => {
     const reference = trip.actual_arrival_at ?? trip.planned_arrival_at
     // Compare epoch ms (not raw ISO strings) so non-Z UTC offsets (e.g. '+02:00') from the
@@ -60,7 +89,18 @@ export function filterPastTrips(trips: Trip[], filters: PastTripFilters): Trip[]
 
     if (filters.search.trim() !== '') {
       const needle = filters.search.trim().toLowerCase()
-      const haystack = `${trip.origin_precinct_id} ${trip.destination_precinct_id}`.toLowerCase()
+      // Names first — a driver searching "Cape Town" means the depot, not a UUID. Ids stay
+      // in the haystack so a row whose precinct name the server couldn't resolve is still
+      // findable by the id the card falls back to displaying.
+      const haystack = [
+        trip.origin_precinct_name,
+        trip.destination_precinct_name,
+        trip.origin_precinct_id,
+        trip.destination_precinct_id,
+      ]
+        .filter((v): v is string => typeof v === 'string')
+        .join(' ')
+        .toLowerCase()
       if (!haystack.includes(needle)) return false
     }
 

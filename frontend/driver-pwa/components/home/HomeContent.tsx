@@ -2,18 +2,29 @@
 
 import { useRouter } from 'next/navigation'
 import { PackageSearch } from 'lucide-react'
-import { STEP_SLUGS } from '@shared/lib/constants/handshake-meta'
+import { currentPhase, stepsFor, phaseStepRoute } from '@/lib/phase'
 import { ROUTES } from '@/lib/constants/routes'
 import { useTrip } from '@/lib/hooks/useTrip'
 import { tripStatusChip } from '@/lib/utils/trip-status-chip'
-import { handshakeProgress, currentHandshakeNumber } from '@/lib/utils/handshake-progress'
 import { Button } from '@/components/ui/Button'
 import { Chip } from '@/components/ui/Chip'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Spinner } from '@/components/ui/Spinner'
-import { HandshakeProgressBar } from '@/components/trip/HandshakeProgressBar'
-import { CurrentHandshakeCard } from '@/components/trip/CurrentHandshakeCard'
+import { PhaseProgressBar } from '@/components/trip/PhaseProgressBar'
+import { CurrentPhaseCard } from '@/components/trip/CurrentPhaseCard'
 import { HoldNotice } from '@/components/trip/HoldNotice'
+import type { PhaseDescriptor } from '@shared/lib/types/phase'
+
+// Route to the first step of the current phase's own recipe. Mirrors
+// PhaseStepPageClient.tsx's local currentStepRoute — lib/phase/ itself stays the
+// only export surface for sequencing, this is just route composition, kept local to
+// each caller the same way that file keeps its own.
+function firstStepRoute(phase: PhaseDescriptor): string {
+  const steps = stepsFor(phase)
+  // Defensive: only trip_creation has an empty recipe, and it resolves before the
+  // driver is ever involved — currentPhase should never surface it as "current" here.
+  return steps.length > 0 ? phaseStepRoute(phase.phase_type, steps[0].slug) : ROUTES.activeTripDetail
+}
 
 export function HomeContent() {
   const router = useRouter()
@@ -48,21 +59,30 @@ export function HomeContent() {
   }
 
   const { kind, label } = tripStatusChip(trip.status)
-  const progress = handshakeProgress(trip.handshakes)
-  const current = currentHandshakeNumber(progress)
+  const current = currentPhase(trip.phases)
+  // The in-transit leg is its own phase in the plan, not a trip.status value — the
+  // coarse five (created | active | closed | cancelled | exception_hold) has no
+  // 'in_transit' member. Mirrors TripDetailView's identical check, which generalises
+  // across every leg of a multi-stop trip rather than just a single trip-wide state.
+  const inTransit = current?.phase_type === 'in_transit'
 
   return (
     <main className="flex flex-col gap-4 p-4">
-      <div>
-        <p className="text-xl font-semibold text-surface-on">{trip.trip_reference}</p>
-        <p className="text-sm text-surface-on-variant">{trip.order_number}</p>
+      {/* Reference and status on one row — same arrangement as a trips-list TripCard,
+          so the card a driver taps and the screen it opens read as the same object.
+          The chip previously sat on its own line below, which cost a full row of
+          vertical space and left the reference block looking orphaned. */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xl font-semibold text-surface-on">{trip.trip_reference}</p>
+          <p className="text-sm text-surface-on-variant">{trip.order_number}</p>
+        </div>
+        <Chip kind={kind} className="mt-0.5 shrink-0">{label}</Chip>
       </div>
 
-      <Chip kind={kind} className="self-start">{label}</Chip>
+      <PhaseProgressBar phases={trip.phases} />
 
-      <HandshakeProgressBar progress={progress} />
-
-      {trip.status === 'in_transit' && (
+      {inTransit && (
         // Mirrors TripDetailView's identical control exactly — same shortcut, same
         // shadcn Button (variant="secondary" size="lg"), so the two trip-detail
         // surfaces (Home and Trip Detail) don't hand-duplicate their own button styles.
@@ -71,15 +91,15 @@ export function HomeContent() {
         </Button>
       )}
 
-      {/* A held trip (H4 seal mismatch) must not offer the next handshake — any
-          submit while on hold 409s. HoldNotice explains the pause instead. */}
+      {/* A held trip must not offer the next phase — any submit while on hold 409s.
+          HoldNotice explains the pause instead. */}
       {trip.status === 'exception_hold' ? (
         <HoldNotice />
       ) : (
         current !== null && (
-          <CurrentHandshakeCard
-            handshakeNumber={current}
-            onSelect={() => router.push(ROUTES.handshakeStep(current, STEP_SLUGS[current][0]))}
+          <CurrentPhaseCard
+            phase={current}
+            onSelect={() => router.push(firstStepRoute(current))}
           />
         )
       )}

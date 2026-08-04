@@ -31,7 +31,19 @@ export function AppShell({ children }: AppShellProps) {
     // matter how little content a page had, forcing the whole document to scroll (the
     // header included) instead of just the content between the fixed header and nav.
     <div className="flex h-dvh flex-col">
-      <header className="flex h-14 shrink-0 items-center justify-center border-b border-outline-variant/20 bg-surface-container-lowest px-2 shadow-ambient-header">
+      {/* min-h-14 (not h-14) + pt-safe: the shell header is the topmost element on
+          every non-full-bleed screen, so under viewportFit:'cover' it renders behind the
+          iOS status bar unless it carries the inset itself. A fixed h-14 would absorb
+          that padding into the same 56px box and crush the title instead of sitting
+          below the notch. */}
+      {/* bg-surface, matching <body> — this bar used to be surface-container-lowest
+          (pure white) with a border and a drop shadow over a surface-tinted page, which
+          on a phone reads as a floating white slab bolted to the top of the screen
+          rather than as the top of the screen. It is a flex sibling ABOVE the
+          scrollport below, not an overlay, so no content ever passes under it and it
+          needs no separation cue at all: matching the page exactly is what makes the
+          title look like it belongs to the page. */}
+      <header className="flex min-h-14 shrink-0 items-center justify-center bg-surface px-2 pt-safe">
         <p className="text-sm font-bold text-surface-on">{title}</p>
       </header>
 

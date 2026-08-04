@@ -97,6 +97,10 @@ async def trip_fixture(db_session):
         driver_id=driver.id, horse_id=horse.id,
         origin_precinct_id=origin.id, destination_precinct_id=dest.id,
         status=TripStatus.CREATED, idvs_check_status=IdvsStatus.VERIFIED,
+        # Activation is gated on the trip being due (phase_service._reject_if_not_due) and
+        # an unscheduled trip is deliberately unstartable, so this fixture books itself for
+        # today — what it always meant: a trip a driver is about to run.
+        planned_departure_at=datetime.now(UTC),
         created_by_user_id=user.id,
     )
     db_session.add(trip)

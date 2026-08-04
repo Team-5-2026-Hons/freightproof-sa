@@ -31,11 +31,27 @@ export function SubpageHeader({ title, backLabel = 'Back', onBack, right }: Subp
   }
 
   return (
-    <header className="glass-nav sticky top-0 z-sticky px-4 pb-3 pt-4 shadow-ambient-header">
-      <div className="flex items-center justify-between gap-3">
+    // pt-safe (app/globals.css) clears the iOS status bar: these screens are full-bleed
+    // (lib/navigation/full-bleed.ts — no AppShell chrome above them), so top:0 here is
+    // the true top of the device, which under viewportFit:'cover' sits behind the
+    // notch/Dynamic Island. The 1rem that used to be pt-4 moves onto the inner row so
+    // the inset and the visual padding stack instead of competing.
+    // border-b hairline, not shadow-ambient-header: this header is sticky over a
+    // scrolling page, so it does need a separation cue — but a 30px-blur drop shadow
+    // painted a soft grey band right across the top of every trip screen, which on a
+    // surface-tinted page reads as a mismatched second background rather than as depth.
+    // A 1px rule does the same job (it tells you content passes underneath) and leaves
+    // the page one continuous colour.
+    <header className="glass-nav sticky top-0 z-sticky border-b border-outline-variant/25 px-4 pb-3 pt-safe">
+      <div className="flex items-center justify-between gap-3 pt-4">
         <button
           onClick={handleBack}
-          className="flex min-h-[44px] items-center text-sm text-secondary"
+          // Solid black pill rather than the old bare blue text: on the glass-nav
+          // background a plain text link was easy to miss and had no visible edge to
+          // aim at. min-h-[44px] is still the gloved-hand touch minimum. No border —
+          // it was border-primary on bg-primary, i.e. 2px of invisible ring eating the
+          // pill's own internal space.
+          className="flex min-h-[44px] items-center rounded-full bg-primary px-4 text-sm font-semibold text-primary-on transition-opacity active:opacity-90"
         >
           ← {backLabel}
         </button>

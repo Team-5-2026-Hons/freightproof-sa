@@ -7,7 +7,7 @@ import { ShieldAlert, TriangleAlert } from 'lucide-react'
 import { useTrip } from '@/lib/hooks/useTrip'
 import { useLocation } from '@/lib/hooks/useLocation'
 import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
-import { HoldButton } from '@/components/handshake/HoldButton'
+import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
 import { Button } from '@/components/ui/Button'
 import { Spinner } from '@/components/ui/Spinner'
 import { ROUTES } from '@/lib/constants/routes'
@@ -69,7 +69,7 @@ export default function PanicPageClient() {
     // the driver must see the app is alive. Same centered-spinner treatment as
     // InTransitPageClient's loading state.
     return (
-      <main className="flex min-h-screen items-center justify-center p-6">
+      <main className="flex min-h-dvh items-center justify-center p-6">
         <Spinner />
       </main>
     )
@@ -77,7 +77,7 @@ export default function PanicPageClient() {
 
   if (!trip) {
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center gap-8 bg-error p-6">
+      <main className="flex min-h-dvh flex-col items-center justify-center gap-8 bg-error p-6">
         <div className="flex flex-col items-center text-center text-error-on">
           <TriangleAlert className="mb-4 h-14 w-14" strokeWidth={1.5} aria-hidden />
           <h1 className="mb-2 text-2xl font-bold">Unable to verify trip</h1>
@@ -106,12 +106,12 @@ export default function PanicPageClient() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-8 bg-error px-6 pt-6 pb-safe">
+    <main className="flex min-h-dvh flex-col items-center justify-center gap-8 bg-error px-6 pt-6 pb-safe">
       <div className="flex flex-col items-center text-center text-error-on">
         <ShieldAlert className="mb-4 h-14 w-14" strokeWidth={1.5} aria-hidden />
         <h1 className="mb-2 text-2xl font-bold">Panic Alert</h1>
         <p className="text-sm opacity-90">
-          Hold the button below to send an emergency alert to your dispatcher.
+          Swipe the button below to send an emergency alert to your dispatcher.
           Your GPS location will be included.
         </p>
         {sending && (
@@ -120,9 +120,13 @@ export default function PanicPageClient() {
           </p>
         )}
       </div>
-      <HoldButton
+      {/* This was durationMs={3000} under HoldButton — longer than the 2000ms default,
+          signalling the highest-stakes action in the app. SwipeToConfirm has no duration
+          concept (deliberateness now comes from the drag distance/threshold, or two
+          discrete key presses on the keyboard path), so that extra weighting is dropped;
+          the panic flow still uses variant="danger" to keep it visually distinct. */}
+      <SwipeToConfirm
         label="Send panic"
-        durationMs={3000}
         onConfirm={handlePanic}
         variant="danger"
       />

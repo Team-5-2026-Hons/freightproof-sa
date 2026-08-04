@@ -8,15 +8,33 @@ import { cn } from '@/lib/utils'
 import { useTrip } from '@/lib/hooks/useTrip'
 import { ROUTES } from '@/lib/constants/routes'
 import { formatTime } from '@/lib/utils/format-time'
-import { STEP_SLUGS } from '@shared/lib/constants/handshake-meta'
+import { currentPhase, stepsFor, phaseStepRoute } from '@/lib/phase'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Spinner } from '@/components/ui/Spinner'
 import { SubpageHeader } from '@/components/layout/SubpageHeader'
 import type { TripException } from '@shared/lib/types/exception'
+import type { PhaseDescriptor } from '@shared/lib/types/phase'
 
 interface ExceptionCardProps {
   exception: TripException
+}
+
+// The route for wherever the ledger says the driver is right now. Duplicated (not
+// imported) from the identical helper in
+// app/(app)/trip/phase/[type]/step/[slug]/PhaseStepPageClient.tsx — lib/phase/ itself is
+// out of scope for this task, so this small composition of its exports has nowhere
+// shared to live without creating a new lib/phase file. `in_transit` never appears as
+// this route's target in practice: advance_departure's stopgap (parent plan D13)
+// auto-completes it before the driver reaches this hub, so by the time this screen is
+// visible the ledger's current phase is already the NEXT one (typically `unloading`) —
+// no special case needed, the generic walk in currentPhase()/stepsFor() already lands
+// there for free.
+function currentStepRoute(phases: readonly PhaseDescriptor[]): string {
+  const phase = currentPhase(phases)
+  if (phase === null) return ROUTES.trips // nothing left unresolved — trip finished
+  const steps = stepsFor(phase)
+  return steps.length > 0 ? phaseStepRoute(phase.phase_type, steps[0].slug) : ROUTES.activeTripDetail
 }
 
 // A native <button> (not the Card component) so the expand/collapse toggle is
@@ -49,7 +67,7 @@ export default function InTransitPageClient() {
 
   if (isLoading) {
     return (
-      <main className="flex min-h-screen items-center justify-center p-6">
+      <main className="flex min-h-dvh items-center justify-center p-6">
         <Spinner />
       </main>
     )
@@ -57,7 +75,7 @@ export default function InTransitPageClient() {
 
   if (trip === null) {
     return (
-      <main className="flex min-h-screen items-center justify-center p-6">
+      <main className="flex min-h-dvh items-center justify-center p-6">
         <p className="text-sm text-surface-on-variant">Trip not found.</p>
       </main>
     )
@@ -70,7 +88,7 @@ export default function InTransitPageClient() {
   const openExceptions = exceptions.filter((e) => !e.resolved)
 
   return (
-    <main className="min-h-screen flex flex-col">
+    <main className="min-h-dvh flex flex-col">
       <SubpageHeader
         title={trip.trip_reference}
         backLabel="Trip detail"
@@ -122,7 +140,7 @@ export default function InTransitPageClient() {
         <Button
           size="lg"
           iconRight={<ArrowRight className="h-4 w-4" strokeWidth={2} aria-hidden />}
-          onClick={() => router.push(ROUTES.handshakeStep(4, STEP_SLUGS[4][0]))}
+          onClick={() => router.push(currentStepRoute(trip.phases))}
         >
           Arrive at destination
         </Button>

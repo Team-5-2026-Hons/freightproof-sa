@@ -1,8 +1,11 @@
 """FastAPI router for trip lifecycle endpoints.
 
-POST /trips          — create a new trip (Handshake 0).
-GET  /trips          — list trips for the dispatcher's organisation.
-GET  /trips/{trip_id} — get full trip detail by ID.
+POST /trips             — create a new trip (Handshake 0).
+GET  /trips             — list trips for the dispatcher's organisation.
+GET  /trips/me          — the authenticated driver's own trips (all statuses).
+GET  /trips/me/active   — the trip that driver is currently working.
+GET  /trips/me/{trip_id} — full detail for one of that driver's own trips.
+GET  /trips/{trip_id}   — get full trip detail by ID (dispatcher).
 """
 
 import logging
@@ -26,9 +29,19 @@ from app.core.exceptions import (
 from app.db.models.enums import DispatcherRole, TripStatus
 from app.db.session import get_db
 from app.orchestration.resource_service import get_trip_detail, list_trips
-from app.orchestration.trip_service import create_trip, get_active_trip_for_driver
+from app.orchestration.trip_service import (
+    create_trip,
+    get_active_trip_for_driver,
+    get_own_trip_detail_for_driver,
+    list_trips_for_driver,
+)
 from app.schemas.people import DriverRead, UserRead
-from app.schemas.trips import TripCreateRequest, TripDetailResponse, TripListItemResponse
+from app.schemas.trips import (
+    DriverTripListItemResponse,
+    TripCreateRequest,
+    TripDetailResponse,
+    TripListItemResponse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +134,50 @@ async def get_my_active_trip_endpoint(
     current_driver: DriverRead = Depends(get_current_driver),
 ) -> TripDetailResponse | None:
     return await get_active_trip_for_driver(db, driver_id=current_driver.id)
+
+
+# Declared before GET /trips/{trip_id}: FastAPI matches routes in declaration order, so
+# a literal "/me..." path registered after "/{trip_id}" would be swallowed by it and
+# 422 on "me" failing UUID parsing.
+@router.get(
+    "/me",
+    response_model=list[DriverTripListItemResponse],
+    summary="Driver's own trips (all statuses)",
+)
+async def list_my_trips_endpoint(
+    db: AsyncSession = Depends(get_db),
+    current_driver: DriverRead = Depends(get_current_driver),
+) -> list[DriverTripListItemResponse]:
+    """Every trip assigned to the authenticated driver, newest first.
+
+    Returns terminal trips too — the PWA groups the list into Active/Upcoming/Past
+    by trip status client-side and needs closed/cancelled rows for the Past tab.
+    """
+    return await list_trips_for_driver(db, driver_id=current_driver.id)
+
+
+@router.get(
+    "/me/{trip_id}",
+    response_model=TripDetailResponse,
+    summary="Full detail for one of the driver's own trips",
+)
+async def get_my_trip_detail_endpoint(
+    trip_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_driver: DriverRead = Depends(get_current_driver),
+) -> TripDetailResponse:
+    """404 when the trip belongs to another driver — deliberately indistinguishable
+    from a non-existent trip, so this cannot be used to probe for real trip ids.
+    """
+    try:
+        return await get_own_trip_detail_for_driver(
+            db, driver_id=current_driver.id, trip_id=trip_id
+        )
+    except ResourceNotFoundError as exc:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
 
 
 @router.get(

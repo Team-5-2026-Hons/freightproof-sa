@@ -103,6 +103,20 @@ class Settings(BaseSettings):
     GPS_TOLERANCE_METRES: int = 50
     DEMO_MODE: bool = False
 
+    # The operating day boundary used to decide whether a driver is activating a trip
+    # before its scheduled date (orchestration/phase_service.py). "Same calendar day"
+    # is meaningless without a timezone: a 06:00 SAST departure is 04:00 UTC, and a
+    # 01:00 SAST departure is the PREVIOUS day in UTC, so comparing UTC dates would
+    # reject a driver starting a legitimately-scheduled early-morning trip.
+    #
+    # A fixed offset rather than a zoneinfo key on purpose: South African Standard Time
+    # is permanently UTC+2 and has never observed daylight saving, so an offset is exact
+    # for every date this system will see — and it keeps a tz database out of the
+    # container image. The moment FreightProof runs anywhere that DOES shift, this must
+    # become a real IANA zone name resolved through zoneinfo, with tzdata added to
+    # requirements.txt.
+    OPERATIONS_UTC_OFFSET_HOURS: int = 2
+
     # -------------------------------------------------------------------------
     # Application
     # ALLOWED_ORIGINS: restrict CORS in production to real domains only.

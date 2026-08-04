@@ -211,6 +211,45 @@ class TripListItemResponse(BaseModel):
     updated_at: datetime
 
 
+class DriverTripListItemResponse(BaseModel):
+    """One row of GET /api/v1/trips/me — the authenticated driver's own trip list.
+
+    Deliberately NOT TripListItemResponse: that shape is built for the dispatcher
+    board and carries driver/horse/trailers on every row, which a driver reading
+    their own list already knows. It also omits precinct NAMES, which is why the
+    PWA had to resolve precinct ids against mock fixtures and fell back to
+    printing eight characters of a UUID on the card. Names are resolved
+    server-side here so the trip card can render a real origin -> destination.
+
+    status is the coarse TripStatus and is the ONLY thing the PWA groups its
+    Active/Upcoming/Past tabs by: CREATED is an assignment the driver has not
+    activated yet (Upcoming), ACTIVE/EXCEPTION_HOLD is underway (Active), and
+    CLOSED/CANCELLED is history (Past). Nothing here sequences a trip — the phase
+    ledger does that (see TripStatus's own docstring).
+    """
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    trip_reference: str
+    order_number: str
+    status: TripStatus
+    trip_type: TripType
+    # Optional to match the Trip model, where both precinct FKs are nullable.
+    origin_precinct_id: Optional[UUID] = None
+    destination_precinct_id: Optional[UUID] = None
+    # Null when the trip carries no precinct id, or when the referenced precinct row
+    # is gone; the PWA falls back to the id rather than rendering an empty arrow.
+    origin_precinct_name: Optional[str] = None
+    destination_precinct_name: Optional[str] = None
+    planned_departure_at: Optional[datetime] = None
+    actual_departure_at: Optional[datetime] = None
+    planned_arrival_at: Optional[datetime] = None
+    actual_arrival_at: Optional[datetime] = None
+    open_exception_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
 class TripTrailerBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

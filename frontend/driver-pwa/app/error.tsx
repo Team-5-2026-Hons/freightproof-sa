@@ -25,7 +25,7 @@ export default function ErrorPage({ error, reset }: ErrorPageProps) {
   }, [error])
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-6">
+    <main className="flex min-h-dvh flex-col items-center justify-center gap-6 p-6">
       {/* Mirrors the "Unable to verify trip" full-screen error card the in-transit
           subpages use, so crash recovery looks like the rest of the app. */}
       <div className="flex w-full flex-col items-center gap-3 rounded-xl bg-error-container px-6 py-8 text-center text-error-on-container">

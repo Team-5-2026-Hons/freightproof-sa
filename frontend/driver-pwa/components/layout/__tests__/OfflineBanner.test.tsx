@@ -7,8 +7,10 @@ import { __resetOfflineQueueStoreForTests } from '@/lib/hooks/useOfflineQueue'
 // OfflineBanner now mounts useOfflineQueue() itself (Fix 3) to read queueLength/
 // droppedCount, so its mount-time flush() needs the same network mocks
 // useOfflineQueue.test.ts uses — otherwise these tests would hit a real fetch.
-vi.mock('@/lib/api/handshakes', () => ({
-  submitHandshake: vi.fn().mockResolvedValue({ ok: true, eventHash: 'abc', trip: null }),
+// lib/api/handshakes.ts (submitHandshake) is deleted — useOfflineQueue's sendEntry
+// now calls submitPhase from lib/api/phases.ts for a 'phase'-kind queue entry.
+vi.mock('@/lib/api/phases', () => ({
+  submitPhase: vi.fn().mockResolvedValue({ ok: true, trip: null, phaseStatus: 'completed' }),
 }))
 vi.mock('@/lib/api/exceptions', () => ({
   raiseException: vi.fn().mockResolvedValue({ id: 'exc-1' }),
@@ -27,9 +29,12 @@ function seedQueue(entries: unknown[]) {
   localStorage.setItem('fp_offline_queue', JSON.stringify(entries))
 }
 
-const HANDSHAKE_ENTRY = {
-  kind: 'handshake', id: 'entry-1', tripId: 'trip-1', handshakeType: 'origin_gate_in',
+// Shape mirrors useOfflineQueue.ts's PhaseQueueEntry — kind 'phase', addressed by
+// phaseEventId + phaseType (not a bare handshakeType), carrying its own idempotencyKey.
+const PHASE_ENTRY = {
+  kind: 'phase', id: 'entry-1', tripId: 'trip-1', phaseEventId: 'phase-event-1', phaseType: 'activation',
   evidence: { gpsLat: -26.09, gpsLng: 28.13, gateAddress: null, capturedAt: '2026-06-12T10:00:00Z' },
+  idempotencyKey: 'entry-1',
   enqueuedAt: '2026-06-12T10:00:00Z',
 }
 
@@ -86,37 +91,37 @@ describe('OfflineBanner', () => {
   // back online with a pending item had no signal that anything was still in flight.
   describe('pending-sync indicator', () => {
     it('shows a singular "item waiting to sync" message while online with one queued entry', async () => {
-      const { submitHandshake } = await import('@/lib/api/handshakes')
+      const { submitPhase } = await import('@/lib/api/phases')
       // Transient (non-ApiError) failure — entry stays queued after the mount flush
       // resolves, so the indicator has something stable to assert against.
-      vi.mocked(submitHandshake).mockRejectedValue(new Error('network down'))
-      seedQueue([HANDSHAKE_ENTRY])
+      vi.mocked(submitPhase).mockRejectedValue(new Error('network down'))
+      seedQueue([PHASE_ENTRY])
 
       render(<OfflineBanner />)
 
-      await waitFor(() => expect(submitHandshake).toHaveBeenCalledTimes(1))
+      await waitFor(() => expect(submitPhase).toHaveBeenCalledTimes(1))
       expect(screen.getByText(/1 item waiting to sync/i)).toBeInTheDocument()
     })
 
     it('shows a plural "items waiting to sync" message for more than one queued entry', async () => {
-      const { submitHandshake } = await import('@/lib/api/handshakes')
-      vi.mocked(submitHandshake).mockRejectedValue(new Error('network down'))
-      seedQueue([HANDSHAKE_ENTRY, { ...HANDSHAKE_ENTRY, id: 'entry-2' }])
+      const { submitPhase } = await import('@/lib/api/phases')
+      vi.mocked(submitPhase).mockRejectedValue(new Error('network down'))
+      seedQueue([PHASE_ENTRY, { ...PHASE_ENTRY, id: 'entry-2' }])
 
       render(<OfflineBanner />)
 
-      await waitFor(() => expect(submitHandshake).toHaveBeenCalledTimes(2))
+      await waitFor(() => expect(submitPhase).toHaveBeenCalledTimes(2))
       expect(screen.getByText(/2 items waiting to sync/i)).toBeInTheDocument()
     })
 
     it('hides the pending-sync indicator once the queue empties', async () => {
-      const { submitHandshake } = await import('@/lib/api/handshakes')
+      const { submitPhase } = await import('@/lib/api/phases')
       // Default mock resolves successfully — the seeded entry flushes away on mount.
-      seedQueue([HANDSHAKE_ENTRY])
+      seedQueue([PHASE_ENTRY])
 
       render(<OfflineBanner />)
 
-      await waitFor(() => expect(submitHandshake).toHaveBeenCalledTimes(1))
+      await waitFor(() => expect(submitPhase).toHaveBeenCalledTimes(1))
       expect(screen.queryByText(/waiting to sync/i)).not.toBeInTheDocument()
     })
   })
@@ -125,13 +130,13 @@ describe('OfflineBanner', () => {
   // driver even though their captured evidence was permanently discarded.
   describe('dropped-entry notice', () => {
     it('shows a dismissible notice after a non-409 terminal drop, and dismissing clears it', async () => {
-      const { submitHandshake } = await import('@/lib/api/handshakes')
-      vi.mocked(submitHandshake).mockRejectedValue(new ApiError(422, 'invalid evidence'))
-      seedQueue([HANDSHAKE_ENTRY])
+      const { submitPhase } = await import('@/lib/api/phases')
+      vi.mocked(submitPhase).mockRejectedValue(new ApiError(422, 'invalid evidence'))
+      seedQueue([PHASE_ENTRY])
 
       render(<OfflineBanner />)
 
-      await waitFor(() => expect(submitHandshake).toHaveBeenCalledTimes(1))
+      await waitFor(() => expect(submitPhase).toHaveBeenCalledTimes(1))
       expect(screen.getByRole('alert')).toHaveTextContent(
         /1 item could not be synced and was removed — contact your dispatcher/i,
       )
@@ -142,24 +147,24 @@ describe('OfflineBanner', () => {
     })
 
     it('stays silent on a 409 drop — that means an earlier attempt already succeeded', async () => {
-      const { submitHandshake } = await import('@/lib/api/handshakes')
-      vi.mocked(submitHandshake).mockRejectedValue(new ApiError(409, 'already submitted'))
-      seedQueue([HANDSHAKE_ENTRY])
+      const { submitPhase } = await import('@/lib/api/phases')
+      vi.mocked(submitPhase).mockRejectedValue(new ApiError(409, 'already submitted'))
+      seedQueue([PHASE_ENTRY])
 
       render(<OfflineBanner />)
 
-      await waitFor(() => expect(submitHandshake).toHaveBeenCalledTimes(1))
+      await waitFor(() => expect(submitPhase).toHaveBeenCalledTimes(1))
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     })
 
     it('uses plural phrasing for more than one dropped entry', async () => {
-      const { submitHandshake } = await import('@/lib/api/handshakes')
-      vi.mocked(submitHandshake).mockRejectedValue(new ApiError(422, 'invalid evidence'))
-      seedQueue([HANDSHAKE_ENTRY, { ...HANDSHAKE_ENTRY, id: 'entry-2' }])
+      const { submitPhase } = await import('@/lib/api/phases')
+      vi.mocked(submitPhase).mockRejectedValue(new ApiError(422, 'invalid evidence'))
+      seedQueue([PHASE_ENTRY, { ...PHASE_ENTRY, id: 'entry-2' }])
 
       render(<OfflineBanner />)
 
-      await waitFor(() => expect(submitHandshake).toHaveBeenCalledTimes(2))
+      await waitFor(() => expect(submitPhase).toHaveBeenCalledTimes(2))
       expect(screen.getByRole('alert')).toHaveTextContent(
         /2 items could not be synced and were removed — contact your dispatcher/i,
       )

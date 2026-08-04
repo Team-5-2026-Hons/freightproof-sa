@@ -47,16 +47,17 @@ phases but are not themselves committed to chain.
 import logging
 import uuid
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.blockchain.anchor_service import anchor_subject, compute_payload_hash
+from app.core.config import settings
 from app.core.exceptions import (
-    HederaServiceError, HederaTimeoutError, PhaseSequenceError, PhaseTypeMismatchError,
-    ResourceNotFoundError,
+    HederaServiceError, HederaTimeoutError, PhaseSequenceError, PhaseTooEarlyError,
+    PhaseTypeMismatchError, ResourceNotFoundError,
 )
 from app.db.models.enums import (
     AnchorStatus, BlockchainReceiptType, ExceptionSeverity, ExceptionSource, ExceptionType,
@@ -231,6 +232,81 @@ async def _finish_phase(
     return await get_trip_detail(db, trip_id=trip.id, operator_organization_id=trip.operator_organization_id)
 
 
+# Display format for the date a driver is told to come back on. Day-month-year with a
+# full month name: unambiguous to a South African reader, and never confusable with the
+# US month-first ordering the way a numeric date would be.
+_SCHEDULED_DATE_FORMAT = "%-d %B %Y"
+
+
+def operating_day(moment: datetime) -> date:
+    """The calendar date `moment` falls on in the operator's local timezone.
+
+    A naive datetime is read as UTC rather than left to .astimezone()'s default, which
+    would interpret it as the SERVER's local time — making the same trip activatable or
+    not depending on which machine happened to answer the request.
+    """
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=UTC)
+    local = timezone(timedelta(hours=settings.OPERATIONS_UTC_OFFSET_HOURS))
+    return moment.astimezone(local).date()
+
+
+def is_before_scheduled_day(now: datetime, scheduled: datetime) -> bool:
+    """True when `now` falls on an EARLIER operating day than `scheduled`.
+
+    Strictly earlier, so any time on the scheduled day passes — a 04:00 start against an
+    08:00 slot is a driver ahead of schedule, not a driver on the wrong day. Activating
+    LATE is never blocked either: a delayed trip still needs its evidence captured, and
+    refusing it would only push the driver to work around the system entirely.
+    """
+    return operating_day(now) < operating_day(scheduled)
+
+
+async def _scheduled_departure(db: AsyncSession, trip: Trip) -> datetime | None:
+    """When the trip is due to start: the trip-level plan, else its first booked stop.
+
+    The fallback exists because planned_departure_at is nullable and a multi-stop trip
+    can carry its timing entirely on the stops. Ordered by stop sequence — the earliest
+    stop that actually has a slot is the one activation is measured against, since
+    activation happens at the origin gate.
+    """
+    if trip.planned_departure_at is not None:
+        return trip.planned_departure_at
+
+    result = await db.execute(
+        select(TripStop.slot_time)
+        .where(TripStop.trip_id == trip.id, TripStop.slot_time.is_not(None))
+        .order_by(TripStop.sequence)
+        .limit(1)
+    )
+    return result.scalars().first()
+
+
+async def _reject_if_not_due(db: AsyncSession, trip: Trip) -> None:
+    """Block activation of a trip before the day it is scheduled to run.
+
+    Deliberately enforced here and NOT in _gate_and_load: that gate runs for every phase,
+    and a trip that legitimately runs overnight would have its departure/unloading phases
+    rejected the following day. Only the act of STARTING a trip is date-sensitive.
+
+    Also deliberately after _gate_and_load in the caller, so an idempotent replay of an
+    already-completed activation still short-circuits to 200 and never begins failing
+    "too early" — a queued offline submission resent days later must not be rejected for
+    the very schedule it already satisfied.
+    """
+    scheduled = await _scheduled_departure(db, trip)
+    if scheduled is None:
+        # No schedule at all is treated as not-yet-due rather than always-allowed: an
+        # unscheduled trip is a dispatcher data gap, and letting it activate would mean
+        # the rule silently does nothing on exactly the records least under control.
+        raise PhaseTooEarlyError(None, "Activation")
+
+    if is_before_scheduled_day(datetime.now(UTC), scheduled):
+        raise PhaseTooEarlyError(
+            operating_day(scheduled).strftime(_SCHEDULED_DATE_FORMAT), "Activation",
+        )
+
+
 async def advance_activation(
     db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID, phase_event_id: uuid.UUID,
     payload: ActivationCompleteRequest,
@@ -242,6 +318,8 @@ async def advance_activation(
     if isinstance(gated, TripDetailResponse):
         return gated
     trip, event = gated
+
+    await _reject_if_not_due(db, trip)
 
     # GPS cross-reference against Pulsit horse GPS is a feeder check (P1 is not
     # anchored to Hedera) — Pulsit integration itself is out of scope for this

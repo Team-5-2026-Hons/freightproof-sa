@@ -15,7 +15,7 @@ export default function PanicSubmittedPageClient() {
   const queued = params.get(PANIC_QUEUED_PARAM) === '1'
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-6 text-center">
+    <main className="flex min-h-dvh flex-col items-center justify-center gap-6 p-6 text-center">
       <div className={`flex h-20 w-20 items-center justify-center rounded-full ${queued ? 'bg-tertiary/10' : 'bg-success/10'}`}>
         {queued ? (
           <Clock className="h-10 w-10 text-tertiary" strokeWidth={2} aria-hidden />

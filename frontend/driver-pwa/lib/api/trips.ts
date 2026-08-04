@@ -1,63 +1,25 @@
 // frontend/driver-pwa/lib/api/trips.ts
 import { api } from './client'
 import type { Trip } from '@shared/lib/types/trip'
+import type { DriverTripSummary } from '@/lib/types/driver-trip'
 
-// Mirror backend/app/schemas/handshakes.py H1CompleteRequest..H5CompleteRequest exactly —
-// these are the wire bodies, distinct from the camelCase evidence drafts in
-// lib/types/evidence-draft.ts which hold UI-side state (data URLs, not artifact IDs yet).
-export interface H1CompleteRequest {
-  driver_phone_lat: number
-  driver_phone_lng: number
-}
-
-export interface H2CompleteRequest {
-  waybill_photo_artifact_id: string
-  seal_number: string
-  seal_photo_artifact_id: string
-  driver_visual_count: number
-}
-
-export interface H3CompleteRequest {
-  guard_verified_seal: boolean
-  // Mirrors backend H3CompleteRequest.seal_number_confirmed: optional, free-form.
-  // When present the server compares it against H2's committed seal (authoritative),
-  // superseding guard_verified_seal — see lib/api/handshakes.ts's origin_gate_out case.
-  seal_number_confirmed?: string
-}
-
-export interface H4CompleteRequest {
-  seal_number_at_destination: string
-}
-
-export interface H5CompleteRequest {
-  // BQ2 resolved 2026-06-29: proof of delivery is a photo AND an on-device
-  // signature — both required, not either/or.
-  pod_photo_artifact_id: string
-  pod_signature_artifact_id: string
-  driver_visual_count: number
-  pp_scan_in_count: number
-}
-
+// The five completeH1..completeH5 handshake-complete calls that used to live here are
+// gone — the backend's fixed-5-handshake routes (/handshakes/h{n}/complete) are
+// deleted server-side, replaced by the single plan-driven
+// POST /trips/{id}/phases/{phase_event_id}/complete in lib/api/phases.ts
+// (completePhase/submitPhase). This file now only holds trip-level reads.
 export const fetchMyActiveTrip = (): Promise<Trip | null> => api.get<Trip | null>('/api/v1/trips/me/active')
 
-// H2/H5 anchor to Hedera HCS server-side with a 15s submit budget (~9s measured live);
-// every handshake complete goes through this same endpoint shape. This must exceed the
-// server's own budget plus DB write/refetch margin, or the client aborts a submit the
-// server then completes anyway — the offline queue then retries it and the backend's
-// out-of-sequence guard 409s the duplicate.
-const HANDSHAKE_SUBMIT_TIMEOUT_MS = 30_000
+// Every trip assigned to this driver, newest first, all statuses — the Trips list groups
+// them into Active/Upcoming/Past by status. Replaces the mock fixtures the Upcoming and
+// Past tabs read before this endpoint existed, which could only ever match a mock
+// driver UUID and so rendered both tabs empty for a real signed-in driver.
+export const fetchMyTrips = (): Promise<DriverTripSummary[]> =>
+  api.get<DriverTripSummary[]>('/api/v1/trips/me')
 
-export const completeH1 = (tripId: string, body: H1CompleteRequest): Promise<Trip> =>
-  api.post<Trip>(`/api/v1/trips/${tripId}/handshakes/h1/complete`, body, { timeoutMs: HANDSHAKE_SUBMIT_TIMEOUT_MS })
-
-export const completeH2 = (tripId: string, body: H2CompleteRequest): Promise<Trip> =>
-  api.post<Trip>(`/api/v1/trips/${tripId}/handshakes/h2/complete`, body, { timeoutMs: HANDSHAKE_SUBMIT_TIMEOUT_MS })
-
-export const completeH3 = (tripId: string, body: H3CompleteRequest): Promise<Trip> =>
-  api.post<Trip>(`/api/v1/trips/${tripId}/handshakes/h3/complete`, body, { timeoutMs: HANDSHAKE_SUBMIT_TIMEOUT_MS })
-
-export const completeH4 = (tripId: string, body: H4CompleteRequest): Promise<Trip> =>
-  api.post<Trip>(`/api/v1/trips/${tripId}/handshakes/h4/complete`, body, { timeoutMs: HANDSHAKE_SUBMIT_TIMEOUT_MS })
-
-export const completeH5 = (tripId: string, body: H5CompleteRequest): Promise<Trip> =>
-  api.post<Trip>(`/api/v1/trips/${tripId}/handshakes/h5/complete`, body, { timeoutMs: HANDSHAKE_SUBMIT_TIMEOUT_MS })
+// Full detail for one of the driver's OWN trips. 404s on another driver's trip, so this
+// is safe to call with any id the list handed us. Distinct from fetchMyActiveTrip: this
+// addresses a trip explicitly, which is what lets the driver open a not-yet-activated
+// Upcoming trip instead of only ever seeing whichever trip the server picks as current.
+export const fetchMyTrip = (tripId: string): Promise<Trip> =>
+  api.get<Trip>(`/api/v1/trips/me/${tripId}`)

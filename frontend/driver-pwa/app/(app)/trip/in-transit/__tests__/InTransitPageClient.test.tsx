@@ -30,7 +30,7 @@ function makeException(overrides: Partial<TripException>): TripException {
     source: 'driver',
     severity: 'warning',
     description: 'Default description',
-    handshake_event_id: null,
+    phase_event_id: null,
     checkpoint_id: null,
     supporting_artifact_id: null,
     resolved: false,
@@ -51,7 +51,7 @@ const baseTrip = {
   id: 'trip-1',
   trip_reference: 'TRP-2026-0041',
   planned_arrival_at: null,
-  status: 'in_transit',
+  status: 'active',
   // Deliberately stale: only ONE exception here. The context list below has three.
   exceptions: [makeException({ description: 'Stale snapshot exception' })],
 }

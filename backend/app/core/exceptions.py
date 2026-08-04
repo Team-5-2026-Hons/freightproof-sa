@@ -50,6 +50,32 @@ class PhaseSequenceError(Exception):
         self.attempted_handshake = attempted_handshake
 
 
+class PhaseTooEarlyError(Exception):
+    """Raised when a driver tries to activate a trip before its scheduled day.
+
+    Distinct from PhaseSequenceError even though both map to 409: that one means the
+    plan is out of order, this one means the plan is fine and the calendar is not.
+    Keeping them separate is what lets the driver app show the driver a date instead
+    of a generic "trip state changed" message.
+
+    `scheduled_for` is a pre-formatted, human-readable date (or None when the trip
+    carries no schedule at all) — the message it builds is surfaced verbatim to the
+    driver, so it has to read as something a person wrote.
+    """
+
+    def __init__(self, scheduled_for: str | None, attempted_phase: str) -> None:
+        if scheduled_for is None:
+            reason = (
+                "this trip has no scheduled departure date, so there is nothing to "
+                "confirm it is due. Ask your dispatcher to set one"
+            )
+        else:
+            reason = f"this trip is scheduled for {scheduled_for} and cannot be started before then"
+        super().__init__(f"Cannot complete {attempted_phase}: {reason}.")
+        self.scheduled_for = scheduled_for
+        self.attempted_phase = attempted_phase
+
+
 class SubjectNotVisibleError(Exception):
     """Raised when a dispatcher queries a blockchain subject outside their organisation."""
 

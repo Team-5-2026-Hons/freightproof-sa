@@ -46,7 +46,7 @@ describe('PanicPage no-active-trip guard', () => {
     mockCapture.mockResolvedValue({ latitude: -26.09, longitude: 28.13, accuracy: 5 })
   })
 
-  it('renders an unavailable state and no hold button when trip is null', () => {
+  it('renders an unavailable state and no swipe control when trip is null', () => {
     mockUseTrip.mockReturnValue({ trip: null, isLoading: false, logException: vi.fn() })
 
     render(<PanicPage />)
@@ -55,7 +55,7 @@ describe('PanicPage no-active-trip guard', () => {
     expect(screen.queryByText(/send panic/i)).not.toBeInTheDocument()
   })
 
-  it('renders the normal panic UI with the hold button when a trip is present', () => {
+  it('renders the normal panic UI with the swipe control when a trip is present', () => {
     mockUseTrip.mockReturnValue({ trip: { id: 'trip-123' }, isLoading: false, logException: vi.fn() })
 
     render(<PanicPage />)
@@ -109,21 +109,21 @@ describe('PanicPage handlePanic sequencing', () => {
     vi.useRealTimers()
   })
 
-  // HoldButton's onConfirm only fires once useHoldToConfirm's internal
-  // interval reports full progress, so we drive the actual pointer-hold
-  // interaction (pointerdown + advance fake timers past durationMs) rather
-  // than reaching into HoldButton internals — this exercises the same path
-  // a real driver triggers.
-  function pressAndHoldPanicButton() {
-    const holdButton = screen.getByText(/send panic/i).closest('button')
-    if (!holdButton) throw new Error('panic hold button not found')
+  // SwipeToConfirm's onConfirm only fires after its own SETTLE_DURATION_MS handoff
+  // delay, and only once armed twice — so we drive its keyboard path (Enter, Enter)
+  // rather than a real pointer drag: this test suite only cares about handlePanic's
+  // downstream sequencing (GPS capture, logException, queueing), not the drag gesture
+  // itself, which has its own dedicated coverage in SwipeToConfirm.test.tsx.
+  function confirmPanicSwipe() {
+    const slider = screen.getByRole('slider', { name: /send panic/i })
 
-    fireEvent.pointerDown(holdButton)
+    fireEvent.keyDown(slider, { key: 'Enter' }) // arm
+    fireEvent.keyDown(slider, { key: 'Enter' }) // confirm
+
     act(() => {
-      // durationMs is 3000; advance slightly past it so the interval's
-      // progress check (Date.now() - start >= durationMs) reliably crosses
-      // the threshold rather than landing exactly on a boundary tick.
-      vi.advanceTimersByTime(3200)
+      // SwipeToConfirm's SETTLE_DURATION_MS (180ms) handoff delay before onConfirm
+      // actually fires.
+      vi.advanceTimersByTime(180)
     })
   }
 
@@ -133,7 +133,7 @@ describe('PanicPage handlePanic sequencing', () => {
     mockCapture.mockResolvedValue({ latitude: -26.09, longitude: 28.13, accuracy: 5 })
 
     render(<PanicPage />)
-    pressAndHoldPanicButton()
+    confirmPanicSwipe()
 
     // capture() and logException() are awaited/called inside an async
     // handler invoked from a fake-timer callback — flush microtasks so
@@ -157,7 +157,7 @@ describe('PanicPage handlePanic sequencing', () => {
     mockCapture.mockResolvedValue(null)
 
     render(<PanicPage />)
-    pressAndHoldPanicButton()
+    confirmPanicSwipe()
 
     await act(async () => {
       await Promise.resolve()
@@ -181,7 +181,7 @@ describe('PanicPage handlePanic sequencing', () => {
     mockCapture.mockResolvedValue({ latitude: -26.09, longitude: 28.13, accuracy: 5 })
 
     render(<PanicPage />)
-    pressAndHoldPanicButton()
+    confirmPanicSwipe()
 
     await act(async () => {
       await Promise.resolve()
@@ -208,7 +208,7 @@ describe('PanicPage handlePanic sequencing', () => {
     mockCapture.mockResolvedValue(null)
 
     render(<PanicPage />)
-    pressAndHoldPanicButton()
+    confirmPanicSwipe()
 
     await act(async () => {
       await Promise.resolve()

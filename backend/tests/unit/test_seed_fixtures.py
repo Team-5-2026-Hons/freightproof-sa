@@ -19,7 +19,12 @@ from app.integrations.parcel_perfect import (
     MockParcelPerfectClient,
 )
 from app.orchestration.phase_plan import PlanStop, build_phase_plan
-from scripts.seed_trips import SEEDED_WAYBILL_REFERENCES, TRIP_SPECS
+from scripts.seed_trips import (
+    SEEDED_WAYBILL_REFERENCES,
+    TRIP_CREATION_SEQUENCE,
+    TRIP_SPECS,
+    resolved_sequences,
+)
 
 # Expected plan length per seeded trip, keyed by trip_reference. Stated here rather
 # than computed so a change to build_phase_plan that silently reshapes the demo
@@ -116,3 +121,43 @@ def test_exactly_one_spec_walks_to_completion():
 
     assert len(walked_fully) == 1
     assert walked_fully[0].trip_reference == "FP-DEMO-CLOSED-0001"
+
+
+@pytest.mark.parametrize("spec", TRIP_SPECS, ids=lambda s: s.trip_reference)
+def test_trip_creation_is_resolved_on_every_seeded_trip(spec):
+    """P0 left PENDING makes a seeded trip un-walkable from both ends.
+
+    The seeder wrote every row PENDING, so the two specs with advance_through=None
+    seeded a trip stuck at sequence 0 forever: the driver app derived trip_creation
+    as the current phase, rendered it as "Trip Created" with an empty step recipe
+    and no way forward, and _gate_and_load would have 409'd any completion the
+    driver did submit ("an earlier phase in the plan is still unresolved").
+    create_trip() resolves P0 inline for precisely this reason; the seeder now does
+    the same.
+    """
+    assert TRIP_CREATION_SEQUENCE in resolved_sequences(spec, len(_plan_for(spec)))
+
+
+@pytest.mark.parametrize("spec", TRIP_SPECS, ids=lambda s: s.trip_reference)
+def test_unwalked_specs_resolve_trip_creation_and_nothing_else(spec):
+    """The fix must not quietly hand the driver a trip that is already underway.
+
+    FP-DEMO-SINGLE-0001 and FP-DEMO-XDOCK-0001 exist to be walked from the first
+    driver step; resolving anything past P0 would skip the phase under test.
+    """
+    if spec.advance_through is not None:
+        pytest.skip("spec walks a prefix of its plan; covered by the test below")
+
+    assert resolved_sequences(spec, len(_plan_for(spec))) == {TRIP_CREATION_SEQUENCE}
+
+
+@pytest.mark.parametrize("spec", TRIP_SPECS, ids=lambda s: s.trip_reference)
+def test_advance_through_still_resolves_its_whole_prefix(spec):
+    """Making P0 unconditional must not shorten or reshape an existing walk."""
+    if spec.advance_through is None:
+        pytest.skip("spec walks nothing; covered by the test above")
+
+    plan_length = len(_plan_for(spec))
+    expected_last = plan_length - 1 if spec.advance_through == "all" else spec.advance_through
+
+    assert resolved_sequences(spec, plan_length) == set(range(expected_last + 1))

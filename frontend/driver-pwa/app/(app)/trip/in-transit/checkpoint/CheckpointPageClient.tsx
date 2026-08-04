@@ -7,9 +7,9 @@ import { TriangleAlert } from 'lucide-react'
 import { useTrip } from '@/lib/hooks/useTrip'
 import { useToast } from '@/lib/hooks/useToast'
 import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
-import { CameraCapture } from '@/components/handshake/CameraCapture'
-import { GpsCapture } from '@/components/handshake/GpsCapture'
-import { HoldButton } from '@/components/handshake/HoldButton'
+import { CameraCapture } from '@/components/phase/CameraCapture'
+import { GpsCapture } from '@/components/phase/GpsCapture'
+import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
 import { Button } from '@/components/ui/Button'
 import { TextArea } from '@/components/ui/TextArea'
 import { SubpageHeader } from '@/components/layout/SubpageHeader'
@@ -82,7 +82,7 @@ export default function CheckpointPageClient() {
 
   if (!trip) {
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-6">
+      <main className="flex min-h-dvh flex-col items-center justify-center gap-6 p-6">
         <div className="flex w-full flex-col items-center gap-3 rounded-xl bg-error-container px-6 py-8 text-center text-error-on-container">
           <TriangleAlert className="h-10 w-10" strokeWidth={1.5} aria-hidden />
           <h1 className="text-lg font-bold">Unable to verify trip</h1>
@@ -99,13 +99,13 @@ export default function CheckpointPageClient() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col">
+    <main className="flex min-h-dvh flex-col">
       <SubpageHeader
         title="Log Checkpoint"
         backLabel="In-Transit Hub"
         onBack={() => router.push(ROUTES.inTransit)}
       />
-      {/* pb-8 keeps the hold button clear of the note textarea on short viewports —
+      {/* pb-8 keeps the swipe control clear of the note textarea on short viewports —
           min-h-screen alone lets the footer controls crowd the form when it overflows. */}
       <div className="flex flex-1 flex-col p-4 pb-8">
         <p className="mb-6 text-sm text-surface-on-variant">
@@ -113,7 +113,7 @@ export default function CheckpointPageClient() {
         </p>
 
         <div className="flex flex-col gap-6 mb-6">
-          <GpsCapture onCapture={(lat, lng) => setGps({ latitude: lat, longitude: lng })} captured={gps !== null} />
+          <GpsCapture onCapture={(lat: number, lng: number) => setGps({ latitude: lat, longitude: lng })} captured={gps !== null} />
           <CameraCapture label="Selfie" dataUrl={selfieDataUrl} onCapture={setSelfieDataUrl} />
           <CameraCapture label="Cargo photo" dataUrl={cargoPhotoDataUrl} onCapture={setCargoPhotoDataUrl} />
 
@@ -151,7 +151,7 @@ export default function CheckpointPageClient() {
         )}
         <div className="flex flex-col items-center pb-safe">
           <div className="flex justify-center">
-            <HoldButton label={submitting ? 'Submitting…' : 'Hold to confirm'} onConfirm={handleSubmit} disabled={!isReady || submitting} />
+            <SwipeToConfirm label={submitting ? 'Submitting…' : 'Swipe to confirm'} onConfirm={handleSubmit} disabled={!isReady || submitting} />
           </div>
           <Button variant="secondary" size="lg" className="mt-4" onClick={() => router.push(ROUTES.inTransit)}>
             Cancel
