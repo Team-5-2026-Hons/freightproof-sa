@@ -38,18 +38,31 @@ Hedera failure is caught, event.anchor_status is set to FAILED (a retry is
 owed) instead of raising, and the phase still completes — a seal/delivery
 event is evidence that already happened and must not be blocked by a Hedera
 outage. event.anchor_status is set to ANCHORED on success.
+
+Neither anchor is AWAITED any more (2026-08-05). _dispatch_anchor queues the
+Hedera submit on the Celery worker once this request's transaction commits,
+because a ~4-6s submit inside the request meant the driver stood holding the
+swipe control for the whole round trip. The phase completes and returns with
+anchor_status still PENDING; the receipt lands moments later and the driver
+app already renders that interval ("anchoring in progress", AnchorProgress).
+If the broker is unreachable the anchor runs inline exactly as it used to —
+nothing in this codebase retries a FAILED anchor, so a dropped dispatch would
+mean permanently unanchored evidence.
 advance_activation, advance_loading, advance_unloading remain unanchored
 feeders by design — they record cross-checks (GPS, driver visual count, seal
 continuity at destination) that support the anchored departure/confirmation
 phases but are not themselves committed to chain.
 """
 
+import asyncio
 import logging
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, date, datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Any
 
+from sqlalchemy import event as event_module
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -58,7 +71,7 @@ from app.core.config import settings
 from app.core.realtime import RealtimeKind, TripEvent, enqueue_event
 from app.core.exceptions import (
     HederaServiceError, HederaTimeoutError, PhaseSequenceError, PhaseTooEarlyError,
-    PhaseTypeMismatchError, ResourceNotFoundError,
+    PhaseTypeMismatchError, ResourceNotFoundError, TripActivationBlockedError,
 )
 from app.db.models.enums import (
     AnchorStatus, BlockchainReceiptType, ExceptionSeverity, ExceptionSource, ExceptionType,
@@ -237,6 +250,100 @@ async def recompute_position(db: AsyncSession, trip: Trip) -> None:
     trip.closed_at = datetime.now(UTC)
 
 
+async def anchor_phase_event(
+    db: AsyncSession, *, phase_event_id: uuid.UUID,
+    canonical_payload: dict[str, Any], receipt_type: BlockchainReceiptType,
+) -> bool:
+    """Load a phase event by id and anchor it. Returns whether a receipt was written.
+
+    The entry point tasks/blockchain.py re-enters this module through, so the anchoring
+    contract (canonical payload in, fail-open on Hedera trouble) stays defined here
+    rather than being duplicated in a worker.
+    """
+    result = await db.execute(select(PhaseEvent).where(PhaseEvent.id == phase_event_id))
+    event = result.scalar_one_or_none()
+    if event is None:
+        # Nothing to anchor and nothing to retry — the row a receipt was owed against is
+        # gone. Loud, because it should be impossible: the dispatch only happens after
+        # the transaction that wrote this row has committed.
+        logger.error("Anchor requested for unknown phase_event_id=%s", phase_event_id)
+        return False
+    await _anchor_or_fail_open(
+        db, event=event, canonical_payload=canonical_payload, receipt_type=receipt_type,
+    )
+    return event.anchor_status == AnchorStatus.ANCHORED
+
+
+def _dispatch_anchor(
+    db: AsyncSession, *, event: PhaseEvent,
+    canonical_payload: dict[str, Any], receipt_type: BlockchainReceiptType,
+) -> None:
+    """Queue this event's anchor for the worker, AFTER this request's transaction commits.
+
+    Anchoring moved off the request path because a Hedera submit takes ~4-6s and the
+    driver was holding a swipe control for all of it. The phase is evidence the moment it
+    is written; the receipt is a separate fact that lands shortly after, which is exactly
+    what anchor_status (PENDING -> ANCHORED/FAILED) and the driver app's "anchoring in
+    progress" state already describe.
+
+    Two things make this safe rather than merely faster:
+
+    * It fires on after_commit, never before. The worker opens its OWN session, so a task
+      dispatched mid-transaction could look for a phase_event row that isn't committed yet
+      and find nothing.
+    * If the broker cannot be reached, it anchors INLINE instead, exactly as this code did
+      before. Nothing in this codebase retries an anchor_status = FAILED debt, so a
+      silently dropped dispatch would mean permanently unanchored evidence — a slow
+      submit is a far better failure than that.
+    """
+    # Imported at call time: tasks/blockchain.py imports this module back, and Celery's
+    # own import is heavy enough to be worth keeping out of the request path's cold start.
+    from app.tasks.blockchain import anchor_phase_event_task
+
+    event_id = event.id
+    payload = dict(canonical_payload)
+
+    def _send(_session: Any) -> None:
+        try:
+            anchor_phase_event_task.delay(str(event_id), payload, receipt_type.value)
+        except Exception:  # noqa: BLE001 — any broker failure, not just one library's
+            logger.exception(
+                "Could not queue the anchor for phase_event_id=%s — anchoring inline instead",
+                event_id,
+            )
+            _anchor_inline_after_dispatch_failure(
+                phase_event_id=event_id, canonical_payload=payload, receipt_type=receipt_type,
+            )
+
+    # sync_session: SQLAlchemy's event system is synchronous, and after_commit is the
+    # only hook that fires once this request's write is actually durable.
+    event_module.listens_for(db.sync_session, "after_commit", once=True)(_send)
+
+
+def _anchor_inline_after_dispatch_failure(
+    *, phase_event_id: uuid.UUID, canonical_payload: dict[str, Any],
+    receipt_type: BlockchainReceiptType,
+) -> None:
+    """Last-resort synchronous anchor when the broker is unreachable.
+
+    Runs in its own session because the request's transaction has already committed by
+    the time this is reachable (see _dispatch_anchor's after_commit hook), so the anchor
+    lands as its own small write rather than reopening a closed transaction.
+    """
+    from app.tasks.blockchain import _anchor
+
+    try:
+        asyncio.run(_anchor(
+            phase_event_id=phase_event_id,
+            canonical_payload=canonical_payload,
+            receipt_type=receipt_type,
+        ))
+    except Exception:  # noqa: BLE001 — this is already the fallback path
+        logger.exception(
+            "Inline anchor fallback failed for phase_event_id=%s — receipt owed", phase_event_id,
+        )
+
+
 async def _anchor_or_fail_open(
     db: AsyncSession, *, event: PhaseEvent,
     canonical_payload: dict[str, Any], receipt_type: BlockchainReceiptType,
@@ -369,6 +476,99 @@ async def _reject_if_not_due(db: AsyncSession, trip: Trip) -> None:
         )
 
 
+async def _other_trips_for_driver(db: AsyncSession, trip: Trip) -> list[Trip]:
+    """Every other non-terminal trip assigned to this trip's driver.
+
+    Terminal trips are excluded because they cannot obstruct anything — a closed or
+    cancelled trip is history, and counting it would mean a driver's very first completed
+    trip permanently blocked their second.
+    """
+    result = await db.execute(
+        select(Trip).where(
+            Trip.driver_id == trip.driver_id,
+            Trip.id != trip.id,
+            Trip.status.notin_((TripStatus.CLOSED, TripStatus.CANCELLED)),
+        )
+    )
+    return list(result.scalars().all())
+
+
+def _reject_if_another_trip_underway(others: list[Trip]) -> None:
+    """One trip at a time: a trip already underway blocks starting any other.
+
+    Nothing at trip creation stops a dispatcher assigning a driver two overlapping trips,
+    and until now nothing stopped the driver activating both — leaving two trips claiming
+    the same driver, horse and trailers at the same moment, which makes the custody chain
+    of both unprovable. ACTIVE and EXCEPTION_HOLD both count: a held trip is still the
+    trip the driver is on, it is merely blocked from advancing.
+    """
+    for other in others:
+        if other.status in (TripStatus.ACTIVE, TripStatus.EXCEPTION_HOLD):
+            raise TripActivationBlockedError(
+                other.trip_reference, "another trip is already underway"
+            )
+
+
+async def _reject_if_an_earlier_trip_is_due(
+    db: AsyncSession, trip: Trip, others: list[Trip]
+) -> None:
+    """Within one operating day, trips must be started in departure order.
+
+    Scoped to the SAME operating day on purpose. Trips on other days are already governed
+    by _reject_if_not_due, and widening this rule across days would let a trip that was
+    never run last week permanently block today's work until a dispatcher cancelled it.
+
+    A trip with no resolvable schedule is skipped rather than assumed earliest: it cannot
+    be activated at all (_reject_if_not_due rejects it outright), so it has no business
+    blocking a properly scheduled trip on its way through.
+    """
+    scheduled = await _scheduled_departure(db, trip)
+    if scheduled is None:
+        return
+    day = operating_day(scheduled)
+
+    earliest: Trip | None = None
+    earliest_at: datetime | None = None
+    for other in others:
+        if other.status != TripStatus.CREATED:
+            continue
+        other_scheduled = await _scheduled_departure(db, other)
+        if other_scheduled is None or operating_day(other_scheduled) != day:
+            continue
+        if other_scheduled >= scheduled:
+            continue
+        if earliest_at is None or other_scheduled < earliest_at:
+            earliest, earliest_at = other, other_scheduled
+
+    if earliest is not None:
+        raise TripActivationBlockedError(
+            earliest.trip_reference, "an earlier trip today has to be started first"
+        )
+
+
+def _record_driver_position(event: PhaseEvent, payload: PhaseCompleteRequest) -> None:
+    """Stamp the driver's phone fix onto the phase event, when the app sent one.
+
+    Called by every advance_*, not just activation: the PWA no longer has manual
+    "Capture GPS Location" steps, it takes a fix silently as the driver swipes to
+    confirm, so every phase event can now say where it was completed.
+
+    Only writes when a fix is present. A None must never overwrite a position already
+    stored by an earlier attempt — a replayed offline submission whose original capture
+    succeeded would otherwise erase it on retry.
+
+    POPIA: these columns stay in Postgres. Every canonical payload builder in this
+    module is an explicit whitelist, so nothing written here can reach a Hedera hash.
+    """
+    if payload.driver_phone_lat is None or payload.driver_phone_lng is None:
+        return
+    # str() before Decimal: handing a float straight to a Numeric(10, 7) column carries
+    # the float's binary rounding error into fixed point (-26.0942 stores as
+    # -26.0941999...). The string form is the coordinate the phone actually reported.
+    event.driver_phone_lat = Decimal(str(payload.driver_phone_lat))
+    event.driver_phone_lng = Decimal(str(payload.driver_phone_lng))
+
+
 async def advance_activation(
     db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID, phase_event_id: uuid.UUID,
     payload: ActivationCompleteRequest,
@@ -383,12 +583,18 @@ async def advance_activation(
 
     await _reject_if_not_due(db, trip)
 
+    # Both gates sit AFTER _gate_and_load's idempotent-replay short-circuit, for the same
+    # reason _reject_if_not_due does: a queued offline activation resent later must not
+    # start failing on a rule it already satisfied when it was captured.
+    others = await _other_trips_for_driver(db, trip)
+    _reject_if_another_trip_underway(others)
+    await _reject_if_an_earlier_trip_is_due(db, trip, others)
+
     # GPS cross-reference against Pulsit horse GPS is a feeder check (P1 is not
     # anchored to Hedera) — Pulsit integration itself is out of scope for this
     # plan; until it lands, horse_gps fields stay null and the check is skipped
     # rather than faked, so dispatchers see an honest "not yet cross-checked" state.
-    event.driver_phone_lat = payload.driver_phone_lat
-    event.driver_phone_lng = payload.driver_phone_lng
+    _record_driver_position(event, payload)
     event.status = PhaseStatus.COMPLETED
 
     # First phase off CREATED. LEGACY per-handshake TripStatus values are gone
@@ -445,6 +651,7 @@ async def advance_loading(
         return gated
     trip, event = gated
 
+    _record_driver_position(event, payload)
     # D7/T5: loading no longer captures or anchors the seal — that moves whole
     # to departure. driver_visual_count is the only evidence this phase still
     # owns; it stays unanchored (server-side reconciliation is Stage 3.3).
@@ -587,6 +794,8 @@ async def advance_departure(
         return gated
     trip, event = gated
 
+    _record_driver_position(event, payload)
+
     # Pulsit geofence departure confirmation is out of scope until the Pulsit
     # integration lands; pulsit_geofence_confirmed stays null until then.
 
@@ -638,7 +847,10 @@ async def advance_departure(
         phase_event_id=event.id, trip_id=trip_id, seal_number=payload.seal_number,
     )
     event.event_hash = compute_payload_hash(canonical_payload)
-    await _anchor_or_fail_open(
+    # Queued, not awaited: this used to hold the driver's swipe open for the whole
+    # Hedera submit. anchor_status stays PENDING until the worker lands the receipt —
+    # which is precisely what the driver app's "anchoring in progress" state reports.
+    _dispatch_anchor(
         db, event=event, canonical_payload=canonical_payload,
         receipt_type=BlockchainReceiptType.PICKUP,
     )
@@ -662,6 +874,8 @@ async def advance_unloading(
     if isinstance(gated, TripDetailResponse):
         return gated
     trip, event = gated
+
+    _record_driver_position(event, payload)
 
     # T4: this LEG's departure (strictly before this row), not "the trip's" —
     # a multi-stop trip can have several DEPARTURE rows, and a plain
@@ -754,6 +968,8 @@ async def advance_confirmation(
         return gated
     trip, event = gated
 
+    _record_driver_position(event, payload)
+
     # S1 / NEW-9: this leg's loading, not the trip's. A trip-wide phase_type
     # lookup raised MultipleResultsFound on every real cross-dock trip.
     loading_event = await _find_loading_for_leg(
@@ -777,10 +993,11 @@ async def advance_confirmation(
     )
     event.event_hash = compute_payload_hash(canonical_payload)
 
-    # Anchors unconditionally, fail-open (D7, task 2.5) — a Hedera outage no
-    # longer blocks delivery confirmation from completing; _anchor_or_fail_open
-    # records the debt on event.anchor_status instead of raising.
-    await _anchor_or_fail_open(
+    # Anchors unconditionally, fail-open (D7, task 2.5) — a Hedera outage no longer
+    # blocks delivery confirmation from completing; the anchor path records the debt on
+    # event.anchor_status instead of raising. Queued rather than awaited (see
+    # _dispatch_anchor) so the driver isn't held on the swipe for the Hedera round trip.
+    _dispatch_anchor(
         db, event=event, canonical_payload=canonical_payload,
         receipt_type=BlockchainReceiptType.DELIVERY,
     )

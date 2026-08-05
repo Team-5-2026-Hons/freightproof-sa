@@ -33,12 +33,14 @@ describe('StepHeader', () => {
   })
 
   it('renders the phase name and the current step name, with a current/total counter', () => {
-    // activation's recipe: ['Gate Arrival', 'Verification'] — stepIndex 1 is 'Verification'.
-    render(<StepHeader phase={makePhase('activation')} stepIndex={1} />)
+    // departure's recipe: ['Capture Seal', 'Photograph Waybill', 'Confirm Departure'] —
+    // stepIndex 1 is 'Photograph Waybill'. (activation is down to a single step since
+    // its GPS-capture step was removed, so it can no longer show a 2-of-N counter.)
+    render(<StepHeader phase={makePhase('departure')} stepIndex={1} />)
 
-    expect(screen.getByText('Activation')).toBeInTheDocument()
-    expect(screen.getByText('Verification')).toBeInTheDocument()
-    expect(screen.getByText('2/2')).toBeInTheDocument()
+    expect(screen.getByText('Departure')).toBeInTheDocument()
+    expect(screen.getByText('Photograph Waybill')).toBeInTheDocument()
+    expect(screen.getByText('2/3')).toBeInTheDocument()
   })
 
   describe('back navigation — first step of a phase (stepIndex === 0)', () => {
@@ -59,27 +61,27 @@ describe('StepHeader', () => {
 
   describe('back navigation — mid-phase (stepIndex > 0)', () => {
     it('labels the back button "Back to previous step"', () => {
-      render(<StepHeader phase={makePhase('activation')} stepIndex={1} />)
+      render(<StepHeader phase={makePhase('departure')} stepIndex={1} />)
 
       expect(screen.getByRole('button', { name: 'Back to previous step' })).toBeInTheDocument()
     })
 
     it('goes to the previous step of the SAME phase type, not out of it', () => {
-      render(<StepHeader phase={makePhase('activation')} stepIndex={1} />)
-
-      fireEvent.click(screen.getByRole('button', { name: 'Back to previous step' }))
-
-      expect(mockPush).toHaveBeenCalledWith(phaseStepRoute('activation', '1-approach-gate'))
-      expect(mockPush).not.toHaveBeenCalledWith(ROUTES.activeTripDetail)
-    })
-
-    it('works for a phase type with more steps too (departure, step 3 back to step 2)', () => {
-      // departure's slugs: ['1-approach-exit', '2-capture-seal', '3-waybill', '4-departure']
-      render(<StepHeader phase={makePhase('departure')} stepIndex={2} />)
+      // departure's slugs: ['2-capture-seal', '3-waybill', '4-departure']
+      render(<StepHeader phase={makePhase('departure')} stepIndex={1} />)
 
       fireEvent.click(screen.getByRole('button', { name: 'Back to previous step' }))
 
       expect(mockPush).toHaveBeenCalledWith(phaseStepRoute('departure', '2-capture-seal'))
+      expect(mockPush).not.toHaveBeenCalledWith(ROUTES.activeTripDetail)
+    })
+
+    it('works from a later step too (departure, step 3 back to step 2)', () => {
+      render(<StepHeader phase={makePhase('departure')} stepIndex={2} />)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Back to previous step' }))
+
+      expect(mockPush).toHaveBeenCalledWith(phaseStepRoute('departure', '3-waybill'))
     })
   })
 })

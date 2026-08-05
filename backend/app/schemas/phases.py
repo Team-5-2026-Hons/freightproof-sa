@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import Annotated, Any, Literal, Optional, Union
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.phase_meta import STEP_SLUGS
 from app.db.models.enums import AnchorStatus, PhaseStatus, PhaseType
@@ -130,12 +130,36 @@ class _PhaseCompleteBase(BaseModel):
     # a resubmitted completion with the same key returns current state instead of
     # erroring or duplicating — drivers lose signal, replay is normal.
     idempotency_key: str = Field(..., min_length=1)
+    # Where the driver's phone was when this phase was completed. Every phase carries
+    # it now, not just activation: the PWA captures the fix silently at submit time
+    # (there is no longer a "Capture GPS Location" step for the driver to tap), and
+    # phase_events has had the columns for every row all along.
+    #
+    # Optional on purpose — a phase must never fail to record because a fix timed out
+    # under a loading-bay roof. ActivationCompleteRequest overrides these as REQUIRED,
+    # because the origin-gate position is the one the activation gates are judged on.
+    #
+    # POPIA: personal location data. Stored in Postgres, never anchored — the canonical
+    # payload builders in orchestration/phase_service.py are explicit whitelists, so a
+    # field added here cannot reach a hash by accident.
+    driver_phone_lat: Optional[float] = Field(default=None, ge=-90, le=90)
+    driver_phone_lng: Optional[float] = Field(default=None, ge=-180, le=180)
+
+    @model_validator(mode="after")
+    def validate_driver_position_pair(self) -> "_PhaseCompleteBase":
+        # Both-or-neither, matching DriverExceptionCreateBody: a lone axis is not a
+        # position, and storing one would put an unusable half-fix in the evidence.
+        if (self.driver_phone_lat is None) != (self.driver_phone_lng is None):
+            raise ValueError("driver_phone_lat and driver_phone_lng must both be provided or both omitted")
+        return self
 
 
 class ActivationCompleteRequest(_PhaseCompleteBase):
     phase_type: Literal[PhaseType.ACTIVATION]
-    driver_phone_lat: float
-    driver_phone_lng: float
+    # Required here, unlike every other phase: activation is the origin-gate arrival
+    # position, and the whole point of the phase is recording where the trip started.
+    driver_phone_lat: float = Field(..., ge=-90, le=90)
+    driver_phone_lng: float = Field(..., ge=-180, le=180)
 
 
 class LoadingCompleteRequest(_PhaseCompleteBase):

@@ -37,15 +37,18 @@ describe('usePushNotifications', () => {
 
     act(() => result.current.simulateGateArrival('activation'))
 
-    expect(mockPush).toHaveBeenCalledWith('/trip/phase/activation/step/1-approach-gate')
+    expect(mockPush).toHaveBeenCalledWith('/trip/phase/activation/step/2-verification')
     expect(mockPush).not.toHaveBeenCalledWith(expect.stringContaining('/trip/undefined/'))
   })
 
-  it('simulateGateArrival routes to in_transit\'s first step (destination arrival)', () => {
+  // in_transit has no driver steps left (its GPS-capture step is gone and the phase is
+  // auto-completed server-side), so a destination-arrival push must land somewhere real
+  // rather than composing a ".../step/undefined" URL.
+  it('simulateGateArrival falls back to the active trip when the phase has no steps', () => {
     const { result } = renderHook(() => usePushNotifications())
 
     act(() => result.current.simulateGateArrival('in_transit'))
 
-    expect(mockPush).toHaveBeenCalledWith('/trip/phase/in_transit/step/1-arrival')
+    expect(mockPush).toHaveBeenCalledWith('/trips/active')
   })
 })

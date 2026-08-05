@@ -467,12 +467,24 @@ async def get_active_trip_for_driver(db: AsyncSession, driver_id: uuid.UUID) -> 
     can legitimately exist — scalar_one_or_none() would turn that into a 500 for
     the driver, so one row is picked instead.
 
-    Which row matters. Ordering by created_at alone (the previous behaviour) let a
+    Which row matters. Ordering by created_at alone (the original behaviour) let a
     freshly-assigned CREATED trip outrank the trip the driver was physically in the
     middle of driving, because the dispatcher had assigned it more recently: Home
     would swap to tomorrow's un-activated assignment mid-journey. A trip the driver
-    has actually activated therefore outranks a mere assignment, and only within
-    the same rank does newest-first apply.
+    has actually activated therefore outranks a mere assignment.
+
+    Within a rank the SOONEST departure wins, not the newest row. created_at is when
+    the dispatcher happened to type the trip in, which has nothing to do with the
+    order the driver runs them: two assignments captured back-to-back, one leaving on
+    the 5th and one on the 6th, handed Home the 6th purely because it was saved last.
+    Departure order is also the order the driver is permitted to work in —
+    phase_service's activation gates refuse a trip while an earlier one that day is
+    still unstarted — so this makes Home agree with what the driver can actually do.
+
+    A departure already in the past therefore still sorts first: an assignment that
+    should have left this morning is overdue, not stale, and hiding it behind
+    tomorrow's would leave the driver looking at the wrong job. Trips with no planned
+    departure at all sort last — unscheduled cannot be "next".
 
     CREATED stays eligible as a fallback rather than being excluded outright: the
     Activation phase (which is what flips CREATED -> ACTIVE) is reached through
@@ -480,7 +492,7 @@ async def get_active_trip_for_driver(db: AsyncSession, driver_id: uuid.UUID) -> 
     be handed it or they could never start work.
     """
     inactive = {TripStatus.CLOSED, TripStatus.CANCELLED}
-    # Rank, not sort key: every underway status shares rank 0 so newest-first still
+    # Rank, not sort key: every underway status shares rank 0 so departure order still
     # decides between two of them. ACTIVE and EXCEPTION_HOLD are peers — a held trip
     # is still the trip the driver is on, it is just blocked from advancing.
     underway_first = case(
@@ -490,7 +502,14 @@ async def get_active_trip_for_driver(db: AsyncSession, driver_id: uuid.UUID) -> 
     result = await db.execute(
         select(Trip)
         .where(Trip.driver_id == driver_id, Trip.status.notin_(inactive))
-        .order_by(underway_first, Trip.created_at.desc())
+        .order_by(
+            underway_first,
+            Trip.planned_departure_at.asc().nulls_last(),
+            # Last resort only, for two trips leaving at the same minute (or two
+            # unscheduled ones): keeps the result deterministic instead of letting
+            # Postgres return whichever row it reaches first.
+            Trip.created_at.desc(),
+        )
     )
     trip = result.scalars().first()
     if trip is None:

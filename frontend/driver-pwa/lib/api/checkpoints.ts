@@ -20,8 +20,12 @@ export interface LogCheckpointBody {
 // the shape lib/types/evidence-draft.ts uses for H1-H5. Kept here rather than there
 // since checkpoints are a driver-initiated capture independent of the five handshakes.
 export interface CheckpointEvidence {
-  gpsLat: number
-  gpsLng: number
+  // Nullable since the GPS capture step was removed: the app now takes the fix silently
+  // as the driver submits, and a failed fix (a tunnel, a denied permission) must never
+  // stop a checkpoint's photos from being recorded. The wire fields were already
+  // optional (LogCheckpointBody above), so nothing downstream changes.
+  gpsLat: number | null
+  gpsLng: number | null
   selfieDataUrl: string
   cargoPhotoDataUrl: string
   note: string
@@ -70,8 +74,11 @@ export async function submitCheckpoint(tripId: string, evidence: CheckpointEvide
 
   return logCheckpoint(tripId, {
     checkpoint_type: 'manual',
-    driver_phone_lat: evidence.gpsLat,
-    driver_phone_lng: evidence.gpsLng,
+    // Omitted, not nulled, when there is no fix — same reasoning as phases.ts's
+    // driverPosition(): a null must not overwrite a position a previous attempt stored.
+    ...(evidence.gpsLat !== null && evidence.gpsLng !== null
+      ? { driver_phone_lat: evidence.gpsLat, driver_phone_lng: evidence.gpsLng }
+      : {}),
     selfie_artifact_id: selfie.id,
     cargo_photo_artifact_id: cargoPhoto.id,
     note: evidence.note || undefined,

@@ -83,16 +83,21 @@ describe('nextStepRoute', () => {
     )!
     const lastDepartureSlug = STEP_SLUGS.departure[STEP_SLUGS.departure.length - 1]
 
-    // Leg 2's in_transit is still pending here: finishing leg 2's departure must land
-    // on in_transit, not skip straight past it to the second unloading.
+    // Leg 2's in_transit is still PENDING here, and is walked straight past: its recipe
+    // is empty since the GPS-capture step was removed, and firstStepAfter skips any
+    // phase with nothing for the driver to do rather than composing a step URL for it.
+    // The landing spot is leg 2's unloading — the SECOND one, not the first, which is
+    // already resolved earlier in this same plan. That is what proves the walk is a
+    // sequence_number walk and not a phase_type lookup.
+    expect(STEP_SLUGS.in_transit).toHaveLength(0)
     const midPlan = walk(CROSS_DOCK_PHASE_PLAN, secondDeparture.sequence_number)
     const departureMid = midPlan.find((p) => p.sequence_number === secondDeparture.sequence_number)!
     expect(nextStepRoute(midPlan, departureMid, lastDepartureSlug))
-      .toBe(phaseStepRoute('in_transit', STEP_SLUGS.in_transit[0]))
+      .toBe(phaseStepRoute('unloading', STEP_SLUGS.unloading[0]))
 
-    // Once leg 2's in_transit is also resolved, the SAME departure-completion event
-    // now lands on the second unloading — not the first, which is already resolved
-    // earlier in this same plan. Proves the walk is not a phase_type lookup.
+    // And once leg 2's in_transit is RESOLVED as well, the same completion still lands
+    // there — the route must not depend on whether the driverless phase in between has
+    // been closed yet.
     const resolvedPlan = walk(CROSS_DOCK_PHASE_PLAN, secondInTransit.sequence_number)
     const departureResolved = resolvedPlan.find((p) => p.sequence_number === secondDeparture.sequence_number)!
     expect(nextStepRoute(resolvedPlan, departureResolved, lastDepartureSlug))

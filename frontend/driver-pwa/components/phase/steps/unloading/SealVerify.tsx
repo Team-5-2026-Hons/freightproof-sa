@@ -4,9 +4,11 @@
 import { useState } from 'react'
 import { CheckCircle2, XCircle, Info } from 'lucide-react'
 import { StepHeader } from '@/components/phase/StepHeader'
+import { CameraCapture } from '@/components/phase/CameraCapture'
 import { Input } from '@/components/ui/Input'
 import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
 import { sealsMatch } from '@/components/phase/sealsMatch'
+import { useArtifactUpload } from '@/lib/hooks/useArtifactUpload'
 import { isValidSealFormat } from '@/lib/utils/seal-format'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { UnloadingEvidence } from '@/lib/types/evidence-draft'
@@ -33,14 +35,25 @@ const SWIPE_LABEL_FLAG = 'Swipe to flag'
 const NO_SEAL_ON_RECORD = 'No seal on record'
 // Shown when the departure seal is missing: records the driver's entry without accusing them.
 const NULL_REFERENCE_NOTE = 'No seal is on record from departure. The number you enter will be recorded.'
+// States the ordering constraint explicitly ("before it is broken"), because the photo is
+// worthless as tamper evidence if taken after the warehouse opens the trailer — and the
+// driver is standing next to warehouse staff who are waiting to do exactly that.
+const INTACT_PHOTO_INSTRUCTION =
+  'Photograph the seal now, while it is still intact and before the warehouse breaks it. This proves the trailer was not opened in transit.'
 
 export function SealVerify({ tripId, phase, stepIndex, draft, referenceSealNumber, onUpdate, onComplete }: SealVerifyProps) {
+  const { uploadNow } = useArtifactUpload(tripId)
   const [input, setInput] = useState(draft.sealNumberAtDestination ?? '')
   const hasInput = input.trim().length > 0
   // The backend 422s any destination seal not matching XX-#### before the mismatch
   // comparison even runs — so both the submit AND flag paths need a valid format.
   const formatValid = isValidSealFormat(input)
   const showFormatHint = hasInput && !formatValid
+  // UnloadingCompleteRequest.gate_photo_artifact_id is a required UUID, so an unloading
+  // without this photo 422s at submit — three steps later, by which point the seal is
+  // broken and the photograph can never be taken. Blocking here is the only place the
+  // driver can still act on it.
+  const hasIntactPhoto = draft.sealIntactPhotoDataUrl !== null
 
   // Three-way verification state. null (indeterminate) means either the driver hasn't typed yet or
   // there is no departure reference seal to compare against — in neither case is it a mismatch. Only
@@ -54,6 +67,18 @@ export function SealVerify({ tripId, phase, stepIndex, draft, referenceSealNumbe
 
   // Persist sealVerifiedMatch alongside the live indicator so a later submit reads an
   // up-to-date draft when onComplete fires — matches CaptureSeal's handleConfirmInput pattern.
+  // Upload starts at capture, not at submit — same pattern as departure/CaptureSeal.tsx.
+  // capturedAt is set here because this is the first evidence unloading captures; the
+  // artifact id is cleared alongside the new data URL so a re-shot photo can never submit
+  // under the previous shot's id.
+  function handleIntactSealPhoto(dataUrl: string) {
+    const capturedAt = new Date().toISOString()
+    onUpdate({ sealIntactPhotoDataUrl: dataUrl, sealIntactPhotoArtifactId: null, capturedAt })
+    void uploadNow(dataUrl, 'photo', capturedAt).then((artifactId) => {
+      if (artifactId !== null) onUpdate({ sealIntactPhotoArtifactId: artifactId })
+    })
+  }
+
   function handleInputChange(value: string) {
     // Uppercase like CaptureSeal's confirm handler — seals are printed uppercase and
     // the backend's format check accepts only uppercase letters.
@@ -108,13 +133,24 @@ export function SealVerify({ tripId, phase, stepIndex, draft, referenceSealNumbe
             Seal number must look like AB-1234 (two letters, four digits).
           </p>
         )}
+
+        <div className="flex flex-col gap-3 border-t border-outline-variant pt-6">
+          <p className="text-sm text-surface-on-variant">
+            {INTACT_PHOTO_INSTRUCTION}
+          </p>
+          <CameraCapture
+            label="Intact seal photo"
+            dataUrl={draft.sealIntactPhotoDataUrl}
+            onCapture={handleIntactSealPhoto}
+          />
+        </div>
       </div>
       <div className="flex justify-center px-6 pt-6 pb-safe">
         <SwipeToConfirm
           label={matches === false ? SWIPE_LABEL_FLAG : SWIPE_LABEL_SUBMIT}
           variant={matches === false ? 'danger' : 'primary'}
           onConfirm={onComplete}
-          disabled={!formatValid}
+          disabled={!formatValid || !hasIntactPhoto}
         />
       </div>
     </main>

@@ -22,7 +22,7 @@ describe('STEP_REGISTRY', () => {
   })
 
   it('resolves a known phase/slug pair to a component', () => {
-    expect(stepComponentFor('activation', '1-approach-gate')).toBeDefined()
+    expect(stepComponentFor('activation', '2-verification')).toBeDefined()
     expect(stepComponentFor('confirmation', '4-closed')).toBeDefined()
   })
 

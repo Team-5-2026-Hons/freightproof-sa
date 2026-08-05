@@ -146,6 +146,41 @@ describe('trips list page', () => {
     expect(mockPush).toHaveBeenCalledWith(`/trips/detail?id=${UPCOMING_A.id}`)
   })
 
+  it('lists upcoming trips soonest departure first, whatever order the server sent', async () => {
+    const aug5 = makeTrip({
+      status: 'created', trip_reference: 'FP-AUG-05', planned_departure_at: '2026-08-05T08:00:00Z',
+    })
+    const aug6 = makeTrip({
+      status: 'created', trip_reference: 'FP-AUG-06', planned_departure_at: '2026-08-06T08:00:00Z',
+    })
+    // Server order is the wrong way round — the page must not preserve it.
+    mockFetchMyTrips.mockResolvedValue([aug6, aug5])
+    render(<TripsPage />)
+    await screen.findByRole('tab', { name: /Upcoming 2/i })
+    switchToTab(/Upcoming/i)
+
+    const rendered = screen.getAllByText(/^FP-AUG-/).map((el) => el.textContent)
+
+    expect(rendered).toEqual(['FP-AUG-05', 'FP-AUG-06'])
+  })
+
+  it('lists past trips most recent departure first', async () => {
+    const july = makeTrip({
+      status: 'closed', trip_reference: 'FP-JULY', planned_departure_at: '2026-07-01T08:00:00Z',
+    })
+    const august = makeTrip({
+      status: 'closed', trip_reference: 'FP-AUGUST', planned_departure_at: '2026-08-01T08:00:00Z',
+    })
+    mockFetchMyTrips.mockResolvedValue([july, august])
+    render(<TripsPage />)
+    await screen.findByRole('tab', { name: /Past 2/i })
+    switchToTab(/Past/i)
+
+    const rendered = screen.getAllByText(/^FP-(JULY|AUGUST)$/).map((el) => el.textContent)
+
+    expect(rendered).toEqual(['FP-AUGUST', 'FP-JULY'])
+  })
+
   it('surfaces a load failure instead of claiming there are no trips', async () => {
     mockFetchMyTrips.mockRejectedValue(new Error('offline'))
     // Expected console.error from the page's own catch — silenced so it doesn't look

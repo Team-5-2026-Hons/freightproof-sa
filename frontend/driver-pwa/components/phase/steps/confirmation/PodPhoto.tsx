@@ -7,6 +7,7 @@
 
 import { StepHeader } from '@/components/phase/StepHeader'
 import { CameraCapture } from '@/components/phase/CameraCapture'
+import { useArtifactUpload } from '@/lib/hooks/useArtifactUpload'
 import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { ConfirmationEvidence } from '@/lib/types/evidence-draft'
@@ -21,6 +22,19 @@ interface PodPhotoProps {
 }
 
 export function PodPhoto({ tripId, phase, stepIndex, draft, onUpdate, onComplete }: PodPhotoProps) {
+  const { uploadNow } = useArtifactUpload(tripId)
+
+  // Upload starts the moment the photo exists, not when the driver swipes — the walk
+  // between the two is dead time otherwise. The data URL is stored either way, so a
+  // failed early upload just means lib/api/phases.ts uploads it at submit as before.
+  function handleCapture(dataUrl: string) {
+    const capturedAt = new Date().toISOString()
+    onUpdate({ podPhotoDataUrl: dataUrl, podPhotoArtifactId: null, capturedAt })
+    void uploadNow(dataUrl, 'photo', capturedAt).then((artifactId) => {
+      if (artifactId !== null) onUpdate({ podPhotoArtifactId: artifactId })
+    })
+  }
+
   const hasPhoto = draft.podPhotoDataUrl !== null
 
   return (
@@ -33,7 +47,7 @@ export function PodPhoto({ tripId, phase, stepIndex, draft, onUpdate, onComplete
         <CameraCapture
           label="Proof of delivery photo"
           dataUrl={draft.podPhotoDataUrl}
-          onCapture={(dataUrl) => onUpdate({ podPhotoDataUrl: dataUrl })}
+          onCapture={handleCapture}
         />
       </div>
       <div className="flex justify-center px-6 pt-6 pb-safe">

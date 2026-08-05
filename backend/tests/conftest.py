@@ -103,6 +103,8 @@ def make_token(
     role: str = "dispatcher",
     org_id: str | None = None,
     expires_in: int = 3600,
+    session_id: str | None = None,
+    issued_at: datetime | None = None,
 ) -> str:
     """Return an ES256-signed JWT matching the Supabase Auth payload shape.
 
@@ -110,7 +112,12 @@ def make_token(
     Pass expires_in=-1 to produce an already-expired token.
     """
     now = datetime.now(UTC)
+    # session_id/iat back the one-device-per-driver rule (app/auth/sessions.py). Each
+    # call gets a fresh session by default so unrelated tests never collide over one
+    # driver's session row; pass them explicitly to model two devices.
+    issued = issued_at or now
     payload = {
+        "session_id": session_id or str(uuid.uuid4()),
         "aud": _AUDIENCE,
         "iss": "https://test.supabase.co/auth/v1",
         "sub": sub or str(uuid.uuid4()),
@@ -120,7 +127,7 @@ def make_token(
             "role": role,
             "org_id": org_id or str(uuid.uuid4()),
         },
-        "iat": int(now.timestamp()),
+        "iat": int(issued.timestamp()),
         "exp": int((now + timedelta(seconds=expires_in)).timestamp()),
     }
     return jwt.encode(

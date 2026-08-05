@@ -7,8 +7,8 @@ import { TriangleAlert } from 'lucide-react'
 import { useTrip } from '@/lib/hooks/useTrip'
 import { useToast } from '@/lib/hooks/useToast'
 import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
+import { useLocationTrail } from '@/lib/hooks/useLocationTrail'
 import { CameraCapture } from '@/components/phase/CameraCapture'
-import { GpsCapture } from '@/components/phase/GpsCapture'
 import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
 import { Button } from '@/components/ui/Button'
 import { TextArea } from '@/components/ui/TextArea'
@@ -25,10 +25,9 @@ export default function CheckpointPageClient() {
   const { trip } = useTrip()
   const { notify } = useToast()
   const { enqueueCheckpoint } = useOfflineQueue()
-
-  // GpsCapture owns its own internal useLocation() instance — coords are lifted
-  // here via its onCapture callback, not read from a second, independent hook call.
-  const [gps, setGps] = useState<{ latitude: number; longitude: number } | null>(null)
+  // The driver no longer taps to capture a position here either — it is taken as the
+  // checkpoint is submitted, like every other evidence surface in the app.
+  const { capturePosition } = useLocationTrail()
   const [selfieDataUrl, setSelfieDataUrl] = useState<string | null>(null)
   const [cargoPhotoDataUrl, setCargoPhotoDataUrl] = useState<string | null>(null)
   const [note, setNote] = useState('')
@@ -36,16 +35,20 @@ export default function CheckpointPageClient() {
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState(false)
 
-  const isReady = gps !== null && selfieDataUrl !== null && cargoPhotoDataUrl !== null
+  // GPS is no longer a gate: it is captured silently at submit, and a checkpoint with
+  // photos but no fix is still evidence worth recording. The two photos ARE the
+  // checkpoint, so they stay required.
+  const isReady = selfieDataUrl !== null && cargoPhotoDataUrl !== null
 
   async function handleSubmit() {
     if (!isReady || !trip) return
     setSubmitting(true)
     setSubmitError(false)
 
+    const position = await capturePosition()
     const evidence: CheckpointEvidence = {
-      gpsLat: gps!.latitude,
-      gpsLng: gps!.longitude,
+      gpsLat: position?.lat ?? null,
+      gpsLng: position?.lng ?? null,
       selfieDataUrl: selfieDataUrl!,
       cargoPhotoDataUrl: cargoPhotoDataUrl!,
       note: note.trim(),
@@ -113,7 +116,6 @@ export default function CheckpointPageClient() {
         </p>
 
         <div className="flex flex-col gap-6 mb-6">
-          <GpsCapture onCapture={(lat: number, lng: number) => setGps({ latitude: lat, longitude: lng })} captured={gps !== null} />
           <CameraCapture label="Selfie" dataUrl={selfieDataUrl} onCapture={setSelfieDataUrl} />
           <CameraCapture label="Cargo photo" dataUrl={cargoPhotoDataUrl} onCapture={setCargoPhotoDataUrl} />
 

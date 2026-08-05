@@ -3,6 +3,7 @@
 
 import { CheckCircle2, Info, XCircle } from 'lucide-react'
 import { StepHeader } from '@/components/phase/StepHeader'
+import { useArtifactUpload } from '@/lib/hooks/useArtifactUpload'
 import { SealInput } from '@/components/phase/SealInput'
 import { Input } from '@/components/ui/Input'
 import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
@@ -35,6 +36,7 @@ interface CaptureSealProps {
 // draft.sealNumber hasn't been typed yet, exactly mirroring the null-safety sealsMatch()
 // itself already guarantees (an empty/null side never reports a match).
 export function CaptureSeal({ tripId, phase, stepIndex, draft, onUpdate, onComplete }: CaptureSealProps) {
+  const { uploadNow } = useArtifactUpload(tripId)
   const sealNumber = draft.sealNumber ?? ''
   // The backend 422s any seal not matching XX-#### at submit (departure's last step) —
   // validate here, where the driver can still fix it.
@@ -62,6 +64,17 @@ export function CaptureSeal({ tripId, phase, stepIndex, draft, onUpdate, onCompl
     })
   }
 
+  // Upload starts at capture, not at submit — see lib/hooks/useArtifactUpload.ts. The
+  // data URL is stored regardless, so a failed early upload only means the submit path
+  // uploads it as it always did.
+  function handleSealPhoto(dataUrl: string) {
+    const capturedAt = new Date().toISOString()
+    onUpdate({ sealPhotoDataUrl: dataUrl, sealPhotoArtifactId: null, capturedAt })
+    void uploadNow(dataUrl, 'photo', capturedAt).then((artifactId) => {
+      if (artifactId !== null) onUpdate({ sealPhotoArtifactId: artifactId })
+    })
+  }
+
   // A mismatch is flagged as an exception downstream, never blocked here — only a format
   // error (a guaranteed backend 422) can stop the driver from proceeding.
   const isReady = sealFormatValid && draft.sealPhotoDataUrl !== null && confirmFormatValid
@@ -77,7 +90,7 @@ export function CaptureSeal({ tripId, phase, stepIndex, draft, onUpdate, onCompl
           sealNumber={draft.sealNumber}
           sealPhotoDataUrl={draft.sealPhotoDataUrl}
           onSealNumberChange={(v) => onUpdate({ sealNumber: v })}
-          onSealPhotoCapture={(dataUrl) => onUpdate({ sealPhotoDataUrl: dataUrl })}
+          onSealPhotoCapture={handleSealPhoto}
         />
         {showSealFormatHint && (
           <p className="text-sm text-error">

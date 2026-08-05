@@ -17,6 +17,16 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
 }))
 
+// CameraCapture drives real native/browser camera APIs and needs a ToastProvider it has
+// no business requiring of this suite — stubbed exactly as departure/CaptureSeal.test.tsx
+// does, so these tests exercise SealVerify's own gating logic. CameraCapture has its own
+// coverage in components/phase/__tests__/CameraCapture.test.tsx.
+vi.mock('@/components/phase/CameraCapture', () => ({
+  CameraCapture: ({ label, onCapture }: { label: string; onCapture: (dataUrl: string) => void }) => (
+    <button onClick={() => onCapture(`data:image/jpeg;base64,${label}`)}>{label}</button>
+  ),
+}))
+
 const MISMATCH_BANNER = 'Mismatch — this discrepancy will be recorded for review.'
 const NULL_REFERENCE_NOTE = 'No seal is on record from departure. The number you enter will be recorded.'
 const MATCH_BANNER = 'Seal matches — integrity confirmed'
@@ -26,6 +36,10 @@ function makeDraft(overrides: Partial<UnloadingEvidence> = {}): UnloadingEvidenc
     waybillHandedOver: null,
     sealNumberAtDestination: null,
     sealVerifiedMatch: null,
+    // Defaulted to captured: most cases here exercise the seal-number logic, and an
+    // absent photo would disable the swipe for reasons unrelated to what they assert.
+    sealIntactPhotoDataUrl: 'data:image/jpeg;base64,SEAL',
+    sealIntactPhotoArtifactId: null,
     sealBrokenPhotoDataUrl: null,
     driverVisualCount: null,
     capturedAt: null,
@@ -123,5 +137,47 @@ describe('SealVerify with a real reference seal', () => {
     expect(screen.getByText(MISMATCH_BANNER)).toBeInTheDocument()
     expect(screen.getByText('Swipe to flag')).toBeInTheDocument()
     expect(onUpdate).toHaveBeenLastCalledWith({ sealNumberAtDestination: 'ABC123', sealVerifiedMatch: false })
+  })
+})
+
+// The intact seal photo satisfies UnloadingCompleteRequest.gate_photo_artifact_id, which
+// is a required UUID. Letting the driver past this step without it means a guaranteed 422
+// three steps later — by which point the seal is broken and the photo is unobtainable.
+describe('SealVerify intact seal photo gate', () => {
+  it('blocks the swipe when the seal number is valid but no photo has been taken', () => {
+    renderStep({
+      draft: makeDraft({ sealNumberAtDestination: 'AB-1234', sealIntactPhotoDataUrl: null }),
+    })
+
+    typeSeal('AB-1234')
+
+    expect(screen.getByRole('slider', { name: 'Swipe to submit' })).toHaveAttribute('aria-disabled', 'true')
+  })
+
+  it('allows the swipe once both the seal number and the photo are present', () => {
+    renderStep({ draft: makeDraft({ sealNumberAtDestination: 'AB-1234' }) })
+
+    typeSeal('AB-1234')
+
+    expect(screen.getByRole('slider', { name: 'Swipe to submit' })).toHaveAttribute('aria-disabled', 'false')
+  })
+
+  // A mismatch is a recorded discrepancy, not a blocked submission — but it is still an
+  // unloading, so it needs the same photographic evidence a clean one does.
+  it('blocks the flag path too when the photo is missing', () => {
+    renderStep({
+      referenceSealNumber: 'AB-9999',
+      draft: makeDraft({ sealIntactPhotoDataUrl: null }),
+    })
+
+    typeSeal('AB-1234')
+
+    expect(screen.getByRole('slider', { name: 'Swipe to flag' })).toHaveAttribute('aria-disabled', 'true')
+  })
+
+  it('tells the driver to photograph the seal before it is broken', () => {
+    renderStep()
+
+    expect(screen.getByText(/before the warehouse breaks it/)).toBeInTheDocument()
   })
 })

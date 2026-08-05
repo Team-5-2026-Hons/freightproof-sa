@@ -19,7 +19,7 @@ export function ConfirmDeparture({ tripId, phase, stepIndex, draft, onComplete }
   // sealNumberConfirmed is set by the previous step (CaptureSeal, which now owns both the
   // capture AND the guard's confirmation entry — see that file's header comment) — this
   // gate simply requires it exists before departure is submitted.
-  const isReady = draft.gpsLat !== null && draft.sealNumberConfirmed !== null
+  const isReady = draft.sealNumberConfirmed !== null
 
   return (
     <main className="flex min-h-dvh flex-col">
@@ -30,9 +30,8 @@ export function ConfirmDeparture({ tripId, phase, stepIndex, draft, onComplete }
         </p>
         <EvidenceReview
           items={[
-            // Raw coordinates are noise to a driver — a "Captured" receipt is enough here;
-            // the exact lat/lng stays in the draft for the backend payload.
-            { label: 'GPS', value: draft.gpsLat !== null ? 'Captured' : null },
+            // No GPS line: the fix is taken as this swipe submits, so a "Captured"
+            // receipt here would be claiming something that hasn't happened yet.
             {
               label: 'Seal confirmed',
               value:

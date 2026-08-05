@@ -6,6 +6,7 @@
 
 import { StepHeader } from '@/components/phase/StepHeader'
 import { SignaturePad } from '@/components/phase/SignaturePad'
+import { useArtifactUpload } from '@/lib/hooks/useArtifactUpload'
 import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { ConfirmationEvidence } from '@/lib/types/evidence-draft'
@@ -20,6 +21,22 @@ interface PodSignatureProps {
 }
 
 export function PodSignature({ tripId, phase, stepIndex, draft, onUpdate, onComplete }: PodSignatureProps) {
+  const { uploadNow } = useArtifactUpload(tripId)
+
+  // The signature uploads as soon as the driver lifts their finger, not at submit — the
+  // receiver still has to hand the phone back, which is free upload time. An empty pad
+  // clears both fields; anything else stores the data URL and races the upload.
+  function handleSignature(dataUrl: string) {
+    if (!dataUrl) {
+      onUpdate({ podSignatureDataUrl: null, podSignatureArtifactId: null })
+      return
+    }
+    const capturedAt = new Date().toISOString()
+    onUpdate({ podSignatureDataUrl: dataUrl, podSignatureArtifactId: null, capturedAt })
+    void uploadNow(dataUrl, 'document', capturedAt).then((artifactId) => {
+      if (artifactId !== null) onUpdate({ podSignatureArtifactId: artifactId })
+    })
+  }
   const hasSignature = Boolean(draft.podSignatureDataUrl)
 
   return (
@@ -32,7 +49,7 @@ export function PodSignature({ tripId, phase, stepIndex, draft, onUpdate, onComp
         <SignaturePad
           label="Receiver signature"
           dataUrl={draft.podSignatureDataUrl}
-          onCapture={(dataUrl) => onUpdate({ podSignatureDataUrl: dataUrl || null })}
+          onCapture={handleSignature}
         />
       </div>
       <div className="flex justify-center px-6 pt-6 pb-safe">

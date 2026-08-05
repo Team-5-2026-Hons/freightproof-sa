@@ -16,6 +16,7 @@ import { usePhaseDraft } from '@/lib/hooks/usePhaseDraft'
 import { useSealReference } from '@/lib/hooks/useSealReference'
 import { useVisualCountCarry } from '@/lib/hooks/useVisualCountCarry'
 import { useTrip } from '@/lib/hooks/useTrip'
+import { useLocationTrail } from '@/lib/hooks/useLocationTrail'
 import { useToast } from '@/lib/hooks/useToast'
 import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
 import { submitPhase } from '@/lib/api/phases'
@@ -26,11 +27,10 @@ import { IS_DEMO_MODE } from '@/lib/constants/env'
 import { ROUTES } from '@/lib/constants/routes'
 import { formatTime } from '@/lib/utils/format-time'
 import { PHASE_NAMES } from '@shared/lib/constants/phase-meta'
-import { Spinner } from '@/components/ui/Spinner'
+import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { Button } from '@/components/ui/Button'
 import { HoldNotice } from '@/components/trip/HoldNotice'
 import { stepComponentFor } from '@/components/phase/steps/registry'
-import type { ArrivalDraft } from '@/components/phase/steps/in_transit/Arrival'
 import type { Trip } from '@shared/lib/types/trip'
 import type { PhaseDescriptor, PhaseType } from '@shared/lib/types/phase'
 import type {
@@ -38,22 +38,25 @@ import type {
   ConfirmationEvidence, PhaseEvidence,
 } from '@/lib/types/evidence-draft'
 
-const ACTIVATION_INITIAL: ActivationEvidence = { gpsLat: null, gpsLng: null, gateAddress: null, capturedAt: null }
+const ACTIVATION_INITIAL: ActivationEvidence = { capturedAt: null }
 const LOADING_INITIAL: LoadingEvidence = { driverVisualCount: null, capturedAt: null }
 const DEPARTURE_INITIAL: DepartureEvidence = {
-  gpsLat: null, gpsLng: null, waybillPhotoDataUrl: null, sealNumber: null,
-  sealPhotoDataUrl: null, sealNumberConfirmed: null, sealVerifiedMatch: null, capturedAt: null,
+  waybillPhotoDataUrl: null, waybillPhotoArtifactId: null, sealNumber: null,
+  sealPhotoDataUrl: null, sealPhotoArtifactId: null,
+  sealNumberConfirmed: null, sealVerifiedMatch: null, capturedAt: null,
 }
 const UNLOADING_INITIAL: UnloadingEvidence = {
   waybillHandedOver: null, sealNumberAtDestination: null, sealVerifiedMatch: null,
+  sealIntactPhotoDataUrl: null, sealIntactPhotoArtifactId: null,
   sealBrokenPhotoDataUrl: null, driverVisualCount: null, capturedAt: null,
 }
 // driverVisualCount is seeded per-mount from the carry-forward hook (task 4) — see
 // ConfirmationStep below — never hard-coded here.
 const CONFIRMATION_INITIAL_BASE: Omit<ConfirmationEvidence, 'driverVisualCount'> = {
-  podPhotoDataUrl: null, podSignatureDataUrl: null, reconciliationNote: null, capturedAt: null,
+  podPhotoDataUrl: null, podPhotoArtifactId: null,
+  podSignatureDataUrl: null, podSignatureArtifactId: null,
+  reconciliationNote: null, capturedAt: null,
 }
-const ARRIVAL_INITIAL: ArrivalDraft = { gpsLat: null, gpsLng: null, capturedAt: null }
 
 // The route for wherever the ledger says the driver is right now — used both by the
 // type-mismatch guard below and (duplicated, see that file's own comment) by
@@ -131,11 +134,7 @@ export default function PhaseStepPageClient() {
   // permanently erasing previously captured evidence. The fix: PhaseStepContent (and
   // everything it renders) never mounts until `trip` is a real, non-null object.
   if (isLoading && !isSubmitting) {
-    return (
-      <main className="flex min-h-dvh items-center justify-center p-6">
-        <Spinner />
-      </main>
-    )
+    return <LoadingScreen label="Loading trip" />
   }
 
   const activeTrip = trip ?? (isSubmitting ? lastTripRef.current : null)
@@ -195,11 +194,9 @@ function PhaseStepContent({ trip, setIsSubmitting }: PhaseStepContentProps) {
   }, [mismatched, trip.phases, router])
 
   if (phase === null || mismatched) {
-    return (
-      <main className="flex min-h-dvh items-center justify-center p-6">
-        <Spinner />
-      </main>
-    )
+    // The redirect above is already in flight — this is the frame the driver sees while
+    // it lands, so it gets the same loading treatment as a genuine fetch.
+    return <LoadingScreen label="Loading step" />
   }
 
   const stepIndex = steps.findIndex((s) => s.slug === slug)
@@ -253,11 +250,13 @@ function PhaseStepRouter(props: StepControllerProps) {
     case 'departure': return <DepartureStep {...props} />
     case 'unloading': return <UnloadingStep {...props} />
     case 'confirmation': return <ConfirmationStep {...props} />
-    case 'in_transit': return <InTransitStep {...props} />
     case 'trip_creation':
+    case 'in_transit':
       // Unreachable: PhaseStepContent's guard redirects away whenever the current
-      // phase's step recipe is empty, and trip_creation is the only phase type with one
-      // (phase-meta.ts) — this case exists only so the switch stays exhaustive.
+      // phase's step recipe is empty, and these are the two phase types with one
+      // (phase-meta.ts). in_transit joined trip_creation when its '1-arrival' GPS step
+      // was removed — the phase is auto-completed server-side and the driver never
+      // walks it. These cases exist only so the switch stays exhaustive.
       return null
     default: {
       const unreachable: never = props.phase.phase_type
@@ -293,7 +292,8 @@ function usePhaseStepController<T extends PhaseEvidence>(
   const router = useRouter()
   const { notify } = useToast()
   const { enqueuePhase } = useOfflineQueue()
-  const { refetchTrip } = useTrip()
+  const { refetchTrip, adoptTrip } = useTrip()
+  const { capturePosition } = useLocationTrail()
   const tripId = String(trip.id)
 
   const [draft, updateDraftRaw, clearDraft] = usePhaseDraft<T>(tripId, phase.phase_event_id, initial)
@@ -358,24 +358,26 @@ function usePhaseStepController<T extends PhaseEvidence>(
     setIsSubmitting(true)
     if (idempotencyKeyRef.current === null) idempotencyKeyRef.current = crypto.randomUUID()
     const evidence = draftRef.current
+    // Taken HERE, at the moment the driver confirms, rather than by a step that made
+    // them tap for it. Awaited before the submit so the position travels with the
+    // evidence — including into the offline queue, so a replay hours later still says
+    // where the driver actually was when they swiped, not where they regained signal.
+    const position = await capturePosition()
 
     try {
-      const result = await submitPhase(tripId, phase.phase_event_id, phase.phase_type, evidence, idempotencyKeyRef.current)
+      const result = await submitPhase(tripId, phase.phase_event_id, phase.phase_type, evidence, idempotencyKeyRef.current, position)
       const addressedPhase = result.trip?.phases.find((p) => p.phase_event_id === phase.phase_event_id) ?? null
       onResolved(result.trip, evidence)
       clearDraft()
-      // submitPhase's own return already has the fresh plan, but that's local to this
-      // call — TripContext's own `trip` (what the NEXT step page's guard reads via
-      // currentPhase(trip.phases)) is a separate cache that only refetchTrip() updates.
-      // Without this, advance() below still computes the right URL (nextStepRoute only
-      // depends on phases strictly AFTER this one, which this submission never changes),
-      // but the page that URL lands on would see THIS phase as still unresolved in its
-      // stale trip and immediately redirect back. Awaited before navigating so the next
-      // page's first render already has fresh data. May transiently return null (the
-      // trip just closed, e.g. confirmation's last step) — the top-level gate's Fix 2
-      // (isSubmitting + lastTripRef) is what keeps this screen from flashing "Trip not
-      // found" during that window.
-      await refetchTrip()
+      // The next step page's guard reads currentPhase(trip.phases) from TripContext, so
+      // that cache has to know this phase resolved before we navigate — otherwise the
+      // page we land on sees it still unresolved and bounces straight back.
+      //
+      // This used to be `await refetchTrip()`: a second round trip for a plan the submit
+      // response already contained, on the slowest screen in the app, with the driver
+      // watching. adoptTrip takes that response directly. It stays null only in demo
+      // mode (no backend call happened), where there is no stale cache to correct.
+      if (result.trip !== null) adoptTrip(result.trip)
       if (result.trip?.status === 'exception_hold') {
         notifyTripOnHold()
         router.push(ROUTES.activeTripDetail)
@@ -429,7 +431,7 @@ function usePhaseStepController<T extends PhaseEvidence>(
         // Always 'plain', regardless of whether this phase is normally anchored: the
         // evidence hasn't reached the backend (or Hedera) yet, so claiming "anchoring in
         // progress" here would be dishonest.
-        enqueuePhase(tripId, phase.phase_event_id, phase.phase_type, evidence)
+        enqueuePhase(tripId, phase.phase_event_id, phase.phase_type, evidence, position)
         onResolved(null, evidence)
         clearDraft()
         notifyPhaseRecorded('plain')
@@ -533,22 +535,9 @@ function ConfirmationStep({ trip, phase, slug, stepIndex, isFinalStep, setIsSubm
   return renderStep(StepComponent, { tripId, phase, stepIndex, draft, onUpdate, onComplete })
 }
 
-function InTransitStep({ trip, phase, slug, stepIndex }: StepControllerProps) {
-  const router = useRouter()
-  const tripId = String(trip.id)
-  const [draft, updateDraft, clearDraft] = usePhaseDraft<ArrivalDraft>(tripId, phase.phase_event_id, ARRIVAL_INITIAL)
-
-  function advance() {
-    // in_transit has no PhaseCompleteRequest variant server-side — lib/api/phases.ts's
-    // submitPhase throws if it's ever addressed directly, because this phase is
-    // auto-completed by advance_departure's stopgap (parent plan D13) before the driver
-    // reaches it in practice. If it's ever reached anyway, there is nothing to submit:
-    // clear the local draft and walk forward exactly like a mid-phase step would.
-    clearDraft()
-    router.push(nextStepRoute(trip.phases, phase, slug))
-  }
-
-  const StepComponent = stepComponentFor(phase.phase_type, slug)
-  if (!StepComponent) return <UnknownStep phaseType={phase.phase_type} slug={slug} />
-  return renderStep(StepComponent, { tripId, phase, stepIndex, draft, onUpdate: updateDraft, onComplete: advance })
-}
+// InTransitStep is gone with in_transit's step recipe. Its single step ('1-arrival')
+// only ever asked the driver to capture a GPS fix that submitPhase never sent anywhere —
+// the phase has no PhaseCompleteRequest variant and is auto-completed server-side by
+// advance_departure's stopgap (parent plan D13). With an empty recipe, PhaseStepContent's
+// guard now redirects away before this phase can address a step page at all, exactly as
+// it always has for trip_creation.

@@ -52,6 +52,48 @@ export function categorizeTrips<T extends HasStatus>(trips: readonly T[]): Categ
   return { active, upcoming, past }
 }
 
+export type DepartureOrder = 'soonest-first' | 'latest-first'
+
+// Minimum a row must carry to be ordered by when it leaves.
+interface HasDeparture {
+  planned_departure_at: string | null
+  actual_departure_at: string | null
+}
+
+// Orders trips by the departure the card actually displays, so the dates a driver reads
+// down the list never run backwards. GET /trips/me returns rows in no guaranteed order,
+// which is how a trip leaving on the 6th ended up above one leaving on the 5th.
+//
+// planned first, actual only as a fallback: planned is what the card shows, and a trip
+// that left early would otherwise sort away from the time printed on it. A row with
+// neither sinks to the bottom in BOTH directions — no departure means unscheduled, not
+// "the beginning of time", and floating it to the top would bury the trip the driver is
+// actually leaving on next.
+export function sortByDeparture<T extends HasDeparture>(
+  trips: readonly T[],
+  order: DepartureOrder = 'soonest-first',
+): T[] {
+  const departureMs = (trip: T): number | null => {
+    const at = trip.planned_departure_at ?? trip.actual_departure_at
+    if (at === null) return null
+    const ms = new Date(at).getTime()
+    // A malformed timestamp sorts as unscheduled rather than poisoning the comparator
+    // with NaN, which would leave the whole list in an arbitrary order.
+    return Number.isNaN(ms) ? null : ms
+  }
+
+  // Copy, never sort in place: callers pass memoised arrays derived from React state.
+  // Array.prototype.sort is stable (ES2019+), so trips sharing a departure keep the
+  // order the server sent them in.
+  return [...trips].sort((a, b) => {
+    const aMs = departureMs(a)
+    const bMs = departureMs(b)
+    if (aMs === null) return bMs === null ? 0 : 1
+    if (bMs === null) return -1
+    return order === 'soonest-first' ? aMs - bMs : bMs - aMs
+  })
+}
+
 export interface PastTripFilters {
   dateFrom: string | null // ISO date, inclusive
   dateTo: string | null // ISO date, inclusive

@@ -21,7 +21,7 @@ describe('isFullBleedRoute', () => {
   it('still exempts panic (bare full-bleed) and phase steps (own StepHeader)', () => {
     expect(isFullBleedRoute('/trip/panic')).toBe(true)
     expect(isFullBleedRoute('/trip/panic/submitted')).toBe(true)
-    expect(isFullBleedRoute('/trip/phase/activation/step/1-approach-gate')).toBe(true)
+    expect(isFullBleedRoute('/trip/phase/activation/step/2-verification')).toBe(true)
   })
 
   it('does NOT exempt the bare trips list — it has no SubpageHeader and keeps AppShell', () => {

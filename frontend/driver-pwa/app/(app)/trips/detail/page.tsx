@@ -10,7 +10,7 @@
 // from. One static route plus a query param serves every real trip instead.
 
 import { Suspense } from 'react'
-import { Spinner } from '@/components/ui/Spinner'
+import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import TripDetailByIdPageClient from './TripDetailByIdPageClient'
 
 // useSearchParams() (used inside the client below to read ?id) opts a page out of static
@@ -18,13 +18,9 @@ import TripDetailByIdPageClient from './TripDetailByIdPageClient'
 // Mirrors app/(app)/trip/panic/submitted/page.tsx.
 export default function TripDetailByIdPage() {
   return (
-    <Suspense
-      fallback={
-        <main className="flex min-h-dvh items-center justify-center">
-          <Spinner />
-        </main>
-      }
-    >
+    // Same loading screen the client below renders while it fetches, so the handover
+    // from "route resolving" to "trip fetching" is invisible — the truck never jumps.
+    <Suspense fallback={<LoadingScreen label="Loading trip" />}>
       <TripDetailByIdPageClient />
     </Suspense>
   )

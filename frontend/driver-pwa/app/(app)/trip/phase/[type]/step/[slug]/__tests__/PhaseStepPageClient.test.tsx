@@ -23,11 +23,14 @@ const mockNotify = vi.fn()
 const mockEnqueuePhase = vi.fn()
 const mockSubmitPhase = vi.fn()
 const mockRefetchTrip = vi.fn()
+// The success path adopts the trip the submit already returned instead of refetching it.
+const mockAdoptTrip = vi.fn()
 
 interface MockTripState {
   trip: Trip
   isLoading: boolean
   refetchTrip: typeof mockRefetchTrip
+  adoptTrip: typeof mockAdoptTrip
 }
 
 let tripState: MockTripState
@@ -37,14 +40,26 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockRouterPush, replace: mockRouterReplace, back: vi.fn() }),
 }))
 vi.mock('@/lib/hooks/useTrip', () => ({ useTrip: () => tripState }))
+// The step pages take a GPS fix silently at submit time (lib/context/LocationContext.tsx).
+// Mocked like every other hook here so these tests stay about submission behaviour, and
+// so the fix is a known value the payload assertions can check for.
+const mockCapturePosition = vi.fn(async () => ({ lat: -26.09, lng: 28.13, accuracyM: 8 }))
+vi.mock('@/lib/hooks/useLocationTrail', () => ({
+  useLocationTrail: () => ({ capturePosition: mockCapturePosition, recordHere: vi.fn() }),
+}))
+
 vi.mock('@/lib/hooks/useToast', () => ({ useToast: () => ({ notify: mockNotify }) }))
 vi.mock('@/lib/hooks/useOfflineQueue', () => ({
   useOfflineQueue: () => ({ enqueuePhase: mockEnqueuePhase }),
 }))
 vi.mock('@/lib/api/phases', () => ({ submitPhase: (...args: unknown[]) => mockSubmitPhase(...args) }))
 
-function AdvanceApproachGateStub({ onComplete }: { onComplete: () => void }) {
-  return <button onClick={onComplete}>advance-approach-gate</button>
+// departure's recipe is ['2-capture-seal', '3-waybill', '4-departure'], so its first
+// step is the mid-phase "advance, don't submit" case. It used to be activation's
+// '1-approach-gate', which no longer exists — activation is a single step now that its
+// GPS capture happens silently at submit.
+function AdvanceCaptureSealStub({ onComplete }: { onComplete: () => void }) {
+  return <button onClick={onComplete}>advance-capture-seal</button>
 }
 
 function SubmitVerificationStub({ onComplete }: { onComplete: () => void }) {
@@ -57,7 +72,7 @@ function SubmitLoadingStub({ onComplete }: { onComplete: () => void }) {
 
 vi.mock('@/components/phase/steps/registry', () => ({
   stepComponentFor: (phaseType: string, slug: string) => {
-    if (phaseType === 'activation' && slug === '1-approach-gate') return AdvanceApproachGateStub
+    if (phaseType === 'departure' && slug === '2-capture-seal') return AdvanceCaptureSealStub
     if (phaseType === 'activation' && slug === '2-verification') return SubmitVerificationStub
     if (phaseType === 'loading' && slug === '1-visual-count') return SubmitLoadingStub
     return undefined
@@ -153,7 +168,7 @@ describe('type-mismatch guard', () => {
       makePhase({ phase_type: 'activation', sequence_number: 1, status: 'completed' }),
       makePhase({ phase_event_id: LOADING_PE, phase_type: 'loading', sequence_number: 2, status: 'in_progress' }),
     ])
-    tripState = { trip, isLoading: false, refetchTrip: mockRefetchTrip }
+    tripState = { trip, isLoading: false, refetchTrip: mockRefetchTrip, adoptTrip: mockAdoptTrip }
     mockUseParams.mockReturnValue({ type: 'activation', slug: '2-verification' })
 
     render(<PhaseStepPageClient />)
@@ -163,27 +178,27 @@ describe('type-mismatch guard', () => {
   })
 
   it('renders normally when the URL phase type matches the ledger\'s current phase', () => {
-    const trip = makeTrip([makePhase({ phase_type: 'activation', sequence_number: 1, status: 'in_progress' })])
-    tripState = { trip, isLoading: false, refetchTrip: mockRefetchTrip }
-    mockUseParams.mockReturnValue({ type: 'activation', slug: '1-approach-gate' })
+    const trip = makeTrip([makePhase({ phase_type: 'departure', sequence_number: 1, status: 'in_progress' })])
+    tripState = { trip, isLoading: false, refetchTrip: mockRefetchTrip, adoptTrip: mockAdoptTrip }
+    mockUseParams.mockReturnValue({ type: 'departure', slug: '2-capture-seal' })
 
     render(<PhaseStepPageClient />)
 
-    expect(screen.getByText('advance-approach-gate')).toBeInTheDocument()
+    expect(screen.getByText('advance-capture-seal')).toBeInTheDocument()
     expect(mockRouterReplace).not.toHaveBeenCalled()
   })
 })
 
 describe('mid-phase step — advance only, no submit', () => {
   it('navigates to the next slug in the SAME phase recipe without calling submitPhase', () => {
-    const trip = makeTrip([makePhase({ phase_type: 'activation', sequence_number: 1, status: 'in_progress' })])
-    tripState = { trip, isLoading: false, refetchTrip: mockRefetchTrip }
-    mockUseParams.mockReturnValue({ type: 'activation', slug: '1-approach-gate' })
+    const trip = makeTrip([makePhase({ phase_type: 'departure', sequence_number: 1, status: 'in_progress' })])
+    tripState = { trip, isLoading: false, refetchTrip: mockRefetchTrip, adoptTrip: mockAdoptTrip }
+    mockUseParams.mockReturnValue({ type: 'departure', slug: '2-capture-seal' })
 
     render(<PhaseStepPageClient />)
-    fireEvent.click(screen.getByText('advance-approach-gate'))
+    fireEvent.click(screen.getByText('advance-capture-seal'))
 
-    expect(mockRouterPush).toHaveBeenCalledWith('/trip/phase/activation/step/2-verification')
+    expect(mockRouterPush).toHaveBeenCalledWith('/trip/phase/departure/step/3-waybill')
     expect(mockSubmitPhase).not.toHaveBeenCalled()
   })
 })
@@ -194,7 +209,7 @@ describe('final step — submits on the phase recipe\'s last slug', () => {
       makePhase({ phase_event_id: LOADING_PE, phase_type: 'loading', sequence_number: 2, status: 'in_progress' }),
       makePhase({ phase_type: 'departure', sequence_number: 3, status: 'pending' }),
     ])
-    tripState = { trip, isLoading: false, refetchTrip: mockRefetchTrip }
+    tripState = { trip, isLoading: false, refetchTrip: mockRefetchTrip, adoptTrip: mockAdoptTrip }
     mockUseParams.mockReturnValue({ type: 'loading', slug: '1-visual-count' })
     const freshTrip = makeTrip([
       { ...trip.phases[0], status: 'completed' },
@@ -208,8 +223,9 @@ describe('final step — submits on the phase recipe\'s last slug', () => {
 
     await waitFor(() => expect(mockSubmitPhase).toHaveBeenCalledWith(
       TRIP_ID, LOADING_PE, 'loading', expect.anything(), expect.any(String),
+      { lat: -26.09, lng: 28.13, accuracyM: 8 },
     ))
-    await waitFor(() => expect(mockRouterPush).toHaveBeenCalledWith('/trip/phase/departure/step/1-approach-exit'))
+    await waitFor(() => expect(mockRouterPush).toHaveBeenCalledWith('/trip/phase/departure/step/2-capture-seal'))
     expect(mockNotify).toHaveBeenCalledWith(expect.objectContaining({ kind: 'success', title: 'Loading recorded' }))
   })
 })
@@ -217,7 +233,7 @@ describe('final step — submits on the phase recipe\'s last slug', () => {
 describe('409 duplicate-submit detection via the addressed phase\'s own status', () => {
   it('a 409 whose addressed phase already reads "completed" is treated as an earlier success, not a failure', async () => {
     const trip = makeTrip([makePhase({ phase_event_id: LOADING_PE, phase_type: 'loading', sequence_number: 2, status: 'in_progress' })])
-    tripState = { trip, isLoading: false, refetchTrip: mockRefetchTrip }
+    tripState = { trip, isLoading: false, refetchTrip: mockRefetchTrip, adoptTrip: mockAdoptTrip }
     mockUseParams.mockReturnValue({ type: 'loading', slug: '1-visual-count' })
     mockSubmitPhase.mockRejectedValue(new ApiError(409, 'already resolved'))
     const fetchedAfterConflict = makeTrip([{ ...trip.phases[0], status: 'completed' }])
@@ -234,7 +250,7 @@ describe('409 duplicate-submit detection via the addressed phase\'s own status',
 
   it('a 409 whose addressed phase is still pending is a genuine conflict — error toast, no navigation', async () => {
     const trip = makeTrip([makePhase({ phase_event_id: LOADING_PE, phase_type: 'loading', sequence_number: 2, status: 'in_progress' })])
-    tripState = { trip, isLoading: false, refetchTrip: mockRefetchTrip }
+    tripState = { trip, isLoading: false, refetchTrip: mockRefetchTrip, adoptTrip: mockAdoptTrip }
     mockUseParams.mockReturnValue({ type: 'loading', slug: '1-visual-count' })
     mockSubmitPhase.mockRejectedValue(new ApiError(409, 'sequence error'))
     // Still pending on refetch — this really is a genuine conflict, not a replay.
@@ -253,14 +269,19 @@ describe('409 duplicate-submit detection via the addressed phase\'s own status',
 describe('offline-queued submit', () => {
   it('queues the evidence and routes to the trip hub, not the next phase\'s URL', async () => {
     const trip = makeTrip([makePhase({ phase_event_id: LOADING_PE, phase_type: 'loading', sequence_number: 2, status: 'in_progress' })])
-    tripState = { trip, isLoading: false, refetchTrip: mockRefetchTrip }
+    tripState = { trip, isLoading: false, refetchTrip: mockRefetchTrip, adoptTrip: mockAdoptTrip }
     mockUseParams.mockReturnValue({ type: 'loading', slug: '1-visual-count' })
     mockSubmitPhase.mockRejectedValue(new TypeError('network down'))
 
     render(<PhaseStepPageClient />)
     fireEvent.click(screen.getByText('submit-loading'))
 
-    await waitFor(() => expect(mockEnqueuePhase).toHaveBeenCalledWith(TRIP_ID, LOADING_PE, 'loading', expect.anything()))
+    // The position is queued WITH the entry, so a replay hours later still reports where
+    // the driver was when they swiped rather than where they regained signal.
+    await waitFor(() => expect(mockEnqueuePhase).toHaveBeenCalledWith(
+      TRIP_ID, LOADING_PE, 'loading', expect.anything(),
+      { lat: -26.09, lng: 28.13, accuracyM: 8 },
+    ))
     expect(mockNotify).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'success', body: expect.stringContaining('stored on this device') }),
     )

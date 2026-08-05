@@ -9,11 +9,12 @@ import { api } from './client'
 import type { Trip } from '@shared/lib/types/trip'
 import type { PhaseStatus, PhaseType } from '@shared/lib/types/phase'
 import type {
-  ActivationEvidence, ConfirmationEvidence, DepartureEvidence, LoadingEvidence,
+  ConfirmationEvidence, DepartureEvidence, LoadingEvidence,
   PhaseEvidence, UnloadingEvidence,
 } from '@/lib/types/evidence-draft'
+import type { DriverPosition } from '@/lib/types/location'
 import { IS_DEMO_MODE } from '@/lib/constants/env'
-import { uploadArtifact } from './artifacts'
+import { uploadArtifact, type ArtifactType } from './artifacts'
 
 // Every variant carries idempotency_key — the offline-queue entry id (or an
 // online-path equivalent generated the same way, see submitPhase below), so a
@@ -52,6 +53,10 @@ export interface DepartureCompleteRequest extends PhaseCompleteRequestBase {
 export interface UnloadingCompleteRequest extends PhaseCompleteRequestBase {
   phase_type: Extract<PhaseType, 'unloading'>
   seal_number_at_destination: string
+  // The seal as found at destination, intact, before the warehouse breaks it — required,
+  // not optional, and named for the PhaseEvent column it reuses rather than for what it
+  // depicts (see UnloadingEvidence.sealIntactPhotoDataUrl). Omitting it 422s.
+  gate_photo_artifact_id: string
 }
 
 export interface ConfirmationCompleteRequest extends PhaseCompleteRequestBase {
@@ -97,6 +102,32 @@ export const completePhase = (
     { timeoutMs: PHASE_SUBMIT_TIMEOUT_MS },
   )
 
+// Spreads the fix onto a completion body, or contributes nothing when there isn't one.
+// Omitting the keys (rather than sending nulls) is what keeps a failed capture from
+// overwriting a position an earlier attempt of this same submission already stored —
+// the backend's _record_driver_position only writes when both arrive.
+function driverPosition(position: DriverPosition | null): {
+  driver_phone_lat?: number
+  driver_phone_lng?: number
+} {
+  if (position === null) return {}
+  return { driver_phone_lat: position.lat, driver_phone_lng: position.lng }
+}
+
+// Resolves the artifact id for one captured photo: the id the early upload already
+// produced (lib/hooks/useArtifactUpload.ts, started when the driver took the shot), or
+// an upload right now if that never landed — offline at capture, or a failed request.
+// The fallback is what keeps "upload early" a pure optimisation: no path can reach the
+// server without the photo.
+async function artifactIdFor(
+  tripId: string, artifactType: ArtifactType, readyId: string | null,
+  dataUrl: string, capturedAt: string,
+): Promise<string> {
+  if (readyId !== null) return readyId
+  const uploaded = await uploadArtifact({ tripId, artifactType, dataUrl, capturedAt })
+  return uploaded.id
+}
+
 export interface SubmitPhaseResult {
   ok: boolean
   // The backend's updated TripDetail from the complete call. Null in demo mode (no
@@ -126,12 +157,20 @@ export interface SubmitPhaseResult {
 // must generate theirs with `crypto.randomUUID()` too, once per logical submission
 // attempt and reused across its own retries, so the online and replay paths are
 // identical from the server's point of view.
+//
+// `position` is the driver's phone fix, taken silently by the caller at submit time
+// (lib/context/LocationContext.tsx) — there is no longer a step that asks the driver to
+// capture one. It rides on the wire for EVERY phase, because phase_events has always had
+// driver_phone_lat/lng on every row and the backend now persists them for every phase.
+// Null is legal and normal (a warehouse roof, a denied permission) and never blocks a
+// submission — except for activation, whose origin-gate position the backend requires.
 export async function submitPhase(
   tripId: string,
   phaseEventId: string,
   phaseType: PhaseType,
   evidence: PhaseEvidence,
   idempotencyKey: string,
+  position: DriverPosition | null,
 ): Promise<SubmitPhaseResult> {
   if (IS_DEMO_MODE) {
     await new Promise<void>((resolve) => setTimeout(resolve, 400))
@@ -147,14 +186,19 @@ export async function submitPhase(
 
   switch (phaseType) {
     case 'activation': {
-      const e = evidence as ActivationEvidence
-      if (e.gpsLat === null || e.gpsLng === null) {
-        throw new Error('Activation evidence incomplete — GPS is required.')
+      // The one phase that cannot proceed without a fix: activation records WHERE the
+      // trip started, and ActivationCompleteRequest makes the coordinates required. The
+      // message tells the driver what to do about it, because the only remedy is
+      // physical (move to open sky) or in the OS settings.
+      if (position === null) {
+        throw new Error(
+          'Could not get your location. Move to open sky, check that Location is enabled for this app, and swipe again.',
+        )
       }
       updatedTrip = await completePhase(tripId, phaseEventId, {
         phase_type: 'activation',
-        driver_phone_lat: e.gpsLat,
-        driver_phone_lng: e.gpsLng,
+        driver_phone_lat: position.lat,
+        driver_phone_lng: position.lng,
         idempotency_key: idempotencyKey,
       })
       break
@@ -166,6 +210,7 @@ export async function submitPhase(
       }
       updatedTrip = await completePhase(tripId, phaseEventId, {
         phase_type: 'loading',
+        ...driverPosition(position),
         driver_visual_count: e.driverVisualCount,
         idempotency_key: idempotencyKey,
       })
@@ -176,15 +221,16 @@ export async function submitPhase(
       if (e.waybillPhotoDataUrl === null || e.sealPhotoDataUrl === null || e.sealNumber === null) {
         throw new Error('Departure evidence incomplete — waybill photo, seal photo, and seal number are required.')
       }
-      const [waybillPhoto, sealPhoto] = await Promise.all([
-        uploadArtifact({ tripId, artifactType: 'photo', dataUrl: e.waybillPhotoDataUrl, capturedAt }),
-        uploadArtifact({ tripId, artifactType: 'photo', dataUrl: e.sealPhotoDataUrl, capturedAt }),
+      const [waybillPhotoId, sealPhotoId] = await Promise.all([
+        artifactIdFor(tripId, 'photo', e.waybillPhotoArtifactId, e.waybillPhotoDataUrl, capturedAt),
+        artifactIdFor(tripId, 'photo', e.sealPhotoArtifactId, e.sealPhotoDataUrl, capturedAt),
       ])
       updatedTrip = await completePhase(tripId, phaseEventId, {
         phase_type: 'departure',
-        waybill_photo_artifact_id: waybillPhoto.id,
+        ...driverPosition(position),
+        waybill_photo_artifact_id: waybillPhotoId,
         seal_number: e.sealNumber,
-        seal_photo_artifact_id: sealPhoto.id,
+        seal_photo_artifact_id: sealPhotoId,
         // The boolean is only a fallback: the server compares seal_number_confirmed
         // against THIS SAME request's seal_number (authoritative) whenever it's
         // present. sealVerifiedMatch is computed against a device-local seal reference
@@ -200,12 +246,23 @@ export async function submitPhase(
     }
     case 'unloading': {
       const e = evidence as UnloadingEvidence
-      if (e.sealNumberAtDestination === null) {
-        throw new Error('Unloading evidence incomplete — seal number is required.')
+      // Truthiness, not `=== null`, unlike the other phases here: an unloading queued
+      // offline BEFORE this field existed replays from localStorage with the property
+      // absent entirely (useOfflineQueue persists the raw draft), and `undefined === null`
+      // is false — which would let a stale entry through and send an undefined artifact id.
+      if (e.sealNumberAtDestination === null || !e.sealIntactPhotoDataUrl) {
+        throw new Error('Unloading evidence incomplete — seal number and intact seal photo are required.')
       }
+      const sealIntactPhotoId = await artifactIdFor(
+        // Same reason: a stale entry has no artifact id property at all, and artifactIdFor
+        // treats any non-null readyId as usable.
+        tripId, 'photo', e.sealIntactPhotoArtifactId ?? null, e.sealIntactPhotoDataUrl, capturedAt,
+      )
       updatedTrip = await completePhase(tripId, phaseEventId, {
         phase_type: 'unloading',
+        ...driverPosition(position),
         seal_number_at_destination: e.sealNumberAtDestination,
+        gate_photo_artifact_id: sealIntactPhotoId,
         idempotency_key: idempotencyKey,
       })
       break
@@ -215,14 +272,15 @@ export async function submitPhase(
       if (e.podPhotoDataUrl === null || !e.podSignatureDataUrl || e.driverVisualCount === null) {
         throw new Error('Confirmation evidence incomplete — POD photo, signature, and visual count are required.')
       }
-      const [podPhoto, podSignature] = await Promise.all([
-        uploadArtifact({ tripId, artifactType: 'photo', dataUrl: e.podPhotoDataUrl, capturedAt }),
-        uploadArtifact({ tripId, artifactType: 'document', dataUrl: e.podSignatureDataUrl, capturedAt }),
+      const [podPhotoId, podSignatureId] = await Promise.all([
+        artifactIdFor(tripId, 'photo', e.podPhotoArtifactId, e.podPhotoDataUrl, capturedAt),
+        artifactIdFor(tripId, 'document', e.podSignatureArtifactId, e.podSignatureDataUrl, capturedAt),
       ])
       updatedTrip = await completePhase(tripId, phaseEventId, {
         phase_type: 'confirmation',
-        pod_photo_artifact_id: podPhoto.id,
-        pod_signature_artifact_id: podSignature.id,
+        ...driverPosition(position),
+        pod_photo_artifact_id: podPhotoId,
+        pod_signature_artifact_id: podSignatureId,
         driver_visual_count: e.driverVisualCount,
         // pp_scan_in_count isn't captured anywhere in the driver UI (it's the Parcel
         // Perfect scan-in count, not a driver-entered value) — Parcel Perfect

@@ -459,6 +459,7 @@ async def test_create_trip_anchor_failure_still_rolls_back_whole_trip(db_session
 
 def _driver_trip(
     *, org, client_org, user, driver, horse, origin, dest, reference, status, created_at=None,
+    planned_departure_at: datetime | None = None,
 ):
     return Trip(
         id=uuid.uuid4(), trip_reference=reference, order_number=f"ORD-{reference}",
@@ -466,6 +467,7 @@ def _driver_trip(
         driver_id=driver.id, horse_id=horse.id,
         origin_precinct_id=origin.id, destination_precinct_id=dest.id,
         status=status, created_by_user_id=user.id,
+        planned_departure_at=planned_departure_at,
         **({"created_at": created_at} if created_at is not None else {}),
     )
 
@@ -532,6 +534,111 @@ async def test_active_trip_falls_back_to_created_when_nothing_activated(
 
     assert current is not None
     assert current.trip_reference == "FP-UNIT-ONLY-ASSIGNED"
+
+
+@pytest.mark.asyncio
+async def test_active_trip_prefers_soonest_departure_over_newest_assignment(
+    db_session, create_trip_seed,
+) -> None:
+    """The reported bug: Home offered the later-departing of two assignments.
+
+    Nothing is activated, so both trips share the CREATED rank. The trip leaving the day
+    after next was the one the dispatcher captured most recently, and created_at ordering
+    was enough to make it the driver's "current" trip while the one leaving tomorrow sat
+    unstarted — the opposite of the order phase_service's gates let them be worked in.
+    """
+    from app.orchestration.trip_service import get_active_trip_for_driver
+
+    operator_org, user, driver, horse, origin, dest = create_trip_seed
+    client_org = (await db_session.execute(
+        select(Organization).where(Organization.org_type == OrganizationType.PRINCIPAL)
+    )).scalars().first()
+    now = datetime.now(UTC)
+
+    departs_sooner = _driver_trip(
+        org=operator_org, client_org=client_org, user=user, driver=driver, horse=horse,
+        origin=origin, dest=dest, reference="FP-UNIT-DEPARTS-SOONER", status=TripStatus.CREATED,
+        planned_departure_at=now + timedelta(days=1), created_at=now - timedelta(hours=2),
+    )
+    departs_later_captured_last = _driver_trip(
+        org=operator_org, client_org=client_org, user=user, driver=driver, horse=horse,
+        origin=origin, dest=dest, reference="FP-UNIT-DEPARTS-LATER", status=TripStatus.CREATED,
+        planned_departure_at=now + timedelta(days=2), created_at=now - timedelta(minutes=5),
+    )
+    db_session.add_all([departs_sooner, departs_later_captured_last])
+    await db_session.flush()
+
+    current = await get_active_trip_for_driver(db_session, driver_id=driver.id)
+
+    assert current is not None
+    assert current.trip_reference == "FP-UNIT-DEPARTS-SOONER"
+
+
+@pytest.mark.asyncio
+async def test_active_trip_sorts_an_unscheduled_assignment_last(
+    db_session, create_trip_seed,
+) -> None:
+    """A trip with no planned departure cannot be the "next" one to leave, however
+    recently it was captured — it has no place in the queue at all until it is scheduled."""
+    from app.orchestration.trip_service import get_active_trip_for_driver
+
+    operator_org, user, driver, horse, origin, dest = create_trip_seed
+    client_org = (await db_session.execute(
+        select(Organization).where(Organization.org_type == OrganizationType.PRINCIPAL)
+    )).scalars().first()
+    now = datetime.now(UTC)
+
+    scheduled = _driver_trip(
+        org=operator_org, client_org=client_org, user=user, driver=driver, horse=horse,
+        origin=origin, dest=dest, reference="FP-UNIT-SCHEDULED", status=TripStatus.CREATED,
+        planned_departure_at=now + timedelta(days=3), created_at=now - timedelta(hours=2),
+    )
+    unscheduled = _driver_trip(
+        org=operator_org, client_org=client_org, user=user, driver=driver, horse=horse,
+        origin=origin, dest=dest, reference="FP-UNIT-UNSCHEDULED", status=TripStatus.CREATED,
+        planned_departure_at=None, created_at=now - timedelta(minutes=5),
+    )
+    db_session.add_all([scheduled, unscheduled])
+    await db_session.flush()
+
+    current = await get_active_trip_for_driver(db_session, driver_id=driver.id)
+
+    assert current is not None
+    assert current.trip_reference == "FP-UNIT-SCHEDULED"
+
+
+@pytest.mark.asyncio
+async def test_active_trip_keeps_the_underway_trip_over_a_sooner_assignment(
+    db_session, create_trip_seed,
+) -> None:
+    """Departure order decides WITHIN a rank, never across one. A trip the driver is
+    physically on outranks an assignment even when that assignment leaves sooner —
+    otherwise a mis-scheduled row would yank Home away mid-journey."""
+    from app.orchestration.trip_service import get_active_trip_for_driver
+
+    operator_org, user, driver, horse, origin, dest = create_trip_seed
+    client_org = (await db_session.execute(
+        select(Organization).where(Organization.org_type == OrganizationType.PRINCIPAL)
+    )).scalars().first()
+    now = datetime.now(UTC)
+
+    underway = _driver_trip(
+        org=operator_org, client_org=client_org, user=user, driver=driver, horse=horse,
+        origin=origin, dest=dest, reference="FP-UNIT-UNDERWAY", status=TripStatus.ACTIVE,
+        planned_departure_at=now + timedelta(days=2),
+    )
+    assignment_leaving_sooner = _driver_trip(
+        org=operator_org, client_org=client_org, user=user, driver=driver, horse=horse,
+        origin=origin, dest=dest, reference="FP-UNIT-SOONER-ASSIGNMENT", status=TripStatus.CREATED,
+        planned_departure_at=now + timedelta(hours=1),
+    )
+    db_session.add_all([underway, assignment_leaving_sooner])
+    await db_session.flush()
+
+    current = await get_active_trip_for_driver(db_session, driver_id=driver.id)
+
+    assert current is not None
+    assert current.trip_reference == "FP-UNIT-UNDERWAY"
 
 
 @pytest.mark.asyncio

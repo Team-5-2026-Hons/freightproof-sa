@@ -19,6 +19,7 @@ from app.core.exceptions import (
     PhaseTooEarlyError,
     PhaseTypeMismatchError,
     ResourceNotFoundError,
+    TripActivationBlockedError,
 )
 from app.db.models.trips import TripStop
 from app.db.session import get_db
@@ -97,9 +98,13 @@ async def complete_phase_endpoint(
         )
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except (PhaseSequenceError, PhaseTooEarlyError, PhaseTypeMismatchError) as exc:
+    except (
+        PhaseSequenceError, PhaseTooEarlyError, PhaseTypeMismatchError,
+        TripActivationBlockedError,
+    ) as exc:
         # PhaseTooEarlyError joins the 409 family rather than getting a status of its own:
         # like the others it means "the request is well-formed, the trip's state says no".
         # Its detail string is written to be read by the driver, and the PWA surfaces it
-        # verbatim, so the date reaches the person who needs it.
+        # verbatim, so the date reaches the person who needs it. TripActivationBlockedError
+        # is here for the same reason, and names the trip standing in the way.
         raise HTTPException(status_code=http_status.HTTP_409_CONFLICT, detail=str(exc)) from exc
