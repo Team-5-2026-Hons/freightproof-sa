@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { DispatcherShell } from '@/components/layout/DispatcherShell'
+import { RealtimeProvider } from '@/lib/realtime/RealtimeProvider'
 import { ROUTES } from '@/lib/constants/routes'
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -18,5 +19,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   if (isLoading || !user) return null
 
-  return <DispatcherShell>{children}</DispatcherShell>
+  // Mounted here (inside the auth gate) so the single SSE connection exists only for a
+  // signed-in dispatcher, and tears down on sign-out when this layout unmounts.
+  return (
+    <RealtimeProvider>
+      <DispatcherShell>{children}</DispatcherShell>
+    </RealtimeProvider>
+  )
 }

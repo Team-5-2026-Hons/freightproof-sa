@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ResourceNotFoundError
+from app.core.realtime import RealtimeKind, TripEvent, enqueue_event
 from app.db.models.enums import ExceptionSeverity, ExceptionSource, ExceptionType
 from app.db.models.trips import Trip
 from app.db.models.transit import TripException
@@ -47,4 +48,9 @@ async def raise_exception(
     db.add(exc)
     await db.flush()
     await db.refresh(exc)
+
+    # Notify dispatchers watching this trip so the exception surfaces live (published on
+    # commit, D9). A thin ping — the exception's GPS/description never crosses the channel.
+    enqueue_event(db, trip.operator_organization_id, TripEvent(id=trip_id, kind=RealtimeKind.EXCEPTION_RAISED))
+
     return TripExceptionRead.model_validate(exc)

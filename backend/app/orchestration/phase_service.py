@@ -55,6 +55,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.blockchain.anchor_service import anchor_subject, compute_payload_hash
 from app.core.config import settings
+from app.core.realtime import RealtimeKind, TripEvent, enqueue_event
 from app.core.exceptions import (
     HederaServiceError, HederaTimeoutError, PhaseSequenceError, PhaseTooEarlyError,
     PhaseTypeMismatchError, ResourceNotFoundError,
@@ -283,6 +284,13 @@ async def _finish_phase(
     event.completed_at = event.completed_at or datetime.now(UTC)
     await recompute_position(db, trip)
     await db.flush()
+
+    # Notify dispatchers watching this trip. The completion may also have CLOSED the trip
+    # (advance_confirmation, phase_service.py) — distinguish the two so the UI raises the
+    # right signal. Published on commit, never here (D9); a thin ping, no trip data.
+    kind = RealtimeKind.TRIP_CLOSED if TripStatus(trip.status) == TripStatus.CLOSED else RealtimeKind.PHASE_COMPLETED
+    enqueue_event(db, trip.operator_organization_id, TripEvent(id=trip.id, kind=kind))
+
     return await get_trip_detail(db, trip_id=trip.id, operator_organization_id=trip.operator_organization_id)
 
 

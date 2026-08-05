@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { X, Shield } from 'lucide-react'
 import { Ic } from '@/components/ui/Ic'
+import { LiveBadge } from '@/components/layout/LiveBadge'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useExceptions } from '@/lib/hooks/useExceptions'
 import { cn } from '@shared/lib/utils/cn'
@@ -193,6 +194,10 @@ function SidebarContent({ onClose }: SidebarContentProps) {
             )}
           </div>
           <div className="text-[10px] text-white/40">{roleLabel(user?.role)}</div>
+        </div>
+        {/* Live-connection indicator for the dispatcher's real-time stream. */}
+        <div className="ml-auto shrink-0">
+          <LiveBadge />
         </div>
       </div>
     </div>
