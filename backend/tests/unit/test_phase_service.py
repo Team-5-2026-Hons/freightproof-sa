@@ -366,8 +366,10 @@ async def test_replayed_completion_is_idempotent_returns_200_no_duplicate(db_ses
     departure_first = next(h for h in first.phases if h.phase_type == PhaseType.DEPARTURE)
     departure_second = next(h for h in second.phases if h.phase_type == PhaseType.DEPARTURE)
     assert departure_first.id == departure_second.id
+    # Neither call anchors in-request any more, so the property that matters is that the
+    # replay short-circuits before reaching the anchor path at all — one dispatch, not two.
     assert departure_first.blockchain_receipt_id == departure_second.blockchain_receipt_id
-    assert stub_hedera_service.return_value.submit_hash.call_count == 1
+    assert stub_hedera_service.return_value.submit_hash.call_count == 0
 
 
 @pytest.mark.asyncio
@@ -430,14 +432,13 @@ async def test_advance_departure_happy_path_completes(db_session, trip_fixture):
     departure = next(h for h in result.phases if h.phase_type == PhaseType.DEPARTURE)
     assert departure.status == PhaseStatus.COMPLETED
     assert departure.seal_number == "AB-1234"
+    # The hash is still computed in-request — it is derived from this request's own
+    # evidence. Only the Hedera submit moved to the worker, so no receipt exists yet and
+    # anchor_status still reads PENDING. See test_anchor_phase_event_* below for the
+    # worker half, and _dispatch_anchor for why the split is safe.
     assert departure.event_hash is not None
-    assert departure.blockchain_receipt_id is not None
-
-    receipt = (await db_session.execute(
-        select(BlockchainReceipt).where(BlockchainReceipt.id == departure.blockchain_receipt_id)
-    )).scalar_one()
-    assert receipt.data_hash == departure.event_hash
-    assert receipt.receipt_type == BlockchainReceiptType.PICKUP
+    assert departure.blockchain_receipt_id is None
+    assert departure.anchor_status == AnchorStatus.PENDING
 
 
 @pytest.mark.asyncio
@@ -501,8 +502,9 @@ async def test_advance_departure_guard_refused_creates_exception_but_departs(db_
     assert result.exceptions[0].severity == ExceptionSeverity.CRITICAL
     departure = next(h for h in result.phases if h.phase_type == PhaseType.DEPARTURE)
     assert departure.status == PhaseStatus.EXCEPTION
-    # D7: the anchor runs regardless of the mismatch outcome.
-    assert departure.blockchain_receipt_id is not None
+    # D7: the anchor is queued regardless of the mismatch outcome — a mismatch is
+    # evidence in its own right, not a reason to withhold the receipt.
+    assert departure.anchor_status == AnchorStatus.PENDING
 
 
 @pytest.mark.asyncio
@@ -784,7 +786,7 @@ async def test_advance_confirmation_matching_counts_closes_trip(db_session, trip
     assert result.exceptions == []
 
     h5 = next(h for h in result.phases if h.phase_type == PhaseType.CONFIRMATION)
-    assert h5.blockchain_receipt_id is not None
+    assert h5.blockchain_receipt_id is None  # queued for the worker, not written in-request
 
     receipt = (await db_session.execute(
         select(BlockchainReceipt).where(BlockchainReceipt.id == h5.blockchain_receipt_id)
@@ -794,7 +796,7 @@ async def test_advance_confirmation_matching_counts_closes_trip(db_session, trip
 
     # anchor_status wasn't touched by any code path before task 2.5 — a successful
     # anchor must now be reflected as ANCHORED, not left at the plan generator's PENDING.
-    assert phases["confirmation"].anchor_status == AnchorStatus.ANCHORED
+    assert phases["confirmation"].anchor_status == AnchorStatus.PENDING
 
 
 @pytest.mark.asyncio
@@ -862,7 +864,8 @@ async def test_advance_confirmation_count_mismatch_creates_exception_but_still_c
 
     h5 = next(h for h in result.phases if h.phase_type == PhaseType.CONFIRMATION)
     assert h5.status == PhaseStatus.EXCEPTION
-    assert h5.blockchain_receipt_id is not None  # anchored despite the mismatch — the mismatch is evidence too
+    # Queued despite the mismatch — the mismatch is evidence too.
+    assert phases["confirmation"].anchor_status == AnchorStatus.PENDING
     assert result.exceptions[0].exception_type == ExceptionType.WAYBILL_COUNT_MISMATCH
 
 

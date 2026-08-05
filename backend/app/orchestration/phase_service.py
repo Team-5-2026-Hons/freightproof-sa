@@ -38,12 +38,23 @@ Hedera failure is caught, event.anchor_status is set to FAILED (a retry is
 owed) instead of raising, and the phase still completes — a seal/delivery
 event is evidence that already happened and must not be blocked by a Hedera
 outage. event.anchor_status is set to ANCHORED on success.
+
+Neither anchor is AWAITED any more (2026-08-05). _dispatch_anchor queues the
+Hedera submit on the Celery worker once this request's transaction commits,
+because a ~4-6s submit inside the request meant the driver stood holding the
+swipe control for the whole round trip. The phase completes and returns with
+anchor_status still PENDING; the receipt lands moments later and the driver
+app already renders that interval ("anchoring in progress", AnchorProgress).
+If the broker is unreachable the anchor runs inline exactly as it used to —
+nothing in this codebase retries a FAILED anchor, so a dropped dispatch would
+mean permanently unanchored evidence.
 advance_activation, advance_loading, advance_unloading remain unanchored
 feeders by design — they record cross-checks (GPS, driver visual count, seal
 continuity at destination) that support the anchored departure/confirmation
 phases but are not themselves committed to chain.
 """
 
+import asyncio
 import logging
 import uuid
 from collections.abc import Awaitable, Callable
@@ -51,6 +62,7 @@ from datetime import UTC, date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 
+from sqlalchemy import event as event_module
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -181,6 +193,100 @@ async def recompute_position(db: AsyncSession, trip: Trip) -> None:
     trip.current_stop = None
     trip.status = TripStatus.CLOSED
     trip.closed_at = datetime.now(UTC)
+
+
+async def anchor_phase_event(
+    db: AsyncSession, *, phase_event_id: uuid.UUID,
+    canonical_payload: dict[str, Any], receipt_type: BlockchainReceiptType,
+) -> bool:
+    """Load a phase event by id and anchor it. Returns whether a receipt was written.
+
+    The entry point tasks/blockchain.py re-enters this module through, so the anchoring
+    contract (canonical payload in, fail-open on Hedera trouble) stays defined here
+    rather than being duplicated in a worker.
+    """
+    result = await db.execute(select(PhaseEvent).where(PhaseEvent.id == phase_event_id))
+    event = result.scalar_one_or_none()
+    if event is None:
+        # Nothing to anchor and nothing to retry — the row a receipt was owed against is
+        # gone. Loud, because it should be impossible: the dispatch only happens after
+        # the transaction that wrote this row has committed.
+        logger.error("Anchor requested for unknown phase_event_id=%s", phase_event_id)
+        return False
+    await _anchor_or_fail_open(
+        db, event=event, canonical_payload=canonical_payload, receipt_type=receipt_type,
+    )
+    return event.anchor_status == AnchorStatus.ANCHORED
+
+
+def _dispatch_anchor(
+    db: AsyncSession, *, event: PhaseEvent,
+    canonical_payload: dict[str, Any], receipt_type: BlockchainReceiptType,
+) -> None:
+    """Queue this event's anchor for the worker, AFTER this request's transaction commits.
+
+    Anchoring moved off the request path because a Hedera submit takes ~4-6s and the
+    driver was holding a swipe control for all of it. The phase is evidence the moment it
+    is written; the receipt is a separate fact that lands shortly after, which is exactly
+    what anchor_status (PENDING -> ANCHORED/FAILED) and the driver app's "anchoring in
+    progress" state already describe.
+
+    Two things make this safe rather than merely faster:
+
+    * It fires on after_commit, never before. The worker opens its OWN session, so a task
+      dispatched mid-transaction could look for a phase_event row that isn't committed yet
+      and find nothing.
+    * If the broker cannot be reached, it anchors INLINE instead, exactly as this code did
+      before. Nothing in this codebase retries an anchor_status = FAILED debt, so a
+      silently dropped dispatch would mean permanently unanchored evidence — a slow
+      submit is a far better failure than that.
+    """
+    # Imported at call time: tasks/blockchain.py imports this module back, and Celery's
+    # own import is heavy enough to be worth keeping out of the request path's cold start.
+    from app.tasks.blockchain import anchor_phase_event_task
+
+    event_id = event.id
+    payload = dict(canonical_payload)
+
+    def _send(_session: Any) -> None:
+        try:
+            anchor_phase_event_task.delay(str(event_id), payload, receipt_type.value)
+        except Exception:  # noqa: BLE001 — any broker failure, not just one library's
+            logger.exception(
+                "Could not queue the anchor for phase_event_id=%s — anchoring inline instead",
+                event_id,
+            )
+            _anchor_inline_after_dispatch_failure(
+                phase_event_id=event_id, canonical_payload=payload, receipt_type=receipt_type,
+            )
+
+    # sync_session: SQLAlchemy's event system is synchronous, and after_commit is the
+    # only hook that fires once this request's write is actually durable.
+    event_module.listens_for(db.sync_session, "after_commit", once=True)(_send)
+
+
+def _anchor_inline_after_dispatch_failure(
+    *, phase_event_id: uuid.UUID, canonical_payload: dict[str, Any],
+    receipt_type: BlockchainReceiptType,
+) -> None:
+    """Last-resort synchronous anchor when the broker is unreachable.
+
+    Runs in its own session because the request's transaction has already committed by
+    the time this is reachable (see _dispatch_anchor's after_commit hook), so the anchor
+    lands as its own small write rather than reopening a closed transaction.
+    """
+    from app.tasks.blockchain import _anchor
+
+    try:
+        asyncio.run(_anchor(
+            phase_event_id=phase_event_id,
+            canonical_payload=canonical_payload,
+            receipt_type=receipt_type,
+        ))
+    except Exception:  # noqa: BLE001 — this is already the fallback path
+        logger.exception(
+            "Inline anchor fallback failed for phase_event_id=%s — receipt owed", phase_event_id,
+        )
 
 
 async def _anchor_or_fail_open(
@@ -636,7 +742,10 @@ async def advance_departure(
         phase_event_id=event.id, trip_id=trip_id, seal_number=payload.seal_number,
     )
     event.event_hash = compute_payload_hash(canonical_payload)
-    await _anchor_or_fail_open(
+    # Queued, not awaited: this used to hold the driver's swipe open for the whole
+    # Hedera submit. anchor_status stays PENDING until the worker lands the receipt —
+    # which is precisely what the driver app's "anchoring in progress" state reports.
+    _dispatch_anchor(
         db, event=event, canonical_payload=canonical_payload,
         receipt_type=BlockchainReceiptType.PICKUP,
     )
@@ -750,10 +859,11 @@ async def advance_confirmation(
     )
     event.event_hash = compute_payload_hash(canonical_payload)
 
-    # Anchors unconditionally, fail-open (D7, task 2.5) — a Hedera outage no
-    # longer blocks delivery confirmation from completing; _anchor_or_fail_open
-    # records the debt on event.anchor_status instead of raising.
-    await _anchor_or_fail_open(
+    # Anchors unconditionally, fail-open (D7, task 2.5) — a Hedera outage no longer
+    # blocks delivery confirmation from completing; the anchor path records the debt on
+    # event.anchor_status instead of raising. Queued rather than awaited (see
+    # _dispatch_anchor) so the driver isn't held on the swipe for the Hedera round trip.
+    _dispatch_anchor(
         db, event=event, canonical_payload=canonical_payload,
         receipt_type=BlockchainReceiptType.DELIVERY,
     )
