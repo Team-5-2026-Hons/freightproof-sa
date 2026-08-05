@@ -56,6 +56,7 @@ export function activePhase(phases: readonly PhaseDescriptor[]): PhaseDescriptor
 export function nodeTypeFor(
   phase: PhaseDescriptor,
   activePhaseEventId: PhaseEventId | null,
+  tripStatus?: CoarseTripStatus | null,
 ): PhaseNodeType {
   if (isResolved(phase)) return 'done'
   // Checked before the active test on purpose: an exception phase IS the active one
@@ -65,6 +66,13 @@ export function nodeTypeFor(
   // Reserved for a real in_progress write, which nothing server-side performs today —
   // see the PhaseNodeType doc comment.
   if (phase.status === 'in_progress') return 'active'
+  // A trip created weeks ahead sits dormant until a driver opens it — Activation is
+  // not "next in line" the way every later phase is, it IS the start of the trip.
+  // Rendering it as `next` (the ledger's current gate) reads as "about to happen any
+  // moment", which is false for a trip that may not be touched for days. It stays
+  // `pending`, indistinguishable from a phase that hasn't been reached yet, until the
+  // driver actually activates and trip.status leaves 'created'.
+  if (phase.phase_type === 'activation' && tripStatus === 'created') return 'pending'
   // The ledger's current gate, but still `pending`: nothing has happened yet. A trip
   // created a week ahead must not show its first phase as already under way just
   // because it is next in line — that reads as active work when there is none.
@@ -93,6 +101,24 @@ export function currentSealNumber(phases: readonly PhaseDescriptor[]): string | 
  *  pickup is a different, later loading row and is not the origin count. */
 export function originParcelCount(phases: readonly PhaseDescriptor[]): number | null {
   return sortedPlan(phases).find(phase => phase.phase_type === 'loading')?.parcel_count_origin ?? null
+}
+
+/** The seal applied at THIS unloading's own leg's departure — mirrors the backend's
+ *  _find_departure_for_leg (phase_service.py): the highest-sequence departure strictly
+ *  before this unloading row, never "the trip's" departure. A cross-dock trip has one
+ *  departure per leg, so a trip-wide lookup would compare leg 2's arrival against leg
+ *  1's seal. Null if no preceding departure has a seal recorded yet. */
+export function departureSealForLeg(
+  phases: readonly PhaseDescriptor[],
+  unloadingPhase: PhaseDescriptor,
+): string | null {
+  const departures = sortedPlan(phases).filter(
+    phase => phase.phase_type === 'departure'
+      && phase.sequence_number < unloadingPhase.sequence_number
+      && phase.seal_number !== null,
+  )
+  if (departures.length === 0) return null
+  return departures[departures.length - 1].seal_number
 }
 
 export interface AnchorTally {

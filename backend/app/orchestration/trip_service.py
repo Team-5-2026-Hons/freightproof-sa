@@ -106,6 +106,10 @@ async def _check_order_number_conflict(
     """Raise TripConflictError if an active trip already has this order_number."""
     # Coarse set post-Stage-2.2 (T6) — the old per-handshake TripStatus values
     # are gone; ACTIVE now covers everything between activation and closing.
+    # EXCEPTION_HOLD is currently unreachable (nothing in app/ sets it — see
+    # phase_service._is_resolved) but stays listed: a held trip is by definition
+    # still live cargo, so it must keep blocking a duplicate order_number if and
+    # when a manual dispatcher hold introduces the status.
     active_statuses = [
         TripStatus.CREATED,
         TripStatus.ACTIVE,

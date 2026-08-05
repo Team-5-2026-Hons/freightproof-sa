@@ -168,6 +168,28 @@ class DepartureCompleteRequest(_PhaseCompleteBase):
 class UnloadingCompleteRequest(_PhaseCompleteBase):
     phase_type: Literal[PhaseType.UNLOADING]
     seal_number_at_destination: str
+    # Photo of the seal as found at destination, BEFORE it is broken — the
+    # tamper-evidence bookend to departure's seal_photo_artifact_id. Required, not
+    # optional: the seal is the single piece of physical evidence this phase exists
+    # to capture, and once the truck is open it cannot be re-photographed. An
+    # unloading recorded without it is an assertion, not evidence.
+    #
+    # Reuses PhaseEvent.gate_photo_artifact_id, which existed unused on the model
+    # before this — no migration needed.
+    #
+    # Contract note for driver-pwa: its unloading flow must upload this artifact and
+    # send the id, or completion 422s. As of Stage 5 the app already CAPTURES a seal
+    # photo at unloading (SealBreakInspection's sealBrokenPhotoDataUrl, mandatory
+    # before the step can be confirmed) but drops it — lib/api/phases.ts sends only
+    # seal_number_at_destination. Wiring it through is the same upload-then-send
+    # pattern confirmation already uses for the POD photo.
+    #
+    # UNRESOLVED, needs a decision before the flows are wired together: this field is
+    # specified as the seal AS FOUND, intact, before the warehouse breaks it. The
+    # driver app's step photographs the seal AFTER breaking. Those are two different
+    # photographs with different evidential value, and only one of them proves the
+    # seal was intact on arrival.
+    gate_photo_artifact_id: UUID
 
     @field_validator("seal_number_at_destination")
     @classmethod

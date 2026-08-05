@@ -1059,14 +1059,8 @@ export default function TripNewPage() {
 
             <div className="flex flex-col gap-2">
               <Button full loading={loading} onClick={handleSubmit}>
-                Create Trip + Lock to Blockchain
+                {loading ? 'Creating trip…' : 'Create Trip + Lock to Blockchain'}
               </Button>
-              {loading && (
-                <div className="flex items-center gap-2 rounded-lg bg-warn-c px-3 py-2 text-[12px] font-[500] text-on-warn-c">
-                  <Ic n="hex" s={12} className="text-warn animate-pulse" />
-                  Anchoring to Hedera testnet — approx. 4–6 seconds…
-                </div>
-              )}
               <Button variant="secondary" full onClick={() => setShowConfirm(false)} disabled={loading}>
                 Go back and review
               </Button>

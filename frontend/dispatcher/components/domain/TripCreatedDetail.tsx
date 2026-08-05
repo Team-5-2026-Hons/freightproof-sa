@@ -66,6 +66,20 @@ export function TripCreatedDetail({ trip }: Props) {
         </Section>
       )}
 
+      {/* Trailers ────────────────────────────────────────────────────────── */}
+      {trip.trailers.length > 0 && (
+        <Section title={`Trailer${trip.trailers.length > 1 ? 's' : ''}`}>
+          {trip.trailers.map(trailer => (
+            <Field key={trailer.id} label={trailer.vehicle_type} value={trailer.registration} mono />
+          ))}
+        </Section>
+      )}
+
+      {/* Trip type ───────────────────────────────────────────────────────── */}
+      <Section title="Trip">
+        <Field label="Type" value={trip.trip_type === 'loaded' ? 'Loaded' : 'Empty leg'} />
+      </Section>
+
       {/* Tracking ───────────────────────────────────────────────────────── */}
       {trip.pulsit_trip_reference_id && (
         <Section title="Tracking">
@@ -78,7 +92,7 @@ export function TripCreatedDetail({ trip }: Props) {
           hashed into the journey lock, not current state. */}
       {trip.consignments.length > 0 && (
         <div className="py-3">
-          <div className="text-[10px] font-[700] tracking-[0.09em] uppercase text-on-surf-v mb-[6px]">
+          <div className="text-[13px] font-[800] tracking-[0.09em] uppercase text-on-surf mb-[6px]">
             Consignments ({trip.consignments.length})
           </div>
           <div className="divide-y divide-outline-v/15">

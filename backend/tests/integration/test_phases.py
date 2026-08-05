@@ -507,10 +507,14 @@ async def test_next_phase_tracks_the_ledger_and_returns_null_when_closed(client:
             headers=auth_header(token),
         )
 
+    gate_photo_id = await _make_artifact(db_session, trip.id)
     unloading_id = await _phase_id(client, trip.id, token, "unloading")
     await client.post(
         f"/api/v1/trips/{trip.id}/phases/{unloading_id}/complete",
-        json={"phase_type": "unloading", "seal_number_at_destination": "AB-1234", "idempotency_key": str(uuid.uuid4())},
+        json={
+            "phase_type": "unloading", "seal_number_at_destination": "AB-1234",
+            "gate_photo_artifact_id": gate_photo_id, "idempotency_key": str(uuid.uuid4()),
+        },
         headers=auth_header(token),
     )
 
@@ -729,8 +733,8 @@ async def test_full_single_leg_walk_over_http_closes_the_trip(client: AsyncClien
     assert resp.status_code == 200
 
     # seal_number must match ^[A-Z]{2}-\d{4}$; unloading's destination seal
-    # must match departure's or the trip lands in EXCEPTION_HOLD instead of
-    # closing.
+    # must match departure's or a CRITICAL seal_mismatch exception is raised
+    # (the trip still proceeds to confirmation and closes regardless).
     waybill_id = await _make_artifact(db_session, trip.id)
     seal_photo_id = await _make_artifact(db_session, trip.id)
     departure_id = await _phase_id(client, trip.id, token, "departure")
@@ -748,10 +752,14 @@ async def test_full_single_leg_walk_over_http_closes_the_trip(client: AsyncClien
         )
     assert resp.status_code == 200
 
+    gate_photo_id = await _make_artifact(db_session, trip.id)
     unloading_id = await _phase_id(client, trip.id, token, "unloading")
     resp = await client.post(
         f"/api/v1/trips/{trip.id}/phases/{unloading_id}/complete",
-        json={"phase_type": "unloading", "seal_number_at_destination": "AB-1234", "idempotency_key": str(uuid.uuid4())},
+        json={
+            "phase_type": "unloading", "seal_number_at_destination": "AB-1234",
+            "gate_photo_artifact_id": gate_photo_id, "idempotency_key": str(uuid.uuid4()),
+        },
         headers=auth_header(token),
     )
     assert resp.status_code == 200

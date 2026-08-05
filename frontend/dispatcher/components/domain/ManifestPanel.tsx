@@ -4,30 +4,19 @@ import { useState } from 'react'
 import { Ic } from '@/components/ui/Ic'
 import { Spinner } from '@/components/ui/Spinner'
 import { useManifest } from '@/lib/hooks/useManifest'
-import { ReconciliationRows } from './ReconciliationRows'
 import { fmtFull, fmtTime } from '@shared/lib/utils/datetime'
 import type { ConsignmentManifest, Parcel } from '@shared/lib/types/manifest'
 
-// Which scan column this phase cares about. Loading proves parcels left the origin;
-// unloading proves they arrived. One component, two emphases.
-export type ManifestMode = 'loading' | 'unloading'
-
 interface Props {
   tripId: string
-  mode: ManifestMode
   heading: string
   width: number
   onStartResize: (e: React.MouseEvent) => void
   onClose: () => void
-  // Unloading only: the counts the phase itself recorded. A mismatch between them is the
-  // whole point of the unloading handshake, so it is stated, never inferred.
-  parcelCountDestination?: number | null
-  driverVisualCount?: number | null
 }
 
 export function ManifestPanel({
-  tripId, mode, heading, width, onStartResize, onClose,
-  parcelCountDestination, driverVisualCount,
+  tripId, heading, width, onStartResize, onClose,
 }: Props) {
   const { manifest, isLoading, error } = useManifest(tripId)
 
@@ -63,22 +52,6 @@ export function ManifestPanel({
           This is the full trip manifest. Parcel Perfect does not break parcels down per stop.
         </div>
 
-        {/* These counts come from the unloading phase itself, not from the manifest fetch —
-            so they render regardless of whether Parcel Perfect's manifest has loaded, errored,
-            or is still absent. Gating this on `manifest` would hide a real discrepancy behind
-            an unrelated fetch failure. */}
-        {mode === 'unloading' && (
-          <div className="bg-surf-lowest rounded-md p-[10px_12px] mb-2 shadow-level-2">
-            <div className="text-[10px] font-[700] tracking-[0.09em] uppercase text-on-surf-v mb-[5px]">
-              Reconciliation
-            </div>
-            <ReconciliationRows
-              countedAtDestination={parcelCountDestination}
-              driverVisualCount={driverVisualCount}
-            />
-          </div>
-        )}
-
         {isLoading && (
           <div className="flex justify-center py-8"><Spinner size="md" /></div>
         )}
@@ -93,7 +66,7 @@ export function ManifestPanel({
         {!isLoading && manifest && (
           <>
             {manifest.consignments.map(c => (
-              <ConsignmentRow key={c.consignment_id} consignment={c} mode={mode} />
+              <ConsignmentRow key={c.consignment_id} consignment={c} />
             ))}
 
             <div className="flex items-baseline justify-between gap-3 pt-[10px] mt-[8px] border-t border-outline-v/20">
@@ -115,7 +88,7 @@ export function ManifestPanel({
   )
 }
 
-function ConsignmentRow({ consignment, mode }: { consignment: ConsignmentManifest; mode: ManifestMode }) {
+function ConsignmentRow({ consignment }: { consignment: ConsignmentManifest }) {
   const [isOpen, setIsOpen] = useState(false)
 
   return (
@@ -145,7 +118,7 @@ function ConsignmentRow({ consignment, mode }: { consignment: ConsignmentManifes
               <div className="text-[10px] font-[700] tracking-[0.06em] uppercase text-on-surf-v mb-[3px]">
                 {stop.delivery_stop} · {stop.parcel_count}
               </div>
-              {stop.parcels.map(p => <ParcelRow key={p.id} parcel={p} mode={mode} />)}
+              {stop.parcels.map(p => <ParcelRow key={p.id} parcel={p} />)}
             </div>
           ))}
         </div>
@@ -154,21 +127,28 @@ function ConsignmentRow({ consignment, mode }: { consignment: ConsignmentManifes
   )
 }
 
-function ParcelRow({ parcel, mode }: { parcel: Parcel; mode: ManifestMode }) {
-  // Loading is proven by scan-out, unloading by scan-in. Showing the wrong timestamp
-  // would make an unscanned parcel look accounted for.
-  const scanAt = mode === 'loading' ? parcel.pp_scan_out_at : parcel.pp_scan_in_at
-  const isScanned = scanAt !== null
-
+function ParcelRow({ parcel }: { parcel: Parcel }) {
   return (
     <div className="flex items-center gap-[8px] py-[3px] text-[11px]">
-      <span className={`w-[6px] h-[6px] rounded-full shrink-0 ${isScanned ? 'bg-ok' : 'bg-outline-v'}`} />
       <span className="font-mono tracking-[0.04em] text-on-surf tabular-nums flex-1 truncate">
         {parcel.barcode}
       </span>
-      <span className={`shrink-0 tabular-nums ${isScanned ? 'text-ok' : 'text-on-surf-v'}`}>
-        {isScanned ? fmtTime(scanAt) : parcel.status}
-      </span>
+      <ScanBadge label="Out" at={parcel.pp_scan_out_at} />
+      <ScanBadge label="In" at={parcel.pp_scan_in_at} />
     </div>
+  )
+}
+
+// One badge per scan direction — no longer guessing which one the caller cares about
+// (the panel used to render only scan-out OR scan-in depending on which phase card it
+// was opened from; now it's opened from the sidebar, phase-agnostic, so both show).
+function ScanBadge({ label, at }: { label: string; at: string | null }) {
+  const isScanned = at !== null
+
+  return (
+    <span className={`inline-flex items-center gap-[4px] shrink-0 tabular-nums ${isScanned ? 'text-ok' : 'text-on-surf-v'}`}>
+      <span className={`w-[6px] h-[6px] rounded-full shrink-0 ${isScanned ? 'bg-ok' : 'bg-outline-v'}`} />
+      {label} {fmtTime(at)}
+    </span>
   )
 }

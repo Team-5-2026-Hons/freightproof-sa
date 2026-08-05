@@ -24,7 +24,9 @@ import { VerifyButton }       from '@/components/blockchain/VerifyButton'
 import { ForensicOnly }       from '@/components/blockchain/ForensicOnly'
 import { TripCreatedDetail }  from '@/components/domain/TripCreatedDetail'
 import { ActivationDetail }   from '@/components/domain/ActivationDetail'
+import { LoadingDetail }      from '@/components/domain/LoadingDetail'
 import { DepartureDetail }    from '@/components/domain/DepartureDetail'
+import { UnloadingDetail }    from '@/components/domain/UnloadingDetail'
 import { ConfirmationDetail } from '@/components/domain/ConfirmationDetail'
 import { InTransitTimeline }  from '@/components/domain/InTransitTimeline'
 import { ManifestPanel }      from '@/components/domain/ManifestPanel'
@@ -32,7 +34,7 @@ import {
   activePhase, anchorTally, currentSealNumber, nodeTypeFor, originParcelCount,
   sortedPlan, tripChipMeta,
 } from '@/lib/phase/derive'
-import type { PhaseDescriptor, PhaseEventId } from '@shared/lib/types/phase'
+import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { Trip } from '@shared/lib/types/trip'
 import type { Precinct } from '@shared/lib/types/precinct'
 import type { BlockchainReceipt, BlockchainReceiptType, VerifyResult } from '@shared/lib/types/blockchain'
@@ -122,9 +124,6 @@ interface TimelineEventProps {
   // Rendered unconditionally, unlike expandedContent which needs a click.
   alwaysExpandedContent?: React.ReactNode
   statusPill?: React.ReactNode
-  // When set, the card opens the manifest panel instead of (or as well as) toggling
-  // expandedContent — loading/unloading cards have no expandedContent of their own.
-  onCardClick?: () => void
 }
 
 function fmtTs(iso: string): string {
@@ -136,13 +135,13 @@ function TimelineEvent({
   nodeType, nodeLabel, isLast,
   label, meta, detail, timestamp,
   chainReceipt, excText, resText, expandedContent, alwaysExpandedContent,
-  statusPill, onCardClick,
+  statusPill,
 }: TimelineEventProps) {
   const [isExpanded, setIsExpanded] = useState(false)
-  const isExpandable  = !!expandedContent
-  // A card is interactive either because it expands in place, or because it opens the
-  // manifest panel (loading/unloading, which have no expandedContent of their own).
-  const isInteractive = isExpandable || !!onCardClick
+  // Every phase type now has its own detail component, so expanding in place is the
+  // only interaction a card has. The manifest is reached from the sidebar instead,
+  // which is why the old onCardClick escape hatch is gone.
+  const isExpandable = !!expandedContent
 
   const nodeStyle: Record<NodeType, string> = {
     done:    'bg-ok text-white',
@@ -189,12 +188,8 @@ function TimelineEvent({
 
       <div className="flex-1 mb-3">
         <div
-          className={`rounded-lg px-4 py-3 ${cardStyle[nodeType]} ${isInteractive ? 'cursor-pointer transition-shadow duration-150 hover:shadow-md active:shadow-sm select-none' : ''}`}
-          onClick={
-            onCardClick ? onCardClick
-            : isExpandable ? () => setIsExpanded(e => !e)
-            : undefined
-          }
+          className={`rounded-lg px-4 py-3 ${cardStyle[nodeType]} ${isExpandable ? 'cursor-pointer transition-shadow duration-150 hover:shadow-md active:shadow-sm select-none' : ''}`}
+          onClick={isExpandable ? () => setIsExpanded(e => !e) : undefined}
         >
           <div className="flex items-start justify-between gap-3 mb-[5px]">
             <div className="flex items-center gap-[8px] min-w-0">
@@ -248,7 +243,10 @@ export default function TripDetailPage() {
   const { byId: artifactsById } = useTripArtifacts(tripId)
   const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null)
 
-  const [selectedManifestPhase, setSelectedManifestPhase] = useState<PhaseEventId | null>(null)
+  // Trip-scoped, not phase-scoped (the manifest endpoint returns the same parcels
+  // regardless of which phase card, if any, is open) — a plain toggle, not a
+  // selected-phase id.
+  const [manifestOpen, setManifestOpen] = useState(false)
   const { width: manifestWidth, startResize: startManifestResize } = useResizablePanel(
     DETAIL_PANEL_DEFAULT_W, { min: DETAIL_PANEL_MIN_W, max: DETAIL_PANEL_MAX_W },
   )
@@ -306,15 +304,6 @@ export default function TripDetailPage() {
   const plan          = sortedPlan(trip.phases)
   const active        = activePhase(trip.phases)
   const tripCreation  = plan.find(p => p.phase_type === 'trip_creation') ?? null
-
-  // Resolved from the plan by id, never held as an object in state — a refetch replaces
-  // the descriptors and a captured object would go stale. This is also what lets two
-  // `loading` occurrences on a cross-dock plan open their OWN manifest slice: the id is
-  // unique per phase event, so keying on it (rather than phase_type or plan index) can
-  // never conflate the origin load with a mid-route reload.
-  const selectedManifest = selectedManifestPhase
-    ? plan.find(p => p.phase_event_id === selectedManifestPhase) ?? null
-    : null
 
   // U13: the chip names the phase — `Unloading` when active, `⚠ Unloading` when held.
   // Derived from the ledger, NOT from the trip's denormalised position cache — U3's
@@ -377,18 +366,22 @@ export default function TripDetailPage() {
   }
   const timelineItems: TimelineItem[] = timelinePhases.map(phase => ({
     phase,
-    nodeType: nodeTypeFor(phase, active?.phase_event_id ?? null),
+    nodeType: nodeTypeFor(phase, active?.phase_event_id ?? null, trip.status),
     exceptions: [],
   }))
-  // APPROXIMATE, and knowingly so. Exceptions are bolted onto the last done/warn row
-  // because the shared TripException type still declares `handshake_event_id` while the
-  // backend has moved to `phase_event_id` (schemas/transit.py). Once Stage 5 renames
-  // that field, attach by exc.phase_event_id and delete this loop. Until then the
-  // in-transit timeline shows index-guessed placement, which must not be presented as
-  // phase-accurate.
+  // The backend tags every exception with the phase it occurred on (phase_event_id,
+  // schemas/transit.py) — attach there directly. The field is nullable, not optional:
+  // an exception raised outside any phase (a panic button between stops) carries null
+  // and falls back to the last done/warn row, which is approximate placement and must
+  // not be read as phase-accurate.
   for (const exc of trip.exceptions) {
-    const targetIdx = timelineItems.findLastIndex(i => i.nodeType === 'done' || i.nodeType === 'warn')
-    if (targetIdx >= 0) timelineItems[targetIdx].exceptions.push(exc)
+    const taggedIdx = exc.phase_event_id
+      ? timelineItems.findIndex(i => i.phase.phase_event_id === exc.phase_event_id)
+      : -1
+    const attachIdx = taggedIdx >= 0
+      ? taggedIdx
+      : timelineItems.findLastIndex(i => i.nodeType === 'done' || i.nodeType === 'warn')
+    if (attachIdx >= 0) timelineItems[attachIdx].exceptions.push(exc)
   }
 
 
@@ -489,10 +482,18 @@ export default function TripDetailPage() {
                           precinct={precinctRecordForStop(phase.stop_sequence)}
                           artifactsById={artifactsById}
                         />
+                    : phase.phase_type === 'loading'
+                      ? <LoadingDetail phase={phase} />
                     : phase.phase_type === 'departure'
                       ? <DepartureDetail
                           phase={phase}
                           precinct={precinctRecordForStop(phase.stop_sequence)}
+                          artifactsById={artifactsById}
+                        />
+                    : phase.phase_type === 'unloading'
+                      ? <UnloadingDetail
+                          phase={phase}
+                          allPhases={plan}
                           artifactsById={artifactsById}
                         />
                     : phase.phase_type === 'confirmation'
@@ -516,14 +517,6 @@ export default function TripDetailPage() {
                         />
                       : undefined
                   }
-                  onCardClick={
-                    isPending ? undefined
-                    : phase.phase_type === 'loading' || phase.phase_type === 'unloading'
-                      ? () => setSelectedManifestPhase(
-                          current => current === phase.phase_event_id ? null : phase.phase_event_id,
-                        )
-                      : undefined
-                  }
                 />
                 {excItems.map((exc, ei) => (
                   <TimelineEvent
@@ -532,7 +525,8 @@ export default function TripDetailPage() {
                     nodeLabel="!"
                     isLast={isLastItem && ei === excItems.length - 1}
                     label={`Exception: ${exc.exception_type.replace(/_/g, ' ')}`}
-                    meta={`${new Date(exc.created_at).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })} · Source: ${exc.source}`}
+                    meta={`Source: ${exc.source}`}
+                    timestamp={exc.created_at}
                     excText={exc.description}
                     resText={
                       exc.resolved && exc.resolver_note
@@ -546,27 +540,20 @@ export default function TripDetailPage() {
           })}
         </div>
 
-        {/* ── MIDDLE: Manifest panel (only while a loading/unloading card is selected) ── */}
-        {selectedManifest && (
+        {/* ── MIDDLE: Manifest panel — trip-scoped, opened from the sidebar's Cargo card ── */}
+        {manifestOpen && (
           <ManifestPanel
             tripId={trip.id as string}
-            mode={selectedManifest.phase_type === 'loading' ? 'loading' : 'unloading'}
-            heading={`Manifest · ${PHASE_NAMES[selectedManifest.phase_type]}${
-              selectedManifest.stop_sequence === null
-                ? ''
-                : ` · ${stopRoleLabel(selectedManifest.stop_sequence)} · ${precinctForStop(selectedManifest.stop_sequence)}`
-            }`}
+            heading="Trip Manifest"
             width={manifestWidth}
             onStartResize={startManifestResize}
-            onClose={() => setSelectedManifestPhase(null)}
-            parcelCountDestination={selectedManifest.parcel_count_destination}
-            driverVisualCount={selectedManifest.driver_visual_count}
+            onClose={() => setManifestOpen(false)}
           />
         )}
 
         {/* ── RIGHT: Sidebar ── */}
-        <div className={`w-[256px] bg-surf-low p-5 overflow-y-auto shrink-0 border-l border-outline-v/20${
-          selectedManifest ? ' hidden xl:block' : ''
+        <div className={`w-[304px] bg-surf-low p-5 overflow-y-auto shrink-0 border-l border-outline-v/20${
+          manifestOpen ? ' hidden xl:block' : ''
         }`}>
 
           <div className="text-[11px] font-[700] tracking-[0.1em] uppercase text-on-surf-v mb-3">
@@ -579,6 +566,8 @@ export default function TripDetailPage() {
               <InfoRow label="Horse"       value={trip.horse?.registration ?? '—'}  mono />
               <InfoRow label="Origin"      value={originShort} />
               <InfoRow label="Destination" value={destShort} />
+              <InfoRow label="Planned departure" value={trip.planned_departure_at ? fmtTs(trip.planned_departure_at) : '—'} />
+              <InfoRow label="Planned arrival"   value={trip.planned_arrival_at   ? fmtTs(trip.planned_arrival_at)   : '—'} />
             </div>
             {sealNumber && (
               <div className="flex justify-between items-center pt-[8px] mt-[2px] border-t border-outline-v/20 text-[13px]">
@@ -634,6 +623,12 @@ export default function TripDetailPage() {
                 All scanned out at origin ✓
               </div>
             )}
+            <button
+              onClick={() => setManifestOpen(true)}
+              className="w-full mt-[8px] pt-[8px] border-t border-outline-v/20 text-[11px] font-[600] text-sec hover:text-on-surf transition-colors text-left"
+            >
+              View manifest →
+            </button>
           </div>
 
           <div className="text-[11px] font-[700] tracking-[0.1em] uppercase text-on-surf-v mb-2">

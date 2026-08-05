@@ -50,7 +50,7 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, date, datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.blockchain.anchor_service import anchor_subject, compute_payload_hash
@@ -63,9 +63,10 @@ from app.db.models.enums import (
     AnchorStatus, BlockchainReceiptType, ExceptionSeverity, ExceptionSource, ExceptionType,
     PhaseStatus, PhaseType, SubjectType, TripStatus,
 )
+from app.db.models.evidence import EvidenceArtifact
 from app.db.models.phases import PhaseEvent
 from app.db.models.transit import TripException
-from app.db.models.trips import Trip, TripStop
+from app.db.models.trips import Consignment, Trip, TripStop
 from app.orchestration.resource_service import get_trip_detail
 from app.schemas.phases import (
     ActivationCompleteRequest, ConfirmationCompleteRequest, DepartureCompleteRequest,
@@ -96,13 +97,57 @@ async def _load_phase_event(
     return event
 
 
+async def _assert_artifacts_belong_to_trip(
+    db: AsyncSession, *, trip_id: uuid.UUID, artifact_ids: tuple[uuid.UUID | None, ...],
+) -> None:
+    """Every artifact a phase cites as its evidence must belong to THIS trip.
+
+    Without this, a caller could attach any artifact UUID in the system to a phase:
+    another trip's seal photo standing in as this trip's, or a POD from an entirely
+    different delivery. The FK alone does not prevent that — it only proves the row
+    exists somewhere. On a platform whose whole claim is "this photo is what happened
+    on this trip", an unowned artifact is a forged evidence chain, and it would still
+    hash into the journey record as if genuine.
+
+    Raises ResourceNotFoundError (404 at the endpoint) rather than a 4xx that
+    distinguishes "wrong trip" from "no such artifact": from this trip's perspective
+    both are the same fact — the artifact is not available here — and saying which
+    would confirm the existence of another trip's evidence to a caller who cannot
+    otherwise see it.
+
+    None entries are skipped so optional artifact fields can pass through unchanged.
+    """
+    present = {aid for aid in artifact_ids if aid is not None}
+    if not present:
+        return
+
+    result = await db.execute(
+        select(EvidenceArtifact.id).where(
+            EvidenceArtifact.id.in_(present),
+            EvidenceArtifact.trip_id == trip_id,
+        )
+    )
+    owned = {row for (row,) in result.all()}
+
+    missing = present - owned
+    if missing:
+        # Sorted so the message is deterministic across runs — this ends up in an
+        # API error body and in test assertions.
+        raise ResourceNotFoundError(
+            "EvidenceArtifact", ", ".join(sorted(str(m) for m in missing)),
+        )
+
+
 def _is_resolved(status: PhaseStatus) -> bool:  # T3
     # A phase blocks the NEXT phase only while PENDING/IN_PROGRESS. EXCEPTION is
     # resolved for gating purposes — it already happened, the trip already moved
-    # on, and the anomaly is recorded on the row itself (and, for mismatches
-    # serious enough to actually hold a trip, via trip.status == EXCEPTION_HOLD,
-    # checked separately in _gate_and_load — that is the real hold mechanism,
-    # not this predicate).
+    # on, and the anomaly is recorded on the row itself.
+    #
+    # No phase completion holds a trip any more: the last writer of
+    # TripStatus.EXCEPTION_HOLD (advance_unloading's seal mismatch) was removed —
+    # see the rationale on that branch. EXCEPTION_HOLD survives as a status only
+    # for a future MANUAL dispatcher hold; nothing in app/ sets it today, so the
+    # _gate_and_load check that reads it is currently unreachable.
     return status in (PhaseStatus.COMPLETED, PhaseStatus.EXCEPTION, PhaseStatus.OVERRIDDEN)
 
 
@@ -126,14 +171,23 @@ async def _gate_and_load(
         # completion is what closed/held the trip (e.g. advance_confirmation's
         # count-mismatch branch, which sets EXCEPTION and lets the trip close)
         # must still replay as an idempotent 200 — not a 409 — even though
-        # trip.status now reads CLOSED/EXCEPTION_HOLD as a result of that same
-        # completion. A genuinely new attempt at a still-PENDING phase on a
+        # trip.status now reads CLOSED as a result of that same completion.
+        # (CLOSED is the only status a completion can produce today; see
+        # _is_resolved on why EXCEPTION_HOLD no longer occurs here.)
+        # A genuinely new attempt at a still-PENDING phase on a
         # dead/held trip falls through to the trip-status check unaffected,
         # since _is_resolved(PENDING) is False.
         return await get_trip_detail(
             db, trip_id=trip_id, operator_organization_id=trip.operator_organization_id,
         )
 
+    # EXCEPTION_HOLD is listed but no production path sets it (see _is_resolved).
+    # Kept deliberately so a manual dispatcher hold, when it lands, gates phase
+    # completion by construction rather than needing this check re-derived — and
+    # the behaviour stays covered meanwhile by
+    # test_phases.py::test_activation_complete_wrong_state_returns_409, which sets
+    # the status directly. Do not read its presence here as evidence that some
+    # mismatch still holds a trip: none does.
     if trip.status in (TripStatus.CLOSED, TripStatus.CANCELLED, TripStatus.EXCEPTION_HOLD):
         # Trip.status is a plain String(30) column: a freshly DB-loaded trip
         # (every real request — get_db() hands out a fresh session per call)
@@ -358,6 +412,19 @@ def compute_departure_canonical_payload(
     }
 
 
+async def _expected_parcel_count(db: AsyncSession, *, trip_id: uuid.UUID) -> int | None:
+    """The manifest's declared total, trip-wide — same grain TripCreatedDetail sums
+    client-side. Returns None (not 0) when the trip has no consignments at all, or
+    every consignment's parcel_count_expected is unset: there is no manifest baseline
+    to compare against, and treating that as 0 would manufacture a mismatch on a trip
+    that simply hasn't had its expected counts populated yet (same principle Stage 6's
+    empty-leg fix applies to the confirmation-side origin_count lookup)."""
+    result = await db.execute(
+        select(func.sum(Consignment.parcel_count_expected)).where(Consignment.trip_id == trip_id)
+    )
+    return result.scalar_one_or_none()
+
+
 async def advance_loading(
     db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID, phase_event_id: uuid.UUID,
     payload: LoadingCompleteRequest,
@@ -374,7 +441,31 @@ async def advance_loading(
     # to departure. driver_visual_count is the only evidence this phase still
     # owns; it stays unanchored (server-side reconciliation is Stage 3.3).
     event.driver_visual_count = payload.driver_visual_count
-    event.status = PhaseStatus.COMPLETED
+
+    # Manifest-vs-counted check at ORIGIN, before the truck leaves — distinct from
+    # advance_confirmation's WAYBILL_COUNT_MISMATCH, which reconciles what physically
+    # moved (origin/destination/driver-visual). This compares what was declared to PP
+    # against what the driver saw, so it gets its own type: PARCEL_COUNT_MISMATCH.
+    expected_count = await _expected_parcel_count(db, trip_id=trip_id)
+    event.parcel_count_origin = expected_count
+
+    if expected_count is not None and expected_count != payload.driver_visual_count:
+        db.add(TripException(
+            trip_id=trip_id, phase_event_id=event.id,
+            exception_type=ExceptionType.PARCEL_COUNT_MISMATCH, source=ExceptionSource.SYSTEM,
+            severity=ExceptionSeverity.WARNING,
+            description=(
+                f"Manifest expects {expected_count} parcels; driver counted "
+                f"{payload.driver_visual_count} at loading."
+            ),
+        ))
+        # Recorded as evidence, but does NOT hold the trip — matches departure's and
+        # unloading's own seal-mismatch precedent (T3/_is_resolved treats EXCEPTION as
+        # resolved for gating). FreightProof records what happened; it doesn't dispatch
+        # or reroute, so a count discrepancy is surfaced, never a departure blocker.
+        event.status = PhaseStatus.EXCEPTION
+    else:
+        event.status = PhaseStatus.COMPLETED
 
     return await _finish_phase(db, trip=trip, event=event, idempotency_key=payload.idempotency_key)
 
@@ -491,6 +582,12 @@ async def advance_departure(
     # Pulsit geofence departure confirmation is out of scope until the Pulsit
     # integration lands; pulsit_geofence_confirmed stays null until then.
 
+    # Before any evidence is written: both photos must be this trip's own.
+    await _assert_artifacts_belong_to_trip(
+        db, trip_id=trip_id,
+        artifact_ids=(payload.waybill_photo_artifact_id, payload.seal_photo_artifact_id),
+    )
+
     # T5: the seal is applied HERE now, not at loading.
     event.waybill_photo_artifact_id = payload.waybill_photo_artifact_id
     event.seal_number = payload.seal_number
@@ -514,8 +611,8 @@ async def advance_departure(
     if seal_mismatch_description is not None:
         # Recorded as evidence, but the trip still departs — a departure
         # mismatch doesn't hold the trip (T3), it's anchored regardless below.
-        # This differs from Unloading's seal mismatch (destination), which
-        # does hold the trip via EXCEPTION_HOLD.
+        # Unloading's seal mismatch (destination) matches this precedent too —
+        # neither ever holds the trip, only flags it (critical exception).
         event.status = PhaseStatus.EXCEPTION
         db.add(TripException(
             trip_id=trip_id, phase_event_id=event.id,
@@ -566,11 +663,35 @@ async def advance_unloading(
         db, trip_id=trip_id, before_sequence=event.sequence_number,
     )
 
+    await _assert_artifacts_belong_to_trip(
+        db, trip_id=trip_id, artifact_ids=(payload.gate_photo_artifact_id,),
+    )
+
     event.seal_number = payload.seal_number_at_destination
+    event.gate_photo_artifact_id = payload.gate_photo_artifact_id
 
     if payload.seal_number_at_destination != departure_event.seal_number:
+        # Recorded as evidence, but does NOT hold the trip. This branch used to set
+        # trip.status = EXCEPTION_HOLD; three reasons it must not:
+        #
+        # 1. There is no release or override path anywhere in this codebase. A held
+        #    trip could never reach confirmation, so it could never record POD or
+        #    anchor its delivery receipt — the hold DESTROYED the remaining evidence
+        #    of the very trip whose integrity it was reacting to. On an evidence
+        #    platform that is the wrong failure direction: record more, not less.
+        # 2. It contradicted T3. _is_resolved already treats EXCEPTION as resolved
+        #    for gating, precisely so an anomaly is recorded without stopping the
+        #    ledger. Holding here re-introduced the blocking behaviour by the back
+        #    door, at trip level instead of phase level.
+        # 3. Departure's own seal mismatch (above) has never held the trip. Two
+        #    seal mismatches on the same trip behaving differently was inconsistent
+        #    with nothing to justify it.
+        #
+        # The mismatch stays fully visible: the phase row is EXCEPTION and a CRITICAL
+        # TripException is written. A dispatcher acts on that, not on a stuck trip.
+        # If a hold is ever genuinely wanted it belongs as a manual dispatcher action
+        # with an explicit release path — not as an automatic dead end.
         event.status = PhaseStatus.EXCEPTION
-        trip.status = TripStatus.EXCEPTION_HOLD
         db.add(TripException(
             trip_id=trip_id, phase_event_id=event.id,
             exception_type=ExceptionType.SEAL_MISMATCH, source=ExceptionSource.SYSTEM,
@@ -631,6 +752,11 @@ async def advance_confirmation(
         db, trip_id=trip_id, before_sequence=event.sequence_number,
     )
     origin_count = loading_event.driver_visual_count
+
+    await _assert_artifacts_belong_to_trip(
+        db, trip_id=trip_id,
+        artifact_ids=(payload.pod_photo_artifact_id, payload.pod_signature_artifact_id),
+    )
 
     event.pod_photo_artifact_id = payload.pod_photo_artifact_id
     event.pod_signature_artifact_id = payload.pod_signature_artifact_id

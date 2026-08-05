@@ -8,7 +8,7 @@ import { useState } from 'react'
 export function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="py-3 first:pt-0 last:pb-0">
-      <div className="text-[10px] font-[700] tracking-[0.09em] uppercase text-on-surf-v mb-[6px]">
+      <div className="text-[13px] font-[800] tracking-[0.09em] uppercase text-on-surf mb-[6px]">
         {title}
       </div>
       <div className="grid grid-cols-2 gap-x-4 gap-y-[5px]">

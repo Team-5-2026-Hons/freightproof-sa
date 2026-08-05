@@ -6,7 +6,7 @@ import {
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import {
   activePhase, anchorTally, chainNodesFromCounts, completionPct,
-  currentSealNumber, isResolved, nodeTypeFor, originParcelCount, sortedPlan, tripChipMeta,
+  currentSealNumber, departureSealForLeg, isResolved, nodeTypeFor, originParcelCount, sortedPlan, tripChipMeta,
 } from './derive'
 
 // Marks phases 0..through as completed. Local to the test on purpose: the module
@@ -87,6 +87,24 @@ describe('nodeTypeFor', () => {
 
     expect(nodeTypeFor(plan[3], activeId)).toBe('active')
   })
+
+  it('keeps activation pending, not next, while the trip has not been activated', () => {
+    // A trip created weeks ahead sits dormant — activation is not "about to happen",
+    // so it must render indistinguishably from a phase that has not been reached yet.
+    const plan = walk(SINGLE_LEG_PHASE_PLAN, 0)
+    const activationPhase = plan.find(p => p.phase_type === 'activation')!
+    const activeId = activePhase(plan)?.phase_event_id ?? null
+
+    expect(nodeTypeFor(activationPhase, activeId, 'created')).toBe('pending')
+  })
+
+  it('lets activation read as next once the trip is genuinely active', () => {
+    const plan = walk(SINGLE_LEG_PHASE_PLAN, 0)
+    const activationPhase = plan.find(p => p.phase_type === 'activation')!
+    const activeId = activePhase(plan)?.phase_event_id ?? null
+
+    expect(nodeTypeFor(activationPhase, activeId, 'active')).toBe('next')
+  })
 })
 
 describe('currentSealNumber', () => {
@@ -106,6 +124,36 @@ describe('currentSealNumber', () => {
       p.sequence_number === 3 ? { ...p, seal_number: 'AB-1111' } : p)
 
     expect(currentSealNumber(plan)).toBeNull()
+  })
+})
+
+describe('departureSealForLeg', () => {
+  it("is the seal from THIS leg's own departure, not an earlier leg's", () => {
+    // Cross-dock: departures at seq 3 (leg 1) and seq 7 (leg 2). Leg 2's unloading
+    // (seq 9) must compare against leg 2's own seal, never leg 1's.
+    const plan = CROSS_DOCK_PHASE_PLAN.map(p =>
+      p.phase_type === 'departure'
+        ? { ...p, seal_number: p.sequence_number === 3 ? 'AB-1111' : 'AB-2222' }
+        : p)
+    const unloading = plan.find(p => p.sequence_number === 9)!
+
+    expect(departureSealForLeg(plan, unloading)).toBe('AB-2222')
+  })
+
+  it('does not reach past its own leg into a later departure', () => {
+    const plan = CROSS_DOCK_PHASE_PLAN.map(p =>
+      p.phase_type === 'departure'
+        ? { ...p, seal_number: p.sequence_number === 3 ? 'AB-1111' : 'AB-2222' }
+        : p)
+    const unloading = plan.find(p => p.sequence_number === 5)!
+
+    expect(departureSealForLeg(plan, unloading)).toBe('AB-1111')
+  })
+
+  it('is null when no preceding departure has recorded a seal yet', () => {
+    const unloading = SINGLE_LEG_PHASE_PLAN.find(p => p.phase_type === 'unloading')!
+
+    expect(departureSealForLeg(SINGLE_LEG_PHASE_PLAN, unloading)).toBeNull()
   })
 })
 
