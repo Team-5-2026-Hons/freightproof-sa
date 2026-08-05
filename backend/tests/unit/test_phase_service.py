@@ -786,16 +786,11 @@ async def test_advance_confirmation_matching_counts_closes_trip(db_session, trip
     assert result.exceptions == []
 
     h5 = next(h for h in result.phases if h.phase_type == PhaseType.CONFIRMATION)
-    assert h5.blockchain_receipt_id is None  # queued for the worker, not written in-request
-
-    receipt = (await db_session.execute(
-        select(BlockchainReceipt).where(BlockchainReceipt.id == h5.blockchain_receipt_id)
-    )).scalar_one()
-    assert receipt.data_hash == h5.event_hash
-    assert receipt.receipt_type == BlockchainReceiptType.DELIVERY
-
-    # anchor_status wasn't touched by any code path before task 2.5 — a successful
-    # anchor must now be reflected as ANCHORED, not left at the plan generator's PENDING.
+    # The hash is computed in-request; the receipt is not. Closing the trip no longer
+    # waits on Hedera — the worker writes the receipt and flips anchor_status moments
+    # later (test_anchor_phase_event_writes_the_receipt below covers that half).
+    assert h5.event_hash is not None
+    assert h5.blockchain_receipt_id is None
     assert phases["confirmation"].anchor_status == AnchorStatus.PENDING
 
 
