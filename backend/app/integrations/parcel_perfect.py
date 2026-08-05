@@ -500,6 +500,38 @@ UNASSIGNED_WAYBILLS: dict[str, PPWaybillResponse] = {
             accnum="UNMAP9", custname="Unmapped Client (Pty) Ltd",
             contents=[PPContents(item=1, description="Trade samples", actmass=39.0, pieces=2)],
         ),
+        _routed_waybill(
+            waybill="FREEWB0006", origin=_CPT, destination=_JHB,
+            manifest=UNASSIGNED_MANIFEST_NUMBER, parcel_count=8, weight_kg=310.0,
+            declared_value=19500.0,
+            contents=[PPContents(item=1, description="Office furniture", actmass=310.0, pieces=8)],
+        ),
+        _routed_waybill(
+            waybill="FREEWB0007", origin=_JHB, destination=_BFN,
+            manifest=UNASSIGNED_MANIFEST_NUMBER, parcel_count=16, weight_kg=705.0,
+            declared_value=38200.0,
+            contents=[PPContents(item=1, description="Packaged foodstuffs", actmass=705.0, pieces=16)],
+        ),
+        _routed_waybill(
+            waybill="FREEWB0008", origin=_BFN, destination=_CPT,
+            manifest=UNASSIGNED_MANIFEST_NUMBER, parcel_count=4, weight_kg=52.0,
+            declared_value=6800.0,
+            contents=[PPContents(item=1, description="Medical supplies", actmass=52.0, pieces=4)],
+        ),
+        # Deliberately off the shared manifest, like FREEWB0004: covers the
+        # one-at-a-time entry path rather than bulk manifest fetch.
+        _routed_waybill(
+            waybill="FREEWB0009", origin=_JHB, destination=_CPT,
+            manifest=None, parcel_count=6, weight_kg=178.0,
+            declared_value=22000.0,
+            contents=[PPContents(item=1, description="Hardware tools", actmass=178.0, pieces=6)],
+        ),
+        _routed_waybill(
+            waybill="FREEWB0010", origin=_CPT, destination=_BFN,
+            manifest=UNASSIGNED_MANIFEST_NUMBER, parcel_count=10, weight_kg=430.0,
+            declared_value=27500.0,
+            contents=[PPContents(item=1, description="Automotive parts", actmass=430.0, pieces=10)],
+        ),
     ]
 }
 
