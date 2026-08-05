@@ -76,6 +76,27 @@ class PhaseTooEarlyError(Exception):
         self.attempted_phase = attempted_phase
 
 
+class TripActivationBlockedError(Exception):
+    """Raised when another of the driver's trips stands in the way of activating this one.
+
+    Distinct from PhaseTooEarlyError (the calendar says no) and PhaseSequenceError (this
+    trip's own plan says no): here both the plan and the calendar are fine, and the
+    obstacle is a DIFFERENT trip. Keeping it separate is what lets the driver app name
+    the trip they have to deal with first instead of showing a generic conflict.
+
+    `blocking_trip_reference` is a driver-facing trip reference, never an id — the message
+    is surfaced verbatim in the PWA, so it has to name something the driver can find on
+    their own trip list.
+    """
+
+    def __init__(self, blocking_trip_reference: str, reason: str) -> None:
+        super().__init__(
+            f"Cannot start this trip: {reason} ({blocking_trip_reference})."
+        )
+        self.blocking_trip_reference = blocking_trip_reference
+        self.reason = reason
+
+
 class SubjectNotVisibleError(Exception):
     """Raised when a dispatcher queries a blockchain subject outside their organisation."""
 

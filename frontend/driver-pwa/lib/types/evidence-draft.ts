@@ -27,11 +27,18 @@
 //    only guarantees both fields exist so that wiring has somewhere to read from and
 //    write to.
 
+// The driver's position is no longer part of this draft. It used to be captured by a
+// dedicated "Gate Arrival" step and stored here until submit; the app now takes the fix
+// silently as the phase is confirmed and passes it to submitPhase alongside the evidence
+// (lib/types/location.ts, lib/context/LocationContext.tsx). gateAddress went with it —
+// it was a display-only reverse-geocode of those coordinates, rendered on the review
+// screen of a step that no longer exists.
+//
+// Activation therefore has no driver-captured evidence of its own left: the phase is the
+// act of starting the trip, and the position that proves where it started is attached at
+// submit time. The type stays (rather than collapsing to something shared) because
+// usePhaseDraft is generic per phase and the backend still has an activation variant.
 export interface ActivationEvidence {
-  gpsLat: number | null
-  gpsLng: number | null
-  // Populated via Google Geocoding API reverse-lookup of gpsLat/gpsLng — display-only, not sent to a backend yet.
-  gateAddress: string | null
   capturedAt: string | null
 }
 
@@ -55,8 +62,9 @@ export interface LoadingEvidence {
 // is still needed downstream, to carry this phase's committed sealNumber forward to
 // `unloading`'s reference display (see UnloadingEvidence below).
 export interface DepartureEvidence {
-  gpsLat: number | null
-  gpsLng: number | null
+  // No gpsLat/gpsLng: the old "Approach Exit Gate" step captured them into this draft
+  // and lib/api/phases.ts never sent them — DepartureCompleteRequest had no GPS fields
+  // at all. The fix is now taken silently at submit and does reach the server.
   waybillPhotoDataUrl: string | null
   sealNumber: string | null
   sealPhotoDataUrl: string | null

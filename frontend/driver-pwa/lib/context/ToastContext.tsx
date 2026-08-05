@@ -35,7 +35,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={{ toasts, notify, dismiss }}>
       {children}
-      {/* Toast viewport — bottom-left/right with margin, full-width on mobile per DESIGN_SYSTEM.md §10.7 */}
+      {/* Toast viewport — top-anchored banner, full-width on mobile (moved up from the
+          bottom corner, which collided with the nav pill and the swipe-to-confirm bar). */}
       <div style={{ zIndex: Z.toast }}>
         <ToastViewport toasts={toasts} onDismiss={dismiss} />
       </div>

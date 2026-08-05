@@ -29,6 +29,7 @@ import type { PhaseDescriptor, PhaseEventId } from '@shared/lib/types/phase'
 
 const TRIP_ID = 'trip-gate-1'
 const ACTIVATION_PE = 'pe-activation-1' as PhaseEventId
+const UNLOADING_PE = 'pe-unloading-1' as PhaseEventId
 const CONFIRMATION_PE = 'pe-confirmation-1' as PhaseEventId
 
 const mockUseParams = vi.fn()
@@ -55,6 +56,14 @@ vi.mock('next/navigation', () => ({
 }))
 
 vi.mock('@/lib/hooks/useTrip', () => ({ useTrip: () => tripState }))
+// The step pages take a GPS fix silently at submit time (lib/context/LocationContext.tsx).
+// Mocked like every other hook here so these tests stay about submission behaviour, and
+// so the fix is a known value the payload assertions can check for.
+const mockCapturePosition = vi.fn(async () => ({ lat: -26.09, lng: 28.13, accuracyM: 8 }))
+vi.mock('@/lib/hooks/useLocationTrail', () => ({
+  useLocationTrail: () => ({ capturePosition: mockCapturePosition, recordHere: vi.fn() }),
+}))
+
 vi.mock('@/lib/hooks/useToast', () => ({ useToast: () => ({ notify: mockNotify }) }))
 vi.mock('@/lib/hooks/useOfflineQueue', () => ({
   useOfflineQueue: () => ({ enqueuePhase: mockEnqueuePhase }),
@@ -66,11 +75,21 @@ vi.mock('@/lib/api/phases', () => ({ submitPhase: (...args: unknown[]) => mockSu
 // nothing. Step components are stubbed via the registry (components/phase/ is out of
 // scope for this task and stubbing the lookup point avoids depending on 16 real
 // components' own internals).
-function GateArrivalStub({ draft, onUpdate }: { draft: { gpsLat: number | null }; onUpdate: (patch: { gpsLng: number }) => void }) {
+// Unloading, not activation: activation's draft is down to capturedAt now that its GPS
+// is captured silently at submit, so it no longer holds evidence worth proving survives
+// a cold start. Unloading's seal number and visual count are exactly that kind of
+// evidence — typed by the driver, expensive to re-capture, and lost forever if a
+// mid-flight reload wipes the draft.
+function SealVerifyStub({
+  draft, onUpdate,
+}: {
+  draft: { sealNumberAtDestination: string | null }
+  onUpdate: (patch: { driverVisualCount: number }) => void
+}) {
   return (
     <div>
-      <p>gps-lat:{draft.gpsLat ?? 'null'}</p>
-      <button onClick={() => onUpdate({ gpsLng: 28.13 })}>patch-gps</button>
+      <p>seal:{draft.sealNumberAtDestination ?? 'null'}</p>
+      <button onClick={() => onUpdate({ driverVisualCount: 31 })}>patch-count</button>
     </div>
   )
 }
@@ -81,7 +100,7 @@ function ClosedStub({ onComplete }: { onComplete: () => void }) {
 
 vi.mock('@/components/phase/steps/registry', () => ({
   stepComponentFor: (phaseType: string, slug: string) => {
-    if (phaseType === 'activation' && slug === '1-approach-gate') return GateArrivalStub
+    if (phaseType === 'unloading' && slug === '2-seal-verify') return SealVerifyStub
     if (phaseType === 'confirmation' && slug === '4-closed') return ClosedStub
     return undefined
   },
@@ -158,8 +177,8 @@ function makeTrip(phases: PhaseDescriptor[], overrides: Partial<Trip> = {}): Tri
   }
 }
 
-function activationDraftKey(): string {
-  return `fp_draft_${TRIP_ID}_${ACTIVATION_PE}`
+function unloadingDraftKey(): string {
+  return `fp_draft_${TRIP_ID}_${UNLOADING_PE}`
 }
 
 beforeEach(() => {
@@ -173,13 +192,16 @@ afterEach(() => {
 
 describe('trip-loading gate — drafts survive a mount that begins before the trip loads (Fix 1)', () => {
   it('loads a previously persisted draft under the real (tripId, phase_event_id) key, and the next update merges instead of wiping it', async () => {
-    // The driver captured GPS at activation on an earlier session; then the app
+    // The driver typed the destination seal on an earlier session; then the app
     // cold-starts straight onto the step URL (reload / relaunch / notification deep link).
     localStorage.setItem(
-      activationDraftKey(),
-      JSON.stringify({ gpsLat: -26.09, gpsLng: null, gateAddress: null, capturedAt: '2026-07-01T08:00:00Z' }),
+      unloadingDraftKey(),
+      JSON.stringify({
+        waybillHandedOver: null, sealNumberAtDestination: 'AB-1234', sealVerifiedMatch: null,
+        sealBrokenPhotoDataUrl: null, driverVisualCount: null, capturedAt: '2026-07-01T08:00:00Z',
+      }),
     )
-    mockUseParams.mockReturnValue({ type: 'activation', slug: '1-approach-gate' })
+    mockUseParams.mockReturnValue({ type: 'unloading', slug: '2-seal-verify' })
     tripState = { trip: null, isLoading: true, refetchTrip: mockRefetchTrip }
 
     const { rerender } = render(<PhaseStepPageClient />)
@@ -187,22 +209,26 @@ describe('trip-loading gate — drafts survive a mount that begins before the tr
     // While TripContext is still loading, the step — and therefore usePhaseDraft's lazy
     // initializer — must not have mounted at all. Before the fix it would have mounted
     // here with tripId = '' and initialized empty state under the wrong key.
-    expect(screen.queryByText(/gps-lat:/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/seal:/)).not.toBeInTheDocument()
 
     // The trip arrives on the SAME mount. The step appears with the persisted draft —
     // not an empty ACTIVATION_INITIAL.
-    const trip = makeTrip([makePhase({ phase_type: 'activation', sequence_number: 1, status: 'in_progress' })])
+    const trip = makeTrip([makePhase({
+      phase_event_id: UNLOADING_PE, phase_type: 'unloading', sequence_number: 4, status: 'in_progress',
+    })])
     tripState = { trip, isLoading: false, refetchTrip: mockRefetchTrip }
     rerender(<PhaseStepPageClient />)
-    expect(await screen.findByText('gps-lat:-26.09')).toBeInTheDocument()
+    expect(await screen.findByText('seal:AB-1234')).toBeInTheDocument()
 
     // The next onUpdate must MERGE into the stored draft. The buggy version would have
-    // written {...emptyPrev, ...patch} to the real key here, erasing the captured lat.
-    fireEvent.click(screen.getByText('patch-gps'))
+    // written {...emptyPrev, ...patch} to the real key here, erasing the typed seal.
+    fireEvent.click(screen.getByText('patch-count'))
 
-    const stored = JSON.parse(localStorage.getItem(activationDraftKey()) ?? '{}') as { gpsLat: number | null; gpsLng: number | null }
-    expect(stored.gpsLat).toBe(-26.09) // previously captured evidence survived
-    expect(stored.gpsLng).toBe(28.13) // and the new patch landed alongside it
+    const stored = JSON.parse(localStorage.getItem(unloadingDraftKey()) ?? '{}') as {
+      sealNumberAtDestination: string | null; driverVisualCount: number | null
+    }
+    expect(stored.sealNumberAtDestination).toBe('AB-1234') // previously captured evidence survived
+    expect(stored.driverVisualCount).toBe(31) // and the new patch landed alongside it
   })
 })
 

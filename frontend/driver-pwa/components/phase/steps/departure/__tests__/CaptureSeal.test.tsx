@@ -37,8 +37,6 @@ const NULL_REFERENCE_NOTE = 'Enter the seal number above before confirming it.'
 
 function makeDraft(overrides: Partial<DepartureEvidence> = {}): DepartureEvidence {
   return {
-    gpsLat: null,
-    gpsLng: null,
     waybillPhotoDataUrl: null,
     sealNumber: null,
     sealPhotoDataUrl: null,

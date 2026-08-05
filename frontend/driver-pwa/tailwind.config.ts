@@ -169,8 +169,11 @@ const config: Config = {
           from: { opacity: '0', transform: 'scale(0.95)' },
           to: { opacity: '1', transform: 'scale(1)' },
         },
+        // Drops DOWN from above: the toast viewport is anchored to the top of the screen
+        // (components/ui/Toast.tsx), so a toast entering from below would slide the wrong
+        // way past its own resting place.
         'toast-in': {
-          from: { opacity: '0', transform: 'translateY(8px) scale(0.97)' },
+          from: { opacity: '0', transform: 'translateY(-8px) scale(0.97)' },
           to: { opacity: '1', transform: 'translateY(0) scale(1)' },
         },
         'confirm-pulse': {
@@ -181,6 +184,20 @@ const config: Config = {
           from: { transform: 'scale(1)', opacity: '0.6' },
           to: { transform: 'scale(1.8)', opacity: '0' },
         },
+        // Suspension bounce for the loading truck — small on purpose: the road under it
+        // carries the sense of movement, the truck only has to look like it is riding on
+        // something. See components/ui/TruckLoader.tsx.
+        'truck-drive': {
+          '0%, 100%': { transform: 'translateY(0)' },
+          '50%': { transform: 'translateY(-2px)' },
+        },
+        // Scrolls the dashed road exactly one tile per cycle, which is what makes the
+        // loop seamless. --road-tile is set by the loader and read here and by the
+        // `road` background image below, so the two can never drift apart.
+        'road-scroll': {
+          from: { transform: 'translateX(0)' },
+          to: { transform: 'translateX(calc(var(--road-tile, 1.5rem) * -1))' },
+        },
       },
       animation: {
         'accordion-down': 'accordion-down 0.2s ease-out',
@@ -189,6 +206,18 @@ const config: Config = {
         'toast-in': 'toast-in 250ms ease-out',
         'confirm-pulse': 'confirm-pulse 400ms ease-in-out',
         'radar-pulse': 'radar-pulse 1.2s ease-out infinite',
+        'truck-drive': 'truck-drive 500ms ease-in-out infinite',
+        'road-scroll': 'road-scroll 500ms linear infinite',
+      },
+
+      backgroundImage: {
+        // Dashed centre line for the loading truck's road: half a tile of ink, half a
+        // tile of gap. currentColor so the strip takes its colour from the text token on
+        // its wrapper rather than hard-coding one here.
+        road:
+          'repeating-linear-gradient(90deg,' +
+          ' currentColor 0, currentColor calc(var(--road-tile, 1.5rem) / 2),' +
+          ' transparent calc(var(--road-tile, 1.5rem) / 2), transparent var(--road-tile, 1.5rem))',
       },
     },
   },

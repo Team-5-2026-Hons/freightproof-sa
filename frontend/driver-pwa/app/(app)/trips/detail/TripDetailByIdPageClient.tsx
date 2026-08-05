@@ -10,19 +10,18 @@ import { useCallback, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { Trip } from '@shared/lib/types/trip'
-import { fetchMyTrip } from '@/lib/api/trips'
+import { fetchMyTrip, fetchMyTrips } from '@/lib/api/trips'
 import { ApiError } from '@/lib/api/client'
 import { stepsFor, phaseStepRoute } from '@/lib/phase'
 import { ROUTES, TRIP_ID_PARAM } from '@/lib/constants/routes'
 import { useTrip } from '@/lib/hooks/useTrip'
 import { useToast } from '@/lib/hooks/useToast'
 import { Button } from '@/components/ui/Button'
-import { Spinner } from '@/components/ui/Spinner'
+import { TruckLoader } from '@/components/ui/TruckLoader'
+import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { TripDetailView } from '@/components/trip/TripDetailView'
-
-// Statuses meaning "this trip is underway" — the driver has activated it. Mirrors the
-// backend's own ranking in trip_service.get_active_trip_for_driver.
-const UNDERWAY_STATUSES: readonly Trip['status'][] = ['active', 'exception_hold']
+import { activationBlock, activationBlockMessage } from '@/lib/utils/activation-gate'
+import type { ActivationCandidate } from '@/lib/utils/activation-gate'
 
 // Route to the first step of the selected phase's own recipe. Mirrors
 // PhaseStepPageClient.tsx's local currentStepRoute — lib/phase/ itself stays the
@@ -41,11 +40,14 @@ export default function TripDetailByIdPageClient() {
   const searchParams = useSearchParams()
   const tripId = searchParams.get(TRIP_ID_PARAM)
   const { notify } = useToast()
-  // The session's current trip, used only to tell whether a DIFFERENT trip is already
-  // underway — a driver runs one trip at a time, so this one can't be started yet.
-  const { trip: sessionTrip, selectTrip } = useTrip()
+  const { selectTrip } = useTrip()
 
   const [trip, setTrip] = useState<Trip | null>(null)
+  // The driver's OTHER trips, needed to answer "may this one be started yet" — a trip
+  // already underway, or an earlier trip due the same day, both block activation. Read
+  // from the list endpoint rather than TripContext: the context holds only whichever
+  // single trip the server calls current, which cannot see a same-day sibling at all.
+  const [siblings, setSiblings] = useState<ActivationCandidate[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [isStarting, setIsStarting] = useState(false)
@@ -58,6 +60,12 @@ export default function TripDetailByIdPageClient() {
     }
     setIsLoading(true)
     setLoadError(null)
+    // The sibling list is best-effort: its own failure must not stop the trip itself
+    // rendering, because the server enforces every one of these rules regardless. A
+    // failed list only costs the driver an up-front explanation, not correctness.
+    fetchMyTrips()
+      .then(setSiblings)
+      .catch((err: unknown) => console.error('Could not load sibling trips for the activation gate', err))
     fetchMyTrip(tripId)
       .then(setTrip)
       .catch((err: unknown) => {
@@ -78,13 +86,10 @@ export default function TripDetailByIdPageClient() {
   useEffect(() => { load() }, [load])
 
   if (isLoading) {
-    return (
-      // h-full, not min-h-screen: AppShell already owns the viewport-locked frame and
-      // hands this page a sized, scrollable slot (see AppShell.tsx).
-      <main className="flex h-full items-center justify-center p-6">
-        <Spinner />
-      </main>
-    )
+    // Centred on the viewport rather than on AppShell's slot, which reserves bottom
+    // padding for the nav pill and so pulled the old indicator above the middle of the
+    // screen — see LoadingScreen.tsx.
+    return <LoadingScreen label="Loading trip" />
   }
 
   if (loadError !== null || trip === null) {
@@ -107,23 +112,18 @@ export default function TripDetailByIdPageClient() {
   // the Activation phase is what flips it to 'active' server-side
   // (orchestration/phase_service.advance_activation).
   const notYetStarted = trip.status === 'created'
-  // One trip at a time: another trip already underway blocks starting this one. Compared
-  // by id so the trip being viewed never blocks itself.
-  const otherTripUnderway =
-    sessionTrip !== null &&
-    sessionTrip.id !== trip.id &&
-    UNDERWAY_STATUSES.includes(sessionTrip.status)
+  // Every reason this trip can't be started yet, in the same order the server checks
+  // them (lib/utils/activation-gate.ts mirrors phase_service). null means it's startable.
+  const block = activationBlock(trip, siblings, new Date())
 
   // Point the phase flow at THIS trip before navigating into it. The step pages resolve
   // which phase_event_id to submit from TripContext, not from the URL, so without this a
   // driver opening their second assignment would submit evidence against the first.
   const openPhase = async (phase: PhaseDescriptor) => {
-    if (notYetStarted && otherTripUnderway) {
-      notify({
-        kind: 'warning',
-        title: 'Finish your active trip first',
-        body: `${sessionTrip.trip_reference} is still in progress. You can only run one trip at a time.`,
-      })
+    // Refuse here rather than letting the driver capture a full step's evidence and be
+    // rejected by the server's 409 at submit time.
+    if (block !== null) {
+      notify({ kind: 'warning', title: 'Can’t start this trip yet', body: activationBlockMessage(block) })
       return
     }
     setIsStarting(true)
@@ -141,35 +141,43 @@ export default function TripDetailByIdPageClient() {
     }
   }
 
-  return (
-    <>
+  // Both of these go through TripDetailView's `notice` slot rather than being rendered
+  // as siblings above it. They used to sit outside its <main>, which on this full-bleed
+  // route meant they painted under the iOS status bar and pushed a viewport-tall screen
+  // off the bottom of the display — see TripDetailViewProps.notice for the full reason.
+  const notice = (notYetStarted || isStarting) ? (
+    <div className="flex flex-col gap-3">
       {notYetStarted && (
-        <div className="px-4 pt-4">
-          <p
-            className={
-              otherTripUnderway
-                ? 'rounded-xl bg-tertiary-container px-4 py-3 text-sm text-tertiary-on-container'
-                : 'rounded-xl bg-secondary-container px-4 py-3 text-sm text-secondary-on-container'
-            }
-          >
-            {otherTripUnderway
-              ? `Finish ${sessionTrip.trip_reference} before starting this trip.`
-              : 'This trip hasn’t started yet. Complete Activation below to begin it.'}
-          </p>
-        </div>
+        <p
+          className={
+            block !== null
+              ? 'rounded-xl bg-tertiary-container px-4 py-3 text-sm text-tertiary-on-container'
+              : 'rounded-xl bg-secondary-container px-4 py-3 text-sm text-secondary-on-container'
+          }
+        >
+          {block !== null
+            ? activationBlockMessage(block)
+            : 'This trip hasn’t started yet. Complete Activation below to begin it.'}
+        </p>
       )}
-      {isStarting && (
-        <div className="flex justify-center pt-3"><Spinner /></div>
-      )}
-      <TripDetailView
-        trip={trip}
-        onBack={() => router.push(ROUTES.trips)}
-        onInTransitHub={() => router.push(ROUTES.inTransit)}
-        onSelectPhase={openPhase}
-        // Reached from the trips list rather than mid-journey, so the whole plan is shown
-        // for context — the single-actionable-phase view lives on trips/active.
-        showAllPhases
-      />
-    </>
+      {/* sm: this one shares the notice block with the activation copy above it, so it
+          can't take a full screen's worth of truck. */}
+      {isStarting && <TruckLoader size="sm" label="Starting trip" className="self-center" />}
+    </div>
+  ) : undefined
+
+  return (
+    <TripDetailView
+      trip={trip}
+      onBack={() => router.push(ROUTES.trips)}
+      onInTransitHub={() => router.push(ROUTES.inTransit)}
+      onSelectPhase={openPhase}
+      notice={notice}
+      // Single actionable phase only, identical to trips/active. The full plan listing
+      // stays on trips/[id] (the mock/demo route) — on a real trip it filled the screen
+      // with rows the driver cannot act on and pushed the one card that IS actionable
+      // below the fold.
+      showAllPhases={false}
+    />
   )
 }

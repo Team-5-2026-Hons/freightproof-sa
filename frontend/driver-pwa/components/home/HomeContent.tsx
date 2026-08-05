@@ -9,7 +9,7 @@ import { tripStatusChip } from '@/lib/utils/trip-status-chip'
 import { Button } from '@/components/ui/Button'
 import { Chip } from '@/components/ui/Chip'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { Spinner } from '@/components/ui/Spinner'
+import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { PhaseProgressBar } from '@/components/trip/PhaseProgressBar'
 import { CurrentPhaseCard } from '@/components/trip/CurrentPhaseCard'
 import { HoldNotice } from '@/components/trip/HoldNotice'
@@ -31,19 +31,10 @@ export function HomeContent() {
   const { trip, isLoading } = useTrip()
 
   if (isLoading) {
-    // Canonical loading state — identical markup to ActiveTripPageClient and
-    // InTransitPageClient. Returning null here flashed a blank screen on every
-    // cold load of Home, which reads as a crash on a slow connection.
-    //
-    // h-full, not min-h-screen: AppShell (the only caller) already owns the fixed,
-    // locked-to-viewport frame and gives this component a sized, scrollable slot to
-    // fill — a second min-h-screen here would stack on top of AppShell's own and push
-    // every Home render past one screen regardless of how little content it has.
-    return (
-      <main className="flex h-full items-center justify-center p-6">
-        <Spinner />
-      </main>
-    )
+    // Canonical loading state — the one LoadingScreen component every waiting screen in
+    // the app now renders. Returning null here flashed a blank screen on every cold load
+    // of Home, which reads as a crash on a slow connection.
+    return <LoadingScreen label="Loading your trip" />
   }
 
   if (!trip) {

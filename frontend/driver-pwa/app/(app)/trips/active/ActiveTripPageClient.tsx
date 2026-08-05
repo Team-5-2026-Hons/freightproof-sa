@@ -6,7 +6,7 @@ import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import { stepsFor, phaseStepRoute } from '@/lib/phase'
 import { ROUTES } from '@/lib/constants/routes'
 import { useTrip } from '@/lib/hooks/useTrip'
-import { Spinner } from '@/components/ui/Spinner'
+import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { TripDetailView } from '@/components/trip/TripDetailView'
 
 // Route to the first step of the selected phase's own recipe. Mirrors
@@ -23,11 +23,7 @@ export default function ActiveTripPageClient() {
   const { trip, isLoading } = useTrip()
 
   if (isLoading) {
-    return (
-      <main className="flex min-h-dvh items-center justify-center p-6">
-        <Spinner />
-      </main>
-    )
+    return <LoadingScreen label="Loading trip" />
   }
 
   if (!trip) {

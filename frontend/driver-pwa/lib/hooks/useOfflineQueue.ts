@@ -5,6 +5,8 @@ import { useCallback, useEffect, useSyncExternalStore } from 'react'
 import { submitPhase } from '@/lib/api/phases'
 import { raiseException, type RaiseExceptionBody } from '@/lib/api/exceptions'
 import { submitCheckpoint, type CheckpointEvidence } from '@/lib/api/checkpoints'
+import { recordLocations, type LocationPingBody } from '@/lib/api/locations'
+import type { DriverPosition } from '@/lib/types/location'
 import { ApiError } from '@/lib/api/client'
 import type { PhaseType } from '@shared/lib/types/phase'
 import type { PhaseEvidence } from '@/lib/types/evidence-draft'
@@ -28,6 +30,11 @@ interface PhaseQueueEntry {
   // it, and so a future divergence between "queue bookkeeping id" and "server
   // idempotency key" is a deliberate type change, not a silent rename.
   idempotencyKey: string
+  // The driver's fix at the moment they swiped, captured silently by the step page.
+  // Stored WITH the entry (not re-taken at replay time) because a ping recorded when
+  // signal came back would claim the driver completed the phase wherever they happened
+  // to reconnect — which is exactly the kind of false evidence this app exists to avoid.
+  position: DriverPosition | null
   enqueuedAt: string
 }
 
@@ -53,7 +60,21 @@ interface CheckpointQueueEntry {
   enqueuedAt: string
 }
 
-type QueueEntry = PhaseQueueEntry | ExceptionQueueEntry | CheckpointQueueEntry
+// Location pings from the trail (lib/context/LocationContext.tsx). Queued as a BATCH
+// because that is how they arrive when a driver walks through a dead zone: several
+// fixes, each carrying its own device timestamp, all replayed in one call once signal
+// returns. Nothing here needs an idempotency key — a duplicated ping is a duplicate row
+// in a trail, not a duplicated piece of evidence, and the endpoint has no side effects
+// beyond the insert.
+interface LocationQueueEntry {
+  kind: 'location'
+  id: string
+  tripId: string
+  pings: LocationPingBody[]
+  enqueuedAt: string
+}
+
+type QueueEntry = PhaseQueueEntry | ExceptionQueueEntry | CheckpointQueueEntry | LocationQueueEntry
 
 const QUEUE_KEY = 'fp_offline_queue'
 
@@ -86,9 +107,14 @@ async function sendEntry(entry: QueueEntry): Promise<void> {
     // current trip state (phase_service.py's `_gate_and_load` dedupe) rather than
     // erroring or duplicating evidence. submitPhase surfaces that via
     // SubmitPhaseResult.phaseStatus; this call only needs to know it didn't throw.
-    await submitPhase(entry.tripId, entry.phaseEventId, entry.phaseType, entry.evidence, entry.idempotencyKey)
+    await submitPhase(
+      entry.tripId, entry.phaseEventId, entry.phaseType, entry.evidence,
+      entry.idempotencyKey, entry.position ?? null,
+    )
   } else if (entry.kind === 'checkpoint') {
     await submitCheckpoint(entry.tripId, entry.evidence)
+  } else if (entry.kind === 'location') {
+    await recordLocations(entry.tripId, entry.pings)
   } else {
     await raiseException(entry.tripId, entry.body)
   }
@@ -243,7 +269,10 @@ export function useOfflineQueue() {
   // Renamed from `enqueue` (was implicitly handshake-only) to match enqueueException/
   // enqueueCheckpoint's kind-suffixed naming now that QueueEntry has three kinds.
   const enqueuePhase = useCallback(
-    (tripId: string, phaseEventId: string, phaseType: PhaseType, evidence: PhaseEvidence) => {
+    (
+      tripId: string, phaseEventId: string, phaseType: PhaseType, evidence: PhaseEvidence,
+      position: DriverPosition | null,
+    ) => {
       // Generated once, here, and never regenerated — see PhaseQueueEntry.idempotencyKey.
       // Reused as both the queue's own bookkeeping id and the wire idempotency_key so a
       // resend of this exact entry (flushQueue picking it up again after a transient
@@ -251,6 +280,7 @@ export function useOfflineQueue() {
       const id = crypto.randomUUID()
       const entry: PhaseQueueEntry = {
         kind: 'phase', id, tripId, phaseEventId, phaseType, evidence, idempotencyKey: id,
+        position,
         enqueuedAt: new Date().toISOString(),
       }
       const q = [...loadQueue(), entry]
@@ -286,6 +316,19 @@ export function useOfflineQueue() {
     [],
   )
 
+  const enqueueLocation = useCallback(
+    (tripId: string, pings: LocationPingBody[]) => {
+      const entry: LocationQueueEntry = {
+        kind: 'location', id: crypto.randomUUID(), tripId, pings,
+        enqueuedAt: new Date().toISOString(),
+      }
+      const q = [...loadQueue(), entry]
+      saveQueue(q)
+      publishStoreState({ length: q.length })
+    },
+    [],
+  )
+
   // flushQueue is a stable module-level function (shared by every instance, not
   // recreated per mount) — returned as-is so identity never changes across renders.
   const flush = flushQueue
@@ -310,5 +353,8 @@ export function useOfflineQueue() {
     }
   }, [flush])
 
-  return { queueLength, droppedCount, dismissDropped, enqueuePhase, enqueueException, enqueueCheckpoint, flush }
+  return {
+    queueLength, droppedCount, dismissDropped,
+    enqueuePhase, enqueueException, enqueueCheckpoint, enqueueLocation, flush,
+  }
 }

@@ -1,4 +1,5 @@
 // frontend/driver-pwa/components/trip/TripDetailView.tsx
+import type { ReactNode } from 'react'
 import { CheckCircle2 } from 'lucide-react'
 import type { Trip } from '@shared/lib/types/trip'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
@@ -25,6 +26,18 @@ export interface TripDetailViewProps {
   // data source a page uses decides this, not a UI preference — hence a flag here
   // rather than two independently-maintained views that would drift apart.
   showAllPhases: boolean
+  // Page-level banner (e.g. "this trip hasn't started yet"), rendered INSIDE this
+  // component's scrollport rather than above it by the caller.
+  //
+  // This slot is not a convenience. The trip-detail routes are full-bleed
+  // (lib/navigation/full-bleed.ts): there is no AppShell above them, so the <main>
+  // below is the entire screen and SubpageHeader is the only element carrying the iOS
+  // safe-area inset. Anything a caller rendered as a SIBLING above that <main> therefore
+  // painted under the status bar, and — because <main> is a full h-dvh box — shoved an
+  // exact-viewport-tall screen down by its own height, pushing the bottom off the display
+  // and stranding the header's pt-safe as dead space in the middle of the page. Routing
+  // page banners through here keeps the screen locked to exactly one viewport.
+  notice?: ReactNode
 }
 
 // Plan order is never trusted off the wire (mirrors lib/phase/derive.ts's own
@@ -47,7 +60,7 @@ function isPhaseDone(phase: PhaseDescriptor): boolean {
 // near-identical, hand-duplicated files). Pixel-identical per data source: callers
 // supply the trip + navigation callbacks, this component owns none of the data fetching.
 export function TripDetailView({
-  trip, onBack, onInTransitHub, onSelectPhase, showAllPhases,
+  trip, onBack, onInTransitHub, onSelectPhase, showAllPhases, notice,
 }: TripDetailViewProps) {
   const { kind, label } = tripStatusChip(trip.status)
   const phases = bySequence(trip.phases)
@@ -82,6 +95,8 @@ export function TripDetailView({
           shorthand declarations would otherwise race on one node (same split the step
           screens' `px-6 pt-6 pb-safe` footers already use). */}
       <div className="flex flex-col gap-4 px-4 pt-4 pb-safe">
+        {notice}
+
         {/* Bare chip, not a titled `section` Card. The card spent ~90px of a phone
             screen — a grey panel, a "Status" label and 20px of padding — to say one
             word the chip already says louder and in colour, and it pushed the phase

@@ -45,6 +45,14 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockRouterPush, replace: vi.fn(), back: vi.fn() }),
 }))
 vi.mock('@/lib/hooks/useTrip', () => ({ useTrip: () => tripState }))
+// The step pages take a GPS fix silently at submit time (lib/context/LocationContext.tsx).
+// Mocked like every other hook here so these tests stay about submission behaviour, and
+// so the fix is a known value the payload assertions can check for.
+const mockCapturePosition = vi.fn(async () => ({ lat: -26.09, lng: 28.13, accuracyM: 8 }))
+vi.mock('@/lib/hooks/useLocationTrail', () => ({
+  useLocationTrail: () => ({ capturePosition: mockCapturePosition, recordHere: vi.fn() }),
+}))
+
 vi.mock('@/lib/hooks/useToast', () => ({ useToast: () => ({ notify: mockNotify }) }))
 vi.mock('@/lib/hooks/useOfflineQueue', () => ({
   useOfflineQueue: () => ({ enqueuePhase: mockEnqueuePhase }),

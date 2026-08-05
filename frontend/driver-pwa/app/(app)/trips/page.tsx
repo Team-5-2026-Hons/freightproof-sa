@@ -16,8 +16,8 @@ import { Card } from '@/components/ui/Card'
 import { Chip } from '@/components/ui/Chip'
 import { Input } from '@/components/ui/Input'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { Spinner } from '@/components/ui/Spinner'
-import { tripsForDriver, categorizeTrips, filterPastTrips } from '@/lib/utils/trip-filters'
+import { TruckLoader } from '@/components/ui/TruckLoader'
+import { tripsForDriver, categorizeTrips, filterPastTrips, sortByDeparture } from '@/lib/utils/trip-filters'
 import { tripStatusChip } from '@/lib/utils/trip-status-chip'
 import { precinctName } from '@/lib/utils/precinct-name'
 import { formatDateTime } from '@/lib/utils/format-time'
@@ -134,7 +134,18 @@ export default function TripsPage() {
 
   useEffect(() => { load() }, [load])
 
-  const { active, upcoming, past } = useMemo(() => categorizeTrips(trips), [trips])
+  const { active, upcoming, past } = useMemo(() => {
+    const grouped = categorizeTrips(trips)
+    return {
+      // Soonest departure first, so the next trip the driver leaves on is the top card
+      // instead of wherever GET /trips/me happened to place it.
+      active: sortByDeparture(grouped.active),
+      upcoming: sortByDeparture(grouped.upcoming),
+      // Past runs the other way: history is read most-recent-first, and oldest-first
+      // would put a trip from months ago above the one finished this morning.
+      past: sortByDeparture(grouped.past, 'latest-first'),
+    }
+  }, [trips])
 
   const filteredPast = useMemo(
     () => filterPastTrips(past, { dateFrom: dateFrom || null, dateTo: dateTo || null, search }),
@@ -211,7 +222,10 @@ export default function TripsPage() {
       )}
 
       {isLoading ? (
-        <div className="flex justify-center py-10"><Spinner /></div>
+        // In-page, not LoadingScreen: the heading and tabs above stay on screen while the
+        // list loads, so the loader belongs in the space the list will occupy rather than
+        // floating over the whole viewport.
+        <div className="flex justify-center py-16"><TruckLoader label="Loading your trips" /></div>
       ) : loadError !== null ? (
         <div className="flex flex-col items-start gap-3 rounded-xl bg-error-container px-4 py-3">
           <p className="text-sm text-error-on-container">{loadError}</p>

@@ -9,9 +9,10 @@ import { api } from './client'
 import type { Trip } from '@shared/lib/types/trip'
 import type { PhaseStatus, PhaseType } from '@shared/lib/types/phase'
 import type {
-  ActivationEvidence, ConfirmationEvidence, DepartureEvidence, LoadingEvidence,
+  ConfirmationEvidence, DepartureEvidence, LoadingEvidence,
   PhaseEvidence, UnloadingEvidence,
 } from '@/lib/types/evidence-draft'
+import type { DriverPosition } from '@/lib/types/location'
 import { IS_DEMO_MODE } from '@/lib/constants/env'
 import { uploadArtifact } from './artifacts'
 
@@ -97,6 +98,18 @@ export const completePhase = (
     { timeoutMs: PHASE_SUBMIT_TIMEOUT_MS },
   )
 
+// Spreads the fix onto a completion body, or contributes nothing when there isn't one.
+// Omitting the keys (rather than sending nulls) is what keeps a failed capture from
+// overwriting a position an earlier attempt of this same submission already stored —
+// the backend's _record_driver_position only writes when both arrive.
+function driverPosition(position: DriverPosition | null): {
+  driver_phone_lat?: number
+  driver_phone_lng?: number
+} {
+  if (position === null) return {}
+  return { driver_phone_lat: position.lat, driver_phone_lng: position.lng }
+}
+
 export interface SubmitPhaseResult {
   ok: boolean
   // The backend's updated TripDetail from the complete call. Null in demo mode (no
@@ -126,12 +139,20 @@ export interface SubmitPhaseResult {
 // must generate theirs with `crypto.randomUUID()` too, once per logical submission
 // attempt and reused across its own retries, so the online and replay paths are
 // identical from the server's point of view.
+//
+// `position` is the driver's phone fix, taken silently by the caller at submit time
+// (lib/context/LocationContext.tsx) — there is no longer a step that asks the driver to
+// capture one. It rides on the wire for EVERY phase, because phase_events has always had
+// driver_phone_lat/lng on every row and the backend now persists them for every phase.
+// Null is legal and normal (a warehouse roof, a denied permission) and never blocks a
+// submission — except for activation, whose origin-gate position the backend requires.
 export async function submitPhase(
   tripId: string,
   phaseEventId: string,
   phaseType: PhaseType,
   evidence: PhaseEvidence,
   idempotencyKey: string,
+  position: DriverPosition | null,
 ): Promise<SubmitPhaseResult> {
   if (IS_DEMO_MODE) {
     await new Promise<void>((resolve) => setTimeout(resolve, 400))
@@ -147,14 +168,19 @@ export async function submitPhase(
 
   switch (phaseType) {
     case 'activation': {
-      const e = evidence as ActivationEvidence
-      if (e.gpsLat === null || e.gpsLng === null) {
-        throw new Error('Activation evidence incomplete — GPS is required.')
+      // The one phase that cannot proceed without a fix: activation records WHERE the
+      // trip started, and ActivationCompleteRequest makes the coordinates required. The
+      // message tells the driver what to do about it, because the only remedy is
+      // physical (move to open sky) or in the OS settings.
+      if (position === null) {
+        throw new Error(
+          'Could not get your location. Move to open sky, check that Location is enabled for this app, and swipe again.',
+        )
       }
       updatedTrip = await completePhase(tripId, phaseEventId, {
         phase_type: 'activation',
-        driver_phone_lat: e.gpsLat,
-        driver_phone_lng: e.gpsLng,
+        driver_phone_lat: position.lat,
+        driver_phone_lng: position.lng,
         idempotency_key: idempotencyKey,
       })
       break
@@ -166,6 +192,7 @@ export async function submitPhase(
       }
       updatedTrip = await completePhase(tripId, phaseEventId, {
         phase_type: 'loading',
+        ...driverPosition(position),
         driver_visual_count: e.driverVisualCount,
         idempotency_key: idempotencyKey,
       })
@@ -182,6 +209,7 @@ export async function submitPhase(
       ])
       updatedTrip = await completePhase(tripId, phaseEventId, {
         phase_type: 'departure',
+        ...driverPosition(position),
         waybill_photo_artifact_id: waybillPhoto.id,
         seal_number: e.sealNumber,
         seal_photo_artifact_id: sealPhoto.id,
@@ -205,6 +233,7 @@ export async function submitPhase(
       }
       updatedTrip = await completePhase(tripId, phaseEventId, {
         phase_type: 'unloading',
+        ...driverPosition(position),
         seal_number_at_destination: e.sealNumberAtDestination,
         idempotency_key: idempotencyKey,
       })
@@ -221,6 +250,7 @@ export async function submitPhase(
       ])
       updatedTrip = await completePhase(tripId, phaseEventId, {
         phase_type: 'confirmation',
+        ...driverPosition(position),
         pod_photo_artifact_id: podPhoto.id,
         pod_signature_artifact_id: podSignature.id,
         driver_visual_count: e.driverVisualCount,

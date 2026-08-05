@@ -1,7 +1,7 @@
 """Unit tests for the phase completion engine (advance_activation..advance_confirmation)."""
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
 
@@ -12,6 +12,7 @@ from sqlalchemy import func, select
 from app.blockchain.hedera import HederaReceipt
 from app.core.exceptions import (
     HederaServiceError, HederaTimeoutError, PhaseSequenceError, PhaseTypeMismatchError, ResourceNotFoundError,
+    TripActivationBlockedError,
 )
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import (
@@ -269,6 +270,55 @@ async def test_advance_activation_out_of_order_raises_sequence_error_reads_the_p
                 driver_visual_count=42, pp_scan_in_count=42, idempotency_key=str(uuid.uuid4()),
             ),
         )
+
+
+@pytest.mark.asyncio
+async def test_non_activation_phase_records_the_driver_position(db_session, trip_fixture):
+    """The driver no longer taps "Capture GPS Location" anywhere — the PWA takes the fix
+    silently at submit — so every phase, not just activation, must store what it was sent.
+    phase_events has always had the columns; before this only advance_activation used them."""
+    trip, driver, phases = trip_fixture
+    await advance_activation(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["activation"].id,
+        payload=_activation_payload(),
+    )
+
+    result = await advance_loading(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["loading"].id,
+        payload=LoadingCompleteRequest(
+            phase_type=PhaseType.LOADING, driver_visual_count=42,
+            driver_phone_lat=-26.0942, driver_phone_lng=28.1342,
+            idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    loading = next(p for p in result.phases if p.phase_type == PhaseType.LOADING)
+    # Exact, not approximate: the stored coordinate must be the one the phone reported,
+    # not a float rounded into Numeric(10, 7) as -26.0941999...
+    assert loading.driver_phone_lat == -26.0942
+    assert loading.driver_phone_lng == 28.1342
+
+
+@pytest.mark.asyncio
+async def test_phase_without_a_fix_completes_anyway(db_session, trip_fixture):
+    """A fix can fail — under a loading-bay roof, permission revoked mid-trip. Evidence
+    capture must never be blocked by it: the phase completes, the position is just null."""
+    trip, driver, phases = trip_fixture
+    await advance_activation(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["activation"].id,
+        payload=_activation_payload(),
+    )
+
+    result = await advance_loading(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["loading"].id,
+        payload=LoadingCompleteRequest(
+            phase_type=PhaseType.LOADING, driver_visual_count=42, idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    loading = next(p for p in result.phases if p.phase_type == PhaseType.LOADING)
+    assert loading.status == PhaseStatus.COMPLETED
+    assert loading.driver_phone_lat is None
 
 
 # ── advance_loading ──────────────────────────────────────────────────────────
@@ -1294,3 +1344,183 @@ def test_is_before_scheduled_day_allows_a_late_start():
     scheduled = datetime(2026, 8, 12, 6, 0, tzinfo=UTC)
 
     assert is_before_scheduled_day(now, scheduled) is False
+
+
+# ── Activation gates: one trip at a time, earliest-first within a day ────────────────
+#
+# Both rules are enforced in advance_activation (not _gate_and_load): they are about
+# STARTING a trip, and applying them to every phase would strand a driver mid-journey the
+# moment a dispatcher assigned them tomorrow's work.
+
+
+async def _sibling_trip(db_session, trip, *, status, scheduled, reference="FP-TEST-2"):
+    """Another trip for the SAME driver — the obstacle the two gates look for."""
+    sibling = Trip(
+        id=uuid.uuid4(), trip_reference=reference, order_number=f"ORD-{uuid.uuid4().hex[:6]}",
+        operator_organization_id=trip.operator_organization_id,
+        client_organization_id=trip.client_organization_id,
+        driver_id=trip.driver_id,
+        # Same horse on purpose: two trips claiming one driver and one horse at the same
+        # moment is exactly the state the underway gate exists to prevent.
+        horse_id=trip.horse_id,
+        origin_precinct_id=trip.origin_precinct_id,
+        destination_precinct_id=trip.destination_precinct_id,
+        status=status, idvs_check_status=IdvsStatus.VERIFIED,
+        planned_departure_at=scheduled,
+        created_by_user_id=trip.created_by_user_id,
+    )
+    db_session.add(sibling)
+    await db_session.flush()
+    return sibling
+
+
+def _activation_payload():
+    return ActivationCompleteRequest(
+        phase_type=PhaseType.ACTIVATION,
+        driver_phone_lat=Decimal("0"), driver_phone_lng=Decimal("0"),
+        idempotency_key=str(uuid.uuid4()),
+    )
+
+
+@pytest.mark.asyncio
+async def test_activation_rejected_while_another_trip_is_underway(db_session, trip_fixture):
+    trip, driver, phases = trip_fixture
+    await _sibling_trip(
+        db_session, trip, status=TripStatus.ACTIVE, scheduled=_SCHEDULED_TODAY,
+        reference="FP-ALREADY-RUNNING",
+    )
+
+    with pytest.raises(TripActivationBlockedError) as exc:
+        await advance_activation(
+            db_session, trip_id=trip.id, driver_id=driver.id,
+            phase_event_id=phases["activation"].id, payload=_activation_payload(),
+        )
+
+    assert exc.value.blocking_trip_reference == "FP-ALREADY-RUNNING"
+
+
+@pytest.mark.asyncio
+async def test_activation_rejected_while_another_trip_is_held(db_session, trip_fixture):
+    # A held trip is still the trip the driver is on — it is merely blocked from
+    # advancing, so it must not free them up to start a second one.
+    trip, driver, phases = trip_fixture
+    await _sibling_trip(
+        db_session, trip, status=TripStatus.EXCEPTION_HOLD, scheduled=_SCHEDULED_TODAY,
+    )
+
+    with pytest.raises(TripActivationBlockedError):
+        await advance_activation(
+            db_session, trip_id=trip.id, driver_id=driver.id,
+            phase_event_id=phases["activation"].id, payload=_activation_payload(),
+        )
+
+
+@pytest.mark.asyncio
+async def test_activation_allowed_when_the_other_trip_is_finished(db_session, trip_fixture):
+    # A driver's first completed trip must not permanently block their second.
+    trip, driver, phases = trip_fixture
+    await _sibling_trip(db_session, trip, status=TripStatus.CLOSED, scheduled=_SCHEDULED_TODAY)
+
+    result = await advance_activation(
+        db_session, trip_id=trip.id, driver_id=driver.id,
+        phase_event_id=phases["activation"].id, payload=_activation_payload(),
+    )
+
+    assert result.status == TripStatus.ACTIVE
+
+
+@pytest.mark.asyncio
+async def test_activation_rejected_when_an_earlier_trip_today_is_unstarted(db_session, trip_fixture):
+    trip, driver, phases = trip_fixture
+    trip.planned_departure_at = _SCHEDULED_TODAY.replace(hour=14, minute=0, second=0, microsecond=0)
+    await db_session.flush()
+    await _sibling_trip(
+        db_session, trip, status=TripStatus.CREATED,
+        scheduled=trip.planned_departure_at - timedelta(hours=4),
+        reference="FP-EARLIER-RUN",
+    )
+
+    with pytest.raises(TripActivationBlockedError) as exc:
+        await advance_activation(
+            db_session, trip_id=trip.id, driver_id=driver.id,
+            phase_event_id=phases["activation"].id, payload=_activation_payload(),
+        )
+
+    assert exc.value.blocking_trip_reference == "FP-EARLIER-RUN"
+
+
+@pytest.mark.asyncio
+async def test_activation_names_the_earliest_of_several_blocking_trips(db_session, trip_fixture):
+    trip, driver, phases = trip_fixture
+    trip.planned_departure_at = _SCHEDULED_TODAY.replace(hour=14, minute=0, second=0, microsecond=0)
+    await db_session.flush()
+    await _sibling_trip(
+        db_session, trip, status=TripStatus.CREATED,
+        scheduled=trip.planned_departure_at - timedelta(hours=2), reference="FP-MID-RUN",
+    )
+    await _sibling_trip(
+        db_session, trip, status=TripStatus.CREATED,
+        scheduled=trip.planned_departure_at - timedelta(hours=6), reference="FP-FIRST-RUN",
+    )
+
+    with pytest.raises(TripActivationBlockedError) as exc:
+        await advance_activation(
+            db_session, trip_id=trip.id, driver_id=driver.id,
+            phase_event_id=phases["activation"].id, payload=_activation_payload(),
+        )
+
+    assert exc.value.blocking_trip_reference == "FP-FIRST-RUN"
+
+
+@pytest.mark.asyncio
+async def test_activation_allowed_when_the_other_trip_departs_later_today(db_session, trip_fixture):
+    trip, driver, phases = trip_fixture
+    await _sibling_trip(
+        db_session, trip, status=TripStatus.CREATED,
+        scheduled=trip.planned_departure_at + timedelta(hours=4),
+    )
+
+    result = await advance_activation(
+        db_session, trip_id=trip.id, driver_id=driver.id,
+        phase_event_id=phases["activation"].id, payload=_activation_payload(),
+    )
+
+    assert result.status == TripStatus.ACTIVE
+
+
+@pytest.mark.asyncio
+async def test_activation_ignores_an_earlier_trip_on_a_different_day(db_session, trip_fixture):
+    # Scoped to one operating day on purpose: a trip that was never run last week must
+    # not freeze today's work until a dispatcher cancels it.
+    trip, driver, phases = trip_fixture
+    await _sibling_trip(
+        db_session, trip, status=TripStatus.CREATED,
+        scheduled=trip.planned_departure_at - timedelta(days=7),
+    )
+
+    result = await advance_activation(
+        db_session, trip_id=trip.id, driver_id=driver.id,
+        phase_event_id=phases["activation"].id, payload=_activation_payload(),
+    )
+
+    assert result.status == TripStatus.ACTIVE
+
+
+@pytest.mark.asyncio
+async def test_activation_replay_is_not_blocked_by_a_trip_started_since(db_session, trip_fixture):
+    # An offline activation queued on the roadside and resent later must still return the
+    # trip it already activated, not start failing a rule it satisfied at capture time.
+    trip, driver, phases = trip_fixture
+    payload = _activation_payload()
+    first = await advance_activation(
+        db_session, trip_id=trip.id, driver_id=driver.id,
+        phase_event_id=phases["activation"].id, payload=payload,
+    )
+    await _sibling_trip(db_session, trip, status=TripStatus.ACTIVE, scheduled=_SCHEDULED_TODAY)
+
+    replay = await advance_activation(
+        db_session, trip_id=trip.id, driver_id=driver.id,
+        phase_event_id=phases["activation"].id, payload=payload,
+    )
+
+    assert replay.id == first.id

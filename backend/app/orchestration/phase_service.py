@@ -48,6 +48,7 @@ import logging
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, date, datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import select
@@ -57,7 +58,7 @@ from app.blockchain.anchor_service import anchor_subject, compute_payload_hash
 from app.core.config import settings
 from app.core.exceptions import (
     HederaServiceError, HederaTimeoutError, PhaseSequenceError, PhaseTooEarlyError,
-    PhaseTypeMismatchError, ResourceNotFoundError,
+    PhaseTypeMismatchError, ResourceNotFoundError, TripActivationBlockedError,
 )
 from app.db.models.enums import (
     AnchorStatus, BlockchainReceiptType, ExceptionSeverity, ExceptionSource, ExceptionType,
@@ -307,6 +308,99 @@ async def _reject_if_not_due(db: AsyncSession, trip: Trip) -> None:
         )
 
 
+async def _other_trips_for_driver(db: AsyncSession, trip: Trip) -> list[Trip]:
+    """Every other non-terminal trip assigned to this trip's driver.
+
+    Terminal trips are excluded because they cannot obstruct anything — a closed or
+    cancelled trip is history, and counting it would mean a driver's very first completed
+    trip permanently blocked their second.
+    """
+    result = await db.execute(
+        select(Trip).where(
+            Trip.driver_id == trip.driver_id,
+            Trip.id != trip.id,
+            Trip.status.notin_((TripStatus.CLOSED, TripStatus.CANCELLED)),
+        )
+    )
+    return list(result.scalars().all())
+
+
+def _reject_if_another_trip_underway(others: list[Trip]) -> None:
+    """One trip at a time: a trip already underway blocks starting any other.
+
+    Nothing at trip creation stops a dispatcher assigning a driver two overlapping trips,
+    and until now nothing stopped the driver activating both — leaving two trips claiming
+    the same driver, horse and trailers at the same moment, which makes the custody chain
+    of both unprovable. ACTIVE and EXCEPTION_HOLD both count: a held trip is still the
+    trip the driver is on, it is merely blocked from advancing.
+    """
+    for other in others:
+        if other.status in (TripStatus.ACTIVE, TripStatus.EXCEPTION_HOLD):
+            raise TripActivationBlockedError(
+                other.trip_reference, "another trip is already underway"
+            )
+
+
+async def _reject_if_an_earlier_trip_is_due(
+    db: AsyncSession, trip: Trip, others: list[Trip]
+) -> None:
+    """Within one operating day, trips must be started in departure order.
+
+    Scoped to the SAME operating day on purpose. Trips on other days are already governed
+    by _reject_if_not_due, and widening this rule across days would let a trip that was
+    never run last week permanently block today's work until a dispatcher cancelled it.
+
+    A trip with no resolvable schedule is skipped rather than assumed earliest: it cannot
+    be activated at all (_reject_if_not_due rejects it outright), so it has no business
+    blocking a properly scheduled trip on its way through.
+    """
+    scheduled = await _scheduled_departure(db, trip)
+    if scheduled is None:
+        return
+    day = operating_day(scheduled)
+
+    earliest: Trip | None = None
+    earliest_at: datetime | None = None
+    for other in others:
+        if other.status != TripStatus.CREATED:
+            continue
+        other_scheduled = await _scheduled_departure(db, other)
+        if other_scheduled is None or operating_day(other_scheduled) != day:
+            continue
+        if other_scheduled >= scheduled:
+            continue
+        if earliest_at is None or other_scheduled < earliest_at:
+            earliest, earliest_at = other, other_scheduled
+
+    if earliest is not None:
+        raise TripActivationBlockedError(
+            earliest.trip_reference, "an earlier trip today has to be started first"
+        )
+
+
+def _record_driver_position(event: PhaseEvent, payload: PhaseCompleteRequest) -> None:
+    """Stamp the driver's phone fix onto the phase event, when the app sent one.
+
+    Called by every advance_*, not just activation: the PWA no longer has manual
+    "Capture GPS Location" steps, it takes a fix silently as the driver swipes to
+    confirm, so every phase event can now say where it was completed.
+
+    Only writes when a fix is present. A None must never overwrite a position already
+    stored by an earlier attempt — a replayed offline submission whose original capture
+    succeeded would otherwise erase it on retry.
+
+    POPIA: these columns stay in Postgres. Every canonical payload builder in this
+    module is an explicit whitelist, so nothing written here can reach a Hedera hash.
+    """
+    if payload.driver_phone_lat is None or payload.driver_phone_lng is None:
+        return
+    # str() before Decimal: handing a float straight to a Numeric(10, 7) column carries
+    # the float's binary rounding error into fixed point (-26.0942 stores as
+    # -26.0941999...). The string form is the coordinate the phone actually reported.
+    event.driver_phone_lat = Decimal(str(payload.driver_phone_lat))
+    event.driver_phone_lng = Decimal(str(payload.driver_phone_lng))
+
+
 async def advance_activation(
     db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID, phase_event_id: uuid.UUID,
     payload: ActivationCompleteRequest,
@@ -321,12 +415,18 @@ async def advance_activation(
 
     await _reject_if_not_due(db, trip)
 
+    # Both gates sit AFTER _gate_and_load's idempotent-replay short-circuit, for the same
+    # reason _reject_if_not_due does: a queued offline activation resent later must not
+    # start failing on a rule it already satisfied when it was captured.
+    others = await _other_trips_for_driver(db, trip)
+    _reject_if_another_trip_underway(others)
+    await _reject_if_an_earlier_trip_is_due(db, trip, others)
+
     # GPS cross-reference against Pulsit horse GPS is a feeder check (P1 is not
     # anchored to Hedera) — Pulsit integration itself is out of scope for this
     # plan; until it lands, horse_gps fields stay null and the check is skipped
     # rather than faked, so dispatchers see an honest "not yet cross-checked" state.
-    event.driver_phone_lat = payload.driver_phone_lat
-    event.driver_phone_lng = payload.driver_phone_lng
+    _record_driver_position(event, payload)
     event.status = PhaseStatus.COMPLETED
 
     # First phase off CREATED. LEGACY per-handshake TripStatus values are gone
@@ -370,6 +470,7 @@ async def advance_loading(
         return gated
     trip, event = gated
 
+    _record_driver_position(event, payload)
     # D7/T5: loading no longer captures or anchors the seal — that moves whole
     # to departure. driver_visual_count is the only evidence this phase still
     # owns; it stays unanchored (server-side reconciliation is Stage 3.3).
@@ -488,6 +589,8 @@ async def advance_departure(
         return gated
     trip, event = gated
 
+    _record_driver_position(event, payload)
+
     # Pulsit geofence departure confirmation is out of scope until the Pulsit
     # integration lands; pulsit_geofence_confirmed stays null until then.
 
@@ -558,6 +661,8 @@ async def advance_unloading(
         return gated
     trip, event = gated
 
+    _record_driver_position(event, payload)
+
     # T4: this LEG's departure (strictly before this row), not "the trip's" —
     # a multi-stop trip can have several DEPARTURE rows, and a plain
     # phase_type == LOADING (or DEPARTURE) trip-wide lookup would raise
@@ -624,6 +729,8 @@ async def advance_confirmation(
     if isinstance(gated, TripDetailResponse):
         return gated
     trip, event = gated
+
+    _record_driver_position(event, payload)
 
     # S1 / NEW-9: this leg's loading, not the trip's. A trip-wide phase_type
     # lookup raised MultipleResultsFound on every real cross-dock trip.

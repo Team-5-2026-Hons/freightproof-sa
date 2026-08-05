@@ -9,7 +9,7 @@ import { useLocation } from '@/lib/hooks/useLocation'
 import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
 import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
 import { Button } from '@/components/ui/Button'
-import { Spinner } from '@/components/ui/Spinner'
+import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { ROUTES } from '@/lib/constants/routes'
 
 export default function PanicPageClient() {
@@ -65,14 +65,9 @@ export default function PanicPageClient() {
   }
 
   if (isLoading) {
-    // A blank screen here reads as a dead app — on the PANIC page of all places,
-    // the driver must see the app is alive. Same centered-spinner treatment as
-    // InTransitPageClient's loading state.
-    return (
-      <main className="flex min-h-dvh items-center justify-center p-6">
-        <Spinner />
-      </main>
-    )
+    // A blank screen here reads as a dead app — on the PANIC page of all places, the
+    // driver must see the app is alive. Same LoadingScreen every other waiting screen uses.
+    return <LoadingScreen label="Loading trip" />
   }
 
   if (!trip) {

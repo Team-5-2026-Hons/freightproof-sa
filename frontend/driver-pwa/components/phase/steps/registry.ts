@@ -27,14 +27,11 @@
 import type { ComponentType } from 'react'
 import type { PhaseType } from '@shared/lib/types/phase'
 
-import { GateArrival } from './activation/GateArrival'
 import { Verification } from './activation/Verification'
 import { VisualCount as LoadingVisualCount } from './loading/VisualCount'
-import { ApproachExit } from './departure/ApproachExit'
 import { CaptureSeal } from './departure/CaptureSeal'
 import { Waybill } from './departure/Waybill'
 import { ConfirmDeparture } from './departure/ConfirmDeparture'
-import { Arrival } from './in_transit/Arrival'
 import { HandWaybill } from './unloading/HandWaybill'
 import { SealVerify } from './unloading/SealVerify'
 import { SealBreakInspection } from './unloading/SealBreakInspection'
@@ -47,10 +44,9 @@ import { Closed } from './confirmation/Closed'
 // `never`, not `any` — see file header for why this is the correct bottom type here.
 type AnyStepComponent = ComponentType<never>
 
-type ActivationSlug = '1-approach-gate' | '2-verification'
+type ActivationSlug = '2-verification'
 type LoadingSlug = '1-visual-count'
-type DepartureSlug = '1-approach-exit' | '2-capture-seal' | '3-waybill' | '4-departure'
-type InTransitSlug = '1-arrival'
+type DepartureSlug = '2-capture-seal' | '3-waybill' | '4-departure'
 type UnloadingSlug = '1-hand-waybill' | '2-seal-verify' | '3-seal-break-inspection' | '4-visual-count'
 type ConfirmationSlug = '1-pod-photo' | '2-pod-signature' | '3-reconciliation' | '4-closed'
 
@@ -60,7 +56,9 @@ export interface StepRegistry {
   activation: Record<ActivationSlug, AnyStepComponent>
   loading: Record<LoadingSlug, AnyStepComponent>
   departure: Record<DepartureSlug, AnyStepComponent>
-  in_transit: Record<InTransitSlug, AnyStepComponent>
+  // Empty recipe — in_transit is auto-completed server-side; its old '1-arrival' step
+  // only ever asked the driver to tap a GPS button whose fix was never submitted.
+  in_transit: Record<string, never>
   unloading: Record<UnloadingSlug, AnyStepComponent>
   confirmation: Record<ConfirmationSlug, AnyStepComponent>
 }
@@ -68,21 +66,17 @@ export interface StepRegistry {
 export const STEP_REGISTRY: StepRegistry = {
   trip_creation: {},
   activation: {
-    '1-approach-gate': GateArrival,
     '2-verification': Verification,
   },
   loading: {
     '1-visual-count': LoadingVisualCount,
   },
   departure: {
-    '1-approach-exit': ApproachExit,
     '2-capture-seal': CaptureSeal,
     '3-waybill': Waybill,
     '4-departure': ConfirmDeparture,
   },
-  in_transit: {
-    '1-arrival': Arrival,
-  },
+  in_transit: {},
   unloading: {
     '1-hand-waybill': HandWaybill,
     '2-seal-verify': SealVerify,

@@ -31,22 +31,35 @@ export const PHASE_NAMES: Record<PhaseType, string> = {
 //                   expected value, no Parcel Perfect figure, no mismatch banner — which
 //                   is what F1 actually requires: it forbids showing the driver an
 //                   expected count, not the driver entering their own.
+//
+// The three GPS-capture steps are gone (2026-08-05): activation's '1-approach-gate',
+// departure's '1-approach-exit', and in_transit's '1-arrival' each existed only to make
+// the driver tap "Capture GPS Location" behind a swipe gate — and in_transit's fix was
+// never even sent to the server. The driver app now takes the fix silently as each phase
+// is confirmed, and records a continuous per-trip trail besides, so position is captured
+// more often than before with no step to walk. Surviving slugs keep their original
+// numbers: the prefix orders this list, it is not an index, and renumbering would break
+// every deep link and stored draft key for no visible gain.
+//
+// Mirrored by backend/app/core/phase_meta.py — tests/unit/test_phase_meta_contract.py
+// parses THIS file and fails if the two disagree.
 export const STEP_SLUGS: Record<PhaseType, readonly string[]> = {
   trip_creation: [],
-  activation: ['1-approach-gate', '2-verification'],
+  activation: ['2-verification'],
   loading: ['1-visual-count'],
-  departure: ['1-approach-exit', '2-capture-seal', '3-waybill', '4-departure'],
-  in_transit: ['1-arrival'],
+  departure: ['2-capture-seal', '3-waybill', '4-departure'],
+  in_transit: [],
   unloading: ['1-hand-waybill', '2-seal-verify', '3-seal-break-inspection', '4-visual-count'],
   confirmation: ['1-pod-photo', '2-pod-signature', '3-reconciliation', '4-closed'],
 }
 
+// Positionally paired with STEP_SLUGS above — same length, same order, per phase.
 export const STEP_NAMES: Record<PhaseType, readonly string[]> = {
   trip_creation: [],
-  activation: ['Gate Arrival', 'Verification'],
+  activation: ['Verification'],
   loading: ['Visual Count'],
-  departure: ['Approach Exit Gate', 'Capture Seal', 'Photograph Waybill', 'Confirm Departure'],
-  in_transit: ['Arrival'],
+  departure: ['Capture Seal', 'Photograph Waybill', 'Confirm Departure'],
+  in_transit: [],
   unloading: ['Hand Waybill Copy', 'Verify Seal', 'Wait for Inspection', 'Visual Count'],
   confirmation: ['Photograph POD', 'Capture Signature', 'Reconciliation', 'Trip Closed'],
 }

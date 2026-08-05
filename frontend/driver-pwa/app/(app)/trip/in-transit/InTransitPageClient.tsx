@@ -11,7 +11,7 @@ import { formatTime } from '@/lib/utils/format-time'
 import { currentPhase, stepsFor, phaseStepRoute } from '@/lib/phase'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
-import { Spinner } from '@/components/ui/Spinner'
+import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { SubpageHeader } from '@/components/layout/SubpageHeader'
 import type { TripException } from '@shared/lib/types/exception'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
@@ -66,11 +66,7 @@ export default function InTransitPageClient() {
   const { trip, isLoading, exceptions } = useTrip()
 
   if (isLoading) {
-    return (
-      <main className="flex min-h-dvh items-center justify-center p-6">
-        <Spinner />
-      </main>
-    )
+    return <LoadingScreen label="Loading trip" />
   }
 
   if (trip === null) {

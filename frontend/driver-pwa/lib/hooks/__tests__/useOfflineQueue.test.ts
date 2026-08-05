@@ -3,6 +3,7 @@ import { renderHook, act, waitFor } from '@testing-library/react'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useOfflineQueue, __resetOfflineQueueStoreForTests } from '../useOfflineQueue'
 import { ApiError } from '@/lib/api/client'
+import type { DriverPosition } from '@/lib/types/location'
 import type { ActivationEvidence } from '@/lib/types/evidence-draft'
 import type { CheckpointEvidence } from '@/lib/api/checkpoints'
 
@@ -30,8 +31,12 @@ beforeEach(() => {
 })
 
 const EVIDENCE: ActivationEvidence = {
-  gpsLat: -26.09, gpsLng: 28.13, gateAddress: null, capturedAt: '2026-06-12T10:00:00Z',
+  capturedAt: '2026-06-12T10:00:00Z',
 }
+
+// Queued WITH the entry, not re-taken at replay: the fix must say where the driver was
+// when they swiped, not where they were when signal came back.
+const POSITION: DriverPosition = { lat: -26.09, lng: 28.13, accuracyM: 8 }
 
 const CHECKPOINT_EVIDENCE: CheckpointEvidence = {
   gpsLat: -29.85, gpsLng: 31.02,
@@ -47,7 +52,7 @@ describe('useOfflineQueue', () => {
 
   it('enqueuePhase increments queueLength and persists to localStorage', () => {
     const { result } = renderHook(() => useOfflineQueue())
-    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE))
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
     expect(result.current.queueLength).toBe(1)
     const stored = JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')
     expect(stored).toHaveLength(1)
@@ -60,7 +65,7 @@ describe('useOfflineQueue', () => {
   // key sent to the server — proving that wiring here, at the point the entry is built.
   it('enqueuePhase stamps the entry id as its own idempotencyKey', () => {
     const { result } = renderHook(() => useOfflineQueue())
-    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE))
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
     const stored = JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')
     expect(stored[0].idempotencyKey).toBe(stored[0].id)
     expect(typeof stored[0].idempotencyKey).toBe('string')
@@ -70,7 +75,7 @@ describe('useOfflineQueue', () => {
   it('flush calls submitPhase for each entry and clears the queue', async () => {
     const { submitPhase } = await import('@/lib/api/phases')
     const { result } = renderHook(() => useOfflineQueue())
-    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE))
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
     await act(() => result.current.flush())
     expect(submitPhase).toHaveBeenCalledTimes(1)
     expect(result.current.queueLength).toBe(0)
@@ -82,7 +87,7 @@ describe('useOfflineQueue', () => {
     const { submitPhase } = await import('@/lib/api/phases')
     vi.mocked(submitPhase).mockRejectedValueOnce(new ApiError(0, 'timed out'))
     const { result } = renderHook(() => useOfflineQueue())
-    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE))
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
 
     await act(() => result.current.flush())
     expect(result.current.queueLength).toBe(1) // transient failure — still queued
@@ -106,7 +111,7 @@ describe('useOfflineQueue', () => {
     const { submitPhase } = await import('@/lib/api/phases')
     vi.mocked(submitPhase).mockResolvedValueOnce({ ok: true, trip: null, phaseStatus: 'completed' })
     const { result } = renderHook(() => useOfflineQueue())
-    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE))
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
 
     await act(() => result.current.flush())
 
@@ -142,7 +147,7 @@ describe('useOfflineQueue', () => {
     const { submitPhase } = await import('@/lib/api/phases')
     vi.mocked(submitPhase).mockRejectedValueOnce(new Error('network down'))
     const { result } = renderHook(() => useOfflineQueue())
-    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE))
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
     await act(() => result.current.flush())
     expect(result.current.queueLength).toBe(1)
   })
@@ -151,7 +156,7 @@ describe('useOfflineQueue', () => {
     const { submitPhase } = await import('@/lib/api/phases')
     vi.mocked(submitPhase).mockRejectedValueOnce(new ApiError(422, 'invalid evidence'))
     const { result } = renderHook(() => useOfflineQueue())
-    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE))
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
     await act(() => result.current.flush())
     expect(result.current.queueLength).toBe(0)
   })
@@ -160,7 +165,7 @@ describe('useOfflineQueue', () => {
     const { submitPhase } = await import('@/lib/api/phases')
     vi.mocked(submitPhase).mockRejectedValueOnce(new ApiError(503, 'service unavailable'))
     const { result } = renderHook(() => useOfflineQueue())
-    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE))
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
     await act(() => result.current.flush())
     expect(result.current.queueLength).toBe(1)
   })
@@ -224,7 +229,7 @@ describe('useOfflineQueue', () => {
       // Let the mount-time flush (empty queue, no-op) settle before seeding the queue.
       await act(() => Promise.resolve())
 
-      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE))
+      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
       expect(result.current.queueLength).toBe(1)
 
       setVisibility('visible')
@@ -242,7 +247,7 @@ describe('useOfflineQueue', () => {
       const { result } = renderHook(() => useOfflineQueue())
       await act(() => Promise.resolve())
 
-      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE))
+      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
       vi.mocked(submitPhase).mockClear()
 
       setVisibility('hidden')
@@ -265,7 +270,7 @@ describe('useOfflineQueue', () => {
       const { result } = renderHook(() => useOfflineQueue())
       await act(() => Promise.resolve())
 
-      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE))
+      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
       await act(() => result.current.flush())
 
       expect(result.current.queueLength).toBe(1)
@@ -290,7 +295,7 @@ describe('useOfflineQueue', () => {
       const { result } = renderHook(() => useOfflineQueue())
       await act(() => Promise.resolve())
 
-      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE))
+      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
 
       // Start a flush that hangs on the phase send, then enqueue a second entry
       // mid-flight — exactly what happens when a driver logs an exception while a
@@ -327,7 +332,7 @@ describe('useOfflineQueue', () => {
       const { result } = renderHook(() => useOfflineQueue())
       await act(() => Promise.resolve())
 
-      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE))
+      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
 
       // Kick off a flush that will hang on the in-flight submitPhase call, then fire a
       // second flush before the first resolves — the guard should make the second call a
@@ -366,7 +371,7 @@ describe('useOfflineQueue', () => {
       const second = renderHook(() => useOfflineQueue())
       await act(() => Promise.resolve())
 
-      act(() => first.result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE))
+      act(() => first.result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
 
       // Instance A's flush hangs on the in-flight send; instance B's flush must be a
       // pure no-op against the shared module-scope mutex, not a concurrent re-send.
@@ -392,7 +397,7 @@ describe('useOfflineQueue', () => {
       const second = renderHook(() => useOfflineQueue())
       await act(() => Promise.resolve())
 
-      act(() => first.result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE))
+      act(() => first.result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
 
       expect(second.result.current.queueLength).toBe(1)
     })
@@ -407,7 +412,7 @@ describe('useOfflineQueue', () => {
       const { result } = renderHook(() => useOfflineQueue())
       await act(() => Promise.resolve())
 
-      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE))
+      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
       await act(() => result.current.flush())
 
       expect(result.current.queueLength).toBe(0)
@@ -424,7 +429,7 @@ describe('useOfflineQueue', () => {
       const { result } = renderHook(() => useOfflineQueue())
       await act(() => Promise.resolve())
 
-      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE))
+      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
       await act(() => result.current.flush())
 
       // Dropped from the queue (correct — the evidence landed on a prior attempt),
