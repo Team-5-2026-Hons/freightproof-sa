@@ -21,6 +21,7 @@ from app.core.exceptions import (
     TripConflictError,
 )
 from app.crypto.hashing import compute_journey_lock_hash, compute_trip_canonical_payload
+from app.core.realtime import RealtimeKind, TripEvent, enqueue_event
 from app.db.models.enums import AnchorStatus, BlockchainReceiptType, IdvsStatus, PhaseStatus, SubjectType, TripStatus, TripType, VehicleType
 from app.db.models.organisations import Precinct
 from app.db.models.phases import PhaseEvent
@@ -106,6 +107,10 @@ async def _check_order_number_conflict(
     """Raise TripConflictError if an active trip already has this order_number."""
     # Coarse set post-Stage-2.2 (T6) — the old per-handshake TripStatus values
     # are gone; ACTIVE now covers everything between activation and closing.
+    # EXCEPTION_HOLD is currently unreachable (nothing in app/ sets it — see
+    # phase_service._is_resolved) but stays listed: a held trip is by definition
+    # still live cargo, so it must keep blocking a duplicate order_number if and
+    # when a manual dispatcher hold introduces the status.
     active_statuses = [
         TripStatus.CREATED,
         TripStatus.ACTIVE,
@@ -411,6 +416,9 @@ async def create_trip(
     # mirroring the trip/handshake/receipt refreshes above.
     for result in consignment_results:
         await db.refresh(result.consignment)
+
+    # Notify dispatchers in this org that a new trip exists (published on commit, D9).
+    enqueue_event(db, current_user.organization_id, TripEvent(id=trip.id, kind=RealtimeKind.TRIP_CREATED))
 
     # 8. Assemble and return the response (no ORM relationships — fetch separately).
     return TripDetailResponse(

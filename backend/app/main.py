@@ -17,9 +17,11 @@ from app.api.v1.endpoints.manifest import router as manifest_router
 from app.api.v1.endpoints.phases import router as phases_router
 from app.api.v1.endpoints.pp import router as pp_router
 from app.api.v1.endpoints.precincts import router as precincts_router
+from app.api.v1.endpoints.stream import router as stream_router
 from app.api.v1.endpoints.trips import router as trips_router
 from app.api.v1.endpoints.vehicles import router as vehicles_router
 from app.auth.router import router as auth_router
+from app.core.realtime import register_realtime_hook
 
 app = FastAPI(
     title="FreightProof SA",
@@ -54,6 +56,12 @@ app.include_router(locations_router, prefix="/api/v1")
 app.include_router(checkpoints_router, prefix="/api/v1")
 app.include_router(manifest_router, prefix="/api/v1")
 app.include_router(pp_router, prefix="/api/v1")
+app.include_router(stream_router, prefix="/api/v1")
+
+# Attach the SQLAlchemy after-commit listeners that publish queued realtime events
+# once a request's transaction is durable (see app/core/realtime.py). Idempotent, and
+# a no-op for any session that never enqueued an event.
+register_realtime_hook()
 
 
 class HealthResponse(BaseModel):

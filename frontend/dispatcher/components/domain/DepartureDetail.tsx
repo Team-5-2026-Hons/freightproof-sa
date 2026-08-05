@@ -3,6 +3,7 @@
 import { EvidencePhoto } from './EvidencePhoto'
 import { PhaseDetailCard, Section } from './PhaseDetailFields'
 import { PhaseAnchorSection } from './PhaseAnchorSection'
+import { PhaseOverrideSection } from './PhaseOverrideSection'
 import { PhaseLocationSection } from './PhaseLocationSection'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
@@ -45,6 +46,8 @@ export function DepartureDetail({ phase, precinct, artifactsById }: Props) {
       </Section>
 
       <PhaseLocationSection phase={phase} precinct={precinct} title="Location at departure" />
+
+      <PhaseOverrideSection phase={phase} />
 
       <PhaseAnchorSection phase={phase} />
 

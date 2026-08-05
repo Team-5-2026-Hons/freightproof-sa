@@ -187,7 +187,11 @@ async def _advance_to_unloading(db_session, trip, driver, phases):
     await _advance_to_departure(db_session, trip, driver, phases)
     return await advance_unloading(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading"].id,
-        payload=UnloadingCompleteRequest(phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-1234", idempotency_key=str(uuid.uuid4())),
+        payload=UnloadingCompleteRequest(
+            phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-1234",
+            gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            idempotency_key=str(uuid.uuid4()),
+        ),
     )
 
 

@@ -12,6 +12,7 @@
 // LENGTH IS DATA. Nothing here may assume 6 phases or sequence 0..6.
 
 import type { CoarseTripStatus, PhaseDescriptor, PhaseEventId, PhaseStatus, PhaseType } from '@shared/lib/types/phase'
+import type { TripException } from '@shared/lib/types/exception'
 import { PHASE_NAMES } from '@shared/lib/constants/phase-meta'
 import { TRIP_STATUS_META, type StatusMeta } from '@shared/lib/constants/status-meta'
 
@@ -56,6 +57,7 @@ export function activePhase(phases: readonly PhaseDescriptor[]): PhaseDescriptor
 export function nodeTypeFor(
   phase: PhaseDescriptor,
   activePhaseEventId: PhaseEventId | null,
+  tripStatus?: CoarseTripStatus | null,
 ): PhaseNodeType {
   if (isResolved(phase)) return 'done'
   // Checked before the active test on purpose: an exception phase IS the active one
@@ -65,6 +67,13 @@ export function nodeTypeFor(
   // Reserved for a real in_progress write, which nothing server-side performs today —
   // see the PhaseNodeType doc comment.
   if (phase.status === 'in_progress') return 'active'
+  // A trip created weeks ahead sits dormant until a driver opens it — Activation is
+  // not "next in line" the way every later phase is, it IS the start of the trip.
+  // Rendering it as `next` (the ledger's current gate) reads as "about to happen any
+  // moment", which is false for a trip that may not be touched for days. It stays
+  // `pending`, indistinguishable from a phase that hasn't been reached yet, until the
+  // driver actually activates and trip.status leaves 'created'.
+  if (phase.phase_type === 'activation' && tripStatus === 'created') return 'pending'
   // The ledger's current gate, but still `pending`: nothing has happened yet. A trip
   // created a week ahead must not show its first phase as already under way just
   // because it is next in line — that reads as active work when there is none.
@@ -93,6 +102,46 @@ export function currentSealNumber(phases: readonly PhaseDescriptor[]): string | 
  *  pickup is a different, later loading row and is not the origin count. */
 export function originParcelCount(phases: readonly PhaseDescriptor[]): number | null {
   return sortedPlan(phases).find(phase => phase.phase_type === 'loading')?.parcel_count_origin ?? null
+}
+
+/** The seal applied at THIS unloading's own leg's departure — mirrors the backend's
+ *  _find_departure_for_leg (phase_service.py): the highest-sequence departure strictly
+ *  before this unloading row, never "the trip's" departure. A cross-dock trip has one
+ *  departure per leg, so a trip-wide lookup would compare leg 2's arrival against leg
+ *  1's seal. Null if no preceding departure has a seal recorded yet. */
+export function departureSealForLeg(
+  phases: readonly PhaseDescriptor[],
+  unloadingPhase: PhaseDescriptor,
+): string | null {
+  const departures = sortedPlan(phases).filter(
+    phase => phase.phase_type === 'departure'
+      && phase.sequence_number < unloadingPhase.sequence_number
+      && phase.seal_number !== null,
+  )
+  if (departures.length === 0) return null
+  return departures[departures.length - 1].seal_number
+}
+
+/** When THIS leg actually departed: the `completed_at` of the highest-sequence departure
+ *  strictly before the given in-transit row. Leg-scoped for the same reason
+ *  departureSealForLeg is — a cross-dock trip has one departure per leg, so "the trip's
+ *  departure" would date leg 2 from leg 1's exit. Null until that departure completes.
+ *
+ *  Never `in_transit.created_at`: every row in the plan is written when the plan is
+ *  GENERATED at trip creation, so created_at on an in-transit row is trip-creation time.
+ *  Dating a departure from it prints a timestamp before the trip existed — which is
+ *  exactly what the timeline did before this existed. */
+export function legDepartureAt(
+  phases: readonly PhaseDescriptor[],
+  inTransitPhase: PhaseDescriptor,
+): string | null {
+  const departures = sortedPlan(phases).filter(
+    phase => phase.phase_type === 'departure'
+      && phase.sequence_number < inTransitPhase.sequence_number
+      && phase.completed_at !== null,
+  )
+  if (departures.length === 0) return null
+  return departures[departures.length - 1].completed_at
 }
 
 export interface AnchorTally {
@@ -142,6 +191,32 @@ export function tripChipMeta(
   // chipType stays 'exception', so the chip is amber whatever the label says.
   if (status === 'exception_hold') return { ...base, label: `⚠ ${PHASE_NAMES[currentPhase]}` }
   return base
+}
+
+/** Secondary header chip: what this trip has on record against it, or null for a clean
+ *  trip.
+ *
+ * Exists because the coarse status chip alone lies by omission on a closed trip. A trip
+ * that reaches `closed` with an exception recorded still renders "Complete" in green —
+ * TRIP_STATUS_META['closed'] is returned unchanged by tripChipMeta — so the one fact a
+ * dispatcher most needs at a glance is the one the header drops.
+ *
+ * Deliberately NOT labelled "unresolved". No resolve workflow exists yet (the backend has
+ * no dispatcher resolve endpoint, so `resolved` is false on every real record), which
+ * would make every trip read as permanently unresolved and imply an action nobody can
+ * take. "1 exception" is true either way: a recorded exception is an evidential fact
+ * whether or not it is ever actioned.
+ *
+ * Counts RECORDS first because those are what the timeline renders. A phase sitting in
+ * `exception` status with no record attached still reports, unquantified — a held plan
+ * with nothing written against it is rare but must not read as clean. */
+export function recordedExceptionLabel(
+  exceptions: readonly TripException[],
+  phases: readonly PhaseDescriptor[],
+): string | null {
+  const count = exceptions.length
+  if (count > 0) return `${count} exception${count === 1 ? '' : 's'}`
+  return phases.some(phase => phase.status === 'exception') ? 'Exception' : null
 }
 
 /** Build chain nodes from the ledger-derived counts the trip LIST carries.

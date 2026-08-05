@@ -6,8 +6,10 @@ import {
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import {
   activePhase, anchorTally, chainNodesFromCounts, completionPct,
-  currentSealNumber, isResolved, nodeTypeFor, originParcelCount, sortedPlan, tripChipMeta,
+  currentSealNumber, departureSealForLeg, isResolved, legDepartureAt, nodeTypeFor, originParcelCount,
+  recordedExceptionLabel, sortedPlan, tripChipMeta,
 } from './derive'
+import type { TripException } from '@shared/lib/types/exception'
 
 // Marks phases 0..through as completed. Local to the test on purpose: the module
 // under test must not gain a helper that only tests use.
@@ -87,6 +89,24 @@ describe('nodeTypeFor', () => {
 
     expect(nodeTypeFor(plan[3], activeId)).toBe('active')
   })
+
+  it('keeps activation pending, not next, while the trip has not been activated', () => {
+    // A trip created weeks ahead sits dormant — activation is not "about to happen",
+    // so it must render indistinguishably from a phase that has not been reached yet.
+    const plan = walk(SINGLE_LEG_PHASE_PLAN, 0)
+    const activationPhase = plan.find(p => p.phase_type === 'activation')!
+    const activeId = activePhase(plan)?.phase_event_id ?? null
+
+    expect(nodeTypeFor(activationPhase, activeId, 'created')).toBe('pending')
+  })
+
+  it('lets activation read as next once the trip is genuinely active', () => {
+    const plan = walk(SINGLE_LEG_PHASE_PLAN, 0)
+    const activationPhase = plan.find(p => p.phase_type === 'activation')!
+    const activeId = activePhase(plan)?.phase_event_id ?? null
+
+    expect(nodeTypeFor(activationPhase, activeId, 'active')).toBe('next')
+  })
 })
 
 describe('currentSealNumber', () => {
@@ -106,6 +126,36 @@ describe('currentSealNumber', () => {
       p.sequence_number === 3 ? { ...p, seal_number: 'AB-1111' } : p)
 
     expect(currentSealNumber(plan)).toBeNull()
+  })
+})
+
+describe('departureSealForLeg', () => {
+  it("is the seal from THIS leg's own departure, not an earlier leg's", () => {
+    // Cross-dock: departures at seq 3 (leg 1) and seq 7 (leg 2). Leg 2's unloading
+    // (seq 9) must compare against leg 2's own seal, never leg 1's.
+    const plan = CROSS_DOCK_PHASE_PLAN.map(p =>
+      p.phase_type === 'departure'
+        ? { ...p, seal_number: p.sequence_number === 3 ? 'AB-1111' : 'AB-2222' }
+        : p)
+    const unloading = plan.find(p => p.sequence_number === 9)!
+
+    expect(departureSealForLeg(plan, unloading)).toBe('AB-2222')
+  })
+
+  it('does not reach past its own leg into a later departure', () => {
+    const plan = CROSS_DOCK_PHASE_PLAN.map(p =>
+      p.phase_type === 'departure'
+        ? { ...p, seal_number: p.sequence_number === 3 ? 'AB-1111' : 'AB-2222' }
+        : p)
+    const unloading = plan.find(p => p.sequence_number === 5)!
+
+    expect(departureSealForLeg(plan, unloading)).toBe('AB-1111')
+  })
+
+  it('is null when no preceding departure has recorded a seal yet', () => {
+    const unloading = SINGLE_LEG_PHASE_PLAN.find(p => p.phase_type === 'unloading')!
+
+    expect(departureSealForLeg(SINGLE_LEG_PHASE_PLAN, unloading)).toBeNull()
   })
 })
 
@@ -202,6 +252,78 @@ describe('tripChipMeta', () => {
     expect(tripChipMeta('active', null).label).toBe('Active')
     expect(tripChipMeta('active', null).chipType).toBe('transit')
     expect(tripChipMeta('exception_hold', null).label).toBe('Exception')
+  })
+})
+
+describe('legDepartureAt', () => {
+  // Marks one row completed at a given instant, leaving every other row untouched.
+  function complete(
+    plan: readonly PhaseDescriptor[], sequenceNumber: number, at: string,
+  ): PhaseDescriptor[] {
+    return plan.map(p =>
+      p.sequence_number === sequenceNumber
+        ? { ...p, status: 'completed' as const, completed_at: at }
+        : p)
+  }
+
+  it('reads the departure that started this leg, never the in-transit row own created_at', () => {
+    // The bug this exists to kill: created_at on every row is plan-generation time, so
+    // the timeline printed a departure BEFORE the trip was created.
+    const plan = complete(SINGLE_LEG_PHASE_PLAN, 3, '2026-07-27T14:00:00Z')
+    const inTransit = plan.find(p => p.phase_type === 'in_transit')!
+
+    expect(inTransit.created_at).toBe('2026-07-27T08:00:00Z')
+    expect(legDepartureAt(plan, inTransit)).toBe('2026-07-27T14:00:00Z')
+  })
+
+  it('scopes to the leg — leg 2 is dated from its own departure, not leg 1 s', () => {
+    // Cross-dock: departure at seq 3 (stop 1) and seq 7 (stop 2). The in-transit row at
+    // seq 8 belongs to the SECOND leg and must never inherit the first departure time.
+    let plan = complete(CROSS_DOCK_PHASE_PLAN, 3, '2026-07-27T14:00:00Z')
+    plan = complete(plan, 7, '2026-07-27T19:30:00Z')
+    const secondLeg = plan.find(p => p.phase_type === 'in_transit' && p.sequence_number === 8)!
+
+    expect(legDepartureAt(plan, secondLeg)).toBe('2026-07-27T19:30:00Z')
+  })
+
+  it('is null while the leg departure is still pending rather than inventing a time', () => {
+    const inTransit = SINGLE_LEG_PHASE_PLAN.find(p => p.phase_type === 'in_transit')!
+
+    expect(legDepartureAt(SINGLE_LEG_PHASE_PLAN, inTransit)).toBeNull()
+  })
+
+  it('ignores array order', () => {
+    const plan = complete(SINGLE_LEG_PHASE_PLAN, 3, '2026-07-27T14:00:00Z')
+    const inTransit = plan.find(p => p.phase_type === 'in_transit')!
+
+    expect(legDepartureAt([...plan].reverse(), inTransit)).toBe('2026-07-27T14:00:00Z')
+  })
+})
+
+describe('recordedExceptionLabel', () => {
+  const exception = (id: string): TripException =>
+    ({ id, resolved: false } as unknown as TripException)
+
+  it('is null on a clean trip', () => {
+    expect(recordedExceptionLabel([], SINGLE_LEG_PHASE_PLAN)).toBeNull()
+  })
+
+  it('counts records and pluralises', () => {
+    expect(recordedExceptionLabel([exception('a')], SINGLE_LEG_PHASE_PLAN)).toBe('1 exception')
+    expect(recordedExceptionLabel([exception('a'), exception('b')], SINGLE_LEG_PHASE_PLAN)).toBe('2 exceptions')
+  })
+
+  it('counts a record regardless of resolved state — there is no resolve workflow yet', () => {
+    const resolved = { ...exception('a'), resolved: true }
+
+    expect(recordedExceptionLabel([resolved], SINGLE_LEG_PHASE_PLAN)).toBe('1 exception')
+  })
+
+  it('reports a held phase carrying no record rather than reading as clean', () => {
+    const plan = SINGLE_LEG_PHASE_PLAN.map(p =>
+      p.sequence_number === 5 ? { ...p, status: 'exception' as const } : p)
+
+    expect(recordedExceptionLabel([], plan)).toBe('Exception')
   })
 })
 

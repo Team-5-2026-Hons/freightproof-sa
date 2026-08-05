@@ -3,6 +3,7 @@
 import { useMemo } from 'react'
 import { api } from '@/lib/api/client'
 import type { TripStatus, TripSummary } from '@shared/lib/types/trip'
+import { useLiveResource } from '@/lib/realtime/useLiveResource'
 import { useAsyncData } from './useAsyncData'
 
 export interface TripsFilter {
@@ -21,10 +22,13 @@ export interface UseTripsResult {
 const EMPTY: TripSummary[] = []
 
 export function useTrips(filter?: TripsFilter): UseTripsResult {
-  const { data: allTrips, isLoading, error, refetch } = useAsyncData<TripSummary[]>(
+  const { data: allTrips, isLoading, error, refetch, refetchSilent } = useAsyncData<TripSummary[]>(
     () => api.get<TripSummary[]>('/api/v1/trips'),
     EMPTY,
   )
+  // Live: any trip changing (new trip, phase, exception, close) refreshes the list in
+  // place so status chips and open-exception counts stay current without a reload.
+  useLiveResource('trip', 'any', refetchSilent)
 
   const statusKey = filter?.status?.join(',') ?? ''
   const driverId = filter?.driverId ?? ''

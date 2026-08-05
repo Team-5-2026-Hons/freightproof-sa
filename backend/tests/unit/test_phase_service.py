@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import pytest_asyncio
+from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import func, select
 
 from app.blockchain.hedera import HederaReceipt
@@ -24,7 +25,7 @@ from app.db.models.phases import PhaseEvent
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.transit import TripException
-from app.db.models.trips import Trip, TripStop
+from app.db.models.trips import Consignment, Trip, TripStop
 from app.db.models.vehicles import Vehicle
 from app.orchestration.phase_plan import PlanStop, build_phase_plan
 from app.orchestration.phase_service import (
@@ -83,6 +84,49 @@ def captured_anchor_dispatches(monkeypatch):
 
     monkeypatch.setattr("app.tasks.blockchain.anchor_phase_event_task", _StubTask)
     return dispatched
+
+
+@pytest_asyncio.fixture
+async def second_trip_fixture(db_session):
+    """A second, unrelated trip — exists only so its artifacts can be offered to the
+    first trip's phases. Deliberately has no phase plan: nothing here is ever advanced,
+    it is purely somewhere else for an EvidenceArtifact to legitimately belong.
+
+    Its own org/driver/vehicle rows are separate from trip_fixture's to avoid the
+    unique constraints on registration/id_number/email, not because the ownership
+    check cares about organisations — it keys on trip_id alone.
+    """
+    org = Organization(id=uuid.uuid4(), name="Other Org", org_type=OrganizationType.OPERATOR)
+    client_org = Organization(id=uuid.uuid4(), name="Other Client", org_type=OrganizationType.PRINCIPAL)
+    db_session.add_all([org, client_org])
+    await db_session.flush()
+
+    user = User(id=uuid.uuid4(), organization_id=org.id, email="other@test.co.za", full_name="O")
+    driver = Driver(
+        id=uuid.uuid4(), organization_id=org.id, full_name="Other Driver",
+        id_number="9002025009088", phone_number="+27829999999", license_number="DRV-2",
+    )
+    horse = Vehicle(
+        id=uuid.uuid4(), organization_id=org.id, vehicle_type=VehicleType.HORSE,
+        registration="XYZ789GP", pulsit_device_id="PUL-2",
+    )
+    origin = Precinct(id=uuid.uuid4(), name="Other Origin", principal_organization_id=client_org.id, latitude="2", longitude="2")
+    dest = Precinct(id=uuid.uuid4(), name="Other Dest", principal_organization_id=client_org.id, latitude="3", longitude="3")
+    db_session.add_all([user, driver, horse, origin, dest])
+    await db_session.flush()
+
+    trip = Trip(
+        id=uuid.uuid4(), trip_reference="FP-TEST-2", order_number="ORD-2",
+        operator_organization_id=org.id, client_organization_id=client_org.id,
+        driver_id=driver.id, horse_id=horse.id,
+        origin_precinct_id=origin.id, destination_precinct_id=dest.id,
+        status=TripStatus.CREATED, idvs_check_status=IdvsStatus.VERIFIED,
+        created_by_user_id=user.id,
+    )
+    db_session.add(trip)
+    await db_session.flush()
+
+    return trip
 
 
 @pytest_asyncio.fixture
@@ -231,7 +275,11 @@ async def _advance_to_unloading(db_session, trip, driver, phases, seal="AB-1234"
     await _advance_to_departure(db_session, trip, driver, phases)
     return await advance_unloading(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading"].id,
-        payload=UnloadingCompleteRequest(phase_type=PhaseType.UNLOADING, seal_number_at_destination=seal, idempotency_key=str(uuid.uuid4())),
+        payload=UnloadingCompleteRequest(
+            phase_type=PhaseType.UNLOADING, seal_number_at_destination=seal,
+            gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            idempotency_key=str(uuid.uuid4()),
+        ),
     )
 
 
@@ -371,6 +419,86 @@ async def test_advance_loading_happy_path_stores_driver_visual_count_only(db_ses
 
 
 @pytest.mark.asyncio
+async def test_advance_loading_no_consignments_skips_manifest_check(db_session, trip_fixture):
+    """trip_fixture (shared by ~25 other advance_loading-touching tests below) has no
+    Consignment rows — this is the load-bearing regression proof that the manifest check
+    added in advance_loading does not manufacture a mismatch on any of them: no baseline
+    means skipped, not compared against 0."""
+    trip, driver, phases = trip_fixture
+    await advance_activation(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["activation"].id,
+        payload=ActivationCompleteRequest(phase_type=PhaseType.ACTIVATION,
+            driver_phone_lat=Decimal("0"), driver_phone_lng=Decimal("0"), idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    result = await advance_loading(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["loading"].id,
+        payload=LoadingCompleteRequest(phase_type=PhaseType.LOADING, driver_visual_count=42, idempotency_key=str(uuid.uuid4())),
+    )
+
+    h2 = next(h for h in result.phases if h.phase_type == PhaseType.LOADING)
+    assert h2.status == PhaseStatus.COMPLETED
+    assert h2.parcel_count_origin is None
+    assert len(result.exceptions) == 0
+
+
+@pytest.mark.asyncio
+async def test_advance_loading_manifest_matches_driver_count_completes(db_session, trip_fixture):
+    trip, driver, phases = trip_fixture
+    db_session.add(Consignment(
+        trip_id=trip.id, parcel_perfect_reference="PP-1", parcel_count_expected=42,
+    ))
+    await db_session.flush()
+    await advance_activation(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["activation"].id,
+        payload=ActivationCompleteRequest(phase_type=PhaseType.ACTIVATION,
+            driver_phone_lat=Decimal("0"), driver_phone_lng=Decimal("0"), idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    result = await advance_loading(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["loading"].id,
+        payload=LoadingCompleteRequest(phase_type=PhaseType.LOADING, driver_visual_count=42, idempotency_key=str(uuid.uuid4())),
+    )
+
+    h2 = next(h for h in result.phases if h.phase_type == PhaseType.LOADING)
+    assert h2.status == PhaseStatus.COMPLETED
+    assert h2.parcel_count_origin == 42
+    assert len(result.exceptions) == 0
+
+
+@pytest.mark.asyncio
+async def test_advance_loading_manifest_mismatch_flags_but_does_not_hold(db_session, trip_fixture):
+    trip, driver, phases = trip_fixture
+    db_session.add(Consignment(
+        trip_id=trip.id, parcel_perfect_reference="PP-1", parcel_count_expected=52,
+    ))
+    await db_session.flush()
+    await advance_activation(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["activation"].id,
+        payload=ActivationCompleteRequest(phase_type=PhaseType.ACTIVATION,
+            driver_phone_lat=Decimal("0"), driver_phone_lng=Decimal("0"), idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    result = await advance_loading(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["loading"].id,
+        payload=LoadingCompleteRequest(phase_type=PhaseType.LOADING, driver_visual_count=27, idempotency_key=str(uuid.uuid4())),
+    )
+
+    h2 = next(h for h in result.phases if h.phase_type == PhaseType.LOADING)
+    assert h2.status == PhaseStatus.EXCEPTION
+    assert h2.parcel_count_origin == 52
+    assert len(result.exceptions) == 1
+    assert result.exceptions[0].exception_type == ExceptionType.PARCEL_COUNT_MISMATCH
+    assert result.exceptions[0].severity == ExceptionSeverity.WARNING
+    # Non-blocking: the trip is still ACTIVE, not held — same precedent as the
+    # seal-mismatch branches in advance_departure/advance_unloading.
+    assert result.status == TripStatus.ACTIVE
+
+
+@pytest.mark.asyncio
 async def test_replayed_completion_is_idempotent_returns_200_no_duplicate(db_session, trip_fixture, stub_hedera_service):
     """Anchor moved to departure (task 2.6) — the idempotent-replay-doesn't-
     double-anchor guarantee now needs proving there, not at loading."""
@@ -501,9 +629,9 @@ async def test_advance_departure_guard_refused_creates_exception_but_departs(
 async def test_exception_status_phase_does_not_block_next_phase(db_session, trip_fixture):
     """Renamed/kept from the old H3-confirmed-seal-mismatch test, extended to
     prove T3's predicate: a phase left in EXCEPTION status is resolved for
-    gating purposes, so the phase after it (unloading) must still be reachable
-    — only trip.status == EXCEPTION_HOLD (a separate, later mismatch) actually
-    blocks."""
+    gating purposes, so the phase after it (unloading) must still be reachable.
+    No mismatch of any kind holds a trip today — trip.status == EXCEPTION_HOLD
+    is reserved for a future manual dispatcher hold and nothing sets it."""
     trip, driver, phases = trip_fixture
     await _advance_to_loading(db_session, trip, driver, phases)
 
@@ -524,7 +652,11 @@ async def test_exception_status_phase_does_not_block_next_phase(db_session, trip
 
     next_result = await advance_unloading(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading"].id,
-        payload=UnloadingCompleteRequest(phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-1234", idempotency_key=str(uuid.uuid4())),
+        payload=UnloadingCompleteRequest(
+            phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-1234",
+            gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            idempotency_key=str(uuid.uuid4()),
+        ),
     )
     assert next_result.status == TripStatus.ACTIVE
     unloading = next(h for h in next_result.phases if h.phase_type == PhaseType.UNLOADING)
@@ -574,7 +706,11 @@ async def test_advance_departure_auto_completes_leg_in_transit_row(db_session, t
     # Proves the gate is genuinely unblocked, not just that a flag flipped.
     result = await advance_unloading(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading"].id,
-        payload=UnloadingCompleteRequest(phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-1234", idempotency_key=str(uuid.uuid4())),
+        payload=UnloadingCompleteRequest(
+            phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-1234",
+            gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            idempotency_key=str(uuid.uuid4()),
+        ),
     )
     unloading = next(h for h in result.phases if h.phase_type == PhaseType.UNLOADING)
     assert unloading.status == PhaseStatus.COMPLETED
@@ -715,7 +851,11 @@ async def test_advance_departure_auto_completes_only_its_own_leg_in_transit(db_s
     # resolved independently, correctly, in order.
     result = await advance_unloading(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading"].id,
-        payload=UnloadingCompleteRequest(phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-1234", idempotency_key=str(uuid.uuid4())),
+        payload=UnloadingCompleteRequest(
+            phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-1234",
+            gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            idempotency_key=str(uuid.uuid4()),
+        ),
     )
     unloading = next(h for h in result.phases if h.phase_type == PhaseType.UNLOADING)
     assert unloading.status == PhaseStatus.COMPLETED
@@ -734,26 +874,185 @@ async def test_advance_unloading_matching_seal_completes(db_session, trip_fixtur
 
 
 @pytest.mark.asyncio
-async def test_exception_hold_status_blocks_further_advancement(db_session, trip_fixture):
-    """Renamed/extended from the old H4-seal-mismatch test: the mismatch still
-    holds the trip, and — new for this task — a subsequent advance_confirmation
-    call must be rejected while the trip sits at EXCEPTION_HOLD."""
+async def test_advance_unloading_persists_gate_photo_when_provided(db_session, trip_fixture):
+    """The seal photo at destination must actually reach the row, not be silently
+    dropped — it is the only physical evidence of the seal's state before the truck
+    was opened, and it cannot be recaptured after the fact."""
+    trip, driver, phases = trip_fixture
+    await _advance_to_departure(db_session, trip, driver, phases)
+    photo_id = await _make_artifact(db_session, trip.id)
+
+    result = await advance_unloading(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading"].id,
+        payload=UnloadingCompleteRequest(
+            phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-1234",
+            gate_photo_artifact_id=photo_id, idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    unloading = next(h for h in result.phases if h.phase_type == PhaseType.UNLOADING)
+    assert unloading.gate_photo_artifact_id == photo_id
+
+
+def test_unloading_request_rejects_a_missing_gate_photo():
+    """The seal photo is required, so an unloading submitted without one must fail at
+    the schema boundary — never reach the service and complete as a phase whose seal
+    evidence is a bare typed-in string."""
+    with pytest.raises(PydanticValidationError) as exc_info:
+        UnloadingCompleteRequest(
+            phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-1234",
+            idempotency_key=str(uuid.uuid4()),
+        )
+
+    assert "gate_photo_artifact_id" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_unloading_seal_mismatch_flags_but_does_not_hold(db_session, trip_fixture):
+    """A destination seal mismatch is recorded as a CRITICAL exception but must
+    NOT hold the trip — matches departure's own seal-mismatch precedent
+    (test_exception_status_phase_does_not_block_next_phase above).
+
+    Holding here used to set TripStatus.EXCEPTION_HOLD. With no release or override
+    path in the codebase, that stranded the trip permanently: confirmation could
+    never run, so no POD and no delivery anchor were ever recorded. The hold
+    destroyed the remaining evidence of the trip whose integrity it was reacting to.
+    So a subsequent advance_confirmation must succeed, not be rejected."""
     trip, driver, phases = trip_fixture
     result = await _advance_to_unloading(db_session, trip, driver, phases, seal="ZZ-9999")
-    assert result.status == TripStatus.EXCEPTION_HOLD
+    assert result.status == TripStatus.ACTIVE  # flagged, not held
     assert len(result.exceptions) == 1
     assert result.exceptions[0].exception_type == ExceptionType.SEAL_MISMATCH
     assert result.exceptions[0].severity == ExceptionSeverity.CRITICAL
+    unloading = next(h for h in result.phases if h.phase_type == PhaseType.UNLOADING)
+    assert unloading.status == PhaseStatus.EXCEPTION
 
-    with pytest.raises(PhaseSequenceError):
+    next_result = await advance_confirmation(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["confirmation"].id,
+        payload=ConfirmationCompleteRequest(phase_type=PhaseType.CONFIRMATION,
+            pod_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            pod_signature_artifact_id=await _make_artifact(db_session, trip.id),
+            driver_visual_count=42, pp_scan_in_count=42, idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+    assert next_result.status == TripStatus.CLOSED
+
+
+# ── evidence artifact ownership ──────────────────────────────────────────────
+#
+# The FK on phase_events proves only that an artifact row exists SOMEWHERE. These
+# tests fence the thing the FK cannot: that the evidence a phase cites is this
+# trip's own. Without them, another trip's seal photo can be attached as this
+# trip's and hashed into the record as genuine — a forged evidence chain that
+# every downstream verification would report as intact.
+
+
+@pytest.mark.asyncio
+async def test_unloading_rejects_a_seal_photo_belonging_to_another_trip(
+    db_session, trip_fixture, second_trip_fixture,
+):
+    trip, driver, phases = trip_fixture
+    other_trip = second_trip_fixture
+    await _advance_to_departure(db_session, trip, driver, phases)
+    foreign_photo = await _make_artifact(db_session, other_trip.id)
+
+    with pytest.raises(ResourceNotFoundError):
+        await advance_unloading(
+            db_session, trip_id=trip.id, driver_id=driver.id,
+            phase_event_id=phases["unloading"].id,
+            payload=UnloadingCompleteRequest(
+                phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-1234",
+                gate_photo_artifact_id=foreign_photo, idempotency_key=str(uuid.uuid4()),
+            ),
+        )
+
+
+@pytest.mark.asyncio
+async def test_unloading_rejects_an_artifact_id_that_does_not_exist(db_session, trip_fixture):
+    """A bogus UUID must be a clean domain error (404 at the endpoint), not an
+    IntegrityError surfacing as a 500."""
+    trip, driver, phases = trip_fixture
+    await _advance_to_departure(db_session, trip, driver, phases)
+
+    with pytest.raises(ResourceNotFoundError):
+        await advance_unloading(
+            db_session, trip_id=trip.id, driver_id=driver.id,
+            phase_event_id=phases["unloading"].id,
+            payload=UnloadingCompleteRequest(
+                phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-1234",
+                gate_photo_artifact_id=uuid.uuid4(), idempotency_key=str(uuid.uuid4()),
+            ),
+        )
+
+
+@pytest.mark.asyncio
+async def test_departure_rejects_a_waybill_photo_belonging_to_another_trip(
+    db_session, trip_fixture, second_trip_fixture,
+):
+    trip, driver, phases = trip_fixture
+    other_trip = second_trip_fixture
+    await _advance_to_loading(db_session, trip, driver, phases)
+
+    with pytest.raises(ResourceNotFoundError):
+        await advance_departure(
+            db_session, trip_id=trip.id, driver_id=driver.id,
+            phase_event_id=phases["departure"].id,
+            payload=DepartureCompleteRequest(
+                phase_type=PhaseType.DEPARTURE, seal_number="AB-1234",
+                waybill_photo_artifact_id=await _make_artifact(db_session, other_trip.id),
+                seal_photo_artifact_id=await _make_artifact(db_session, trip.id),
+                guard_verified_seal=True, idempotency_key=str(uuid.uuid4()),
+            ),
+        )
+
+
+@pytest.mark.asyncio
+async def test_confirmation_rejects_a_pod_belonging_to_another_trip(
+    db_session, trip_fixture, second_trip_fixture,
+):
+    trip, driver, phases = trip_fixture
+    other_trip = second_trip_fixture
+    await _advance_to_unloading(db_session, trip, driver, phases, seal="AB-1234")
+
+    with pytest.raises(ResourceNotFoundError):
         await advance_confirmation(
-            db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["confirmation"].id,
-            payload=ConfirmationCompleteRequest(phase_type=PhaseType.CONFIRMATION, 
+            db_session, trip_id=trip.id, driver_id=driver.id,
+            phase_event_id=phases["confirmation"].id,
+            payload=ConfirmationCompleteRequest(
+                phase_type=PhaseType.CONFIRMATION,
                 pod_photo_artifact_id=await _make_artifact(db_session, trip.id),
-                pod_signature_artifact_id=await _make_artifact(db_session, trip.id),
+                pod_signature_artifact_id=await _make_artifact(db_session, other_trip.id),
                 driver_visual_count=42, pp_scan_in_count=42, idempotency_key=str(uuid.uuid4()),
             ),
         )
+
+
+@pytest.mark.asyncio
+async def test_rejected_foreign_artifact_writes_no_evidence(
+    db_session, trip_fixture, second_trip_fixture,
+):
+    """The check must run BEFORE any evidence is written, so a rejected attempt
+    leaves the phase untouched and replayable — not half-populated with a seal
+    number whose photo was refused."""
+    trip, driver, phases = trip_fixture
+    other_trip = second_trip_fixture
+    await _advance_to_departure(db_session, trip, driver, phases)
+
+    with pytest.raises(ResourceNotFoundError):
+        await advance_unloading(
+            db_session, trip_id=trip.id, driver_id=driver.id,
+            phase_event_id=phases["unloading"].id,
+            payload=UnloadingCompleteRequest(
+                phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-1234",
+                gate_photo_artifact_id=await _make_artifact(db_session, other_trip.id),
+                idempotency_key=str(uuid.uuid4()),
+            ),
+        )
+
+    await db_session.refresh(phases["unloading"])
+    assert phases["unloading"].status == PhaseStatus.PENDING
+    assert phases["unloading"].seal_number is None
+    assert phases["unloading"].gate_photo_artifact_id is None
 
 
 # ── advance_confirmation ─────────────────────────────────────────────────────
@@ -898,7 +1197,11 @@ async def test_current_phase_and_current_stop_track_the_ledger(db_session, trip_
 
     await advance_unloading(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading"].id,
-        payload=UnloadingCompleteRequest(phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-1234", idempotency_key=str(uuid.uuid4())),
+        payload=UnloadingCompleteRequest(
+            phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-1234",
+            gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            idempotency_key=str(uuid.uuid4()),
+        ),
     )
     assert trip.current_phase == PhaseType.CONFIRMATION
     assert trip.current_stop == 1
@@ -1043,8 +1346,10 @@ async def _walk_cross_dock_leg1_unloading_to_leg2_departure(
     # either crash on MultipleResultsFound or compare against None here.
     unloading_1_result = await advance_unloading(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading_1"].id,
-        payload=UnloadingCompleteRequest(phase_type=PhaseType.UNLOADING, 
-            seal_number_at_destination=leg1_destination_seal, idempotency_key=str(uuid.uuid4()),
+        payload=UnloadingCompleteRequest(
+            phase_type=PhaseType.UNLOADING, seal_number_at_destination=leg1_destination_seal,
+            gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            idempotency_key=str(uuid.uuid4()),
         ),
     )
 
@@ -1084,7 +1389,11 @@ async def test_cross_dock_seal_continuity_correct_seal_per_leg_no_mismatch(
 
     leg2_result = await advance_unloading(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading_2"].id,
-        payload=UnloadingCompleteRequest(phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-2222", idempotency_key=str(uuid.uuid4())),
+        payload=UnloadingCompleteRequest(
+            phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-2222",
+            gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            idempotency_key=str(uuid.uuid4()),
+        ),
     )
     unloading_2 = next(h for h in leg2_result.phases if h.id == phases["unloading_2"].id)
     assert unloading_2.status == PhaseStatus.COMPLETED
@@ -1107,12 +1416,16 @@ async def test_cross_dock_seal_continuity_wrong_leg_seal_raises_mismatch(
 
     leg2_result = await advance_unloading(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading_2"].id,
-        payload=UnloadingCompleteRequest(phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-1111", idempotency_key=str(uuid.uuid4())),
+        payload=UnloadingCompleteRequest(
+            phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-1111",
+            gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            idempotency_key=str(uuid.uuid4()),
+        ),
     )
 
     unloading_2 = next(h for h in leg2_result.phases if h.id == phases["unloading_2"].id)
     assert unloading_2.status == PhaseStatus.EXCEPTION
-    assert leg2_result.status == TripStatus.EXCEPTION_HOLD
+    assert leg2_result.status == TripStatus.ACTIVE  # flagged, not held
     assert len(leg2_result.exceptions) == 1
     assert leg2_result.exceptions[0].exception_type == ExceptionType.SEAL_MISMATCH
     assert leg2_result.exceptions[0].severity == ExceptionSeverity.CRITICAL
@@ -1155,7 +1468,11 @@ async def test_confirmation_origin_count_uses_nearest_preceding_loading_not_trip
     )
     await advance_unloading(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading_2"].id,
-        payload=UnloadingCompleteRequest(phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-2222", idempotency_key=str(uuid.uuid4())),
+        payload=UnloadingCompleteRequest(
+            phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-2222",
+            gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            idempotency_key=str(uuid.uuid4()),
+        ),
     )
 
     result = await advance_confirmation(
@@ -1191,7 +1508,11 @@ async def test_cross_dock_plan_walks_to_closed(db_session, cross_dock_trip_fixtu
     )
     await advance_unloading(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading_2"].id,
-        payload=UnloadingCompleteRequest(phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-2222", idempotency_key=str(uuid.uuid4())),
+        payload=UnloadingCompleteRequest(
+            phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-2222",
+            gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            idempotency_key=str(uuid.uuid4()),
+        ),
     )
 
     result = await advance_confirmation(

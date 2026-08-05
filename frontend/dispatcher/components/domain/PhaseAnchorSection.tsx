@@ -1,4 +1,5 @@
-import { Field, Section } from './PhaseDetailFields'
+import { ForensicOnly } from '@/components/blockchain/ForensicOnly'
+import { CopyField, Field, Section } from './PhaseDetailFields'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 
 /**
@@ -17,6 +18,12 @@ export function PhaseAnchorSection({ phase }: { phase: PhaseDescriptor }) {
           ⚠ Anchor failed — receipt still owed
         </div>
       )}
+      {/* The phase's own SHA-256 — the value that is actually anchored, and the one a
+          reviewer recomputes to check this row against the chain. The backend has always
+          sent it; forensic mode showed trip-level receipts and never this. */}
+      <ForensicOnly>
+        <CopyField label="Event hash (SHA-256)" value={phase.event_hash} mono span />
+      </ForensicOnly>
     </Section>
   )
 }

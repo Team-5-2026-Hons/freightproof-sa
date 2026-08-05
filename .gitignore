@@ -225,3 +225,7 @@ graphify-out/cache/
 
 # Git worktrees (local dev isolation only — never committed)
 .worktrees/
+
+# Parcel Perfect watch output (scripts/pp_watch.py) — contains PP payloads with
+# names, addresses and cell numbers. POPIA: never committed to a public repo.
+pp_watch_out/

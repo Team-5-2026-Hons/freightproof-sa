@@ -25,6 +25,10 @@ import type { TripStatus } from '@shared/lib/types/trip'
 // Coarse since Stage 2 (parent §2.3): `active` is every trip between creation and
 // closure. The old list enumerated six per-step statuses from the pre-phase model
 // that no longer exist, so every advanced trip silently disappeared from this dashboard.
+// `exception_hold` currently matches nothing — no backend path sets it (see
+// orchestration/phase_service.py's _is_resolved). Kept so a held trip would appear
+// here by default if a manual dispatcher hold lands, rather than vanishing from the
+// dashboard the way the pre-phase statuses did.
 const ACTIVE_STATUSES: TripStatus[] = ['created', 'active', 'exception_hold']
 
 type ColId = keyof ColWidths
