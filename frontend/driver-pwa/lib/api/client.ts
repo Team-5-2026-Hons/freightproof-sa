@@ -30,6 +30,39 @@ export class ApiError extends Error {
   }
 }
 
+// The backend's exact detail for a device that has been superseded by a newer login —
+// app/auth/sessions.py's SESSION_SUPERSEDED_DETAIL. Matched on rather than inferred from
+// the status code, because an ordinary expired token is also a 401 and needs the opposite
+// treatment (refresh and retry, don't sign out).
+export const SESSION_SUPERSEDED_MESSAGE = 'Signed in on another device.'
+
+// Read by the login screen to explain why the driver landed back there. sessionStorage,
+// not localStorage: it is a one-off explanation for this launch, not a durable fact.
+export const SIGNED_OUT_REASON_KEY = 'fp.signedOutReason'
+
+// FastAPI puts the human-readable reason in `detail`, which is a string for a raised
+// HTTPException and an array of field errors for a 422.
+async function readErrorMessage(res: Response): Promise<string> {
+  const body = await res.json().catch(() => ({ detail: res.statusText }))
+  const raw = (body as { detail?: unknown }).detail
+  return Array.isArray(raw)
+    ? (raw[0] as { msg?: string })?.msg ?? res.statusText
+    : (raw as string | undefined) ?? res.statusText
+}
+
+async function signOutSupersededDevice(): Promise<void> {
+  if (typeof window !== 'undefined') {
+    window.sessionStorage.setItem(SIGNED_OUT_REASON_KEY, SESSION_SUPERSEDED_MESSAGE)
+  }
+  try {
+    await supabase.auth.signOut()
+  } catch (err) {
+    // Even if Supabase can't be reached, the local session is what gates the app —
+    // AuthContext's own listener sees the sign-out and the (app) layout redirects.
+    console.warn('[api] sign-out after a superseded-device 401 failed locally:', err)
+  }
+}
+
 // Rejects with a timeout ApiError if the wrapped promise has not settled in `ms`.
 // Used to bound supabase.auth.getSession(), which can otherwise hang indefinitely.
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -115,6 +148,20 @@ async function request<T>(
   // truly invalid. Force one refresh and retry exactly once with the new token; a
   // fresh AbortSignal.timeout(timeoutMs) is created for the retry by the recursive
   // call, so the per-request timeout ceiling still applies to it.
+  // Read the error body ONCE, before the retry logic, because one specific 401 is
+  // decided by its detail rather than its status — and a Response body can only be
+  // consumed once. Non-401 errors reuse this same parse when they throw below.
+  const errorMessage = res.ok ? null : await readErrorMessage(res)
+
+  // A superseded device (app/auth/sessions.py) must NOT be refresh-retried: a refresh
+  // returns a token for the same Supabase session, so the retry would be refused
+  // identically. This driver's account is now in use on another handset, so the honest
+  // response is to sign this one out rather than leave it half-working.
+  if (res.status === 401 && errorMessage === SESSION_SUPERSEDED_MESSAGE) {
+    await signOutSupersededDevice()
+    throw new ApiError(res.status, SESSION_SUPERSEDED_MESSAGE)
+  }
+
   if (res.status === 401 && retryToken === undefined) {
     // Bounded like every other auth call in this file: refreshSession() hits the
     // network and can wedge exactly the way getSession() used to — an unbounded await
@@ -139,12 +186,7 @@ async function request<T>(
   }
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ detail: res.statusText }))
-    const raw = (body as { detail?: unknown }).detail
-    const message = Array.isArray(raw)
-      ? (raw[0] as { msg?: string })?.msg ?? res.statusText
-      : (raw as string | undefined) ?? res.statusText
-    throw new ApiError(res.status, message)
+    throw new ApiError(res.status, errorMessage ?? res.statusText)
   }
 
   if (res.status === 204) return undefined as T

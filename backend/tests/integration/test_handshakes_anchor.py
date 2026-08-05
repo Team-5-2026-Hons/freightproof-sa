@@ -19,13 +19,15 @@ import uuid
 from datetime import UTC, datetime
 from unittest.mock import patch
 
+import pytest
 import pytest_asyncio
 from httpx import AsyncClient
 
 from app.blockchain.hedera import HederaReceipt
 from app.core.exceptions import HederaTimeoutError
 from app.db.models.enums import (
-    ArtifactType, IdvsStatus, OrganizationType, PhaseStatus, PhaseType, TripStatus, VehicleType,
+    ArtifactType, BlockchainReceiptType, IdvsStatus, OrganizationType, PhaseStatus, PhaseType,
+    TripStatus, VehicleType,
 )
 from app.db.models.evidence import EvidenceArtifact
 from app.db.models.organisations import Organization, Precinct
@@ -178,13 +180,55 @@ async def _complete_h2(client: AsyncClient, db_session, trip, token) -> None:
     assert resp.status_code == 200
 
 
+@pytest.fixture(autouse=True)
+def captured_anchor_dispatches(monkeypatch):
+    """Capture the anchor dispatch instead of queueing a real Celery task.
+
+    Anchoring runs on the worker now, dispatched from the session's after_commit hook —
+    and an integration request DOES commit, so without this the test outcome would depend
+    on whether a Redis broker happens to be running (broker up: queued and never run;
+    broker down: _dispatch_anchor's inline fallback writes the receipt). Capturing makes
+    it deterministic, and _drain_anchors runs the same entry point the worker calls.
+    """
+    dispatched: list[tuple[str, dict, str]] = []
+
+    class _StubTask:
+        @staticmethod
+        def delay(phase_event_id: str, canonical_payload: dict, receipt_type: str) -> None:
+            dispatched.append((phase_event_id, canonical_payload, receipt_type))
+
+    monkeypatch.setattr("app.tasks.blockchain.anchor_phase_event_task", _StubTask)
+    return dispatched
+
+
+async def _drain_anchors(db_session, dispatched) -> None:
+    """Commit first — the override of get_db in these tests doesn't commit, so the
+    after_commit hook that dispatches the anchor hasn't fired yet — then run every queued
+    anchor exactly as the worker would."""
+    from app.orchestration.phase_service import anchor_phase_event
+
+    await db_session.commit()
+    for phase_event_id, canonical_payload, receipt_type in dispatched:
+        await anchor_phase_event(
+            db_session, phase_event_id=uuid.UUID(phase_event_id),
+            canonical_payload=canonical_payload,
+            receipt_type=BlockchainReceiptType(receipt_type),
+        )
+    await db_session.commit()
+    dispatched.clear()
+
+
 async def test_h3_complete_anchors_and_returns_event_hash(client: AsyncClient, db_session, seed_trip):
-    """POST departure/complete → 200, with event_hash + blockchain_receipt_id set
-    on the DEPARTURE row in the response — the fields the driver-pwa's
-    "anchored" badge reads. D7/T5 (task 2.6): the anchor moved whole from
-    loading to departure, so this is now where it's produced; the loading
-    row in the same response must stay unanchored (regression guard
-    that the anchor really moved, not just got duplicated)."""
+    """POST departure/complete → 200 with event_hash set on the DEPARTURE row, and no
+    receipt yet.
+
+    The hash is derived from this request's own evidence and is still computed in-request.
+    The receipt is not: since 2026-08-05 the Hedera submit is queued for the worker rather
+    than awaited (a ~4-6s round trip was holding the driver's swipe open), so the response
+    carries blockchain_receipt_id = null and the driver app renders "anchoring in
+    progress" until the worker lands it. D7/T5 (task 2.6): the anchor moved whole from
+    loading to departure, so the loading row in the same response must stay entirely
+    unanchored — regression guard that the anchor really moved, not just got duplicated."""
     trip, driver = seed_trip
     token = make_token(sub=str(driver.id), role="driver")
     await _complete_h1(client, db_session, trip, token)
@@ -206,7 +250,7 @@ async def test_h3_complete_anchors_and_returns_event_hash(client: AsyncClient, d
     body = resp.json()
     departure = next(h for h in body["phases"] if h["phase_type"] == "departure")
     assert departure["event_hash"] is not None
-    assert departure["blockchain_receipt_id"] is not None
+    assert departure["blockchain_receipt_id"] is None
 
     h2 = next(h for h in body["phases"] if h["phase_type"] == "loading")
     assert h2["event_hash"] is None
@@ -255,7 +299,7 @@ async def test_h3_complete_hedera_failure_still_returns_200_fail_open(
 
 
 async def test_trip_detail_lists_h3_handshake_receipt_for_dispatcher(
-    client: AsyncClient, db_session, seed_trip,
+    client: AsyncClient, db_session, seed_trip, captured_anchor_dispatches,
 ):
     """The driver→dispatcher anchoring link: after departure anchors, GET
     /trips/{id} (the dispatcher portal's data source) must list the
@@ -277,8 +321,13 @@ async def test_trip_detail_lists_h3_handshake_receipt_for_dispatcher(
             json=_h3_payload(waybill_id, seal_photo_id),
             headers=auth_header(driver_token),
         )
-    assert h3_resp.status_code == 200
-    departure = next(h for h in h3_resp.json()["phases"] if h["phase_type"] == "departure")
+        assert h3_resp.status_code == 200
+        # The worker's half, run inside the same patch: without it there is no receipt
+        # for the dispatcher to see, and outside the patch it would hit the real SDK.
+        await _drain_anchors(db_session, captured_anchor_dispatches)
+    departure_id_str = next(
+        h["phase_event_id"] for h in h3_resp.json()["phases"] if h["phase_type"] == "departure"
+    )
 
     # Receipts are role-gated (FP-115): only admin_dispatcher sees the full list,
     # so the read side authenticates as an admin in the trip's operator org.
@@ -299,5 +348,4 @@ async def test_trip_detail_lists_h3_handshake_receipt_for_dispatcher(
     receipts = detail_resp.json()["blockchain_receipts"]
     handshake_receipts = [r for r in receipts if r["subject_type"] == "phase_event"]
     assert len(handshake_receipts) == 1
-    assert handshake_receipts[0]["subject_id"] == departure["phase_event_id"]
-    assert handshake_receipts[0]["id"] == departure["blockchain_receipt_id"]
+    assert handshake_receipts[0]["subject_id"] == departure_id_str

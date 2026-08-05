@@ -44,6 +44,12 @@ export interface TripState {
   // first. Without this, tapping "Activate" on the second of two assignments would
   // silently submit against whichever trip the server picked as current.
   selectTrip: (tripId: string) => Promise<Trip | null>
+  // Adopt a trip the server just returned, without a second round trip to fetch it.
+  // POST /phases/{id}/complete already responds with the full updated plan; before this
+  // existed, every phase submit followed it with refetchTrip() purely because this
+  // context had no way to be told what the caller already held — a whole extra request
+  // on the slowest screen in the app, while the driver waited on the swipe.
+  adoptTrip: (fresh: Trip) => void
   // Drop the selection and fall back to the server's choice (GET /trips/me/active).
   clearSelectedTrip: () => Promise<Trip | null>
 }
@@ -131,6 +137,15 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       setIsLoading(false)
     }
   }, [mockTrip, persistSelection])
+
+  // Deliberately not a setter for arbitrary state: it takes a server response only, so
+  // the context can never drift into a locally-invented trip. The phase flow's own
+  // sequencing guard reads trip.phases from here, and it must only ever reflect what the
+  // ledger actually says.
+  const adoptTrip = useCallback((fresh: Trip) => {
+    setTrip(fresh)
+    setIsLoading(false)
+  }, [])
 
   const clearSelectedTrip = useCallback(async (): Promise<Trip | null> => {
     if (IS_DEMO_MODE) { setTrip(mockTrip); return mockTrip }
@@ -236,7 +251,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       value={{
         trip, isLoading, exceptions,
         logException, triggerPanic, reset, refetchTrip,
-        selectTrip, clearSelectedTrip,
+        selectTrip, clearSelectedTrip, adoptTrip,
       }}
     >
       {children}

@@ -36,6 +36,7 @@ from app.orchestration.phase_service import (
     advance_activation, advance_confirmation, advance_departure, advance_loading, advance_unloading,
     compute_confirmation_canonical_payload, compute_departure_canonical_payload,
 )
+from app.orchestration.phase_service import anchor_phase_event
 from app.orchestration.verification_service import verify_subject
 from app.schemas.phases import (
     ActivationCompleteRequest, ConfirmationCompleteRequest, DepartureCompleteRequest,
@@ -224,17 +225,60 @@ def test_confirmation_canonical_payload_excludes_gps_artifacts_and_pii():
     }
 
 
+@pytest.fixture(autouse=True)
+def captured_anchor_dispatches(monkeypatch):
+    """Capture anchor dispatches instead of queueing real Celery tasks.
+
+    Anchoring no longer runs inside a phase-completion request (a ~4-6s Hedera submit was
+    holding the driver's swipe open). These tests are about the ANCHORED PAYLOAD, so they
+    still need the anchor to actually happen — _drain_anchors below runs each dispatch
+    through the same entry point the worker calls, which means they now cover the full
+    dispatch -> worker -> receipt chain rather than a single in-request call.
+    """
+    dispatched: list[tuple[str, dict, str]] = []
+
+    class _StubTask:
+        @staticmethod
+        def delay(phase_event_id: str, canonical_payload: dict, receipt_type: str) -> None:
+            dispatched.append((phase_event_id, canonical_payload, receipt_type))
+
+    monkeypatch.setattr("app.tasks.blockchain.anchor_phase_event_task", _StubTask)
+    return dispatched
+
+
+async def _drain_anchors(db_session, dispatched) -> None:
+    """Commit (which fires the after_commit dispatch hook), then run every queued anchor.
+
+    The db_session fixture joins with create_savepoint, so this commit fires the hook and
+    is still rolled back when the test ends.
+    """
+    await db_session.commit()
+    for phase_event_id, canonical_payload, receipt_type in dispatched:
+        await anchor_phase_event(
+            db_session, phase_event_id=uuid.UUID(phase_event_id),
+            canonical_payload=canonical_payload,
+            receipt_type=BlockchainReceiptType(receipt_type),
+        )
+    # Flush so the receipt and the event's new blockchain_receipt_id are queryable —
+    # refresh() would discard these pending in-session writes instead of reading them.
+    await db_session.flush()
+    dispatched.clear()
+
+
 # ── Anchoring: receipt_type per handshake, anchors on mismatch too (DB-gated) ──
 
 @pytest.mark.asyncio
-async def test_advance_departure_anchors_with_pickup_receipt_type(db_session, trip_fixture):
+async def test_advance_departure_anchors_with_pickup_receipt_type(
+    db_session, trip_fixture, captured_anchor_dispatches,
+):
     """D7/T5 (task 2.6): the PICKUP-typed anchor moved whole from loading to
     departure — this is now where it's produced."""
     trip, driver, phases = trip_fixture
 
     result = await _advance_to_departure(db_session, trip, driver, phases)
+    await _drain_anchors(db_session, captured_anchor_dispatches)
 
-    departure = next(h for h in result.phases if h.phase_type == PhaseType.DEPARTURE)
+    departure = phases["departure"]
     receipt = (await db_session.execute(
         select(BlockchainReceipt).where(BlockchainReceipt.id == departure.blockchain_receipt_id)
     )).scalar_one()
@@ -245,7 +289,9 @@ async def test_advance_departure_anchors_with_pickup_receipt_type(db_session, tr
 
 
 @pytest.mark.asyncio
-async def test_advance_confirmation_anchors_with_delivery_receipt_type(db_session, trip_fixture):
+async def test_advance_confirmation_anchors_with_delivery_receipt_type(
+    db_session, trip_fixture, captured_anchor_dispatches,
+):
     trip, driver, phases = trip_fixture
     await _advance_to_unloading(db_session, trip, driver, phases)
 
@@ -258,7 +304,9 @@ async def test_advance_confirmation_anchors_with_delivery_receipt_type(db_sessio
         ),
     )
 
-    h5 = next(h for h in result.phases if h.phase_type == PhaseType.CONFIRMATION)
+    await _drain_anchors(db_session, captured_anchor_dispatches)
+
+    h5 = phases["confirmation"]
     receipt = (await db_session.execute(
         select(BlockchainReceipt).where(BlockchainReceipt.id == h5.blockchain_receipt_id)
     )).scalar_one()
@@ -269,7 +317,9 @@ async def test_advance_confirmation_anchors_with_delivery_receipt_type(db_sessio
 
 
 @pytest.mark.asyncio
-async def test_advance_confirmation_anchors_even_on_count_mismatch(db_session, trip_fixture):
+async def test_advance_confirmation_anchors_even_on_count_mismatch(
+    db_session, trip_fixture, captured_anchor_dispatches,
+):
     trip, driver, phases = trip_fixture
     await _advance_to_unloading(db_session, trip, driver, phases)
 
@@ -284,13 +334,16 @@ async def test_advance_confirmation_anchors_even_on_count_mismatch(db_session, t
 
     h5 = next(h for h in result.phases if h.phase_type == PhaseType.CONFIRMATION)
     assert h5.status == PhaseStatus.EXCEPTION
-    assert h5.blockchain_receipt_id is not None
+    await _drain_anchors(db_session, captured_anchor_dispatches)
+    assert phases["confirmation"].blockchain_receipt_id is not None
 
 
 # ── Verification reconstruction: proves reconstruct == anchored payload ───────
 
 @pytest.mark.asyncio
-async def test_verify_subject_after_departure_reconstructs_matching_payload(db_session, trip_fixture):
+async def test_verify_subject_after_departure_reconstructs_matching_payload(
+    db_session, trip_fixture, captured_anchor_dispatches,
+):
     """D7/T5 (task 2.6): verification_service._reconstruct_phase_event_payload
     now dispatches on PhaseType.DEPARTURE, not LOADING, matching where the
     seal (and the anchor) actually live post-refactor."""
@@ -300,6 +353,8 @@ async def test_verify_subject_after_departure_reconstructs_matching_payload(db_s
 
     stub_service = MagicMock()
     stub_service.verify_hash.return_value = True
+
+    await _drain_anchors(db_session, captured_anchor_dispatches)
 
     outcome = await verify_subject(
         db_session, subject_type=SubjectType.PHASE_EVENT, subject_id=departure.id,
@@ -313,7 +368,9 @@ async def test_verify_subject_after_departure_reconstructs_matching_payload(db_s
 
 
 @pytest.mark.asyncio
-async def test_verify_subject_after_confirmation_reconstructs_matching_payload(db_session, trip_fixture):
+async def test_verify_subject_after_confirmation_reconstructs_matching_payload(
+    db_session, trip_fixture, captured_anchor_dispatches,
+):
     trip, driver, phases = trip_fixture
     await _advance_to_unloading(db_session, trip, driver, phases)
     result = await advance_confirmation(
@@ -328,6 +385,8 @@ async def test_verify_subject_after_confirmation_reconstructs_matching_payload(d
 
     stub_service = MagicMock()
     stub_service.verify_hash.return_value = True
+
+    await _drain_anchors(db_session, captured_anchor_dispatches)
 
     outcome = await verify_subject(
         db_session, subject_type=SubjectType.PHASE_EVENT, subject_id=h5.id,

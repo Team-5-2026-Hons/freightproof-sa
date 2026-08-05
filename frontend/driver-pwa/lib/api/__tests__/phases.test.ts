@@ -37,6 +37,10 @@ const LOADING_EVIDENCE: LoadingEvidence = {
 }
 
 const DEPARTURE_EVIDENCE: DepartureEvidence = {
+  // No artifact ids: this fixture is the "early upload never landed" case, which is what
+  // exercises submitPhase's upload-at-submit fallback. The ready-id path has its own test.
+  waybillPhotoArtifactId: null,
+  sealPhotoArtifactId: null,
   waybillPhotoDataUrl: 'data:image/jpeg;base64,BBBB',
   sealNumber: 'AB-1234',
   sealPhotoDataUrl: 'data:image/jpeg;base64,CCCC',
@@ -55,6 +59,8 @@ const UNLOADING_EVIDENCE: UnloadingEvidence = {
 }
 
 const CONFIRMATION_EVIDENCE: ConfirmationEvidence = {
+  podPhotoArtifactId: null,
+  podSignatureArtifactId: null,
   podPhotoDataUrl: 'data:image/jpeg;base64,EEEE',
   podSignatureDataUrl: 'data:image/png;base64,FFFF',
   // Stands in for a value carried forward from the preceding UnloadingEvidence draft —
@@ -288,6 +294,83 @@ describe('submitPhase (real-backend branch)', () => {
 
     expect(result.ok).toBe(true)
     expect(result.phaseStatus).toBe('exception')
+  })
+})
+
+describe('submitPhase — photos uploaded at capture', () => {
+  // Call counts are the assertion in this block, so each test starts from zero.
+  beforeEach(() => vi.clearAllMocks())
+
+  it('sends the artifact ids the early upload already produced, without re-uploading', async () => {
+    // The whole point of uploading at capture: by the time the driver swipes, the photos
+    // are already on the server and the submit is one small request.
+    const { submitPhase } = await import('../phases')
+    mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
+
+    await submitPhase('trip-1', 'phase-event-3', 'departure', {
+      ...DEPARTURE_EVIDENCE,
+      waybillPhotoArtifactId: 'artifact-waybill',
+      sealPhotoArtifactId: 'artifact-seal',
+    }, IDEMPOTENCY_KEY, POSITION)
+
+    expect(mockUploadArtifact).not.toHaveBeenCalled()
+    expect(mockPost).toHaveBeenCalledWith(
+      '/api/v1/trips/trip-1/phases/phase-event-3/complete',
+      expect.objectContaining({
+        waybill_photo_artifact_id: 'artifact-waybill',
+        seal_photo_artifact_id: 'artifact-seal',
+      }),
+      expect.anything(),
+    )
+  })
+
+  it('uploads at submit for a photo whose early upload never landed', async () => {
+    // Captured offline, or the early request failed. The data URL is still in the draft,
+    // so the submit path uploads it exactly as it did before — nothing is lost, it is
+    // just slower.
+    const { submitPhase } = await import('../phases')
+    mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
+    mockUploadArtifact
+      .mockResolvedValueOnce({ id: 'late-waybill', file_hash: 'h1' })
+      .mockResolvedValueOnce({ id: 'late-seal', file_hash: 'h2' })
+
+    await submitPhase('trip-1', 'phase-event-3', 'departure', {
+      ...DEPARTURE_EVIDENCE,
+      waybillPhotoArtifactId: null,
+      sealPhotoArtifactId: null,
+    }, IDEMPOTENCY_KEY, POSITION)
+
+    expect(mockUploadArtifact).toHaveBeenCalledTimes(2)
+    expect(mockPost).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        waybill_photo_artifact_id: 'late-waybill',
+        seal_photo_artifact_id: 'late-seal',
+      }),
+      expect.anything(),
+    )
+  })
+
+  it('uploads only the half that is missing', async () => {
+    const { submitPhase } = await import('../phases')
+    mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
+    mockUploadArtifact.mockResolvedValue({ id: 'late-seal', file_hash: 'h' })
+
+    await submitPhase('trip-1', 'phase-event-3', 'departure', {
+      ...DEPARTURE_EVIDENCE,
+      waybillPhotoArtifactId: 'artifact-waybill',
+      sealPhotoArtifactId: null,
+    }, IDEMPOTENCY_KEY, POSITION)
+
+    expect(mockUploadArtifact).toHaveBeenCalledTimes(1)
+    expect(mockPost).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        waybill_photo_artifact_id: 'artifact-waybill',
+        seal_photo_artifact_id: 'late-seal',
+      }),
+      expect.anything(),
+    )
   })
 })
 

@@ -38,12 +38,15 @@ const mockRouterReplace = vi.fn()
 const mockNotify = vi.fn()
 const mockSubmitPhase = vi.fn()
 const mockRefetchTrip = vi.fn()
+// The success path adopts the trip the submit already returned instead of refetching it.
+const mockAdoptTrip = vi.fn()
 const mockEnqueuePhase = vi.fn()
 
 interface MockTripState {
   trip: Trip | null
   isLoading: boolean
   refetchTrip: typeof mockRefetchTrip
+  adoptTrip: typeof mockAdoptTrip
 }
 
 // Reassigned mid-test (then rerender()ed) to simulate TripContext's shared state moving
@@ -202,7 +205,7 @@ describe('trip-loading gate — drafts survive a mount that begins before the tr
       }),
     )
     mockUseParams.mockReturnValue({ type: 'unloading', slug: '2-seal-verify' })
-    tripState = { trip: null, isLoading: true, refetchTrip: mockRefetchTrip }
+    tripState = { trip: null, isLoading: true, refetchTrip: mockRefetchTrip, adoptTrip: mockAdoptTrip }
 
     const { rerender } = render(<PhaseStepPageClient />)
 
@@ -216,7 +219,7 @@ describe('trip-loading gate — drafts survive a mount that begins before the tr
     const trip = makeTrip([makePhase({
       phase_event_id: UNLOADING_PE, phase_type: 'unloading', sequence_number: 4, status: 'in_progress',
     })])
-    tripState = { trip, isLoading: false, refetchTrip: mockRefetchTrip }
+    tripState = { trip, isLoading: false, refetchTrip: mockRefetchTrip, adoptTrip: mockAdoptTrip }
     rerender(<PhaseStepPageClient />)
     expect(await screen.findByText('seal:AB-1234')).toBeInTheDocument()
 
@@ -238,13 +241,13 @@ describe('submit keeps the step UI on screen (Fix 2)', () => {
     const trip = makeTrip([makePhase({
       phase_event_id: CONFIRMATION_PE, phase_type: 'confirmation', sequence_number: 5, status: 'in_progress',
     })])
-    tripState = { trip, isLoading: false, refetchTrip: mockRefetchTrip }
+    tripState = { trip, isLoading: false, refetchTrip: mockRefetchTrip, adoptTrip: mockAdoptTrip }
     mockSubmitPhase.mockResolvedValue({ ok: true, trip: { ...trip, status: 'closed' }, phaseStatus: 'completed' })
     mockRefetchTrip.mockImplementation(() => {
       // Once confirmation submits the trip is CLOSED — /trips/me/active legitimately
       // has nothing left to return, so the shared trip goes null while this page is
       // still mounted (navigation hasn't unmounted it yet).
-      tripState = { trip: null, isLoading: false, refetchTrip: mockRefetchTrip }
+      tripState = { trip: null, isLoading: false, refetchTrip: mockRefetchTrip, adoptTrip: mockAdoptTrip }
       return Promise.resolve(null)
     })
 

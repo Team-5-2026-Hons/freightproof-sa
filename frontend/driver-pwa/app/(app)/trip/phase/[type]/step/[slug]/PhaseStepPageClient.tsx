@@ -41,8 +41,9 @@ import type {
 const ACTIVATION_INITIAL: ActivationEvidence = { capturedAt: null }
 const LOADING_INITIAL: LoadingEvidence = { driverVisualCount: null, capturedAt: null }
 const DEPARTURE_INITIAL: DepartureEvidence = {
-  waybillPhotoDataUrl: null, sealNumber: null,
-  sealPhotoDataUrl: null, sealNumberConfirmed: null, sealVerifiedMatch: null, capturedAt: null,
+  waybillPhotoDataUrl: null, waybillPhotoArtifactId: null, sealNumber: null,
+  sealPhotoDataUrl: null, sealPhotoArtifactId: null,
+  sealNumberConfirmed: null, sealVerifiedMatch: null, capturedAt: null,
 }
 const UNLOADING_INITIAL: UnloadingEvidence = {
   waybillHandedOver: null, sealNumberAtDestination: null, sealVerifiedMatch: null,
@@ -51,7 +52,9 @@ const UNLOADING_INITIAL: UnloadingEvidence = {
 // driverVisualCount is seeded per-mount from the carry-forward hook (task 4) — see
 // ConfirmationStep below — never hard-coded here.
 const CONFIRMATION_INITIAL_BASE: Omit<ConfirmationEvidence, 'driverVisualCount'> = {
-  podPhotoDataUrl: null, podSignatureDataUrl: null, reconciliationNote: null, capturedAt: null,
+  podPhotoDataUrl: null, podPhotoArtifactId: null,
+  podSignatureDataUrl: null, podSignatureArtifactId: null,
+  reconciliationNote: null, capturedAt: null,
 }
 
 // The route for wherever the ledger says the driver is right now — used both by the
@@ -288,7 +291,7 @@ function usePhaseStepController<T extends PhaseEvidence>(
   const router = useRouter()
   const { notify } = useToast()
   const { enqueuePhase } = useOfflineQueue()
-  const { refetchTrip } = useTrip()
+  const { refetchTrip, adoptTrip } = useTrip()
   const { capturePosition } = useLocationTrail()
   const tripId = String(trip.id)
 
@@ -365,18 +368,15 @@ function usePhaseStepController<T extends PhaseEvidence>(
       const addressedPhase = result.trip?.phases.find((p) => p.phase_event_id === phase.phase_event_id) ?? null
       onResolved(result.trip, evidence)
       clearDraft()
-      // submitPhase's own return already has the fresh plan, but that's local to this
-      // call — TripContext's own `trip` (what the NEXT step page's guard reads via
-      // currentPhase(trip.phases)) is a separate cache that only refetchTrip() updates.
-      // Without this, advance() below still computes the right URL (nextStepRoute only
-      // depends on phases strictly AFTER this one, which this submission never changes),
-      // but the page that URL lands on would see THIS phase as still unresolved in its
-      // stale trip and immediately redirect back. Awaited before navigating so the next
-      // page's first render already has fresh data. May transiently return null (the
-      // trip just closed, e.g. confirmation's last step) — the top-level gate's Fix 2
-      // (isSubmitting + lastTripRef) is what keeps this screen from flashing "Trip not
-      // found" during that window.
-      await refetchTrip()
+      // The next step page's guard reads currentPhase(trip.phases) from TripContext, so
+      // that cache has to know this phase resolved before we navigate — otherwise the
+      // page we land on sees it still unresolved and bounces straight back.
+      //
+      // This used to be `await refetchTrip()`: a second round trip for a plan the submit
+      // response already contained, on the slowest screen in the app, with the driver
+      // watching. adoptTrip takes that response directly. It stays null only in demo
+      // mode (no backend call happened), where there is no stale cache to correct.
+      if (result.trip !== null) adoptTrip(result.trip)
       if (result.trip?.status === 'exception_hold') {
         notifyTripOnHold()
         router.push(ROUTES.activeTripDetail)

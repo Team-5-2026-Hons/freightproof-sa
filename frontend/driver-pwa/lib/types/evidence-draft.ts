@@ -61,13 +61,21 @@ export interface LoadingEvidence {
 // draft, no cross-phase reference is needed for departure's OWN gate; useSealReference
 // is still needed downstream, to carry this phase's committed sealNumber forward to
 // `unloading`'s reference display (see UnloadingEvidence below).
+// Each photo appears TWICE from here on: the data URL the camera produced, and the
+// artifact id once it has been uploaded. Uploading starts at capture rather than at
+// submit (lib/hooks/useArtifactUpload.ts), so by the time the driver swipes the id is
+// usually already there and the submit sends ids only. The data URL is kept regardless —
+// it is the fallback lib/api/phases.ts uploads from when the early upload didn't land
+// (offline at capture, a failed request), so no path can lose a captured photo.
 export interface DepartureEvidence {
   // No gpsLat/gpsLng: the old "Approach Exit Gate" step captured them into this draft
   // and lib/api/phases.ts never sent them — DepartureCompleteRequest had no GPS fields
   // at all. The fix is now taken silently at submit and does reach the server.
   waybillPhotoDataUrl: string | null
+  waybillPhotoArtifactId: string | null
   sealNumber: string | null
   sealPhotoDataUrl: string | null
+  sealPhotoArtifactId: string | null
   // The exit guard's independently re-typed seal number. Optional on the wire
   // (DepartureCompleteRequest.seal_number_confirmed) — free-form on purpose, since a
   // mistyped confirmation is itself evidence of a mismatch and must be recordable.
@@ -100,7 +108,9 @@ export interface ConfirmationEvidence {
   // BQ2 resolved 2026-06-29: proof of delivery is a photo AND an on-device
   // signature — both required, not either/or.
   podPhotoDataUrl: string | null
+  podPhotoArtifactId: string | null
   podSignatureDataUrl: string | null
+  podSignatureArtifactId: string | null
   // Carried forward from the UnloadingEvidence captured immediately before this phase
   // (see this file's header comment) — this is the value actually submitted as
   // ConfirmationCompleteRequest.driver_visual_count.

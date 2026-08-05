@@ -14,7 +14,7 @@ import type {
 } from '@/lib/types/evidence-draft'
 import type { DriverPosition } from '@/lib/types/location'
 import { IS_DEMO_MODE } from '@/lib/constants/env'
-import { uploadArtifact } from './artifacts'
+import { uploadArtifact, type ArtifactType } from './artifacts'
 
 // Every variant carries idempotency_key — the offline-queue entry id (or an
 // online-path equivalent generated the same way, see submitPhase below), so a
@@ -110,6 +110,20 @@ function driverPosition(position: DriverPosition | null): {
   return { driver_phone_lat: position.lat, driver_phone_lng: position.lng }
 }
 
+// Resolves the artifact id for one captured photo: the id the early upload already
+// produced (lib/hooks/useArtifactUpload.ts, started when the driver took the shot), or
+// an upload right now if that never landed — offline at capture, or a failed request.
+// The fallback is what keeps "upload early" a pure optimisation: no path can reach the
+// server without the photo.
+async function artifactIdFor(
+  tripId: string, artifactType: ArtifactType, readyId: string | null,
+  dataUrl: string, capturedAt: string,
+): Promise<string> {
+  if (readyId !== null) return readyId
+  const uploaded = await uploadArtifact({ tripId, artifactType, dataUrl, capturedAt })
+  return uploaded.id
+}
+
 export interface SubmitPhaseResult {
   ok: boolean
   // The backend's updated TripDetail from the complete call. Null in demo mode (no
@@ -203,16 +217,16 @@ export async function submitPhase(
       if (e.waybillPhotoDataUrl === null || e.sealPhotoDataUrl === null || e.sealNumber === null) {
         throw new Error('Departure evidence incomplete — waybill photo, seal photo, and seal number are required.')
       }
-      const [waybillPhoto, sealPhoto] = await Promise.all([
-        uploadArtifact({ tripId, artifactType: 'photo', dataUrl: e.waybillPhotoDataUrl, capturedAt }),
-        uploadArtifact({ tripId, artifactType: 'photo', dataUrl: e.sealPhotoDataUrl, capturedAt }),
+      const [waybillPhotoId, sealPhotoId] = await Promise.all([
+        artifactIdFor(tripId, 'photo', e.waybillPhotoArtifactId, e.waybillPhotoDataUrl, capturedAt),
+        artifactIdFor(tripId, 'photo', e.sealPhotoArtifactId, e.sealPhotoDataUrl, capturedAt),
       ])
       updatedTrip = await completePhase(tripId, phaseEventId, {
         phase_type: 'departure',
         ...driverPosition(position),
-        waybill_photo_artifact_id: waybillPhoto.id,
+        waybill_photo_artifact_id: waybillPhotoId,
         seal_number: e.sealNumber,
-        seal_photo_artifact_id: sealPhoto.id,
+        seal_photo_artifact_id: sealPhotoId,
         // The boolean is only a fallback: the server compares seal_number_confirmed
         // against THIS SAME request's seal_number (authoritative) whenever it's
         // present. sealVerifiedMatch is computed against a device-local seal reference
@@ -244,15 +258,15 @@ export async function submitPhase(
       if (e.podPhotoDataUrl === null || !e.podSignatureDataUrl || e.driverVisualCount === null) {
         throw new Error('Confirmation evidence incomplete — POD photo, signature, and visual count are required.')
       }
-      const [podPhoto, podSignature] = await Promise.all([
-        uploadArtifact({ tripId, artifactType: 'photo', dataUrl: e.podPhotoDataUrl, capturedAt }),
-        uploadArtifact({ tripId, artifactType: 'document', dataUrl: e.podSignatureDataUrl, capturedAt }),
+      const [podPhotoId, podSignatureId] = await Promise.all([
+        artifactIdFor(tripId, 'photo', e.podPhotoArtifactId, e.podPhotoDataUrl, capturedAt),
+        artifactIdFor(tripId, 'document', e.podSignatureArtifactId, e.podSignatureDataUrl, capturedAt),
       ])
       updatedTrip = await completePhase(tripId, phaseEventId, {
         phase_type: 'confirmation',
         ...driverPosition(position),
-        pod_photo_artifact_id: podPhoto.id,
-        pod_signature_artifact_id: podSignature.id,
+        pod_photo_artifact_id: podPhotoId,
+        pod_signature_artifact_id: podSignatureId,
         driver_visual_count: e.driverVisualCount,
         // pp_scan_in_count isn't captured anywhere in the driver UI (it's the Parcel
         // Perfect scan-in count, not a driver-entered value) — Parcel Perfect

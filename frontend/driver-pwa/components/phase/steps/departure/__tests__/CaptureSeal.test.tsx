@@ -38,8 +38,10 @@ const NULL_REFERENCE_NOTE = 'Enter the seal number above before confirming it.'
 function makeDraft(overrides: Partial<DepartureEvidence> = {}): DepartureEvidence {
   return {
     waybillPhotoDataUrl: null,
+    waybillPhotoArtifactId: null,
     sealNumber: null,
     sealPhotoDataUrl: null,
+    sealPhotoArtifactId: null,
     sealNumberConfirmed: null,
     sealVerifiedMatch: null,
     capturedAt: null,
@@ -98,13 +100,19 @@ describe('CaptureSeal — capturing the seal number and photo', () => {
     expect(onUpdate).toHaveBeenCalledWith({ sealNumber: 'AB-1234' })
   })
 
-  it('calls onUpdate with the captured photo data url', () => {
+  it('calls onUpdate with the captured photo data url and clears any stale artifact id', () => {
     const onUpdate = vi.fn()
     renderStep({ onUpdate })
 
     fireEvent.click(screen.getByText('Seal photo'))
 
-    expect(onUpdate).toHaveBeenCalledWith({ sealPhotoDataUrl: 'data:image/jpeg;base64,Seal photo' })
+    // The artifact id is reset alongside the new data URL: a retake must not leave the
+    // PREVIOUS photo's id in the draft, or the submit would send the discarded shot.
+    // The id is filled in moments later, when the capture-time upload resolves.
+    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      sealPhotoDataUrl: 'data:image/jpeg;base64,Seal photo',
+      sealPhotoArtifactId: null,
+    }))
   })
 
   it('shows the format hint once an invalid seal number has been typed, not before', () => {

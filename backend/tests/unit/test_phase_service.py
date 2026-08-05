@@ -29,6 +29,7 @@ from app.db.models.vehicles import Vehicle
 from app.orchestration.phase_plan import PlanStop, build_phase_plan
 from app.orchestration.phase_service import (
     advance_activation, advance_confirmation, advance_departure, advance_loading, advance_unloading,
+    anchor_phase_event,
     complete_phase, is_before_scheduled_day, next_phase, operating_day,
 )
 from app.schemas.phases import (
@@ -61,6 +62,27 @@ def stub_hedera_service(monkeypatch):
     )
     monkeypatch.setattr("app.blockchain.anchor_service.HederaService", mock_cls)
     return mock_cls
+
+
+@pytest.fixture(autouse=True)
+def captured_anchor_dispatches(monkeypatch):
+    """Capture the Celery dispatch instead of queueing a real task.
+
+    Anchoring no longer happens inside a phase-completion request (a ~4-6s Hedera submit
+    was holding the driver's swipe open), so "did this phase anchor" is now asserted as
+    "was an anchor dispatched" — and the dispatch fires on the session's after_commit
+    hook, which is why the tests below commit before asserting. The db_session fixture
+    joins with create_savepoint, so that commit fires the hook and is still rolled back.
+    """
+    dispatched: list[tuple[str, dict, str]] = []
+
+    class _StubTask:
+        @staticmethod
+        def delay(phase_event_id: str, canonical_payload: dict, receipt_type: str) -> None:
+            dispatched.append((phase_event_id, canonical_payload, receipt_type))
+
+    monkeypatch.setattr("app.tasks.blockchain.anchor_phase_event_task", _StubTask)
+    return dispatched
 
 
 @pytest_asyncio.fixture
@@ -417,7 +439,9 @@ async def test_replayed_exception_completion_is_idempotent_no_duplicate_exceptio
 # ── advance_departure ────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_advance_departure_happy_path_completes(db_session, trip_fixture):
+async def test_advance_departure_happy_path_completes(
+    db_session, trip_fixture, captured_anchor_dispatches,
+):
     """D7/T5 (task 2.6): departure now owns the seal AND the anchor — the
     single place both are asserted together, since they're written/computed
     in the same wrapper call."""
@@ -438,56 +462,21 @@ async def test_advance_departure_happy_path_completes(db_session, trip_fixture):
     # worker half, and _dispatch_anchor for why the split is safe.
     assert departure.event_hash is not None
     assert departure.blockchain_receipt_id is None
-    assert departure.anchor_status == AnchorStatus.PENDING
+
+    # The anchor is queued on commit, not awaited in-request.
+    assert captured_anchor_dispatches == []
+    await db_session.commit()
+    assert len(captured_anchor_dispatches) == 1
+    dispatched_event_id, dispatched_payload, dispatched_type = captured_anchor_dispatches[0]
+    assert dispatched_event_id == str(phases["departure"].id)
+    assert dispatched_payload["seal_number"] == "AB-1234"
+    assert dispatched_type == BlockchainReceiptType.PICKUP.value
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "hedera_exception",
-    [
-        HederaTimeoutError("simulated Hedera timeout"),
-        HederaServiceError("simulated Hedera service error"),
-    ],
-    ids=["timeout", "service_error"],
-)
-async def test_departure_anchors_fail_open_on_hedera_timeout(
-    db_session, trip_fixture, monkeypatch, hedera_exception,
+async def test_advance_departure_guard_refused_creates_exception_but_departs(
+    db_session, trip_fixture, captured_anchor_dispatches,
 ):
-    """D7/task 2.6 — _anchor_or_fail_open is wired into advance_departure for
-    the first time this task; this is the departure-side equivalent of
-    test_confirmation_anchors_fail_open_on_hedera_timeout above. A Hedera
-    failure must not propagate, and — unlike the OLD fail-closed loading
-    anchor this replaced — must not block the phase or the trip from
-    advancing: only anchor_status records the retry-owed debt."""
-    trip, driver, phases = trip_fixture
-    await _advance_to_loading(db_session, trip, driver, phases)
-
-    monkeypatch.setattr(
-        "app.orchestration.phase_service.anchor_subject",
-        AsyncMock(side_effect=hedera_exception),
-    )
-
-    result = await advance_departure(
-        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["departure"].id,
-        payload=await _h3_payload(db_session, trip.id),
-    )
-
-    # No exception propagated, and a failed anchor doesn't block phase/trip completion.
-    assert result.status == TripStatus.ACTIVE
-    departure = next(h for h in result.phases if h.phase_type == PhaseType.DEPARTURE)
-    assert departure.status == PhaseStatus.COMPLETED
-    assert departure.blockchain_receipt_id is None
-    assert departure.seal_number == "AB-1234"  # the seal is still recorded even though anchoring failed
-
-    assert phases["departure"].anchor_status == AnchorStatus.FAILED
-
-    # Gate is genuinely unblocked despite the failed anchor.
-    await db_session.refresh(phases["in_transit"])
-    assert phases["in_transit"].status == PhaseStatus.COMPLETED
-
-
-@pytest.mark.asyncio
-async def test_advance_departure_guard_refused_creates_exception_but_departs(db_session, trip_fixture):
     trip, driver, phases = trip_fixture
     await _advance_to_loading(db_session, trip, driver, phases)
 
@@ -504,7 +493,8 @@ async def test_advance_departure_guard_refused_creates_exception_but_departs(db_
     assert departure.status == PhaseStatus.EXCEPTION
     # D7: the anchor is queued regardless of the mismatch outcome — a mismatch is
     # evidence in its own right, not a reason to withhold the receipt.
-    assert departure.anchor_status == AnchorStatus.PENDING
+    await db_session.commit()
+    assert len(captured_anchor_dispatches) == 1
 
 
 @pytest.mark.asyncio
@@ -769,7 +759,9 @@ async def test_exception_hold_status_blocks_further_advancement(db_session, trip
 # ── advance_confirmation ─────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_advance_confirmation_matching_counts_closes_trip(db_session, trip_fixture):
+async def test_advance_confirmation_matching_counts_closes_trip(
+    db_session, trip_fixture, captured_anchor_dispatches,
+):
     trip, driver, phases = trip_fixture
     await _advance_to_unloading(db_session, trip, driver, phases, seal="AB-1234")
 
@@ -791,58 +783,19 @@ async def test_advance_confirmation_matching_counts_closes_trip(db_session, trip
     # later (test_anchor_phase_event_writes_the_receipt below covers that half).
     assert h5.event_hash is not None
     assert h5.blockchain_receipt_id is None
-    assert phases["confirmation"].anchor_status == AnchorStatus.PENDING
+
+    # Departure (walked above) queued its own PICKUP anchor, so assert on this phase's
+    # dispatch rather than the total.
+    await db_session.commit()
+    confirmation_dispatches = [d for d in captured_anchor_dispatches if d[0] == str(phases["confirmation"].id)]
+    assert len(confirmation_dispatches) == 1
+    assert confirmation_dispatches[0][2] == BlockchainReceiptType.DELIVERY.value
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "hedera_exception",
-    [
-        HederaTimeoutError("simulated Hedera timeout"),
-        HederaServiceError("simulated Hedera service error"),
-    ],
-    ids=["timeout", "service_error"],
-)
-async def test_confirmation_anchors_fail_open_on_hedera_timeout(
-    db_session, trip_fixture, monkeypatch, hedera_exception,
+async def test_advance_confirmation_count_mismatch_creates_exception_but_still_closes(
+    db_session, trip_fixture, captured_anchor_dispatches,
 ):
-    """D7 (task 2.5) — a Hedera failure during advance_confirmation must not
-    propagate; see test_departure_anchors_fail_open_on_hedera_timeout below
-    for the equivalent proof at departure (task 2.6, where _anchor_or_fail_open
-    was wired in for the first time). The phase (and, via
-    recompute_position, the trip) still completes; only anchor_status records
-    the retry-owed debt. Parametrized over both exception types
-    _anchor_or_fail_open's except clause catches — HederaServiceError is the
-    parent of HederaTimeoutError, so both branches are cheap insurance against
-    someone later narrowing the caught tuple."""
-    trip, driver, phases = trip_fixture
-    await _advance_to_unloading(db_session, trip, driver, phases, seal="AB-1234")
-
-    monkeypatch.setattr(
-        "app.orchestration.phase_service.anchor_subject",
-        AsyncMock(side_effect=hedera_exception),
-    )
-
-    result = await advance_confirmation(
-        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["confirmation"].id,
-        payload=ConfirmationCompleteRequest(phase_type=PhaseType.CONFIRMATION, 
-            pod_photo_artifact_id=await _make_artifact(db_session, trip.id),
-            pod_signature_artifact_id=await _make_artifact(db_session, trip.id),
-            driver_visual_count=42, pp_scan_in_count=42, idempotency_key=str(uuid.uuid4()),
-        ),
-    )
-
-    # No exception propagated, and a failed anchor doesn't block phase/trip completion.
-    assert result.status == TripStatus.CLOSED
-    h5 = next(h for h in result.phases if h.phase_type == PhaseType.CONFIRMATION)
-    assert h5.status == PhaseStatus.COMPLETED
-    assert h5.blockchain_receipt_id is None
-
-    assert phases["confirmation"].anchor_status == AnchorStatus.FAILED
-
-
-@pytest.mark.asyncio
-async def test_advance_confirmation_count_mismatch_creates_exception_but_still_closes(db_session, trip_fixture):
     trip, driver, phases = trip_fixture
     await _advance_to_unloading(db_session, trip, driver, phases, seal="AB-1234")
 
@@ -860,7 +813,8 @@ async def test_advance_confirmation_count_mismatch_creates_exception_but_still_c
     h5 = next(h for h in result.phases if h.phase_type == PhaseType.CONFIRMATION)
     assert h5.status == PhaseStatus.EXCEPTION
     # Queued despite the mismatch — the mismatch is evidence too.
-    assert phases["confirmation"].anchor_status == AnchorStatus.PENDING
+    await db_session.commit()
+    assert [d for d in captured_anchor_dispatches if d[0] == str(phases["confirmation"].id)]
     assert result.exceptions[0].exception_type == ExceptionType.WAYBILL_COUNT_MISMATCH
 
 
@@ -1522,3 +1476,109 @@ async def test_activation_replay_is_not_blocked_by_a_trip_started_since(db_sessi
     )
 
     assert replay.id == first.id
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "hedera_exception",
+    [
+        HederaTimeoutError("simulated Hedera timeout"),
+        HederaServiceError("simulated Hedera service error"),
+    ],
+    ids=["timeout", "service_error"],
+)
+async def test_anchor_phase_event_fails_open_on_hedera_trouble(
+    db_session, trip_fixture, monkeypatch, hedera_exception,
+):
+    """D7 fail-open, now asserted where it actually runs: the worker.
+
+    The phase itself can no longer be blocked by Hedera at all — completion returns
+    before the submit is even attempted. What still matters is that the worker's attempt
+    never raises and records the retry-owed debt on anchor_status instead. Parametrized
+    over both exception types the except clause catches — HederaServiceError is the
+    parent of HederaTimeoutError, so both branches are cheap insurance against someone
+    later narrowing the caught tuple.
+    """
+    trip, driver, phases = trip_fixture
+    monkeypatch.setattr(
+        "app.orchestration.phase_service.anchor_subject",
+        AsyncMock(side_effect=hedera_exception),
+    )
+
+    anchored = await anchor_phase_event(
+        db_session, phase_event_id=phases["departure"].id,
+        canonical_payload={"phase_event_id": str(phases["departure"].id)},
+        receipt_type=BlockchainReceiptType.PICKUP,
+    )
+
+    assert anchored is False
+    assert phases["departure"].anchor_status == AnchorStatus.FAILED
+    assert phases["departure"].blockchain_receipt_id is None
+
+
+@pytest.mark.asyncio
+async def test_anchor_phase_event_writes_the_receipt(db_session, trip_fixture):
+    """The other half of the split: the worker turns a PENDING phase into an ANCHORED one
+    with a real receipt, which is what the driver app's anchor badge waits for."""
+    trip, driver, phases = trip_fixture
+
+    anchored = await anchor_phase_event(
+        db_session, phase_event_id=phases["departure"].id,
+        canonical_payload={"phase_event_id": str(phases["departure"].id), "seal_number": "AB-1234"},
+        receipt_type=BlockchainReceiptType.PICKUP,
+    )
+
+    assert anchored is True
+    assert phases["departure"].anchor_status == AnchorStatus.ANCHORED
+    assert phases["departure"].blockchain_receipt_id is not None
+    receipt = (await db_session.execute(
+        select(BlockchainReceipt).where(BlockchainReceipt.id == phases["departure"].blockchain_receipt_id)
+    )).scalar_one()
+    assert receipt.receipt_type == BlockchainReceiptType.PICKUP
+
+
+@pytest.mark.asyncio
+async def test_anchor_phase_event_ignores_an_unknown_event(db_session, trip_fixture):
+    """Should be impossible — the dispatch only fires after the row's transaction
+    commits — so it returns False and logs rather than raising a worker into a retry loop."""
+    anchored = await anchor_phase_event(
+        db_session, phase_event_id=uuid.uuid4(),
+        canonical_payload={}, receipt_type=BlockchainReceiptType.PICKUP,
+    )
+
+    assert anchored is False
+
+
+@pytest.mark.asyncio
+async def test_a_broker_failure_falls_back_to_anchoring_inline(
+    db_session, trip_fixture, monkeypatch,
+):
+    """The safety net for moving anchoring off the request path.
+
+    Nothing in this codebase retries an anchor_status = FAILED debt, so a dispatch that
+    vanishes into an unreachable broker would mean permanently unanchored evidence. When
+    the queue can't be reached the anchor runs inline instead — slow, which is a far
+    better failure than silent.
+    """
+    trip, driver, phases = trip_fixture
+    await _advance_to_loading(db_session, trip, driver, phases)
+
+    class _BrokenBroker:
+        @staticmethod
+        def delay(*_args, **_kwargs):
+            raise ConnectionError("broker unreachable")
+
+    monkeypatch.setattr("app.tasks.blockchain.anchor_phase_event_task", _BrokenBroker)
+    inline_calls: list[uuid.UUID] = []
+    monkeypatch.setattr(
+        "app.orchestration.phase_service._anchor_inline_after_dispatch_failure",
+        lambda **kwargs: inline_calls.append(kwargs["phase_event_id"]),
+    )
+
+    await advance_departure(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["departure"].id,
+        payload=await _h3_payload(db_session, trip.id),
+    )
+    await db_session.commit()
+
+    assert inline_calls == [phases["departure"].id]
