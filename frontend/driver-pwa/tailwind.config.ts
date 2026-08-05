@@ -112,6 +112,15 @@ const config: Config = {
         },
       },
 
+      // Tailwind's smallest default breakpoint is `sm` at 640px — wider than every
+      // phone this app runs on, so without an extra stop below it a 320px Galaxy A-series
+      // and a 430px iPhone Pro Max render byte-identical layouts and one of the two is
+      // always wrong. `xs` splits compact phones from standard ones; `sm` and up stays
+      // tablet territory.
+      screens: {
+        xs: '380px',
+      },
+
       fontFamily: {
         sans:     ['var(--font-inter)', 'system-ui', 'sans-serif'],
         mono:     ['var(--font-inter)', 'system-ui', 'sans-serif'],

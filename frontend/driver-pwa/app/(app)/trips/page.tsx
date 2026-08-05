@@ -12,55 +12,18 @@ import { fetchMyTrips } from '@/lib/api/trips'
 import type { DriverTripSummary } from '@/lib/types/driver-trip'
 import { Tabs } from '@/components/ui/Tabs'
 import { Button } from '@/components/ui/Button'
-import { Card } from '@/components/ui/Card'
-import { Chip } from '@/components/ui/Chip'
 import { Input } from '@/components/ui/Input'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { TruckLoader } from '@/components/ui/TruckLoader'
+import { TripTable } from '@/components/trip/TripTable'
 import { tripsForDriver, categorizeTrips, filterPastTrips, sortByDeparture } from '@/lib/utils/trip-filters'
-import { tripStatusChip } from '@/lib/utils/trip-status-chip'
-import { precinctName } from '@/lib/utils/precinct-name'
-import { formatDateTime } from '@/lib/utils/format-time'
 
 type TabId = 'active' | 'upcoming' | 'past'
-
-function formatDeparture(planned: string | null): string {
-  return planned ? formatDateTime(planned) : 'Departure not scheduled'
-}
-
-// Prefer the name GET /trips/me resolved server-side; fall back to the mock lookup (which
-// itself falls back to the id's first characters) so demo-mode rows and any precinct the
-// server couldn't resolve still render something identifying rather than a blank arrow.
-function precinctLabel(name: string | null, id: string | null): string {
-  if (name !== null) return name
-  return id !== null ? precinctName(id) : 'Unknown'
-}
 
 const EMPTY_STATE_COPY: Record<TabId, { title: string; body: string }> = {
   active:   { title: 'No active trip',   body: 'You have no trip in progress right now. Start one from Upcoming.' },
   upcoming: { title: 'No upcoming trips', body: 'Your dispatcher hasn’t assigned you a future trip yet.' },
   past:     { title: 'No matching trips', body: 'No past trips match these filters. Try widening the date range or clearing the search.' },
-}
-
-function TripCard({ trip, onClick }: { trip: DriverTripSummary; onClick: () => void }) {
-  const { kind, label } = tripStatusChip(trip.status)
-  return (
-    <Card onClick={onClick}>
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="font-semibold text-surface-on">{trip.trip_reference}</p>
-          <p className="text-sm text-surface-on-variant">{trip.order_number}</p>
-          <p className="text-sm font-medium text-surface-on">
-            {precinctLabel(trip.origin_precinct_name, trip.origin_precinct_id)}
-            {' → '}
-            {precinctLabel(trip.destination_precinct_name, trip.destination_precinct_id)}
-          </p>
-          <p className="text-sm text-surface-on-variant">{formatDeparture(trip.planned_departure_at)}</p>
-        </div>
-        <Chip kind={kind}>{label}</Chip>
-      </div>
-    </Card>
-  )
 }
 
 // Demo mode has no backend to call, so its rows are projected from the mock fixtures into
@@ -238,27 +201,21 @@ export default function TripsPage() {
           body={EMPTY_STATE_COPY[tab].body}
         />
       ) : (
-        <ul className="flex flex-col gap-3">
-          {tripsToShow.map((trip) => (
-            <li key={trip.id}>
-              <TripCard
-                trip={trip}
-                // Every row addresses its own trip by id, including Active ones. The old
-                // Active-tab special case routed to /trips/active, which renders whatever
-                // trip the CONTEXT holds — fine when a driver could only ever have one
-                // non-terminal trip, wrong as soon as they have an active trip plus two
-                // upcoming assignments.
-                onClick={() =>
-                  router.push(
-                    IS_DEMO_MODE
-                      ? ROUTES.tripDetail(String(trip.id))
-                      : ROUTES.tripDetailById(String(trip.id)),
-                  )
-                }
-              />
-            </li>
-          ))}
-        </ul>
+        <TripTable
+          trips={tripsToShow}
+          // Every row addresses its own trip by id, including Active ones. The old
+          // Active-tab special case routed to /trips/active, which renders whatever
+          // trip the CONTEXT holds — fine when a driver could only ever have one
+          // non-terminal trip, wrong as soon as they have an active trip plus two
+          // upcoming assignments.
+          onSelect={(trip) =>
+            router.push(
+              IS_DEMO_MODE
+                ? ROUTES.tripDetail(String(trip.id))
+                : ROUTES.tripDetailById(String(trip.id)),
+            )
+          }
+        />
       )}
     </main>
   )
