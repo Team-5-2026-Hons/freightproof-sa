@@ -53,6 +53,8 @@ const UNLOADING_EVIDENCE: UnloadingEvidence = {
   waybillHandedOver: true,
   sealNumberAtDestination: 'AB-1234',
   sealVerifiedMatch: true,
+  sealIntactPhotoDataUrl: 'data:image/jpeg;base64,CCCC',
+  sealIntactPhotoArtifactId: null,
   sealBrokenPhotoDataUrl: 'data:image/jpeg;base64,DDDD',
   driverVisualCount: 31,
   capturedAt: '2026-06-12T10:20:00Z',
@@ -164,13 +166,13 @@ describe('submitPhase (real-backend branch)', () => {
     expect(mockPost).not.toHaveBeenCalled()
   })
 
-  it('completes unloading with the confirmed seal for server-side comparison, no artifact upload', async () => {
+  it('uploads the intact seal photo and completes unloading with the confirmed seal for server-side comparison', async () => {
+    mockUploadArtifact.mockResolvedValueOnce({ id: 'seal-intact-artifact', file_hash: 'c'.repeat(64) })
     mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
 
     const { submitPhase } = await import('../phases')
     await submitPhase('trip-1', 'phase-event-4', 'unloading', UNLOADING_EVIDENCE, IDEMPOTENCY_KEY, POSITION)
 
-    expect(mockUploadArtifact).not.toHaveBeenCalled()
     expect(mockPost).toHaveBeenCalledWith(
       '/api/v1/trips/trip-1/phases/phase-event-4/complete',
       {
@@ -179,10 +181,59 @@ describe('submitPhase (real-backend branch)', () => {
         driver_phone_lat: POSITION.lat,
         driver_phone_lng: POSITION.lng,
         seal_number_at_destination: 'AB-1234',
+        // Required by UnloadingCompleteRequest — the seal as found, intact.
+        gate_photo_artifact_id: 'seal-intact-artifact',
         idempotency_key: IDEMPOTENCY_KEY,
       },
       { timeoutMs: 30_000 },
     )
+  })
+
+  it('sends the intact seal artifact id from the early upload without re-uploading', async () => {
+    mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
+
+    const { submitPhase } = await import('../phases')
+    await submitPhase('trip-1', 'phase-event-4', 'unloading', {
+      ...UNLOADING_EVIDENCE,
+      sealIntactPhotoArtifactId: 'artifact-seal-intact',
+    }, IDEMPOTENCY_KEY, POSITION)
+
+    expect(mockUploadArtifact).not.toHaveBeenCalled()
+    expect(mockPost).toHaveBeenCalledWith(
+      '/api/v1/trips/trip-1/phases/phase-event-4/complete',
+      expect.objectContaining({ gate_photo_artifact_id: 'artifact-seal-intact' }),
+      { timeoutMs: 30_000 },
+    )
+  })
+
+  // The photo cannot be retaken once the seal is broken, so submitting without it must
+  // fail loudly on the client rather than reaching the backend and 422-ing.
+  it('rejects unloading with no intact seal photo before calling the backend', async () => {
+    const { submitPhase } = await import('../phases')
+
+    await expect(
+      submitPhase('trip-1', 'phase-event-4', 'unloading', {
+        ...UNLOADING_EVIDENCE, sealIntactPhotoDataUrl: null, sealIntactPhotoArtifactId: null,
+      }, IDEMPOTENCY_KEY, POSITION),
+    ).rejects.toThrow(/Unloading evidence incomplete/)
+    expect(mockUploadArtifact).not.toHaveBeenCalled()
+    expect(mockPost).not.toHaveBeenCalled()
+  })
+
+  // An unloading queued offline before the intact-photo field existed replays from
+  // localStorage with the property missing altogether, not set to null. It must fail the
+  // same way rather than posting `gate_photo_artifact_id: undefined` for the backend to
+  // 422 — the driver keeps a queue entry that can never drain and no idea why.
+  it('rejects a stale queued unloading whose intact photo field is absent entirely', async () => {
+    const { submitPhase } = await import('../phases')
+    const staleEntry = { ...UNLOADING_EVIDENCE }
+    delete (staleEntry as Partial<UnloadingEvidence>).sealIntactPhotoDataUrl
+    delete (staleEntry as Partial<UnloadingEvidence>).sealIntactPhotoArtifactId
+
+    await expect(
+      submitPhase('trip-1', 'phase-event-4', 'unloading', staleEntry, IDEMPOTENCY_KEY, POSITION),
+    ).rejects.toThrow(/Unloading evidence incomplete/)
+    expect(mockPost).not.toHaveBeenCalled()
   })
 
   it('uploads POD photo and signature then completes confirmation with the carried-forward visual count', async () => {
@@ -284,6 +335,10 @@ describe('submitPhase (real-backend branch)', () => {
   })
 
   it('surfaces an exception status the same way, rather than reporting it as a plain success', async () => {
+    // Stubbed explicitly because unloading now uploads its intact seal photo, and the
+    // beforeEach only clears mock CALLS, not implementations — without this, an earlier
+    // test's mockRejectedValue would still be in force here.
+    mockUploadArtifact.mockResolvedValue({ id: 'seal-intact-artifact', file_hash: 'c'.repeat(64) })
     mockPost.mockResolvedValue({
       id: 'trip-1',
       phases: [{ phase_event_id: 'phase-event-4', status: 'exception' }],

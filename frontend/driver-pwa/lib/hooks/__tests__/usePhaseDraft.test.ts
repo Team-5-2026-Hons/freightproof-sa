@@ -10,6 +10,7 @@ const INITIAL: ActivationEvidence = { capturedAt: null }
 
 const UNLOADING_INITIAL: UnloadingEvidence = {
   waybillHandedOver: null, sealNumberAtDestination: null, sealVerifiedMatch: null,
+  sealIntactPhotoDataUrl: null, sealIntactPhotoArtifactId: null,
   sealBrokenPhotoDataUrl: null, driverVisualCount: null, capturedAt: null,
 }
 

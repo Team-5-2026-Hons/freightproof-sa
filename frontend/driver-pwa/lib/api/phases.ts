@@ -53,6 +53,10 @@ export interface DepartureCompleteRequest extends PhaseCompleteRequestBase {
 export interface UnloadingCompleteRequest extends PhaseCompleteRequestBase {
   phase_type: Extract<PhaseType, 'unloading'>
   seal_number_at_destination: string
+  // The seal as found at destination, intact, before the warehouse breaks it — required,
+  // not optional, and named for the PhaseEvent column it reuses rather than for what it
+  // depicts (see UnloadingEvidence.sealIntactPhotoDataUrl). Omitting it 422s.
+  gate_photo_artifact_id: string
 }
 
 export interface ConfirmationCompleteRequest extends PhaseCompleteRequestBase {
@@ -242,13 +246,23 @@ export async function submitPhase(
     }
     case 'unloading': {
       const e = evidence as UnloadingEvidence
-      if (e.sealNumberAtDestination === null) {
-        throw new Error('Unloading evidence incomplete — seal number is required.')
+      // Truthiness, not `=== null`, unlike the other phases here: an unloading queued
+      // offline BEFORE this field existed replays from localStorage with the property
+      // absent entirely (useOfflineQueue persists the raw draft), and `undefined === null`
+      // is false — which would let a stale entry through and send an undefined artifact id.
+      if (e.sealNumberAtDestination === null || !e.sealIntactPhotoDataUrl) {
+        throw new Error('Unloading evidence incomplete — seal number and intact seal photo are required.')
       }
+      const sealIntactPhotoId = await artifactIdFor(
+        // Same reason: a stale entry has no artifact id property at all, and artifactIdFor
+        // treats any non-null readyId as usable.
+        tripId, 'photo', e.sealIntactPhotoArtifactId ?? null, e.sealIntactPhotoDataUrl, capturedAt,
+      )
       updatedTrip = await completePhase(tripId, phaseEventId, {
         phase_type: 'unloading',
         ...driverPosition(position),
         seal_number_at_destination: e.sealNumberAtDestination,
+        gate_photo_artifact_id: sealIntactPhotoId,
         idempotency_key: idempotencyKey,
       })
       break

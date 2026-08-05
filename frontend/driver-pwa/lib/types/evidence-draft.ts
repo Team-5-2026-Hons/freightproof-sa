@@ -96,6 +96,33 @@ export interface UnloadingEvidence {
   // useSealReference) — purely a UI indicator; the backend does its own authoritative
   // comparison server-side against that leg's committed departure seal.
   sealVerifiedMatch: boolean | null
+  // The seal AS FOUND at destination — intact, before the warehouse breaks it. This is
+  // the closing half of the tamper-evidence bookend whose opening half is
+  // DepartureEvidence.sealPhotoDataUrl: one photo when the seal is applied, one when it
+  // is found. Together they are what proves the trailer was not opened in between.
+  //
+  // Captured on the `2-seal-verify` step rather than a step of its own, because that is
+  // already the moment the driver stands at the intact seal reading its number — and
+  // because adding a step would mean editing STEP_SLUGS in shared/, which the dispatcher
+  // also reads. Mandatory before that step can be confirmed: once the truck is open the
+  // photograph cannot be retaken, so a missed capture is unrecoverable evidence loss.
+  //
+  // Goes on the wire as UnloadingCompleteRequest.gate_photo_artifact_id — a required
+  // UUID, so an unloading submitted without it 422s. The backend name is inherited from
+  // the PhaseEvent.gate_photo_artifact_id column it reuses (which was previously unused,
+  // hence no migration); it is named for the seal here because that is what it depicts.
+  //
+  // Two fields for one photo, matching DepartureEvidence's seal/waybill pairs: the data
+  // URL the camera produced, and the artifact id once uploaded. Upload starts at capture
+  // (lib/hooks/useArtifactUpload.ts), so the id is usually present by the time the driver
+  // swipes; the data URL is retained regardless as the submit-time fallback, so no path
+  // can lose the photo.
+  sealIntactPhotoDataUrl: string | null
+  sealIntactPhotoArtifactId: string | null
+  // Photographed AFTER the warehouse breaks the seal — a different photograph with
+  // different evidential value from sealIntactPhotoDataUrl above, and deliberately not a
+  // substitute for it: only the intact one proves the seal survived the journey. Held
+  // on-device only; UnloadingCompleteRequest has no field for it.
   sealBrokenPhotoDataUrl: string | null
   // Captured as unloading's last step but has no field on UnloadingCompleteRequest —
   // see this file's header comment. Submitted, once carried forward, as
