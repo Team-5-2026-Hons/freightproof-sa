@@ -4,7 +4,9 @@
 
 import { supabase, getAccessToken } from '@/lib/supabase/client'
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+// Exported so non-fetch transports that can't use this wrapper — notably the SSE
+// stream reader in lib/realtime — hit the same backend origin without re-deriving it.
+export const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 // Delay before retrying a request whose connection was dropped at the network layer.
 const NETWORK_RETRY_DELAY_MS = 150

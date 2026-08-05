@@ -21,6 +21,7 @@ from app.core.exceptions import (
     TripConflictError,
 )
 from app.crypto.hashing import compute_journey_lock_hash, compute_trip_canonical_payload
+from app.core.realtime import RealtimeKind, TripEvent, enqueue_event
 from app.db.models.enums import AnchorStatus, BlockchainReceiptType, IdvsStatus, PhaseStatus, SubjectType, TripStatus, TripType, VehicleType
 from app.db.models.organisations import Precinct
 from app.db.models.phases import PhaseEvent
@@ -415,6 +416,9 @@ async def create_trip(
     # mirroring the trip/handshake/receipt refreshes above.
     for result in consignment_results:
         await db.refresh(result.consignment)
+
+    # Notify dispatchers in this org that a new trip exists (published on commit, D9).
+    enqueue_event(db, current_user.organization_id, TripEvent(id=trip.id, kind=RealtimeKind.TRIP_CREATED))
 
     # 8. Assemble and return the response (no ORM relationships — fetch separately).
     return TripDetailResponse(
