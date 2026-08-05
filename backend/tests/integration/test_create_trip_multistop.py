@@ -6,6 +6,7 @@ JWT (see tests/conftest.py) through the shared `client` fixture.
 """
 
 import uuid
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest_asyncio
@@ -114,6 +115,11 @@ def _single_leg_payload(seed: dict, order_number: str = "ORD-SINGLE-001") -> dic
         "trailer_ids": [str(seed["trailer_id"])],
         "origin_precinct_id": str(seed["origin_id"]),
         "destination_precinct_id": str(seed["destination_id"]),
+        # Required: the single-leg (stops-omitted) path synthesises stops with no
+        # slot_time of their own, so planned_departure_at is the only schedule
+        # source create_trip's phase gate (_reject_if_not_due) can ever resolve —
+        # see TripCreateRequest.validate_request.
+        "planned_departure_at": datetime.now(UTC).isoformat(),
         "consignments": [{"pp_reference": "MOCKWAY001", "unit_count_expected": 2}],
     }
 
@@ -129,6 +135,9 @@ def _multi_stop_payload(seed: dict, order_number: str = "ORD-MULTI-001") -> dict
             {"precinct_id": str(seed["midpoint_id"]), "sequence": 1},
             {"precinct_id": str(seed["destination_id"]), "sequence": 2},
         ],
+        # See _single_leg_payload above — required by TripCreateRequest
+        # .validate_request now that a schedule must be resolvable at creation.
+        "planned_departure_at": datetime.now(UTC).isoformat(),
         "consignments": [{"pp_reference": "MOCKWAY001", "unit_count_expected": 2}],
     }
 

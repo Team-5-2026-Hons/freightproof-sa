@@ -3,12 +3,14 @@
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import pytest_asyncio
 from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import func, select
+from sqlalchemy.dialects import postgresql
 
 from app.blockchain.hedera import HederaReceipt
 from app.core.exceptions import (
@@ -18,7 +20,7 @@ from app.core.exceptions import (
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import (
     AnchorStatus, ArtifactType, BlockchainReceiptType, ExceptionSeverity, ExceptionType,
-    PhaseStatus, PhaseType, IdvsStatus, OrganizationType, TripStatus, VehicleType,
+    PhaseStatus, PhaseType, IdvsStatus, OrganizationType, TripStatus, TripType, VehicleType,
 )
 from app.db.models.evidence import EvidenceArtifact
 from app.db.models.phases import PhaseEvent
@@ -29,6 +31,7 @@ from app.db.models.trips import Consignment, Trip, TripStop
 from app.db.models.vehicles import Vehicle
 from app.orchestration.phase_plan import PlanStop, build_phase_plan
 from app.orchestration.phase_service import (
+    _load_phase_event,
     advance_activation, advance_confirmation, advance_departure, advance_loading, advance_unloading,
     anchor_phase_event,
     complete_phase, is_before_scheduled_day, next_phase, operating_day,
@@ -446,8 +449,12 @@ async def test_advance_loading_no_consignments_skips_manifest_check(db_session, 
 @pytest.mark.asyncio
 async def test_advance_loading_manifest_matches_driver_count_completes(db_session, trip_fixture):
     trip, driver, phases = trip_fixture
+    # pickup_stop_id pinned to this leg's own stop (F13, task 6.2b): every real
+    # consignment carries one (trip_service.create_trip stamps it), and the
+    # loading-count check is now scoped to it.
     db_session.add(Consignment(
         trip_id=trip.id, parcel_perfect_reference="PP-1", parcel_count_expected=42,
+        pickup_stop_id=phases["loading"].trip_stop_id,
     ))
     await db_session.flush()
     await advance_activation(
@@ -471,8 +478,11 @@ async def test_advance_loading_manifest_matches_driver_count_completes(db_sessio
 @pytest.mark.asyncio
 async def test_advance_loading_manifest_mismatch_flags_but_does_not_hold(db_session, trip_fixture):
     trip, driver, phases = trip_fixture
+    # pickup_stop_id pinned to this leg's own stop (F13, task 6.2b) — see the
+    # comment in test_advance_loading_manifest_matches_driver_count_completes.
     db_session.add(Consignment(
         trip_id=trip.id, parcel_perfect_reference="PP-1", parcel_count_expected=52,
+        pickup_stop_id=phases["loading"].trip_stop_id,
     ))
     await db_session.flush()
     await advance_activation(
@@ -1166,6 +1176,180 @@ async def test_trip_closes_when_no_phases_remain(db_session, trip_fixture):
     assert trip.current_stop is None
 
 
+# ── F1 (task 6.2a): confirmation must not 404 / must not manufacture a
+# mismatch when there is no origin baseline to reconcile against ───────────
+
+@pytest_asyncio.fixture
+async def empty_leg_trip_fixture(db_session):
+    """An EMPTY_LEG trip's real phase plan (finding F1): no consignments means
+    build_phase_plan never emits a LOADING row at all — trip_creation,
+    activation, departure, in_transit, unloading, confirmation. Built via the
+    real build_phase_plan, not hand-numbered sequence_number literals, for the
+    same reason cross_dock_trip_fixture is: if the generation rule ever
+    changes shape, this fixture changes with it instead of asserting against
+    a stale hand-written plan."""
+    org = Organization(id=uuid.uuid4(), name="OrgEL", org_type=OrganizationType.OPERATOR)
+    client_org = Organization(id=uuid.uuid4(), name="ClientEL", org_type=OrganizationType.PRINCIPAL)
+    db_session.add_all([org, client_org])
+    await db_session.flush()
+
+    user = User(id=uuid.uuid4(), organization_id=org.id, email="el@test.co.za", full_name="EL")
+    driver = Driver(
+        id=uuid.uuid4(), organization_id=org.id, full_name="DriverEL",
+        id_number="8001015009122", phone_number="+27821234522", license_number="DRV-EL",
+    )
+    horse = Vehicle(
+        id=uuid.uuid4(), organization_id=org.id, vehicle_type=VehicleType.HORSE,
+        registration="ELK123GP", pulsit_device_id="PUL-EL",
+    )
+    origin = Precinct(id=uuid.uuid4(), name="EL-Origin", principal_organization_id=client_org.id, latitude="0", longitude="0")
+    dest = Precinct(id=uuid.uuid4(), name="EL-Dest", principal_organization_id=client_org.id, latitude="1", longitude="1")
+    db_session.add_all([user, driver, horse, origin, dest])
+    await db_session.flush()
+
+    trip = Trip(
+        id=uuid.uuid4(), trip_reference="FP-TEST-EMPTY", order_number="ORD-EMPTY",
+        operator_organization_id=org.id, client_organization_id=client_org.id,
+        driver_id=driver.id, horse_id=horse.id,
+        origin_precinct_id=origin.id, destination_precinct_id=dest.id,
+        status=TripStatus.CREATED, idvs_check_status=IdvsStatus.VERIFIED,
+        planned_departure_at=_SCHEDULED_TODAY, trip_type=TripType.EMPTY_LEG,
+        created_by_user_id=user.id,
+    )
+    db_session.add(trip)
+    await db_session.flush()
+
+    stop0 = TripStop(trip_id=trip.id, precinct_id=origin.id, sequence=0)
+    stop1 = TripStop(trip_id=trip.id, precinct_id=dest.id, sequence=1)
+    db_session.add_all([stop0, stop1])
+    await db_session.flush()
+    stop_id_by_sequence = {0: stop0.id, 1: stop1.id}
+
+    plan = build_phase_plan([
+        PlanStop(sequence=0, picks_up=False, drops_off=False),
+        PlanStop(sequence=1, picks_up=False, drops_off=False),
+    ])
+    # This shape (no LOADING row) is exactly the premise this fixture exists to
+    # reproduce — asserted here so a future change to build_phase_plan that
+    # broke this premise would fail loudly at fixture setup, not as a
+    # confusing failure deep inside a test that assumes it.
+    assert [p.phase_type for p in plan] == [
+        PhaseType.TRIP_CREATION, PhaseType.ACTIVATION, PhaseType.DEPARTURE,
+        PhaseType.IN_TRANSIT, PhaseType.UNLOADING, PhaseType.CONFIRMATION,
+    ]
+
+    phases: dict[str, PhaseEvent] = {}
+    for planned in plan:
+        event = PhaseEvent(
+            trip_id=trip.id,
+            trip_stop_id=None if planned.stop_sequence is None else stop_id_by_sequence[planned.stop_sequence],
+            phase_type=planned.phase_type,
+            sequence_number=planned.sequence_number,
+            status=PhaseStatus.COMPLETED if planned.phase_type == PhaseType.TRIP_CREATION else PhaseStatus.PENDING,
+        )
+        db_session.add(event)
+        phases[planned.phase_type.value] = event
+    await db_session.flush()
+
+    return trip, driver, phases
+
+
+@pytest.mark.asyncio
+async def test_confirmation_skips_reconciliation_when_no_loading_exists(
+    db_session, empty_leg_trip_fixture,
+):
+    """Before the fix, _find_loading_for_leg raised ResourceNotFoundError here
+    (404 'PhaseEvent: loading') and an EMPTY_LEG trip could never reach
+    confirmation, let alone close. After the fix it returns None, and
+    advance_confirmation must skip count reconciliation entirely rather than
+    treating the missing baseline as 0."""
+    trip, driver, phases = empty_leg_trip_fixture
+    await advance_activation(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["activation"].id,
+        payload=ActivationCompleteRequest(phase_type=PhaseType.ACTIVATION,
+            driver_phone_lat=Decimal("0"), driver_phone_lng=Decimal("0"), idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+    await advance_departure(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["departure"].id,
+        payload=await _h3_payload(db_session, trip.id),
+    )
+    await advance_unloading(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading"].id,
+        payload=UnloadingCompleteRequest(
+            phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-1234",
+            gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    result = await advance_confirmation(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["confirmation"].id,
+        payload=ConfirmationCompleteRequest(phase_type=PhaseType.CONFIRMATION,
+            pod_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            pod_signature_artifact_id=await _make_artifact(db_session, trip.id),
+            driver_visual_count=0, pp_scan_in_count=0, idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    confirmation = next(h for h in result.phases if h.id == phases["confirmation"].id)
+    assert confirmation.status == PhaseStatus.COMPLETED
+    assert result.exceptions == []
+    assert result.status == TripStatus.CLOSED
+
+
+@pytest.mark.asyncio
+async def test_confirmation_skips_reconciliation_when_origin_count_is_null(
+    db_session, trip_fixture,
+):
+    """Newly reachable since task 6.1's dispatcher override: an overridden
+    loading row is resolved (so _gate_and_load lets confirmation proceed) but
+    never had a driver actually record a count, so driver_visual_count stays
+    null. Without the origin_count-is-None guard, Python's
+    `None == payload.pp_scan_in_count` is simply False, which would silently
+    raise a false WAYBILL_COUNT_MISMATCH on every overridden loading."""
+    trip, driver, phases = trip_fixture
+    await advance_activation(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["activation"].id,
+        payload=ActivationCompleteRequest(phase_type=PhaseType.ACTIVATION,
+            driver_phone_lat=Decimal("0"), driver_phone_lng=Decimal("0"), idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+    # Simulate task 6.1's override_phase outcome directly: the loading row is
+    # resolved (OVERRIDDEN) but its driver_visual_count was never captured.
+    phases["loading"].status = PhaseStatus.OVERRIDDEN
+    await db_session.flush()
+
+    await advance_departure(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["departure"].id,
+        payload=await _h3_payload(db_session, trip.id),
+    )
+    await advance_unloading(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading"].id,
+        payload=UnloadingCompleteRequest(
+            phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-1234",
+            gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    result = await advance_confirmation(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["confirmation"].id,
+        payload=ConfirmationCompleteRequest(phase_type=PhaseType.CONFIRMATION,
+            pod_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            pod_signature_artifact_id=await _make_artifact(db_session, trip.id),
+            driver_visual_count=42, pp_scan_in_count=42, idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    confirmation = next(h for h in result.phases if h.id == phases["confirmation"].id)
+    assert confirmation.status == PhaseStatus.COMPLETED
+    assert not any(
+        exc.exception_type == ExceptionType.WAYBILL_COUNT_MISMATCH for exc in result.exceptions
+    )
+    assert result.status == TripStatus.CLOSED
+
+
 # ── current_phase / current_stop tracking ───────────────────────────────────
 
 @pytest.mark.asyncio
@@ -1527,6 +1711,159 @@ async def test_cross_dock_plan_walks_to_closed(db_session, cross_dock_trip_fixtu
     assert result.status == TripStatus.CLOSED
     assert trip.status == TripStatus.CLOSED
     assert trip.current_phase is None
+
+
+# ── F13 (task 6.2b): the loading-count baseline must be scoped to its own
+# stop, not summed trip-wide ─────────────────────────────────────────────
+#
+# _expected_parcel_count used to sum Consignment.parcel_count_expected
+# trip-wide with no stop filter. A cross-dock trip has more than one LOADING
+# row, so every loading was compared against the WHOLE ROUTE's declared
+# total — exactly scripts/seed_trips.py's FP-DEMO-XDOCK-0001 shape (consignment
+# A: stop0->stop2, B: stop0->stop1, C: stop1->stop2). loading_1 (stop0) only
+# picks up A+B, loading_2 (stop1) only picks up C, but both were held to the
+# full A+B+C total, raising a false PARCEL_COUNT_MISMATCH on both.
+
+@pytest.mark.asyncio
+async def test_cross_dock_loading_counts_only_what_that_stop_picks_up(
+    db_session, cross_dock_trip_fixture,
+):
+    """Reproduces the exact demo shape: A (7 parcels, stop0->stop2), B (5
+    parcels, stop0->stop1), C (8 parcels, stop1->stop2). loading_1's driver
+    count (12 = A+B) and loading_2's (8 = C) each match what THAT STOP
+    actually picks up. Before the stop-scoping fix this raises exactly two
+    PARCEL_COUNT_MISMATCH exceptions (both loadings compared against
+    A+B+C=20); after the fix, zero."""
+    trip, driver, phases = cross_dock_trip_fixture
+    stop0_id = phases["loading_1"].trip_stop_id
+    stop1_id = phases["loading_2"].trip_stop_id
+    stop2_id = phases["confirmation"].trip_stop_id
+
+    db_session.add_all([
+        Consignment(
+            trip_id=trip.id, parcel_perfect_reference="PP-A", parcel_count_expected=7,
+            pickup_stop_id=stop0_id, delivery_stop_id=stop2_id,
+        ),
+        Consignment(
+            trip_id=trip.id, parcel_perfect_reference="PP-B", parcel_count_expected=5,
+            pickup_stop_id=stop0_id, delivery_stop_id=stop1_id,
+        ),
+        Consignment(
+            trip_id=trip.id, parcel_perfect_reference="PP-C", parcel_count_expected=8,
+            pickup_stop_id=stop1_id, delivery_stop_id=stop2_id,
+        ),
+    ])
+    await db_session.flush()
+
+    await _walk_cross_dock_leg1_unloading_to_leg2_departure(
+        db_session, trip, driver, phases, leg1_destination_seal="AB-1111",
+    )
+    await advance_unloading(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading_2"].id,
+        payload=UnloadingCompleteRequest(
+            phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-2222",
+            gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+    result = await advance_confirmation(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["confirmation"].id,
+        payload=ConfirmationCompleteRequest(phase_type=PhaseType.CONFIRMATION,
+            pod_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            pod_signature_artifact_id=await _make_artifact(db_session, trip.id),
+            driver_visual_count=8, pp_scan_in_count=8, idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    mismatches = (await db_session.execute(
+        select(TripException).where(
+            TripException.trip_id == trip.id,
+            TripException.exception_type == ExceptionType.PARCEL_COUNT_MISMATCH,
+        )
+    )).scalars().all()
+    assert mismatches == []
+
+    loading_1 = next(h for h in result.phases if h.id == phases["loading_1"].id)
+    loading_2 = next(h for h in result.phases if h.id == phases["loading_2"].id)
+    assert loading_1.status == PhaseStatus.COMPLETED
+    assert loading_1.parcel_count_origin == 12
+    assert loading_2.status == PhaseStatus.COMPLETED
+    assert loading_2.parcel_count_origin == 8
+    assert result.status == TripStatus.CLOSED
+
+
+@pytest.mark.asyncio
+async def test_single_leg_loading_count_unchanged_by_stop_scoping(db_session, trip_fixture):
+    """Regression pin for the fix's no-op premise on a single-leg trip:
+    trip_service.create_trip stamps every API-created consignment's
+    pickup_stop_id as trip_stops[0].id, so on a 2-stop trip the stop-scoped
+    sum is identical to the old trip-wide sum. Mirrors
+    test_advance_loading_manifest_matches_driver_count_completes but pins
+    pickup_stop_id explicitly, proving the fix changes nothing here rather
+    than merely leaving it untested."""
+    trip, driver, phases = trip_fixture
+    stop0_id = phases["loading"].trip_stop_id
+    db_session.add(Consignment(
+        trip_id=trip.id, parcel_perfect_reference="PP-1", parcel_count_expected=42,
+        pickup_stop_id=stop0_id,
+    ))
+    await db_session.flush()
+    await advance_activation(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["activation"].id,
+        payload=ActivationCompleteRequest(phase_type=PhaseType.ACTIVATION,
+            driver_phone_lat=Decimal("0"), driver_phone_lng=Decimal("0"), idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    result = await advance_loading(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["loading"].id,
+        payload=LoadingCompleteRequest(phase_type=PhaseType.LOADING, driver_visual_count=42, idempotency_key=str(uuid.uuid4())),
+    )
+
+    h2 = next(h for h in result.phases if h.phase_type == PhaseType.LOADING)
+    assert h2.status == PhaseStatus.COMPLETED
+    assert h2.parcel_count_origin == 42
+    assert len(result.exceptions) == 0
+
+
+@pytest.mark.asyncio
+async def test_loading_count_check_skipped_when_stop_has_no_mapped_consignments(
+    db_session, cross_dock_trip_fixture,
+):
+    """A stop-scoped baseline of None must SKIP the check, not manufacture a
+    mismatch against 0 — the stop-scoped counterpart of
+    test_advance_loading_no_consignments_skips_manifest_check. Consignment C
+    exists on this trip and picks up at stop1, but nothing is mapped to pick
+    up at stop0 — loading_1's baseline must resolve to None even though the
+    trip as a whole has a manifest, and an arbitrary driver count (99) must
+    not raise a mismatch against it."""
+    trip, driver, phases = cross_dock_trip_fixture
+    stop1_id = phases["loading_2"].trip_stop_id
+    stop2_id = phases["confirmation"].trip_stop_id
+
+    db_session.add(Consignment(
+        trip_id=trip.id, parcel_perfect_reference="PP-C", parcel_count_expected=8,
+        pickup_stop_id=stop1_id, delivery_stop_id=stop2_id,
+    ))
+    await db_session.flush()
+
+    await advance_activation(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["activation"].id,
+        payload=ActivationCompleteRequest(phase_type=PhaseType.ACTIVATION,
+            driver_phone_lat=Decimal("0"), driver_phone_lng=Decimal("0"), idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+    result = await advance_loading(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["loading_1"].id,
+        payload=LoadingCompleteRequest(phase_type=PhaseType.LOADING, driver_visual_count=99, idempotency_key=str(uuid.uuid4())),
+    )
+
+    loading_1 = next(h for h in result.phases if h.id == phases["loading_1"].id)
+    assert loading_1.status == PhaseStatus.COMPLETED
+    assert loading_1.parcel_count_origin is None
+    assert not any(
+        exc.exception_type == ExceptionType.PARCEL_COUNT_MISMATCH for exc in result.exceptions
+    )
 
 
 # ── complete_phase / next_phase: the two new Stage 3 service entry points ──
@@ -1903,3 +2240,36 @@ async def test_a_broker_failure_falls_back_to_anchoring_inline(
     await db_session.commit()
 
     assert inline_calls == [phases["departure"].id]
+
+
+# ── D8: row locking on _load_phase_event ────────────────────────────────────
+
+async def test_load_phase_event_emits_for_update(db_session, trip_fixture, monkeypatch):
+    """D8: proves the lock hint is not silently dropped. A lock that got typo'd
+    into a no-op is strictly worse than no lock at all — it looks handled in code
+    review while leaving the exact Hedera double-submission race this task exists
+    to close, and that race writes an on-chain message a rollback cannot un-submit.
+
+    Deliberately spies on the statement _load_phase_event ACTUALLY hands the
+    session, rather than re-building a `select(...).with_for_update()` here and
+    asserting SQLAlchemy renders it. That earlier shape asserted a fact about
+    SQLAlchemy, not about this codebase: deleting .with_for_update() from
+    _load_phase_event left it green, so the only guard on the race could not fail.
+    """
+    trip, _driver, phases = trip_fixture
+    captured: list[Any] = []
+    original_execute = db_session.execute
+
+    async def _spy(statement, *args, **kwargs):
+        captured.append(statement)
+        return await original_execute(statement, *args, **kwargs)
+
+    monkeypatch.setattr(db_session, "execute", _spy)
+
+    await _load_phase_event(
+        db_session, trip_id=trip.id, phase_event_id=phases["activation"].id,
+    )
+
+    assert len(captured) == 1
+    compiled = str(captured[0].compile(dialect=postgresql.dialect()))
+    assert "FOR UPDATE" in compiled

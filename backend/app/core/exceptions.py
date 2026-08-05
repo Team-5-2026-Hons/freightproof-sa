@@ -149,6 +149,25 @@ class HederaTimeoutError(HederaServiceError):
     """
 
 
+class TripStateError(Exception):
+    """Raised when a dispatcher lifecycle action is attempted against a trip whose
+    current status makes the action illegal — e.g. cancelling an already-closed or
+    already-cancelled trip.
+
+    Distinct from PhaseSequenceError: that means "out of order in the plan"; this
+    means "the trip itself is already in a terminal state", which is a different
+    fact and deserves its own message rather than being folded into the phase
+    gate's vocabulary.
+    """
+
+    def __init__(self, current_status: str, attempted_action: str) -> None:
+        super().__init__(
+            f"Cannot {attempted_action} trip: current status is '{current_status}'."
+        )
+        self.current_status = current_status
+        self.attempted_action = attempted_action
+
+
 class PhaseTypeMismatchError(Exception):
     """Raised when a completion payload's phase_type does not match the addressed row's.
 

@@ -6,6 +6,7 @@ tests/conftest.py) via the shared `client` fixture.
 """
 
 import uuid
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest_asyncio
@@ -127,6 +128,13 @@ async def seed_data(db_session: AsyncSession):
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
 
+# create_trip's phase plan (h1/activation) gates on the SAME operating day as this
+# value (phase_service._reject_if_not_due) — "now" keeps every payload in this file
+# immediately activatable, which several tests below rely on.
+def _schedule_now() -> str:
+    return datetime.now(UTC).isoformat()
+
+
 def _make_payload(seed: dict) -> dict:
     return {
         "order_number": "ORD-TEST-001",
@@ -135,6 +143,7 @@ def _make_payload(seed: dict) -> dict:
         "trailer_ids": [str(seed["trailer_id"])],
         "origin_precinct_id": str(seed["origin_id"]),
         "destination_precinct_id": str(seed["destination_id"]),
+        "planned_departure_at": _schedule_now(),
         "consignments": [{"pp_reference": "MOCKWAY001", "unit_count_expected": 2}],
     }
 
@@ -179,7 +188,11 @@ async def test_create_trip_response_shape(client: AsyncClient, seed_data, db_ses
     assert body["phases"][0]["sequence_number"] == 0
     assert len(body["trailers"]) == 1
     assert body["exceptions"] == []
-    assert body["blockchain_receipts"] == []
+    # Trip creation is P0 (fail-closed): the journey lock hash is anchored to
+    # Hedera synchronously as part of creation, so one receipt always exists
+    # by the time this response is returned (not zero, as it was pre-refactor).
+    assert len(body["blockchain_receipts"]) == 1
+    assert body["blockchain_receipts"][0]["receipt_type"] == "journey_lock"
     assert "created_at" in body
     assert "updated_at" in body
 
@@ -293,6 +306,37 @@ async def test_create_trip_zero_trailers(client: AsyncClient, seed_data, db_sess
         await db_session.execute(select(TripTrailer).where(TripTrailer.trip_id == trip_id))
     ).scalars().all()
     assert trailer_rows == []
+
+
+async def test_create_trip_without_a_schedule_is_422(client: AsyncClient, seed_data, db_session):
+    """A trip with neither planned_departure_at nor any stop slot_time can never
+    be activated — _reject_if_not_due (phase_service.py) treats a fully
+    unscheduled trip as PERMANENTLY not-due, not merely not-yet-due. This must
+    be rejected at creation (422, naming the field) rather than accepted into
+    a state no future activation attempt can ever satisfy."""
+    payload = _make_payload(seed_data)
+    payload.pop("planned_departure_at", None)
+    resp = await client.post(
+        "/api/v1/trips", json=payload, headers=_auth_headers(seed_data),
+    )
+    assert resp.status_code == 422
+    assert "planned_departure_at" in resp.json()["detail"][0]["msg"]
+
+
+async def test_create_trip_with_stop_slot_time_only_is_accepted(client: AsyncClient, seed_data, db_session):
+    """A multi-stop trip may carry its timing entirely on a stop's slot_time,
+    with no trip-level planned_departure_at — the same alternate source
+    phase_service._scheduled_departure falls back to."""
+    payload = _make_payload(seed_data)
+    payload.pop("planned_departure_at", None)
+    payload["stops"] = [
+        {"precinct_id": payload.pop("origin_precinct_id"), "sequence": 0, "slot_time": _schedule_now()},
+        {"precinct_id": payload.pop("destination_precinct_id"), "sequence": 1},
+    ]
+    resp = await client.post(
+        "/api/v1/trips", json=payload, headers=_auth_headers(seed_data),
+    )
+    assert resp.status_code == 201
 
 
 async def test_create_trip_422_same_origin_and_destination(client: AsyncClient, seed_data, db_session):
@@ -756,3 +800,30 @@ async def test_trip_list_item_carries_plan_counts(client: AsyncClient, seed_data
     # Stop sequences are 0-indexed (origin=0, destination=1) — activation
     # happens at the origin stop, sequence 0.
     assert row["current_stop"] == 0
+
+
+# ─── Task 6.4: global exception handler must not swallow deliberate errors ────
+
+async def test_global_handler_preserves_http_exceptions(client: AsyncClient, seed_data, db_session):
+    """main.py's new @app.exception_handler(Exception) hooks Starlette's outer
+    ServerErrorMiddleware, which only ever sees an exception if the inner
+    ExceptionMiddleware could not resolve it. HTTPException and
+    RequestValidationError both have handlers registered on THAT inner
+    middleware (FastAPI's own defaults), so a real 404 (get_trip_detail_endpoint
+    raising ResourceNotFoundError -> HTTPException) and a real 422 (a malformed
+    path param failing FastAPI's own type coercion) must still surface as such —
+    not as a 500 from the new catch-all. If the global handler ever regressed to
+    capturing these, every deliberate 404/409 in the codebase — including 6.1's
+    and 6.2's — would start reporting 500 instead.
+    """
+    not_found = await client.get(
+        f"/api/v1/trips/{uuid.uuid4()}",
+        headers=_auth_headers(seed_data),
+    )
+    assert not_found.status_code == 404
+
+    unprocessable = await client.get(
+        "/api/v1/trips/not-a-valid-uuid",
+        headers=_auth_headers(seed_data),
+    )
+    assert unprocessable.status_code == 422

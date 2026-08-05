@@ -10,6 +10,10 @@ export interface UseTripDetailResult {
   isLoading: boolean
   error: string | null
   refetch: () => void
+  // Refetches without flipping isLoading — used after a dispatcher mutation (cancel,
+  // phase override) so the page's own content stays on screen instead of being
+  // replaced by the full-page spinner mid-action.
+  refetchSilent: () => void
 }
 
 export function useTripDetail(tripId: string): UseTripDetailResult {
@@ -20,5 +24,5 @@ export function useTripDetail(tripId: string): UseTripDetailResult {
   // Live: refetch in place (no spinner) whenever this trip changes — phase ticks,
   // exceptions, receipts appear without a reload.
   useLiveResource('trip', tripId, refetchSilent)
-  return { trip: data, isLoading, error, refetch }
+  return { trip: data, isLoading, error, refetch, refetchSilent }
 }

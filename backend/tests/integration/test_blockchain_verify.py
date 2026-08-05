@@ -10,6 +10,7 @@ HederaService is patched so no real network calls are made.
 
 import uuid
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
@@ -143,6 +144,10 @@ def _make_trip_payload(seed: dict) -> dict:
         "trailer_ids": [str(seed["trailer_id"])],
         "origin_precinct_id": str(seed["origin_id"]),
         "destination_precinct_id": str(seed["destination_id"]),
+        # Required: a trip with no schedule (neither this nor a stop slot_time)
+        # can never pass phase_service._reject_if_not_due (see TripCreateRequest
+        # .validate_request).
+        "planned_departure_at": datetime.now(UTC).isoformat(),
         "consignments": [{"pp_reference": "MOCKWAY001", "unit_count_expected": 2}],
     }
 

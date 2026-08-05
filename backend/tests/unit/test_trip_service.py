@@ -57,6 +57,10 @@ def make_loaded_payload(**kwargs) -> TripCreateRequest:
         origin_precinct_id=uuid.uuid4(),
         destination_precinct_id=uuid.uuid4(),
         consignments=[{"pp_reference": "WAY123", "unit_count_expected": 2}],
+        # Required by validate_request — a resolvable schedule at creation
+        # (see TripCreateRequest.validate_request); orthogonal to the
+        # consignment-loop behaviour this file exercises.
+        planned_departure_at=_NOW,
     )
     base.update(kwargs)
     return TripCreateRequest(**base)
@@ -72,6 +76,8 @@ def make_empty_leg_payload(**kwargs) -> TripCreateRequest:
         origin_precinct_id=uuid.uuid4(),
         destination_precinct_id=uuid.uuid4(),
         trip_type=TripType.EMPTY_LEG,
+        # See make_loaded_payload above.
+        planned_departure_at=_NOW,
     )
     base.update(kwargs)
     return TripCreateRequest(**base)
@@ -430,6 +436,7 @@ async def test_create_trip_anchor_failure_still_rolls_back_whole_trip(db_session
     payload = TripCreateRequest(
         order_number="ORD-P0-ROLLBACK", driver_id=driver.id, horse_id=horse.id, trailer_ids=[],
         origin_precinct_id=origin.id, destination_precinct_id=dest.id, trip_type=TripType.EMPTY_LEG,
+        planned_departure_at=_NOW,
     )
 
     with patch(

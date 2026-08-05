@@ -71,7 +71,7 @@ from app.core.config import settings
 from app.core.realtime import RealtimeKind, TripEvent, enqueue_event
 from app.core.exceptions import (
     HederaServiceError, HederaTimeoutError, PhaseSequenceError, PhaseTooEarlyError,
-    PhaseTypeMismatchError, ResourceNotFoundError, TripActivationBlockedError,
+    PhaseTypeMismatchError, ResourceNotFoundError, TripActivationBlockedError, TripStateError,
 )
 from app.db.models.enums import (
     AnchorStatus, BlockchainReceiptType, ExceptionSeverity, ExceptionSource, ExceptionType,
@@ -99,11 +99,48 @@ async def _load_trip_for_driver(db: AsyncSession, *, trip_id: uuid.UUID, driver_
     return trip
 
 
+async def _load_trip_for_dispatcher(
+    db: AsyncSession, *, trip_id: uuid.UUID, operator_organization_id: uuid.UUID,
+) -> Trip:
+    """Dispatcher-scoped trip lookup — the override counterpart to _load_trip_for_driver.
+
+    Filters by org, not driver: overriding a phase is a dispatcher action, and the
+    org boundary is the caller's real authorisation scope. 404, never 403, on a
+    trip belonging to another org — same no-existence-disclosure rule as everywhere
+    else in this module.
+    """
+    result = await db.execute(
+        select(Trip).where(
+            Trip.id == trip_id, Trip.operator_organization_id == operator_organization_id,
+        )
+    )
+    trip = result.scalar_one_or_none()
+    if trip is None:
+        raise ResourceNotFoundError("Trip", str(trip_id))
+    return trip
+
+
 async def _load_phase_event(
     db: AsyncSession, *, trip_id: uuid.UUID, phase_event_id: uuid.UUID,
 ) -> PhaseEvent:
+    """The single load point every completion path (complete_phase's five
+    advance_* wrappers, and task 6.1's override_phase) shares — which is why
+    the lock below covers all of them from one place.
+
+    D8: row-locked with FOR UPDATE. Two concurrent completions of the SAME
+    phase both pass _gate_and_load's sequence gate and would both dispatch to
+    Hedera before the partial unique index on idempotency_key ever fires —
+    that index only fires at flush, which is AFTER the anchor has already been
+    queued (_dispatch_anchor's after_commit hook), and a DB rollback cannot
+    un-submit an on-chain message. The lock, not the index, is what stops the
+    second submission from happening at all: the second transaction blocks
+    here until the first commits, then re-reads this row as resolved and
+    returns _gate_and_load's existing idempotent-replay 200 — no new code path.
+    """
     result = await db.execute(
-        select(PhaseEvent).where(PhaseEvent.id == phase_event_id, PhaseEvent.trip_id == trip_id)
+        select(PhaseEvent)
+        .where(PhaseEvent.id == phase_event_id, PhaseEvent.trip_id == trip_id)
+        .with_for_update()
     )
     event = result.scalar_one_or_none()
     if event is None:
@@ -401,6 +438,90 @@ async def _finish_phase(
     return await get_trip_detail(db, trip_id=trip.id, operator_organization_id=trip.operator_organization_id)
 
 
+async def override_phase(
+    db: AsyncSession, *, trip_id: uuid.UUID, phase_event_id: uuid.UUID,
+    operator_organization_id: uuid.UUID, user_id: uuid.UUID, note: str,
+) -> TripDetailResponse:
+    """Dispatcher-only terminal exit for ONE phase the driver physically cannot
+    complete — lost phone, left the depot, device wiped, bound to a device that
+    is gone (task 6.1). Without this, a single unreachable phase blocked every
+    later phase forever (_gate_and_load's lower-sequence gate has no other exit).
+
+    Lives here, not in trip_admin.py: it writes a PhaseEvent and must call
+    recompute_position, both of which this module owns.
+
+    Raises ResourceNotFoundError (404) if the trip doesn't exist/belongs to
+    another org, or the phase_event doesn't belong to this trip. Raises
+    TripStateError (409) on a trip that has already reached a terminal state, and
+    PhaseSequenceError (409) if the row is already COMPLETED — a resolved row
+    needs no override, and completed evidence must not be rewritable.
+    """
+    trip = await _load_trip_for_dispatcher(
+        db, trip_id=trip_id, operator_organization_id=operator_organization_id,
+    )
+
+    # A terminal trip is not overridable, and this guard is load-bearing rather
+    # than defensive. cancel_trip deliberately leaves every phase row PENDING —
+    # that is the honest record of a plan abandoned partway through — so on a
+    # CANCELLED trip every row still looks overridable. recompute_position()
+    # below ends with an UNCONDITIONAL trip.status = CLOSED once nothing is
+    # unresolved, so overriding the last pending row of a cancelled trip would
+    # silently rewrite CANCELLED as CLOSED and destroy the terminal fact the
+    # cancellation recorded. complete_phase never hits this because it goes
+    # through _gate_and_load, which already checks trip status; override_phase
+    # deliberately does not use that driver-scoped gate, so it needs its own.
+    if trip.status in (TripStatus.CLOSED, TripStatus.CANCELLED):
+        raise TripStateError(
+            current_status=TripStatus(trip.status).value,
+            attempted_action="override a phase on",
+        )
+
+    event = await _load_phase_event(db, trip_id=trip_id, phase_event_id=phase_event_id)
+
+    if event.status not in (PhaseStatus.PENDING, PhaseStatus.IN_PROGRESS):
+        # Matches PhaseSequenceError's existing vocabulary ("cannot complete X:
+        # reason") rather than inventing a new exception type for one more state
+        # check — the reason clause just names the row's real status.
+        raise PhaseSequenceError(f"phase status is '{PhaseStatus(event.status).value}'", "Override")
+
+    event.status = PhaseStatus.OVERRIDDEN
+    event.dispatcher_override_user_id = user_id
+    event.dispatcher_override_note = note
+    # D4: dated even though not completed. `status` already carries the "this
+    # didn't really happen" truth — an undated row in the dispatcher's
+    # chronological timeline (which reads completed_at for its card timestamp)
+    # is a worse lie than a dated one. Mirrors _finish_phase's own
+    # `event.completed_at = event.completed_at or now()` above.
+    event.completed_at = event.completed_at or datetime.now(UTC)
+
+    # D3: anchor_status is deliberately left UNTOUCHED. If this is a departure,
+    # no seal evidence exists to anchor — leaving PENDING honestly reads "a
+    # receipt was owed here and never landed" (which the dispatcher's
+    # anchorTally surfaces as owed > anchored). Setting NOT_REQUIRED would
+    # launder a real gap in the evidence chain; setting FAILED would claim an
+    # anchor was attempted. Neither is true, so neither is written.
+
+    # D5: the human intervention lands on the ledger, not just in an audit column.
+    db.add(TripException(
+        trip_id=trip_id, phase_event_id=event.id,
+        exception_type=ExceptionType.DISPATCHER_NOTE, source=ExceptionSource.DISPATCHER,
+        severity=ExceptionSeverity.WARNING, description=note,
+    ))
+
+    # May legitimately CLOSE the trip if this was the last unresolved row — that
+    # is correct and must not be special-cased; _is_resolved already treats
+    # OVERRIDDEN as resolved for gating purposes.
+    await recompute_position(db, trip)
+    await db.flush()
+
+    # D9: always PHASE_COMPLETED for an override — the plan position moved, same
+    # refetch as any completion (unlike _finish_phase, this is not conditional on
+    # the trip closing; that distinction belongs to cancel_trip's TRIP_CLOSED).
+    enqueue_event(db, trip.operator_organization_id, TripEvent(id=trip.id, kind=RealtimeKind.PHASE_COMPLETED))
+
+    return await get_trip_detail(db, trip_id=trip.id, operator_organization_id=trip.operator_organization_id)
+
+
 # Display format for the date a driver is told to come back on. Day-month-year with a
 # full month name: unambiguous to a South African reader, and never confusable with the
 # US month-first ordering the way a numeric date would be.
@@ -626,15 +747,37 @@ def compute_departure_canonical_payload(
     }
 
 
-async def _expected_parcel_count(db: AsyncSession, *, trip_id: uuid.UUID) -> int | None:
-    """The manifest's declared total, trip-wide — same grain TripCreatedDetail sums
-    client-side. Returns None (not 0) when the trip has no consignments at all, or
-    every consignment's parcel_count_expected is unset: there is no manifest baseline
-    to compare against, and treating that as 0 would manufacture a mismatch on a trip
-    that simply hasn't had its expected counts populated yet (same principle Stage 6's
-    empty-leg fix applies to the confirmation-side origin_count lookup)."""
+async def _expected_parcel_count(
+    db: AsyncSession, *, trip_id: uuid.UUID, trip_stop_id: uuid.UUID | None,
+) -> int | None:
+    """The manifest's declared total for the consignments picked up AT THIS STOP
+    (finding F13, task 6.2b) — not the trip-wide total this used to sum.
+
+    A cross-dock trip has more than one `loading` row, one per pickup stop. The
+    old query summed Consignment.parcel_count_expected trip-wide with no stop
+    filter, so EVERY loading on the trip was compared against the WHOLE ROUTE's
+    declared total — a loading that only picks up part of the manifest was still
+    held to the full manifest count and raised a false PARCEL_COUNT_MISMATCH.
+    This fired twice on scripts/seed_trips.py's own FP-DEMO-XDOCK-0001, the trip
+    a reviewer is walked through. Filtering on Consignment.pickup_stop_id scopes
+    the baseline to what THIS stop actually loads.
+
+    A no-op on a single-leg (2-stop) trip: trip_service.create_trip stamps every
+    API-created consignment's pickup_stop_id as trip_stops[0].id, so the
+    stop-scoped sum there is identical to the old trip-wide sum (see
+    test_single_leg_loading_count_unchanged_by_stop_scoping).
+
+    Returns None (not 0) when this stop has no mapped consignments at all, or
+    every mapped consignment's parcel_count_expected is unset: there is no
+    manifest baseline to compare against, and treating that as 0 would
+    manufacture a mismatch on a stop that simply hasn't had its expected counts
+    populated yet (same principle Stage 6's empty-leg fix applies to the
+    confirmation-side origin_count lookup)."""
     result = await db.execute(
-        select(func.sum(Consignment.parcel_count_expected)).where(Consignment.trip_id == trip_id)
+        select(func.sum(Consignment.parcel_count_expected)).where(
+            Consignment.trip_id == trip_id,
+            Consignment.pickup_stop_id == trip_stop_id,
+        )
     )
     return result.scalar_one_or_none()
 
@@ -661,7 +804,9 @@ async def advance_loading(
     # advance_confirmation's WAYBILL_COUNT_MISMATCH, which reconciles what physically
     # moved (origin/destination/driver-visual). This compares what was declared to PP
     # against what the driver saw, so it gets its own type: PARCEL_COUNT_MISMATCH.
-    expected_count = await _expected_parcel_count(db, trip_id=trip_id)
+    # Scoped to THIS stop (F13, task 6.2b) — event.trip_stop_id is the stop this
+    # loading row belongs to, never the trip as a whole.
+    expected_count = await _expected_parcel_count(db, trip_id=trip_id, trip_stop_id=event.trip_stop_id)
     event.parcel_count_origin = expected_count
 
     if expected_count is not None and expected_count != payload.driver_visual_count:
@@ -750,7 +895,7 @@ async def _find_departure_for_leg(
 
 async def _find_loading_for_leg(
     db: AsyncSession, *, trip_id: uuid.UUID, before_sequence: int,
-) -> PhaseEvent:
+) -> PhaseEvent | None:
     """The LOADING row that loaded the leg ending at `before_sequence` — decision S1.
 
     Same shape and same reason as _find_departure_for_leg: a cross-dock trip has
@@ -762,6 +907,24 @@ async def _find_loading_for_leg(
     and dropped at an intermediate stop left the vehicle before this leg began —
     counting it would guarantee a false mismatch. Cargo dropped mid-route is not
     count-reconciled at all today; that is F1 / Stage 3.3, deliberately deferred.
+
+    Returns None, rather than raising, when no LOADING row precedes this sequence
+    at all (task 6.2a, finding F1): an EMPTY_LEG trip carries no cargo, so the
+    plan generator (phase_plan.build_phase_plan) never emits a loading row for
+    it, and the old raise 404'd every empty-leg confirmation — the trip could
+    never close. The caller (advance_confirmation) reads None as "no origin
+    baseline exists" and skips reconciliation entirely rather than treating a
+    missing count as zero.
+
+    D7 caveat — read this before assuming the Optional return "fixed" the origin
+    baseline generally: it fixes ONLY the empty-leg case, where NO loading row
+    exists at all. A multi-pickup -> multi-drop cross-dock trip still finds A
+    preceding loading row here whenever this leg was fed by an earlier pickup —
+    just potentially the WRONG one — so NEW-17's false WAYBILL_COUNT_MISMATCH
+    (confirmation reconciling against the wrong stop's pickup) survives this
+    change completely untouched. NEW-17's real fix is per-consignment
+    reconciliation, a different stage; do not read this function as having
+    solved it.
 
     Caller contract: `before_sequence` must be the sequence_number of the
     confirmation's OWN row. Passing anything else silently resolves the wrong leg.
@@ -776,10 +939,7 @@ async def _find_loading_for_leg(
         .order_by(PhaseEvent.sequence_number.desc())
         .limit(1)
     )
-    loading = result.scalar_one_or_none()
-    if loading is None:
-        raise ResourceNotFoundError("PhaseEvent", "loading")
-    return loading
+    return result.scalar_one_or_none()
 
 
 async def advance_departure(
@@ -972,10 +1132,13 @@ async def advance_confirmation(
 
     # S1 / NEW-9: this leg's loading, not the trip's. A trip-wide phase_type
     # lookup raised MultipleResultsFound on every real cross-dock trip.
+    # F1 (task 6.2a): None on an EMPTY_LEG trip — the plan generator emits no
+    # loading row at all when nothing is picked up, so there is no origin
+    # baseline to reconcile against (see _find_loading_for_leg's D7 caveat).
     loading_event = await _find_loading_for_leg(
         db, trip_id=trip_id, before_sequence=event.sequence_number,
     )
-    origin_count = loading_event.driver_visual_count
+    origin_count = loading_event.driver_visual_count if loading_event is not None else None
 
     await _assert_artifacts_belong_to_trip(
         db, trip_id=trip_id,
@@ -1002,22 +1165,51 @@ async def advance_confirmation(
         receipt_type=BlockchainReceiptType.DELIVERY,
     )
 
-    counts_match = (
-        origin_count == payload.pp_scan_in_count == payload.driver_visual_count
-    )
-    if not counts_match:
-        db.add(TripException(
-            trip_id=trip_id, phase_event_id=event.id,
-            exception_type=ExceptionType.WAYBILL_COUNT_MISMATCH, source=ExceptionSource.SYSTEM,
-            severity=ExceptionSeverity.WARNING,
-            description=(
-                f"Count mismatch at unload: origin={origin_count}, "
-                f"PP scan-in={payload.pp_scan_in_count}, driver visual={payload.driver_visual_count}."
-            ),
-        ))
-        event.status = PhaseStatus.EXCEPTION
-    else:
+    if loading_event is None:
+        # F1 (task 6.2a): an EMPTY_LEG trip carries no cargo, so the plan
+        # generator never emitted a loading row for this leg — there is no
+        # origin baseline to reconcile against at all. Skipped entirely rather
+        # than falling back to comparing against 0, mirroring
+        # _expected_parcel_count's own None-is-not-zero principle: a missing
+        # baseline means "nothing to compare", never "compare against nothing
+        # and manufacture a mismatch".
+        logger.info(
+            "Confirmation phase_event_id=%s has no preceding loading row "
+            "(empty-leg trip) — count reconciliation skipped.", event.id,
+        )
         event.status = PhaseStatus.COMPLETED
+    elif origin_count is None:
+        # Newly reachable since task 6.1's dispatcher override: an overridden
+        # loading row never had a driver actually count parcels, so its
+        # driver_visual_count is null. Before 6.1 every loading row reaching
+        # this point had gone through advance_loading and always carried an
+        # int. Without this guard, Python's `None == payload.pp_scan_in_count`
+        # is simply False, so EVERY overridden loading would silently produce
+        # a false WAYBILL_COUNT_MISMATCH. Same skip-don't-manufacture
+        # treatment as the missing-loading-row branch above.
+        logger.info(
+            "Confirmation phase_event_id=%s resolved a preceding loading row "
+            "with no recorded driver_visual_count (likely dispatcher-"
+            "overridden) — count reconciliation skipped.", event.id,
+        )
+        event.status = PhaseStatus.COMPLETED
+    else:
+        counts_match = (
+            origin_count == payload.pp_scan_in_count == payload.driver_visual_count
+        )
+        if not counts_match:
+            db.add(TripException(
+                trip_id=trip_id, phase_event_id=event.id,
+                exception_type=ExceptionType.WAYBILL_COUNT_MISMATCH, source=ExceptionSource.SYSTEM,
+                severity=ExceptionSeverity.WARNING,
+                description=(
+                    f"Count mismatch at unload: origin={origin_count}, "
+                    f"PP scan-in={payload.pp_scan_in_count}, driver visual={payload.driver_visual_count}."
+                ),
+            ))
+            event.status = PhaseStatus.EXCEPTION
+        else:
+            event.status = PhaseStatus.COMPLETED
 
     # No explicit trip.status = CLOSED / closed_at here anymore — this is
     # confirmation's real point: recompute_position (called inside

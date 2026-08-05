@@ -13,7 +13,7 @@ vi.mock('@/lib/supabase/client', () => ({
   getAccessToken: vi.fn(),
 }))
 
-import { api, ApiError } from './client'
+import { api, ApiError, cancelTrip, overridePhase } from './client'
 import { getAccessToken, supabase } from '@/lib/supabase/client'
 
 const mockedGetAccessToken = vi.mocked(getAccessToken)
@@ -100,6 +100,60 @@ describe('401 recovery', () => {
     await expect(api.get('/trips')).rejects.toMatchObject({ status: 401 })
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(mockedSignOut).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('cancelTrip', () => {
+  it('posts the note to the cancel endpoint and returns the updated trip', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: 'trip-1', status: 'cancelled' }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await cancelTrip('trip-1', 'Cargo pulled by client')
+
+    expect(result).toEqual({ id: 'trip-1', status: 'cancelled' })
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('http://localhost:8000/api/v1/trips/trip-1/cancel')
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body as string)).toEqual({ note: 'Cargo pulled by client' })
+  })
+
+  it('surfaces the backend detail message on a 409 (already terminal)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse(409, { detail: "Trip status is 'closed'." })),
+    )
+
+    await expect(cancelTrip('trip-1', 'note')).rejects.toMatchObject({
+      status: 409,
+      message: "Trip status is 'closed'.",
+    })
+  })
+})
+
+describe('overridePhase', () => {
+  it('posts the note to the phase override endpoint and returns the updated trip', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: 'trip-1' }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await overridePhase('trip-1', 'phase-9', 'Driver phone lost')
+
+    expect(result).toEqual({ id: 'trip-1' })
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('http://localhost:8000/api/v1/trips/trip-1/phases/phase-9/override')
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body as string)).toEqual({ note: 'Driver phone lost' })
+  })
+
+  it('surfaces the backend detail message on a 409 (phase already resolved)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse(409, { detail: "phase status is 'completed': cannot Override" })),
+    )
+
+    await expect(overridePhase('trip-1', 'phase-9', 'note')).rejects.toMatchObject({
+      status: 409,
+      message: "phase status is 'completed': cannot Override",
+    })
   })
 })
 

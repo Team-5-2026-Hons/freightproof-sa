@@ -53,7 +53,7 @@ in this refactor may store "where the trip is" as an authoritative fact. It is d
 ### 0.2 ⚠️ `main` does not contain Tim's GPS work — `dev` does
 `origin/revert-27-feature/gps-warehouse-geofencing` (`d95d772`) reverted PR #27, and **that revert
 is contained in `origin/main`**. Tim's work then re-landed on `dev` via PR #31. `main` and `dev`
-have genuinely divergent histories over the same files this refactor rewrites.
+have genuinely divergent histories over the same files this refactor rewrites. dev is our developement main branch.
 
 **Consequence:** the eventual `dev → main` promotion will land on a branch where those files were
 reverted. That merge will conflict, and a wrong resolution silently re-reverts Tim's GPS work
@@ -895,23 +895,52 @@ in `docs/superpowers/plans/2026-08-01-phase-refactor-stage-6-hardening-and-demo.
 they are indexed in the artifact this project is defended from, not only in the stage plan. The
 plain-English version of each, with reproduction steps, is `docs/phase-model-explained.md` §9.
 
-8. 🔴 **`EXCEPTION_HOLD` is a permanent dead-end.** `PhaseStatus.OVERRIDDEN`, `TripStatus.CANCELLED`
-   and the `dispatcher_override_*` columns are modelled and **read by the gating logic**, but written
-   by nothing — there is no override, cancel, or release path anywhere. A trip that detects seal
-   tampering at the destination can never be completed, closed, cancelled or released. **This is the
-   product's headline scenario, and it has no recovery.** Stage 6 task 6.0.
+8. ⚠️ **~~`EXCEPTION_HOLD` is a permanent dead-end.~~ — SUPERSEDED 2026-08-05.** The automatic hold
+   was removed instead of being given an exit: `advance_unloading`'s seal mismatch no longer sets
+   `EXCEPTION_HOLD` (`phase_service.py:895-911` gives three reasons — chiefly that holding the trip
+   destroyed the remaining evidence of the very trip whose integrity it was reacting to). Nothing in
+   `app/` can hold a trip, so **no `release` path is needed and none is being built.** What survives
+   of this item: `PhaseStatus.OVERRIDDEN` and `TripStatus.CANCELLED` are still written by nothing, so
+   a phase the driver physically cannot complete still blocks every later phase, and an abandoned trip
+   still cannot be cancelled. Stage 6 task **6.1** (`cancel` + `override` only).
 9. 🔴 **Empty-leg trips cannot close.** No `loading` row is generated, and `advance_confirmation`'s
-   `_find_loading_for_leg` raises rather than returning `None` → permanent 404. Stage 6 task 6.1.
+   `_find_loading_for_leg` raises rather than returning `None` → permanent 404. Stage 6 task **6.2**.
    *(Stage 2 §421 verified empty legs at plan **generation** and signed off; the completion path was
    never checked, and `_find_loading_for_leg` arrived later in Stage 3.)*
 10. 🟠 **No row locking anywhere in the codebase.** Two concurrent completions of one phase both pass
     the gate and **both submit to Hedera before the uniqueness check fires** — and a DB rollback
-    cannot un-submit an on-chain message. Stage 6 task 6.2.
+    cannot un-submit an on-chain message. Stage 6 task **6.3**.
 11. 🟡 **Inconsistent error mapping.** `phases.py` has no `SQLAlchemyError` handler (`trips.py` does),
-    and `main.py` has **no global exception handler at all**. Stage 6 task 6.3.
+    and `main.py` has **no global exception handler at all**. Stage 6 task **6.4**.
+12. 🔴 **CI is red on `Phase-refactor` — and `mypy` is checking nothing** *(found 2026-08-05)*.
+    `ruff check .` fails on 2 × `F841`; `mypy .` dies during collection on a duplicate module name for
+    `scripts/seed_trips.py`, so **zero files are type-checked** — and behind that halt sit 2 genuine
+    type errors in `app/api/v1/endpoints/exceptions.py`. Every "mypy clean" claim on this branch since
+    the break is void. Stage 6 task **6.0**, a hard gate on the rest.
+13. 🔴 **A trip can be created that can never be activated** *(found 2026-08-05)*. `_reject_if_not_due`
+    treats "no schedule" as permanently not-due, but `planned_departure_at` is `Optional` at creation.
+    The dispatcher wizard requires one, so the UI path is safe; the API, scripts and seeders are not.
+    Decided: require a schedule at creation rather than relax the gate. Stage 6 task **6.0**.
 
-**8 and 9 block the parent's own Stage 6 "Done when".** A held trip and an empty-leg trip cannot be
-walked end-to-end, so "demoable from a cold start" is unreachable until both are closed.
+14. 🟠 **The loading parcel-count check compares against the whole trip, not the stop** *(found
+    2026-08-05)*. `advance_loading` does raise `PARCEL_COUNT_MISMATCH` on a manifest-vs-driver-count
+    discrepancy (`phase_service.py:664-683`) — but `_expected_parcel_count` sums consignments
+    trip-wide with no stop filter, so **both loadings on the seeded cross-dock demo trip raise a false
+    mismatch**. `Consignment.pickup_stop_id` already exists and is already populated, so the fix is a
+    `WHERE` clause. Stage 6 task **6.2b**.
+15. 🟠 **`unloading` captures no parcel count at all** *(found 2026-08-05)*, so no count exception can
+    be raised there — contradicting §2.5, which specifies P5 as capturing a driver visual count. Cargo
+    dropped at an **intermediate** stop is therefore never count-reconciled by anything; P6's
+    `WAYBILL_COUNT_MISMATCH` only covers the final leg. **Deferred to the consignment-mapping stage,
+    not Stage 6**: the baseline it needs (`delivery_stop_id`) is stamped last-stop-for-everything by
+    `trip_service.py:333`, so it cannot be correct until the wizard can express per-consignment stops.
+
+**9, 13 and 14 block the parent's own Stage 6 "Done when".** An empty-leg trip and a scheduleless trip
+cannot be walked end-to-end, and the cross-dock demo trip raises false exceptions, so "demoable from a
+cold start" is unreachable until all three are closed. **12 blocks merging at all.**
+
+*Stage 6 is planned in detail at `docs/superpowers/plans/2026-08-01-phase-refactor-stage-6-hardening-and-demo.md`
+(revised 2026-08-05 against measured state — its §Revision explains what changed and why).*
 
 ---
 

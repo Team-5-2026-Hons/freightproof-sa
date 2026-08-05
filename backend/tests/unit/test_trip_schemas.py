@@ -18,6 +18,10 @@ def _payload(**overrides):
         origin_precinct_id=uuid.uuid4(),
         destination_precinct_id=uuid.uuid4(),
         consignments=[{"pp_reference": "WAY001", "unit_count_expected": 4}],
+        # Required by validate_request — a resolvable schedule at creation
+        # (see TripCreateRequest.validate_request); orthogonal to the
+        # consignment/trailer behaviour these tests exercise.
+        planned_departure_at=datetime.now(timezone.utc),
     )
     base.update(overrides)
     return base

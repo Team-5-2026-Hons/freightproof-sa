@@ -6,11 +6,13 @@ TripDetailResponse.phases on GET /trips/{id}, which it already calls — giving
 these routes a second auth path would be new security surface with no consumer.
 """
 
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi import status as http_status
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_driver
@@ -27,6 +29,8 @@ from app.orchestration.phase_service import complete_phase, list_phases, next_ph
 from app.schemas.people import DriverRead
 from app.schemas.phases import PhaseCompleteRequest, PhaseEventRead
 from app.schemas.trips import TripDetailResponse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/trips/{trip_id}/phases", tags=["phases"])
 
@@ -108,3 +112,13 @@ async def complete_phase_endpoint(
         # verbatim, so the date reaches the person who needs it. TripActivationBlockedError
         # is here for the same reason, and names the trip standing in the way.
         raise HTTPException(status_code=http_status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except SQLAlchemyError as exc:
+        # Matches trips.py's create_trip_endpoint exactly — same status constant,
+        # same generic detail string, same logger.exception (not .error) so the
+        # traceback survives: a DB fault here would otherwise fall through to
+        # the framework's bare, unlogged 500.
+        logger.exception("Database error during phase completion")
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred. Please try again.",
+        ) from exc
