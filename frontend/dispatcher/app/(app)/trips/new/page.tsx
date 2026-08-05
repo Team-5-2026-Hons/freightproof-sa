@@ -965,13 +965,12 @@ export default function TripNewPage() {
                 </ReviewSection>
               </div>
 
-              {/* Right: dark trip summary + CTA */}
+              {/* Right: light trip summary + CTA */}
               <div
-                className="w-[280px] shrink-0 rounded-lg shadow-level-5 p-[22px] bg-primary"
+                className="w-[280px] shrink-0 rounded-lg shadow-level-5 p-[22px] bg-surf-lowest border-[3px] border-on-surf"
               >
                 <div
-                  className="text-[11px] font-[700] tracking-[0.1em] uppercase mb-[14px]"
-                  style={{ color: 'rgba(255,255,255,0.4)' }}
+                  className="text-[11px] font-[700] tracking-[0.1em] uppercase mb-[14px] text-on-surf-v"
                 >
                   Trip Summary
                 </div>
@@ -989,31 +988,26 @@ export default function TripNewPage() {
                 ] as [string, string, boolean][]).map(([label, value, mono]) => (
                   <div
                     key={label}
-                    className="flex justify-between pb-2 mb-2"
-                    style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}
+                    className="flex justify-between pb-2 mb-2 border-b border-on-surf/15"
                   >
-                    <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                    <span className="text-[11px] text-on-surf-v">
                       {label}
                     </span>
                     <span
-                      className={cn('text-right max-w-[160px]', mono
+                      className={cn('text-right max-w-[160px] text-on-surf', mono
                         ? 'text-[13px] font-[600] tabular-nums tracking-[0.05em]'
                         : 'text-[12px] font-[500]')}
-                      style={{ color: 'rgba(255,255,255,0.88)' }}
                     >
                       {value}
                     </span>
                   </div>
                 ))}
 
-                <div
-                  className="text-[11px] mb-4 mt-2 leading-relaxed"
-                  style={{ color: 'rgba(255,255,255,0.3)' }}
-                >
+                <div className="text-[11px] mb-4 mt-2 leading-relaxed text-on-surf-v">
                   On submit: journey lock hash anchored to Hedera HCS + pre-notification sent to principal.
                 </div>
 
-                <Button full onClick={() => setShowConfirm(true)}>
+                <Button full className="trip-summary-cta" onClick={() => setShowConfirm(true)}>
                   Create Trip + Lock to Blockchain
                 </Button>
               </div>
