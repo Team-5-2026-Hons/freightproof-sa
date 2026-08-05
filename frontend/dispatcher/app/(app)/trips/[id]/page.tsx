@@ -15,10 +15,10 @@ import { usePrecincts }   from '@/lib/hooks/usePrecincts'
 import { useTripArtifacts } from '@/lib/hooks/useTripArtifacts'
 import {
   useResizablePanel,
-  DETAIL_PANEL_DEFAULT_W,
   DETAIL_PANEL_MIN_W,
   DETAIL_PANEL_MAX_W,
 } from '@/lib/hooks/useResizablePanel'
+import { useElementWidth } from '@/lib/hooks/useElementWidth'
 import { PHASE_NAMES }      from '@shared/lib/constants/phase-meta'
 import { VerifyButton }       from '@/components/blockchain/VerifyButton'
 import { ForensicOnly }       from '@/components/blockchain/ForensicOnly'
@@ -29,15 +29,39 @@ import { DepartureDetail }    from '@/components/domain/DepartureDetail'
 import { UnloadingDetail }    from '@/components/domain/UnloadingDetail'
 import { ConfirmationDetail } from '@/components/domain/ConfirmationDetail'
 import { InTransitTimeline }  from '@/components/domain/InTransitTimeline'
+import { ExceptionEvidence }  from '@/components/domain/ExceptionEvidence'
 import { ManifestPanel }      from '@/components/domain/ManifestPanel'
+import { EXCEPTION_SEVERITY_META, EXCEPTION_SOURCE_META } from '@shared/lib/constants/status-meta'
+import { delayMinutes, fmtDelay } from '@/lib/format/schedule'
+import { fmtExceptionType } from '@/lib/format/exception'
+// Timeline grain vs record grain, per this module's own contract: fmtDateTime for events
+// in the timeline, fmtFull (which carries the year) for the sidebar's records. The
+// page-local formatter this replaces had no year at all, so a trip closed last March
+// read "12 Mar" — and formatted the same field differently from its own child panels.
+import { fmtDateTime, fmtFull } from '@shared/lib/utils/datetime'
 import {
   activePhase, anchorTally, currentSealNumber, nodeTypeFor, originParcelCount,
-  sortedPlan, tripChipMeta,
+  recordedExceptionLabel, sortedPlan, tripChipMeta,
 } from '@/lib/phase/derive'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { Trip } from '@shared/lib/types/trip'
 import type { Precinct } from '@shared/lib/types/precinct'
 import type { BlockchainReceipt, BlockchainReceiptType, VerifyResult } from '@shared/lib/types/blockchain'
+
+// ── Layout ────────────────────────────────────────────────────────────────────
+// The two fixed costs in the three-column row. Declared here and applied as inline
+// styles rather than as Tailwind arbitrary values (`min-w-[420px]`, `w-[304px]`),
+// because the manifest's maximum width is computed FROM them — two literals that must
+// agree, written twice, is how the manifest came to overflow the row and clip Trip Info.
+const TIMELINE_MIN_W = 420
+const SIDEBAR_W      = 304
+
+// The manifest opens narrow and is dragged wider on demand. Deliberately not the shared
+// DETAIL_PANEL_DEFAULT_W: that 520 is tuned for the fleet pages, where the panel IS the
+// page. Here it is a third column stealing width from the timeline, which is what the
+// dispatcher actually came to read — and its content (a waybill row, a total) needs far
+// less room than a vehicle record does.
+const MANIFEST_DEFAULT_W = 420
 
 // ── Blockchain chain tag ──────────────────────────────────────────────────────
 const HASHSCAN_BASE =
@@ -95,7 +119,7 @@ function ChainReceiptTag({ receipt }: { receipt: BlockchainReceipt }) {
       </div>
       {receipt.hedera_consensus_timestamp && (
         <div className="text-[10px] text-chain-onc/60 mt-[2px]">
-          Anchored {fmtTs(receipt.hedera_consensus_timestamp)}
+          Anchored {fmtFull(receipt.hedera_consensus_timestamp)}
         </div>
       )}
     </div>
@@ -126,10 +150,6 @@ interface TimelineEventProps {
   statusPill?: React.ReactNode
 }
 
-function fmtTs(iso: string): string {
-  const d = new Date(iso)
-  return d.toLocaleString('en-ZA', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' })
-}
 
 function TimelineEvent({
   nodeType, nodeLabel, isLast,
@@ -173,6 +193,57 @@ function TimelineEvent({
     pending: 'border border-dashed border-outline-v/40',
   }
 
+  // Everything the collapsed card shows. Extracted so the expandable and inert variants
+  // render identical content and cannot drift apart — only the wrapper differs.
+  const summary = (
+    <>
+      <div className="flex items-start justify-between gap-3 mb-[5px]">
+        <div className="flex items-center gap-[8px] min-w-0">
+          <div className={`text-[15px] font-[700] leading-snug ${nodeType === 'pending' ? 'text-on-surf-v' : 'text-on-surf'}`}>
+            {label}
+          </div>
+          {statusPill}
+        </div>
+        <div className="flex items-center gap-[8px] shrink-0">
+          {timestamp && (
+            <div className="flex items-center gap-[4px] tabular-nums text-[12px] font-[700] text-sec">
+              <Ic n="clock" s={11} className="text-sec" />
+              {fmtDateTime(timestamp)}
+            </div>
+          )}
+          {/* The affordance. Its ABSENCE is equally load-bearing: a card with no chevron
+              holds nothing to open, which is what stopped a dispatcher having to click
+              every row to find out. `chev` points right, so rotate it for the open state. */}
+          {isExpandable && (
+            <Ic
+              n="chev"
+              s={14}
+              className={`text-on-surf-v transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`}
+            />
+          )}
+        </div>
+      </div>
+      {meta && (
+        <div className="text-[11px] font-[500] text-on-surf-v mb-[6px]">
+          {meta}
+        </div>
+      )}
+      {detail && <div className="text-[13px] text-on-surf-v mt-1">{detail}</div>}
+      {excText && (
+        <div className="inline-flex items-center gap-[7px] bg-warn-c rounded-sm px-[12px] py-[5px] mt-[6px]">
+          <Ic n="warn" s={13} className="text-warn-onc" />
+          <span className="text-[12px] font-[600] text-warn-onc">{excText}</span>
+        </div>
+      )}
+      {resText && (
+        <div className="text-[12px] text-ok mt-[5px] flex items-center gap-[5px]">
+          <Ic n="check" s={12} className="text-ok" />
+          {resText}
+        </div>
+      )}
+    </>
+  )
+
   return (
     <div className="flex gap-[14px]">
       <div className="flex flex-col items-center shrink-0">
@@ -188,47 +259,70 @@ function TimelineEvent({
 
       <div className="flex-1 mb-3">
         <div
-          className={`rounded-lg px-4 py-3 ${cardStyle[nodeType]} ${isExpandable ? 'cursor-pointer transition-shadow duration-150 hover:shadow-md active:shadow-sm select-none' : ''}`}
-          onClick={isExpandable ? () => setIsExpanded(e => !e) : undefined}
+          className={`rounded-lg px-4 py-3 ${cardStyle[nodeType]} ${isExpandable ? 'transition-shadow duration-150 hover:shadow-md' : ''}`}
         >
-          <div className="flex items-start justify-between gap-3 mb-[5px]">
-            <div className="flex items-center gap-[8px] min-w-0">
-              <div className={`text-[15px] font-[700] leading-snug ${nodeType === 'pending' ? 'text-on-surf-v' : 'text-on-surf'}`}>
-                {label}
-              </div>
-              {statusPill}
-            </div>
-            {timestamp && (
-              <div className="flex items-center gap-[4px] shrink-0 tabular-nums text-[12px] font-[700] text-sec">
-                <Ic n="clock" s={11} className="text-sec" />
-                {fmtTs(timestamp)}
-              </div>
-            )}
-          </div>
-          {meta && (
-            <div className="text-[11px] font-[500] text-on-surf-v mb-[6px]">
-              {meta}
-            </div>
-          )}
-          {detail && <div className="text-[13px] text-on-surf-v mt-1">{detail}</div>}
-          {excText && (
-            <div className="inline-flex items-center gap-[7px] bg-warn-c rounded-sm px-[12px] py-[5px] mt-[6px]">
-              <Ic n="warn" s={13} className="text-warn-onc" />
-              <span className="text-[12px] font-[600] text-warn-onc">{excText}</span>
-            </div>
-          )}
-          {resText && (
-            <div className="text-[12px] text-ok mt-[5px] flex items-center gap-[5px]">
-              <Ic n="check" s={12} className="text-ok" />
-              {resText}
-            </div>
-          )}
+          {/* The toggle wraps the SUMMARY only, never the evidence below it. The whole
+              card used to carry the onClick, so every Copy button, HashScan link and
+              photo thumbnail inside the expanded panel bubbled a click straight back into
+              it — opening a photo collapsed the card behind the lightbox. Interactive
+              content also cannot legally nest inside a <button>. */}
+          {isExpandable ? (
+            <button
+              type="button"
+              onClick={() => setIsExpanded(e => !e)}
+              aria-expanded={isExpanded}
+              className="w-full text-left select-none rounded-md focus-visible:ring-2 focus-visible:ring-sec"
+            >
+              {summary}
+            </button>
+          ) : summary}
+
           {chainReceipt && <ForensicOnly><ChainReceiptTag receipt={chainReceipt} /></ForensicOnly>}
           {isExpanded && expandedContent}
           {alwaysExpandedContent}
         </div>
       </div>
     </div>
+  )
+}
+
+/**
+ * One leg of the schedule: what was planned, what actually happened, and the gap.
+ *
+ * The actual row stays on screen as "Not yet" rather than being hidden when absent —
+ * a missing actual against a planned time that has passed is itself the signal.
+ */
+function ScheduleRows({
+  label, planned, actual,
+}: {
+  label: string
+  planned: string | null
+  actual: string | null
+}) {
+  const delay = delayMinutes(planned, actual)
+  const lower = label.toLowerCase()
+
+  return (
+    <>
+      <InfoRow label={`Planned ${lower}`} value={fmtFull(planned)} />
+
+      {/* Mirrors InfoRow's own markup rather than composing it, because the delay has to
+          sit INSIDE the actual's row — stacked under its timestamp and above the row's
+          bottom border. Rendered as a sibling it detached from the fact it describes. */}
+      <div className="flex justify-between items-start gap-3 py-[8px] border-b border-outline-v/20 last:border-0 text-[13px]">
+        <span className="text-[11px] text-on-surf-v shrink-0 pt-[1px]">{`Actual ${lower}`}</span>
+        <div className="text-right">
+          <div className="font-[500] text-on-surf">{actual ? fmtFull(actual) : 'Not yet'}</div>
+          {delay !== null && (
+            // Early is not a success and late is not a failure — this platform records,
+            // it does not judge. Only a genuinely on-time leg gets the positive colour.
+            <div className={`text-[11px] tabular-nums font-[600] ${delay === 0 ? 'text-ok' : 'text-on-surf-v'}`}>
+              {fmtDelay(delay)}
+            </div>
+          )}
+        </div>
+      </div>
+    </>
   )
 }
 
@@ -247,8 +341,28 @@ export default function TripDetailPage() {
   // regardless of which phase card, if any, is open) — a plain toggle, not a
   // selected-phase id.
   const [manifestOpen, setManifestOpen] = useState(false)
+
+  // Measured, not assumed. The manifest may only take space the timeline and Trip Info
+  // are not entitled to, and Trip Info hides itself below xl — a hidden element measures
+  // 0, so that breakpoint never has to be restated here.
+  const { ref: rowRef,     width: rowWidth }     = useElementWidth<HTMLDivElement>()
+  const { ref: sidebarRef, width: sidebarWidth } = useElementWidth<HTMLDivElement>()
+
+  // Exactly the space left once the timeline has its minimum and Trip Info has its full
+  // width — so the three columns sum to the row and never overflow it. Deliberately NOT
+  // floored at DETAIL_PANEL_MIN_W: on a narrow viewport that floor is larger than what
+  // is actually free, and the surplus came straight out of Trip Info, which the row's
+  // `overflow-hidden` then clipped off the right edge.
+  const manifestMax = Math.min(
+    DETAIL_PANEL_MAX_W,
+    Math.max(0, rowWidth - TIMELINE_MIN_W - sidebarWidth),
+  )
+
   const { width: manifestWidth, startResize: startManifestResize } = useResizablePanel(
-    DETAIL_PANEL_DEFAULT_W, { min: DETAIL_PANEL_MIN_W, max: DETAIL_PANEL_MAX_W },
+    MANIFEST_DEFAULT_W,
+    // The handle sits on the panel's LEFT edge (ManifestPanel), so the panel grows as the
+    // pointer moves left. Without this the drag ran backwards.
+    { min: DETAIL_PANEL_MIN_W, max: manifestMax, edge: 'left' },
   )
 
   // Closed/cancelled trips only ever appear in trip history, so route back there;
@@ -319,17 +433,34 @@ export default function TripDetailPage() {
 
   const sealNumber  = currentSealNumber(trip.phases)
   const originLoad  = plan.find(p => p.phase_type === 'loading') ?? null
-  const parcelCount = originParcelCount(trip.phases) ?? 0
   const tally       = anchorTally(trip.phases)
+
+  // Stops in plan order, computed once. Every stop lookup below ranks by POSITION in this
+  // array and never does arithmetic on the raw `sequence` value — real trip creation
+  // numbers stops from 0 (trip_service.py) while seeded demo data numbers them from 1
+  // (seed_trips.py), so `sequence + 1` is wrong on whichever convention it wasn't
+  // written for, and non-contiguous sequences break it on both.
+  const routeStops = [...trip.stops].sort((a, b) => a.sequence - b.sequence)
+
+  // What the waybills say SHOULD be aboard, versus what was actually counted at origin.
+  // Two different facts: the first is booking data available from creation, the second is
+  // evidence that only exists once a driver has counted. Null is NOT zero — a loading
+  // phase that recorded no count must read as "not recorded", never as "0 parcels", or
+  // the page reports an empty truck it has no evidence for.
+  const originCount     = originParcelCount(trip.phases)
+  const expectedParcels = trip.consignments.reduce((n, c) => n + (c.parcel_count_expected ?? 0), 0)
+
+  const journeyLockReceipt = trip.blockchain_receipts.find(r => r.receipt_type === 'journey_lock')
+
+  // The coarse chip cannot say this: a trip that reaches `closed` carrying an exception
+  // still renders a green "Complete". See recordedExceptionLabel.
+  const exceptionLabel = recordedExceptionLabel(trip.exceptions, trip.phases)
 
   // A phase is anchored to a STOP, not to "origin or destination" — a cross-dock
   // trip has three, and an index-threshold guess cannot express the middle one.
   function precinctForStop(stopSequence: number | null): string {
     if (stopSequence === null) return '—'
-    // `trip` is narrowed above, but TS does not carry that narrowing into a nested
-    // function declaration (it could be called later, after a hypothetical reassignment) —
-    // the `!` is required here, not a shortcut around a real possibly-null case.
-    const stop = trip!.stops.find(s => s.sequence === stopSequence)
+    const stop = routeStops.find(s => s.sequence === stopSequence)
     const precinct = stop ? precincts.find(p => p.id === stop.precinct_id) : undefined
     return precinct?.name.split('—')[0]?.trim() ?? '—'
   }
@@ -338,8 +469,18 @@ export default function TripDetailPage() {
   // (coordinates, geofence radius, address).
   function precinctRecordForStop(stopSequence: number | null): Precinct | undefined {
     if (stopSequence === null) return undefined
-    const stop = trip!.stops.find(s => s.sequence === stopSequence)
+    const stop = routeStops.find(s => s.sequence === stopSequence)
     return stop ? precincts.find(p => p.id === stop.precinct_id) : undefined
+  }
+
+  // The stop AFTER this one, by position on the route. An in-transit leg anchors to the
+  // stop it DEPARTS FROM, so its destination is the next stop along — which is not
+  // `sequence + 1`, a guess that only holds while sequences happen to be contiguous.
+  function nextStopSequence(stopSequence: number | null): number | null {
+    if (stopSequence === null) return null
+    const rank = routeStops.findIndex(s => s.sequence === stopSequence)
+    if (rank === -1 || rank + 1 >= routeStops.length) return null
+    return routeStops[rank + 1].sequence
   }
 
   // Role (origin/destination) is derived, not stored (FP-112) — "Stop 0" told the
@@ -351,11 +492,10 @@ export default function TripDetailPage() {
   // silently breaks on whichever convention it wasn't written for.
   function stopRoleLabel(stopSequence: number | null): string {
     if (stopSequence === null) return ''
-    const sorted = [...trip!.stops].sort((a, b) => a.sequence - b.sequence)
-    const rank = sorted.findIndex(s => s.sequence === stopSequence)
+    const rank = routeStops.findIndex(s => s.sequence === stopSequence)
     if (rank === -1) return ''
     if (rank === 0) return 'Origin'
-    if (rank === sorted.length - 1) return 'Destination'
+    if (rank === routeStops.length - 1) return 'Destination'
     return `Stop ${rank + 1}`
   }
 
@@ -393,12 +533,20 @@ export default function TripDetailPage() {
         left={backButton}
       >
         <Chip type={statusMeta.chipType} label={statusMeta.label} />
+        {/* Second chip, not a merged label: "closed" and "carries an exception" are two
+            separate facts and one chip cannot hold both without one of them being lost.
+            Amber rather than red — severity varies per record, and an info-level
+            dispatcher note must not shout as loudly as a seal break. */}
+        {exceptionLabel && <Chip type="exception" label={exceptionLabel} />}
       </TopBar>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div ref={rowRef} className="flex flex-1 overflow-hidden">
 
         {/* ── LEFT: Timeline ── */}
-        <div className="flex-1 min-w-[420px] overflow-y-auto p-6 bg-surf-lowest">
+        <div
+          style={{ minWidth: TIMELINE_MIN_W }}
+          className="flex-1 overflow-y-auto p-6 bg-surf-lowest"
+        >
 
           <TimelineEvent
             nodeType="done"
@@ -406,9 +554,9 @@ export default function TripDetailPage() {
             isLast={timelinePhases.length === 0}
             label="Trip Created"
             meta="Dispatcher"
-            detail={`${trip.order_number} · ${trip.driver?.full_name ?? '—'} · ${trip.horse?.registration ?? '—'} · ${parcelCount} parcels`}
+            detail={`${trip.order_number} · ${trip.driver?.full_name ?? '—'} · ${trip.horse?.registration ?? '—'} · ${expectedParcels} parcels booked`}
             timestamp={tripCreation?.completed_at ?? trip.created_at}
-            chainReceipt={trip.blockchain_receipts[0]}
+            chainReceipt={journeyLockReceipt}
             expandedContent={<TripCreatedDetail trip={trip} />}
           />
 
@@ -433,16 +581,27 @@ export default function TripDetailPage() {
             // Each departure shows its OWN seal, so a cross-dock trip visibly carries
             // a different seal per leg. That is the multi-stop proof on screen.
             if (phase.seal_number)                  detailParts.push(`Seal ${phase.seal_number}`)
-            // Fail-open (parent D7): a completed phase whose anchor failed still owes
-            // a receipt, and must never read as an unqualified success.
-            if (phase.anchor_status === 'failed')   detailParts.push('⚠ Anchor failed — receipt owed')
             const detail = detailParts.length > 0 ? detailParts.join(' · ') : undefined
+
+            // Fail-open (parent D7): a completed phase whose anchor failed still owes a
+            // receipt and must never read as an unqualified success. It gets the warning
+            // treatment rather than sixth position in a grey dot-separated run-on, which
+            // is where the one unresolved obligation on the card used to sit.
+            const anchorWarning = phase.anchor_status === 'failed'
+              ? 'Anchor failed — Hedera receipt still owed'
+              : undefined
 
             const linkedReceipt = phase.blockchain_receipt_id
               ? trip.blockchain_receipts.find(r => r.id === phase.blockchain_receipt_id)
               : undefined
 
             const excItems = item.exceptions
+
+            // An in-transit leg renders its own exceptions inside its Journey mini-timeline,
+            // so it must NOT also emit them as sibling cards — that printed every en-route
+            // exception twice, once in the leg and once below it.
+            const ownsExceptionRows = phase.phase_type !== 'in_transit'
+            const trailingExcCount  = ownsExceptionRows ? excItems.length : 0
 
             // A pending phase is a future event: it has no evidence yet, so it must not
             // expand, must not open the manifest panel, and must not even LOOK clickable.
@@ -457,7 +616,7 @@ export default function TripDetailPage() {
                 <TimelineEvent
                   nodeType={item.nodeType}
                   nodeLabel={phase.sequence_number}
-                  isLast={isLastItem && excItems.length === 0}
+                  isLast={isLastItem && trailingExcCount === 0}
                   label={name}
                   statusPill={
                     item.nodeType === 'active'  ? <Chip type="transit" label="In progress" /> :
@@ -471,6 +630,7 @@ export default function TripDetailPage() {
                   }
                   meta={meta}
                   detail={detail}
+                  excText={anchorWarning}
                   timestamp={cardTimestamp}
                   chainReceipt={linkedReceipt}
                   expandedContent={
@@ -509,28 +669,45 @@ export default function TripDetailPage() {
                     : phase.phase_type === 'in_transit'
                       ? <InTransitTimeline
                           phase={phase}
+                          allPhases={plan}
                           exceptions={item.exceptions}
+                          artifactsById={artifactsById}
                           originName={precinctForStop(phase.stop_sequence)}
-                          destinationName={precinctForStop(
-                            phase.stop_sequence === null ? null : phase.stop_sequence + 1,
-                          )}
+                          destinationName={precinctForStop(nextStopSequence(phase.stop_sequence))}
                         />
                       : undefined
                   }
                 />
-                {excItems.map((exc, ei) => (
+                {ownsExceptionRows && excItems.map((exc, ei) => (
                   <TimelineEvent
                     key={exc.id}
                     nodeType="warn"
                     nodeLabel="!"
                     isLast={isLastItem && ei === excItems.length - 1}
-                    label={`Exception: ${exc.exception_type.replace(/_/g, ' ')}`}
-                    meta={`Source: ${exc.source}`}
+                    label={fmtExceptionType(exc.exception_type)}
+                    // Severity was on the wire from the start and never rendered, so an
+                    // info-level dispatcher note and a critical seal break were the same
+                    // shade of amber. EXCEPTION_SEVERITY_META is the same mapping the
+                    // exceptions pages use, so the two surfaces cannot disagree.
+                    statusPill={
+                      <Chip
+                        type={EXCEPTION_SEVERITY_META[exc.severity].chipType}
+                        label={EXCEPTION_SEVERITY_META[exc.severity].label}
+                      />
+                    }
+                    meta={EXCEPTION_SOURCE_META[exc.source].label}
                     timestamp={exc.created_at}
                     excText={exc.description}
+                    alwaysExpandedContent={
+                      <ExceptionEvidence exception={exc} artifactsById={artifactsById} />
+                    }
+                    // Keyed off `resolved` alone. Requiring a note as well meant a
+                    // resolved exception with no note rendered identically to an open
+                    // one. Currently unreachable — no resolve workflow exists yet — but
+                    // the latent bug goes now rather than surfacing the day one lands.
                     resText={
-                      exc.resolved && exc.resolver_note
-                        ? `Resolved · ${exc.resolver_note}`
+                      exc.resolved
+                        ? exc.resolver_note ? `Resolved · ${exc.resolver_note}` : 'Resolved'
                         : undefined
                     }
                   />
@@ -552,9 +729,13 @@ export default function TripDetailPage() {
         )}
 
         {/* ── RIGHT: Sidebar ── */}
-        <div className={`w-[304px] bg-surf-low p-5 overflow-y-auto shrink-0 border-l border-outline-v/20${
-          manifestOpen ? ' hidden xl:block' : ''
-        }`}>
+        <div
+          ref={sidebarRef}
+          style={{ width: SIDEBAR_W }}
+          className={`bg-surf-low p-5 overflow-y-auto shrink-0 border-l border-outline-v/20${
+            manifestOpen ? ' hidden xl:block' : ''
+          }`}
+        >
 
           <div className="text-[11px] font-[700] tracking-[0.1em] uppercase text-on-surf-v mb-3">
             Trip Info
@@ -566,13 +747,28 @@ export default function TripDetailPage() {
               <InfoRow label="Horse"       value={trip.horse?.registration ?? '—'}  mono />
               <InfoRow label="Origin"      value={originShort} />
               <InfoRow label="Destination" value={destShort} />
-              <InfoRow label="Planned departure" value={trip.planned_departure_at ? fmtTs(trip.planned_departure_at) : '—'} />
-              <InfoRow label="Planned arrival"   value={trip.planned_arrival_at   ? fmtTs(trip.planned_arrival_at)   : '—'} />
+              {/* Planned and actual, paired. The backend has sent both since the trip
+                  model existed and this card showed only the plan — so a trip that ran
+                  eight days before it was scheduled to looked perfectly on schedule. */}
+              <ScheduleRows
+                label="Departure"
+                planned={trip.planned_departure_at}
+                actual={trip.actual_departure_at}
+              />
+              <ScheduleRows
+                label="Arrival"
+                planned={trip.planned_arrival_at}
+                actual={trip.actual_arrival_at}
+              />
+              {trip.closed_at && <InfoRow label="Closed" value={fmtFull(trip.closed_at)} />}
             </div>
             {sealNumber && (
               <div className="flex justify-between items-center pt-[8px] mt-[2px] border-t border-outline-v/20 text-[13px]">
                 <span className="text-[11px] text-on-surf-v shrink-0">Seal</span>
-                <span className="font-mono tracking-[0.06em] font-[700] text-[13px] bg-primary text-white rounded-[var(--r-sm)] px-[10px] py-[3px]">
+                {/* Shorthand tokens, matching the migration DepartureDetail already made
+                    — same hex, real radius scale. This badge was the last holdout on the
+                    legacy `bg-primary`/`text-white`/`var(--r-sm)` trio. */}
+                <span className="font-mono tracking-[0.06em] font-[700] text-[13px] bg-on-surf text-surf-lowest rounded-sm px-[10px] py-[3px]">
                   {sealNumber}
                 </span>
               </div>
@@ -583,7 +779,7 @@ export default function TripDetailPage() {
             Route
           </div>
           <div className="bg-surf-lowest rounded-md p-[10px_12px] mb-4 text-[13px] shadow-level-2">
-            {[...trip.stops].sort((a, b) => a.sequence - b.sequence).map((stop, i, arr) => {
+            {routeStops.map((stop, i, arr) => {
               const precinct = precincts.find(p => p.id === stop.precinct_id)
               const name = precinct?.name.split('—')[0]?.trim() ?? '—'
               return (
@@ -592,13 +788,15 @@ export default function TripDetailPage() {
                   className={`flex items-start gap-[8px] py-[6px]${i < arr.length - 1 ? ' border-b border-outline-v/20' : ''}`}
                 >
                   <span className="w-[18px] h-[18px] rounded-full bg-surf-high text-on-surf-v text-[10px] font-[700] flex items-center justify-center shrink-0 mt-[1px]">
-                    {stop.sequence + 1}
+                    {/* Rank, not `sequence + 1` — seeded trips number stops from 1, so the
+                        raw value rendered a route that began at "2". */}
+                    {i + 1}
                   </span>
                   <div className="flex-1 min-w-0">
                     <div className="font-[500] text-on-surf truncate">{name}</div>
                     {stop.slot_time && (
                       <div className="text-[11px] text-on-surf-v tabular-nums">
-                        Slot {fmtTs(stop.slot_time)}
+                        Slot {fmtDateTime(stop.slot_time)}
                       </div>
                     )}
                   </div>
@@ -614,13 +812,26 @@ export default function TripDetailPage() {
             <div className="font-[600] text-on-surf tabular-nums">
               {trip.consignments.length} waybill{trip.consignments.length === 1 ? '' : 's'}
             </div>
+            {/* Booked vs counted, kept apart. The first comes from the waybills at
+                creation; the second is evidence a driver produced at the gate. Collapsing
+                them into one "N parcels" line — with a null counted value coalesced to
+                zero — is how this card came to report an empty truck. */}
             <div className="text-[11px] text-on-surf-v tabular-nums mt-[2px]">
-              {parcelCount} parcels
+              {expectedParcels} parcels booked
             </div>
+            <div className={`text-[11px] tabular-nums mt-[1px] ${originCount === null ? 'text-on-surf-v' : 'text-on-surf'}`}>
+              {originCount === null
+                ? 'Origin count not recorded'
+                : `${originCount} counted at origin`}
+            </div>
+            {/* States the phase fact it actually has. The old copy claimed "All scanned
+                out at origin", which is a Parcel Perfect scan assertion this page never
+                checked — the manifest carrying origin_scan_complete is only fetched when
+                the panel below is opened. */}
             {originLoad?.status === 'completed' && (
               <div className="text-[11px] text-ok mt-[3px] flex items-center gap-1">
                 <Ic n="check" s={11} className="text-ok" />
-                All scanned out at origin ✓
+                Loading complete at origin
               </div>
             )}
             <button

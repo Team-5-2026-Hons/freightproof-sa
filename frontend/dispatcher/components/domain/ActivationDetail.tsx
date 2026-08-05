@@ -3,6 +3,7 @@
 import { EvidencePhoto } from './EvidencePhoto'
 import { Field, PhaseDetailCard, Section } from './PhaseDetailFields'
 import { PhaseLocationSection } from './PhaseLocationSection'
+import { PhaseOverrideSection } from './PhaseOverrideSection'
 import { fmtDateTime } from '@shared/lib/utils/datetime'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
@@ -49,12 +50,9 @@ export function ActivationDetail({ phase, trip, precinct, artifactsById }: Props
         />
       </Section>
 
-      {/* An override means a human bypassed a check. It is never a footnote. */}
-      {phase.dispatcher_override_note && (
-        <Section title="Dispatcher override">
-          <Field label="Note" value={phase.dispatcher_override_note} span />
-        </Section>
-      )}
+      {/* An override means a human bypassed a check. It is never a footnote — and it is
+          no longer only activation's concern, so the rendering is shared. */}
+      <PhaseOverrideSection phase={phase} />
 
     </PhaseDetailCard>
   )

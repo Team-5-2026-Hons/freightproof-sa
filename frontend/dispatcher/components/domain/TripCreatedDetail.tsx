@@ -27,7 +27,10 @@ interface Props {
 
 export function TripCreatedDetail({ trip }: Props) {
   const { driver, horse } = trip
-  const receipt = trip.blockchain_receipts[0] ?? null
+  // Found by TYPE, never by array index. The backend happens to order receipts by
+  // created_at (resource_service.py) so the journey lock is usually first, but "usually"
+  // is not a contract — and this panel labels whatever it finds as the journey lock hash.
+  const receipt = trip.blockchain_receipts.find(r => r.receipt_type === 'journey_lock') ?? null
   const isPending = !receipt?.hedera_topic_id || receipt.hedera_topic_id === 'None'
 
   function fmtDate(iso: string | null | undefined): string {

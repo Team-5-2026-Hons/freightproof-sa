@@ -2,6 +2,7 @@
 
 import { EvidencePhoto } from './EvidencePhoto'
 import { Field, PhaseDetailCard, Section } from './PhaseDetailFields'
+import { PhaseOverrideSection } from './PhaseOverrideSection'
 import { departureSealForLeg } from '@/lib/phase/derive'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
@@ -60,6 +61,8 @@ export function UnloadingDetail({ phase, allPhases, artifactsById }: Props) {
           artifact={phase.gate_photo_artifact_id ? artifactsById.get(phase.gate_photo_artifact_id) : undefined}
         />
       </Section>
+
+      <PhaseOverrideSection phase={phase} />
 
     </PhaseDetailCard>
   )

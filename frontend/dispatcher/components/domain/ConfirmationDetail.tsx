@@ -4,6 +4,7 @@ import { EvidenceDocument } from './EvidenceDocument'
 import { EvidencePhoto } from './EvidencePhoto'
 import { PhaseDetailCard, Section } from './PhaseDetailFields'
 import { PhaseAnchorSection } from './PhaseAnchorSection'
+import { PhaseOverrideSection } from './PhaseOverrideSection'
 import { PhaseLocationSection } from './PhaseLocationSection'
 import { ReconciliationRows } from './ReconciliationRows'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
@@ -43,6 +44,8 @@ export function ConfirmationDetail({ phase, precinct, artifactsById }: Props) {
       </div>
 
       <PhaseLocationSection phase={phase} precinct={precinct} title="Location at confirmation" />
+
+      <PhaseOverrideSection phase={phase} />
 
       <PhaseAnchorSection phase={phase} />
 

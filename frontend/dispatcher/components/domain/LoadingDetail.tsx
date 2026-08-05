@@ -1,6 +1,7 @@
 'use client'
 
 import { Field, PhaseDetailCard, Section } from './PhaseDetailFields'
+import { PhaseOverrideSection } from './PhaseOverrideSection'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 
 interface Props {
@@ -31,6 +32,7 @@ export function LoadingDetail({ phase }: Props) {
             : `Discrepancy of ${Math.abs(expected - counted)} ✗`}
         </div>
       )}
+      <PhaseOverrideSection phase={phase} />
     </PhaseDetailCard>
   )
 }

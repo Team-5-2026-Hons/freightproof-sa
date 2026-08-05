@@ -2,11 +2,50 @@
 
 import { useEffect, useState } from 'react'
 import { Ic } from '@/components/ui/Ic'
+import { ForensicOnly } from '@/components/blockchain/ForensicOnly'
+import { fmtDateTime } from '@shared/lib/utils/datetime'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 
 interface Props {
   label: string
   artifact: EvidenceArtifactWithUrl | undefined
+}
+
+/**
+ * Where and when this image was captured, and the hash that binds it to the chain.
+ *
+ * Forensic-only because it is the reviewer's layer, not the dispatcher's — but it is the
+ * whole evidential point of storing a photo: without the hash the image is a picture,
+ * and with it the image is proof. The backend has sent all four fields since artifacts
+ * existed; the panel rendered the picture and dropped every one of them.
+ */
+function ArtifactProvenance({ artifact }: { artifact: EvidenceArtifactWithUrl }) {
+  const hasFix = artifact.captured_lat !== null && artifact.captured_lng !== null
+
+  return (
+    <ForensicOnly>
+      <div className="mt-[5px] text-[10px] leading-[1.5] text-on-surf-v">
+        <div className="tabular-nums">Captured {fmtDateTime(artifact.captured_at)}</div>
+        {hasFix && (
+          <div className="font-mono tabular-nums tracking-[0.02em]">
+            {artifact.captured_lat!.toFixed(5)}, {artifact.captured_lng!.toFixed(5)}
+          </div>
+        )}
+        {/* Truncated head and tail, like every other hash on this page — enough to
+            eyeball against a receipt, and the full value is one click away. */}
+        <button
+          onClick={e => {
+            e.stopPropagation()
+            navigator.clipboard.writeText(artifact.file_hash).catch(() => {})
+          }}
+          title={artifact.file_hash}
+          className="font-mono tracking-[0.02em] hover:text-on-surf transition-colors"
+        >
+          SHA-256 {artifact.file_hash.slice(0, 8)}…{artifact.file_hash.slice(-8)}
+        </button>
+      </div>
+    </ForensicOnly>
+  )
 }
 
 /**
@@ -49,6 +88,9 @@ export function EvidencePhoto({ label, artifact }: Props) {
           <Ic n="warn" s={12} className="text-warn" />
           Recorded, image unavailable
         </div>
+        {/* Especially here: the picture could not be served, so the hash and capture fix
+            are the only evidence left standing. */}
+        <ArtifactProvenance artifact={artifact} />
       </div>
     )
   }
@@ -68,6 +110,7 @@ export function EvidencePhoto({ label, artifact }: Props) {
           className="w-[96px] h-[96px] object-cover"
         />
       </button>
+      <ArtifactProvenance artifact={artifact} />
 
       {isOpen && (
         <div
