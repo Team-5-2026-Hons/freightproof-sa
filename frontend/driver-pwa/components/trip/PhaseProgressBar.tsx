@@ -20,15 +20,8 @@ const DOT_CLASSES: Record<PhaseStageState, string> = {
   upcoming:  'bg-surface-container-lowest border-outline-variant text-surface-on-variant',
 }
 
-const CONNECTOR_CLASSES: Record<PhaseStageState, string> = {
-  completed: 'bg-primary',
-  current:   'bg-outline-variant/40',
-  exception: 'bg-outline-variant/40',
-  upcoming:  'bg-outline-variant/40',
-}
-
 // Label weight tracks the same state as the dot — the driver should be able to find
-// "where am I" from the text column alone, without colour-matching against the rail.
+// "where am I" from the text column alone, without colour-matching against the dots.
 const LABEL_CLASSES: Record<PhaseStageState, string> = {
   completed: 'text-surface-on-variant',
   current:   'text-surface-on font-semibold',
@@ -36,18 +29,35 @@ const LABEL_CLASSES: Record<PhaseStageState, string> = {
   upcoming:  'text-surface-on-variant/70',
 }
 
-// Every row reserves at least the dot's own height so the label sits centred against
-// its dot regardless of how much text it carries — one row with a "Stop 2" line and
-// one without still line up with their dots. Must stay equal to DOT_SIZE_CLASS's
-// height, or labels drift off their own dots.
-const ROW_MIN_HEIGHT_CLASS = 'min-h-8'
-const DOT_SIZE_CLASS = 'h-8 w-8'
+// Right-hand status column. Words, not another colour cue: the dot already carries
+// colour, and a driver glancing at 11 rows in a cab needs the plan to be readable in
+// one pass without decoding a palette. Kept short so the longest of them still clears
+// the phase label on a 320px screen.
+const STATUS_LABELS: Record<PhaseStageState, string> = {
+  completed: 'Done',
+  current:   'Current',
+  exception: 'Issue',
+  upcoming:  'Pending',
+}
 
-// Row gap. 7 rows on a single-leg trip and 11 on a cross-dock, each previously
-// 36px of dot plus 16px of gap — the timeline alone overran a 390pt phone before the
-// current-phase CTA underneath it was even reached. 32 + 12 keeps every row of a
-// single-leg plan on one screen with the CTA still visible.
-const ROW_GAP_CLASS = 'pb-3'
+const STATUS_CLASSES: Record<PhaseStageState, string> = {
+  completed: 'text-surface-on-variant',
+  current:   'text-secondary',
+  exception: 'text-error',
+  upcoming:  'text-surface-on-variant/60',
+}
+
+// The current row is tinted rather than only bolded: with the rows now separated by
+// hairlines instead of a connector rail, weight alone is too quiet to find at a glance
+// halfway down an 11-row cross-dock plan.
+const ROW_CLASSES: Record<PhaseStageState, string> = {
+  completed: '',
+  current:   'bg-secondary-container/40',
+  exception: 'bg-error-container/30',
+  upcoming:  '',
+}
+
+const DOT_SIZE_CLASS = 'h-7 w-7'
 
 // A phase's dot state is read straight off its own `status` — the old
 // lib/utils/handshake-progress.ts existed only to reconstruct this by scanning for
@@ -62,17 +72,17 @@ function stageStateFor(phase: PhaseDescriptor, current: PhaseDescriptor | null):
   return 'upcoming'
 }
 
-// Vertical timeline over the trip's full phase plan. Renders exactly `phases.length`
-// rows — DATA, never a fixed 5: a single-leg trip is 7 rows, a three-stop cross-dock is
-// 11 (lib/phase/derive.ts's own header comment).
+// The trip's full phase plan as a table. Renders exactly `phases.length` rows — DATA,
+// never a fixed 5: a single-leg trip is 7 rows, a three-stop cross-dock is 11
+// (lib/phase/derive.ts's own header comment).
 //
-// Vertical, not the horizontal stepper this replaced: at 7-11 rows the horizontal bar
-// could only fit ~5 dots on a 390pt phone, so the rest lived off-screen behind a
-// sideways scroll a driver had no reason to expect, and each label was squeezed into a
-// 64px column at 10px type. Down the page every phase is visible in one glance at full
-// label size, and the list grows with the plan instead of scrolling out of sight — which
-// also removes the old scroll-the-current-dot-into-view effect entirely, since the rows
-// now sit in normal document flow rather than in their own scroll container.
+// Framed and column-aligned, matching TripTable — same border, header strip and
+// hairline dividers, so the list of trips and the plan inside one trip read as the same
+// kind of object. The previous free-standing dot-and-connector timeline sat directly on
+// the page background with nothing bounding it, which left every row looking like it
+// was floating between the status chip above and the CTA below; a frame plus a fixed
+// status column gives the rows an edge to align to. The dividers now do the connector's
+// job of tying consecutive rows together.
 //
 // Circles show the phase's plain plan position (sequence_number), never internal
 // phase-type codes — mirrors the old handshake bar's same driver-facing reasoning.
@@ -85,67 +95,78 @@ export function PhaseProgressBar({ phases }: PhaseProgressBarProps) {
   const current = currentPhase(sorted)
 
   return (
-    <ol aria-label="Trip phases" className="flex flex-col">
-      {sorted.map((phase, i) => {
-        const state = stageStateFor(phase, current)
-        const isLast = i === sorted.length - 1
+    <div className="overflow-hidden rounded-xl border border-outline-variant/25 bg-surface-container-lowest shadow-ambient-sm">
+      {/* Column labels, not content — the rows below are a list, not a <table>, so this
+          strip is decorative and hidden from assistive tech, which reads each row's own
+          text in order instead. Identical treatment to TripTable's header. */}
+      <div
+        className="flex items-center justify-between gap-3 border-b border-outline-variant/25 bg-surface-container-low px-3 py-2 xs:px-4"
+        aria-hidden
+      >
+        <span className="text-[10px] font-bold uppercase tracking-wider text-surface-on-variant">Phase</span>
+        <span className="text-[10px] font-bold uppercase tracking-wider text-surface-on-variant">Status</span>
+      </div>
 
-        return (
-          <li
-            key={phase.phase_event_id}
-            aria-current={state === 'current' ? 'step' : undefined}
-            className="flex gap-3"
-          >
-            {/* Rail column: dot, then the connector running down to the next dot. A
-                segment's colour reflects the phase it flows OUT of, so the rail reads
-                as "progress reached this far" rather than as a property of the row
-                below it. The last row has nothing to connect to. */}
-            <div className="flex flex-col items-center">
+      <ol aria-label="Trip phases" className="divide-y divide-outline-variant/20">
+        {sorted.map((phase) => {
+          const state = stageStateFor(phase, current)
+
+          return (
+            <li
+              key={phase.phase_event_id}
+              aria-current={state === 'current' ? 'step' : undefined}
+              className={cn(
+                'flex items-center gap-3 px-3 py-2.5 transition-colors duration-200 xs:px-4',
+                ROW_CLASSES[state],
+              )}
+            >
               <div
                 className={cn(
-                  'flex shrink-0 items-center justify-center rounded-full border-2 text-sm font-bold transition-colors duration-200',
+                  'flex shrink-0 items-center justify-center rounded-full border-2 text-xs font-bold transition-colors duration-200',
                   DOT_SIZE_CLASS,
                   DOT_CLASSES[state],
                 )}
               >
                 {state === 'completed' ? (
-                  <Check className="h-4 w-4" strokeWidth={2.5} aria-hidden />
+                  <Check className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden />
                 ) : state === 'exception' ? (
-                  <AlertTriangle className="h-4 w-4" strokeWidth={2.5} aria-hidden />
+                  <AlertTriangle className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden />
                 ) : (
                   phase.sequence_number
                 )}
               </div>
-              {!isLast && (
-                <div
-                  className={cn(
-                    'my-1 w-0.5 flex-1 rounded-full transition-colors duration-200',
-                    CONNECTOR_CLASSES[state],
-                  )}
-                />
-              )}
-            </div>
 
-            <div className={cn('flex flex-1 flex-col justify-center', !isLast && ROW_GAP_CLASS)}>
-              <div className={cn('flex flex-col justify-center', ROW_MIN_HEIGHT_CLASS)}>
-                <p className={cn('text-sm leading-tight', LABEL_CLASSES[state])}>
+              {/* min-w-0 is what lets the truncate below actually fire: a flex child
+                  defaults to min-width:auto and refuses to shrink under its content,
+                  which is how a long phase label pushes the status column off a 320px
+                  screen (same reasoning as TripTable's own row). */}
+              <div className="flex min-w-0 flex-1 flex-col">
+                <p className={cn('truncate text-sm leading-tight', LABEL_CLASSES[state])}>
                   {PHASE_NAMES[phase.phase_type]}
                 </p>
                 {/* Disambiguates a repeated phase type on a cross-dock plan (e.g. the
                     second of three `unloading` rows) — stop_sequence is null only for
-                    trip_creation. The old horizontal cell had no room for this; a full
-                    -width row does, and without it two identical "Unloading" labels are
+                    trip_creation. Without it two identical "Unloading" labels are
                     indistinguishable. */}
                 {phase.stop_sequence !== null && (
-                  <p className="text-xs leading-tight text-surface-on-variant">
+                  <p className="truncate text-xs leading-tight text-surface-on-variant">
                     Stop {phase.stop_sequence}
                   </p>
                 )}
               </div>
-            </div>
-          </li>
-        )
-      })}
-    </ol>
+
+              <span
+                className={cn(
+                  'shrink-0 text-[10px] font-bold uppercase tracking-wider',
+                  STATUS_CLASSES[state],
+                )}
+              >
+                {STATUS_LABELS[state]}
+              </span>
+            </li>
+          )
+        })}
+      </ol>
+    </div>
   )
 }
