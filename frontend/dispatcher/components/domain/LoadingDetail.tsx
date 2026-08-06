@@ -6,30 +6,29 @@ import type { PhaseDescriptor } from '@shared/lib/types/phase'
 
 interface Props {
   phase: PhaseDescriptor
+  /** Manifest baseline from Parcel Perfect's tracks[]. Null when the trip carries no
+   *  PP reference — common, and not a failure. */
+  expectedCount: number | null
 }
 
-// Deliberately thin: loading only ever captures the driver's own visual parcel
-// count (D7/T5 — the seal moved to departure). No location section either — the
-// request schema carries no driver_phone_lat/lng, so there is nothing to show.
-export function LoadingDetail({ phase }: Props) {
-  const expected = phase.parcel_count_origin
-  const counted = phase.driver_visual_count
-  // Both nullable, and null is not zero — a trip with no manifest baseline yet has
-  // nothing to compare, only a count to display (mirrors the backend's own
-  // no-baseline-means-skip rule in advance_loading).
-  const hasBoth = expected !== null && counted !== null
+// Loading is now system-observed: the warehouse's scan is what records what went on the
+// truck, and parcel_count_origin is the scanned tally stamped at close. The driver's own
+// count is gone — he never enters the warehouse and could not honestly produce one.
+export function LoadingDetail({ phase, expectedCount }: Props) {
+  const scanned = phase.parcel_count_origin
+  // Null is not zero: no baseline means nothing to compare, not "nothing was loaded".
+  const hasBoth = expectedCount !== null && scanned !== null
+  const missing = hasBoth ? expectedCount - scanned : 0
 
   return (
     <PhaseDetailCard>
-      <Section title="Count">
-        <Field label="Expected (manifest)" value={expected?.toString()} />
-        <Field label="Driver visual count" value={counted?.toString()} />
+      <Section title="Warehouse scan">
+        <Field label="Expected (manifest)" value={expectedCount?.toString()} />
+        <Field label="Scanned onto truck" value={scanned?.toString()} />
       </Section>
       {hasBoth && (
-        <div className={`text-[11px] font-[600] px-3 pb-3 ${expected === counted ? 'text-ok' : 'text-warn'}`}>
-          {expected === counted
-            ? 'Counts agree ✓'
-            : `Discrepancy of ${Math.abs(expected - counted)} ✗`}
+        <div className={`text-[11px] font-[600] px-3 pb-3 ${missing === 0 ? 'text-ok' : 'text-warn'}`}>
+          {missing === 0 ? 'All parcels scanned ✓' : `${missing} not scanned ✗`}
         </div>
       )}
       <PhaseOverrideSection phase={phase} />

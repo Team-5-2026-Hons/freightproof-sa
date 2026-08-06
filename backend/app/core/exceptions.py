@@ -168,6 +168,25 @@ class TripStateError(Exception):
         self.attempted_action = attempted_action
 
 
+class PhaseBlockedError(Exception):
+    """Raised when a phase is waiting on an external system it cannot proceed without.
+
+    Distinct from PhaseSequenceError and PhaseTooEarlyError even though all three map
+    to 409, for the same reason those two are distinct from each other: the plan is in
+    order and the calendar is fine, a third party simply has not finished. Keeping it
+    separate lets the driver app say "waiting for the warehouse" instead of a generic
+    "trip state changed".
+    """
+
+    def __init__(self, attempted_phase: str) -> None:
+        super().__init__(
+            f"Cannot complete {attempted_phase}: the warehouse has not finished "
+            f"scanning at this stop. This will clear on its own once they do — "
+            f"contact your dispatcher if it does not."
+        )
+        self.attempted_phase = attempted_phase
+
+
 class PhaseTypeMismatchError(Exception):
     """Raised when a completion payload's phase_type does not match the addressed row's.
 

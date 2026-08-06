@@ -33,6 +33,7 @@ from app.db.models.people import Driver
 from app.db.models.transit import TripException
 from app.db.models.trips import Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
+from app.orchestration.phase_gate import blocked_on_by_stop
 from app.orchestration.phase_plan import ANCHORED_PHASES, PlanStop, build_phase_plan
 from app.orchestration.phase_service import recompute_position
 from app.orchestration.resource_service import get_trip_detail
@@ -425,6 +426,7 @@ async def create_trip(
     enqueue_event(db, current_user.organization_id, TripEvent(id=trip.id, kind=RealtimeKind.TRIP_CREATED))
 
     # 8. Assemble and return the response (no ORM relationships — fetch separately).
+    gate = await blocked_on_by_stop(db, trip_id=trip.id)
     return TripDetailResponse(
         id=trip.id,
         trip_reference=trip.trip_reference,
@@ -452,7 +454,11 @@ async def create_trip(
         # trip: returning one row here while GET /trips/{id} returns seven made the
         # phase list look like it grew between two reads of an unchanged trip.
         phases=[
-            PhaseEventRead.from_event(e, stop_sequence_by_id={s.id: s.sequence for s in trip_stops})
+            PhaseEventRead.from_event(
+                e,
+                stop_sequence_by_id={s.id: s.sequence for s in trip_stops},
+                blocked_on_by_stop=gate,
+            )
             for e in phase_events
         ],
         exceptions=[],

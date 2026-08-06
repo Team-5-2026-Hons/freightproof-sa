@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_driver
 from app.core.exceptions import (
+    PhaseBlockedError,
     PhaseSequenceError,
     PhaseTooEarlyError,
     PhaseTypeMismatchError,
@@ -25,6 +26,7 @@ from app.core.exceptions import (
 )
 from app.db.models.trips import TripStop
 from app.db.session import get_db
+from app.orchestration.phase_gate import blocked_on_by_stop
 from app.orchestration.phase_service import complete_phase, list_phases, next_phase
 from app.schemas.people import DriverRead
 from app.schemas.phases import PhaseCompleteRequest, PhaseEventRead
@@ -54,8 +56,12 @@ async def list_phases_endpoint(
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     stop_sequences = await _stop_sequence_map(db, trip_id=trip_id)
+    gate = await blocked_on_by_stop(db, trip_id=trip_id)
     return [
-        PhaseEventRead.from_event(e, stop_sequence_by_id=stop_sequences) for e in events
+        PhaseEventRead.from_event(
+            e, stop_sequence_by_id=stop_sequences, blocked_on_by_stop=gate,
+        )
+        for e in events
     ]
 
 
@@ -76,7 +82,10 @@ async def next_phase_endpoint(
     if event is None:
         return None
     stop_sequences = await _stop_sequence_map(db, trip_id=trip_id)
-    return PhaseEventRead.from_event(event, stop_sequence_by_id=stop_sequences)
+    gate = await blocked_on_by_stop(db, trip_id=trip_id)
+    return PhaseEventRead.from_event(
+        event, stop_sequence_by_id=stop_sequences, blocked_on_by_stop=gate,
+    )
 
 
 @router.post(
@@ -104,7 +113,7 @@ async def complete_phase_endpoint(
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except (
         PhaseSequenceError, PhaseTooEarlyError, PhaseTypeMismatchError,
-        TripActivationBlockedError,
+        TripActivationBlockedError, PhaseBlockedError,
     ) as exc:
         # PhaseTooEarlyError joins the 409 family rather than getting a status of its own:
         # like the others it means "the request is well-formed, the trip's state says no".

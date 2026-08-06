@@ -14,6 +14,7 @@ are exercised here under their current names.
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -23,15 +24,19 @@ from sqlalchemy import select
 from app.blockchain.hedera import HederaReceipt
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import (
-    ArtifactType, BlockchainReceiptType, PhaseStatus, PhaseType, IdvsStatus,
+    ArtifactType, BlockchainReceiptType, ExceptionType, ParcelStatus, PhaseStatus, PhaseType, IdvsStatus,
     OrganizationType, SubjectType, TripStatus, VehicleType, VerifyStatus,
 )
 from app.db.models.evidence import EvidenceArtifact
 from app.db.models.phases import PhaseEvent
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
-from app.db.models.trips import Trip, TripStop
+from app.db.models.transit import TripException
+from app.db.models.trips import Consignment, Parcel, Trip, TripStop
 from app.db.models.vehicles import Vehicle
+from app.integrations import scan_feed as scan_feed_module
+from app.integrations.scan_feed import MockScanFeed, ScanDirection
+from app.orchestration import scan_service
 from app.orchestration.phase_service import (
     advance_activation, advance_confirmation, advance_departure, advance_loading, advance_unloading,
     compute_confirmation_canonical_payload, compute_departure_canonical_payload,
@@ -42,6 +47,37 @@ from app.schemas.phases import (
     ActivationCompleteRequest, ConfirmationCompleteRequest, DepartureCompleteRequest,
     LoadingCompleteRequest, UnloadingCompleteRequest,
 )
+
+
+class _FakeMockStateStore:
+    """Dict-backed MockStateStore — keeps this test off a real Redis.
+
+    Same shape as tests/unit/test_phase_service.py's copy, duplicated locally
+    rather than shared — this file already keeps its own trip_fixture/_make_artifact
+    rather than importing the other unit test module's, and test_dev_triggers.py
+    has its own copy of this exact class too.
+    """
+
+    def __init__(self) -> None:
+        self.data: dict[str, dict[str, Any]] = {}
+
+    async def get_json(self, key: str) -> dict[str, Any] | None:
+        return self.data.get(key)
+
+    async def set_json(self, key: str, value: dict[str, Any]) -> None:
+        self.data[key] = value
+
+    async def flush(self) -> int:
+        count = len(self.data)
+        self.data.clear()
+        return count
+
+
+@pytest.fixture
+def store(monkeypatch: pytest.MonkeyPatch) -> _FakeMockStateStore:
+    fake = _FakeMockStateStore()
+    monkeypatch.setattr(scan_feed_module, "get_mock_state_store", lambda: fake)
+    return fake
 
 # Fields that must never appear in an anchored handshake payload — GPS, photos,
 # artifact IDs, and timestamps are all either PII/location data (POPIA) or
@@ -304,7 +340,7 @@ async def test_advance_confirmation_anchors_with_delivery_receipt_type(
         payload=ConfirmationCompleteRequest(phase_type=PhaseType.CONFIRMATION,
             pod_photo_artifact_id=await _make_artifact(db_session, trip.id),
             pod_signature_artifact_id=await _make_artifact(db_session, trip.id),
-            driver_visual_count=42, pp_scan_in_count=42, idempotency_key=str(uuid.uuid4()),
+            driver_visual_count=42, idempotency_key=str(uuid.uuid4()),
         ),
     )
 
@@ -320,26 +356,117 @@ async def test_advance_confirmation_anchors_with_delivery_receipt_type(
     assert receipt.data_hash == h5.event_hash
 
 
-@pytest.mark.asyncio
-async def test_advance_confirmation_anchors_even_on_count_mismatch(
-    db_session, trip_fixture, captured_anchor_dispatches,
-):
-    trip, driver, phases = trip_fixture
-    await _advance_to_unloading(db_session, trip, driver, phases)
+# Task 7 removed test_advance_confirmation_anchors_even_on_count_mismatch from
+# here (see git history) — advance_loading stopped writing driver_visual_count,
+# so the old three-way count check it drove became unreachable. Task 8 restores
+# the same property below, now driven by a genuine scan-out vs scan-in mismatch.
 
-    result = await advance_confirmation(
-        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["confirmation"].id,
-        payload=ConfirmationCompleteRequest(phase_type=PhaseType.CONFIRMATION, 
-            pod_photo_artifact_id=await _make_artifact(db_session, trip.id),
-            pod_signature_artifact_id=await _make_artifact(db_session, trip.id),
-            driver_visual_count=40, pp_scan_in_count=42, idempotency_key=str(uuid.uuid4()),
+@pytest.mark.asyncio
+async def test_advance_confirmation_anchors_even_on_a_scan_mismatch(
+    db_session, trip_fixture, captured_anchor_dispatches, store,
+):
+    """The anchor must still fire when the scan-based reconciliation finds a real
+    discrepancy — a mismatch is evidence in its own right, not a reason to
+    withhold the anchor. _dispatch_anchor's call site in advance_confirmation is
+    unconditional; this proves it on the mismatch path, not just the match path
+    test_advance_confirmation_anchors_with_delivery_receipt_type covers above."""
+    trip, driver, phases = trip_fixture
+    stop0_id = phases["activation"].trip_stop_id
+    stop1_id = phases["confirmation"].trip_stop_id
+
+    consignment = Consignment(
+        id=uuid.uuid4(), trip_id=trip.id, parcel_perfect_reference="WAY-ANCHOR-MISMATCH",
+        parcel_count_expected=3, pickup_stop_id=stop0_id, delivery_stop_id=stop1_id,
+    )
+    db_session.add(consignment)
+    await db_session.flush()
+    barcodes = ["ANCMIS0001", "ANCMIS0002", "ANCMIS0003"]
+    for barcode in barcodes:
+        db_session.add(Parcel(
+            id=uuid.uuid4(), consignment_id=consignment.id, barcode=barcode, status=ParcelStatus.PENDING,
+        ))
+    await db_session.flush()
+
+    feed = MockScanFeed()
+    await feed.stage_scans(
+        consignment_reference=consignment.parcel_perfect_reference, stop_reference=str(stop0_id),
+        direction=ScanDirection.OUT, barcodes=barcodes,
+    )
+    await scan_service.ingest_scans(
+        db_session, trip_id=trip.id, trip_stop_id=stop0_id, direction=ScanDirection.OUT,
+    )
+    await feed.close_session(
+        consignment_reference=consignment.parcel_perfect_reference, stop_reference=str(stop0_id),
+        direction=ScanDirection.OUT,
+    )
+
+    await advance_activation(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["activation"].id,
+        payload=ActivationCompleteRequest(phase_type=PhaseType.ACTIVATION,
+            driver_phone_lat=Decimal("0"), driver_phone_lng=Decimal("0"), idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+    await advance_loading(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["loading"].id,
+        payload=LoadingCompleteRequest(phase_type=PhaseType.LOADING, idempotency_key=str(uuid.uuid4())),
+    )
+    await advance_departure(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["departure"].id,
+        payload=DepartureCompleteRequest(phase_type=PhaseType.DEPARTURE,
+            waybill_photo_artifact_id=await _make_artifact(db_session, trip.id), seal_number="AB-1234",
+            seal_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            guard_verified_seal=True, idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+    await advance_unloading(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading"].id,
+        payload=UnloadingCompleteRequest(
+            phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-1234",
+            gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            idempotency_key=str(uuid.uuid4()),
         ),
     )
 
+    # Only 2 of 3 scanned in at destination — the mismatch this test exists to anchor.
+    await feed.stage_scans(
+        consignment_reference=consignment.parcel_perfect_reference, stop_reference=str(stop1_id),
+        direction=ScanDirection.IN, barcodes=barcodes[:2],
+    )
+    await scan_service.ingest_scans(
+        db_session, trip_id=trip.id, trip_stop_id=stop1_id, direction=ScanDirection.IN,
+    )
+    await feed.close_session(
+        consignment_reference=consignment.parcel_perfect_reference, stop_reference=str(stop1_id),
+        direction=ScanDirection.IN,
+    )
+
+    result = await advance_confirmation(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["confirmation"].id,
+        payload=ConfirmationCompleteRequest(phase_type=PhaseType.CONFIRMATION,
+            pod_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            pod_signature_artifact_id=await _make_artifact(db_session, trip.id),
+            driver_visual_count=2, idempotency_key=str(uuid.uuid4()),
+        ),
+    )
     h5 = next(h for h in result.phases if h.phase_type == PhaseType.CONFIRMATION)
     assert h5.status == PhaseStatus.EXCEPTION
+
+    exception = (await db_session.execute(
+        select(TripException).where(
+            TripException.trip_id == trip.id,
+            TripException.exception_type == ExceptionType.WAYBILL_COUNT_MISMATCH,
+        )
+    )).scalar_one()
+    assert exception.consignment_id == consignment.id
+
     await _drain_anchors(db_session, captured_anchor_dispatches)
-    assert phases["confirmation"].blockchain_receipt_id is not None
+
+    receipt = (await db_session.execute(
+        select(BlockchainReceipt).where(BlockchainReceipt.id == phases["confirmation"].blockchain_receipt_id)
+    )).scalar_one()
+    assert receipt.subject_type == SubjectType.PHASE_EVENT
+    assert receipt.receipt_type == BlockchainReceiptType.DELIVERY
+    assert receipt.data_hash == phases["confirmation"].event_hash
 
 
 # ── Verification reconstruction: proves reconstruct == anchored payload ───────
@@ -382,7 +509,7 @@ async def test_verify_subject_after_confirmation_reconstructs_matching_payload(
         payload=ConfirmationCompleteRequest(phase_type=PhaseType.CONFIRMATION, 
             pod_photo_artifact_id=await _make_artifact(db_session, trip.id),
             pod_signature_artifact_id=await _make_artifact(db_session, trip.id),
-            driver_visual_count=42, pp_scan_in_count=42, idempotency_key=str(uuid.uuid4()),
+            driver_visual_count=42, idempotency_key=str(uuid.uuid4()),
         ),
     )
     h5 = next(h for h in result.phases if h.phase_type == PhaseType.CONFIRMATION)

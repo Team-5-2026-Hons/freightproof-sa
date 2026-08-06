@@ -61,6 +61,11 @@ class PhaseEventRead(BaseModel):
     # system-observed phases.
     step_recipe: tuple[str, ...] = ()
 
+    # Non-null while this phase is waiting on an external system — today only the
+    # warehouse scan feed. Derived per request (orchestration/phase_gate.py), never
+    # stored: it is a property of the outside world, not of this row.
+    blocked_on: Optional[str] = None
+
     # The driver app's offline-queue entry id, echoed so a client can reconcile
     # its own queue against what the server actually recorded.
     idempotency_key: Optional[str] = None
@@ -90,11 +95,21 @@ class PhaseEventRead(BaseModel):
 
     @classmethod
     def from_event(
-        cls, event: Any, *, stop_sequence_by_id: dict[UUID, int],
+        cls,
+        event: Any,
+        *,
+        stop_sequence_by_id: dict[UUID, int],
+        blocked_on_by_stop: dict[tuple[Any, UUID], Optional[str]] | None = None,
     ) -> "PhaseEventRead":
         """`event` is a db.models.phases.PhaseEvent. Typed as Any to keep this
         module free of a db-model import — schemas describe the wire, not the
-        tables, and app/schemas/ importing app/db/models/ would invert that."""
+        tables, and app/schemas/ importing app/db/models/ would invert that.
+
+        blocked_on_by_stop defaults to None so a caller that genuinely has no gate
+        state (tests, fixtures) still builds a valid row. Every production caller
+        passes it — a missing map silently yields blocked_on=None on every phase,
+        the same trap stop_sequence_by_id documents above.
+        """
         read = cls.model_validate(event)
         read.stop_sequence = (
             stop_sequence_by_id.get(event.trip_stop_id)
@@ -102,6 +117,10 @@ class PhaseEventRead(BaseModel):
             else None
         )
         read.step_recipe = STEP_SLUGS[PhaseType(event.phase_type)]
+        if blocked_on_by_stop is not None and event.trip_stop_id is not None:
+            read.blocked_on = blocked_on_by_stop.get(
+                (PhaseType(event.phase_type), event.trip_stop_id)
+            )
         return read
 
 
@@ -163,10 +182,16 @@ class ActivationCompleteRequest(_PhaseCompleteBase):
 
 
 class LoadingCompleteRequest(_PhaseCompleteBase):
-    # D7/T5: the seal is applied at departure, not here. Loading only ever
-    # captures the driver's own visual parcel count.
+    # D7/T5: the seal is applied at departure, not here.
+    #
+    # driver_visual_count is Optional and IGNORED by advance_loading as of the
+    # scan-driven redesign. It is kept on the schema rather than removed for one
+    # reason: a loading queued offline under the old schema replays from
+    # localStorage with the field present, and removing it would 422 that entry
+    # forever — the queue would never drain. The driver app stops sending it in
+    # Stage C; this field is deleted only once no client can still be holding one.
     phase_type: Literal[PhaseType.LOADING]
-    driver_visual_count: int
+    driver_visual_count: Optional[int] = None
 
 
 class DepartureCompleteRequest(_PhaseCompleteBase):
@@ -224,11 +249,28 @@ class UnloadingCompleteRequest(_PhaseCompleteBase):
 class ConfirmationCompleteRequest(_PhaseCompleteBase):
     # BQ2 resolved 2026-06-29: proof of delivery is a photo AND an on-device
     # signature — both required, not either/or.
+    #
+    # pp_scan_in_count is GONE from the wire. The driver app used to send its own
+    # driver_visual_count in this field, which made the reconciliation compare a
+    # number against itself. The server now derives it from Parcel.pp_scan_in_at.
+    # The KEY of the same name in the anchored canonical payload is unchanged and
+    # must stay — verification_service rebuilds from it, so renaming it would break
+    # hash verification on every historical trip.
+    #
+    # Checked before removing (task 8, §"CHECK THIS BEFORE PROCEEDING"): no schema
+    # in this codebase sets extra="forbid" (BaseModel/_PhaseCompleteBase both use
+    # Pydantic v2's default extra="ignore"), so an offline-queued confirmation still
+    # carrying pp_scan_in_count from before this change is silently accepted and the
+    # field just does nothing — it does not poison the driver app's offline queue
+    # with a 422. Safe to remove outright, unlike LoadingCompleteRequest's
+    # driver_visual_count, which had to stay as a schema field (Optional, ignored)
+    # for the same offline-replay reason.
     phase_type: Literal[PhaseType.CONFIRMATION]
     pod_photo_artifact_id: UUID
     pod_signature_artifact_id: UUID
+    # Pallet grain. Recorded and anchored as evidence; never compared against a
+    # parcel count (design §5).
     driver_visual_count: int
-    pp_scan_in_count: int
 
 
 # Decision S5. One endpoint, five real shapes: Pydantic picks the member from

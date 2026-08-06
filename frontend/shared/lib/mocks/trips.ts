@@ -42,12 +42,19 @@ function planStops(stops: TripStop[]): PlanStopInput[] {
 
 // Mark the plan as walked through `throughSequence` inclusive, and attach the
 // evidence the dispatcher's panels read. Mirrors what the backend writes: the seal
-// at DEPARTURE (parent D7/§2.6, never at loading), the count at LOADING.
+// at DEPARTURE (parent D7/§2.6, never at loading), the counts at LOADING.
+//
+// `count` and `scannedCount` are two different real-world figures now that
+// advance_loading was rewritten: `count` is the driver's own visual tally,
+// `scannedCount` is the warehouse's scanned-out total (parcel_count_origin).
+// `scannedCount` defaults to `count` because none of today's fixtures model a
+// discrepancy between the two — a mock that deliberately wants one (e.g. to
+// exercise a count-mismatch exception) can pass `scannedCount` explicitly.
 function walkPlan(
   plan: PhaseDescriptor[],
   throughSequence: number,
   at: string,
-  evidence?: { seal?: string; count?: number },
+  evidence?: { seal?: string; count?: number; scannedCount?: number },
 ): PhaseDescriptor[] {
   return plan.map(phase => {
     if (phase.sequence_number > throughSequence) return phase
@@ -60,7 +67,7 @@ function walkPlan(
       driver_visual_count:
         phase.phase_type === 'loading' ? evidence?.count ?? null : phase.driver_visual_count,
       parcel_count_origin:
-        phase.phase_type === 'loading' ? evidence?.count ?? null : phase.parcel_count_origin,
+        phase.phase_type === 'loading' ? evidence?.scannedCount ?? evidence?.count ?? null : phase.parcel_count_origin,
     }
   })
 }

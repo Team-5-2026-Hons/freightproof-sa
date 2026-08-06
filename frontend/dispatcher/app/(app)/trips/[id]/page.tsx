@@ -42,7 +42,7 @@ import { fmtExceptionType } from '@/lib/format/exception'
 // read "12 Mar" — and formatted the same field differently from its own child panels.
 import { fmtDateTime, fmtFull } from '@shared/lib/utils/datetime'
 import {
-  activePhase, anchorTally, currentSealNumber, nodeTypeFor, originParcelCount,
+  activePhase, anchorTally, currentSealNumber, nodeTypeFor, originScannedCount,
   recordedExceptionLabel, sortedPlan, tripChipMeta,
 } from '@/lib/phase/derive'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
@@ -449,8 +449,9 @@ export default function TripDetailPage() {
   // evidence that only exists once a driver has counted. Null is NOT zero — a loading
   // phase that recorded no count must read as "not recorded", never as "0 parcels", or
   // the page reports an empty truck it has no evidence for.
-  const originCount     = originParcelCount(trip.phases)
-  const expectedParcels = trip.consignments.reduce((n, c) => n + (c.parcel_count_expected ?? 0), 0)
+  const originCount     = originScannedCount(trip.phases)
+  const consignments    = trip.consignments
+  const expectedParcels = consignments.reduce((n, c) => n + (c.parcel_count_expected ?? 0), 0)
 
   const journeyLockReceipt = trip.blockchain_receipts.find(r => r.receipt_type === 'journey_lock')
 
@@ -483,6 +484,34 @@ export default function TripDetailPage() {
     const rank = routeStops.findIndex(s => s.sequence === stopSequence)
     if (rank === -1 || rank + 1 >= routeStops.length) return null
     return routeStops[rank + 1].sequence
+  }
+
+  // Manifest baseline for a loading phase — summed from the consignments actually
+  // booked to collect at THIS stop (Consignment.pickup_stop_id), never the trip-wide
+  // `expectedParcels` total above: a cross-dock hub pickup must not be checked
+  // against parcels a different stop collects. Null when nothing on the manifest is
+  // booked at this stop — distinct from a real, if unusual, baseline of 0.
+  function expectedCountForLoadingStop(tripStopId: string | null): number | null {
+    if (tripStopId === null) return null
+    // `consignments`, not `trip.consignments`: TS cannot carry the `!trip` guard's
+    // narrowing into a nested function closure, so it re-widens `trip` to `Trip | null`
+    // inside this scope. The local const stays narrowed.
+    const atStop = consignments.filter(c => c.pickup_stop_id === tripStopId)
+    if (atStop.length === 0) return null
+    return atStop.reduce((n, c) => n + (c.parcel_count_expected ?? 0), 0)
+  }
+
+  // The scanned-in figure is stamped on the CONFIRMATION row (parcel_count_destination),
+  // not this unloading row — advance_confirmation writes it after unloading has already
+  // closed (a closed row is never written again). Only the trip's terminal stop carries
+  // both an unloading AND a confirmation row at the same stop_sequence (phase_plan.py's
+  // build_phase_plan); an intermediate cross-dock unloading has no matching confirmation
+  // row and correctly reports null rather than a guessed figure from a stop where the
+  // scan never actually landed.
+  function destinationCountForUnloadingStop(stopSequence: number | null): number | null {
+    if (stopSequence === null) return null
+    return plan.find(p => p.phase_type === 'confirmation' && p.stop_sequence === stopSequence)
+      ?.parcel_count_destination ?? null
   }
 
   // Role (origin/destination) is derived, not stored (FP-112) — "Stop 0" told the
@@ -579,7 +608,7 @@ export default function TripDetailPage() {
             const detailParts: string[] = []
             if (phase.pulsit_geofence_confirmed === true)  detailParts.push('Pulsit geofence confirmed ✓')
             if (phase.pulsit_geofence_confirmed === false) detailParts.push('Pulsit geofence mismatch ✗')
-            if (phase.parcel_count_origin !== null) detailParts.push(`${phase.parcel_count_origin} parcels`)
+            if (phase.parcel_count_origin !== null) detailParts.push(`${phase.parcel_count_origin} scanned`)
             // Each departure shows its OWN seal, so a cross-dock trip visibly carries
             // a different seal per leg. That is the multi-stop proof on screen.
             if (phase.seal_number)                  detailParts.push(`Seal ${phase.seal_number}`)
@@ -653,7 +682,10 @@ export default function TripDetailPage() {
                         </>
                     : phase.phase_type === 'loading'
                       ? <>
-                          <LoadingDetail phase={phase} />
+                          <LoadingDetail
+                            phase={phase}
+                            expectedCount={expectedCountForLoadingStop(phase.trip_stop_id)}
+                          />
                           <PhaseOverrideAction phase={phase} tripId={trip.id} tripStatus={trip.status} onOverridden={refetchSilent} />
                         </>
                     : phase.phase_type === 'departure'
@@ -671,6 +703,7 @@ export default function TripDetailPage() {
                             phase={phase}
                             allPhases={plan}
                             artifactsById={artifactsById}
+                            destinationScannedCount={destinationCountForUnloadingStop(phase.stop_sequence)}
                           />
                           <PhaseOverrideAction phase={phase} tripId={trip.id} tripStatus={trip.status} onOverridden={refetchSilent} />
                         </>
@@ -680,6 +713,7 @@ export default function TripDetailPage() {
                             phase={phase}
                             precinct={precinctRecordForStop(phase.stop_sequence)}
                             artifactsById={artifactsById}
+                            originScannedCount={originCount}
                           />
                           <PhaseOverrideAction phase={phase} tripId={trip.id} tripStatus={trip.status} onOverridden={refetchSilent} />
                         </>

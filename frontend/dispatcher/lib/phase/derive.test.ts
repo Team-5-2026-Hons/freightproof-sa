@@ -6,7 +6,7 @@ import {
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import {
   activePhase, anchorTally, chainNodesFromCounts, completionPct,
-  currentSealNumber, departureSealForLeg, isResolved, legDepartureAt, nodeTypeFor, originParcelCount,
+  currentSealNumber, departureSealForLeg, isResolved, legDepartureAt, nodeTypeFor, originScannedCount,
   recordedExceptionLabel, sortedPlan, tripChipMeta,
 } from './derive'
 import type { TripException } from '@shared/lib/types/exception'
@@ -159,7 +159,7 @@ describe('departureSealForLeg', () => {
   })
 })
 
-describe('originParcelCount', () => {
+describe('originScannedCount', () => {
   it('is the lowest-sequence loading — the origin pickup, not the hub pickup', () => {
     const plan = CROSS_DOCK_PHASE_PLAN.map(p => {
       if (p.sequence_number === 2) return { ...p, parcel_count_origin: 40 }
@@ -167,7 +167,7 @@ describe('originParcelCount', () => {
       return p
     })
 
-    expect(originParcelCount(plan)).toBe(40)
+    expect(originScannedCount(plan)).toBe(40)
   })
 })
 

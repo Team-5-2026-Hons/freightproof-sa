@@ -20,15 +20,19 @@ from app.core.exceptions import (
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import (
     AnchorStatus, ArtifactType, BlockchainReceiptType, ExceptionSeverity, ExceptionType,
-    PhaseStatus, PhaseType, IdvsStatus, OrganizationType, TripStatus, TripType, VehicleType,
+    IdvsStatus, OrganizationType, ParcelStatus, PhaseStatus, PhaseType, TripStatus, TripType,
+    VehicleType,
 )
 from app.db.models.evidence import EvidenceArtifact
 from app.db.models.phases import PhaseEvent
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.transit import TripException
-from app.db.models.trips import Consignment, Trip, TripStop
+from app.db.models.trips import Consignment, Parcel, Trip, TripStop
 from app.db.models.vehicles import Vehicle
+from app.integrations import scan_feed as scan_feed_module
+from app.integrations.scan_feed import MockScanFeed, ScanDirection
+from app.orchestration import phase_service, scan_service
 from app.orchestration.phase_plan import PlanStop, build_phase_plan
 from app.orchestration.phase_service import (
     _load_phase_event,
@@ -340,7 +344,7 @@ async def test_advance_activation_out_of_order_raises_sequence_error_reads_the_p
             payload=ConfirmationCompleteRequest(phase_type=PhaseType.CONFIRMATION, 
                 pod_photo_artifact_id=await _make_artifact(db_session, trip.id),
                 pod_signature_artifact_id=await _make_artifact(db_session, trip.id),
-                driver_visual_count=42, pp_scan_in_count=42, idempotency_key=str(uuid.uuid4()),
+                driver_visual_count=42, idempotency_key=str(uuid.uuid4()),
             ),
         )
 
@@ -397,14 +401,19 @@ async def test_phase_without_a_fix_completes_anyway(db_session, trip_fixture):
 # ── advance_loading ──────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_advance_loading_happy_path_stores_driver_visual_count_only(db_session, trip_fixture):
+async def test_advance_loading_happy_path_ignores_driver_visual_count(db_session, trip_fixture):
     """D7/T5 (task 2.6): loading no longer carries or anchors the seal — only
     driver_visual_count. Explicit regression guard that the anchor really moved:
-    event_hash/blockchain_receipt_id must stay unset on the loading row."""
+    event_hash/blockchain_receipt_id must stay unset on the loading row.
+
+    Renamed from test_advance_loading_happy_path_stores_driver_visual_count_only
+    (Task 7): loading no longer stores driver_visual_count at all — a legacy
+    offline-queue payload that still carries it (schema kept it Optional so
+    that entry doesn't 422 forever) must be accepted, not stored."""
     trip, driver, phases = trip_fixture
     await advance_activation(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["activation"].id,
-        payload=ActivationCompleteRequest(phase_type=PhaseType.ACTIVATION, 
+        payload=ActivationCompleteRequest(phase_type=PhaseType.ACTIVATION,
             driver_phone_lat=Decimal("0"), driver_phone_lng=Decimal("0"), idempotency_key=str(uuid.uuid4()),
         ),
     )
@@ -415,7 +424,7 @@ async def test_advance_loading_happy_path_stores_driver_visual_count_only(db_ses
     )
     assert result.status == TripStatus.ACTIVE
     h2 = next(h for h in result.phases if h.phase_type == PhaseType.LOADING)
-    assert h2.driver_visual_count == 42
+    assert h2.driver_visual_count is None
     assert h2.seal_number is None
     assert h2.event_hash is None
     assert h2.blockchain_receipt_id is None
@@ -446,17 +455,45 @@ async def test_advance_loading_no_consignments_skips_manifest_check(db_session, 
     assert len(result.exceptions) == 0
 
 
-@pytest.mark.asyncio
-async def test_advance_loading_manifest_matches_driver_count_completes(db_session, trip_fixture):
-    trip, driver, phases = trip_fixture
-    # pickup_stop_id pinned to this leg's own stop (F13, task 6.2b): every real
-    # consignment carries one (trip_service.create_trip stamps it), and the
-    # loading-count check is now scoped to it.
-    db_session.add(Consignment(
-        trip_id=trip.id, parcel_perfect_reference="PP-1", parcel_count_expected=42,
-        pickup_stop_id=phases["loading"].trip_stop_id,
-    ))
+async def _add_parcels(db_session, *, consignment_id: uuid.UUID, barcodes: list[str]) -> None:
+    """Insert real Parcel rows for a consignment — scan_service's expected count
+    (func.count(Parcel.id)) reads these, never Consignment.parcel_count_expected."""
+    for barcode in barcodes:
+        db_session.add(Parcel(consignment_id=consignment_id, barcode=barcode, status=ParcelStatus.PENDING))
     await db_session.flush()
+
+
+@pytest.mark.asyncio
+async def test_advance_loading_full_scan_out_completes_with_no_exception(db_session, trip_fixture):
+    """Renamed from test_advance_loading_manifest_matches_driver_count_completes
+    (Task 7): the loading-count check moved from manifest-vs-driver-count to
+    scanned-out-vs-expected — a full scan-out is still what closes a loading
+    clean, it's just measured by the warehouse now, not the driver's guess."""
+    trip, driver, phases = trip_fixture
+    stop_id = phases["loading"].trip_stop_id
+    consignment = Consignment(
+        trip_id=trip.id, parcel_perfect_reference="PP-1", parcel_count_expected=3,
+        pickup_stop_id=stop_id,
+    )
+    db_session.add(consignment)
+    await db_session.flush()
+    barcodes = ["PP1-0001", "PP1-0002", "PP1-0003"]
+    await _add_parcels(db_session, consignment_id=consignment.id, barcodes=barcodes)
+
+    feed = MockScanFeed()
+    await feed.stage_scans(
+        consignment_reference="PP-1", stop_reference=str(stop_id),
+        direction=ScanDirection.OUT, barcodes=barcodes,
+    )
+    await scan_service.ingest_scans(
+        db_session, trip_id=trip.id, trip_stop_id=stop_id, direction=ScanDirection.OUT,
+    )
+    # The warehouse closes its session once its own scan is done — what
+    # unblocks _gate_and_load's gate (task 6) and is what makes the counts
+    # final by the time advance_loading reads them.
+    await feed.close_session(
+        consignment_reference="PP-1", stop_reference=str(stop_id), direction=ScanDirection.OUT,
+    )
     await advance_activation(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["activation"].id,
         payload=ActivationCompleteRequest(phase_type=PhaseType.ACTIVATION,
@@ -466,25 +503,46 @@ async def test_advance_loading_manifest_matches_driver_count_completes(db_sessio
 
     result = await advance_loading(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["loading"].id,
-        payload=LoadingCompleteRequest(phase_type=PhaseType.LOADING, driver_visual_count=42, idempotency_key=str(uuid.uuid4())),
+        payload=LoadingCompleteRequest(phase_type=PhaseType.LOADING, idempotency_key=str(uuid.uuid4())),
     )
 
     h2 = next(h for h in result.phases if h.phase_type == PhaseType.LOADING)
     assert h2.status == PhaseStatus.COMPLETED
-    assert h2.parcel_count_origin == 42
+    assert h2.parcel_count_origin == 3
     assert len(result.exceptions) == 0
 
 
 @pytest.mark.asyncio
-async def test_advance_loading_manifest_mismatch_flags_but_does_not_hold(db_session, trip_fixture):
+async def test_advance_loading_short_scan_out_flags_but_does_not_hold(db_session, trip_fixture):
+    """Renamed from test_advance_loading_manifest_mismatch_flags_but_does_not_hold
+    (Task 7): the mismatch is now scanned-out-vs-expected (2 of 3 barcodes),
+    not manifest-vs-driver-count — same non-blocking precedent either way.
+    scan_service._reconcile_consignment raises this exception at ingest time
+    (before advance_loading is ever called); advance_loading's own backstop
+    (_raise_scan_shortfall_if_unrecorded) must find it already recorded and
+    not add a second row for the same fact."""
     trip, driver, phases = trip_fixture
-    # pickup_stop_id pinned to this leg's own stop (F13, task 6.2b) — see the
-    # comment in test_advance_loading_manifest_matches_driver_count_completes.
-    db_session.add(Consignment(
-        trip_id=trip.id, parcel_perfect_reference="PP-1", parcel_count_expected=52,
-        pickup_stop_id=phases["loading"].trip_stop_id,
-    ))
+    stop_id = phases["loading"].trip_stop_id
+    consignment = Consignment(
+        trip_id=trip.id, parcel_perfect_reference="PP-1", parcel_count_expected=3,
+        pickup_stop_id=stop_id,
+    )
+    db_session.add(consignment)
     await db_session.flush()
+    barcodes = ["PP1-0001", "PP1-0002", "PP1-0003"]
+    await _add_parcels(db_session, consignment_id=consignment.id, barcodes=barcodes)
+
+    feed = MockScanFeed()
+    await feed.stage_scans(
+        consignment_reference="PP-1", stop_reference=str(stop_id),
+        direction=ScanDirection.OUT, barcodes=barcodes[:2],  # short — 2 of 3
+    )
+    await scan_service.ingest_scans(
+        db_session, trip_id=trip.id, trip_stop_id=stop_id, direction=ScanDirection.OUT,
+    )
+    await feed.close_session(
+        consignment_reference="PP-1", stop_reference=str(stop_id), direction=ScanDirection.OUT,
+    )
     await advance_activation(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["activation"].id,
         payload=ActivationCompleteRequest(phase_type=PhaseType.ACTIVATION,
@@ -494,13 +552,13 @@ async def test_advance_loading_manifest_mismatch_flags_but_does_not_hold(db_sess
 
     result = await advance_loading(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["loading"].id,
-        payload=LoadingCompleteRequest(phase_type=PhaseType.LOADING, driver_visual_count=27, idempotency_key=str(uuid.uuid4())),
+        payload=LoadingCompleteRequest(phase_type=PhaseType.LOADING, idempotency_key=str(uuid.uuid4())),
     )
 
     h2 = next(h for h in result.phases if h.phase_type == PhaseType.LOADING)
     assert h2.status == PhaseStatus.EXCEPTION
-    assert h2.parcel_count_origin == 52
-    assert len(result.exceptions) == 1
+    assert h2.parcel_count_origin == 2
+    assert len(result.exceptions) == 1  # scan_service's row, not a second one from advance_loading
     assert result.exceptions[0].exception_type == ExceptionType.PARCEL_COUNT_MISMATCH
     assert result.exceptions[0].severity == ExceptionSeverity.WARNING
     # Non-blocking: the trip is still ACTIVE, not held — same precedent as the
@@ -942,7 +1000,7 @@ async def test_unloading_seal_mismatch_flags_but_does_not_hold(db_session, trip_
         payload=ConfirmationCompleteRequest(phase_type=PhaseType.CONFIRMATION,
             pod_photo_artifact_id=await _make_artifact(db_session, trip.id),
             pod_signature_artifact_id=await _make_artifact(db_session, trip.id),
-            driver_visual_count=42, pp_scan_in_count=42, idempotency_key=str(uuid.uuid4()),
+            driver_visual_count=42, idempotency_key=str(uuid.uuid4()),
         ),
     )
     assert next_result.status == TripStatus.CLOSED
@@ -1032,7 +1090,7 @@ async def test_confirmation_rejects_a_pod_belonging_to_another_trip(
                 phase_type=PhaseType.CONFIRMATION,
                 pod_photo_artifact_id=await _make_artifact(db_session, trip.id),
                 pod_signature_artifact_id=await _make_artifact(db_session, other_trip.id),
-                driver_visual_count=42, pp_scan_in_count=42, idempotency_key=str(uuid.uuid4()),
+                driver_visual_count=42, idempotency_key=str(uuid.uuid4()),
             ),
         )
 
@@ -1079,7 +1137,7 @@ async def test_advance_confirmation_matching_counts_closes_trip(
         payload=ConfirmationCompleteRequest(phase_type=PhaseType.CONFIRMATION, 
             pod_photo_artifact_id=await _make_artifact(db_session, trip.id),
             pod_signature_artifact_id=await _make_artifact(db_session, trip.id),
-            driver_visual_count=42, pp_scan_in_count=42, idempotency_key=str(uuid.uuid4()),
+            driver_visual_count=42, idempotency_key=str(uuid.uuid4()),
         ),
     )
     assert result.status == TripStatus.CLOSED
@@ -1101,59 +1159,19 @@ async def test_advance_confirmation_matching_counts_closes_trip(
     assert confirmation_dispatches[0][2] == BlockchainReceiptType.DELIVERY.value
 
 
-@pytest.mark.asyncio
-async def test_advance_confirmation_count_mismatch_creates_exception_but_still_closes(
-    db_session, trip_fixture, captured_anchor_dispatches,
-):
-    trip, driver, phases = trip_fixture
-    await _advance_to_unloading(db_session, trip, driver, phases, seal="AB-1234")
-
-    result = await advance_confirmation(
-        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["confirmation"].id,
-        payload=ConfirmationCompleteRequest(phase_type=PhaseType.CONFIRMATION, 
-            pod_photo_artifact_id=await _make_artifact(db_session, trip.id),
-            pod_signature_artifact_id=await _make_artifact(db_session, trip.id),
-            driver_visual_count=40, pp_scan_in_count=42, idempotency_key=str(uuid.uuid4()),
-        ),
-    )
-    assert result.status == TripStatus.CLOSED
-    assert len(result.exceptions) == 1
-
-    h5 = next(h for h in result.phases if h.phase_type == PhaseType.CONFIRMATION)
-    assert h5.status == PhaseStatus.EXCEPTION
-    # Queued despite the mismatch — the mismatch is evidence too.
-    await db_session.commit()
-    assert [d for d in captured_anchor_dispatches if d[0] == str(phases["confirmation"].id)]
-    assert result.exceptions[0].exception_type == ExceptionType.WAYBILL_COUNT_MISMATCH
-
-
-@pytest.mark.asyncio
-async def test_replayed_confirmation_that_closed_trip_is_idempotent_not_409(db_session, trip_fixture):
-    """The count-mismatch branch sets the confirmation row to EXCEPTION and
-    lets the trip close (recompute_position finds nothing unresolved left).
-    A replay of that exact completion (same phase_event_id/idempotency_key)
-    must still return the idempotent 200 Task 2.4 promises — not a 409 from
-    the trip.status == CLOSED check, which the replay short-circuit must run
-    ahead of precisely because this is the completion that caused CLOSED."""
-    trip, driver, phases = trip_fixture
-    await _advance_to_unloading(db_session, trip, driver, phases, seal="AB-1234")
-
-    payload = ConfirmationCompleteRequest(phase_type=PhaseType.CONFIRMATION, 
-        pod_photo_artifact_id=await _make_artifact(db_session, trip.id),
-        pod_signature_artifact_id=await _make_artifact(db_session, trip.id),
-        driver_visual_count=40, pp_scan_in_count=42, idempotency_key="offline-queue-entry-confirmation-1",
-    )
-
-    first = await advance_confirmation(
-        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["confirmation"].id, payload=payload,
-    )
-    assert first.status == TripStatus.CLOSED
-
-    second = await advance_confirmation(
-        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["confirmation"].id, payload=payload,
-    )
-    assert second.status == TripStatus.CLOSED
-    assert len(second.exceptions) == 1  # not duplicated by the replay
+# Task 7 removed test_advance_confirmation_count_mismatch_creates_exception_but_still_closes
+# and test_replayed_confirmation_that_closed_trip_is_idempotent_not_409 from here.
+# Both drove advance_confirmation's WAYBILL_COUNT_MISMATCH branch by submitting a
+# driver_visual_count at confirmation that disagreed with loading's
+# driver_visual_count — but advance_loading no longer writes driver_visual_count at
+# all (this task's whole point), so loading_event.driver_visual_count is now always
+# None and advance_confirmation's origin_count lookup always takes the "no baseline"
+# skip branch. The mismatch path this pair tested is genuinely unreachable via any
+# real flow today, not just untested — manufacturing coverage by hand-setting
+# driver_visual_count on the loading row would test a write path nothing in
+# production performs any more. Task 8 ("advance_confirmation reconciles
+# scanned-out against scanned-in per consignment") owns reintroducing equivalent
+# coverage once that reconciliation is scan-based instead.
 
 
 @pytest.mark.asyncio
@@ -1166,7 +1184,7 @@ async def test_trip_closes_when_no_phases_remain(db_session, trip_fixture):
         payload=ConfirmationCompleteRequest(phase_type=PhaseType.CONFIRMATION, 
             pod_photo_artifact_id=await _make_artifact(db_session, trip.id),
             pod_signature_artifact_id=await _make_artifact(db_session, trip.id),
-            driver_visual_count=42, pp_scan_in_count=42, idempotency_key=str(uuid.uuid4()),
+            driver_visual_count=42, idempotency_key=str(uuid.uuid4()),
         ),
     )
 
@@ -1174,6 +1192,59 @@ async def test_trip_closes_when_no_phases_remain(db_session, trip_fixture):
     assert trip.closed_at is not None
     assert trip.current_phase is None
     assert trip.current_stop is None
+
+
+@pytest.mark.asyncio
+async def test_replayed_confirmation_that_closed_trip_is_idempotent_not_409(db_session, trip_fixture):
+    """_gate_and_load must run its _is_resolved(event.status) replay short-circuit
+    BEFORE its trip.status in (CLOSED, CANCELLED, EXCEPTION_HOLD) check — not after.
+    Confirmation is the one phase whose own successful completion can flip trip.status
+    to CLOSED in the same call. If the trip-status check ran first, resending that exact
+    completion (same phase_event_id + idempotency_key, e.g. a driver app replaying an
+    offline-queue entry that already landed) would hit "trip status is 'closed'" and
+    raise PhaseSequenceError/409, instead of returning the idempotent 200 the replay
+    contract promises — and the offline queue would never drain.
+
+    This used to be proven via advance_confirmation's count-mismatch branch (EXCEPTION),
+    deleted when advance_loading stopped writing driver_visual_count and made that branch
+    unreachable. It doesn't need reviving: _is_resolved treats COMPLETED and EXCEPTION as
+    equally "already decided" for gating, so a plain CLEAN confirmation — matching counts,
+    no mismatch, straight to COMPLETED — exercises the identical ordering hazard, closing
+    the trip on the first call and forcing the same short-circuit-before-status-check path
+    on the replay.
+    """
+    trip, driver, phases = trip_fixture
+    await _advance_to_unloading(db_session, trip, driver, phases, seal="AB-1234")
+
+    payload = ConfirmationCompleteRequest(
+        phase_type=PhaseType.CONFIRMATION,
+        pod_photo_artifact_id=await _make_artifact(db_session, trip.id),
+        pod_signature_artifact_id=await _make_artifact(db_session, trip.id),
+        driver_visual_count=42,
+        idempotency_key="offline-queue-entry-confirmation-1",
+    )
+
+    first = await advance_confirmation(
+        db_session, trip_id=trip.id, driver_id=driver.id,
+        phase_event_id=phases["confirmation"].id, payload=payload,
+    )
+    assert first.status == TripStatus.CLOSED
+
+    # The replay: identical phase_event_id, identical idempotency_key, identical payload.
+    # Must NOT raise PhaseSequenceError/PhaseBlockedError (that would surface as a 409) —
+    # it must return the same closed state as a plain idempotent 200.
+    second = await advance_confirmation(
+        db_session, trip_id=trip.id, driver_id=driver.id,
+        phase_event_id=phases["confirmation"].id, payload=payload,
+    )
+    assert second.status == TripStatus.CLOSED
+
+    # No duplicate side effects from re-executing the wrapper body: a clean
+    # confirmation writes zero TripException rows, and the replay must not add any.
+    exception_count = (await db_session.execute(
+        select(func.count()).select_from(TripException).where(TripException.trip_id == trip.id)
+    )).scalar_one()
+    assert exception_count == 0
 
 
 # ── F1 (task 6.2a): confirmation must not 404 / must not manufacture a
@@ -1288,7 +1359,7 @@ async def test_confirmation_skips_reconciliation_when_no_loading_exists(
         payload=ConfirmationCompleteRequest(phase_type=PhaseType.CONFIRMATION,
             pod_photo_artifact_id=await _make_artifact(db_session, trip.id),
             pod_signature_artifact_id=await _make_artifact(db_session, trip.id),
-            driver_visual_count=0, pp_scan_in_count=0, idempotency_key=str(uuid.uuid4()),
+            driver_visual_count=0, idempotency_key=str(uuid.uuid4()),
         ),
     )
 
@@ -1338,7 +1409,7 @@ async def test_confirmation_skips_reconciliation_when_origin_count_is_null(
         payload=ConfirmationCompleteRequest(phase_type=PhaseType.CONFIRMATION,
             pod_photo_artifact_id=await _make_artifact(db_session, trip.id),
             pod_signature_artifact_id=await _make_artifact(db_session, trip.id),
-            driver_visual_count=42, pp_scan_in_count=42, idempotency_key=str(uuid.uuid4()),
+            driver_visual_count=42, idempotency_key=str(uuid.uuid4()),
         ),
     )
 
@@ -1395,7 +1466,7 @@ async def test_current_phase_and_current_stop_track_the_ledger(db_session, trip_
         payload=ConfirmationCompleteRequest(phase_type=PhaseType.CONFIRMATION, 
             pod_photo_artifact_id=await _make_artifact(db_session, trip.id),
             pod_signature_artifact_id=await _make_artifact(db_session, trip.id),
-            driver_visual_count=42, pp_scan_in_count=42, idempotency_key=str(uuid.uuid4()),
+            driver_visual_count=42, idempotency_key=str(uuid.uuid4()),
         ),
     )
     assert trip.current_phase is None
@@ -1617,64 +1688,16 @@ async def test_cross_dock_seal_continuity_wrong_leg_seal_raises_mismatch(
 
 # ── S1 / NEW-9: confirmation's origin count must be leg-scoped ─────────────
 #
-# Stage 2's ledger recorded NEW-9: advance_confirmation resolved the origin
-# baseline via a trip-wide `select(PhaseEvent).where(trip_id=, phase_type=
-# LOADING).scalar_one()`. On any trip with 2+ LOADING rows — every real
-# cross-dock pickup pattern, exactly like cross_dock_trip_fixture below —
-# that raises MultipleResultsFound. Ciaran's decision S1 (2026-07-29) fixes
-# both the crash and the semantics: the origin baseline is the nearest
-# preceding LOADING row — the pickup that loaded the FINAL leg, not the
-# trip's first pickup.
-
-@pytest.mark.asyncio
-async def test_confirmation_origin_count_uses_nearest_preceding_loading_not_trip_wide(
-    db_session, cross_dock_trip_fixture,
-):
-    """NEW-9 (Stage 2 ledger) + decision S1: a trip-wide
-    `(trip_id, phase_type=LOADING)` `.scalar_one()` raises
-    MultipleResultsFound on this fixture's two-LOADING cross-dock trip. S1
-    fixes the semantics as well as the crash — the origin baseline is the
-    pickup that loaded the FINAL leg (loading_2, seq 6,
-    driver_visual_count=8), not the trip's first LOADING row (loading_1,
-    seq 2, driver_visual_count=12), which loaded cargo already dropped at
-    the hub before this leg began.
-
-    Submitting driver_visual_count=8, pp_scan_in_count=8 only produces a
-    three-way count MATCH if origin_count correctly resolves to 8 (loading_2).
-    Had it wrongly resolved to 12 (loading_1), 12 != 8 would land the row in
-    EXCEPTION with a WAYBILL_COUNT_MISMATCH instead — so both the COMPLETED
-    status and the absence of that specific exception are asserted, proving
-    the right row was used rather than merely proving no crash occurred.
-    """
-    trip, driver, phases = cross_dock_trip_fixture
-    await _walk_cross_dock_leg1_unloading_to_leg2_departure(
-        db_session, trip, driver, phases, leg1_destination_seal="AB-1111",
-    )
-    await advance_unloading(
-        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading_2"].id,
-        payload=UnloadingCompleteRequest(
-            phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-2222",
-            gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
-            idempotency_key=str(uuid.uuid4()),
-        ),
-    )
-
-    result = await advance_confirmation(
-        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["confirmation"].id,
-        payload=ConfirmationCompleteRequest(phase_type=PhaseType.CONFIRMATION, 
-            pod_photo_artifact_id=await _make_artifact(db_session, trip.id),
-            pod_signature_artifact_id=await _make_artifact(db_session, trip.id),
-            driver_visual_count=8, pp_scan_in_count=8, idempotency_key=str(uuid.uuid4()),
-        ),
-    )
-
-    confirmation = next(h for h in result.phases if h.id == phases["confirmation"].id)
-    assert confirmation.status == PhaseStatus.COMPLETED
-    assert not any(
-        exc.exception_type == ExceptionType.WAYBILL_COUNT_MISMATCH for exc in result.exceptions
-    )
-    assert result.status == TripStatus.CLOSED
-
+# test_confirmation_origin_count_uses_nearest_preceding_loading_not_trip_wide used
+# to live here, proving decision S1's leg-scoped _find_loading_for_leg lookup.
+# Task 8 deletes it as superseded: _find_loading_for_leg is gone (advance_confirmation
+# now reconciles per CONSIGNMENT via Consignment.pickup_stop_id/delivery_stop_id,
+# never per leg), and this fixture (cross_dock_trip_fixture) carries no Consignment
+# rows at all, so under the new reconciliation the test would only pass vacuously —
+# via the "no scan baseline, skip" branch, not by proving anything about stop-scoping.
+# test_crossdock_reconciles_against_the_pickup_stop_not_the_preceding_leg below is
+# the genuine replacement: a real Consignment picked up at one stop and delivered at
+# a later one, with actual scan-out/scan-in data, on a real cross-dock trip.
 
 @pytest.mark.asyncio
 async def test_cross_dock_plan_walks_to_closed(db_session, cross_dock_trip_fixture):
@@ -1704,7 +1727,7 @@ async def test_cross_dock_plan_walks_to_closed(db_session, cross_dock_trip_fixtu
         payload=ConfirmationCompleteRequest(phase_type=PhaseType.CONFIRMATION, 
             pod_photo_artifact_id=await _make_artifact(db_session, trip.id),
             pod_signature_artifact_id=await _make_artifact(db_session, trip.id),
-            driver_visual_count=8, pp_scan_in_count=8, idempotency_key=str(uuid.uuid4()),
+            driver_visual_count=8, idempotency_key=str(uuid.uuid4()),
         ),
     )
 
@@ -1716,22 +1739,36 @@ async def test_cross_dock_plan_walks_to_closed(db_session, cross_dock_trip_fixtu
 # ── F13 (task 6.2b): the loading-count baseline must be scoped to its own
 # stop, not summed trip-wide ─────────────────────────────────────────────
 #
-# _expected_parcel_count used to sum Consignment.parcel_count_expected
+# The old _expected_parcel_count summed Consignment.parcel_count_expected
 # trip-wide with no stop filter. A cross-dock trip has more than one LOADING
 # row, so every loading was compared against the WHOLE ROUTE's declared
 # total — exactly scripts/seed_trips.py's FP-DEMO-XDOCK-0001 shape (consignment
 # A: stop0->stop2, B: stop0->stop1, C: stop1->stop2). loading_1 (stop0) only
 # picks up A+B, loading_2 (stop1) only picks up C, but both were held to the
 # full A+B+C total, raising a false PARCEL_COUNT_MISMATCH on both.
+#
+# Task 7 replaced the manifest-vs-driver-count baseline with a scanned-out
+# aggregate, but the underlying stop-scoping the fix proved is untouched:
+# scan_service.load_consignments_at_stop filters on Consignment.pickup_stop_id
+# exactly as _expected_parcel_count used to, so this test is rewritten onto
+# real Parcel rows and mock scans rather than deleted — the scoping behaviour
+# it exists to pin is still real and still worth a regression test.
+# test_single_leg_loading_count_unchanged_by_stop_scoping (the old no-op-on-a-
+# single-leg-trip pin) is deleted outright: its whole premise was that the
+# stop-scoped SUM equalled the old trip-wide SUM of Consignment.
+# parcel_count_expected, a comparison that has no scan-driven counterpart.
+# test_advance_loading_full_scan_out_completes_with_no_exception below already
+# covers a single-leg trip's scanned-out aggregate end to end.
 
 @pytest.mark.asyncio
 async def test_cross_dock_loading_counts_only_what_that_stop_picks_up(
     db_session, cross_dock_trip_fixture,
 ):
     """Reproduces the exact demo shape: A (7 parcels, stop0->stop2), B (5
-    parcels, stop0->stop1), C (8 parcels, stop1->stop2). loading_1's driver
-    count (12 = A+B) and loading_2's (8 = C) each match what THAT STOP
-    actually picks up. Before the stop-scoping fix this raises exactly two
+    parcels, stop0->stop1), C (8 parcels, stop1->stop2), each with real Parcel
+    rows and a full scan-out at their own pickup stop. loading_1's scanned-out
+    total (12 = A+B) and loading_2's (8 = C) each match what THAT STOP
+    actually picks up. Before the stop-scoping fix this raised exactly two
     PARCEL_COUNT_MISMATCH exceptions (both loadings compared against
     A+B+C=20); after the fix, zero."""
     trip, driver, phases = cross_dock_trip_fixture
@@ -1739,21 +1776,59 @@ async def test_cross_dock_loading_counts_only_what_that_stop_picks_up(
     stop1_id = phases["loading_2"].trip_stop_id
     stop2_id = phases["confirmation"].trip_stop_id
 
-    db_session.add_all([
-        Consignment(
-            trip_id=trip.id, parcel_perfect_reference="PP-A", parcel_count_expected=7,
-            pickup_stop_id=stop0_id, delivery_stop_id=stop2_id,
-        ),
-        Consignment(
-            trip_id=trip.id, parcel_perfect_reference="PP-B", parcel_count_expected=5,
-            pickup_stop_id=stop0_id, delivery_stop_id=stop1_id,
-        ),
-        Consignment(
-            trip_id=trip.id, parcel_perfect_reference="PP-C", parcel_count_expected=8,
-            pickup_stop_id=stop1_id, delivery_stop_id=stop2_id,
-        ),
-    ])
+    consignment_a = Consignment(
+        trip_id=trip.id, parcel_perfect_reference="PP-A", parcel_count_expected=7,
+        pickup_stop_id=stop0_id, delivery_stop_id=stop2_id,
+    )
+    consignment_b = Consignment(
+        trip_id=trip.id, parcel_perfect_reference="PP-B", parcel_count_expected=5,
+        pickup_stop_id=stop0_id, delivery_stop_id=stop1_id,
+    )
+    consignment_c = Consignment(
+        trip_id=trip.id, parcel_perfect_reference="PP-C", parcel_count_expected=8,
+        pickup_stop_id=stop1_id, delivery_stop_id=stop2_id,
+    )
+    db_session.add_all([consignment_a, consignment_b, consignment_c])
     await db_session.flush()
+
+    barcodes_by_consignment = {
+        consignment_a.parcel_perfect_reference: [f"A-{i:04d}" for i in range(7)],
+        consignment_b.parcel_perfect_reference: [f"B-{i:04d}" for i in range(5)],
+        consignment_c.parcel_perfect_reference: [f"C-{i:04d}" for i in range(8)],
+    }
+    for consignment, reference in (
+        (consignment_a, "PP-A"), (consignment_b, "PP-B"), (consignment_c, "PP-C"),
+    ):
+        await _add_parcels(
+            db_session, consignment_id=consignment.id, barcodes=barcodes_by_consignment[reference],
+        )
+
+    # The warehouse scans every parcel out, in full, at the stop it's actually
+    # picked up at, then closes every session this trip's loading/confirmation
+    # rows are gated on. B's dropoff at stop1 is UNLOADING, which phase_gate
+    # never gates, so it needs no IN-direction staging.
+    feed = MockScanFeed()
+    for reference, stop_id in (("PP-A", stop0_id), ("PP-B", stop0_id), ("PP-C", stop1_id)):
+        await feed.stage_scans(
+            consignment_reference=reference, stop_reference=str(stop_id),
+            direction=ScanDirection.OUT, barcodes=barcodes_by_consignment[reference],
+        )
+    await scan_service.ingest_scans(
+        db_session, trip_id=trip.id, trip_stop_id=stop0_id, direction=ScanDirection.OUT,
+    )
+    await scan_service.ingest_scans(
+        db_session, trip_id=trip.id, trip_stop_id=stop1_id, direction=ScanDirection.OUT,
+    )
+    for reference, stop_id, direction in (
+        ("PP-A", stop0_id, ScanDirection.OUT),
+        ("PP-B", stop0_id, ScanDirection.OUT),
+        ("PP-C", stop1_id, ScanDirection.OUT),
+        ("PP-A", stop2_id, ScanDirection.IN),
+        ("PP-C", stop2_id, ScanDirection.IN),
+    ):
+        await feed.close_session(
+            consignment_reference=reference, stop_reference=str(stop_id), direction=direction,
+        )
 
     await _walk_cross_dock_leg1_unloading_to_leg2_departure(
         db_session, trip, driver, phases, leg1_destination_seal="AB-1111",
@@ -1771,7 +1846,7 @@ async def test_cross_dock_loading_counts_only_what_that_stop_picks_up(
         payload=ConfirmationCompleteRequest(phase_type=PhaseType.CONFIRMATION,
             pod_photo_artifact_id=await _make_artifact(db_session, trip.id),
             pod_signature_artifact_id=await _make_artifact(db_session, trip.id),
-            driver_visual_count=8, pp_scan_in_count=8, idempotency_key=str(uuid.uuid4()),
+            driver_visual_count=8, idempotency_key=str(uuid.uuid4()),
         ),
     )
 
@@ -1786,44 +1861,10 @@ async def test_cross_dock_loading_counts_only_what_that_stop_picks_up(
     loading_1 = next(h for h in result.phases if h.id == phases["loading_1"].id)
     loading_2 = next(h for h in result.phases if h.id == phases["loading_2"].id)
     assert loading_1.status == PhaseStatus.COMPLETED
-    assert loading_1.parcel_count_origin == 12
+    assert loading_1.parcel_count_origin == 12  # A(7) + B(5), stop0's own pickups
     assert loading_2.status == PhaseStatus.COMPLETED
-    assert loading_2.parcel_count_origin == 8
+    assert loading_2.parcel_count_origin == 8  # C only, stop1's own pickup
     assert result.status == TripStatus.CLOSED
-
-
-@pytest.mark.asyncio
-async def test_single_leg_loading_count_unchanged_by_stop_scoping(db_session, trip_fixture):
-    """Regression pin for the fix's no-op premise on a single-leg trip:
-    trip_service.create_trip stamps every API-created consignment's
-    pickup_stop_id as trip_stops[0].id, so on a 2-stop trip the stop-scoped
-    sum is identical to the old trip-wide sum. Mirrors
-    test_advance_loading_manifest_matches_driver_count_completes but pins
-    pickup_stop_id explicitly, proving the fix changes nothing here rather
-    than merely leaving it untested."""
-    trip, driver, phases = trip_fixture
-    stop0_id = phases["loading"].trip_stop_id
-    db_session.add(Consignment(
-        trip_id=trip.id, parcel_perfect_reference="PP-1", parcel_count_expected=42,
-        pickup_stop_id=stop0_id,
-    ))
-    await db_session.flush()
-    await advance_activation(
-        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["activation"].id,
-        payload=ActivationCompleteRequest(phase_type=PhaseType.ACTIVATION,
-            driver_phone_lat=Decimal("0"), driver_phone_lng=Decimal("0"), idempotency_key=str(uuid.uuid4()),
-        ),
-    )
-
-    result = await advance_loading(
-        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["loading"].id,
-        payload=LoadingCompleteRequest(phase_type=PhaseType.LOADING, driver_visual_count=42, idempotency_key=str(uuid.uuid4())),
-    )
-
-    h2 = next(h for h in result.phases if h.phase_type == PhaseType.LOADING)
-    assert h2.status == PhaseStatus.COMPLETED
-    assert h2.parcel_count_origin == 42
-    assert len(result.exceptions) == 0
 
 
 @pytest.mark.asyncio
@@ -2273,3 +2314,849 @@ async def test_load_phase_event_emits_for_update(db_session, trip_fixture, monke
     assert len(captured) == 1
     compiled = str(captured[0].compile(dialect=postgresql.dialect()))
     assert "FOR UPDATE" in compiled
+
+
+# ── Task 7: advance_loading closes on the warehouse scan, not a driver count ──
+#
+# The driver never enters the warehouse and may reach the truck after loading
+# finished, so a parcel count he types in is not evidence — it's a guess. These
+# fixtures build a trip whose loading phase is unblocked purely by the mock
+# scan feed (mirroring test_phase_gate.py's `store`/`seeded` pattern), never by
+# a hand-inserted TripException — the whole point of the short/empty variants
+# is proving what happens when scan_service's own ingest has (or hasn't)
+# already recorded a finding before advance_loading runs.
+
+
+class _FakeMockStateStore:
+    """Dict-backed MockStateStore — same fake as test_phase_gate.py/test_scan_feed.py."""
+
+    def __init__(self) -> None:
+        self.data: dict[str, dict[str, Any]] = {}
+
+    async def get_json(self, key: str) -> dict[str, Any] | None:
+        return self.data.get(key)
+
+    async def set_json(self, key: str, value: dict[str, Any]) -> None:
+        self.data[key] = value
+
+    async def flush(self) -> int:
+        count = len(self.data)
+        self.data.clear()
+        return count
+
+
+@pytest.fixture
+def store(monkeypatch: pytest.MonkeyPatch) -> _FakeMockStateStore:
+    fake = _FakeMockStateStore()
+    monkeypatch.setattr(scan_feed_module, "get_mock_state_store", lambda: fake)
+    return fake
+
+
+async def _build_scan_ready_trip(db_session) -> dict[str, Any]:
+    """Trip + driver + a one-stop, one-consignment, three-parcel setup with the
+    phase plan advance_loading needs already committed (trip_creation
+    completed, activation completed, loading pending).
+
+    Same trip shape as conftest.py's `seeded` fixture (test_phase_gate.py's),
+    extended with the PhaseEvent rows `seeded` deliberately omits — its only
+    consumer calls blocked_on_by_stop directly and needs no phase plan at all,
+    but advance_loading's own gate (_gate_and_load) requires one.
+    """
+    org = Organization(id=uuid.uuid4(), name="ScanOp", org_type=OrganizationType.OPERATOR)
+    db_session.add(org)
+    await db_session.flush()
+
+    user = User(id=uuid.uuid4(), organization_id=org.id, email=f"{uuid.uuid4().hex[:8]}@test.co.za", full_name="D")
+    driver = Driver(
+        id=uuid.uuid4(), organization_id=org.id, full_name="ScanDriver",
+        id_number="8001015009079", phone_number="+27821239999", license_number=f"DRV-{uuid.uuid4().hex[:8]}",
+    )
+    horse = Vehicle(
+        id=uuid.uuid4(), organization_id=org.id, vehicle_type=VehicleType.HORSE,
+        registration=f"SC{uuid.uuid4().hex[:6].upper()}", pulsit_device_id=f"PUL-{uuid.uuid4().hex[:8]}",
+    )
+    precinct = Precinct(
+        id=uuid.uuid4(), name="ScanOrigin", principal_organization_id=org.id,
+        latitude="0", longitude="0",
+    )
+    db_session.add_all([user, driver, horse, precinct])
+    await db_session.flush()
+
+    trip = Trip(
+        id=uuid.uuid4(), trip_reference=f"FP-{uuid.uuid4().hex[:6]}", order_number="ORD-SCAN",
+        operator_organization_id=org.id, driver_id=driver.id, horse_id=horse.id,
+        # A single-stop pickup+delivery trip (mirrors this consignment's own
+        # pickup_stop_id == delivery_stop_id below) — get_trip_detail (reached
+        # via advance_loading's _finish_phase) requires both to be set.
+        origin_precinct_id=precinct.id, destination_precinct_id=precinct.id,
+        status=TripStatus.ACTIVE, idvs_check_status=IdvsStatus.VERIFIED,
+        created_by_user_id=user.id,
+    )
+    db_session.add(trip)
+    await db_session.flush()
+
+    stop = TripStop(id=uuid.uuid4(), trip_id=trip.id, precinct_id=precinct.id, sequence=0)
+    db_session.add(stop)
+    await db_session.flush()
+
+    consignment = Consignment(
+        id=uuid.uuid4(), trip_id=trip.id, parcel_perfect_reference="WAY-SCAN-001",
+        parcel_count_expected=3, pickup_stop_id=stop.id, delivery_stop_id=stop.id,
+    )
+    db_session.add(consignment)
+    await db_session.flush()
+
+    barcodes = ["WAYSCAN0001", "WAYSCAN0002", "WAYSCAN0003"]
+    for barcode in barcodes:
+        db_session.add(Parcel(
+            id=uuid.uuid4(), consignment_id=consignment.id,
+            barcode=barcode, status=ParcelStatus.PENDING,
+        ))
+    await db_session.flush()
+
+    trip_creation_event = PhaseEvent(
+        trip_id=trip.id, phase_type=PhaseType.TRIP_CREATION,
+        sequence_number=0, status=PhaseStatus.COMPLETED,
+    )
+    activation_event = PhaseEvent(
+        trip_id=trip.id, phase_type=PhaseType.ACTIVATION, trip_stop_id=stop.id,
+        sequence_number=1, status=PhaseStatus.COMPLETED,
+    )
+    loading_event = PhaseEvent(
+        trip_id=trip.id, phase_type=PhaseType.LOADING, trip_stop_id=stop.id,
+        sequence_number=2, status=PhaseStatus.PENDING,
+    )
+    db_session.add_all([trip_creation_event, activation_event, loading_event])
+    await db_session.flush()
+
+    return {
+        "trip": trip, "driver": driver, "stop": stop, "consignment": consignment,
+        "barcodes": barcodes, "loading_event": loading_event,
+    }
+
+
+@pytest.fixture
+async def ready_to_load(db_session, store) -> dict[str, Any]:
+    """The scan-out session staged in FULL (3/3) and closed, with
+    scan_service.ingest_scans already run — mirrors the real dispatcher flow
+    (dev_triggers.py's scan trigger stages+ingests in one call; close-session
+    is a separate call), which is what makes the counts final by the time
+    advance_loading's gate lets the request through."""
+    built = await _build_scan_ready_trip(db_session)
+    feed = MockScanFeed()
+    await feed.stage_scans(
+        consignment_reference=built["consignment"].parcel_perfect_reference,
+        stop_reference=str(built["stop"].id), direction=ScanDirection.OUT,
+        barcodes=built["barcodes"],
+    )
+    await scan_service.ingest_scans(
+        db_session, trip_id=built["trip"].id, trip_stop_id=built["stop"].id,
+        direction=ScanDirection.OUT,
+    )
+    await feed.close_session(
+        consignment_reference=built["consignment"].parcel_perfect_reference,
+        stop_reference=str(built["stop"].id), direction=ScanDirection.OUT,
+    )
+    return built
+
+
+@pytest.fixture
+async def short_scanned_ready_to_load(db_session, store) -> dict[str, Any]:
+    """Only 2 of 3 barcodes staged, with ingest_scans already run — so
+    scan_service's own PARCEL_COUNT_MISMATCH row exists BEFORE advance_loading
+    is ever called. Built by calling ingest_scans, never by inserting a
+    TripException by hand: that ordering is the entire point of the test this
+    fixture backs."""
+    built = await _build_scan_ready_trip(db_session)
+    feed = MockScanFeed()
+    await feed.stage_scans(
+        consignment_reference=built["consignment"].parcel_perfect_reference,
+        stop_reference=str(built["stop"].id), direction=ScanDirection.OUT,
+        barcodes=built["barcodes"][:2],
+    )
+    await scan_service.ingest_scans(
+        db_session, trip_id=built["trip"].id, trip_stop_id=built["stop"].id,
+        direction=ScanDirection.OUT,
+    )
+    await feed.close_session(
+        consignment_reference=built["consignment"].parcel_perfect_reference,
+        stop_reference=str(built["stop"].id), direction=ScanDirection.OUT,
+    )
+    return built
+
+
+@pytest.fixture
+async def unscanned_ready_to_load(db_session, store) -> dict[str, Any]:
+    """Session closed with NOTHING staged. ingest_scans is run against the
+    empty feed (so it behaves exactly as a real poll would) — scan_service's
+    own guard (`if events and (missing or unexpected)`) fires on nothing, so
+    no exception row exists going into advance_loading."""
+    built = await _build_scan_ready_trip(db_session)
+    await scan_service.ingest_scans(
+        db_session, trip_id=built["trip"].id, trip_stop_id=built["stop"].id,
+        direction=ScanDirection.OUT,
+    )
+    await MockScanFeed().close_session(
+        consignment_reference=built["consignment"].parcel_perfect_reference,
+        stop_reference=str(built["stop"].id), direction=ScanDirection.OUT,
+    )
+    return built
+
+
+async def test_loading_completes_without_a_driver_count(db_session, store, ready_to_load):
+    """The driver never enters the warehouse and may arrive after loading finished.
+    A count he cannot honestly produce must not be what closes the phase."""
+    await phase_service.advance_loading(
+        db_session,
+        trip_id=ready_to_load["trip"].id,
+        driver_id=ready_to_load["driver"].id,
+        phase_event_id=ready_to_load["loading_event"].id,
+        payload=LoadingCompleteRequest(
+            phase_type=PhaseType.LOADING, idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    event = await db_session.get(PhaseEvent, ready_to_load["loading_event"].id)
+    assert event.status == PhaseStatus.COMPLETED
+    assert event.driver_visual_count is None
+
+
+async def test_loading_stamps_parcel_count_origin_from_scans(
+    db_session, store, ready_to_load,
+):
+    await phase_service.advance_loading(
+        db_session,
+        trip_id=ready_to_load["trip"].id,
+        driver_id=ready_to_load["driver"].id,
+        phase_event_id=ready_to_load["loading_event"].id,
+        payload=LoadingCompleteRequest(
+            phase_type=PhaseType.LOADING, idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    event = await db_session.get(PhaseEvent, ready_to_load["loading_event"].id)
+    assert event.parcel_count_origin == 3
+
+
+async def test_loading_raises_no_exception_for_a_matching_scan(
+    db_session, store, ready_to_load,
+):
+    await phase_service.advance_loading(
+        db_session,
+        trip_id=ready_to_load["trip"].id,
+        driver_id=ready_to_load["driver"].id,
+        phase_event_id=ready_to_load["loading_event"].id,
+        payload=LoadingCompleteRequest(
+            phase_type=PhaseType.LOADING, idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    exceptions = (await db_session.execute(
+        select(TripException).where(TripException.trip_id == ready_to_load["trip"].id)
+    )).scalars().all()
+    assert exceptions == []
+
+
+async def test_a_legacy_payload_with_a_count_is_accepted_and_ignored(
+    db_session, store, ready_to_load,
+):
+    """A loading queued offline under the old schema replays with the field present.
+    Accepting and ignoring it is what stops the queue poisoning itself forever."""
+    await phase_service.advance_loading(
+        db_session,
+        trip_id=ready_to_load["trip"].id,
+        driver_id=ready_to_load["driver"].id,
+        phase_event_id=ready_to_load["loading_event"].id,
+        payload=LoadingCompleteRequest(
+            phase_type=PhaseType.LOADING,
+            driver_visual_count=99,
+            idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    event = await db_session.get(PhaseEvent, ready_to_load["loading_event"].id)
+    assert event.status == PhaseStatus.COMPLETED
+    assert event.parcel_count_origin == 3
+
+
+async def test_a_short_scan_produces_exactly_one_exception(
+    db_session, store, short_scanned_ready_to_load,
+):
+    """scan_service already raised this at ingest. advance_loading must not raise a
+    second row for the same fact — its dedup compares descriptions verbatim, so a
+    differently-worded duplicate would sail past it and the dispatcher would see the
+    same short count twice."""
+    await phase_service.advance_loading(
+        db_session,
+        trip_id=short_scanned_ready_to_load["trip"].id,
+        driver_id=short_scanned_ready_to_load["driver"].id,
+        phase_event_id=short_scanned_ready_to_load["loading_event"].id,
+        payload=LoadingCompleteRequest(
+            phase_type=PhaseType.LOADING, idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    exceptions = (await db_session.execute(
+        select(TripException).where(
+            TripException.trip_id == short_scanned_ready_to_load["trip"].id,
+            TripException.exception_type == ExceptionType.PARCEL_COUNT_MISMATCH,
+        )
+    )).scalars().all()
+    assert len(exceptions) == 1
+
+
+async def test_a_session_closed_with_nothing_scanned_still_raises(
+    db_session, store, unscanned_ready_to_load,
+):
+    """The backstop's whole reason for existing. scan_service guards on
+    `if events and ...`, so a session closed with zero scans raises nothing there —
+    and a truck that loaded nothing is the most serious short count of all."""
+    await phase_service.advance_loading(
+        db_session,
+        trip_id=unscanned_ready_to_load["trip"].id,
+        driver_id=unscanned_ready_to_load["driver"].id,
+        phase_event_id=unscanned_ready_to_load["loading_event"].id,
+        payload=LoadingCompleteRequest(
+            phase_type=PhaseType.LOADING, idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    event = await db_session.get(PhaseEvent, unscanned_ready_to_load["loading_event"].id)
+    exceptions = (await db_session.execute(
+        select(TripException).where(
+            TripException.trip_id == unscanned_ready_to_load["trip"].id,
+            TripException.exception_type == ExceptionType.PARCEL_COUNT_MISMATCH,
+        )
+    )).scalars().all()
+    assert event.status == PhaseStatus.EXCEPTION
+    assert len(exceptions) == 1
+
+
+# ── Task 8: advance_confirmation reconciles scan-out against scan-in ───────
+#
+# Replaces the old circular check (origin_count came from loading_event.driver_
+# visual_count, which advance_loading stopped writing — see the "Task 7 removed"
+# comment above test_advance_confirmation_matching_counts_closes_trip). The new
+# reconciliation is per CONSIGNMENT, scoped by Consignment.pickup_stop_id /
+# delivery_stop_id (FP-112), never per leg — built the same way ready_to_load
+# above was: real Consignment/Parcel rows, barcodes staged on MockScanFeed, and
+# scan_service.ingest_scans actually run, never a hand-stamped Parcel or
+# hand-inserted TripException.
+
+async def _build_confirmation_base_trip(
+    db_session, *, org_suffix: str, num_stops: int,
+) -> dict[str, Any]:
+    """Org/driver/horse + `num_stops` precincts and TripStops, trip CREATED and
+    scheduled today (so _reject_if_not_due lets activation through). The common
+    scaffold every ready_to_confirm* fixture below walks via the real advance_*
+    functions rather than hand-stamping PhaseEvent rows — these fixtures prove
+    the real gate and scan-reconciliation path, not a shortcut around it.
+    """
+    org = Organization(id=uuid.uuid4(), name=f"ConfirmOp-{org_suffix}", org_type=OrganizationType.OPERATOR)
+    client_org = Organization(
+        id=uuid.uuid4(), name=f"ConfirmClient-{org_suffix}", org_type=OrganizationType.PRINCIPAL,
+    )
+    db_session.add_all([org, client_org])
+    await db_session.flush()
+
+    user = User(
+        id=uuid.uuid4(), organization_id=org.id,
+        email=f"{uuid.uuid4().hex[:8]}@test.co.za", full_name="D",
+    )
+    driver = Driver(
+        id=uuid.uuid4(), organization_id=org.id, full_name="ConfirmDriver",
+        id_number=uuid.uuid4().hex[:13], phone_number=f"+2782{uuid.uuid4().hex[:7]}",
+        license_number=f"DRV-{uuid.uuid4().hex[:8]}",
+    )
+    horse = Vehicle(
+        id=uuid.uuid4(), organization_id=org.id, vehicle_type=VehicleType.HORSE,
+        registration=f"CF{uuid.uuid4().hex[:6].upper()}", pulsit_device_id=f"PUL-{uuid.uuid4().hex[:8]}",
+    )
+    db_session.add_all([user, driver, horse])
+    await db_session.flush()
+
+    precincts = [
+        Precinct(
+            id=uuid.uuid4(), name=f"{org_suffix}-P{i}", principal_organization_id=client_org.id,
+            latitude=str(i), longitude=str(i),
+        )
+        for i in range(num_stops)
+    ]
+    db_session.add_all(precincts)
+    await db_session.flush()
+
+    trip = Trip(
+        id=uuid.uuid4(), trip_reference=f"FP-{uuid.uuid4().hex[:8]}", order_number="ORD-CONFIRM",
+        operator_organization_id=org.id, client_organization_id=client_org.id,
+        driver_id=driver.id, horse_id=horse.id,
+        origin_precinct_id=precincts[0].id, destination_precinct_id=precincts[-1].id,
+        status=TripStatus.CREATED, idvs_check_status=IdvsStatus.VERIFIED,
+        planned_departure_at=_SCHEDULED_TODAY,
+        created_by_user_id=user.id,
+    )
+    db_session.add(trip)
+    await db_session.flush()
+
+    stops = [
+        TripStop(id=uuid.uuid4(), trip_id=trip.id, precinct_id=precincts[i].id, sequence=i)
+        for i in range(num_stops)
+    ]
+    db_session.add_all(stops)
+    await db_session.flush()
+
+    return {"trip": trip, "driver": driver, "stops": stops}
+
+
+async def _stage_and_ingest(
+    db_session, feed: MockScanFeed, *, consignment_reference: str, stop_id: uuid.UUID,
+    direction: ScanDirection, trip_id: uuid.UUID, barcodes: list[str],
+) -> None:
+    """Stage barcodes on the mock feed, ingest them, then close the session —
+    the same three-call sequence ready_to_load's own fixtures use, factored out
+    since every confirmation fixture below needs it at least twice (out then in)."""
+    await feed.stage_scans(
+        consignment_reference=consignment_reference, stop_reference=str(stop_id),
+        direction=direction, barcodes=barcodes,
+    )
+    await scan_service.ingest_scans(
+        db_session, trip_id=trip_id, trip_stop_id=stop_id, direction=direction,
+    )
+    await feed.close_session(
+        consignment_reference=consignment_reference, stop_reference=str(stop_id), direction=direction,
+    )
+
+
+async def _build_confirmation_ready_trip(db_session, *, scan_in_count: int) -> dict[str, Any]:
+    """A single-leg (2-stop) trip walked via advance_activation/loading/departure/
+    unloading to a PENDING confirmation row, with 3 parcels scanned OUT in full at
+    the origin stop and the first `scan_in_count` of those SAME 3 barcodes scanned
+    IN at the destination stop — both sessions closed, so confirmation's own gate
+    (blocked_on_by_stop) lets the call through without a 409.
+    """
+    base = await _build_confirmation_base_trip(db_session, org_suffix=uuid.uuid4().hex[:6], num_stops=2)
+    trip, driver, (stop0, stop1) = base["trip"], base["driver"], base["stops"]
+
+    consignment = Consignment(
+        id=uuid.uuid4(), trip_id=trip.id, parcel_perfect_reference=f"WAY-{uuid.uuid4().hex[:8]}",
+        parcel_count_expected=3, pickup_stop_id=stop0.id, delivery_stop_id=stop1.id,
+    )
+    db_session.add(consignment)
+    await db_session.flush()
+
+    barcodes = [f"CONF{uuid.uuid4().hex[:8]}" for _ in range(3)]
+    for barcode in barcodes:
+        db_session.add(Parcel(
+            id=uuid.uuid4(), consignment_id=consignment.id, barcode=barcode, status=ParcelStatus.PENDING,
+        ))
+    await db_session.flush()
+
+    feed = MockScanFeed()
+    await _stage_and_ingest(
+        db_session, feed, consignment_reference=consignment.parcel_perfect_reference,
+        stop_id=stop0.id, direction=ScanDirection.OUT, trip_id=trip.id, barcodes=barcodes,
+    )
+
+    # Real phase plan for a single-leg trip, hand-built like trip_fixture's own —
+    # walked with the real advance_* wrappers below, not skipped.
+    phases = {
+        "trip_creation": PhaseEvent(
+            trip_id=trip.id, phase_type=PhaseType.TRIP_CREATION,
+            sequence_number=0, status=PhaseStatus.COMPLETED,
+        ),
+        "activation": PhaseEvent(
+            trip_id=trip.id, phase_type=PhaseType.ACTIVATION, trip_stop_id=stop0.id,
+            sequence_number=1, status=PhaseStatus.PENDING,
+        ),
+        "loading": PhaseEvent(
+            trip_id=trip.id, phase_type=PhaseType.LOADING, trip_stop_id=stop0.id,
+            sequence_number=2, status=PhaseStatus.PENDING,
+        ),
+        "departure": PhaseEvent(
+            trip_id=trip.id, phase_type=PhaseType.DEPARTURE, trip_stop_id=stop0.id,
+            sequence_number=3, status=PhaseStatus.PENDING,
+        ),
+        "in_transit": PhaseEvent(
+            trip_id=trip.id, phase_type=PhaseType.IN_TRANSIT, trip_stop_id=stop0.id,
+            sequence_number=4, status=PhaseStatus.PENDING,
+        ),
+        "unloading": PhaseEvent(
+            trip_id=trip.id, phase_type=PhaseType.UNLOADING, trip_stop_id=stop1.id,
+            sequence_number=5, status=PhaseStatus.PENDING,
+        ),
+        "confirmation": PhaseEvent(
+            trip_id=trip.id, phase_type=PhaseType.CONFIRMATION, trip_stop_id=stop1.id,
+            sequence_number=6, status=PhaseStatus.PENDING,
+        ),
+    }
+    db_session.add_all(phases.values())
+    await db_session.flush()
+
+    await advance_activation(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["activation"].id,
+        payload=ActivationCompleteRequest(phase_type=PhaseType.ACTIVATION,
+            driver_phone_lat=Decimal("0"), driver_phone_lng=Decimal("0"), idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+    await advance_loading(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["loading"].id,
+        payload=LoadingCompleteRequest(phase_type=PhaseType.LOADING, idempotency_key=str(uuid.uuid4())),
+    )
+    await advance_departure(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["departure"].id,
+        payload=DepartureCompleteRequest(phase_type=PhaseType.DEPARTURE,
+            waybill_photo_artifact_id=await _make_artifact(db_session, trip.id), seal_number="AB-1234",
+            seal_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            guard_verified_seal=True, idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+    await advance_unloading(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading"].id,
+        payload=UnloadingCompleteRequest(
+            phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-1234",
+            gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    await _stage_and_ingest(
+        db_session, feed, consignment_reference=consignment.parcel_perfect_reference,
+        stop_id=stop1.id, direction=ScanDirection.IN, trip_id=trip.id, barcodes=barcodes[:scan_in_count],
+    )
+
+    return {
+        "trip": trip, "driver": driver, "consignment": consignment,
+        "delivery_stop": stop1, "pickup_stop": stop0,
+        "confirmation_event": phases["confirmation"],
+        "pod_photo_id": await _make_artifact(db_session, trip.id),
+        "pod_signature_id": await _make_artifact(db_session, trip.id),
+    }
+
+
+@pytest.fixture
+async def ready_to_confirm(db_session, store) -> dict[str, Any]:
+    """All 3 parcels scanned OUT at origin and all 3 scanned IN at destination —
+    the clean case. driver_visual_count on the payload is the driver's own pallet
+    count, recorded as evidence but never compared against either scan."""
+    return await _build_confirmation_ready_trip(db_session, scan_in_count=3)
+
+
+@pytest.fixture
+async def ready_to_confirm_short(db_session, store) -> dict[str, Any]:
+    """Only 2 of 3 barcodes scanned IN at destination — the theft case."""
+    return await _build_confirmation_ready_trip(db_session, scan_in_count=2)
+
+
+@pytest.fixture
+async def empty_leg_ready_to_confirm(db_session, store) -> dict[str, Any]:
+    """Confirmation at a stop with NO Consignment rows at all — an EMPTY_LEG
+    trip's real phase plan (no loading row, matching empty_leg_trip_fixture
+    above), walked to a PENDING confirmation with nothing to reconcile."""
+    base = await _build_confirmation_base_trip(db_session, org_suffix=f"EL{uuid.uuid4().hex[:6]}", num_stops=2)
+    trip, driver, (stop0, stop1) = base["trip"], base["driver"], base["stops"]
+    trip.trip_type = TripType.EMPTY_LEG
+    await db_session.flush()
+
+    plan = build_phase_plan([
+        PlanStop(sequence=0, picks_up=False, drops_off=False),
+        PlanStop(sequence=1, picks_up=False, drops_off=False),
+    ])
+    stop_id_by_sequence = {0: stop0.id, 1: stop1.id}
+    phases: dict[str, PhaseEvent] = {}
+    for planned in plan:
+        event = PhaseEvent(
+            trip_id=trip.id,
+            trip_stop_id=None if planned.stop_sequence is None else stop_id_by_sequence[planned.stop_sequence],
+            phase_type=planned.phase_type,
+            sequence_number=planned.sequence_number,
+            status=PhaseStatus.COMPLETED if planned.phase_type == PhaseType.TRIP_CREATION else PhaseStatus.PENDING,
+        )
+        db_session.add(event)
+        phases[planned.phase_type.value] = event
+    await db_session.flush()
+
+    await advance_activation(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["activation"].id,
+        payload=ActivationCompleteRequest(phase_type=PhaseType.ACTIVATION,
+            driver_phone_lat=Decimal("0"), driver_phone_lng=Decimal("0"), idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+    await advance_departure(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["departure"].id,
+        payload=DepartureCompleteRequest(phase_type=PhaseType.DEPARTURE,
+            waybill_photo_artifact_id=await _make_artifact(db_session, trip.id), seal_number="AB-1234",
+            seal_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            guard_verified_seal=True, idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+    await advance_unloading(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading"].id,
+        payload=UnloadingCompleteRequest(
+            phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-1234",
+            gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    return {
+        "trip": trip, "driver": driver,
+        "confirmation_event": phases["confirmation"],
+        "pod_photo_id": await _make_artifact(db_session, trip.id),
+        "pod_signature_id": await _make_artifact(db_session, trip.id),
+    }
+
+
+@pytest.fixture
+async def xdock_ready_to_confirm(db_session, store) -> dict[str, Any]:
+    """Cross-dock: a consignment picked up at stop0 and delivered at stop2, with an
+    intervening stop1 that has its own LOADING row (no consignment of its own —
+    build_phase_plan takes picks_up/drops_off as given, it does not derive them).
+    Scan-out at stop0 and scan-in at stop2 AGREE for the one real consignment, so a
+    correct per-consignment implementation raises nothing — a leg-based lookup
+    would instead resolve stop1's loading (which never saw this consignment at
+    all) as the "origin" and manufacture a mismatch on a healthy trip.
+    """
+    base = await _build_confirmation_base_trip(db_session, org_suffix=f"XD{uuid.uuid4().hex[:6]}", num_stops=3)
+    trip, driver, (stop0, stop1, stop2) = base["trip"], base["driver"], base["stops"]
+
+    consignment = Consignment(
+        id=uuid.uuid4(), trip_id=trip.id, parcel_perfect_reference=f"WAY-XD-{uuid.uuid4().hex[:8]}",
+        parcel_count_expected=2, pickup_stop_id=stop0.id, delivery_stop_id=stop2.id,
+    )
+    db_session.add(consignment)
+    await db_session.flush()
+    barcodes = [f"XD{uuid.uuid4().hex[:8]}" for _ in range(2)]
+    for barcode in barcodes:
+        db_session.add(Parcel(
+            id=uuid.uuid4(), consignment_id=consignment.id, barcode=barcode, status=ParcelStatus.PENDING,
+        ))
+    await db_session.flush()
+
+    plan = build_phase_plan([
+        PlanStop(sequence=0, picks_up=True, drops_off=False),
+        PlanStop(sequence=1, picks_up=True, drops_off=False),
+        PlanStop(sequence=2, picks_up=False, drops_off=True),
+    ])
+    names = [
+        "trip_creation", "activation", "loading_1", "departure_1", "in_transit_1",
+        "loading_2", "departure_2", "in_transit_2", "unloading", "confirmation",
+    ]
+    stop_id_by_sequence = {0: stop0.id, 1: stop1.id, 2: stop2.id}
+    phases: dict[str, PhaseEvent] = {}
+    for name, planned in zip(names, plan, strict=True):
+        event = PhaseEvent(
+            trip_id=trip.id,
+            trip_stop_id=None if planned.stop_sequence is None else stop_id_by_sequence[planned.stop_sequence],
+            phase_type=planned.phase_type,
+            sequence_number=planned.sequence_number,
+            status=PhaseStatus.COMPLETED if planned.phase_type == PhaseType.TRIP_CREATION else PhaseStatus.PENDING,
+        )
+        db_session.add(event)
+        phases[name] = event
+    await db_session.flush()
+
+    feed = MockScanFeed()
+    await _stage_and_ingest(
+        db_session, feed, consignment_reference=consignment.parcel_perfect_reference,
+        stop_id=stop0.id, direction=ScanDirection.OUT, trip_id=trip.id, barcodes=barcodes,
+    )
+
+    await advance_activation(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["activation"].id,
+        payload=ActivationCompleteRequest(phase_type=PhaseType.ACTIVATION,
+            driver_phone_lat=Decimal("0"), driver_phone_lng=Decimal("0"), idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+    await advance_loading(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["loading_1"].id,
+        payload=LoadingCompleteRequest(phase_type=PhaseType.LOADING, idempotency_key=str(uuid.uuid4())),
+    )
+    await advance_departure(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["departure_1"].id,
+        payload=DepartureCompleteRequest(phase_type=PhaseType.DEPARTURE,
+            waybill_photo_artifact_id=await _make_artifact(db_session, trip.id), seal_number="AB-1111",
+            seal_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            guard_verified_seal=True, idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+    # stop1 has no consignment of its own (pickup_stop_id never points here), so
+    # loading_2's gate sees no expected parcel set and is never blocked — no
+    # staging needed, matching phase_gate's own "no Consignment -> not blocked" rule.
+    await advance_loading(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["loading_2"].id,
+        payload=LoadingCompleteRequest(phase_type=PhaseType.LOADING, idempotency_key=str(uuid.uuid4())),
+    )
+    await advance_departure(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["departure_2"].id,
+        payload=DepartureCompleteRequest(phase_type=PhaseType.DEPARTURE,
+            waybill_photo_artifact_id=await _make_artifact(db_session, trip.id), seal_number="AB-2222",
+            seal_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            guard_verified_seal=True, idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+    await advance_unloading(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading"].id,
+        payload=UnloadingCompleteRequest(
+            phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-2222",
+            gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    await _stage_and_ingest(
+        db_session, feed, consignment_reference=consignment.parcel_perfect_reference,
+        stop_id=stop2.id, direction=ScanDirection.IN, trip_id=trip.id, barcodes=barcodes,
+    )
+
+    return {
+        "trip": trip, "driver": driver,
+        "confirmation_event": phases["confirmation"],
+        "pod_photo_id": await _make_artifact(db_session, trip.id),
+        "pod_signature_id": await _make_artifact(db_session, trip.id),
+    }
+
+
+async def test_confirmation_derives_scan_in_count_from_parcels(
+    db_session, store, ready_to_confirm,
+):
+    """The count comes from the warehouse, not from the driver's own number echoed
+    back — which is what made the old three-way check circular."""
+    await phase_service.advance_confirmation(
+        db_session,
+        trip_id=ready_to_confirm["trip"].id,
+        driver_id=ready_to_confirm["driver"].id,
+        phase_event_id=ready_to_confirm["confirmation_event"].id,
+        payload=ConfirmationCompleteRequest(
+            phase_type=PhaseType.CONFIRMATION,
+            pod_photo_artifact_id=ready_to_confirm["pod_photo_id"],
+            pod_signature_artifact_id=ready_to_confirm["pod_signature_id"],
+            driver_visual_count=1,
+            idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    event = await db_session.get(PhaseEvent, ready_to_confirm["confirmation_event"].id)
+    assert event.parcel_count_destination == 3
+    # The driver's pallet count is recorded, never compared against a parcel count.
+    assert event.driver_visual_count == 1
+
+
+async def test_confirmation_raises_nothing_when_both_scans_agree(
+    db_session, store, ready_to_confirm,
+):
+    await phase_service.advance_confirmation(
+        db_session,
+        trip_id=ready_to_confirm["trip"].id,
+        driver_id=ready_to_confirm["driver"].id,
+        phase_event_id=ready_to_confirm["confirmation_event"].id,
+        payload=ConfirmationCompleteRequest(
+            phase_type=PhaseType.CONFIRMATION,
+            pod_photo_artifact_id=ready_to_confirm["pod_photo_id"],
+            pod_signature_artifact_id=ready_to_confirm["pod_signature_id"],
+            driver_visual_count=1,
+            idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    exceptions = (await db_session.execute(
+        select(TripException).where(
+            TripException.trip_id == ready_to_confirm["trip"].id,
+            TripException.exception_type == ExceptionType.WAYBILL_COUNT_MISMATCH,
+        )
+    )).scalars().all()
+    assert exceptions == []
+
+
+async def test_a_parcel_lost_in_transit_raises_a_scoped_mismatch(
+    db_session, store, ready_to_confirm_short,
+):
+    """3 scanned out at origin, 2 scanned in at destination. This is the theft case,
+    and it is the single most important assertion in this plan."""
+    result = await phase_service.advance_confirmation(
+        db_session,
+        trip_id=ready_to_confirm_short["trip"].id,
+        driver_id=ready_to_confirm_short["driver"].id,
+        phase_event_id=ready_to_confirm_short["confirmation_event"].id,
+        payload=ConfirmationCompleteRequest(
+            phase_type=PhaseType.CONFIRMATION,
+            pod_photo_artifact_id=ready_to_confirm_short["pod_photo_id"],
+            pod_signature_artifact_id=ready_to_confirm_short["pod_signature_id"],
+            driver_visual_count=1,
+            idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    exception = (await db_session.execute(
+        select(TripException).where(
+            TripException.trip_id == ready_to_confirm_short["trip"].id,
+            TripException.exception_type == ExceptionType.WAYBILL_COUNT_MISMATCH,
+        )
+    )).scalar_one()
+    assert exception.consignment_id == ready_to_confirm_short["consignment"].id
+    assert exception.trip_stop_id == ready_to_confirm_short["delivery_stop"].id
+    assert "3" in exception.description and "2" in exception.description
+
+    # Task 7 deleted test_advance_confirmation_count_mismatch_creates_exception_but_
+    # still_closes, leaving "a mismatch records an exception but still lets the trip
+    # close" for task 8 to reintroduce (see the comment above
+    # test_advance_confirmation_matching_counts_closes_trip). Asserted here rather
+    # than in a sibling test — this fixture is already the mismatch case.
+    confirmation_row = next(h for h in result.phases if h.id == ready_to_confirm_short["confirmation_event"].id)
+    assert confirmation_row.status == PhaseStatus.EXCEPTION
+    assert result.status == TripStatus.CLOSED
+
+
+async def test_crossdock_reconciles_against_the_pickup_stop_not_the_preceding_leg(
+    db_session, store, xdock_ready_to_confirm,
+):
+    """A consignment picked up at stop 1 and delivered at stop 3 must compare against
+    STOP 1's scan-out. A leg-based lookup finds stop 2's loading row instead and
+    manufactures a mismatch on a healthy trip — on FP-DEMO-XDOCK-0001, the trip a
+    reviewer is walked through."""
+    result = await phase_service.advance_confirmation(
+        db_session,
+        trip_id=xdock_ready_to_confirm["trip"].id,
+        driver_id=xdock_ready_to_confirm["driver"].id,
+        phase_event_id=xdock_ready_to_confirm["confirmation_event"].id,
+        payload=ConfirmationCompleteRequest(
+            phase_type=PhaseType.CONFIRMATION,
+            pod_photo_artifact_id=xdock_ready_to_confirm["pod_photo_id"],
+            pod_signature_artifact_id=xdock_ready_to_confirm["pod_signature_id"],
+            driver_visual_count=2,
+            idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    exceptions = (await db_session.execute(
+        select(TripException).where(
+            TripException.trip_id == xdock_ready_to_confirm["trip"].id,
+            TripException.exception_type == ExceptionType.WAYBILL_COUNT_MISMATCH,
+        )
+    )).scalars().all()
+    assert exceptions == []
+    confirmation_row = next(h for h in result.phases if h.id == xdock_ready_to_confirm["confirmation_event"].id)
+    assert confirmation_row.status == PhaseStatus.COMPLETED
+
+
+async def test_a_stop_with_no_consignments_skips_reconciliation(
+    db_session, store, empty_leg_ready_to_confirm,
+):
+    """No manifest baseline means nothing to compare — never 'compare against nothing
+    and manufacture a mismatch'."""
+    await phase_service.advance_confirmation(
+        db_session,
+        trip_id=empty_leg_ready_to_confirm["trip"].id,
+        driver_id=empty_leg_ready_to_confirm["driver"].id,
+        phase_event_id=empty_leg_ready_to_confirm["confirmation_event"].id,
+        payload=ConfirmationCompleteRequest(
+            phase_type=PhaseType.CONFIRMATION,
+            pod_photo_artifact_id=empty_leg_ready_to_confirm["pod_photo_id"],
+            pod_signature_artifact_id=empty_leg_ready_to_confirm["pod_signature_id"],
+            driver_visual_count=0,
+            idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    event = await db_session.get(
+        PhaseEvent, empty_leg_ready_to_confirm["confirmation_event"].id,
+    )
+    assert event.status == PhaseStatus.COMPLETED

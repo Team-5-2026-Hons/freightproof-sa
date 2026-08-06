@@ -13,8 +13,10 @@ these are not reinvented here.
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from unittest.mock import patch
 
+import pytest
 import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy import func, select, update
@@ -22,16 +24,19 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.blockchain.hedera import HederaReceipt
 from app.db.models.enums import (
-    ArtifactType, IdvsStatus, OrganizationType, PhaseStatus, PhaseType, TripStatus, VehicleType,
+    ArtifactType, IdvsStatus, OrganizationType, ParcelStatus, PhaseStatus, PhaseType, TripStatus, VehicleType,
 )
 from app.db.models.evidence import EvidenceArtifact
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.phases import PhaseEvent
-from app.db.models.trips import Trip, TripStop
+from app.db.models.trips import Consignment, Parcel, Trip, TripStop
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
+from app.integrations import scan_feed as scan_feed_module
+from app.integrations.scan_feed import MockScanFeed, ScanDirection
 from app.main import app
+from app.orchestration import scan_service
 
 from tests.conftest import auth_header, make_token
 
@@ -103,6 +108,29 @@ async def seed_trip(db_session):
     ])
     await db_session.flush()
 
+    return trip, driver
+
+
+@pytest_asyncio.fixture
+async def seed_trip_with_consignment(db_session, seed_trip):
+    """seed_trip plus a Consignment picked up at stop0 (sequence 0).
+
+    phase_gate.py only gates a (phase_type, stop) pair that has a Consignment row
+    — "no Consignment" is the ungated case, not the blocked one (see its module
+    docstring). No scan session is closed here, so the mock feed's default
+    (nothing staged) reads as an OPEN session and loading stays blocked.
+    """
+    trip, driver = seed_trip
+    stop0 = (await db_session.execute(
+        select(TripStop).where(TripStop.trip_id == trip.id, TripStop.sequence == 0)
+    )).scalar_one()
+    consignment = Consignment(
+        id=uuid.uuid4(), trip_id=trip.id,
+        parcel_perfect_reference=f"PP-{uuid.uuid4().hex[:8]}",
+        pickup_stop_id=stop0.id,
+    )
+    db_session.add(consignment)
+    await db_session.flush()
     return trip, driver
 
 
@@ -965,3 +993,390 @@ async def test_empty_leg_trip_walks_to_closed(
         )
     assert resp.status_code == 200
     assert resp.json()["status"] == "closed"
+
+
+# ── Task 5: blocked_on served on the phase read schema ─────────────────────
+
+async def test_phase_list_reports_blocked_on_for_loading(
+    client: AsyncClient, db_session, seed_trip_with_consignment,
+):
+    """Loading at stop0 has a Consignment picked up there and no scan session has
+    been closed (the mock feed's default), so the phase reads as blocked."""
+    trip, driver = seed_trip_with_consignment
+    token = make_token(sub=str(driver.id), role="driver")
+
+    resp = await client.get(f"/api/v1/trips/{trip.id}/phases", headers=auth_header(token))
+
+    assert resp.status_code == 200
+    loading = next(p for p in resp.json() if p["phase_type"] == "loading")
+    assert loading["blocked_on"] == "warehouse_scan"
+
+
+async def test_phase_list_reports_null_blocked_on_for_departure(
+    client: AsyncClient, db_session, seed_trip_with_consignment,
+):
+    """departure is absent from phase_gate's _GATED_PHASES map entirely — never
+    blocked regardless of consignment or scan-session state."""
+    trip, driver = seed_trip_with_consignment
+    token = make_token(sub=str(driver.id), role="driver")
+
+    resp = await client.get(f"/api/v1/trips/{trip.id}/phases", headers=auth_header(token))
+
+    departure = next(p for p in resp.json() if p["phase_type"] == "departure")
+    assert departure["blocked_on"] is None
+
+
+async def test_phase_list_query_count_is_independent_of_phase_count(
+    client: AsyncClient, db_session, seed_trip_with_consignment, test_engine,
+):
+    """Guards against blocked_on being derived per event. seed_trip's 7-row plan
+    (of which loading and confirmation are gated) must issue exactly one
+    consignments query for the whole request, not one per phase row — proving
+    blocked_on_by_stop is hoisted out of the from_event comprehension in
+    api/v1/endpoints/phases.py.
+
+    Uses tests/conftest.py's session-scoped `test_engine` fixture rather than the
+    plan's guessed `db_engine`/`xdock_trip_api` — those fixtures don't exist here.
+    db_session (used by the endpoint via the get_db override) is a Session bound
+    to a Connection checked out of test_engine, so a before_cursor_execute
+    listener on test_engine.sync_engine sees every statement the endpoint issues.
+    """
+    trip, driver = seed_trip_with_consignment
+    token = make_token(sub=str(driver.id), role="driver")
+
+    statements: list[str] = []
+
+    def record(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    from sqlalchemy import event as sa_event
+    sa_event.listen(test_engine.sync_engine, "before_cursor_execute", record)
+    try:
+        resp = await client.get(f"/api/v1/trips/{trip.id}/phases", headers=auth_header(token))
+    finally:
+        sa_event.remove(test_engine.sync_engine, "before_cursor_execute", record)
+
+    assert resp.status_code == 200
+    consignment_queries = [s for s in statements if "consignments" in s.lower()]
+    assert len(consignment_queries) == 1
+
+
+# ── Task 6: the gate enforced on completion, not just read ─────────────────
+
+@pytest_asyncio.fixture
+async def completed_activation_trip(client: AsyncClient, db_session, seed_trip):
+    """seed_trip with activation already completed under a known idempotency_key.
+
+    Activation is never gated by phase_gate (only loading/confirmation are), so this
+    fixture is deliberately independent of any scan-session state — it exists purely
+    to give the replay-ordering test a phase that is genuinely already resolved.
+    """
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+    activation_id = await _phase_id(client, trip.id, token, "activation")
+    key = str(uuid.uuid4())
+
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{activation_id}/complete",
+        json={
+            "phase_type": "activation",
+            "driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001",
+            "idempotency_key": key,
+        },
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 200
+
+    return {
+        "trip_id": str(trip.id),
+        "activation_event_id": activation_id,
+        "idempotency_key": key,
+        # The SAME token as the original completion, not a fresh make_token() call:
+        # sessions.py's one-device-per-driver rule only lets a NEWER session_id take
+        # over, and two make_token() calls close together can tie on issued_at,
+        # 401ing the replay for a reason that has nothing to do with this test.
+        "token": token,
+    }
+
+
+async def test_completing_a_blocked_loading_returns_409(
+    client: AsyncClient, db_session, seed_trip_with_consignment,
+):
+    """A hand-crafted POST must not slip past the same gate the read side reports:
+    seed_trip_with_consignment leaves the mock scan session open at stop0, so
+    loading is genuinely blocked (see seed_trip_with_consignment's own docstring)."""
+    trip, driver = seed_trip_with_consignment
+    token = make_token(sub=str(driver.id), role="driver")
+
+    # Loading is sequence-gated on activation being resolved first (_gate_and_load's
+    # lower-sequence check) — completing that here isolates the 409 below to the
+    # scan gate, not a stale earlier phase.
+    activation_id = await _phase_id(client, trip.id, token, "activation")
+    await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{activation_id}/complete",
+        json={
+            "phase_type": "activation",
+            "driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001",
+            "idempotency_key": str(uuid.uuid4()),
+        },
+        headers=auth_header(token),
+    )
+
+    loading_id = await _phase_id(client, trip.id, token, "loading")
+
+    response = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{loading_id}/complete",
+        headers=auth_header(token),
+        json={
+            "phase_type": "loading",
+            "driver_visual_count": 3,
+            "idempotency_key": str(uuid.uuid4()),
+        },
+    )
+
+    assert response.status_code == 409
+    assert "warehouse" in response.json()["detail"].lower()
+
+
+async def test_an_idempotent_replay_of_a_completed_phase_does_not_409(
+    client: AsyncClient, db_session, completed_activation_trip,
+):
+    """Ordering guard: the blocked check must run AFTER _gate_and_load's replay
+    short-circuit. If it runs first, a resent offline-queue entry for an
+    already-successful completion 409s instead of returning current state, and the
+    driver app's queue never drains."""
+    token = completed_activation_trip["token"]
+    key = completed_activation_trip["idempotency_key"]
+
+    response = await client.post(
+        f"/api/v1/trips/{completed_activation_trip['trip_id']}/phases/"
+        f"{completed_activation_trip['activation_event_id']}/complete",
+        headers=auth_header(token),
+        json={
+            "phase_type": "activation",
+            "driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001",
+            "idempotency_key": key,
+        },
+    )
+
+    assert response.status_code == 200
+
+
+# ── Task 8: a closed phase row is never rewritten by a later scan ──────────
+
+class _FakeMockStateStore:
+    """Dict-backed MockStateStore — keeps this test off a real Redis. Same shape
+    as tests/unit/test_phase_service.py's copy, duplicated locally per this
+    codebase's existing convention (test_dev_triggers.py has its own too)."""
+
+    def __init__(self) -> None:
+        self.data: dict[str, dict[str, Any]] = {}
+
+    async def get_json(self, key: str) -> dict[str, Any] | None:
+        return self.data.get(key)
+
+    async def set_json(self, key: str, value: dict[str, Any]) -> None:
+        self.data[key] = value
+
+    async def flush(self) -> int:
+        count = len(self.data)
+        self.data.clear()
+        return count
+
+
+@pytest.fixture
+def store(monkeypatch: pytest.MonkeyPatch) -> _FakeMockStateStore:
+    fake = _FakeMockStateStore()
+    monkeypatch.setattr(scan_feed_module, "get_mock_state_store", lambda: fake)
+    return fake
+
+
+@pytest_asyncio.fixture
+async def completed_unloading_trip(
+    client: AsyncClient, db_session, store,
+) -> dict[str, Any]:
+    """A trip driven via real HTTP calls to a COMPLETED unloading row at the
+    destination stop, with a Consignment whose parcels are scanned OUT in full
+    at origin (closed) but deliberately NOT YET scanned in at destination —
+    unloading itself is never gated on scans (only loading/confirmation are,
+    per phase_gate.py's _GATED_PHASES), so it closes with no IN-direction scan
+    activity at all. That absence is what lets the test that consumes this
+    fixture stage a "late" scan-in strictly after unloading is already closed.
+    """
+    org = Organization(id=uuid.uuid4(), name="ImmutableOrg", org_type=OrganizationType.OPERATOR)
+    client_org = Organization(id=uuid.uuid4(), name="ImmutableClient", org_type=OrganizationType.PRINCIPAL)
+    db_session.add_all([org, client_org])
+    await db_session.flush()
+
+    user = User(id=uuid.uuid4(), organization_id=org.id, email=f"{uuid.uuid4().hex[:8]}@test.co.za", full_name="D")
+    driver = Driver(
+        id=uuid.uuid4(), organization_id=org.id, full_name="ImmutableDriver",
+        id_number=uuid.uuid4().hex[:13], phone_number=f"+2782{uuid.uuid4().hex[:7]}",
+        license_number=f"DRV-{uuid.uuid4().hex[:8]}",
+    )
+    horse = Vehicle(
+        id=uuid.uuid4(), organization_id=org.id, vehicle_type=VehicleType.HORSE,
+        registration=f"IM{uuid.uuid4().hex[:6].upper()}", pulsit_device_id=f"PUL-{uuid.uuid4().hex[:8]}",
+    )
+    origin = Precinct(id=uuid.uuid4(), name="Imm-O", principal_organization_id=client_org.id, latitude="0", longitude="0")
+    dest = Precinct(id=uuid.uuid4(), name="Imm-D", principal_organization_id=client_org.id, latitude="1", longitude="1")
+    db_session.add_all([user, driver, horse, origin, dest])
+    await db_session.flush()
+
+    trip = Trip(
+        id=uuid.uuid4(), trip_reference=f"FP-IMM-{uuid.uuid4().hex[:6]}", order_number="ORD-IMM",
+        operator_organization_id=org.id, client_organization_id=client_org.id,
+        driver_id=driver.id, horse_id=horse.id,
+        origin_precinct_id=origin.id, destination_precinct_id=dest.id,
+        status=TripStatus.CREATED, idvs_check_status=IdvsStatus.VERIFIED,
+        planned_departure_at=datetime.now(UTC),
+        created_by_user_id=user.id,
+    )
+    db_session.add(trip)
+    await db_session.flush()
+
+    stop0 = TripStop(trip_id=trip.id, precinct_id=origin.id, sequence=0)
+    stop1 = TripStop(trip_id=trip.id, precinct_id=dest.id, sequence=1)
+    db_session.add_all([stop0, stop1])
+    await db_session.flush()
+
+    pp_reference = f"WAY-IMM-{uuid.uuid4().hex[:8]}"
+    consignment = Consignment(
+        id=uuid.uuid4(), trip_id=trip.id, parcel_perfect_reference=pp_reference,
+        parcel_count_expected=2, pickup_stop_id=stop0.id, delivery_stop_id=stop1.id,
+    )
+    db_session.add(consignment)
+    await db_session.flush()
+
+    barcodes = [f"IMM{uuid.uuid4().hex[:8]}" for _ in range(2)]
+    for barcode in barcodes:
+        db_session.add(Parcel(
+            id=uuid.uuid4(), consignment_id=consignment.id, barcode=barcode, status=ParcelStatus.PENDING,
+        ))
+    await db_session.flush()
+
+    db_session.add_all([
+        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.TRIP_CREATION, sequence_number=0, status=PhaseStatus.COMPLETED),
+        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.ACTIVATION, trip_stop_id=stop0.id, sequence_number=1, status=PhaseStatus.PENDING),
+        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.LOADING, trip_stop_id=stop0.id, sequence_number=2, status=PhaseStatus.PENDING),
+        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.DEPARTURE, trip_stop_id=stop0.id, sequence_number=3, status=PhaseStatus.PENDING),
+        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.IN_TRANSIT, trip_stop_id=stop0.id, sequence_number=4, status=PhaseStatus.PENDING),
+        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.UNLOADING, trip_stop_id=stop1.id, sequence_number=5, status=PhaseStatus.PENDING),
+        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.CONFIRMATION, trip_stop_id=stop1.id, sequence_number=6, status=PhaseStatus.PENDING),
+    ])
+    await db_session.flush()
+
+    token = make_token(sub=str(driver.id), role="driver")
+
+    # Scan-out at origin, staged/ingested/closed BEFORE loading — mirrors the real
+    # dispatcher flow and is what clears loading's own gate.
+    feed = MockScanFeed()
+    await feed.stage_scans(
+        consignment_reference=pp_reference, stop_reference=str(stop0.id),
+        direction=ScanDirection.OUT, barcodes=barcodes,
+    )
+    await scan_service.ingest_scans(
+        db_session, trip_id=trip.id, trip_stop_id=stop0.id, direction=ScanDirection.OUT,
+    )
+    await feed.close_session(
+        consignment_reference=pp_reference, stop_reference=str(stop0.id), direction=ScanDirection.OUT,
+    )
+    await db_session.commit()
+
+    activation_id = await _phase_id(client, trip.id, token, "activation")
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{activation_id}/complete",
+        json={
+            "phase_type": "activation",
+            "driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001",
+            "idempotency_key": str(uuid.uuid4()),
+        },
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 200
+
+    loading_id = await _phase_id(client, trip.id, token, "loading")
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{loading_id}/complete",
+        json={"phase_type": "loading", "idempotency_key": str(uuid.uuid4())},
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 200
+
+    waybill_id = await _make_artifact(db_session, trip.id)
+    seal_photo_id = await _make_artifact(db_session, trip.id)
+    departure_id = await _phase_id(client, trip.id, token, "departure")
+    with patch("app.blockchain.anchor_service.HederaService") as MockService:
+        MockService.return_value.submit_hash.return_value = _fake_hedera_receipt()
+        resp = await client.post(
+            f"/api/v1/trips/{trip.id}/phases/{departure_id}/complete",
+            json={
+                "phase_type": "departure",
+                "waybill_photo_artifact_id": waybill_id, "seal_number": "AB-1234",
+                "seal_photo_artifact_id": seal_photo_id, "guard_verified_seal": True,
+                "idempotency_key": str(uuid.uuid4()),
+            },
+            headers=auth_header(token),
+        )
+    assert resp.status_code == 200
+
+    gate_photo_id = await _make_artifact(db_session, trip.id)
+    unloading_id = await _phase_id(client, trip.id, token, "unloading")
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{unloading_id}/complete",
+        json={
+            "phase_type": "unloading", "seal_number_at_destination": "AB-1234",
+            "gate_photo_artifact_id": gate_photo_id, "idempotency_key": str(uuid.uuid4()),
+        },
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "active"
+
+    return {
+        "trip_id": trip.id,
+        "unloading_event_id": uuid.UUID(unloading_id),
+        "delivery_stop_id": stop1.id,
+        "pp_reference": pp_reference,
+        "barcodes": barcodes,
+    }
+
+
+async def test_a_closed_phase_row_is_never_written_again(
+    db_session, store, completed_unloading_trip,
+):
+    """Design §2.1: a phase's anchored payload may only contain data that existed when
+    it closed. Scan data arriving after close belongs on a LATER row, never back-written
+    onto this one — an anchored row whose fields change no longer hashes to its Hedera
+    tx, which is precisely the tampering signal this product exists to detect."""
+    event = await db_session.get(PhaseEvent, completed_unloading_trip["unloading_event_id"])
+    before = {
+        "parcel_count_destination": event.parcel_count_destination,
+        "parcel_count_origin": event.parcel_count_origin,
+        "event_hash": event.event_hash,
+        "completed_at": event.completed_at,
+    }
+
+    # A late scan-in lands well after unloading closed — the realistic ordering.
+    feed = MockScanFeed()
+    await feed.stage_scans(
+        consignment_reference=completed_unloading_trip["pp_reference"],
+        stop_reference=str(completed_unloading_trip["delivery_stop_id"]),
+        direction=ScanDirection.IN,
+        barcodes=completed_unloading_trip["barcodes"],
+    )
+    await scan_service.ingest_scans(
+        db_session,
+        trip_id=completed_unloading_trip["trip_id"],
+        trip_stop_id=completed_unloading_trip["delivery_stop_id"],
+        direction=ScanDirection.IN,
+    )
+    await db_session.commit()
+
+    await db_session.refresh(event)
+    assert {
+        "parcel_count_destination": event.parcel_count_destination,
+        "parcel_count_origin": event.parcel_count_origin,
+        "event_hash": event.event_hash,
+        "completed_at": event.completed_at,
+    } == before

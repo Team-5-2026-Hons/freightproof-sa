@@ -63,14 +63,14 @@ from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import event as event_module
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.blockchain.anchor_service import anchor_subject, compute_payload_hash
 from app.core.config import settings
 from app.core.realtime import RealtimeKind, TripEvent, enqueue_event
 from app.core.exceptions import (
-    HederaServiceError, HederaTimeoutError, PhaseSequenceError, PhaseTooEarlyError,
+    HederaServiceError, HederaTimeoutError, PhaseBlockedError, PhaseSequenceError, PhaseTooEarlyError,
     PhaseTypeMismatchError, ResourceNotFoundError, TripActivationBlockedError, TripStateError,
 )
 from app.db.models.enums import (
@@ -81,6 +81,9 @@ from app.db.models.evidence import EvidenceArtifact
 from app.db.models.phases import PhaseEvent
 from app.db.models.transit import TripException
 from app.db.models.trips import Consignment, Trip, TripStop
+from app.integrations.scan_feed import ScanDirection
+from app.orchestration import scan_service
+from app.orchestration.phase_gate import blocked_on_by_stop
 from app.orchestration.resource_service import get_trip_detail
 from app.schemas.phases import (
     ActivationCompleteRequest, ConfirmationCompleteRequest, DepartureCompleteRequest,
@@ -258,6 +261,15 @@ async def _gate_and_load(
         # blocker, an unresolved earlier phase is, so the message says that
         # instead of misleadingly implying trip.status caused the 409.
         raise PhaseSequenceError("an earlier phase in the plan is still unresolved", phase_label)
+
+    # AFTER the _is_resolved replay short-circuit above, never before it. A resent
+    # offline-queue entry for an already-successful completion must return current
+    # state, not 409 — otherwise the driver app's queue never drains. This ordering
+    # is covered by test_an_idempotent_replay_of_a_completed_phase_does_not_409.
+    if event.trip_stop_id is not None:
+        gate = await blocked_on_by_stop(db, trip_id=trip_id)
+        if gate.get((PhaseType(event.phase_type), event.trip_stop_id)) is not None:
+            raise PhaseBlockedError(phase_label)
 
     return trip, event
 
@@ -747,41 +759,6 @@ def compute_departure_canonical_payload(
     }
 
 
-async def _expected_parcel_count(
-    db: AsyncSession, *, trip_id: uuid.UUID, trip_stop_id: uuid.UUID | None,
-) -> int | None:
-    """The manifest's declared total for the consignments picked up AT THIS STOP
-    (finding F13, task 6.2b) — not the trip-wide total this used to sum.
-
-    A cross-dock trip has more than one `loading` row, one per pickup stop. The
-    old query summed Consignment.parcel_count_expected trip-wide with no stop
-    filter, so EVERY loading on the trip was compared against the WHOLE ROUTE's
-    declared total — a loading that only picks up part of the manifest was still
-    held to the full manifest count and raised a false PARCEL_COUNT_MISMATCH.
-    This fired twice on scripts/seed_trips.py's own FP-DEMO-XDOCK-0001, the trip
-    a reviewer is walked through. Filtering on Consignment.pickup_stop_id scopes
-    the baseline to what THIS stop actually loads.
-
-    A no-op on a single-leg (2-stop) trip: trip_service.create_trip stamps every
-    API-created consignment's pickup_stop_id as trip_stops[0].id, so the
-    stop-scoped sum there is identical to the old trip-wide sum (see
-    test_single_leg_loading_count_unchanged_by_stop_scoping).
-
-    Returns None (not 0) when this stop has no mapped consignments at all, or
-    every mapped consignment's parcel_count_expected is unset: there is no
-    manifest baseline to compare against, and treating that as 0 would
-    manufacture a mismatch on a stop that simply hasn't had its expected counts
-    populated yet (same principle Stage 6's empty-leg fix applies to the
-    confirmation-side origin_count lookup)."""
-    result = await db.execute(
-        select(func.sum(Consignment.parcel_count_expected)).where(
-            Consignment.trip_id == trip_id,
-            Consignment.pickup_stop_id == trip_stop_id,
-        )
-    )
-    return result.scalar_one_or_none()
-
-
 async def advance_loading(
     db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID, phase_event_id: uuid.UUID,
     payload: LoadingCompleteRequest,
@@ -795,39 +772,107 @@ async def advance_loading(
     trip, event = gated
 
     _record_driver_position(event, payload)
-    # D7/T5: loading no longer captures or anchors the seal — that moves whole
-    # to departure. driver_visual_count is the only evidence this phase still
-    # owns; it stays unanchored (server-side reconciliation is Stage 3.3).
-    event.driver_visual_count = payload.driver_visual_count
 
-    # Manifest-vs-counted check at ORIGIN, before the truck leaves — distinct from
-    # advance_confirmation's WAYBILL_COUNT_MISMATCH, which reconciles what physically
-    # moved (origin/destination/driver-visual). This compares what was declared to PP
-    # against what the driver saw, so it gets its own type: PARCEL_COUNT_MISMATCH.
-    # Scoped to THIS stop (F13, task 6.2b) — event.trip_stop_id is the stop this
-    # loading row belongs to, never the trip as a whole.
-    expected_count = await _expected_parcel_count(db, trip_id=trip_id, trip_stop_id=event.trip_stop_id)
-    event.parcel_count_origin = expected_count
+    # The observed set, not a driver-entered number. The gate in _gate_and_load has
+    # already established that the warehouse closed its session at this stop, so these
+    # counts are final for this loading — which is what makes stamping the aggregate
+    # here safe under the "anchored payload contains only data that existed at close"
+    # rule (design §2.1). driver_visual_count is accepted on the payload (schema) but
+    # deliberately never read here — see LoadingCompleteRequest's docstring.
+    #
+    # trip_stop_id is Optional on PhaseEvent (only TRIP_CREATION is ever NULL, per
+    # its own uq_phase_events_trip_stop_type comment) — a LOADING row always carries
+    # one, so the None branch is unreachable in practice. Narrowed explicitly rather
+    # than asserted, since scan_service.load_consignments_at_stop requires a UUID.
+    consignments = (
+        await scan_service.load_consignments_at_stop(
+            db, trip_id=trip_id, trip_stop_id=event.trip_stop_id,
+            direction=ScanDirection.OUT,
+        )
+        if event.trip_stop_id is not None
+        else []
+    )
 
-    if expected_count is not None and expected_count != payload.driver_visual_count:
-        db.add(TripException(
-            trip_id=trip_id, phase_event_id=event.id,
-            exception_type=ExceptionType.PARCEL_COUNT_MISMATCH, source=ExceptionSource.SYSTEM,
-            severity=ExceptionSeverity.WARNING,
-            description=(
-                f"Manifest expects {expected_count} parcels; driver counted "
-                f"{payload.driver_visual_count} at loading."
-            ),
-        ))
-        # Recorded as evidence, but does NOT hold the trip — matches departure's and
-        # unloading's own seal-mismatch precedent (T3/_is_resolved treats EXCEPTION as
-        # resolved for gating). FreightProof records what happened; it doesn't dispatch
-        # or reroute, so a count discrepancy is surfaced, never a departure blocker.
-        event.status = PhaseStatus.EXCEPTION
-    else:
-        event.status = PhaseStatus.COMPLETED
+    scanned_out_total = 0
+    expected_total = 0
+    for consignment in consignments:
+        counts = await scan_service.scanned_counts_for_consignment(
+            db, consignment_id=consignment.id,
+        )
+        scanned_out_total += counts.scanned_out
+        expected_total += counts.expected
+
+        if counts.scanned_out != counts.expected:
+            # BACKSTOP ONLY — scan_service._reconcile_consignment is the primary
+            # writer of this exception and it already fired at ingest, naming the
+            # missing barcodes. Raising unconditionally here would put TWO rows on
+            # the dispatcher's list for one short count: scan_service's dedup
+            # compares descriptions verbatim, so a differently-worded second row
+            # sails straight past it.
+            #
+            # The one case scan_service genuinely cannot cover: it guards on
+            # `if events and (missing or unexpected)`, so a session closed with
+            # NOTHING scanned at all raises nothing there — no events, no row. That
+            # is the most serious short count there is and it must not go unrecorded.
+            # Hence a presence check rather than an unconditional add.
+            await _raise_scan_shortfall_if_unrecorded(
+                db, trip_id=trip_id, event=event, consignment=consignment,
+                scanned_out=counts.scanned_out, expected=counts.expected,
+            )
+
+    # None, not 0, when this stop has no consignments at all: a trip created without
+    # a Parcel Perfect reference has no manifest baseline, and 0 would read as
+    # "nothing was loaded" rather than "nothing was declared". Same None-is-not-zero
+    # principle as the old _expected_parcel_count (removed by this task — advance_loading
+    # was its only caller).
+    event.parcel_count_origin = scanned_out_total if consignments else None
+
+    # A short scan is recorded, never blocking — FreightProof records what happened,
+    # it does not dispatch. Matches departure's and unloading's seal-mismatch precedent.
+    event.status = (
+        PhaseStatus.EXCEPTION
+        if consignments and scanned_out_total != expected_total
+        else PhaseStatus.COMPLETED
+    )
 
     return await _finish_phase(db, trip=trip, event=event, idempotency_key=payload.idempotency_key)
+
+
+async def _raise_scan_shortfall_if_unrecorded(
+    db: AsyncSession, *, trip_id: uuid.UUID, event: PhaseEvent,
+    consignment: Consignment, scanned_out: int, expected: int,
+) -> None:
+    """Record a scan-out shortfall only if scan_service has not already recorded one.
+
+    Deliberately keyed on (consignment, stop, type, unresolved) rather than on the
+    description string scan_service's own dedup compares: the two writers word the
+    same finding differently, so a text comparison would let both through. The
+    question being asked here is "is this discrepancy already on the dispatcher's
+    list", and the answer must not depend on who phrased it.
+    """
+    existing = (await db.execute(
+        select(TripException.id).where(
+            TripException.trip_id == trip_id,
+            TripException.consignment_id == consignment.id,
+            TripException.trip_stop_id == event.trip_stop_id,
+            TripException.exception_type == ExceptionType.PARCEL_COUNT_MISMATCH,
+            TripException.resolved.is_(False),
+        )
+    )).first()
+    if existing is not None:
+        return
+
+    db.add(TripException(
+        trip_id=trip_id, phase_event_id=event.id,
+        consignment_id=consignment.id, trip_stop_id=event.trip_stop_id,
+        exception_type=ExceptionType.PARCEL_COUNT_MISMATCH,
+        source=ExceptionSource.SYSTEM, severity=ExceptionSeverity.WARNING,
+        description=(
+            f"Warehouse closed its scan-out session on waybill "
+            f"{consignment.parcel_perfect_reference} with "
+            f"{scanned_out} of {expected} parcel(s) scanned."
+        ),
+    ))
 
 
 def _normalized_seal(seal: str) -> str:
@@ -891,55 +936,6 @@ async def _find_departure_for_leg(
     if departure is None:
         raise ResourceNotFoundError("PhaseEvent", "departure")
     return departure
-
-
-async def _find_loading_for_leg(
-    db: AsyncSession, *, trip_id: uuid.UUID, before_sequence: int,
-) -> PhaseEvent | None:
-    """The LOADING row that loaded the leg ending at `before_sequence` — decision S1.
-
-    Same shape and same reason as _find_departure_for_leg: a cross-dock trip has
-    several LOADING rows, so a trip-wide phase_type lookup raises
-    MultipleResultsFound (NEW-9 in Stage 2's Findings ledger).
-
-    Semantics, not just mechanics: confirmation reconciles what was loaded onto
-    the FINAL leg against what arrived at the final stop. Cargo picked up earlier
-    and dropped at an intermediate stop left the vehicle before this leg began —
-    counting it would guarantee a false mismatch. Cargo dropped mid-route is not
-    count-reconciled at all today; that is F1 / Stage 3.3, deliberately deferred.
-
-    Returns None, rather than raising, when no LOADING row precedes this sequence
-    at all (task 6.2a, finding F1): an EMPTY_LEG trip carries no cargo, so the
-    plan generator (phase_plan.build_phase_plan) never emits a loading row for
-    it, and the old raise 404'd every empty-leg confirmation — the trip could
-    never close. The caller (advance_confirmation) reads None as "no origin
-    baseline exists" and skips reconciliation entirely rather than treating a
-    missing count as zero.
-
-    D7 caveat — read this before assuming the Optional return "fixed" the origin
-    baseline generally: it fixes ONLY the empty-leg case, where NO loading row
-    exists at all. A multi-pickup -> multi-drop cross-dock trip still finds A
-    preceding loading row here whenever this leg was fed by an earlier pickup —
-    just potentially the WRONG one — so NEW-17's false WAYBILL_COUNT_MISMATCH
-    (confirmation reconciling against the wrong stop's pickup) survives this
-    change completely untouched. NEW-17's real fix is per-consignment
-    reconciliation, a different stage; do not read this function as having
-    solved it.
-
-    Caller contract: `before_sequence` must be the sequence_number of the
-    confirmation's OWN row. Passing anything else silently resolves the wrong leg.
-    """
-    result = await db.execute(
-        select(PhaseEvent)
-        .where(
-            PhaseEvent.trip_id == trip_id,
-            PhaseEvent.phase_type == PhaseType.LOADING,
-            PhaseEvent.sequence_number < before_sequence,
-        )
-        .order_by(PhaseEvent.sequence_number.desc())
-        .limit(1)
-    )
-    return result.scalar_one_or_none()
 
 
 async def advance_departure(
@@ -1130,16 +1126,6 @@ async def advance_confirmation(
 
     _record_driver_position(event, payload)
 
-    # S1 / NEW-9: this leg's loading, not the trip's. A trip-wide phase_type
-    # lookup raised MultipleResultsFound on every real cross-dock trip.
-    # F1 (task 6.2a): None on an EMPTY_LEG trip — the plan generator emits no
-    # loading row at all when nothing is picked up, so there is no origin
-    # baseline to reconcile against (see _find_loading_for_leg's D7 caveat).
-    loading_event = await _find_loading_for_leg(
-        db, trip_id=trip_id, before_sequence=event.sequence_number,
-    )
-    origin_count = loading_event.driver_visual_count if loading_event is not None else None
-
     await _assert_artifacts_belong_to_trip(
         db, trip_id=trip_id,
         artifact_ids=(payload.pod_photo_artifact_id, payload.pod_signature_artifact_id),
@@ -1147,12 +1133,65 @@ async def advance_confirmation(
 
     event.pod_photo_artifact_id = payload.pod_photo_artifact_id
     event.pod_signature_artifact_id = payload.pod_signature_artifact_id
+
+    # Per consignment delivered at THIS stop, not per leg. A consignment picked up at
+    # stop 1 and delivered at stop 3 has its scan-out at stop 1; the old leg-based
+    # lookup this replaced would have resolved stop 2's loading row instead and
+    # manufactured a mismatch on a healthy cross-dock trip. Consignment.pickup_stop_id
+    # / delivery_stop_id (FP-112) is the partition that makes this correct.
+    #
+    # trip_stop_id is Optional on PhaseEvent (only TRIP_CREATION is ever NULL, per
+    # its own uq_phase_events_trip_stop_type comment) — a CONFIRMATION row always
+    # carries one, so the None branch is unreachable in practice. Narrowed
+    # explicitly rather than asserted, matching advance_loading's own precedent.
+    consignments = (
+        await scan_service.load_consignments_at_stop(
+            db, trip_id=trip_id, trip_stop_id=event.trip_stop_id,
+            direction=ScanDirection.IN,
+        )
+        if event.trip_stop_id is not None
+        else []
+    )
+
+    scanned_in_total = 0
+    mismatched = False
+    for consignment in consignments:
+        counts = await scan_service.scanned_counts_for_consignment(
+            db, consignment_id=consignment.id,
+        )
+        scanned_in_total += counts.scanned_in
+
+        if counts.scanned_out == 0 and counts.scanned_in == 0:
+            # No baseline at either end — nothing to compare. Covers empty-leg trips
+            # and dispatcher-overridden loadings alike, without either needing its own
+            # branch keyed on a field that no longer exists.
+            continue
+
+        if counts.scanned_out != counts.scanned_in:
+            mismatched = True
+            db.add(TripException(
+                trip_id=trip_id, phase_event_id=event.id,
+                consignment_id=consignment.id, trip_stop_id=event.trip_stop_id,
+                exception_type=ExceptionType.WAYBILL_COUNT_MISMATCH,
+                source=ExceptionSource.SYSTEM, severity=ExceptionSeverity.WARNING,
+                description=(
+                    f"Parcel count changed in transit on waybill "
+                    f"{consignment.parcel_perfect_reference}: "
+                    f"{counts.scanned_out} scanned out at origin, "
+                    f"{counts.scanned_in} scanned in at destination."
+                ),
+            ))
+
     event.driver_visual_count = payload.driver_visual_count
-    event.parcel_count_destination = payload.pp_scan_in_count
+    event.parcel_count_destination = scanned_in_total
 
     canonical_payload = compute_confirmation_canonical_payload(
         phase_event_id=event.id, trip_id=trip_id,
-        pp_scan_in_count=payload.pp_scan_in_count, driver_visual_count=payload.driver_visual_count,
+        # Key name unchanged — see the schema comment. Its provenance is now the
+        # warehouse feed rather than Parcel Perfect; its name is a mild misnomer and
+        # stays, because verification_service rebuilds every historical anchor from it.
+        pp_scan_in_count=scanned_in_total,
+        driver_visual_count=payload.driver_visual_count,
     )
     event.event_hash = compute_payload_hash(canonical_payload)
 
@@ -1165,51 +1204,7 @@ async def advance_confirmation(
         receipt_type=BlockchainReceiptType.DELIVERY,
     )
 
-    if loading_event is None:
-        # F1 (task 6.2a): an EMPTY_LEG trip carries no cargo, so the plan
-        # generator never emitted a loading row for this leg — there is no
-        # origin baseline to reconcile against at all. Skipped entirely rather
-        # than falling back to comparing against 0, mirroring
-        # _expected_parcel_count's own None-is-not-zero principle: a missing
-        # baseline means "nothing to compare", never "compare against nothing
-        # and manufacture a mismatch".
-        logger.info(
-            "Confirmation phase_event_id=%s has no preceding loading row "
-            "(empty-leg trip) — count reconciliation skipped.", event.id,
-        )
-        event.status = PhaseStatus.COMPLETED
-    elif origin_count is None:
-        # Newly reachable since task 6.1's dispatcher override: an overridden
-        # loading row never had a driver actually count parcels, so its
-        # driver_visual_count is null. Before 6.1 every loading row reaching
-        # this point had gone through advance_loading and always carried an
-        # int. Without this guard, Python's `None == payload.pp_scan_in_count`
-        # is simply False, so EVERY overridden loading would silently produce
-        # a false WAYBILL_COUNT_MISMATCH. Same skip-don't-manufacture
-        # treatment as the missing-loading-row branch above.
-        logger.info(
-            "Confirmation phase_event_id=%s resolved a preceding loading row "
-            "with no recorded driver_visual_count (likely dispatcher-"
-            "overridden) — count reconciliation skipped.", event.id,
-        )
-        event.status = PhaseStatus.COMPLETED
-    else:
-        counts_match = (
-            origin_count == payload.pp_scan_in_count == payload.driver_visual_count
-        )
-        if not counts_match:
-            db.add(TripException(
-                trip_id=trip_id, phase_event_id=event.id,
-                exception_type=ExceptionType.WAYBILL_COUNT_MISMATCH, source=ExceptionSource.SYSTEM,
-                severity=ExceptionSeverity.WARNING,
-                description=(
-                    f"Count mismatch at unload: origin={origin_count}, "
-                    f"PP scan-in={payload.pp_scan_in_count}, driver visual={payload.driver_visual_count}."
-                ),
-            ))
-            event.status = PhaseStatus.EXCEPTION
-        else:
-            event.status = PhaseStatus.COMPLETED
+    event.status = PhaseStatus.EXCEPTION if mismatched else PhaseStatus.COMPLETED
 
     # No explicit trip.status = CLOSED / closed_at here anymore — this is
     # confirmation's real point: recompute_position (called inside

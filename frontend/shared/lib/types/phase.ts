@@ -75,6 +75,16 @@ export interface PhaseDescriptor {
   // Empty for system-observed phases (trip_creation, loading).
   step_recipe: readonly string[]
 
+  // Optional ONLY until the driver-pwa fixtures are updated (that directory is owned by
+  // another dev and is out of scope for this change). The server always sends this field,
+  // so it becomes a required `string | null` as soon as those fixtures carry it.
+  //
+  // Non-null while this phase waits on an external system — today only the warehouse
+  // scan feed ('warehouse_scan'). Derived server-side per request, never stored: it is
+  // a property of the outside world, not of this row. A phase carrying a non-null value
+  // must not be submittable; the server independently 409s if one is.
+  blocked_on?: string | null
+
   // ── Evidence, populated as the phase completes ────────────────────────────
   dispatcher_override_user_id: string | null
   dispatcher_override_note: string | null

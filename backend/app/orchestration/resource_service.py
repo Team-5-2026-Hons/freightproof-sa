@@ -23,6 +23,7 @@ from app.db.models.people import Driver
 from app.db.models.transit import TripException
 from app.db.models.trips import Consignment, Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
+from app.orchestration.phase_gate import blocked_on_by_stop
 from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.phases import PhaseEventRead
 from app.schemas.organisations import PrecinctRead
@@ -227,6 +228,10 @@ async def get_trip_detail(
     # the stops already fetched rather than issuing a second query.
     stop_sequence_by_id = {s.id: s.sequence for s in stops}
 
+    # Hoisted out of the phases=[...] comprehension below: one gate query for the
+    # whole trip, not one per phase event.
+    gate = await blocked_on_by_stop(db, trip_id=trip_id)
+
     # id tiebreaker: consignments inserted in one transaction share the same
     # created_at (Postgres now() is per-transaction), so created_at alone is
     # non-deterministic across reads.
@@ -261,7 +266,9 @@ async def get_trip_detail(
         current_phase=trip.current_phase,
         current_stop=trip.current_stop,
         phases=[
-            PhaseEventRead.from_event(e, stop_sequence_by_id=stop_sequence_by_id)
+            PhaseEventRead.from_event(
+                e, stop_sequence_by_id=stop_sequence_by_id, blocked_on_by_stop=gate,
+            )
             for e in phase_events
         ],
         exceptions=[TripExceptionRead.model_validate(e) for e in exceptions],

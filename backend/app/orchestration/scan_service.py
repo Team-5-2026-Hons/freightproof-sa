@@ -21,7 +21,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ResourceNotFoundError
@@ -68,6 +68,20 @@ class ScanIngestResult:
     consignments: list[ConsignmentScanResult]
 
 
+@dataclass(frozen=True)
+class ScannedCounts:
+    """Live scan tallies for one consignment, read from Parcel rows.
+
+    Deliberately NOT read from PhaseEvent.parcel_count_origin / _destination.
+    Those are aggregates cached at phase close; reading one to make a decision
+    reintroduces staleness by the back door (design §2.1).
+    """
+
+    expected: int
+    scanned_out: int
+    scanned_in: int
+
+
 async def load_consignments_at_stop(
     db: AsyncSession, *, trip_id: uuid.UUID, trip_stop_id: uuid.UUID, direction: ScanDirection,
 ) -> list[Consignment]:
@@ -100,6 +114,28 @@ async def load_consignments_at_stop(
         .order_by(Consignment.created_at)
     )
     return list(result.scalars().all())
+
+
+async def scanned_counts_for_consignment(
+    db: AsyncSession, *, consignment_id: uuid.UUID,
+) -> ScannedCounts:
+    """Count this consignment's parcels, and how many carry each scan stamp.
+
+    func.count(column) counts non-NULL values of that column — exactly "how many
+    parcels carry this stamp" for pp_scan_out_at / pp_scan_in_at. func.count(Parcel.id)
+    counts rows, since Parcel.id is never NULL, giving the expected total.
+    """
+    result = await db.execute(
+        select(
+            func.count(Parcel.id),
+            func.count(Parcel.pp_scan_out_at),
+            func.count(Parcel.pp_scan_in_at),
+        ).where(Parcel.consignment_id == consignment_id)
+    )
+    expected, scanned_out, scanned_in = result.one()
+    return ScannedCounts(
+        expected=expected, scanned_out=scanned_out, scanned_in=scanned_in,
+    )
 
 
 async def ingest_scans(

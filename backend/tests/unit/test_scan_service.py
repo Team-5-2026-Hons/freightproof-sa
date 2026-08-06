@@ -10,15 +10,9 @@ from typing import Any
 
 import pytest
 
-from app.db.models.enums import (
-    ExceptionSource, ExceptionType, IdvsStatus, OrganizationType, ParcelStatus,
-    TripStatus, VehicleType,
-)
-from app.db.models.organisations import Organization, Precinct
-from app.db.models.people import Driver, User
+from app.db.models.enums import ExceptionSource, ExceptionType, ParcelStatus
 from app.db.models.transit import TripException
-from app.db.models.trips import Consignment, Parcel, Trip, TripStop
-from app.db.models.vehicles import Vehicle
+from app.db.models.trips import Parcel
 from app.integrations import scan_feed as scan_feed_module
 from app.integrations.scan_feed import MockScanFeed, ScanDirection
 from app.orchestration import scan_service
@@ -50,58 +44,7 @@ def store(monkeypatch: pytest.MonkeyPatch) -> FakeStore:
     return fake
 
 
-@pytest.fixture
-async def seeded(db_session):
-    """A one-stop trip with one 3-parcel consignment picked up at that stop."""
-    org = Organization(id=uuid.uuid4(), name="Op", org_type=OrganizationType.OPERATOR)
-    db_session.add(org)
-    await db_session.flush()
-
-    user = User(id=uuid.uuid4(), organization_id=org.id, email="d@test.co.za", full_name="D")
-    driver = Driver(
-        id=uuid.uuid4(), organization_id=org.id, full_name="Driver",
-        id_number="8001015009087", phone_number="+27821234567", license_number="DRV-1",
-    )
-    horse = Vehicle(
-        id=uuid.uuid4(), organization_id=org.id, vehicle_type=VehicleType.HORSE,
-        registration="ABC123GP", pulsit_device_id="PUL-1",
-    )
-    precinct = Precinct(
-        id=uuid.uuid4(), name="Origin", principal_organization_id=org.id,
-        latitude="0", longitude="0",
-    )
-    db_session.add_all([user, driver, horse, precinct])
-    await db_session.flush()
-
-    trip = Trip(
-        id=uuid.uuid4(), trip_reference=f"FP-{uuid.uuid4().hex[:6]}", order_number="ORD-1",
-        operator_organization_id=org.id, driver_id=driver.id, horse_id=horse.id,
-        status=TripStatus.ACTIVE, idvs_check_status=IdvsStatus.VERIFIED,
-        created_by_user_id=user.id,
-    )
-    db_session.add(trip)
-    await db_session.flush()
-
-    stop = TripStop(id=uuid.uuid4(), trip_id=trip.id, precinct_id=precinct.id, sequence=1)
-    db_session.add(stop)
-    await db_session.flush()
-
-    consignment = Consignment(
-        id=uuid.uuid4(), trip_id=trip.id, parcel_perfect_reference="WAY001",
-        parcel_count_expected=3, pickup_stop_id=stop.id, delivery_stop_id=stop.id,
-    )
-    db_session.add(consignment)
-    await db_session.flush()
-
-    barcodes = ["WAY0010001", "WAY0010002", "WAY0010003"]
-    for barcode in barcodes:
-        db_session.add(Parcel(
-            id=uuid.uuid4(), consignment_id=consignment.id,
-            barcode=barcode, status=ParcelStatus.PENDING,
-        ))
-    await db_session.flush()
-
-    return {"trip": trip, "stop": stop, "consignment": consignment, "barcodes": barcodes}
+# `seeded` now lives in tests/conftest.py, shared with test_phase_gate.py.
 
 
 async def test_full_scan_out_stamps_every_parcel(db_session, store, seeded):
@@ -324,3 +267,31 @@ async def test_stop_belonging_to_another_trip_raises_not_found(db_session, store
             db_session, trip_id=seeded["trip"].id, trip_stop_id=uuid.uuid4(),
             direction=ScanDirection.OUT,
         )
+
+
+async def test_scanned_counts_are_zero_before_any_scan(db_session, store, seeded):
+    counts = await scan_service.scanned_counts_for_consignment(
+        db_session, consignment_id=seeded["consignment"].id,
+    )
+
+    assert counts.scanned_out == 0
+    assert counts.scanned_in == 0
+    assert counts.expected == 3
+
+
+async def test_scanned_counts_reflect_stamped_parcels(db_session, store, seeded):
+    await MockScanFeed().stage_scans(
+        consignment_reference="WAY001", stop_reference=str(seeded["stop"].id),
+        direction=ScanDirection.OUT, barcodes=seeded["barcodes"][:2],
+    )
+    await scan_service.ingest_scans(
+        db_session, trip_id=seeded["trip"].id, trip_stop_id=seeded["stop"].id,
+        direction=ScanDirection.OUT,
+    )
+
+    counts = await scan_service.scanned_counts_for_consignment(
+        db_session, consignment_id=seeded["consignment"].id,
+    )
+
+    assert counts.scanned_out == 2
+    assert counts.scanned_in == 0

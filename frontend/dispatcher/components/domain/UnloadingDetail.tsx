@@ -14,9 +14,12 @@ interface Props {
   // compare a later leg's arrival against an earlier leg's seal.
   allPhases: readonly PhaseDescriptor[]
   artifactsById: Map<string, EvidenceArtifactWithUrl>
+  /** Derived from Parcel rows at this delivery stop, NOT from this phase row — the
+   *  scan lands after unloading closes, and a closed row is never written again. */
+  destinationScannedCount: number | null
 }
 
-export function UnloadingDetail({ phase, allPhases, artifactsById }: Props) {
+export function UnloadingDetail({ phase, allPhases, artifactsById, destinationScannedCount }: Props) {
   const departureSeal = departureSealForLeg(allPhases, phase)
 
   // Read, never re-derived. advance_unloading sets this row to EXCEPTION on exactly
@@ -33,6 +36,14 @@ export function UnloadingDetail({ phase, allPhases, artifactsById }: Props) {
 
   return (
     <PhaseDetailCard>
+
+      {/* Displayed here because this is where it physically happened — even though the
+          figure is stamped on the CONFIRMATION row (parcel_count_destination), not this
+          one. Display and storage are independent; see ConfirmationDetail's own comment
+          on the same field for why the write side stays put. */}
+      <Section title="Warehouse scan">
+        <Field label="Scanned off truck" value={destinationScannedCount?.toString()} />
+      </Section>
 
       {/* No location section here — unlike activation, neither this phase's request
           schema nor the backend's advance_unloading captures driver_phone_lat/lng or

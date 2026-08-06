@@ -98,9 +98,12 @@ export function currentSealNumber(phases: readonly PhaseDescriptor[]): string | 
   return departures[departures.length - 1].seal_number
 }
 
-/** The origin pickup's count: the LOWEST-sequence loading. On a cross-dock the hub
- *  pickup is a different, later loading row and is not the origin count. */
-export function originParcelCount(phases: readonly PhaseDescriptor[]): number | null {
+/** How many parcels the origin depot actually SCANNED onto the truck at the first
+ *  pickup — not the manifest's declared total, which is no longer stored on the row
+ *  (that comes from Consignment.parcel_count_expected via the manifest endpoint).
+ *  The LOWEST-sequence loading: on a cross-dock the hub pickup is a different, later
+ *  loading row and is not the origin count. */
+export function originScannedCount(phases: readonly PhaseDescriptor[]): number | null {
   return sortedPlan(phases).find(phase => phase.phase_type === 'loading')?.parcel_count_origin ?? null
 }
 
