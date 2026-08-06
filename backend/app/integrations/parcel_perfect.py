@@ -24,6 +24,7 @@ from typing import Any, Optional
 import httpx
 
 from app.core.config import settings
+from app.integrations.mock_state import build_key, get_mock_state_store
 
 logger = logging.getLogger(__name__)
 
@@ -544,23 +545,120 @@ MOCK_WAYBILLS.update(UNASSIGNED_WAYBILLS)
 # ---------------------------------------------------------------------------
 
 
+# Redis key kind for staged PP waybill overrides, distinct from staged scan state.
+_PP_KEY_KIND = "pp"
+
+
 class MockParcelPerfectClient:
     """Fixture-backed stub — no network. PP_USE_MOCK=True selects it via get_pp_client().
 
     Unknown references raise PPWaybillNotFoundError, matching the real client, so
     the fail-closed 422 path behaves identically in dev/CI and against live PP.
+
+    When the dev trigger panel is enabled, a Redis-held override layer is applied
+    on top of each fixture. This exists because PP waybills were verified to be
+    mutable after creation (spec §B2c: a portal edit changed 68 fields in one
+    10-second poll interval, growing tracks[] from 2 to 27 barcodes), and the
+    Celery poll that would observe such a change runs in a different process from
+    the API — so a module-level dict mutation would be invisible to it.
+
+    The override lookup is gated on DEV_PANEL_ENABLED so that normal operation
+    never touches Redis and every existing PP test runs unchanged.
     """
 
     supports_manifest_lookup: bool = True
+
+    def _override_key(self, waybill_number: str) -> str:
+        return build_key(_PP_KEY_KIND, waybill_number)
+
+    async def stage_waybill_override(
+        self,
+        waybill_number: str,
+        *,
+        manifest: Optional[int] = None,
+        poddate: Optional[str] = None,
+        failtype: Optional[str] = None,
+        parcel_count: Optional[int] = None,
+    ) -> None:
+        """Stage a change to a fixture waybill, as if edited in the PP portal.
+
+        Only supplied fields are staged; the rest of the fixture is untouched.
+        Staging is additive across calls, so a manifest number set earlier survives
+        a later poddate change — that is how a real waybill accumulates state.
+
+        Raises:
+            PPUnsupportedError: PP_USE_MOCK is false. Staging a fixture change
+                while pointed at live PP is a bug, and silently ignoring it would
+                make a demo look like it worked when nothing happened.
+            PPWaybillNotFoundError: the reference is not in the fixture library.
+        """
+        if not settings.PP_USE_MOCK:
+            raise PPUnsupportedError(
+                "Cannot stage a waybill override while PP_USE_MOCK is false"
+            )
+        if waybill_number not in MOCK_WAYBILLS:
+            raise PPWaybillNotFoundError(waybill_number)
+
+        key = self._override_key(waybill_number)
+        store = get_mock_state_store()
+        current = await store.get_json(key) or {}
+        staged = {
+            **current,
+            **{
+                field: value
+                for field, value in (
+                    ("manifest", manifest),
+                    ("poddate", poddate),
+                    ("failtype", failtype),
+                    ("parcel_count", parcel_count),
+                )
+                if value is not None
+            },
+        }
+        await store.set_json(key, staged)
+        logger.info("Staged PP override for waybill=%s fields=%s", waybill_number, sorted(staged))
+
+    async def _apply_overrides(self, waybill: PPWaybillResponse) -> PPWaybillResponse:
+        """Apply any staged override to a fixture copy. No-op when none is staged."""
+        if not settings.DEV_PANEL_ENABLED:
+            return waybill
+
+        staged = await get_mock_state_store().get_json(
+            self._override_key(waybill.details.waybill)
+        )
+        if not staged:
+            return waybill
+
+        if (manifest := staged.get("manifest")) is not None:
+            waybill.details.manifest = int(manifest)
+        if (poddate := staged.get("poddate")) is not None:
+            waybill.details.poddate = str(poddate)
+        if (failtype := staged.get("failtype")) is not None:
+            waybill.details.failtype = str(failtype)
+        if (parcel_count := staged.get("parcel_count")) is not None:
+            # Regenerate tracks[] to the new size, keeping the fixture's barcode
+            # format. This reproduces the real failure mode: the expected parcel
+            # set — the baseline every reconciliation is measured against — grows
+            # with no version, timestamp or audit field on the waybill.
+            count = int(parcel_count)
+            reference = waybill.details.waybill
+            waybill.tracks = [
+                PPTrack(trackno=f"{reference}{n:04d}", parcelno=n, item=1)
+                for n in range(1, count + 1)
+            ]
+            waybill.details.pieces = count
+
+        return waybill
 
     async def get_single_waybill(self, waybill_number: str) -> PPWaybillResponse:
         """Look up the waybill in the fixture library; raise if unregistered."""
         logger.info("MockParcelPerfectClient.get_single_waybill waybill=%s", waybill_number)
         try:
             # Deep copy: callers may mutate results; module-level fixtures must stay pristine.
-            return copy.deepcopy(MOCK_WAYBILLS[waybill_number])
+            waybill = copy.deepcopy(MOCK_WAYBILLS[waybill_number])
         except KeyError as exc:
             raise PPWaybillNotFoundError(waybill_number) from exc
+        return await self._apply_overrides(waybill)
 
     async def get_waybills_by_manifest(self, manifest_number: int) -> list[PPWaybillResponse]:
         """ASPIRATIONAL — PP v28 has no such endpoint (ask #1, July visit).

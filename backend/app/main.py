@@ -14,6 +14,8 @@ from app.api.v1.endpoints.artifacts import router as artifacts_router
 from app.api.v1.endpoints.artifacts import trip_artifacts_router
 from app.api.v1.endpoints.blockchain import router as blockchain_router
 from app.api.v1.endpoints.checkpoints import router as checkpoints_router
+from app.api.v1.endpoints.dev_triggers import dev_panel_enabled
+from app.api.v1.endpoints.dev_triggers import router as dev_triggers_router
 from app.api.v1.endpoints.drivers import router as drivers_router
 from app.api.v1.endpoints.exceptions import router as exceptions_router
 from app.api.v1.endpoints.locations import router as locations_router
@@ -65,6 +67,13 @@ app.include_router(manifest_router, prefix="/api/v1")
 app.include_router(pp_router, prefix="/api/v1")
 app.include_router(stream_router, prefix="/api/v1")
 app.include_router(trip_admin_router, prefix="/api/v1")
+
+# Dev trigger panel. Registered only when BOTH DEV_PANEL_ENABLED is set and the
+# environment is not production — see dev_triggers.dev_panel_enabled(). These
+# endpoints can fabricate scans and exceptions, so on an evidence platform they
+# must be structurally absent, not merely guarded, in a production deployment.
+if dev_panel_enabled():
+    app.include_router(dev_triggers_router, prefix="/api/v1")
 
 # Attach the SQLAlchemy after-commit listeners that publish queued realtime events
 # once a request's transaction is durable (see app/core/realtime.py). Idempotent, and
