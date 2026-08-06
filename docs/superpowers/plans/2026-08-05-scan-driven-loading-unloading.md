@@ -12,9 +12,18 @@
 
 ---
 
-## Prerequisite — do not start without this
+## Prerequisite — SATISFIED 2026-08-06
 
-This plan consumes three modules that **do not exist yet**:
+> ✅ The Stage 4 plan (`2026-08-04-scanfeed-dev-trigger-panel.md`) is **fully implemented**:
+> all 12 tasks, 57 new tests, backend suite at 581 passed / 6 failed / 4 skipped — the 6
+> failures are pre-existing and unrelated (`test_blockchain_verify`, `test_drivers` ×2,
+> `test_drivers_anchor`, `test_vehicles_cosmetic_diff`, `test_vehicles_validation`).
+> `ruff` and `mypy` both clean.
+>
+> The efficiency note below **was taken**: this plan's Tasks 1 and 2 were folded into
+> Stage 4 and are already done. **Begin at Task 3.**
+
+This plan consumes three modules that **now exist**:
 
 ```
 backend/app/integrations/scan_feed.py      ← Stage 4 plan, Task 3
@@ -80,8 +89,12 @@ Stage D — the digital linehaul (Bruce's actual stated goal) ships in Stage C w
 | Create | `frontend/driver-pwa/components/phase/steps/loading/Linehaul.tsx` | Digital linehaul step |
 | Delete | `frontend/driver-pwa/components/phase/steps/loading/VisualCount.tsx` | Replaced |
 | Modify | `frontend/driver-pwa/components/phase/steps/registry.ts` | Slug union + component map |
+| Modify | `frontend/driver-pwa/app/(app)/trip/phase/[type]/step/[slug]/PhaseStepPageClient.tsx` | `LoadingStep` fetches the linehaul and passes it. **`renderStep`'s cast means `tsc` cannot catch a missing prop here** |
+| Modify | `frontend/dispatcher/lib/phase/derive.ts` | `originParcelCount` → `originScannedCount` — the field's meaning changed |
+| Modify | `frontend/dispatcher/app/(app)/trips/[id]/page.tsx` | Timeline label: "N parcels" → "N scanned" |
+| Modify | `frontend/shared/lib/mocks/trips.ts` | Mock no longer derives the origin count from a driver count |
 | Modify | `frontend/dispatcher/components/domain/LoadingDetail.tsx` | Expected / scanned / missing |
-| Create | `backend/alembic/versions/2026_08_05_ciaran_add_linehaul_photo.py` | Stage D only |
+| Create | `backend/migrations/versions/2026_08_05_ciaran_add_linehaul_photo.py` | Stage D only |
 
 ### Out of scope — do not build
 
@@ -100,6 +113,13 @@ Stage D — the digital linehaul (Bruce's actual stated goal) ships in Stage C w
 
 ## Task 1: Scan-session-closed signal
 
+> ✅ **DONE — folded into the Stage 4 plan's Task 3 on 2026-08-06.** Per this plan's own
+> efficiency note, this task was built at the same time as `scan_feed.py` rather than
+> amending it afterwards. `_SESSION_KEY_KIND`, `close_session()` and
+> `is_scan_session_closed()` exist on both the `ScanFeed` Protocol and `MockScanFeed`,
+> and all 5 session tests are in `backend/tests/unit/test_scan_feed.py` (13 tests total).
+> **Do not re-implement. Start this plan at Task 3.**
+
 **Files:**
 - Modify: `backend/app/integrations/scan_feed.py`
 - Test: `backend/tests/unit/test_scan_feed.py` (append)
@@ -108,7 +128,7 @@ The gate reads "has the warehouse finished at this stop", not "have all barcodes
 A closed session with a short count unblocks the phase **and** raises a discrepancy — see
 spec §3.2.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `backend/tests/unit/test_scan_feed.py`:
 
@@ -190,12 +210,12 @@ async def test_closing_a_session_does_not_disturb_staged_barcodes(store: FakeSto
     assert [e.barcode for e in events] == ["WAY0010001"]
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `cd backend && pytest tests/unit/test_scan_feed.py -v -k session`
 Expected: FAIL — `AttributeError: 'MockScanFeed' object has no attribute 'is_scan_session_closed'`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `backend/app/integrations/scan_feed.py`, add the key kind beside `_SCAN_KEY_KIND`:
 
@@ -253,12 +273,12 @@ Add to `MockScanFeed`:
         return await get_mock_state_store().get_json(key) is not None
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `cd backend && pytest tests/unit/test_scan_feed.py -v`
 Expected: PASS — 9 pre-existing + 5 new = 14.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/app/integrations/scan_feed.py backend/tests/unit/test_scan_feed.py
@@ -269,6 +289,14 @@ git commit -m "feat(integrations): scan-session-closed signal on the scan feed"
 
 ## Task 2: Close-session dev trigger
 
+> ✅ **DONE — folded into the Stage 4 plan's Tasks 7–9 on 2026-08-06.**
+> `POST /api/v1/dev/scans/close-session` is live, with `CloseScanSessionRequest` /
+> `CloseScanSessionResponse` in `backend/app/schemas/dev.py`. The Step 4 note's
+> `ResourceNotFoundError` guard **was** added to `scan_service.load_consignments_at_stop`,
+> and `trigger_scan` gained a matching 404 wrapper so the new raise could not surface as a
+> 500. Both close-session tests pass in `backend/tests/integration/test_dev_triggers.py`
+> (20 tests total). **Do not re-implement. Start this plan at Task 3.**
+
 **Files:**
 - Modify: `backend/app/schemas/dev.py`
 - Modify: `backend/app/api/v1/endpoints/dev_triggers.py`
@@ -277,7 +305,7 @@ git commit -m "feat(integrations): scan-session-closed signal on the scan feed"
 Without this the panel cannot demonstrate the discrepancy path at all — staging 2 of 3
 barcodes proves nothing until the session closes and the phase unblocks with a mismatch.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `backend/tests/integration/test_dev_triggers.py`:
 
@@ -312,12 +340,12 @@ async def test_close_session_rejects_an_unknown_stop(client, dispatcher_headers,
     assert response.status_code == 404
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `cd backend && pytest tests/integration/test_dev_triggers.py -v -k close_session`
 Expected: FAIL — 404 on the route itself (`/scans/close-session` not registered).
 
-- [ ] **Step 3: Add the schemas**
+- [x] **Step 3: Add the schemas**
 
 In `backend/app/schemas/dev.py`:
 
@@ -342,7 +370,7 @@ class CloseScanSessionResponse(BaseModel):
     sessions_closed: int
 ```
 
-- [ ] **Step 4: Add the endpoint**
+- [x] **Step 4: Add the endpoint**
 
 In `backend/app/api/v1/endpoints/dev_triggers.py`:
 
@@ -406,12 +434,12 @@ trip — `ingest_scans` does that separately. Add the same `ResourceNotFoundErro
         raise ResourceNotFoundError("TripStop", str(trip_stop_id))
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `cd backend && pytest tests/integration/test_dev_triggers.py -v`
 Expected: PASS, including the pre-existing trigger tests.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add backend/app/schemas/dev.py backend/app/api/v1/endpoints/dev_triggers.py backend/app/orchestration/scan_service.py backend/tests/integration/test_dev_triggers.py
@@ -651,8 +679,14 @@ async def test_phases_other_than_loading_and_confirmation_are_never_blocked(
 ):
     blocked = await phase_gate.blocked_on_by_stop(db_session, trip_id=seeded["trip"].id)
 
-    assert blocked[(PhaseType.DEPARTURE, seeded["stop"].id)] is None
-    assert blocked[(PhaseType.UNLOADING, seeded["stop"].id)] is None
+    # Via blocked_on_for, not blocked[...]: an ungated phase has NO KEY in the map —
+    # "absent means not gated" is the contract. Indexing it directly raises KeyError,
+    # and the fix for that is to use the accessor, never to insert null keys for every
+    # phase type into the derivation.
+    for phase_type in (PhaseType.DEPARTURE, PhaseType.UNLOADING):
+        assert phase_gate.blocked_on_for(
+            blocked, phase_type=phase_type, trip_stop_id=seeded["stop"].id,
+        ) is None
 ```
 
 > **Fixtures needed:** `seeded` already exists in `tests/unit/test_scan_service.py` — move
@@ -1259,11 +1293,72 @@ async def test_a_legacy_payload_with_a_count_is_accepted_and_ignored(
     event = await db_session.get(PhaseEvent, ready_to_load["loading_event"].id)
     assert event.status == PhaseStatus.COMPLETED
     assert event.parcel_count_origin == 3
+
+
+async def test_a_short_scan_produces_exactly_one_exception(
+    db_session, store, short_scanned_ready_to_load,
+):
+    """scan_service already raised this at ingest. advance_loading must not raise a
+    second row for the same fact — its dedup compares descriptions verbatim, so a
+    differently-worded duplicate would sail past it and the dispatcher would see the
+    same short count twice."""
+    await phase_service.advance_loading(
+        db_session,
+        trip_id=short_scanned_ready_to_load["trip"].id,
+        driver_id=short_scanned_ready_to_load["driver"].id,
+        phase_event_id=short_scanned_ready_to_load["loading_event"].id,
+        payload=LoadingCompleteRequest(
+            phase_type=PhaseType.LOADING, idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    exceptions = (await db_session.execute(
+        select(TripException).where(
+            TripException.trip_id == short_scanned_ready_to_load["trip"].id,
+            TripException.exception_type == ExceptionType.PARCEL_COUNT_MISMATCH,
+        )
+    )).scalars().all()
+    assert len(exceptions) == 1
+
+
+async def test_a_session_closed_with_nothing_scanned_still_raises(
+    db_session, store, unscanned_ready_to_load,
+):
+    """The backstop's whole reason for existing. scan_service guards on
+    `if events and ...`, so a session closed with zero scans raises nothing there —
+    and a truck that loaded nothing is the most serious short count of all."""
+    await phase_service.advance_loading(
+        db_session,
+        trip_id=unscanned_ready_to_load["trip"].id,
+        driver_id=unscanned_ready_to_load["driver"].id,
+        phase_event_id=unscanned_ready_to_load["loading_event"].id,
+        payload=LoadingCompleteRequest(
+            phase_type=PhaseType.LOADING, idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    event = await db_session.get(PhaseEvent, unscanned_ready_to_load["loading_event"].id)
+    exceptions = (await db_session.execute(
+        select(TripException).where(
+            TripException.trip_id == unscanned_ready_to_load["trip"].id,
+            TripException.exception_type == ExceptionType.PARCEL_COUNT_MISMATCH,
+        )
+    )).scalars().all()
+    assert event.status == PhaseStatus.EXCEPTION
+    assert len(exceptions) == 1
 ```
 
-> **Fixture:** `ready_to_load` = the `seeded` trip with its scan-out session staged in full
+> **Fixtures:** `ready_to_load` = the `seeded` trip with its scan-out session staged in full
 > and closed, and its `activation` phase already completed so `loading` is the next
 > unresolved row.
+>
+> `short_scanned_ready_to_load` = the same, but with only 2 of the 3 barcodes staged **and
+> `scan_service.ingest_scans` already run**, so scan_service's own exception row exists
+> before `advance_loading` is called. That ordering is the point of the test — build the
+> fixture by calling `ingest_scans` in it, never by inserting a `TripException` by hand.
+>
+> `unscanned_ready_to_load` = session closed with **no** barcodes staged and `ingest_scans`
+> run against that empty feed, so no exception row exists going in.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -1316,17 +1411,22 @@ Replace the body of `advance_loading` from `_record_driver_position(event, paylo
         expected_total += counts.expected
 
         if counts.scanned_out != counts.expected:
-            db.add(TripException(
-                trip_id=trip_id, phase_event_id=event.id,
-                consignment_id=consignment.id, trip_stop_id=event.trip_stop_id,
-                exception_type=ExceptionType.PARCEL_COUNT_MISMATCH,
-                source=ExceptionSource.SYSTEM, severity=ExceptionSeverity.WARNING,
-                description=(
-                    f"Warehouse closed its scan-out session on waybill "
-                    f"{consignment.parcel_perfect_reference} with "
-                    f"{counts.scanned_out} of {counts.expected} parcel(s) scanned."
-                ),
-            ))
+            # BACKSTOP ONLY — scan_service._reconcile_consignment is the primary
+            # writer of this exception and it already fired at ingest, naming the
+            # missing barcodes. Raising unconditionally here would put TWO rows on
+            # the dispatcher's list for one short count: scan_service's dedup
+            # compares descriptions verbatim, so a differently-worded second row
+            # sails straight past it.
+            #
+            # The one case scan_service genuinely cannot cover: it guards on
+            # `if events and (missing or unexpected)`, so a session closed with
+            # NOTHING scanned at all raises nothing there — no events, no row. That
+            # is the most serious short count there is and it must not go unrecorded.
+            # Hence a presence check rather than an unconditional add.
+            await _raise_scan_shortfall_if_unrecorded(
+                db, trip_id=trip_id, event=event, consignment=consignment,
+                scanned_out=counts.scanned_out, expected=counts.expected,
+            )
 
     # None, not 0, when this stop has no consignments at all: a trip created without
     # a Parcel Perfect reference has no manifest baseline, and 0 would read as
@@ -1344,6 +1444,50 @@ Replace the body of `advance_loading` from `_record_driver_position(event, paylo
 
     return await _finish_phase(db, trip=trip, event=event, idempotency_key=payload.idempotency_key)
 ```
+
+Add the backstop helper beside `advance_loading`:
+
+```python
+async def _raise_scan_shortfall_if_unrecorded(
+    db: AsyncSession, *, trip_id: uuid.UUID, event: PhaseEvent,
+    consignment: Consignment, scanned_out: int, expected: int,
+) -> None:
+    """Record a scan-out shortfall only if scan_service has not already recorded one.
+
+    Deliberately keyed on (consignment, stop, type, unresolved) rather than on the
+    description string scan_service's own dedup compares: the two writers word the
+    same finding differently, so a text comparison would let both through. The
+    question being asked here is "is this discrepancy already on the dispatcher's
+    list", and the answer must not depend on who phrased it.
+    """
+    existing = (await db.execute(
+        select(TripException.id).where(
+            TripException.trip_id == trip_id,
+            TripException.consignment_id == consignment.id,
+            TripException.trip_stop_id == event.trip_stop_id,
+            TripException.exception_type == ExceptionType.PARCEL_COUNT_MISMATCH,
+            TripException.resolved.is_(False),
+        )
+    )).first()
+    if existing is not None:
+        return
+
+    db.add(TripException(
+        trip_id=trip_id, phase_event_id=event.id,
+        consignment_id=consignment.id, trip_stop_id=event.trip_stop_id,
+        exception_type=ExceptionType.PARCEL_COUNT_MISMATCH,
+        source=ExceptionSource.SYSTEM, severity=ExceptionSeverity.WARNING,
+        description=(
+            f"Warehouse closed its scan-out session on waybill "
+            f"{consignment.parcel_perfect_reference} with "
+            f"{scanned_out} of {expected} parcel(s) scanned."
+        ),
+    ))
+```
+
+> `.first()`, not `.scalar_one_or_none()`: more than one unresolved row for the same
+> consignment is possible if a human raised one too, and that must read as "already
+> recorded", not crash the phase.
 
 Add the imports at the top of `phase_service.py`:
 
@@ -1783,9 +1927,18 @@ git commit -m "feat(shared): blocked_on contract and the linehaul step slug"
 - Create: `frontend/driver-pwa/components/phase/steps/loading/Linehaul.tsx`
 - Delete: `frontend/driver-pwa/components/phase/steps/loading/VisualCount.tsx`
 - Modify: `frontend/driver-pwa/components/phase/steps/registry.ts`
+- **Modify: `frontend/driver-pwa/app/(app)/trip/phase/[type]/step/[slug]/PhaseStepPageClient.tsx`** ← Step 4b
 - Modify: `frontend/driver-pwa/lib/api/phases.ts`
 - Modify: `frontend/driver-pwa/lib/types/evidence-draft.ts`
 - Test: `frontend/driver-pwa/components/phase/steps/__tests__/linehaul.test.tsx`
+
+> ⚠ **`PhaseStepPageClient.tsx` is not optional and TypeScript will not remind you.**
+> `renderStep` casts through `ComponentType<never>` —
+> `const Widened = Component as unknown as ComponentType<P>` — so a step component that
+> needs a prop the call site does not pass compiles clean and renders blank. `LoadingStep`
+> (line ~476) is the only place `Linehaul` can be given its document. Skip Step 4b and the
+> screen shows `—` for every field, every test still passes, and the digital linehaul —
+> the entire point of this task — silently does not work.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1795,7 +1948,8 @@ Create `frontend/driver-pwa/components/phase/steps/__tests__/linehaul.test.tsx`:
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { Linehaul } from '../loading/Linehaul'
-import { makePhase } from './testFixtures'
+// Two levels up — the fixture lives in components/phase/__tests__/, not steps/__tests__/.
+import { makePhase } from '../../__tests__/testFixtures'
 
 const linehaul = {
   trip_id: 'trip-1',
@@ -1960,6 +2114,77 @@ type LoadingSlug = '1-linehaul'
 Remove the `VisualCount as LoadingVisualCount` import, then delete
 `frontend/driver-pwa/components/phase/steps/loading/VisualCount.tsx`.
 
+- [ ] **Step 4b: Wire the linehaul document in at the call site**
+
+In `frontend/driver-pwa/app/(app)/trip/phase/[type]/step/[slug]/PhaseStepPageClient.tsx`,
+`LoadingStep` currently hands every loading step the same prop bag. It needs to fetch the
+linehaul and add it:
+
+```typescript
+import { fetchLinehaul } from '@/lib/api/manifest'
+import type { Linehaul as LinehaulDocument } from '@shared/lib/types/manifest'
+```
+
+```typescript
+function LoadingStep({ trip, phase, slug, stepIndex, isFinalStep, setIsSubmitting }: StepControllerProps) {
+  const tripId = String(trip.id)
+  const { draft, onUpdate, onComplete } = usePhaseStepController<LoadingEvidence>(
+    trip, phase, slug, isFinalStep, LOADING_INITIAL, setIsSubmitting, () => {},
+  )
+
+  // Null is a NORMAL state, not an error: lib/api/manifest.ts returns null for any trip
+  // created without a Parcel Perfect reference, which it documents as common. The step
+  // renders dashes and stays confirmable — the driver still has the paper sheet, and
+  // blocking him over a document the trip never had would be the wrong failure direction.
+  const [linehaul, setLinehaul] = useState<LinehaulDocument | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    void fetchLinehaul(tripId)
+      .then((doc) => { if (!cancelled) setLinehaul(doc) })
+      .catch(() => { if (!cancelled) setLinehaul(null) })
+    return () => { cancelled = true }
+  }, [tripId])
+
+  const StepComponent = stepComponentFor(phase.phase_type, slug)
+  if (!StepComponent) return <UnknownStep phaseType={phase.phase_type} slug={slug} />
+  return renderStep(StepComponent, {
+    tripId, phase, stepIndex, draft, onUpdate, onComplete, linehaul,
+  })
+}
+```
+
+Also update `LOADING_INITIAL` — Step 5 removes `driverVisualCount` from `LoadingEvidence`,
+and the constant still sets it. **This is the only part of Task 10 `tsc` will catch**, so do
+not treat a green `tsc` as evidence the wiring above is done.
+
+- [ ] **Step 4c: Prove the wiring, not just the component**
+
+The test in Step 1 passes `linehaul` directly, so it stays green whether or not Step 4b
+happened. Add one that renders through the real call site. Append to
+`frontend/driver-pwa/components/phase/steps/__tests__/linehaul.test.tsx`:
+
+```typescript
+import { LoadingStep } from '@/app/(app)/trip/phase/[type]/step/[slug]/PhaseStepPageClient'
+
+vi.mock('@/lib/api/manifest', () => ({
+  fetchLinehaul: vi.fn().mockResolvedValue(linehaul),
+}))
+
+it('receives the linehaul document from the page client, not just from a test prop', async () => {
+  // Guards the ComponentType<never> cast in renderStep: a missing prop at that call site
+  // is invisible to TypeScript, so only a render through LoadingStep can catch it.
+  render(<LoadingStep {...loadingStepProps()} />)
+
+  expect(await screen.findByText('ABC123GP')).toBeInTheDocument()
+})
+```
+
+> Export `LoadingStep` from `PhaseStepPageClient.tsx` if it is not already exported, and add
+> a `loadingStepProps()` helper to the test file building a `StepControllerProps` for a
+> `loading` phase whose `blocked_on` is `null`. If wiring a full `StepControllerProps` in a
+> unit test proves awkward, an equivalent Playwright/manual check is acceptable — what is
+> **not** acceptable is shipping Task 10 with the component tested only in isolation.
+
 - [ ] **Step 5: Stop sending the count**
 
 In `frontend/driver-pwa/lib/api/phases.ts`, the `case 'loading':` branch becomes:
@@ -1997,6 +2222,88 @@ git commit -m "feat(driver-pwa): replace the loading count with the linehaul ste
 
 ---
 
+## Task 10b: `parcel_count_origin` changes meaning — fix every reader
+
+⚠ **Do this before Task 11, and do not skip it.** Task 7 silently redefines the field:
+
+| | Before | After |
+|---|---|---|
+| `PhaseEvent.parcel_count_origin` on `loading` | the manifest's **declared** total (`_expected_parcel_count`) | the warehouse's **scanned-out** total |
+
+Nothing catches this. It is the same type, on the same field, on the same row — no type
+error, no failing test, no demo step exercises it. Every reader below keeps compiling and
+starts displaying a number that means something else.
+
+**Files:**
+- Modify: `frontend/dispatcher/lib/phase/derive.ts`
+- Modify: `frontend/dispatcher/app/(app)/trips/[id]/page.tsx`
+- Modify: `frontend/shared/lib/mocks/trips.ts`
+- Test: `frontend/dispatcher/lib/phase/derive.test.ts` (existing — must stay green)
+
+- [ ] **Step 1: Rename the derive helper to match what it now returns**
+
+`frontend/dispatcher/lib/phase/derive.ts:104` — `originParcelCount()` reads
+`loading.parcel_count_origin` and its docstring calls it "the origin pickup's count".
+Rename to `originScannedCount` and correct the comment:
+
+```typescript
+/** How many parcels the origin depot actually SCANNED onto the truck at the first
+ *  pickup — not the manifest's declared total, which is no longer stored on the row
+ *  (that comes from Consignment.parcel_count_expected via the manifest endpoint).
+ *  The LOWEST-sequence loading: on a cross-dock the hub pickup is a different, later
+ *  loading row and is not the origin count. */
+export function originScannedCount(phases: readonly PhaseDescriptor[]): number | null {
+```
+
+Update `derive.test.ts`'s import and the two call sites it exercises. The fixtures at
+`derive.test.ts:165-166` set `parcel_count_origin` directly and stay valid — only the
+name and the meaning change, not the shape.
+
+- [ ] **Step 2: Fix the trip-detail timeline label**
+
+`frontend/dispatcher/app/(app)/trips/[id]/page.tsx:582` renders:
+
+```typescript
+if (phase.parcel_count_origin !== null) detailParts.push(`${phase.parcel_count_origin} parcels`)
+```
+
+`"27 parcels"` now reads as a manifest figure to a dispatcher and is a scan figure. Make
+the provenance explicit:
+
+```typescript
+if (phase.parcel_count_origin !== null) detailParts.push(`${phase.parcel_count_origin} scanned`)
+```
+
+- [ ] **Step 3: Fix the shared mock**
+
+`frontend/shared/lib/mocks/trips.ts:62-63` derives `parcel_count_origin` from
+`evidence?.count` — the driver's visual count, which no longer exists at loading. A mock
+that models the old semantics will quietly teach the next reader the wrong thing. Drive it
+from the mock's scanned figure instead, or drop the override and leave the seeded value.
+
+- [ ] **Step 4: Confirm nothing else reads it**
+
+```bash
+cd /Users/ciaranformby/dev/freightproof-sa-4 && grep -rn "parcel_count_origin" frontend/ --include="*.ts" --include="*.tsx" | grep -v node_modules
+```
+
+Every hit must be either a fixture literal, a type declaration, or one of the three files
+above. Anything else is a reader nobody updated.
+
+- [ ] **Step 5: Run the tests**
+
+Run: `cd frontend/dispatcher && npx vitest run && npx tsc --noEmit`
+Expected: PASS. `tsc` catches the rename's call sites; the semantics are on you.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add frontend/dispatcher/lib/phase/derive.ts frontend/dispatcher/lib/phase/derive.test.ts "frontend/dispatcher/app/(app)/trips/[id]/page.tsx" frontend/shared/lib/mocks/trips.ts
+git commit -m "refactor(dispatcher): parcel_count_origin is a scanned count, not a declared one"
+```
+
+---
+
 ## Task 11: Dispatcher loading panel
 
 **Files:**
@@ -2004,6 +2311,13 @@ git commit -m "feat(driver-pwa): replace the loading count with the linehaul ste
 - Test: `frontend/dispatcher/components/domain/__tests__/LoadingDetail.test.tsx`
 
 - [ ] **Step 1: Write the failing test**
+
+> **`frontend/dispatcher/components/domain/__tests__/` does not exist yet, and neither does
+> a dispatcher-side `makePhase`** — the one in the plan's imports is the driver app's.
+> Either add a `testFixtures.ts` beside these tests exporting
+> `makePhase(phaseType, overrides)` built on `PhaseDescriptor`, or build the phase objects
+> inline as the existing `components/domain/PhaseOverrideAction.test.tsx` already does.
+> Same applies to Task 12.
 
 Create `frontend/dispatcher/components/domain/__tests__/LoadingDetail.test.tsx`:
 
@@ -2287,7 +2601,7 @@ git commit -m "feat(dispatcher): show the scan reconciliation on unloading and c
 ## Task 13: Capture the paper linehaul sheet
 
 **Files:**
-- Create: `backend/alembic/versions/2026_08_05_ciaran_add_linehaul_photo.py`
+- Create: `backend/migrations/versions/2026_08_05_ciaran_add_linehaul_photo.py`
 - Modify: `backend/app/db/models/phases.py`
 - Modify: `backend/app/schemas/phases.py`
 - Modify: `backend/app/orchestration/phase_service.py`
@@ -2296,8 +2610,22 @@ git commit -m "feat(dispatcher): show the scan reconciliation on unloading and c
 - [ ] **Step 1: Check for migration conflicts first**
 
 ```bash
-git fetch origin && git log --oneline origin/dev -- backend/alembic/versions/ | head -10
+git fetch origin && git log --oneline origin/dev -- backend/migrations/versions/ | head -10
 ```
+
+⚠ The path is `backend/migrations/versions/` — there is no `backend/alembic/` directory in
+this repo (`alembic.ini` sits at `backend/` and points `script_location` at `migrations`).
+A `git log` against a path that does not exist returns **empty and exits 0**, so a wrong
+path here reports "no conflicts" every single time. This is the one command standing
+between four devs and a broken revision chain — verify it printed real commits, or that
+the directory is genuinely untouched on `dev`:
+
+```bash
+git ls-tree --name-only origin/dev backend/migrations/versions/ | head -3
+```
+
+Expected: real filenames. If that is empty, the path is wrong — stop and fix it before
+trusting the check above.
 
 If another dev has an unmerged migration, **stop and coordinate** — do not fix the revision
 chain yourself (`CLAUDE.md`).
@@ -2322,9 +2650,9 @@ In `backend/app/db/models/phases.py`, beside the other artifact FKs on `PhaseEve
 cd backend && alembic revision --autogenerate -m "ciaran add linehaul photo"
 ```
 
-Rename the generated file to `2026_08_05_ciaran_add_linehaul_photo.py`. Open it and confirm
-it contains **only** the one `add_column` — autogenerate picks up unrelated drift. Delete
-anything else it produced.
+It lands in `backend/migrations/versions/`. Rename it to
+`2026_08_05_ciaran_add_linehaul_photo.py` and open it: confirm it contains **only** the one
+`add_column` — autogenerate picks up unrelated drift. Delete anything else it produced.
 
 - [ ] **Step 4: Apply and verify**
 
@@ -2438,7 +2766,7 @@ Expected: green.
 - [ ] **Step 8: Commit**
 
 ```bash
-git add backend/alembic/versions/ backend/app/db/models/phases.py backend/app/schemas/phases.py backend/app/orchestration/phase_service.py frontend/driver-pwa/components/phase/steps/loading/Linehaul.tsx
+git add backend/migrations/versions/ backend/app/db/models/phases.py backend/app/schemas/phases.py backend/app/orchestration/phase_service.py frontend/driver-pwa/components/phase/steps/loading/Linehaul.tsx
 git commit -m "feat(orchestration): capture the paper linehaul sheet at loading"
 ```
 
@@ -2453,8 +2781,13 @@ git commit -m "feat(orchestration): capture the paper linehaul sheet at loading"
       close the session → the driver's loading unlocks → confirm the linehaul → the
       dispatcher's loading panel shows `2 / 3` with `1 not scanned` and a
       `PARCEL_COUNT_MISMATCH` on the timeline.
+- [ ] On that same walkthrough, check the two things no test covers:
+      - the linehaul step shows a **real vehicle registration and unit count**, not `—`
+        (if it shows dashes, Task 10 Step 4b was skipped — see the warning there)
+      - the timeline carries **exactly one** `PARCEL_COUNT_MISMATCH` for that stop, not two
+        (two means `_raise_scan_shortfall_if_unrecorded`'s presence check is not working)
 
-That last one is the demonstration. If it works end-to-end, the feature is done.
+That walkthrough is the demonstration. If it works end-to-end, the feature is done.
 
 ---
 
