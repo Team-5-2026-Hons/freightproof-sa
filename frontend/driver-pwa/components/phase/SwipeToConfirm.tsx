@@ -40,11 +40,43 @@ function isPromiseLike(value: void | Promise<void>): value is Promise<void> {
   return typeof value === 'object' && value !== null && typeof (value as Promise<void>).then === 'function'
 }
 
+type SwipeVariant = 'primary' | 'danger'
+
+interface SwipeVariantClasses {
+  /** The track (or two-step button) fill. */
+  track: string
+  /** The label, which has to read against that fill. */
+  onTrack: string
+  /** The busy spinner, same requirement as the label. */
+  spinner: string
+  /** The dragged thumb — the fill's own "on" tone, so it reads as a cut-out of the track. */
+  thumb: string
+}
+
+// Paired tokens, never a literal white. `primary` and `error` both invert between themes
+// (app/globals.css), so the hard-coded `text-white` / `bg-white` these replaced would have
+// left the label and the thumb invisible on a light track in dark mode — on the one
+// control that submits every handshake in the app.
+const VARIANT_CLASSES: Record<SwipeVariant, SwipeVariantClasses> = {
+  primary: {
+    track:   'bg-primary',
+    onTrack: 'text-primary-on',
+    spinner: 'border-primary-on/30 border-t-primary-on',
+    thumb:   'bg-primary-on',
+  },
+  danger: {
+    track:   'bg-error',
+    onTrack: 'text-error-on',
+    spinner: 'border-error-on/30 border-t-error-on',
+    thumb:   'bg-error-on',
+  },
+}
+
 interface SwipeToConfirmProps {
   label: string
   onConfirm: () => void | Promise<void>
   disabled?: boolean
-  variant?: 'primary' | 'danger'
+  variant?: SwipeVariant
 }
 
 export function SwipeToConfirm({
@@ -62,6 +94,7 @@ export function SwipeToConfirm({
   const [isBusy, setIsBusy] = useState(false)
   const [showHint, setShowHint] = useState(false)
   const [isArmed, setIsArmed] = useState(false)
+  const variantClasses = VARIANT_CLASSES[variant]
 
   // Read the accessibility pref once on mount, matching the "applies next time" note in
   // settings. This matters MORE for a swipe than it did for a hold: dragging is a
@@ -278,11 +311,11 @@ export function SwipeToConfirm({
             // greyed out when the caller says the action isn't valid yet.
             'select-none transition-opacity',
             disabled && 'opacity-40',
-            variant === 'primary' ? 'bg-primary' : 'bg-error',
+            variantClasses.track,
           )}
         >
-          {isBusy && <Spinner size="sm" className="border-white/30 border-t-white" />}
-          <span className="text-sm font-bold uppercase tracking-wider text-white">
+          {isBusy && <Spinner size="sm" className={variantClasses.spinner} />}
+          <span className={cn('text-sm font-bold uppercase tracking-wider', variantClasses.onTrack)}>
             {currentLabel}
           </span>
         </button>
@@ -323,7 +356,7 @@ export function SwipeToConfirm({
           // valid to confirm", greys the track out.
           isLocked && 'pointer-events-none',
           disabled && 'opacity-40',
-          variant === 'primary' ? 'bg-primary' : 'bg-error',
+          variantClasses.track,
         )}
       >
         {/* Label sits under the thumb and fades as the thumb covers it, so the track
@@ -331,17 +364,19 @@ export function SwipeToConfirm({
         <span
           className={cn(
             'pointer-events-none absolute inset-0 flex items-center justify-center gap-2',
-            'px-14 text-center text-sm font-bold uppercase tracking-wider text-white',
+            'px-14 text-center text-sm font-bold uppercase tracking-wider',
+            variantClasses.onTrack,
           )}
           style={{ opacity: labelOpacity }}
         >
-          {isBusy && <Spinner size="sm" className="border-white/30 border-t-white" />}
+          {isBusy && <Spinner size="sm" className={variantClasses.spinner} />}
           {currentLabel}
         </span>
 
         <div
           className={cn(
-            'absolute top-1 flex items-center justify-center rounded-full bg-white shadow-ambient-header',
+            'absolute top-1 flex items-center justify-center rounded-full shadow-ambient-header',
+            variantClasses.thumb,
             // Follow the finger exactly while dragging; animate only when settling, so
             // the spring-back reads as physics rather than lag.
             !isDragging && 'transition-transform motion-reduce:transition-none',

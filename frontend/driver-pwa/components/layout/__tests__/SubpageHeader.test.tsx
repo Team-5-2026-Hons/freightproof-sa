@@ -57,4 +57,29 @@ describe('SubpageHeader', () => {
 
     expect(screen.getByText('Extra')).toBeInTheDocument()
   })
+
+  it('renders a "reference" title as a bordered block with its caption', () => {
+    render(
+      <SubpageHeader
+        title="FP-20260804-31F49BDE"
+        titleVariant="reference"
+        titleCaption="Trip reference"
+      />,
+    )
+
+    const heading = screen.getByRole('heading', { name: 'FP-20260804-31F49BDE' })
+
+    expect(heading).toBeInTheDocument()
+    expect(screen.getByText('Trip reference')).toBeInTheDocument()
+    // The block is what separates the identifier from the nav row above it — a plain
+    // heading here is the regression this guards against.
+    expect(heading.parentElement).toHaveClass('border-2', 'border-primary')
+  })
+
+  it('omits the caption when none is given', () => {
+    render(<SubpageHeader title="FP-20260804-31F49BDE" titleVariant="reference" />)
+
+    expect(screen.getByRole('heading', { name: 'FP-20260804-31F49BDE' })).toBeInTheDocument()
+    expect(screen.queryByText('Trip reference')).not.toBeInTheDocument()
+  })
 })

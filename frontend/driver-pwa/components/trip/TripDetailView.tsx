@@ -86,7 +86,17 @@ export function TripDetailView({
         title={trip.trip_reference}
         backLabel="My Trips"
         onBack={onBack}
-        right={<span className="text-xs text-surface-on-variant">{trip.order_number}</span>}
+        titleVariant="reference"
+        titleCaption="Trip reference"
+        // Outlined chip, not the previous bare grey text: the customer's order number is
+        // the other identifier a driver gets asked for over the phone, so it needs to be
+        // findable rather than fading into the glass. Same ink and radius as the back
+        // pill opposite it, which is what balances the row.
+        right={
+          <span className="shrink-0 rounded-xl border-2 border-primary px-3 py-1.5 text-xs font-bold tracking-industrial text-surface-on">
+            {trip.order_number}
+          </span>
+        }
       />
 
       {/* pb-safe, now that this content sits inside a fixed-height scrollport: without it

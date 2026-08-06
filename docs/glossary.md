@@ -91,11 +91,12 @@ field** — "direct" vs "multi-drop" is a *derived label* (stop count), never a 
 dispatcher wizard may offer a simple vs advanced *flow* (progressive disclosure), but both write the
 same `Trip` / `TripStop` / `Consignment` rows. See FP-112 plan §A.6.
 
-> **Handshake caveat (iter-2 scope):** the current 5-handshake lifecycle (`HandshakeType`,
-> `enums.py:33`) is **single-origin/single-destination shaped** — one gate-in, one load, one
-> unload. True mid-route load/unload needs **handshakes attached to stops** (each is a seal
-> break + reseal). That is a follow-on (FP-113 / a new per-stop-handshake ticket), **out of FP-112
-> and the iter-2 demo**, which run the single-seal depot-to-depot path.
+> **Phase model update:** the single-origin/single-destination limitation this caveat used to
+> describe has been superseded by the **Phase model** — a trip's plan (`trip_creation ·
+> activation · loading · departure · in_transit · unloading · confirmation`) is generated per
+> stop at creation, so a trip natively supports multiple `loading`/`unloading` phases (e.g. a
+> cross-dock: load → unload at the hub → load again → unload at destination) with no schema
+> change and no new code path. See `docs/phase-model-explained.md` for the full model.
 
 ## 5. Two service models (both fold into the stop model)
 

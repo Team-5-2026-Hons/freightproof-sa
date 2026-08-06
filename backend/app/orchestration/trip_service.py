@@ -19,10 +19,14 @@ from app.core.exceptions import (
     PPSyncError,
     ResourceNotFoundError,
     TripConflictError,
+    TripStateError,
 )
 from app.crypto.hashing import compute_journey_lock_hash, compute_trip_canonical_payload
 from app.core.realtime import RealtimeKind, TripEvent, enqueue_event
-from app.db.models.enums import AnchorStatus, BlockchainReceiptType, IdvsStatus, PhaseStatus, SubjectType, TripStatus, TripType, VehicleType
+from app.db.models.enums import (
+    AnchorStatus, BlockchainReceiptType, ExceptionSeverity, ExceptionSource, ExceptionType,
+    IdvsStatus, PhaseStatus, SubjectType, TripStatus, TripType, VehicleType,
+)
 from app.db.models.organisations import Precinct
 from app.db.models.phases import PhaseEvent
 from app.db.models.people import Driver
@@ -456,6 +460,75 @@ async def create_trip(
         warnings=[r.warning for r in consignment_results if r.warning],
         created_at=trip.created_at,
         updated_at=trip.updated_at,
+    )
+
+
+# Machine-findable marker for the acting dispatcher on a cancellation's ledger entry.
+# A stable prefix, not free prose, so the actor stays greppable (and parseable by a
+# future migration that moves it into a real raised_by_user_id column).
+_CANCELLED_BY_PREFIX = "Cancelled by user "
+
+
+async def cancel_trip(
+    db: AsyncSession, *, trip_id: uuid.UUID, operator_organization_id: uuid.UUID,
+    user_id: uuid.UUID, note: str,
+) -> TripDetailResponse:
+    """Dispatcher-only terminal exit for a trip abandoned mid-plan (task 6.1).
+
+    Before this, nothing in app/ ever wrote TripStatus.CANCELLED — an abandoned
+    trip (cargo pulled, vehicle broken down) sat ACTIVE forever, and worse,
+    phase_service._reject_if_another_trip_underway then blocked that driver from
+    EVER activating another trip. Cancel is the only exit; it is also a promise
+    the dispatcher wizard's confirmation modal already makes to the user.
+
+    Raises ResourceNotFoundError (404) if the trip doesn't exist or belongs to a
+    different org, and TripStateError (409) if it is already CLOSED or CANCELLED.
+    """
+    result = await db.execute(
+        select(Trip).where(
+            Trip.id == trip_id, Trip.operator_organization_id == operator_organization_id,
+        )
+    )
+    trip = result.scalar_one_or_none()
+    if trip is None:
+        raise ResourceNotFoundError("Trip", str(trip_id))
+    if trip.status in (TripStatus.CLOSED, TripStatus.CANCELLED):
+        raise TripStateError(current_status=TripStatus(trip.status).value, attempted_action="cancel")
+
+    trip.status = TripStatus.CANCELLED
+    trip.closed_at = datetime.now(UTC)
+
+    # Phase rows are deliberately left untouched — they stay whatever they were
+    # (most still PENDING), which is the honest record of a plan abandoned partway
+    # through. Cancelling is not completing, so nothing here marks them resolved.
+    #
+    # recompute_position() is deliberately NOT called either: it derives the
+    # position of a plan that is no longer being walked, and its close-branch
+    # would overwrite this CANCELLED write with CLOSED — a trap a future reader
+    # chasing "why isn't the trip cancelled any more" would otherwise walk into.
+
+    # D5: the human intervention lands on the ledger, not just in an audit column.
+    #
+    # The acting dispatcher is carried in the description rather than a column
+    # because TripException has no raised_by_user_id — only resolved_by_user_id.
+    # override_phase escapes this via PhaseEvent.dispatcher_override_user_id, but a
+    # cancellation has no phase row to hang an actor on, and an anonymous "this trip
+    # was abandoned" record is exactly the kind of unattributable evidence this
+    # platform exists to avoid. Deliberate no-migration stopgap: the proper fix is a
+    # raised_by_user_id column, which is a schema change and its own task.
+    db.add(TripException(
+        trip_id=trip.id, exception_type=ExceptionType.DISPATCHER_NOTE,
+        source=ExceptionSource.DISPATCHER, severity=ExceptionSeverity.WARNING,
+        description=f"{_CANCELLED_BY_PREFIX}{user_id}: {note}",
+    ))
+    await db.flush()
+
+    # D9: published on commit — the dispatcher's list must drop this trip from
+    # Active on the same refetch trip_closed already triggers.
+    enqueue_event(db, trip.operator_organization_id, TripEvent(id=trip.id, kind=RealtimeKind.TRIP_CLOSED))
+
+    return await get_trip_detail(
+        db, trip_id=trip.id, operator_organization_id=trip.operator_organization_id,
     )
 
 

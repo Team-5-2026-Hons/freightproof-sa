@@ -279,7 +279,7 @@ async def test_advance_departure_anchors_with_pickup_receipt_type(
     departure — this is now where it's produced."""
     trip, driver, phases = trip_fixture
 
-    result = await _advance_to_departure(db_session, trip, driver, phases)
+    await _advance_to_departure(db_session, trip, driver, phases)
     await _drain_anchors(db_session, captured_anchor_dispatches)
 
     departure = phases["departure"]
@@ -299,9 +299,9 @@ async def test_advance_confirmation_anchors_with_delivery_receipt_type(
     trip, driver, phases = trip_fixture
     await _advance_to_unloading(db_session, trip, driver, phases)
 
-    result = await advance_confirmation(
+    await advance_confirmation(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["confirmation"].id,
-        payload=ConfirmationCompleteRequest(phase_type=PhaseType.CONFIRMATION, 
+        payload=ConfirmationCompleteRequest(phase_type=PhaseType.CONFIRMATION,
             pod_photo_artifact_id=await _make_artifact(db_session, trip.id),
             pod_signature_artifact_id=await _make_artifact(db_session, trip.id),
             driver_visual_count=42, pp_scan_in_count=42, idempotency_key=str(uuid.uuid4()),

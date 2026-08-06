@@ -26,7 +26,8 @@ from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Trip, TripStop
 from app.db.models.vehicles import Vehicle
 from app.orchestration.exception_service import raise_exception
-from app.orchestration.phase_service import _finish_phase
+from app.orchestration.phase_service import _finish_phase, override_phase
+from app.orchestration.trip_service import cancel_trip
 
 _OUTBOX_KEY = "realtime_outbox"
 
@@ -42,14 +43,18 @@ _PLAN = [
 ]
 
 
-async def _seed_trip(db_session) -> tuple[Trip, Driver, dict[str, PhaseEvent]]:
-    """Seed one single-leg trip + its full pending phase plan (trip_creation completed)."""
+async def _seed_trip(db_session, *, suffix: str = "1") -> tuple[Trip, Driver, dict[str, PhaseEvent]]:
+    """Seed one single-leg trip + its full pending phase plan (trip_creation completed).
+
+    `suffix` distinguishes trip_reference/order_number/user email (all unique
+    columns) when a single test needs more than one independently-seeded trip.
+    """
     org = Organization(id=uuid.uuid4(), name="Org", org_type=OrganizationType.OPERATOR)
     client_org = Organization(id=uuid.uuid4(), name="Client", org_type=OrganizationType.PRINCIPAL)
     db_session.add_all([org, client_org])
     await db_session.flush()
 
-    user = User(id=uuid.uuid4(), organization_id=org.id, email="d@test.co.za", full_name="D")
+    user = User(id=uuid.uuid4(), organization_id=org.id, email=f"d-{suffix}@test.co.za", full_name="D")
     driver = Driver(
         id=uuid.uuid4(), organization_id=org.id, full_name="Driver",
         id_number="8001015009087", phone_number="+27821234567", license_number="DRV-1",
@@ -64,7 +69,7 @@ async def _seed_trip(db_session) -> tuple[Trip, Driver, dict[str, PhaseEvent]]:
     await db_session.flush()
 
     trip = Trip(
-        id=uuid.uuid4(), trip_reference="FP-EMIT-1", order_number="ORD-EMIT-1",
+        id=uuid.uuid4(), trip_reference=f"FP-EMIT-{suffix}", order_number=f"ORD-EMIT-{suffix}",
         operator_organization_id=org.id, client_organization_id=client_org.id,
         driver_id=driver.id, horse_id=horse.id,
         origin_precinct_id=origin.id, destination_precinct_id=dest.id,
@@ -152,3 +157,50 @@ async def test_raising_an_exception_enqueues_exception_raised(db_session):
     assert org_id == trip.operator_organization_id
     assert event.kind == RealtimeKind.EXCEPTION_RAISED
     assert event.id == trip.id
+
+
+async def test_cancel_and_override_enqueue_a_realtime_event(db_session):
+    """Task 6.1 / D9: neither of the two lifecycle exits may leave a dispatcher's
+    screen stale until a manual reload. override -> PHASE_COMPLETED (the plan
+    position moved); cancel -> TRIP_CLOSED (terminal, drop from Active)."""
+    trip, _driver, phases = await _seed_trip(db_session, suffix="override")
+    # dispatcher_override_user_id is a real FK to users — a bare uuid4() would
+    # violate it, unlike operator_organization_id/driver_id above which are read
+    # straight off the already-seeded trip/phase rows.
+    dispatcher = User(
+        id=uuid.uuid4(), organization_id=trip.operator_organization_id,
+        email="override-dispatcher@test.co.za", full_name="Override Dispatcher",
+    )
+    db_session.add(dispatcher)
+    await db_session.flush()
+
+    await override_phase(
+        db_session, trip_id=trip.id, phase_event_id=phases["activation"].id,
+        operator_organization_id=trip.operator_organization_id,
+        user_id=dispatcher.id, note="driver's phone was wiped, cannot complete activation",
+    )
+
+    override_outbox = _outbox(db_session)
+    assert len(override_outbox) == 1
+    org_id, event = override_outbox[0]
+    assert org_id == trip.operator_organization_id
+    assert event.kind == RealtimeKind.PHASE_COMPLETED
+    assert event.id == trip.id
+
+    # Pop, not read (mirrors the real after_commit drain) — a second lifecycle
+    # action in the same session must not be judged against the first one's ping.
+    db_session.info.pop(_OUTBOX_KEY, None)
+
+    trip2, _driver2, _phases2 = await _seed_trip(db_session, suffix="cancel")
+
+    await cancel_trip(
+        db_session, trip_id=trip2.id, operator_organization_id=trip2.operator_organization_id,
+        user_id=trip2.created_by_user_id, note="cargo pulled, trip abandoned",
+    )
+
+    cancel_outbox = _outbox(db_session)
+    assert len(cancel_outbox) == 1
+    org_id2, event2 = cancel_outbox[0]
+    assert org_id2 == trip2.operator_organization_id
+    assert event2.kind == RealtimeKind.TRIP_CLOSED
+    assert event2.id == trip2.id

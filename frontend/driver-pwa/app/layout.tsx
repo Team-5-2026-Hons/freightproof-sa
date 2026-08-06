@@ -3,6 +3,8 @@ import { Inter } from 'next/font/google'
 import './globals.css'
 import { AuthProvider } from '@/lib/context/AuthContext'
 import { ToastProvider } from '@/lib/context/ToastContext'
+import { ThemeManager } from '@/components/theme/ThemeManager'
+import { THEME_INIT_SCRIPT } from '@/lib/theme'
 
 // AuthProvider/ToastProvider are themselves 'use client' — this file stays a Server
 // Component so `viewport`/`metadata` (below) can be statically exported. Next.js forbids
@@ -54,8 +56,17 @@ const inter = Inter({
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={inter.variable}>
+    // suppressHydrationWarning: the pre-paint script below writes the theme class onto
+    // this same element before React hydrates, so the server-rendered class list and the
+    // client's will legitimately differ on first pass. Scoped to <html> only — it does
+    // not suppress anything inside the app.
+    <html lang="en" className={inter.variable} suppressHydrationWarning>
       <body className="font-sans bg-surface text-surface-on antialiased min-h-dvh">
+        {/* First child of <body>, so it runs while the parser is still blocked and the
+            page has not painted yet. Anything later — including a component — is too
+            late and shows a white flash before flipping to dark. See lib/theme.ts. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+        <ThemeManager />
         <AuthProvider>
           <ToastProvider>
             {children}

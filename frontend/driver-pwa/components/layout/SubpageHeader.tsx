@@ -9,6 +9,21 @@ interface SubpageHeaderProps {
   backLabel?: string
   onBack?: () => void
   right?: ReactNode
+  /**
+   * How the title is presented.
+   *
+   * 'heading' (default) is the plain h1 the action screens use — "Log Checkpoint",
+   * "Log Exception" are page names and read as headings.
+   *
+   * 'reference' renders the title as a bordered block on its own row underneath the
+   * nav row, for screens whose title is an *identifier* rather than a page name. A
+   * trip reference sat directly under the back pill was competing with it for the same
+   * eyeline while being a completely different kind of thing; boxing it separates the
+   * two and gives the code something to sit inside.
+   */
+  titleVariant?: 'heading' | 'reference'
+  /** Caption above a 'reference' title (e.g. "Trip reference"). Ignored for 'heading'. */
+  titleCaption?: string
 }
 
 // One consistent sticky header for non-handshake subpages (handshake steps keep using
@@ -19,7 +34,14 @@ interface SubpageHeaderProps {
 // Owns its own horizontal padding (like StepHeader does) — callers render it as the
 // first child of an unpadded <main>, with the rest of the page's content in its own
 // p-4 wrapper below, so the sticky glass-nav can span true full-bleed under the blur.
-export function SubpageHeader({ title, backLabel = 'Back', onBack, right }: SubpageHeaderProps) {
+export function SubpageHeader({
+  title,
+  backLabel = 'Back',
+  onBack,
+  right,
+  titleVariant = 'heading',
+  titleCaption,
+}: SubpageHeaderProps) {
   const router = useRouter()
 
   // Falls back to router.back() only if the caller has no explicit destination — every
@@ -46,18 +68,40 @@ export function SubpageHeader({ title, backLabel = 'Back', onBack, right }: Subp
       <div className="flex items-center justify-between gap-3 pt-4">
         <button
           onClick={handleBack}
-          // Solid black pill rather than the old bare blue text: on the glass-nav
+          // Solid ink fill rather than the old bare blue text: on the glass-nav
           // background a plain text link was easy to miss and had no visible edge to
           // aim at. min-h-[44px] is still the gloved-hand touch minimum. No border —
           // it was border-primary on bg-primary, i.e. 2px of invisible ring eating the
           // pill's own internal space.
-          className="flex min-h-[44px] items-center rounded-full bg-primary px-4 text-sm font-semibold text-primary-on transition-opacity active:opacity-90"
+          //
+          // rounded-xl, not rounded-full: as a full pill this was the only lozenge on a
+          // screen made entirely of 14px-radius blocks, and at ~a third of the width it
+          // read as a stray UI element rather than as part of the header. Sharing the
+          // radius with the reference block below and the right-slot chip makes the
+          // three read as one set — filled for the action, outlined for the labels.
+          className="flex min-h-[44px] items-center rounded-xl bg-primary px-4 text-sm font-semibold text-primary-on transition-opacity active:opacity-90"
         >
           ← {backLabel}
         </button>
         {right}
       </div>
-      <h1 className="mt-1 text-xl font-bold text-surface-on">{title}</h1>
+
+      {titleVariant === 'reference' ? (
+        // mt-3, and its own full-width row: dropping the identifier clear of the nav row
+        // is what stops it reading as a caption on the back button.
+        <div className="mt-3 rounded-xl border-2 border-primary bg-surface-container-lowest px-4 py-2.5">
+          {titleCaption !== undefined && (
+            <p className="text-[10px] font-bold uppercase tracking-wider text-surface-on-variant">
+              {titleCaption}
+            </p>
+          )}
+          {/* tracking-industrial: this is a machine reference read character-by-character
+              when a driver reads it out over the phone, not a word read as a shape. */}
+          <h1 className="text-lg font-bold tracking-industrial text-surface-on">{title}</h1>
+        </div>
+      ) : (
+        <h1 className="mt-1 text-xl font-bold text-surface-on">{title}</h1>
+      )}
     </header>
   )
 }

@@ -100,7 +100,7 @@ backend/app/
 ├── db/models/          one file per table
 ├── db/session.py       async engine, get_db()
 ├── integrations/       pulse.py, parcel_perfect.py, idvs.py, twilio.py, sendgrid.py
-├── orchestration/      trip state machine, handshake sequencing, exceptions
+├── orchestration/      trip state machine, phase sequencing, exceptions
 ├── storage/            Supabase Storage I/O + hash verify
 └── tasks/              Celery tasks
 ```
@@ -117,7 +117,7 @@ endpoints → orchestration/auth/storage → integrations/blockchain/crypto → 
 
 ## Domain knowledge
 
-**Five handshakes:** Trip Created → Origin Gate-In → Loading Complete → In Transit → Destination Gate-In → Closed. Orchestration layer validates every transition.
+**Phase model:** every trip runs a plan-driven phase sequence — `trip_creation · activation · loading · departure · in_transit · unloading · confirmation` (P0–P6) — generated from its stops and consignments at creation; length is data, not a constant (single-leg = 7 rows, 3-stop cross-dock = 11). `current_phase`/`current_stop` are caches rebuilt from the phase-event ledger — the ledger is the truth, position is derived, never stored. Orchestration validates every transition against the plan, not `trip.status`.
 
 **Journey lock hash:** SHA-256 of committed trip params at creation, anchored to Hedera HCS. Current record hash ≠ Hedera tx = tampering. Never modify trip params after creation without an explicit exception event.
 
@@ -125,7 +125,7 @@ endpoints → orchestration/auth/storage → integrations/blockchain/crypto → 
 
 **POPIA:** Personal data (identities, GPS, photos, parcel details) stays in PostgreSQL in `af-south-1`. Only SHA-256 hashes go to Hedera. Personal data never reaches blockchain. If code would send PII off-system, stop.
 
-**Driver is the only hands-on user per handshake.** Guards and warehouse staff don't have accounts. Guard page = zero login. Receiver = one-time OTP. Don't add auth for roles documented as having none.
+**Driver is the only hands-on user per phase.** Guards and warehouse staff don't have accounts. Guard page = zero login. Receiver = one-time OTP. Don't add auth for roles documented as having none.
 
 ## Git
 

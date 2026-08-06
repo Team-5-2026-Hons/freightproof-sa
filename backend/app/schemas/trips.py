@@ -352,6 +352,26 @@ class TripCreateRequest(BaseModel):
             sequences = [stop.sequence for stop in self.stops]
             if len(sequences) != len(set(sequences)):
                 raise ValueError("stop sequence numbers must be unique")
+        # A trip must carry a resolvable schedule at creation, mirroring
+        # phase_service._scheduled_departure's own two-source resolution exactly
+        # (trip-level planned_departure_at, else the earliest-sequence stop with a
+        # slot_time): _reject_if_not_due treats "no schedule at all" as PERMANENTLY
+        # not-due (see its docstring), not merely not-yet-due. Since stops omitted
+        # here means create_trip synthesises two stops with no slot_time of their
+        # own (FP-112 A.3), planned_departure_at is the only possible source on
+        # that path, so it is strictly required there. Without this check, a trip
+        # could be created that no schedule can ever satisfy — a permanent,
+        # silent 409 at every future activation attempt.
+        has_stop_schedule = self.stops is not None and any(
+            stop.slot_time is not None for stop in self.stops
+        )
+        if self.planned_departure_at is None and not has_stop_schedule:
+            raise ValueError(
+                "planned_departure_at is required when no stop carries a "
+                "slot_time — a trip with neither can never be activated "
+                "(provide planned_departure_at, or set slot_time on at least "
+                "one of the provided stops)"
+            )
         if self.planned_departure_at and self.planned_arrival_at:
             if self.planned_arrival_at <= self.planned_departure_at:
                 raise ValueError("planned_arrival_at must be after planned_departure_at")
@@ -365,6 +385,23 @@ class TripCreateRequest(BaseModel):
         if len(refs) != len(set(refs)):
             raise ValueError("duplicate pp_reference values in consignments")
         return self
+
+
+class CancelTripRequest(BaseModel):
+    """POST /trips/{trip_id}/cancel body (task 6.1, D6). note is required — a
+    dispatcher abandoning a trip mid-plan without stating why is the single most
+    audit-sensitive gap this action could leave, so a blank note is a 422 here
+    rather than an empty string landing on the TripException record."""
+
+    note: str = Field(..., min_length=1)
+
+
+class OverridePhaseRequest(BaseModel):
+    """POST /trips/{trip_id}/phases/{phase_event_id}/override body (task 6.1, D6).
+    Same required-note rationale as CancelTripRequest — a dispatcher bypassing
+    driver-attested evidence must state why."""
+
+    note: str = Field(..., min_length=1)
 
 
 class DeliveryStopManifest(BaseModel):

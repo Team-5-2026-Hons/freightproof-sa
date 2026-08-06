@@ -18,6 +18,7 @@ from unittest.mock import patch
 import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.blockchain.hedera import HederaReceipt
 from app.db.models.enums import (
@@ -555,6 +556,37 @@ async def test_complete_with_wrong_phase_type_in_body_returns_409(client: AsyncC
     assert resp.status_code == 409
 
 
+async def test_phase_complete_maps_db_error_to_500(client: AsyncClient, db_session, seed_trip):
+    """Task 6.4 step 1: a DB fault that escapes complete_phase must map to a clean
+    500 (matching trips.py's create_trip_endpoint's exact SQLAlchemyError->500
+    shape) rather than an unhandled exception reaching main.py's new global
+    handler. Patched at the orchestration boundary the endpoint calls through —
+    the one seam that stays stable regardless of which SQLAlchemy call inside
+    complete_phase happens to fail. `patch` auto-detects `complete_phase` is
+    `async def` and substitutes an AsyncMock, so `side_effect` fires on await.
+    """
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+    activation_id = await _phase_id(client, trip.id, token, "activation")
+
+    with patch(
+        "app.api.v1.endpoints.phases.complete_phase",
+        side_effect=SQLAlchemyError("connection lost"),
+    ):
+        resp = await client.post(
+            f"/api/v1/trips/{trip.id}/phases/{activation_id}/complete",
+            json={
+                "phase_type": "activation",
+                "driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001",
+                "idempotency_key": str(uuid.uuid4()),
+            },
+            headers=auth_header(token),
+        )
+
+    assert resp.status_code == 500
+    assert resp.json()["detail"] == "An unexpected error occurred. Please try again."
+
+
 async def test_complete_missing_required_field_returns_422(client: AsyncClient, db_session, seed_trip):
     """The discriminated union's whole justification: a departure payload
     without seal_number is a real Pydantic 422, not a hand-rolled service error."""
@@ -778,6 +810,158 @@ async def test_full_single_leg_walk_over_http_closes_the_trip(client: AsyncClien
                 "idempotency_key": str(uuid.uuid4()),
             },
             headers=auth_header(token),
+        )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "closed"
+
+
+# ── F1 (task 6.2a): an EMPTY_LEG trip must reach `closed` ──────────────────
+#
+# The plan generator emits no LOADING row at all for an empty leg (nothing is
+# picked up), and advance_confirmation used to call _find_loading_for_leg,
+# which RAISED ResourceNotFoundError("PhaseEvent", "loading") instead of
+# returning None — 404ing every empty-leg confirmation, permanently. Created
+# via a real POST /trips (not a hand-built PhaseEvent fixture, matching the
+# idiom in tests/integration/test_create_trip_multistop.py) so
+# build_phase_plan's real no-loading-row shape for an empty leg is exercised,
+# not merely asserted against in a unit test.
+
+@pytest_asyncio.fixture
+async def empty_leg_seed_data(db_session):
+    """Minimal rows for POST /trips with trip_type=empty_leg. Same shape as
+    test_create_trip_multistop.py's seed_data, kept local to this file rather
+    than shared — this task's scope is phase_service.py plus its own tests."""
+    operator_org = Organization(id=uuid.uuid4(), name="EL Operator", org_type=OrganizationType.OPERATOR)
+    client_org = Organization(id=uuid.uuid4(), name="EL Client", org_type=OrganizationType.PRINCIPAL)
+    db_session.add_all([operator_org, client_org])
+    await db_session.flush()
+
+    user = User(
+        id=uuid.uuid4(), organization_id=operator_org.id,
+        email="el-dispatcher@test.co.za", full_name="EL Dispatcher", is_active=True,
+    )
+    origin = Precinct(id=uuid.uuid4(), name="EL Origin", principal_organization_id=client_org.id, latitude="0", longitude="0")
+    dest = Precinct(id=uuid.uuid4(), name="EL Dest", principal_organization_id=client_org.id, latitude="1", longitude="1")
+    driver = Driver(
+        id=uuid.uuid4(), organization_id=operator_org.id, full_name="EL Driver",
+        id_number="8001015009133", phone_number="+27821234533", license_number="DRV-EL2",
+    )
+    horse = Vehicle(
+        id=uuid.uuid4(), organization_id=operator_org.id, registration="ELH123GP",
+        vehicle_type=VehicleType.HORSE, pulsit_device_id="PLT-EL-HORSE",
+    )
+    db_session.add_all([user, origin, dest, driver, horse])
+    await db_session.flush()
+
+    return {
+        "org": operator_org, "user": user,
+        "origin_id": origin.id, "dest_id": dest.id,
+        "driver_id": driver.id, "horse_id": horse.id,
+    }
+
+
+async def test_empty_leg_trip_walks_to_closed(
+    client: AsyncClient, db_session, empty_leg_seed_data,
+):
+    """Full walk: a real POST /trips(trip_type=empty_leg, no consignments) ->
+    activation -> departure -> [in_transit auto-completes] -> unloading ->
+    confirmation. Before the fix, the final confirmation call 404'd
+    (ResourceNotFoundError("PhaseEvent", "loading") raised inside
+    advance_confirmation's call to _find_loading_for_leg). After the fix it
+    returns 200 and the trip closes."""
+    seed = empty_leg_seed_data
+    dispatcher_token = make_token(
+        sub=str(seed["user"].id), role="dispatcher", org_id=str(seed["org"].id),
+    )
+
+    with patch("app.blockchain.anchor_service.HederaService") as MockService:
+        MockService.return_value.submit_hash.return_value = _fake_hedera_receipt()
+        create_resp = await client.post(
+            "/api/v1/trips",
+            json={
+                "order_number": "ORD-EMPTY-LEG-001",
+                "driver_id": str(seed["driver_id"]),
+                "horse_id": str(seed["horse_id"]),
+                "origin_precinct_id": str(seed["origin_id"]),
+                "destination_precinct_id": str(seed["dest_id"]),
+                "planned_departure_at": datetime.now(UTC).isoformat(),
+                "trip_type": "empty_leg",
+                "consignments": [],
+            },
+            headers=auth_header(dispatcher_token),
+        )
+    assert create_resp.status_code == 201
+    trip_id = create_resp.json()["id"]
+
+    driver_token = make_token(sub=str(seed["driver_id"]), role="driver")
+
+    phases_resp = await client.get(
+        f"/api/v1/trips/{trip_id}/phases", headers=auth_header(driver_token),
+    )
+    assert phases_resp.status_code == 200
+    phase_types = [p["phase_type"] for p in phases_resp.json()]
+    # The load-bearing shape this test exists to prove: no `loading` row at
+    # all on an empty leg (build_phase_plan never emits one when nothing is
+    # picked up).
+    assert phase_types == [
+        "trip_creation", "activation", "departure", "in_transit", "unloading", "confirmation",
+    ]
+
+    activation_id = await _phase_id(client, trip_id, driver_token, "activation")
+    resp = await client.post(
+        f"/api/v1/trips/{trip_id}/phases/{activation_id}/complete",
+        json={
+            "phase_type": "activation",
+            "driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001",
+            "idempotency_key": str(uuid.uuid4()),
+        },
+        headers=auth_header(driver_token),
+    )
+    assert resp.status_code == 200
+
+    waybill_id = await _make_artifact(db_session, trip_id)
+    seal_photo_id = await _make_artifact(db_session, trip_id)
+    departure_id = await _phase_id(client, trip_id, driver_token, "departure")
+    with patch("app.blockchain.anchor_service.HederaService") as MockService:
+        MockService.return_value.submit_hash.return_value = _fake_hedera_receipt()
+        resp = await client.post(
+            f"/api/v1/trips/{trip_id}/phases/{departure_id}/complete",
+            json={
+                "phase_type": "departure",
+                "waybill_photo_artifact_id": waybill_id, "seal_number": "AB-1234",
+                "seal_photo_artifact_id": seal_photo_id, "guard_verified_seal": True,
+                "idempotency_key": str(uuid.uuid4()),
+            },
+            headers=auth_header(driver_token),
+        )
+    assert resp.status_code == 200
+
+    gate_photo_id = await _make_artifact(db_session, trip_id)
+    unloading_id = await _phase_id(client, trip_id, driver_token, "unloading")
+    resp = await client.post(
+        f"/api/v1/trips/{trip_id}/phases/{unloading_id}/complete",
+        json={
+            "phase_type": "unloading", "seal_number_at_destination": "AB-1234",
+            "gate_photo_artifact_id": gate_photo_id, "idempotency_key": str(uuid.uuid4()),
+        },
+        headers=auth_header(driver_token),
+    )
+    assert resp.status_code == 200
+
+    pod_photo_id = await _make_artifact(db_session, trip_id)
+    pod_signature_id = await _make_artifact(db_session, trip_id)
+    confirmation_id = await _phase_id(client, trip_id, driver_token, "confirmation")
+    with patch("app.blockchain.anchor_service.HederaService") as MockService:
+        MockService.return_value.submit_hash.return_value = _fake_hedera_receipt()
+        resp = await client.post(
+            f"/api/v1/trips/{trip_id}/phases/{confirmation_id}/complete",
+            json={
+                "phase_type": "confirmation",
+                "pod_photo_artifact_id": pod_photo_id, "pod_signature_artifact_id": pod_signature_id,
+                "driver_visual_count": 0, "pp_scan_in_count": 0,
+                "idempotency_key": str(uuid.uuid4()),
+            },
+            headers=auth_header(driver_token),
         )
     assert resp.status_code == 200
     assert resp.json()["status"] == "closed"

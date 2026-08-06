@@ -31,6 +31,8 @@ import { ConfirmationDetail } from '@/components/domain/ConfirmationDetail'
 import { InTransitTimeline }  from '@/components/domain/InTransitTimeline'
 import { ExceptionEvidence }  from '@/components/domain/ExceptionEvidence'
 import { ManifestPanel }      from '@/components/domain/ManifestPanel'
+import { CancelTripAction }    from '@/components/domain/CancelTripAction'
+import { PhaseOverrideAction } from '@/components/domain/PhaseOverrideAction'
 import { EXCEPTION_SEVERITY_META, EXCEPTION_SOURCE_META } from '@shared/lib/constants/status-meta'
 import { delayMinutes, fmtDelay } from '@/lib/format/schedule'
 import { fmtExceptionType } from '@/lib/format/exception'
@@ -332,7 +334,7 @@ export default function TripDetailPage() {
   const router = useRouter()
 
   const tripId = routeParams.id as string
-  const { trip, isLoading, error } = useTripDetail(tripId)
+  const { trip, isLoading, error, refetchSilent } = useTripDetail(tripId)
   const { precincts } = usePrecincts()
   const { byId: artifactsById } = useTripArtifacts(tripId)
   const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null)
@@ -635,33 +637,52 @@ export default function TripDetailPage() {
                   chainReceipt={linkedReceipt}
                   expandedContent={
                     isPending ? undefined
+                    // Each per-type detail is followed by the override trigger — never
+                    // duplicated inside the detail components themselves, since
+                    // PhaseOverrideAction already gates on phase.status and is a no-op
+                    // once a phase is resolved (PhaseOverrideSection takes over then).
                     : phase.phase_type === 'activation'
-                      ? <ActivationDetail
-                          phase={phase}
-                          trip={trip}
-                          precinct={precinctRecordForStop(phase.stop_sequence)}
-                          artifactsById={artifactsById}
-                        />
+                      ? <>
+                          <ActivationDetail
+                            phase={phase}
+                            trip={trip}
+                            precinct={precinctRecordForStop(phase.stop_sequence)}
+                            artifactsById={artifactsById}
+                          />
+                          <PhaseOverrideAction phase={phase} tripId={trip.id} tripStatus={trip.status} onOverridden={refetchSilent} />
+                        </>
                     : phase.phase_type === 'loading'
-                      ? <LoadingDetail phase={phase} />
+                      ? <>
+                          <LoadingDetail phase={phase} />
+                          <PhaseOverrideAction phase={phase} tripId={trip.id} tripStatus={trip.status} onOverridden={refetchSilent} />
+                        </>
                     : phase.phase_type === 'departure'
-                      ? <DepartureDetail
-                          phase={phase}
-                          precinct={precinctRecordForStop(phase.stop_sequence)}
-                          artifactsById={artifactsById}
-                        />
+                      ? <>
+                          <DepartureDetail
+                            phase={phase}
+                            precinct={precinctRecordForStop(phase.stop_sequence)}
+                            artifactsById={artifactsById}
+                          />
+                          <PhaseOverrideAction phase={phase} tripId={trip.id} tripStatus={trip.status} onOverridden={refetchSilent} />
+                        </>
                     : phase.phase_type === 'unloading'
-                      ? <UnloadingDetail
-                          phase={phase}
-                          allPhases={plan}
-                          artifactsById={artifactsById}
-                        />
+                      ? <>
+                          <UnloadingDetail
+                            phase={phase}
+                            allPhases={plan}
+                            artifactsById={artifactsById}
+                          />
+                          <PhaseOverrideAction phase={phase} tripId={trip.id} tripStatus={trip.status} onOverridden={refetchSilent} />
+                        </>
                     : phase.phase_type === 'confirmation'
-                      ? <ConfirmationDetail
-                          phase={phase}
-                          precinct={precinctRecordForStop(phase.stop_sequence)}
-                          artifactsById={artifactsById}
-                        />
+                      ? <>
+                          <ConfirmationDetail
+                            phase={phase}
+                            precinct={precinctRecordForStop(phase.stop_sequence)}
+                            artifactsById={artifactsById}
+                          />
+                          <PhaseOverrideAction phase={phase} tripId={trip.id} tripStatus={trip.status} onOverridden={refetchSilent} />
+                        </>
                     : undefined
                   }
                   alwaysExpandedContent={
@@ -878,6 +899,19 @@ export default function TripDetailPage() {
               </div>
             )
           })()}
+
+          {/* Terminal lifecycle exit — deliberately last in the rail, away from the
+              read-only cards above it. The whole section (not just the button) is
+              hidden once the trip is already closed or cancelled, so there is never
+              an "Actions" heading sitting above nothing to act on. */}
+          {trip.status !== 'closed' && trip.status !== 'cancelled' && (
+            <>
+              <div className="text-[11px] font-[700] tracking-[0.1em] uppercase text-on-surf-v mb-2">
+                Actions
+              </div>
+              <CancelTripAction tripId={trip.id} status={trip.status} onCancelled={refetchSilent} />
+            </>
+          )}
 
         </div>
       </div>
