@@ -71,7 +71,7 @@ export default function CheckpointPageClient() {
         notify({
           kind: 'success',
           title: 'Checkpoint recorded',
-          body: 'Saved — evidence stored on this device.',
+          body: 'Saved. Evidence stored on this device.',
         })
         router.push(ROUTES.inTransit)
       } else {
@@ -89,7 +89,7 @@ export default function CheckpointPageClient() {
         <div className="flex w-full flex-col items-center gap-3 rounded-xl bg-error-container px-6 py-8 text-center text-error-on-container">
           <TriangleAlert className="h-10 w-10" strokeWidth={1.5} aria-hidden />
           <h1 className="text-lg font-bold">Unable to verify trip</h1>
-          <p className="text-sm opacity-90">
+          <p className="text-lg leading-relaxed opacity-90">
             We could not confirm this checkpoint against your active trip.
             Return to in-transit and try again.
           </p>
@@ -111,7 +111,7 @@ export default function CheckpointPageClient() {
       {/* pb-8 keeps the swipe control clear of the note textarea on short viewports —
           min-h-screen alone lets the footer controls crowd the form when it overflows. */}
       <div className="flex flex-1 flex-col p-4 pb-8">
-        <p className="mb-6 text-sm text-surface-on-variant">
+        <p className="mb-6 text-lg leading-relaxed text-surface-on-variant">
           Capture a selfie and a cargo photo to confirm your location and load mid-transit.
         </p>
 
@@ -123,7 +123,7 @@ export default function CheckpointPageClient() {
               min-h-[44px] meets the app's documented 44px minimum touch target (same
               pattern Switch.tsx documents: grow the hit area, not the control, so it
               doesn't look oversized next to its text). */}
-          <label className="flex min-h-[44px] cursor-pointer select-none items-center gap-3 text-sm">
+          <label className="flex min-h-[44px] cursor-pointer select-none items-center gap-3 text-base">
             <input
               type="checkbox"
               checked={isDeviation}
@@ -147,7 +147,7 @@ export default function CheckpointPageClient() {
           // This branch only renders on a terminal 4xx — retrying with the same input
           // cannot succeed, so "check your connection" would be actively misleading here
           // (the connection worked; the server said no).
-          <p className="mb-3 text-sm text-error">
+          <p className="mb-3 text-base text-error">
             Could not submit — the checkpoint was not accepted. Review the details or contact your dispatcher.
           </p>
         )}

@@ -21,11 +21,10 @@
 //    therefore two DIFFERENT fields on two DIFFERENT phase drafts (unloading and
 //    confirmation are separate phase_event_id rows, each with its own localStorage
 //    draft under usePhaseDraft) that must be bridged by a durable carry-forward
-//    mechanism — the same shape as lib/hooks/useSealReference.ts (which already solves
-//    this for the seal, bridging `departure` -> `unloading`). Building that hook is out
-//    of scope here (it belongs to the task that wires the phase step pages); this file
-//    only guarantees both fields exist so that wiring has somewhere to read from and
-//    write to.
+//    mechanism — lib/hooks/useVisualCountCarry.ts, wired in PhaseStepPageClient.tsx.
+//    (The seal once had an equivalent bridge, useSealReference; it was deleted with the
+//    reference display it fed — see UnloadingEvidence below.) This file only guarantees
+//    both fields exist so that wiring has somewhere to read from and write to.
 
 // The driver's position is no longer part of this draft. It used to be captured by a
 // dedicated "Gate Arrival" step and stored here until submit; the app now takes the fix
@@ -54,13 +53,11 @@ export interface LoadingEvidence {
   capturedAt: string | null
 }
 
-// D7/T5: the seal is captured AND guard-confirmed here, both within the same
-// `departure` phase (previously split across the old H2 loading and H3 origin_gate_out
-// handshakes, which needed lib/hooks/useSealReference.ts to bridge the seal number
-// across that gap). Because departure now owns both ends of that comparison in one
-// draft, no cross-phase reference is needed for departure's OWN gate; useSealReference
-// is still needed downstream, to carry this phase's committed sealNumber forward to
-// `unloading`'s reference display (see UnloadingEvidence below).
+// D7/T5: the seal is captured here, in `departure` (it used to be applied at loading and
+// re-confirmed at a separate origin_gate_out handshake). There is no confirmation half
+// any more, on this phase or across phases — the guard-confirms-seal step is gone and the
+// cross-phase seal carry-forward went with it, so a seal comparison happens in exactly
+// one place now: server-side, in advance_unloading.
 // Each photo appears TWICE from here on: the data URL the camera produced, and the
 // artifact id once it has been uploaded. Uploading starts at capture rather than at
 // submit (lib/hooks/useArtifactUpload.ts), so by the time the driver swipes the id is
@@ -76,26 +73,29 @@ export interface DepartureEvidence {
   sealNumber: string | null
   sealPhotoDataUrl: string | null
   sealPhotoArtifactId: string | null
-  // The exit guard's independently re-typed seal number. Optional on the wire
-  // (DepartureCompleteRequest.seal_number_confirmed) — free-form on purpose, since a
-  // mistyped confirmation is itself evidence of a mismatch and must be recordable.
-  sealNumberConfirmed: string | null
-  // Device-local three-way indicator computed against sealNumberConfirmed vs
-  // sealNumber — mirrors the old H3Evidence field. Never sent directly; it only
-  // shapes DepartureCompleteRequest.guard_verified_seal (see lib/api/phases.ts).
-  sealVerifiedMatch: boolean | null
+  // No sealNumberConfirmed / sealVerifiedMatch (removed 2026-08-05). They held the exit
+  // guard's independently re-typed seal number and the device-local comparison against
+  // it — the guard-confirms-seal step is gone, because guards have no accounts and a
+  // number re-typed on the driver's own phone proves nothing the seal photograph does
+  // not. Nothing is sent for them any more: DepartureCompleteRequest.guard_verified_seal
+  // is Optional[bool] server-side and omitting it now means "not collected" rather than
+  // "guard refused" (backend advance_departure).
   capturedAt: string | null
 }
 
 export interface UnloadingEvidence {
   waybillHandedOver: boolean | null
-  // The driver's typed seal entry at destination — backend needs the actual value
-  // (UnloadingCompleteRequest.seal_number_at_destination), not just whether it matched.
+  // The driver's typed seal entry at destination, captured BLIND — backend needs the
+  // actual value (UnloadingCompleteRequest.seal_number_at_destination), not a verdict.
+  //
+  // No sealVerifiedMatch here either (removed 2026-08-05). It held a device-local
+  // comparison against a seal carried forward from `departure`, which existed only to
+  // drive a match/mismatch banner this step no longer shows — a driver told the expected
+  // number has not verified anything. It was never on the wire, and with the carry-
+  // forward hook gone nothing could set it to anything but null. advance_unloading does
+  // the authoritative comparison server-side against that leg's own departure event and
+  // records a CRITICAL seal_mismatch itself, silently.
   sealNumberAtDestination: string | null
-  // Device-local comparison against the seal carried forward from `departure` (via
-  // useSealReference) — purely a UI indicator; the backend does its own authoritative
-  // comparison server-side against that leg's committed departure seal.
-  sealVerifiedMatch: boolean | null
   // The seal AS FOUND at destination — intact, before the warehouse breaks it. This is
   // the closing half of the tamper-evidence bookend whose opening half is
   // DepartureEvidence.sealPhotoDataUrl: one photo when the seal is applied, one when it
@@ -119,11 +119,11 @@ export interface UnloadingEvidence {
   // can lose the photo.
   sealIntactPhotoDataUrl: string | null
   sealIntactPhotoArtifactId: string | null
-  // Photographed AFTER the warehouse breaks the seal — a different photograph with
-  // different evidential value from sealIntactPhotoDataUrl above, and deliberately not a
-  // substitute for it: only the intact one proves the seal survived the journey. Held
-  // on-device only; UnloadingCompleteRequest has no field for it.
-  sealBrokenPhotoDataUrl: string | null
+  // No sealBrokenPhotoDataUrl (removed 2026-08-05, with the '3-seal-break-inspection'
+  // step that captured it). It photographed the seal AFTER the warehouse broke it, which
+  // says nothing about the journey — the intact photo above is the evidence — and it was
+  // never sent: UnloadingCompleteRequest has no field for it and lib/api/phases.ts
+  // submits only the intact photo, as gate_photo_artifact_id.
   // Captured as unloading's last step but has no field on UnloadingCompleteRequest —
   // see this file's header comment. Submitted, once carried forward, as
   // ConfirmationEvidence.driverVisualCount.
@@ -138,6 +138,19 @@ export interface ConfirmationEvidence {
   podPhotoArtifactId: string | null
   podSignatureDataUrl: string | null
   podSignatureArtifactId: string | null
+  // Who signed. A signature with no identifiable signer is the weakest possible proof of
+  // delivery — "someone at the warehouse swiped" is not a defence in a disputed-delivery
+  // claim. Both values are rendered INTO the attestation PNG
+  // (lib/utils/render-attestation.ts), so they are covered by the artifact hash that gets
+  // anchored, rather than sitting beside it as mutable metadata.
+  //
+  // POPIA: an ID number is personal data. It reaches Supabase Storage inside that PNG
+  // (af-south-1) and nowhere else — deliberately NOT a ConfirmationCompleteRequest field,
+  // so it never enters a phase row, a canonical payload, or a Hedera anchor. It lives in
+  // this draft only until the phase submits, at which point clearDraft() removes it from
+  // the device alongside the rest of the evidence.
+  recipientName: string | null
+  recipientIdNumber: string | null
   // Carried forward from the UnloadingEvidence captured immediately before this phase
   // (see this file's header comment) — this is the value actually submitted as
   // ConfirmationCompleteRequest.driver_visual_count.

@@ -44,18 +44,14 @@ const DEPARTURE_EVIDENCE: DepartureEvidence = {
   waybillPhotoDataUrl: 'data:image/jpeg;base64,BBBB',
   sealNumber: 'AB-1234',
   sealPhotoDataUrl: 'data:image/jpeg;base64,CCCC',
-  sealNumberConfirmed: ' AB-1234 ',
-  sealVerifiedMatch: true,
   capturedAt: '2026-06-12T10:10:00Z',
 }
 
 const UNLOADING_EVIDENCE: UnloadingEvidence = {
   waybillHandedOver: true,
   sealNumberAtDestination: 'AB-1234',
-  sealVerifiedMatch: true,
   sealIntactPhotoDataUrl: 'data:image/jpeg;base64,CCCC',
   sealIntactPhotoArtifactId: null,
-  sealBrokenPhotoDataUrl: 'data:image/jpeg;base64,DDDD',
   driverVisualCount: 31,
   capturedAt: '2026-06-12T10:20:00Z',
 }
@@ -65,6 +61,9 @@ const CONFIRMATION_EVIDENCE: ConfirmationEvidence = {
   podSignatureArtifactId: null,
   podPhotoDataUrl: 'data:image/jpeg;base64,EEEE',
   podSignatureDataUrl: 'data:image/png;base64,FFFF',
+  // Present in the DRAFT but deliberately absent from the wire — see the POPIA test below.
+  recipientName: 'Nomsa Dlamini',
+  recipientIdNumber: '9202204720082',
   // Stands in for a value carried forward from the preceding UnloadingEvidence draft —
   // see lib/types/evidence-draft.ts's header comment.
   driverVisualCount: 31,
@@ -144,8 +143,11 @@ describe('submitPhase (real-backend branch)', () => {
         waybill_photo_artifact_id: 'waybill-artifact',
         seal_number: 'AB-1234',
         seal_photo_artifact_id: 'seal-artifact',
-        guard_verified_seal: true,
-        seal_number_confirmed: 'AB-1234',
+        // No guard_verified_seal and no seal_number_confirmed. toHaveBeenCalledWith is an
+        // EXACT object match, so this assertion also fences the removal: sending either
+        // key again fails here. That matters more than a tidier payload — the backend
+        // treats a `false` guard_verified_seal as a CRITICAL seal_mismatch, so a
+        // regression that reinstated the field with a falsy default would flag every trip.
         idempotency_key: IDEMPOTENCY_KEY,
       },
       { timeoutMs: 30_000 },
@@ -261,6 +263,27 @@ describe('submitPhase (real-backend branch)', () => {
       },
       { timeoutMs: 30_000 },
     )
+  })
+
+  // POPIA tripwire. The receiver's name and ID number are personal data. They reach
+  // Supabase Storage (af-south-1) INSIDE the attestation PNG and must go nowhere else:
+  // not onto a phase row, not into a canonical payload, and so never near Hedera. The
+  // exact-object assertion above already enforces this, but it enforces it silently —
+  // this test states the reason, so a future contributor adding the fields to the wire
+  // gets a failure that explains itself.
+  it('never sends the receiver name or ID number to the backend', async () => {
+    mockUploadArtifact
+      .mockResolvedValueOnce({ id: 'pod-photo-artifact', file_hash: 'a'.repeat(64) })
+      .mockResolvedValueOnce({ id: 'pod-signature-artifact', file_hash: 'b'.repeat(64) })
+    mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
+
+    const { submitPhase } = await import('../phases')
+    await submitPhase('trip-1', 'phase-event-5', 'confirmation', CONFIRMATION_EVIDENCE, IDEMPOTENCY_KEY, POSITION)
+
+    const body = JSON.stringify(mockPost.mock.calls[0][1])
+    expect(body).not.toContain(CONFIRMATION_EVIDENCE.recipientName)
+    expect(body).not.toContain(CONFIRMATION_EVIDENCE.recipientIdNumber)
+    expect(body).not.toMatch(/recipient/i)
   })
 
   it('refuses to submit activation without a position instead of calling the backend', async () => {

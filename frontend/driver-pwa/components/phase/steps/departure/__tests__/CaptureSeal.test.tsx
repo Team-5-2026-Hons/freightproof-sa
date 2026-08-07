@@ -1,13 +1,16 @@
 // frontend/driver-pwa/components/phase/steps/departure/__tests__/CaptureSeal.test.tsx
 //
-// CaptureSeal had NO test at all before this file — flagged in the parent plan as the
-// single highest-risk file in the phase refactor (see the component's own header
-// comment): the seal moved from `loading` to `departure`, and it now merges seal
-// capture AND the gate guard's independent confirmation on one screen. The specific
-// hazard under test throughout: `matches` must be null (indeterminate), never a false
-// positive OR a false negative, whenever draft.sealNumber hasn't been captured yet —
-// a silent NULL == NULL (or empty-string) comparison would raise nothing and fail no
-// test, which is exactly the bug class this file exists to catch.
+// This suite used to be dominated by the guard-confirms-seal UI: a second input, a
+// three-way match/mismatch/indeterminate banner, and the null-seal hazard that indicator
+// carried. All of it was removed on 2026-08-05 (guards have no accounts; a number
+// re-typed on the driver's own phone proves nothing the seal photograph does not), so the
+// tests for it are gone with it rather than rewritten.
+//
+// What replaces them is a REGRESSION FENCE — the `describe` block below asserts the
+// confirm field and both verdict banners stay absent. Without it, re-adding the step
+// would break no test, and the backend change that pairs with this removal
+// (guard_verified_seal is now Optional[bool], where a `False` still writes a CRITICAL
+// seal_mismatch) means a silently-restored field could start flagging real trips.
 import { useState } from 'react'
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
@@ -23,17 +26,13 @@ vi.mock('next/navigation', () => ({
 
 // CameraCapture drives real native/browser camera APIs out of scope here — it has its
 // own dedicated coverage (components/phase/__tests__/CameraCapture.test.tsx). Stubbed
-// so this suite only exercises CaptureSeal's own seal-number/match logic, mirroring
+// so this suite only exercises CaptureSeal's own seal-number logic, mirroring
 // the same stub pattern CheckpointPageClient.test.tsx already uses.
 vi.mock('@/components/phase/CameraCapture', () => ({
   CameraCapture: ({ label, onCapture }: { label: string; onCapture: (dataUrl: string) => void }) => (
     <button onClick={() => onCapture(`data:image/jpeg;base64,${label}`)}>{label}</button>
   ),
 }))
-
-const MATCH_BANNER = 'Seal matches'
-const MISMATCH_BANNER = 'Mismatch — flagged as exception'
-const NULL_REFERENCE_NOTE = 'Enter the seal number above before confirming it.'
 
 function makeDraft(overrides: Partial<DepartureEvidence> = {}): DepartureEvidence {
   return {
@@ -42,8 +41,6 @@ function makeDraft(overrides: Partial<DepartureEvidence> = {}): DepartureEvidenc
     sealNumber: null,
     sealPhotoDataUrl: null,
     sealPhotoArtifactId: null,
-    sealNumberConfirmed: null,
-    sealVerifiedMatch: null,
     capturedAt: null,
     ...overrides,
   }
@@ -53,10 +50,6 @@ function typeSealNumber(value: string) {
   fireEvent.change(screen.getByLabelText('Seal number'), { target: { value } })
 }
 
-function typeGuardConfirm(value: string) {
-  fireEvent.change(screen.getByLabelText('Guard confirms seal number'), { target: { value } })
-}
-
 function renderStep(overrides: {
   draft?: DepartureEvidence
   onUpdate?: (patch: Partial<DepartureEvidence>) => void
@@ -64,12 +57,10 @@ function renderStep(overrides: {
 } = {}) {
   const { draft: initialDraft = makeDraft(), onUpdate = vi.fn(), onComplete = vi.fn() } = overrides
 
-  // CaptureSeal is a CONTROLLED component: it reads `sealNumberConfirmed` straight off the
-  // draft and reports every edit upward. A bare vi.fn() for onUpdate never feeds the value
-  // back, so the guard field would stay empty and neither verdict banner could ever render
-  // — and the "never shows a match banner" assertions above would then pass VACUOUSLY,
-  // proving nothing about the null-seal hazard they exist to catch. The harness therefore
-  // holds real state and applies each patch, exactly as the step page does in production.
+  // CaptureSeal is a CONTROLLED component: it reads the seal number straight off the
+  // draft and reports every edit upward. The harness holds real state and applies each
+  // patch, exactly as the step page does in production, so an assertion about what is on
+  // screen after typing can never pass vacuously against a value that never fed back.
   function Harness() {
     const [draft, setDraft] = useState<DepartureEvidence>(initialDraft)
     return (
@@ -119,135 +110,67 @@ describe('CaptureSeal — capturing the seal number and photo', () => {
     renderStep({ draft: makeDraft() })
     expect(screen.queryByText(/must look like AB-1234/)).not.toBeInTheDocument()
 
-    const { unmount } = { unmount: () => {} }
-    void unmount
     renderStep({ draft: makeDraft({ sealNumber: 'AB123' }) })
     expect(screen.getAllByText(/must look like AB-1234/).length).toBeGreaterThan(0)
   })
 })
 
-describe('CaptureSeal — the missing/null seal hazard (the highest-risk edit)', () => {
-  it('never renders the match banner when no seal has been captured yet, however the guard field is filled', () => {
-    // draft.sealNumber is null — nothing has been captured. Typing into the guard's
-    // confirm field must NEVER read as a match, even if the guard types nothing at
-    // all (empty string): a naive `'' === null` or `'' === ''` comparison would
-    // silently report true here, which is exactly the bug this test guards against.
-    renderStep({ draft: makeDraft({ sealNumber: null }) })
+describe('CaptureSeal — the guard confirmation is gone and must stay gone', () => {
+  it('renders no guard confirmation field', () => {
+    renderStep({ draft: makeDraft({ sealNumber: 'AB-1234' }) })
 
-    typeGuardConfirm('AB-1234')
-
-    expect(screen.queryByText(MATCH_BANNER, { exact: false })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Guard confirms seal number')).not.toBeInTheDocument()
   })
 
-  it('never renders the mismatch banner either — a null reference is indeterminate, not a false negative', () => {
-    renderStep({ draft: makeDraft({ sealNumber: null }) })
-
-    typeGuardConfirm('AB-1234')
-
-    expect(screen.queryByText(MISMATCH_BANNER)).not.toBeInTheDocument()
-  })
-
-  it('shows the neutral "enter the seal number" note instead of either verdict', () => {
-    renderStep({ draft: makeDraft({ sealNumber: null }) })
-
-    typeGuardConfirm('AB-1234')
-
-    expect(screen.getByText(NULL_REFERENCE_NOTE)).toBeInTheDocument()
-  })
-
-  it('persists sealVerifiedMatch as null (not false, not true) while sealNumber is unset', () => {
-    const onUpdate = vi.fn()
-    renderStep({ draft: makeDraft({ sealNumber: null }), onUpdate })
-
-    typeGuardConfirm('AB-1234')
-
-    expect(onUpdate).toHaveBeenLastCalledWith({
-      sealNumberConfirmed: 'AB-1234',
-      sealVerifiedMatch: null,
+  it('renders no match or mismatch verdict, however complete the capture is', () => {
+    renderStep({
+      draft: makeDraft({ sealNumber: 'AB-1234', sealPhotoDataUrl: 'data:image/jpeg;base64,x' }),
     })
-  })
-})
 
-describe('CaptureSeal — the three-way match outcome once a seal is captured', () => {
-  it('reports a match and shows the success banner', () => {
+    expect(screen.queryByText(/Seal matches/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Mismatch/)).not.toBeInTheDocument()
+  })
+
+  it('never writes a guard-confirmation field into the draft', () => {
     const onUpdate = vi.fn()
-    renderStep({ draft: makeDraft({ sealNumber: 'AB-1234' }), onUpdate })
+    renderStep({ onUpdate })
 
-    typeGuardConfirm('ab-1234') // guard's re-entry is uppercased the same way
+    typeSealNumber('AB-1234')
+    fireEvent.click(screen.getByText('Seal photo'))
 
-    expect(screen.getByText(MATCH_BANNER)).toBeInTheDocument()
-    expect(onUpdate).toHaveBeenLastCalledWith({ sealNumberConfirmed: 'AB-1234', sealVerifiedMatch: true })
-  })
-
-  it('reports a mismatch and shows the flagged-exception banner', () => {
-    const onUpdate = vi.fn()
-    renderStep({ draft: makeDraft({ sealNumber: 'AB-1234' }), onUpdate })
-
-    typeGuardConfirm('CD-5678')
-
-    expect(screen.getByText(MISMATCH_BANNER)).toBeInTheDocument()
-    expect(onUpdate).toHaveBeenLastCalledWith({ sealNumberConfirmed: 'CD-5678', sealVerifiedMatch: false })
-  })
-
-  it('goes back to the neutral note if the guard field is cleared back to empty', () => {
-    renderStep({ draft: makeDraft({ sealNumber: 'AB-1234', sealNumberConfirmed: 'CD-5678' }) })
-
-    typeGuardConfirm('')
-
-    expect(screen.queryByText(MATCH_BANNER)).not.toBeInTheDocument()
-    expect(screen.queryByText(MISMATCH_BANNER)).not.toBeInTheDocument()
+    // Guards against a re-added field being persisted into the draft and reaching
+    // lib/api/phases.ts, whose departure branch no longer sends either key.
+    for (const [patch] of onUpdate.mock.calls) {
+      expect(patch).not.toHaveProperty('sealNumberConfirmed')
+      expect(patch).not.toHaveProperty('sealVerifiedMatch')
+    }
   })
 })
 
 describe('CaptureSeal — submit readiness (SwipeToConfirm)', () => {
-  it('is disabled until the seal number, seal photo, and a validly-formatted guard confirmation are all present', () => {
+  it('is disabled until both the seal number and the seal photo are present', () => {
     renderStep({ draft: makeDraft() })
 
     expect(screen.getByRole('slider', { name: 'Swipe to confirm' })).toHaveAttribute('aria-disabled', 'true')
   })
 
-  it('is disabled when the seal photo is missing even if both numbers are valid and matching', () => {
+  it('is disabled when the seal photo is missing even though the number is valid', () => {
+    renderStep({ draft: makeDraft({ sealNumber: 'AB-1234', sealPhotoDataUrl: null }) })
+
+    expect(screen.getByRole('slider', { name: 'Swipe to confirm' })).toHaveAttribute('aria-disabled', 'true')
+  })
+
+  it('is disabled when the seal number is not validly formatted', () => {
     renderStep({
-      draft: makeDraft({ sealNumber: 'AB-1234', sealPhotoDataUrl: null, sealNumberConfirmed: 'AB-1234' }),
+      draft: makeDraft({ sealNumber: 'not-a-seal', sealPhotoDataUrl: 'data:image/jpeg;base64,x' }),
     })
 
     expect(screen.getByRole('slider', { name: 'Swipe to confirm' })).toHaveAttribute('aria-disabled', 'true')
   })
 
-  it('is disabled when the guard confirmation is not validly formatted', () => {
+  it('is enabled once the seal number is valid and the photo is captured', () => {
     renderStep({
-      draft: makeDraft({
-        sealNumber: 'AB-1234',
-        sealPhotoDataUrl: 'data:image/jpeg;base64,x',
-        sealNumberConfirmed: 'not-a-seal',
-      }),
-    })
-
-    expect(screen.getByRole('slider', { name: 'Swipe to confirm' })).toHaveAttribute('aria-disabled', 'true')
-  })
-
-  // The mismatch itself must never block the driver — it's recorded as evidence and
-  // flagged as an exception downstream, not something the driver can be stuck behind.
-  it('is enabled on a genuine MISMATCH as long as format and photo requirements are met', () => {
-    renderStep({
-      draft: makeDraft({
-        sealNumber: 'AB-1234',
-        sealPhotoDataUrl: 'data:image/jpeg;base64,x',
-        sealNumberConfirmed: 'CD-5678',
-      }),
-    })
-
-    expect(screen.getByText(MISMATCH_BANNER)).toBeInTheDocument()
-    expect(screen.getByRole('slider', { name: 'Swipe to confirm' })).toHaveAttribute('aria-disabled', 'false')
-  })
-
-  it('is enabled once everything is valid and matching', () => {
-    renderStep({
-      draft: makeDraft({
-        sealNumber: 'AB-1234',
-        sealPhotoDataUrl: 'data:image/jpeg;base64,x',
-        sealNumberConfirmed: 'AB-1234',
-      }),
+      draft: makeDraft({ sealNumber: 'AB-1234', sealPhotoDataUrl: 'data:image/jpeg;base64,x' }),
     })
 
     expect(screen.getByRole('slider', { name: 'Swipe to confirm' })).toHaveAttribute('aria-disabled', 'false')
@@ -264,11 +187,7 @@ describe('CaptureSeal — completing the swipe', () => {
   it('calls onComplete once the swipe completes while ready', () => {
     const onComplete = vi.fn()
     renderStep({
-      draft: makeDraft({
-        sealNumber: 'AB-1234',
-        sealPhotoDataUrl: 'data:image/jpeg;base64,x',
-        sealNumberConfirmed: 'AB-1234',
-      }),
+      draft: makeDraft({ sealNumber: 'AB-1234', sealPhotoDataUrl: 'data:image/jpeg;base64,x' }),
       onComplete,
     })
 

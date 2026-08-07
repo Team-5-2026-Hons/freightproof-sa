@@ -32,8 +32,8 @@ export function Verification({ tripId, phase, stepIndex, onComplete }: Verificat
         {/* activation is a feeder phase — the backend only anchors departure and
             confirmation to Hedera HCS (parent plan D7/ANCHORED_PHASES). This evidence
             still matters: it's what those anchored phases are built on. */}
-        <p className="text-sm text-surface-on-variant">
-          Swipe to start this trip. Your location is recorded automatically — this is the
+        <p className="text-lg leading-relaxed text-surface-on-variant">
+          Swipe to start this trip. Your location is recorded automatically. This is the
           evidence that supports your anchored Departure and Confirmation phases.
         </p>
       </div>

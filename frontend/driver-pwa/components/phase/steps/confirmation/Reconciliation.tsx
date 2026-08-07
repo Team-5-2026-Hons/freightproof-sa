@@ -37,7 +37,7 @@ export function Reconciliation({ tripId, phase, stepIndex, draft, onUpdate, onCo
     <main className="flex min-h-dvh flex-col">
       <StepHeader phase={phase} stepIndex={stepIndex} />
       <div className="flex flex-1 flex-col gap-6 p-4">
-        <p className="text-sm text-surface-on-variant">
+        <p className="text-lg leading-relaxed text-surface-on-variant">
           Confirm that the unloading is reconciled with the warehouse. Any discrepancies have been logged.
         </p>
         {/* Old H5Reconciliation read sealBrokenPhotoDataUrl/waybillHandedOver here too — those
@@ -53,15 +53,15 @@ export function Reconciliation({ tripId, phase, stepIndex, draft, onUpdate, onCo
             capture, both real fields on ConfirmationEvidence. */}
         <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4 flex flex-col gap-3">
           <div className="flex justify-between">
-            <span className="text-sm text-surface-on-variant">Parcels counted at destination</span>
-            <span className="text-sm font-bold">{draft.driverVisualCount ?? '—'}</span>
+            <span className="text-base text-surface-on-variant">Parcels counted at destination</span>
+            <span className="text-base font-bold">{draft.driverVisualCount ?? '—'}</span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-sm text-surface-on-variant">Proof of delivery photo</span>
+            <span className="text-base text-surface-on-variant">Proof of delivery photo</span>
             <StatusMark ok={draft.podPhotoDataUrl !== null} />
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-sm text-surface-on-variant">Receiver signature</span>
+            <span className="text-base text-surface-on-variant">Receiver signature</span>
             <StatusMark ok={Boolean(draft.podSignatureDataUrl)} />
           </div>
         </div>

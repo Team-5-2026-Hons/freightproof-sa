@@ -33,6 +33,12 @@ const authValue: AuthState = {
   signOut: vi.fn(),
 }
 
+// The phase Workstream 1's optimistic advance is exercised against: the first row the
+// ledger still considers open, taken from the fixture rather than hardcoded so a change
+// to the mock plan can't quietly make this test assert nothing.
+const openPhase = activeTrip.phases.find((p) => p.status === 'pending' || p.status === 'in_progress')
+if (!openPhase) throw new Error('Fixture drift: mockDrivers[0]\'s active trip has no open phase')
+
 function Probe() {
   const ctx = useContext(TripContext)
   if (!ctx) return null
@@ -49,6 +55,12 @@ function Probe() {
       {/* JSON.stringify keeps null ("null") distinguishable from undefined ("") so the
           GPS tests below can tell "explicitly no fix" apart from "field missing". */}
       <span data-testid="last-gps">{last ? JSON.stringify([last.gps_lat, last.gps_lng]) : ''}</span>
+      <span data-testid="open-phase-status">
+        {ctx.trip?.phases.find((p) => p.phase_event_id === openPhase!.phase_event_id)?.status ?? ''}
+      </span>
+      <span data-testid="syncing-ids">{ctx.syncingPhaseIds.join(',')}</span>
+      <button onClick={() => ctx.markPhaseSyncing(openPhase!.phase_event_id)}>mark-syncing</button>
+      <button onClick={() => ctx.clearPhaseSyncing(openPhase!.phase_event_id)}>clear-syncing</button>
       <ul>
         {ctx.exceptions.map((e) => (
           <li key={String(e.id)}>{e.description}</li>
@@ -143,5 +155,45 @@ describe('TripContext session exceptions (5b)', () => {
     })
 
     expect(screen.getByTestId('last-gps')).toHaveTextContent(JSON.stringify([null, null]))
+  })
+})
+
+// Workstream 1. The driver swipes, lands on Home, and the submission runs in the
+// background — so between the swipe and the backend's answer the plan has to read as
+// though the phase were done, or Home would re-offer the step they just finished.
+describe('TripContext optimistic phase advance', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('shows a marked phase as resolved without touching the server plan, and reports it as syncing', async () => {
+    await renderAndWaitForTrip()
+    expect(screen.getByTestId('open-phase-status')).toHaveTextContent(openPhase.status)
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('mark-syncing'))
+    })
+
+    expect(screen.getByTestId('open-phase-status')).toHaveTextContent('completed')
+    // The marker is exposed alongside it so a screen can say "recording", not "recorded".
+    expect(screen.getByTestId('syncing-ids')).toHaveTextContent(openPhase.phase_event_id)
+  })
+
+  it('rolls the advance back when the marker is cleared without a server answer having landed', async () => {
+    await renderAndWaitForTrip()
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('mark-syncing'))
+    })
+    expect(screen.getByTestId('open-phase-status')).toHaveTextContent('completed')
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('clear-syncing'))
+    })
+
+    // Unresolved again, so the step is re-offered and the driver can retry with their
+    // draft — the terminal-failure path in PhaseStepPageClient depends on exactly this.
+    expect(screen.getByTestId('open-phase-status')).toHaveTextContent(openPhase.status)
+    expect(screen.getByTestId('syncing-ids')).toHaveTextContent('')
   })
 })

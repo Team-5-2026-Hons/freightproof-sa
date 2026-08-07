@@ -29,8 +29,12 @@ const HINT_DURATION_MS = 1500
 // control primed to fire on an unrelated later one.
 const ARM_TIMEOUT_MS = 3000
 
-// Track is h-14 (56px); the thumb insets by TRACK_PADDING_PX on every side.
-const THUMB_SIZE_PX = 48
+// Track is h-16 (64px); the thumb insets by TRACK_PADDING_PX on every side, so
+// 56 + 4 + 4 = 64. Grown from h-14/48px along with the rest of the phase-flow type scale:
+// this is the control every phase submits through, operated one-handed at a loading bay,
+// often in gloves. If the track height changes, THUMB_SIZE_PX must change with it or the
+// thumb stops being vertically centred.
+const THUMB_SIZE_PX = 56
 const TRACK_PADDING_PX = 4
 
 // onConfirm may be fire-and-forget or async (submitAndAdvance uploads photos and calls the
@@ -306,7 +310,7 @@ export function SwipeToConfirm({
           onClick={handleTwoStep}
           disabled={isLocked}
           className={cn(
-            'flex h-14 w-full items-center justify-center gap-2 rounded-full px-6',
+            'flex h-16 w-full items-center justify-center gap-2 rounded-full px-6',
             // Same split as the track below: still click-blocked while working, but only
             // greyed out when the caller says the action isn't valid yet.
             'select-none transition-opacity',
@@ -315,7 +319,7 @@ export function SwipeToConfirm({
           )}
         >
           {isBusy && <Spinner size="sm" className={variantClasses.spinner} />}
-          <span className={cn('text-sm font-bold uppercase tracking-wider', variantClasses.onTrack)}>
+          <span className={cn('text-base font-bold uppercase tracking-wider', variantClasses.onTrack)}>
             {currentLabel}
           </span>
         </button>
@@ -343,7 +347,7 @@ export function SwipeToConfirm({
         onPointerCancel={handlePointerUp}
         onKeyDown={handleKeyDown}
         className={cn(
-          'relative h-14 w-full overflow-hidden rounded-full',
+          'relative h-16 w-full overflow-hidden rounded-full',
           // touch-none stops the browser claiming the horizontal drag for a scroll/swipe
           // gesture — without it the thumb stutters and the confirm becomes unreliable.
           'select-none touch-none outline-none',
@@ -364,7 +368,7 @@ export function SwipeToConfirm({
         <span
           className={cn(
             'pointer-events-none absolute inset-0 flex items-center justify-center gap-2',
-            'px-14 text-center text-sm font-bold uppercase tracking-wider',
+            'px-16 text-center text-base font-bold uppercase tracking-wider',
             variantClasses.onTrack,
           )}
           style={{ opacity: labelOpacity }}

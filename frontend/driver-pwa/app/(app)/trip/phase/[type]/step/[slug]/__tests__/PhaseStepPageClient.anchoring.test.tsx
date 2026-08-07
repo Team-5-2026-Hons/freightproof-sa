@@ -13,6 +13,7 @@ import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/re
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import PhaseStepPageClient from '../PhaseStepPageClient'
 import { ApiError } from '@/lib/api/client'
+import { __resetPhaseSubmitterForTests } from '@/lib/submission/phase-submitter'
 import type { Trip } from '@shared/lib/types/trip'
 import type { PhaseDescriptor, PhaseEventId } from '@shared/lib/types/phase'
 
@@ -30,18 +31,36 @@ const mockSubmitPhase = vi.fn()
 const mockRefetchTrip = vi.fn()
 // The success path adopts the trip the submit already returned instead of refetching it.
 const mockAdoptTrip = vi.fn()
+// Workstream 1's optimistic advance, owned by TripContext.
+const mockMarkPhaseSyncing = vi.fn()
+const mockClearPhaseSyncing = vi.fn()
 
 interface MockTripState {
   trip: Trip
   isLoading: boolean
   refetchTrip: typeof mockRefetchTrip
   adoptTrip: typeof mockAdoptTrip
+  syncingPhaseIds: readonly string[]
+  markPhaseSyncing: typeof mockMarkPhaseSyncing
+  clearPhaseSyncing: typeof mockClearPhaseSyncing
 }
 
 // Mutable module-level value, reassigned per test — the current PHASE must match
 // whatever mockUseParams' [type] is set to for that test (the guard redirects
 // otherwise), and departure/confirmation need different phase_event_id fixtures.
 let tripState: MockTripState
+
+function setTripState(trip: Trip): void {
+  tripState = {
+    trip,
+    isLoading: false,
+    refetchTrip: mockRefetchTrip,
+    adoptTrip: mockAdoptTrip,
+    syncingPhaseIds: [],
+    markPhaseSyncing: mockMarkPhaseSyncing,
+    clearPhaseSyncing: mockClearPhaseSyncing,
+  }
+}
 
 vi.mock('next/navigation', () => ({
   useParams: () => mockUseParams(),
@@ -152,6 +171,9 @@ function makeTrip(phases: PhaseDescriptor[], overrides: Partial<Trip> = {}): Tri
 beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
+  // The submitter's in-flight registry and failure list live at module scope (that is the
+  // point of it) — vitest's per-test isolation cannot reach them.
+  __resetPhaseSubmitterForTests()
 })
 
 afterEach(() => {
@@ -161,7 +183,7 @@ afterEach(() => {
 describe('PhaseStepPageClient anchoring receipt copy — real mode', () => {
   it('a real departure success with the Hedera receipt back claims the anchor', async () => {
     const departure = makePhase({ phase_type: 'departure', sequence_number: 3, status: 'in_progress' })
-    tripState = { trip: makeTrip([departure]), isLoading: false, refetchTrip: mockRefetchTrip, adoptTrip: mockAdoptTrip }
+    setTripState(makeTrip([departure]))
     mockUseParams.mockReturnValue({ type: 'departure', slug: '4-departure' })
     const freshTrip = makeTrip([{ ...departure, status: 'completed', blockchain_receipt_id: 'receipt-1' }])
     mockSubmitPhase.mockResolvedValue({ ok: true, trip: freshTrip, phaseStatus: 'completed' })
@@ -185,7 +207,7 @@ describe('PhaseStepPageClient anchoring receipt copy — real mode', () => {
     const confirmation = makePhase({
       phase_event_id: CONFIRMATION_PE, phase_type: 'confirmation', sequence_number: 6, status: 'in_progress',
     })
-    tripState = { trip: makeTrip([confirmation]), isLoading: false, refetchTrip: mockRefetchTrip, adoptTrip: mockAdoptTrip }
+    setTripState(makeTrip([confirmation]))
     mockUseParams.mockReturnValue({ type: 'confirmation', slug: '4-closed' })
     const freshTrip = makeTrip(
       [{ ...confirmation, status: 'completed', blockchain_receipt_id: 'receipt-2' }],
@@ -210,7 +232,7 @@ describe('PhaseStepPageClient anchoring receipt copy — real mode', () => {
 
   it('a real departure success whose receipt has not come back yet says anchoring is in progress, not anchored', async () => {
     const departure = makePhase({ phase_type: 'departure', sequence_number: 3, status: 'in_progress' })
-    tripState = { trip: makeTrip([departure]), isLoading: false, refetchTrip: mockRefetchTrip, adoptTrip: mockAdoptTrip }
+    setTripState(makeTrip([departure]))
     mockUseParams.mockReturnValue({ type: 'departure', slug: '4-departure' })
     // Completed but no blockchain_receipt_id yet — claiming "anchored" here would be
     // dishonest; the driver is pointed at the trip screen's own anchor progress UI.
@@ -237,7 +259,7 @@ describe('PhaseStepPageClient anchoring receipt copy — real mode', () => {
 
   it('an offline-queued departure submit (even in real mode) keeps the honest "stored on this device" wording — it never reached the backend, let alone Hedera', async () => {
     const departure = makePhase({ phase_type: 'departure', sequence_number: 3, status: 'in_progress' })
-    tripState = { trip: makeTrip([departure]), isLoading: false, refetchTrip: mockRefetchTrip, adoptTrip: mockAdoptTrip }
+    setTripState(makeTrip([departure]))
     mockUseParams.mockReturnValue({ type: 'departure', slug: '4-departure' })
     mockSubmitPhase.mockRejectedValue(new TypeError('network down'))
 
@@ -256,7 +278,7 @@ describe('PhaseStepPageClient anchoring receipt copy — real mode', () => {
 
   it('a terminal 4xx on departure fires no success toast at all (unaffected by the anchoring change)', async () => {
     const departure = makePhase({ phase_type: 'departure', sequence_number: 3, status: 'in_progress' })
-    tripState = { trip: makeTrip([departure]), isLoading: false, refetchTrip: mockRefetchTrip, adoptTrip: mockAdoptTrip }
+    setTripState(makeTrip([departure]))
     mockUseParams.mockReturnValue({ type: 'departure', slug: '4-departure' })
     mockSubmitPhase.mockRejectedValue(new ApiError(422, 'missing seal photo'))
 

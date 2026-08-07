@@ -43,10 +43,8 @@ const loadingDraft: LoadingEvidence = { driverVisualCount: null, capturedAt: nul
 const unloadingDraft: UnloadingEvidence = {
   waybillHandedOver: null,
   sealNumberAtDestination: null,
-  sealVerifiedMatch: null,
   sealIntactPhotoDataUrl: null,
   sealIntactPhotoArtifactId: null,
-  sealBrokenPhotoDataUrl: null,
   driverVisualCount: null,
   capturedAt: null,
 }

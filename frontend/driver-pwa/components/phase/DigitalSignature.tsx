@@ -15,6 +15,7 @@ import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
 import { useLocationTrail } from '@/lib/hooks/useLocationTrail'
 import { useToast } from '@/lib/hooks/useToast'
 import { renderAttestation, formatPosition } from '@/lib/utils/render-attestation'
+import { hasRecipientIdentity } from '@/lib/utils/sa-id'
 import type { DriverPosition } from '@/lib/types/location'
 
 export interface DigitalSignatureResult {
@@ -30,16 +31,38 @@ interface DigitalSignatureProps {
   tripId: string
   /** A previously-rendered attestation, shown instead of the swipe once signed. */
   dataUrl: string | null
+  /**
+   * The receiver's identity, owned by the step (which owns the draft) and passed down
+   * purely as what gets drawn into the attestation. Null until they have been entered —
+   * the swipe stays disabled until both are present, because an attestation that cannot
+   * name its signer is the weakest possible proof of delivery.
+   */
+  recipientName: string | null
+  recipientIdNumber: string | null
   onSign: (result: DigitalSignatureResult) => void | Promise<void>
 }
 
-export function DigitalSignature({ tripId, dataUrl, onSign }: DigitalSignatureProps) {
+export function DigitalSignature({
+  tripId, dataUrl, recipientName, recipientIdNumber, onSign,
+}: DigitalSignatureProps) {
   const { capturePosition } = useLocationTrail()
   const { notify } = useToast()
   const [position, setPosition] = useState<DriverPosition | null>(null)
   const [hasFix, setHasFix] = useState(false)
 
+  const hasIdentity = hasRecipientIdentity(recipientName, recipientIdNumber)
+
   const handleSwipe = useCallback(async () => {
+    // Redundant backstop, deliberately kept. SwipeToConfirm's own `disabled` handling is
+    // the REAL gate — it blocks the drag, the keyboard path and the tap-to-confirm path
+    // alike, which is why the tests below cannot distinguish this line's presence from
+    // its absence. It stays because the cost is one comparison and the failure it guards
+    // against is an attestation that cannot name its signer: if anyone later drops the
+    // `disabled` prop below, or SwipeToConfirm's locking changes, this is what stops a
+    // POD being signed by nobody. Do not "simplify" it away on the grounds that it is
+    // untested — it is untestable from outside, not unnecessary.
+    if (!hasRecipientIdentity(recipientName, recipientIdNumber)) return
+
     // The fix is taken at the swipe, not on mount: a position captured when the screen
     // opened could be minutes and a warehouse away from where the receiver actually
     // signed, and the attestation claims the latter.
@@ -48,7 +71,15 @@ export function DigitalSignature({ tripId, dataUrl, onSign }: DigitalSignaturePr
     setHasFix(fix !== null)
 
     const signedAt = new Date().toISOString()
-    const rendered = renderAttestation({ signedAt, position: fix, tripId })
+    const rendered = renderAttestation({
+      signedAt,
+      position: fix,
+      tripId,
+      // Non-null by the guard above; trimmed so a stray keyboard space is not baked into
+      // the artifact as part of the receiver's name.
+      recipientName: (recipientName ?? '').trim(),
+      recipientIdNumber: (recipientIdNumber ?? '').trim(),
+    })
 
     // A null render means no 2D context, so there is no artifact to upload. Failing here
     // keeps the receiver on the step; signing them through with nothing attached would
@@ -63,12 +94,12 @@ export function DigitalSignature({ tripId, dataUrl, onSign }: DigitalSignaturePr
     }
 
     await onSign({ dataUrl: rendered, signedAt, position: fix })
-  }, [capturePosition, notify, onSign, tripId])
+  }, [capturePosition, notify, onSign, tripId, recipientName, recipientIdNumber])
 
   if (dataUrl !== null) {
     return (
       <div className="flex flex-col gap-2">
-        <p className="text-sm font-medium">Receiver signature</p>
+        <p className="text-base font-medium">Receiver signature</p>
         <div className="relative w-full overflow-hidden rounded-xl border border-outline-variant/40 bg-surface-container-low">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={dataUrl} alt="Digital proof of delivery" className="w-full" />
@@ -80,9 +111,10 @@ export function DigitalSignature({ tripId, dataUrl, onSign }: DigitalSignaturePr
   return (
     <div className="flex flex-col gap-4">
       <div className="rounded-xl border border-outline-variant/40 bg-surface-container-low p-4">
-        <p className="text-sm font-medium text-surface-on">By signing, the receiver confirms:</p>
-        <ul className="mt-2 flex flex-col gap-1 text-sm text-surface-on-variant">
+        <p className="text-lg font-medium text-surface-on">By signing, the receiver confirms:</p>
+        <ul className="mt-2 flex flex-col gap-1.5 text-base text-surface-on-variant">
           <li>• The delivery was received</li>
+          <li>• Their name and ID number are recorded</li>
           <li>• The time of signing is recorded</li>
           <li>• The location of signing is recorded</li>
         </ul>
@@ -94,7 +126,11 @@ export function DigitalSignature({ tripId, dataUrl, onSign }: DigitalSignaturePr
           </p>
         )}
       </div>
-      <SwipeToConfirm label="Swipe to digitally sign" onConfirm={handleSwipe} />
+      <SwipeToConfirm
+        label="Swipe to digitally sign"
+        onConfirm={handleSwipe}
+        disabled={!hasIdentity}
+      />
     </div>
   )
 }

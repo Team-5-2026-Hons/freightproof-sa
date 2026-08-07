@@ -1,8 +1,8 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { PackageSearch } from 'lucide-react'
-import { currentPhase, stepsFor, phaseStepRoute } from '@/lib/phase'
+import { PackageSearch, Truck } from 'lucide-react'
+import { currentPhase, isDriving, stepsFor, phaseStepRoute } from '@/lib/phase'
 import { ROUTES } from '@/lib/constants/routes'
 import { useTrip } from '@/lib/hooks/useTrip'
 import { tripStatusChip } from '@/lib/utils/trip-status-chip'
@@ -51,11 +51,14 @@ export function HomeContent() {
 
   const { kind, label } = tripStatusChip(trip.status)
   const current = currentPhase(trip.phases)
-  // The in-transit leg is its own phase in the plan, not a trip.status value — the
-  // coarse five (created | active | closed | cancelled | exception_hold) has no
-  // 'in_transit' member. Mirrors TripDetailView's identical check, which generalises
-  // across every leg of a multi-stop trip rather than just a single trip-wide state.
-  const inTransit = current?.phase_type === 'in_transit'
+  // Replaces a `current?.phase_type === 'in_transit'` check that could never fire. That
+  // check was reaching for the right idea — the driving leg is a phase in the plan, not a
+  // trip.status value (the coarse five have no 'in_transit' member) — but `in_transit` is
+  // closed server-side the instant `departure` advances, so by the time this screen
+  // renders currentPhase() has already moved on to the arrival phase and the driving
+  // screen was unreachable. isDriving() derives the same leg from the plan's shape, per
+  // leg, on single-stop and cross-dock plans alike. See lib/phase/derive.ts.
+  const driving = isDriving(trip.phases)
 
   return (
     <main className="flex flex-col gap-4 p-4">
@@ -73,19 +76,24 @@ export function HomeContent() {
 
       <PhaseProgressBar phases={trip.phases} />
 
-      {inTransit && (
-        // Mirrors TripDetailView's identical control exactly — same shortcut, same
-        // shadcn Button (variant="secondary" size="lg"), so the two trip-detail
-        // surfaces (Home and Trip Detail) don't hand-duplicate their own button styles.
-        <Button variant="secondary" size="lg" onClick={() => router.push(ROUTES.inTransit)}>
-          In-Transit Hub →
-        </Button>
-      )}
-
       {/* A held trip must not offer the next phase — any submit while on hold 409s.
-          HoldNotice explains the pause instead. */}
+          HoldNotice explains the pause instead, and that outranks the driving screen too:
+          a driver on hold has been told to stop, not to keep going. */}
       {trip.status === 'exception_hold' ? (
         <HoldNotice />
+      ) : driving ? (
+        // While driving, the driving screen IS the primary action — not the arrival
+        // phase's capture card. Offering "Unloading" to a driver doing 100 km/h on the N3
+        // asks them to start an evidence step they cannot complete for another two hours;
+        // the map, panic and exception logging are what they actually need in that window.
+        // The arrival step is one tap away from there ("Arrive at destination").
+        <Button
+          size="lg"
+          iconLeft={<Truck className="h-5 w-5" strokeWidth={2} aria-hidden />}
+          onClick={() => router.push(ROUTES.inTransit)}
+        >
+          Continue driving
+        </Button>
       ) : (
         current !== null && (
           <CurrentPhaseCard

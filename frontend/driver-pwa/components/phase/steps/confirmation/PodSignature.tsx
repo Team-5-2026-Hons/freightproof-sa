@@ -13,7 +13,9 @@
 import { StepHeader } from '@/components/phase/StepHeader'
 import { DigitalSignature, type DigitalSignatureResult } from '@/components/phase/DigitalSignature'
 import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
+import { Input } from '@/components/ui/Input'
 import { useArtifactUpload } from '@/lib/hooks/useArtifactUpload'
+import { looksLikeSaIdNumber } from '@/lib/utils/sa-id'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { ConfirmationEvidence } from '@/lib/types/evidence-draft'
 
@@ -50,18 +52,55 @@ export function PodSignature({ tripId, phase, stepIndex, draft, onUpdate, onComp
   // the step needs its own way forward or the driver is stranded here.
   const isSigned = draft.podSignatureDataUrl !== null
 
+  const recipientIdNumber = draft.recipientIdNumber ?? ''
+  // Advisory only. A receiver may legitimately present a passport number or a company
+  // registration number, and a mistyped digit is itself evidence of what was produced at
+  // the door — so this renders as helperText, never as an `error`, and never gates the
+  // swipe. hasRecipientIdentity (inside DigitalSignature) is the only gate, and it asks
+  // only that both fields are non-empty.
+  const showIdShapeHint = recipientIdNumber.trim().length > 0 && !looksLikeSaIdNumber(recipientIdNumber)
+
   return (
     <main className="flex min-h-dvh flex-col">
       <StepHeader phase={phase} stepIndex={stepIndex} />
       <div className="flex flex-1 flex-col gap-6 p-4">
-        <p className="text-sm text-surface-on-variant">
+        <p className="text-lg leading-relaxed text-surface-on-variant">
           {isSigned
             ? 'Delivery has been digitally signed.'
-            : 'Hand the phone to the receiver to confirm delivery.'}
+            : 'Record who is receiving the delivery, then hand the phone to them to sign.'}
         </p>
+        {/* Hidden once signed: the name and ID are drawn into the attestation itself, so
+            the image below is the record from that point on. Leaving editable fields
+            beside a completed signature would suggest the artifact still tracks them. */}
+        {!isSigned && (
+          <div className="flex flex-col gap-4">
+            <Input
+              label="Recipient full name"
+              placeholder="Name as given by the receiver"
+              autoComplete="off"
+              value={draft.recipientName ?? ''}
+              onChange={(e) => onUpdate({ recipientName: e.target.value })}
+            />
+            <Input
+              label="Recipient ID number"
+              placeholder="ID or passport number"
+              inputMode="numeric"
+              autoComplete="off"
+              value={recipientIdNumber}
+              helperText={
+                showIdShapeHint
+                  ? 'This is not a 13 digit SA ID number. It will still be recorded as entered.'
+                  : undefined
+              }
+              onChange={(e) => onUpdate({ recipientIdNumber: e.target.value })}
+            />
+          </div>
+        )}
         <DigitalSignature
           tripId={tripId}
           dataUrl={draft.podSignatureDataUrl}
+          recipientName={draft.recipientName}
+          recipientIdNumber={draft.recipientIdNumber}
           onSign={handleSign}
         />
       </div>

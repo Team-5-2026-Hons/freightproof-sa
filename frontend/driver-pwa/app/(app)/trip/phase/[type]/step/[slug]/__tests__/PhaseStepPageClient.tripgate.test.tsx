@@ -16,14 +16,17 @@
 // components). This test mounts with isLoading:true and a null trip, then lets the trip
 // arrive on the SAME mount — the exact scenario a "trip already loaded" test never covers.
 //
-// Fix 2 (submit spinner / "Trip not found." flash): a submit awaits refetchTrip(), which
-// toggles TripContext's SHARED isLoading — and once confirmation's last step closes the
-// trip, that refetch legitimately returns null. Both used to knock the step UI out
-// mid-submit. useTrip is mocked here with a MUTABLE module-level value + manual
+// Fix 2 (submit spinner / "Trip not found." flash): a submit can toggle TripContext's
+// SHARED isLoading and, once confirmation's last step closes the trip, /trips/me/active
+// legitimately returns null. Both used to knock the step UI out mid-submit. Workstream 1
+// moved the submission itself into lib/submission/phase-submitter.ts, so this window is
+// now the one between the hand-off and the route change actually committing — the guard
+// still has to hold. useTrip is mocked here with a MUTABLE module-level value + manual
 // rerender(), standing in for TripContext re-rendering its consumers mid-flight.
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import PhaseStepPageClient from '../PhaseStepPageClient'
+import { __resetPhaseSubmitterForTests } from '@/lib/submission/phase-submitter'
 import type { Trip } from '@shared/lib/types/trip'
 import type { PhaseDescriptor, PhaseEventId } from '@shared/lib/types/phase'
 
@@ -41,17 +44,35 @@ const mockRefetchTrip = vi.fn()
 // The success path adopts the trip the submit already returned instead of refetching it.
 const mockAdoptTrip = vi.fn()
 const mockEnqueuePhase = vi.fn()
+// Workstream 1's optimistic advance, owned by TripContext.
+const mockMarkPhaseSyncing = vi.fn()
+const mockClearPhaseSyncing = vi.fn()
 
 interface MockTripState {
   trip: Trip | null
   isLoading: boolean
   refetchTrip: typeof mockRefetchTrip
   adoptTrip: typeof mockAdoptTrip
+  syncingPhaseIds: readonly string[]
+  markPhaseSyncing: typeof mockMarkPhaseSyncing
+  clearPhaseSyncing: typeof mockClearPhaseSyncing
 }
 
 // Reassigned mid-test (then rerender()ed) to simulate TripContext's shared state moving
 // under an already-mounted page.
 let tripState: MockTripState
+
+function setTripState(trip: Trip | null, isLoading: boolean): void {
+  tripState = {
+    trip,
+    isLoading,
+    refetchTrip: mockRefetchTrip,
+    adoptTrip: mockAdoptTrip,
+    syncingPhaseIds: [],
+    markPhaseSyncing: mockMarkPhaseSyncing,
+    clearPhaseSyncing: mockClearPhaseSyncing,
+  }
+}
 
 vi.mock('next/navigation', () => ({
   useParams: () => mockUseParams(),
@@ -187,6 +208,7 @@ function unloadingDraftKey(): string {
 beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
+  __resetPhaseSubmitterForTests()
 })
 
 afterEach(() => {
@@ -197,6 +219,13 @@ describe('trip-loading gate — drafts survive a mount that begins before the tr
   it('loads a previously persisted draft under the real (tripId, phase_event_id) key, and the next update merges instead of wiping it', async () => {
     // The driver typed the destination seal on an earlier session; then the app
     // cold-starts straight onto the step URL (reload / relaunch / notification deep link).
+    //
+    // Deliberately written with sealVerifiedMatch and sealBrokenPhotoDataUrl, which were
+    // removed from UnloadingEvidence on 2026-08-05. This is raw JSON, not a typed
+    // literal, precisely so it can carry them: it stands in for a draft persisted by the
+    // PREVIOUS build and read back by this one — the real situation for any driver who
+    // was mid-trip when the app updated. Reading it must merge cleanly and ignore the
+    // dead keys, not throw or wipe the seal the driver already typed.
     localStorage.setItem(
       unloadingDraftKey(),
       JSON.stringify({
@@ -205,7 +234,7 @@ describe('trip-loading gate — drafts survive a mount that begins before the tr
       }),
     )
     mockUseParams.mockReturnValue({ type: 'unloading', slug: '2-seal-verify' })
-    tripState = { trip: null, isLoading: true, refetchTrip: mockRefetchTrip, adoptTrip: mockAdoptTrip }
+    setTripState(null, true)
 
     const { rerender } = render(<PhaseStepPageClient />)
 
@@ -219,7 +248,7 @@ describe('trip-loading gate — drafts survive a mount that begins before the tr
     const trip = makeTrip([makePhase({
       phase_event_id: UNLOADING_PE, phase_type: 'unloading', sequence_number: 4, status: 'in_progress',
     })])
-    tripState = { trip, isLoading: false, refetchTrip: mockRefetchTrip, adoptTrip: mockAdoptTrip }
+    setTripState(trip, false)
     rerender(<PhaseStepPageClient />)
     expect(await screen.findByText('seal:AB-1234')).toBeInTheDocument()
 
@@ -241,23 +270,18 @@ describe('submit keeps the step UI on screen (Fix 2)', () => {
     const trip = makeTrip([makePhase({
       phase_event_id: CONFIRMATION_PE, phase_type: 'confirmation', sequence_number: 5, status: 'in_progress',
     })])
-    tripState = { trip, isLoading: false, refetchTrip: mockRefetchTrip, adoptTrip: mockAdoptTrip }
+    setTripState(trip, false)
     mockSubmitPhase.mockResolvedValue({ ok: true, trip: { ...trip, status: 'closed' }, phaseStatus: 'completed' })
-    mockRefetchTrip.mockImplementation(() => {
-      // Once confirmation submits the trip is CLOSED — /trips/me/active legitimately
-      // has nothing left to return, so the shared trip goes null while this page is
-      // still mounted (navigation hasn't unmounted it yet).
-      tripState = { trip: null, isLoading: false, refetchTrip: mockRefetchTrip, adoptTrip: mockAdoptTrip }
-      return Promise.resolve(null)
-    })
 
     const { rerender } = render(<PhaseStepPageClient />)
     fireEvent.click(screen.getByText('submit-confirmation'))
-    await waitFor(() => expect(mockRouterPush).toHaveBeenCalled())
+    await waitFor(() => expect(mockRouterPush).toHaveBeenCalledWith('/'))
 
-    // The shared trip is now null but navigation hasn't unmounted the page yet (the
-    // mocked router stands in for the in-flight push) — the step must still render
-    // rather than the "Trip not found." dead-end.
+    // Once confirmation submits the trip is CLOSED — /trips/me/active legitimately has
+    // nothing left to return, so the shared trip goes null while this page is still
+    // mounted (the mocked router stands in for the in-flight push). The step must still
+    // render rather than the "Trip not found." dead-end.
+    setTripState(null, false)
     rerender(<PhaseStepPageClient />)
     expect(screen.queryByText('Trip not found.')).not.toBeInTheDocument()
     expect(screen.getByText('submit-confirmation')).toBeInTheDocument()

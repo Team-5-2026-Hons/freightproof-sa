@@ -1,10 +1,10 @@
 // frontend/driver-pwa/components/trip/TripDetailView.tsx
 import type { ReactNode } from 'react'
-import { CheckCircle2 } from 'lucide-react'
+import { CheckCircle2, Truck } from 'lucide-react'
 import type { Trip } from '@shared/lib/types/trip'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import { PHASE_NAMES } from '@shared/lib/constants/phase-meta'
-import { currentPhase, isAnchored } from '@/lib/phase'
+import { currentPhase, isAnchored, isDriving } from '@/lib/phase'
 import { tripStatusChip } from '@/lib/utils/trip-status-chip'
 import { Card } from '@/components/ui/Card'
 import { Chip } from '@/components/ui/Chip'
@@ -68,11 +68,14 @@ export function TripDetailView({
   // A held trip (a critical exception) must not offer any phase CTA — submits in
   // this state can only 409. Both branches below swap their CTA for HoldNotice.
   const onHold = trip.status === 'exception_hold'
-  // The in-transit leg is itself a phase in the plan, not a trip.status value — the
-  // coarse five (created | active | closed | cancelled | exception_hold) has no
-  // 'in_transit' member. This check naturally re-fires once per leg on a multi-stop
-  // plan rather than only ever once.
-  const inTransit = current?.phase_type === 'in_transit'
+  // Replaces a `current?.phase_type === 'in_transit'` check that could never fire. Its
+  // intent was right — the driving leg is a phase in the plan, not a trip.status value
+  // (the coarse five have no 'in_transit' member), and it has to re-fire once per leg on
+  // a multi-stop plan — but `in_transit` is closed server-side the instant `departure`
+  // advances, so currentPhase() has already moved on to the arrival phase by the time
+  // this renders. isDriving() derives the same leg from the plan's shape instead. See
+  // lib/phase/derive.ts. Mirrors HomeContent, which shows the same trip.
+  const driving = isDriving(phases)
 
   return (
     // h-dvh + overflow-y-auto (not min-h-screen): this main IS the scrollport, so the
@@ -116,9 +119,17 @@ export function TripDetailView({
 
         <PhaseProgressBar phases={phases} />
 
-        {inTransit && (
-          <Button variant="secondary" size="lg" onClick={onInTransitHub}>
-            In-Transit Hub →
+        {/* While the truck is moving this is the primary action, not a secondary
+            shortcut: the map, panic and exception logging are the only things a driver
+            can actually act on mid-leg. A held trip outranks it — the driver has been
+            told to stop, so HoldNotice below is the only thing they get. */}
+        {driving && !onHold && (
+          <Button
+            size="lg"
+            iconLeft={<Truck className="h-5 w-5" strokeWidth={2} aria-hidden />}
+            onClick={onInTransitHub}
+          >
+            Continue driving
           </Button>
         )}
 
@@ -178,7 +189,12 @@ export function TripDetailView({
           // a background concern the driver takes no action on, and a read-only list of
           // it pushed the one card that IS actionable off a single-viewport screen.
           // Anchor state remains visible to dispatchers and on the showAllPhases rows.
-          !onHold && current !== null && (
+          //
+          // Suppressed while driving: the current phase is then the ARRIVAL phase, whose
+          // steps cannot be completed until the truck has actually arrived. Offering it
+          // mid-leg invites a driver to open an evidence step at 100 km/h. "Continue
+          // driving" above takes its place, and carries the way into that step.
+          !onHold && !driving && current !== null && (
             <CurrentPhaseCard
               phase={current}
               onSelect={() => onSelectPhase(current)}

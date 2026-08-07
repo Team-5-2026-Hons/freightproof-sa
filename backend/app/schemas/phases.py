@@ -176,7 +176,16 @@ class DepartureCompleteRequest(_PhaseCompleteBase):
     waybill_photo_artifact_id: UUID
     seal_number: str
     seal_photo_artifact_id: UUID
-    guard_verified_seal: bool
+    # Tri-state, and the None is the point. Guards have no accounts and never will
+    # (domain rules), so the driver app no longer asks a gate guard to re-type a seal
+    # number the driver just photographed — a re-typed number proves nothing the
+    # photograph does not. None therefore means "no independent confirmation was
+    # collected", which is the ordinary case and NOT an anomaly. Only an explicit
+    # False is a guard who was asked and refused/failed to verify. Optional with a
+    # None default rather than removed outright because older app builds and replayed
+    # offline-queue entries still send the boolean, and a required field would 422
+    # evidence that is otherwise perfectly valid.
+    guard_verified_seal: Optional[bool] = None
     # Seal number the exit guard re-entered. When present the server compares it
     # against THIS SAME request's seal_number, superseding the client-computed
     # guard_verified_seal. Free-form on purpose: a mistyped confirmation is

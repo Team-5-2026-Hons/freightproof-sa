@@ -55,7 +55,7 @@ export default function LogExceptionPageClient() {
       notify({
         kind: 'success',
         title: 'Exception recorded',
-        body: `${EXCEPTION_LABELS[type] ?? type} — now listed under this trip's open exceptions.`,
+        body: `${EXCEPTION_LABELS[type] ?? type}. Now listed under this trip's open exceptions.`,
       })
       router.push(ROUTES.inTransit)
     } catch (err) {
@@ -72,7 +72,7 @@ export default function LogExceptionPageClient() {
         notify({
           kind: 'success',
           title: 'Report saved',
-          body: 'Stored on this device — it will sync when you’re back online.',
+          body: 'Stored on this device. It will sync when you’re back online.',
         })
         router.push(ROUTES.inTransit)
       } else {
@@ -89,7 +89,7 @@ export default function LogExceptionPageClient() {
         <div className="flex w-full flex-col items-center gap-3 rounded-xl bg-error-container px-6 py-8 text-center text-error-on-container">
           <TriangleAlert className="h-10 w-10" strokeWidth={1.5} aria-hidden />
           <h1 className="text-lg font-bold">Unable to verify trip</h1>
-          <p className="text-sm opacity-90">
+          <p className="text-lg leading-relaxed opacity-90">
             We could not confirm this exception against your active trip.
             Return to in-transit and try again.
           </p>
@@ -149,7 +149,7 @@ export default function LogExceptionPageClient() {
           // This branch only renders on a terminal 4xx — retrying with the same input
           // cannot succeed, so "check your connection" would be actively misleading here
           // (the connection worked; the server said no).
-          <p className="mb-3 text-sm text-error">
+          <p className="mb-3 text-base text-error">
             Could not submit — the report was not accepted. Review the details or contact your dispatcher.
           </p>
         )}

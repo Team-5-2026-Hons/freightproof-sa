@@ -4,10 +4,10 @@
 // resolve "what do I render for this phase's current step" without an 18-branch switch.
 //
 // Each step component's real prop shape differs (different evidence draft type per phase,
-// some steps omit onUpdate for review-only screens, unloading's SealVerify takes an extra
-// referenceSealNumber prop) — there is no single prop shape all sixteen genuinely share,
-// and forcing one would mean weakening every individual component's own types just to fit
-// the map. `ComponentType<never>` is the standard way to hold heterogeneous component
+// some steps omit onUpdate for review-only screens) — there is no single prop shape they
+// all genuinely share, and forcing one would mean weakening every individual component's
+// own types just to fit the map. `ComponentType<never>` is the standard way to hold
+// heterogeneous component
 // types in one map without an `any`: `never` is a subtype of every prop type, so any real
 // component is assignable here with zero cast, while each component's ACTUAL props stay
 // fully checked wherever it's imported and rendered directly (its own file, its own
@@ -34,7 +34,6 @@ import { Waybill } from './departure/Waybill'
 import { ConfirmDeparture } from './departure/ConfirmDeparture'
 import { HandWaybill } from './unloading/HandWaybill'
 import { SealVerify } from './unloading/SealVerify'
-import { SealBreakInspection } from './unloading/SealBreakInspection'
 import { VisualCount as UnloadingVisualCount } from './unloading/VisualCount'
 import { PodPhoto } from './confirmation/PodPhoto'
 import { PodSignature } from './confirmation/PodSignature'
@@ -47,7 +46,10 @@ type AnyStepComponent = ComponentType<never>
 type ActivationSlug = '2-verification'
 type LoadingSlug = '1-visual-count'
 type DepartureSlug = '2-capture-seal' | '3-waybill' | '4-departure'
-type UnloadingSlug = '1-hand-waybill' | '2-seal-verify' | '3-seal-break-inspection' | '4-visual-count'
+// '3-seal-break-inspection' is gone (2026-08-05) — it photographed the seal after the
+// warehouse broke it, which proves nothing and was never sent to the server. Surviving
+// slugs keep their numbers; the prefix orders the recipe, it is not an index.
+type UnloadingSlug = '1-hand-waybill' | '2-seal-verify' | '4-visual-count'
 type ConfirmationSlug = '1-pod-photo' | '2-pod-signature' | '3-reconciliation' | '4-closed'
 
 export interface StepRegistry {
@@ -80,7 +82,6 @@ export const STEP_REGISTRY: StepRegistry = {
   unloading: {
     '1-hand-waybill': HandWaybill,
     '2-seal-verify': SealVerify,
-    '3-seal-break-inspection': SealBreakInspection,
     '4-visual-count': UnloadingVisualCount,
   },
   confirmation: {
