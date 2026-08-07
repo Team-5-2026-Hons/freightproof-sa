@@ -695,6 +695,119 @@ async def test_advance_departure_guard_refused_creates_exception_but_departs(
 
 
 @pytest.mark.asyncio
+async def test_advance_departure_guard_verified_seal_none_records_no_exception(
+    db_session, trip_fixture, captured_anchor_dispatches,
+):
+    """The state the driver app now actually sends (2026-08-05).
+
+    The guard-confirms-seal step was deleted: guards have no accounts, and a seal
+    number re-typed on the driver's own phone proves nothing the seal photograph
+    does not. So guard_verified_seal arrives as None — "no independent confirmation
+    was collected" — which is the ORDINARY case and must not be recorded as an
+    anomaly.
+
+    This is the regression this test exists for: the branch used to read
+    `elif not payload.guard_verified_seal`, under which None is falsy. Shipping the
+    app change against that code would have stamped a CRITICAL seal_mismatch on
+    EVERY departure of EVERY trip, burying the real mismatches the platform exists
+    to surface.
+    """
+    trip, driver, phases = trip_fixture
+    await _advance_to_loading(db_session, trip, driver, phases)
+
+    result = await advance_departure(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["departure"].id,
+        payload=await _h3_payload(db_session, trip.id, guard_verified_seal=None),
+    )
+
+    assert result.status == TripStatus.ACTIVE
+    assert result.exceptions == []
+    departure = next(h for h in result.phases if h.phase_type == PhaseType.DEPARTURE)
+    assert departure.status == PhaseStatus.COMPLETED
+    # The anchor still goes out — nothing about "not collected" withholds the receipt.
+    await db_session.commit()
+    assert len(captured_anchor_dispatches) == 1
+
+
+@pytest.mark.asyncio
+async def test_advance_departure_guard_verified_seal_omitted_defaults_to_none(db_session, trip_fixture):
+    """Omitting the field entirely is the same as sending null.
+
+    The driver app no longer includes the key in its departure body at all
+    (lib/api/phases.ts), so the schema default is what production traffic actually
+    exercises — asserting it here means a change to that default cannot pass
+    silently.
+    """
+    trip, driver, phases = trip_fixture
+    await _advance_to_loading(db_session, trip, driver, phases)
+
+    payload = DepartureCompleteRequest(
+        phase_type=PhaseType.DEPARTURE,
+        waybill_photo_artifact_id=await _make_artifact(db_session, trip.id),
+        seal_number="AB-1234",
+        seal_photo_artifact_id=await _make_artifact(db_session, trip.id),
+        idempotency_key=str(uuid.uuid4()),
+    )
+    assert payload.guard_verified_seal is None
+
+    result = await advance_departure(
+        db_session, trip_id=trip.id, driver_id=driver.id,
+        phase_event_id=phases["departure"].id, payload=payload,
+    )
+
+    assert result.exceptions == []
+    departure = next(h for h in result.phases if h.phase_type == PhaseType.DEPARTURE)
+    assert departure.status == PhaseStatus.COMPLETED
+
+
+@pytest.mark.asyncio
+async def test_advance_departure_guard_verified_seal_true_records_no_exception(db_session, trip_fixture):
+    """The third of the three states, kept explicit alongside the other two.
+
+    An older app build (or a replayed offline-queue entry) still sends the boolean;
+    True must remain an ordinary clean departure.
+    """
+    trip, driver, phases = trip_fixture
+    await _advance_to_loading(db_session, trip, driver, phases)
+
+    result = await advance_departure(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["departure"].id,
+        payload=await _h3_payload(db_session, trip.id, guard_verified_seal=True),
+    )
+
+    assert result.exceptions == []
+    departure = next(h for h in result.phases if h.phase_type == PhaseType.DEPARTURE)
+    assert departure.status == PhaseStatus.COMPLETED
+
+
+@pytest.mark.asyncio
+async def test_advance_departure_seal_number_confirmed_still_supersedes_a_none_flag(db_session, trip_fixture):
+    """A real re-entered seal that fails to match is STILL a mismatch, even though
+    the guard flag is now None.
+
+    The tri-state change relaxed only the flag, not the comparison: an operator
+    tool or a future build that does collect a confirmation must keep flagging a
+    genuine discrepancy. Without this, "None means no anomaly" could be
+    over-applied to the branch that does the real work.
+    """
+    trip, driver, phases = trip_fixture
+    await _advance_to_loading(db_session, trip, driver, phases)
+
+    result = await advance_departure(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["departure"].id,
+        payload=await _h3_payload(
+            db_session, trip.id, guard_verified_seal=None, seal_number_confirmed="ZZ-9999",
+        ),
+    )
+
+    assert len(result.exceptions) == 1
+    assert result.exceptions[0].exception_type == ExceptionType.SEAL_MISMATCH
+    assert result.exceptions[0].severity == ExceptionSeverity.CRITICAL
+    departure = next(h for h in result.phases if h.phase_type == PhaseType.DEPARTURE)
+    assert departure.status == PhaseStatus.EXCEPTION
+
+
+@pytest.mark.asyncio
 async def test_exception_status_phase_does_not_block_next_phase(db_session, trip_fixture):
     """Renamed/kept from the old H3-confirmed-seal-mismatch test, extended to
     prove T3's predicate: a phase left in EXCEPTION status is resolved for

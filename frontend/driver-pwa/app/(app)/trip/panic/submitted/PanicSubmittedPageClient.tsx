@@ -24,7 +24,7 @@ export default function PanicSubmittedPageClient() {
         )}
       </div>
       <h1 className="text-xl font-bold">{queued ? 'Alert saved' : 'Alert sent'}</h1>
-      <p className="text-sm text-surface-on-variant max-w-xs">
+      <p className="text-lg leading-relaxed text-surface-on-variant max-w-xs">
         {queued ? (
           <>
             No signal right now — this alert is stored on this device and will send

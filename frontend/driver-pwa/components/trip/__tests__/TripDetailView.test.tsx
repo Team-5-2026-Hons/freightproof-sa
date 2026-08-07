@@ -220,10 +220,14 @@ describe('TripDetailView', () => {
     expect(within(phasesSection()).queryAllByRole('button')).toHaveLength(0)
   })
 
-  it('shows the In-Transit Hub shortcut only while the current phase is in_transit', () => {
+  // The entry point to the driving screen keys on isDriving(), not on
+  // `phase_type === 'in_transit'`. The old check could never fire on a real trip — the
+  // backend closes the in_transit row the instant departure advances — which is exactly
+  // what made the driving screen unreachable.
+  it('shows the driving screen as the primary action while the truck is on the road', () => {
     const onInTransitHub = vi.fn()
-    const plan = walk(SINGLE_LEG_PHASE_PLAN, 3) // departure resolved — current is in_transit
-    expect(currentPhase(plan)?.phase_type).toBe('in_transit')
+    const plan = walk(SINGLE_LEG_PHASE_PLAN, 4) // in_transit resolved — current is unloading
+    expect(currentPhase(plan)?.phase_type).toBe('unloading')
 
     render(
       <TripDetailView
@@ -235,11 +239,29 @@ describe('TripDetailView', () => {
       />,
     )
 
-    fireEvent.click(screen.getByText('In-Transit Hub →'))
+    fireEvent.click(screen.getByRole('button', { name: /continue driving/i }))
     expect(onInTransitHub).toHaveBeenCalled()
   })
 
-  it('does not show the In-Transit Hub shortcut for a non-in_transit current phase', () => {
+  it('replaces the arrival phase card with the driving entry while driving', () => {
+    const onSelectPhase = vi.fn()
+    const plan = walk(SINGLE_LEG_PHASE_PLAN, 4)
+
+    render(
+      <TripDetailView
+        trip={makeTrip(plan)}
+        onBack={vi.fn()}
+        onInTransitHub={vi.fn()}
+        onSelectPhase={onSelectPhase}
+        showAllPhases={false}
+      />,
+    )
+
+    // The unloading capture card must not be offered to a moving driver.
+    expect(screen.queryByRole('button', { name: /unloading/i })).not.toBeInTheDocument()
+  })
+
+  it('does not show the driving entry when the trip is not on the road', () => {
     const plan = walk(SINGLE_LEG_PHASE_PLAN, 0) // current is activation
 
     render(
@@ -252,7 +274,41 @@ describe('TripDetailView', () => {
       />,
     )
 
-    expect(screen.queryByText('In-Transit Hub →')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /continue driving/i })).not.toBeInTheDocument()
+  })
+
+  it('does not show the driving entry while in_transit is still the unresolved current phase', () => {
+    const plan = walk(SINGLE_LEG_PHASE_PLAN, 3) // departure resolved — in_transit pending
+    expect(currentPhase(plan)?.phase_type).toBe('in_transit')
+
+    render(
+      <TripDetailView
+        trip={makeTrip(plan)}
+        onBack={vi.fn()}
+        onInTransitHub={vi.fn()}
+        onSelectPhase={vi.fn()}
+        showAllPhases={false}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: /continue driving/i })).not.toBeInTheDocument()
+  })
+
+  it('a held trip shows the hold notice instead of the driving entry, even mid-leg', () => {
+    const plan = walk(SINGLE_LEG_PHASE_PLAN, 4)
+
+    render(
+      <TripDetailView
+        trip={makeTrip(plan, { status: 'exception_hold' })}
+        onBack={vi.fn()}
+        onInTransitHub={vi.fn()}
+        onSelectPhase={vi.fn()}
+        showAllPhases={false}
+      />,
+    )
+
+    expect(screen.getByText('Trip on hold')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /continue driving/i })).not.toBeInTheDocument()
   })
 
   it('shows an AnchorBadge "Anchored" chip on a completed, Hedera-anchored departure row (showAllPhases)', () => {

@@ -48,7 +48,7 @@ export function VisualCount({ tripId, phase, stepIndex, draft, onUpdate, onCompl
     <main className="flex min-h-dvh flex-col">
       <StepHeader phase={phase} stepIndex={stepIndex} />
       <div className="flex flex-1 flex-col gap-6 p-4">
-        <p className="text-sm text-surface-on-variant">
+        <p className="text-lg leading-relaxed text-surface-on-variant">
           Count the parcels physically loaded and enter the number below.
         </p>
         <Input

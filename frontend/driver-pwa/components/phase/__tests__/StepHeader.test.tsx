@@ -33,13 +33,16 @@ describe('StepHeader', () => {
   })
 
   it('renders the phase name and the current step name, with a current/total counter', () => {
-    // departure's recipe: ['Capture Seal', 'Photograph Waybill', 'Confirm Departure'] —
-    // stepIndex 1 is 'Photograph Waybill'. (activation is down to a single step since
-    // its GPS-capture step was removed, so it can no longer show a 2-of-N counter.)
+    // departure's recipe: ['Capture Seal', 'Photograph Linehaul Document', 'Confirm
+    // Departure'] — stepIndex 1 is 'Photograph Linehaul Document'. The step's slug is
+    // still '3-waybill' and its wire field is still waybill_photo_artifact_id; only the
+    // DISPLAY name changed, which is exactly what this header renders. (activation is
+    // down to a single step since its GPS-capture step was removed, so it can no longer
+    // show a 2-of-N counter.)
     render(<StepHeader phase={makePhase('departure')} stepIndex={1} />)
 
     expect(screen.getByText('Departure')).toBeInTheDocument()
-    expect(screen.getByText('Photograph Waybill')).toBeInTheDocument()
+    expect(screen.getByText('Photograph Linehaul Document')).toBeInTheDocument()
     expect(screen.getByText('2/3')).toBeInTheDocument()
   })
 

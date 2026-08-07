@@ -1,8 +1,14 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { OfflineBanner } from '../OfflineBanner'
 import { ApiError } from '@/lib/api/client'
 import { __resetOfflineQueueStoreForTests } from '@/lib/hooks/useOfflineQueue'
+import {
+  startPhaseSubmission,
+  __resetPhaseSubmitterForTests,
+  type PhaseSubmissionRequest,
+} from '@/lib/submission/phase-submitter'
+import type { SubmitPhaseResult } from '@/lib/api/phases'
 
 // OfflineBanner now mounts useOfflineQueue() itself (Fix 3) to read queueLength/
 // droppedCount, so its mount-time flush() needs the same network mocks
@@ -38,10 +44,30 @@ const PHASE_ENTRY = {
   enqueuedAt: '2026-06-12T10:00:00Z',
 }
 
+// Workstream 1: a phase submission now outlives the step screen that started it, so the
+// banner — which AppShell renders on every screen — is where its progress and its
+// terminal failures have to surface. Requests are built here rather than driven through
+// the page so these stay banner tests.
+function phaseSubmission(overrides: Partial<PhaseSubmissionRequest> = {}): PhaseSubmissionRequest {
+  return {
+    tripId: 'trip-1',
+    phaseEventId: 'phase-event-1',
+    phaseType: 'loading',
+    evidence: { driverVisualCount: 12, capturedAt: '2026-06-12T10:00:00Z' },
+    idempotencyKey: 'idem-1',
+    position: Promise.resolve(null),
+    enqueuePhase: vi.fn(),
+    refetchTrip: vi.fn().mockResolvedValue(null),
+    onOutcome: vi.fn(),
+    ...overrides,
+  }
+}
+
 beforeEach(() => {
   setOnline(true)
   localStorage.clear()
   __resetOfflineQueueStoreForTests()
+  __resetPhaseSubmitterForTests()
   vi.clearAllMocks()
 })
 
@@ -138,7 +164,7 @@ describe('OfflineBanner', () => {
 
       await waitFor(() => expect(submitPhase).toHaveBeenCalledTimes(1))
       expect(screen.getByRole('alert')).toHaveTextContent(
-        /1 item could not be synced and was removed — contact your dispatcher/i,
+        /1 item could not be synced and was removed\. Contact your dispatcher/i,
       )
 
       fireEvent.click(screen.getByRole('button', { name: /dismiss sync failure notice/i }))
@@ -166,8 +192,70 @@ describe('OfflineBanner', () => {
 
       await waitFor(() => expect(submitPhase).toHaveBeenCalledTimes(2))
       expect(screen.getByRole('alert')).toHaveTextContent(
-        /2 items could not be synced and were removed — contact your dispatcher/i,
+        /2 items could not be synced and were removed\. Contact your dispatcher/i,
       )
+    })
+  })
+
+  // Workstream 1: the driver is sent Home the instant they swipe, so the only place that
+  // can honestly say "this is still going" — or "this never landed" — is here.
+  describe('background phase submissions', () => {
+    it('shows a recording indicator while a handed-off submission is in flight, and hides it once it settles', async () => {
+      const { submitPhase } = await import('@/lib/api/phases')
+      let resolveSubmit: (value: SubmitPhaseResult) => void = () => {}
+      vi.mocked(submitPhase).mockReturnValue(new Promise((resolve) => { resolveSubmit = resolve }))
+
+      render(<OfflineBanner />)
+      expect(screen.queryByText(/recording evidence/i)).not.toBeInTheDocument()
+
+      act(() => { startPhaseSubmission(phaseSubmission()) })
+      expect(await screen.findByText(/^Recording evidence…$/)).toBeInTheDocument()
+
+      await act(async () => {
+        resolveSubmit({ ok: true, trip: null, phaseStatus: 'completed' })
+      })
+      await waitFor(() => expect(screen.queryByText(/recording evidence/i)).not.toBeInTheDocument())
+    })
+
+    it('counts concurrent submissions rather than claiming there is only one', async () => {
+      const { submitPhase } = await import('@/lib/api/phases')
+      vi.mocked(submitPhase).mockReturnValue(new Promise(() => {}))
+
+      render(<OfflineBanner />)
+      act(() => {
+        startPhaseSubmission(phaseSubmission())
+        startPhaseSubmission(phaseSubmission({ phaseEventId: 'phase-event-2', phaseType: 'departure' }))
+      })
+
+      expect(await screen.findByText(/Recording evidence for 2 phases…/)).toBeInTheDocument()
+    })
+
+    it('raises a persistent, dismissible notice when a submission fails terminally', async () => {
+      const { submitPhase } = await import('@/lib/api/phases')
+      // A 422 can never succeed on retry, so it is never queued — without this notice the
+      // driver would be on Home believing evidence was recorded when it was not.
+      vi.mocked(submitPhase).mockRejectedValue(new ApiError(422, 'visual count is required.'))
+
+      render(<OfflineBanner />)
+      await act(async () => { startPhaseSubmission(phaseSubmission()) })
+
+      const notice = await screen.findByRole('alert')
+      expect(notice).toHaveTextContent(/Loading was not recorded: visual count is required\./i)
+      expect(notice).toHaveTextContent(/still saved on this device/i)
+
+      fireEvent.click(screen.getByRole('button', { name: /dismiss loading failure notice/i }))
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('stays silent when the failure was queued for retry instead — that evidence is not lost', async () => {
+      const { submitPhase } = await import('@/lib/api/phases')
+      vi.mocked(submitPhase).mockRejectedValue(new TypeError('network down'))
+
+      render(<OfflineBanner />)
+      await act(async () => { startPhaseSubmission(phaseSubmission()) })
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     })
   })
 })

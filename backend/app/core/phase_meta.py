@@ -32,6 +32,13 @@ from app.db.models.enums import PhaseType
 # keep their original numbers — the prefix orders the tuple, it is not an index, and
 # renumbering would break every deep link and stored draft key for no visible gain.
 #
+# unloading's "3-seal-break-inspection" is gone for the same reason (2026-08-05): it
+# photographed the seal AFTER the warehouse broke it, which proves nothing about the
+# journey. The tamper-evidence bookend is departure's seal photo and the INTACT photo
+# taken on "2-seal-verify" — together those two are what show the trailer was not
+# opened in transit. The broken-seal photo was never even sent to this server;
+# UnloadingCompleteRequest has no field for it. Surviving slugs keep their numbers.
+#
 # loading is NOT empty (Stage 5, D11). It was, on the reading that the phase is
 # wholly system-observed via the Parcel Perfect poll — but advance_loading()
 # requires driver_visual_count, is the only dispatch-table entry that can close
@@ -50,8 +57,6 @@ STEP_SLUGS: dict[PhaseType, tuple[str, ...]] = {
     PhaseType.LOADING: ("1-visual-count",),
     PhaseType.DEPARTURE: ("2-capture-seal", "3-waybill", "4-departure"),
     PhaseType.IN_TRANSIT: (),
-    PhaseType.UNLOADING: (
-        "1-hand-waybill", "2-seal-verify", "3-seal-break-inspection", "4-visual-count",
-    ),
+    PhaseType.UNLOADING: ("1-hand-waybill", "2-seal-verify", "4-visual-count"),
     PhaseType.CONFIRMATION: ("1-pod-photo", "2-pod-signature", "3-reconciliation", "4-closed"),
 }

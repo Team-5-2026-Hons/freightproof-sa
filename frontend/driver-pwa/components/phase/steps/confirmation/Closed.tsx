@@ -44,7 +44,7 @@ export function Closed({ tripId, phase, stepIndex, draft, onComplete }: ClosedPr
         </div>
         <div>
           <p className="text-xl font-bold">Trip Complete</p>
-          <p className="mt-1 text-sm text-surface-on-variant">
+          <p className="mt-1 text-base text-surface-on-variant">
             {/* No longer "All five handshakes are done" — the plan's length is DATA
                 (parent plan §2.2); a cross-dock trip has more phases than a single-leg
                 one, and this screen must never imply a fixed count. */}

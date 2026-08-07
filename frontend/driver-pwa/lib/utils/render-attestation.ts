@@ -19,11 +19,17 @@ import type { DriverPosition } from '@/lib/types/location'
 // full width, not for the phone screen it is generated on.
 // HEIGHT_PX must clear the last row's value baseline plus bottom padding:
 // ROW_START_Y_PX + (rows - 1) * ROW_HEIGHT_PX + LABEL_TO_VALUE_PX + PADDING_PX.
-// With the five rows below that is 140 + 296 + 30 + 40 = 506, rounded up.
+// With the six rows below that is 160 + 370 + 30 + 40 = 600.
 const WIDTH_PX = 720
-const HEIGHT_PX = 520
+const HEIGHT_PX = 600
 const PADDING_PX = 40
-const RULE_Y_PX = 96
+const RULE_Y_PX = 116
+
+// Widest a value may draw before it is ellipsized. A receiver's name is free text typed
+// on a phone; without this a long one runs off the canvas and the artifact silently loses
+// the end of the very identity it exists to record.
+const MAX_VALUE_WIDTH_PX = WIDTH_PX - PADDING_PX * 2
+const ELLIPSIS = '…'
 
 // Type scale. Separate constants rather than inline strings so the block below reads as
 // layout rather than as a wall of font shorthand.
@@ -43,7 +49,7 @@ const COLOUR_RULE = ATTESTATION_CANVAS_COLOURS.rule
 
 // Vertical rhythm: where each label/value pair starts, and the gap between the label and
 // the value beneath it.
-const ROW_START_Y_PX = 140
+const ROW_START_Y_PX = 160
 const ROW_HEIGHT_PX = 74
 const LABEL_TO_VALUE_PX = 30
 
@@ -51,6 +57,9 @@ const LABEL_TO_VALUE_PX = 30
 const COORD_DECIMALS = 6
 
 const TITLE = 'DIGITAL PROOF OF DELIVERY'
+// The framing that used to be the SIGNED BY value. It describes the whole document, not
+// one field, which is where it belongs now that SIGNED BY carries a real name.
+const SUBTITLE = 'Swipe attestation taken on the driver’s device'
 const LOCATION_UNAVAILABLE = 'Location unavailable'
 
 export interface AttestationFields {
@@ -60,6 +69,37 @@ export interface AttestationFields {
   position: DriverPosition | null
   /** The trip this delivery closes — ties the image to a record if it is ever exported. */
   tripId: string
+  /**
+   * The receiver's own name, as they gave it. Non-empty by the time this runs — the
+   * signing swipe does not arm without it (components/phase/DigitalSignature.tsx).
+   */
+  recipientName: string
+  /**
+   * The receiver's ID number, as presented. Not validated beyond a shape hint in the UI:
+   * a passport number or a mistyped digit is itself evidence (lib/utils/sa-id.ts).
+   *
+   * POPIA: personal data. It is drawn into this image and travels only as far as the
+   * artifact in Supabase Storage. It must never be added to a phase-completion request,
+   * a canonical payload, or anything anchored to Hedera.
+   */
+  recipientIdNumber: string
+}
+
+/**
+ * Ellipsize `value` to fit `maxWidthPx` under the font currently set on `ctx`.
+ *
+ * Trims one character at a time rather than estimating from an average glyph width: the
+ * canvas is the only thing that knows how wide the device's system-ui actually renders,
+ * and a name cut in the wrong place is a name that reads as someone else's.
+ */
+export function fitText(ctx: CanvasRenderingContext2D, value: string, maxWidthPx: number): string {
+  if (ctx.measureText(value).width <= maxWidthPx) return value
+
+  let truncated = value
+  while (truncated.length > 0 && ctx.measureText(truncated + ELLIPSIS).width > maxWidthPx) {
+    truncated = truncated.slice(0, -1)
+  }
+  return truncated + ELLIPSIS
 }
 
 /**
@@ -116,6 +156,10 @@ export function renderAttestation(fields: AttestationFields): string | null {
   ctx.font = FONT_TITLE
   ctx.fillText(TITLE, PADDING_PX, PADDING_PX + 30)
 
+  ctx.fillStyle = COLOUR_LABEL
+  ctx.font = FONT_LABEL
+  ctx.fillText(SUBTITLE, PADDING_PX, PADDING_PX + 54)
+
   ctx.strokeStyle = COLOUR_RULE
   ctx.beginPath()
   ctx.moveTo(PADDING_PX, RULE_Y_PX)
@@ -123,8 +167,11 @@ export function renderAttestation(fields: AttestationFields): string | null {
   ctx.stroke()
 
   const { local, iso } = formatSignedAt(fields.signedAt)
+  // Identity first, because it is the question a disputed delivery actually asks: not
+  // "was something signed" but "who signed it".
   const rows: { label: string; value: string; mono?: boolean }[] = [
-    { label: 'SIGNED BY', value: 'Receiver, on the driver’s device' },
+    { label: 'SIGNED BY', value: fields.recipientName },
+    { label: 'ID NUMBER', value: fields.recipientIdNumber, mono: true },
     { label: 'SIGNED AT', value: local },
     { label: 'UTC', value: iso, mono: true },
     { label: 'LOCATION', value: formatPosition(fields.position), mono: true },
@@ -139,8 +186,10 @@ export function renderAttestation(fields: AttestationFields): string | null {
     ctx.fillText(row.label, PADDING_PX, y)
 
     ctx.fillStyle = COLOUR_VALUE
+    // Font is set BEFORE fitText measures — measureText reports against whatever font is
+    // currently on the context, so measuring first would size against the label's font.
     ctx.font = row.mono === true ? FONT_MONO : FONT_VALUE
-    ctx.fillText(row.value, PADDING_PX, y + LABEL_TO_VALUE_PX)
+    ctx.fillText(fitText(ctx, row.value, MAX_VALUE_WIDTH_PX), PADDING_PX, y + LABEL_TO_VALUE_PX)
   })
 
   return canvas.toDataURL('image/png')

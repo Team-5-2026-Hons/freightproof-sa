@@ -9,9 +9,9 @@ import type { ActivationEvidence, UnloadingEvidence } from '@/lib/types/evidence
 const INITIAL: ActivationEvidence = { capturedAt: null }
 
 const UNLOADING_INITIAL: UnloadingEvidence = {
-  waybillHandedOver: null, sealNumberAtDestination: null, sealVerifiedMatch: null,
+  waybillHandedOver: null, sealNumberAtDestination: null,
   sealIntactPhotoDataUrl: null, sealIntactPhotoArtifactId: null,
-  sealBrokenPhotoDataUrl: null, driverVisualCount: null, capturedAt: null,
+  driverVisualCount: null, capturedAt: null,
 }
 
 beforeEach(() => localStorage.clear())

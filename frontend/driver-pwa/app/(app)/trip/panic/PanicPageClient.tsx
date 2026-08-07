@@ -76,7 +76,7 @@ export default function PanicPageClient() {
         <div className="flex flex-col items-center text-center text-error-on">
           <TriangleAlert className="mb-4 h-14 w-14" strokeWidth={1.5} aria-hidden />
           <h1 className="mb-2 text-2xl font-bold">Unable to verify trip</h1>
-          <p className="text-sm opacity-90">
+          <p className="text-lg leading-relaxed opacity-90">
             We could not confirm this panic alert against your active trip.
             Contact dispatch directly for emergency assistance.
           </p>
@@ -105,12 +105,12 @@ export default function PanicPageClient() {
       <div className="flex flex-col items-center text-center text-error-on">
         <ShieldAlert className="mb-4 h-14 w-14" strokeWidth={1.5} aria-hidden />
         <h1 className="mb-2 text-2xl font-bold">Panic Alert</h1>
-        <p className="text-sm opacity-90">
+        <p className="text-lg leading-relaxed opacity-90">
           Swipe the button below to send an emergency alert to your dispatcher.
           Your GPS location will be included.
         </p>
         {sending && (
-          <p className="mt-2 text-xs opacity-75" role="status">
+          <p className="mt-2 text-sm opacity-75" role="status">
             Capturing location and sending alert…
           </p>
         )}

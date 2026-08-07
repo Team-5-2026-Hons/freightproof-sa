@@ -39,15 +39,18 @@ export interface LoadingCompleteRequest extends PhaseCompleteRequestBase {
   driver_visual_count: number
 }
 
+// No guard_verified_seal and no seal_number_confirmed. Both are still ACCEPTED by the
+// backend (DepartureCompleteRequest.guard_verified_seal is Optional[bool], so older
+// builds and replayed offline-queue entries don't 422), but this app no longer collects
+// either: guards have no accounts, and the step that asked one to re-type the driver's
+// seal number on the driver's own phone was removed 2026-08-05. Omitting the boolean is
+// what tells the server "no independent confirmation was collected" — sending `false`
+// would have it record a CRITICAL seal_mismatch on every trip.
 export interface DepartureCompleteRequest extends PhaseCompleteRequestBase {
   phase_type: Extract<PhaseType, 'departure'>
   waybill_photo_artifact_id: string
   seal_number: string
   seal_photo_artifact_id: string
-  guard_verified_seal: boolean
-  // Optional and free-form on the wire — a mistyped confirmation is itself evidence of
-  // a mismatch and must be recordable, not withheld for being "wrong".
-  seal_number_confirmed?: string
 }
 
 export interface UnloadingCompleteRequest extends PhaseCompleteRequestBase {
@@ -231,15 +234,6 @@ export async function submitPhase(
         waybill_photo_artifact_id: waybillPhotoId,
         seal_number: e.sealNumber,
         seal_photo_artifact_id: sealPhotoId,
-        // The boolean is only a fallback: the server compares seal_number_confirmed
-        // against THIS SAME request's seal_number (authoritative) whenever it's
-        // present. sealVerifiedMatch is computed against a device-local seal reference
-        // that can be lost (reinstall, cleared storage) — `e.sealVerifiedMatch ?? false`
-        // would send a false "guard did not verify" even though the driver DID confirm
-        // a seal. Sending `=== true` only claims verification when it was actually
-        // computed (preserves the old H3 fix in lib/api/handshakes.ts).
-        guard_verified_seal: e.sealVerifiedMatch === true,
-        seal_number_confirmed: e.sealNumberConfirmed?.trim() ? e.sealNumberConfirmed.trim() : undefined,
         idempotency_key: idempotencyKey,
       })
       break

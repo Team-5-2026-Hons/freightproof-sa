@@ -1,4 +1,14 @@
 // frontend/driver-pwa/components/phase/steps/departure/Waybill.tsx
+//
+// Displays as "Photograph Linehaul Document" (STEP_NAMES.departure in shared/lib/
+// constants/phase-meta.ts): the document handed to the driver at departure comes from a
+// warehouse staff member and is the linehaul document, not the waybill.
+//
+// The rename is DISPLAY ONLY, deliberately. The slug stays '3-waybill' and the wire
+// field stays waybill_photo_artifact_id — both are mirrored in backend/app/core/
+// phase_meta.py, contract-tested by tests/unit/test_phase_meta_contract.py, and baked
+// into every stored draft key and deep link already on drivers' phones. The filename
+// follows the slug for the same reason.
 'use client'
 
 import { StepHeader } from '@/components/phase/StepHeader'
@@ -35,11 +45,11 @@ export function Waybill({ tripId, phase, stepIndex, draft, onUpdate, onComplete 
     <main className="flex min-h-dvh flex-col">
       <StepHeader phase={phase} stepIndex={stepIndex} />
       <div className="flex flex-1 flex-col gap-6 p-4">
-        <p className="text-sm text-surface-on-variant">
-          Photograph the physical waybill. This becomes the legal evidence copy.
+        <p className="text-lg leading-relaxed text-surface-on-variant">
+          Photograph the linehaul document you received from the warehouse staff member. This becomes the legal evidence copy.
         </p>
         <CameraCapture
-          label="Waybill"
+          label="Linehaul document"
           dataUrl={draft.waybillPhotoDataUrl}
           onCapture={handleCapture}
         />

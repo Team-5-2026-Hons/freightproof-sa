@@ -41,6 +41,13 @@ export const PHASE_NAMES: Record<PhaseType, string> = {
 // numbers: the prefix orders this list, it is not an index, and renumbering would break
 // every deep link and stored draft key for no visible gain.
 //
+// unloading's '3-seal-break-inspection' is gone for the same reason (2026-08-05): it
+// photographed the seal AFTER the warehouse broke it, which proves nothing about the
+// journey. The tamper-evidence bookend is departure's seal photo plus the INTACT photo
+// captured on '2-seal-verify'; the broken-seal shot was never even sent (lib/api/
+// phases.ts sends only the intact one, as gate_photo_artifact_id). Surviving slugs keep
+// their numbers here too, for the same reason.
+//
 // Mirrored by backend/app/core/phase_meta.py — tests/unit/test_phase_meta_contract.py
 // parses THIS file and fails if the two disagree.
 export const STEP_SLUGS: Record<PhaseType, readonly string[]> = {
@@ -49,7 +56,7 @@ export const STEP_SLUGS: Record<PhaseType, readonly string[]> = {
   loading: ['1-visual-count'],
   departure: ['2-capture-seal', '3-waybill', '4-departure'],
   in_transit: [],
-  unloading: ['1-hand-waybill', '2-seal-verify', '3-seal-break-inspection', '4-visual-count'],
+  unloading: ['1-hand-waybill', '2-seal-verify', '4-visual-count'],
   confirmation: ['1-pod-photo', '2-pod-signature', '3-reconciliation', '4-closed'],
 }
 
@@ -58,9 +65,14 @@ export const STEP_NAMES: Record<PhaseType, readonly string[]> = {
   trip_creation: [],
   activation: ['Verification'],
   loading: ['Visual Count'],
-  departure: ['Capture Seal', 'Photograph Waybill', 'Confirm Departure'],
+  // 'Photograph Linehaul Document', not 'Photograph Waybill': the document handed over
+  // at departure comes from a warehouse staff member and is the linehaul document. Only
+  // the DISPLAY name changes — the slug stays '3-waybill' and the wire field stays
+  // waybill_photo_artifact_id, both of which are contract-tested against the backend and
+  // embedded in every stored draft key and deep link.
+  departure: ['Capture Seal', 'Photograph Linehaul Document', 'Confirm Departure'],
   in_transit: [],
-  unloading: ['Hand Waybill Copy', 'Verify Seal', 'Wait for Inspection', 'Visual Count'],
+  unloading: ['Hand Waybill Copy', 'Verify Seal', 'Visual Count'],
   confirmation: ['Photograph POD', 'Capture Signature', 'Reconciliation', 'Trip Closed'],
 }
 

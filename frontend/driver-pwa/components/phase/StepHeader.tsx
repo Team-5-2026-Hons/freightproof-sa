@@ -60,15 +60,15 @@ export function StepHeader({ phase, stepIndex }: StepHeaderProps) {
         <button
           onClick={handleBack}
           aria-label={backLabel}
-          className="-ml-3 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-sm text-secondary transition-colors hover:bg-secondary/10 active:scale-95"
+          className="-ml-3 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-xl text-secondary transition-colors hover:bg-secondary/10 active:scale-95"
         >
           ←
         </button>
         <div className="flex-1 min-w-0">
-          <p className="text-xs text-surface-on-variant truncate">{phaseName}</p>
-          <p className="text-base font-semibold leading-tight truncate">{stepName}</p>
+          <p className="text-sm text-surface-on-variant truncate">{phaseName}</p>
+          <p className="text-lg font-semibold leading-tight truncate">{stepName}</p>
         </div>
-        <span className="text-xs text-surface-on-variant tabular-nums">
+        <span className="text-sm text-surface-on-variant tabular-nums">
           {current}/{total}
         </span>
         {/* A driver under threat mid-phase (gate, loading bay) must reach panic without
