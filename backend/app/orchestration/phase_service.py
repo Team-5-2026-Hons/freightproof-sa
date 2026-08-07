@@ -773,6 +773,14 @@ async def advance_loading(
 
     _record_driver_position(event, payload)
 
+    # Optional evidence: a warehouse that has already gone paperless has no linehaul
+    # sheet to hand the driver, and this must never block completion (schema docstring).
+    if payload.linehaul_photo_artifact_id is not None:
+        await _assert_artifacts_belong_to_trip(
+            db, trip_id=trip_id, artifact_ids=(payload.linehaul_photo_artifact_id,),
+        )
+        event.linehaul_photo_artifact_id = payload.linehaul_photo_artifact_id
+
     # The observed set, not a driver-entered number. The gate in _gate_and_load has
     # already established that the warehouse closed its session at this stop, so these
     # counts are final for this loading — which is what makes stamping the aggregate

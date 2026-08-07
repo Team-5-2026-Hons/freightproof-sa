@@ -31,8 +31,13 @@ const ACTIVATION_EVIDENCE: ActivationEvidence = {
 // evidence — it is no longer part of any draft (see lib/types/location.ts).
 const POSITION: DriverPosition = { lat: -26.09, lng: 28.13, accuracyM: 8 }
 
+// loading captures only one thing itself (Task 13, 2026-08-05): a photo of the paper
+// linehaul sheet, optional on the wire. The warehouse scan is what records what was
+// loaded — the driver's step is otherwise a read-only linehaul review. No photo here is
+// the base case; the "photos uploaded at capture" block below covers the captured one.
 const LOADING_EVIDENCE: LoadingEvidence = {
-  driverVisualCount: 31,
+  linehaulPhotoDataUrl: null,
+  linehaulPhotoArtifactId: null,
   capturedAt: '2026-06-12T10:05:00Z',
 }
 
@@ -98,12 +103,14 @@ describe('submitPhase (real-backend branch)', () => {
     )
   })
 
-  it('completes loading with only a visual count, no artifact upload', async () => {
+  it('completes loading with no linehaul photo — the warehouse scan is what was recorded', async () => {
     mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
 
     const { submitPhase } = await import('../phases')
     await submitPhase('trip-1', 'phase-event-2', 'loading', LOADING_EVIDENCE, IDEMPOTENCY_KEY, POSITION)
 
+    // No data URL was captured, so no upload is attempted and the id is sent as an
+    // explicit null — never omitted (see the field's comment on LoadingCompleteRequest).
     expect(mockUploadArtifact).not.toHaveBeenCalled()
     expect(mockPost).toHaveBeenCalledWith(
       '/api/v1/trips/trip-1/phases/phase-event-2/complete',
@@ -112,7 +119,7 @@ describe('submitPhase (real-backend branch)', () => {
         // Every phase carries the silently-captured fix now, not just activation.
         driver_phone_lat: POSITION.lat,
         driver_phone_lng: POSITION.lng,
-        driver_visual_count: 31,
+        linehaul_photo_artifact_id: null,
         idempotency_key: IDEMPOTENCY_KEY,
       },
       { timeoutMs: 30_000 },
@@ -447,6 +454,43 @@ describe('submitPhase — photos uploaded at capture', () => {
         waybill_photo_artifact_id: 'artifact-waybill',
         seal_photo_artifact_id: 'late-seal',
       }),
+      expect.anything(),
+    )
+  })
+
+  it('sends the linehaul photo id the early upload already produced, without re-uploading', async () => {
+    const { submitPhase } = await import('../phases')
+    mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
+
+    await submitPhase('trip-1', 'phase-event-2', 'loading', {
+      ...LOADING_EVIDENCE,
+      linehaulPhotoDataUrl: 'data:image/jpeg;base64,GGGG',
+      linehaulPhotoArtifactId: 'artifact-linehaul',
+    }, IDEMPOTENCY_KEY, POSITION)
+
+    expect(mockUploadArtifact).not.toHaveBeenCalled()
+    expect(mockPost).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ linehaul_photo_artifact_id: 'artifact-linehaul' }),
+      expect.anything(),
+    )
+  })
+
+  it('uploads the linehaul photo at submit when its early upload never landed', async () => {
+    const { submitPhase } = await import('../phases')
+    mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
+    mockUploadArtifact.mockResolvedValueOnce({ id: 'late-linehaul', file_hash: 'h3' })
+
+    await submitPhase('trip-1', 'phase-event-2', 'loading', {
+      ...LOADING_EVIDENCE,
+      linehaulPhotoDataUrl: 'data:image/jpeg;base64,GGGG',
+      linehaulPhotoArtifactId: null,
+    }, IDEMPOTENCY_KEY, POSITION)
+
+    expect(mockUploadArtifact).toHaveBeenCalledTimes(1)
+    expect(mockPost).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ linehaul_photo_artifact_id: 'late-linehaul' }),
       expect.anything(),
     )
   })

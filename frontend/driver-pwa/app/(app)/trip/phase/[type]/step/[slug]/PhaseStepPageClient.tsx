@@ -30,15 +30,19 @@ import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { Button } from '@/components/ui/Button'
 import { HoldNotice } from '@/components/trip/HoldNotice'
 import { stepComponentFor } from '@/components/phase/steps/registry'
+import { fetchLinehaul } from '@/lib/api/manifest'
 import type { Trip } from '@shared/lib/types/trip'
 import type { PhaseDescriptor, PhaseType } from '@shared/lib/types/phase'
+import type { Linehaul as LinehaulDocument } from '@shared/lib/types/manifest'
 import type {
   ActivationEvidence, LoadingEvidence, DepartureEvidence, UnloadingEvidence,
   ConfirmationEvidence, PhaseEvidence,
 } from '@/lib/types/evidence-draft'
 
 const ACTIVATION_INITIAL: ActivationEvidence = { capturedAt: null }
-const LOADING_INITIAL: LoadingEvidence = { driverVisualCount: null, capturedAt: null }
+const LOADING_INITIAL: LoadingEvidence = {
+  linehaulPhotoDataUrl: null, linehaulPhotoArtifactId: null, capturedAt: null,
+}
 const DEPARTURE_INITIAL: DepartureEvidence = {
   waybillPhotoDataUrl: null, waybillPhotoArtifactId: null, sealNumber: null,
   sealPhotoDataUrl: null, sealPhotoArtifactId: null, capturedAt: null,
@@ -507,14 +511,32 @@ function ActivationStep({ trip, phase, slug, stepIndex, isFinalStep, onHandOff }
   return renderStep(StepComponent, { tripId, phase, stepIndex, draft, onUpdate, onComplete })
 }
 
-function LoadingStep({ trip, phase, slug, stepIndex, isFinalStep, onHandOff }: StepControllerProps) {
+// Exported (rather than kept module-private like its sibling XStep functions) so
+// components/phase/steps/__tests__/linehaul.test.tsx can render through the real call
+// site — see that test's header comment on why the isolated-component test alone can't
+// catch a missing prop here (renderStep's ComponentType<never> cast).
+export function LoadingStep({ trip, phase, slug, stepIndex, isFinalStep, onHandOff }: StepControllerProps) {
   const tripId = String(trip.id)
   const { draft, onUpdate, onComplete } = usePhaseStepController<LoadingEvidence>(
     trip, phase, slug, isFinalStep, LOADING_INITIAL, onHandOff, () => {},
   )
+
+  // Null is a NORMAL state, not an error: lib/api/manifest.ts returns null for any trip
+  // created without a Parcel Perfect reference, which it documents as common. The step
+  // renders dashes and stays confirmable — the driver still has the paper sheet, and
+  // blocking him over a document the trip never had would be the wrong failure direction.
+  const [linehaul, setLinehaul] = useState<LinehaulDocument | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    void fetchLinehaul(tripId)
+      .then((doc) => { if (!cancelled) setLinehaul(doc) })
+      .catch(() => { if (!cancelled) setLinehaul(null) })
+    return () => { cancelled = true }
+  }, [tripId])
+
   const StepComponent = stepComponentFor(phase.phase_type, slug)
   if (!StepComponent) return <UnknownStep phaseType={phase.phase_type} slug={slug} />
-  return renderStep(StepComponent, { tripId, phase, stepIndex, draft, onUpdate, onComplete })
+  return renderStep(StepComponent, { tripId, phase, stepIndex, draft, onUpdate, onComplete, linehaul })
 }
 
 function DepartureStep({ trip, phase, slug, stepIndex, isFinalStep, onHandOff }: StepControllerProps) {

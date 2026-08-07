@@ -1361,3 +1361,119 @@ async def test_a_closed_phase_row_is_never_written_again(
         "event_hash": event.event_hash,
         "completed_at": event.completed_at,
     } == before
+
+
+# ── Task 13: the paper linehaul sheet photographed at loading ──────────────
+
+async def _complete_activation(client: AsyncClient, trip_id, token) -> None:
+    """Advances a fresh seed_trip past activation so `loading` is reachable."""
+    activation_id = await _phase_id(client, trip_id, token, "activation")
+    resp = await client.post(
+        f"/api/v1/trips/{trip_id}/phases/{activation_id}/complete",
+        json={
+            "phase_type": "activation",
+            "driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001",
+            "idempotency_key": str(uuid.uuid4()),
+        },
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 200
+
+
+async def test_loading_complete_with_linehaul_photo_persists_it(
+    client: AsyncClient, db_session, seed_trip,
+):
+    """A driver who photographs the warehouse's paper linehaul sheet has that
+    artifact recorded on the PhaseEvent row — the third-party evidence of what
+    the warehouse claimed was loaded (PhaseEvent.linehaul_photo_artifact_id)."""
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+    await _complete_activation(client, trip.id, token)
+
+    linehaul_photo_id = await _make_artifact(db_session, trip.id)
+    loading_id = await _phase_id(client, trip.id, token, "loading")
+
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{loading_id}/complete",
+        json={
+            "phase_type": "loading",
+            "linehaul_photo_artifact_id": linehaul_photo_id,
+            "idempotency_key": str(uuid.uuid4()),
+        },
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 200
+    loading_row = next(p for p in resp.json()["phases"] if p["phase_type"] == "loading")
+    assert loading_row["linehaul_photo_artifact_id"] == linehaul_photo_id
+
+    event = await db_session.get(PhaseEvent, uuid.UUID(loading_id))
+    assert str(event.linehaul_photo_artifact_id) == linehaul_photo_id
+
+
+async def test_loading_complete_without_linehaul_photo_still_succeeds(
+    client: AsyncClient, db_session, seed_trip,
+):
+    """Optional, not required (schema docstring): a warehouse that has already
+    gone paperless hands the driver nothing to photograph, and completion must
+    not be blocked over a document that never existed."""
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+    await _complete_activation(client, trip.id, token)
+
+    loading_id = await _phase_id(client, trip.id, token, "loading")
+
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{loading_id}/complete",
+        json={"phase_type": "loading", "idempotency_key": str(uuid.uuid4())},
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 200
+    loading_row = next(p for p in resp.json()["phases"] if p["phase_type"] == "loading")
+    assert loading_row["linehaul_photo_artifact_id"] is None
+
+    event = await db_session.get(PhaseEvent, uuid.UUID(loading_id))
+    assert event.linehaul_photo_artifact_id is None
+
+
+async def test_loading_complete_with_another_trips_linehaul_photo_returns_404(
+    client: AsyncClient, db_session, seed_trip,
+):
+    """_assert_artifacts_belong_to_trip must reject an artifact that exists but
+    belongs to a different trip — matching the ownership check every other
+    artifact FK on this endpoint already gets (docstring on that helper)."""
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+    await _complete_activation(client, trip.id, token)
+
+    # A second, otherwise-unrelated trip sharing the same org/driver/vehicle/precinct
+    # rows as `trip` — enough to satisfy every FK on Trip without a second full fixture.
+    other_trip = Trip(
+        id=uuid.uuid4(), trip_reference=f"FP-OTHER-{uuid.uuid4().hex[:8]}", order_number="ORD-OTHER",
+        operator_organization_id=trip.operator_organization_id,
+        client_organization_id=trip.client_organization_id,
+        driver_id=trip.driver_id, horse_id=trip.horse_id,
+        origin_precinct_id=trip.origin_precinct_id, destination_precinct_id=trip.destination_precinct_id,
+        status=TripStatus.CREATED, idvs_check_status=IdvsStatus.VERIFIED,
+        created_by_user_id=trip.created_by_user_id,
+    )
+    db_session.add(other_trip)
+    await db_session.flush()
+    foreign_artifact_id = await _make_artifact(db_session, other_trip.id)
+
+    loading_id = await _phase_id(client, trip.id, token, "loading")
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{loading_id}/complete",
+        json={
+            "phase_type": "loading",
+            "linehaul_photo_artifact_id": foreign_artifact_id,
+            "idempotency_key": str(uuid.uuid4()),
+        },
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 404
+
+    event = await db_session.get(PhaseEvent, uuid.UUID(loading_id))
+    assert event.linehaul_photo_artifact_id is None

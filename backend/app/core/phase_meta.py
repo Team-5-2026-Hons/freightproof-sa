@@ -39,22 +39,16 @@ from app.db.models.enums import PhaseType
 # opened in transit. The broken-seal photo was never even sent to this server;
 # UnloadingCompleteRequest has no field for it. Surviving slugs keep their numbers.
 #
-# loading is NOT empty (Stage 5, D11). It was, on the reading that the phase is
-# wholly system-observed via the Parcel Perfect poll — but advance_loading()
-# requires driver_visual_count, is the only dispatch-table entry that can close
-# this phase, and nothing else in the codebase calls it, so an empty recipe left
-# `loading` uncompletable and starved advance_confirmation() of the origin_count
-# its three-way reconciliation verdict compares against.
-#
-# This does not weaken F1. F1 forbids showing the driver an EXPECTED count, not
-# the driver entering their own: the count is entered blind — no expected value,
-# no Parcel Perfect figure, no mismatch banner — and the server reconciles it
-# privately. A count typed while the target number is on screen proves nothing;
-# a blind one is exactly what makes the reconciliation meaningful.
+# loading's step is the LINEHAUL, not a count (2026-08-05). The driver never enters the
+# warehouse and may reach the truck after loading finished, so a parcel count is a number
+# he cannot honestly produce — and manifest_service records Bruce's rule that he counts
+# pallets, never parcels, in any case. The phase is now gated on the warehouse closing its
+# scan session (orchestration/phase_gate.py) and closed by the driver confirming the
+# linehaul document, which is the driver-safe view he is actually given.
 STEP_SLUGS: dict[PhaseType, tuple[str, ...]] = {
     PhaseType.TRIP_CREATION: (),
     PhaseType.ACTIVATION: ("2-verification",),
-    PhaseType.LOADING: ("1-visual-count",),
+    PhaseType.LOADING: ("1-linehaul",),
     PhaseType.DEPARTURE: ("2-capture-seal", "3-waybill", "4-departure"),
     PhaseType.IN_TRANSIT: (),
     PhaseType.UNLOADING: ("1-hand-waybill", "2-seal-verify", "4-visual-count"),

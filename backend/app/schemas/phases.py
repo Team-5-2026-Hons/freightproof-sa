@@ -83,6 +83,7 @@ class PhaseEventRead(BaseModel):
     gate_photo_artifact_id: Optional[UUID] = None
     pod_photo_artifact_id: Optional[UUID] = None
     pod_signature_artifact_id: Optional[UUID] = None
+    linehaul_photo_artifact_id: Optional[UUID] = None
     parcel_manifest_snapshot: Optional[Any] = None
     parcel_count_origin: Optional[int] = None
     parcel_count_destination: Optional[int] = None
@@ -192,6 +193,11 @@ class LoadingCompleteRequest(_PhaseCompleteBase):
     # Stage C; this field is deleted only once no client can still be holding one.
     phase_type: Literal[PhaseType.LOADING]
     driver_visual_count: Optional[int] = None
+    # The paper linehaul sheet photographed at loading. Optional — a warehouse that has
+    # already gone paperless has no sheet to hand the driver, and blocking his trip over
+    # a document that does not exist is the wrong failure direction on an evidence
+    # platform. See PhaseEvent.linehaul_photo_artifact_id.
+    linehaul_photo_artifact_id: Optional[UUID] = None
 
 
 class DepartureCompleteRequest(_PhaseCompleteBase):

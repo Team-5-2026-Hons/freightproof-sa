@@ -41,15 +41,24 @@ export interface ActivationEvidence {
   capturedAt: string | null
 }
 
-// D11: loading's only driver input is a BLIND visual count — no expected/PP figure is
-// ever shown alongside it (F1's fence), so this type deliberately carries nothing to
-// display a reference against. The old H2Evidence's gpsLat/gpsLng/ppManifestParcelCount
-// are gone: gpsLat/gpsLng were never sent to the backend (LoadingCompleteRequest has no
-// GPS fields, and their only UI consumer, H2ArriveBay, is retired — D12), and
-// ppManifestParcelCount existed only to render the expected-count reference D11 now
-// forbids showing.
+// `loading` has no driver-captured evidence of its own (2026-08-05). The driver's blind
+// visual count (D11/F1) is gone with it: the phase is now gated on the warehouse closing
+// its scan session (orchestration/phase_gate.py) and closed by the driver confirming the
+// linehaul document — a read-only review, not a capture, so it needs nowhere to write a
+// value. The old H2Evidence's gpsLat/gpsLng/ppManifestParcelCount were already gone before
+// this: gpsLat/gpsLng were never sent to the backend (LoadingCompleteRequest has no GPS
+// fields, and their only UI consumer, H2ArriveBay, was retired — D12), and
+// ppManifestParcelCount existed only to render an expected-count reference F1 forbids
+// showing. The type stays (rather than collapsing to something shared) for the same
+// reason ActivationEvidence does — usePhaseDraft is generic per phase and the backend
+// still has a loading variant.
+// 2026-08-05 (Task 13): one piece of driver-captured evidence returns — a photo of the
+// paper linehaul sheet the warehouse hands over. Optional on the wire
+// (LoadingCompleteRequest.linehaul_photo_artifact_id), same data-URL/artifact-id pair as
+// every other captured photo in this file (see DepartureEvidence's header comment).
 export interface LoadingEvidence {
-  driverVisualCount: number | null
+  linehaulPhotoDataUrl: string | null
+  linehaulPhotoArtifactId: string | null
   capturedAt: string | null
 }
 

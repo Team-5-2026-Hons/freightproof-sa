@@ -114,6 +114,16 @@ class PhaseEvent(Base):
         ForeignKey("evidence_artifacts.id", use_alter=True, name="fk_phase_pod_signature"),
         nullable=True,
     )
+    # The paper linehaul sheet the warehouse hands the driver at loading. Distinct from
+    # waybill_photo_artifact_id (departure): that is the legal waybill copy, this is the
+    # driver-safe summary. Third-party evidence of what the warehouse CLAIMED was loaded,
+    # independent of FreightProof's own record. Optional — a paperless warehouse hands the
+    # driver nothing to photograph, and this must never block his trip.
+    linehaul_photo_artifact_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("evidence_artifacts.id", use_alter=True, name="fk_phase_linehaul_photo"),
+        nullable=True,
+    )
     parcel_manifest_snapshot: Mapped[Optional[Any]] = mapped_column(JSONB, nullable=True)
     parcel_count_origin: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     parcel_count_destination: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)

@@ -53,7 +53,7 @@ export const PHASE_NAMES: Record<PhaseType, string> = {
 export const STEP_SLUGS: Record<PhaseType, readonly string[]> = {
   trip_creation: [],
   activation: ['2-verification'],
-  loading: ['1-visual-count'],
+  loading: ['1-linehaul'],
   departure: ['2-capture-seal', '3-waybill', '4-departure'],
   in_transit: [],
   unloading: ['1-hand-waybill', '2-seal-verify', '4-visual-count'],
@@ -64,7 +64,7 @@ export const STEP_SLUGS: Record<PhaseType, readonly string[]> = {
 export const STEP_NAMES: Record<PhaseType, readonly string[]> = {
   trip_creation: [],
   activation: ['Verification'],
-  loading: ['Visual Count'],
+  loading: ['Linehaul'],
   // 'Photograph Linehaul Document', not 'Photograph Waybill': the document handed over
   // at departure comes from a warehouse staff member and is the linehaul document. Only
   // the DISPLAY name changes — the slug stays '3-waybill' and the wire field stays

@@ -5,17 +5,21 @@
 // a count entered while the expected number is on screen proves nothing about what the
 // driver actually saw. The server reconciles the counts privately and returns only a verdict.
 //
-// Both VisualCount steps are BLIND entries. The old H5VisualCount violated this — it took an
+// unloading/VisualCount is a BLIND entry. The old H5VisualCount violated this — it took an
 // `h2Count` prop and rendered a reference card plus a mismatch banner against it. That prop
 // and banner were removed in the phase refactor, and this suite exists so they cannot come
 // back unnoticed: a `PhaseDescriptor` carrying real counts is passed in, and the test fails
 // if any of those numbers reaches the DOM.
+//
+// loading's own blind-entry half is gone (2026-08-05): loading/VisualCount.tsx was replaced
+// by loading/Linehaul.tsx, a read-only review of the driver-safe linehaul document rather
+// than a driver-entered count — see components/phase/steps/__tests__/linehaul.test.tsx for
+// its equivalent "never shows per-parcel data" fence.
 import { render, screen } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
-import { VisualCount as LoadingVisualCount } from '../loading/VisualCount'
 import { VisualCount as UnloadingVisualCount } from '../unloading/VisualCount'
 import { makePhase } from '@/components/phase/__tests__/testFixtures'
-import type { LoadingEvidence, UnloadingEvidence } from '@/lib/types/evidence-draft'
+import type { UnloadingEvidence } from '@/lib/types/evidence-draft'
 
 // StepHeader calls useRouter — stub it so the steps mount under jsdom.
 vi.mock('next/navigation', () => ({
@@ -29,16 +33,14 @@ const ORIGIN_COUNT = 417
 const DESTINATION_COUNT = 419
 const PRIOR_DRIVER_COUNT = 421
 
-// A phase descriptor that KNOWS all three counts. If either component ever reads a count
+// A phase descriptor that KNOWS all three counts. If the component ever reads a count
 // off the phase (or off a reintroduced reference prop) and renders it, these numbers appear.
-const phaseWithCounts = (type: 'loading' | 'unloading') =>
-  makePhase(type, {
+const phaseWithCounts = () =>
+  makePhase('unloading', {
     parcel_count_origin: ORIGIN_COUNT,
     parcel_count_destination: DESTINATION_COUNT,
     driver_visual_count: PRIOR_DRIVER_COUNT,
   })
-
-const loadingDraft: LoadingEvidence = { driverVisualCount: null, capturedAt: null }
 
 const unloadingDraft: UnloadingEvidence = {
   waybillHandedOver: null,
@@ -75,44 +77,12 @@ function expectNoCountLeak() {
   })
 }
 
-describe('F1 — loading/VisualCount is a blind entry', () => {
-  it('renders no expected count, no PP figure, and no mismatch banner even when the phase carries every count', () => {
-    render(
-      <LoadingVisualCount
-        tripId="t1"
-        phase={phaseWithCounts('loading')}
-        stepIndex={0}
-        draft={loadingDraft}
-        onUpdate={vi.fn()}
-        onComplete={vi.fn()}
-      />,
-    )
-
-    expectNoCountLeak()
-  })
-
-  it('still offers the driver their own count field — blind does not mean absent', () => {
-    render(
-      <LoadingVisualCount
-        tripId="t1"
-        phase={phaseWithCounts('loading')}
-        stepIndex={0}
-        draft={loadingDraft}
-        onUpdate={vi.fn()}
-        onComplete={vi.fn()}
-      />,
-    )
-
-    expect(screen.getByLabelText('Your visual count')).toBeInTheDocument()
-  })
-})
-
 describe('F1 — unloading/VisualCount is a blind entry', () => {
   it('renders no reference count and no mismatch banner even when the phase carries every count', () => {
     render(
       <UnloadingVisualCount
         tripId="t1"
-        phase={phaseWithCounts('unloading')}
+        phase={phaseWithCounts()}
         stepIndex={3}
         draft={unloadingDraft}
         onUpdate={vi.fn()}
@@ -127,7 +97,7 @@ describe('F1 — unloading/VisualCount is a blind entry', () => {
     render(
       <UnloadingVisualCount
         tripId="t1"
-        phase={phaseWithCounts('unloading')}
+        phase={phaseWithCounts()}
         stepIndex={3}
         draft={unloadingDraft}
         onUpdate={vi.fn()}

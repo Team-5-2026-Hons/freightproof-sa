@@ -9,8 +9,8 @@ import { api } from './client'
 import type { Trip } from '@shared/lib/types/trip'
 import type { PhaseStatus, PhaseType } from '@shared/lib/types/phase'
 import type {
-  ConfirmationEvidence, DepartureEvidence, LoadingEvidence,
-  PhaseEvidence, UnloadingEvidence,
+  ConfirmationEvidence, DepartureEvidence,
+  LoadingEvidence, PhaseEvidence, UnloadingEvidence,
 } from '@/lib/types/evidence-draft'
 import type { DriverPosition } from '@/lib/types/location'
 import { IS_DEMO_MODE } from '@/lib/constants/env'
@@ -34,9 +34,17 @@ export interface ActivationCompleteRequest extends PhaseCompleteRequestBase {
   driver_phone_lng: number
 }
 
+// No driver_visual_count. The warehouse scan (not a driver-entered figure) is what
+// records what was loaded now — the server derives parcel_count_origin from it
+// (orchestration/phase_gate.py). The field is still ACCEPTED server-side as Optional
+// purely so a pre-existing offline-queue entry can drain; this app no longer sends it.
 export interface LoadingCompleteRequest extends PhaseCompleteRequestBase {
   phase_type: Extract<PhaseType, 'loading'>
-  driver_visual_count: number
+  // The photographed paper linehaul sheet. Optional on the wire (Task 13) — a paperless
+  // warehouse hands the driver nothing to photograph, and this must never block
+  // completion. Always sent explicitly (null when there is no photo) rather than
+  // omitted, so a failed early upload can never silently drop a captured photo.
+  linehaul_photo_artifact_id: string | null
 }
 
 // No guard_verified_seal and no seal_number_confirmed. Both are still ACCEPTED by the
@@ -207,14 +215,24 @@ export async function submitPhase(
       break
     }
     case 'loading': {
+      // The warehouse scan (not a driver-entered figure) is what records what was
+      // loaded — the server derives parcel_count_origin from it. driver_visual_count is
+      // still ACCEPTED by the backend (Optional) purely so a pre-existing offline-queue
+      // entry can drain; nothing sends it any more.
+      //
+      // The linehaul photo IS sent, but optionally: resolved via artifactIdFor only when
+      // a photo was actually captured, otherwise explicitly null. Reading only
+      // e.linehaulPhotoArtifactId here would silently drop the photo whenever its early
+      // upload failed (useArtifactUpload's fire-and-forget), instead of falling back to
+      // the submit-time upload every other captured photo in this file gets.
       const e = evidence as LoadingEvidence
-      if (e.driverVisualCount === null) {
-        throw new Error('Loading evidence incomplete — visual count is required.')
-      }
+      const linehaulPhotoId = e.linehaulPhotoDataUrl !== null
+        ? await artifactIdFor(tripId, 'photo', e.linehaulPhotoArtifactId, e.linehaulPhotoDataUrl, capturedAt)
+        : null
       updatedTrip = await completePhase(tripId, phaseEventId, {
         phase_type: 'loading',
         ...driverPosition(position),
-        driver_visual_count: e.driverVisualCount,
+        linehaul_photo_artifact_id: linehaulPhotoId,
         idempotency_key: idempotencyKey,
       })
       break

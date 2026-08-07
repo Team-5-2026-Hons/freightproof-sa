@@ -457,7 +457,7 @@ git commit -m "feat(api): close-scan-session dev trigger"
 Spec §2.1: reconciliation compares **live `Parcel` rows**, never the cached aggregates on
 `PhaseEvent`. This is the one function that reads them.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `backend/tests/unit/test_scan_service.py`:
 
@@ -490,12 +490,12 @@ async def test_scanned_counts_reflect_stamped_parcels(db_session, store, seeded)
     assert counts.scanned_in == 0
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `cd backend && pytest tests/unit/test_scan_service.py -v -k scanned_counts`
 Expected: FAIL — `AttributeError: module 'app.orchestration.scan_service' has no attribute 'scanned_counts_for_consignment'`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `backend/app/orchestration/scan_service.py`:
 
@@ -536,12 +536,12 @@ Add `func` to the SQLAlchemy import: `from sqlalchemy import func, select`.
 > `func.count(column)` counts non-NULL values of that column — which is exactly
 > "how many parcels carry this stamp". `func.count(Parcel.id)` counts rows.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `cd backend && pytest tests/unit/test_scan_service.py -v`
 Expected: PASS — 12 pre-existing + 2 new = 14.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/app/orchestration/scan_service.py backend/tests/unit/test_scan_service.py
@@ -559,7 +559,7 @@ git commit -m "feat(orchestration): live scan counts per consignment"
 One module, one job: given a trip, say which phases are waiting on the warehouse. No
 writes, no side effects.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `backend/tests/unit/test_phase_gate.py`:
 
@@ -696,12 +696,12 @@ async def test_phases_other_than_loading_and_confirmation_are_never_blocked(
 > accordingly). Build them by copying `seeded`'s body and varying only the consignment
 > rows — do not invent new model fields.
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `cd backend && pytest tests/unit/test_phase_gate.py -v`
 Expected: FAIL — `ImportError: cannot import name 'phase_gate' from 'app.orchestration'`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Create `backend/app/orchestration/phase_gate.py`:
 
@@ -839,12 +839,12 @@ async def test_a_stop_with_two_waybills_blocks_until_both_close(
 Add a `two_waybill_stop` fixture to `conftest.py` — one stop, two `Consignment` rows both
 with `pickup_stop_id` set to it.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `cd backend && pytest tests/unit/test_phase_gate.py -v`
 Expected: PASS, 9 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/app/orchestration/phase_gate.py backend/tests/unit/test_phase_gate.py backend/tests/conftest.py
@@ -865,7 +865,7 @@ git commit -m "feat(orchestration): derive warehouse-scan phase gate per stop"
 Four call sites of `from_event`. All must build and pass the map or the field is silently
 `None` — the same failure mode `stop_sequence`'s docstring already warns about.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `backend/tests/integration/test_phases.py`:
 
@@ -893,12 +893,12 @@ async def test_phase_list_reports_null_blocked_on_for_departure(
     assert departure["blocked_on"] is None
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `cd backend && pytest tests/integration/test_phases.py -v -k blocked_on`
 Expected: FAIL — `KeyError: 'blocked_on'`
 
-- [ ] **Step 3: Add the field and change the signature**
+- [x] **Step 3: Add the field and change the signature**
 
 In `backend/app/schemas/phases.py`, add to `PhaseEventRead` immediately after `step_recipe`:
 
@@ -943,7 +943,7 @@ Change `from_event`:
         return read
 ```
 
-- [ ] **Step 4: Update all four call sites**
+- [x] **Step 4: Update all four call sites**
 
 `backend/app/api/v1/endpoints/phases.py` — add the import and a helper beside
 `_stop_sequence_map`:
@@ -1006,12 +1006,12 @@ from app.orchestration.phase_gate import blocked_on_by_stop
 
 Apply the identical hoisted pattern in `backend/app/orchestration/resource_service.py`.
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `cd backend && pytest tests/integration/test_phases.py tests/integration/test_trips.py -v`
 Expected: PASS, no regressions.
 
-- [ ] **Step 6: Add the query-count guard**
+- [x] **Step 6: Add the query-count guard**
 
 Append to `backend/tests/integration/test_phases.py`:
 
@@ -1042,7 +1042,7 @@ async def test_phase_list_query_count_is_independent_of_phase_count(
 Run: `cd backend && pytest tests/integration/test_phases.py -v -k query_count`
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add backend/app/schemas/phases.py backend/app/orchestration/trip_service.py backend/app/orchestration/resource_service.py backend/app/api/v1/endpoints/phases.py backend/tests/integration/test_phases.py
@@ -1061,7 +1061,7 @@ git commit -m "feat(api): serve blocked_on on the phase read schema"
 
 The read field is not enforcement. A replayed or hand-crafted POST must not slip past.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `backend/tests/integration/test_phases.py`:
 
@@ -1107,12 +1107,12 @@ async def test_an_idempotent_replay_of_a_completed_phase_does_not_409(
     assert response.status_code == 200
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `cd backend && pytest tests/integration/test_phases.py -v -k "blocked_loading or idempotent_replay"`
 Expected: the first FAILs with 200 (completion succeeds against a blocked phase).
 
-- [ ] **Step 3: Add the exception**
+- [x] **Step 3: Add the exception**
 
 In `backend/app/core/exceptions.py`:
 
@@ -1136,7 +1136,7 @@ class PhaseBlockedError(Exception):
         self.attempted_phase = attempted_phase
 ```
 
-- [ ] **Step 4: Enforce it in `_gate_and_load`**
+- [x] **Step 4: Enforce it in `_gate_and_load`**
 
 In `backend/app/orchestration/phase_service.py`, add the imports:
 
@@ -1160,7 +1160,7 @@ lower-sequence check:
             raise PhaseBlockedError(phase_label)
 ```
 
-- [ ] **Step 5: Map it to 409**
+- [x] **Step 5: Map it to 409**
 
 In `backend/app/api/v1/endpoints/phases.py`, add `PhaseBlockedError` to the import list and
 to the existing 409 `except` tuple:
@@ -1174,7 +1174,7 @@ to the existing 409 `except` tuple:
         ) from exc
 ```
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [x] **Step 6: Run the tests to verify they pass**
 
 Run: `cd backend && pytest tests/integration/test_phases.py -v`
 Expected: PASS.
@@ -1191,12 +1191,12 @@ gate:
     )
 ```
 
-- [ ] **Step 7: Run the full suite**
+- [x] **Step 7: Run the full suite**
 
 Run: `cd backend && pytest -q`
 Expected: green. Fix fixtures, never the gate.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add backend/app/core/exceptions.py backend/app/orchestration/phase_service.py backend/app/api/v1/endpoints/phases.py backend/tests/
@@ -1214,7 +1214,7 @@ git commit -m "feat(orchestration): enforce the warehouse-scan gate on phase com
 - Modify: `backend/app/orchestration/phase_service.py`
 - Test: `backend/tests/unit/test_phase_service.py` (append)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `backend/tests/unit/test_phase_service.py`:
 
@@ -1360,12 +1360,12 @@ async def test_a_session_closed_with_nothing_scanned_still_raises(
 > `unscanned_ready_to_load` = session closed with **no** barcodes staged and `ingest_scans`
 > run against that empty feed, so no exception row exists going in.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `cd backend && pytest tests/unit/test_phase_service.py -v -k loading`
 Expected: FAIL — `ValidationError: driver_visual_count Field required`
 
-- [ ] **Step 3: Make the field optional**
+- [x] **Step 3: Make the field optional**
 
 In `backend/app/schemas/phases.py`:
 
@@ -1383,7 +1383,7 @@ class LoadingCompleteRequest(_PhaseCompleteBase):
     driver_visual_count: Optional[int] = None
 ```
 
-- [ ] **Step 4: Rewrite `advance_loading`**
+- [x] **Step 4: Rewrite `advance_loading`**
 
 Replace the body of `advance_loading` from `_record_driver_position(event, payload)` to the
 `return`:
@@ -1504,12 +1504,12 @@ cd backend && grep -rn "_expected_parcel_count" app/ tests/
 
 If other callers exist, leave it. If not, delete it and its tests in the same commit.
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `cd backend && pytest tests/unit/test_phase_service.py -v`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add backend/app/schemas/phases.py backend/app/orchestration/phase_service.py backend/tests/unit/test_phase_service.py
@@ -1525,7 +1525,7 @@ git commit -m "feat(orchestration): close loading on the warehouse scan, not a d
 - Modify: `backend/app/orchestration/phase_service.py`
 - Test: `backend/tests/unit/test_phase_service.py` (append)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `backend/tests/unit/test_phase_service.py`:
 
@@ -1666,12 +1666,12 @@ async def test_a_stop_with_no_consignments_skips_reconciliation(
     assert event.status == PhaseStatus.COMPLETED
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `cd backend && pytest tests/unit/test_phase_service.py -v -k confirmation`
 Expected: FAIL — `ValidationError: pp_scan_in_count Field required`
 
-- [ ] **Step 3: Drop the field from the request**
+- [x] **Step 3: Drop the field from the request**
 
 In `backend/app/schemas/phases.py`:
 
@@ -1694,7 +1694,7 @@ class ConfirmationCompleteRequest(_PhaseCompleteBase):
     driver_visual_count: int
 ```
 
-- [ ] **Step 4: Rewrite the reconciliation**
+- [x] **Step 4: Rewrite the reconciliation**
 
 In `advance_confirmation`, delete the `loading_event` / `origin_count` lookup entirely and
 replace the reconciliation block. The artifact assignment, the anchor dispatch and the
@@ -1767,18 +1767,18 @@ trailing `trip.actual_arrival_at` line stay exactly as they are.
 cd backend && grep -rn "_find_loading_for_leg" app/ tests/
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `cd backend && pytest tests/unit/test_phase_service.py -v`
 Expected: PASS.
 
-- [ ] **Step 6: Verify the anchor contract is intact**
+- [x] **Step 6: Verify the anchor contract is intact**
 
 Run: `cd backend && pytest tests/unit/test_phase_anchor_payload.py tests/integration/test_blockchain_verify.py -v`
 Expected: PASS, unchanged. If either fails, the canonical payload's **keys** changed —
 revert that part; only the source of the values may change.
 
-- [ ] **Step 7: Add the post-close immutability guard**
+- [x] **Step 7: Add the post-close immutability guard**
 
 This is the test that protects design §2.1 once anchoring extends to every phase. Without
 it, a future change that writes late-arriving scan data onto a closed row passes every
@@ -1834,12 +1834,12 @@ Run: `cd backend && pytest tests/integration/test_phases.py -v -k never_written_
 Expected: PASS. A failure means something writes `PhaseEvent` from the scan path — fix the
 writer, never this test.
 
-- [ ] **Step 8: Run the full suite**
+- [x] **Step 8: Run the full suite**
 
 Run: `cd backend && pytest -q`
 Expected: green.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add backend/app/schemas/phases.py backend/app/orchestration/phase_service.py backend/tests/
@@ -1863,7 +1863,7 @@ git commit -m "feat(orchestration): reconcile origin scan against destination sc
 - Modify: `backend/app/core/phase_meta.py`
 - Test: `backend/tests/unit/test_phase_meta_contract.py` (existing — must stay green)
 
-- [ ] **Step 1: Add `blocked_on` to the TS contract**
+- [x] **Step 1: Add `blocked_on` to the TS contract**
 
 In `frontend/shared/lib/types/phase.ts`, inside `PhaseDescriptor` immediately after
 `step_recipe`:
@@ -1876,7 +1876,7 @@ In `frontend/shared/lib/types/phase.ts`, inside `PhaseDescriptor` immediately af
   blocked_on: string | null
 ```
 
-- [ ] **Step 2: Update both step tables**
+- [x] **Step 2: Update both step tables**
 
 In `backend/app/core/phase_meta.py`, change the `LOADING` entry:
 
@@ -1906,13 +1906,13 @@ positionally and the contract test parses both:
   loading: ['Linehaul'],
 ```
 
-- [ ] **Step 3: Run the contract test**
+- [x] **Step 3: Run the contract test**
 
 Run: `cd backend && pytest tests/unit/test_phase_meta_contract.py -v`
 Expected: PASS. A failure here means the two files disagree — fix the mismatch, never the
 test.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add frontend/shared/lib/types/phase.ts frontend/shared/lib/constants/phase-meta.ts backend/app/core/phase_meta.py
@@ -1940,7 +1940,7 @@ git commit -m "feat(shared): blocked_on contract and the linehaul step slug"
 > screen shows `—` for every field, every test still passes, and the digital linehaul —
 > the entire point of this task — silently does not work.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `frontend/driver-pwa/components/phase/steps/__tests__/linehaul.test.tsx`:
 
@@ -2009,12 +2009,12 @@ describe('Linehaul', () => {
 })
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `cd frontend/driver-pwa && npx vitest run components/phase/steps/__tests__/linehaul.test.tsx`
 Expected: FAIL — cannot resolve `../loading/Linehaul`.
 
-- [ ] **Step 3: Implement the component**
+- [x] **Step 3: Implement the component**
 
 Create `frontend/driver-pwa/components/phase/steps/loading/Linehaul.tsx`:
 
@@ -2093,7 +2093,7 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 ```
 
-- [ ] **Step 4: Update the registry**
+- [x] **Step 4: Update the registry**
 
 In `frontend/driver-pwa/components/phase/steps/registry.ts`:
 
@@ -2114,7 +2114,7 @@ type LoadingSlug = '1-linehaul'
 Remove the `VisualCount as LoadingVisualCount` import, then delete
 `frontend/driver-pwa/components/phase/steps/loading/VisualCount.tsx`.
 
-- [ ] **Step 4b: Wire the linehaul document in at the call site**
+- [x] **Step 4b: Wire the linehaul document in at the call site**
 
 In `frontend/driver-pwa/app/(app)/trip/phase/[type]/step/[slug]/PhaseStepPageClient.tsx`,
 `LoadingStep` currently hands every loading step the same prop bag. It needs to fetch the
@@ -2157,7 +2157,7 @@ Also update `LOADING_INITIAL` — Step 5 removes `driverVisualCount` from `Loadi
 and the constant still sets it. **This is the only part of Task 10 `tsc` will catch**, so do
 not treat a green `tsc` as evidence the wiring above is done.
 
-- [ ] **Step 4c: Prove the wiring, not just the component**
+- [x] **Step 4c: Prove the wiring, not just the component**
 
 The test in Step 1 passes `linehaul` directly, so it stays green whether or not Step 4b
 happened. Add one that renders through the real call site. Append to
@@ -2185,7 +2185,7 @@ it('receives the linehaul document from the page client, not just from a test pr
 > unit test proves awkward, an equivalent Playwright/manual check is acceptable — what is
 > **not** acceptable is shipping Task 10 with the component tested only in isolation.
 
-- [ ] **Step 5: Stop sending the count**
+- [x] **Step 5: Stop sending the count**
 
 In `frontend/driver-pwa/lib/api/phases.ts`, the `case 'loading':` branch becomes:
 
@@ -2207,13 +2207,13 @@ In `frontend/driver-pwa/lib/api/phases.ts`, the `case 'loading':` branch becomes
 In `frontend/driver-pwa/lib/types/evidence-draft.ts`, remove `driverVisualCount` from
 `LoadingEvidence`, leaving the type with only its shared fields.
 
-- [ ] **Step 6: Run the tests**
+- [x] **Step 6: Run the tests**
 
 Run: `cd frontend/driver-pwa && npx vitest run && npx tsc --noEmit`
 Expected: PASS, no type errors. Registry tests will flag the slug change — update
 `__tests__/registry.test.ts`'s expected slug set to `['1-linehaul']`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add frontend/driver-pwa/components/phase/steps/ frontend/driver-pwa/lib/api/phases.ts frontend/driver-pwa/lib/types/evidence-draft.ts
@@ -2240,7 +2240,7 @@ starts displaying a number that means something else.
 - Modify: `frontend/shared/lib/mocks/trips.ts`
 - Test: `frontend/dispatcher/lib/phase/derive.test.ts` (existing — must stay green)
 
-- [ ] **Step 1: Rename the derive helper to match what it now returns**
+- [x] **Step 1: Rename the derive helper to match what it now returns**
 
 `frontend/dispatcher/lib/phase/derive.ts:104` — `originParcelCount()` reads
 `loading.parcel_count_origin` and its docstring calls it "the origin pickup's count".
@@ -2259,7 +2259,7 @@ Update `derive.test.ts`'s import and the two call sites it exercises. The fixtur
 `derive.test.ts:165-166` set `parcel_count_origin` directly and stay valid — only the
 name and the meaning change, not the shape.
 
-- [ ] **Step 2: Fix the trip-detail timeline label**
+- [x] **Step 2: Fix the trip-detail timeline label**
 
 `frontend/dispatcher/app/(app)/trips/[id]/page.tsx:582` renders:
 
@@ -2274,14 +2274,14 @@ the provenance explicit:
 if (phase.parcel_count_origin !== null) detailParts.push(`${phase.parcel_count_origin} scanned`)
 ```
 
-- [ ] **Step 3: Fix the shared mock**
+- [x] **Step 3: Fix the shared mock**
 
 `frontend/shared/lib/mocks/trips.ts:62-63` derives `parcel_count_origin` from
 `evidence?.count` — the driver's visual count, which no longer exists at loading. A mock
 that models the old semantics will quietly teach the next reader the wrong thing. Drive it
 from the mock's scanned figure instead, or drop the override and leave the seeded value.
 
-- [ ] **Step 4: Confirm nothing else reads it**
+- [x] **Step 4: Confirm nothing else reads it**
 
 ```bash
 cd /Users/ciaranformby/dev/freightproof-sa-4 && grep -rn "parcel_count_origin" frontend/ --include="*.ts" --include="*.tsx" | grep -v node_modules
@@ -2290,12 +2290,12 @@ cd /Users/ciaranformby/dev/freightproof-sa-4 && grep -rn "parcel_count_origin" f
 Every hit must be either a fixture literal, a type declaration, or one of the three files
 above. Anything else is a reader nobody updated.
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `cd frontend/dispatcher && npx vitest run && npx tsc --noEmit`
 Expected: PASS. `tsc` catches the rename's call sites; the semantics are on you.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add frontend/dispatcher/lib/phase/derive.ts frontend/dispatcher/lib/phase/derive.test.ts "frontend/dispatcher/app/(app)/trips/[id]/page.tsx" frontend/shared/lib/mocks/trips.ts
@@ -2310,7 +2310,7 @@ git commit -m "refactor(dispatcher): parcel_count_origin is a scanned count, not
 - Modify: `frontend/dispatcher/components/domain/LoadingDetail.tsx`
 - Test: `frontend/dispatcher/components/domain/__tests__/LoadingDetail.test.tsx`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 > **`frontend/dispatcher/components/domain/__tests__/` does not exist yet, and neither does
 > a dispatcher-side `makePhase`** — the one in the plan's imports is the driver app's.
@@ -2364,12 +2364,12 @@ describe('LoadingDetail', () => {
 })
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `cd frontend/dispatcher && npx vitest run components/domain/__tests__/LoadingDetail.test.tsx`
 Expected: FAIL — `expectedCount` is not a prop.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Replace `frontend/dispatcher/components/domain/LoadingDetail.tsx`:
 
@@ -2419,12 +2419,12 @@ Update the call site to pass `expectedCount` — find it with:
 cd frontend/dispatcher && grep -rn "LoadingDetail" app/ components/ --include=*.tsx
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `cd frontend/dispatcher && npx vitest run && npx tsc --noEmit`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/dispatcher/components/domain/LoadingDetail.tsx frontend/dispatcher/components/domain/__tests__/LoadingDetail.test.tsx
@@ -2444,7 +2444,7 @@ Spec §5: the destination scan figures display under **unloading**, because that
 they physically happened, even though the data is stamped on the confirmation row. Display
 and storage are independent — that separation is what keeps anchoring safe.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `frontend/dispatcher/components/domain/__tests__/ConfirmationDetail.test.tsx`:
 
@@ -2504,12 +2504,12 @@ describe('ConfirmationDetail', () => {
 })
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `cd frontend/dispatcher && npx vitest run components/domain/__tests__/ConfirmationDetail.test.tsx`
 Expected: FAIL — `originScannedCount` is not a prop.
 
-- [ ] **Step 3: Implement `ConfirmationDetail`**
+- [x] **Step 3: Implement `ConfirmationDetail`**
 
 ```typescript
 'use client'
@@ -2559,7 +2559,7 @@ export function ConfirmationDetail({ phase, originScannedCount }: Props) {
 }
 ```
 
-- [ ] **Step 4: Show the destination scan under unloading**
+- [x] **Step 4: Show the destination scan under unloading**
 
 In `UnloadingDetail.tsx`, add a section above the existing seal fields:
 
@@ -2577,12 +2577,12 @@ with the matching prop:
   destinationScannedCount: number | null
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `cd frontend/dispatcher && npx vitest run && npx tsc --noEmit`
 Expected: PASS. Update the call sites the type errors point at.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add frontend/dispatcher/components/domain/
@@ -2607,7 +2607,7 @@ git commit -m "feat(dispatcher): show the scan reconciliation on unloading and c
 - Modify: `backend/app/orchestration/phase_service.py`
 - Modify: `frontend/driver-pwa/components/phase/steps/loading/Linehaul.tsx`
 
-- [ ] **Step 1: Check for migration conflicts first**
+- [x] **Step 1: Check for migration conflicts first**
 
 ```bash
 git fetch origin && git log --oneline origin/dev -- backend/migrations/versions/ | head -10
@@ -2630,7 +2630,7 @@ trusting the check above.
 If another dev has an unmerged migration, **stop and coordinate** — do not fix the revision
 chain yourself (`CLAUDE.md`).
 
-- [ ] **Step 2: Add the column to the model**
+- [x] **Step 2: Add the column to the model**
 
 In `backend/app/db/models/phases.py`, beside the other artifact FKs on `PhaseEvent`:
 
@@ -2644,7 +2644,7 @@ In `backend/app/db/models/phases.py`, beside the other artifact FKs on `PhaseEve
     )
 ```
 
-- [ ] **Step 3: Generate and inspect the migration**
+- [x] **Step 3: Generate and inspect the migration**
 
 ```bash
 cd backend && alembic revision --autogenerate -m "ciaran add linehaul photo"
@@ -2654,7 +2654,7 @@ It lands in `backend/migrations/versions/`. Rename it to
 `2026_08_05_ciaran_add_linehaul_photo.py` and open it: confirm it contains **only** the one
 `add_column` — autogenerate picks up unrelated drift. Delete anything else it produced.
 
-- [ ] **Step 4: Apply and verify**
+- [x] **Step 4: Apply and verify**
 
 ```bash
 cd backend && alembic upgrade head && alembic current
@@ -2662,7 +2662,7 @@ cd backend && alembic upgrade head && alembic current
 
 Expected: the new revision is head.
 
-- [ ] **Step 5: Wire it through**
+- [x] **Step 5: Wire it through**
 
 In `backend/app/schemas/phases.py`, add to `LoadingCompleteRequest`:
 
@@ -2690,7 +2690,7 @@ In `advance_loading`, after `_record_driver_position(event, payload)`:
 > sheet to photograph, and blocking his trip over a document that does not exist would be
 > the wrong failure direction on an evidence platform.
 
-- [ ] **Step 6: Add the capture to the step**
+- [x] **Step 6: Add the capture to the step**
 
 In `Linehaul.tsx`, add these imports:
 
@@ -2758,12 +2758,12 @@ And send the id in `phases.ts`'s `case 'loading':`:
         linehaul_photo_artifact_id: e.linehaulPhotoArtifactId,
 ```
 
-- [ ] **Step 7: Run everything**
+- [x] **Step 7: Run everything**
 
 Run: `cd backend && pytest -q && cd ../frontend/driver-pwa && npx vitest run && npx tsc --noEmit`
 Expected: green.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add backend/migrations/versions/ backend/app/db/models/phases.py backend/app/schemas/phases.py backend/app/orchestration/phase_service.py frontend/driver-pwa/components/phase/steps/loading/Linehaul.tsx

@@ -28,7 +28,7 @@ import type { ComponentType } from 'react'
 import type { PhaseType } from '@shared/lib/types/phase'
 
 import { Verification } from './activation/Verification'
-import { VisualCount as LoadingVisualCount } from './loading/VisualCount'
+import { Linehaul } from './loading/Linehaul'
 import { CaptureSeal } from './departure/CaptureSeal'
 import { Waybill } from './departure/Waybill'
 import { ConfirmDeparture } from './departure/ConfirmDeparture'
@@ -44,7 +44,7 @@ import { Closed } from './confirmation/Closed'
 type AnyStepComponent = ComponentType<never>
 
 type ActivationSlug = '2-verification'
-type LoadingSlug = '1-visual-count'
+type LoadingSlug = '1-linehaul'
 type DepartureSlug = '2-capture-seal' | '3-waybill' | '4-departure'
 // '3-seal-break-inspection' is gone (2026-08-05) — it photographed the seal after the
 // warehouse broke it, which proves nothing and was never sent to the server. Surviving
@@ -71,7 +71,7 @@ export const STEP_REGISTRY: StepRegistry = {
     '2-verification': Verification,
   },
   loading: {
-    '1-visual-count': LoadingVisualCount,
+    '1-linehaul': Linehaul,
   },
   departure: {
     '2-capture-seal': CaptureSeal,

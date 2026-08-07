@@ -94,7 +94,7 @@ vi.mock('@/components/phase/steps/registry', () => ({
   stepComponentFor: (phaseType: string, slug: string) => {
     if (phaseType === 'departure' && slug === '2-capture-seal') return AdvanceCaptureSealStub
     if (phaseType === 'activation' && slug === '2-verification') return SubmitVerificationStub
-    if (phaseType === 'loading' && slug === '1-visual-count') return SubmitLoadingStub
+    if (phaseType === 'loading' && slug === '1-linehaul') return SubmitLoadingStub
     return undefined
   },
 }))
@@ -196,7 +196,7 @@ describe('type-mismatch guard', () => {
 
     render(<PhaseStepPageClient />)
 
-    await waitFor(() => expect(mockRouterReplace).toHaveBeenCalledWith('/trip/phase/loading/step/1-visual-count'))
+    await waitFor(() => expect(mockRouterReplace).toHaveBeenCalledWith('/trip/phase/loading/step/1-linehaul'))
     expect(screen.queryByText('submit-verification')).not.toBeInTheDocument()
   })
 
@@ -234,7 +234,7 @@ describe('final step — hands the submission off and returns the driver Home', 
       makePhase({ phase_type: 'departure', sequence_number: 3, status: 'pending' }),
     ])
     setTripState(trip)
-    mockUseParams.mockReturnValue({ type: 'loading', slug: '1-visual-count' })
+    mockUseParams.mockReturnValue({ type: 'loading', slug: '1-linehaul' })
     return trip
   }
 
@@ -289,7 +289,7 @@ describe('final step — hands the submission off and returns the driver Home', 
   it('clears the draft only once the server confirms, never at hand-off', async () => {
     const trip = renderLoadingFinalStep()
     const draftKey = `fp_draft_${TRIP_ID}_${LOADING_PE}`
-    localStorage.setItem(draftKey, JSON.stringify({ driverVisualCount: 12, capturedAt: '2026-01-01T00:00:00Z' }))
+    localStorage.setItem(draftKey, JSON.stringify({ capturedAt: '2026-01-01T00:00:00Z' }))
     let resolveSubmit: (value: unknown) => void = () => {}
     mockSubmitPhase.mockReturnValue(new Promise((resolve) => { resolveSubmit = resolve }))
 
@@ -320,7 +320,7 @@ describe('the optimistic advance must not redirect this screen into the next pha
     })
     const departure = makePhase({ phase_type: 'departure', sequence_number: 3, status: 'pending' })
     setTripState(makeTrip([loading, departure]))
-    mockUseParams.mockReturnValue({ type: 'loading', slug: '1-visual-count' })
+    mockUseParams.mockReturnValue({ type: 'loading', slug: '1-linehaul' })
     mockSubmitPhase.mockReturnValue(new Promise(() => {}))
     mockMarkPhaseSyncing.mockImplementation(() => {
       setTripState(makeTrip([{ ...loading, status: 'completed' }, departure]))
@@ -341,7 +341,7 @@ describe('409 duplicate-submit detection via the addressed phase\'s own status',
   it('a 409 whose addressed phase already reads "completed" is treated as an earlier success, not a failure', async () => {
     const trip = makeTrip([makePhase({ phase_event_id: LOADING_PE, phase_type: 'loading', sequence_number: 2, status: 'in_progress' })])
     setTripState(trip)
-    mockUseParams.mockReturnValue({ type: 'loading', slug: '1-visual-count' })
+    mockUseParams.mockReturnValue({ type: 'loading', slug: '1-linehaul' })
     mockSubmitPhase.mockRejectedValue(new ApiError(409, 'already resolved'))
     const fetchedAfterConflict = makeTrip([{ ...trip.phases[0], status: 'completed' }])
     mockRefetchTrip.mockResolvedValue(fetchedAfterConflict)
@@ -359,7 +359,7 @@ describe('409 duplicate-submit detection via the addressed phase\'s own status',
   it('a 409 whose addressed phase is still pending is a genuine conflict — the optimistic advance is rolled back', async () => {
     const trip = makeTrip([makePhase({ phase_event_id: LOADING_PE, phase_type: 'loading', sequence_number: 2, status: 'in_progress' })])
     setTripState(trip)
-    mockUseParams.mockReturnValue({ type: 'loading', slug: '1-visual-count' })
+    mockUseParams.mockReturnValue({ type: 'loading', slug: '1-linehaul' })
     mockSubmitPhase.mockRejectedValue(new ApiError(409, 'sequence error'))
     // Still pending on refetch — this really is a genuine conflict, not a replay.
     mockRefetchTrip.mockResolvedValue(makeTrip([{ ...trip.phases[0], status: 'pending' }]))
@@ -381,9 +381,9 @@ describe('409 duplicate-submit detection via the addressed phase\'s own status',
 describe('offline-queued submit', () => {
   it('queues the evidence, keeps the draft and the optimistic advance, and leaves the driver on Home', async () => {
     setTripState(makeTrip([makePhase({ phase_event_id: LOADING_PE, phase_type: 'loading', sequence_number: 2, status: 'in_progress' })]))
-    mockUseParams.mockReturnValue({ type: 'loading', slug: '1-visual-count' })
+    mockUseParams.mockReturnValue({ type: 'loading', slug: '1-linehaul' })
     const draftKey = `fp_draft_${TRIP_ID}_${LOADING_PE}`
-    localStorage.setItem(draftKey, JSON.stringify({ driverVisualCount: 12, capturedAt: '2026-01-01T00:00:00Z' }))
+    localStorage.setItem(draftKey, JSON.stringify({ capturedAt: '2026-01-01T00:00:00Z' }))
     mockSubmitPhase.mockRejectedValue(new TypeError('network down'))
 
     render(<PhaseStepPageClient />)
@@ -411,9 +411,9 @@ describe('offline-queued submit', () => {
 describe('terminal failure', () => {
   it('rolls the optimistic advance back, raises an error notice, and keeps the draft intact', async () => {
     setTripState(makeTrip([makePhase({ phase_event_id: LOADING_PE, phase_type: 'loading', sequence_number: 2, status: 'in_progress' })]))
-    mockUseParams.mockReturnValue({ type: 'loading', slug: '1-visual-count' })
+    mockUseParams.mockReturnValue({ type: 'loading', slug: '1-linehaul' })
     const draftKey = `fp_draft_${TRIP_ID}_${LOADING_PE}`
-    localStorage.setItem(draftKey, JSON.stringify({ driverVisualCount: 12, capturedAt: '2026-01-01T00:00:00Z' }))
+    localStorage.setItem(draftKey, JSON.stringify({ capturedAt: '2026-01-01T00:00:00Z' }))
     mockSubmitPhase.mockRejectedValue(new ApiError(422, 'visual count is required'))
 
     render(<PhaseStepPageClient />)
@@ -435,7 +435,7 @@ describe('exception_hold', () => {
   it('still toasts and routes to the trip screen, from wherever the driver has landed', async () => {
     const trip = makeTrip([makePhase({ phase_event_id: LOADING_PE, phase_type: 'loading', sequence_number: 2, status: 'in_progress' })])
     setTripState(trip)
-    mockUseParams.mockReturnValue({ type: 'loading', slug: '1-visual-count' })
+    mockUseParams.mockReturnValue({ type: 'loading', slug: '1-linehaul' })
     const heldTrip = makeTrip([{ ...trip.phases[0], status: 'exception' }], { status: 'exception_hold' })
     mockSubmitPhase.mockResolvedValue({ ok: true, trip: heldTrip, phaseStatus: 'exception' })
 

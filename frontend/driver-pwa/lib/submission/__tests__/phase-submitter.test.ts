@@ -114,7 +114,9 @@ function harness(overrides: Partial<PhaseSubmissionRequest> = {}): Harness {
     tripId: TRIP_ID,
     phaseEventId: LOADING_PE,
     phaseType: 'loading',
-    evidence: { driverVisualCount: 12, capturedAt: '2026-01-01T00:00:00Z' },
+    // loading no longer captures anything itself (the linehaul step is read-only) —
+    // capturedAt alone is a valid LoadingEvidence.
+    evidence: { capturedAt: '2026-01-01T00:00:00Z' },
     idempotencyKey: 'idem-1',
     position: Promise.resolve<DriverPosition | null>(FIX),
     enqueuePhase,

@@ -53,7 +53,9 @@ function phaseSubmission(overrides: Partial<PhaseSubmissionRequest> = {}): Phase
     tripId: 'trip-1',
     phaseEventId: 'phase-event-1',
     phaseType: 'loading',
-    evidence: { driverVisualCount: 12, capturedAt: '2026-06-12T10:00:00Z' },
+    // loading no longer captures anything itself (the linehaul step is read-only) —
+    // capturedAt alone is a valid LoadingEvidence.
+    evidence: { capturedAt: '2026-06-12T10:00:00Z' },
     idempotencyKey: 'idem-1',
     position: Promise.resolve(null),
     enqueuePhase: vi.fn(),
