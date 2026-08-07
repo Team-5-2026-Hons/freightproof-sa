@@ -7,7 +7,7 @@ restored and main reloaded again on teardown so other test modules are unaffecte
 
 import importlib
 import uuid
-from typing import Any, AsyncGenerator
+from typing import AsyncGenerator
 
 import pytest
 import pytest_asyncio
@@ -28,25 +28,7 @@ from app.db.session import get_db
 from app.integrations import parcel_perfect as pp_module
 from app.integrations import scan_feed as scan_feed_module
 
-from tests.conftest import auth_header, make_jwks, make_token
-
-
-class FakeStore:
-    """Dict-backed MockStateStore — keeps these tests off a real Redis."""
-
-    def __init__(self) -> None:
-        self.data: dict[str, dict[str, Any]] = {}
-
-    async def get_json(self, key: str) -> dict[str, Any] | None:
-        return self.data.get(key)
-
-    async def set_json(self, key: str, value: dict[str, Any]) -> None:
-        self.data[key] = value
-
-    async def flush(self) -> int:
-        count = len(self.data)
-        self.data.clear()
-        return count
+from tests.conftest import FakeMockStateStore, auth_header, make_jwks, make_token
 
 
 @pytest.fixture(scope="module")
@@ -66,8 +48,8 @@ def dev_app():
 
 
 @pytest.fixture
-def store(monkeypatch: pytest.MonkeyPatch) -> FakeStore:
-    fake = FakeStore()
+def store(monkeypatch: pytest.MonkeyPatch) -> FakeMockStateStore:
+    fake = FakeMockStateStore()
     monkeypatch.setattr(scan_feed_module, "get_mock_state_store", lambda: fake)
     monkeypatch.setattr(pp_module, "get_mock_state_store", lambda: fake)
     monkeypatch.setattr(

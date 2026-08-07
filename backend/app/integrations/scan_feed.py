@@ -32,6 +32,7 @@ Layering: integrations → config, mock_state. Never imports from api/ or orches
 
 import enum
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Protocol
@@ -78,6 +79,18 @@ class ScanEvent:
     stop_reference: str
 
 
+@dataclass(frozen=True)
+class ScanSessionQuery:
+    """One "is this session closed?" question, so many can be asked at once.
+
+    Frozen and hashable so callers can de-duplicate a batch before sending it.
+    """
+
+    consignment_reference: str
+    stop_reference: str
+    direction: ScanDirection
+
+
 class ScanFeed(Protocol):
     """The contract orchestration depends on. Implementations are swapped by config."""
 
@@ -97,6 +110,16 @@ class ScanFeed(Protocol):
         been seen", because a genuinely missing parcel means that never becomes true.
         Gating on completeness would turn a short count into an indefinite block instead
         of the finding it should be.
+        """
+        ...
+
+    async def closed_sessions(self, queries: Sequence[ScanSessionQuery]) -> list[bool]:
+        """Batched is_scan_session_closed: one answer per query, in order.
+
+        The phase gate asks this for every consignment at every gated stop on every
+        trip-detail read. Asking one at a time is a network round trip per
+        consignment, so the batch is the contract the read path depends on and the
+        singular form above is for the one-off caller.
         """
         ...
 
@@ -182,6 +205,14 @@ class MockScanFeed:
     ) -> bool:
         key = self._session_key(consignment_reference, stop_reference, direction)
         return await get_mock_state_store().get_json(key) is not None
+
+    async def closed_sessions(self, queries: Sequence[ScanSessionQuery]) -> list[bool]:
+        keys = [
+            self._session_key(q.consignment_reference, q.stop_reference, q.direction)
+            for q in queries
+        ]
+        states = await get_mock_state_store().get_many_json(keys)
+        return [state is not None for state in states]
 
 
 def get_scan_feed() -> ScanFeed:

@@ -14,7 +14,6 @@ are exercised here under their current names.
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -47,35 +46,12 @@ from app.schemas.phases import (
     ActivationCompleteRequest, ConfirmationCompleteRequest, DepartureCompleteRequest,
     LoadingCompleteRequest, UnloadingCompleteRequest,
 )
-
-
-class _FakeMockStateStore:
-    """Dict-backed MockStateStore — keeps this test off a real Redis.
-
-    Same shape as tests/unit/test_phase_service.py's copy, duplicated locally
-    rather than shared — this file already keeps its own trip_fixture/_make_artifact
-    rather than importing the other unit test module's, and test_dev_triggers.py
-    has its own copy of this exact class too.
-    """
-
-    def __init__(self) -> None:
-        self.data: dict[str, dict[str, Any]] = {}
-
-    async def get_json(self, key: str) -> dict[str, Any] | None:
-        return self.data.get(key)
-
-    async def set_json(self, key: str, value: dict[str, Any]) -> None:
-        self.data[key] = value
-
-    async def flush(self) -> int:
-        count = len(self.data)
-        self.data.clear()
-        return count
+from tests.conftest import FakeMockStateStore
 
 
 @pytest.fixture
-def store(monkeypatch: pytest.MonkeyPatch) -> _FakeMockStateStore:
-    fake = _FakeMockStateStore()
+def store(monkeypatch: pytest.MonkeyPatch) -> FakeMockStateStore:
+    fake = FakeMockStateStore()
     monkeypatch.setattr(scan_feed_module, "get_mock_state_store", lambda: fake)
     return fake
 

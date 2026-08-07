@@ -5,7 +5,11 @@ injected fake; these tests cover the pure key-building logic, which is what
 guarantees one trigger's state never collides with another's.
 """
 
-from app.integrations.mock_state import MOCK_STATE_PREFIX, build_key
+from app.integrations.mock_state import (
+    MOCK_STATE_PREFIX,
+    RedisMockStateStore,
+    build_key,
+)
 
 
 def test_build_key_namespaces_every_key():
@@ -33,3 +37,29 @@ def test_build_key_separates_different_kinds():
     pp_key = build_key("pp", "WAY001")
 
     assert scan_key != pp_key
+
+
+async def test_empty_batch_reads_without_touching_redis():
+    """A trip with nothing to gate is the common case and must cost no connection.
+
+    The URL is deliberately unroutable: if get_many_json opened a connection to ask
+    for zero keys, this test would fail rather than quietly pass.
+    """
+    store = RedisMockStateStore("redis://127.0.0.1:1/")
+
+    assert await store.get_many_json([]) == []
+
+
+def test_decode_reads_absent_state_as_unset():
+    assert RedisMockStateStore._decode("some-key", None) is None
+
+
+def test_decode_reads_corrupt_state_as_unset():
+    """A writer bug must not fail the read path that the phase gate sits on."""
+    assert RedisMockStateStore._decode("some-key", "{not json") is None
+
+
+def test_decode_parses_stored_state():
+    assert RedisMockStateStore._decode("some-key", '{"closed_at": "now"}') == {
+        "closed_at": "now",
+    }

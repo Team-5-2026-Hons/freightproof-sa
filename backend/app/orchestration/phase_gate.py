@@ -29,7 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.enums import PhaseType
 from app.db.models.trips import Consignment
-from app.integrations.scan_feed import ScanDirection, get_scan_feed
+from app.integrations.scan_feed import ScanDirection, ScanSessionQuery, get_scan_feed
 
 # The only value blocked_on takes today. A string rather than a bool so a second
 # gate (telemetry, customs) can be added later without changing the field's type
@@ -64,7 +64,13 @@ async def blocked_on_by_stop(
     consignments = result.all()
 
     feed = get_scan_feed()
-    blocked: dict[tuple[PhaseType, uuid.UUID], str | None] = {}
+
+    # Collect every question first, ask them in one batch, then decide. Resolving
+    # them inside the loop meant a feed round trip per consignment per gated phase
+    # on a path that runs for every trip-detail render — see RedisMockStateStore,
+    # which opens a connection per call by deliberate design.
+    targets: list[tuple[PhaseType, uuid.UUID]] = []
+    queries: list[ScanSessionQuery] = []
 
     for phase_type, direction in _GATED_PHASES.items():
         for reference, pickup_stop_id, delivery_stop_id in consignments:
@@ -74,19 +80,23 @@ async def blocked_on_by_stop(
                 # stop to attribute the scan to, so there is nothing to gate.
                 continue
 
-            key = (phase_type, stop_id)
-            if blocked.get(key) == BLOCKED_ON_SCAN:
-                # Already known blocked by another consignment at this stop. A stop
-                # serving two waybills is blocked while EITHER session is still open,
-                # so nothing a later consignment reports can clear it — skip the call.
-                continue
-
-            closed = await feed.is_scan_session_closed(
+            targets.append((phase_type, stop_id))
+            queries.append(ScanSessionQuery(
                 consignment_reference=reference,
                 stop_reference=str(stop_id),
                 direction=direction,
-            )
-            blocked[key] = None if closed else BLOCKED_ON_SCAN
+            ))
+
+    closed_flags = await feed.closed_sessions(queries)
+
+    blocked: dict[tuple[PhaseType, uuid.UUID], str | None] = {}
+    for key, closed in zip(targets, closed_flags, strict=True):
+        if blocked.get(key) == BLOCKED_ON_SCAN:
+            # A stop serving two waybills is blocked while EITHER session is still
+            # open, so an open session already recorded here cannot be cleared by a
+            # closed one belonging to a different consignment.
+            continue
+        blocked[key] = None if closed else BLOCKED_ON_SCAN
 
     return blocked
 

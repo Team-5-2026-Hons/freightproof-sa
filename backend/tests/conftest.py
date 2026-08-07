@@ -18,7 +18,7 @@ import os
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator
 
 import pytest
 import pytest_asyncio
@@ -205,6 +205,42 @@ async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
         finally:
             await session.close()
             await transaction.rollback()
+
+
+class FakeMockStateStore:
+    """Dict-backed MockStateStore, so tests never need a real Redis.
+
+    One definition rather than a copy per test module. MockStateStore is a
+    structural Protocol: nothing asserts that a fake still satisfies it, so adding
+    a method to the contract used to break every copy at runtime with an
+    AttributeError that neither ruff nor mypy could see coming. Extending this one
+    class is now the whole migration.
+
+    The fixture that injects it stays local to each test module — what gets
+    monkeypatched genuinely differs (scan_feed, parcel_perfect, or both), and that
+    wiring is the part each test should keep saying out loud.
+    """
+
+    def __init__(self) -> None:
+        self.data: dict[str, dict[str, Any]] = {}
+        # Counts batched reads, so a test can assert the phase gate stays at one
+        # round trip per call however many consignments a trip carries.
+        self.batch_calls = 0
+
+    async def get_json(self, key: str) -> dict[str, Any] | None:
+        return self.data.get(key)
+
+    async def get_many_json(self, keys: list[str]) -> list[dict[str, Any] | None]:
+        self.batch_calls += 1
+        return [self.data.get(key) for key in keys]
+
+    async def set_json(self, key: str, value: dict[str, Any]) -> None:
+        self.data[key] = value
+
+    async def flush(self) -> int:
+        count = len(self.data)
+        self.data.clear()
+        return count
 
 
 # ── Warehouse-scan fixtures ─────────────────────────────────────────────────────

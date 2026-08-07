@@ -4,34 +4,17 @@ Overrides exist so a staged waybill change is visible to the Celery worker, whic
 is a different process from the API and cannot see module-level mutation.
 """
 
-from typing import Any
-
 import pytest
 
 from app.core.config import settings
 from app.integrations import parcel_perfect as pp_module
 from app.integrations.parcel_perfect import MockParcelPerfectClient, PPUnsupportedError
-
-
-class FakeStore:
-    def __init__(self) -> None:
-        self.data: dict[str, dict[str, Any]] = {}
-
-    async def get_json(self, key: str) -> dict[str, Any] | None:
-        return self.data.get(key)
-
-    async def set_json(self, key: str, value: dict[str, Any]) -> None:
-        self.data[key] = value
-
-    async def flush(self) -> int:
-        count = len(self.data)
-        self.data.clear()
-        return count
+from tests.conftest import FakeMockStateStore
 
 
 @pytest.fixture
-def dev_panel_on(monkeypatch: pytest.MonkeyPatch) -> FakeStore:
-    fake = FakeStore()
+def dev_panel_on(monkeypatch: pytest.MonkeyPatch) -> FakeMockStateStore:
+    fake = FakeMockStateStore()
     monkeypatch.setattr(pp_module, "get_mock_state_store", lambda: fake)
     monkeypatch.setattr(settings, "DEV_PANEL_ENABLED", True)
     monkeypatch.setattr(settings, "PP_USE_MOCK", True)

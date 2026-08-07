@@ -38,7 +38,7 @@ from app.integrations.scan_feed import MockScanFeed, ScanDirection
 from app.main import app
 from app.orchestration import scan_service
 
-from tests.conftest import auth_header, make_token
+from tests.conftest import FakeMockStateStore, auth_header, make_token
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -1164,29 +1164,10 @@ async def test_an_idempotent_replay_of_a_completed_phase_does_not_409(
 
 # ── Task 8: a closed phase row is never rewritten by a later scan ──────────
 
-class _FakeMockStateStore:
-    """Dict-backed MockStateStore — keeps this test off a real Redis. Same shape
-    as tests/unit/test_phase_service.py's copy, duplicated locally per this
-    codebase's existing convention (test_dev_triggers.py has its own too)."""
-
-    def __init__(self) -> None:
-        self.data: dict[str, dict[str, Any]] = {}
-
-    async def get_json(self, key: str) -> dict[str, Any] | None:
-        return self.data.get(key)
-
-    async def set_json(self, key: str, value: dict[str, Any]) -> None:
-        self.data[key] = value
-
-    async def flush(self) -> int:
-        count = len(self.data)
-        self.data.clear()
-        return count
-
 
 @pytest.fixture
-def store(monkeypatch: pytest.MonkeyPatch) -> _FakeMockStateStore:
-    fake = _FakeMockStateStore()
+def store(monkeypatch: pytest.MonkeyPatch) -> FakeMockStateStore:
+    fake = FakeMockStateStore()
     monkeypatch.setattr(scan_feed_module, "get_mock_state_store", lambda: fake)
     return fake
 

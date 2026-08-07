@@ -6,7 +6,6 @@ against feed events, so a DB-free test would assert nothing meaningful.
 """
 
 import uuid
-from typing import Any
 
 import pytest
 
@@ -17,29 +16,12 @@ from app.integrations import scan_feed as scan_feed_module
 from app.integrations.scan_feed import MockScanFeed, ScanDirection
 from app.orchestration import scan_service
 from sqlalchemy import select
-
-
-class FakeStore:
-    """Dict-backed MockStateStore — same fake as test_scan_feed.py."""
-
-    def __init__(self) -> None:
-        self.data: dict[str, dict[str, Any]] = {}
-
-    async def get_json(self, key: str) -> dict[str, Any] | None:
-        return self.data.get(key)
-
-    async def set_json(self, key: str, value: dict[str, Any]) -> None:
-        self.data[key] = value
-
-    async def flush(self) -> int:
-        count = len(self.data)
-        self.data.clear()
-        return count
+from tests.conftest import FakeMockStateStore
 
 
 @pytest.fixture
-def store(monkeypatch: pytest.MonkeyPatch) -> FakeStore:
-    fake = FakeStore()
+def store(monkeypatch: pytest.MonkeyPatch) -> FakeMockStateStore:
+    fake = FakeMockStateStore()
     monkeypatch.setattr(scan_feed_module, "get_mock_state_store", lambda: fake)
     return fake
 

@@ -44,6 +44,7 @@ from app.schemas.phases import (
     ActivationCompleteRequest, ConfirmationCompleteRequest, DepartureCompleteRequest,
     LoadingCompleteRequest, UnloadingCompleteRequest,
 )
+from tests.conftest import FakeMockStateStore
 
 # Activation is gated on the trip actually being due (phase_service._reject_if_not_due),
 # and a trip carrying no schedule at all is deliberately unstartable. Every fixture below
@@ -2327,27 +2328,9 @@ async def test_load_phase_event_emits_for_update(db_session, trip_fixture, monke
 # already recorded a finding before advance_loading runs.
 
 
-class _FakeMockStateStore:
-    """Dict-backed MockStateStore — same fake as test_phase_gate.py/test_scan_feed.py."""
-
-    def __init__(self) -> None:
-        self.data: dict[str, dict[str, Any]] = {}
-
-    async def get_json(self, key: str) -> dict[str, Any] | None:
-        return self.data.get(key)
-
-    async def set_json(self, key: str, value: dict[str, Any]) -> None:
-        self.data[key] = value
-
-    async def flush(self) -> int:
-        count = len(self.data)
-        self.data.clear()
-        return count
-
-
 @pytest.fixture
-def store(monkeypatch: pytest.MonkeyPatch) -> _FakeMockStateStore:
-    fake = _FakeMockStateStore()
+def store(monkeypatch: pytest.MonkeyPatch) -> FakeMockStateStore:
+    fake = FakeMockStateStore()
     monkeypatch.setattr(scan_feed_module, "get_mock_state_store", lambda: fake)
     return fake
 

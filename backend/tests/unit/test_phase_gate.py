@@ -5,37 +5,18 @@ state, so a DB-free test would assert nothing meaningful. Mirrors
 test_scan_service.py, which does the same.
 """
 
-from typing import Any
-
 import pytest
 
 from app.db.models.enums import PhaseType
 from app.integrations import scan_feed as scan_feed_module
 from app.integrations.scan_feed import MockScanFeed, ScanDirection
 from app.orchestration import phase_gate
-
-
-class FakeStore:
-    """Dict-backed MockStateStore — same fake as test_scan_feed.py."""
-
-    def __init__(self) -> None:
-        self.data: dict[str, dict[str, Any]] = {}
-
-    async def get_json(self, key: str) -> dict[str, Any] | None:
-        return self.data.get(key)
-
-    async def set_json(self, key: str, value: dict[str, Any]) -> None:
-        self.data[key] = value
-
-    async def flush(self) -> int:
-        count = len(self.data)
-        self.data.clear()
-        return count
+from tests.conftest import FakeMockStateStore
 
 
 @pytest.fixture
-def store(monkeypatch: pytest.MonkeyPatch) -> FakeStore:
-    fake = FakeStore()
+def store(monkeypatch: pytest.MonkeyPatch) -> FakeMockStateStore:
+    fake = FakeMockStateStore()
     monkeypatch.setattr(scan_feed_module, "get_mock_state_store", lambda: fake)
     return fake
 
@@ -138,3 +119,17 @@ async def test_a_stop_with_two_waybills_blocks_until_both_close(
     assert blocked[
         (PhaseType.LOADING, two_waybill_stop["stop"].id)
     ] == phase_gate.BLOCKED_ON_SCAN
+
+
+async def test_the_whole_trip_resolves_in_one_batch(db_session, store, xdock_trip):
+    """One round trip per gate call, regardless of how many consignments there are.
+
+    This runs on every trip-detail render and RedisMockStateStore opens a connection
+    per call by design, so a loop of single reads here is a connection per
+    consignment per gated phase. A cross-dock trip is the case that exposed it.
+    """
+    store.batch_calls = 0
+
+    await phase_gate.blocked_on_by_stop(db_session, trip_id=xdock_trip["trip"].id)
+
+    assert store.batch_calls == 1

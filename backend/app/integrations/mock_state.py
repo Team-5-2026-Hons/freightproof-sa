@@ -50,6 +50,15 @@ class MockStateStore(Protocol):
 
     async def get_json(self, key: str) -> dict[str, Any] | None: ...
 
+    async def get_many_json(self, keys: list[str]) -> list[dict[str, Any] | None]:
+        """Read many keys at once, returning one result per key, in order.
+
+        On the contract rather than a Redis-only convenience because the phase gate
+        reads a key per consignment per gated phase on every trip-detail request;
+        expressed as a loop of get_json that is a connection per consignment.
+        """
+        ...
+
     async def set_json(self, key: str, value: dict[str, Any]) -> None: ...
 
     async def flush(self) -> int: ...
@@ -58,21 +67,23 @@ class MockStateStore(Protocol):
 class RedisMockStateStore:
     """MockStateStore over redis.asyncio, one short-lived connection per call.
 
-    A connection per call rather than a pooled client: these calls happen only on
-    dev-panel triggers (a handful per demo), and a module-level pool would bind to
-    whichever event loop first touched it — which breaks under Celery's
+    A connection per call rather than a pooled client: a module-level pool would
+    bind to whichever event loop first touched it, which breaks under Celery's
     asyncio.run() per task and under pytest's function-scoped loops.
+
+    That makes the *number of calls* the thing to watch. Writes are still rare —
+    only the dev panel stages state. Reads are not: the warehouse-scan phase gate
+    (orchestration/phase_gate.py) resolves session state on every trip-detail
+    request, so anything on that path must batch through get_many_json rather than
+    loop over get_json, or a trip pays a connection per consignment per gated phase.
     """
 
     def __init__(self, redis_url: str) -> None:
         self._redis_url = redis_url
 
-    async def get_json(self, key: str) -> dict[str, Any] | None:
-        client = redis.from_url(self._redis_url, decode_responses=True)
-        try:
-            raw = await client.get(key)
-        finally:
-            await client.aclose()
+    @staticmethod
+    def _decode(key: str, raw: str | None) -> dict[str, Any] | None:
+        """Parse one stored value. Absent and corrupt both read as unset."""
         if raw is None:
             return None
         try:
@@ -83,6 +94,28 @@ class RedisMockStateStore:
             logger.error("Corrupt mock state at key %s — treating as unset", key)
             return None
         return parsed
+
+    async def get_json(self, key: str) -> dict[str, Any] | None:
+        client = redis.from_url(self._redis_url, decode_responses=True)
+        try:
+            raw = await client.get(key)
+        finally:
+            await client.aclose()
+        return self._decode(key, raw)
+
+    async def get_many_json(self, keys: list[str]) -> list[dict[str, Any] | None]:
+        if not keys:
+            # MGET with no arguments is an error, and a trip with nothing to gate
+            # is the common case — it must not open a connection to ask nothing.
+            return []
+        client = redis.from_url(self._redis_url, decode_responses=True)
+        try:
+            raws = await client.mget(keys)
+        finally:
+            await client.aclose()
+        # strict=True: MGET returns one slot per requested key, so a length
+        # mismatch is a broken client rather than something to paper over.
+        return [self._decode(key, raw) for key, raw in zip(keys, raws, strict=True)]
 
     async def set_json(self, key: str, value: dict[str, Any]) -> None:
         client = redis.from_url(self._redis_url, decode_responses=True)
