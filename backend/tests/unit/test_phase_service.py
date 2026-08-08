@@ -868,11 +868,10 @@ async def test_advance_departure_confirmed_seal_match_supersedes_guard_flag(db_s
 
 
 @pytest.mark.asyncio
-async def test_advance_departure_auto_completes_leg_in_transit_row(db_session, trip_fixture):
-    """Stopgap (D2, awaiting real checkpoint-Merkle-batch wiring): advance_departure
-    must auto-complete the immediately-following in_transit row, and that must
-    actually unblock the gate for the phase after it — not just flip a status
-    flag with no downstream effect."""
+async def test_advance_departure_leaves_in_transit_pending(db_session, trip_fixture):
+    """IN_TRANSIT stays PENDING while the driver is driving. It opens when departure
+    completes and closes when unloading/arrival begins. The dispatcher timeline shows
+    the leg with real elapsed time between departure and arrival."""
     trip, driver, phases = trip_fixture
     await _advance_to_loading(db_session, trip, driver, phases)
 
@@ -881,11 +880,12 @@ async def test_advance_departure_auto_completes_leg_in_transit_row(db_session, t
         payload=await _h3_payload(db_session, trip.id),
     )
 
+    # Departure completes but does NOT auto-complete IN_TRANSIT.
     await db_session.refresh(phases["in_transit"])
-    assert phases["in_transit"].status == PhaseStatus.COMPLETED
-    assert phases["in_transit"].completed_at is not None
+    assert phases["in_transit"].status == PhaseStatus.PENDING
+    assert phases["in_transit"].completed_at is None
 
-    # Proves the gate is genuinely unblocked, not just that a flag flipped.
+    # IN_TRANSIT is closed by advance_unloading when the driver arrives.
     result = await advance_unloading(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading"].id,
         payload=UnloadingCompleteRequest(
@@ -894,6 +894,13 @@ async def test_advance_departure_auto_completes_leg_in_transit_row(db_session, t
             idempotency_key=str(uuid.uuid4()),
         ),
     )
+
+    # Verify IN_TRANSIT was closed by unloading.
+    in_transit_in_response = next(h for h in result.phases if h.phase_type == PhaseType.IN_TRANSIT)
+    assert in_transit_in_response.status == PhaseStatus.COMPLETED
+    assert in_transit_in_response.completed_at is not None
+
+    # Unloading also completed successfully.
     unloading = next(h for h in result.phases if h.phase_type == PhaseType.UNLOADING)
     assert unloading.status == PhaseStatus.COMPLETED
 
@@ -997,14 +1004,16 @@ async def multi_leg_trip_fixture(db_session):
 
 
 @pytest.mark.asyncio
-async def test_advance_departure_auto_completes_only_its_own_leg_in_transit(db_session, multi_leg_trip_fixture):
-    """Each leg's departure must resolve only its own in_transit row — leg 2's
-    row must stay PENDING (unreachable) until leg 2's own departure runs."""
+async def test_advance_departure_leaves_all_in_transit_rows_pending(db_session, multi_leg_trip_fixture):
+    """Each departure leaves its own IN_TRANSIT row PENDING — no auto-complete.
+    Later departures do not affect earlier legs' IN_TRANSIT rows. Each leg's
+    IN_TRANSIT is closed by the arrival phase (UNLOADING or CONFIRMATION) for
+    that stop."""
     trip, driver, phases = multi_leg_trip_fixture
 
     await advance_activation(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["activation"].id,
-        payload=ActivationCompleteRequest(phase_type=PhaseType.ACTIVATION, 
+        payload=ActivationCompleteRequest(phase_type=PhaseType.ACTIVATION,
             driver_phone_lat=Decimal("0"), driver_phone_lng=Decimal("0"), idempotency_key=str(uuid.uuid4()),
         ),
     )
@@ -1013,24 +1022,27 @@ async def test_advance_departure_auto_completes_only_its_own_leg_in_transit(db_s
         payload=LoadingCompleteRequest(phase_type=PhaseType.LOADING, driver_visual_count=42, idempotency_key=str(uuid.uuid4())),
     )
 
+    # Leg 1's departure leaves IN_TRANSIT_1 PENDING.
     await advance_departure(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["departure_1"].id,
         payload=await _h3_payload(db_session, trip.id),
     )
     await db_session.refresh(phases["in_transit_1"])
     await db_session.refresh(phases["in_transit_2"])
-    assert phases["in_transit_1"].status == PhaseStatus.COMPLETED
-    assert phases["in_transit_2"].status == PhaseStatus.PENDING  # leg 2's departure hasn't run yet
+    assert phases["in_transit_1"].status == PhaseStatus.PENDING
+    assert phases["in_transit_2"].status == PhaseStatus.PENDING  # No auto-complete
 
+    # Leg 2's departure leaves IN_TRANSIT_2 PENDING. Does not affect leg 1.
     await advance_departure(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["departure_2"].id,
         payload=await _h3_payload(db_session, trip.id),
     )
+    await db_session.refresh(phases["in_transit_1"])
     await db_session.refresh(phases["in_transit_2"])
-    assert phases["in_transit_2"].status == PhaseStatus.COMPLETED
+    assert phases["in_transit_1"].status == PhaseStatus.PENDING
+    assert phases["in_transit_2"].status == PhaseStatus.PENDING
 
-    # Gate is genuinely unblocked end to end now — both legs' in_transit rows
-    # resolved independently, correctly, in order.
+    # Unloading closes the IN_TRANSIT for its leg (IN_TRANSIT_2, from leg 2's departure).
     result = await advance_unloading(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading"].id,
         payload=UnloadingCompleteRequest(
@@ -1039,6 +1051,9 @@ async def test_advance_departure_auto_completes_only_its_own_leg_in_transit(db_s
             idempotency_key=str(uuid.uuid4()),
         ),
     )
+    in_transit_2_in_response = next(h for h in result.phases if h.phase_type == PhaseType.IN_TRANSIT and h.stop_sequence == 1)
+    assert in_transit_2_in_response.status == PhaseStatus.COMPLETED
+
     unloading = next(h for h in result.phases if h.phase_type == PhaseType.UNLOADING)
     assert unloading.status == PhaseStatus.COMPLETED
 

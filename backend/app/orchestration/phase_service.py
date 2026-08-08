@@ -887,36 +887,6 @@ def _normalized_seal(seal: str) -> str:
     return seal.strip().upper()
 
 
-async def _auto_complete_in_transit(db: AsyncSession, *, trip_id: uuid.UUID, after_sequence: int) -> None:
-    """Stopgap for Stage 2 (flagged in the Findings ledger — awaiting real
-    checkpoint-Merkle-batch wiring, D2 in the parent plan): P4 (in_transit) is
-    a real ledger row anchored to the stop it departs from, meant to be closed
-    by checkpoint batches that don't exist yet in this codebase. Until that
-    lands, departure and in-transit are treated as instantaneous: the row
-    immediately following this leg's departure (build_phase_plan guarantees
-    exactly one, always — DEPARTURE is only ever emitted when a stop isn't the
-    trip's last, and always paired with an IN_TRANSIT emit in the same branch)
-    is marked completed here. No idempotency_key is stamped — no driver action
-    or offline-queue entry produced this completion, and the partial unique
-    index (WHERE idempotency_key IS NOT NULL) only applies when one exists.
-
-    Idempotent on its own: a replayed advance_departure call (same
-    phase_event_id/idempotency_key resent after a lost ack) must not stamp a
-    fresh completed_at over an already-closed evidence row a second time."""
-    result = await db.execute(
-        select(PhaseEvent).where(
-            PhaseEvent.trip_id == trip_id,
-            PhaseEvent.phase_type == PhaseType.IN_TRANSIT,
-            PhaseEvent.sequence_number == after_sequence + 1,
-        )
-    )
-    in_transit_event = result.scalar_one()
-    if in_transit_event.status == PhaseStatus.COMPLETED:
-        return
-    in_transit_event.status = PhaseStatus.COMPLETED
-    in_transit_event.completed_at = datetime.now(UTC)
-
-
 async def _find_departure_for_leg(
     db: AsyncSession, *, trip_id: uuid.UUID, before_sequence: int,
 ) -> PhaseEvent:
@@ -944,6 +914,35 @@ async def _find_departure_for_leg(
     if departure is None:
         raise ResourceNotFoundError("PhaseEvent", "departure")
     return departure
+
+
+async def _find_in_transit_for_leg(
+    db: AsyncSession, *, trip_id: uuid.UUID, before_sequence: int,
+) -> PhaseEvent:
+    """Find the IN_TRANSIT row that opened the leg ending at `before_sequence`.
+
+    Mirrors _find_departure_for_leg: the plan generator guarantees exactly one
+    IN_TRANSIT between any DEPARTURE and the stop's closing phase (UNLOADING or
+    CONFIRMATION). This row represents the driving interval for this leg —
+    opened when departure completes, closed when the driver arrives.
+
+    Caller contract: `before_sequence` must be the sequence_number of the
+    arrival phase's OWN row (UNLOADING or CONFIRMATION).
+    """
+    result = await db.execute(
+        select(PhaseEvent)
+        .where(
+            PhaseEvent.trip_id == trip_id,
+            PhaseEvent.phase_type == PhaseType.IN_TRANSIT,
+            PhaseEvent.sequence_number < before_sequence,
+        )
+        .order_by(PhaseEvent.sequence_number.desc())
+        .limit(1)
+    )
+    in_transit = result.scalar_one_or_none()
+    if in_transit is None:
+        raise ResourceNotFoundError("PhaseEvent", "in_transit")
+    return in_transit
 
 
 async def advance_departure(
@@ -1030,9 +1029,10 @@ async def advance_departure(
     )
 
     trip.actual_departure_at = datetime.now(UTC)
-    # Both branches: a recorded seal exception doesn't hold the trip (comment
-    # above), so the leg is physically in transit either way.
-    await _auto_complete_in_transit(db, trip_id=trip_id, after_sequence=event.sequence_number)
+    # IN_TRANSIT stays PENDING while the driver is moving. It will be closed by
+    # advance_unloading when the driver arrives. This gives the dispatcher a real
+    # elapsed-time window to view the leg, rather than auto-closing at the same
+    # millisecond as departure (which was the old stopgap behaviour).
 
     return await _finish_phase(db, trip=trip, event=event, idempotency_key=payload.idempotency_key)
 
@@ -1050,6 +1050,17 @@ async def advance_unloading(
     trip, event = gated
 
     _record_driver_position(event, payload)
+
+    # Close the IN_TRANSIT row for this leg: the driver has arrived. IN_TRANSIT
+    # opened when departure completed, now closes with a real completion time.
+    # The dispatcher timeline shows the leg with elapsed time between departure
+    # and arrival, and all exceptions logged during the drive.
+    in_transit_event = await _find_in_transit_for_leg(
+        db, trip_id=trip_id, before_sequence=event.sequence_number,
+    )
+    if in_transit_event.status == PhaseStatus.PENDING:
+        in_transit_event.status = PhaseStatus.COMPLETED
+        in_transit_event.completed_at = datetime.now(UTC)
 
     # T4: this LEG's departure (strictly before this row), not "the trip's" —
     # a multi-stop trip can have several DEPARTURE rows, and a plain
