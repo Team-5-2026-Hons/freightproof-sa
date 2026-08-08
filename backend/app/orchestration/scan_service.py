@@ -28,6 +28,7 @@ from app.core.exceptions import ResourceNotFoundError
 from app.db.models.enums import (
     ExceptionSeverity, ExceptionSource, ExceptionType, ParcelStatus,
 )
+from app.db.models.phases import PhaseEvent
 from app.db.models.transit import TripException
 from app.db.models.trips import Consignment, Parcel, Trip, TripStop
 from app.integrations.scan_feed import ScanDirection, ScanEvent, get_scan_feed
@@ -308,6 +309,18 @@ async def _raise_discrepancy(
         expected_count=expected_count, observed_count=observed_count,
     )
 
+    # Determine which phase this scan belongs to based on direction
+    phase_type = 'loading' if direction == ScanDirection.OUT else 'unloading'
+
+    # Look up the phase_event_id for this scan at this stop
+    phase_event = (await db.execute(
+        select(PhaseEvent.id).where(
+            PhaseEvent.trip_id == trip_id,
+            PhaseEvent.trip_stop_id == trip_stop_id,
+            PhaseEvent.phase_type == phase_type,
+        )
+    )).scalar_one_or_none()
+
     # Suppress an identical unresolved duplicate. A repeated poll against an
     # unchanged feed is a normal occurrence, and each repeat manufacturing a new
     # exception row would bury the real one under noise on the dispatcher's list.
@@ -331,6 +344,7 @@ async def _raise_discrepancy(
     exception = TripException(
         id=uuid.uuid4(),
         trip_id=trip_id,
+        phase_event_id=phase_event,  # ← Now properly attached
         consignment_id=consignment.id,
         trip_stop_id=trip_stop_id,
         exception_type=ExceptionType.PARCEL_COUNT_MISMATCH,

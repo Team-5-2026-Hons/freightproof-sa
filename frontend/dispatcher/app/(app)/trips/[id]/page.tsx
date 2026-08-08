@@ -48,8 +48,10 @@ import {
 } from '@/lib/phase/derive'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { Trip } from '@shared/lib/types/trip'
+import type { TripException } from '@shared/lib/types/exception'
 import type { Precinct } from '@shared/lib/types/precinct'
 import type { BlockchainReceipt, BlockchainReceiptType, VerifyResult } from '@shared/lib/types/blockchain'
+import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 
 // ── Layout ────────────────────────────────────────────────────────────────────
 // The two fixed costs in the three-column row. Declared here and applied as inline
@@ -151,6 +153,11 @@ interface TimelineEventProps {
   // Rendered unconditionally, unlike expandedContent which needs a click.
   alwaysExpandedContent?: React.ReactNode
   statusPill?: React.ReactNode
+  // Exceptions nested within this phase card when expanded
+  exceptions?: TripException[]
+  showExceptionIndicator?: boolean
+  // Required to render evidence artifacts in nested exceptions
+  artifactsById?: Map<string, EvidenceArtifactWithUrl>
 }
 
 
@@ -158,7 +165,7 @@ function TimelineEvent({
   nodeType, nodeLabel, isLast,
   label, meta, detail, timestamp,
   chainReceipt, excText, resText, expandedContent, alwaysExpandedContent,
-  statusPill,
+  statusPill, exceptions, showExceptionIndicator, artifactsById,
 }: TimelineEventProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   // Every phase type now has its own detail component, so expanding in place is the
@@ -232,6 +239,14 @@ function TimelineEvent({
         </div>
       )}
       {detail && <div className="text-[13px] text-on-surf-v mt-1">{detail}</div>}
+      {exceptions && exceptions.length > 0 && showExceptionIndicator && (
+        <div className="inline-flex items-center gap-[7px] bg-warn-c rounded-sm px-[12px] py-[5px] mt-[6px]">
+          <Ic n="warn" s={13} className="text-warn-onc" />
+          <span className="text-[12px] font-[600] text-warn-onc">
+            {exceptions.length} exception{exceptions.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+      )}
       {excText && (
         <div className="inline-flex items-center gap-[7px] bg-warn-c rounded-sm px-[12px] py-[5px] mt-[6px]">
           <Ic n="warn" s={13} className="text-warn-onc" />
@@ -282,6 +297,48 @@ function TimelineEvent({
 
           {chainReceipt && <ForensicOnly><ChainReceiptTag receipt={chainReceipt} /></ForensicOnly>}
           {isExpanded && expandedContent}
+          {isExpanded && exceptions && exceptions.length > 0 && !alwaysExpandedContent && artifactsById && (
+            <div className="mt-[12px] border-t border-outline-v/20 pt-[12px]">
+              <div className="text-[10px] font-[700] tracking-[0.09em] uppercase text-on-surf-v mb-[8px]">
+                Exceptions ({exceptions.length})
+              </div>
+              <div className="flex flex-col gap-[8px]">
+                {exceptions.map((exc) => (
+                  <div key={exc.id} className="rounded-lg px-4 py-3 bg-warn-c/40 border border-warn/20">
+                    <div className="flex items-start justify-between gap-3 mb-[5px]">
+                      <span className="text-[13px] font-[600] text-warn-onc">
+                        {fmtExceptionType(exc.exception_type)}
+                      </span>
+                      <span className="text-[11px] font-[600] text-sec tabular-nums shrink-0">
+                        {fmtDateTime(exc.created_at)}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-[6px] mb-[5px]">
+                      <Chip
+                        type={EXCEPTION_SEVERITY_META[exc.severity].chipType}
+                        label={EXCEPTION_SEVERITY_META[exc.severity].label}
+                      />
+                      <span className="text-[10px] font-[500] text-on-surf-v">
+                        {EXCEPTION_SOURCE_META[exc.source].label}
+                      </span>
+                    </div>
+                    {exc.description && (
+                      <div className="text-[12px] text-on-surf-v mb-[5px]">
+                        {exc.description}
+                      </div>
+                    )}
+                    {exc.resolved && (
+                      <div className="text-[11px] text-ok flex items-center gap-[4px]">
+                        <Ic n="check" s={11} className="text-ok" />
+                        {exc.resolver_note ? `Resolved · ${exc.resolver_note}` : 'Resolved'}
+                      </div>
+                    )}
+                    <ExceptionEvidence exception={exc} artifactsById={artifactsById} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {alwaysExpandedContent}
         </div>
       </div>
@@ -580,16 +637,40 @@ export default function TripDetailPage() {
   }))
   // The backend tags every exception with the phase it occurred on (phase_event_id,
   // schemas/transit.py) — attach there directly. The field is nullable, not optional:
-  // an exception raised outside any phase (a panic button between stops) carries null
-  // and falls back to the last done/warn row, which is approximate placement and must
-  // not be read as phase-accurate.
+  // an exception raised outside any phase (e.g. panic button during IN_TRANSIT) carries null.
+  // For untagged exceptions, use smart fallback: if it's a transit-friendly exception type and
+  // an active phase exists, attach to that; otherwise fall back to the last completed phase.
+  const IN_TRANSIT_FRIENDLY = new Set([
+    'panic_button',           // driver-initiated, can happen anytime
+    'seal_broken_in_transit', // explicitly in-transit
+    'mechanical',             // driver, could happen during transit
+    'dispatcher_note',        // dispatcher, could be anytime
+    'escalation',             // dispatcher, could be anytime
+  ])
+
   for (const exc of trip.exceptions) {
     const taggedIdx = exc.phase_event_id
       ? timelineItems.findIndex(i => i.phase.phase_event_id === exc.phase_event_id)
       : -1
-    const attachIdx = taggedIdx >= 0
-      ? taggedIdx
-      : timelineItems.findLastIndex(i => i.nodeType === 'done' || i.nodeType === 'warn')
+
+    let attachIdx = -1
+    if (taggedIdx >= 0) {
+      attachIdx = taggedIdx
+    } else {
+      // Smart fallback: for transit-friendly exceptions, try to attach to active phase first
+      const canUseActivePhase = IN_TRANSIT_FRIENDLY.has(exc.exception_type as any)
+      const activeIdx = canUseActivePhase
+        ? timelineItems.findIndex(i => i.nodeType === 'active')
+        : -1
+
+      if (activeIdx >= 0) {
+        attachIdx = activeIdx
+      } else {
+        // Fall back to last completed/warning phase
+        attachIdx = timelineItems.findLastIndex(i => i.nodeType === 'done' || i.nodeType === 'warn')
+      }
+    }
+
     if (attachIdx >= 0) timelineItems[attachIdx].exceptions.push(exc)
   }
 
@@ -772,41 +853,10 @@ export default function TripDetailPage() {
                         />
                       : undefined
                   }
+                  exceptions={ownsExceptionRows ? excItems : undefined}
+                  showExceptionIndicator={excItems.length > 0 && !isPending}
+                  artifactsById={artifactsById}
                 />
-                {ownsExceptionRows && excItems.map((exc, ei) => (
-                  <TimelineEvent
-                    key={exc.id}
-                    nodeType="warn"
-                    nodeLabel="!"
-                    isLast={isLastItem && ei === excItems.length - 1}
-                    label={fmtExceptionType(exc.exception_type)}
-                    // Severity was on the wire from the start and never rendered, so an
-                    // info-level dispatcher note and a critical seal break were the same
-                    // shade of amber. EXCEPTION_SEVERITY_META is the same mapping the
-                    // exceptions pages use, so the two surfaces cannot disagree.
-                    statusPill={
-                      <Chip
-                        type={EXCEPTION_SEVERITY_META[exc.severity].chipType}
-                        label={EXCEPTION_SEVERITY_META[exc.severity].label}
-                      />
-                    }
-                    meta={EXCEPTION_SOURCE_META[exc.source].label}
-                    timestamp={exc.created_at}
-                    excText={exc.description}
-                    alwaysExpandedContent={
-                      <ExceptionEvidence exception={exc} artifactsById={artifactsById} />
-                    }
-                    // Keyed off `resolved` alone. Requiring a note as well meant a
-                    // resolved exception with no note rendered identically to an open
-                    // one. Currently unreachable — no resolve workflow exists yet — but
-                    // the latent bug goes now rather than surfacing the day one lands.
-                    resText={
-                      exc.resolved
-                        ? exc.resolver_note ? `Resolved · ${exc.resolver_note}` : 'Resolved'
-                        : undefined
-                    }
-                  />
-                ))}
               </div>
             )
           })}
