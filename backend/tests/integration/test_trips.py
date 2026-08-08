@@ -656,6 +656,60 @@ async def test_create_trip_persists_consignments_and_parcels(client: AsyncClient
     assert barcodes == expected_barcodes
 
 
+async def test_get_trip_detail_scanned_counts_are_zero_before_any_scan(
+    client: AsyncClient, seed_data, db_session,
+):
+    """scanned_out_count/scanned_in_count are live Parcel-derived progress, distinct
+    from the phase rows' parcel_count_origin/_destination — see ConsignmentRead's
+    docstring. Nothing has been scanned yet, so both must be 0, not absent."""
+    payload = _make_payload(seed_data)
+    payload["order_number"] = "ORD-SCANCOUNT-001"
+    create_resp = await client.post(
+        "/api/v1/trips", json=payload, headers=_auth_headers(seed_data),
+    )
+    assert create_resp.status_code == 201
+    trip_id = create_resp.json()["id"]
+
+    resp = await client.get(f"/api/v1/trips/{trip_id}", headers=_auth_headers(seed_data))
+
+    assert resp.status_code == 200
+    consignment = resp.json()["consignments"][0]
+    assert consignment["scanned_out_count"] == 0
+    assert consignment["scanned_in_count"] == 0
+
+
+async def test_get_trip_detail_scanned_counts_track_real_scans(
+    client: AsyncClient, seed_data, db_session,
+):
+    """A live warehouse scan (Parcel.pp_scan_out_at stamped by scan_service, not
+    the phase ledger) must be visible on the very next trip-detail poll — the
+    dispatcher's unloading panel reads this instead of waiting for confirmation
+    close to stamp parcel_count_destination."""
+    payload = _make_payload(seed_data)
+    payload["order_number"] = "ORD-SCANCOUNT-002"
+    create_resp = await client.post(
+        "/api/v1/trips", json=payload, headers=_auth_headers(seed_data),
+    )
+    assert create_resp.status_code == 201
+    trip_id = uuid.UUID(create_resp.json()["id"])
+    consignment_id = uuid.UUID(create_resp.json()["consignments"][0]["id"])
+
+    # MOCKWAY001 (the seed payload's waybill) has 2 tracks — stamp one directly,
+    # mirroring what scan_service._stamp_parcel does on a real warehouse scan.
+    parcels = (await db_session.execute(
+        select(Parcel).where(Parcel.consignment_id == consignment_id)
+    )).scalars().all()
+    parcels[0].pp_scan_out_at = datetime.now(UTC)
+    await db_session.flush()
+
+    resp = await client.get(f"/api/v1/trips/{trip_id}", headers=_auth_headers(seed_data))
+
+    assert resp.status_code == 200
+    consignment = resp.json()["consignments"][0]
+    assert consignment["scanned_out_count"] == 1
+    assert consignment["scanned_in_count"] == 0
+
+
 async def test_create_trip_unknown_waybill_rolls_back_everything(client: AsyncClient, seed_data, db_session):
     """A PP waybill that doesn't resolve must roll back the whole trip — atomicity,
     not a partially-created trip with no manifest."""

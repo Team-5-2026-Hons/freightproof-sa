@@ -24,6 +24,7 @@ from app.db.models.transit import TripException
 from app.db.models.trips import Consignment, Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.orchestration.phase_gate import blocked_on_by_stop
+from app.orchestration.scan_service import scanned_counts_for_trip
 from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.phases import PhaseEventRead
 from app.schemas.organisations import PrecinctRead
@@ -242,6 +243,17 @@ async def get_trip_detail(
     )
     consignments = consignments_result.scalars().all()
 
+    # One batched query for the whole trip's live scan progress — see its docstring
+    # for why this must not become a per-consignment loop on a dispatcher poll path.
+    scan_counts = await scanned_counts_for_trip(db, trip_id=trip_id)
+    consignment_reads = [
+        ConsignmentRead.model_validate(c).model_copy(update={
+            "scanned_out_count": scan_counts[c.id].scanned_out if c.id in scan_counts else 0,
+            "scanned_in_count": scan_counts[c.id].scanned_in if c.id in scan_counts else 0,
+        })
+        for c in consignments
+    ]
+
     return TripDetailResponse(
         id=trip.id,
         trip_reference=trip.trip_reference,
@@ -256,7 +268,7 @@ async def get_trip_detail(
         origin_precinct_id=trip.origin_precinct_id,
         destination_precinct_id=trip.destination_precinct_id,
         stops=[TripStopRead.model_validate(s) for s in stops],
-        consignments=[ConsignmentRead.model_validate(c) for c in consignments],
+        consignments=consignment_reads,
         pulsit_trip_reference_id=trip.pulsit_trip_reference_id,
         planned_departure_at=trip.planned_departure_at,
         actual_departure_at=trip.actual_departure_at,

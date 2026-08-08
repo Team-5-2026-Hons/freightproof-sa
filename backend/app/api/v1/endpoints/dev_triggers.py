@@ -16,6 +16,8 @@ button works; a button that drives the real path proves the product works.
 """
 
 import logging
+import uuid
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi import status as http_status
@@ -25,7 +27,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import get_current_dispatcher
 from app.core.config import settings
 from app.core.exceptions import ResourceNotFoundError
+from app.db.models.enums import PhaseType
 from app.db.models.organisations import Precinct
+from app.db.models.people import Driver
+from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Consignment, Parcel, Trip, TripStop
 from app.db.session import get_db
 from app.integrations.mock_state import get_mock_state_store
@@ -34,11 +39,12 @@ from app.integrations.parcel_perfect import (
 )
 from app.integrations.scan_feed import MockScanFeed, ScanDirection, get_scan_feed
 from app.orchestration import consignment_service, exception_service, scan_service
+from app.orchestration.phase_gate import GATED_PHASES
 from app.schemas.dev import (
     CloseScanSessionRequest, CloseScanSessionResponse, ConsignmentScanResultRead,
-    DevTripStop, DevTripSummary, ExceptionTriggerRequest, ExceptionTriggerResponse,
-    FlushMockStateResponse, PpTriggerRequest, PpTriggerResponse, ScanTriggerRequest,
-    ScanTriggerResponse,
+    DevConsignment, DevTripStop, DevTripSummary, ExceptionTriggerRequest,
+    ExceptionTriggerResponse, FlushMockStateResponse, PpTriggerRequest, PpTriggerResponse,
+    ScanTriggerRequest, ScanTriggerResponse,
 )
 from app.schemas.people import UserRead
 
@@ -72,18 +78,27 @@ async def list_dev_trips(
     db: AsyncSession = Depends(get_db),
     current_user: UserRead = Depends(get_current_dispatcher),
 ) -> list[DevTripSummary]:
-    """Trips with their stops and per-stop consignment references.
+    """Trips with their stops, per-stop waybills (with real barcodes), and the
+    warehouse-scan gate status at each stop.
 
     The panel runs on a second device with no trip context of its own, so it needs
-    to populate its own pickers.
+    to populate its own pickers. Outer-joined to Driver rather than a separate
+    lookup: Trip.driver_id is a required FK, but a degraded label beats a 500 if
+    the join ever misses.
     """
-    trips = list((await db.execute(
-        select(Trip)
+    trips_with_driver = list((await db.execute(
+        select(Trip, Driver.full_name)
+        .outerjoin(Driver, Driver.id == Trip.driver_id)
         .where(Trip.operator_organization_id == current_user.organization_id)
         .order_by(Trip.created_at.desc())
-    )).scalars().all())
-    if not trips:
+    )).all())
+    if not trips_with_driver:
         return []
+
+    trips = [row[0] for row in trips_with_driver]
+    driver_name_by_trip: dict[uuid.UUID, Optional[str]] = {
+        row[0].id: row[1] for row in trips_with_driver
+    }
 
     trip_ids = [t.id for t in trips]
     stops = list((await db.execute(
@@ -96,6 +111,89 @@ async def list_dev_trips(
         select(Consignment).where(Consignment.trip_id.in_(trip_ids))
     )).scalars().all())
 
+    # Real barcodes per consignment, sorted — same ordering _resolve_barcodes uses,
+    # so a partial scan's "first N" here matches what the panel would actually stage.
+    consignment_ids = [c.id for c in consignments]
+    parcels = list((await db.execute(
+        select(Parcel.consignment_id, Parcel.barcode)
+        .where(Parcel.consignment_id.in_(consignment_ids))
+        .order_by(Parcel.consignment_id, Parcel.barcode)
+    )).all()) if consignment_ids else []
+    barcodes_by_consignment: dict[uuid.UUID, list[str]] = {}
+    for consignment_id, barcode in parcels:
+        barcodes_by_consignment.setdefault(consignment_id, []).append(barcode)
+
+    # The two phase types the scan gate actually reads (imported, not re-declared,
+    # so this can never drift from the real gate in phase_gate.py), plus UNLOADING
+    # and DEPARTURE — needed below to derive preceding_departure_status. Extending
+    # this one query rather than adding a second round trip keeps this endpoint's
+    # batched-query discipline (it already runs once per dispatcher panel load).
+    gated_phase_types = list(GATED_PHASES.keys())
+    phase_event_types = [*gated_phase_types, PhaseType.UNLOADING, PhaseType.DEPARTURE]
+    phase_events = list((await db.execute(
+        select(
+            PhaseEvent.trip_id, PhaseEvent.trip_stop_id,
+            PhaseEvent.phase_type, PhaseEvent.status, PhaseEvent.sequence_number,
+        )
+        .where(
+            PhaseEvent.trip_id.in_(trip_ids),
+            PhaseEvent.phase_type.in_(phase_event_types),
+        )
+    )).all())
+    # trip_stop_id is unique per row (only trip_creation has NULL, and it's excluded
+    # by the phase_type filter above), so trip_stop_id alone is enough of a key.
+    phase_status_by_stop: dict[tuple[uuid.UUID, PhaseType], str] = {
+        (trip_stop_id, phase_type): str(status)
+        for _, trip_stop_id, phase_type, status, _ in phase_events
+        if trip_stop_id is not None
+    }
+
+    # DEPARTURE events per trip, for resolving preceding_departure_status without a
+    # second query. Mirrors phase_service._find_departure_for_leg's rule: the
+    # highest-sequence_number DEPARTURE strictly before the stop's own closing event.
+    departures_by_trip: dict[uuid.UUID, list[tuple[int, str]]] = {}
+    for trip_id_col, _, phase_type, status, sequence_number in phase_events:
+        # phase_type is a plain string here (PhaseEvent.phase_type is a String(30)
+        # column, not a SQLAlchemy Enum), so this must be `==`, not `is` — the
+        # value equals PhaseType.DEPARTURE's str-Enum value but is never the same
+        # object as it.
+        if phase_type == PhaseType.DEPARTURE:
+            departures_by_trip.setdefault(trip_id_col, []).append(
+                (sequence_number, str(status))
+            )
+
+    # This stop's own closing event (UNLOADING, or CONFIRMATION on the final stop —
+    # phase_plan.build_phase_plan emits both back-to-back on a final stop that also
+    # drops off, with no DEPARTURE between them, so either sequence number resolves
+    # to the same preceding departure). The lower of the two when both exist.
+    closing_sequence_by_stop: dict[tuple[uuid.UUID, uuid.UUID], int] = {}
+    for trip_id_col, trip_stop_id, phase_type, _, sequence_number in phase_events:
+        if trip_stop_id is None or phase_type not in (PhaseType.UNLOADING, PhaseType.CONFIRMATION):
+            continue
+        key = (trip_id_col, trip_stop_id)
+        if key not in closing_sequence_by_stop or sequence_number < closing_sequence_by_stop[key]:
+            closing_sequence_by_stop[key] = sequence_number
+
+    def _preceding_departure_status(trip_id_: uuid.UUID, trip_stop_id: uuid.UUID) -> Optional[str]:
+        closing_sequence = closing_sequence_by_stop.get((trip_id_, trip_stop_id))
+        if closing_sequence is None:
+            # No unloading/confirmation event at this stop at all — it is the origin.
+            return None
+        preceding = [
+            (sequence, status) for sequence, status in departures_by_trip.get(trip_id_, [])
+            if sequence < closing_sequence
+        ]
+        if not preceding:
+            return None
+        return max(preceding, key=lambda item: item[0])[1]
+
+    def _dev_consignment(c: Consignment) -> DevConsignment:
+        return DevConsignment(
+            consignment_id=c.id,
+            parcel_perfect_reference=c.parcel_perfect_reference,
+            barcodes=barcodes_by_consignment.get(c.id, []),
+        )
+
     summaries: list[DevTripSummary] = []
     for trip in trips:
         trip_stops: list[DevTripStop] = []
@@ -106,14 +204,17 @@ async def list_dev_trips(
                 trip_stop_id=stop.id,
                 sequence=stop.sequence,
                 precinct_name=precinct_name,
-                pickup_consignment_references=[
-                    c.parcel_perfect_reference for c in consignments
-                    if c.pickup_stop_id == stop.id
+                pickup_consignments=[
+                    _dev_consignment(c) for c in consignments if c.pickup_stop_id == stop.id
                 ],
-                delivery_consignment_references=[
-                    c.parcel_perfect_reference for c in consignments
-                    if c.delivery_stop_id == stop.id
+                delivery_consignments=[
+                    _dev_consignment(c) for c in consignments if c.delivery_stop_id == stop.id
                 ],
+                loading_phase_status=phase_status_by_stop.get((stop.id, PhaseType.LOADING)),
+                confirmation_phase_status=phase_status_by_stop.get(
+                    (stop.id, PhaseType.CONFIRMATION)
+                ),
+                preceding_departure_status=_preceding_departure_status(trip.id, stop.id),
             ))
         summaries.append(DevTripSummary(
             trip_id=trip.id,
@@ -121,6 +222,8 @@ async def list_dev_trips(
             status=str(trip.status),
             current_phase=trip.current_phase,
             stops=trip_stops,
+            driver_full_name=driver_name_by_trip.get(trip.id),
+            created_at=trip.created_at,
         ))
     return summaries
 
@@ -197,11 +300,14 @@ async def trigger_scan(
 async def _resolve_barcodes(
     db: AsyncSession, *, consignment: Consignment, body: ScanTriggerRequest,
 ) -> list[str]:
-    """Work out which barcodes the simulated warehouse reports.
+    """Work out which barcodes the simulated warehouse reports for one consignment.
 
-    An explicit list wins (that is how an unexpected barcode is injected).
-    Otherwise the first `parcel_count` expected barcodes are scanned, which is the
-    partial-scan path; omitting both scans everything.
+    Precedence: `barcodes_by_reference` (per-waybill selection — a waybill absent
+    from the map stages nothing for it, deliberately not falling through to a full
+    scan) beats `barcodes` (one literal list for every consignment at the stop,
+    which is how an unexpected barcode is injected) beats `parcel_count` (the
+    first N expected barcodes, the partial-scan path); omitting all three scans
+    everything.
     """
     expected = [row[0] for row in (await db.execute(
         select(Parcel.barcode)
@@ -209,6 +315,8 @@ async def _resolve_barcodes(
         .order_by(Parcel.barcode)
     )).all()]
 
+    if body.barcodes_by_reference is not None:
+        return body.barcodes_by_reference.get(consignment.parcel_perfect_reference, [])
     if body.barcodes is not None:
         return body.barcodes
     if body.parcel_count is not None:

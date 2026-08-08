@@ -38,7 +38,11 @@ BLOCKED_ON_SCAN = "warehouse_scan"
 
 # Which phase reads which direction. Any phase absent from this map is never
 # blocked — that is the whole rule, stated once.
-_GATED_PHASES: dict[PhaseType, ScanDirection] = {
+#
+# Public (not `_`-prefixed): the dev trigger panel's read path (dev_triggers.py)
+# imports this directly so it can report which phase gates which stop's scan
+# without re-declaring the mapping and risking drift from the real gate.
+GATED_PHASES: dict[PhaseType, ScanDirection] = {
     PhaseType.LOADING: ScanDirection.OUT,
     PhaseType.CONFIRMATION: ScanDirection.IN,
 }
@@ -72,7 +76,7 @@ async def blocked_on_by_stop(
     targets: list[tuple[PhaseType, uuid.UUID]] = []
     queries: list[ScanSessionQuery] = []
 
-    for phase_type, direction in _GATED_PHASES.items():
+    for phase_type, direction in GATED_PHASES.items():
         for reference, pickup_stop_id, delivery_stop_id in consignments:
             stop_id = pickup_stop_id if direction is ScanDirection.OUT else delivery_stop_id
             if stop_id is None:

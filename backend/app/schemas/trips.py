@@ -89,6 +89,11 @@ class ConsignmentRead(ConsignmentBase):
     id: UUID
     created_at: datetime
     updated_at: datetime
+    # Live scan progress from Parcel rows, recomputed per request. Distinct from the
+    # phase rows' parcel_count_origin / parcel_count_destination, which are stamped
+    # once at phase close and never revised — those are the evidence, this is progress.
+    scanned_out_count: int = 0
+    scanned_in_count: int = 0
 
 
 class ParcelBase(BaseModel):

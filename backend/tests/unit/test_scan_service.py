@@ -11,7 +11,7 @@ import pytest
 
 from app.db.models.enums import ExceptionSource, ExceptionType, ParcelStatus
 from app.db.models.transit import TripException
-from app.db.models.trips import Parcel
+from app.db.models.trips import Consignment, Parcel
 from app.integrations import scan_feed as scan_feed_module
 from app.integrations.scan_feed import MockScanFeed, ScanDirection
 from app.orchestration import scan_service
@@ -277,3 +277,67 @@ async def test_scanned_counts_reflect_stamped_parcels(db_session, store, seeded)
 
     assert counts.scanned_out == 2
     assert counts.scanned_in == 0
+
+
+async def test_scanned_counts_for_trip_zero_for_a_consignment_with_no_parcels(
+    db_session, store, seeded,
+):
+    """The naive-query failure this exists to guard: an INNER JOIN from Parcel
+    would drop a parcel-less consignment entirely instead of reporting zeros."""
+    empty_consignment = Consignment(
+        id=uuid.uuid4(), trip_id=seeded["trip"].id, parcel_perfect_reference="WAY-EMPTY",
+        parcel_count_expected=0, pickup_stop_id=seeded["stop"].id,
+        delivery_stop_id=seeded["stop"].id,
+    )
+    db_session.add(empty_consignment)
+    await db_session.flush()
+
+    counts = await scan_service.scanned_counts_for_trip(db_session, trip_id=seeded["trip"].id)
+
+    assert empty_consignment.id in counts
+    assert counts[empty_consignment.id].expected == 0
+    assert counts[empty_consignment.id].scanned_out == 0
+    assert counts[empty_consignment.id].scanned_in == 0
+
+
+async def test_scanned_counts_for_trip_splits_correctly_across_two_consignments(
+    db_session, store, seeded,
+):
+    """A trip with two consignments must not blend one's scan tally into the
+    other's — the case a query grouped by the wrong key gets wrong."""
+    second = Consignment(
+        id=uuid.uuid4(), trip_id=seeded["trip"].id, parcel_perfect_reference="WAY002",
+        parcel_count_expected=2, pickup_stop_id=seeded["stop"].id,
+        delivery_stop_id=seeded["stop"].id,
+    )
+    db_session.add(second)
+    await db_session.flush()
+
+    second_barcodes = ["WAY0020001", "WAY0020002"]
+    for barcode in second_barcodes:
+        db_session.add(Parcel(
+            id=uuid.uuid4(), consignment_id=second.id, barcode=barcode,
+            status=ParcelStatus.PENDING,
+        ))
+    await db_session.flush()
+
+    feed = MockScanFeed()
+    await feed.stage_scans(
+        consignment_reference="WAY001", stop_reference=str(seeded["stop"].id),
+        direction=ScanDirection.OUT, barcodes=seeded["barcodes"][:2],
+    )
+    await feed.stage_scans(
+        consignment_reference="WAY002", stop_reference=str(seeded["stop"].id),
+        direction=ScanDirection.OUT, barcodes=second_barcodes[:1],
+    )
+    await scan_service.ingest_scans(
+        db_session, trip_id=seeded["trip"].id, trip_stop_id=seeded["stop"].id,
+        direction=ScanDirection.OUT,
+    )
+
+    counts = await scan_service.scanned_counts_for_trip(db_session, trip_id=seeded["trip"].id)
+
+    assert counts[seeded["consignment"].id].expected == 3
+    assert counts[seeded["consignment"].id].scanned_out == 2
+    assert counts[second.id].expected == 2
+    assert counts[second.id].scanned_out == 1

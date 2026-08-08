@@ -17,16 +17,19 @@ from sqlalchemy import select
 import app.main as app_main
 from app.core.config import settings
 from app.db.models.enums import (
-    ExceptionType, IdvsStatus, OrganizationType, ParcelStatus, TripStatus, VehicleType,
+    ExceptionType, IdvsStatus, OrganizationType, ParcelStatus, PhaseStatus, PhaseType,
+    TripStatus, VehicleType,
 )
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
+from app.db.models.phases import PhaseEvent
 from app.db.models.transit import TripException
 from app.db.models.trips import Consignment, Parcel, Trip, TripStop
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
 from app.integrations import parcel_perfect as pp_module
 from app.integrations import scan_feed as scan_feed_module
+from app.schemas.dev import CLOSED_PHASE_STATUSES, MAX_STAGED_BARCODES
 
 from tests.conftest import FakeMockStateStore, auth_header, make_jwks, make_token
 
@@ -139,6 +142,32 @@ def _token(seeded) -> str:
     # up by JWT subject, so an unbound sub 401s as "User account not found" on
     # every authenticated call rather than actually testing the route.
     return make_token(sub=str(seeded["user"].id), role="dispatcher", org_id=str(seeded["org"].id))
+
+
+@pytest_asyncio.fixture
+async def second_waybill(db_session, seeded):
+    """A second consignment (WAY002) picked up at `seeded`'s stop.
+
+    Gives the barcodes_by_reference tests more than one waybill to choose
+    between — the whole point of that field is per-waybill selection.
+    """
+    consignment = Consignment(
+        id=uuid.uuid4(), trip_id=seeded["trip"].id, parcel_perfect_reference="WAY002",
+        parcel_count_expected=2, pickup_stop_id=seeded["stop"].id,
+        delivery_stop_id=seeded["stop"].id,
+    )
+    db_session.add(consignment)
+    await db_session.flush()
+
+    barcodes = ["WAY0020001", "WAY0020002"]
+    for barcode in barcodes:
+        db_session.add(Parcel(
+            id=uuid.uuid4(), consignment_id=consignment.id,
+            barcode=barcode, status=ParcelStatus.PENDING,
+        ))
+    await db_session.flush()
+
+    return {"consignment": consignment, "barcodes": barcodes}
 
 
 # ── Router registration ───────────────────────────────────────────────────────
@@ -443,6 +472,211 @@ async def test_exception_trigger_rejects_an_empty_description(dev_client, seeded
             "trip_id": str(seeded["trip"].id),
             "exception_type": "cargo_damage",
             "description": "",
+        },
+        headers=auth_header(_token(seeded)),
+    )
+
+    assert res.status_code == 422
+
+
+# ── GET /dev/trips ────────────────────────────────────────────────────────────
+
+
+async def test_list_trips_returns_real_barcodes_sorted_under_pickup_and_delivery(
+    dev_client, seeded, store,
+):
+    res = await dev_client.get(
+        "/api/v1/dev/trips", headers=auth_header(_token(seeded)),
+    )
+
+    assert res.status_code == 200
+    trip_body = next(t for t in res.json() if t["trip_id"] == str(seeded["trip"].id))
+    stop_body = next(
+        s for s in trip_body["stops"] if s["trip_stop_id"] == str(seeded["stop"].id)
+    )
+    expected = sorted(seeded["barcodes"])
+
+    for consignments in (stop_body["pickup_consignments"], stop_body["delivery_consignments"]):
+        assert len(consignments) == 1
+        assert consignments[0]["consignment_id"] == str(seeded["consignment"].id)
+        assert consignments[0]["parcel_perfect_reference"] == "WAY001"
+        assert consignments[0]["barcodes"] == expected
+
+
+async def test_list_trips_reports_driver_full_name_and_created_at(dev_client, seeded, store):
+    res = await dev_client.get(
+        "/api/v1/dev/trips", headers=auth_header(_token(seeded)),
+    )
+
+    assert res.status_code == 200
+    trip_body = next(t for t in res.json() if t["trip_id"] == str(seeded["trip"].id))
+    assert trip_body["driver_full_name"] == "Driver"
+    assert trip_body["created_at"] is not None
+
+
+async def test_list_trips_loading_phase_status_reflects_the_event(
+    dev_client, db_session, seeded, store,
+):
+    """LOADING is seeded at the stop and reported verbatim; CONFIRMATION has no
+    phase event row at all, so it reports None rather than a fabricated status."""
+    db_session.add(PhaseEvent(
+        id=uuid.uuid4(), trip_id=seeded["trip"].id, trip_stop_id=seeded["stop"].id,
+        phase_type=PhaseType.LOADING, sequence_number=2, status=PhaseStatus.COMPLETED,
+    ))
+    await db_session.flush()
+
+    res = await dev_client.get(
+        "/api/v1/dev/trips", headers=auth_header(_token(seeded)),
+    )
+
+    assert res.status_code == 200
+    trip_body = next(t for t in res.json() if t["trip_id"] == str(seeded["trip"].id))
+    stop_body = next(
+        s for s in trip_body["stops"] if s["trip_stop_id"] == str(seeded["stop"].id)
+    )
+    assert stop_body["loading_phase_status"] == PhaseStatus.COMPLETED.value
+    assert stop_body["loading_phase_status"] in CLOSED_PHASE_STATUSES
+    assert stop_body["confirmation_phase_status"] is None
+
+
+async def test_list_trips_preceding_departure_status_is_none_with_no_closing_event(
+    dev_client, seeded, store,
+):
+    """The seeded stop carries no UNLOADING/CONFIRMATION phase event at all — this
+    is what an origin stop looks like, and there is no leg to gate a scan against."""
+    res = await dev_client.get(
+        "/api/v1/dev/trips", headers=auth_header(_token(seeded)),
+    )
+
+    assert res.status_code == 200
+    trip_body = next(t for t in res.json() if t["trip_id"] == str(seeded["trip"].id))
+    stop_body = next(
+        s for s in trip_body["stops"] if s["trip_stop_id"] == str(seeded["stop"].id)
+    )
+    assert stop_body["preceding_departure_status"] is None
+
+
+async def test_list_trips_preceding_departure_status_reflects_the_preceding_departure(
+    dev_client, db_session, seeded, store,
+):
+    """A destination stop's preceding_departure_status is the status of the
+    DEPARTURE that opened its leg — mirrors phase_service._find_departure_for_leg
+    (the highest sequence_number DEPARTURE strictly before the stop's own closing
+    event), never a hardcoded or otherwise-derived departure. The origin stop
+    itself still reports None: nothing closes there."""
+    destination = TripStop(
+        id=uuid.uuid4(), trip_id=seeded["trip"].id,
+        precinct_id=seeded["stop"].precinct_id, sequence=2,
+    )
+    db_session.add(destination)
+    await db_session.flush()
+
+    db_session.add(PhaseEvent(
+        id=uuid.uuid4(), trip_id=seeded["trip"].id, trip_stop_id=seeded["stop"].id,
+        phase_type=PhaseType.DEPARTURE, sequence_number=3, status=PhaseStatus.COMPLETED,
+    ))
+    db_session.add(PhaseEvent(
+        id=uuid.uuid4(), trip_id=seeded["trip"].id, trip_stop_id=destination.id,
+        phase_type=PhaseType.CONFIRMATION, sequence_number=6, status=PhaseStatus.PENDING,
+    ))
+    await db_session.flush()
+
+    res = await dev_client.get(
+        "/api/v1/dev/trips", headers=auth_header(_token(seeded)),
+    )
+
+    assert res.status_code == 200
+    trip_body = next(t for t in res.json() if t["trip_id"] == str(seeded["trip"].id))
+    origin_body = next(
+        s for s in trip_body["stops"] if s["trip_stop_id"] == str(seeded["stop"].id)
+    )
+    destination_body = next(
+        s for s in trip_body["stops"] if s["trip_stop_id"] == str(destination.id)
+    )
+    assert origin_body["preceding_departure_status"] is None
+    assert destination_body["preceding_departure_status"] == PhaseStatus.COMPLETED.value
+
+
+# ── Per-waybill scan selection (barcodes_by_reference) ──────────────────────────
+
+
+async def test_barcodes_by_reference_stages_exactly_the_listed_barcodes(
+    dev_client, db_session, seeded, second_waybill, store,
+):
+    res = await dev_client.post(
+        "/api/v1/dev/scans",
+        json={
+            "trip_id": str(seeded["trip"].id),
+            "trip_stop_id": str(seeded["stop"].id),
+            "direction": "out",
+            "barcodes_by_reference": {
+                "WAY001": seeded["barcodes"],
+                "WAY002": [second_waybill["barcodes"][0]],
+            },
+        },
+        headers=auth_header(_token(seeded)),
+    )
+
+    assert res.status_code == 200
+    by_ref = {c["parcel_perfect_reference"]: c for c in res.json()["consignments"]}
+    assert by_ref["WAY001"]["observed_count"] == 5
+    assert by_ref["WAY001"]["missing_barcodes"] == []
+    assert by_ref["WAY002"]["observed_count"] == 1
+    assert by_ref["WAY002"]["missing_barcodes"] == [second_waybill["barcodes"][1]]
+
+
+async def test_barcodes_by_reference_absent_waybill_reconciles_as_fully_missing(
+    dev_client, db_session, seeded, second_waybill, store,
+):
+    """WAY002 is absent from the map entirely — that must stage NOTHING for it,
+    not fall through to a full scan. The dangerous case this contract exists to
+    prevent."""
+    res = await dev_client.post(
+        "/api/v1/dev/scans",
+        json={
+            "trip_id": str(seeded["trip"].id),
+            "trip_stop_id": str(seeded["stop"].id),
+            "direction": "out",
+            "barcodes_by_reference": {"WAY001": seeded["barcodes"]},
+        },
+        headers=auth_header(_token(seeded)),
+    )
+
+    assert res.status_code == 200
+    way002 = next(
+        c for c in res.json()["consignments"] if c["parcel_perfect_reference"] == "WAY002"
+    )
+    assert way002["observed_count"] == 0
+    assert sorted(way002["missing_barcodes"]) == sorted(second_waybill["barcodes"])
+
+
+async def test_barcodes_by_reference_rejects_a_blank_barcode(dev_client, seeded, store):
+    res = await dev_client.post(
+        "/api/v1/dev/scans",
+        json={
+            "trip_id": str(seeded["trip"].id),
+            "trip_stop_id": str(seeded["stop"].id),
+            "direction": "out",
+            "barcodes_by_reference": {"WAY001": ["   "]},
+        },
+        headers=auth_header(_token(seeded)),
+    )
+
+    assert res.status_code == 422
+
+
+async def test_barcodes_by_reference_rejects_an_oversized_total(dev_client, seeded, store):
+    half = MAX_STAGED_BARCODES // 2 + 1
+    res = await dev_client.post(
+        "/api/v1/dev/scans",
+        json={
+            "trip_id": str(seeded["trip"].id),
+            "trip_stop_id": str(seeded["stop"].id),
+            "direction": "out",
+            "barcodes_by_reference": {
+                "WAY001": [f"X{n}" for n in range(half)],
+                "WAY002": [f"Y{n}" for n in range(half)],
+            },
         },
         headers=auth_header(_token(seeded)),
     )

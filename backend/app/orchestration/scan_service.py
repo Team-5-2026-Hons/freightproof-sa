@@ -138,6 +138,39 @@ async def scanned_counts_for_consignment(
     )
 
 
+async def scanned_counts_for_trip(
+    db: AsyncSession, *, trip_id: uuid.UUID,
+) -> dict[uuid.UUID, ScannedCounts]:
+    """Live scan tallies for every consignment on a trip, keyed by consignment_id.
+
+    One grouped query, not scanned_counts_for_consignment called in a loop:
+    get_trip_detail renders this on every dispatcher poll, so an N+1 here would be
+    N+1 on every poll of every open trip. Same func.count(column)-counts-non-NULL
+    trick as scanned_counts_for_consignment, joined to Consignment so the trip_id
+    filter can be applied without a subquery.
+
+    LEFT OUTER JOIN, not an inner join: a consignment with no Parcel rows yet
+    (PP sync degraded, or parcels not yet materialised) must still come back with
+    zeros so the caller can render it, not be silently absent from the map.
+    """
+    result = await db.execute(
+        select(
+            Consignment.id,
+            func.count(Parcel.id),
+            func.count(Parcel.pp_scan_out_at),
+            func.count(Parcel.pp_scan_in_at),
+        )
+        .select_from(Consignment)
+        .outerjoin(Parcel, Parcel.consignment_id == Consignment.id)
+        .where(Consignment.trip_id == trip_id)
+        .group_by(Consignment.id)
+    )
+    return {
+        consignment_id: ScannedCounts(expected=expected, scanned_out=scanned_out, scanned_in=scanned_in)
+        for consignment_id, expected, scanned_out, scanned_in in result.all()
+    }
+
+
 async def ingest_scans(
     db: AsyncSession, *, trip_id: uuid.UUID, trip_stop_id: uuid.UUID, direction: ScanDirection,
 ) -> ScanIngestResult:

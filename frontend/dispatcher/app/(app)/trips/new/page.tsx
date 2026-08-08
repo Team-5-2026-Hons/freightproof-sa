@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { TopBar }        from '@/components/ui/TopBar'
 import { Ic }            from '@/components/ui/Ic'
@@ -221,8 +221,21 @@ export default function TripNewPage() {
 
   const { drivers } = useDrivers()
   const { horses, trailers } = useVehicles()
-  const { precincts } = usePrecincts()
+  const { precincts, error: precinctsError } = usePrecincts()
   const caps = usePpCapabilities()
+
+  // The sharpest case of the silent failure: origin and destination are REQUIRED to
+  // create a trip, and both pickers source their options from this list. A failure
+  // left the dispatcher staring at two empty dropdowns with nothing explaining why.
+  useEffect(() => {
+    if (precinctsError) {
+      notify({
+        kind: 'error',
+        title: 'Failed to load precincts',
+        body: `${precinctsError} Origin and destination cannot be selected until this loads.`,
+      })
+    }
+  }, [precinctsError, notify])
 
   const [step, setStep]               = useState(1)  // 1–4
   const [loading, setLoading]         = useState(false)

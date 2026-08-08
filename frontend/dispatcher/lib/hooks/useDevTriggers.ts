@@ -4,6 +4,8 @@ import { useCallback, useState } from 'react'
 
 import { api, ApiError } from '@/lib/api/client'
 import type {
+  CloseScanSessionRequest,
+  CloseScanSessionResponse,
   DevTripSummary,
   ExceptionTriggerRequest,
   ExceptionTriggerResponse,
@@ -21,8 +23,9 @@ export interface UseDevTriggersResult {
   isLoading: boolean
   error: string | null
   lastResult: string | null
-  loadTrips: () => Promise<void>
+  loadTrips: (options?: { readonly silent?: boolean }) => Promise<void>
   triggerScan: (body: ScanTriggerRequest) => Promise<ScanTriggerResponse | null>
+  closeScanSession: (body: CloseScanSessionRequest) => Promise<CloseScanSessionResponse | null>
   triggerPpChange: (body: PpTriggerRequest) => Promise<PpTriggerResponse | null>
   triggerException: (body: ExceptionTriggerRequest) => Promise<ExceptionTriggerResponse | null>
   flushMockState: () => Promise<FlushMockStateResponse | null>
@@ -48,15 +51,19 @@ export function useDevTriggers(): UseDevTriggersResult {
     return err instanceof Error ? err.message : String(err)
   }
 
+  // `describe` returning null means "this call has nothing to say" — used by the
+  // silent refresh below, which must not overwrite the message from the action
+  // that triggered it.
   const run = useCallback(async <T,>(
     action: () => Promise<T>,
-    describe: (result: T) => string,
+    describe: (result: T) => string | null,
   ): Promise<T | null> => {
     setIsLoading(true)
     setError(null)
     try {
       const result = await action()
-      setLastResult(describe(result))
+      const message = describe(result)
+      if (message !== null) setLastResult(message)
       return result
     } catch (err: unknown) {
       setError(describeError(err))
@@ -66,12 +73,15 @@ export function useDevTriggers(): UseDevTriggersResult {
     }
   }, [])
 
-  const loadTrips = useCallback(async (): Promise<void> => {
+  const loadTrips = useCallback(async (options?: { readonly silent?: boolean }): Promise<void> => {
     await run(
       () => api.get<DevTripSummary[]>(`${DEV_BASE}/trips`),
       (result) => {
         setTrips(result)
-        return `Loaded ${result.length} trip(s).`
+        // A silent refresh follows a scan or close-session, whose own summary
+        // (missing/unexpected counts) is what the operator needs to read.
+        // "Loaded N trip(s)" would bury it. Errors still surface either way.
+        return options?.silent === true ? null : `Loaded ${result.length} trip(s).`
       },
     )
   }, [run])
@@ -85,6 +95,21 @@ export function useDevTriggers(): UseDevTriggersResult {
           const unexpected = result.consignments.reduce((n, c) => n + c.unexpected_barcodes.length, 0)
           const scanned = result.consignments.reduce((n, c) => n + c.observed_count, 0)
           return `Scanned ${scanned}. Missing ${missing}. Unexpected ${unexpected}.`
+        },
+      ),
+    [run],
+  )
+
+  const closeScanSession = useCallback(
+    (body: CloseScanSessionRequest) =>
+      run(
+        () => api.post<CloseScanSessionResponse>(`${DEV_BASE}/scans/close-session`, body),
+        (result) => {
+          const directionLabel = result.direction === 'out' ? 'loading' : 'unloading'
+          return (
+            `Closed ${result.sessions_closed} scan session(s) for ${directionLabel}. ` +
+            `The driver's phase is now unblocked.`
+          )
         },
       ),
     [run],
@@ -121,6 +146,6 @@ export function useDevTriggers(): UseDevTriggersResult {
 
   return {
     trips, isLoading, error, lastResult,
-    loadTrips, triggerScan, triggerPpChange, triggerException, flushMockState,
+    loadTrips, triggerScan, closeScanSession, triggerPpChange, triggerException, flushMockState,
   }
 }

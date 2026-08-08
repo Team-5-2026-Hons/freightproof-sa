@@ -88,6 +88,11 @@ export interface ConsignmentRead {
   // Consolidated-unit (pallet) grain — dispatcher-entered, distinct from parcel grain.
   unit_count_expected: number | null
   pp_manifest_number: number | null
+  // Live scan progress from Parcel rows, recomputed per request — NOT the stamped
+  // parcel_count_origin / parcel_count_destination on the phase rows, which are
+  // written once at phase close and are the evidence. See LoadingDetail/UnloadingDetail.
+  scanned_out_count: number
+  scanned_in_count: number
   created_at: string
   updated_at: string
 }

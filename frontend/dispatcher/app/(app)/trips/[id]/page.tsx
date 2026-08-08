@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { TopBar }     from '@/components/ui/TopBar'
 import { Chip }       from '@/components/ui/Chip'
@@ -13,6 +13,7 @@ import { ROUTES }     from '@/lib/constants/routes'
 import { useTripDetail }  from '@/lib/hooks/useTripDetail'
 import { usePrecincts }   from '@/lib/hooks/usePrecincts'
 import { useTripArtifacts } from '@/lib/hooks/useTripArtifacts'
+import { useToast }       from '@/lib/hooks/useToast'
 import {
   useResizablePanel,
   DETAIL_PANEL_MIN_W,
@@ -335,8 +336,24 @@ export default function TripDetailPage() {
 
   const tripId = routeParams.id as string
   const { trip, isLoading, error, refetchSilent } = useTripDetail(tripId)
-  const { precincts } = usePrecincts()
+  const { precincts, error: precinctsError } = usePrecincts()
   const { byId: artifactsById } = useTripArtifacts(tripId)
+  const { notify } = useToast()
+
+  // Every precinct on this page — the header route, the Origin/Destination rows, each
+  // phase card's stop label and the Route panel — is resolved by id against `precincts`
+  // and falls back to an em-dash on a miss. That made a transient fetch failure read as
+  // a trip with no origin, with nothing on screen to say otherwise. Error toasts are
+  // sticky, so this stays visible until dismissed.
+  useEffect(() => {
+    if (precinctsError) {
+      notify({
+        kind: 'error',
+        title: 'Failed to load precincts',
+        body: `${precinctsError} Origin, destination and stop names are missing, not absent.`,
+      })
+    }
+  }, [precinctsError, notify])
   const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null)
 
   // Trip-scoped, not phase-scoped (the manifest endpoint returns the same parcels
@@ -501,17 +518,38 @@ export default function TripDetailPage() {
     return atStop.reduce((n, c) => n + (c.parcel_count_expected ?? 0), 0)
   }
 
-  // The scanned-in figure is stamped on the CONFIRMATION row (parcel_count_destination),
-  // not this unloading row — advance_confirmation writes it after unloading has already
-  // closed (a closed row is never written again). Only the trip's terminal stop carries
-  // both an unloading AND a confirmation row at the same stop_sequence (phase_plan.py's
-  // build_phase_plan); an intermediate cross-dock unloading has no matching confirmation
-  // row and correctly reports null rather than a guessed figure from a stop where the
-  // scan never actually landed.
-  function destinationCountForUnloadingStop(stopSequence: number | null): number | null {
-    if (stopSequence === null) return null
-    return plan.find(p => p.phase_type === 'confirmation' && p.stop_sequence === stopSequence)
-      ?.parcel_count_destination ?? null
+  // Live scan progress at a delivery stop — summed straight off the consignments
+  // booked to arrive there (Consignment.delivery_stop_id), the same live-count
+  // treatment expectedCountForLoadingStop gives the pickup side. This is NOT the
+  // stamped parcel_count_destination on the CONFIRMATION row — that figure is
+  // written once, after unloading has already closed, so a closed unloading row
+  // never carries it. Null when nothing on the manifest is booked to arrive here —
+  // distinct from a real 0 scanned so far.
+  function scannedInCountForUnloadingStop(tripStopId: string | null): number | null {
+    if (tripStopId === null) return null
+    const atStop = consignments.filter(c => c.delivery_stop_id === tripStopId)
+    if (atStop.length === 0) return null
+    return atStop.reduce((n, c) => n + c.scanned_in_count, 0)
+  }
+
+  // Manifest baseline for an unloading stop — summed from the same delivery-side
+  // consignments as scannedInCountForUnloadingStop, so the two are always comparable.
+  function expectedCountForUnloadingStop(tripStopId: string | null): number | null {
+    if (tripStopId === null) return null
+    const atStop = consignments.filter(c => c.delivery_stop_id === tripStopId)
+    if (atStop.length === 0) return null
+    return atStop.reduce((n, c) => n + (c.parcel_count_expected ?? 0), 0)
+  }
+
+  // Live scan progress at a pickup stop — the counterpart to expectedCountForLoadingStop
+  // above, but reading the recomputed-per-request scanned_out_count rather than the
+  // manifest baseline. Shown by LoadingDetail only while the phase is still open; once
+  // it resolves, phase.parcel_count_origin (the stamped tally) takes over.
+  function scannedOutCountForLoadingStop(tripStopId: string | null): number | null {
+    if (tripStopId === null) return null
+    const atStop = consignments.filter(c => c.pickup_stop_id === tripStopId)
+    if (atStop.length === 0) return null
+    return atStop.reduce((n, c) => n + c.scanned_out_count, 0)
   }
 
   // Role (origin/destination) is derived, not stored (FP-112) — "Stop 0" told the
@@ -685,6 +723,7 @@ export default function TripDetailPage() {
                           <LoadingDetail
                             phase={phase}
                             expectedCount={expectedCountForLoadingStop(phase.trip_stop_id)}
+                            liveScannedOutCount={scannedOutCountForLoadingStop(phase.trip_stop_id)}
                           />
                           <PhaseOverrideAction phase={phase} tripId={trip.id} tripStatus={trip.status} onOverridden={refetchSilent} />
                         </>
@@ -703,7 +742,8 @@ export default function TripDetailPage() {
                             phase={phase}
                             allPhases={plan}
                             artifactsById={artifactsById}
-                            destinationScannedCount={destinationCountForUnloadingStop(phase.stop_sequence)}
+                            scannedInCount={scannedInCountForUnloadingStop(phase.trip_stop_id)}
+                            expectedAtStopCount={expectedCountForUnloadingStop(phase.trip_stop_id)}
                           />
                           <PhaseOverrideAction phase={phase} tripId={trip.id} tripStatus={trip.status} onOverridden={refetchSilent} />
                         </>

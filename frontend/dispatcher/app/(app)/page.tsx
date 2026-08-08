@@ -98,7 +98,7 @@ export default function ActiveTripsPage() {
 
   // Single fetch for all trips — active and closed are derived client-side
   const { trips: allFetchedTrips, isLoading: tripsLoading, error: tripsError, refetch: refetchTrips } = useTrips()
-  const { precincts } = usePrecincts()
+  const { precincts, error: precinctsError } = usePrecincts()
   const openExceptions = useExceptions({ resolved: false })
 
   useEffect(() => {
@@ -106,6 +106,18 @@ export default function ActiveTripsPage() {
       notify({ kind: 'error', title: 'Failed to load trips', body: tripsError })
     }
   }, [tripsError, notify])
+
+  // Without this the failure is invisible: rows fall back to an em-dash, which is
+  // indistinguishable from a trip that has no origin.
+  useEffect(() => {
+    if (precinctsError) {
+      notify({
+        kind: 'error',
+        title: 'Failed to load precincts',
+        body: `${precinctsError} Origin and destination names may be missing.`,
+      })
+    }
+  }, [precinctsError, notify])
 
   const allTrips = useMemo(
     () => allFetchedTrips.filter(t => ACTIVE_STATUSES.includes(t.status)),
