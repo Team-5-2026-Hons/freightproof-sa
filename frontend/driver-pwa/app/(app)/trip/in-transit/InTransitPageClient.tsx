@@ -8,10 +8,10 @@
 // submit. What a driver needs while moving is a map, a panic button they never have to
 // look for, and a short list of things they might have to log. That is the whole screen.
 //
-// Reachability: this used to be unreachable on a real trip, because both entry points
-// tested `currentPhase().phase_type === 'in_transit'` — a state the driver can never
-// observe. They now test `isDriving()` (lib/phase/derive.ts), which reads the driving leg
-// off the SHAPE of the plan instead of off a status.
+// The backend keeps in_transit PENDING during the drive (closed when arrival starts),
+// so this page is now reachable. Navigation tests `isDriving()` (lib/phase/derive.ts),
+// which detects this case by checking if currentPhase is in_transit OR if it's
+// unloading after a resolved in_transit leg.
 //
 // Layout invariant: PANIC IS NEVER BEHIND A SCROLL. The action stack at the bottom is
 // `shrink-0` inside an `overflow-hidden` viewport-height column, and the only part of it
@@ -54,14 +54,11 @@ interface DriverFix {
   capturedAt: string
 }
 
-// The route for wherever the ledger says the driver is right now. Duplicated (not
-// imported) from the identical helper in
-// app/(app)/trip/phase/[type]/step/[slug]/PhaseStepPageClient.tsx — this is route
-// composition over lib/phase's exports, kept local to each caller the same way that file
-// keeps its own. When this screen is showing, the current phase is the ARRIVAL phase
-// (`unloading`) rather than `in_transit`: the backend closed the in-transit row before the
-// driver ever got here, which is exactly why `isDriving` has to derive the leg. So the
-// generic walk below already lands on unloading's first step for free — no special case.
+// The route for wherever the ledger says the driver is right now. When this screen
+// shows, currentPhase could be in_transit (driver just departed) or unloading (arrived).
+// Either way, we walk to the first unresolved step, which for in_transit is none (no
+// steps) and for unloading is its first step. Duplicated (not imported) to keep route
+// composition local to each caller, same as PhaseStepPageClient.tsx does.
 function currentStepRoute(phases: readonly PhaseDescriptor[]): string {
   const phase = currentPhase(phases)
   if (phase === null) return ROUTES.trips // nothing left unresolved — trip finished

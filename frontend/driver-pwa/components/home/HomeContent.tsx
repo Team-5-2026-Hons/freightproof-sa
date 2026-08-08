@@ -51,13 +51,9 @@ export function HomeContent() {
 
   const { kind, label } = tripStatusChip(trip.status)
   const current = currentPhase(trip.phases)
-  // Replaces a `current?.phase_type === 'in_transit'` check that could never fire. That
-  // check was reaching for the right idea — the driving leg is a phase in the plan, not a
-  // trip.status value (the coarse five have no 'in_transit' member) — but `in_transit` is
-  // closed server-side the instant `departure` advances, so by the time this screen
-  // renders currentPhase() has already moved on to the arrival phase and the driving
-  // screen was unreachable. isDriving() derives the same leg from the plan's shape, per
-  // leg, on single-stop and cross-dock plans alike. See lib/phase/derive.ts.
+  // isDriving derives the leg from the plan's shape — it returns true when the driver
+  // is actively on the road (in_transit is current) or has just arrived (unloading after
+  // in_transit is current). Works correctly on single-stop and cross-dock plans alike.
   const driving = isDriving(trip.phases)
 
   return (

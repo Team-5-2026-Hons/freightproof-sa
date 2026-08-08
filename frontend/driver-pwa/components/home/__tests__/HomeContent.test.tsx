@@ -94,12 +94,15 @@ describe('HomeContent driving entry', () => {
     expect(screen.getByRole('button', { name: /loading/i })).toBeInTheDocument()
   })
 
-  it('does not offer the driving entry while in_transit is still unresolved', () => {
+  it('offers the driving entry while in_transit is the unresolved current phase', () => {
+    // With the backend keeping in_transit pending during the drive, isDriving returns
+    // true while the driver is actively en route. This is exactly when the driving button
+    // should appear to take them to the map and checkpoint/exception screens.
     mockUseTrip.mockReturnValue({ trip: makeTrip(walk(SINGLE_LEG_PHASE_PLAN, 3)), isLoading: false })
 
     render(<HomeContent />)
 
-    expect(screen.queryByRole('button', { name: /continue driving/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /continue driving/i })).toBeInTheDocument()
   })
 
   it('offers the driving entry on the SECOND leg of a cross-dock plan', () => {

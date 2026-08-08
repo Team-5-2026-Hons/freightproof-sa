@@ -80,36 +80,33 @@ export function isAnchored(phase: PhaseDescriptor): boolean {
  * Whether the driver is on the road right now — between the stop they departed and
  * the stop they are arriving at.
  *
- * This cannot be read off a status, and that is the whole reason this function exists.
- * `in_transit` never surfaces as the CURRENT phase: it carries no driver steps
- * (`STEP_SLUGS.in_transit` is empty) and the backend's `_auto_complete_in_transit`
- * (orchestration/phase_service.py) closes it the moment `departure` advances. By the
- * time the driver looks at their phone, `currentPhase()` already returns the arrival
- * phase. So the driving leg is derived from the SHAPE of the plan instead: the trip is
- * driving when the row immediately behind the current one is a resolved `in_transit`.
+ * The backend keeps `in_transit` PENDING during the drive (closed when arrival phase
+ * starts), so `in_transit` can surface as the current phase. The trip is driving if:
+ * (1) current phase IS in_transit (driver just departed, before arrival), OR
+ * (2) current phase IS unloading AND the preceding phase is resolved in_transit
+ *     (driver has arrived, previous leg was driven).
  *
  * Keyed on `sequence_number`, never on `phase_type` alone — a cross-dock plan carries
- * one `in_transit` per leg, and only the one directly behind the current row describes
- * the leg being driven now. LENGTH IS DATA (see the module header): nothing below
- * indexes a fixed position or assumes a plan length.
- *
- * Deliberately narrow: only an `unloading` arrival counts. A mid-route stop that only
- * collects cargo emits `in_transit` -> `loading`, which is left to the ordinary phase
- * card — widening this is a design decision, not a bug fix.
+ * one `in_transit` per leg, and only the one directly behind or at the current row
+ * describes the leg being driven now. LENGTH IS DATA (see the module header): nothing
+ * below indexes a fixed position or assumes a plan length.
  */
 export function isDriving(phases: readonly PhaseDescriptor[]): boolean {
   const ordered = bySequence(phases)
-  const currentIndex = ordered.findIndex((phase) => !isResolved(phase))
+  const current = currentPhase(ordered)
 
-  // -1 = every phase resolved (closed trip). 0 = the current row is the first in the
-  // plan, so there is no preceding leg it could have been driven from.
+  // Trip is closed or hasn't started yet.
+  if (current === null) return false
+
+  // Case 1: Currently in transit (pending, between departure and arrival).
+  if (current.phase_type === 'in_transit') return true
+
+  // Case 2: Currently unloading at arrival, and the leg was driven.
+  if (current.phase_type !== 'unloading') return false
+
+  const currentIndex = ordered.findIndex((phase) => phase.sequence_number === current.sequence_number)
   if (currentIndex < 1) return false
-  if (ordered[currentIndex].phase_type !== 'unloading') return false
 
   const preceding = ordered[currentIndex - 1]
-  // The resolved check is redundant by construction today (everything before the first
-  // unresolved row is resolved), but it is stated because "a RESOLVED in_transit" is the
-  // actual contract — a future change to how `currentIndex` is found must not silently
-  // start reporting a pending leg as one already driven.
   return preceding.phase_type === 'in_transit' && isResolved(preceding)
 }

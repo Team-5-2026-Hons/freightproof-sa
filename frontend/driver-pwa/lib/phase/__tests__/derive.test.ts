@@ -128,23 +128,24 @@ describe('isAnchored', () => {
 })
 
 describe('isDriving', () => {
-  // The shape the driver is actually in on a real trip: the backend's
-  // _auto_complete_in_transit closes the in_transit row the moment departure advances,
-  // so the ledger reads "in_transit resolved, unloading pending" for the whole leg.
+  // The backend keeps in_transit PENDING during the drive (closed when arrival starts),
+  // so the driver is actively driving whenever in_transit is the current phase OR when
+  // unloading is current after a resolved in_transit leg.
+  it('is true while in_transit is itself the unresolved current phase', () => {
+    // Departure is done, driver is actively on the road until arrival, so in_transit
+    // is shown to the driver as the current phase. This is when the driving screen appears.
+    const plan = walk(SINGLE_LEG_PHASE_PLAN, 3) // through departure
+
+    expect(currentPhase(plan)?.phase_type).toBe('in_transit')
+    expect(isDriving(plan)).toBe(true)
+  })
+
   it('is true once in_transit is resolved and unloading is the current phase', () => {
+    // Driver has arrived, in_transit is now resolved, unloading is current.
     const plan = walk(SINGLE_LEG_PHASE_PLAN, 4) // through in_transit
 
     expect(currentPhase(plan)?.phase_type).toBe('unloading')
     expect(isDriving(plan)).toBe(true)
-  })
-
-  it('is false while in_transit is itself the unresolved current phase', () => {
-    // Nothing has been driven yet — departure is done, the leg has not been closed.
-    // Guards against a naive "is there an in_transit before here" reading.
-    const plan = walk(SINGLE_LEG_PHASE_PLAN, 3) // through departure
-
-    expect(currentPhase(plan)?.phase_type).toBe('in_transit')
-    expect(isDriving(plan)).toBe(false)
   })
 
   it('is false before the trip has moved at all', () => {
@@ -177,30 +178,39 @@ describe('isDriving', () => {
     expect(isDriving([])).toBe(false)
   })
 
-  it('fires on EVERY leg of a cross-dock plan, and only mid-leg', () => {
-    // The 11-row cross-dock carries two in_transit rows (sequence 4 and 8), each
-    // followed by an unloading. A phase_type-keyed check would answer the same for both
-    // legs regardless of which one is being driven; this walks the plan row by row and
-    // asserts driving is true at exactly the two arrival rows.
+  it('fires on EVERY leg of a cross-dock plan, spanning departure through arrival', () => {
+    // With the backend keeping in_transit pending, isDriving returns true when:
+    // (1) the current phase is in_transit (driver actively on road), OR
+    // (2) the current phase is unloading after a driven leg (driver arrived).
+    // So isDriving fires at both the departure (after which in_transit is next) and
+    // the subsequent unloading (after in_transit is resolved), covering each leg.
     const inTransitRows = CROSS_DOCK_PHASE_PLAN.filter((p) => p.phase_type === 'in_transit')
+    const departureRows = CROSS_DOCK_PHASE_PLAN.filter((p) => p.phase_type === 'departure')
     expect(inTransitRows).toHaveLength(2)
+    expect(departureRows).toHaveLength(2)
 
     const drivingAt = CROSS_DOCK_PHASE_PLAN
       .map((phase) => phase.sequence_number)
       .filter((seq) => isDriving(walk(CROSS_DOCK_PHASE_PLAN, seq)))
 
-    expect(drivingAt).toEqual(inTransitRows.map((p) => p.sequence_number))
+    // isDriving fires after completing each departure (since in_transit is next) and
+    // after completing each in_transit (since unloading is next). This gives both
+    // the departure and unloading sequences for each leg.
+    const expectedDriving = [
+      ...departureRows.map((p) => p.sequence_number),
+      ...inTransitRows.map((p) => p.sequence_number),
+    ].sort((a, b) => a - b)
+    expect(drivingAt).toEqual(expectedDriving)
   })
 
-  it('is false on the second leg while its own in_transit is still pending', () => {
-    // Everything through the FIRST leg's unloading is resolved, so an earlier resolved
-    // in_transit exists in the plan — but the row immediately behind the current one is
-    // not it. Keyed on sequence_number, this is false.
+  it('is true on the second leg while its own in_transit is the current phase', () => {
+    // The driver is driving on the second leg, so the second in_transit is shown as
+    // the current phase. This correctly identifies both legs as driving times.
     const secondInTransit = CROSS_DOCK_PHASE_PLAN.filter((p) => p.phase_type === 'in_transit')[1]
     const plan = walk(CROSS_DOCK_PHASE_PLAN, secondInTransit.sequence_number - 1)
 
     expect(currentPhase(plan)?.phase_type).toBe('in_transit')
-    expect(isDriving(plan)).toBe(false)
+    expect(isDriving(plan)).toBe(true)
   })
 
   it('reads the plan by sequence_number, not by the order it arrived over the wire', () => {

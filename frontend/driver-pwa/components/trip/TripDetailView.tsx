@@ -68,13 +68,9 @@ export function TripDetailView({
   // A held trip (a critical exception) must not offer any phase CTA — submits in
   // this state can only 409. Both branches below swap their CTA for HoldNotice.
   const onHold = trip.status === 'exception_hold'
-  // Replaces a `current?.phase_type === 'in_transit'` check that could never fire. Its
-  // intent was right — the driving leg is a phase in the plan, not a trip.status value
-  // (the coarse five have no 'in_transit' member), and it has to re-fire once per leg on
-  // a multi-stop plan — but `in_transit` is closed server-side the instant `departure`
-  // advances, so currentPhase() has already moved on to the arrival phase by the time
-  // this renders. isDriving() derives the same leg from the plan's shape instead. See
-  // lib/phase/derive.ts. Mirrors HomeContent, which shows the same trip.
+  // isDriving derives the leg from the plan's shape — it returns true when the driver
+  // is actively on the road (in_transit is current) or has just arrived (unloading after
+  // in_transit is current). See lib/phase/derive.ts.
   const driving = isDriving(phases)
 
   return (

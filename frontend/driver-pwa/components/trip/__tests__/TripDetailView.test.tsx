@@ -277,7 +277,10 @@ describe('TripDetailView', () => {
     expect(screen.queryByRole('button', { name: /continue driving/i })).not.toBeInTheDocument()
   })
 
-  it('does not show the driving entry while in_transit is still the unresolved current phase', () => {
+  it('shows the driving entry while in_transit is the unresolved current phase', () => {
+    // With the backend keeping in_transit pending during the drive, isDriving returns
+    // true while the driver is actively en route. This is exactly when the driving button
+    // should appear to take them to the map and checkpoint/exception screens.
     const plan = walk(SINGLE_LEG_PHASE_PLAN, 3) // departure resolved — in_transit pending
     expect(currentPhase(plan)?.phase_type).toBe('in_transit')
 
@@ -291,7 +294,7 @@ describe('TripDetailView', () => {
       />,
     )
 
-    expect(screen.queryByRole('button', { name: /continue driving/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /continue driving/i })).toBeInTheDocument()
   })
 
   it('a held trip shows the hold notice instead of the driving entry, even mid-leg', () => {
