@@ -283,8 +283,12 @@ class ConfirmationCompleteRequest(_PhaseCompleteBase):
     phase_type: Literal[PhaseType.CONFIRMATION]
     pod_photo_artifact_id: UUID
     pod_signature_artifact_id: UUID
-    # Pallet grain. Recorded and anchored as evidence; never compared against a
-    # parcel count (design §5). Optional (not required) as of the scan-driven
+    # A PARCEL count (team decision), captured blind: the driver is never shown an
+    # expected figure before committing his own. Recorded and anchored as evidence
+    # in its own right, and deliberately never reconciled against the depot scan
+    # counts (design §5) — the two independent scans already settle that, and
+    # scoring the driver against them would spend the independence for nothing.
+    # Optional (not required) as of the scan-driven
     # redesign: the driver may now skip the count at unloading and at
     # confirmation, matching LoadingCompleteRequest's own Optional field above.
     # A skipped count still anchors — compute_confirmation_canonical_payload

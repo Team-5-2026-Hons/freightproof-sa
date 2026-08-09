@@ -23,9 +23,12 @@ interface Props {
 }
 
 // The reconciliation is parcel-grain on both sides and sourced from two independent depot
-// systems. The driver's pallet count is shown but deliberately excluded from the verdict:
-// it is a different unit, and comparing it against a parcel count was the fault this
-// redesign removed.
+// systems. The driver's count is parcels too (team decision) — it is excluded from the
+// verdict not because it counts a different unit, but because it is a BLIND, independent
+// observation: the driver is never shown an expected number before committing his own
+// (the F1 fence on unloading/VisualCount.tsx). Folding it into the automated verdict
+// would spend that independence for nothing, since the two depot scans already settle
+// the count. It is recorded and anchored as evidence in its own right.
 export function ConfirmationDetail({
   phase, originScannedCount, precinct, artifactsById = new Map(),
 }: Props) {
@@ -60,10 +63,10 @@ export function ConfirmationDetail({
       )}
 
       <Section title="Driver observation">
-        <Field label="Pallets counted by driver" value={phase.driver_visual_count?.toString()} />
+        <Field label="Parcels counted by driver" value={phase.driver_visual_count?.toString()} />
       </Section>
       <div className="text-[11px] text-on-surf-v px-3 pb-3">
-        Pallet grain — recorded, not reconciled against the parcel counts above.
+        Counted blind — recorded as independent evidence, not reconciled against the scans above.
       </div>
 
       <PhaseLocationSection phase={phase} precinct={precinct} title="Location at confirmation" />

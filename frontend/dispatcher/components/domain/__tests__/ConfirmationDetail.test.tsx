@@ -45,7 +45,7 @@ describe('ConfirmationDetail', () => {
     expect(screen.getByText(/1 parcel unaccounted for/i)).toBeInTheDocument()
   })
 
-  it('marks the driver pallet count as recorded, not checked', () => {
+  it('marks the driver parcel count as recorded, not checked', () => {
     render(
       <ConfirmationDetail
         phase={{
@@ -57,7 +57,11 @@ describe('ConfirmationDetail', () => {
       />,
     )
 
-    // Pallet grain vs parcel grain — it must never read as part of the verdict.
-    expect(screen.getByText(/recorded, not reconciled/i)).toBeInTheDocument()
+    // The driver counts PARCELS, same unit as the scans — so the reason it stays out of
+    // the verdict is that it is a blind independent observation, not that it counts
+    // something else. Here 1 vs 3 is a flat contradiction of the scan count and STILL
+    // must not read as part of the verdict.
+    expect(screen.getByText(/not reconciled against the scans/i)).toBeInTheDocument()
+    expect(screen.getByText('Parcels counted by driver')).toBeInTheDocument()
   })
 })
