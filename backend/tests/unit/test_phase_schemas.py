@@ -6,7 +6,7 @@ from pydantic import TypeAdapter, ValidationError
 from app.db.models.enums import PhaseType
 from app.schemas.phases import InTransitCompleteRequest, PhaseCompleteRequest
 
-_ADAPTER = TypeAdapter(PhaseCompleteRequest)
+_ADAPTER: TypeAdapter[PhaseCompleteRequest] = TypeAdapter(PhaseCompleteRequest)
 
 
 def test_in_transit_payload_resolves_to_its_own_union_member():

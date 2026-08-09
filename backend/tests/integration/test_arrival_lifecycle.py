@@ -84,6 +84,9 @@ async def test_arrival_timestamp_precedes_the_unloading_submission(
     in_transit = await _phase_row(db_session, trip_id, PhaseType.IN_TRANSIT)
     unloading = await _phase_row(db_session, trip_id, PhaseType.UNLOADING)
 
+    assert departure.completed_at is not None
+    assert in_transit.completed_at is not None
+    assert unloading.completed_at is not None
     assert departure.completed_at <= in_transit.completed_at
     assert in_transit.completed_at < unloading.completed_at
 
