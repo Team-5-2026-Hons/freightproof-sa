@@ -34,10 +34,23 @@ export interface PhaseChainNode {
   label: string
 }
 
-// Mirrors phase_service._is_resolved: a phase the ledger will never revisit.
-// `exception` is NOT resolved — the trip is stuck on it, which is why it stays the
-// active phase and renders as a warning rather than being skipped over.
-const RESOLVED: readonly PhaseStatus[] = ['completed', 'overridden']
+// Mirrors phase_service._is_resolved exactly: a phase the ledger will never revisit.
+//
+// `exception` IS resolved, because the backend says so — "it already happened, the
+// trip already moved on, and the anomaly is recorded on the row itself". A seal
+// mismatch at departure sets EXCEPTION and the trip still departs, still unloads and
+// still closes. This list previously excluded it on the stated grounds that "the trip
+// is stuck on it", which was simply not true of the backend, and the divergence made
+// the dispatcher wrong in three places at once: activePhase() pinned to the exception
+// row so the header chip named the wrong phase, completionPct() could never reach 100%
+// on a closed trip, and — worst — every still-unresolved later row lost its `next`
+// slot and rendered `pending`, which page.tsx reads as isPending and uses to suppress
+// alwaysExpandedContent. That hid the in-transit Journey card for the whole drive on
+// exactly the seal-mismatch trips it exists to show.
+//
+// Keeping exception phases visually distinct is still right, and is nodeTypeFor's job
+// (it checks the status directly, above this predicate) — not this predicate's.
+const RESOLVED: readonly PhaseStatus[] = ['completed', 'exception', 'overridden']
 
 export function isResolved(phase: PhaseDescriptor): boolean {
   return RESOLVED.includes(phase.status)
@@ -59,10 +72,13 @@ export function nodeTypeFor(
   activePhaseEventId: PhaseEventId | null,
   tripStatus?: CoarseTripStatus | null,
 ): PhaseNodeType {
-  if (isResolved(phase)) return 'done'
-  // Checked before the active test on purpose: an exception phase IS the active one
-  // (it blocks the plan), and it must never render as ordinary progress.
+  // Checked FIRST, above isResolved, and the order is load-bearing: `exception` is a
+  // resolved status (see RESOLVED), so testing isResolved first would return 'done' and
+  // render a seal mismatch as ordinary green progress. An exception is resolved for
+  // sequencing and still an anomaly for display — those are different questions, and
+  // this is where the second one is answered.
   if (phase.status === 'exception') return 'warn'
+  if (isResolved(phase)) return 'done'
   // Genuinely started (e.g. a driver has opened the step but not yet submitted it).
   // Reserved for a real in_progress write, which nothing server-side performs today —
   // see the PhaseNodeType doc comment.
@@ -87,9 +103,15 @@ export function completionPct(phases: readonly PhaseDescriptor[]): number {
   return Math.round((phases.filter(isResolved).length / phases.length) * 100)
 }
 
-/** The seal actually on the vehicle: the highest-sequence COMPLETED departure's.
+/** The seal actually on the vehicle: the highest-sequence RESOLVED departure's.
  *  A cross-dock trip carries a different seal per leg (parent D7/§2.6 — the seal is
- *  captured at departure, never at loading), so "the first seal we find" is wrong. */
+ *  captured at departure, never at loading), so "the first seal we find" is wrong.
+ *
+ *  Resolved, not merely completed: a departure whose guard check failed is EXCEPTION,
+ *  and the driver still applied and photographed `seal_number` — that seal is physically
+ *  on the truck whatever the guard re-entered. Excluding it (as this did while
+ *  `exception` sat outside RESOLVED) blanked the seal field on precisely the
+ *  mismatch trips a dispatcher opens the record to read. */
 export function currentSealNumber(phases: readonly PhaseDescriptor[]): string | null {
   const departures = sortedPlan(phases).filter(
     phase => phase.phase_type === 'departure' && isResolved(phase) && phase.seal_number !== null,

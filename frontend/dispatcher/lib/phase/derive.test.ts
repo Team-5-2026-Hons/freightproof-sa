@@ -42,6 +42,16 @@ describe('activePhase', () => {
 
     expect(activePhase(plan)?.sequence_number).toBe(1)
   })
+
+  // A departure that raised a seal mismatch does not hold the trip server-side, so it
+  // must not hold the dispatcher's idea of "current" either — otherwise the header chip
+  // names Departure while the driver is hours down the N3.
+  it('does not pin to an exception phase — the backend has already moved past it', () => {
+    const plan = walk(SINGLE_LEG_PHASE_PLAN, 4).map(p =>
+      p.sequence_number === 3 ? { ...p, status: 'exception' as const } : p)
+
+    expect(activePhase(plan)?.sequence_number).toBe(5)
+  })
 })
 
 describe('completionPct', () => {
@@ -60,15 +70,41 @@ describe('completionPct', () => {
   it('is 0 on an empty plan rather than NaN', () => {
     expect(completionPct([])).toBe(0)
   })
+
+  // A trip that closed with a recorded exception is 100% done — the phase happened, the
+  // anomaly is evidence attached to it, not outstanding work. Reporting 86% on a
+  // delivered load reads as an unfinished trip on the board.
+  it('reaches 100 on a closed trip that carries an exception phase', () => {
+    const plan = walk(SINGLE_LEG_PHASE_PLAN, 6).map(p =>
+      p.sequence_number === 3 ? { ...p, status: 'exception' as const } : p)
+
+    expect(completionPct(plan)).toBe(100)
+  })
 })
 
 describe('nodeTypeFor', () => {
-  it('marks an exception phase warn even though it is also the active one', () => {
+  // Guards the check ORDER in nodeTypeFor. `exception` is a resolved status, so if the
+  // isResolved test ran first this would return 'done' and a seal mismatch would render
+  // as ordinary green progress.
+  it('marks an exception phase warn even though the status counts as resolved', () => {
     const plan = walk(SINGLE_LEG_PHASE_PLAN, 2).map(p =>
       p.sequence_number === 3 ? { ...p, status: 'exception' as const } : p)
     const active = activePhase(plan)
 
     expect(nodeTypeFor(plan[3], active?.phase_event_id ?? null)).toBe('warn')
+  })
+
+  // The regression this whole change exists to kill: on a trip whose departure raised a
+  // seal mismatch, the row the driver is actually on must still be the `next` row. When
+  // it fell through to 'pending', page.tsx read that as isPending and suppressed
+  // alwaysExpandedContent — deleting the in-transit Journey card for the entire drive.
+  it('still marks the genuinely-next row `next` when an earlier phase is an exception', () => {
+    const plan = walk(SINGLE_LEG_PHASE_PLAN, 4).map(p =>
+      p.sequence_number === 3 ? { ...p, status: 'exception' as const } : p)
+    const active = activePhase(plan)
+
+    expect(active?.sequence_number).toBe(5)
+    expect(nodeTypeFor(plan[5], active?.phase_event_id ?? null)).toBe('next')
   })
 
   it('marks resolved, next and pending phases distinctly', () => {
@@ -126,6 +162,18 @@ describe('currentSealNumber', () => {
       p.sequence_number === 3 ? { ...p, seal_number: 'AB-1111' } : p)
 
     expect(currentSealNumber(plan)).toBeNull()
+  })
+
+  // The driver applied and photographed this seal; the guard's re-entry is what
+  // disagreed. It is the seal physically on the truck, and blanking it on a mismatch
+  // hides the number from the one reader most likely to need it.
+  it('reports the seal from a departure that raised a mismatch exception', () => {
+    const plan = walk(SINGLE_LEG_PHASE_PLAN, 4).map(p =>
+      p.sequence_number === 3
+        ? { ...p, status: 'exception' as const, seal_number: 'AB-1234' }
+        : p)
+
+    expect(currentSealNumber(plan)).toBe('AB-1234')
   })
 })
 
@@ -337,13 +385,16 @@ describe('sortedPlan / isResolved', () => {
     expect(input.map(p => p.sequence_number)).toEqual(before)
   })
 
-  it('treats completed and overridden as resolved and nothing else', () => {
+  // The status list here must stay identical to phase_service._is_resolved. The two
+  // surfaces disagreeing about "resolved" is not a cosmetic drift — it moved the active
+  // phase, capped completion below 100% and suppressed the in-transit Journey card.
+  it('treats completed, exception and overridden as resolved and nothing else', () => {
     const of = (status: PhaseDescriptor['status']) => isResolved({ ...SINGLE_LEG_PHASE_PLAN[0], status })
 
     expect(of('completed')).toBe(true)
     expect(of('overridden')).toBe(true)
+    expect(of('exception')).toBe(true)
     expect(of('pending')).toBe(false)
     expect(of('in_progress')).toBe(false)
-    expect(of('exception')).toBe(false)
   })
 })
