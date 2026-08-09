@@ -38,6 +38,18 @@ jobs:
           --health-timeout 3s
           --health-retries 10
 
+      # Backs app/core/realtime.py's Redis pub/sub (after-commit event fan-out) —
+      # any test that mutates state through a real endpoint touches this.
+      test-redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -74,6 +86,7 @@ jobs:
           # exists only to dodge a host Postgres locally. Service containers get a
           # clean runner, so the default port is free.
           TEST_DATABASE_URL: postgresql+asyncpg://postgres:test@localhost:5432/freightproof_test
+          REDIS_URL: redis://localhost:6379/0
         run: pytest -m "not slow"
 
   frontend:
