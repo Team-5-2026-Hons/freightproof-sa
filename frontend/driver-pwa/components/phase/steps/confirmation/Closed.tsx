@@ -32,6 +32,16 @@ export function Closed({ tripId, phase, stepIndex, draft, onComplete }: ClosedPr
     draft.podPhotoDataUrl !== null &&
     Boolean(draft.podSignatureDataUrl)
 
+  // confirmation is gated on the destination warehouse's scan-IN session, exactly as
+  // loading is on scan-OUT and unloading on scan-IN (GATED_PHASES, phase_gate.py). Until
+  // this landed, this phase was gated server-side and silent here: the driver captured
+  // the POD photo, took the receiver's signature and did the reconciliation, then swiped
+  // and ate a bare 409 standing at the customer's gate with nothing on screen explaining
+  // it. Coalesced to null first for the same reason as loading/Linehaul.tsx — `blocked_on`
+  // is optional on the shared type, so `!== null` alone reads `undefined !== null` and is
+  // permanently true.
+  const isBlocked = (phase.blocked_on ?? null) !== null
+
   // Navigation is owned by the caller: onComplete() triggers the real submission: awaits
   // it, clears this phase's draft, and advances. Navigating here too would race that
   // async submission and land on an unmounted/stale screen. Its promise is returned, not
@@ -44,23 +54,42 @@ export function Closed({ tripId, phase, stepIndex, draft, onComplete }: ClosedPr
   return (
     <main className="flex min-h-dvh flex-col">
       <StepHeader phase={phase} stepIndex={stepIndex} />
-      <div className="flex flex-1 flex-col items-center justify-center gap-6 p-4 text-center">
-        <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
-          <CheckCircle2 className="h-10 w-10 text-success" strokeWidth={2} aria-hidden />
+      {isBlocked ? (
+        // No success tick and no swipe while blocked. The trip is NOT complete yet, and
+        // showing "Trip Complete" over a control that will 409 tells the driver two
+        // false things at once. Same shape as unloading/VisualCount.tsx: hide the
+        // control entirely rather than leave it visible-but-disabled, and say why.
+        <div className="flex flex-1 flex-col justify-center gap-2 p-4">
+          <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4 flex flex-col gap-2">
+            <p className="text-sm font-semibold">Waiting for the warehouse</p>
+            <p className="text-sm text-surface-on-variant">
+              The warehouse is still scanning the parcels in at this stop. The trip will
+              close on its own once they finish. Your evidence is saved — no action is
+              needed from you.
+            </p>
+          </div>
         </div>
-        <div>
-          <p className="text-xl font-bold">Trip Complete</p>
-          <p className="mt-1 text-base text-surface-on-variant">
-            {/* No longer "All five handshakes are done" — the plan's length is DATA
-                (parent plan §2.2); a cross-dock trip has more phases than a single-leg
-                one, and this screen must never imply a fixed count. */}
-            All phases are complete. Evidence has been recorded.
-          </p>
-        </div>
-      </div>
-      <div className="flex justify-center px-6 pt-6 pb-safe">
-        <SwipeToConfirm label="Close trip" onConfirm={handleClose} disabled={!isReady} />
-      </div>
+      ) : (
+        <>
+          <div className="flex flex-1 flex-col items-center justify-center gap-6 p-4 text-center">
+            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
+              <CheckCircle2 className="h-10 w-10 text-success" strokeWidth={2} aria-hidden />
+            </div>
+            <div>
+              <p className="text-xl font-bold">Trip Complete</p>
+              <p className="mt-1 text-base text-surface-on-variant">
+                {/* No longer "All five handshakes are done" — the plan's length is DATA
+                    (parent plan §2.2); a cross-dock trip has more phases than a single-leg
+                    one, and this screen must never imply a fixed count. */}
+                All phases are complete. Evidence has been recorded.
+              </p>
+            </div>
+          </div>
+          <div className="flex justify-center px-6 pt-6 pb-safe">
+            <SwipeToConfirm label="Close trip" onConfirm={handleClose} disabled={!isReady} />
+          </div>
+        </>
+      )}
     </main>
   )
 }

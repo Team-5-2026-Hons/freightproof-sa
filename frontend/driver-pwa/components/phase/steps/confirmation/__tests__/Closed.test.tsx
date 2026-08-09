@@ -49,11 +49,11 @@ function makeDraft(overrides: Partial<ConfirmationEvidence> = {}): ConfirmationE
   }
 }
 
-function renderStep(draft: ConfirmationEvidence) {
+function renderStep(draft: ConfirmationEvidence, blockedOn: string | null = null) {
   render(
     <Closed
       tripId={TRIP_ID}
-      phase={makePhase('confirmation')}
+      phase={makePhase('confirmation', { blocked_on: blockedOn })}
       stepIndex={3}
       draft={draft}
       onComplete={vi.fn()}
@@ -94,6 +94,52 @@ describe('Closed — POD evidence stays mandatory', () => {
 
   it('arms the swipe once both POD artifacts exist', () => {
     const swipe = renderStep(makeDraft())
+
+    expect(swipe).toBeEnabled()
+  })
+})
+
+// GATED_PHASES[CONFIRMATION] = ScanDirection.IN (orchestration/phase_gate.py). The server
+// 409s a blocked completion whatever this renders; the point of these is that the driver
+// is told, rather than discovering it by swiping at the customer's gate after capturing
+// the POD photo, the signature and the reconciliation.
+describe('Closed — blocked on the destination warehouse scan', () => {
+  it('hides the swipe entirely while the warehouse is still scanning in', () => {
+    render(
+      <Closed
+        tripId={TRIP_ID}
+        phase={makePhase('confirmation', { blocked_on: 'warehouse_scan' })}
+        stepIndex={3}
+        draft={makeDraft()}
+        onComplete={vi.fn()}
+      />,
+    )
+
+    // Hidden, not disabled — same choice as loading/Linehaul.tsx and
+    // unloading/VisualCount.tsx, so a blocked screen offers no control at all.
+    expect(screen.queryByRole('button', { name: SWIPE_LABEL })).toBeNull()
+    expect(screen.getByText('Waiting for the warehouse')).toBeInTheDocument()
+  })
+
+  it('does not claim the trip is complete while blocked', () => {
+    // The success tick and "Trip Complete" would be two false statements on a trip the
+    // server will refuse to close.
+    render(
+      <Closed
+        tripId={TRIP_ID}
+        phase={makePhase('confirmation', { blocked_on: 'warehouse_scan' })}
+        stepIndex={3}
+        draft={makeDraft()}
+        onComplete={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByText('Trip Complete')).toBeNull()
+  })
+
+  it('restores the swipe once the warehouse session closes', () => {
+    // blocked_on comes back null on the next poll — nothing else about the draft changed.
+    const swipe = renderStep(makeDraft(), null)
 
     expect(swipe).toBeEnabled()
   })
