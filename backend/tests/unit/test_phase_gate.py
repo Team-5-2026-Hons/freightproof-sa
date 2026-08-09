@@ -88,19 +88,38 @@ async def test_confirmation_reads_scan_in_not_scan_out(db_session, store, seeded
     assert blocked[(PhaseType.CONFIRMATION, seeded["stop"].id)] == phase_gate.BLOCKED_ON_SCAN
 
 
-async def test_phases_other_than_loading_and_confirmation_are_never_blocked(
-    db_session, store, seeded,
-):
+async def test_departure_is_never_blocked(db_session, store, seeded):
+    """DEPARTURE is absent from GATED_PHASES entirely — never gated regardless of
+    consignment or scan-session state. (UNLOADING used to share this property too,
+    until it joined LOADING/CONFIRMATION as a gated phase — see the tests below.)"""
     blocked = await phase_gate.blocked_on_by_stop(db_session, trip_id=seeded["trip"].id)
 
     # Via blocked_on_for, not blocked[...]: an ungated phase has NO KEY in the map —
     # "absent means not gated" is the contract. Indexing it directly raises KeyError,
     # and the fix for that is to use the accessor, never to insert null keys for every
     # phase type into the derivation.
-    for phase_type in (PhaseType.DEPARTURE, PhaseType.UNLOADING):
-        assert phase_gate.blocked_on_for(
-            blocked, phase_type=phase_type, trip_stop_id=seeded["stop"].id,
-        ) is None
+    assert phase_gate.blocked_on_for(
+        blocked, phase_type=PhaseType.DEPARTURE, trip_stop_id=seeded["stop"].id,
+    ) is None
+
+
+async def test_unloading_is_blocked_before_the_session_closes(db_session, store, seeded):
+    """UNLOADING gates on ScanDirection.IN — the warehouse scanning parcels off the
+    truck at the delivery stop — mirroring LOADING's OUT-direction gate at pickup."""
+    blocked = await phase_gate.blocked_on_by_stop(db_session, trip_id=seeded["trip"].id)
+
+    assert blocked[(PhaseType.UNLOADING, seeded["stop"].id)] == phase_gate.BLOCKED_ON_SCAN
+
+
+async def test_unloading_unblocks_once_the_session_closes(db_session, store, seeded):
+    await MockScanFeed().close_session(
+        consignment_reference="WAY001", stop_reference=str(seeded["stop"].id),
+        direction=ScanDirection.IN,
+    )
+
+    blocked = await phase_gate.blocked_on_by_stop(db_session, trip_id=seeded["trip"].id)
+
+    assert blocked[(PhaseType.UNLOADING, seeded["stop"].id)] is None
 
 
 async def test_a_stop_with_two_waybills_blocks_until_both_close(

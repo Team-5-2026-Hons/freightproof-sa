@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import InTransitPageClient from '../InTransitPageClient'
 import { ROUTES } from '@/lib/constants/routes'
 import { SINGLE_LEG_PHASE_PLAN } from '@shared/lib/mocks/phase-trips'
+import { STEP_SLUGS } from '@shared/lib/constants/phase-meta'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { TripException, ExceptionId } from '@shared/lib/types/exception'
 
@@ -39,6 +40,15 @@ vi.mock('@/components/ui/Button', () => ({
   ),
 }))
 
+// SwipeToConfirm drives real pointer-drag gesture APIs that are out of scope here (it has
+// its own dedicated suite) — stub it to a plain button exposing its `onConfirm`, mirroring
+// the Button stub above and the identical stub in CheckpointPageClient's test.
+vi.mock('@/components/phase/SwipeToConfirm', () => ({
+  SwipeToConfirm: ({ label, onConfirm, disabled }: { label: string; onConfirm: () => void; disabled?: boolean }) => (
+    <button onClick={onConfirm} disabled={disabled}>{label}</button>
+  ),
+}))
+
 function makeException(overrides: Partial<TripException>): TripException {
   return {
     id: crypto.randomUUID() as ExceptionId,
@@ -67,9 +77,18 @@ function walk(plan: readonly PhaseDescriptor[], through: number): PhaseDescripto
   return plan.map((p) => (p.sequence_number <= through ? { ...p, status: 'completed' as const } : p))
 }
 
-// The ledger shape this screen is actually shown in: in_transit resolved (the backend
-// closes it the instant departure advances), unloading pending.
-const DRIVING_PHASES = walk(SINGLE_LEG_PHASE_PLAN, 4)
+// The ledger shape this screen is actually shown in: everything through DEPARTURE
+// resolved, in_transit PENDING. The backend stopped auto-closing in_transit on departure
+// — it now stays open for the whole drive and is closed by advance_unloading when the
+// driver arrives — so in_transit is `currentPhase()` the entire time this screen is up.
+//
+// This fixture previously resolved in_transit too, which made `unloading` current and
+// quietly hid a real bug: "Arrive at destination" read the current phase's recipe, found
+// unloading's steps in the test and in_transit's empty one in the app, and so passed here
+// while dead-ending on a real phone. Anchored to the departure row by phase_type rather
+// than a literal sequence number, so it cannot drift if the plan generator changes shape.
+const DEPARTURE_SEQUENCE = SINGLE_LEG_PHASE_PLAN.find((p) => p.phase_type === 'departure')!.sequence_number
+const DRIVING_PHASES = walk(SINGLE_LEG_PHASE_PLAN, DEPARTURE_SEQUENCE)
 
 // The hub must render the CONTEXT exceptions list (mock/fetched + session-logged),
 // not the trip.exceptions fetch snapshot — otherwise a just-submitted exception
@@ -197,14 +216,32 @@ describe('InTransitPageClient driving screen', () => {
     expect(screen.getByRole('button', { name: /arrive at destination/i })).toBeInTheDocument()
   })
 
-  it('walks "Arrive at destination" to the arrival phase’s first step', () => {
+  it('walks "Arrive at destination" past the pending, stepless in_transit row to the arrival step', () => {
+    // Guards the premise: in_transit is CURRENT here (not resolved), and carries no
+    // recipe. Without both, this test cannot detect the dead-end it exists to catch.
+    const current = DRIVING_PHASES.find((p) => p.status !== 'completed')!
+    expect(current.phase_type).toBe('in_transit')
+    expect(STEP_SLUGS.in_transit).toHaveLength(0)
+
     render(<InTransitPageClient />)
 
     fireEvent.click(screen.getByRole('button', { name: /arrive at destination/i }))
 
-    // unloading is the current phase for the whole driving leg, so the generic
-    // current-phase walk lands on its first step with no in_transit special case.
-    expect(mockRouterPush).toHaveBeenCalledWith('/trip/phase/unloading/step/1-hand-waybill')
+    // Unloading recipe (shared/lib/constants/phase-meta.ts) is ['2-seal-verify',
+    // '4-visual-count'] as of 2026-08-05 — '1-hand-waybill' was deleted, so the first
+    // arrival step is now seal-verify.
+    expect(mockRouterPush).toHaveBeenCalledWith('/trip/phase/unloading/step/2-seal-verify')
+  })
+
+  it('never routes "Arrive at destination" back to a trip screen, which would loop', () => {
+    // The regression itself: the old fallback returned ROUTES.activeTripDetail, whose
+    // "Continue driving" CTA leads straight back here — a driver could not reach unloading.
+    render(<InTransitPageClient />)
+
+    fireEvent.click(screen.getByRole('button', { name: /arrive at destination/i }))
+
+    expect(mockRouterPush).not.toHaveBeenCalledWith(ROUTES.activeTripDetail)
+    expect(mockRouterPush).not.toHaveBeenCalledWith(ROUTES.trips)
   })
 
   it('routes panic, checkpoint and log-exception to their own screens', () => {

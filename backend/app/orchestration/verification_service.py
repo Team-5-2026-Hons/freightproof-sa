@@ -139,6 +139,14 @@ async def _reconstruct_phase_event_payload(
     Task 2.6 (D7/T5) moved the seal — and the anchor with it — from loading to
     departure, so this dispatches on PhaseType.DEPARTURE, not LOADING, and no
     longer needs driver_visual_count (which stays on loading, unanchored).
+
+    driver_visual_count is no longer part of the CONFIRMATION completeness
+    check below: it is now Optional on the request (the driver may skip the
+    count), so a genuinely anchored confirmation can legitimately have it as
+    NULL. parcel_count_destination alone is the correct completeness signal —
+    advance_confirmation always sets it to an int (never None, defaulting to 0
+    on an empty leg) before it ever anchors, so a NULL there still means "this
+    phase hasn't completed yet", exactly as before.
     """
     event = (
         await db.execute(select(PhaseEvent).where(PhaseEvent.id == event_id))
@@ -156,7 +164,7 @@ async def _reconstruct_phase_event_payload(
             phase_event_id=event.id, trip_id=event.trip_id, seal_number=event.seal_number,
         )
     if event.phase_type == PhaseType.CONFIRMATION:
-        if event.parcel_count_destination is None or event.driver_visual_count is None:
+        if event.parcel_count_destination is None:
             return None
         return compute_confirmation_canonical_payload(
             phase_event_id=event.id, trip_id=event.trip_id,

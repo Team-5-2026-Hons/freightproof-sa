@@ -32,7 +32,6 @@ import { Linehaul } from './loading/Linehaul'
 import { CaptureSeal } from './departure/CaptureSeal'
 import { Waybill } from './departure/Waybill'
 import { ConfirmDeparture } from './departure/ConfirmDeparture'
-import { HandWaybill } from './unloading/HandWaybill'
 import { SealVerify } from './unloading/SealVerify'
 import { VisualCount as UnloadingVisualCount } from './unloading/VisualCount'
 import { PodPhoto } from './confirmation/PodPhoto'
@@ -49,7 +48,9 @@ type DepartureSlug = '2-capture-seal' | '3-waybill' | '4-departure'
 // '3-seal-break-inspection' is gone (2026-08-05) — it photographed the seal after the
 // warehouse broke it, which proves nothing and was never sent to the server. Surviving
 // slugs keep their numbers; the prefix orders the recipe, it is not an index.
-type UnloadingSlug = '1-hand-waybill' | '2-seal-verify' | '4-visual-count'
+// '1-hand-waybill' is gone (2026-08-08) alongside '3-seal-break-inspection': it captured
+// nothing the server accepts. Seal verification now leads the phase.
+type UnloadingSlug = '2-seal-verify' | '4-visual-count'
 type ConfirmationSlug = '1-pod-photo' | '2-pod-signature' | '3-reconciliation' | '4-closed'
 
 export interface StepRegistry {
@@ -80,7 +81,6 @@ export const STEP_REGISTRY: StepRegistry = {
   },
   in_transit: {},
   unloading: {
-    '1-hand-waybill': HandWaybill,
     '2-seal-verify': SealVerify,
     '4-visual-count': UnloadingVisualCount,
   },

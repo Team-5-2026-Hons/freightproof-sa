@@ -136,6 +136,11 @@ export interface UnloadingEvidence {
   // Captured as unloading's last step but has no field on UnloadingCompleteRequest —
   // see this file's header comment. Submitted, once carried forward, as
   // ConfirmationEvidence.driverVisualCount.
+  //
+  // OPTIONAL (2026-08-08): the driver may leave this blank and still confirm the step —
+  // the count is a driver-typed observation, not a gate. null means "not counted", not
+  // "zero". The step itself still gates on the warehouse's own destination scan
+  // (VisualCount.tsx's isBlocked); optional-to-type never means optional-to-wait.
   driverVisualCount: number | null
   capturedAt: string | null
 }
@@ -163,6 +168,12 @@ export interface ConfirmationEvidence {
   // Carried forward from the UnloadingEvidence captured immediately before this phase
   // (see this file's header comment) — this is the value actually submitted as
   // ConfirmationCompleteRequest.driver_visual_count.
+  //
+  // OPTIONAL (2026-08-08): null when the driver left unloading's count blank
+  // (useVisualCountCarry seeds this field straight from that draft, so a skipped
+  // unloading count carries forward as null here too — never 0, never NaN). Confirmation
+  // still submits successfully with it null; ConfirmationCompleteRequest.driver_visual_count
+  // is Optional server-side for the same reason.
   driverVisualCount: number | null
   reconciliationNote: string | null
   capturedAt: string | null

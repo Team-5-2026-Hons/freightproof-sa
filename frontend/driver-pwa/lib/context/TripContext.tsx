@@ -11,6 +11,7 @@ import { IS_DEMO_MODE } from '@/lib/constants/env'
 import { fetchMyActiveTrip, fetchMyTrip } from '@/lib/api/trips'
 import { ApiError } from '@/lib/api/client'
 import { raiseException } from '@/lib/api/exceptions'
+import { contextPhaseEventId } from '@/lib/phase/derive'
 import { AuthContext } from './AuthContext'
 
 // A trip in one of these states is finished — it can no longer be the trip the driver is
@@ -275,6 +276,12 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     const gpsLng = typeof payload.gpsLng === 'number' ? payload.gpsLng : undefined
     const hasGpsFix = gpsLat !== undefined && gpsLng !== undefined
 
+    // WHERE this happened, stamped at the moment it happened. Read off `trip` — the
+    // OPTIMISTIC plan, not serverTrip — on purpose: a driver who swiped departure three
+    // seconds ago is on the road, and the exception belongs to that leg even though the
+    // submission is still in flight.
+    const phaseEventId = contextPhaseEventId(trip.phases)
+
     if (IS_DEMO_MODE) {
       const criticalTypes: ExceptionType[] = ['panic_button', 'seal_broken_in_transit', 'seal_mismatch']
       const newExc: TripException = {
@@ -282,7 +289,9 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
         trip_id: trip.id, exception_type: type, source: 'driver',
         severity: criticalTypes.includes(type) ? 'critical' : 'warning',
         description,
-        phase_event_id: null, checkpoint_id: null, supporting_artifact_id: null,
+        // Same tagging the real branch sends, so demo mode exercises the shape the
+        // dispatcher timeline reads rather than the untagged one it has to guess at.
+        phase_event_id: phaseEventId, checkpoint_id: null, supporting_artifact_id: null,
         // Mirror the real branch so demo mode exercises the same shape the
         // dispatcher UI will eventually read: a coordinate pair or null, never one axis.
         gps_lat: hasGpsFix ? gpsLat : null,
@@ -297,6 +306,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
 
     const created = await raiseException(String(trip.id), {
       exception_type: type, description, supporting_artifact_id: supportingArtifactId,
+      ...(phaseEventId ? { phase_event_id: String(phaseEventId) } : {}),
       gps_lat: hasGpsFix ? gpsLat : undefined,
       gps_lng: hasGpsFix ? gpsLng : undefined,
     })

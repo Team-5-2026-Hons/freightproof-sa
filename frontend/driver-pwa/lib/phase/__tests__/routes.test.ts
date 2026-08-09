@@ -3,7 +3,7 @@ import { CROSS_DOCK_PHASE_PLAN, SINGLE_LEG_PHASE_PLAN } from '@shared/lib/mocks/
 import type { PhaseDescriptor, PhaseType } from '@shared/lib/types/phase'
 import { STEP_SLUGS } from '@shared/lib/constants/phase-meta'
 import { ROUTES } from '@/lib/constants/routes'
-import { nextStepRoute, phaseStepRoute } from '../routes'
+import { currentStepRoute, nextStepRoute, phaseStepRoute } from '../routes'
 
 // Marks every phase up to and including `through` (by sequence_number) as completed.
 // Local to the test file — see the matching helper in derive.test.ts for why.
@@ -20,6 +20,43 @@ function findByType(plan: readonly PhaseDescriptor[], type: PhaseType): PhaseDes
 describe('phaseStepRoute', () => {
   it('builds the canonical /trip/phase/{type}/step/{slug} URL', () => {
     expect(phaseStepRoute('unloading', '2-seal-verify')).toBe('/trip/phase/unloading/step/2-seal-verify')
+  })
+})
+
+describe('currentStepRoute', () => {
+  it('returns the first step of the current phase when it has a recipe', () => {
+    const activationSeq = findByType(SINGLE_LEG_PHASE_PLAN, 'activation').sequence_number
+    const plan = walk(SINGLE_LEG_PHASE_PLAN, activationSeq - 1)
+
+    expect(currentStepRoute(plan)).toBe(phaseStepRoute('activation', STEP_SLUGS.activation[0]))
+  })
+
+  it('walks past a PENDING in_transit to the arrival step (the mid-leg case)', () => {
+    // The exact ledger the driving screen renders against: departure resolved, in_transit
+    // still open. The backend keeps it open for the whole drive, so it is currentPhase()
+    // — and it has no recipe, so stopping here would leave the driver nowhere to go.
+    const departureSeq = findByType(SINGLE_LEG_PHASE_PLAN, 'departure').sequence_number
+    const plan = walk(SINGLE_LEG_PHASE_PLAN, departureSeq)
+    expect(currentStepRoute(plan)).toBe(phaseStepRoute('unloading', STEP_SLUGS.unloading[0]))
+  })
+
+  it('lands on leg 2’s unloading, not leg 1’s, on a cross-dock plan', () => {
+    // Proves the skip is a sequence_number walk, not a phase_type lookup: leg 1's
+    // unloading is already resolved earlier in this same plan.
+    const inTransits = CROSS_DOCK_PHASE_PLAN.filter((p) => p.phase_type === 'in_transit')
+    expect(inTransits.length).toBeGreaterThan(1)
+    const secondInTransit = inTransits[1]
+    const plan = walk(CROSS_DOCK_PHASE_PLAN, secondInTransit.sequence_number - 1)
+
+    const current = plan.find((p) => p.status !== 'completed')!
+    expect(current.sequence_number).toBe(secondInTransit.sequence_number)
+    expect(currentStepRoute(plan)).toBe(phaseStepRoute('unloading', STEP_SLUGS.unloading[0]))
+  })
+
+  it('returns the terminal route once every phase is resolved', () => {
+    const lastRow = SINGLE_LEG_PHASE_PLAN[SINGLE_LEG_PHASE_PLAN.length - 1]
+
+    expect(currentStepRoute(walk(SINGLE_LEG_PHASE_PLAN, lastRow.sequence_number))).toBe(ROUTES.trips)
   })
 })
 

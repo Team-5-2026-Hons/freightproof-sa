@@ -56,7 +56,13 @@ export const STEP_SLUGS: Record<PhaseType, readonly string[]> = {
   loading: ['1-linehaul'],
   departure: ['2-capture-seal', '3-waybill', '4-departure'],
   in_transit: [],
-  unloading: ['1-hand-waybill', '2-seal-verify', '4-visual-count'],
+  // Seal photo FIRST (2026-08-08) — the intact seal is the only evidence at this stop
+  // that expires the moment the truck is opened. '1-hand-waybill' is gone: it sent
+  // nothing to the server (UnloadingCompleteRequest takes only the seal number and
+  // photo), so dropping it loses no evidence. Surviving slugs keep their numbers, per
+  // the note above. Mirrored by backend/app/core/phase_meta.py — the contract test
+  // parses THIS file, so the two must change together.
+  unloading: ['2-seal-verify', '4-visual-count'],
   confirmation: ['1-pod-photo', '2-pod-signature', '3-reconciliation', '4-closed'],
 }
 
@@ -72,7 +78,7 @@ export const STEP_NAMES: Record<PhaseType, readonly string[]> = {
   // embedded in every stored draft key and deep link.
   departure: ['Capture Seal', 'Photograph Linehaul Document', 'Confirm Departure'],
   in_transit: [],
-  unloading: ['Hand Waybill Copy', 'Verify Seal', 'Visual Count'],
+  unloading: ['Verify Seal', 'Visual Count'],
   confirmation: ['Photograph POD', 'Capture Signature', 'Reconciliation', 'Trip Closed'],
 }
 

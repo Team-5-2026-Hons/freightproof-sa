@@ -20,20 +20,20 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowRight, ShieldAlert, ScanFace, TriangleAlert } from 'lucide-react'
+import { ShieldAlert, ScanFace, TriangleAlert } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTrip } from '@/lib/hooks/useTrip'
 import { useLocationTrail } from '@/lib/hooks/useLocationTrail'
 import { ROUTES } from '@/lib/constants/routes'
 import { formatTime } from '@/lib/utils/format-time'
-import { currentPhase, stepsFor, phaseStepRoute } from '@/lib/phase'
+import { currentStepRoute } from '@/lib/phase'
 import { Button } from '@/components/ui/Button'
+import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
 import { DriverMap } from '@/components/map/DriverMap'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { SubpageHeader } from '@/components/layout/SubpageHeader'
 import type { DriverPosition } from '@/lib/types/location'
 import type { TripException } from '@shared/lib/types/exception'
-import type { PhaseDescriptor } from '@shared/lib/types/phase'
 
 // How often the map re-reads the phone's position while this screen is open. A truck at
 // 100 km/h covers ~400 m in this window, which at street zoom is about a screen height —
@@ -52,18 +52,6 @@ interface DriverFix {
   position: DriverPosition
   /** When this fix was taken, so a stale one can be labelled as last known. */
   capturedAt: string
-}
-
-// The route for wherever the ledger says the driver is right now. When this screen
-// shows, currentPhase could be in_transit (driver just departed) or unloading (arrived).
-// Either way, we walk to the first unresolved step, which for in_transit is none (no
-// steps) and for unloading is its first step. Duplicated (not imported) to keep route
-// composition local to each caller, same as PhaseStepPageClient.tsx does.
-function currentStepRoute(phases: readonly PhaseDescriptor[]): string {
-  const phase = currentPhase(phases)
-  if (phase === null) return ROUTES.trips // nothing left unresolved — trip finished
-  const steps = stepsFor(phase)
-  return steps.length > 0 ? phaseStepRoute(phase.phase_type, steps[0].slug) : ROUTES.activeTripDetail
 }
 
 // A native <button> (not the Card component) so the expand/collapse toggle is
@@ -191,14 +179,16 @@ export default function InTransitPageClient() {
           </section>
         )}
 
-        {/* The way out of this screen: walks to the arrival phase's first step. */}
-        <Button
-          size="lg"
-          iconRight={<ArrowRight className="h-4 w-4" strokeWidth={2} aria-hidden />}
-          onClick={() => router.push(currentStepRoute(trip.phases))}
-        >
-          Arrive at destination
-        </Button>
+        {/* The way out of this screen. Navigation only — it does not close the leg: the
+            backend closes in_transit inside advance_unloading, i.e. when the driver
+            SUBMITS the arrival step this lands them on. currentStepRoute (lib/phase) is
+            what skips the stepless in_transit row the driver is standing on; a caller
+            that stopped at the current phase would loop straight back here.
+            Swipe, not a tap: this is the gesture that opens the truck and starts evidence
+            capture, and a single accidental tap must never be enough to trigger it. */}
+        <div className="flex justify-center">
+          <SwipeToConfirm label="Arrive at destination" onConfirm={() => router.push(currentStepRoute(trip.phases))} />
+        </div>
 
         <div className="mt-3 grid grid-cols-2 gap-3">
           <Button

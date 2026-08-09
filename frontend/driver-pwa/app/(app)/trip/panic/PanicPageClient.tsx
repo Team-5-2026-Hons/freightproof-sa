@@ -7,6 +7,7 @@ import { ShieldAlert, TriangleAlert } from 'lucide-react'
 import { useTrip } from '@/lib/hooks/useTrip'
 import { useLocation } from '@/lib/hooks/useLocation'
 import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
+import { contextPhaseEventId } from '@/lib/phase/derive'
 import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
 import { Button } from '@/components/ui/Button'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
@@ -51,9 +52,15 @@ export default function PanicPageClient() {
       // promise silently breaks exactly when the driver is offline and most at risk.
       console.error('Failed to send panic alert to backend — queued for retry', err)
       if (trip) {
+        const phaseEventId = contextPhaseEventId(trip.phases)
         enqueueException(String(trip.id), {
           exception_type: 'panic_button',
           description,
+          // Resolved HERE, not at flush time. This entry can sit in the queue until the
+          // driver regains signal — possibly after they have arrived and the trip has
+          // moved on — and the alert has to keep saying where the driver actually was
+          // when they pressed it, not where the trip ended up.
+          ...(phaseEventId ? { phase_event_id: String(phaseEventId) } : {}),
           // Both-or-neither: the backend 422s a partial fix, which would make the
           // queue drop this entry as a terminal failure — send the pair or nothing.
           ...(result ? { gps_lat: result.latitude, gps_lng: result.longitude } : {}),

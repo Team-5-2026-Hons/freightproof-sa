@@ -265,9 +265,57 @@ describe('submitPhase (real-backend branch)', () => {
         pod_photo_artifact_id: 'pod-photo-artifact',
         pod_signature_artifact_id: 'pod-signature-artifact',
         driver_visual_count: 31,
-        pp_scan_in_count: 31,
+        // No pp_scan_in_count — toHaveBeenCalledWith is an EXACT object match, so this
+        // assertion also fences its removal: the field carried the driver's own count a
+        // second time under a different key, which made the server compare a number
+        // against itself. The backend derives it from Parcel.pp_scan_in_at instead
+        // (schemas/phases.py's ConfirmationCompleteRequest comment).
         idempotency_key: IDEMPOTENCY_KEY,
       },
+      { timeoutMs: 30_000 },
+    )
+  })
+
+  // 2026-08-08: the visual count became optional at unloading, so a legitimately empty
+  // carry-forward must reach confirmation's completion as an explicit null — not block
+  // the swipe, not throw, not silently become 0.
+  it('completes confirmation with a null visual count when the driver left unloading\'s count blank', async () => {
+    mockUploadArtifact
+      .mockResolvedValueOnce({ id: 'pod-photo-artifact', file_hash: 'a'.repeat(64) })
+      .mockResolvedValueOnce({ id: 'pod-signature-artifact', file_hash: 'b'.repeat(64) })
+    mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
+
+    const { submitPhase } = await import('../phases')
+    await submitPhase(
+      'trip-1', 'phase-event-5', 'confirmation',
+      { ...CONFIRMATION_EVIDENCE, driverVisualCount: null }, IDEMPOTENCY_KEY, POSITION,
+    )
+
+    expect(mockPost).toHaveBeenCalledWith(
+      '/api/v1/trips/trip-1/phases/phase-event-5/complete',
+      expect.objectContaining({ driver_visual_count: null }),
+      { timeoutMs: 30_000 },
+    )
+  })
+
+  // A confirmation draft queued offline before driverVisualCount could legitimately be
+  // blank replays from localStorage with the key absent entirely, not set to null —
+  // unlike unloading's required fields, this must still submit (coalesced to null), not
+  // reject the whole completion over an optional field.
+  it('coalesces a stale queued confirmation whose visual count field is absent entirely to null', async () => {
+    mockUploadArtifact
+      .mockResolvedValueOnce({ id: 'pod-photo-artifact', file_hash: 'a'.repeat(64) })
+      .mockResolvedValueOnce({ id: 'pod-signature-artifact', file_hash: 'b'.repeat(64) })
+    mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
+    const staleEntry = { ...CONFIRMATION_EVIDENCE }
+    delete (staleEntry as Partial<ConfirmationEvidence>).driverVisualCount
+
+    const { submitPhase } = await import('../phases')
+    await submitPhase('trip-1', 'phase-event-5', 'confirmation', staleEntry, IDEMPOTENCY_KEY, POSITION)
+
+    expect(mockPost).toHaveBeenCalledWith(
+      '/api/v1/trips/trip-1/phases/phase-event-5/complete',
+      expect.objectContaining({ driver_visual_count: null }),
       { timeoutMs: 30_000 },
     )
   })

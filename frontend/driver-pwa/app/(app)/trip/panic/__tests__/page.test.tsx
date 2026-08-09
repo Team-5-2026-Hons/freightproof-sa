@@ -2,6 +2,14 @@ import { render, screen, fireEvent, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import PanicPage from '../page'
 import { ROUTES } from '@/lib/constants/routes'
+import { SINGLE_LEG_PHASE_PLAN } from '@shared/lib/mocks/phase-trips'
+import type { PhaseDescriptor } from '@shared/lib/types/phase'
+
+// Marks every phase up to and including `through` (by sequence_number) as completed —
+// same local helper lib/phase/__tests__/derive.test.ts uses.
+function walk(plan: readonly PhaseDescriptor[], through: number): PhaseDescriptor[] {
+  return plan.map((p) => (p.sequence_number <= through ? { ...p, status: 'completed' as const } : p))
+}
 
 // `trip` is provided to PanicPage via useTrip() (session-derived) — there's no URL
 // param to verify against, so these tests only cover the loading/no-trip states and
@@ -222,5 +230,59 @@ describe('PanicPage handlePanic sequencing', () => {
       exception_type: 'panic_button',
       description: 'Driver activated panic button.',
     })
+  })
+
+  it('queued body carries the phase the driver was on, captured before the queue wait', async () => {
+    // The regression this whole change exists for. This entry can sit in the queue until
+    // signal returns — possibly after the driver has arrived and the trip has advanced —
+    // so the phase has to be resolved NOW, at the press, not at flush time. Without it
+    // the alert lands untagged and the dispatcher infers placement on every render,
+    // which is what made a 15:17 panic appear to walk forward through the timeline.
+    const logException = vi.fn().mockRejectedValue(new Error('network unreachable'))
+    // Everything through departure resolved: the ledger sits on the PENDING in_transit
+    // row for the whole drive, which is exactly where a panic on the road belongs.
+    const phases = walk(SINGLE_LEG_PHASE_PLAN, 3)
+    const inTransit = phases.find((p) => p.phase_type === 'in_transit')!
+    mockUseTrip.mockReturnValue({ trip: { id: 'trip-123', phases }, isLoading: false, logException })
+    mockCapture.mockResolvedValue(null)
+
+    render(<PanicPage />)
+    confirmPanicSwipe()
+
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(mockEnqueueException).toHaveBeenCalledWith('trip-123', {
+      exception_type: 'panic_button',
+      description: 'Driver activated panic button.',
+      phase_event_id: String(inTransit.phase_event_id),
+    })
+  })
+
+  it('still queues the alert when the trip carries no phase plan at all', async () => {
+    // Defensive: this runs inside the catch block of an already-failed send. A throw
+    // here would lose the panic AND strand the driver on this screen. Untagged is a
+    // small loss; unsent is the whole failure.
+    const logException = vi.fn().mockRejectedValue(new Error('network unreachable'))
+    mockUseTrip.mockReturnValue({ trip: { id: 'trip-123' }, isLoading: false, logException })
+    mockCapture.mockResolvedValue(null)
+
+    render(<PanicPage />)
+    confirmPanicSwipe()
+
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(mockEnqueueException).toHaveBeenCalledWith('trip-123', {
+      exception_type: 'panic_button',
+      description: 'Driver activated panic button.',
+    })
+    expect(mockRouterReplace).toHaveBeenCalledWith(ROUTES.panicSubmittedUrl(true))
   })
 })

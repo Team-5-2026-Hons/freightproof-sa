@@ -250,10 +250,23 @@ async def _gate_and_load(
         # TripStatus(...) normalises either shape before reading .value.
         raise PhaseSequenceError(f"trip status is '{TripStatus(trip.status).value}'", phase_label)
 
+    # IN_TRANSIT is excluded deliberately, and this is load-bearing rather than a
+    # loosening of the gate. Since IN_TRANSIT stopped being auto-completed on departure
+    # it stays PENDING for the whole drive by design, at a LOWER sequence than the
+    # arrival phase that closes it — so gating on it made advance_unloading unreachable:
+    # the call was rejected here, several hundred lines before the branch that sets
+    # IN_TRANSIT to COMPLETED. The trip could never leave the driving leg.
+    #
+    # Nothing is weakened by skipping it. IN_TRANSIT is driverless: no endpoint advances
+    # it, it is opened by advance_departure and closed by advance_unloading, so a PENDING
+    # one is never evidence that the driver skipped work. The leg itself is still gated —
+    # by the DEPARTURE row, which sits at a lower sequence than IN_TRANSIT and keeps
+    # blocking exactly as before, so an arrival cannot be claimed on a leg never departed.
     lower_result = await db.execute(
         select(PhaseEvent.status).where(
             PhaseEvent.trip_id == trip_id,
             PhaseEvent.sequence_number < event.sequence_number,
+            PhaseEvent.phase_type != PhaseType.IN_TRANSIT,
         )
     )
     if any(not _is_resolved(PhaseStatus(status)) for (status,) in lower_result.all()):
@@ -297,6 +310,37 @@ async def recompute_position(db: AsyncSession, trip: Trip) -> None:
     trip.current_stop = None
     trip.status = TripStatus.CLOSED
     trip.closed_at = datetime.now(UTC)
+
+
+async def current_phase_event(db: AsyncSession, trip_id: uuid.UUID) -> PhaseEvent | None:
+    """The phase row a trip is sitting on right now — the same ledger walk
+    recompute_position does, returning the row itself instead of caching its type and
+    stop onto the trip.
+
+    Exists so an event that happens OUTSIDE a phase completion — a panic hold, a
+    breakdown — can still be tagged with the phase it happened during. Every
+    TripException this module writes already carries phase_event_id because it has an
+    `event` in hand; the driver-raised ones (exception_service) have no such handle and
+    were landing untagged, which pushed placement onto the dispatcher's render-time
+    fallback and let an exception appear to move between phases as the trip advanced.
+
+    Falls back to the highest-sequence row once every phase is resolved: on a closed
+    trip nothing is unresolved, and confirmation is genuinely where the trip is — that
+    is placement, not a guess. Returns None only for a trip with no plan at all.
+
+    Resolved by sequence_number, never by matching on phase_type: a cross-dock plan
+    carries one in_transit row per leg and only the ordering identifies the right one.
+    """
+    result = await db.execute(
+        select(PhaseEvent)
+        .where(PhaseEvent.trip_id == trip_id)
+        .order_by(PhaseEvent.sequence_number)
+    )
+    events = list(result.scalars().all())
+    for event in events:
+        if not _is_resolved(PhaseStatus(event.status)):
+            return event
+    return events[-1] if events else None
 
 
 async def anchor_phase_event(
@@ -1118,8 +1162,9 @@ async def advance_unloading(
 
 
 def compute_confirmation_canonical_payload(
-    *, phase_event_id: uuid.UUID, trip_id: uuid.UUID, pp_scan_in_count: int, driver_visual_count: int,
-) -> dict[str, str | int]:
+    *, phase_event_id: uuid.UUID, trip_id: uuid.UUID, pp_scan_in_count: int,
+    driver_visual_count: int | None,
+) -> dict[str, str | int | None]:
     """Canonical confirmation payload anchored to Hedera (DELIVERY receipt).
 
     Anchored unconditionally, independent of whether the counts match — a
@@ -1131,6 +1176,15 @@ def compute_confirmation_canonical_payload(
     pre-existing mislabel, not just a rename: this builder has only ever been
     called from the confirmation phase, the old value was simply wrong from
     day one. It does not change which phase anchors.
+
+    driver_visual_count is Optional (the driver may skip the count): the key
+    stays PRESENT with value None rather than being omitted when absent.
+    canonicalize_payload is a plain json.dumps(sort_keys=True), so None
+    serialises to `null` deterministically either way — but an omitted key
+    would change the payload's SHAPE, not just one value, and
+    verification_service._reconstruct_phase_event_payload rebuilds this exact
+    dict from the stored column on every verify, so the key's presence must be
+    unconditional for that rebuild to reproduce the original hash.
     """
     return {
         "phase_event_id": str(phase_event_id),

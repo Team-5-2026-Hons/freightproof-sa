@@ -100,6 +100,14 @@ class DriverExceptionCreateBody(BaseModel):
     exception_type: ExceptionType
     description: str
     supporting_artifact_id: Optional[UUID] = None
+    # The phase the driver was ON when this happened, resolved client-side from the
+    # trip's plan at the moment of the event (driver-pwa lib/phase/derive.ts
+    # contextPhaseEventId). Client-supplied rather than server-derived because the app
+    # queues exceptions offline and flushes them hours later — deriving at request time
+    # would tag a panic raised in transit with whatever phase the trip had reached by
+    # the time signal returned. Optional: older installed clients omit it, and the
+    # service derives a server-side placement in that case rather than storing NULL.
+    phase_event_id: Optional[UUID] = None
     # Captured client-side by useLocation() on the panic page — see
     # frontend/driver-pwa/app/(app)/trip/panic/PanicPageClient.tsx. Optional because
     # not every driver-raised exception type captures GPS (only panic today), and a

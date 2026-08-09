@@ -21,8 +21,14 @@ export function Closed({ tripId, phase, stepIndex, draft, onComplete }: ClosedPr
   // header comment: separate phase_event_id, separate draft). By the time the driver
   // reaches confirmation's last step, unloading is already a resolved phase server-side;
   // this gate is limited to what THIS phase's own draft carries.
+  //
+  // driverVisualCount is deliberately NOT part of this gate (2026-08-08). The count is
+  // optional at unloading and at confirmation, so `null` is a legitimate value that
+  // carries all the way here — gating on it made a skipped count silently unclosable:
+  // the swipe stayed disabled forever with nothing on screen explaining why, and the
+  // driver's only escape was abandoning a delivered trip. What this phase genuinely
+  // cannot be completed without is the POD evidence, which is what remains below.
   const isReady =
-    draft.driverVisualCount !== null &&
     draft.podPhotoDataUrl !== null &&
     Boolean(draft.podSignatureDataUrl)
 

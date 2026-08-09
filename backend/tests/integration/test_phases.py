@@ -1178,11 +1178,13 @@ async def completed_unloading_trip(
 ) -> dict[str, Any]:
     """A trip driven via real HTTP calls to a COMPLETED unloading row at the
     destination stop, with a Consignment whose parcels are scanned OUT in full
-    at origin (closed) but deliberately NOT YET scanned in at destination —
-    unloading itself is never gated on scans (only loading/confirmation are,
-    per phase_gate.py's _GATED_PHASES), so it closes with no IN-direction scan
-    activity at all. That absence is what lets the test that consumes this
-    fixture stage a "late" scan-in strictly after unloading is already closed.
+    at origin (closed) but deliberately NOT YET scanned IN at destination —
+    unloading now gates on the destination stop's IN-direction scan SESSION being
+    closed (phase_gate.py's GATED_PHASES), but a closed session is a separate
+    fact from actual scanned barcodes: the warehouse operator can close an empty
+    session (nothing scanned yet) purely to satisfy the gate, and that is what
+    happens below. No barcode DATA exists at destination until the test itself
+    stages a "late" scan-in strictly after unloading is already closed.
     """
     org = Organization(id=uuid.uuid4(), name="ImmutableOrg", org_type=OrganizationType.OPERATOR)
     client_org = Organization(id=uuid.uuid4(), name="ImmutableClient", org_type=OrganizationType.PRINCIPAL)
@@ -1300,6 +1302,12 @@ async def completed_unloading_trip(
             headers=auth_header(token),
         )
     assert resp.status_code == 200
+
+    # Close (not stage) the destination IN-direction session: satisfies unloading's
+    # new gate without giving it any barcode data — see the fixture docstring above.
+    await feed.close_session(
+        consignment_reference=pp_reference, stop_reference=str(stop1.id), direction=ScanDirection.IN,
+    )
 
     gate_photo_id = await _make_artifact(db_session, trip.id)
     unloading_id = await _phase_id(client, trip.id, token, "unloading")

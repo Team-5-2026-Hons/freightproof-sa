@@ -14,7 +14,7 @@
 import type { PhaseDescriptor, PhaseType } from '@shared/lib/types/phase'
 import { STEP_SLUGS } from '@shared/lib/constants/phase-meta'
 import { ROUTES } from '@/lib/constants/routes'
-import { currentPhase } from './derive'
+import { actionablePhase, currentPhase } from './derive'
 
 /** The canonical URL for a given phase type's step — the one place a step URL is built. */
 export function phaseStepRoute(phaseType: PhaseType, slug: string): string {
@@ -40,6 +40,26 @@ function firstStepAfter(phases: readonly PhaseDescriptor[], afterSequence: numbe
 
     cursor = next.sequence_number
   }
+}
+
+/**
+ * The step the driver should be on right now: the first slug of the current phase's own
+ * recipe, or — when that phase has no recipe — the first step of the next phase that
+ * does, otherwise the terminal route.
+ *
+ * The empty-recipe branch is not defensive, it is the normal mid-leg case. `in_transit`
+ * carries no driver steps and the backend now keeps it PENDING for the whole drive
+ * (orchestration/phase_service.py closes it in `advance_unloading`, not on departure), so
+ * it IS `currentPhase()` from the moment the truck pulls out until the driver arrives.
+ * A caller that treated "current phase has no steps" as "there is nowhere to go" would
+ * strand the driver on the driving screen for the rest of the trip — the arrival phase is
+ * always one skip further on.
+ */
+export function currentStepRoute(phases: readonly PhaseDescriptor[]): string {
+  const phase = actionablePhase(phases)
+  if (phase === null) return ROUTES.trips // No unresolved phase has steps: trip finished.
+
+  return phaseStepRoute(phase.phase_type, STEP_SLUGS[phase.phase_type][0])
 }
 
 /**

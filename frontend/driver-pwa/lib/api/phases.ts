@@ -74,8 +74,18 @@ export interface ConfirmationCompleteRequest extends PhaseCompleteRequestBase {
   phase_type: Extract<PhaseType, 'confirmation'>
   pod_photo_artifact_id: string
   pod_signature_artifact_id: string
-  driver_visual_count: number
-  pp_scan_in_count: number
+  // Recorded and anchored as evidence; never compared against a parcel count client-side
+  // (design §5, backend schemas/phases.py's own comment on this field). Optional
+  // (2026-08-08): the driver may leave unloading's count blank, in which case the
+  // carried-forward value is null — never coerced to 0. Pallet-grain evidence, not a
+  // completion gate.
+  driver_visual_count: number | null
+  // No pp_scan_in_count. It used to carry the driver's own driver_visual_count a second
+  // time under a different key, which made the backend's reconciliation compare a number
+  // against itself — the field is gone from ConfirmationCompleteRequest server-side; the
+  // server now derives it from Parcel.pp_scan_in_at. The identically-named key in the
+  // anchored canonical payload is unrelated to this request field and is rebuilt
+  // server-side, not sent by the client.
 }
 
 // trip_creation and in_transit are deliberately absent — schemas/phases.py's own union
@@ -281,8 +291,11 @@ export async function submitPhase(
     }
     case 'confirmation': {
       const e = evidence as ConfirmationEvidence
-      if (e.podPhotoDataUrl === null || !e.podSignatureDataUrl || e.driverVisualCount === null) {
-        throw new Error('Confirmation evidence incomplete — POD photo, signature, and visual count are required.')
+      // No driverVisualCount check: the count is optional evidence now, not a completion
+      // gate (2026-08-08) — see UnloadingEvidence.driverVisualCount's comment. Only the
+      // POD photo and signature remain required.
+      if (e.podPhotoDataUrl === null || !e.podSignatureDataUrl) {
+        throw new Error('Confirmation evidence incomplete — POD photo and signature are required.')
       }
       const [podPhotoId, podSignatureId] = await Promise.all([
         artifactIdFor(tripId, 'photo', e.podPhotoArtifactId, e.podPhotoDataUrl, capturedAt),
@@ -293,14 +306,12 @@ export async function submitPhase(
         ...driverPosition(position),
         pod_photo_artifact_id: podPhotoId,
         pod_signature_artifact_id: podSignatureId,
-        driver_visual_count: e.driverVisualCount,
-        // pp_scan_in_count isn't captured anywhere in the driver UI (it's the Parcel
-        // Perfect scan-in count, not a driver-entered value) — Parcel Perfect
-        // integration is out of scope for now, so the driver's own visual count is
-        // used as a stand-in. This means confirmation's 3-way reconciliation can never
-        // independently catch a mismatch on this leg until a real PP integration
-        // lands. Flagged, not hidden (preserves the old H5 caveat).
-        pp_scan_in_count: e.driverVisualCount,
+        // `?? null`, not a bare read: a confirmation draft queued offline before this
+        // field existed replays with the key missing entirely, not set to null (same
+        // class of hazard as unloading's e.sealIntactPhotoArtifactId above) — coalescing
+        // keeps the wire value an explicit null rather than an omitted/undefined key
+        // either way.
+        driver_visual_count: e.driverVisualCount ?? null,
         idempotency_key: idempotencyKey,
       })
       break

@@ -12,7 +12,7 @@
 // visits `unloading` several times). Nothing here may assume a length, and position
 // is always resolved via `sequence_number`, never by matching on `phase_type` alone.
 
-import type { PhaseDescriptor, PhaseStatus, PhaseStep } from '@shared/lib/types/phase'
+import type { PhaseDescriptor, PhaseEventId, PhaseStatus, PhaseStep } from '@shared/lib/types/phase'
 import { ANCHORED_PHASES, STEP_NAMES, STEP_SLUGS } from '@shared/lib/constants/phase-meta'
 
 // Mirrors backend `_is_resolved` (orchestration/phase_service.py) exactly: a phase
@@ -41,6 +41,60 @@ function bySequence(phases: readonly PhaseDescriptor[]): PhaseDescriptor[] {
  */
 export function currentPhase(phases: readonly PhaseDescriptor[]): PhaseDescriptor | null {
   return bySequence(phases).find((phase) => !isResolved(phase)) ?? null
+}
+
+/**
+ * The phase the DRIVER is working on: the lowest-sequence unresolved phase that has a
+ * step recipe.
+ *
+ * Differs from `currentPhase()` only while the ledger sits on a driverless row, and that
+ * is not an edge case — it is the entire drive. `in_transit` carries no steps and the
+ * backend holds it PENDING from departure until arrival, closing it as a side effect of
+ * the arrival phase (orchestration/phase_service.advance_unloading). So for hours at a
+ * time the ledger's current row is `in_transit` while the driver's next action is
+ * `unloading`.
+ *
+ * The distinction is load-bearing, not cosmetic: a screen asking "where is this trip"
+ * wants `currentPhase()`, and one asking "what does the driver do next" wants this. The
+ * step screen asked the former and refused to open the arrival step because the ledger
+ * had not reached it yet — which it never could, since submitting that step is what
+ * advances the ledger.
+ */
+export function actionablePhase(phases: readonly PhaseDescriptor[]): PhaseDescriptor | null {
+  return bySequence(phases).find(
+    (phase) => !isResolved(phase) && STEP_SLUGS[phase.phase_type].length > 0,
+  ) ?? null
+}
+
+/**
+ * The phase to stamp on something that happens OUTSIDE a phase submission — a panic
+ * hold, a breakdown, a seal found broken on the road. Answers "where was the driver
+ * when this happened", which is `currentPhase()` (where the trip IS), never
+ * `actionablePhase()` (what the driver does next).
+ *
+ * The distinction is the entire point here. For hours at a time the ledger sits on the
+ * PENDING `in_transit` row while the driver's next action is `unloading`; a panic
+ * pressed during that window belongs to the drive, not to the arrival the driver has
+ * not made yet. `actionablePhase()` would say unloading and be wrong for every
+ * exception raised on the road.
+ *
+ * Captured at the moment of the event and sent with it, so the backend stores WHERE it
+ * happened instead of leaving the dispatcher to infer placement at render time — an
+ * inference that silently re-runs as the trip advances, which made a 15:17 panic appear
+ * to walk from Departure to Unloading to Confirmation.
+ *
+ * Null when the plan is empty or fully resolved; the backend derives its own placement
+ * in that case rather than storing nothing.
+ *
+ * Tolerates a missing plan rather than trusting the type, because every caller is on an
+ * error path: this runs inside the catch block that queues a panic alert when the
+ * network call has already failed. A throw here would lose the alert AND strand the
+ * driver on the panic screen — the one moment the app must not break. An untagged
+ * exception is a small loss; an unsent one is the whole failure.
+ */
+export function contextPhaseEventId(phases: readonly PhaseDescriptor[] | null | undefined): PhaseEventId | null {
+  if (!phases) return null
+  return currentPhase(phases)?.phase_event_id ?? null
 }
 
 /**

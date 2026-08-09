@@ -12,6 +12,7 @@ from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import func, select
 from sqlalchemy.dialects import postgresql
 
+from app.blockchain.anchor_service import compute_payload_hash
 from app.blockchain.hedera import HederaReceipt
 from app.core.exceptions import (
     HederaServiceError, HederaTimeoutError, PhaseSequenceError, PhaseTypeMismatchError, ResourceNotFoundError,
@@ -38,7 +39,7 @@ from app.orchestration.phase_service import (
     _load_phase_event,
     advance_activation, advance_confirmation, advance_departure, advance_loading, advance_unloading,
     anchor_phase_event,
-    complete_phase, is_before_scheduled_day, next_phase, operating_day,
+    complete_phase, current_phase_event, is_before_scheduled_day, next_phase, operating_day,
 )
 from app.schemas.phases import (
     ActivationCompleteRequest, ConfirmationCompleteRequest, DepartureCompleteRequest,
@@ -1934,8 +1935,10 @@ async def test_cross_dock_loading_counts_only_what_that_stop_picks_up(
 
     # The warehouse scans every parcel out, in full, at the stop it's actually
     # picked up at, then closes every session this trip's loading/confirmation
-    # rows are gated on. B's dropoff at stop1 is UNLOADING, which phase_gate
-    # never gates, so it needs no IN-direction staging.
+    # rows are gated on. B's dropoff at stop1 is now UNLOADING, which phase_gate
+    # gates on ScanDirection.IN — so its IN session at stop1 must close too,
+    # even though no actual barcodes are staged for it (nothing downstream
+    # reads B's scan-in count: it never feeds the final CONFIRMATION at stop2).
     feed = MockScanFeed()
     for reference, stop_id in (("PP-A", stop0_id), ("PP-B", stop0_id), ("PP-C", stop1_id)):
         await feed.stage_scans(
@@ -1952,6 +1955,7 @@ async def test_cross_dock_loading_counts_only_what_that_stop_picks_up(
         ("PP-A", stop0_id, ScanDirection.OUT),
         ("PP-B", stop0_id, ScanDirection.OUT),
         ("PP-C", stop1_id, ScanDirection.OUT),
+        ("PP-B", stop1_id, ScanDirection.IN),
         ("PP-A", stop2_id, ScanDirection.IN),
         ("PP-C", stop2_id, ScanDirection.IN),
     ):
@@ -2920,6 +2924,16 @@ async def _build_confirmation_ready_trip(db_session, *, scan_in_count: int) -> d
             guard_verified_seal=True, idempotency_key=str(uuid.uuid4()),
         ),
     )
+
+    # BEFORE advance_unloading, not after: UNLOADING now gates on this stop's
+    # IN-direction scan session (phase_gate.GATED_PHASES), matching the physical
+    # order — the warehouse scans parcels off the truck before the driver can
+    # close out unloading.
+    await _stage_and_ingest(
+        db_session, feed, consignment_reference=consignment.parcel_perfect_reference,
+        stop_id=stop1.id, direction=ScanDirection.IN, trip_id=trip.id, barcodes=barcodes[:scan_in_count],
+    )
+
     await advance_unloading(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading"].id,
         payload=UnloadingCompleteRequest(
@@ -2927,11 +2941,6 @@ async def _build_confirmation_ready_trip(db_session, *, scan_in_count: int) -> d
             gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
             idempotency_key=str(uuid.uuid4()),
         ),
-    )
-
-    await _stage_and_ingest(
-        db_session, feed, consignment_reference=consignment.parcel_perfect_reference,
-        stop_id=stop1.id, direction=ScanDirection.IN, trip_id=trip.id, barcodes=barcodes[:scan_in_count],
     )
 
     return {
@@ -3104,6 +3113,13 @@ async def xdock_ready_to_confirm(db_session, store) -> dict[str, Any]:
             guard_verified_seal=True, idempotency_key=str(uuid.uuid4()),
         ),
     )
+    # BEFORE advance_unloading, not after: UNLOADING at stop2 now gates on this
+    # consignment's IN-direction scan session there (phase_gate.GATED_PHASES).
+    await _stage_and_ingest(
+        db_session, feed, consignment_reference=consignment.parcel_perfect_reference,
+        stop_id=stop2.id, direction=ScanDirection.IN, trip_id=trip.id, barcodes=barcodes,
+    )
+
     await advance_unloading(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading"].id,
         payload=UnloadingCompleteRequest(
@@ -3111,11 +3127,6 @@ async def xdock_ready_to_confirm(db_session, store) -> dict[str, Any]:
             gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
             idempotency_key=str(uuid.uuid4()),
         ),
-    )
-
-    await _stage_and_ingest(
-        db_session, feed, consignment_reference=consignment.parcel_perfect_reference,
-        stop_id=stop2.id, direction=ScanDirection.IN, trip_id=trip.id, barcodes=barcodes,
     )
 
     return {
@@ -3271,3 +3282,172 @@ async def test_a_stop_with_no_consignments_skips_reconciliation(
         PhaseEvent, empty_leg_ready_to_confirm["confirmation_event"].id,
     )
     assert event.status == PhaseStatus.COMPLETED
+
+
+# ── driver_visual_count becomes optional at confirmation ───────────────────
+#
+# The driver may now skip the pallet count at confirmation (matching loading's
+# own Optional field). It has never fed the scan-out/scan-in mismatch verdict
+# (counts.scanned_out != counts.scanned_in, computed above with no reference to
+# driver_visual_count at all) — these tests prove that stays true with the count
+# absent, and that a NULL count still anchors to a stable, reproducible hash.
+
+async def test_confirmation_with_no_driver_visual_count_completes_and_stores_null(
+    db_session, store, ready_to_confirm,
+):
+    result = await phase_service.advance_confirmation(
+        db_session,
+        trip_id=ready_to_confirm["trip"].id,
+        driver_id=ready_to_confirm["driver"].id,
+        phase_event_id=ready_to_confirm["confirmation_event"].id,
+        payload=ConfirmationCompleteRequest(
+            phase_type=PhaseType.CONFIRMATION,
+            pod_photo_artifact_id=ready_to_confirm["pod_photo_id"],
+            pod_signature_artifact_id=ready_to_confirm["pod_signature_id"],
+            driver_visual_count=None,
+            idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    event = await db_session.get(PhaseEvent, ready_to_confirm["confirmation_event"].id)
+    confirmation_row = next(h for h in result.phases if h.id == event.id)
+    assert confirmation_row.status == PhaseStatus.COMPLETED
+    assert event.driver_visual_count is None
+    # A stable, non-empty hash — the None count did not stop the row from anchoring.
+    assert event.event_hash is not None
+
+    # Reproducible: hashing the canonical payload again from the stored fields
+    # (exactly what verification_service._reconstruct_phase_event_payload does)
+    # must land on the SAME hash — the None key stayed present, not omitted.
+    expected_payload = phase_service.compute_confirmation_canonical_payload(
+        phase_event_id=event.id, trip_id=ready_to_confirm["trip"].id,
+        pp_scan_in_count=event.parcel_count_destination,
+        driver_visual_count=event.driver_visual_count,
+    )
+    assert expected_payload["driver_visual_count"] is None
+    assert "driver_visual_count" in expected_payload  # present, never omitted
+    assert compute_payload_hash(expected_payload) == event.event_hash
+
+
+async def test_a_parcel_lost_in_transit_raises_a_scoped_mismatch_with_no_visual_count(
+    db_session, store, ready_to_confirm_short,
+):
+    """The three-way mismatch verdict is unchanged when driver_visual_count is
+    absent — it has only ever compared scanned_out to scanned_in."""
+    result = await phase_service.advance_confirmation(
+        db_session,
+        trip_id=ready_to_confirm_short["trip"].id,
+        driver_id=ready_to_confirm_short["driver"].id,
+        phase_event_id=ready_to_confirm_short["confirmation_event"].id,
+        payload=ConfirmationCompleteRequest(
+            phase_type=PhaseType.CONFIRMATION,
+            pod_photo_artifact_id=ready_to_confirm_short["pod_photo_id"],
+            pod_signature_artifact_id=ready_to_confirm_short["pod_signature_id"],
+            driver_visual_count=None,
+            idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    exception = (await db_session.execute(
+        select(TripException).where(
+            TripException.trip_id == ready_to_confirm_short["trip"].id,
+            TripException.exception_type == ExceptionType.WAYBILL_COUNT_MISMATCH,
+        )
+    )).scalar_one()
+    assert exception.consignment_id == ready_to_confirm_short["consignment"].id
+    assert "3" in exception.description and "2" in exception.description
+
+    confirmation_row = next(
+        h for h in result.phases if h.id == ready_to_confirm_short["confirmation_event"].id
+    )
+    assert confirmation_row.status == PhaseStatus.EXCEPTION
+    assert result.status == TripStatus.CLOSED
+
+    event = await db_session.get(PhaseEvent, ready_to_confirm_short["confirmation_event"].id)
+    assert event.driver_visual_count is None
+
+
+# ── current_phase_event: ledger placement for things that happen OUTSIDE a phase ──
+# Driver-raised exceptions (panic, breakdown, seal broken on the road) have no phase
+# event in hand the way advance_* does, so they resolve their placement through this
+# helper. Its answer is written onto the exception row once, at creation, and never
+# re-derived — the dispatcher used to infer placement at render time and an exception
+# appeared to walk forward through the timeline as the trip advanced.
+
+
+@pytest.mark.asyncio
+async def test_current_phase_event_returns_lowest_unresolved_row(db_session, trip_fixture):
+    trip, _driver, phases = trip_fixture
+
+    event = await current_phase_event(db_session, trip.id)
+
+    # trip_creation is COMPLETED in the fixture, so activation is the trip's position.
+    assert event is not None
+    assert event.id == phases["activation"].id
+
+
+@pytest.mark.asyncio
+async def test_current_phase_event_returns_in_transit_during_the_drive(db_session, trip_fixture):
+    """The case the whole change exists for. in_transit is held PENDING for the entire
+    drive, so a panic pressed on the road must resolve to that row — not to unloading,
+    which is where a "what does the driver do next" walk would land."""
+    trip, _driver, phases = trip_fixture
+    for name in ("activation", "loading", "departure"):
+        phases[name].status = PhaseStatus.COMPLETED
+    await db_session.flush()
+
+    event = await current_phase_event(db_session, trip.id)
+
+    assert event is not None
+    assert event.id == phases["in_transit"].id
+    assert event.phase_type == PhaseType.IN_TRANSIT
+    # Carries the stop it departs FROM — what the exception copies into trip_stop_id.
+    assert event.trip_stop_id == phases["departure"].trip_stop_id
+
+
+@pytest.mark.asyncio
+async def test_current_phase_event_falls_back_to_last_row_when_all_resolved(db_session, trip_fixture):
+    """A closed trip has nothing unresolved, and confirmation is genuinely where it
+    sits — placement, not a guess. Returning None here would push the exception back
+    onto the dispatcher's render-time inference, which is what this replaces."""
+    trip, _driver, phases = trip_fixture
+    for phase in phases.values():
+        phase.status = PhaseStatus.COMPLETED
+    await db_session.flush()
+
+    event = await current_phase_event(db_session, trip.id)
+
+    assert event is not None
+    assert event.id == phases["confirmation"].id
+
+
+@pytest.mark.asyncio
+async def test_current_phase_event_picks_the_leg_being_driven_on_a_cross_dock(
+    db_session, cross_dock_trip_fixture,
+):
+    """An 11-row plan carries TWO in_transit rows. Resolution is by sequence_number, so
+    the second leg's drive must resolve to in_transit_2 — a phase_type match alone would
+    return leg 1's row and file the exception against the wrong leg of the route."""
+    trip, _driver, phases = cross_dock_trip_fixture
+    for name in (
+        "activation", "loading_1", "departure_1", "in_transit_1",
+        "unloading_1", "loading_2", "departure_2",
+    ):
+        phases[name].status = PhaseStatus.COMPLETED
+    await db_session.flush()
+
+    event = await current_phase_event(db_session, trip.id)
+
+    assert event is not None
+    assert event.id == phases["in_transit_2"].id
+    assert event.id != phases["in_transit_1"].id
+
+
+@pytest.mark.asyncio
+async def test_current_phase_event_returns_none_for_a_trip_with_no_plan(db_session, trip_fixture):
+    trip, _driver, phases = trip_fixture
+    for phase in phases.values():
+        await db_session.delete(phase)
+    await db_session.flush()
+
+    assert await current_phase_event(db_session, trip.id) is None

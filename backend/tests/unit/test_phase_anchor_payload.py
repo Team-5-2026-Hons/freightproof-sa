@@ -241,6 +241,25 @@ def test_confirmation_canonical_payload_excludes_gps_artifacts_and_pii():
     }
 
 
+def test_confirmation_canonical_payload_keeps_null_count_key_present():
+    """driver_visual_count is now Optional (the driver may skip the count) — the
+    key must stay PRESENT with value None, never be omitted, so
+    verification_service's rebuild reproduces the same JSON shape and hash."""
+    event_id = uuid.uuid4()
+    trip_id = uuid.uuid4()
+
+    payload = compute_confirmation_canonical_payload(
+        phase_event_id=event_id, trip_id=trip_id, pp_scan_in_count=42, driver_visual_count=None,
+    )
+
+    assert "driver_visual_count" in payload
+    assert payload["driver_visual_count"] is None
+    assert payload == {
+        "phase_event_id": str(event_id), "trip_id": str(trip_id),
+        "phase_type": "confirmation", "pp_scan_in_count": 42, "driver_visual_count": None,
+    }
+
+
 @pytest.fixture(autouse=True)
 def captured_anchor_dispatches(monkeypatch):
     """Capture anchor dispatches instead of queueing real Celery tasks.
@@ -394,16 +413,9 @@ async def test_advance_confirmation_anchors_even_on_a_scan_mismatch(
             guard_verified_seal=True, idempotency_key=str(uuid.uuid4()),
         ),
     )
-    await advance_unloading(
-        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading"].id,
-        payload=UnloadingCompleteRequest(
-            phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-1234",
-            gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
-            idempotency_key=str(uuid.uuid4()),
-        ),
-    )
-
-    # Only 2 of 3 scanned in at destination — the mismatch this test exists to anchor.
+    # Only 2 of 3 scanned in at destination — the mismatch this test exists to
+    # anchor. Staged/ingested/closed BEFORE advance_unloading, not after: UNLOADING
+    # now gates on this stop's IN-direction scan session (phase_gate.GATED_PHASES).
     await feed.stage_scans(
         consignment_reference=consignment.parcel_perfect_reference, stop_reference=str(stop1_id),
         direction=ScanDirection.IN, barcodes=barcodes[:2],
@@ -414,6 +426,15 @@ async def test_advance_confirmation_anchors_even_on_a_scan_mismatch(
     await feed.close_session(
         consignment_reference=consignment.parcel_perfect_reference, stop_reference=str(stop1_id),
         direction=ScanDirection.IN,
+    )
+
+    await advance_unloading(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading"].id,
+        payload=UnloadingCompleteRequest(
+            phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-1234",
+            gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            idempotency_key=str(uuid.uuid4()),
+        ),
     )
 
     result = await advance_confirmation(
@@ -489,6 +510,46 @@ async def test_verify_subject_after_confirmation_reconstructs_matching_payload(
         ),
     )
     h5 = next(h for h in result.phases if h.phase_type == PhaseType.CONFIRMATION)
+
+    stub_service = MagicMock()
+    stub_service.verify_hash.return_value = True
+
+    await _drain_anchors(db_session, captured_anchor_dispatches)
+
+    outcome = await verify_subject(
+        db_session, subject_type=SubjectType.PHASE_EVENT, subject_id=h5.id,
+        hedera_service=stub_service,
+    )
+
+    assert outcome.status == VerifyStatus.VERIFIED
+    stub_service.verify_hash.assert_called_once_with(
+        outcome.receipt.hedera_topic_id, outcome.receipt.hedera_sequence_number, outcome.receipt.data_hash,
+    )
+
+
+@pytest.mark.asyncio
+async def test_verify_subject_after_confirmation_with_null_visual_count_reconstructs_matching_payload(
+    db_session, trip_fixture, captured_anchor_dispatches,
+):
+    """The stop condition this test exists to rule out: driver_visual_count is now
+    Optional, and _reconstruct_phase_event_payload's completeness check used to
+    read `event.driver_visual_count is None` as "not yet completed" — which would
+    have misread a genuinely anchored, null-count confirmation as NO_RECEIPT.
+    parcel_count_destination alone is the correct signal (see verification_service's
+    docstring); this proves the rebuild still reaches VERIFIED with the count absent.
+    """
+    trip, driver, phases = trip_fixture
+    await _advance_to_unloading(db_session, trip, driver, phases)
+    result = await advance_confirmation(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["confirmation"].id,
+        payload=ConfirmationCompleteRequest(phase_type=PhaseType.CONFIRMATION,
+            pod_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            pod_signature_artifact_id=await _make_artifact(db_session, trip.id),
+            driver_visual_count=None, idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+    h5 = next(h for h in result.phases if h.phase_type == PhaseType.CONFIRMATION)
+    assert h5.driver_visual_count is None
 
     stub_service = MagicMock()
     stub_service.verify_hash.return_value = True

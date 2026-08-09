@@ -3,7 +3,7 @@
 // Replaces the deleted app/(app)/trip/handshake/[h]/step/[slug]/HandshakeStepPageClient.tsx.
 // The URL keys on phase_type (see page.tsx and lib/phase/routes.ts's header note) — the
 // actual phase_event_id a driver is addressing is resolved here, client-side, from
-// TripContext via currentPhase(trip.phases). A cross-dock plan can visit `unloading`
+// TripContext via actionablePhase(trip.phases). A cross-dock plan can visit `unloading`
 // (say) more than once; the URL alone can never disambiguate which occurrence, only the
 // ledger can — which is exactly why the guard below redirects on any mismatch instead of
 // trusting the URL's [type] segment at face value.
@@ -21,7 +21,7 @@ import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
 import {
   startPhaseSubmission, usePhaseSubmissions, type PhaseSubmissionOutcome,
 } from '@/lib/submission/phase-submitter'
-import { currentPhase, stepsFor, phaseStepRoute, nextStepRoute, isAnchored } from '@/lib/phase'
+import { actionablePhase, stepsFor, nextStepRoute, currentStepRoute, isAnchored } from '@/lib/phase'
 import { IS_DEMO_MODE } from '@/lib/constants/env'
 import { ROUTES } from '@/lib/constants/routes'
 import { formatTime } from '@/lib/utils/format-time'
@@ -59,20 +59,6 @@ const CONFIRMATION_INITIAL_BASE: Omit<ConfirmationEvidence, 'driverVisualCount'>
   podSignatureDataUrl: null, podSignatureArtifactId: null,
   recipientName: null, recipientIdNumber: null,
   reconciliationNote: null, capturedAt: null,
-}
-
-// The route for wherever the ledger says the driver is right now — used both by the
-// type-mismatch guard below and (duplicated, see that file's own comment) by
-// InTransitPageClient's "Arrive at destination" button. Composed entirely from
-// lib/phase's own exports; lib/phase/ itself is out of scope for this task, so this
-// stays local rather than becoming a second export from that module.
-function currentStepRoute(phases: readonly PhaseDescriptor[]): string {
-  const phase = currentPhase(phases)
-  if (phase === null) return ROUTES.trips // nothing left unresolved — trip finished
-  const steps = stepsFor(phase)
-  // Defensive: only trip_creation has an empty recipe, and it resolves at trip creation
-  // before the driver is ever involved — currentPhase should never surface it here.
-  return steps.length > 0 ? phaseStepRoute(phase.phase_type, steps[0].slug) : ROUTES.activeTripDetail
 }
 
 // STEP_REGISTRY's ComponentType<never> intentionally erases each step's real prop shape
@@ -208,14 +194,23 @@ function PhaseStepContent({ trip, onHandOff }: PhaseStepContentProps) {
   // has a real PhaseType in its URL — this cast just names what build time guarantees.
   const urlPhaseType = type as PhaseType
 
-  const phase = currentPhase(trip.phases)
+  // actionablePhase, NOT currentPhase: the two differ for the whole drive, because the
+  // backend holds the driverless `in_transit` row PENDING from departure until arrival.
+  // Guarding on currentPhase deadlocked the trip — this screen demanded the ledger
+  // already be on `unloading`, while the only thing that moves the ledger to `unloading`
+  // is a submit from this screen. The driver was bounced back to the trip page every
+  // time they pressed "Arrive at destination". See lib/phase/derive.ts.
+  const phase = actionablePhase(trip.phases)
   const steps = phase !== null ? stepsFor(phase) : []
-  // Guard: the ledger's current phase may not be the one this URL addresses — a stale
+  // Guard: the phase the driver is due on may not be the one this URL addresses — a stale
   // back-navigation, a bookmarked deep link, or a submit that just advanced the trip to
   // its next phase in another tab. Trusting the URL here would submit evidence against
   // the wrong phase_event_id row (or, worse, a phase that's already resolved). Redirect
-  // to wherever the ledger actually says "current" instead.
-  const mismatched = phase === null || phase.phase_type !== urlPhaseType || steps.length === 0
+  // to wherever the ledger actually puts the driver instead.
+  //
+  // No `steps.length === 0` arm: actionablePhase only ever returns a phase WITH a recipe,
+  // so an empty one is unreachable by construction rather than by check.
+  const mismatched = phase === null || phase.phase_type !== urlPhaseType
 
   useEffect(() => {
     if (mismatched) router.replace(currentStepRoute(trip.phases))

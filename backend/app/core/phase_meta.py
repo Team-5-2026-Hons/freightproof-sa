@@ -51,6 +51,13 @@ STEP_SLUGS: dict[PhaseType, tuple[str, ...]] = {
     PhaseType.LOADING: ("1-linehaul",),
     PhaseType.DEPARTURE: ("2-capture-seal", "3-waybill", "4-departure"),
     PhaseType.IN_TRANSIT: (),
-    PhaseType.UNLOADING: ("1-hand-waybill", "2-seal-verify", "4-visual-count"),
+    # Seal photo FIRST (2026-08-08): the intact seal is the one piece of evidence that
+    # expires the instant the truck is opened, so it is captured before anything else at
+    # the stop. "1-hand-waybill" is gone — it sent nothing to the server (see
+    # schemas/phases.py UnloadingCompleteRequest, which takes only the seal number and
+    # photo), so dropping it loses no evidence. Surviving slugs keep their original
+    # numbers: the prefix orders the recipe, it is not an index, and renumbering would
+    # break every stored draft key and deep link.
+    PhaseType.UNLOADING: ("2-seal-verify", "4-visual-count"),
     PhaseType.CONFIRMATION: ("1-pod-photo", "2-pod-signature", "3-reconciliation", "4-closed"),
 }

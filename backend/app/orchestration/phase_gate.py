@@ -45,6 +45,12 @@ BLOCKED_ON_SCAN = "warehouse_scan"
 GATED_PHASES: dict[PhaseType, ScanDirection] = {
     PhaseType.LOADING: ScanDirection.OUT,
     PhaseType.CONFIRMATION: ScanDirection.IN,
+    # The driver must not be able to complete unloading at a stop until the
+    # warehouse has scanned that stop's parcels off the truck — the same
+    # evidence discipline loading already enforces on the other end. IN is
+    # correct here (not OUT): blocked_on_by_stop keys IN off
+    # Consignment.delivery_stop_id, which is the right stop for a drop-off.
+    PhaseType.UNLOADING: ScanDirection.IN,
 }
 
 

@@ -284,8 +284,13 @@ class ConfirmationCompleteRequest(_PhaseCompleteBase):
     pod_photo_artifact_id: UUID
     pod_signature_artifact_id: UUID
     # Pallet grain. Recorded and anchored as evidence; never compared against a
-    # parcel count (design §5).
-    driver_visual_count: int
+    # parcel count (design §5). Optional (not required) as of the scan-driven
+    # redesign: the driver may now skip the count at unloading and at
+    # confirmation, matching LoadingCompleteRequest's own Optional field above.
+    # A skipped count still anchors — compute_confirmation_canonical_payload
+    # keeps the key present with value None rather than omitting it, which is
+    # what keeps verification_service's rebuild reproducible.
+    driver_visual_count: Optional[int] = None
 
 
 # Decision S5. One endpoint, five real shapes: Pydantic picks the member from

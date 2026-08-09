@@ -7,6 +7,7 @@ import { TriangleAlert } from 'lucide-react'
 import { useTrip } from '@/lib/hooks/useTrip'
 import { useToast } from '@/lib/hooks/useToast'
 import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
+import { contextPhaseEventId } from '@/lib/phase/derive'
 import { ApiError } from '@/lib/api/client'
 import { ROUTES } from '@/lib/constants/routes'
 import { Button } from '@/components/ui/Button'
@@ -65,7 +66,15 @@ export default function LogExceptionPageClient() {
       // retryable, so queue it and let the driver move on; it syncs on reconnect.
       const isRetryable = !(err instanceof ApiError) || err.status >= 500
       if (isRetryable) {
-        enqueueException(String(trip.id), { exception_type: type, description })
+        // Captured now, not at flush time — see PanicPageClient for the full reasoning.
+        // A breakdown or a seal found broken on the road belongs to the leg being
+        // driven, and by the time this entry sends the trip may have reached unloading.
+        const phaseEventId = contextPhaseEventId(trip.phases)
+        enqueueException(String(trip.id), {
+          exception_type: type,
+          description,
+          ...(phaseEventId ? { phase_event_id: String(phaseEventId) } : {}),
+        })
         // Receipt parity with CheckpointPageClient's identical queue path: without a
         // toast the driver lands back on the hub with zero evidence the report
         // registered anywhere — indistinguishable from a silent failure.

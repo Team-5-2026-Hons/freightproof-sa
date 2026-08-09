@@ -6,7 +6,9 @@ import {
 } from '@shared/lib/mocks/phase-trips'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import { STEP_NAMES } from '@shared/lib/constants/phase-meta'
-import { currentPhase, isAnchored, isDriving, planProgress, stepsFor } from '../derive'
+import {
+  actionablePhase, contextPhaseEventId, currentPhase, isAnchored, isDriving, planProgress, stepsFor,
+} from '../derive'
 
 // Marks every phase up to and including `through` (by sequence_number) as completed.
 // Local to the test file on purpose — the module under test must not gain a helper
@@ -73,6 +75,44 @@ describe('currentPhase', () => {
     })
 
     expect(currentPhase(plan)?.sequence_number).toBe(2)
+  })
+})
+
+describe('actionablePhase', () => {
+  it('agrees with currentPhase whenever the current row has steps of its own', () => {
+    const activationSeq = SINGLE_LEG_PHASE_PLAN.find((p) => p.phase_type === 'activation')!.sequence_number
+    const plan = walk(SINGLE_LEG_PHASE_PLAN, activationSeq - 1)
+
+    expect(actionablePhase(plan)?.phase_event_id).toBe(currentPhase(plan)?.phase_event_id)
+  })
+
+  it('skips the PENDING, driverless in_transit row and returns the arrival phase', () => {
+    // The whole reason this function exists. During the drive the LEDGER is on
+    // in_transit, but the driver's next action is unloading — and asking currentPhase
+    // for "what does the driver do next" is what deadlocked the arrival step.
+    const departureSeq = SINGLE_LEG_PHASE_PLAN.find((p) => p.phase_type === 'departure')!.sequence_number
+    const plan = walk(SINGLE_LEG_PHASE_PLAN, departureSeq)
+
+    expect(currentPhase(plan)?.phase_type).toBe('in_transit')
+    expect(actionablePhase(plan)?.phase_type).toBe('unloading')
+  })
+
+  it('returns leg 2’s unloading, not leg 1’s, on a cross-dock plan', () => {
+    const secondInTransit = CROSS_DOCK_PHASE_PLAN.filter((p) => p.phase_type === 'in_transit')[1]
+    const plan = walk(CROSS_DOCK_PHASE_PLAN, secondInTransit.sequence_number - 1)
+
+    const actionable = actionablePhase(plan)
+
+    expect(actionable?.phase_type).toBe('unloading')
+    // Proves the sequence walk, not a phase_type lookup: leg 1's unloading sits earlier
+    // in this same plan and is already resolved.
+    expect(actionable!.sequence_number).toBeGreaterThan(secondInTransit.sequence_number)
+  })
+
+  it('is null once no unresolved phase has any steps left', () => {
+    const lastRow = SINGLE_LEG_PHASE_PLAN[SINGLE_LEG_PHASE_PLAN.length - 1]
+
+    expect(actionablePhase(walk(SINGLE_LEG_PHASE_PLAN, lastRow.sequence_number))).toBeNull()
   })
 })
 
@@ -229,5 +269,47 @@ describe('isDriving', () => {
     )
 
     expect(isDriving(plan)).toBe(true)
+  })
+})
+
+describe('contextPhaseEventId', () => {
+  it('tags an on-the-road exception to in_transit, not to the arrival still ahead', () => {
+    // The case the whole thing exists for. Everything through departure is resolved, so
+    // in_transit is the current row while the driver's NEXT action is unloading. A panic
+    // pressed here belongs to the drive; actionablePhase would say unloading and be wrong.
+    const plan = walk(SINGLE_LEG_PHASE_PLAN, 3)
+    const inTransit = plan.find((p) => p.phase_type === 'in_transit')
+
+    expect(actionablePhase(plan)?.phase_type).toBe('unloading')
+    expect(contextPhaseEventId(plan)).toBe(inTransit?.phase_event_id)
+  })
+
+  it('picks the leg being driven on a cross-dock plan, not the first in_transit', () => {
+    // An 11-row plan carries two in_transit rows. Resolution is by sequence_number, so a
+    // phase_type match alone would file a second-leg breakdown against the first leg.
+    const inTransitRows = CROSS_DOCK_PHASE_PLAN.filter((p) => p.phase_type === 'in_transit')
+    const secondLeg = inTransitRows[1]
+    const plan = walk(CROSS_DOCK_PHASE_PLAN, secondLeg.sequence_number - 1)
+
+    expect(inTransitRows).toHaveLength(2)
+    expect(contextPhaseEventId(plan)).toBe(secondLeg.phase_event_id)
+    expect(contextPhaseEventId(plan)).not.toBe(inTransitRows[0].phase_event_id)
+  })
+
+  it('reads by sequence_number, not the order rows arrived over the wire', () => {
+    const plan = walk(SINGLE_LEG_PHASE_PLAN, 3)
+    const shuffled = [...plan].reverse()
+
+    expect(contextPhaseEventId(shuffled)).toBe(contextPhaseEventId(plan))
+  })
+
+  it('is null on a fully-resolved plan, leaving the backend to place it', () => {
+    const closed = SINGLE_LEG_PHASE_PLAN.map((p) => ({ ...p, status: 'completed' as const }))
+
+    expect(contextPhaseEventId(closed)).toBeNull()
+  })
+
+  it('is null on an empty plan', () => {
+    expect(contextPhaseEventId([])).toBeNull()
   })
 })

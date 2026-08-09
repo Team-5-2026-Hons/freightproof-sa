@@ -123,9 +123,12 @@ async def list_dev_trips(
     for consignment_id, barcode in parcels:
         barcodes_by_consignment.setdefault(consignment_id, []).append(barcode)
 
-    # The two phase types the scan gate actually reads (imported, not re-declared,
-    # so this can never drift from the real gate in phase_gate.py), plus UNLOADING
-    # and DEPARTURE — needed below to derive preceding_departure_status. Extending
+    # Every phase type the scan gate actually reads (imported, not re-declared, so this
+    # can never drift from the real gate in phase_gate.py — it was two types, and became
+    # three when UNLOADING joined the gate), plus DEPARTURE, which is not gated but is
+    # needed below to derive preceding_departure_status. UNLOADING is now in both halves
+    # of that union; the repeat is harmless because this list only ever feeds a SQL IN
+    # clause, where a duplicate value is a no-op. Extending
     # this one query rather than adding a second round trip keeps this endpoint's
     # batched-query discipline (it already runs once per dispatcher panel load).
     gated_phase_types = list(GATED_PHASES.keys())
