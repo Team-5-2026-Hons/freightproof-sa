@@ -635,41 +635,30 @@ export default function TripDetailPage() {
     nodeType: nodeTypeFor(phase, active?.phase_event_id ?? null, trip.status),
     exceptions: [],
   }))
-  // The backend tags every exception with the phase it occurred on (phase_event_id,
-  // schemas/transit.py) — attach there directly. The field is nullable, not optional:
-  // an exception raised outside any phase (e.g. panic button during IN_TRANSIT) carries null.
-  // For untagged exceptions, use smart fallback: if it's a transit-friendly exception type and
-  // an active phase exists, attach to that; otherwise fall back to the last completed phase.
-  const IN_TRANSIT_FRIENDLY = new Set([
-    'panic_button',           // driver-initiated, can happen anytime
-    'seal_broken_in_transit', // explicitly in-transit
-    'mechanical',             // driver, could happen during transit
-    'dispatcher_note',        // dispatcher, could be anytime
-    'escalation',             // dispatcher, could be anytime
-  ])
-
+  // Every exception raised against a phase carries that phase's id (phase_event_id), so
+  // placement is READ off the row, never inferred from its type.
+  //
+  // The fallback survives for one live case, not for legacy data: cancel_trip
+  // (orchestration/trip_service.py) deliberately writes its dispatcher note with no
+  // phase_event_id, because a cancellation has no phase row to hang an actor on.
+  // Dropping untagged rows would erase that note from an abandoned trip's timeline —
+  // the one record explaining why the trip stopped.
+  //
+  // What was removed here was a set of exception TYPES (panic_button, mechanical, …)
+  // used to guess a phase when the tag was missing. It keyed off a node of type
+  // 'active', which requires status === 'in_progress' — a status no path in backend/app
+  // ever writes — so the guess could never fire, and its only lasting effect was an
+  // `as any` to make the lookup compile.
   for (const exc of trip.exceptions) {
     const taggedIdx = exc.phase_event_id
       ? timelineItems.findIndex(i => i.phase.phase_event_id === exc.phase_event_id)
       : -1
 
-    let attachIdx = -1
-    if (taggedIdx >= 0) {
-      attachIdx = taggedIdx
-    } else {
-      // Smart fallback: for transit-friendly exceptions, try to attach to active phase first
-      const canUseActivePhase = IN_TRANSIT_FRIENDLY.has(exc.exception_type as any)
-      const activeIdx = canUseActivePhase
-        ? timelineItems.findIndex(i => i.nodeType === 'active')
-        : -1
-
-      if (activeIdx >= 0) {
-        attachIdx = activeIdx
-      } else {
-        // Fall back to last completed/warning phase
-        attachIdx = timelineItems.findLastIndex(i => i.nodeType === 'done' || i.nodeType === 'warn')
-      }
-    }
+    // Untagged rows land on the last phase the trip actually reached, so a cancellation
+    // note reads at the end of what happened rather than part-way up the plan.
+    const attachIdx = taggedIdx >= 0
+      ? taggedIdx
+      : timelineItems.findLastIndex(i => i.nodeType === 'done' || i.nodeType === 'warn')
 
     if (attachIdx >= 0) timelineItems[attachIdx].exceptions.push(exc)
   }
@@ -838,6 +827,20 @@ export default function TripDetailPage() {
                           />
                           <PhaseOverrideAction phase={phase} tripId={trip.id} tripStatus={trip.status} onOverridden={refetchSilent} />
                         </>
+                    // in_transit carries no per-type detail here — its evidence renders
+                    // unconditionally below, in alwaysExpandedContent — but it DOES need
+                    // the override control, and it is the one row that cannot recover
+                    // without it. Nothing closes an in_transit row except advance_unloading,
+                    // so if a dispatcher overrides `unloading` (the lost-phone case this
+                    // control exists for), in_transit stays PENDING forever: confirmation
+                    // still passes the gate, the driver still captures POD and signature,
+                    // the trip still anchors — and recompute_position then stops at the
+                    // unresolved in_transit row and never reaches its close-the-trip
+                    // branch. The load is delivered and the board reads "driving", for good.
+                    // The backend already accepts an override on this row; only the UI was
+                    // missing, which made a recoverable state look permanent.
+                    : phase.phase_type === 'in_transit'
+                      ? <PhaseOverrideAction phase={phase} tripId={trip.id} tripStatus={trip.status} onOverridden={refetchSilent} />
                     : undefined
                   }
                   alwaysExpandedContent={
