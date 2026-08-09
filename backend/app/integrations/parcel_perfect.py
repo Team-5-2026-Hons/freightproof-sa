@@ -24,6 +24,7 @@ from typing import Any, Optional
 import httpx
 
 from app.core.config import settings
+from app.integrations.mock_state import build_key, get_mock_state_store
 
 logger = logging.getLogger(__name__)
 
@@ -164,6 +165,22 @@ class PPWaybillResponse:
 # Mock fixture
 # ---------------------------------------------------------------------------
 
+# The PP account carried by scripts/seed_demo.py's principal Organization
+# (pp_account_number="MOCK01"). Consignment sync resolves the client org through
+# this value, so it must stay in step with the seeder.
+_DEMO_PP_ACCOUNT = "MOCK01"
+_DEMO_PP_CUSTOMER = "CGY Logistics"
+
+# Manifest groupings. 69/70 belong to the original WAY00x fixtures and are asserted
+# by tests - never add to them. Each seeded trip gets its own manifest so a wizard
+# manifest lookup returns exactly one trip's cargo, and the unassigned pool gets its
+# own so the bulk-fetch path has a clean happy path that creates no conflicts.
+_MANIFEST_SINGLE = 71
+_MANIFEST_XDOCK = 72
+_MANIFEST_ACTIVE = 73
+_MANIFEST_CLOSED = 74
+UNASSIGNED_MANIFEST_NUMBER = 80
+
 MOCK_WAYBILL_RESPONSE = PPWaybillResponse(
     details=PPWaybillDetails(
         waybill="MOCKWAY001",
@@ -213,8 +230,17 @@ def _mock_waybill(
     declared_value: Optional[float] = None,
     poddate: str = "",
     failtype: Optional[str] = None,
+    dest_address: str = "1 Delivery Road",
+    orig_person: str = "CGY Warehouse",
+    orig_town: str = "JOHANNESBURG",
+    orig_address: str = "1 Depot Street, Linbro Park",
 ) -> PPWaybillResponse:
-    """Fixture factory — field shapes strictly follow the v28 getSingleWaybill spec."""
+    """Fixture factory - field shapes strictly follow the v28 getSingleWaybill spec.
+
+    Origin/destination default to the original single-route fixtures (WAY00x) so
+    those entries and every test asserting on them are unaffected; the seeded-trip
+    fixtures below override them to state their real leg.
+    """
     return PPWaybillResponse(
         details=PPWaybillDetails(
             waybill=waybill,
@@ -222,13 +248,13 @@ def _mock_waybill(
             pieces=parcel_count,
             duedate="03.07.2026",
             declared_value=declared_value,
-            dest_address="1 Delivery Road",
+            dest_address=dest_address,
             dest_town=dest_town,
             dest_person=dest_person,
             dest_contact="0210000001",
-            orig_person="CGY Warehouse",
-            orig_town="JOHANNESBURG",
-            orig_address="1 Depot Street, Linbro Park",
+            orig_person=orig_person,
+            orig_town=orig_town,
+            orig_address=orig_address,
             service="ONX",
             actual_weight_kg=weight_kg,
             freight_total=None,
@@ -245,6 +271,70 @@ def _mock_waybill(
             for n in range(1, parcel_count + 1)
         ],
         wayrefs=[],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Demo depot geography.
+#
+# The three precincts scripts/seed_demo.py creates. Seeded-trip fixtures draw
+# their origin/destination from here so a waybill's stated leg matches the trip
+# route the seeder actually builds - otherwise the dispatcher's consignment panel
+# contradicts the trip's own stops, which on an evidence platform reads as
+# tampering rather than as a fixture mismatch.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _Depot:
+    """A demo depot's PP-facing address fields."""
+
+    town: str
+    address: str
+    contact_person: str
+
+
+_CPT = _Depot("CAPE TOWN", "12 Gunners Circle, Epping Industria", "Epping Goods Inwards")
+_BFN = _Depot("BLOEMFONTEIN", "8 Reid Street, Hamilton", "Hamilton Cross-Dock")
+_JHB = _Depot("JOHANNESBURG", "1 Depot Street, Linbro Park", "Linbro Receiving")
+
+
+def _routed_waybill(
+    *,
+    waybill: str,
+    origin: _Depot,
+    destination: _Depot,
+    manifest: Optional[int],
+    parcel_count: int,
+    contents: list[PPContents],
+    weight_kg: float,
+    declared_value: Optional[float] = None,
+    poddate: str = "",
+    accnum: str = _DEMO_PP_ACCOUNT,
+    custname: str = _DEMO_PP_CUSTOMER,
+) -> PPWaybillResponse:
+    """A fixture that states a real leg between two demo depots.
+
+    Defaults to the demo principal's PP account so consignment sync resolves a
+    client Organization - an unresolved client org is a warning path, and every
+    seeded trip showing that warning would train the reviewer to ignore it.
+    """
+    return _mock_waybill(
+        waybill=waybill,
+        accnum=accnum,
+        custname=custname,
+        manifest=manifest,
+        parcel_count=parcel_count,
+        contents=contents,
+        weight_kg=weight_kg,
+        declared_value=declared_value,
+        poddate=poddate,
+        dest_town=destination.town,
+        dest_address=destination.address,
+        dest_person=destination.contact_person,
+        orig_town=origin.town,
+        orig_address=origin.address,
+        orig_person=f"{origin.town.title()} Dispatch",
     )
 
 
@@ -289,8 +379,174 @@ MOCK_WAYBILLS[MOCK_WAYBILL_RESPONSE.details.waybill] = MOCK_WAYBILL_RESPONSE
 
 
 # ---------------------------------------------------------------------------
+# Seeded-trip fixtures - the cargo scripts/seed_trips.py puts on demo trips.
+#
+# These exist because the seeder used to invent references PP had never heard of,
+# so the dispatcher wizard's fail-closed lookup 404'd on its own demo data. Every
+# reference the seeder consumes must resolve here; tests/unit/test_seed_fixtures.py
+# fails the build if the two ever drift apart again.
+#
+# Legs match the routes seed_trips.py builds:
+#   SINGLE  CPT -> JHB
+#   XDOCK   CPT -> BFN -> JHB, with one consignment per leg shape
+#   ACTIVE  same shape as XDOCK, walked partway through
+#   CLOSED  CPT -> JHB, delivered (carries a poddate, as PP would)
+# ---------------------------------------------------------------------------
+
+SEEDED_WAYBILLS: dict[str, PPWaybillResponse] = {
+    w.details.waybill: w
+    for w in [
+        # --- SINGLE: one consignment, straight through -----------------------
+        _routed_waybill(
+            waybill="MOCKWB0001", origin=_CPT, destination=_JHB,
+            manifest=_MANIFEST_SINGLE, parcel_count=18, weight_kg=840.0,
+            declared_value=42000.0,
+            contents=[PPContents(item=1, description="Retail FMCG cartons", actmass=840.0, pieces=18)],
+        ),
+        # --- XDOCK: A straight through, B dropped at hub, C collected at hub --
+        _routed_waybill(
+            waybill="MOCKWB0002", origin=_CPT, destination=_JHB,
+            manifest=_MANIFEST_XDOCK, parcel_count=9, weight_kg=310.0,
+            declared_value=18500.0,
+            contents=[PPContents(item=1, description="Pharmaceutical totes", actmass=310.0, pieces=9)],
+        ),
+        _routed_waybill(
+            waybill="MOCKWB0003", origin=_CPT, destination=_BFN,
+            manifest=_MANIFEST_XDOCK, parcel_count=24, weight_kg=1120.5,
+            declared_value=63000.0,
+            contents=[PPContents(item=1, description="Canned goods", actmass=960.5, pieces=20),
+                      PPContents(item=2, description="Glassware", actmass=160.0, pieces=4)],
+        ),
+        _routed_waybill(
+            waybill="MOCKWB0004", origin=_BFN, destination=_JHB,
+            manifest=_MANIFEST_XDOCK, parcel_count=6, weight_kg=275.0,
+            declared_value=9800.0,
+            contents=[PPContents(item=1, description="Agricultural spares", actmass=275.0, pieces=6)],
+        ),
+        # --- ACTIVE: same three leg shapes, different cargo -------------------
+        _routed_waybill(
+            waybill="MOCKWB0005", origin=_CPT, destination=_JHB,
+            manifest=_MANIFEST_ACTIVE, parcel_count=11, weight_kg=495.0,
+            declared_value=27500.0,
+            contents=[PPContents(item=1, description="Consumer electronics", actmass=495.0, pieces=11)],
+        ),
+        _routed_waybill(
+            waybill="MOCKWB0006", origin=_CPT, destination=_BFN,
+            manifest=_MANIFEST_ACTIVE, parcel_count=30, weight_kg=1580.0,
+            declared_value=71000.0,
+            contents=[PPContents(item=1, description="Bottled beverages", actmass=1400.0, pieces=26),
+                      PPContents(item=2, description="Promotional stands", actmass=180.0, pieces=4)],
+        ),
+        _routed_waybill(
+            waybill="MOCKWB0007", origin=_BFN, destination=_JHB,
+            manifest=_MANIFEST_ACTIVE, parcel_count=4, weight_kg=88.0,
+            declared_value=5400.0,
+            contents=[PPContents(item=1, description="Workshop tooling", actmass=88.0, pieces=4)],
+        ),
+        # --- CLOSED: delivered, so PP reports a POD date ----------------------
+        _routed_waybill(
+            waybill="MOCKWB0008", origin=_CPT, destination=_JHB,
+            manifest=_MANIFEST_CLOSED, parcel_count=7, weight_kg=232.0,
+            declared_value=15600.0, poddate="24.07.2026",
+            contents=[PPContents(item=1, description="Automotive filters", actmass=232.0, pieces=7)],
+        ),
+    ]
+}
+
+# ---------------------------------------------------------------------------
+# Unassigned pool - valid references deliberately left off every seeded trip.
+#
+# The wizard needs waybills it can actually create a NEW trip from. Without this
+# pool a demo has only two options: reuse a seeded reference (now a 409, since a
+# consignment belongs to exactly one trip) or type something PP does not know
+# (404). Both are dead ends, and neither is the flow being demonstrated.
+# ---------------------------------------------------------------------------
+
+UNASSIGNED_WAYBILLS: dict[str, PPWaybillResponse] = {
+    w.details.waybill: w
+    for w in [
+        _routed_waybill(
+            waybill="FREEWB0001", origin=_CPT, destination=_JHB,
+            manifest=UNASSIGNED_MANIFEST_NUMBER, parcel_count=12, weight_kg=520.0,
+            declared_value=31000.0,
+            contents=[PPContents(item=1, description="Packaged textiles", actmass=520.0, pieces=12)],
+        ),
+        _routed_waybill(
+            waybill="FREEWB0002", origin=_CPT, destination=_BFN,
+            manifest=UNASSIGNED_MANIFEST_NUMBER, parcel_count=5, weight_kg=147.5,
+            declared_value=8200.0,
+            contents=[PPContents(item=1, description="Laboratory consumables", actmass=147.5, pieces=5)],
+        ),
+        _routed_waybill(
+            waybill="FREEWB0003", origin=_BFN, destination=_JHB,
+            manifest=UNASSIGNED_MANIFEST_NUMBER, parcel_count=21, weight_kg=990.0,
+            declared_value=44500.0,
+            contents=[PPContents(item=1, description="Building hardware", actmass=830.0, pieces=17),
+                      PPContents(item=2, description="Sealants", actmass=160.0, pieces=4)],
+        ),
+        # Deliberately off the shared manifest: the wizard must also work for a
+        # waybill entered one at a time, not only via bulk manifest fetch.
+        _routed_waybill(
+            waybill="FREEWB0004", origin=_JHB, destination=_CPT,
+            manifest=None, parcel_count=3, weight_kg=61.0,
+            declared_value=12750.0,
+            contents=[PPContents(item=1, description="Returned equipment", actmass=61.0, pieces=3)],
+        ),
+        # Unmapped PP account - exercises the "client org not resolved" warning on
+        # a trip the dispatcher creates themselves, not just in tests.
+        _routed_waybill(
+            waybill="FREEWB0005", origin=_CPT, destination=_JHB,
+            manifest=None, parcel_count=2, weight_kg=39.0,
+            declared_value=4100.0,
+            accnum="UNMAP9", custname="Unmapped Client (Pty) Ltd",
+            contents=[PPContents(item=1, description="Trade samples", actmass=39.0, pieces=2)],
+        ),
+        _routed_waybill(
+            waybill="FREEWB0006", origin=_CPT, destination=_JHB,
+            manifest=UNASSIGNED_MANIFEST_NUMBER, parcel_count=8, weight_kg=310.0,
+            declared_value=19500.0,
+            contents=[PPContents(item=1, description="Office furniture", actmass=310.0, pieces=8)],
+        ),
+        _routed_waybill(
+            waybill="FREEWB0007", origin=_JHB, destination=_BFN,
+            manifest=UNASSIGNED_MANIFEST_NUMBER, parcel_count=16, weight_kg=705.0,
+            declared_value=38200.0,
+            contents=[PPContents(item=1, description="Packaged foodstuffs", actmass=705.0, pieces=16)],
+        ),
+        _routed_waybill(
+            waybill="FREEWB0008", origin=_BFN, destination=_CPT,
+            manifest=UNASSIGNED_MANIFEST_NUMBER, parcel_count=4, weight_kg=52.0,
+            declared_value=6800.0,
+            contents=[PPContents(item=1, description="Medical supplies", actmass=52.0, pieces=4)],
+        ),
+        # Deliberately off the shared manifest, like FREEWB0004: covers the
+        # one-at-a-time entry path rather than bulk manifest fetch.
+        _routed_waybill(
+            waybill="FREEWB0009", origin=_JHB, destination=_CPT,
+            manifest=None, parcel_count=6, weight_kg=178.0,
+            declared_value=22000.0,
+            contents=[PPContents(item=1, description="Hardware tools", actmass=178.0, pieces=6)],
+        ),
+        _routed_waybill(
+            waybill="FREEWB0010", origin=_CPT, destination=_BFN,
+            manifest=UNASSIGNED_MANIFEST_NUMBER, parcel_count=10, weight_kg=430.0,
+            declared_value=27500.0,
+            contents=[PPContents(item=1, description="Automotive parts", actmass=430.0, pieces=10)],
+        ),
+    ]
+}
+
+MOCK_WAYBILLS.update(SEEDED_WAYBILLS)
+MOCK_WAYBILLS.update(UNASSIGNED_WAYBILLS)
+
+
+# ---------------------------------------------------------------------------
 # Mock client
 # ---------------------------------------------------------------------------
+
+
+# Redis key kind for staged PP waybill overrides, distinct from staged scan state.
+_PP_KEY_KIND = "pp"
 
 
 class MockParcelPerfectClient:
@@ -298,18 +554,111 @@ class MockParcelPerfectClient:
 
     Unknown references raise PPWaybillNotFoundError, matching the real client, so
     the fail-closed 422 path behaves identically in dev/CI and against live PP.
+
+    When the dev trigger panel is enabled, a Redis-held override layer is applied
+    on top of each fixture. This exists because PP waybills were verified to be
+    mutable after creation (spec §B2c: a portal edit changed 68 fields in one
+    10-second poll interval, growing tracks[] from 2 to 27 barcodes), and the
+    Celery poll that would observe such a change runs in a different process from
+    the API — so a module-level dict mutation would be invisible to it.
+
+    The override lookup is gated on DEV_PANEL_ENABLED so that normal operation
+    never touches Redis and every existing PP test runs unchanged.
     """
 
     supports_manifest_lookup: bool = True
+
+    def _override_key(self, waybill_number: str) -> str:
+        return build_key(_PP_KEY_KIND, waybill_number)
+
+    async def stage_waybill_override(
+        self,
+        waybill_number: str,
+        *,
+        manifest: Optional[int] = None,
+        poddate: Optional[str] = None,
+        failtype: Optional[str] = None,
+        parcel_count: Optional[int] = None,
+    ) -> None:
+        """Stage a change to a fixture waybill, as if edited in the PP portal.
+
+        Only supplied fields are staged; the rest of the fixture is untouched.
+        Staging is additive across calls, so a manifest number set earlier survives
+        a later poddate change — that is how a real waybill accumulates state.
+
+        Raises:
+            PPUnsupportedError: PP_USE_MOCK is false. Staging a fixture change
+                while pointed at live PP is a bug, and silently ignoring it would
+                make a demo look like it worked when nothing happened.
+            PPWaybillNotFoundError: the reference is not in the fixture library.
+        """
+        if not settings.PP_USE_MOCK:
+            raise PPUnsupportedError(
+                "Cannot stage a waybill override while PP_USE_MOCK is false"
+            )
+        if waybill_number not in MOCK_WAYBILLS:
+            raise PPWaybillNotFoundError(waybill_number)
+
+        key = self._override_key(waybill_number)
+        store = get_mock_state_store()
+        current = await store.get_json(key) or {}
+        staged = {
+            **current,
+            **{
+                field: value
+                for field, value in (
+                    ("manifest", manifest),
+                    ("poddate", poddate),
+                    ("failtype", failtype),
+                    ("parcel_count", parcel_count),
+                )
+                if value is not None
+            },
+        }
+        await store.set_json(key, staged)
+        logger.info("Staged PP override for waybill=%s fields=%s", waybill_number, sorted(staged))
+
+    async def _apply_overrides(self, waybill: PPWaybillResponse) -> PPWaybillResponse:
+        """Apply any staged override to a fixture copy. No-op when none is staged."""
+        if not settings.DEV_PANEL_ENABLED:
+            return waybill
+
+        staged = await get_mock_state_store().get_json(
+            self._override_key(waybill.details.waybill)
+        )
+        if not staged:
+            return waybill
+
+        if (manifest := staged.get("manifest")) is not None:
+            waybill.details.manifest = int(manifest)
+        if (poddate := staged.get("poddate")) is not None:
+            waybill.details.poddate = str(poddate)
+        if (failtype := staged.get("failtype")) is not None:
+            waybill.details.failtype = str(failtype)
+        if (parcel_count := staged.get("parcel_count")) is not None:
+            # Regenerate tracks[] to the new size, keeping the fixture's barcode
+            # format. This reproduces the real failure mode: the expected parcel
+            # set — the baseline every reconciliation is measured against — grows
+            # with no version, timestamp or audit field on the waybill.
+            count = int(parcel_count)
+            reference = waybill.details.waybill
+            waybill.tracks = [
+                PPTrack(trackno=f"{reference}{n:04d}", parcelno=n, item=1)
+                for n in range(1, count + 1)
+            ]
+            waybill.details.pieces = count
+
+        return waybill
 
     async def get_single_waybill(self, waybill_number: str) -> PPWaybillResponse:
         """Look up the waybill in the fixture library; raise if unregistered."""
         logger.info("MockParcelPerfectClient.get_single_waybill waybill=%s", waybill_number)
         try:
             # Deep copy: callers may mutate results; module-level fixtures must stay pristine.
-            return copy.deepcopy(MOCK_WAYBILLS[waybill_number])
+            waybill = copy.deepcopy(MOCK_WAYBILLS[waybill_number])
         except KeyError as exc:
             raise PPWaybillNotFoundError(waybill_number) from exc
+        return await self._apply_overrides(waybill)
 
     async def get_waybills_by_manifest(self, manifest_number: int) -> list[PPWaybillResponse]:
         """ASPIRATIONAL — PP v28 has no such endpoint (ask #1, July visit).

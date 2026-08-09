@@ -63,7 +63,7 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-6">
+    <main className="flex min-h-dvh flex-col items-center justify-center p-6">
       <h1 className="text-2xl font-semibold mb-8 text-surface-on">FreightProof Driver</h1>
       <form onSubmit={handleSendOtp} className="w-full max-w-sm flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">

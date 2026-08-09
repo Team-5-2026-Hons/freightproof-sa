@@ -1,7 +1,9 @@
-# FreightProof SA — Technical Full Picture v1
+# FreightProof SA — Technical Full Picture v1.1
 
 > **Status:** architecture review + decision record — no code changed by this document.
 > **Author:** Ciaran (with Claude as reviewing architect) · **Date:** 2026-07-06
+> **v1.1 update (2026-08-05):** vocabulary-only pass (Stage 6, Task 6.7). No claims below were
+> re-verified against current source in this pass — see the supersession notice immediately below.
 > **Successor to:** `FreightProof_Full_Picture_v7.md` at the technical/architecture level. v7 remains
 > the business-domain source of truth; where this document and v7 disagree on *what the code does*,
 > this document wins (it was verified against source on 2026-07-06, branch `Ciaran`, HEAD `ee4cf32`).
@@ -19,6 +21,32 @@
 > `tests/conftest.py:168` skips any test using `db_session` when `TEST_DATABASE_URL` is unset
 > (REPORTED, mechanism confirmed by sweep). The same gate means **integration tests never run in CI**
 > (no Postgres service in `.github/workflows/ci.yml`). The green baseline is therefore *unit-only*.
+
+---
+
+> ## ⚠️ Superseded by the Phase model — read this before §1–§8
+>
+> This document's technical detail (§1.2, §2 D3/D6, §3, §4, the WP1–WP15 roadmap in §8) describes
+> the **five-handshake state machine** (`HandshakeType` H0–H5, `TripStatus` doubling as the
+> sequencer, `orchestration/handshake_service.py`) exactly as it was VERIFIED on 2026-07-06. That
+> architecture **has since been replaced** by the plan-driven **Phase model** (types
+> `trip_creation · activation · loading · departure · in_transit · unloading · confirmation`,
+> P0–P6): the phase plan is generated from a trip's stops and consignments *at creation* — length
+> is data, not a hard-coded 6/7 — and a trip's position is *derived* from a phase-event ledger, not
+> stored on `trip.status`. §2 D6 of this document ("per-stop handshake model … deferred to
+> iteration 3") is the design that became the Phase model; **WP14 in §8 is that refactor, and it
+> has landed.**
+>
+> **How to read the rest of this document:** the evidence-integrity gap analysis (§3), the F1–F11
+> findings (§4), and the decision ledger (§2) remain valid **as a historical record of what was
+> true on `ee4cf32`** and as the reasoning trail for decisions that still stand (Hedera hash-only
+> anchoring, PP read-only integration, POPIA erasure design, etc.). Mentally substitute "handshake"
+> → "phase" and "H0–H5" → "P0–P6" only where you are relying on this document for *current*
+> terminology — do **not** assume the anchoring/reconciliation *mechanics* described here (e.g.
+> which fields are hashed at which step) still match the Phase-model code without checking source.
+> For current architecture and terminology, read `docs/phase-model-explained.md` first.
+
+---
 
 ---
 
@@ -983,5 +1011,8 @@ Explore subagent passes on 2026-07-06, with the highest-impact claims re-verifie
 
 ---
 
-*Review complete. Corrections → Ciaran. This document supersedes the technical claims of v7 §14;
-next revision after the PP visit (target: v1.1 with §5 answers filled in).*
+*Review complete. Corrections → Ciaran. This document supersedes the technical claims of v7 §14.
+v1.1 (2026-08-05) is a vocabulary-only pass adding the Phase-model supersession notice above; it
+does **not** fill in the §5 PP-visit answers that were the originally planned v1.1 content — that
+remains outstanding. A full re-verification against post-refactor source (rewriting §1–§4/§8 in
+Phase-model terms) is still owed and is out of scope for this pass.*

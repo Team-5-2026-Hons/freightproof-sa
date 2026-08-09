@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.db.models.enums import IdvsStatus, ParcelStatus, TripStatus, TripType
 from app.schemas.blockchain import BlockchainReceiptRead
-from app.schemas.handshakes import HandshakeEventRead
+from app.schemas.phases import PhaseEventRead
 from app.schemas.people import DriverRead
 from app.schemas.transit import TripExceptionRead
 from app.schemas.vehicles import VehicleRead
@@ -89,6 +89,11 @@ class ConsignmentRead(ConsignmentBase):
     id: UUID
     created_at: datetime
     updated_at: datetime
+    # Live scan progress from Parcel rows, recomputed per request. Distinct from the
+    # phase rows' parcel_count_origin / parcel_count_destination, which are stamped
+    # once at phase close and never revised — those are the evidence, this is progress.
+    scanned_out_count: int = 0
+    scanned_in_count: int = 0
 
 
 class ParcelBase(BaseModel):
@@ -194,6 +199,53 @@ class TripListItemResponse(BaseModel):
     trailers: list[VehicleRead]
     origin_precinct_id: UUID
     destination_precinct_id: UUID
+    planned_departure_at: Optional[datetime] = None
+    actual_departure_at: Optional[datetime] = None
+    planned_arrival_at: Optional[datetime] = None
+    actual_arrival_at: Optional[datetime] = None
+    open_exception_count: int
+    # The list view carries no phase plan, so it cannot derive position at all —
+    # these four are the only thing that lets a row read "Unloading · stop 2 · 6/11".
+    # phase_total is the plan's OWN length: 7 on a single-leg trip, 11 on a
+    # cross-dock one. Nothing may assume either number.
+    current_phase: Optional[str] = None
+    current_stop: Optional[int] = None
+    phase_total: int
+    phase_completed: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class DriverTripListItemResponse(BaseModel):
+    """One row of GET /api/v1/trips/me — the authenticated driver's own trip list.
+
+    Deliberately NOT TripListItemResponse: that shape is built for the dispatcher
+    board and carries driver/horse/trailers on every row, which a driver reading
+    their own list already knows. It also omits precinct NAMES, which is why the
+    PWA had to resolve precinct ids against mock fixtures and fell back to
+    printing eight characters of a UUID on the card. Names are resolved
+    server-side here so the trip card can render a real origin -> destination.
+
+    status is the coarse TripStatus and is the ONLY thing the PWA groups its
+    Active/Upcoming/Past tabs by: CREATED is an assignment the driver has not
+    activated yet (Upcoming), ACTIVE/EXCEPTION_HOLD is underway (Active), and
+    CLOSED/CANCELLED is history (Past). Nothing here sequences a trip — the phase
+    ledger does that (see TripStatus's own docstring).
+    """
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    trip_reference: str
+    order_number: str
+    status: TripStatus
+    trip_type: TripType
+    # Optional to match the Trip model, where both precinct FKs are nullable.
+    origin_precinct_id: Optional[UUID] = None
+    destination_precinct_id: Optional[UUID] = None
+    # Null when the trip carries no precinct id, or when the referenced precinct row
+    # is gone; the PWA falls back to the id rather than rendering an empty arrow.
+    origin_precinct_name: Optional[str] = None
+    destination_precinct_name: Optional[str] = None
     planned_departure_at: Optional[datetime] = None
     actual_departure_at: Optional[datetime] = None
     planned_arrival_at: Optional[datetime] = None
@@ -305,6 +357,26 @@ class TripCreateRequest(BaseModel):
             sequences = [stop.sequence for stop in self.stops]
             if len(sequences) != len(set(sequences)):
                 raise ValueError("stop sequence numbers must be unique")
+        # A trip must carry a resolvable schedule at creation, mirroring
+        # phase_service._scheduled_departure's own two-source resolution exactly
+        # (trip-level planned_departure_at, else the earliest-sequence stop with a
+        # slot_time): _reject_if_not_due treats "no schedule at all" as PERMANENTLY
+        # not-due (see its docstring), not merely not-yet-due. Since stops omitted
+        # here means create_trip synthesises two stops with no slot_time of their
+        # own (FP-112 A.3), planned_departure_at is the only possible source on
+        # that path, so it is strictly required there. Without this check, a trip
+        # could be created that no schedule can ever satisfy — a permanent,
+        # silent 409 at every future activation attempt.
+        has_stop_schedule = self.stops is not None and any(
+            stop.slot_time is not None for stop in self.stops
+        )
+        if self.planned_departure_at is None and not has_stop_schedule:
+            raise ValueError(
+                "planned_departure_at is required when no stop carries a "
+                "slot_time — a trip with neither can never be activated "
+                "(provide planned_departure_at, or set slot_time on at least "
+                "one of the provided stops)"
+            )
         if self.planned_departure_at and self.planned_arrival_at:
             if self.planned_arrival_at <= self.planned_departure_at:
                 raise ValueError("planned_arrival_at must be after planned_departure_at")
@@ -318,6 +390,23 @@ class TripCreateRequest(BaseModel):
         if len(refs) != len(set(refs)):
             raise ValueError("duplicate pp_reference values in consignments")
         return self
+
+
+class CancelTripRequest(BaseModel):
+    """POST /trips/{trip_id}/cancel body (task 6.1, D6). note is required — a
+    dispatcher abandoning a trip mid-plan without stating why is the single most
+    audit-sensitive gap this action could leave, so a blank note is a 422 here
+    rather than an empty string landing on the TripException record."""
+
+    note: str = Field(..., min_length=1)
+
+
+class OverridePhaseRequest(BaseModel):
+    """POST /trips/{trip_id}/phases/{phase_event_id}/override body (task 6.1, D6).
+    Same required-note rationale as CancelTripRequest — a dispatcher bypassing
+    driver-attested evidence must state why."""
+
+    note: str = Field(..., min_length=1)
 
 
 class DeliveryStopManifest(BaseModel):
@@ -398,7 +487,12 @@ class TripDetailResponse(BaseModel):
     planned_arrival_at: Optional[datetime] = None
     actual_arrival_at: Optional[datetime] = None
     closed_at: Optional[datetime] = None
-    handshakes: list[HandshakeEventRead]
+    # Denormalised position cache (parent D6). READ PATH ONLY — the ledger in
+    # `phases` below is the truth, and the dispatcher's trip-detail view derives
+    # the active phase from it. These exist so list views need not recompute.
+    current_phase: Optional[str] = None
+    current_stop: Optional[int] = None
+    phases: list[PhaseEventRead]
     exceptions: list[TripExceptionRead]
     blockchain_receipts: list[BlockchainReceiptRead]
     # Creation-transient: populated by POST /trips (e.g. PP sync degraded-mode

@@ -7,6 +7,15 @@ const config: Config = {
     './components/**/*.{ts,tsx}',
     './lib/**/*.{ts,tsx}',
   ],
+  // Class strategy, not 'media': the driver picks the theme in Settings and that choice
+  // has to be able to override the device (a phone left on auto-dark still needs a
+  // readable screen in daylight). The class lands on <html> — see the pre-paint script in
+  // app/layout.tsx and components/theme/ThemeManager.tsx.
+  //
+  // Note that almost nothing in this app uses `dark:` variants: the token map below is
+  // variable-backed, so the theme swaps underneath every existing class. The variants
+  // exist for the handful of cases a token genuinely cannot express.
+  darkMode: 'class',
   theme: {
     extend: {
       colors: {
@@ -43,73 +52,125 @@ const config: Config = {
         // (#c7c6ca / hsl(var(--border))), which existing components already
         // reference explicitly via border-outline-variant.
         border: 'hsl(var(--border))',
+        // ── Design-system tokens ──
+        //
+        // Every value below resolves through a --fp-* CSS variable declared in
+        // app/globals.css, where the light and dark palettes live side by side. The
+        // literal hex that used to sit here could only ever describe one theme; routing
+        // it through a variable is what lets `bg-surface-container-lowest` mean "white"
+        // in daylight and "the raised-card tone" at night without a single component
+        // changing.
+        //
+        // `rgb(var(--x) / <alpha-value>)` is the required shape, not a style choice.
+        // Tailwind substitutes <alpha-value> when a class carries an opacity modifier
+        // (bg-secondary/10, border-outline-variant/25) and 1 when it does not. A bare
+        // `var(--x)` compiles, but Tailwind v3 then drops every modifier silently — the
+        // frames and dividers throughout the app would flatten to full opacity with no
+        // build error to catch it.
+        //
         // Target vocabulary for new components going forward (mirrors frontend/dispatcher's already-completed migration). Not yet consumed in driver-pwa — adopted incrementally as components are rebuilt.
-        // ── Design-system shorthand tokens — mirror CSS variable names exactly ──
-        canvas:       '#0a0a0c',
-        surf:         '#fcf8f9',
-        'surf-low':   '#f6f3f4',
-        'surf-lowest':'#ffffff',
-        'surf-high':  '#e5e2e3',
-        'on-surf':    '#1b1b1c',
-        'on-surf-v':  '#46464f',
+        canvas:       'rgb(var(--fp-canvas) / <alpha-value>)',
+        surf:         'rgb(var(--fp-surface) / <alpha-value>)',
+        'surf-low':   'rgb(var(--fp-surface-container-low) / <alpha-value>)',
+        'surf-lowest':'rgb(var(--fp-surface-container-lowest) / <alpha-value>)',
+        'surf-high':  'rgb(var(--fp-surface-container-high) / <alpha-value>)',
+        'on-surf':    'rgb(var(--fp-surface-on) / <alpha-value>)',
+        'on-surf-v':  'rgb(var(--fp-surface-on-variant) / <alpha-value>)',
 
-        sec:   { DEFAULT: '#0051d5', c: '#d8e2ff', on: '#ffffff', onc: '#001551' },
-        ok:    { DEFAULT: '#006c4c', c: '#89f8c7', on: '#ffffff', onc: '#002114' },
-        err:   { DEFAULT: '#ba1a1a', c: '#ffdad6', on: '#ffffff', onc: '#410002' },
-        warn:  { DEFAULT: '#805600', c: '#ffb95f', on: '#ffffff', onc: '#2b1700' },
-        chain: { DEFAULT: '#006874', c: '#97f0ff', on: '#ffffff', onc: '#001f24' },
+        sec: {
+          DEFAULT: 'rgb(var(--fp-secondary) / <alpha-value>)',
+          c:       'rgb(var(--fp-secondary-container) / <alpha-value>)',
+          on:      'rgb(var(--fp-secondary-on) / <alpha-value>)',
+          onc:     'rgb(var(--fp-secondary-on-container) / <alpha-value>)',
+        },
+        ok: {
+          DEFAULT: 'rgb(var(--fp-success) / <alpha-value>)',
+          c:       'rgb(var(--fp-success-container) / <alpha-value>)',
+          on:      'rgb(var(--fp-success-on) / <alpha-value>)',
+          onc:     'rgb(var(--fp-success-on-container) / <alpha-value>)',
+        },
+        err: {
+          DEFAULT: 'rgb(var(--fp-error) / <alpha-value>)',
+          c:       'rgb(var(--fp-error-container) / <alpha-value>)',
+          on:      'rgb(var(--fp-error-on) / <alpha-value>)',
+          onc:     'rgb(var(--fp-error-on-container) / <alpha-value>)',
+        },
+        warn: {
+          DEFAULT: 'rgb(var(--fp-tertiary) / <alpha-value>)',
+          c:       'rgb(var(--fp-tertiary-container) / <alpha-value>)',
+          on:      'rgb(var(--fp-tertiary-on) / <alpha-value>)',
+          onc:     'rgb(var(--fp-tertiary-on-container) / <alpha-value>)',
+        },
+        chain: {
+          DEFAULT: 'rgb(var(--fp-chain) / <alpha-value>)',
+          c:       'rgb(var(--fp-chain-container) / <alpha-value>)',
+          on:      'rgb(var(--fp-chain-on) / <alpha-value>)',
+          onc:     'rgb(var(--fp-chain-on-container) / <alpha-value>)',
+        },
 
         outline: {
-          DEFAULT: '#777680',
-          v:       '#c7c6ca',
-          variant: '#c7c6ca',   // backwards-compat alias used by existing components
+          DEFAULT: 'rgb(var(--fp-outline) / <alpha-value>)',
+          v:       'rgb(var(--fp-outline-variant) / <alpha-value>)',
+          variant: 'rgb(var(--fp-outline-variant) / <alpha-value>)',   // backwards-compat alias used by existing components
         },
 
-        // ── Semantic tokens — backwards-compat names with corrected hex values ──
-        // Match the shorthand tokens above; kept so existing class names work
-        // during the migration. New components should use the shorthand tokens.
+        // ── Semantic tokens — backwards-compat names ──
+        // Same variables as the shorthand tokens above; kept so existing class names
+        // work during the migration. New components should use the shorthand tokens.
         primary: {
-          DEFAULT:       '#1b1b1c',   // was #000000 — now matches --primary
-          container:     '#303031',
-          on:            '#ffffff',
-          'on-container':'rgba(255,255,255,0.45)',
+          DEFAULT:       'rgb(var(--fp-primary) / <alpha-value>)',
+          container:     'rgb(var(--fp-primary-container) / <alpha-value>)',
+          on:            'rgb(var(--fp-primary-on) / <alpha-value>)',
+          // Was a literal rgba(255,255,255,0.45), i.e. white-on-ink baked flat. Now a
+          // solid tone of the same appearance, because a hard-coded white would have
+          // been invisible once `primary` itself becomes light in the dark theme.
+          'on-container':'rgb(var(--fp-primary-on-container) / <alpha-value>)',
         },
         secondary: {
-          DEFAULT:       '#0051d5',
-          container:     '#d8e2ff',   // was #316bf3
-          on:            '#ffffff',
-          'on-container':'#001551',   // was #fefcff
-          fixed:         '#d8e2ff',
+          DEFAULT:       'rgb(var(--fp-secondary) / <alpha-value>)',
+          container:     'rgb(var(--fp-secondary-container) / <alpha-value>)',
+          on:            'rgb(var(--fp-secondary-on) / <alpha-value>)',
+          'on-container':'rgb(var(--fp-secondary-on-container) / <alpha-value>)',
+          fixed:         'rgb(var(--fp-secondary-fixed) / <alpha-value>)',
         },
         tertiary: {
-          DEFAULT:       '#805600',   // was #b87500
-          container:     '#ffb95f',   // was #ffddb8
-          on:            '#ffffff',
-          'on-container':'#2b1700',
+          DEFAULT:       'rgb(var(--fp-tertiary) / <alpha-value>)',
+          container:     'rgb(var(--fp-tertiary-container) / <alpha-value>)',
+          on:            'rgb(var(--fp-tertiary-on) / <alpha-value>)',
+          'on-container':'rgb(var(--fp-tertiary-on-container) / <alpha-value>)',
         },
         success: {
-          DEFAULT:       '#006c4c',   // was #1a7c3e
-          container:     '#89f8c7',   // was #c8f2d9
-          on:            '#ffffff',
-          'on-container':'#002114',   // was #0a3d1f
+          DEFAULT:       'rgb(var(--fp-success) / <alpha-value>)',
+          container:     'rgb(var(--fp-success-container) / <alpha-value>)',
+          on:            'rgb(var(--fp-success-on) / <alpha-value>)',
+          'on-container':'rgb(var(--fp-success-on-container) / <alpha-value>)',
         },
         error: {
-          DEFAULT:       '#ba1a1a',
-          container:     '#ffdad6',
-          on:            '#ffffff',
-          'on-container':'#410002',
+          DEFAULT:       'rgb(var(--fp-error) / <alpha-value>)',
+          container:     'rgb(var(--fp-error-container) / <alpha-value>)',
+          on:            'rgb(var(--fp-error-on) / <alpha-value>)',
+          'on-container':'rgb(var(--fp-error-on-container) / <alpha-value>)',
         },
         surface: {
-          DEFAULT:            '#fcf8f9',
-          'container-lowest': '#ffffff',
-          'container-low':    '#f6f3f4',
-          container:          '#f0edee',
-          'container-high':   '#e5e2e3',   // was #eae7e8
-          'container-highest':'#e5e2e3',
-          dim:                '#dcd9da',
-          on:                 '#1b1b1c',
-          'on-variant':       '#46464f',
+          DEFAULT:            'rgb(var(--fp-surface) / <alpha-value>)',
+          'container-lowest': 'rgb(var(--fp-surface-container-lowest) / <alpha-value>)',
+          'container-low':    'rgb(var(--fp-surface-container-low) / <alpha-value>)',
+          container:          'rgb(var(--fp-surface-container) / <alpha-value>)',
+          'container-high':   'rgb(var(--fp-surface-container-high) / <alpha-value>)',
+          'container-highest':'rgb(var(--fp-surface-container-highest) / <alpha-value>)',
+          dim:                'rgb(var(--fp-surface-dim) / <alpha-value>)',
+          on:                 'rgb(var(--fp-surface-on) / <alpha-value>)',
+          'on-variant':       'rgb(var(--fp-surface-on-variant) / <alpha-value>)',
         },
+      },
+
+      // Tailwind's smallest default breakpoint is `sm` at 640px — wider than every
+      // phone this app runs on, so without an extra stop below it a 320px Galaxy A-series
+      // and a 430px iPhone Pro Max render byte-identical layouts and one of the two is
+      // always wrong. `xs` splits compact phones from standard ones; `sm` and up stays
+      // tablet territory.
+      screens: {
+        xs: '380px',
       },
 
       fontFamily: {
@@ -169,8 +230,11 @@ const config: Config = {
           from: { opacity: '0', transform: 'scale(0.95)' },
           to: { opacity: '1', transform: 'scale(1)' },
         },
+        // Drops DOWN from above: the toast viewport is anchored to the top of the screen
+        // (components/ui/Toast.tsx), so a toast entering from below would slide the wrong
+        // way past its own resting place.
         'toast-in': {
-          from: { opacity: '0', transform: 'translateY(8px) scale(0.97)' },
+          from: { opacity: '0', transform: 'translateY(-8px) scale(0.97)' },
           to: { opacity: '1', transform: 'translateY(0) scale(1)' },
         },
         'confirm-pulse': {
@@ -181,6 +245,20 @@ const config: Config = {
           from: { transform: 'scale(1)', opacity: '0.6' },
           to: { transform: 'scale(1.8)', opacity: '0' },
         },
+        // Suspension bounce for the loading truck — small on purpose: the road under it
+        // carries the sense of movement, the truck only has to look like it is riding on
+        // something. See components/ui/TruckLoader.tsx.
+        'truck-drive': {
+          '0%, 100%': { transform: 'translateY(0)' },
+          '50%': { transform: 'translateY(-2px)' },
+        },
+        // Scrolls the dashed road exactly one tile per cycle, which is what makes the
+        // loop seamless. --road-tile is set by the loader and read here and by the
+        // `road` background image below, so the two can never drift apart.
+        'road-scroll': {
+          from: { transform: 'translateX(0)' },
+          to: { transform: 'translateX(calc(var(--road-tile, 1.5rem) * -1))' },
+        },
       },
       animation: {
         'accordion-down': 'accordion-down 0.2s ease-out',
@@ -189,6 +267,18 @@ const config: Config = {
         'toast-in': 'toast-in 250ms ease-out',
         'confirm-pulse': 'confirm-pulse 400ms ease-in-out',
         'radar-pulse': 'radar-pulse 1.2s ease-out infinite',
+        'truck-drive': 'truck-drive 500ms ease-in-out infinite',
+        'road-scroll': 'road-scroll 500ms linear infinite',
+      },
+
+      backgroundImage: {
+        // Dashed centre line for the loading truck's road: half a tile of ink, half a
+        // tile of gap. currentColor so the strip takes its colour from the text token on
+        // its wrapper rather than hard-coding one here.
+        road:
+          'repeating-linear-gradient(90deg,' +
+          ' currentColor 0, currentColor calc(var(--road-tile, 1.5rem) / 2),' +
+          ' transparent calc(var(--road-tile, 1.5rem) / 2), transparent var(--road-tile, 1.5rem))',
       },
     },
   },

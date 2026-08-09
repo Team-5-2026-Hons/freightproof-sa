@@ -73,6 +73,11 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     SUPABASE_SERVICE_ROLE_KEY: str
 
+    # Evidence images are fetched by the dispatcher's browser straight from Storage via a
+    # short-lived signed URL. Kept deliberately short: for its lifetime the URL is a bearer
+    # capability that carries no further auth check.
+    EVIDENCE_SIGNED_URL_TTL_SECONDS: int = 300
+
     # -------------------------------------------------------------------------
     # Integration mock toggles
     # True = use local mock, False = call real external API.
@@ -91,12 +96,39 @@ class Settings(BaseSettings):
     PP_API_URL: str = ""
     PP_POLL_INTERVAL_SECONDS: int = 60
 
+    # Warehouse scan feed. True = MockScanFeed (Redis-backed, driven by the dev
+    # trigger panel), False = a real WMS/PP-depot feed. Mirrors PP_USE_MOCK.
+    # No real implementation exists yet: PP exposes no scan endpoint and we have
+    # no depot account, so this stays True until one lands.
+    SCAN_FEED_USE_MOCK: bool = True
+
     # -------------------------------------------------------------------------
     # Runtime config
     # -------------------------------------------------------------------------
     # Used by the (upcoming) H1/H4 gate geofence check — see feature/gps-warehouse-geofencing.
     GPS_TOLERANCE_METRES: int = 50
     DEMO_MODE: bool = False
+
+    # Dev trigger panel. Registers a router that can fire scans, PP lifecycle
+    # changes and exceptions. Defaults to False so the panel is absent unless
+    # deliberately switched on — ENVIRONMENT != "production" is the second,
+    # independent condition (see api/v1/endpoints/dev_triggers.dev_panel_enabled).
+    # Both must hold. On an internet-reachable demo host, one switch is not enough.
+    DEV_PANEL_ENABLED: bool = False
+
+    # The operating day boundary used to decide whether a driver is activating a trip
+    # before its scheduled date (orchestration/phase_service.py). "Same calendar day"
+    # is meaningless without a timezone: a 06:00 SAST departure is 04:00 UTC, and a
+    # 01:00 SAST departure is the PREVIOUS day in UTC, so comparing UTC dates would
+    # reject a driver starting a legitimately-scheduled early-morning trip.
+    #
+    # A fixed offset rather than a zoneinfo key on purpose: South African Standard Time
+    # is permanently UTC+2 and has never observed daylight saving, so an offset is exact
+    # for every date this system will see — and it keeps a tz database out of the
+    # container image. The moment FreightProof runs anywhere that DOES shift, this must
+    # become a real IANA zone name resolved through zoneinfo, with tzdata added to
+    # requirements.txt.
+    OPERATIONS_UTC_OFFSET_HOURS: int = 2
 
     # -------------------------------------------------------------------------
     # Application

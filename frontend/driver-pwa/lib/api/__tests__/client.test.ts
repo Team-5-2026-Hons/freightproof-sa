@@ -8,11 +8,14 @@ const mockGetSession = vi.fn()
 const mockGetAccessToken = vi.fn()
 const mockRefreshSession = vi.fn()
 
+const mockSignOut = vi.fn()
+
 vi.mock('@/lib/supabase', () => ({
   supabase: {
     auth: {
       getSession: (...args: unknown[]) => mockGetSession(...args),
       refreshSession: (...args: unknown[]) => mockRefreshSession(...args),
+      signOut: (...args: unknown[]) => mockSignOut(...args),
     },
   },
   getAccessToken: () => mockGetAccessToken(),
@@ -199,6 +202,63 @@ describe('api client', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2)
     expect(mockRefreshSession).toHaveBeenCalledTimes(1)
     await expect(api.get('/api/v1/trips/me/active')).rejects.toBeInstanceOf(ApiError)
+
+    vi.unstubAllGlobals()
+  })
+})
+
+describe('api client — superseded device', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGetAccessToken.mockReturnValue('cached-token')
+    mockSignOut.mockResolvedValue({ error: null })
+    window.sessionStorage.clear()
+  })
+
+  it('signs the driver out instead of refreshing when the backend says another device took over', async () => {
+    // A refresh would return a token for the SAME Supabase session, so retrying could
+    // only be refused identically — and this account is now in use on another handset.
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      statusText: 'Unauthorized',
+      json: () => Promise.resolve({ detail: 'Signed in on another device.' }),
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+
+    const { api, SIGNED_OUT_REASON_KEY } = await import('../client')
+
+    await expect(api.get('/api/v1/trips/me/active')).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 401,
+      message: 'Signed in on another device.',
+    })
+    expect(mockSignOut).toHaveBeenCalled()
+    expect(mockRefreshSession).not.toHaveBeenCalled()
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    // Stored so the login screen can say why the driver ended up back there.
+    expect(window.sessionStorage.getItem(SIGNED_OUT_REASON_KEY)).toBe('Signed in on another device.')
+
+    vi.unstubAllGlobals()
+  })
+
+  it('still refreshes and retries an ordinary expired-token 401', async () => {
+    // The regression guard for the check above: it must key off the detail, not the
+    // status, or every stale token would sign the driver out of the app.
+    const fetchSpy = vi.fn()
+      .mockResolvedValueOnce({
+        ok: false, status: 401, statusText: 'Unauthorized',
+        json: () => Promise.resolve({ detail: 'Token has expired.' }),
+      })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ id: 'trip-1' }) })
+    vi.stubGlobal('fetch', fetchSpy)
+    mockRefreshSession.mockResolvedValue({ data: { session: { access_token: 'fresh' } }, error: null })
+
+    const { api } = await import('../client')
+    const result = await api.get('/api/v1/trips/me/active')
+
+    expect(result).toEqual({ id: 'trip-1' })
+    expect(mockSignOut).not.toHaveBeenCalled()
 
     vi.unstubAllGlobals()
   })

@@ -308,10 +308,14 @@ async def test_get_current_driver_returns_driver_read_for_valid_token(
     token = make_token(sub=str(driver_row.id), role="driver")
     credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
 
+    # Two queries now: the driver row, then the single-device session lookup
+    # (app/auth/sessions.py). No session row yet means this token claims the device.
     db = AsyncMock()
-    db_result = MagicMock()
-    db_result.scalar_one_or_none.return_value = driver_row
-    db.execute.return_value = db_result
+    driver_result = MagicMock()
+    driver_result.scalar_one_or_none.return_value = driver_row
+    session_result = MagicMock()
+    session_result.scalar_one_or_none.return_value = None
+    db.execute.side_effect = [driver_result, session_result]
 
     result = await get_current_driver(credentials=credentials, db=db)
 

@@ -15,7 +15,7 @@ export default function PanicSubmittedPage() {
   return (
     <Suspense
       fallback={
-        <main className="flex min-h-screen items-center justify-center">
+        <main className="flex min-h-dvh items-center justify-center">
           <p className="text-sm text-surface-on-variant">Loading…</p>
         </main>
       }

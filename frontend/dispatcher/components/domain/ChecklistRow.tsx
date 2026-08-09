@@ -3,11 +3,11 @@
 import { useRouter } from 'next/navigation'
 import { Chip } from '@/components/ui/Chip'
 import { TripIdStamp } from './TripIdStamp'
-import { HandshakeChain } from './HandshakeChain'
+import { PhaseChain } from './PhaseChain'
 import { ROUTES } from '@/lib/constants/routes'
-import { TRIP_STATUS_META } from '@shared/lib/constants/status-meta'
-import type { TripSummary, TripStatus } from '@shared/lib/types/trip'
-import type { HandshakeEvent, HandshakeNumber, HandshakeStatus } from '@shared/lib/types/handshake'
+import type { TripSummary } from '@shared/lib/types/trip'
+import { PHASE_NAMES } from '@shared/lib/constants/phase-meta'
+import { chainNodesFromCounts, tripChipMeta } from '@/lib/phase/derive'
 import type { Precinct } from '@shared/lib/types/precinct'
 import { cn } from '@shared/lib/utils/cn'
 
@@ -26,86 +26,53 @@ interface ChecklistRowProps {
   colWidths: ColWidths
   precincts: Precinct[]
   className?: string
-  // History table hides the handshake progress chain — trips there are already
+  // History table hides the phase progress chain — trips there are already
   // complete or cancelled, so only whether exceptions occurred still matters.
   showProgress?: boolean
-}
-
-const STATUS_HINT: Record<TripStatus, string> = {
-  created:         'Pending start',
-  origin_gate_in:  'H1: Gate In',
-  loading:         'H2: Loading',
-  origin_gate_out: 'H3: Gate Out',
-  in_transit:      'In Transit',
-  dest_gate_in:    'H4: Dest Gate',
-  unloading:       'H5: Unloading',
-  closed:          '✓ Closed',
-  cancelled:       'Cancelled',
-  exception_hold:  '⚠ Exception',
-}
-
-// How many handshakes (0-indexed) are completed for each trip status.
-// H0 (trip creation) is always completed once the trip exists.
-const COMPLETED_THROUGH: Record<TripStatus, number> = {
-  created:         0,
-  origin_gate_in:  0,
-  loading:         1,
-  origin_gate_out: 2,
-  in_transit:      3,
-  dest_gate_in:    3,
-  unloading:       4,
-  closed:          5,
-  exception_hold:  0,
-  cancelled:       0,
-}
-
-// Which handshake sequence number is currently in-progress (null = none).
-const IN_PROGRESS_HS: Record<TripStatus, number | null> = {
-  created:         null,
-  origin_gate_in:  1,
-  loading:         2,
-  origin_gate_out: 3,
-  in_transit:      null,
-  dest_gate_in:    4,
-  unloading:       5,
-  closed:          null,
-  exception_hold:  null,
-  cancelled:       null,
 }
 
 function formatShortDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short' })
 }
 
-// Synthesise the six handshake nodes needed by HandshakeChain from TripStatus alone.
-// TripSummary doesn't carry full HandshakeEvent objects, so we build minimal stubs.
-function chainNodesFromStatus(status: TripStatus): HandshakeEvent[] {
-  const completedThrough = COMPLETED_THROUGH[status]
-  const inProgressHs = IN_PROGRESS_HS[status]
+// Role (origin/destination) is derived, not stored (FP-112). This list payload
+// (TripSummary) carries current_stop but no total stop count, so only two cases
+// are provable without it: stop 0 is always the origin, and `confirmation` only
+// ever fires on the trip's LAST stop (backend/app/orchestration/phase_plan.py —
+// `build_phase_plan`, the else-branch reached solely when `i == last_index`).
+// Everything else might genuinely be a mid-route stop on a cross-dock plan, so it
+// falls back to a numbered "Stop N" rather than risk mislabelling it "Destination".
+function stopRoleLabel(trip: TripSummary): string {
+  if (trip.current_stop === null) return ''
+  if (trip.current_stop === 0) return 'Origin'
+  if (trip.current_phase === 'confirmation') return 'Destination'
+  return `Stop ${trip.current_stop + 1}`
+}
 
-  return Array.from({ length: 6 }, (_, i) => {
-    let hsStatus: HandshakeStatus
-    if (i <= completedThrough) {
-      hsStatus = 'completed'
-    } else if (i === inProgressHs) {
-      hsStatus = 'in_progress'
-    } else if (status === 'exception_hold' && i === inProgressHs) {
-      hsStatus = 'exception'
-    } else {
-      hsStatus = 'pending'
-    }
-    // Cast: HandshakeChain only reads id, status, sequence_number from each node
-    return {
-      id: `chain-${i}`,
-      sequence_number: i as HandshakeNumber,
-      status: hsStatus,
-    } as HandshakeEvent
-  })
+// What the row says the trip is doing. Exceptions win: a dispatcher must see them
+// before anything else. Otherwise the coarse status covers the terminal states and
+// current_phase covers everything in between — derived server-side from the ledger,
+// never inferred from trip.status the way the three deleted tables did.
+function progressHint(trip: TripSummary): string {
+  if (trip.open_exception_count > 0) {
+    return `⚠ ${trip.open_exception_count} exception${trip.open_exception_count > 1 ? 's' : ''}`
+  }
+  if (trip.status === 'closed')    return '✓ Closed'
+  if (trip.status === 'cancelled') return 'Cancelled'
+  if (trip.current_phase === null) return 'Pending start'
+
+  const role = stopRoleLabel(trip)
+  const stop = role ? ` · ${role}` : ''
+  return `${PHASE_NAMES[trip.current_phase]}${stop} · ${trip.phase_completed}/${trip.phase_total}`
 }
 
 export function ChecklistRow({ trip, colWidths, precincts, className, showProgress = true }: ChecklistRowProps) {
   const router = useRouter()
-  const statusMeta = TRIP_STATUS_META[trip.status]
+
+  // U13: the chip names the phase — `Unloading`, not `Active`; `⚠ Unloading` when
+  // held. The list reads the cache because it has no plan to derive from; that is
+  // U3's read-path exemption, and the ONLY place in the dispatcher allowed to do it.
+  const statusMeta = tripChipMeta(trip.status, trip.current_phase)
 
   const originPrecinct = precincts.find(p => p.id === trip.origin_precinct_id)
   const destPrecinct   = precincts.find(p => p.id === trip.destination_precinct_id)
@@ -113,12 +80,13 @@ export function ChecklistRow({ trip, colWidths, precincts, className, showProgre
   const originShort = originPrecinct?.name.split('—')[0]?.trim() ?? '—'
   const destShort   = destPrecinct?.name.split('—')[0]?.trim() ?? '—'
 
-  const chainNodes = chainNodesFromStatus(trip.status)
+  const chainNodes = chainNodesFromCounts(
+    trip.phase_total,
+    trip.phase_completed,
+    trip.current_phase === null ? '' : PHASE_NAMES[trip.current_phase],
+  )
 
-  // Exception count takes priority over status hint so dispatchers see it immediately
-  const hint = trip.open_exception_count > 0
-    ? `⚠ ${trip.open_exception_count} exception${trip.open_exception_count > 1 ? 's' : ''}`
-    : STATUS_HINT[trip.status]
+  const hint = progressHint(trip)
 
   function navigate() { router.push(ROUTES.tripDetail(trip.id)) }
 
@@ -171,7 +139,7 @@ export function ChecklistRow({ trip, colWidths, precincts, className, showProgre
           growing a neighbour can't silently steal its space and clip its content. */}
       {showProgress ? (
         <div style={{ width: colWidths.progress }} className="shrink-0 flex items-center gap-2 min-w-0 overflow-hidden px-[6px]">
-          <HandshakeChain handshakes={chainNodes} compact className="shrink-0" />
+          <PhaseChain nodes={chainNodes} compact className="shrink-0" />
           <span className={cn(
             'text-[11px] truncate',
             trip.open_exception_count > 0 ? 'text-warn' :

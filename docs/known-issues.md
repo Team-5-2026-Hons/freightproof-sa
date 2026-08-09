@@ -61,6 +61,29 @@ reproducibility, which the `CLAUDE.md` standards section is meant to guarantee.
 
 ---
 
+## 3. Xcode's "Update to recommended settings" breaks the iOS build
+
+**Files:** `frontend/driver-pwa/ios/App/App.xcodeproj/project.pbxproj`.
+
+**Symptom:** `npx cap run ios` / `xcodebuild` fails with
+`error: Sandbox: bash(...) deny(1) file-read-data .../Pods-App-frameworks.sh` and
+`Operation not permitted`, in the `[CP] Embed Pods Frameworks` phase.
+
+**Root cause:** Accepting Xcode 26's "Update to recommended settings" banner sets
+`ENABLE_USER_SCRIPT_SANDBOXING = YES` on the App project. CocoaPods' embed-frameworks
+run script reads files outside its declared inputs, so the sandbox denies it. CocoaPods
+knows this — it already sets the flag to `NO` on all 12 of its own Pods targets — but it
+cannot set it for the App target, which is the one Xcode "upgraded".
+
+**Impact:** Hard build failure, blocks all device testing. Reappears any time the banner
+is accepted again.
+
+**Fix (applied):** `ENABLE_USER_SCRIPT_SANDBOXING = NO` in both Debug and Release. If the
+banner returns, do not accept it for the App project — and never for Pods, which
+`pod install` regenerates on every `cap sync` anyway.
+
+---
+
 ## Common theme
 
 Both issues stem from the project depending on each developer's local setup being

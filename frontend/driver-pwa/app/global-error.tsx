@@ -25,7 +25,7 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
   return (
     <html lang="en">
       <body className="min-h-dvh bg-surface font-sans text-surface-on antialiased">
-        <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-6">
+        <main className="flex min-h-dvh flex-col items-center justify-center gap-6 p-6">
           <div className="w-full rounded-xl bg-error-container px-6 py-8 text-center text-error-on-container">
             <h1 className="text-lg font-bold">Something went wrong</h1>
             <p className="mt-2 text-sm opacity-90">

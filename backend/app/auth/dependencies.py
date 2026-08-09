@@ -26,6 +26,7 @@ from jose import ExpiredSignatureError, JWTError, jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.sessions import enforce_single_device
 from app.core.config import settings
 from app.db.models.enums import DispatcherRole, IdvsStatus
 from app.db.models.people import Driver, User
@@ -297,6 +298,11 @@ async def get_current_driver(
             detail="Driver account is inactive.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    # Last, and only for drivers: a valid token from a superseded device is refused here.
+    # Deliberately after the account checks so a signed-out handset is told the truthful
+    # reason rather than a generic one — see app/auth/sessions.py.
+    await enforce_single_device(db, driver_id=driver.id, payload=payload)
 
     return DriverRead.model_validate(driver)
 

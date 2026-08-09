@@ -6,9 +6,13 @@ export interface UploadedArtifact {
   file_hash: string
 }
 
+// Named and exported so callers that upload early (lib/hooks/useArtifactUpload.ts) can
+// type their own arguments against the same union.
+export type ArtifactType = 'photo' | 'document'
+
 interface UploadArtifactParams {
   tripId: string
-  artifactType: 'photo' | 'document'
+  artifactType: ArtifactType
   dataUrl: string
   capturedAt: string
   capturedLat?: number | null

@@ -3,8 +3,11 @@
  */
 
 import { supabase, getAccessToken } from '@/lib/supabase/client'
+import type { Trip } from '@shared/lib/types/trip'
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+// Exported so non-fetch transports that can't use this wrapper — notably the SSE
+// stream reader in lib/realtime — hit the same backend origin without re-deriving it.
+export const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 // Delay before retrying a request whose connection was dropped at the network layer.
 const NETWORK_RETRY_DELAY_MS = 150
@@ -177,4 +180,25 @@ export const api = {
     ),
   patch: <T>(path: string, body: unknown): Promise<T> =>
     request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
+}
+
+// ── Dispatcher-only trip lifecycle exits (task 6.1) ─────────────────────────
+// Both are terminal-per-row actions with no other UI entry point, so they are typed
+// wrappers here rather than inline api.post calls — callers never hand-build the path
+// or body shape, and each is exercised in isolation from the component that calls it.
+// Both return the FULL updated TripDetailResponse so the caller can reconcile from the
+// response directly rather than issuing a second GET.
+
+/** POST /trips/{tripId}/cancel — dispatcher abandons a trip mid-plan. Phase rows are
+ *  left exactly as they are (evidence, not completion); `note` is required server-side
+ *  (422 on blank) so this is never an unexplained dead end. */
+export function cancelTrip(tripId: string, note: string): Promise<Trip> {
+  return api.post<Trip>(`/api/v1/trips/${tripId}/cancel`, { note })
+}
+
+/** POST /trips/{tripId}/phases/{phaseEventId}/override — dispatcher records that the
+ *  driver could not complete a phase (lost phone, left the depot, device wiped). Only
+ *  legal while the phase is PENDING or IN_PROGRESS server-side (409 otherwise). */
+export function overridePhase(tripId: string, phaseEventId: string, note: string): Promise<Trip> {
+  return api.post<Trip>(`/api/v1/trips/${tripId}/phases/${phaseEventId}/override`, { note })
 }

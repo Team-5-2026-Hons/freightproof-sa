@@ -1,19 +1,19 @@
 """Integration tests: PATCH /api/v1/vehicles/{id} records a real before/after
 diff for cosmetic (non-critical) fields, and keeps cosmetic-only edits unanchored.
 
-Uses DEMO_MODE auth (Bearer demo) consistent with the rest of the integration suite.
-HederaService is patched so no real network calls are made.
+Uses signed JWTs (see tests/conftest.py) consistent with the rest of the
+integration suite. HederaService is patched so no real network calls are made.
 """
 
+import uuid
 from collections.abc import AsyncGenerator
 from unittest.mock import patch
 
 import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
+from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import _DEMO_ORG_ID, _DEMO_USER_ID
 from app.blockchain.hedera import HederaReceipt
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import OrganizationType, SubjectType, VehicleType
@@ -23,6 +23,8 @@ from app.db.models.people import User
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
 from app.main import app
+
+from tests.conftest import auth_header, make_token
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -36,9 +38,9 @@ async def override_get_db(db_session: AsyncSession) -> AsyncGenerator[None, None
 
 
 @pytest_asyncio.fixture
-async def seed_vehicle(db_session: AsyncSession) -> Vehicle:
+async def seed_vehicle(db_session: AsyncSession):
     org = Organization(
-        id=_DEMO_ORG_ID,
+        id=uuid.uuid4(),
         name="Demo Operator",
         org_type=OrganizationType.OPERATOR,
     )
@@ -46,8 +48,8 @@ async def seed_vehicle(db_session: AsyncSession) -> Vehicle:
     await db_session.flush()
 
     user = User(
-        id=_DEMO_USER_ID,
-        organization_id=_DEMO_ORG_ID,
+        id=uuid.uuid4(),
+        organization_id=org.id,
         email="demo-dispatcher@freightproof.co.za",
         full_name="Demo Dispatcher",
         is_active=True,
@@ -55,7 +57,7 @@ async def seed_vehicle(db_session: AsyncSession) -> Vehicle:
     db_session.add(user)
 
     vehicle = Vehicle(
-        organization_id=_DEMO_ORG_ID,
+        organization_id=org.id,
         registration="CA 111-222",
         vehicle_type=VehicleType.HORSE,
         pulsit_device_id="PLT-COSMETIC-001",
@@ -64,26 +66,26 @@ async def seed_vehicle(db_session: AsyncSession) -> Vehicle:
     )
     db_session.add(vehicle)
     await db_session.flush()
-    return vehicle
+    return org, user, vehicle
 
 
 async def test_cosmetic_only_patch_records_from_to_diff_and_skips_anchor(
-    db_session: AsyncSession, seed_vehicle: Vehicle,
+    client: AsyncClient, db_session: AsyncSession, seed_vehicle,
 ) -> None:
     """Changing only `make` must produce a real {from, to} diff and no BlockchainReceipt."""
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
-    ) as client:
-        resp = await client.patch(
-            f"/api/v1/vehicles/{seed_vehicle.id}",
-            json={"make": "Scania"},
-            headers={"Authorization": "Bearer demo"},
-        )
+    org, user, vehicle = seed_vehicle
+    headers = auth_header(make_token(sub=str(user.id), role="admin_dispatcher", org_id=str(org.id)))
+
+    resp = await client.patch(
+        f"/api/v1/vehicles/{vehicle.id}",
+        json={"make": "Scania"},
+        headers=headers,
+    )
     assert resp.status_code == 200
 
     event = (
         await db_session.execute(
-            select(VehicleEvent).where(VehicleEvent.vehicle_id == seed_vehicle.id)
+            select(VehicleEvent).where(VehicleEvent.vehicle_id == vehicle.id)
         )
     ).scalar_one()
     assert event.event_type == "cosmetic_update"
@@ -102,11 +104,13 @@ async def test_cosmetic_only_patch_records_from_to_diff_and_skips_anchor(
 
 
 async def test_mixed_patch_anchors_only_critical_field(
-    db_session: AsyncSession, seed_vehicle: Vehicle,
+    client: AsyncClient, db_session: AsyncSession, seed_vehicle,
 ) -> None:
     """Changing a critical field (vin_number) and a cosmetic field (make) together:
     changed_fields carries both, but the anchored payload carries only the critical one.
     """
+    org, user, vehicle = seed_vehicle
+    headers = auth_header(make_token(sub=str(user.id), role="admin_dispatcher", org_id=str(org.id)))
     fake_receipt = HederaReceipt(
         topic_id="0.0.12345",
         sequence_number=99,
@@ -117,19 +121,16 @@ async def test_mixed_patch_anchors_only_critical_field(
     with patch("app.blockchain.anchor_service.HederaService") as MockService:
         MockService.return_value.submit_hash.return_value = fake_receipt
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
-        ) as client:
-            resp = await client.patch(
-                f"/api/v1/vehicles/{seed_vehicle.id}",
-                json={"vin_number": "GH698HF7X090099", "make": "Scania"},
-                headers={"Authorization": "Bearer demo"},
-            )
+        resp = await client.patch(
+            f"/api/v1/vehicles/{vehicle.id}",
+            json={"vin_number": "GH698HF7X090099", "make": "Scania"},
+            headers=headers,
+        )
     assert resp.status_code == 200
 
     event = (
         await db_session.execute(
-            select(VehicleEvent).where(VehicleEvent.vehicle_id == seed_vehicle.id)
+            select(VehicleEvent).where(VehicleEvent.vehicle_id == vehicle.id)
         )
     ).scalar_one()
     assert event.changed_fields == {

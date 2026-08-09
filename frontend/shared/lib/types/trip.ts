@@ -1,10 +1,10 @@
-// Trip: the primary freight movement record, progressed through five handshakes.
-// Mirrors backend TripDetailResponse and TripSummaryRead schemas — see
-// backend/docs/api_contract_dispatcher_driver.md §4.1 and §4.2.
+// Trip: the primary freight movement record, progressed through a phase plan whose
+// LENGTH IS DATA — 7 rows on a single-leg trip, 11 on a three-stop cross-dock.
+// Mirrors backend TripDetailResponse and TripListItemResponse.
 
 import type { Driver } from './driver'
 import type { Vehicle } from './vehicle'
-import type { HandshakeEvent } from './handshake'
+import type { CoarseTripStatus, PhaseDescriptor, PhaseType } from './phase'
 import type { TripException } from './exception'
 import type { BlockchainReceipt } from './blockchain'
 
@@ -14,19 +14,13 @@ export type TripId = string & { readonly __brand: 'TripId' }
 // PP consignments ("loaded") or is a deadhead/repositioning move ("empty_leg").
 export type TripType = 'loaded' | 'empty_leg'
 
-// Mirrors backend TripStatus exactly — 10 states, no simplification.
-// The driver app routes to different screens depending on which of these is active.
-export type TripStatus =
-  | 'created'          // Dispatcher created the trip; driver not yet gate-in at origin
-  | 'origin_gate_in'   // H1 in progress — guard is verifying at origin gate
-  | 'loading'          // H2 in progress — warehouse is scanning parcels onto vehicle
-  | 'origin_gate_out'  // H3 in progress — guard is sealing and releasing at origin gate
-  | 'in_transit'       // Vehicle is on the road between origin and destination
-  | 'dest_gate_in'     // H4 in progress — guard is verifying at destination gate
-  | 'unloading'        // H5 in progress — warehouse is scanning parcels off vehicle
-  | 'closed'           // All 5 handshakes completed successfully
-  | 'cancelled'        // Trip was cancelled before completion
-  | 'exception_hold'   // Trip is paused pending resolution of a critical exception
+// Mirrors backend TripStatus (coarse since Stage 2 — parent plan §2.3). The old
+// ten-value union doubled as the sequencer; position now comes from the phase
+// ledger, so this is a plain description and nothing may branch on it for order.
+// Defined in ./phase.ts because "coarse status" is phase-model vocabulary; aliased
+// here because `status` is the trip's own field and ten files import this name.
+// The resulting trip <-> phase cycle is TYPE-ONLY and must stay that way.
+export type { CoarseTripStatus as TripStatus } from './phase'
 
 // A sequenced waypoint on the trip's route (FP-112). Role (origin/destination) is not
 // stored — it is derived per consignment. Mirrors backend TripStopRead.
@@ -48,7 +42,7 @@ export interface TripSummary {
   id: TripId
   trip_reference: string
   order_number: string
-  status: TripStatus
+  status: CoarseTripStatus
   trip_type: TripType
   driver: Driver
   horse: Vehicle
@@ -62,6 +56,13 @@ export interface TripSummary {
   open_exception_count: number
   created_at: string
   updated_at: string
+  // Denormalised position cache (parent D6), read-path only. The list view carries
+  // no plan, so these four are the only way a row can show plan-driven progress.
+  // phase_total is the plan's own length — never assume 6, never assume 7.
+  current_phase: PhaseType | null
+  current_stop: number | null
+  phase_total: number
+  phase_completed: number
 }
 
 // One PP waybill booked onto a trip. Mirrors backend ConsignmentRead
@@ -87,6 +88,11 @@ export interface ConsignmentRead {
   // Consolidated-unit (pallet) grain — dispatcher-entered, distinct from parcel grain.
   unit_count_expected: number | null
   pp_manifest_number: number | null
+  // Live scan progress from Parcel rows, recomputed per request — NOT the stamped
+  // parcel_count_origin / parcel_count_destination on the phase rows, which are
+  // written once at phase close and are the evidence. See LoadingDetail/UnloadingDetail.
+  scanned_out_count: number
+  scanned_in_count: number
   created_at: string
   updated_at: string
 }
@@ -97,7 +103,7 @@ export interface Trip {
   id: TripId
   trip_reference: string
   order_number: string
-  status: TripStatus
+  status: CoarseTripStatus
   trip_type: TripType
   journey_lock_hash: string | null
   idvs_check_status: 'pending' | 'verified' | 'failed'
@@ -114,7 +120,12 @@ export interface Trip {
   driver: Driver | null
   horse: Vehicle | null
   trailers: Vehicle[]
-  handshakes: HandshakeEvent[]
+  phases: PhaseDescriptor[]
+  // Caches of the derivation in `phases` above. The trip-DETAIL view must derive
+  // the active phase from `phases` (see dispatcher lib/phase/derive.ts) and must
+  // not read these — if the cache ever diverges, the derived view tells the truth.
+  current_phase: PhaseType | null
+  current_stop: number | null
   exceptions: TripException[]
   blockchain_receipts: BlockchainReceipt[]
   // Creation-transient: populated by POST /trips (e.g. PP sync degraded-mode

@@ -40,7 +40,11 @@ export interface TripException {
   source: ExceptionSource
   severity: ExceptionSeverity
   description: string
-  handshake_event_id: string | null
+  // Matches the backend wire field (schemas/transit.py TripExceptionBase). Renamed
+  // from the pre-phase-model `handshake_event_id` in Stage 5, which the dispatcher's
+  // trip-detail timeline relies on to attach each exception to the phase it actually
+  // occurred on rather than guessing at the last completed row.
+  phase_event_id: string | null
   checkpoint_id: string | null
   supporting_artifact_id: string | null
   // Driver-phone GPS fix captured when the exception was raised (panic button today).

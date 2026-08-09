@@ -4,10 +4,164 @@
 
 @layer base {
   /*
+   * ── The palette, in one place, for both themes ──
+   *
+   * Every colour token in tailwind.config.ts is backed by one of the --fp-* variables
+   * below, so re-declaring them under `.dark` themes the entire app without a single
+   * component changing: screens already style exclusively through the token map
+   * (DESIGN_SYSTEM.md §2.3 bans raw hex in component code), which is what makes a
+   * variable swap sufficient where per-component `dark:` variants would have meant
+   * touching ~300 class lists.
+   *
+   * Values are space-separated RGB CHANNELS, not hex or rgb() strings, because
+   * tailwind.config.ts consumes them as `rgb(var(--fp-x) / <alpha-value>)`. That is
+   * what keeps Tailwind's opacity modifiers alive — `bg-secondary/10`,
+   * `border-outline-variant/25`, `bg-error-container/30` are load-bearing in this
+   * codebase, and a variable holding a finished colour string makes Tailwind v3 drop
+   * the modifier silently rather than error.
+   *
+   * The --fp- prefix is not decoration: the shadcn block further down already owns
+   * unprefixed --primary/--secondary/--border on the same :root.
+   */
+  :root {
+    /* Tells the browser to render its own furniture — scrollbars, form controls, the
+       spinner in a date field — in the matching theme. Without it a dark app grows
+       white scrollbars and light native controls. */
+    color-scheme: light;
+
+    /* Neutrals. Elevation climbs from `surface` (the page) up through the container
+       ramp; `container-lowest` is this app's raised-card ground (see components/ui/Card
+       `default`), which is why the dark ramp below climbs rather than descends. */
+    --fp-surface:                    252 248 249;
+    --fp-surface-container-lowest:   255 255 255;
+    --fp-surface-container-low:      246 243 244;
+    --fp-surface-container:          240 237 238;
+    --fp-surface-container-high:     229 226 227;
+    --fp-surface-container-highest:  229 226 227;
+    --fp-surface-dim:                220 217 218;
+    --fp-surface-on:                  27  27  28;
+    --fp-surface-on-variant:          70  70  79;
+    --fp-outline:                    119 118 128;
+    --fp-outline-variant:            199 198 202;
+    --fp-canvas:                      10  10  12;
+
+    /* Ink — the back pill, the current-phase card, the identifier borders. */
+    --fp-primary:                     27  27  28;
+    --fp-primary-container:           48  48  49;
+    --fp-primary-on:                 255 255 255;
+    --fp-primary-on-container:       115 115 116;
+
+    /* Accent blue — current phase, links, focus. */
+    --fp-secondary:                    0  81 213;
+    --fp-secondary-container:        216 226 255;
+    --fp-secondary-on:               255 255 255;
+    --fp-secondary-on-container:       0  21  81;
+    --fp-secondary-fixed:            216 226 255;
+
+    --fp-tertiary:                   128  86   0;
+    --fp-tertiary-container:         255 185  95;
+    --fp-tertiary-on:                255 255 255;
+    --fp-tertiary-on-container:       43  23   0;
+
+    --fp-success:                      0 108  76;
+    --fp-success-container:          137 248 199;
+    --fp-success-on:                 255 255 255;
+    --fp-success-on-container:         0  33  20;
+
+    --fp-error:                      186  26  26;
+    --fp-error-container:            255 218 214;
+    --fp-error-on:                   255 255 255;
+    --fp-error-on-container:          65   0   2;
+
+    --fp-chain:                        0 104 116;
+    --fp-chain-container:            151 240 255;
+    --fp-chain-on:                   255 255 255;
+    --fp-chain-on-container:           0  31  36;
+  }
+
+  /*
+   * Dark theme. Applied by toggling `dark` on <html> — set pre-paint by the inline
+   * script in app/layout.tsx and maintained at runtime by components/theme/ThemeManager.
+   *
+   * Two deliberate departures from a literal Material 3 dark scheme:
+   *
+   * 1. The container ramp climbs with elevation (lowest is the LIGHTEST step, not the
+   *    darkest). M3 dark inverts that ramp, but this codebase reads
+   *    `surface-container-lowest` as "a raised card", so following the spec would have
+   *    made every card on every screen sink into the page instead of lifting off it.
+   *
+   * 2. `primary` is a soft off-white (#dcd9de), not near-white. Filled-primary surfaces
+   *    here are large — the whole current-phase card — and pure white at that size is a
+   *    glare source in a dark cab at night, which is the exact situation this theme
+   *    exists for.
+   */
+  .dark {
+    color-scheme: dark;
+
+    --fp-surface:                     18  18  21;
+    --fp-surface-container-lowest:    28  28  32;
+    --fp-surface-container-low:       33  33  38;
+    --fp-surface-container:           38  38  44;
+    --fp-surface-container-high:      48  48  55;
+    --fp-surface-container-highest:   58  58  66;
+    --fp-surface-dim:                 13  13  15;
+    --fp-surface-on:                 230 227 230;
+    --fp-surface-on-variant:         180 178 187;
+    --fp-outline:                    145 143 153;
+    /* Lighter than an M3 dark outline-variant on purpose: this token is used at 10–25%
+       opacity for every table frame and row divider in the app (PhaseProgressBar,
+       TripTable), and the spec value at those alphas is invisible on a dark ground. */
+    --fp-outline-variant:            113 112 122;
+    --fp-canvas:                      10  10  12;
+
+    --fp-primary:                    220 217 222;
+    --fp-primary-container:           53  53  59;
+    --fp-primary-on:                  27  27  28;
+    --fp-primary-on-container:        90  90  98;
+
+    --fp-secondary:                  173 198 255;
+    /* Deeper and less saturated than a straight M3 dark secondary-container. This tone
+       is used at full width for page notices and at 40% for the current row of the phase
+       table, and a vivid blue at that size is a glare source in a dark cab — the same
+       reasoning that keeps `primary` off pure white below. */
+    --fp-secondary-container:         17  45  88;
+    --fp-secondary-on:                 0  46 105;
+    --fp-secondary-on-container:     216 226 255;
+    /* Not "fixed" in the M3 sense (a tone identical in both themes). The one consumer —
+       Card `selected` — sets no text colour of its own and inherits on-surface, so a
+       tone that stayed light would put light text on a light ground in dark mode. */
+    --fp-secondary-fixed:             17  45  88;
+
+    --fp-tertiary:                   255 185  95;
+    --fp-tertiary-container:          97  63   0;
+    --fp-tertiary-on:                 69  43   0;
+    --fp-tertiary-on-container:      255 221 184;
+
+    --fp-success:                    108 219 170;
+    --fp-success-container:            0  81  58;
+    --fp-success-on:                   0  56  37;
+    --fp-success-on-container:       137 248 199;
+
+    --fp-error:                      255 180 171;
+    --fp-error-container:            147   0  10;
+    --fp-error-on:                   105   0   5;
+    --fp-error-on-container:         255 218 214;
+
+    --fp-chain:                       79 216 235;
+    --fp-chain-container:              0  79  88;
+    --fp-chain-on:                     0  54  61;
+    --fp-chain-on-container:         151 240 255;
+  }
+
+  /*
    * shadcn/ui theme variables, mapped onto the app's existing Material-3-derived
    * hex palette (see tailwind.config.ts `colors`) so both vocabularies render
    * identically. HSL triplets (no hsl() wrapper) per shadcn convention — consumed
    * as hsl(var(--foo)) in tailwind.config.ts.
+   *
+   * Kept in HSL rather than folded into the --fp-* channels above: these are a separate
+   * vocabulary with its own upstream convention, and the two sets are checked against
+   * each other by eye, not by the build. Dark values mirror the .dark block above.
    */
   :root {
     --background: 345 40% 98%;      /* surface #fcf8f9 */
@@ -40,11 +194,45 @@
 
     --radius: 14px;
   }
+
+  .dark {
+    --background: 240 8% 8%;        /* surface #121215 */
+    --foreground: 300 4% 90%;       /* surface-on #e6e3e6 */
+
+    --card: 240 7% 12%;             /* surface-container-lowest #1c1c20 */
+    --card-foreground: 300 4% 90%;
+
+    --popover: 240 7% 12%;
+    --popover-foreground: 300 4% 90%;
+
+    --primary: 280 5% 86%;          /* #dcd9de */
+    --primary-foreground: 240 2% 11%;
+
+    --secondary: 240 7% 14%;        /* surface-container-low #212126 */
+    --secondary-foreground: 300 4% 90%;
+
+    --muted: 240 7% 14%;            /* #212126 */
+    --muted-foreground: 249 8% 72%; /* surface-on-variant #b4b2bb */
+
+    --accent: 219 100% 84%;         /* secondary blue #adc6ff */
+    --accent-foreground: 214 100% 21%;
+
+    --destructive: 6 100% 84%;      /* error #ffb4ab */
+    --destructive-foreground: 357 100% 21%;
+
+    --border: 247 4% 46%;           /* outline-variant #71707a */
+    --input: 247 4% 46%;
+    --ring: 219 100% 84%;           /* #adc6ff */
+  }
 }
 
 @layer utilities {
+  /* Tracks --fp-surface so the sticky headers stay the same tint as the page they
+     blur, in either theme — the alpha is the whole point of the effect and has to
+     survive the swap, hence rgb(channels / alpha) rather than a var holding a
+     finished colour. */
   .glass-nav {
-    background: rgba(252, 248, 249, 0.8);
+    background: rgb(var(--fp-surface) / 0.8);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
   }
@@ -57,6 +245,18 @@
   .pb-safe {
     padding-bottom: env(safe-area-inset-bottom, 20px);
   }
+
+  /* iOS/Android status-bar clearance for top chrome. viewportFit:'cover'
+     (app/layout.tsx) is what makes env(safe-area-inset-top) resolve to a real value —
+     and it is also why a sticky header at top:0 otherwise draws UNDERNEATH the iOS
+     notch/Dynamic Island, putting the back button on top of the clock. Deliberately the
+     raw inset with no padding of its own (unlike .pb-safe's 20px fallback, which exists
+     because a gesture bar needs clearance even when the inset reads 0): callers keep
+     owning their own visual padding on an inner element, so two padding-top declarations
+     never race on one node. */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
 }
 
 @layer base {
@@ -68,10 +268,31 @@
 
   /* Belt-and-braces against horizontal scroll in the packaged iOS/Android shell —
      the viewport lock (app/layout.tsx) stops zoom-driven overflow, this catches
-     anything else that ever renders wider than the screen. */
-  html, body {
+     anything else that ever renders wider than the screen.
+
+     Deliberately on html ONLY, never on body. `overflow-x: hidden` forces the other
+     axis's used value from `visible` to `auto`, which makes that element a scroll
+     container. On body that silently broke every `position: sticky` header in the app
+     (SubpageHeader's back button, StepHeader): sticky positions against the nearest
+     scrollport ancestor, so those headers were sticking to the BODY box — which has
+     auto height and therefore never scrolls internally — while the viewport scrolled
+     the whole body past them. The header scrolled away with the page instead of
+     staying locked at the top. On html the value propagates to the viewport instead
+     (the root element's own used overflow stays `visible`), so nothing between the
+     viewport and a sticky header is a scroll container. */
+  html {
     overflow-x: hidden;
+  }
+
+  body {
     max-width: 100vw;
+  }
+
+  /* No rubber-band overscroll: this ships as a packaged native shell, and screens are
+     sized to exactly one viewport (h-dvh / min-h-dvh), so a bounce reveals nothing but
+     background and reads as the app coming unstuck. */
+  html, body {
+    overscroll-behavior: none;
   }
 }
 

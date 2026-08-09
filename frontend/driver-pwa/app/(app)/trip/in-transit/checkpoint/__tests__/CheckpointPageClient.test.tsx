@@ -21,6 +21,14 @@ vi.mock('@/lib/hooks/useTrip', () => ({
   useTrip: () => mockUseTrip(),
 }))
 
+// The step pages take a GPS fix silently at submit time (lib/context/LocationContext.tsx).
+// Mocked like every other hook here so these tests stay about submission behaviour, and
+// so the fix is a known value the payload assertions can check for.
+const mockCapturePosition = vi.fn(async () => ({ lat: -26.09, lng: 28.13, accuracyM: 8 }))
+vi.mock('@/lib/hooks/useLocationTrail', () => ({
+  useLocationTrail: () => ({ capturePosition: mockCapturePosition, recordHere: vi.fn() }),
+}))
+
 vi.mock('@/lib/hooks/useToast', () => ({
   useToast: () => ({ notify: mockNotify }),
 }))
@@ -33,30 +41,25 @@ vi.mock('@/lib/api/checkpoints', () => ({
   submitCheckpoint: (...args: unknown[]) => mockSubmitCheckpoint(...args),
 }))
 
-// GpsCapture/CameraCapture/HoldButton drive real camera/GPS/hold-gesture APIs that are
-// out of scope here (each already has its own dedicated test coverage) — stub them to
-// simple controls so this suite only exercises CheckpointPageClient's own submit/queue
-// wiring (Fix 3), mirroring the Button stub in LogExceptionPageClient's test.
-vi.mock('@/components/handshake/GpsCapture', () => ({
-  GpsCapture: ({ onCapture }: { onCapture: (lat: number, lng: number) => void }) => (
-    <button onClick={() => onCapture(-29.85, 31.02)}>Capture GPS</button>
-  ),
-}))
+// CameraCapture/SwipeToConfirm drive real camera/swipe-gesture APIs that are out of
+// scope here (each already has its own dedicated test coverage) — stub them to simple
+// controls so this suite only exercises CheckpointPageClient's own submit/queue wiring
+// (Fix 3), mirroring the Button stub in LogExceptionPageClient's test. There is no GPS
+// control left to stub: the fix is taken silently at submit (mocked above).
 
-vi.mock('@/components/handshake/CameraCapture', () => ({
+vi.mock('@/components/phase/CameraCapture', () => ({
   CameraCapture: ({ label, onCapture }: { label: string; onCapture: (dataUrl: string) => void }) => (
     <button onClick={() => onCapture(`data:image/jpeg;base64,${label}`)}>{label}</button>
   ),
 }))
 
-vi.mock('@/components/handshake/HoldButton', () => ({
-  HoldButton: ({ label, onConfirm, disabled }: { label: string; onConfirm: () => void; disabled?: boolean }) => (
+vi.mock('@/components/phase/SwipeToConfirm', () => ({
+  SwipeToConfirm: ({ label, onConfirm, disabled }: { label: string; onConfirm: () => void; disabled?: boolean }) => (
     <button onClick={onConfirm} disabled={disabled}>{label}</button>
   ),
 }))
 
 function fillCaptures() {
-  fireEvent.click(screen.getByText('Capture GPS'))
   fireEvent.click(screen.getByText('Selfie'))
   fireEvent.click(screen.getByText('Cargo photo'))
 }
@@ -72,11 +75,11 @@ describe('CheckpointPageClient offline queue (Fix 3)', () => {
 
     render(<CheckpointPageClient />)
     fillCaptures()
-    fireEvent.click(screen.getByText('Hold to confirm'))
+    fireEvent.click(screen.getByText('Swipe to confirm'))
 
     await waitFor(() => expect(mockRouterPush).toHaveBeenCalledWith(ROUTES.inTransit))
     expect(mockSubmitCheckpoint).toHaveBeenCalledWith('trip-1', expect.objectContaining({
-      gpsLat: -29.85, gpsLng: 31.02,
+      gpsLat: -26.09, gpsLng: 28.13,
     }))
     expect(mockEnqueueCheckpoint).not.toHaveBeenCalled()
   })
@@ -86,11 +89,11 @@ describe('CheckpointPageClient offline queue (Fix 3)', () => {
 
     render(<CheckpointPageClient />)
     fillCaptures()
-    fireEvent.click(screen.getByText('Hold to confirm'))
+    fireEvent.click(screen.getByText('Swipe to confirm'))
 
     await waitFor(() => expect(mockRouterPush).toHaveBeenCalledWith(ROUTES.inTransit))
     expect(mockEnqueueCheckpoint).toHaveBeenCalledWith('trip-1', expect.objectContaining({
-      gpsLat: -29.85, gpsLng: 31.02, isDeviation: false,
+      gpsLat: -26.09, gpsLng: 28.13, isDeviation: false,
     }))
     expect(mockNotify).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'success', title: 'Checkpoint recorded', body: expect.stringContaining('stored on this device') }),
@@ -102,7 +105,7 @@ describe('CheckpointPageClient offline queue (Fix 3)', () => {
 
     render(<CheckpointPageClient />)
     fillCaptures()
-    fireEvent.click(screen.getByText('Hold to confirm'))
+    fireEvent.click(screen.getByText('Swipe to confirm'))
 
     await waitFor(() => expect(mockRouterPush).toHaveBeenCalledWith(ROUTES.inTransit))
     expect(mockEnqueueCheckpoint).toHaveBeenCalled()
@@ -114,7 +117,7 @@ describe('CheckpointPageClient offline queue (Fix 3)', () => {
 
     render(<CheckpointPageClient />)
     fillCaptures()
-    fireEvent.click(screen.getByText('Hold to confirm'))
+    fireEvent.click(screen.getByText('Swipe to confirm'))
 
     // Audit fix: the 4xx branch previously showed "check your connection" — misleading
     // exactly where the code knows retrying won't help.

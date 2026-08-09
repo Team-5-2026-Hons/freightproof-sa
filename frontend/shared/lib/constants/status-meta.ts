@@ -1,5 +1,4 @@
-import type { TripStatus } from '@shared/lib/types/trip'
-import type { HandshakeStatus } from '@shared/lib/types/handshake'
+import type { CoarseTripStatus, PhaseStatus } from '@shared/lib/types/phase'
 import type { ExceptionType, ExceptionSeverity, ExceptionSource } from '@shared/lib/types/exception'
 
 /** Six domain chip types — matches Chip component and DESIGN_SYSTEM.md §7.2. */
@@ -13,22 +12,20 @@ export interface StatusMeta {
 
 // ─── Trip status ───────────────────────────────────────────────────────────────
 
-export const TRIP_STATUS_META: Record<TripStatus, StatusMeta> = {
-  created:         { label: 'Created',          chipType: 'pending',   iconName: 'Clock' },
-  origin_gate_in:  { label: 'At Origin Gate',   chipType: 'transit',   iconName: 'MapPin' },
-  loading:         { label: 'Loading',          chipType: 'loading',   iconName: 'Package' },
-  origin_gate_out: { label: 'Gate Out',         chipType: 'transit',   iconName: 'Truck' },
-  in_transit:      { label: 'In Transit',       chipType: 'transit',   iconName: 'Navigation' },
-  dest_gate_in:    { label: 'At Dest. Gate',    chipType: 'transit',   iconName: 'MapPin' },
-  unloading:       { label: 'Unloading',        chipType: 'loading',   iconName: 'PackageOpen' },
-  closed:          { label: 'Complete',         chipType: 'complete',  iconName: 'CheckCircle2' },
-  cancelled:       { label: 'Cancelled',        chipType: 'critical',  iconName: 'XCircle' },
-  exception_hold:  { label: 'Exception',        chipType: 'exception', iconName: 'AlertTriangle' },
+// Coarse since Stage 2 — five values, not ten. `active` covers everything between
+// creation and closure; WHERE in the plan a trip is comes from the ledger, never
+// from here.
+export const TRIP_STATUS_META: Record<CoarseTripStatus, StatusMeta> = {
+  created:         { label: 'Created',   chipType: 'pending',   iconName: 'Clock' },
+  active:          { label: 'Active',    chipType: 'transit',   iconName: 'Truck' },
+  closed:          { label: 'Complete',  chipType: 'complete',  iconName: 'CheckCircle2' },
+  cancelled:       { label: 'Cancelled', chipType: 'critical',  iconName: 'XCircle' },
+  exception_hold:  { label: 'Exception', chipType: 'exception', iconName: 'AlertTriangle' },
 }
 
-// ─── Handshake status ─────────────────────────────────────────────────────────
+// ─── Phase status ─────────────────────────────────────────────────────────────
 
-export const HANDSHAKE_STATUS_META: Record<HandshakeStatus, StatusMeta> = {
+export const PHASE_STATUS_META: Record<PhaseStatus, StatusMeta> = {
   pending:     { label: 'Pending',     chipType: 'pending',   iconName: 'Circle' },
   in_progress: { label: 'In Progress', chipType: 'transit',   iconName: 'Loader' },
   completed:   { label: 'Completed',   chipType: 'complete',  iconName: 'CheckCircle2' },

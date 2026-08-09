@@ -62,13 +62,25 @@ export default function HistoryPage() {
   const { notify } = useToast()
 
   const { trips: allTrips, isLoading: tripsLoading, error: tripsError, refetch: refetchTrips } = useTrips({ status: CLOSED_STATUS })
-  const { precincts } = usePrecincts()
+  const { precincts, error: precinctsError } = usePrecincts()
 
   useEffect(() => {
     if (tripsError) {
       notify({ kind: 'error', title: 'Failed to load trip history', body: tripsError })
     }
   }, [tripsError, notify])
+
+  // The precinct filter silently narrows to nothing when this list fails to load,
+  // and route names fall back to an em-dash — neither is distinguishable from real data.
+  useEffect(() => {
+    if (precinctsError) {
+      notify({
+        kind: 'error',
+        title: 'Failed to load precincts',
+        body: `${precinctsError} Origin and destination names may be missing.`,
+      })
+    }
+  }, [precinctsError, notify])
 
   const filteredTrips = useMemo(() => {
     const term = search.trim().toLowerCase()

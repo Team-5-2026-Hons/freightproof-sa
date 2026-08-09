@@ -19,6 +19,37 @@ jobs:
     name: Backend — lint, type-check, test
     runs-on: ubuntu-latest
 
+    # Throwaway Postgres for the DB-backed suite (133 of 320 tests). Isolated per
+    # workflow run, which matters: tests/conftest.py runs Base.metadata.drop_all()
+    # at session teardown, so a shared database would have concurrent PRs dropping
+    # each other's tables mid-run. Mirrors infrastructure/docker/docker-compose.test.yml.
+    services:
+      test-db:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: freightproof_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d freightproof_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+      # Backs app/core/realtime.py's Redis pub/sub (after-commit event fan-out) —
+      # any test that mutates state through a real endpoint touches this.
+      test-redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -51,6 +82,11 @@ jobs:
         working-directory: backend
         env:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # Port 5432, not the 5433 used by docker-compose.test.yml: that mapping
+          # exists only to dodge a host Postgres locally. Service containers get a
+          # clean runner, so the default port is free.
+          TEST_DATABASE_URL: postgresql+asyncpg://postgres:test@localhost:5432/freightproof_test
+          REDIS_URL: redis://localhost:6379/0
         run: pytest -m "not slow"
 
   frontend:
@@ -79,3 +115,39 @@ jobs:
       - name: Type-check — tsc
         working-directory: frontend/dispatcher
         run: npx tsc --noEmit
+
+  # ---------------------------------------------------------------------------
+  # Driver PWA — previously had no CI at all, while carrying 61 source files.
+  # The scripts already existed; only this job was missing. Runs vitest too,
+  # which the dispatcher job still does not.
+  # ---------------------------------------------------------------------------
+  driver-pwa:
+    name: Driver PWA — lint, type-check, test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/driver-pwa/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend/driver-pwa
+        run: npm ci
+
+      - name: Lint — ESLint
+        working-directory: frontend/driver-pwa
+        run: npm run lint
+
+      - name: Type-check — tsc
+        working-directory: frontend/driver-pwa
+        run: npx tsc --noEmit
+
+      - name: Test — vitest
+        working-directory: frontend/driver-pwa
+        run: npm test

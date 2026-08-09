@@ -15,7 +15,7 @@ export default function PanicSubmittedPageClient() {
   const queued = params.get(PANIC_QUEUED_PARAM) === '1'
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-6 text-center">
+    <main className="flex min-h-dvh flex-col items-center justify-center gap-6 p-6 text-center">
       <div className={`flex h-20 w-20 items-center justify-center rounded-full ${queued ? 'bg-tertiary/10' : 'bg-success/10'}`}>
         {queued ? (
           <Clock className="h-10 w-10 text-tertiary" strokeWidth={2} aria-hidden />
@@ -24,7 +24,7 @@ export default function PanicSubmittedPageClient() {
         )}
       </div>
       <h1 className="text-xl font-bold">{queued ? 'Alert saved' : 'Alert sent'}</h1>
-      <p className="text-sm text-surface-on-variant max-w-xs">
+      <p className="text-lg leading-relaxed text-surface-on-variant max-w-xs">
         {queued ? (
           <>
             No signal right now — this alert is stored on this device and will send

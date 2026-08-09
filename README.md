@@ -85,7 +85,7 @@ freightproof-sa/
 │   │   │   ├── models/         # SQLAlchemy ORM models
 │   │   │   └── session.py      # Async engine and get_db()
 │   │   ├── integrations/       # Pulse, Parcel Perfect, IDVS, Twilio, SendGrid
-│   │   ├── orchestration/      # Trip state machine, handshake logic
+│   │   ├── orchestration/      # Trip state machine, phase logic
 │   │   ├── storage/            # S3 / Supabase Storage
 │   │   └── tasks/              # Celery background tasks
 │   ├── migrations/             # Alembic migrations
@@ -94,7 +94,7 @@ freightproof-sa/
 │       └── integration/        # API and database tests
 ├── frontend/
 │   ├── dispatcher/             # Next.js — dispatcher dashboard
-│   ├── driver-pwa/             # Next.js PWA — driver handshake app
+│   ├── driver-pwa/             # Next.js PWA — driver phase-capture app
 │   ├── guard/                  # Plain HTML — guard QR verification page
 │   └── client-portal/         # Next.js — client evidence portal
 ├── infrastructure/
@@ -284,18 +284,23 @@ Never modify the database schema directly in Supabase.
 
 ---
 
-## The five handshakes
+## The phase model
 
-A depot-to-depot trip moves through five handshakes. Each produces a signed event anchored to Hedera.
+A trip moves through a plan-driven sequence of phases, generated from its stops and consignments
+at trip creation. Plan length is data, not a constant — a single-leg trip is 7 rows (P0–P6 below),
+a 3-stop cross-dock is 11, because `loading`/`unloading` can recur per stop. `current_phase` on the
+trip is a cache rebuilt from the phase-event ledger; the ledger is the source of truth for where a
+trip is.
 
-| # | Handshake | Who | What gets anchored |
+| # | Phase | Who | What gets anchored |
 |---|---|---|---|
-| 0 | Trip creation | Dispatcher | Journey lock hash of all committed parameters |
-| 1 | Origin gate-in | Driver + gate security | Driver ID, vehicle GPS, precinct match |
-| 2 | Loading | Driver + cargo officer | Parcel Perfect manifest, waybill photo, seal number |
-| 3 | Origin gate-out | Driver + gate security | Seal verified, trip transitions to in-transit |
-| 4 | Destination gate-in | Driver + gate security | Seal verified unbroken on arrival |
-| 5 | Unloading | Driver + cargo officer | Three-way count reconciliation, POD photo, delivery receipt |
+| P0 | `trip_creation` | Dispatcher | Journey lock hash of all committed trip parameters |
+| P1 | `activation` | Driver | Phone GPS on arrival at the first stop — not anchored |
+| P2 | `loading` | System (driver visual count) | Not anchored |
+| P3 | `departure` | Driver | Seal number, seal photo, waybill photo — `PICKUP` receipt |
+| P4 | `in_transit` | System | Auto-completed on departure — not anchored |
+| P5 | `unloading` | Driver | Seal-at-destination vs. this leg's departure seal — not anchored |
+| P6 | `confirmation` | Driver | POD photo + signature, count reconciliation — `DELIVERY` receipt |
 
 ---
 

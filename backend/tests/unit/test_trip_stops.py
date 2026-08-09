@@ -4,6 +4,7 @@ Pure logic / in-memory model construction only — no DB, no HTTP.
 """
 
 import uuid
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -48,6 +49,10 @@ def _base_kwargs() -> dict:
         # consignment (trip-creation redesign, Task 3) — orthogonal to the
         # stop-routing behaviour these tests exercise.
         "consignments": [{"pp_reference": "WAY001", "unit_count_expected": 4}],
+        # Required by validate_request — a resolvable schedule at creation
+        # (see TripCreateRequest.validate_request); orthogonal to the
+        # stop-routing behaviour these tests exercise.
+        "planned_departure_at": datetime.now(UTC),
     }
 
 

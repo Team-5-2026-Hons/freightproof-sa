@@ -43,7 +43,7 @@ async def test_handshake_event_subject_visible_does_not_raise() -> None:
     result.scalar_one_or_none.return_value = uuid.uuid4()
     db.execute.return_value = result
     await assert_subject_visible(
-        db, subject_type=SubjectType.HANDSHAKE_EVENT,
+        db, subject_type=SubjectType.PHASE_EVENT,
         subject_id=uuid.uuid4(), organization_id=uuid.uuid4(),
     )
 
@@ -56,7 +56,7 @@ async def test_handshake_event_outside_org_raises() -> None:
     db.execute.return_value = result
     with pytest.raises(SubjectNotVisibleError):
         await assert_subject_visible(
-            db, subject_type=SubjectType.HANDSHAKE_EVENT,
+            db, subject_type=SubjectType.PHASE_EVENT,
             subject_id=uuid.uuid4(), organization_id=uuid.uuid4(),
         )
 

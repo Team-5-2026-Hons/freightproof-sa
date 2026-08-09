@@ -21,3 +21,11 @@ export interface EvidenceArtifact {
   captured_lng: number | null
   created_at: string
 }
+
+// Dispatcher read shape — metadata plus a short-lived signed Storage URL.
+// Mirrors backend EvidenceArtifactWithUrl. `signed_url` is null when Storage declined to
+// sign: the artifact is still evidence and its hash still stands, so render the record
+// with the image unavailable rather than hiding it.
+export interface EvidenceArtifactWithUrl extends EvidenceArtifact {
+  signed_url: string | null
+}

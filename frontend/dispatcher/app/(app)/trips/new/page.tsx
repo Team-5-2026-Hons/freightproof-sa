@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { TopBar }        from '@/components/ui/TopBar'
 import { Ic }            from '@/components/ui/Ic'
@@ -221,8 +221,21 @@ export default function TripNewPage() {
 
   const { drivers } = useDrivers()
   const { horses, trailers } = useVehicles()
-  const { precincts } = usePrecincts()
+  const { precincts, error: precinctsError } = usePrecincts()
   const caps = usePpCapabilities()
+
+  // The sharpest case of the silent failure: origin and destination are REQUIRED to
+  // create a trip, and both pickers source their options from this list. A failure
+  // left the dispatcher staring at two empty dropdowns with nothing explaining why.
+  useEffect(() => {
+    if (precinctsError) {
+      notify({
+        kind: 'error',
+        title: 'Failed to load precincts',
+        body: `${precinctsError} Origin and destination cannot be selected until this loads.`,
+      })
+    }
+  }, [precinctsError, notify])
 
   const [step, setStep]               = useState(1)  // 1–4
   const [loading, setLoading]         = useState(false)
@@ -420,7 +433,12 @@ export default function TripNewPage() {
         }
         notify({ kind: 'error', title: 'The server took too long to respond — the trip was not created. Please try again.' })
       } else if (err instanceof ApiError && err.status === 409) {
-        notify({ kind: 'error', title: 'Order number already active for this operator' })
+        // Two distinct backend causes share this status - a duplicate order_number and a
+        // waybill already assigned to another trip (see ConsignmentAlreadyAssignedError) -
+        // and each carries its own accurate detail message (err.message, extracted from the
+        // response body in lib/api/client.ts). A single fixed title here would tell the
+        // dispatcher "order number" even when the real problem is a reused waybill.
+        notify({ kind: 'error', title: err.message })
       } else if (err instanceof ApiError && err.status === 404) {
         notify({ kind: 'error', title: 'Driver or vehicle not found — check fleet data' })
       } else if (err instanceof ApiError && err.status === 422) {
@@ -787,14 +805,17 @@ export default function TripNewPage() {
                       </div>
                     )}
 
-                    {/* Combination status indicator */}
+                    {/* Combination status indicator - same recipe as the wizard's other
+                        full-width banners (Error banner below, Chip component elsewhere):
+                        bg-{tone}-c paired with text-{tone}-onc, not text-on-{tone}-c, which
+                        isn't a token this config generates and was rendering unstyled. */}
                     <div className={cn(
-                      'flex items-center gap-2 rounded-lg px-[12px] py-[9px] text-[12px] font-[600]',
-                      comboResult.valid ? 'bg-ok-c text-on-ok-c' : 'bg-err-c text-on-err-c',
+                      'flex items-center gap-2 rounded-lg px-4 py-3 text-[13px] font-[600]',
+                      comboResult.valid ? 'bg-ok-c text-ok-onc' : 'bg-err-c text-err-onc',
                     )}>
                       <Ic
                         n={comboResult.valid ? 'check' : 'warn'}
-                        s={13}
+                        s={14}
                         className={comboResult.valid ? 'text-ok' : 'text-err'}
                       />
                       {comboResult.message}
@@ -1051,14 +1072,8 @@ export default function TripNewPage() {
 
             <div className="flex flex-col gap-2">
               <Button full loading={loading} onClick={handleSubmit}>
-                Create Trip + Lock to Blockchain
+                {loading ? 'Creating trip…' : 'Create Trip + Lock to Blockchain'}
               </Button>
-              {loading && (
-                <div className="flex items-center gap-2 rounded-lg bg-warn-c px-3 py-2 text-[12px] font-[500] text-on-warn-c">
-                  <Ic n="hex" s={12} className="text-warn animate-pulse" />
-                  Anchoring to Hedera testnet — approx. 4–6 seconds…
-                </div>
-              )}
               <Button variant="secondary" full onClick={() => setShowConfirm(false)} disabled={loading}>
                 Go back and review
               </Button>

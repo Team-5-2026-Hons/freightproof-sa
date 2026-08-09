@@ -3,7 +3,10 @@ import type { DateRange } from '@/lib/types/date-range'
 interface SLAMetrics {
   onTimePickupPct: number
   onTimeDeliveryPct: number
-  handshakeCompletionPct: number
+  // Renamed to reflect the phase-based model. Still a stub — when this is
+  // really implemented its denominator must be each trip's OWN plan length
+  // (see lib/phase/derive.ts completionPct), never a fixed count of steps.
+  phaseCompletionPct: number
   exceptionsByType: Record<string, number>
 }
 

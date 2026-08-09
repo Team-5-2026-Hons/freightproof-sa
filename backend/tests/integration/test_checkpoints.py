@@ -49,7 +49,7 @@ async def seed_trip(db_session):
         operator_organization_id=org.id, client_organization_id=client_org.id,
         driver_id=driver.id, horse_id=horse.id,
         origin_precinct_id=origin.id, destination_precinct_id=dest.id,
-        status=TripStatus.IN_TRANSIT, idvs_check_status=IdvsStatus.VERIFIED,
+        status=TripStatus.ACTIVE, idvs_check_status=IdvsStatus.VERIFIED,
         created_by_user_id=user.id,
     )
     db_session.add(trip)

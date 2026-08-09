@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.core.exceptions import ConsignmentAlreadyAssignedError
 from app.db.models.enums import ParcelStatus
 from app.db.models.trips import Consignment, Parcel
 from app.integrations.parcel_perfect import (
@@ -425,3 +426,81 @@ async def test_refresh_does_not_blank_unit_count():
         f"expected 2 db.execute calls (consignment + barcodes), got {db.execute.await_count}"
     )
     assert result.warning is None
+
+
+# ---------------------------------------------------------------------------
+# Cross-trip reuse guard
+#
+# Without this guard, create_trip's own post-sync step (trip_service.py:
+# `result.consignment.pickup_stop_id = trip_stops[0].id`) silently rewrites an
+# already-anchored trip's consignment onto a second trip's stops the moment the
+# same pp_reference is entered twice - corrupting the first trip's phase-plan
+# basis. This is the seeded MOCKWB000x references becoming resolvable in PP
+# turning a previously-unreachable code path live.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_reuse_on_a_different_trip_is_rejected():
+    """A waybill already linked to trip A must not be reassignable to trip B."""
+    owning_trip_id = uuid.uuid4()
+    requesting_trip_id = uuid.uuid4()
+
+    existing = MagicMock(spec=Consignment)
+    existing.id = uuid.uuid4()
+    existing.trip_id = owning_trip_id
+
+    consignment_result = MagicMock()
+    consignment_result.scalar_one_or_none.return_value = existing
+    owner_result = MagicMock()
+    owner_result.scalar_one_or_none.return_value = "FP-20260101-OWNER01"
+
+    db = MagicMock()
+    db.execute = AsyncMock(side_effect=[consignment_result, owner_result])
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+    db.rollback = AsyncMock()
+
+    pp_factory = _make_pp_client_patch()
+
+    with patch("app.orchestration.consignment_service.get_pp_client", pp_factory):
+        with pytest.raises(ConsignmentAlreadyAssignedError) as exc_info:
+            await fetch_and_sync_consignment(
+                db=db,
+                pp_reference=_PP_REF,
+                trip_id=requesting_trip_id,
+            )
+
+    assert exc_info.value.pp_reference == _PP_REF
+    assert exc_info.value.trip_reference == "FP-20260101-OWNER01"
+    assert "FP-20260101-OWNER01" in str(exc_info.value)
+    # Rejected before any mutation - no Consignment/Parcel row is touched.
+    assert not db.add.called, "db.add must not be called when reuse is rejected"
+    assert not db.flush.called, "db.flush must not be called when reuse is rejected"
+
+
+@pytest.mark.asyncio
+async def test_resync_on_the_same_trip_is_allowed():
+    """The Celery refresh poll re-syncs a consignment onto the trip it already has."""
+    trip_id = uuid.uuid4()
+
+    existing = MagicMock(spec=Consignment)
+    existing.id = uuid.uuid4()
+    existing.trip_id = trip_id
+    existing.pp_raw_json = {}
+    existing.parcel_count_expected = 0
+    existing.client_organization_id = uuid.uuid4()
+
+    fetchall_rows = [("WAY0010001",), ("WAY0010002",)]
+    db = _make_db_mock(scalar_one_or_none=existing, fetchall_rows=fetchall_rows)
+    pp_factory = _make_pp_client_patch()
+
+    with patch("app.orchestration.consignment_service.get_pp_client", pp_factory):
+        result = await fetch_and_sync_consignment(
+            db=db,
+            pp_reference=_PP_REF,
+            trip_id=trip_id,
+        )
+
+    assert result.consignment is existing
+    assert existing.trip_id == trip_id

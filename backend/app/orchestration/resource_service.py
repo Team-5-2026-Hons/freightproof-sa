@@ -16,15 +16,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ResourceNotFoundError
 from app.db.models.blockchain import BlockchainReceipt
-from app.db.models.enums import SubjectType, TripStatus, TripType
-from app.db.models.handshakes import HandshakeEvent
+from app.db.models.enums import PhaseStatus, SubjectType, TripStatus, TripType
+from app.db.models.phases import PhaseEvent
 from app.db.models.organisations import Precinct
 from app.db.models.people import Driver
 from app.db.models.transit import TripException
 from app.db.models.trips import Consignment, Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
+from app.orchestration.phase_gate import blocked_on_by_stop
+from app.orchestration.scan_service import scanned_counts_for_trip
 from app.schemas.blockchain import BlockchainReceiptRead
-from app.schemas.handshakes import HandshakeEventRead
+from app.schemas.phases import PhaseEventRead
 from app.schemas.organisations import PrecinctRead
 from app.schemas.people import DriverRead
 from app.schemas.transit import TripExceptionRead
@@ -103,6 +105,24 @@ async def list_trips(
     )
     exc_counts: dict[uuid.UUID, int] = {row[0]: row[1] for row in exc_result.all()}
 
+    # Same batching shape as exc_counts above: one grouped query for the page.
+    # `completed` here means "resolved" in the ledger's sense — an overridden phase
+    # will never be revisited either, so it counts as done for a progress bar.
+    plan_result = await db.execute(
+        select(
+            PhaseEvent.trip_id,
+            func.count(PhaseEvent.id),
+            func.count(PhaseEvent.id).filter(
+                PhaseEvent.status.in_([PhaseStatus.COMPLETED, PhaseStatus.OVERRIDDEN])
+            ),
+        )
+        .where(PhaseEvent.trip_id.in_(trip_ids))
+        .group_by(PhaseEvent.trip_id)
+    )
+    plan_counts: dict[uuid.UUID, tuple[int, int]] = {
+        row[0]: (row[1], row[2]) for row in plan_result.all()
+    }
+
     return [
         TripListItemResponse(
             id=t.id,
@@ -120,6 +140,10 @@ async def list_trips(
             planned_arrival_at=t.planned_arrival_at,
             actual_arrival_at=t.actual_arrival_at,
             open_exception_count=exc_counts.get(t.id, 0),
+            current_phase=t.current_phase,
+            current_stop=t.current_stop,
+            phase_total=plan_counts.get(t.id, (0, 0))[0],
+            phase_completed=plan_counts.get(t.id, (0, 0))[1],
             created_at=t.created_at,
             updated_at=t.updated_at,
         )
@@ -160,24 +184,24 @@ async def get_trip_detail(
     trailers = [trailers_by_id[tid] for tid in trailer_ids if tid in trailers_by_id]
 
     hs_result = await db.execute(
-        select(HandshakeEvent)
-        .where(HandshakeEvent.trip_id == trip_id)
-        .order_by(HandshakeEvent.sequence_number)
+        select(PhaseEvent)
+        .where(PhaseEvent.trip_id == trip_id)
+        .order_by(PhaseEvent.sequence_number)
     )
-    handshakes = hs_result.scalars().all()
+    phase_events = hs_result.scalars().all()
 
     exc_result = await db.execute(
         select(TripException).where(TripException.trip_id == trip_id)
     )
     exceptions = exc_result.scalars().all()
 
-    # H2/H5 anchor a HANDSHAKE_EVENT-subject receipt (not a TRIP-subject one —
-    # see handshake_service.py advance_h2/advance_h5), so a TRIP-only filter here
+    # H3/H5 anchor a PHASE_EVENT-subject receipt (not a TRIP-subject one —
+    # see phase_service.py advance_departure/advance_confirmation), so a TRIP-only filter here
     # silently hid every driver-anchored pickup/delivery receipt from the
-    # dispatcher's per-trip evidence view. Reuse the handshake ids already
+    # dispatcher's per-trip evidence view. Reuse the phase event ids already
     # fetched above (no extra query) and OR in their receipts alongside the
     # trip's own — additive only, TRIP-subject behaviour is unchanged.
-    handshake_event_ids = [h.id for h in handshakes]
+    phase_event_ids = [h.id for h in phase_events]
     receipts_result = await db.execute(
         select(BlockchainReceipt)
         .where(
@@ -187,8 +211,8 @@ async def get_trip_detail(
                     BlockchainReceipt.subject_id == trip_id,
                 ),
                 and_(
-                    BlockchainReceipt.subject_type == SubjectType.HANDSHAKE_EVENT,
-                    BlockchainReceipt.subject_id.in_(handshake_event_ids),
+                    BlockchainReceipt.subject_type == SubjectType.PHASE_EVENT,
+                    BlockchainReceipt.subject_id.in_(phase_event_ids),
                 ),
             )
         )
@@ -201,6 +225,14 @@ async def get_trip_detail(
     )
     stops = stops_result.scalars().all()
 
+    # PhaseEventRead.stop_sequence is a join, not a column — build the map from
+    # the stops already fetched rather than issuing a second query.
+    stop_sequence_by_id = {s.id: s.sequence for s in stops}
+
+    # Hoisted out of the phases=[...] comprehension below: one gate query for the
+    # whole trip, not one per phase event.
+    gate = await blocked_on_by_stop(db, trip_id=trip_id)
+
     # id tiebreaker: consignments inserted in one transaction share the same
     # created_at (Postgres now() is per-transaction), so created_at alone is
     # non-deterministic across reads.
@@ -210,6 +242,17 @@ async def get_trip_detail(
         .order_by(Consignment.created_at, Consignment.id)
     )
     consignments = consignments_result.scalars().all()
+
+    # One batched query for the whole trip's live scan progress — see its docstring
+    # for why this must not become a per-consignment loop on a dispatcher poll path.
+    scan_counts = await scanned_counts_for_trip(db, trip_id=trip_id)
+    consignment_reads = [
+        ConsignmentRead.model_validate(c).model_copy(update={
+            "scanned_out_count": scan_counts[c.id].scanned_out if c.id in scan_counts else 0,
+            "scanned_in_count": scan_counts[c.id].scanned_in if c.id in scan_counts else 0,
+        })
+        for c in consignments
+    ]
 
     return TripDetailResponse(
         id=trip.id,
@@ -225,14 +268,21 @@ async def get_trip_detail(
         origin_precinct_id=trip.origin_precinct_id,
         destination_precinct_id=trip.destination_precinct_id,
         stops=[TripStopRead.model_validate(s) for s in stops],
-        consignments=[ConsignmentRead.model_validate(c) for c in consignments],
+        consignments=consignment_reads,
         pulsit_trip_reference_id=trip.pulsit_trip_reference_id,
         planned_departure_at=trip.planned_departure_at,
         actual_departure_at=trip.actual_departure_at,
         planned_arrival_at=trip.planned_arrival_at,
         actual_arrival_at=trip.actual_arrival_at,
         closed_at=trip.closed_at,
-        handshakes=[HandshakeEventRead.model_validate(h) for h in handshakes],
+        current_phase=trip.current_phase,
+        current_stop=trip.current_stop,
+        phases=[
+            PhaseEventRead.from_event(
+                e, stop_sequence_by_id=stop_sequence_by_id, blocked_on_by_stop=gate,
+            )
+            for e in phase_events
+        ],
         exceptions=[TripExceptionRead.model_validate(e) for e in exceptions],
         blockchain_receipts=[BlockchainReceiptRead.model_validate(r) for r in receipts],
         warnings=[],

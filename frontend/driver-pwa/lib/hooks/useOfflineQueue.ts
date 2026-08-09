@@ -2,25 +2,45 @@
 'use client'
 
 import { useCallback, useEffect, useSyncExternalStore } from 'react'
-import { submitHandshake } from '@/lib/api/handshakes'
+import { submitPhase } from '@/lib/api/phases'
 import { raiseException, type RaiseExceptionBody } from '@/lib/api/exceptions'
 import { submitCheckpoint, type CheckpointEvidence } from '@/lib/api/checkpoints'
+import { recordLocations, type LocationPingBody } from '@/lib/api/locations'
+import type { DriverPosition } from '@/lib/types/location'
 import { ApiError } from '@/lib/api/client'
-import type { HandshakeType } from '@shared/lib/types/handshake'
-import type { HandshakeEvidence } from '@/lib/types/evidence-draft'
+import type { PhaseType } from '@shared/lib/types/phase'
+import type { PhaseEvidence } from '@/lib/types/evidence-draft'
 
-interface HandshakeQueueEntry {
-  kind: 'handshake'
+// Replaces HandshakeQueueEntry (kind: 'handshake'), which addressed a fixed
+// handshakeType with no per-row identity. A phase submission addresses one specific
+// PhaseEvent row — phaseEventId — because phaseType alone is ambiguous on a cross-dock
+// plan (`unloading` can occur more than once).
+interface PhaseQueueEntry {
+  kind: 'phase'
   id: string
   tripId: string
-  handshakeType: HandshakeType
-  evidence: HandshakeEvidence
+  phaseEventId: string
+  phaseType: PhaseType
+  evidence: PhaseEvidence
+  // Task 5.3: this IS `id` above, threaded through as the wire idempotency_key —
+  // generated once at enqueue time (crypto.randomUUID(), same as `id`) and never
+  // regenerated on retry, so every replay of this entry sends the exact key the first
+  // attempt sent. Kept as its own named field (rather than reusing `id` inline at the
+  // call site) so the wire contract's name is explicit at the point sendEntry() reads
+  // it, and so a future divergence between "queue bookkeeping id" and "server
+  // idempotency key" is a deliberate type change, not a silent rename.
+  idempotencyKey: string
+  // The driver's fix at the moment they swiped, captured silently by the step page.
+  // Stored WITH the entry (not re-taken at replay time) because a ping recorded when
+  // signal came back would claim the driver completed the phase wherever they happened
+  // to reconnect — which is exactly the kind of false evidence this app exists to avoid.
+  position: DriverPosition | null
   enqueuedAt: string
 }
 
 // Exceptions (and panic, which is just exception_type: 'panic_button') have no
 // artifact upload step today, so queuing the already-built request body is enough —
-// unlike handshakes, there's no separate "upload then complete" sequence to redo.
+// unlike phases, there's no separate "upload then complete" sequence to redo.
 interface ExceptionQueueEntry {
   kind: 'exception'
   id: string
@@ -40,7 +60,21 @@ interface CheckpointQueueEntry {
   enqueuedAt: string
 }
 
-type QueueEntry = HandshakeQueueEntry | ExceptionQueueEntry | CheckpointQueueEntry
+// Location pings from the trail (lib/context/LocationContext.tsx). Queued as a BATCH
+// because that is how they arrive when a driver walks through a dead zone: several
+// fixes, each carrying its own device timestamp, all replayed in one call once signal
+// returns. Nothing here needs an idempotency key — a duplicated ping is a duplicate row
+// in a trail, not a duplicated piece of evidence, and the endpoint has no side effects
+// beyond the insert.
+interface LocationQueueEntry {
+  kind: 'location'
+  id: string
+  tripId: string
+  pings: LocationPingBody[]
+  enqueuedAt: string
+}
+
+type QueueEntry = PhaseQueueEntry | ExceptionQueueEntry | CheckpointQueueEntry | LocationQueueEntry
 
 const QUEUE_KEY = 'fp_offline_queue'
 
@@ -61,16 +95,26 @@ function saveQueue(entries: QueueEntry[]): void {
   } catch {
     // Quota exceeded, private browsing, or storage disabled — queue still
     // updates in memory, but won't survive a refresh. Surface this since the
-    // hook's entire purpose is persisting unsent handshakes across reloads.
+    // hook's entire purpose is persisting unsent evidence across reloads.
     console.warn(`useOfflineQueue: failed to persist queue for key "${QUEUE_KEY}"`)
   }
 }
 
 async function sendEntry(entry: QueueEntry): Promise<void> {
-  if (entry.kind === 'handshake') {
-    await submitHandshake(entry.tripId, entry.handshakeType, entry.evidence)
+  if (entry.kind === 'phase') {
+    // Same key on every attempt (see PhaseQueueEntry.idempotencyKey) — a replay
+    // against an already-resolved phase short-circuits server-side to a 200 with the
+    // current trip state (phase_service.py's `_gate_and_load` dedupe) rather than
+    // erroring or duplicating evidence. submitPhase surfaces that via
+    // SubmitPhaseResult.phaseStatus; this call only needs to know it didn't throw.
+    await submitPhase(
+      entry.tripId, entry.phaseEventId, entry.phaseType, entry.evidence,
+      entry.idempotencyKey, entry.position ?? null,
+    )
   } else if (entry.kind === 'checkpoint') {
     await submitCheckpoint(entry.tripId, entry.evidence)
+  } else if (entry.kind === 'location') {
+    await recordLocations(entry.tripId, entry.pings)
   } else {
     await raiseException(entry.tripId, entry.body)
   }
@@ -79,8 +123,8 @@ async function sendEntry(entry: QueueEntry): Promise<void> {
 // ─── Module-scope flush coordination ───────────────────────────────────────────
 // This queue is consumed by more than one concurrently-mounted hook instance:
 // AppShell mounts OfflineBanner once per screen, and the trip-flow page showing on
-// top of it (handshake step, checkpoint, exception, panic) mounts its own instance
-// to get enqueue/enqueueException/enqueueCheckpoint. Each instance also runs a
+// top of it (phase step, checkpoint, exception, panic) mounts its own instance
+// to get enqueuePhase/enqueueException/enqueueCheckpoint. Each instance also runs a
 // mount-time flush(). A useRef mutex is per-*instance*, so it could only stop a
 // single component from double-flushing itself — it could NOT stop the banner's
 // instance from starting a second flush pass while the page's instance still has a
@@ -163,7 +207,30 @@ async function flushQueue(): Promise<void> {
     const disposedIds = new Set<string>()
     let newlyDropped = 0
 
+    // Trips whose phase queue has stalled this pass. The backend enforces ledger ordering
+    // (a PENDING earlier phase 409s the next one), and the catch below drops 409s on the
+    // premise that they mean "already landed" — a premise that stops holding the moment a
+    // phase entry ahead of this one is still sitting in the queue. Skipping the rest of
+    // that trip's phase entries keeps the premise true. Exception, checkpoint and location
+    // entries carry no ordering constraint and keep flushing.
+    //
+    // The stall is UNBOUNDED, and that is the deliberate trade rather than an oversight.
+    // This set is per-pass, so every flush retries from the head of the chain — but if the
+    // head keeps failing transiently, nothing behind it for that trip is ever attempted,
+    // for as long as that lasts. On an evidence platform that is the right direction to
+    // fail: the queued unloading photos stay on the device indefinitely instead of being
+    // sent out of order, 409'd, and silently dropped as "already landed". Stuck evidence
+    // is recoverable; discarded evidence is not.
+    //
+    // What it costs: OfflineBanner counts the queue, so a driver sees "N items waiting to
+    // sync" without being able to tell "syncing normally" from "wedged behind a stuck
+    // entry". If that distinction ever needs surfacing, this set is where the signal
+    // comes from — not a new counter.
+    const stalledTripIds = new Set<string>()
+
     for (const entry of queue) {
+      if (entry.kind === 'phase' && stalledTripIds.has(entry.tripId)) continue
+
       try {
         await sendEntry(entry)
         disposedIds.add(entry.id)
@@ -190,13 +257,17 @@ async function flushQueue(): Promise<void> {
           continue
         }
         // Transient failure (network error, 5xx, or a status-0 timeout): leave it
-        // out of disposedIds so the filter below keeps it queued.
+        // out of disposedIds so the filter below keeps it queued. If this was a phase
+        // entry, it is still pending — mark its trip stalled so later phase entries for
+        // the same trip aren't sent out of order this pass (a dropped/disposed entry
+        // above never reaches here, so it can't wrongly stall a trip it no longer blocks).
+        if (entry.kind === 'phase') stalledTripIds.add(entry.tripId)
       }
     }
 
     // Re-read localStorage now rather than trusting the `queue` snapshot taken at
     // the top of this function. Sends above can take up to ~30s each (photo
-    // uploads); any enqueue()/enqueueException()/enqueueCheckpoint() call that ran
+    // uploads); any enqueuePhase()/enqueueException()/enqueueCheckpoint() call that ran
     // on another mounted instance while this flush was in flight has already
     // appended to localStorage. Filtering the *current* stored queue down to "not
     // disposed of" preserves those late arrivals — entries that failed transiently
@@ -222,10 +293,21 @@ export function useOfflineQueue() {
     getServerStoreSnapshot,
   )
 
-  const enqueue = useCallback(
-    (tripId: string, handshakeType: HandshakeType, evidence: HandshakeEvidence) => {
-      const entry: HandshakeQueueEntry = {
-        kind: 'handshake', id: crypto.randomUUID(), tripId, handshakeType, evidence,
+  // Renamed from `enqueue` (was implicitly handshake-only) to match enqueueException/
+  // enqueueCheckpoint's kind-suffixed naming now that QueueEntry has three kinds.
+  const enqueuePhase = useCallback(
+    (
+      tripId: string, phaseEventId: string, phaseType: PhaseType, evidence: PhaseEvidence,
+      position: DriverPosition | null,
+    ) => {
+      // Generated once, here, and never regenerated — see PhaseQueueEntry.idempotencyKey.
+      // Reused as both the queue's own bookkeeping id and the wire idempotency_key so a
+      // resend of this exact entry (flushQueue picking it up again after a transient
+      // failure) is indistinguishable, server-side, from the original attempt.
+      const id = crypto.randomUUID()
+      const entry: PhaseQueueEntry = {
+        kind: 'phase', id, tripId, phaseEventId, phaseType, evidence, idempotencyKey: id,
+        position,
         enqueuedAt: new Date().toISOString(),
       }
       const q = [...loadQueue(), entry]
@@ -261,6 +343,19 @@ export function useOfflineQueue() {
     [],
   )
 
+  const enqueueLocation = useCallback(
+    (tripId: string, pings: LocationPingBody[]) => {
+      const entry: LocationQueueEntry = {
+        kind: 'location', id: crypto.randomUUID(), tripId, pings,
+        enqueuedAt: new Date().toISOString(),
+      }
+      const q = [...loadQueue(), entry]
+      saveQueue(q)
+      publishStoreState({ length: q.length })
+    },
+    [],
+  )
+
   // flushQueue is a stable module-level function (shared by every instance, not
   // recreated per mount) — returned as-is so identity never changes across renders.
   const flush = flushQueue
@@ -285,5 +380,8 @@ export function useOfflineQueue() {
     }
   }, [flush])
 
-  return { queueLength, droppedCount, dismissDropped, enqueue, enqueueException, enqueueCheckpoint, flush }
+  return {
+    queueLength, droppedCount, dismissDropped,
+    enqueuePhase, enqueueException, enqueueCheckpoint, enqueueLocation, flush,
+  }
 }

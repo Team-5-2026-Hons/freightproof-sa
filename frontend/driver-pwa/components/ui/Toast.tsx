@@ -72,10 +72,11 @@ function ToastItem({ toast, onDismiss }: ToastItemProps) {
         'bg-surface-container-lowest rounded-xl shadow-ambient',
         'border border-outline-variant/20',
         leaving
-          // motion-reduce: no transition — the toast just goes transparent and the
-          // 200ms fallback timer removes it (transitionend never fires without a
-          // transition, so removal relies on the fallback path there).
-          ? 'opacity-0 translate-y-2 transition-all duration-200 motion-reduce:transition-none'
+          // Leaves the way it arrived — upward, back off the top of the screen. motion-
+          // reduce: no transition, so the toast just goes transparent and the 200ms
+          // fallback timer removes it (transitionend never fires without a transition, so
+          // removal relies on the fallback path there).
+          ? 'opacity-0 -translate-y-2 transition-all duration-200 motion-reduce:transition-none'
           : 'animate-toast-in motion-reduce:animate-none',
         accent,
       )}
@@ -115,10 +116,16 @@ export function ToastViewport({ toasts, onDismiss }: ToastViewportProps) {
       aria-live="polite"
       aria-atomic="false"
       className={cn(
-        'fixed inset-x-0 bottom-0 z-toast flex flex-col items-center gap-3',
-        'px-4 pb-6 sm:items-end sm:px-6',
-        // env() keeps the stack clear of Android's gesture bar / home indicator.
-        'pb-[calc(1.5rem+env(safe-area-inset-bottom))]',
+        // Top-anchored: these messages are mostly failures ("Couldn't open this trip",
+        // "Check your connection"), and at the bottom they surfaced in the same corner of
+        // the screen as the floating BottomNav and SwipeToConfirm — the two controls a
+        // driver's hand is already covering. Dropping in from the top puts them where
+        // nothing else lives and nothing is holding a thumb.
+        'fixed inset-x-0 top-0 z-toast flex flex-col items-center gap-3',
+        'px-4 sm:items-end sm:px-6',
+        // env() clears the notch / status bar the same way AppShell's header does — under
+        // viewportFit:'cover' a plain pt-3 would render the first toast behind it.
+        'pt-[calc(0.75rem+env(safe-area-inset-top))]',
       )}
     >
       {toasts.slice(0, 3).map((toast) => (

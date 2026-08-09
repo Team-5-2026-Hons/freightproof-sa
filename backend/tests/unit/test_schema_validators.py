@@ -117,43 +117,6 @@ def test_trip_only_departure_no_arrival_valid():
 
 
 # ---------------------------------------------------------------------------
-# HandshakeEventCreate — sequence_number must be 0–5
-# ---------------------------------------------------------------------------
-
-def test_handshake_sequence_number_valid():
-    from app.schemas.handshakes import HandshakeEventCreate
-    import uuid
-    h = HandshakeEventCreate(
-        trip_id=uuid.uuid4(),
-        handshake_type="loading",
-        sequence_number=2,
-    )
-    assert h.sequence_number == 2
-
-
-def test_handshake_sequence_number_too_high():
-    from app.schemas.handshakes import HandshakeEventCreate
-    import uuid
-    with pytest.raises(Exception):
-        HandshakeEventCreate(
-            trip_id=uuid.uuid4(),
-            handshake_type="loading",
-            sequence_number=6,
-        )
-
-
-def test_handshake_sequence_number_negative():
-    from app.schemas.handshakes import HandshakeEventCreate
-    import uuid
-    with pytest.raises(Exception):
-        HandshakeEventCreate(
-            trip_id=uuid.uuid4(),
-            handshake_type="loading",
-            sequence_number=-1,
-        )
-
-
-# ---------------------------------------------------------------------------
 # MerkleBatchLeafCreate — source_type must be "checkpoint", "exception", or "artifact"
 # ---------------------------------------------------------------------------
 

@@ -3,6 +3,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import LogExceptionPageClient from '../LogExceptionPageClient'
 import { ROUTES } from '@/lib/constants/routes'
 import { ApiError } from '@/lib/api/client'
+import { SINGLE_LEG_PHASE_PLAN } from '@shared/lib/mocks/phase-trips'
+import type { PhaseDescriptor } from '@shared/lib/types/phase'
+
+// Marks every phase up to and including `through` (by sequence_number) as completed —
+// same local helper lib/phase/__tests__/derive.test.ts uses.
+function walk(plan: readonly PhaseDescriptor[], through: number): PhaseDescriptor[] {
+  return plan.map((p) => (p.sequence_number <= through ? { ...p, status: 'completed' as const } : p))
+}
 
 const mockUseTrip = vi.fn()
 const mockRouterPush = vi.fn()
@@ -137,5 +145,50 @@ describe('LogExceptionPageClient back link (5d)', () => {
 
     expect(mockRouterPush).toHaveBeenCalledWith(ROUTES.inTransit)
     expect(mockRouterBack).not.toHaveBeenCalled()
+  })
+})
+
+describe('LogExceptionPageClient phase tagging', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('queues a breakdown against the leg being driven, resolved at report time', async () => {
+    // Mechanical and seal-broken-in-transit are IN_TRANSIT events by definition. The
+    // queued entry may not send until after arrival, so the tag is captured here — not
+    // at flush time, when the trip has already moved on to unloading.
+    const logException = vi.fn().mockRejectedValue(new Error('offline'))
+    const phases = walk(SINGLE_LEG_PHASE_PLAN, 3)
+    const inTransit = phases.find((p) => p.phase_type === 'in_transit')!
+    mockUseTrip.mockReturnValue({ trip: { id: 'trip-1', phases }, logException })
+
+    render(<LogExceptionPageClient />)
+    fireEvent.click(screen.getByText('Vehicle breakdown'))
+    fireEvent.click(screen.getByText('Submit exception'))
+
+    await waitFor(() => expect(mockEnqueueException).toHaveBeenCalled())
+    expect(mockEnqueueException).toHaveBeenCalledWith('trip-1', {
+      exception_type: 'mechanical',
+      description: '',
+      phase_event_id: String(inTransit.phase_event_id),
+    })
+  })
+
+  it('still queues the report when the trip carries no phase plan', async () => {
+    // Runs inside the catch block of an already-failed send — a throw here would lose
+    // the report outright. Untagged beats unsent.
+    const logException = vi.fn().mockRejectedValue(new Error('offline'))
+    mockUseTrip.mockReturnValue({ trip: { id: 'trip-1' }, logException })
+
+    render(<LogExceptionPageClient />)
+    fireEvent.click(screen.getByText('Seal broken in transit'))
+    fireEvent.click(screen.getByText('Submit exception'))
+
+    await waitFor(() => expect(mockEnqueueException).toHaveBeenCalled())
+    expect(mockEnqueueException).toHaveBeenCalledWith('trip-1', {
+      exception_type: 'seal_broken_in_transit',
+      description: '',
+    })
+    expect(mockRouterPush).toHaveBeenCalledWith(ROUTES.inTransit)
   })
 })

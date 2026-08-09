@@ -1,118 +1,176 @@
 // frontend/driver-pwa/components/trip/TripDetailView.tsx
-import { CheckCircle2 } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { CheckCircle2, Truck } from 'lucide-react'
 import type { Trip } from '@shared/lib/types/trip'
-import { HANDSHAKE_NAMES } from '@shared/lib/constants/handshake-meta'
+import type { PhaseDescriptor } from '@shared/lib/types/phase'
+import { PHASE_NAMES } from '@shared/lib/constants/phase-meta'
+import { currentPhase, isAnchored, isDriving } from '@/lib/phase'
 import { tripStatusChip } from '@/lib/utils/trip-status-chip'
-import { handshakeProgress, currentHandshakeNumber } from '@/lib/utils/handshake-progress'
 import { Card } from '@/components/ui/Card'
 import { Chip } from '@/components/ui/Chip'
 import { Button } from '@/components/ui/Button'
 import { SubpageHeader } from '@/components/layout/SubpageHeader'
-import { HandshakeProgressBar } from '@/components/trip/HandshakeProgressBar'
-import { CurrentHandshakeCard } from '@/components/trip/CurrentHandshakeCard'
+import { PhaseProgressBar } from '@/components/trip/PhaseProgressBar'
+import { CurrentPhaseCard } from '@/components/trip/CurrentPhaseCard'
 import { HoldNotice } from '@/components/trip/HoldNotice'
 import { AnchorBadge } from '@/components/blockchain/AnchorBadge'
-import { AnchorProgress } from '@/components/blockchain/AnchorProgress'
-
-// The only two handshakes the backend anchors to Hedera HCS — see AnchorBadge.
-const ANCHORED_HANDSHAKE_NUMBERS = new Set([2, 5])
-
-const HANDSHAKE_NUMBERS = [1, 2, 3, 4, 5] as const
 
 export interface TripDetailViewProps {
   trip: Trip
   onBack: () => void
   onInTransitHub: () => void
-  onSelectHandshake: (handshakeNumber: 1 | 2 | 3 | 4 | 5) => void
+  onSelectPhase: (phase: PhaseDescriptor) => void
   // trips/[id] (mock fixture data — no backend trip-history endpoint yet, see its TODO)
-  // lists all five handshakes for context; trips/active (the real, session-derived trip)
-  // shows only the single actionable one, per the current-handshake-only design. Which
+  // lists every phase in the plan for context; trips/active (the real, session-derived
+  // trip) shows only the single actionable one, per the current-phase-only design. Which
   // data source a page uses decides this, not a UI preference — hence a flag here
   // rather than two independently-maintained views that would drift apart.
-  showAllHandshakes: boolean
+  showAllPhases: boolean
+  // Page-level banner (e.g. "this trip hasn't started yet"), rendered INSIDE this
+  // component's scrollport rather than above it by the caller.
+  //
+  // This slot is not a convenience. The trip-detail routes are full-bleed
+  // (lib/navigation/full-bleed.ts): there is no AppShell above them, so the <main>
+  // below is the entire screen and SubpageHeader is the only element carrying the iOS
+  // safe-area inset. Anything a caller rendered as a SIBLING above that <main> therefore
+  // painted under the status bar, and — because <main> is a full h-dvh box — shoved an
+  // exact-viewport-tall screen down by its own height, pushing the bottom off the display
+  // and stranding the header's pt-safe as dead space in the middle of the page. Routing
+  // page banners through here keeps the screen locked to exactly one viewport.
+  notice?: ReactNode
+}
+
+// Plan order is never trusted off the wire (mirrors lib/phase/derive.ts's own
+// bySequence, which is not exported) — every render below walks a freshly-sorted
+// copy, never trip.phases as received.
+function bySequence(phases: readonly PhaseDescriptor[]): PhaseDescriptor[] {
+  return [...phases].sort((a, b) => a.sequence_number - b.sequence_number)
+}
+
+// A phase is "done" for display purposes once it's completed OR a dispatcher has
+// overridden it — mirrors lib/phase/derive.ts's own RESOLVED_STATUSES, except
+// 'exception' is deliberately excluded here: an exception phase still needs its own
+// distinct (non-checkmark) treatment in this list, whereas the sequencing walk in
+// derive.ts treats it as resolved so the driver isn't stuck on it forever.
+function isPhaseDone(phase: PhaseDescriptor): boolean {
+  return phase.status === 'completed' || phase.status === 'overridden'
 }
 
 // Shared presentational view for both trip-detail screens (Fix 5: they were
 // near-identical, hand-duplicated files). Pixel-identical per data source: callers
 // supply the trip + navigation callbacks, this component owns none of the data fetching.
 export function TripDetailView({
-  trip, onBack, onInTransitHub, onSelectHandshake, showAllHandshakes,
+  trip, onBack, onInTransitHub, onSelectPhase, showAllPhases, notice,
 }: TripDetailViewProps) {
   const { kind, label } = tripStatusChip(trip.status)
-  const progress = handshakeProgress(trip.handshakes)
-  const current = currentHandshakeNumber(progress)
-  // A held trip (H4 seal mismatch) must not offer any handshake CTA — submits in
+  const phases = bySequence(trip.phases)
+  const current = currentPhase(phases)
+  // A held trip (a critical exception) must not offer any phase CTA — submits in
   // this state can only 409. Both branches below swap their CTA for HoldNotice.
   const onHold = trip.status === 'exception_hold'
-
-  // Which of the two anchored handshakes (H2/H5) qualify for a row in the non-showAll
-  // "Evidence anchors" section: the handshake record must exist for this trip AND
-  // already carry an event_hash (unset means it hasn't reached that point yet, or it's
-  // one of the unanchored feeder handshakes, which ANCHORED_HANDSHAKE_NUMBERS excludes
-  // anyway). Computed here, once, so the section-presence check and the .map() below
-  // agree without recomputing .find() twice per handshake.
-  const anchoredHandshakeRows = HANDSHAKE_NUMBERS.filter((n) => {
-    if (!ANCHORED_HANDSHAKE_NUMBERS.has(n)) return false
-    const handshake = trip.handshakes.find((hs) => hs.sequence_number === n)
-    return handshake?.event_hash != null
-  })
+  // isDriving is true only while the ledger's current row is an unresolved in_transit —
+  // i.e. between departure and the driver's own arrival submission. Works the same on
+  // single-stop and cross-dock plans.
+  const driving = isDriving(phases)
 
   return (
-    <main className="flex min-h-screen flex-col">
+    // h-dvh + overflow-y-auto (not min-h-screen): this main IS the scrollport, so the
+    // screen is exactly one viewport tall and SubpageHeader's sticky sticks against it —
+    // the back button stays locked top-left and content passes underneath the glass blur
+    // rather than pushing the header off the top. dvh, not vh: 100vh resolves to the
+    // address-bar-hidden height in a mobile browser, which made even an empty page
+    // taller than the visible viewport and forced a scroll with nothing to scroll to.
+    <main className="flex h-dvh flex-col overflow-y-auto overscroll-contain">
       <SubpageHeader
         title={trip.trip_reference}
         backLabel="My Trips"
         onBack={onBack}
-        right={<span className="text-xs text-surface-on-variant">{trip.order_number}</span>}
+        titleVariant="reference"
+        titleCaption="Trip reference"
+        // Outlined chip, not the previous bare grey text: the customer's order number is
+        // the other identifier a driver gets asked for over the phone, so it needs to be
+        // findable rather than fading into the glass. Same ink and radius as the back
+        // pill opposite it, which is what balances the row.
+        right={
+          <span className="shrink-0 rounded-xl border-2 border-primary px-3 py-1.5 text-xs font-bold tracking-industrial text-surface-on">
+            {trip.order_number}
+          </span>
+        }
       />
 
-      <div className="flex flex-col gap-4 p-4">
-        <Card variant="section">
-          <p className="mb-2 text-sm font-medium text-surface-on">Status</p>
-          <Chip kind={kind}>{label}</Chip>
-        </Card>
+      {/* pb-safe, now that this content sits inside a fixed-height scrollport: without it
+          the last card ends flush against the Android gesture bar with no clearance. */}
+      {/* px-4/pt-4 rather than p-4: pb-safe sets its own padding-bottom, and the two
+          shorthand declarations would otherwise race on one node (same split the step
+          screens' `px-6 pt-6 pb-safe` footers already use). */}
+      <div className="flex flex-col gap-4 px-4 pt-4 pb-safe">
+        {notice}
 
-        <HandshakeProgressBar progress={progress} />
+        {/* Bare chip, not a titled `section` Card. The card spent ~90px of a phone
+            screen — a grey panel, a "Status" label and 20px of padding — to say one
+            word the chip already says louder and in colour, and it pushed the phase
+            timeline (the actual content of this screen) down by a fifth of the
+            viewport. Identical treatment to HomeContent, which shows the same trip. */}
+        <Chip kind={kind} className="self-start">{label}</Chip>
 
-        {trip.status === 'in_transit' && (
-          <Button variant="secondary" size="lg" onClick={onInTransitHub}>
-            In-Transit Hub →
+        <PhaseProgressBar phases={phases} />
+
+        {/* While the truck is moving this is the primary action, not a secondary
+            shortcut: the map, panic and exception logging are the only things a driver
+            can actually act on mid-leg. A held trip outranks it — the driver has been
+            told to stop, so HoldNotice below is the only thing they get. */}
+        {driving && !onHold && (
+          <Button
+            size="lg"
+            iconLeft={<Truck className="h-5 w-5" strokeWidth={2} aria-hidden />}
+            onClick={onInTransitHub}
+          >
+            Continue driving
           </Button>
         )}
 
         {onHold && <HoldNotice />}
 
-        {showAllHandshakes ? (
+        {showAllPhases ? (
           <section className="flex flex-col gap-2">
-            <h2 className="text-sm font-medium text-surface-on-variant">Handshakes</h2>
-            {/* Only the current handshake (docs/superpowers/specs/2026-06-29-driver-pwa-current-handshake-only-design.md)
-                is tappable — a completed one is done and re-entering it would resubmit
-                already-anchored evidence; a future one hasn't unlocked yet. */}
-            {HANDSHAKE_NUMBERS.map((n) => {
-              const isCurrent = n === current
-              const isCompleted = progress[n] === 'completed'
-              const handshake = trip.handshakes.find((hs) => hs.sequence_number === n)
+            <h2 className="text-sm font-medium text-surface-on-variant">Phases</h2>
+            {/* Only the current phase (docs/superpowers/specs/2026-06-29-driver-pwa-current-handshake-only-design.md,
+                unchanged design intent under the phase model) is tappable — a completed
+                one is done and re-entering it would resubmit already-anchored evidence;
+                a future one hasn't unlocked yet. */}
+            {phases.map((phase) => {
+              const isCurrent = phase.phase_event_id === current?.phase_event_id
+              const isCompleted = isPhaseDone(phase)
 
               return (
                 <Card
-                  key={n}
+                  key={phase.phase_event_id}
                   variant={isCurrent ? 'dark' : isCompleted ? 'default' : 'section'}
-                  onClick={isCurrent && !onHold ? () => onSelectHandshake(n) : undefined}
+                  onClick={isCurrent && !onHold ? () => onSelectPhase(phase) : undefined}
                   className={!isCurrent && !isCompleted ? 'opacity-50' : undefined}
                 >
                   <div className="flex items-center justify-between gap-3">
                     <span>
-                      <span className="font-semibold">H{n}:</span> {HANDSHAKE_NAMES[n]}
+                      <span className="font-semibold">{PHASE_NAMES[phase.phase_type]}</span>
+                      {/* Disambiguates a repeated phase type on a cross-dock plan
+                          (e.g. the second of three `unloading` rows) — stop_sequence
+                          is null only for trip_creation. */}
+                      {phase.stop_sequence !== null && (
+                        <span className="ml-1.5 text-xs font-normal text-surface-on-variant">
+                          Stop {phase.stop_sequence}
+                        </span>
+                      )}
                     </span>
                     {isCompleted && <CheckCircle2 className="h-5 w-5 shrink-0 text-success" strokeWidth={2} aria-hidden />}
                   </div>
-                  {/* Only H2/H5 are ever anchored — AnchorBadge itself renders nothing
-                      when event_hash is null (feeder handshake or not yet completed),
-                      so this stays clean for every other row without extra branching. */}
-                  {ANCHORED_HANDSHAKE_NUMBERS.has(n) && (
+                  {/* Only ANCHORED_PHASES are ever anchored — AnchorBadge itself renders
+                      nothing when event_hash is null (unanchored phase type, or not yet
+                      completed), so this stays clean for every other row without extra
+                      branching. */}
+                  {isAnchored(phase) && (
                     <AnchorBadge
-                      eventHash={handshake?.event_hash ?? null}
-                      receiptId={handshake?.blockchain_receipt_id ?? null}
+                      eventHash={phase.event_hash}
+                      receiptId={phase.blockchain_receipt_id}
                       className="mt-2"
                     />
                   )}
@@ -121,46 +179,23 @@ export function TripDetailView({
             })}
           </section>
         ) : (
-          <>
-            {!onHold && current !== null && (
-              <CurrentHandshakeCard
-                handshakeNumber={current}
-                onSelect={() => onSelectHandshake(current)}
-              />
-            )}
-
-            {/* Real active-trip data (showAllHandshakes=false) previously had no way to
-                surface Hedera anchor status at all — AnchorBadge only ever mounted in the
-                mock-fixture showAllHandshakes branch above. Additive, read-only: unlike the
-                showAll rows these are never tappable (no onClick on Card) per the
-                current-handshake-only design (docs/superpowers/specs/2026-06-29-driver-pwa-
-                current-handshake-only-design.md) — navigation stays reserved for the single
-                current handshake card above. Renders nothing, not even the header, when
-                neither H2 nor H5 has an event_hash yet. AnchorProgress (not AnchorBadge) is
-                used here — a driver on the real trip screen benefits from seeing WHERE in
-                the anchoring pipeline their evidence sits, not just a one-word chip; the
-                mock-fixture showAll branch above keeps the compact AnchorBadge unchanged. */}
-            {anchoredHandshakeRows.length > 0 && (
-              <section className="flex flex-col gap-2">
-                <h2 className="text-sm font-medium text-surface-on-variant">Evidence anchors</h2>
-                {anchoredHandshakeRows.map((n) => {
-                  const handshake = trip.handshakes.find((hs) => hs.sequence_number === n)
-                  return (
-                    <Card key={n} variant="section">
-                      <span>
-                        <span className="font-semibold">H{n}:</span> {HANDSHAKE_NAMES[n]}
-                      </span>
-                      <AnchorProgress
-                        eventHash={handshake?.event_hash ?? null}
-                        receiptId={handshake?.blockchain_receipt_id ?? null}
-                        className="mt-2"
-                      />
-                    </Card>
-                  )
-                })}
-              </section>
-            )}
-          </>
+          // Real active-trip data shows the single actionable phase and nothing else.
+          // A per-phase "Evidence anchors" section used to sit here (an AnchorProgress
+          // pipeline row per anchored phase); it was removed deliberately — anchoring is
+          // a background concern the driver takes no action on, and a read-only list of
+          // it pushed the one card that IS actionable off a single-viewport screen.
+          // Anchor state remains visible to dispatchers and on the showAllPhases rows.
+          //
+          // Suppressed while driving: the current phase is then the ARRIVAL phase, whose
+          // steps cannot be completed until the truck has actually arrived. Offering it
+          // mid-leg invites a driver to open an evidence step at 100 km/h. "Continue
+          // driving" above takes its place, and carries the way into that step.
+          !onHold && !driving && current !== null && (
+            <CurrentPhaseCard
+              phase={current}
+              onSelect={() => onSelectPhase(current)}
+            />
+          )
         )}
       </div>
     </main>

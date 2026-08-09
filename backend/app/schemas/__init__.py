@@ -18,8 +18,10 @@ from app.schemas.trips import (  # noqa: F401
     TripBase, TripCreate, TripUpdate, TripRead,
     TripTrailerBase, TripTrailerCreate, TripTrailerRead,
 )
-from app.schemas.handshakes import (  # noqa: F401
-    HandshakeEventBase, HandshakeEventCreate, HandshakeEventUpdate, HandshakeEventRead,
+from app.schemas.phases import (  # noqa: F401
+    PhaseEventRead,
+    ActivationCompleteRequest, LoadingCompleteRequest, DepartureCompleteRequest,
+    UnloadingCompleteRequest, ConfirmationCompleteRequest, PhaseCompleteRequest,
     TrailerGpsSnapshotBase, TrailerGpsSnapshotCreate, TrailerGpsSnapshotRead,
 )
 from app.schemas.transit import (  # noqa: F401

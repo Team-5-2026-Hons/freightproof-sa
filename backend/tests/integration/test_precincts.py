@@ -1,14 +1,18 @@
 """Integration tests for GET /api/v1/precincts."""
 
+import uuid
+
 import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
+from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.main import app
 from app.db.models.organisations import Organization, Precinct
+from app.db.models.people import User
 from app.db.models.enums import OrganizationType
-from app.auth.dependencies import _DEMO_ORG_ID
 from app.db.session import get_db
+
+from tests.conftest import auth_header, make_token
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -23,7 +27,7 @@ async def override_get_db(db_session: AsyncSession):
 @pytest_asyncio.fixture
 async def seed_orgs(db_session: AsyncSession):
     operator_org = Organization(
-        id=_DEMO_ORG_ID,
+        id=uuid.uuid4(),
         name="Demo Operator",
         org_type=OrganizationType.OPERATOR,
     )
@@ -33,14 +37,25 @@ async def seed_orgs(db_session: AsyncSession):
     )
     db_session.add_all([operator_org, client_org])
     await db_session.flush()
-    return {"client_org": client_org}
+
+    user = User(
+        id=uuid.uuid4(),
+        organization_id=operator_org.id,
+        email="demo-dispatcher@freightproof.co.za",
+        full_name="Demo Dispatcher",
+        is_active=True,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    return {"org": operator_org, "user": user, "client_org": client_org}
 
 
 @pytest_asyncio.fixture
 async def seed_precincts(db_session: AsyncSession, seed_orgs):
-    """Two shared precincts owned by a different org than the demo dispatcher.
+    """Two shared precincts owned by a different org than the dispatcher.
 
-    is_shared=True is required for the demo dispatcher (operator org) to see
+    is_shared=True is required for the dispatcher (operator org) to see
     precincts owned by client_org — mirrors how operators see client depots
     they've opted into sharing.
     """
@@ -63,26 +78,26 @@ async def seed_precincts(db_session: AsyncSession, seed_orgs):
     await db_session.flush()
 
 
-async def test_list_precincts_empty_returns_200(seed_orgs):
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
-        resp = await client.get(
-            "/api/v1/precincts",
-            headers={"Authorization": "Bearer demo"},
-        )
+def _auth_headers(seed: dict) -> dict:
+    return auth_header(
+        make_token(sub=str(seed["user"].id), role="dispatcher", org_id=str(seed["org"].id))
+    )
+
+
+async def test_list_precincts_empty_returns_200(client: AsyncClient, seed_orgs):
+    resp = await client.get(
+        "/api/v1/precincts",
+        headers=_auth_headers(seed_orgs),
+    )
     assert resp.status_code == 200
     assert resp.json() == []
 
 
-async def test_list_precincts_returns_shared(seed_precincts):
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
-        resp = await client.get(
-            "/api/v1/precincts",
-            headers={"Authorization": "Bearer demo"},
-        )
+async def test_list_precincts_returns_shared(client: AsyncClient, seed_orgs, seed_precincts):
+    resp = await client.get(
+        "/api/v1/precincts",
+        headers=_auth_headers(seed_orgs),
+    )
     body = resp.json()
     assert resp.status_code == 200
     assert len(body) == 2
@@ -90,7 +105,9 @@ async def test_list_precincts_returns_shared(seed_precincts):
     assert names == {"Cape Town Depot", "Johannesburg Depot"}
 
 
-async def test_list_precincts_excludes_other_org_non_shared(db_session: AsyncSession, seed_orgs):
+async def test_list_precincts_excludes_other_org_non_shared(
+    client: AsyncClient, db_session: AsyncSession, seed_orgs
+):
     """A precinct owned by another org with is_shared=False must not be visible."""
     client_org = seed_orgs["client_org"]
     private_precinct = Precinct(
@@ -103,23 +120,22 @@ async def test_list_precincts_excludes_other_org_non_shared(db_session: AsyncSes
     db_session.add(private_precinct)
     await db_session.flush()
 
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
-    ) as client:
-        resp = await client.get(
-            "/api/v1/precincts",
-            headers={"Authorization": "Bearer demo"},
-        )
+    resp = await client.get(
+        "/api/v1/precincts",
+        headers=_auth_headers(seed_orgs),
+    )
     body = resp.json()
     assert resp.status_code == 200
     assert body == []
 
 
-async def test_list_precincts_includes_own_org_non_shared(db_session: AsyncSession, seed_orgs):
+async def test_list_precincts_includes_own_org_non_shared(
+    client: AsyncClient, db_session: AsyncSession, seed_orgs
+):
     """A precinct owned by the caller's own org is always visible, shared or not."""
     own_precinct = Precinct(
         name="Demo Operator Yard",
-        principal_organization_id=_DEMO_ORG_ID,
+        principal_organization_id=seed_orgs["org"].id,
         latitude="-33.9249",
         longitude="18.4241",
         is_shared=False,
@@ -127,13 +143,10 @@ async def test_list_precincts_includes_own_org_non_shared(db_session: AsyncSessi
     db_session.add(own_precinct)
     await db_session.flush()
 
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"  # type: ignore[arg-type]
-    ) as client:
-        resp = await client.get(
-            "/api/v1/precincts",
-            headers={"Authorization": "Bearer demo"},
-        )
+    resp = await client.get(
+        "/api/v1/precincts",
+        headers=_auth_headers(seed_orgs),
+    )
     body = resp.json()
     assert resp.status_code == 200
     assert [p["name"] for p in body] == ["Demo Operator Yard"]

@@ -7,9 +7,10 @@ import { ShieldAlert, TriangleAlert } from 'lucide-react'
 import { useTrip } from '@/lib/hooks/useTrip'
 import { useLocation } from '@/lib/hooks/useLocation'
 import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
-import { HoldButton } from '@/components/handshake/HoldButton'
+import { contextPhaseEventId } from '@/lib/phase/derive'
+import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
 import { Button } from '@/components/ui/Button'
-import { Spinner } from '@/components/ui/Spinner'
+import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { ROUTES } from '@/lib/constants/routes'
 
 export default function PanicPageClient() {
@@ -51,9 +52,15 @@ export default function PanicPageClient() {
       // promise silently breaks exactly when the driver is offline and most at risk.
       console.error('Failed to send panic alert to backend — queued for retry', err)
       if (trip) {
+        const phaseEventId = contextPhaseEventId(trip.phases)
         enqueueException(String(trip.id), {
           exception_type: 'panic_button',
           description,
+          // Resolved HERE, not at flush time. This entry can sit in the queue until the
+          // driver regains signal — possibly after they have arrived and the trip has
+          // moved on — and the alert has to keep saying where the driver actually was
+          // when they pressed it, not where the trip ended up.
+          ...(phaseEventId ? { phase_event_id: String(phaseEventId) } : {}),
           // Both-or-neither: the backend 422s a partial fix, which would make the
           // queue drop this entry as a terminal failure — send the pair or nothing.
           ...(result ? { gps_lat: result.latitude, gps_lng: result.longitude } : {}),
@@ -65,23 +72,18 @@ export default function PanicPageClient() {
   }
 
   if (isLoading) {
-    // A blank screen here reads as a dead app — on the PANIC page of all places,
-    // the driver must see the app is alive. Same centered-spinner treatment as
-    // InTransitPageClient's loading state.
-    return (
-      <main className="flex min-h-screen items-center justify-center p-6">
-        <Spinner />
-      </main>
-    )
+    // A blank screen here reads as a dead app — on the PANIC page of all places, the
+    // driver must see the app is alive. Same LoadingScreen every other waiting screen uses.
+    return <LoadingScreen label="Loading trip" />
   }
 
   if (!trip) {
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center gap-8 bg-error p-6">
+      <main className="flex min-h-dvh flex-col items-center justify-center gap-8 bg-error p-6">
         <div className="flex flex-col items-center text-center text-error-on">
           <TriangleAlert className="mb-4 h-14 w-14" strokeWidth={1.5} aria-hidden />
           <h1 className="mb-2 text-2xl font-bold">Unable to verify trip</h1>
-          <p className="text-sm opacity-90">
+          <p className="text-lg leading-relaxed opacity-90">
             We could not confirm this panic alert against your active trip.
             Contact dispatch directly for emergency assistance.
           </p>
@@ -106,23 +108,27 @@ export default function PanicPageClient() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-8 bg-error px-6 pt-6 pb-safe">
+    <main className="flex min-h-dvh flex-col items-center justify-center gap-8 bg-error px-6 pt-6 pb-safe">
       <div className="flex flex-col items-center text-center text-error-on">
         <ShieldAlert className="mb-4 h-14 w-14" strokeWidth={1.5} aria-hidden />
         <h1 className="mb-2 text-2xl font-bold">Panic Alert</h1>
-        <p className="text-sm opacity-90">
-          Hold the button below to send an emergency alert to your dispatcher.
+        <p className="text-lg leading-relaxed opacity-90">
+          Swipe the button below to send an emergency alert to your dispatcher.
           Your GPS location will be included.
         </p>
         {sending && (
-          <p className="mt-2 text-xs opacity-75" role="status">
+          <p className="mt-2 text-sm opacity-75" role="status">
             Capturing location and sending alert…
           </p>
         )}
       </div>
-      <HoldButton
+      {/* This was durationMs={3000} under HoldButton — longer than the 2000ms default,
+          signalling the highest-stakes action in the app. SwipeToConfirm has no duration
+          concept (deliberateness now comes from the drag distance/threshold, or two
+          discrete key presses on the keyboard path), so that extra weighting is dropped;
+          the panic flow still uses variant="danger" to keep it visually distinct. */}
+      <SwipeToConfirm
         label="Send panic"
-        durationMs={3000}
         onConfirm={handlePanic}
         variant="danger"
       />

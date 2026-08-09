@@ -1,4 +1,4 @@
-"""Evidence artifact upload — called by driver PWA before submitting a handshake step."""
+"""Evidence artifact endpoints: driver PWA upload, plus dispatcher trip-scoped listing."""
 
 from datetime import datetime
 from decimal import Decimal
@@ -9,13 +9,17 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi import status as http_status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import get_current_driver
+from app.auth.dependencies import get_current_dispatcher, get_current_driver
 from app.core.exceptions import ResourceNotFoundError
 from app.db.models.enums import ArtifactType
 from app.db.session import get_db
-from app.orchestration.artifact_service import MAX_FILE_SIZE_BYTES, create_artifact
-from app.schemas.evidence import EvidenceArtifactRead
-from app.schemas.people import DriverRead
+from app.orchestration.artifact_service import (
+    MAX_FILE_SIZE_BYTES,
+    create_artifact,
+    list_artifacts_for_trip,
+)
+from app.schemas.evidence import EvidenceArtifactRead, EvidenceArtifactWithUrl
+from app.schemas.people import DriverRead, UserRead
 
 router = APIRouter(prefix="/artifacts", tags=["artifacts"])
 
@@ -56,3 +60,23 @@ async def upload_artifact_endpoint(
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except PermissionError as exc:
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+
+# Trip-scoped read router. Separate from the /artifacts upload router because the prefix
+# differs and the auth differs — upload is driver-only, listing is dispatcher-only.
+# Follows the pattern manifest.py sets for trip-scoped routes.
+trip_artifacts_router = APIRouter(prefix="/trips/{trip_id}/artifacts", tags=["artifacts"])
+
+
+@trip_artifacts_router.get("", response_model=list[EvidenceArtifactWithUrl])
+async def list_trip_artifacts_endpoint(
+    trip_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_dispatcher: UserRead = Depends(get_current_dispatcher),
+) -> list[EvidenceArtifactWithUrl]:
+    try:
+        return await list_artifacts_for_trip(
+            db, trip_id, operator_organization_id=current_dispatcher.organization_id,
+        )
+    except ResourceNotFoundError as exc:
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

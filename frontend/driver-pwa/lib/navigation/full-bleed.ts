@@ -4,9 +4,9 @@
 // both the layout and its regression tests import it.
 
 // AppShell's header is in normal layout flow (not overlaid), so it always adds
-// its own height on top of whatever the page renders. Panic and handshake-step
+// its own height on top of whatever the page renders. Panic and phase-step
 // pages already own their full layout (panic is a bare full-bleed emergency
-// surface; handshake steps render their own sticky StepHeader with real
+// surface; phase steps render their own sticky StepHeader with real
 // back-navigation) — stacking AppShell's chrome on top causes viewport
 // overflow on panic (pushing the cancel link below the fold). The remaining
 // prefixes below cover every subpage that renders components/layout/SubpageHeader
@@ -19,7 +19,7 @@
 // its prefix here reintroduces the exact bug this constant exists to prevent.
 const FULL_BLEED_ROUTE_PREFIXES = [
   '/panic',          // bare full-bleed emergency surface (PanicPageClient + submitted) — no shell chrome at all
-  '/handshake/',     // handshake steps render their own sticky StepHeader
+  '/trip/phase/',    // phase steps render their own sticky StepHeader (replaces the old, deleted '/handshake/' route)
   '/trip/in-transit', // in-transit hub, checkpoint, and exception screens all render SubpageHeader
   '/trips/',         // /trips/active and /trips/[id] render SubpageHeader (bare /trips list does not — it keeps AppShell)
 ] as const

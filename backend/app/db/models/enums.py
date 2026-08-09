@@ -18,13 +18,20 @@ class VehicleType(str, enum.Enum):
 
 
 class TripStatus(str, enum.Enum):
+    """Coarse trip lifecycle. The phase ledger (PhaseEvent) — not this field —
+    sequences a trip.
+
+    CREATED / ACTIVE / CLOSED (+ CANCELLED, EXCEPTION_HOLD) are the whole
+    model as of Stage 2.2, which replaced the old fine-grained per-handshake
+    values (ORIGIN_GATE_IN/LOADING/ORIGIN_GATE_OUT/IN_TRANSIT/DEST_GATE_IN/
+    UNLOADING) with advance_activation..advance_confirmation gating on
+    PhaseEvent.sequence_number instead. Nothing may branch on trip.status for
+    sequencing — only for the coarse created/active/closed/cancelled/held
+    description.
+    """
+
     CREATED          = "created"
-    ORIGIN_GATE_IN   = "origin_gate_in"
-    LOADING          = "loading"
-    ORIGIN_GATE_OUT  = "origin_gate_out"
-    IN_TRANSIT       = "in_transit"
-    DEST_GATE_IN     = "dest_gate_in"
-    UNLOADING        = "unloading"
+    ACTIVE           = "active"
     CLOSED           = "closed"
     CANCELLED        = "cancelled"
     EXCEPTION_HOLD   = "exception_hold"
@@ -36,21 +43,44 @@ class TripType(str, enum.Enum):
     EMPTY_LEG = "empty_leg"
 
 
-class HandshakeType(str, enum.Enum):
-    TRIP_CREATION   = "trip_creation"
-    ORIGIN_GATE_IN  = "origin_gate_in"
-    LOADING         = "loading"
-    ORIGIN_GATE_OUT = "origin_gate_out"
-    DEST_GATE_IN    = "dest_gate_in"
-    UNLOADING       = "unloading"
+class PhaseType(str, enum.Enum):
+    """One entry in a trip's committed phase plan — parent plan D5.
+
+    The plan's LENGTH is data, generated at trip creation from the trip's stops
+    and consignments. A 2-stop trip is 7 rows, a 3-stop cross-dock is 11. Any
+    code that treats this enum's cardinality as the number of phases in a trip
+    is wrong: the same type appears more than once on a multi-stop route.
+    """
+
+    TRIP_CREATION = "trip_creation"
+    ACTIVATION    = "activation"
+    LOADING       = "loading"
+    DEPARTURE     = "departure"
+    IN_TRANSIT    = "in_transit"
+    UNLOADING     = "unloading"
+    CONFIRMATION  = "confirmation"
 
 
-class HandshakeStatus(str, enum.Enum):
+class PhaseStatus(str, enum.Enum):
     PENDING     = "pending"
     IN_PROGRESS = "in_progress"
     COMPLETED   = "completed"
     EXCEPTION   = "exception"
     OVERRIDDEN  = "overridden"
+
+
+class AnchorStatus(str, enum.Enum):
+    """Hedera anchor state for one phase event — parent plan D4.
+
+    A phase may be `completed` while its anchor is `failed`: that combination is
+    what makes the fail-open policy (D7) honest, because the system still knows a
+    receipt is owed. Never render `failed` as success.
+    """
+
+    NOT_REQUIRED = "not_required"
+    PENDING      = "pending"
+    ANCHORED     = "anchored"
+    FAILED       = "failed"
 
 
 class ExceptionType(str, enum.Enum):
@@ -110,7 +140,7 @@ class SubjectType(str, enum.Enum):
     DRIVER          = "driver"
     VEHICLE_EVENT   = "vehicle_event"
     DRIVER_EVENT    = "driver_event"
-    HANDSHAKE_EVENT = "handshake_event"
+    PHASE_EVENT     = "phase_event"
 
 
 class VehicleEventType(str, enum.Enum):
