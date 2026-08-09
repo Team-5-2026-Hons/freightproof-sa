@@ -222,12 +222,12 @@ describe('TripDetailView', () => {
 
   // The entry point to the driving screen keys on isDriving(), not on
   // `phase_type === 'in_transit'`. The old check could never fire on a real trip — the
-  // backend closes the in_transit row the instant departure advances — which is exactly
-  // what made the driving screen unreachable.
+  // backend closed the in_transit row the instant departure advanced, before driver-
+  // submitted arrival existed — which is exactly what made the driving screen unreachable.
   it('shows the driving screen as the primary action while the truck is on the road', () => {
     const onInTransitHub = vi.fn()
-    const plan = walk(SINGLE_LEG_PHASE_PLAN, 4) // in_transit resolved — current is unloading
-    expect(currentPhase(plan)?.phase_type).toBe('unloading')
+    const plan = walk(SINGLE_LEG_PHASE_PLAN, 3) // departure resolved — in_transit pending, current
+    expect(currentPhase(plan)?.phase_type).toBe('in_transit')
 
     render(
       <TripDetailView
@@ -245,7 +245,7 @@ describe('TripDetailView', () => {
 
   it('replaces the arrival phase card with the driving entry while driving', () => {
     const onSelectPhase = vi.fn()
-    const plan = walk(SINGLE_LEG_PHASE_PLAN, 4)
+    const plan = walk(SINGLE_LEG_PHASE_PLAN, 3) // departure resolved — in_transit pending, current
 
     render(
       <TripDetailView
@@ -257,8 +257,34 @@ describe('TripDetailView', () => {
       />,
     )
 
-    // The unloading capture card must not be offered to a moving driver.
-    expect(screen.queryByRole('button', { name: /unloading/i })).not.toBeInTheDocument()
+    // The current phase's own capture card (in_transit carries no steps of its own, so
+    // this would otherwise fall through to nothing useful) must not be offered while the
+    // driver is moving — "Continue driving" takes its place instead.
+    expect(screen.queryByRole('button', { name: /in transit/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /continue driving/i })).toBeInTheDocument()
+  })
+
+  it('shows the unloading capture card, not the driving screen, once arrival is recorded', () => {
+    // in_transit resolved (arrival submitted), unloading current — the driver is standing
+    // at the destination doing seal-verify. This is the state the old case-2 fossil (V7)
+    // mistook for "still driving"; it must now show the arrival capture card instead.
+    const onSelectPhase = vi.fn()
+    const plan = walk(SINGLE_LEG_PHASE_PLAN, 4) // through in_transit — arrival submitted
+    expect(currentPhase(plan)?.phase_type).toBe('unloading')
+
+    render(
+      <TripDetailView
+        trip={makeTrip(plan)}
+        onBack={vi.fn()}
+        onInTransitHub={vi.fn()}
+        onSelectPhase={onSelectPhase}
+        showAllPhases={false}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: /continue driving/i })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /unloading/i }))
+    expect(onSelectPhase).toHaveBeenCalledWith(expect.objectContaining({ phase_type: 'unloading' }))
   })
 
   it('does not show the driving entry when the trip is not on the road', () => {
@@ -298,7 +324,10 @@ describe('TripDetailView', () => {
   })
 
   it('a held trip shows the hold notice instead of the driving entry, even mid-leg', () => {
-    const plan = walk(SINGLE_LEG_PHASE_PLAN, 4)
+    // Genuinely mid-leg (in_transit pending, current) so this actually proves the hold
+    // outranks driving, rather than the hold notice winning by coincidence because the
+    // trip wasn't driving anyway.
+    const plan = walk(SINGLE_LEG_PHASE_PLAN, 3)
 
     render(
       <TripDetailView

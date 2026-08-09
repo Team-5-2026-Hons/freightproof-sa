@@ -16,12 +16,16 @@ from app.db.models.enums import PhaseType
 
 # An empty recipe means no driver interaction:
 #   trip_creation — dispatcher-side, before the driver is involved at all.
-#   in_transit    — closed by departure today (NEW-8 stopgap) and by checkpoint
-#                   Merkle batches once those exist (parent D2); either way the
-#                   driver never drives it through a capture flow. Its old
-#                   "1-arrival" step was UI ceremony over an auto-completed phase:
-#                   it asked the driver to tap a GPS button whose fix the submit
-#                   path never even sent.
+#   in_transit    — IS driver-submitted as of 2026-08-09 (advance_in_transit), but from
+#                   the driver app's in-transit hub swipe, never a step page — so it has
+#                   an owner and still has no capture flow. The empty recipe is what keeps
+#                   arrival off the step router: driver-pwa's actionablePhase() skips any
+#                   phase whose recipe is empty, which is exactly the behaviour the hub
+#                   relies on. Giving this a recipe would reroute the driver and change
+#                   this shared contract; that was considered and deliberately rejected.
+#                   Its old "1-arrival" step was UI ceremony: it asked the driver to tap a
+#                   GPS button whose fix the submit path never even sent. The fix now
+#                   rides on the attestation itself.
 #
 # The three GPS-capture steps are gone (2026-08-05): activation's "1-approach-gate",
 # departure's "1-approach-exit", and in_transit's "1-arrival" each existed only to

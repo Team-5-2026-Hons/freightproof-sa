@@ -90,9 +90,10 @@ async def seed_trip(db_session):
     # once its Hedera anchor succeeds (see trip_service.create_trip) — so h0
     # is seeded COMPLETED here and every driver-facing row stays PENDING
     # before any endpoint call (the deleted _get_handshake_event no longer
-    # creates them on demand). IN_TRANSIT (P4) is included: advance_departure
-    # auto-completes it as a stopgap until real checkpoint-Merkle-batch wiring
-    # lands — see _auto_complete_in_transit's docstring in phase_service.py.
+    # creates them on demand). IN_TRANSIT (P4) is included and stays PENDING like
+    # every other driver-facing row: it is opened by advance_departure and closed by
+    # the driver's own arrival submission — see advance_in_transit's docstring in
+    # phase_service.py.
     stop0 = TripStop(trip_id=trip.id, precinct_id=origin.id, sequence=0)
     stop1 = TripStop(trip_id=trip.id, precinct_id=dest.id, sequence=1)
     db_session.add_all([stop0, stop1])
@@ -536,6 +537,12 @@ async def test_next_phase_tracks_the_ledger_and_returns_null_when_closed(client:
             headers=auth_header(token),
         )
 
+    # Departure hands the ledger to the driving leg, not straight to unloading.
+    resp = await client.get(f"/api/v1/trips/{trip.id}/phases/next", headers=auth_header(token))
+    assert resp.json()["phase_type"] == "in_transit"
+
+    await _complete_in_transit(client, trip, token)
+
     gate_photo_id = await _make_artifact(db_session, trip.id)
     unloading_id = await _phase_id(client, trip.id, token, "unloading")
     await client.post(
@@ -702,29 +709,84 @@ async def test_replayed_complete_returns_200_and_does_not_duplicate(client: Asyn
     assert activation_row.completed_at == completed_at_after_first  # not re-stamped by the replay
 
 
-# ── (a): in_transit and trip_creation are deliberately not driver-addressable ──
+# ── (a): in_transit is driver-addressable; trip_creation is not ────────────────
 
-async def test_complete_addressing_in_transit_row_returns_422(client: AsyncClient, db_session, seed_trip):
-    """in_transit and trip_creation are deliberately absent from the
-    PhaseCompleteRequest discriminated union (decision S5) — neither is
-    completed by a driver action. Addressing in_transit with any of the five
-    real payload shapes fails Pydantic's discriminator match (union_tag_invalid),
-    which FastAPI renders as 422, not the 409 a same-union-but-wrong-member
-    mismatch (like activation-addressed-with-loading) produces. This is NOT a
-    bug to "fix" by adding an in_transit member to the union: in_transit is
-    completed by the authorized _auto_complete_in_transit stopgap
-    (phase_service.py), and making it driver-addressable would harden that
-    stopgap into contract."""
+async def test_complete_addressing_in_transit_row_records_arrival(
+    client: AsyncClient, db_session, seed_trip,
+):
+    """The inverse of what this test asserted before 2026-08-09.
+
+    It used to demand a 422, justified like this: "in_transit is completed by the
+    authorized _auto_complete_in_transit stopgap (phase_service.py), and making it
+    driver-addressable would harden that stopgap into contract." That function was
+    deleted in 9be7a78 and exists nowhere under app/ — the fence outlived its reason.
+    Arrival is now an explicit driver attestation, so the union resolves `in_transit`
+    and the row completes.
+    """
     trip, driver = seed_trip
     token = make_token(sub=str(driver.id), role="driver")
+    await _walk_to_in_transit(client, db_session, trip, token)
     in_transit_id = await _phase_id(client, trip.id, token, "in_transit")
 
     resp = await client.post(
         f"/api/v1/trips/{trip.id}/phases/{in_transit_id}/complete",
-        json={"phase_type": "in_transit", "idempotency_key": str(uuid.uuid4())},
+        json={
+            "phase_type": "in_transit",
+            "driver_phone_lat": -29.8587, "driver_phone_lng": 31.0218,
+            "idempotency_key": str(uuid.uuid4()),
+        },
         headers=auth_header(token),
     )
+
+    assert resp.status_code == 200, resp.text
+    db_session.expire_all()
+    row = (await db_session.execute(
+        select(PhaseEvent).where(PhaseEvent.id == uuid.UUID(in_transit_id))
+    )).scalar_one()
+    assert PhaseStatus(row.status) == PhaseStatus.COMPLETED
+    assert row.completed_at is not None
+
+
+async def test_complete_addressing_trip_creation_row_returns_422(
+    client: AsyncClient, db_session, seed_trip,
+):
+    """trip_creation stays out of the union — it is written by create_trip before a
+    driver exists. Pydantic's discriminator rejects it (union_tag_invalid -> 422), which
+    is a different failure from the 409 a same-union-but-wrong-member mismatch produces."""
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+    trip_creation_id = await _phase_id(client, trip.id, token, "trip_creation")
+
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{trip_creation_id}/complete",
+        json={"phase_type": "trip_creation", "idempotency_key": str(uuid.uuid4())},
+        headers=auth_header(token),
+    )
+
     assert resp.status_code == 422
+
+
+async def test_arrival_is_not_gated_on_the_destination_warehouse_scan(
+    client: AsyncClient, db_session, seed_trip,
+):
+    """IN_TRANSIT is absent from phase_gate.GATED_PHASES and must stay absent. The
+    destination warehouse has scanned nothing when the driver pulls up at the boom, so
+    gating arrival on a scan that only happens AFTER arrival would deadlock the leg.
+    UNLOADING carries that gate instead.
+
+    Hits GET /phases directly (a plain list of rows, each with its own blocked_on),
+    not trip-detail: no test in this file fetches trip detail, and GET /trips/{id} is
+    dispatcher-only (get_current_dispatcher) — a driver token would 403 there. The
+    phases list is what _phase_id and every blocked_on test above already use."""
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+    await _walk_to_in_transit(client, db_session, trip, token)
+
+    resp = await client.get(f"/api/v1/trips/{trip.id}/phases", headers=auth_header(token))
+    assert resp.status_code == 200, resp.text
+    in_transit = next(p for p in resp.json() if p["phase_type"] == "in_transit")
+
+    assert in_transit["blocked_on"] is None
 
 
 # ── (b): ownership checked before the phase-type cross-check ──────────────
@@ -766,9 +828,8 @@ async def test_full_single_leg_walk_over_http_closes_the_trip(client: AsyncClien
     """The stage's literal exit bar: POST /phases/{id}/complete for each real
     driver-addressable phase, resolving every id from a real GET /phases
     response, asserting 200 each time and status == "closed" at the end.
-    in_transit is skipped deliberately — advance_departure auto-completes it
-    (the NEW-8 stopgap) — see test_complete_addressing_in_transit_row_returns_422
-    above for why it must stay that way."""
+    in_transit is walked like every other row: the driver attests his arrival, and
+    without that submission the unloading below is a 409."""
     trip, driver = seed_trip
     token = make_token(sub=str(driver.id), role="driver")
 
@@ -811,6 +872,8 @@ async def test_full_single_leg_walk_over_http_closes_the_trip(client: AsyncClien
             headers=auth_header(token),
         )
     assert resp.status_code == 200
+
+    await _complete_in_transit(client, trip, token)
 
     gate_photo_id = await _make_artifact(db_session, trip.id)
     unloading_id = await _phase_id(client, trip.id, token, "unloading")
@@ -892,7 +955,7 @@ async def test_empty_leg_trip_walks_to_closed(
     client: AsyncClient, db_session, empty_leg_seed_data,
 ):
     """Full walk: a real POST /trips(trip_type=empty_leg, no consignments) ->
-    activation -> departure -> [in_transit auto-completes] -> unloading ->
+    activation -> departure -> in_transit arrival -> unloading ->
     confirmation. Before the fix, the final confirmation call 404'd
     (ResourceNotFoundError("PhaseEvent", "loading") raised inside
     advance_confirmation's call to _find_loading_for_leg). After the fix it
@@ -963,6 +1026,20 @@ async def test_empty_leg_trip_walks_to_closed(
             headers=auth_header(driver_token),
         )
     assert resp.status_code == 200
+
+    # An empty leg still has a drive, and the driver still has to say he arrived —
+    # in_transit gates the unloading below exactly as it does on a laden trip.
+    in_transit_id = await _phase_id(client, trip_id, driver_token, "in_transit")
+    resp = await client.post(
+        f"/api/v1/trips/{trip_id}/phases/{in_transit_id}/complete",
+        json={
+            "phase_type": "in_transit",
+            "driver_phone_lat": -29.8587, "driver_phone_lng": 31.0218,
+            "idempotency_key": str(uuid.uuid4()),
+        },
+        headers=auth_header(driver_token),
+    )
+    assert resp.status_code == 200, resp.text
 
     gate_photo_id = await _make_artifact(db_session, trip_id)
     unloading_id = await _phase_id(client, trip_id, driver_token, "unloading")
@@ -1303,6 +1380,8 @@ async def completed_unloading_trip(
         )
     assert resp.status_code == 200
 
+    await _complete_in_transit(client, trip, token)
+
     # Close (not stage) the destination IN-direction session: satisfies unloading's
     # new gate without giving it any barcode data — see the fixture docstring above.
     await feed.close_session(
@@ -1386,6 +1465,63 @@ async def _complete_activation(client: AsyncClient, trip_id, token) -> None:
         headers=auth_header(token),
     )
     assert resp.status_code == 200
+
+
+async def _walk_to_in_transit(client: AsyncClient, db_session, trip, token: str) -> None:
+    """activation -> loading -> departure, all as the driver, leaving the trip sitting on
+    a PENDING in_transit row. The shortest legal path to the arrival phase."""
+    activation_id = await _phase_id(client, trip.id, token, "activation")
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{activation_id}/complete",
+        json={
+            "phase_type": "activation",
+            "driver_phone_lat": 0.0001, "driver_phone_lng": 0.0001,
+            "idempotency_key": str(uuid.uuid4()),
+        },
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 200, resp.text
+
+    loading_id = await _phase_id(client, trip.id, token, "loading")
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{loading_id}/complete",
+        json={"phase_type": "loading", "idempotency_key": str(uuid.uuid4())},
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 200, resp.text
+
+    waybill_id = await _make_artifact(db_session, trip.id)
+    seal_photo_id = await _make_artifact(db_session, trip.id)
+    departure_id = await _phase_id(client, trip.id, token, "departure")
+    with patch("app.blockchain.anchor_service.HederaService") as MockService:
+        MockService.return_value.submit_hash.return_value = _fake_hedera_receipt()
+        resp = await client.post(
+            f"/api/v1/trips/{trip.id}/phases/{departure_id}/complete",
+            json={
+                "phase_type": "departure",
+                "waybill_photo_artifact_id": waybill_id, "seal_number": "AB-1234",
+                "seal_photo_artifact_id": seal_photo_id,
+                "idempotency_key": str(uuid.uuid4()),
+            },
+            headers=auth_header(token),
+        )
+    assert resp.status_code == 200, resp.text
+
+
+async def _complete_in_transit(client: AsyncClient, trip, token: str) -> None:
+    """The arrival attestation. Every walk that reaches unloading needs this: in_transit
+    sits at a lower sequence than unloading and only the driver can resolve it."""
+    in_transit_id = await _phase_id(client, trip.id, token, "in_transit")
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{in_transit_id}/complete",
+        json={
+            "phase_type": "in_transit",
+            "driver_phone_lat": -29.8587, "driver_phone_lng": 31.0218,
+            "idempotency_key": str(uuid.uuid4()),
+        },
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 200, resp.text
 
 
 async def test_loading_complete_with_linehaul_photo_persists_it(

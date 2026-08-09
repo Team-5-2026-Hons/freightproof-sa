@@ -87,9 +87,10 @@ async def seed_trip(db_session):
     # Hand-built single-leg phase plan, mirroring what create_trip's plan
     # generator (task 2.1) writes at trip creation — every PhaseEvent row a
     # driver will ever complete already exists, `pending`, before any endpoint
-    # call. IN_TRANSIT (P4) is included: advance_departure auto-completes it
-    # as a stopgap until real checkpoint-Merkle-batch wiring lands — see
-    # _auto_complete_in_transit's docstring in phase_service.py.
+    # call. IN_TRANSIT (P4) is included and stays PENDING like every other
+    # driver-facing row: it is opened by advance_departure and closed by the
+    # driver's own arrival submission — see advance_in_transit's docstring in
+    # phase_service.py.
     stop0 = TripStop(trip_id=trip.id, precinct_id=origin.id, sequence=0)
     stop1 = TripStop(trip_id=trip.id, precinct_id=dest.id, sequence=1)
     db_session.add_all([stop0, stop1])

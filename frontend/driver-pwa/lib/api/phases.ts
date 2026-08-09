@@ -61,6 +61,13 @@ export interface DepartureCompleteRequest extends PhaseCompleteRequestBase {
   seal_photo_artifact_id: string
 }
 
+// Arrival. Mirrors backend schemas/phases.py's InTransitCompleteRequest, which is
+// _PhaseCompleteBase and nothing more: no photo, no artifact id, no seal. The driver's
+// swipe on the in-transit hub means "I am here", and when + where is the whole record.
+export interface InTransitCompleteRequest extends PhaseCompleteRequestBase {
+  phase_type: Extract<PhaseType, 'in_transit'>
+}
+
 export interface UnloadingCompleteRequest extends PhaseCompleteRequestBase {
   phase_type: Extract<PhaseType, 'unloading'>
   seal_number_at_destination: string
@@ -88,13 +95,16 @@ export interface ConfirmationCompleteRequest extends PhaseCompleteRequestBase {
   // server-side, not sent by the client.
 }
 
-// trip_creation and in_transit are deliberately absent — schemas/phases.py's own union
-// has no variant for either (neither is completed by a driver action); addressing one
-// 409s server-side by design (PhaseTypeMismatchError).
+// trip_creation is deliberately absent — schemas/phases.py's own union has no variant for
+// it (create_trip writes that row before a driver is involved); addressing it 422s
+// server-side by design. in_transit JOINED this union on 2026-08-09: arrival is now an
+// explicit driver attestation submitted from the in-transit hub's swipe, not a side
+// effect of advance_unloading.
 export type PhaseCompleteRequest =
   | ActivationCompleteRequest
   | LoadingCompleteRequest
   | DepartureCompleteRequest
+  | InTransitCompleteRequest
   | UnloadingCompleteRequest
   | ConfirmationCompleteRequest
 
@@ -316,13 +326,20 @@ export async function submitPhase(
       })
       break
     }
+    case 'in_transit': {
+      // No evidence read and no artifact upload: the attestation IS the submission. The
+      // fix rides along via driverPosition() exactly as it does for every other phase.
+      updatedTrip = await completePhase(tripId, phaseEventId, {
+        phase_type: 'in_transit',
+        ...driverPosition(position),
+        idempotency_key: idempotencyKey,
+      })
+      break
+    }
     case 'trip_creation':
-    case 'in_transit':
-      // Neither has a PhaseCompleteRequest variant server-side — addressing one 409s
-      // by design (trip_creation is written at trip creation; in_transit is
-      // auto-completed by advance_departure's stopgap, parent plan D13). Reaching this
-      // branch means a routing bug upstream landed the driver on a phase they can never
-      // submit — lib/phase/routes.ts's walk should never produce that URL.
+      // No PhaseCompleteRequest variant server-side — create_trip writes this row before
+      // a driver is involved, and addressing it 422s by design. Reaching this branch means
+      // a routing bug upstream landed the driver on a phase they can never submit.
       throw new Error(`submitPhase: "${phaseType}" is never completed by a driver action`)
     default: {
       // Exhaustiveness guard: a new PhaseType member fails to compile here instead of

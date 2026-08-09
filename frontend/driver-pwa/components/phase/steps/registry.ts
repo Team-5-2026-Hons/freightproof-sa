@@ -59,8 +59,10 @@ export interface StepRegistry {
   activation: Record<ActivationSlug, AnyStepComponent>
   loading: Record<LoadingSlug, AnyStepComponent>
   departure: Record<DepartureSlug, AnyStepComponent>
-  // Empty recipe — in_transit is auto-completed server-side; its old '1-arrival' step
-  // only ever asked the driver to tap a GPS button whose fix was never submitted.
+  // Empty recipe — in_transit IS driver-submitted (2026-08-09), but from the in-transit
+  // hub's "Arrive at destination" swipe rather than a step page, so there is no step
+  // component to register. Its old '1-arrival' step only ever asked the driver to tap a
+  // GPS button whose fix was never submitted; the fix now rides on the attestation.
   in_transit: Record<string, never>
   unloading: Record<UnloadingSlug, AnyStepComponent>
   confirmation: Record<ConfirmationSlug, AnyStepComponent>

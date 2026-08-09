@@ -438,4 +438,78 @@ describe('useOfflineQueue', () => {
       expect(result.current.droppedCount).toBe(0)
     })
   })
+
+  // Fix 4: the backend now enforces strict ledger ordering — submitting a phase while
+  // the phase ahead of it in the same trip's plan is still PENDING returns 409. The
+  // catch above drops 409s on the premise that they mean "an earlier attempt already
+  // landed" — a premise that stops holding the moment the queue itself still holds an
+  // earlier, unsent entry for that trip. Sending out of order in that case would 409 the
+  // later entry and have it wrongly dropped as "already landed", silently losing evidence
+  // (e.g. an unloading seal photo) that never actually reached the server.
+  describe('per-trip phase ordering guard', () => {
+    it('does not send a later phase entry for a trip whose earlier phase entry just failed transiently', async () => {
+      const { submitPhase } = await import('@/lib/api/phases')
+      vi.mocked(submitPhase).mockRejectedValueOnce(new ApiError(500, 'server error'))
+      const { result } = renderHook(() => useOfflineQueue())
+      await act(() => Promise.resolve())
+
+      act(() => {
+        result.current.enqueuePhase('trip-1', 'phase-event-in-transit', 'in_transit', EVIDENCE, POSITION)
+        result.current.enqueuePhase('trip-1', 'phase-event-unloading', 'unloading', EVIDENCE, POSITION)
+      })
+
+      await act(() => result.current.flush())
+
+      // in_transit failed transiently (still queued) — unloading must be skipped this
+      // pass rather than sent and 409-dropped as a false "already landed".
+      expect(submitPhase).toHaveBeenCalledTimes(1)
+      expect(result.current.queueLength).toBe(2)
+      const stored = JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]') as Array<{ phaseType: string }>
+      expect(stored).toHaveLength(2)
+      expect(stored.map((entry) => entry.phaseType)).toEqual(['in_transit', 'unloading'])
+    })
+
+    it('still flushes a different trip after one trip stalls', async () => {
+      const { submitPhase } = await import('@/lib/api/phases')
+      vi.mocked(submitPhase).mockRejectedValueOnce(new ApiError(500, 'server error'))
+      const { result } = renderHook(() => useOfflineQueue())
+      await act(() => Promise.resolve())
+
+      act(() => {
+        result.current.enqueuePhase('trip-1', 'phase-event-in-transit', 'in_transit', EVIDENCE, POSITION)
+        result.current.enqueuePhase('trip-2', 'phase-event-unloading', 'unloading', EVIDENCE, POSITION)
+      })
+
+      await act(() => result.current.flush())
+
+      // The guard is scoped per trip — trip-2's entry has no stalled predecessor of its
+      // own, so it must still be attempted and dequeued even while trip-1 is stuck.
+      expect(submitPhase).toHaveBeenCalledTimes(2)
+      const stored = JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]') as Array<{ tripId: string }>
+      expect(stored).toHaveLength(1)
+      expect(stored[0].tripId).toBe('trip-1')
+    })
+
+    it('still flushes an exception entry for the same trip after its phase entry stalls', async () => {
+      const { submitPhase } = await import('@/lib/api/phases')
+      const { raiseException } = await import('@/lib/api/exceptions')
+      vi.mocked(submitPhase).mockRejectedValueOnce(new ApiError(500, 'server error'))
+      const { result } = renderHook(() => useOfflineQueue())
+      await act(() => Promise.resolve())
+
+      act(() => {
+        result.current.enqueuePhase('trip-1', 'phase-event-in-transit', 'in_transit', EVIDENCE, POSITION)
+        result.current.enqueueException('trip-1', { exception_type: 'panic_button', description: 'x' })
+      })
+
+      await act(() => result.current.flush())
+
+      // Exceptions (and checkpoints, locations) carry no ledger-ordering constraint —
+      // only phase entries are gated by this guard.
+      expect(raiseException).toHaveBeenCalledTimes(1)
+      const stored = JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]') as Array<{ kind: string }>
+      expect(stored).toHaveLength(1)
+      expect(stored[0].kind).toBe('phase')
+    })
+  })
 })

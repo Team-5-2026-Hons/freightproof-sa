@@ -207,7 +207,30 @@ async function flushQueue(): Promise<void> {
     const disposedIds = new Set<string>()
     let newlyDropped = 0
 
+    // Trips whose phase queue has stalled this pass. The backend enforces ledger ordering
+    // (a PENDING earlier phase 409s the next one), and the catch below drops 409s on the
+    // premise that they mean "already landed" — a premise that stops holding the moment a
+    // phase entry ahead of this one is still sitting in the queue. Skipping the rest of
+    // that trip's phase entries keeps the premise true. Exception, checkpoint and location
+    // entries carry no ordering constraint and keep flushing.
+    //
+    // The stall is UNBOUNDED, and that is the deliberate trade rather than an oversight.
+    // This set is per-pass, so every flush retries from the head of the chain — but if the
+    // head keeps failing transiently, nothing behind it for that trip is ever attempted,
+    // for as long as that lasts. On an evidence platform that is the right direction to
+    // fail: the queued unloading photos stay on the device indefinitely instead of being
+    // sent out of order, 409'd, and silently dropped as "already landed". Stuck evidence
+    // is recoverable; discarded evidence is not.
+    //
+    // What it costs: OfflineBanner counts the queue, so a driver sees "N items waiting to
+    // sync" without being able to tell "syncing normally" from "wedged behind a stuck
+    // entry". If that distinction ever needs surfacing, this set is where the signal
+    // comes from — not a new counter.
+    const stalledTripIds = new Set<string>()
+
     for (const entry of queue) {
+      if (entry.kind === 'phase' && stalledTripIds.has(entry.tripId)) continue
+
       try {
         await sendEntry(entry)
         disposedIds.add(entry.id)
@@ -234,7 +257,11 @@ async function flushQueue(): Promise<void> {
           continue
         }
         // Transient failure (network error, 5xx, or a status-0 timeout): leave it
-        // out of disposedIds so the filter below keeps it queued.
+        // out of disposedIds so the filter below keeps it queued. If this was a phase
+        // entry, it is still pending — mark its trip stalled so later phase entries for
+        // the same trip aren't sent out of order this pass (a dropped/disposed entry
+        // above never reaches here, so it can't wrongly stall a trip it no longer blocks).
+        if (entry.kind === 'phase') stalledTripIds.add(entry.tripId)
       }
     }
 

@@ -134,7 +134,16 @@ describe('OfflineBanner', () => {
     it('shows a plural "items waiting to sync" message for more than one queued entry', async () => {
       const { submitPhase } = await import('@/lib/api/phases')
       vi.mocked(submitPhase).mockRejectedValue(new Error('network down'))
-      seedQueue([PHASE_ENTRY, { ...PHASE_ENTRY, id: 'entry-2' }])
+      // Two DIFFERENT trips, and that is load-bearing rather than incidental. This is a
+      // TRANSIENT failure, and flushQueue now stalls a trip's remaining phase entries
+      // behind one that fails transiently (useOfflineQueue.ts) — two entries sharing a
+      // tripId would send once, not twice, and the wait below could never be satisfied.
+      // Two trips is also the honest fixture for "more than one queued entry": the banner
+      // counts the queue, not one trip's chain.
+      // (The dropped-entry sibling below deliberately keeps ONE tripId — a terminal 4xx
+      // disposes of the entry rather than leaving it pending, so it must NOT stall the
+      // chain, and that test passing same-trip is what proves it.)
+      seedQueue([PHASE_ENTRY, { ...PHASE_ENTRY, id: 'entry-2', tripId: 'trip-2' }])
 
       render(<OfflineBanner />)
 

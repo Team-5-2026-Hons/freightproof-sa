@@ -4,10 +4,9 @@
 // on the road, the driving screen is the PRIMARY action and the arrival phase's capture
 // card is not offered at all — a driver at 100 km/h cannot complete an unloading step, and
 // showing it invites them to try.
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
 import { HomeContent } from '../HomeContent'
-import { ROUTES } from '@/lib/constants/routes'
 import type { Trip, TripId } from '@shared/lib/types/trip'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import { SINGLE_LEG_PHASE_PLAN, CROSS_DOCK_PHASE_PLAN } from '@shared/lib/mocks/phase-trips'
@@ -73,16 +72,17 @@ describe('HomeContent driving entry', () => {
     vi.clearAllMocks()
   })
 
-  it('offers the driving screen, not the arrival phase card, while on the road', () => {
-    // in_transit resolved, unloading current — the shape a real trip is in for the whole
-    // leg, because the backend closes in_transit the instant departure advances.
+  it('shows the unloading capture card, not the driving screen, once arrival is recorded', () => {
+    // in_transit resolved, unloading current — the driver has submitted their arrival and
+    // is standing at the destination doing seal-verify. This state used to be mistaken for
+    // "still driving" (the old case-2 fossil, V7): it is the exact moment driving must be
+    // false, and the unloading capture card is what should be offered instead.
     mockUseTrip.mockReturnValue({ trip: makeTrip(walk(SINGLE_LEG_PHASE_PLAN, 4)), isLoading: false })
 
     render(<HomeContent />)
 
-    fireEvent.click(screen.getByRole('button', { name: /continue driving/i }))
-    expect(mockRouterPush).toHaveBeenCalledWith(ROUTES.inTransit)
-    expect(screen.queryByRole('button', { name: /unloading/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /continue driving/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /unloading/i })).toBeInTheDocument()
   })
 
   it('offers the current phase card and no driving entry when the trip is not moving', () => {
@@ -107,10 +107,11 @@ describe('HomeContent driving entry', () => {
 
   it('offers the driving entry on the SECOND leg of a cross-dock plan', () => {
     // Regression guard for a plan-length or phase_type assumption: the entry has to fire
-    // per leg, not once per trip.
+    // per leg, not once per trip. Walked to one row before the second in_transit, so that
+    // row is left PENDING and current — the driver is mid-leg on the second drive.
     const secondInTransit = CROSS_DOCK_PHASE_PLAN.filter((p) => p.phase_type === 'in_transit')[1]
     mockUseTrip.mockReturnValue({
-      trip: makeTrip(walk(CROSS_DOCK_PHASE_PLAN, secondInTransit.sequence_number)),
+      trip: makeTrip(walk(CROSS_DOCK_PHASE_PLAN, secondInTransit.sequence_number - 1)),
       isLoading: false,
     })
 
@@ -120,8 +121,11 @@ describe('HomeContent driving entry', () => {
   })
 
   it('a held trip shows the hold notice instead of the driving entry, even mid-leg', () => {
+    // Genuinely mid-leg (in_transit pending, current) so this actually proves the hold
+    // outranks driving, rather than the hold notice winning by coincidence because the
+    // trip wasn't driving anyway.
     mockUseTrip.mockReturnValue({
-      trip: makeTrip(walk(SINGLE_LEG_PHASE_PLAN, 4), { status: 'exception_hold' }),
+      trip: makeTrip(walk(SINGLE_LEG_PHASE_PLAN, 3), { status: 'exception_hold' }),
       isLoading: false,
     })
 

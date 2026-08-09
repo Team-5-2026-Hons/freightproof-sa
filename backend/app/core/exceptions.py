@@ -191,9 +191,13 @@ class PhaseTypeMismatchError(Exception):
     """Raised when a completion payload's phase_type does not match the addressed row's.
 
     A client bug, not a sequencing problem: the driver app resolved a phase_event_id
-    and then sent the wrong shape for it (or addressed a phase — trip_creation,
-    in_transit — that no driver action completes). Distinct from PhaseSequenceError
-    so the 409 body says which of the two actually happened.
+    and then sent the wrong shape for it (or addressed trip_creation, the one phase no
+    driver action completes — create_trip writes it before a driver is involved).
+    Distinct from PhaseSequenceError so the 409 body says which of the two happened.
+
+    in_transit used to be named here too. It stopped being an example on 2026-08-09:
+    arrival is now an explicit driver submission (advance_in_transit) with its own
+    PhaseCompleteRequest variant and its own dispatch-table entry.
     """
 
     def __init__(self, expected: str, received: str) -> None:

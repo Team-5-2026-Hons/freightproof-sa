@@ -3,15 +3,16 @@
 
 // The driving screen — the part of the trip where the driver is actually moving.
 //
-// It exists as a hub, not an evidence capture: `in_transit` has no step recipe and the
-// backend auto-completes it the moment `departure` advances, so there is nothing here to
-// submit. What a driver needs while moving is a map, a panic button they never have to
-// look for, and a short list of things they might have to log. That is the whole screen.
+// It is a hub, not a step screen — `in_transit` has no step recipe and never will: a
+// recipe would perturb actionablePhase() and force a change to the shared STEP_SLUGS
+// contract. But it is NOT submission-free. The swipe at the bottom is the driver
+// attesting "I have arrived", and since 2026-08-09 that attestation is what closes the
+// in_transit row — previously the backend inferred arrival from whenever the unloading
+// paperwork happened to be submitted, which made every dispatcher-visible drive time
+// wrong by the length of an unloading.
 //
-// The backend keeps in_transit PENDING during the drive (closed when arrival starts),
-// so this page is now reachable. Navigation tests `isDriving()` (lib/phase/derive.ts),
-// which detects this case by checking if currentPhase is in_transit OR if it's
-// unloading after a resolved in_transit leg.
+// Navigation still tests isDriving() (lib/phase/derive.ts), which is now simply "the
+// current row is in_transit".
 //
 // Layout invariant: PANIC IS NEVER BEHIND A SCROLL. The action stack at the bottom is
 // `shrink-0` inside an `overflow-hidden` viewport-height column, and the only part of it
@@ -24,9 +25,12 @@ import { ShieldAlert, ScanFace, TriangleAlert } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTrip } from '@/lib/hooks/useTrip'
 import { useLocationTrail } from '@/lib/hooks/useLocationTrail'
+import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
+import { useToast } from '@/lib/hooks/useToast'
+import { startPhaseSubmission, type PhaseSubmissionOutcome } from '@/lib/submission/phase-submitter'
 import { ROUTES } from '@/lib/constants/routes'
 import { formatTime } from '@/lib/utils/format-time'
-import { currentStepRoute } from '@/lib/phase'
+import { currentPhase, currentStepRoute } from '@/lib/phase'
 import { Button } from '@/components/ui/Button'
 import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
 import { DriverMap } from '@/components/map/DriverMap'
@@ -80,8 +84,10 @@ function ExceptionCard({ exception }: ExceptionCardProps) {
 
 export default function InTransitPageClient() {
   const router = useRouter()
-  const { trip, isLoading, exceptions } = useTrip()
+  const { trip, isLoading, exceptions, refetchTrip, adoptTrip, markPhaseSyncing, clearPhaseSyncing } = useTrip()
   const { capturePosition } = useLocationTrail()
+  const { enqueuePhase } = useOfflineQueue()
+  const { notify } = useToast()
   const [fix, setFix] = useState<DriverFix | null>(null)
 
   const tripIsOpen = trip !== null
@@ -129,6 +135,122 @@ export default function InTransitPageClient() {
   // appends on logException), so a just-submitted exception shows up here immediately.
   // trip.exceptions is only a fetch-time snapshot and would silently drop it.
   const openExceptions = exceptions.filter((e) => !e.resolved)
+
+  // Captured here, in component scope, rather than read off `trip` inside the nested
+  // handlers below — TS narrows `trip` to non-null in this scope (the guard above), but
+  // does not carry that narrowing into a function declaration's body.
+  const tripId = String(trip.id)
+  const phases = trip.phases
+
+  // The in_transit row this hub is standing on. currentPhase, not actionablePhase:
+  // actionablePhase deliberately skips stepless rows and would hand back `unloading`,
+  // which is the row the driver has NOT reached yet.
+  const arrivalPhase = currentPhase(phases)
+
+  // Runs from wherever the driver has since navigated to (background submitter model —
+  // see PhaseStepPageClient's identical handleOutcome for the reference implementation).
+  // Takes phaseEventId as a parameter (rather than closing over arrivalPhase directly) so
+  // the caller narrows arrivalPhase to non-null once, at the swipe guard, instead of this
+  // function asserting it.
+  function handleArrivalOutcome(outcome: PhaseSubmissionOutcome, phaseEventId: string) {
+    switch (outcome.kind) {
+      case 'recorded': {
+        if (outcome.trip !== null) {
+          adoptTrip(outcome.trip)
+          // Reconcile: the real plan already shows this phase resolved, so dropping the
+          // optimistic marker changes nothing the driver can see.
+          clearPhaseSyncing(phaseEventId)
+        }
+        return
+      }
+      case 'hold': {
+        // Split from 'recorded' rather than folded into it, mirroring
+        // PhaseStepPageClient.handleOutcome. The arrival itself is recorded, but the
+        // swipe has already pushed the driver onto the unloading step — and a held trip
+        // can only 409 there. Landing them on a capture screen they cannot submit, with
+        // no explanation, is the wrong failure direction; the trip screen is where the
+        // hold reason is visible.
+        //
+        // Unreachable today: advance_in_transit never holds, and nothing in backend app/
+        // writes TripStatus.EXCEPTION_HOLD at all (see _is_resolved's note). Kept in step
+        // with the reference implementation anyway, so a future manual dispatcher hold
+        // does not have to remember this one screen diverged.
+        adoptTrip(outcome.trip)
+        clearPhaseSyncing(phaseEventId)
+        notify({
+          kind: 'error',
+          title: 'Trip on hold',
+          body: 'A critical exception was recorded. The trip is paused for dispatcher review.',
+        })
+        router.push(ROUTES.activeTripDetail)
+        return
+      }
+      case 'queued': {
+        // Optimistic advance deliberately KEPT: the queue holds the attestation and will
+        // replay it, so re-offering the swipe would only invite a second copy.
+        return
+      }
+      case 'conflict':
+      case 'failed': {
+        // No draft to preserve or roll back to — an arrival carries no captured
+        // evidence, only a timestamp and a position. Rolling the marker back just makes
+        // the row unresolved again so the swipe can be offered a second time.
+        clearPhaseSyncing(phaseEventId)
+        notify({ kind: 'error', title: 'Could not record arrival', body: outcome.message })
+        return
+      }
+      default: {
+        const unreachable: never = outcome
+        throw new Error(`handleArrivalOutcome: unhandled outcome "${String(unreachable)}"`)
+      }
+    }
+  }
+
+  function handleArrivalSwipe() {
+    // Defensive against a stale tab whose ledger has already moved on (e.g. arrival was
+    // recorded from another device/tab). Navigating is still right — the arrival is
+    // already recorded, there is simply nothing left here to submit.
+    if (arrivalPhase === null || arrivalPhase.phase_type !== 'in_transit') {
+      router.push(currentStepRoute(phases))
+      return
+    }
+
+    const phaseEventId = arrivalPhase.phase_event_id
+
+    // Return value deliberately ignored: `false` means a submission for this row is
+    // already running, and the right response is still to navigate — the attestation is
+    // already on its way.
+    startPhaseSubmission({
+      tripId,
+      phaseEventId,
+      phaseType: 'in_transit',
+      evidence: { capturedAt: new Date().toISOString() },
+      idempotencyKey: crypto.randomUUID(),
+      // Un-awaited: a cold GPS fix can take ten seconds and must never sit between the
+      // swipe and the transition. The submitter awaits it internally, so the fix still
+      // travels WITH the evidence, including into the offline queue.
+      //
+      // Known race, accepted: the submitter holds this POST for up to
+      // POSITION_CAPTURE_BUDGET_MS (12s) waiting on the fix, while the driver is already
+      // on the unloading step. Submitting unloading inside that window 409s, because the
+      // backend now enforces ledger ordering and the arrival has not landed yet. It is
+      // recoverable — phase-submitter refetches, sees unloading unresolved, returns
+      // `conflict`, and PhaseStepPageClient keeps the draft and rolls back — so the cost
+      // is one spurious error toast, not lost evidence. Left as-is rather than awaited:
+      // this screen has been refreshing position every POSITION_REFRESH_MS while open, so
+      // the fix is warm and the real window is sub-second, and unloading's first step
+      // needs a seal photograph before it can submit at all.
+      position: capturePosition(),
+      enqueuePhase,
+      refetchTrip,
+      onOutcome: (outcome) => handleArrivalOutcome(outcome, phaseEventId),
+    })
+
+    // Order matters: mark before navigating, so Home's very first render already sees
+    // this row resolved rather than still pending with isDriving() still true.
+    markPhaseSyncing(phaseEventId)
+    router.push(currentStepRoute(phases))
+  }
 
   return (
     // h-dvh + overflow-hidden: this screen IS one viewport and nothing on it scrolls
@@ -179,15 +301,16 @@ export default function InTransitPageClient() {
           </section>
         )}
 
-        {/* The way out of this screen. Navigation only — it does not close the leg: the
-            backend closes in_transit inside advance_unloading, i.e. when the driver
-            SUBMITS the arrival step this lands them on. currentStepRoute (lib/phase) is
-            what skips the stepless in_transit row the driver is standing on; a caller
-            that stopped at the current phase would loop straight back here.
+        {/* The way out of this screen, and — since 2026-08-09 — the record that the drive
+            ended. The driver already performs this gesture; the system used to discard
+            it and infer arrival later from whenever the unloading paperwork happened to
+            be submitted. currentStepRoute (lib/phase) is what skips the stepless
+            in_transit row the driver is standing on; a caller that stopped at the current
+            phase would loop straight back here.
             Swipe, not a tap: this is the gesture that opens the truck and starts evidence
             capture, and a single accidental tap must never be enough to trigger it. */}
         <div className="flex justify-center">
-          <SwipeToConfirm label="Arrive at destination" onConfirm={() => router.push(currentStepRoute(trip.phases))} />
+          <SwipeToConfirm label="Arrive at destination" onConfirm={handleArrivalSwipe} />
         </div>
 
         <div className="mt-3 grid grid-cols-2 gap-3">

@@ -278,8 +278,9 @@ function PhaseStepRouter(props: StepControllerProps) {
       // Unreachable: PhaseStepContent's guard redirects away whenever the current
       // phase's step recipe is empty, and these are the two phase types with one
       // (phase-meta.ts). in_transit joined trip_creation when its '1-arrival' GPS step
-      // was removed — the phase is auto-completed server-side and the driver never
-      // walks it. These cases exist only so the switch stays exhaustive.
+      // was removed; it IS driver-submitted again as of 2026-08-09, but from the
+      // in-transit hub's swipe rather than a step page, so it still never reaches here.
+      // These cases exist only so the switch stays exhaustive.
       return null
     default: {
       const unreachable: never = props.phase.phase_type
@@ -577,8 +578,12 @@ function ConfirmationStep({ trip, phase, slug, stepIndex, isFinalStep, onHandOff
 }
 
 // InTransitStep is gone with in_transit's step recipe. Its single step ('1-arrival')
-// only ever asked the driver to capture a GPS fix that submitPhase never sent anywhere —
-// the phase has no PhaseCompleteRequest variant and is auto-completed server-side by
-// advance_departure's stopgap (parent plan D13). With an empty recipe, PhaseStepContent's
-// guard now redirects away before this phase can address a step page at all, exactly as
-// it always has for trip_creation.
+// only ever asked the driver to capture a GPS fix that submitPhase never sent anywhere.
+//
+// The phase DOES have a PhaseCompleteRequest variant again as of 2026-08-09
+// (InTransitCompleteRequest / advance_in_transit) and the driver does submit it — but
+// from the in-transit hub's "Arrive at destination" swipe, deliberately not from a step
+// page: a step recipe would perturb actionablePhase() and force a change to the shared
+// STEP_SLUGS contract. So the recipe stays empty, PhaseStepContent's guard still
+// redirects away before this phase can address a step page, and this file stays out of
+// it — exactly as it always has for trip_creation.

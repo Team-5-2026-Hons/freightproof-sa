@@ -581,7 +581,22 @@ The root cause is upstream of us: `PPTrack` (`integrations/parcel_perfect.py:75`
 
 Also note the design tension: the plan says the driver enters no count at loading (F1 in the parent plan), but `LoadingCompleteRequest` requires `driver_visual_count`. Both can't be right.
 
-### 🟠 F4 — `in_transit` is a stub — **already logged as `NEW-8`**
+### ~~🟠 F4 — `in_transit` is a stub — **already logged as `NEW-8`**~~ → ✅ **RESOLVED 2026-08-09**
+
+> **This finding is closed. The text below describes the tree at `668016e` (2026-08-01) and is kept as the record of what was wrong, not as a description of current behaviour.**
+>
+> **What it says now.** `in_transit` is a driver-submitted arrival attestation. The driver's "Arrive at destination" swipe on the in-transit hub POSTs `{"phase_type": "in_transit", ...}` and the backend's `advance_in_transit` closes the row — so `completed_at` records **when the driver actually arrived**. Two consequences worth stating at the presentation:
+>
+> - **The transit leg IS evidenced now.** F4's warning below ("don't claim the transit leg is evidenced when it's a same-millisecond auto-close") no longer applies. Elapsed drive time is departure → arrival, where it previously ran departure → whenever the unloading paperwork happened to be submitted, silently swallowing the entire unloading phase.
+> - **It also closed a strand.** Because nothing but `advance_unloading` could resolve the row, a dispatcher override of `unloading` left `in_transit` PENDING forever, `recompute_position` never reached its close-the-trip branch, and the trip sat ACTIVE permanently — load delivered, board reading "driving". Giving the row an owner removes the cause; the dispatcher's `in_transit` override remains as the recovery for a driver whose phone dies mid-drive.
+>
+> `_auto_complete_in_transit`, named below, was deleted in `9be7a78` — well before this change. It survived only as stale justification in test docstrings and in the schema fence that kept `in_transit` out of `PhaseCompleteRequest`. Both are now corrected.
+>
+> D2's checkpoint-Merkle-batch ambition is still unbuilt and still out of scope. What changed is that the leg is now attested by the person who drove it, rather than inferred.
+>
+> See `docs/superpowers/plans/2026-08-09-in-transit-driver-owned-arrival.md`.
+
+*Original finding, as verified at `668016e`:*
 
 `_auto_complete_in_transit` (`phase_service.py:308`) marks the transit row completed **the instant departure completes**. Departure and transit are treated as simultaneous.
 

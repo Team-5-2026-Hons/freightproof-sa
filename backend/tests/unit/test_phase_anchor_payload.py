@@ -37,14 +37,14 @@ from app.integrations import scan_feed as scan_feed_module
 from app.integrations.scan_feed import MockScanFeed, ScanDirection
 from app.orchestration import scan_service
 from app.orchestration.phase_service import (
-    advance_activation, advance_confirmation, advance_departure, advance_loading, advance_unloading,
-    compute_confirmation_canonical_payload, compute_departure_canonical_payload,
+    advance_activation, advance_confirmation, advance_departure, advance_in_transit, advance_loading,
+    advance_unloading, compute_confirmation_canonical_payload, compute_departure_canonical_payload,
 )
 from app.orchestration.phase_service import anchor_phase_event
 from app.orchestration.verification_service import verify_subject
 from app.schemas.phases import (
     ActivationCompleteRequest, ConfirmationCompleteRequest, DepartureCompleteRequest,
-    LoadingCompleteRequest, UnloadingCompleteRequest,
+    InTransitCompleteRequest, LoadingCompleteRequest, UnloadingCompleteRequest,
 )
 from tests.conftest import FakeMockStateStore
 
@@ -195,8 +195,25 @@ async def _advance_to_departure(db_session, trip, driver, phases):
     )
 
 
-async def _advance_to_unloading(db_session, trip, driver, phases):
+def _arrival_payload() -> InTransitCompleteRequest:
+    """The driver's arrival attestation — it anchors nothing, which is why these
+    anchor-payload tests only need it to get past the sequence gate."""
+    return InTransitCompleteRequest(
+        phase_type=PhaseType.IN_TRANSIT, idempotency_key=str(uuid.uuid4()),
+        driver_phone_lat=Decimal("-29.8587"), driver_phone_lng=Decimal("31.0218"),
+    )
+
+
+async def _advance_to_arrival(db_session, trip, driver, phases):
     await _advance_to_departure(db_session, trip, driver, phases)
+    await advance_in_transit(
+        db_session, trip_id=trip.id, driver_id=driver.id,
+        phase_event_id=phases["in_transit"].id, payload=_arrival_payload(),
+    )
+
+
+async def _advance_to_unloading(db_session, trip, driver, phases):
+    await _advance_to_arrival(db_session, trip, driver, phases)
     return await advance_unloading(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading"].id,
         payload=UnloadingCompleteRequest(
@@ -412,6 +429,10 @@ async def test_advance_confirmation_anchors_even_on_a_scan_mismatch(
             seal_photo_artifact_id=await _make_artifact(db_session, trip.id),
             guard_verified_seal=True, idempotency_key=str(uuid.uuid4()),
         ),
+    )
+    await advance_in_transit(
+        db_session, trip_id=trip.id, driver_id=driver.id,
+        phase_event_id=phases["in_transit"].id, payload=_arrival_payload(),
     )
     # Only 2 of 3 scanned in at destination — the mismatch this test exists to
     # anchor. Staged/ingested/closed BEFORE advance_unloading, not after: UNLOADING

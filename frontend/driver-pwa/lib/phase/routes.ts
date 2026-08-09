@@ -48,9 +48,10 @@ function firstStepAfter(phases: readonly PhaseDescriptor[], afterSequence: numbe
  * does, otherwise the terminal route.
  *
  * The empty-recipe branch is not defensive, it is the normal mid-leg case. `in_transit`
- * carries no driver steps and the backend now keeps it PENDING for the whole drive
- * (orchestration/phase_service.py closes it in `advance_unloading`, not on departure), so
- * it IS `currentPhase()` from the moment the truck pulls out until the driver arrives.
+ * carries no driver STEPS — it is submitted from the in-transit hub's swipe, not a step
+ * page (orchestration/phase_service.py closes it in `advance_in_transit`) — and the
+ * backend keeps it PENDING for the whole drive, so it IS `currentPhase()` from the moment
+ * the truck pulls out until the driver attests arrival.
  * A caller that treated "current phase has no steps" as "there is nowhere to go" would
  * strand the driver on the driving screen for the rest of the trip — the arrival phase is
  * always one skip further on.
@@ -90,8 +91,8 @@ export function nextStepRoute(
 
   // End of this phase's recipe: walk forward from its position in the plan. Deliberately
   // no branch on phase.phase_type here — e.g. no `if (phase.phase_type === 'in_transit')
-  // skip` — because in_transit being auto-completed server-side already shows up as
-  // "resolved" by the time the walk reaches it, and the generic rule handles that for
-  // free. A type-specific branch here would be a fixed-plan-shape assumption in disguise.
+  // skip` — because a submitted arrival already shows up as "resolved" by the time the walk
+  // reaches it, and the generic rule handles that for free. A type-specific branch here
+  // would be a fixed-plan-shape assumption in disguise.
   return firstStepAfter(phases, phase.sequence_number)
 }

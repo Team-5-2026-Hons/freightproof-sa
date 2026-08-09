@@ -87,7 +87,7 @@ from app.orchestration.phase_gate import blocked_on_by_stop
 from app.orchestration.resource_service import get_trip_detail
 from app.schemas.phases import (
     ActivationCompleteRequest, ConfirmationCompleteRequest, DepartureCompleteRequest,
-    LoadingCompleteRequest, PhaseCompleteRequest, UnloadingCompleteRequest,
+    InTransitCompleteRequest, LoadingCompleteRequest, PhaseCompleteRequest, UnloadingCompleteRequest,
 )
 from app.schemas.trips import TripDetailResponse
 
@@ -250,23 +250,22 @@ async def _gate_and_load(
         # TripStatus(...) normalises either shape before reading .value.
         raise PhaseSequenceError(f"trip status is '{TripStatus(trip.status).value}'", phase_label)
 
-    # IN_TRANSIT is excluded deliberately, and this is load-bearing rather than a
-    # loosening of the gate. Since IN_TRANSIT stopped being auto-completed on departure
-    # it stays PENDING for the whole drive by design, at a LOWER sequence than the
-    # arrival phase that closes it — so gating on it made advance_unloading unreachable:
-    # the call was rejected here, several hundred lines before the branch that sets
-    # IN_TRANSIT to COMPLETED. The trip could never leave the driving leg.
+    # No phase-type exclusion here. IN_TRANSIT used to be skipped, and had to be: since it
+    # stopped auto-completing on departure it stayed PENDING for the whole drive at a LOWER
+    # sequence than the arrival phase, so gating on it made advance_unloading unreachable —
+    # the call was rejected here, hundreds of lines before the branch that closed the row.
+    # The trip could never leave the driving leg.
     #
-    # Nothing is weakened by skipping it. IN_TRANSIT is driverless: no endpoint advances
-    # it, it is opened by advance_departure and closed by advance_unloading, so a PENDING
-    # one is never evidence that the driver skipped work. The leg itself is still gated —
-    # by the DEPARTURE row, which sits at a lower sequence than IN_TRANSIT and keeps
-    # blocking exactly as before, so an arrival cannot be claimed on a leg never departed.
+    # The exclusion went away with its cause (2026-08-09): in_transit is now closed by the
+    # driver's own arrival submission (advance_in_transit), at its own sequence position,
+    # so the ordinary ordering rule covers it and a PENDING in_transit correctly blocks an
+    # unloading — an arrival that was never attested to is exactly the gap this platform
+    # exists to surface. A driver who cannot submit it (dead phone) is recovered by the
+    # dispatcher's in_transit override, which resolves the row through the normal path.
     lower_result = await db.execute(
         select(PhaseEvent.status).where(
             PhaseEvent.trip_id == trip_id,
             PhaseEvent.sequence_number < event.sequence_number,
-            PhaseEvent.phase_type != PhaseType.IN_TRANSIT,
         )
     )
     if any(not _is_resolved(PhaseStatus(status)) for (status,) in lower_result.all()):
@@ -960,35 +959,6 @@ async def _find_departure_for_leg(
     return departure
 
 
-async def _find_in_transit_for_leg(
-    db: AsyncSession, *, trip_id: uuid.UUID, before_sequence: int,
-) -> PhaseEvent:
-    """Find the IN_TRANSIT row that opened the leg ending at `before_sequence`.
-
-    Mirrors _find_departure_for_leg: the plan generator guarantees exactly one
-    IN_TRANSIT between any DEPARTURE and the stop's closing phase (UNLOADING or
-    CONFIRMATION). This row represents the driving interval for this leg —
-    opened when departure completes, closed when the driver arrives.
-
-    Caller contract: `before_sequence` must be the sequence_number of the
-    arrival phase's OWN row (UNLOADING or CONFIRMATION).
-    """
-    result = await db.execute(
-        select(PhaseEvent)
-        .where(
-            PhaseEvent.trip_id == trip_id,
-            PhaseEvent.phase_type == PhaseType.IN_TRANSIT,
-            PhaseEvent.sequence_number < before_sequence,
-        )
-        .order_by(PhaseEvent.sequence_number.desc())
-        .limit(1)
-    )
-    in_transit = result.scalar_one_or_none()
-    if in_transit is None:
-        raise ResourceNotFoundError("PhaseEvent", "in_transit")
-    return in_transit
-
-
 async def advance_departure(
     db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID, phase_event_id: uuid.UUID,
     payload: DepartureCompleteRequest,
@@ -1073,10 +1043,49 @@ async def advance_departure(
     )
 
     trip.actual_departure_at = datetime.now(UTC)
-    # IN_TRANSIT stays PENDING while the driver is moving. It will be closed by
-    # advance_unloading when the driver arrives. This gives the dispatcher a real
-    # elapsed-time window to view the leg, rather than auto-closing at the same
-    # millisecond as departure (which was the old stopgap behaviour).
+    # IN_TRANSIT stays PENDING while the driver is moving. It is closed by the driver's own
+    # arrival submission (advance_in_transit), which is what gives the dispatcher a drive
+    # time measured from departure to actual arrival rather than to whenever the unloading
+    # paperwork happened to land.
+
+    return await _finish_phase(db, trip=trip, event=event, idempotency_key=payload.idempotency_key)
+
+
+async def advance_in_transit(
+    db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID, phase_event_id: uuid.UUID,
+    payload: InTransitCompleteRequest,
+) -> TripDetailResponse:
+    """The driver attesting arrival — the act that closes the driving leg.
+
+    The thinnest wrapper in this module, and that is the design. It writes no evidence of
+    its own beyond the phone fix _record_driver_position stores for every phase, and it
+    anchors nothing. What it changes is WHO owns the row: before 2026-08-09 in_transit was
+    opened by advance_departure and closed as a side effect of advance_unloading, which
+    meant its completed_at recorded when the unloading paperwork was submitted, not when
+    the truck actually arrived — the dispatcher's elapsed drive time silently swallowed
+    the entire unloading phase. It also meant an overridden unloading left the row PENDING
+    with no actor able to resolve it, stranding the trip ACTIVE forever.
+
+    No _reject_if_not_due and no scan gate: IN_TRANSIT is absent from
+    phase_gate.GATED_PHASES on purpose. The destination warehouse has not scanned anything
+    when the driver pulls up at the boom — gating arrival on a scan that only happens
+    after arrival would deadlock the leg. UNLOADING carries that gate instead, which is
+    the correct place for it.
+
+    The driver app submits this from the in-transit hub's existing "Arrive at destination"
+    swipe, NOT from a step page: STEP_SLUGS[in_transit] stays empty so actionablePhase()
+    keeps skipping the row and driver-pwa routing is unchanged.
+    """
+    gated = await _gate_and_load(
+        db, trip_id=trip_id, driver_id=driver_id, phase_event_id=phase_event_id,
+        phase_label="Arrival",
+    )
+    if isinstance(gated, TripDetailResponse):
+        return gated
+    trip, event = gated
+
+    _record_driver_position(event, payload)
+    event.status = PhaseStatus.COMPLETED
 
     return await _finish_phase(db, trip=trip, event=event, idempotency_key=payload.idempotency_key)
 
@@ -1094,17 +1103,6 @@ async def advance_unloading(
     trip, event = gated
 
     _record_driver_position(event, payload)
-
-    # Close the IN_TRANSIT row for this leg: the driver has arrived. IN_TRANSIT
-    # opened when departure completed, now closes with a real completion time.
-    # The dispatcher timeline shows the leg with elapsed time between departure
-    # and arrival, and all exceptions logged during the drive.
-    in_transit_event = await _find_in_transit_for_leg(
-        db, trip_id=trip_id, before_sequence=event.sequence_number,
-    )
-    if in_transit_event.status == PhaseStatus.PENDING:
-        in_transit_event.status = PhaseStatus.COMPLETED
-        in_transit_event.completed_at = datetime.now(UTC)
 
     # T4: this LEG's departure (strictly before this row), not "the trip's" —
     # a multi-stop trip can have several DEPARTURE rows, and a plain
@@ -1309,6 +1307,7 @@ _WRAPPER_BY_PHASE_TYPE: dict[PhaseType, _WrapperFn] = {
     PhaseType.ACTIVATION: advance_activation,
     PhaseType.LOADING: advance_loading,
     PhaseType.DEPARTURE: advance_departure,
+    PhaseType.IN_TRANSIT: advance_in_transit,
     PhaseType.UNLOADING: advance_unloading,
     PhaseType.CONFIRMATION: advance_confirmation,
 }
@@ -1321,9 +1320,10 @@ async def complete_phase(
     """Complete the addressed phase. Idempotent by payload.idempotency_key.
 
     Raises PhaseTypeMismatchError when the body's phase_type does not match the
-    addressed row's — including when the row is trip_creation or in_transit,
-    neither of which any driver action completes (create_trip writes the first;
-    advance_departure's NEW-8 stopgap writes the second).
+    addressed row's — including when the row is trip_creation, which no driver action
+    completes (create_trip writes it before a driver is involved). in_transit IS
+    driver-completable as of 2026-08-09 (advance_in_transit); it used to be listed here
+    alongside trip_creation.
     """
     # Ownership BEFORE the type cross-check, not after. The wrappers below all
     # gate on it too, but PhaseTypeMismatchError returns ahead of them, and its

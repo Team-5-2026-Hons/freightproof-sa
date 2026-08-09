@@ -68,9 +68,9 @@ export function TripDetailView({
   // A held trip (a critical exception) must not offer any phase CTA — submits in
   // this state can only 409. Both branches below swap their CTA for HoldNotice.
   const onHold = trip.status === 'exception_hold'
-  // isDriving derives the leg from the plan's shape — it returns true when the driver
-  // is actively on the road (in_transit is current) or has just arrived (unloading after
-  // in_transit is current). See lib/phase/derive.ts.
+  // isDriving is true only while the ledger's current row is an unresolved in_transit —
+  // i.e. between departure and the driver's own arrival submission. Works the same on
+  // single-stop and cross-dock plans.
   const driving = isDriving(phases)
 
   return (

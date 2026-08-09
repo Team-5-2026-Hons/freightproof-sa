@@ -829,16 +829,24 @@ export default function TripDetailPage() {
                         </>
                     // in_transit carries no per-type detail here — its evidence renders
                     // unconditionally below, in alwaysExpandedContent — but it DOES need
-                    // the override control, and it is the one row that cannot recover
-                    // without it. Nothing closes an in_transit row except advance_unloading,
-                    // so if a dispatcher overrides `unloading` (the lost-phone case this
-                    // control exists for), in_transit stays PENDING forever: confirmation
-                    // still passes the gate, the driver still captures POD and signature,
-                    // the trip still anchors — and recompute_position then stops at the
-                    // unresolved in_transit row and never reaches its close-the-trip
-                    // branch. The load is delivered and the board reads "driving", for good.
-                    // The backend already accepts an override on this row; only the UI was
-                    // missing, which made a recoverable state look permanent.
+                    // the override control.
+                    //
+                    // The reason changed on 2026-08-09 and is worth restating, because the
+                    // original one is gone. This control was added when NOTHING closed an
+                    // in_transit row except advance_unloading: overriding `unloading` (the
+                    // lost-phone case) left in_transit PENDING forever, confirmation still
+                    // passed the gate, the trip still anchored — and recompute_position
+                    // stopped at the unresolved row and never reached its close-the-trip
+                    // branch. Load delivered, board reading "driving", permanently.
+                    //
+                    // That strand is now fixed at the source: the driver attests arrival
+                    // himself (advance_in_transit), so the row is normally already resolved
+                    // before any override of `unloading` happens. What this control is for
+                    // NOW is the case the structural fix cannot reach — a driver whose
+                    // phone dies mid-drive and who therefore can never submit the arrival
+                    // at all. It is the recovery path, no longer the only resolver.
+                    //
+                    // Keep it. The backend accepts an override on this row like any other.
                     : phase.phase_type === 'in_transit'
                       ? <PhaseOverrideAction phase={phase} tripId={trip.id} tripStatus={trip.status} onOverridden={refetchSilent} />
                     : undefined

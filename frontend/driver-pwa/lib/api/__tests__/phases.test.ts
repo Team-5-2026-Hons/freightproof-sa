@@ -364,14 +364,14 @@ describe('submitPhase (real-backend branch)', () => {
     expect(mockPost).not.toHaveBeenCalled()
   })
 
-  it('rejects trip_creation and in_transit — neither is ever completed by a driver action', async () => {
+  // in_transit JOINED the completable set on 2026-08-09 (arrival attestation) and is
+  // covered by its own describe block below — only trip_creation is still unreachable
+  // by a driver action.
+  it('rejects trip_creation — it is never completed by a driver action', async () => {
     const { submitPhase } = await import('../phases')
 
     await expect(
       submitPhase('trip-1', 'phase-event-0', 'trip_creation', ACTIVATION_EVIDENCE, IDEMPOTENCY_KEY, POSITION),
-    ).rejects.toThrow(/never completed by a driver action/)
-    await expect(
-      submitPhase('trip-1', 'phase-event-6', 'in_transit', ACTIVATION_EVIDENCE, IDEMPOTENCY_KEY, POSITION),
     ).rejects.toThrow(/never completed by a driver action/)
     expect(mockPost).not.toHaveBeenCalled()
   })
@@ -541,6 +541,65 @@ describe('submitPhase — photos uploaded at capture', () => {
       expect.objectContaining({ linehaul_photo_artifact_id: 'late-linehaul' }),
       expect.anything(),
     )
+  })
+})
+
+describe('submitPhase — in_transit (arrival attestation)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  // Arrival carries no evidence of its own (see InTransitEvidence's comment) — the fix
+  // and the idempotency key are the entire wire body, with no photo/artifact key at all.
+  it('posts the arrival attestation with the fix and nothing else', async () => {
+    mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
+    const arrivalPosition: DriverPosition = { lat: -29.8587, lng: 31.0218, accuracyM: 8 }
+
+    const { submitPhase } = await import('../phases')
+    await submitPhase(
+      'trip-1', 'phase-in-transit-1', 'in_transit',
+      { capturedAt: '2026-08-09T10:00:00.000Z' }, 'idem-arrival-1', arrivalPosition,
+    )
+
+    expect(mockPost).toHaveBeenCalledWith(
+      '/api/v1/trips/trip-1/phases/phase-in-transit-1/complete',
+      {
+        phase_type: 'in_transit',
+        driver_phone_lat: -29.8587,
+        driver_phone_lng: 31.0218,
+        idempotency_key: 'idem-arrival-1',
+      },
+      { timeoutMs: 30_000 },
+    )
+  })
+
+  // A failed capture must not overwrite a position an earlier attempt already stored —
+  // driverPosition() omits the keys rather than sending null (see its own comment).
+  it('omits the position keys entirely when there is no fix', async () => {
+    mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
+
+    const { submitPhase } = await import('../phases')
+    await submitPhase(
+      'trip-1', 'phase-in-transit-1', 'in_transit',
+      { capturedAt: '2026-08-09T10:00:00.000Z' }, 'idem-arrival-1', null,
+    )
+
+    const [, body] = mockPost.mock.calls[0]
+    expect(body).not.toHaveProperty('driver_phone_lat')
+    expect(body).not.toHaveProperty('driver_phone_lng')
+  })
+
+  // Arrival is an attestation, not an evidence capture — there is no photo to upload.
+  it('uploads no artifact', async () => {
+    mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
+
+    const { submitPhase } = await import('../phases')
+    await submitPhase(
+      'trip-1', 'phase-in-transit-1', 'in_transit',
+      { capturedAt: '2026-08-09T10:00:00.000Z' }, 'idem-arrival-1', { lat: -29.8587, lng: 31.0218, accuracyM: 8 },
+    )
+
+    expect(mockUploadArtifact).not.toHaveBeenCalled()
   })
 })
 

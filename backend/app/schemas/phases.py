@@ -229,6 +229,23 @@ class DepartureCompleteRequest(_PhaseCompleteBase):
         return _validate_seal_format(v)
 
 
+class InTransitCompleteRequest(_PhaseCompleteBase):
+    # The driver attesting "I have arrived" — the act that closes the driving leg.
+    #
+    # The whole payload is _PhaseCompleteBase: idempotency key and the phone fix. There
+    # is deliberately no photo and no artifact. This is an ATTESTATION, not an evidence
+    # capture: the driver performs a physical swipe meaning "I am here", and the only
+    # thing worth recording about it is when and where. Giving it a photo would make it a
+    # capture step, which would need a step recipe, which would change STEP_SLUGS — the
+    # shared contract this design was explicitly shaped to leave alone.
+    #
+    # Unanchored, like activation/loading/unloading: ANCHORED_PHASES stays
+    # trip_creation/departure/confirmation (frontend/shared/lib/constants/phase-meta.ts).
+    # An arrival timestamp derives its integrity from the departure and confirmation
+    # anchors that bracket it, not from a receipt of its own.
+    phase_type: Literal[PhaseType.IN_TRANSIT]
+
+
 class UnloadingCompleteRequest(_PhaseCompleteBase):
     phase_type: Literal[PhaseType.UNLOADING]
     seal_number_at_destination: str
@@ -297,16 +314,27 @@ class ConfirmationCompleteRequest(_PhaseCompleteBase):
     driver_visual_count: Optional[int] = None
 
 
-# Decision S5. One endpoint, five real shapes: Pydantic picks the member from
+# Decision S5. One endpoint, six real shapes: Pydantic picks the member from
 # `phase_type` and validates it properly, so a missing seal_number is still a
-# 422 and not a hand-rolled service-layer error. trip_creation and in_transit are
-# deliberately absent — neither is completed by a driver action, and addressing
-# one gets a 409 from complete_phase()'s dispatch table.
+# 422 and not a hand-rolled service-layer error.
+#
+# in_transit joined this union on 2026-08-09. It used to be excluded alongside
+# trip_creation, on the stated grounds that it was "completed by the authorized
+# _auto_complete_in_transit stopgap" — a function deleted in 9be7a78 that exists nowhere
+# in app/. The fence outlived its reason: since 9be7a78 nothing closed the row except
+# advance_unloading's side effect, which meant in_transit.completed_at recorded when the
+# unloading PAPERWORK was submitted rather than when the driver arrived, and an
+# overridden unloading left the row PENDING forever with no actor able to resolve it.
+#
+# trip_creation remains absent and always will be: it is written by create_trip before a
+# driver is involved at all, and addressing it gets a 409 from complete_phase()'s
+# dispatch table.
 PhaseCompleteRequest = Annotated[
     Union[
         ActivationCompleteRequest,
         LoadingCompleteRequest,
         DepartureCompleteRequest,
+        InTransitCompleteRequest,
         UnloadingCompleteRequest,
         ConfirmationCompleteRequest,
     ],

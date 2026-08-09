@@ -51,9 +51,9 @@ export function HomeContent() {
 
   const { kind, label } = tripStatusChip(trip.status)
   const current = currentPhase(trip.phases)
-  // isDriving derives the leg from the plan's shape — it returns true when the driver
-  // is actively on the road (in_transit is current) or has just arrived (unloading after
-  // in_transit is current). Works correctly on single-stop and cross-dock plans alike.
+  // isDriving is true only while the ledger's current row is an unresolved in_transit —
+  // i.e. between departure and the driver's own arrival submission. Works the same on
+  // single-stop and cross-dock plans.
   const driving = isDriving(trip.phases)
 
   return (

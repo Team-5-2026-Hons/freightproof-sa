@@ -179,9 +179,23 @@ export interface ConfirmationEvidence {
   capturedAt: string | null
 }
 
+// Arrival carries no driver-captured evidence at all — capturedAt and nothing else. The
+// substance of the attestation is the phone fix, which every phase now attaches at submit
+// time (lib/context/LocationContext.tsx) rather than storing in a draft.
+//
+// The type exists rather than reusing ActivationEvidence because the two are different
+// facts that happen to have the same shape today, and because usePhaseDraft is generic
+// per phase. There is deliberately no photo field: adding one would make arrival an
+// evidence capture, which would need a step recipe, which would mean editing the shared
+// STEP_SLUGS contract — the single thing this design was shaped to avoid.
+export interface InTransitEvidence {
+  capturedAt: string | null
+}
+
 export type PhaseEvidence =
   | ActivationEvidence
   | LoadingEvidence
   | DepartureEvidence
+  | InTransitEvidence
   | UnloadingEvidence
   | ConfirmationEvidence
