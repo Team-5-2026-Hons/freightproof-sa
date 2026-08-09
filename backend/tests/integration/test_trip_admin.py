@@ -18,14 +18,13 @@ from sqlalchemy import select
 
 from app.db.models.enums import (
     AnchorStatus, ExceptionSeverity, ExceptionSource, ExceptionType,
-    IdvsStatus, OrganizationType, PhaseStatus, PhaseType, TripStatus, VehicleType,
+    IdvsStatus, OrganizationType, PhaseStatus, PhaseType, TripStatus,
 )
-from app.db.models.organisations import Organization, Precinct
-from app.db.models.people import Driver, User
+from app.db.models.organisations import Organization
+from app.db.models.people import User
 from app.db.models.phases import PhaseEvent
 from app.db.models.transit import TripException
 from app.db.models.trips import Trip, TripStop
-from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
 from app.main import app
 
@@ -39,38 +38,6 @@ async def override_get_db(db_session):
     app.dependency_overrides[get_db] = _get_db
     yield
     app.dependency_overrides.pop(get_db, None)
-
-
-@pytest_asyncio.fixture
-async def seed(db_session):
-    """Org + dispatcher user + driver + horse + two precincts — the shared
-    scaffolding every test in this file builds its own trip(s) on top of."""
-    org = Organization(id=uuid.uuid4(), name="Org", org_type=OrganizationType.OPERATOR)
-    client_org = Organization(id=uuid.uuid4(), name="Client", org_type=OrganizationType.PRINCIPAL)
-    db_session.add_all([org, client_org])
-    await db_session.flush()
-
-    dispatcher = User(
-        id=uuid.uuid4(), organization_id=org.id,
-        email="dispatcher@test.co.za", full_name="Dispatcher",
-    )
-    driver = Driver(
-        id=uuid.uuid4(), organization_id=org.id, full_name="Driver",
-        id_number="8001015009087", phone_number="+27821234567", license_number="DRV-1",
-    )
-    horse = Vehicle(
-        id=uuid.uuid4(), organization_id=org.id, vehicle_type=VehicleType.HORSE,
-        registration="ABC123GP", pulsit_device_id="PUL-1",
-    )
-    origin = Precinct(id=uuid.uuid4(), name="O", principal_organization_id=client_org.id, latitude="0", longitude="0")
-    dest = Precinct(id=uuid.uuid4(), name="D", principal_organization_id=client_org.id, latitude="1", longitude="1")
-    db_session.add_all([dispatcher, driver, horse, origin, dest])
-    await db_session.flush()
-
-    return {
-        "org": org, "client_org": client_org, "dispatcher": dispatcher,
-        "driver": driver, "horse": horse, "origin": origin, "dest": dest,
-    }
 
 
 async def _make_trip(

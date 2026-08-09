@@ -33,7 +33,7 @@ from tests.integration.test_phases import (
     _complete_in_transit, _fake_hedera_receipt, _make_artifact, _walk_to_in_transit,
 )
 from tests.integration.test_trip_admin import (  # noqa: F401  (fixtures)
-    _dispatcher_token, _make_trip, _phase_id, override_get_db, seed,
+    _dispatcher_token, _make_trip, _phase_id, override_get_db,
 )
 
 
