@@ -63,7 +63,7 @@ Full architecture documentation: [`docs/FreightProof_TechArch.docx`](docs/)
 | Cache / Queue | Redis 7, Celery |
 | Storage | Amazon S3 / Supabase Storage |
 | Frontend | Next.js 15 (App Router), TypeScript 5.5, React 19, Tailwind CSS |
-| Driver PWA | Next.js 15 + next-pwa (Workbox offline support) |
+| Driver PWA | Next.js 15 + Capacitor (Android APK) + @serwist/next (browser PWA / Workbox) |
 | Guard page | Plain HTML + JS (zero install, zero login) |
 | Infrastructure | Docker, AWS ECS Fargate, af-south-1 region (POPIA) |
 | CI/CD | GitHub Actions |
@@ -85,7 +85,7 @@ freightproof-sa/
 │   │   │   ├── models/         # SQLAlchemy ORM models
 │   │   │   └── session.py      # Async engine and get_db()
 │   │   ├── integrations/       # Pulse, Parcel Perfect, IDVS, Twilio, SendGrid
-│   │   ├── orchestration/      # Trip state machine, handshake logic
+│   │   ├── orchestration/      # Trip state machine, phase logic
 │   │   ├── storage/            # S3 / Supabase Storage
 │   │   └── tasks/              # Celery background tasks
 │   ├── migrations/             # Alembic migrations
@@ -94,7 +94,7 @@ freightproof-sa/
 │       └── integration/        # API and database tests
 ├── frontend/
 │   ├── dispatcher/             # Next.js — dispatcher dashboard
-│   ├── driver-pwa/             # Next.js PWA — driver handshake app
+│   ├── driver-pwa/             # Next.js PWA — driver phase-capture app
 │   ├── guard/                  # Plain HTML — guard QR verification page
 │   └── client-portal/         # Next.js — client evidence portal
 ├── infrastructure/
@@ -200,6 +200,20 @@ npm run dev -- --port 3001
 
 Opens at [http://localhost:3001](http://localhost:3001)
 
+### 9. Build and run the driver Android APK (optional — requires Android Studio)
+
+```bash
+cd frontend/driver-pwa
+npm run build          # Next.js static export → out/
+npx cap sync android   # copies out/ into android/app/src/main/assets
+npx cap open android   # opens Android Studio
+```
+
+In Android Studio: select a connected Samsung device or emulator → Run. The APK installs and launches the driver app natively.
+
+> **Prerequisites:** Android Studio with SDK Platform 34+, Java 17. `ANDROID_HOME` env var set.  
+> **Not required** for browser-based development — `npm run dev` works without Android Studio.
+
 ---
 
 ## Development workflow
@@ -270,18 +284,23 @@ Never modify the database schema directly in Supabase.
 
 ---
 
-## The five handshakes
+## The phase model
 
-A depot-to-depot trip moves through five handshakes. Each produces a signed event anchored to Hedera.
+A trip moves through a plan-driven sequence of phases, generated from its stops and consignments
+at trip creation. Plan length is data, not a constant — a single-leg trip is 7 rows (P0–P6 below),
+a 3-stop cross-dock is 11, because `loading`/`unloading` can recur per stop. `current_phase` on the
+trip is a cache rebuilt from the phase-event ledger; the ledger is the source of truth for where a
+trip is.
 
-| # | Handshake | Who | What gets anchored |
+| # | Phase | Who | What gets anchored |
 |---|---|---|---|
-| 0 | Trip creation | Dispatcher | Journey lock hash of all committed parameters |
-| 1 | Origin gate-in | Driver + gate security | Driver ID, vehicle GPS, precinct match |
-| 2 | Loading | Driver + cargo officer | Parcel Perfect manifest, waybill photo, seal number |
-| 3 | Origin gate-out | Driver + gate security | Seal verified, trip transitions to in-transit |
-| 4 | Destination gate-in | Driver + gate security | Seal verified unbroken on arrival |
-| 5 | Unloading | Driver + cargo officer | Three-way count reconciliation, POD photo, delivery receipt |
+| P0 | `trip_creation` | Dispatcher | Journey lock hash of all committed trip parameters |
+| P1 | `activation` | Driver | Phone GPS on arrival at the first stop — not anchored |
+| P2 | `loading` | System (driver visual count) | Not anchored |
+| P3 | `departure` | Driver | Seal number, seal photo, waybill photo — `PICKUP` receipt |
+| P4 | `in_transit` | System | Auto-completed on departure — not anchored |
+| P5 | `unloading` | Driver | Seal-at-destination vs. this leg's departure seal — not anchored |
+| P6 | `confirmation` | Driver | POD photo + signature, count reconciliation — `DELIVERY` receipt |
 
 ---
 
@@ -369,6 +388,12 @@ cd frontend/driver-pwa && npm install
 ```
 
 ---
+
+## Vercel link to live hosted site.
+
+frontend: https://freightproof-sa.vercel.app/
+
+backend: https://freightproof-sa.up.railway.app
 
 ## Licence
 

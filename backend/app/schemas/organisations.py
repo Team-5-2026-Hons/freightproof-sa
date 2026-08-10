@@ -1,0 +1,73 @@
+"""Pydantic v2 schemas for Organization and Precinct."""
+
+from datetime import datetime
+from uuid import UUID
+from typing import Optional
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.db.models.enums import OrganizationType
+
+
+class OrganizationBase(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    name: str
+    org_type: OrganizationType
+    contact_email: Optional[str] = None
+    # PP client account number — resolves inbound consignments' accnum to this org.
+    # max_length mirrors the String(6) DB column (PP account numbers are 6 chars).
+    pp_account_number: Optional[str] = Field(None, max_length=6)
+
+
+class OrganizationCreate(OrganizationBase):
+    pass
+
+
+class OrganizationUpdate(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    name: Optional[str] = None
+    org_type: Optional[OrganizationType] = None
+    contact_email: Optional[str] = None
+
+
+class OrganizationRead(OrganizationBase):
+    id: UUID
+    created_at: datetime
+
+
+class PrecinctBase(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    name: str
+    principal_organization_id: UUID
+    address: Optional[str] = None
+    # Numeric(10,7) in the DB; float is exact here since a GPS coordinate is at
+    # most 10 significant digits and float64 carries ~15.65 — see schema fix
+    # notes. Decimal would serialise to a JSON string, which the frontend
+    # (a `number` type) can't call .toFixed() on.
+    latitude: float
+    longitude: float
+    geofence_radius_metres: int = 200
+    is_shared: bool = False
+
+
+class PrecinctCreate(PrecinctBase):
+    pass
+
+
+class PrecinctUpdate(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    name: Optional[str] = None
+    address: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    geofence_radius_metres: Optional[int] = None
+    is_shared: Optional[bool] = None
+
+
+class PrecinctRead(PrecinctBase):
+    id: UUID
+    created_at: datetime

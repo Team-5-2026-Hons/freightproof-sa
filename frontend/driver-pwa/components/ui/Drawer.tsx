@@ -1,0 +1,101 @@
+'use client'
+
+import { useEffect, type ReactNode } from 'react'
+import { X } from 'lucide-react'
+import { cn } from '@/lib/utils'
+
+interface DrawerProps {
+  open: boolean
+  onClose: () => void
+  side?: 'left' | 'right' | 'bottom'
+  children: ReactNode
+  title?: string
+}
+
+const panelClasses = {
+  left:   { container: 'left-0 top-0 h-full w-80',                           open: 'translate-x-0',  closed: '-translate-x-full' },
+  right:  { container: 'right-0 top-0 h-full w-80',                          open: 'translate-x-0',  closed: 'translate-x-full'  },
+  bottom: { container: 'bottom-0 left-0 w-full rounded-t-2xl max-h-[85vh]',  open: 'translate-y-0',  closed: 'translate-y-full'  },
+}
+
+// NOTE (deviation from @radix-ui/react-dialog): the drawer is kept mounted at
+// all times and only translated off-canvas via CSS — ProfilePanel (its one
+// remaining consumer since the hamburger + NavDrawer were replaced by
+// BottomNav) renders it unconditionally from AppShell and relies on that to
+// avoid remounting its contents on every open/close. Radix's Dialog.Content, ported with
+// `forceMount` to get the same "stays mounted while closed" contract, runs
+// `hideOthers(content)` in a mount-only effect (empty dep array) inside
+// DialogContentModal — meaning it would aria-hide the entire rest of the app
+// the instant AppShell mounts, permanently, since the drawer never unmounts to
+// trigger the cleanup. That's a correctness regression, not a style one, so
+// this component stays hand-rolled (see packet STOP CONDITIONS) — restyled
+// onto the shared cn()/theme tokens and the zIndex scale, everything else the
+// same as the pre-migration implementation.
+export function Drawer({ open, onClose, side = 'right', children, title }: DrawerProps) {
+  useEffect(() => {
+    if (!open) return
+    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [open, onClose])
+
+  // Locks the page behind the drawer while it's open — without this, the drawer sits
+  // on top of a still-scrollable AppShell content region, so a swipe that lands
+  // outside the panel scrolls the Home/Trips/Settings page underneath it instead of
+  // (or as well as) the drawer, which reads as the whole screen being "unlocked".
+  useEffect(() => {
+    if (!open) return
+    const { overflow } = document.body.style
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = overflow
+    }
+  }, [open])
+
+  const { container, open: openClass, closed } = panelClasses[side]
+
+  return (
+    <>
+      {open && (
+        <div
+          className="fixed inset-0 bg-black/40 z-overlay transition-opacity duration-200"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      )}
+      <div
+        // The panel stays mounted while closed (only translated off-canvas), so
+        // without these attributes screen readers and find-in-page would surface
+        // its contents on every screen. React 19 supports the `inert` boolean
+        // prop natively; both attributes are omitted entirely while open.
+        aria-hidden={open ? undefined : true}
+        inert={open ? undefined : true}
+        className={cn(
+          'fixed bg-surface-container-lowest shadow-ambient z-modal',
+          'transition-transform duration-300 ease-out overflow-y-auto',
+          container,
+          open ? openClass : closed,
+        )}
+      >
+        {title && (
+          <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant/20">
+            <h2 className="text-base font-bold text-surface-on">{title}</h2>
+            {/* w-11 (44px) meets the app's documented touch-target minimum (see
+                Button/IconButton/Switch) — the old w-8 (32px) was under it. -m-1.5
+                cancels the extra 12px so the layout box stays the 32px it always was:
+                header height and icon position are unchanged, only the tappable area
+                grows (the same pad-don't-grow pattern Switch documents). */}
+            <button
+              onClick={onClose}
+              aria-label="Close drawer"
+              className="w-11 h-11 -m-1.5 flex items-center justify-center rounded-xl text-surface-on-variant hover:bg-surface-container-low transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+        <div className="p-6">{children}</div>
+      </div>
+    </>
+  )
+}

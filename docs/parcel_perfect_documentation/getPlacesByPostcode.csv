@@ -1,0 +1,13 @@
+getPlacesByPostcode Request,,,,,,,
+SOAP,JSON,Type,Length,Format,Mandatory,Description,Notes
+postcode,postcode,string,[10],,M,postcode to search for,
+getPlacesByPostcode Response,,,,,,,
+SOAP,JSON,Type,Length,Format,Mandatory,Description,Notes
+errorcode,errorcode,Integer,,,,An integer errorcode. If 0 then there was no error else an error occurred,
+errormessage,errormessage,String,[500],,,The error message if errorcode is a non-zero value,
+results,results,Array,[..],,,An array of results which will always have a single element if non-null,
+getPlacesByPostcode Response[results],,,,,,,
+SOAP,JSON,Type,Length,Format,Mandatory,Description,Notes
+town,town,string,,,,returns a list of places/towns,
+place,place,integer,,,,town name,
+pcode,pcode,string,,,,internal identifier for place/town,

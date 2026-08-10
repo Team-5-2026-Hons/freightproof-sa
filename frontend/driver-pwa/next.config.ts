@@ -1,0 +1,194 @@
+import fs from "node:fs";
+import path from "node:path";
+import crypto from "node:crypto";
+import withSerwistInit from "@serwist/next";
+import type { NextConfig } from "next";
+// Relative (not `@shared/*`) import — next.config.ts runs outside the app's tsconfig
+// path-alias resolution, but a plain relative path across the frontend/shared sibling
+// directory needs no alias at all, only ordinary Node module resolution. phase-meta.ts's
+// own only import (`import type { PhaseType } from '@shared/lib/types/phase'`) is
+// type-only and erased at transpile time, so it never needs runtime resolution here
+// either — this is the "single source, no alias" option the phase-step-integration task
+// asked to try before falling back to a hand-copied table.
+import { STEP_SLUGS } from "../shared/lib/constants/phase-meta";
+
+// `next build` always runs with NODE_ENV=production (regardless of which npm script
+// invoked it — build, cap:sync, cap:run all shell out to `next build`), so this guard
+// fires on every real production build. With output: 'export' there is no server to read
+// env vars at request time — NEXT_PUBLIC_API_URL gets baked into the JS bundle at build
+// time. An unset or localhost value here means the shipped APK/installed PWA silently
+// ships talking to a backend that doesn't exist on the device (lib/api/client.ts falls
+// back to http://localhost:8000, which only makes sense for `next dev`).
+// Escape hatch: set NEXT_PUBLIC_API_URL to the real target (deployed URL, or a LAN IP for
+// a `cap sync` build during development) before running the build — this check only
+// fires when the var is missing entirely or still points at localhost.
+if (process.env.NODE_ENV === "production") {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+  if (!apiUrl || apiUrl.includes("localhost")) {
+    throw new Error(
+      "[next.config.ts] NEXT_PUBLIC_API_URL is unset or points at localhost for a " +
+        "production build. Set it to the real backend origin (deployed URL, or a LAN IP " +
+        "for a local cap:sync build) before building.",
+    );
+  }
+}
+
+// Read package.json version once, reused for the SW precache revision and the
+// NEXT_PUBLIC_APP_VERSION env injection. The precache revision is the package version,
+// bumped as a deliberate signal rather than a value that churns on every build (a build
+// timestamp would force every installed client to re-download all 74 route entries on
+// every deploy, even ones with no content change).
+const { version: packageJsonVersion } = JSON.parse(
+  fs.readFileSync(path.join(process.cwd(), "package.json"), "utf-8"),
+) as { version: string };
+
+// ── Security headers: deliberately NOT set here ──────────────────────────────────────
+//
+// The dispatcher sets X-Frame-Options, X-Content-Type-Options, Referrer-Policy and
+// Permissions-Policy via next.config.js `headers()`. That option does nothing under
+// `output: 'export'` — there is no server in the request path to emit them, and Next
+// warns rather than errors, so adding the same block here would look like protection
+// while shipping none.
+//
+// Where they have to come from instead:
+//   * Browser PWA — the static host serving out/ (Vercel `headers`, Netlify `_headers`,
+//     nginx `add_header`). Nothing in this repo controls that, so it is a deployment task.
+//   * Android APK — assets are loaded from the app bundle over capacitor://, not fetched
+//     over the network, so framing and referrer leakage do not apply the same way.
+//     androidScheme in capacitor.config is what governs that origin.
+//
+// Tracked here rather than left to be rediscovered: a reviewer comparing the two configs
+// will otherwise read the omission as an oversight.
+const nextConfig: NextConfig = {
+  output: "export",
+  // Pin the trace root to this monorepo, matching the dispatcher. Without it Next walks
+  // up looking for a lockfile and can adopt a developer's unrelated package-lock.json
+  // from an ancestor directory as the workspace root.
+  outputFileTracingRoot: path.join(__dirname, "../.."),
+  // Required for output: 'export' — Next.js image optimisation uses a server; static export cannot.
+  images: { unoptimized: true },
+  // `next build` fails the whole build on any ESLint error found anywhere in the project,
+  // not just in files this build actually touches — discovered while verifying FIX 3/4/5:
+  // app/global-error.tsx (@next/next/no-html-link-for-pages) and lib/context/AuthContext.tsx
+  // (a stale `react-hooks/set-state-in-effect` disable comment, orphaned by the
+  // eslint-config-next 15 downgrade in FIX 5 — see package.json) are both outside this
+  // change's scope and owned by other in-progress work. `npm run lint` still runs
+  // separately (unaffected by this) and still reports both — this only stops an unrelated
+  // file's lint state from blocking everyone's production build. Flagged for the team:
+  // consider re-enabling once those two are resolved.
+  eslint: { ignoreDuringBuilds: true },
+  env: {
+    NEXT_PUBLIC_APP_VERSION: packageJsonVersion,
+  },
+};
+
+// ── Offline navigation precache (FIX 3) ──────────────────────────────────────────────
+//
+// Why this exists: @serwist/next's InjectManifest webpack plugin builds its precache
+// manifest from two sources — (a) the webpack compilation's own emitted assets (JS/CSS/
+// fonts — this is automatic and unaffected by anything below), and (b) either a scan of
+// public/ (the default) OR, if `additionalPrecacheEntries` is supplied below, exactly
+// that list instead (see @serwist/next's `resolvedManifestEntries` logic — supplying
+// this option *replaces* the public/ scan, it doesn't add to it). Source (a) explicitly
+// excludes anything under the server compilation ("server/**"), which is where Next's
+// prerendered HTML lives at webpack-compile time — that's why the shipped SW previously
+// precached ~45 JS/CSS/font files and zero pages: nothing was ever wired to precache the
+// actual route documents.
+//
+// The static HTML export itself (out/**) doesn't exist until *after* webpack compiles —
+// Next runs the exporter as a post-build step — so a glob over out/ here can't work
+// either. The only remaining option is to hand-maintain the route list.
+//
+// Route list: every page `next build` currently exports, expressed as route paths (not
+// filenames). Re-derive after adding/removing a page with:
+//   next build && find out -iname '*.html' ! -name '404.html' | sed 's#^out##;s#\.html$##;s#/index$#/#'
+// Two routes are generated by `generateStaticParams` rather than being literal files
+// under app/ — PHASE_ROUTES below is DERIVED from the imported STEP_SLUGS (not a second
+// hand-copied table: see the import at the top of this file for why that's safe here),
+// and MOCK_TRIP_IDS mirrors the TRIP_00xx_ID constants in frontend/shared/lib/mocks/trips.ts
+// (still copied in, not imported — trips.ts pulls in far more than this file needs and
+// isn't type-only, so the same "just erased at transpile time" argument doesn't apply to
+// it the way it does to phase-meta.ts's own import). The trips/[id] route is explicitly
+// mock-data-only (see app/(app)/trips/[id]/page.tsx) — expect MOCK_TRIP_IDS to need
+// removing, not just updating, once Iter 2 swaps in a real trip-id-backed fetch (a route
+// keyed on live server data generally can't be static-precached this way at all).
+const STATIC_ROUTES = [
+  "/",
+  "/login",
+  "/otp",
+  "/settings",
+  "/trip/in-transit",
+  "/trip/in-transit/checkpoint",
+  "/trip/in-transit/exception",
+  "/trip/panic",
+  "/trip/panic/submitted",
+  "/trips",
+  "/trips/active",
+];
+
+// Mirrors page.tsx's own generateStaticParams (app/(app)/trip/phase/[type]/step/[slug]/page.tsx):
+// every combination STEP_SLUGS actually declares, and nothing hand-typed — a phase type
+// gaining or losing a step is reflected here automatically. trip_creation's empty
+// recipe naturally contributes zero routes.
+const PHASE_ROUTES = (Object.keys(STEP_SLUGS) as (keyof typeof STEP_SLUGS)[]).flatMap((type) =>
+  STEP_SLUGS[type].map((slug) => `/trip/phase/${type}/step/${slug}`),
+);
+
+const MOCK_TRIP_IDS = [
+  "7e8f9a0b-1c2d-4e3f-8a5b-6c7d8e9f0a1b",
+  "8f9a0b1c-2d3e-4f4a-8b6c-7d8e9f0a1b2c",
+  "9a0b1c2d-3e4f-4a5b-8c7d-8e9f0a1b2c3d",
+  "0b1c2d3e-4f5a-4b6c-8d8e-9f0a1b2c3d4e",
+  "1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f",
+  "2d3e4f5a-6b7c-4d8e-9f0a-1b2c3d4e5f6a",
+  "3e4f5a6b-7c8d-4e9f-8a0b-1c2d3e4f5a6b",
+];
+const TRIP_DETAIL_ROUTES = MOCK_TRIP_IDS.map((id) => `/trips/${id}`);
+
+const PRECACHED_ROUTES = [...STATIC_ROUTES, ...PHASE_ROUTES, ...TRIP_DETAIL_ROUTES];
+
+// Each route is precached under its exact exported filename — `<route>.html` (the full
+// document, needed to satisfy a hard/cold navigation) AND `<route>.txt` (the RSC flight
+// payload Next's App Router client fetches for an in-app soft navigation to a route that
+// hasn't been visited yet in this session). Deliberately NOT the extension-less clean URL
+// (e.g. "/login"): that path only exists if the hosting layer rewrites it to the .html
+// file server-side, which we can't assume here — and an entry that 404s during SW install
+// fails the *entire* install (Serwist's precache fetch-and-store step isn't
+// fault-tolerant per-entry). The exact exported filenames are guaranteed to exist. Where
+// hosting *does* do clean-URL rewriting, an unvisited route's cold-start offline load
+// falls through to the NetworkFirst navigation handler in app/sw.ts instead of an instant
+// precache hit — see the comment there.
+function routeToPrecacheEntries(route: string): { url: string; revision: string }[] {
+  const base = route === "/" ? "/index" : route;
+  return [
+    { url: `${base}.html`, revision: packageJsonVersion },
+    { url: `${base}.txt`, revision: packageJsonVersion },
+  ];
+}
+
+// Supplying additionalPrecacheEntries below replaces @serwist/next's default public/
+// scan (see note above), so public/ files it would otherwise have picked up are
+// re-added explicitly here, keyed by a content hash so they only bust cache when their
+// bytes actually change (relevant right now: the icon regeneration in this same change).
+function publicFilePrecacheEntry(relPath: string): { url: string; revision: string } {
+  const contents = fs.readFileSync(path.join(process.cwd(), "public", relPath));
+  const revision = crypto.createHash("sha256").update(contents).digest("hex").slice(0, 16);
+  return { url: `/${relPath}`, revision };
+}
+
+const additionalPrecacheEntries = [
+  ...PRECACHED_ROUTES.flatMap(routeToPrecacheEntries),
+  publicFilePrecacheEntry("manifest.json"),
+  publicFilePrecacheEntry("icons/icon-192.png"),
+  publicFilePrecacheEntry("icons/icon-512.png"),
+];
+
+// Disable serwist in development — the SW would intercept hot-reload requests and break fast refresh.
+const withSerwist = withSerwistInit({
+  swSrc: "app/sw.ts",
+  swDest: "public/sw.js",
+  disable: process.env.NODE_ENV === "development",
+  additionalPrecacheEntries,
+});
+
+export default withSerwist(nextConfig);

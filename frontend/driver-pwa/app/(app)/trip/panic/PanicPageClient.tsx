@@ -1,0 +1,148 @@
+// frontend/driver-pwa/app/(app)/trip/panic/PanicPageClient.tsx
+'use client'
+
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { ShieldAlert, TriangleAlert } from 'lucide-react'
+import { useTrip } from '@/lib/hooks/useTrip'
+import { useLocation } from '@/lib/hooks/useLocation'
+import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
+import { contextPhaseEventId } from '@/lib/phase/derive'
+import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
+import { Button } from '@/components/ui/Button'
+import { LoadingScreen } from '@/components/ui/LoadingScreen'
+import { ROUTES } from '@/lib/constants/routes'
+
+export default function PanicPageClient() {
+  const router = useRouter()
+  const { trip, isLoading, logException } = useTrip()
+  const { capture } = useLocation()
+  const { enqueueException } = useOfflineQueue()
+  const [sending, setSending] = useState(false)
+
+  async function handlePanic() {
+    setSending(true)
+    // This is an emergency action gated behind a 3s hold, so the driver has
+    // already committed several seconds to triggering it. GPS capture here
+    // resolves quickly (~300ms dev fallback; real native lock typically
+    // well under 2s) — awaiting it before logException means the alert
+    // record actually carries coordinates instead of racing to send one
+    // without location data. We accept the brief additional wait in
+    // exchange for a complete, defensible payload; `sending` drives a
+    // lightweight loading state below so the UI doesn't appear frozen.
+    const result = await capture()
+    const description = 'Driver activated panic button.'
+    // Tracks whether the alert actually reached the backend vs. was only queued
+    // on-device — PanicSubmittedPageClient needs this to avoid claiming "your
+    // dispatcher has been notified" when nothing has actually sent yet.
+    let queued = false
+    try {
+      await logException('panic_button', {
+        description,
+        triggeredAt: new Date().toISOString(),
+        gpsLat: result?.latitude ?? null,
+        gpsLng: result?.longitude ?? null,
+      })
+    } catch (err) {
+      // Emergency action — don't strand the driver on this screen if the network call
+      // fails. Queue it for retry on reconnect (same mechanism handshakes use) instead
+      // of just logging and losing it, since this is the one alert that must land.
+      // The captured GPS fix goes into the queued body too — the retry must carry the
+      // same evidence the live send would have, or the "location will be included"
+      // promise silently breaks exactly when the driver is offline and most at risk.
+      console.error('Failed to send panic alert to backend — queued for retry', err)
+      if (trip) {
+        const phaseEventId = contextPhaseEventId(trip.phases)
+        enqueueException(String(trip.id), {
+          exception_type: 'panic_button',
+          description,
+          // Resolved HERE, not at flush time. This entry can sit in the queue until the
+          // driver regains signal — possibly after they have arrived and the trip has
+          // moved on — and the alert has to keep saying where the driver actually was
+          // when they pressed it, not where the trip ended up.
+          ...(phaseEventId ? { phase_event_id: String(phaseEventId) } : {}),
+          // Both-or-neither: the backend 422s a partial fix, which would make the
+          // queue drop this entry as a terminal failure — send the pair or nothing.
+          ...(result ? { gps_lat: result.latitude, gps_lng: result.longitude } : {}),
+        })
+      }
+      queued = true
+    }
+    router.replace(ROUTES.panicSubmittedUrl(queued))
+  }
+
+  if (isLoading) {
+    // A blank screen here reads as a dead app — on the PANIC page of all places, the
+    // driver must see the app is alive. Same LoadingScreen every other waiting screen uses.
+    return <LoadingScreen label="Loading trip" />
+  }
+
+  if (!trip) {
+    return (
+      <main className="flex min-h-dvh flex-col items-center justify-center gap-8 bg-error p-6">
+        <div className="flex flex-col items-center text-center text-error-on">
+          <TriangleAlert className="mb-4 h-14 w-14" strokeWidth={1.5} aria-hidden />
+          <h1 className="mb-2 text-2xl font-bold">Unable to verify trip</h1>
+          <p className="text-lg leading-relaxed opacity-90">
+            We could not confirm this panic alert against your active trip.
+            Contact dispatch directly for emergency assistance.
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          // This state is reachable via cold load, deep link, or refresh —
+          // there may be no meaningful back-history, so router.back() could
+          // land anywhere (or nowhere). Use an explicit replace so the label's
+          // promise ("Return to in-transit") is actually guaranteed.
+          onClick={() => router.replace(ROUTES.inTransit)}
+          // Ghost's default text-secondary/hover:bg-secondary/10 is unreadable on this
+          // screen's bg-error backdrop — override to the same dim error-on tone the raw
+          // button used, keeping the visual intent while gaining the shared Button.
+          className="text-error-on/70 hover:bg-error-on/10"
+        >
+          Return to in-transit
+        </Button>
+      </main>
+    )
+  }
+
+  return (
+    <main className="flex min-h-dvh flex-col items-center justify-center gap-8 bg-error px-6 pt-6 pb-safe">
+      <div className="flex flex-col items-center text-center text-error-on">
+        <ShieldAlert className="mb-4 h-14 w-14" strokeWidth={1.5} aria-hidden />
+        <h1 className="mb-2 text-2xl font-bold">Panic Alert</h1>
+        <p className="text-lg leading-relaxed opacity-90">
+          Swipe the button below to send an emergency alert to your dispatcher.
+          Your GPS location will be included.
+        </p>
+        {sending && (
+          <p className="mt-2 text-sm opacity-75" role="status">
+            Capturing location and sending alert…
+          </p>
+        )}
+      </div>
+      {/* This was durationMs={3000} under HoldButton — longer than the 2000ms default,
+          signalling the highest-stakes action in the app. SwipeToConfirm has no duration
+          concept (deliberateness now comes from the drag distance/threshold, or two
+          discrete key presses on the keyboard path), so that extra weighting is dropped;
+          the panic flow still uses variant="danger" to keep it visually distinct. */}
+      <SwipeToConfirm
+        label="Send panic"
+        onConfirm={handlePanic}
+        variant="danger"
+      />
+      <Button
+        type="button"
+        variant="ghost"
+        // Same reasoning as the !trip branch above: this page is reachable via cold
+        // load or deep link, where router.back() has no meaningful history to pop —
+        // replace to the in-transit hub so Cancel always lands somewhere sensible.
+        onClick={() => router.replace(ROUTES.inTransit)}
+        className="text-error-on/70 hover:bg-error-on/10"
+      >
+        Cancel
+      </Button>
+    </main>
+  )
+}

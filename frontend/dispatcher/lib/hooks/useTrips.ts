@@ -1,0 +1,51 @@
+'use client'
+
+import { useMemo } from 'react'
+import { api } from '@/lib/api/client'
+import type { TripStatus, TripSummary } from '@shared/lib/types/trip'
+import { useLiveResource } from '@/lib/realtime/useLiveResource'
+import { useAsyncData } from './useAsyncData'
+
+export interface TripsFilter {
+  status?: TripStatus[]
+  driverId?: string
+  hasExceptions?: boolean
+}
+
+export interface UseTripsResult {
+  trips: TripSummary[]
+  isLoading: boolean
+  error: string | null
+  refetch: () => void
+}
+
+const EMPTY: TripSummary[] = []
+
+export function useTrips(filter?: TripsFilter): UseTripsResult {
+  const { data: allTrips, isLoading, error, refetch, refetchSilent } = useAsyncData<TripSummary[]>(
+    () => api.get<TripSummary[]>('/api/v1/trips'),
+    EMPTY,
+  )
+  // Live: any trip changing (new trip, phase, exception, close) refreshes the list in
+  // place so status chips and open-exception counts stay current without a reload.
+  useLiveResource('trip', 'any', refetchSilent)
+
+  const statusKey = filter?.status?.join(',') ?? ''
+  const driverId = filter?.driverId ?? ''
+  const hasExceptions = filter?.hasExceptions
+
+  const trips = useMemo(() => {
+    return allTrips.filter(t => {
+      if (filter?.status?.length && !filter.status.includes(t.status)) return false
+      if (filter?.driverId && t.driver.id !== filter.driverId) return false
+      if (hasExceptions !== undefined) {
+        const hasOpen = t.open_exception_count > 0
+        if (hasExceptions !== hasOpen) return false
+      }
+      return true
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allTrips, statusKey, driverId, hasExceptions])
+
+  return { trips, isLoading, error, refetch }
+}

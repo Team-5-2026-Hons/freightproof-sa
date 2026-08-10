@@ -14,8 +14,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+/lib/
+/lib64/
 parts/
 sdist/
 var/
@@ -152,15 +152,7 @@ venv.bak/
 # Frontend — ignore build artefacts and installed packages across all workspaces
 frontend/**/node_modules/
 frontend/**/.next/
-
-# macOS
-.DS_Store
-
-# Local git worktrees (manually copied checkouts, not source)
-.worktrees/
-
-# Spike env files (never commit secrets)
-*.env.spike
+*.tsbuildinfo
 
 # Spyder project settings
 .spyderproject
@@ -223,3 +215,24 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+.DS_Store
+**/.DS_Store
+# Agent session scratch — brainstorm servers, transcripts, pid files.
+/.superpowers/
+# Stub lockfile Next.js used to mis-detect as the monorepo root; both apps now
+# pin outputFileTracingRoot explicitly, so nothing needs a lockfile up here.
+/package-lock.json
+# JetBrains/Android Studio project state — per-machine, never shared.
+**/.idea/
+spikes/fp-23-hedera-sdk/.env.spike
+
+# Graphify knowledge graph (cache only — graph.json/GRAPH_REPORT.md/graph.html are committed)
+graphify-out/cache/
+.graphify_*
+
+# Git worktrees (local dev isolation only — never committed)
+.worktrees/
+
+# Parcel Perfect watch output (scripts/pp_watch.py) — contains PP payloads with
+# names, addresses and cell numbers. POPIA: never committed to a public repo.
+pp_watch_out/
