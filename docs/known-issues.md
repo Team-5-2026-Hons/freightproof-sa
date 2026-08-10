@@ -1,94 +1,35 @@
-# Known Issues & Tech Debt
+# Known issues and release risks
 
-A running list of environment and code issues to raise with the team. Each entry
-records the symptom, root cause, impact, and proposed fix. Delete an entry once it
-is resolved (and, if it changed shared behaviour, note it in the relevant spec).
+This file lists unresolved issues in the current implementation. Remove an entry when it is fixed, and record enduring product limitations in the repository README.
 
----
+## 1. Driver production builds do not reject demo authentication
 
-## 1. `??` fallback in `supabase.ts` fails on empty-string env vars
+`frontend/driver-pwa/lib/constants/env.ts` treats a missing `NEXT_PUBLIC_DEMO_MODE` value as demo mode. The build validates the API URL but does not reject demo authentication or missing Supabase values.
 
-**Files:** `frontend/driver-pwa/lib/supabase.ts` (and the equivalent
-`frontend/dispatcher/lib/supabase/client.ts` — verify before fixing).
+**Impact:** a packaged application can accidentally ship with mock login and OTP behaviour.
 
-**Symptom:** The driver PWA compiles and reaches "Ready", but every page returns
-HTTP 500 with `Error: supabaseUrl is required.`
+**Required resolution:** introduce explicit demo and release build profiles. A release build must fail when demo mode is enabled or real authentication settings are absent.
 
-**Root cause:** The client reads config as
-`process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'https://placeholder.supabase.co'`.
-`??` only substitutes the placeholder when the value is `null`/`undefined`. When a
-developer's `.env.local` contains `NEXT_PUBLIC_SUPABASE_URL=` (present but empty),
-the value is the empty string `""`, which is *not* nullish — so the placeholder is
-skipped and `createClient("")` throws.
+## 2. Dependency audit findings require triage
 
-**Why it's inconsistent across the team:** `.env.local` is gitignored, so its shape
-differs per machine. Omitting the line entirely → works. Leaving it empty → crash.
-Notably, the committed `.env.example` demonstrates the empty-value form, so anyone
-who copies it verbatim and runs in demo mode hits the crash.
+The 2026-08-10 submission audit reported known vulnerabilities in the backend environment and both frontend dependency trees. Direct findings included Next.js, PostCSS, Vitest tooling, Capacitor CLI, `python-jose`, and `python-multipart`.
 
-**Impact:** Medium severity, high friction. No data or production-logic risk, but
-the app looks completely broken (blank 500) for any teammate or CI job whose env
-file follows the documented example. Masquerades as an unrelated failure.
+**Impact:** security and reproducibility risk; some fixes may require incompatible major-version upgrades.
 
-**Proposed fix (team decision — touches a shared auth file):** Use `||` instead of
-`??` so empty strings also fall back, or normalise the env read (trim and treat
-empty as unset). Apply the same fix to the dispatcher client if it shares the
-pattern.
+**Required resolution:** classify direct versus transitive and runtime versus development findings, apply compatible patches first, run all affected checks, and document accepted risks. Do not apply forced major upgrades without an isolated branch and regression testing.
 
----
+## 3. Trip creation cannot map consignments to intermediate stops
 
-## 2. Node version is not pinned anywhere
+The phase-plan generator supports repeated per-stop work, but `TripConsignmentInput` does not include pickup and delivery stop references. `trip_service.create_trip` consequently assigns every new consignment to the first and final stops.
 
-**Scope:** whole repo — no `.nvmrc`, no `"engines"` field in any `package.json`.
+**Impact:** a newly created cross-dock trip cannot yet express that one consignment ends at an intermediate stop while another begins there.
 
-**Symptom:** On Node 23.x the driver PWA's dev server hangs indefinitely at startup
-(the `@serwist/next` import inside `next.config.ts` stalls ~35s→never), so the app
-never boots and appears dead with no error message.
+**Required resolution:** extend the request schema, dispatcher workflow, validation, and integration tests. Until then, describe multi-stop support as representational rather than complete end-to-end consignment mapping.
 
-**Root cause:** The project targets Node 22 LTS (stated in `README.md` and
-`CLAUDE.md`) but nothing enforces it. A routine `brew upgrade` can move a developer
-onto Node 23 — an odd-numbered, non-LTS "Current" release — without warning.
+## 4. Live warehouse scan feed is not implemented
 
-**Impact:** Medium severity, recurring/latent. Costs a confusing debugging session
-each time someone drifts off the supported line, because the failure (a silent
-hang) points nowhere near the real cause. Undermines cross-developer
-reproducibility, which the `CLAUDE.md` standards section is meant to guarantee.
+`SCAN_FEED_USE_MOCK=false` raises `NotImplementedError` because no live WMS or depot scan source is available.
 
-**Proposed fix (team decision — touches shared config):** Add `.nvmrc` containing
-`22` and `"engines": { "node": ">=22 <23" }` to the frontend `package.json` files.
-`.nvmrc` lets `nvm use` auto-select the right version; `engines` makes npm warn
-(or error under `engine-strict`) on the wrong Node.
+**Impact:** loading and reconciliation demonstrations depend on the Redis-backed mock feed.
 
----
-
-## 3. Xcode's "Update to recommended settings" breaks the iOS build
-
-**Files:** `frontend/driver-pwa/ios/App/App.xcodeproj/project.pbxproj`.
-
-**Symptom:** `npx cap run ios` / `xcodebuild` fails with
-`error: Sandbox: bash(...) deny(1) file-read-data .../Pods-App-frameworks.sh` and
-`Operation not permitted`, in the `[CP] Embed Pods Frameworks` phase.
-
-**Root cause:** Accepting Xcode 26's "Update to recommended settings" banner sets
-`ENABLE_USER_SCRIPT_SANDBOXING = YES` on the App project. CocoaPods' embed-frameworks
-run script reads files outside its declared inputs, so the sandbox denies it. CocoaPods
-knows this — it already sets the flag to `NO` on all 12 of its own Pods targets — but it
-cannot set it for the App target, which is the one Xcode "upgraded".
-
-**Impact:** Hard build failure, blocks all device testing. Reappears any time the banner
-is accepted again.
-
-**Fix (applied):** `ENABLE_USER_SCRIPT_SANDBOXING = NO` in both Debug and Release. If the
-banner returns, do not accept it for the App project — and never for Pods, which
-`pod install` regenerates on every `cap sync` anyway.
-
----
-
-## Common theme
-
-Both issues stem from the project depending on each developer's local setup being
-"correct" without defining or enforcing what correct is. Node version and
-`.env.local` contents are invisible and per-machine, so the app works for whoever
-set things up right and mysteriously breaks for everyone else. Pinning the Node
-version and hardening the env-var fallback convert "silently depends on local
-setup" into "explicitly defined and self-correcting".
+**Required resolution:** obtain and implement a supported partner feed, or keep the limitation explicit in the submitted scope and demo narrative.

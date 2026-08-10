@@ -14,7 +14,7 @@
 | Check | Why it matters |
 |---|---|
 | 🔴 **Rebind the driver account to the demo phone** | One driver account is bound to one device (`DriverSession`, enforced in `auth/dependencies.py`). Rehearse on a laptop or a second phone and the presentation device is **not** the bound one. Do this the day before, not on stage. |
-| 🔴 **Pre-authenticate the driver device** | Driver login is phone OTP over Twilio. Live SMS on stage depends on network and delivery timing you do not control. Log in beforehand so the session persists, or use a Supabase test number with a fixed OTP. |
+| 🔴 **Pre-authenticate the driver device** | Real driver login uses Supabase phone authentication. Live OTP delivery on stage depends on network and provider timing you do not control. Log in beforehand so the session persists, use a configured Supabase test number, or deliberately use the documented demo-auth profile. |
 | **Confirm which database `DATABASE_URL` points at** | The refactor DB and the original dev DB are different projects, on different schemas. |
 | **Have the dispatcher open before the driver acts** | The live-update story only lands if the reviewer sees the screen *change*, not a screen that was already correct. |
 | **Backup tab: a cross-dock trip** | See §7. Costs nothing to have open. |
@@ -44,13 +44,15 @@ update arriving. **Do not touch the browser.** This is the SSE bus, and the fact
 is the point.
 
 **4. Loading.**
-The driver enters a blind count. → Say: *"The driver is never shown the expected number. If the driver
-could see it, a match would prove nothing. The server reconciles privately."*
+The driver reviews the driver-safe linehaul and, when a paper copy exists, photographs it. The
+warehouse scan session is the loading gate; the driver does not enter a loading count.
 
 **5. Departure — the seal.**
 → *On screen:* seal number and photo captured; a `pickup` receipt anchored, fail-open.
 
-**6. In transit → unloading → confirmation.**
+**6. Arrival → unloading → confirmation.**
+The driver uses **Arrive at destination** to complete the `in_transit` row with the phone location;
+it is not completed automatically on departure.
 → *On screen:* the trip reaches `closed`, with a `delivery` receipt.
 
 **7. Cancel and override — the two exits.** *(New. Nothing could do this before 2026-08-05.)*
@@ -106,11 +108,11 @@ before you are asked.
 > departure had never held a trip, so two seal mismatches behaving differently was simply inconsistent.
 
 **"Does it catch a short load?"**
-> Yes, in two places. At **loading**, the manifest total is compared against the driver's blind count —
-> that raises a `PARCEL_COUNT_MISMATCH`. At **final delivery**, the origin count, the Parcel Perfect
-> scan-in count and the driver's count are reconciled three ways — that raises a
-> `WAYBILL_COUNT_MISMATCH`. **What it does not catch today is a shortfall at an intermediate stop**,
-> because unloading captures no count. That gap is real and it is scoped.
+> At loading, the server compares the observed warehouse scan-out total with the committed expected
+> total; a mismatch raises `PARCEL_COUNT_MISMATCH`. At final delivery, the origin count, destination
+> scan-in count and the driver's optional destination count are reconciled; a mismatch raises
+> `WAYBILL_COUNT_MISMATCH`. The current mock feed does not constitute live proof of physical scans,
+> and intermediate-stop attribution remains a known gap.
 
 **"When is it one trip and when is it two?"**
 > It's two trips when nothing rides through. If cargo is loaded at A and all of it comes off at B, and
@@ -151,7 +153,7 @@ Worth having ready — reviewers who saw an earlier version will ask.
 - A dispatcher can now cancel a trip and override a phase, both with a mandatory note, both recorded on
   the ledger as exceptions rather than only in an audit column.
 - Empty-leg trips can close.
-- Loading counts are scoped to the stop that does the loading.
+- Loading reconciliation is scoped to the stop that owns the scan-out session.
 - Concurrent completion of the same phase is now blocked by a row lock, so one phase cannot submit to
   Hedera twice.
 
@@ -190,10 +192,3 @@ in advance. You do not have to demo it live. Showing an 11-row plan next to the 
 of the thesis. If a reviewer asks "does this actually do multi-stop?", that tab is the answer.
 
 ---
-
-## 8. Open decisions this document does not make
-
-- **`HoldNotice.tsx`** (driver PWA) renders for a trip status that can no longer occur, and still says
-  "handshake" three times. Delete it, or keep it dormant against a future *manual* hold? **Tim's call.**
-- **The vocabulary sweep touches `CLAUDE.md`**, which by its own rule needs a PR reviewed by all four
-  team members. Raise it now, not on the last day.

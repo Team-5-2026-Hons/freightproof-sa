@@ -1,6 +1,6 @@
 # FreightProof SA — Scope Boundaries (Defence Document)
 
-> **Ticket:** FP-119 · **Status:** living document — first cut · **Author:** Ciaran · **Date:** 2026-06-24
+> **Ticket:** FP-119 · **Status:** living document · **Author:** Ciaran · **Updated:** 2026-08-10
 > **Purpose:** state explicitly what FreightProof *is* and *is not*, so the scope can be defended at
 > examination. Reconciles the lecturer's (Ammar/Aisha/Maya) "full TMS" framing against the industry
 > partner's (Bruce, Load Factor Group) "evidence layer" framing. Sources:
@@ -24,13 +24,13 @@ journey-lock hash makes post-hoc trip tampering provable.
 
 | Area | What FreightProof does |
 |---|---|
-| Five-handshake custody chain | Records + anchors each of the 5 custody moments (gate-in, loading, in-transit, destination gate-in, close). |
+| Plan-driven custody chain | Records an ordered phase-event ledger generated from the trip's stops and consignments. Journey creation, departure, and delivery confirmation produce Hedera receipts. |
 | Journey-lock hash | SHA-256 of committed trip params at creation, anchored to Hedera HCS; current record ≠ anchored tx = tampering. |
-| **Multi-client / multi-stop trips** *(Bruce 24 Jun, confirmed)* | One trip may carry **multiple clients** and visit **multiple pickup + delivery points**. Two service models: scheduled break-bulk (clients deliver to LFG) + ad-hoc collection (truck visits client sites). |
+| **Multi-client trips** *(Bruce 24 Jun, confirmed)* | One trip may carry multiple client consignments. The phase plan can represent multiple stops, but the current creation request still assigns every new consignment to the first and final stops. Intermediate per-consignment stop mapping remains incomplete. |
 | **Loading configuration + order — as evidence** *(see §3)* | Records the load blueprint + loading priority/order. **Records, does not enforce.** |
 | Sealed-load custody | The unit of custody is the **sealed consolidated load (unit count + seal)** — not the parcel. See `docs/parcel-traceability.md`. |
 | Parcel correlation (read overlay) | Ingests + correlates Parcel Perfect parcel-level scans against the anchored custody chain so a loss can be *proven* and *bounded to a segment*. Client-scoped, read-only. |
-| Exceptions + deviations | Records Pulsit deviations, panic events, seal mismatches, count shorts as anchored evidence. |
+| Exceptions + deviations | Records panic events, seal mismatches, count discrepancies, and configured integration findings as evidence. Pulsit deviation ingestion is not a completed production integration. |
 | Driver / horse substitution | Logged as a **normal event on the same trip** (4 fields), not an operational action. |
 | Trip cancellation | Recorded (closes the chain) — evidence only. |
 | Document upload | Physical waybills/PODs photographed + attached to the trip evidence trail. |
@@ -59,7 +59,7 @@ journey-lock hash makes post-hoc trip tampering provable.
   enforce** loading rules (that would be operations).
 - **Operator (Load Factor) is liable for the depot-to-depot leg**; the driver is overseen, not legally
   on the hook. FreightProof captures the **depot-to-depot** POD; door-to-door is FedEx's.
-- The driver is the only hands-on user per handshake; guards/warehouse staff have no accounts. The
+- The driver is the only implemented hands-on user per phase; guards/warehouse staff have no accounts. The
   driver receives the **linehaul** (consolidated unit count + seal + reg + driver details) — **never**
   the manifest or per-parcel contents.
 
@@ -79,7 +79,7 @@ journey-lock hash makes post-hoc trip tampering provable.
 
 | # | Question | Owner |
 |---|---|---|
-| 1 | Does LFG scan each pallet or only count + seal? (decides leaf-level model) | Bruce / July visit |
-| 2 | Depot-to-depot POD handover: on-device signature vs photo-of-paper (BQ2) | Bruce |
-| 3 | Load-configuration recording depth — blueprint + order only, or more? | Bruce |
+| 1 | Which warehouse system can provide live scan-session completion events? | Team / industry partner |
+| 2 | What request and dispatcher workflow should map each consignment to intermediate stops? | Team |
+| 3 | What production authentication flow should the future receiver evidence portal use? | Team / industry partner |
 | 4 | Will the lecturer accept "out of scope per industry partner" for B2/B8/B9/B11? | Ammar |

@@ -6,7 +6,7 @@ Read this entire file before acting.
 
 FreightProof SA — cargo theft and disputed delivery evidence platform. INF4027W Honours Project, UCT 2026. 4 devs: Ciaran, Tim, Chiko, Tom. Public GitHub repo, branch protection on `main` and `dev`.
 
-Current sprint ownership: [link placeholder — will be added after the issue is pinned]. Check before starting work — it changes at sprint boundaries.
+Confirm current sprint ownership with the team or project tracker before starting work; ownership changes at sprint boundaries.
 
 ## Prime Directive
 
@@ -51,8 +51,8 @@ Follow standards below.
 
 ## Standards
 
-**Versions — latest stable only, no deprecated APIs:**
-Python 3.13+, FastAPI 0.115+, SQLAlchemy 2.0+ async (`Mapped`/`mapped_column`, no legacy `Column`), Pydantic v2 (`@field_validator`, `model_config`, not v1), Alembic latest, pytest + pytest-asyncio (`asyncio_mode = auto`). Node 22 LTS, Next.js 15+ App Router only (no Pages Router, no `getServerSideProps`/`getStaticProps`), TypeScript 5.5+ (never `any`), Tailwind v3.4+ (use `content`, not `purge`), React 19+ (Server Components, no class components).
+**Versions — follow the repository manifests and avoid deprecated APIs:**
+Python 3.13, SQLAlchemy 2.0 async (`Mapped`/`mapped_column`, no legacy `Column`), Pydantic v2 (`@field_validator`, `model_config`, not v1), and pytest + pytest-asyncio (`asyncio_mode = auto`). Node 22 LTS, Next.js 15 App Router only (no Pages Router, no `getServerSideProps`/`getStaticProps`), TypeScript 5.5+ (never `any`), Tailwind v3.4+ (use `content`, not `purge`), and React 19+ (no class components). Upgrade dependency ranges deliberately and run the affected suite; do not assume “latest” is compatible.
 
 If you hit deprecated code in an existing file, flag it under `Deprecation warnings` in TASK COMPLETE — don't fix silently.
 
@@ -77,8 +77,8 @@ Every backend feature needs tests. Task isn't done until tests pass.
 
 ```
 backend/tests/
-├── unit/          pure logic, no DB, no HTTP
-└── integration/   endpoints + DB
+├── unit/          primarily focused module and orchestration tests
+└── integration/   endpoints and cross-layer behaviour
 ```
 
 Files: `test_<module>.py`. Functions: `test_<what>_<outcome>()`.
@@ -86,7 +86,7 @@ Files: `test_<module>.py`. Functions: `test_<what>_<outcome>()`.
 - **Unit** for `crypto/`, `auth/`, `orchestration/`, `blockchain/` — happy path + edge cases + failures.
 - **Integration** for every endpoint: success, 401, 422, 404 where applicable. Assert DB state after mutations.
 
-Use `httpx.AsyncClient` + `ASGITransport`. Arrange/Act/Assert with blank lines between. Fixtures or `uuid4()`, never hardcoded IDs or timestamps. No inter-test state. Run `cd backend && pytest` before marking done.
+Some tests under `unit/` use the shared database fixture, so the complete suite requires the throwaway PostgreSQL configured by `TEST_DATABASE_URL`. Use `httpx.AsyncClient` + `ASGITransport`. Arrange/Act/Assert with blank lines between. Fixtures or `uuid4()`, never hardcoded IDs or timestamps. No inter-test state. Run `cd backend && pytest` before marking done.
 
 ## Architecture
 
@@ -99,7 +99,7 @@ backend/app/
 ├── crypto/             Ed25519 (PyNaCl), SHA-256, Merkle
 ├── db/models/          one file per table
 ├── db/session.py       async engine, get_db()
-├── integrations/       pulse.py, parcel_perfect.py, idvs.py, twilio.py, sendgrid.py
+├── integrations/       partner clients and development mocks
 ├── orchestration/      trip state machine, phase sequencing, exceptions
 ├── storage/            Supabase Storage I/O + hash verify
 └── tasks/              Celery tasks
@@ -123,9 +123,9 @@ endpoints → orchestration/auth/storage → integrations/blockchain/crypto → 
 
 **Evidence, not operations.** FreightProof records what happened. It doesn't reroute drivers, dispatch response, or replace Pulse/Parcel Perfect. If you're trying to *respond* rather than *record*, it's out of scope.
 
-**POPIA:** Personal data (identities, GPS, photos, parcel details) stays in PostgreSQL in `af-south-1`. Only SHA-256 hashes go to Hedera. Personal data never reaches blockchain. If code would send PII off-system, stop.
+**POPIA:** Personal data (identities, GPS, photos, parcel details) stays in the configured database and evidence store. Only SHA-256 hashes go to Hedera. Personal data never reaches blockchain. If code would send PII off-system, stop.
 
-**Driver is the only hands-on user per phase.** Guards and warehouse staff don't have accounts. Guard page = zero login. Receiver = one-time OTP. Don't add auth for roles documented as having none.
+**Driver is the only implemented hands-on user per phase.** Guards and warehouse staff do not have application accounts. The guard surface and receiver portal are planned, not implemented; do not describe their proposed authentication flows as current behaviour.
 
 ## Git
 
@@ -151,7 +151,7 @@ Flag any shared-file change in TASK COMPLETE.
 
 ## Secrets
 
-Never read, print, or log `.env`. Never commit it. `.env.example` holds key names only. New config: add empty key to `.env.example`, add field to `core/config.py`, list in TASK COMPLETE under `New .env keys required`. The Supabase `service_role` key never appears in code or config.
+Never read, print, or log `.env`. Never commit it. `.env.example` holds key names and safe placeholders only. New config: add an empty or safe example value to `.env.example`, add the field to `core/config.py`, and list it in TASK COMPLETE under `New .env keys required`. The Supabase `service_role` variable name is configured server-side; its secret value must never appear in code, committed configuration, logs, or browser variables.
 
 ## When unsure
 
