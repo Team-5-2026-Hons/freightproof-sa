@@ -6,8 +6,8 @@
 // the resolved component's real props via an `as unknown as` cast, so a step that needs a
 // prop the call site forgets to pass compiles clean and renders blank — only a render
 // through the actual LoadingStep function can catch that class of bug.
-import { render, screen, waitFor } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { Linehaul } from '../loading/Linehaul'
 // Two levels up — the fixture lives in components/phase/__tests__/, not steps/__tests__/.
 import { makePhase } from '../../__tests__/testFixtures'
@@ -33,6 +33,29 @@ const { linehaul } = vi.hoisted(() => ({
 // Bare draft — every test below that doesn't care about the photo state renders with no
 // captured photo yet, matching what LOADING_INITIAL seeds a fresh step with.
 const EMPTY_DRAFT = { linehaulPhotoDataUrl: null, linehaulPhotoArtifactId: null, capturedAt: null }
+
+// The blocked branch now renders WarehouseWaitCard (components/phase/WarehouseWaitCard.tsx),
+// which reads useTrip() directly — every test in this file renders Linehaul bare, with no
+// TripProvider ancestor, so the real hook (which throws outside one) is stubbed for the
+// whole file. A single module-scope vi.fn(), not one created per render, so the "Check now"
+// tests below can assert on it after the click.
+const mockRefreshQuietly = vi.fn().mockResolvedValue(undefined)
+
+vi.mock('@/lib/hooks/useTrip', () => ({
+  useTrip: () => ({
+    refetchTrip: vi.fn().mockResolvedValue(null),
+    adoptTrip: vi.fn(),
+    markPhaseSyncing: vi.fn(),
+    clearPhaseSyncing: vi.fn(),
+    refreshQuietly: mockRefreshQuietly,
+    isRefreshing: false,
+    lastRefreshedAt: null,
+  }),
+}))
+
+beforeEach(() => {
+  mockRefreshQuietly.mockClear()
+})
 
 describe('Linehaul', () => {
   it('shows the consolidated unit count', () => {
@@ -84,6 +107,42 @@ describe('Linehaul', () => {
 
     expect(screen.getByText(/waiting for the warehouse/i)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /confirm/i })).not.toBeInTheDocument()
+  })
+
+  // Task: driver PWA trip auto-refresh (2026-08-10) — the blocked wait is no longer a
+  // dead end. WarehouseWaitCard adds a Check now control alongside the existing copy.
+  it('renders a Check now control when blocked', () => {
+    render(
+      <Linehaul
+        tripId="trip-1"
+        phase={{ ...makePhase('loading'), blocked_on: 'warehouse_scan' }}
+        stepIndex={0}
+        linehaul={null}
+        draft={EMPTY_DRAFT}
+        onUpdate={vi.fn()}
+        onComplete={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: /check now/i })).toBeInTheDocument()
+  })
+
+  it('activating Check now calls refreshQuietly', () => {
+    render(
+      <Linehaul
+        tripId="trip-1"
+        phase={{ ...makePhase('loading'), blocked_on: 'warehouse_scan' }}
+        stepIndex={0}
+        linehaul={null}
+        draft={EMPTY_DRAFT}
+        onUpdate={vi.fn()}
+        onComplete={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /check now/i }))
+
+    expect(mockRefreshQuietly).toHaveBeenCalledTimes(1)
   })
 
   it('renders the capture control in the non-blocked branch', () => {
@@ -159,14 +218,10 @@ vi.mock('@/lib/hooks/useOfflineQueue', () => ({ useOfflineQueue: () => ({ enqueu
 vi.mock('@/lib/hooks/useLocationTrail', () => ({
   useLocationTrail: () => ({ capturePosition: vi.fn(async () => null), recordHere: vi.fn() }),
 }))
-vi.mock('@/lib/hooks/useTrip', () => ({
-  useTrip: () => ({
-    refetchTrip: vi.fn().mockResolvedValue(null),
-    adoptTrip: vi.fn(),
-    markPhaseSyncing: vi.fn(),
-    clearPhaseSyncing: vi.fn(),
-  }),
-}))
+// useTrip is already mocked once, near the top of this file (shared with the isolated
+// Linehaul/WarehouseWaitCard tests above) — that mock already covers every field
+// LoadingStep's usePhaseStepController reads (refetchTrip/adoptTrip/markPhaseSyncing/
+// clearPhaseSyncing), so it is not redeclared here.
 vi.mock('@/lib/api/manifest', () => ({
   fetchLinehaul: vi.fn().mockResolvedValue(linehaul),
 }))

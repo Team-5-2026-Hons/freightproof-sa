@@ -30,7 +30,6 @@ import type { PhaseType } from '@shared/lib/types/phase'
 import { Verification } from './activation/Verification'
 import { Linehaul } from './loading/Linehaul'
 import { CaptureSeal } from './departure/CaptureSeal'
-import { Waybill } from './departure/Waybill'
 import { ConfirmDeparture } from './departure/ConfirmDeparture'
 import { SealVerify } from './unloading/SealVerify'
 import { VisualCount as UnloadingVisualCount } from './unloading/VisualCount'
@@ -44,7 +43,10 @@ type AnyStepComponent = ComponentType<never>
 
 type ActivationSlug = '2-verification'
 type LoadingSlug = '1-linehaul'
-type DepartureSlug = '2-capture-seal' | '3-waybill' | '4-departure'
+// '3-waybill' is gone (2026-08-10) with departure/Waybill.tsx: it photographed the
+// linehaul document loading's '1-linehaul' step already captures — one sheet, two
+// captures. Loading keeps it.
+type DepartureSlug = '2-capture-seal' | '4-departure'
 // '3-seal-break-inspection' is gone (2026-08-05) — it photographed the seal after the
 // warehouse broke it, which proves nothing and was never sent to the server. Surviving
 // slugs keep their numbers; the prefix orders the recipe, it is not an index.
@@ -78,7 +80,6 @@ export const STEP_REGISTRY: StepRegistry = {
   },
   departure: {
     '2-capture-seal': CaptureSeal,
-    '3-waybill': Waybill,
     '4-departure': ConfirmDeparture,
   },
   in_transit: {},

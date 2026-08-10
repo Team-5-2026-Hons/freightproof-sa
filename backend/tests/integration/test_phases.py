@@ -644,6 +644,123 @@ async def test_complete_missing_required_field_returns_422(client: AsyncClient, 
     assert resp.status_code == 422
 
 
+async def test_departure_completes_without_a_waybill_photo(client: AsyncClient, db_session, seed_trip):
+    """The payload the driver app actually sends since 2026-08-10.
+
+    departure's "3-waybill" step is gone: it photographed the linehaul document that
+    loading's "1-linehaul" step already captures, so the driver was asked for one sheet
+    twice. waybill_photo_artifact_id is Optional now, and this is the test that says so —
+    while it was required, every departure the current app submits would 422 at the door
+    and no trip could reach in_transit at all.
+    """
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+
+    activation_id = await _phase_id(client, trip.id, token, "activation")
+    await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{activation_id}/complete",
+        json={
+            "phase_type": "activation",
+            "driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001",
+            "idempotency_key": str(uuid.uuid4()),
+        },
+        headers=auth_header(token),
+    )
+    loading_id = await _phase_id(client, trip.id, token, "loading")
+    await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{loading_id}/complete",
+        json={"phase_type": "loading", "idempotency_key": str(uuid.uuid4())},
+        headers=auth_header(token),
+    )
+
+    seal_photo_id = await _make_artifact(db_session, trip.id)
+    departure_id = await _phase_id(client, trip.id, token, "departure")
+    with patch("app.blockchain.anchor_service.HederaService") as MockService:
+        MockService.return_value.submit_hash.return_value = _fake_hedera_receipt()
+        resp = await client.post(
+            f"/api/v1/trips/{trip.id}/phases/{departure_id}/complete",
+            json={
+                # No waybill_photo_artifact_id at all — not null, absent, exactly as the
+                # app now serialises it when the field is omitted from the request body.
+                "phase_type": "departure",
+                "seal_number": "AB-1234",
+                "seal_photo_artifact_id": seal_photo_id,
+                "idempotency_key": str(uuid.uuid4()),
+            },
+            headers=auth_header(token),
+        )
+
+    assert resp.status_code == 200
+
+    departure_row = (await db_session.execute(
+        select(PhaseEvent).where(PhaseEvent.id == uuid.UUID(departure_id))
+    )).scalar_one()
+    assert departure_row.status == PhaseStatus.COMPLETED
+    assert departure_row.waybill_photo_artifact_id is None
+    # The seal evidence — the reason this phase exists — is untouched by the removal.
+    assert departure_row.seal_number == "AB-1234"
+    assert str(departure_row.seal_photo_artifact_id) == seal_photo_id
+
+    # And the plan still advances: departure hands off to the driving leg as before.
+    resp = await client.get(f"/api/v1/trips/{trip.id}/phases/next", headers=auth_header(token))
+    assert resp.json()["phase_type"] == "in_transit"
+
+
+async def test_departure_still_accepts_a_waybill_photo_from_a_queued_offline_entry(
+    client: AsyncClient, db_session, seed_trip,
+):
+    """Optional, not deleted — and the difference matters to a queue that has not drained.
+
+    A departure captured offline BEFORE the step was removed replays from the driver
+    app's localStorage with the waybill photo still on it. Rejecting the field would
+    strand that entry forever; ignoring it would bin a photograph the driver really
+    took. It is accepted and stored.
+    """
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+
+    activation_id = await _phase_id(client, trip.id, token, "activation")
+    await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{activation_id}/complete",
+        json={
+            "phase_type": "activation",
+            "driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001",
+            "idempotency_key": str(uuid.uuid4()),
+        },
+        headers=auth_header(token),
+    )
+    loading_id = await _phase_id(client, trip.id, token, "loading")
+    await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{loading_id}/complete",
+        json={"phase_type": "loading", "idempotency_key": str(uuid.uuid4())},
+        headers=auth_header(token),
+    )
+
+    waybill_id = await _make_artifact(db_session, trip.id)
+    seal_photo_id = await _make_artifact(db_session, trip.id)
+    departure_id = await _phase_id(client, trip.id, token, "departure")
+    with patch("app.blockchain.anchor_service.HederaService") as MockService:
+        MockService.return_value.submit_hash.return_value = _fake_hedera_receipt()
+        resp = await client.post(
+            f"/api/v1/trips/{trip.id}/phases/{departure_id}/complete",
+            json={
+                "phase_type": "departure",
+                "waybill_photo_artifact_id": waybill_id,
+                "seal_number": "AB-1234",
+                "seal_photo_artifact_id": seal_photo_id,
+                "idempotency_key": str(uuid.uuid4()),
+            },
+            headers=auth_header(token),
+        )
+
+    assert resp.status_code == 200
+
+    departure_row = (await db_session.execute(
+        select(PhaseEvent).where(PhaseEvent.id == uuid.UUID(departure_id))
+    )).scalar_one()
+    assert str(departure_row.waybill_photo_artifact_id) == waybill_id
+
+
 async def test_replayed_complete_returns_200_and_does_not_duplicate(client: AsyncClient, db_session, seed_trip):
     """Idempotency over HTTP, not just at the service layer. Same idempotency_key
     twice: both 200, and the replay writes no second row anywhere on the trip.

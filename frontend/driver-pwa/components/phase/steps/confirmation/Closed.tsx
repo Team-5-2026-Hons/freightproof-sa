@@ -4,6 +4,7 @@
 import { CheckCircle2 } from 'lucide-react'
 import { StepHeader } from '@/components/phase/StepHeader'
 import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
+import { WarehouseWaitCard } from '@/components/phase/WarehouseWaitCard'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { ConfirmationEvidence } from '@/lib/types/evidence-draft'
 
@@ -60,14 +61,11 @@ export function Closed({ tripId, phase, stepIndex, draft, onComplete }: ClosedPr
         // false things at once. Same shape as unloading/VisualCount.tsx: hide the
         // control entirely rather than leave it visible-but-disabled, and say why.
         <div className="flex flex-1 flex-col justify-center gap-2 p-4">
-          <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4 flex flex-col gap-2">
-            <p className="text-sm font-semibold">Waiting for the warehouse</p>
-            <p className="text-sm text-surface-on-variant">
-              The warehouse is still scanning the parcels in at this stop. The trip will
-              close on its own once they finish. Your evidence is saved — no action is
-              needed from you.
-            </p>
-          </div>
+          <WarehouseWaitCard>
+            The warehouse is still scanning the parcels in at this stop. The trip will
+            close on its own once they finish. Your evidence is saved — no action is
+            needed from you.
+          </WarehouseWaitCard>
         </div>
       ) : (
         <>

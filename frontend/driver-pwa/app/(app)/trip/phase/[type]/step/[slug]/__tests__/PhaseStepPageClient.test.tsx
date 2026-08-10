@@ -74,8 +74,8 @@ vi.mock('@/lib/hooks/useOfflineQueue', () => ({
 }))
 vi.mock('@/lib/api/phases', () => ({ submitPhase: (...args: unknown[]) => mockSubmitPhase(...args) }))
 
-// departure's recipe is ['2-capture-seal', '3-waybill', '4-departure'], so its first
-// step is the mid-phase "advance, don't submit" case. It used to be activation's
+// departure's recipe is ['2-capture-seal', '4-departure'], so its first step is the
+// mid-phase "advance, don't submit" case. It used to be activation's
 // '1-approach-gate', which no longer exists — activation is a single step now that its
 // GPS capture happens silently at submit.
 function AdvanceCaptureSealStub({ onComplete }: { onComplete: () => void }) {
@@ -264,7 +264,7 @@ describe('mid-phase step — advance only, no submit', () => {
     render(<PhaseStepPageClient />)
     fireEvent.click(screen.getByText('advance-capture-seal'))
 
-    expect(mockRouterPush).toHaveBeenCalledWith('/trip/phase/departure/step/3-waybill')
+    expect(mockRouterPush).toHaveBeenCalledWith('/trip/phase/departure/step/4-departure')
     expect(mockSubmitPhase).not.toHaveBeenCalled()
     // Mid-phase steps capture nothing and submit nothing, so there is nothing to advance
     // optimistically either.

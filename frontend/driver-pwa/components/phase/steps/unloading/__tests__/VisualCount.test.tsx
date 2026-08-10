@@ -24,6 +24,14 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
 }))
 
+// The blocked branch now renders WarehouseWaitCard, which reads useTrip() directly
+// (see components/phase/WarehouseWaitCard.tsx) — this suite renders VisualCount bare,
+// with no TripProvider ancestor, so the real hook (which throws outside one) has to be
+// stubbed the same way linehaul.test.tsx already stubs it.
+vi.mock('@/lib/hooks/useTrip', () => ({
+  useTrip: () => ({ refreshQuietly: vi.fn(), isRefreshing: false, lastRefreshedAt: null }),
+}))
+
 function makeDraft(overrides: Partial<UnloadingEvidence> = {}): UnloadingEvidence {
   return {
     waybillHandedOver: null,

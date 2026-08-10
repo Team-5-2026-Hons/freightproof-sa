@@ -36,8 +36,6 @@ vi.mock('@/components/phase/CameraCapture', () => ({
 
 function makeDraft(overrides: Partial<DepartureEvidence> = {}): DepartureEvidence {
   return {
-    waybillPhotoDataUrl: null,
-    waybillPhotoArtifactId: null,
     sealNumber: null,
     sealPhotoDataUrl: null,
     sealPhotoArtifactId: null,

@@ -53,7 +53,15 @@ STEP_SLUGS: dict[PhaseType, tuple[str, ...]] = {
     PhaseType.TRIP_CREATION: (),
     PhaseType.ACTIVATION: ("2-verification",),
     PhaseType.LOADING: ("1-linehaul",),
-    PhaseType.DEPARTURE: ("2-capture-seal", "3-waybill", "4-departure"),
+    # "3-waybill" is gone (2026-08-10). Despite the slug it photographed the LINEHAUL
+    # DOCUMENT — the same physical sheet loading's "1-linehaul" step already captures,
+    # handed to the driver by the warehouse. Asking twice produced two artifacts of one
+    # document and left the evidence chain with no principled way to say which is the
+    # copy of record. Loading keeps it, because that is where the handover happens.
+    # DepartureCompleteRequest.waybill_photo_artifact_id is now Optional rather than
+    # deleted, so a departure queued offline by an older app build still drains instead
+    # of 422-ing forever; nothing writes it any more. Surviving slugs keep their numbers.
+    PhaseType.DEPARTURE: ("2-capture-seal", "4-departure"),
     PhaseType.IN_TRANSIT: (),
     # Seal photo FIRST (2026-08-08): the intact seal is the one piece of evidence that
     # expires the instant the truck is opened, so it is captured before anything else at

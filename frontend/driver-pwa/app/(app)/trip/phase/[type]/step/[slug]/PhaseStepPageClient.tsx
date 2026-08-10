@@ -44,8 +44,7 @@ const LOADING_INITIAL: LoadingEvidence = {
   linehaulPhotoDataUrl: null, linehaulPhotoArtifactId: null, capturedAt: null,
 }
 const DEPARTURE_INITIAL: DepartureEvidence = {
-  waybillPhotoDataUrl: null, waybillPhotoArtifactId: null, sealNumber: null,
-  sealPhotoDataUrl: null, sealPhotoArtifactId: null, capturedAt: null,
+  sealNumber: null, sealPhotoDataUrl: null, sealPhotoArtifactId: null, capturedAt: null,
 }
 const UNLOADING_INITIAL: UnloadingEvidence = {
   waybillHandedOver: null, sealNumberAtDestination: null,

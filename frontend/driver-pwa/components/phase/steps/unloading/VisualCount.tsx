@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { StepHeader } from '@/components/phase/StepHeader'
 import { Input } from '@/components/ui/Input'
 import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
+import { WarehouseWaitCard } from '@/components/phase/WarehouseWaitCard'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { UnloadingEvidence } from '@/lib/types/evidence-draft'
 
@@ -60,13 +61,10 @@ export function VisualCount({ tripId, phase, stepIndex, draft, onUpdate, onCompl
           // what this renders (PhaseBlockedError). This is the courteous half: tell the
           // driver why nothing is actionable rather than showing him a control that
           // will fail.
-          <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4 flex flex-col gap-2">
-            <p className="text-sm font-semibold">Waiting for the warehouse</p>
-            <p className="text-sm text-surface-on-variant">
-              The warehouse is still scanning the parcels off the truck at this stop. This
-              will unlock on its own once they finish. No action is needed from you.
-            </p>
-          </div>
+          <WarehouseWaitCard>
+            The warehouse is still scanning the parcels off the truck at this stop. This
+            will unlock on its own once they finish. No action is needed from you.
+          </WarehouseWaitCard>
         ) : (
           <>
             <p className="text-lg leading-relaxed text-surface-on-variant">

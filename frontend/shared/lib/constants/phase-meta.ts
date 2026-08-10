@@ -54,7 +54,16 @@ export const STEP_SLUGS: Record<PhaseType, readonly string[]> = {
   trip_creation: [],
   activation: ['2-verification'],
   loading: ['1-linehaul'],
-  departure: ['2-capture-seal', '3-waybill', '4-departure'],
+  // departure's '3-waybill' is gone (2026-08-10): it photographed the LINEHAUL DOCUMENT,
+  // the same physical sheet the driver already photographs on loading's '1-linehaul'.
+  // Asking for it twice cost the driver a second capture and produced two artifacts of
+  // one document with no way to tell which the evidence chain should cite. Loading is
+  // the honest place for it — that is where the warehouse hands the sheet over — and the
+  // dispatcher already reads it from there (LoadingDetail.tsx, linehaul_photo_artifact_id).
+  // DepartureCompleteRequest.waybill_photo_artifact_id is now Optional server-side rather
+  // than deleted, so departures queued offline by an older build still drain.
+  // Surviving slugs keep their numbers, per the note above.
+  departure: ['2-capture-seal', '4-departure'],
   in_transit: [],
   // Seal photo FIRST (2026-08-08) — the intact seal is the only evidence at this stop
   // that expires the moment the truck is opened. '1-hand-waybill' is gone: it sent
@@ -71,12 +80,9 @@ export const STEP_NAMES: Record<PhaseType, readonly string[]> = {
   trip_creation: [],
   activation: ['Verification'],
   loading: ['Linehaul'],
-  // 'Photograph Linehaul Document', not 'Photograph Waybill': the document handed over
-  // at departure comes from a warehouse staff member and is the linehaul document. Only
-  // the DISPLAY name changes — the slug stays '3-waybill' and the wire field stays
-  // waybill_photo_artifact_id, both of which are contract-tested against the backend and
-  // embedded in every stored draft key and deep link.
-  departure: ['Capture Seal', 'Photograph Linehaul Document', 'Confirm Departure'],
+  // 'Photograph Linehaul Document' is gone with '3-waybill' above — the linehaul sheet is
+  // captured once, on loading. Departure is now seal, then confirm.
+  departure: ['Capture Seal', 'Confirm Departure'],
   in_transit: [],
   unloading: ['Verify Seal', 'Visual Count'],
   confirmation: ['Photograph POD', 'Capture Signature', 'Reconciliation', 'Trip Closed'],

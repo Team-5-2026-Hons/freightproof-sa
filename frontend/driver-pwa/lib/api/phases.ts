@@ -56,9 +56,25 @@ export interface LoadingCompleteRequest extends PhaseCompleteRequestBase {
 // would have it record a CRITICAL seal_mismatch on every trip.
 export interface DepartureCompleteRequest extends PhaseCompleteRequestBase {
   phase_type: Extract<PhaseType, 'departure'>
-  waybill_photo_artifact_id: string
+  // Normally null since 2026-08-10: departure's '3-waybill' step photographed the
+  // linehaul document that loading's '1-linehaul' already captures, so the driver was
+  // asked for one sheet twice. The step is gone and loading holds the copy of record.
+  // The field stays because DepartureCompleteRequest.waybill_photo_artifact_id is still
+  // Optional server-side, which is what lets a departure queued offline by an older
+  // build replay with its photo instead of 422-ing forever.
+  waybill_photo_artifact_id: string | null
   seal_number: string
   seal_photo_artifact_id: string
+}
+
+// Fields the '3-waybill' step used to write into a departure draft. Not part of
+// DepartureEvidence any more (lib/types/evidence-draft.ts) — this shape exists purely so
+// the submit path can still read them off an offline-queue entry persisted before the
+// step was removed, without giving the live draft type dead members. Both optional: a
+// draft created after the removal has neither property at all.
+interface LegacyDepartureWaybillPhoto {
+  waybillPhotoDataUrl?: string | null
+  waybillPhotoArtifactId?: string | null
 }
 
 // Arrival. Mirrors backend schemas/phases.py's InTransitCompleteRequest, which is
@@ -259,11 +275,20 @@ export async function submitPhase(
     }
     case 'departure': {
       const e = evidence as DepartureEvidence
-      if (e.waybillPhotoDataUrl === null || e.sealPhotoDataUrl === null || e.sealNumber === null) {
-        throw new Error('Departure evidence incomplete — waybill photo, seal photo, and seal number are required.')
+      if (e.sealPhotoDataUrl === null || e.sealNumber === null) {
+        throw new Error('Departure evidence incomplete — seal photo and seal number are required.')
       }
+      // The waybill photo is no longer captured at departure and is absent from every
+      // draft this build creates. A departure queued offline BEFORE the step was removed
+      // still replays with it, and that is a real photograph the driver took — forwarded
+      // when present rather than silently dropped, since losing captured evidence on
+      // replay is the one failure this queue exists to prevent.
+      const legacy = evidence as LegacyDepartureWaybillPhoto
+      const legacyWaybillDataUrl = legacy.waybillPhotoDataUrl ?? null
       const [waybillPhotoId, sealPhotoId] = await Promise.all([
-        artifactIdFor(tripId, 'photo', e.waybillPhotoArtifactId, e.waybillPhotoDataUrl, capturedAt),
+        legacyWaybillDataUrl !== null
+          ? artifactIdFor(tripId, 'photo', legacy.waybillPhotoArtifactId ?? null, legacyWaybillDataUrl, capturedAt)
+          : Promise.resolve(null),
         artifactIdFor(tripId, 'photo', e.sealPhotoArtifactId, e.sealPhotoDataUrl, capturedAt),
       ])
       updatedTrip = await completePhase(tripId, phaseEventId, {

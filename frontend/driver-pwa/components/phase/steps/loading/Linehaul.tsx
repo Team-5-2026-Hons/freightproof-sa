@@ -4,6 +4,7 @@
 import { StepHeader } from '@/components/phase/StepHeader'
 import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
 import { CameraCapture } from '@/components/phase/CameraCapture'
+import { WarehouseWaitCard } from '@/components/phase/WarehouseWaitCard'
 import { useArtifactUpload } from '@/lib/hooks/useArtifactUpload'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { Linehaul as LinehaulDocument } from '@shared/lib/types/manifest'
@@ -43,7 +44,12 @@ export function Linehaul({
   const { uploadNow } = useArtifactUpload(tripId)
 
   // Upload starts the moment the photo exists, not when the driver swipes — the walk
-  // between the two is dead time otherwise. Mirrors departure/Waybill.tsx exactly.
+  // between the two is dead time otherwise. Same pattern as departure/CaptureSeal.tsx.
+  //
+  // This is now the ONLY capture of the linehaul document. departure's '3-waybill' step
+  // photographed the same sheet a second time and was removed (2026-08-10), so a failure
+  // here is no longer covered by a later duplicate — which is exactly why the data URL is
+  // kept as lib/api/phases.ts's submit-time fallback.
   function handleCapture(dataUrl: string) {
     const capturedAt = new Date().toISOString()
     onUpdate({ linehaulPhotoDataUrl: dataUrl, linehaulPhotoArtifactId: null, capturedAt })
@@ -57,13 +63,10 @@ export function Linehaul({
       <StepHeader phase={phase} stepIndex={stepIndex} />
       <div className="flex flex-1 flex-col gap-6 p-4">
         {isBlocked ? (
-          <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4 flex flex-col gap-2">
-            <p className="text-sm font-semibold">Waiting for the warehouse</p>
-            <p className="text-sm text-surface-on-variant">
-              Loading is still in progress. This will unlock on its own once the warehouse
-              finishes. No action is needed from you.
-            </p>
-          </div>
+          <WarehouseWaitCard>
+            Loading is still in progress. This will unlock on its own once the warehouse
+            finishes. No action is needed from you.
+          </WarehouseWaitCard>
         ) : (
           <>
             <p className="text-sm text-surface-on-variant">

@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Trip } from '@shared/lib/types/trip'
 import type { PhaseStatus } from '@shared/lib/types/phase'
@@ -8,11 +8,14 @@ import type { TripException, ExceptionType } from '@shared/lib/types/exception'
 import { mockTrips } from '@shared/lib/mocks/trips'
 import { ROUTES } from '@/lib/constants/routes'
 import { IS_DEMO_MODE } from '@/lib/constants/env'
+import { TRIP_POLL_INTERVAL_MS } from '@/lib/constants/app'
 import { fetchMyActiveTrip, fetchMyTrip } from '@/lib/api/trips'
 import { ApiError } from '@/lib/api/client'
 import { raiseException } from '@/lib/api/exceptions'
-import { contextPhaseEventId } from '@/lib/phase/derive'
+import { actionablePhase, contextPhaseEventId } from '@/lib/phase/derive'
+import { useTripAutoRefresh } from '@/lib/hooks/useTripAutoRefresh'
 import { AuthContext } from './AuthContext'
+import { ToastContext } from './ToastContext'
 
 // A trip in one of these states is finished — it can no longer be the trip the driver is
 // working, so a pinned selection pointing at one is dropped. Mirrors the backend's
@@ -104,6 +107,12 @@ export interface TripState {
   // stays resolved); on its own it ROLLS BACK (the phase returns to unresolved and the
   // driver can re-enter the step with their draft intact).
   clearPhaseSyncing: (phaseEventId: string) => void
+  /** Refetch the trip WITHOUT touching isLoading. Never throws. No-op in demo mode. */
+  refreshQuietly: () => Promise<void>
+  /** True while a quiet refresh is in flight. For honest "checking…" UI only. */
+  isRefreshing: boolean
+  /** ISO timestamp of the last successful quiet refresh, or null if none yet. */
+  lastRefreshedAt: string | null
 }
 
 export const TripContext = createContext<TripState | null>(null)
@@ -228,6 +237,93 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     }
   }, [mockTrip, persistSelection])
 
+  // Optional: TripContext.test.tsx / TripContext.real.test.tsx render TripProvider
+  // without a ToastProvider ancestor, and useToast() throws outside one. Reading the
+  // context directly (rather than that hook) keeps the unblock toast below a no-op in
+  // those harnesses instead of a hard crash, while still firing for real once mounted in
+  // the real app tree, which does put TripProvider inside the root ToastProvider.
+  const toastCtx = useContext(ToastContext)
+
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<string | null>(null)
+
+  // Distinct from refetchTrip: this must never set isLoading (see useTripAutoRefresh.ts —
+  // six screens blank to a spinner on that flag, and a poll must never flash them). Writes
+  // serverTrip only, never `trip` directly, so withOptimisticResolution keeps re-layering
+  // syncingPhaseIds on top of whatever this fetch returns — a poll landing mid-submission
+  // must not un-complete a phase the driver just swiped.
+  const refreshQuietly = useCallback(async (): Promise<void> => {
+    // No server to ask in demo mode — mirrors every other IS_DEMO_MODE branch above.
+    if (IS_DEMO_MODE) return
+    if (!authCtx?.user) return
+
+    setIsRefreshing(true)
+    try {
+      const fetched = await loadTrip()
+      setServerTrip(fetched)
+      setLastRefreshedAt(new Date().toISOString())
+      // The unblock toast is deliberately NOT raised here — see the gate-transition effect
+      // below for why it has to watch the rendered plan instead of this one fetch.
+    } catch (err) {
+      // Never surfaced as a toast or rethrown — useTripAutoRefresh's interval and
+      // foreground listeners call this directly, and a rejection reaching them every poll
+      // tick while a blocked driver has no signal would be its own kind of harassment.
+      // Logged so the failure is still visible in devtools/telemetry.
+      console.error('Quiet trip refresh failed', err)
+    } finally {
+      setIsRefreshing(false)
+    }
+  }, [authCtx?.user, loadTrip])
+
+  // Derived fresh every render from `trip` (never cached) — the whole point is that this
+  // must flip false the instant the server's own recomputation says so.
+  const actionable = trip !== null ? actionablePhase(trip.phases) : null
+  // `?? null` first is mandatory: `blocked_on` is optional on the shared PhaseDescriptor
+  // type, so `undefined !== null` would be permanently true and polling would never turn
+  // off. Mirrors the exact guard in Linehaul.tsx (`isBlocked`) — match its style.
+  const pollingEnabled =
+    trip !== null &&
+    ((actionable?.blocked_on ?? null) !== null || trip.status === 'exception_hold')
+
+  useTripAutoRefresh({
+    pollingEnabled,
+    intervalMs: TRIP_POLL_INTERVAL_MS,
+    onRefresh: refreshQuietly,
+  })
+
+  // The unblock toast watches the RENDERED plan rather than living inside refreshQuietly,
+  // because a quiet poll is not the only thing that can close a gate: the 409 handler's
+  // refetchTrip, adoptTrip after a submit, and selectTrip when the driver switches
+  // assignment all replace the trip too. A refresh-local ref went stale on those paths and
+  // then fired "the warehouse has finished" at a driver who had merely opened their other
+  // trip. Keying the remembered value off the actionable phase's IDENTITY as well as its
+  // gate is what fixes that: a different phase (or a different trip) re-seeds instead of
+  // reading as this phase clearing.
+  const actionablePhaseEventId = actionable !== null ? String(actionable.phase_event_id) : null
+  const actionableBlockedOn = actionable?.blocked_on ?? null
+  const previousGateRef = useRef<{ phaseEventId: string | null; blockedOn: string | null } | null>(null)
+
+  useEffect(() => {
+    const previous = previousGateRef.current
+    previousGateRef.current = { phaseEventId: actionablePhaseEventId, blockedOn: actionableBlockedOn }
+
+    // First observation seeds only — a trip that loads already unblocked never transitioned.
+    if (previous === null) return
+    // A different phase, or a different trip, is a new subject rather than this one clearing.
+    if (previous.phaseEventId !== actionablePhaseEventId) return
+    if (previous.blockedOn === null || actionableBlockedOn !== null) return
+
+    // notify() is an event sink, not derived state — this is deliberately not the
+    // setState-in-effect pattern the rest of this file avoids. Worth saying out loud
+    // because the card clears silently otherwise, and a driver who looked away for a
+    // minute has no way to tell the screen became actionable.
+    toastCtx?.notify({
+      kind: 'info',
+      title: 'You can continue',
+      body: 'The warehouse has finished — this step is ready.',
+    })
+  }, [actionablePhaseEventId, actionableBlockedOn, toastCtx])
+
   useEffect(() => {
     // No synchronous setState here, even for the IS_DEMO_MODE/no-user branches —
     // matches AuthContext.tsx's mount effect, which only ever calls setState from
@@ -330,6 +426,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
         logException, triggerPanic, reset, refetchTrip,
         selectTrip, clearSelectedTrip, adoptTrip,
         syncingPhaseIds, markPhaseSyncing, clearPhaseSyncing,
+        refreshQuietly, isRefreshing, lastRefreshedAt,
       }}
     >
       {children}

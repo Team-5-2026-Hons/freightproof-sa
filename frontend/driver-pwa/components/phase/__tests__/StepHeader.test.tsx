@@ -33,17 +33,16 @@ describe('StepHeader', () => {
   })
 
   it('renders the phase name and the current step name, with a current/total counter', () => {
-    // departure's recipe: ['Capture Seal', 'Photograph Linehaul Document', 'Confirm
-    // Departure'] — stepIndex 1 is 'Photograph Linehaul Document'. The step's slug is
-    // still '3-waybill' and its wire field is still waybill_photo_artifact_id; only the
-    // DISPLAY name changed, which is exactly what this header renders. (activation is
+    // departure's recipe: ['Capture Seal', 'Confirm Departure'] — stepIndex 1 is the
+    // last of two. 'Photograph Linehaul Document' is gone from it (2026-08-10): it
+    // captured the sheet loading's '1-linehaul' step already photographs. (activation is
     // down to a single step since its GPS-capture step was removed, so it can no longer
     // show a 2-of-N counter.)
     render(<StepHeader phase={makePhase('departure')} stepIndex={1} />)
 
     expect(screen.getByText('Departure')).toBeInTheDocument()
-    expect(screen.getByText('Photograph Linehaul Document')).toBeInTheDocument()
-    expect(screen.getByText('2/3')).toBeInTheDocument()
+    expect(screen.getByText('Confirm Departure')).toBeInTheDocument()
+    expect(screen.getByText('2/2')).toBeInTheDocument()
   })
 
   describe('back navigation — first step of a phase (stepIndex === 0)', () => {
@@ -70,7 +69,7 @@ describe('StepHeader', () => {
     })
 
     it('goes to the previous step of the SAME phase type, not out of it', () => {
-      // departure's slugs: ['2-capture-seal', '3-waybill', '4-departure']
+      // departure's slugs: ['2-capture-seal', '4-departure']
       render(<StepHeader phase={makePhase('departure')} stepIndex={1} />)
 
       fireEvent.click(screen.getByRole('button', { name: 'Back to previous step' }))
@@ -79,12 +78,15 @@ describe('StepHeader', () => {
       expect(mockPush).not.toHaveBeenCalledWith(ROUTES.activeTripDetail)
     })
 
-    it('works from a later step too (departure, step 3 back to step 2)', () => {
-      render(<StepHeader phase={makePhase('departure')} stepIndex={2} />)
+    it('works from a later step too (confirmation, step 3 back to step 2)', () => {
+      // confirmation, not departure: departure is down to two steps since '3-waybill'
+      // was removed, so it no longer HAS a stepIndex 2 to walk back from. confirmation's
+      // slugs: ['1-pod-photo', '2-pod-signature', '3-reconciliation', '4-closed'].
+      render(<StepHeader phase={makePhase('confirmation')} stepIndex={2} />)
 
       fireEvent.click(screen.getByRole('button', { name: 'Back to previous step' }))
 
-      expect(mockPush).toHaveBeenCalledWith(phaseStepRoute('departure', '3-waybill'))
+      expect(mockPush).toHaveBeenCalledWith(phaseStepRoute('confirmation', '2-pod-signature'))
     })
   })
 })

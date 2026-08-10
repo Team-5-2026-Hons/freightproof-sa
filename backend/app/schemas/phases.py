@@ -201,10 +201,22 @@ class LoadingCompleteRequest(_PhaseCompleteBase):
 
 
 class DepartureCompleteRequest(_PhaseCompleteBase):
-    # D7/T5: the seal is applied HERE — the driver photographs the waybill and
-    # seal as they physically close the trailer at exit.
+    # D7/T5: the seal is applied HERE — the driver photographs and applies the seal as
+    # they physically close the trailer at exit.
     phase_type: Literal[PhaseType.DEPARTURE]
-    waybill_photo_artifact_id: UUID
+    # Optional as of 2026-08-10, and no longer sent by the driver app. It carried the
+    # photo from departure's "3-waybill" step, which despite the name captured the
+    # LINEHAUL DOCUMENT the driver already photographs at loading — the same sheet,
+    # twice. The step is gone (core/phase_meta.py) and loading's
+    # linehaul_photo_artifact_id is now the single copy of record.
+    #
+    # Optional rather than removed for the same reason as
+    # LoadingCompleteRequest.driver_visual_count: a departure queued offline under the
+    # old schema replays from localStorage with this field populated, and rejecting it
+    # would strand that entry in the queue permanently. Still honoured when present, so
+    # a replayed capture is preserved rather than discarded. Delete only once no client
+    # can still be holding one.
+    waybill_photo_artifact_id: Optional[UUID] = None
     seal_number: str
     seal_photo_artifact_id: UUID
     # Tri-state, and the None is the point. Guards have no accounts and never will

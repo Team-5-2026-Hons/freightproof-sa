@@ -976,7 +976,10 @@ async def advance_departure(
     # Pulsit geofence departure confirmation is out of scope until the Pulsit
     # integration lands; pulsit_geofence_confirmed stays null until then.
 
-    # Before any evidence is written: both photos must be this trip's own.
+    # Before any evidence is written: every photo cited must be this trip's own. The
+    # waybill id is normally None now (its step was removed 2026-08-10 — see
+    # DepartureCompleteRequest); the helper skips None entries, so a replayed offline
+    # entry that still carries one is checked exactly as before.
     await _assert_artifacts_belong_to_trip(
         db, trip_id=trip_id,
         artifact_ids=(payload.waybill_photo_artifact_id, payload.seal_photo_artifact_id),

@@ -44,13 +44,20 @@ const LOADING_EVIDENCE: LoadingEvidence = {
 const DEPARTURE_EVIDENCE: DepartureEvidence = {
   // No artifact ids: this fixture is the "early upload never landed" case, which is what
   // exercises submitPhase's upload-at-submit fallback. The ready-id path has its own test.
-  waybillPhotoArtifactId: null,
   sealPhotoArtifactId: null,
-  waybillPhotoDataUrl: 'data:image/jpeg;base64,BBBB',
   sealNumber: 'AB-1234',
   sealPhotoDataUrl: 'data:image/jpeg;base64,CCCC',
   capturedAt: '2026-06-12T10:10:00Z',
 }
+
+// A departure draft as an offline-queue entry persisted BEFORE '3-waybill' was removed
+// (2026-08-10) still looks: the two waybill properties are absent from DepartureEvidence
+// now, so the fixture is built as an intersection rather than by widening the live type.
+const LEGACY_QUEUED_DEPARTURE_EVIDENCE = {
+  ...DEPARTURE_EVIDENCE,
+  waybillPhotoDataUrl: 'data:image/jpeg;base64,BBBB',
+  waybillPhotoArtifactId: null,
+} satisfies DepartureEvidence & { waybillPhotoDataUrl: string; waybillPhotoArtifactId: string | null }
 
 const UNLOADING_EVIDENCE: UnloadingEvidence = {
   waybillHandedOver: true,
@@ -130,16 +137,17 @@ describe('submitPhase (real-backend branch)', () => {
   // A stale field or a silently-null seal here would let a NULL == NULL comparison
   // pass server-side without raising anything and without failing any test — this
   // proves the seal captured IN the departure draft is exactly what departure submits.
-  it('uploads waybill and seal photos then completes departure with the seal captured there — not loading', async () => {
-    mockUploadArtifact
-      .mockResolvedValueOnce({ id: 'waybill-artifact', file_hash: 'a'.repeat(64) })
-      .mockResolvedValueOnce({ id: 'seal-artifact', file_hash: 'b'.repeat(64) })
+  it('uploads only the seal photo and completes departure with the seal captured there — not loading', async () => {
+    mockUploadArtifact.mockResolvedValueOnce({ id: 'seal-artifact', file_hash: 'b'.repeat(64) })
     mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
 
     const { submitPhase } = await import('../phases')
     await submitPhase('trip-1', 'phase-event-3', 'departure', DEPARTURE_EVIDENCE, IDEMPOTENCY_KEY, POSITION)
 
-    expect(mockUploadArtifact).toHaveBeenCalledTimes(2)
+    // ONE upload, not two: the waybill photo is no longer captured at departure
+    // ('3-waybill' removed 2026-08-10 — it duplicated loading's linehaul sheet). A second
+    // upload here would mean the duplicate capture had crept back in.
+    expect(mockUploadArtifact).toHaveBeenCalledTimes(1)
     expect(mockPost).toHaveBeenCalledWith(
       '/api/v1/trips/trip-1/phases/phase-event-3/complete',
       {
@@ -147,7 +155,9 @@ describe('submitPhase (real-backend branch)', () => {
         // Every phase carries the silently-captured fix now, not just activation.
         driver_phone_lat: POSITION.lat,
         driver_phone_lng: POSITION.lng,
-        waybill_photo_artifact_id: 'waybill-artifact',
+        // Explicitly null, not omitted — mirrors loading's linehaul id and keeps the
+        // wire shape stable for the backend's still-Optional field.
+        waybill_photo_artifact_id: null,
         seal_number: 'AB-1234',
         seal_photo_artifact_id: 'seal-artifact',
         // No guard_verified_seal and no seal_number_confirmed. toHaveBeenCalledWith is an
@@ -434,15 +444,14 @@ describe('submitPhase — photos uploaded at capture', () => {
   // Call counts are the assertion in this block, so each test starts from zero.
   beforeEach(() => vi.clearAllMocks())
 
-  it('sends the artifact ids the early upload already produced, without re-uploading', async () => {
-    // The whole point of uploading at capture: by the time the driver swipes, the photos
-    // are already on the server and the submit is one small request.
+  it('sends the artifact id the early upload already produced, without re-uploading', async () => {
+    // The whole point of uploading at capture: by the time the driver swipes, the photo
+    // is already on the server and the submit is one small request.
     const { submitPhase } = await import('../phases')
     mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
 
     await submitPhase('trip-1', 'phase-event-3', 'departure', {
       ...DEPARTURE_EVIDENCE,
-      waybillPhotoArtifactId: 'artifact-waybill',
       sealPhotoArtifactId: 'artifact-seal',
     }, IDEMPOTENCY_KEY, POSITION)
 
@@ -450,7 +459,7 @@ describe('submitPhase — photos uploaded at capture', () => {
     expect(mockPost).toHaveBeenCalledWith(
       '/api/v1/trips/trip-1/phases/phase-event-3/complete',
       expect.objectContaining({
-        waybill_photo_artifact_id: 'artifact-waybill',
+        waybill_photo_artifact_id: null,
         seal_photo_artifact_id: 'artifact-seal',
       }),
       expect.anything(),
@@ -463,35 +472,10 @@ describe('submitPhase — photos uploaded at capture', () => {
     // just slower.
     const { submitPhase } = await import('../phases')
     mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
-    mockUploadArtifact
-      .mockResolvedValueOnce({ id: 'late-waybill', file_hash: 'h1' })
-      .mockResolvedValueOnce({ id: 'late-seal', file_hash: 'h2' })
+    mockUploadArtifact.mockResolvedValueOnce({ id: 'late-seal', file_hash: 'h2' })
 
     await submitPhase('trip-1', 'phase-event-3', 'departure', {
       ...DEPARTURE_EVIDENCE,
-      waybillPhotoArtifactId: null,
-      sealPhotoArtifactId: null,
-    }, IDEMPOTENCY_KEY, POSITION)
-
-    expect(mockUploadArtifact).toHaveBeenCalledTimes(2)
-    expect(mockPost).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({
-        waybill_photo_artifact_id: 'late-waybill',
-        seal_photo_artifact_id: 'late-seal',
-      }),
-      expect.anything(),
-    )
-  })
-
-  it('uploads only the half that is missing', async () => {
-    const { submitPhase } = await import('../phases')
-    mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
-    mockUploadArtifact.mockResolvedValue({ id: 'late-seal', file_hash: 'h' })
-
-    await submitPhase('trip-1', 'phase-event-3', 'departure', {
-      ...DEPARTURE_EVIDENCE,
-      waybillPhotoArtifactId: 'artifact-waybill',
       sealPhotoArtifactId: null,
     }, IDEMPOTENCY_KEY, POSITION)
 
@@ -499,8 +483,63 @@ describe('submitPhase — photos uploaded at capture', () => {
     expect(mockPost).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
-        waybill_photo_artifact_id: 'artifact-waybill',
+        waybill_photo_artifact_id: null,
         seal_photo_artifact_id: 'late-seal',
+      }),
+      expect.anything(),
+    )
+  })
+
+  // Removing '3-waybill' must not silently bin a photo a driver already took. An entry
+  // queued offline under the old build replays with the waybill fields still on its
+  // stored draft, and the backend still accepts the id (Optional) — so it is forwarded,
+  // uploaded at submit if its early upload never landed, exactly like any other photo.
+  it('still forwards the waybill photo of a departure queued before the step was removed', async () => {
+    const { submitPhase } = await import('../phases')
+    mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
+    mockUploadArtifact
+      .mockResolvedValueOnce({ id: 'legacy-waybill', file_hash: 'h1' })
+      .mockResolvedValueOnce({ id: 'late-seal', file_hash: 'h2' })
+
+    await submitPhase(
+      'trip-1', 'phase-event-3', 'departure',
+      LEGACY_QUEUED_DEPARTURE_EVIDENCE, IDEMPOTENCY_KEY, POSITION,
+    )
+
+    expect(mockUploadArtifact).toHaveBeenCalledTimes(2)
+    expect(mockPost).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        waybill_photo_artifact_id: 'legacy-waybill',
+        seal_photo_artifact_id: 'late-seal',
+      }),
+      expect.anything(),
+    )
+  })
+
+  // The same replayed entry whose early upload DID land: no re-upload of the legacy
+  // photo, the stored id goes straight to the wire.
+  it('reuses a legacy queued waybill artifact id without re-uploading it', async () => {
+    const { submitPhase } = await import('../phases')
+    mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
+
+    // Bound to a const rather than passed as a literal: the legacy waybill properties are
+    // deliberately absent from DepartureEvidence, so a fresh literal at the call site
+    // would trip TS's excess-property check on submitPhase's PhaseEvidence parameter —
+    // which is exactly the type-level guarantee that no live code writes them any more.
+    const replayed = {
+      ...LEGACY_QUEUED_DEPARTURE_EVIDENCE,
+      waybillPhotoArtifactId: 'artifact-waybill',
+      sealPhotoArtifactId: 'artifact-seal',
+    }
+    await submitPhase('trip-1', 'phase-event-3', 'departure', replayed, IDEMPOTENCY_KEY, POSITION)
+
+    expect(mockUploadArtifact).not.toHaveBeenCalled()
+    expect(mockPost).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        waybill_photo_artifact_id: 'artifact-waybill',
+        seal_photo_artifact_id: 'artifact-seal',
       }),
       expect.anything(),
     )

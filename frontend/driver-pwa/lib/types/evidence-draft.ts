@@ -77,8 +77,14 @@ export interface DepartureEvidence {
   // No gpsLat/gpsLng: the old "Approach Exit Gate" step captured them into this draft
   // and lib/api/phases.ts never sent them — DepartureCompleteRequest had no GPS fields
   // at all. The fix is now taken silently at submit and does reach the server.
-  waybillPhotoDataUrl: string | null
-  waybillPhotoArtifactId: string | null
+  //
+  // No waybillPhotoDataUrl / waybillPhotoArtifactId either (removed 2026-08-10). They
+  // held the '3-waybill' step's photo of the LINEHAUL DOCUMENT — the same sheet
+  // LoadingEvidence.linehaulPhotoDataUrl already captures one phase earlier, so the
+  // driver was photographing one document twice. The step is gone; loading's copy is
+  // the record. A departure queued offline before that date still carries both fields
+  // in localStorage and lib/api/phases.ts still forwards that photo (see its
+  // LegacyDepartureWaybillPhoto shape) rather than dropping evidence on replay.
   sealNumber: string | null
   sealPhotoDataUrl: string | null
   sealPhotoArtifactId: string | null
