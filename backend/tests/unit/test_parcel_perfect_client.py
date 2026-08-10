@@ -184,11 +184,11 @@ async def test_token_cached_on_second_call(pp_settings):
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_pp_error_response_raises_value_error(pp_settings):
-    """Non-zero errorcode raises ValueError with the PP message — no retry for domain errors.
+async def test_pp_error_response_raises_not_found(pp_settings):
+    """Non-zero errorcode with a 'not found' message raises PPWaybillNotFoundError.
 
-    "Waybill not found" contains no auth keyword, so the narrow retry guard passes
-    it straight through without re-auth. Only 3 responses needed.
+    "Waybill not found" is a domain error, not an auth/transport failure — the
+    client converts it so the endpoint can return 404 instead of 502.
     """
     error_payload = json.dumps({
         "errorcode": 404,
@@ -204,7 +204,7 @@ async def test_pp_error_response_raises_value_error(pp_settings):
     )
 
     client = ParcelPerfectClient()
-    with pytest.raises(ValueError, match="Waybill not found"):
+    with pytest.raises(PPWaybillNotFoundError):
         await client.get_single_waybill("BADWAY999")
 
 
@@ -254,9 +254,9 @@ def test_get_pp_client_real_mode(monkeypatch):
 async def test_get_single_waybill_empty_results_raises(pp_settings):
     """PP returning errorcode=0 with an empty results list is PP's "no matching
     waybill" signal, and must raise PPWaybillNotFoundError — distinct from the
-    generic ValueError used for genuine API/auth errors (see
-    test_pp_error_response_raises_value_error) — so callers can fail closed on
-    an actual not-found without conflating it with transport failures."""
+    errorcode-based not-found (see test_pp_error_response_raises_not_found) —
+    so callers can fail closed on an actual not-found without conflating it
+    with transport failures."""
     empty_resp = json.dumps({"errorcode": 0, "errormessage": "", "results": []})
     respx.get(url__startswith=_PP_BASE).mock(
         side_effect=[

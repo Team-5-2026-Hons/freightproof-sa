@@ -971,6 +971,12 @@ class ParcelPerfectClient:
                 results = await self._make_call(
                     "Waybill", "getSingleWaybill", {"waybillno": waybill_number}, token=token
                 )
+            elif "not found" in err_str:
+                # PP returned errorcode != 0 with a "not found" message — this is a
+                # domain error (the waybill doesn't exist), not an auth/transport
+                # failure.  Surface it as PPWaybillNotFoundError so the endpoint
+                # returns 404 instead of 502.
+                raise PPWaybillNotFoundError(waybill_number) from exc
             else:
                 raise
 

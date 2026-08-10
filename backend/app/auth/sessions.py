@@ -28,6 +28,7 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException, status
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -231,7 +232,17 @@ async def enforce_user_idle_timeout(
                 UserSession.last_seen_at < datetime.now(UTC) - timedelta(days=SESSION_RECORD_RETENTION_DAYS),
             )
         )
-        await db.flush()
+        try:
+            await db.flush()
+        except IntegrityError:
+            # A concurrent request for the same session won the INSERT race.
+            # Roll back the failed add, re-read the now-existing row, and
+            # fall through to the last_seen_at update below.
+            await db.rollback()
+            result = await db.execute(select(UserSession).where(UserSession.session_id == session_id))
+            current = result.scalar_one_or_none()
+            if current is not None:
+                current.last_seen_at = datetime.now(UTC)
         return
 
     if _as_utc(current.last_seen_at) < _idle_cutoff():
