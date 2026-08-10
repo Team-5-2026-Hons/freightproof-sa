@@ -56,6 +56,22 @@ from app.core.config import settings  # noqa: E402
 from app.db.models import Base  # noqa: E402
 from app.main import app  # noqa: E402
 
+# ── Rate limiting off for the suite ───────────────────────────────────────────
+# A test run is not a traffic model. Several hundred requests arrive from one client in a
+# couple of seconds, which is exactly the shape the global per-IP limit exists to reject —
+# leaving it on makes unrelated tests fail with 429s depending on how many ran before
+# them, and on whether a developer happens to have Redis running locally.
+#
+# It also removes an event-loop hazard: the async Redis client is created once and cached,
+# binding it to whichever loop first used it, while pytest-asyncio gives each test a fresh
+# loop. The cached client then raises "Event loop is closed" on the second test onwards.
+#
+# Set here rather than in an autouse fixture so it applies before the app is exercised at
+# all. The limiter's own tests (tests/unit/test_rate_limit.py) monkeypatch this back on
+# and substitute a fake Redis, so the behaviour is still covered — just not by accident,
+# from every other test in the suite.
+settings.RATE_LIMIT_ENABLED = False
+
 # ── Test EC key pair (generated once per process) ─────────────────────────────
 # Used to sign test JWTs with ES256, mirroring how Supabase signs real tokens.
 

@@ -42,6 +42,23 @@ const { version: packageJsonVersion } = JSON.parse(
   fs.readFileSync(path.join(process.cwd(), "package.json"), "utf-8"),
 ) as { version: string };
 
+// ── Security headers: deliberately NOT set here ──────────────────────────────────────
+//
+// The dispatcher sets X-Frame-Options, X-Content-Type-Options, Referrer-Policy and
+// Permissions-Policy via next.config.js `headers()`. That option does nothing under
+// `output: 'export'` — there is no server in the request path to emit them, and Next
+// warns rather than errors, so adding the same block here would look like protection
+// while shipping none.
+//
+// Where they have to come from instead:
+//   * Browser PWA — the static host serving out/ (Vercel `headers`, Netlify `_headers`,
+//     nginx `add_header`). Nothing in this repo controls that, so it is a deployment task.
+//   * Android APK — assets are loaded from the app bundle over capacitor://, not fetched
+//     over the network, so framing and referrer leakage do not apply the same way.
+//     androidScheme in capacitor.config is what governs that origin.
+//
+// Tracked here rather than left to be rediscovered: a reviewer comparing the two configs
+// will otherwise read the omission as an oversight.
 const nextConfig: NextConfig = {
   output: "export",
   // Required for output: 'export' — Next.js image optimisation uses a server; static export cannot.

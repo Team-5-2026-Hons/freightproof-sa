@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from app.core.config import settings
+from app.core.rate_limit import RateLimitMiddleware
 from app.api.v1.endpoints.artifacts import router as artifacts_router
 from app.api.v1.endpoints.artifacts import trip_artifacts_router
 from app.api.v1.endpoints.blockchain import router as blockchain_router
@@ -32,13 +33,46 @@ from app.core.realtime import register_realtime_hook
 
 logger = logging.getLogger(__name__)
 
+_IS_PRODUCTION = settings.ENVIRONMENT == "production"
+
+# Interactive docs are a complete, self-updating map of the attack surface: every route,
+# every request shape, every field name. Useful in development, gratuitous in production
+# where nothing legitimate reads them. Passing None removes the routes entirely rather
+# than guarding them, so there is nothing left to misconfigure. openapi_url has to go too
+# — leaving it would serve the same map as raw JSON with the browsers' UIs merely absent.
 app = FastAPI(
     title="FreightProof SA",
     description="Cargo theft and disputed delivery evidence platform",
     version="0.1.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url=None if _IS_PRODUCTION else "/docs",
+    redoc_url=None if _IS_PRODUCTION else "/redoc",
+    openapi_url=None if _IS_PRODUCTION else "/openapi.json",
 )
+
+# A wildcard origin combined with allow_credentials is the browser-side equivalent of no
+# CORS policy at all: any site a signed-in dispatcher visits could call this API with
+# their credentials attached. Browsers reject that exact combination, so it would fail
+# loudly rather than silently — but only at the moment a real user was already exposed to
+# the misconfiguration. Refusing to boot moves that discovery to deploy time.
+if _IS_PRODUCTION and "*" in settings.ALLOWED_ORIGINS:
+    raise RuntimeError(
+        "ALLOWED_ORIGINS may not contain '*' when ENVIRONMENT='production'. "
+        "List the dispatcher and driver origins explicitly."
+    )
+
+# Rate limiting, applied to every request before routing — so a flood aimed at paths that
+# do not exist is counted too, which a route dependency would never see.
+#
+# Registration order note, because it is the opposite of what it looks like: Starlette's
+# add_middleware INSERTS AT THE FRONT of the stack, so the middleware added LAST ends up
+# outermost. CORS is added after this line and therefore wraps it.
+#
+# That is the order we want. A 429 returned from inside the CORS layer still gets its
+# CORS headers on the way out, so a throttled browser can actually read the response and
+# show the driver or dispatcher why they were refused. Were the rate limiter outermost,
+# its 429 would carry no CORS headers and the app would see an opaque network failure
+# instead of a rate limit.
+app.add_middleware(RateLimitMiddleware)
 
 # CORS is configured here rather than per-router so that all endpoints
 # inherit the same origin policy. In production, ALLOWED_ORIGINS will

@@ -11,6 +11,7 @@ from app.db.models.enums import IdvsStatus, ParcelStatus, TripStatus, TripType
 from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.phases import PhaseEventRead
 from app.schemas.people import DriverRead
+from app.schemas.text import OrderNumberStr, RequiredFreeText, ShortNoteStr
 from app.schemas.transit import TripExceptionRead
 from app.schemas.vehicles import VehicleRead
 
@@ -300,7 +301,9 @@ class TripStopBase(BaseModel):
     precinct_id: UUID
     sequence: int = Field(..., ge=0)
     slot_time: Optional[datetime] = None
-    notes: Optional[str] = None
+    # Bounded to the String(255) column it lands in — TripStopCreate is client input on
+    # the trip-creation path, so an unbounded value here is a 500 from Postgres.
+    notes: Optional[ShortNoteStr] = None
 
 
 class TripStopCreate(TripStopBase):
@@ -326,7 +329,7 @@ class TripConsignmentInput(BaseModel):
 class TripCreateRequest(BaseModel):
     """Dispatcher-facing trip creation payload — excludes auto-generated and JWT-derived fields."""
 
-    order_number: str = Field(..., min_length=1)
+    order_number: OrderNumberStr
     driver_id: UUID
     horse_id: UUID
     trailer_ids: list[UUID] = Field(default_factory=list)
@@ -396,9 +399,13 @@ class CancelTripRequest(BaseModel):
     """POST /trips/{trip_id}/cancel body (task 6.1, D6). note is required — a
     dispatcher abandoning a trip mid-plan without stating why is the single most
     audit-sensitive gap this action could leave, so a blank note is a 422 here
-    rather than an empty string landing on the TripException record."""
+    rather than an empty string landing on the TripException record.
 
-    note: str = Field(..., min_length=1)
+    RequiredFreeText rather than a bare min_length: it also rejects a note made only of
+    invisible characters, which would satisfy min_length while leaving exactly the
+    unexplained gap this field exists to prevent."""
+
+    note: RequiredFreeText
 
 
 class OverridePhaseRequest(BaseModel):
@@ -406,7 +413,7 @@ class OverridePhaseRequest(BaseModel):
     Same required-note rationale as CancelTripRequest — a dispatcher bypassing
     driver-attested evidence must state why."""
 
-    note: str = Field(..., min_length=1)
+    note: RequiredFreeText
 
 
 class DeliveryStopManifest(BaseModel):

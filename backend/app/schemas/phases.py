@@ -19,6 +19,11 @@ from app.db.models.enums import AnchorStatus, PhaseStatus, PhaseType
 
 _SEAL_PATTERN = re.compile(r"^[A-Z]{2}-\d{4}$")
 
+# Both mirror the DB column widths in app/db/models/phases.py, so over-length client
+# input is a 422 here rather than an asyncpg truncation error surfacing as a 500.
+_IDEMPOTENCY_KEY_MAX_LENGTH = 100
+_SEAL_NUMBER_MAX_LENGTH = 100
+
 
 def _validate_seal_format(v: str) -> str:
     if not _SEAL_PATTERN.match(v):
@@ -149,7 +154,10 @@ class _PhaseCompleteBase(BaseModel):
     # The driver app's offline-queue entry id. Stored on the row unconditionally;
     # a resubmitted completion with the same key returns current state instead of
     # erroring or duplicating — drivers lose signal, replay is normal.
-    idempotency_key: str = Field(..., min_length=1)
+    # max_length mirrors phase_events.idempotency_key — String(100). Without it, a client
+    # sending a longer key gets a 500 from Postgres on the INSERT rather than a 422, and
+    # on the one path where replay-safety matters most.
+    idempotency_key: str = Field(..., min_length=1, max_length=_IDEMPOTENCY_KEY_MAX_LENGTH)
     # Where the driver's phone was when this phase was completed. Every phase carries
     # it now, not just activation: the PWA captures the fix silently at submit time
     # (there is no longer a "Capture GPS Location" step for the driver to tap), and
@@ -233,7 +241,10 @@ class DepartureCompleteRequest(_PhaseCompleteBase):
     # against THIS SAME request's seal_number, superseding the client-computed
     # guard_verified_seal. Free-form on purpose: a mistyped confirmation is
     # itself evidence of a mismatch and must be recordable, not 422'd away.
-    seal_number_confirmed: Optional[str] = None
+    # Bounded but deliberately NOT pattern-checked, preserving the free-form intent above:
+    # a mistyped confirmation must stay recordable, because the mismatch is itself the
+    # evidence. The ceiling only stops the field being used as unbounded storage.
+    seal_number_confirmed: Optional[str] = Field(default=None, max_length=_SEAL_NUMBER_MAX_LENGTH)
 
     @field_validator("seal_number")
     @classmethod

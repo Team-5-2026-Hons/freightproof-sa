@@ -26,7 +26,11 @@ from jose import ExpiredSignatureError, JWTError, jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.sessions import enforce_single_device
+from app.auth.sessions import (
+    enforce_driver_idle_timeout,
+    enforce_single_device,
+    enforce_user_idle_timeout,
+)
 from app.core.config import settings
 from app.db.models.enums import DispatcherRole, IdvsStatus
 from app.db.models.people import Driver, User
@@ -235,6 +239,11 @@ async def get_current_dispatcher(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # Last, after the account checks, so an idle-expired session is told the truthful
+    # reason rather than a generic one. Also stamps this request as activity, which is
+    # what keeps an ACTIVE session alive — see app/auth/sessions.py.
+    await enforce_user_idle_timeout(db, user_id=user.id, payload=payload)
+
     user_read = UserRead.model_validate(user)
     user_read.role = role
     return user_read
@@ -299,9 +308,13 @@ async def get_current_driver(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Last, and only for drivers: a valid token from a superseded device is refused here.
-    # Deliberately after the account checks so a signed-out handset is told the truthful
-    # reason rather than a generic one — see app/auth/sessions.py.
+    # Both session rules run last, after the account checks, so a refused handset is told
+    # the truthful reason rather than a generic one — see app/auth/sessions.py.
+    #
+    # Order matters and is not stylistic: enforce_single_device stamps last_seen_at
+    # forward, so the idle check has to read that column BEFORE it is refreshed by this
+    # very request. Reversed, the timeout would never fire for anybody.
+    await enforce_driver_idle_timeout(db, driver_id=driver.id, payload=payload)
     await enforce_single_device(db, driver_id=driver.id, payload=payload)
 
     return DriverRead.model_validate(driver)

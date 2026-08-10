@@ -131,6 +131,31 @@ class Settings(BaseSettings):
     OPERATIONS_UTC_OFFSET_HOURS: int = 2
 
     # -------------------------------------------------------------------------
+    # Sessions
+    # -------------------------------------------------------------------------
+    # How long a session may sit idle before the API stops accepting it. Supabase
+    # issues the tokens and refreshes them indefinitely, so without this a signed-in
+    # handset or an unattended dispatcher laptop stays authenticated forever. Enforced
+    # server-side in auth/sessions.py against a last-seen timestamp, and mirrored by a
+    # client-side timer in both frontends so the user is actually signed out rather than
+    # discovering it on their next request.
+    SESSION_IDLE_TIMEOUT_MINUTES: int = 10
+
+    # -------------------------------------------------------------------------
+    # Rate limiting (core/rate_limit.py; budgets live in core/limits.py)
+    # -------------------------------------------------------------------------
+    # Off switch for local development and tests. Never set False in a deployed
+    # environment — it removes the only volume control on endpoints that spend Hedera
+    # and Parcel Perfect quota.
+    RATE_LIMIT_ENABLED: bool = True
+
+    # Set True ONLY when the app sits behind a reverse proxy or load balancer that
+    # overwrites X-Forwarded-For. Left False, the socket peer address is used instead.
+    # Trusting the header without such a proxy in front lets any caller forge a fresh
+    # client IP per request and hand themselves an unlimited budget.
+    RATE_LIMIT_TRUST_PROXY_HEADERS: bool = False
+
+    # -------------------------------------------------------------------------
     # Application
     # ALLOWED_ORIGINS: restrict CORS in production to real domains only.
     # The defaults cover the local dev ports for dispatcher and driver-pwa.

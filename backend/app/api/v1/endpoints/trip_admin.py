@@ -21,6 +21,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_dispatcher
 from app.core.exceptions import PhaseSequenceError, ResourceNotFoundError, TripStateError
+from app.core.limits import FLEET_MUTATION
+from app.core.rate_limit import rate_limit
 from app.db.session import get_db
 from app.orchestration.phase_service import override_phase
 from app.orchestration.trip_service import cancel_trip
@@ -36,6 +38,10 @@ router = APIRouter(prefix="/trips/{trip_id}", tags=["trip-admin"])
     "/cancel",
     response_model=TripDetailResponse,
     summary="Cancel a trip (dispatcher-only terminal exit)",
+    # Both dispatcher lifecycle exits write an exception row and re-anchor. Budgeted with
+    # the fleet mutations rather than the driver's evidence writes: these are deliberate,
+    # one-at-a-time actions taken by a person at a desk, never batched or replayed.
+    dependencies=[Depends(rate_limit(FLEET_MUTATION))],
 )
 async def cancel_trip_endpoint(
     trip_id: UUID,
@@ -66,6 +72,7 @@ async def cancel_trip_endpoint(
     "/phases/{phase_event_id}/override",
     response_model=TripDetailResponse,
     summary="Override a phase the driver cannot complete (dispatcher-only)",
+    dependencies=[Depends(rate_limit(FLEET_MUTATION))],
 )
 async def override_phase_endpoint(
     trip_id: UUID,

@@ -17,6 +17,8 @@ from app.core.exceptions import (
     HederaTimeoutError,
     ResourceNotFoundError,
 )
+from app.core.limits import FLEET_MUTATION
+from app.core.rate_limit import rate_limit
 from app.db.session import get_db
 from app.orchestration.driver_service import (
     list_drivers, create_driver, update_driver, get_driver_detail,
@@ -48,7 +50,10 @@ async def get_my_driver_profile(
     return current_driver
 
 
-@router.post("", response_model=DriverRead, status_code=201)
+# Fleet mutations write an event row and may anchor to Hedera — not free writes, and the
+# create path also provisions a Supabase Auth account.
+@router.post("", response_model=DriverRead, status_code=201,
+             dependencies=[Depends(rate_limit(FLEET_MUTATION))])
 async def create_driver_endpoint(
     body: DriverCreateBody,
     db: AsyncSession = Depends(get_db),
@@ -71,7 +76,8 @@ async def create_driver_endpoint(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
 
 
-@router.patch("/{driver_id}", response_model=DriverRead)
+@router.patch("/{driver_id}", response_model=DriverRead,
+              dependencies=[Depends(rate_limit(FLEET_MUTATION))])
 async def update_driver_endpoint(
     driver_id: UUID,
     body: DriverUpdateBody,

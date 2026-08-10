@@ -24,6 +24,8 @@ from app.core.exceptions import (
     ResourceNotFoundError,
     TripActivationBlockedError,
 )
+from app.core.limits import EVIDENCE_WRITE
+from app.core.rate_limit import rate_limit
 from app.db.models.trips import TripStop
 from app.db.session import get_db
 from app.orchestration.phase_gate import blocked_on_by_stop
@@ -92,6 +94,10 @@ async def next_phase_endpoint(
     "/{phase_event_id}/complete",
     response_model=TripDetailResponse,
     summary="Complete a phase (idempotent by idempotency_key)",
+    # Each completion anchors to Hedera. Already idempotent by idempotency_key, so a
+    # retrying client re-reads rather than re-spends — the budget is here for a caller
+    # that varies the key, which idempotency cannot defend against.
+    dependencies=[Depends(rate_limit(EVIDENCE_WRITE))],
 )
 async def complete_phase_endpoint(
     trip_id: UUID,

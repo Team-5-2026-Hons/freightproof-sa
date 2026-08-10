@@ -26,6 +26,8 @@ from app.core.exceptions import (
     ResourceNotFoundError,
     TripConflictError,
 )
+from app.core.limits import TRIP_CREATE
+from app.core.rate_limit import rate_limit
 from app.db.models.enums import DispatcherRole, TripStatus
 from app.db.session import get_db
 from app.orchestration.resource_service import get_trip_detail, list_trips
@@ -53,6 +55,9 @@ router = APIRouter(prefix="/trips", tags=["trips"])
     response_model=TripDetailResponse,
     status_code=http_status.HTTP_201_CREATED,
     summary="Create a new trip (Handshake 0)",
+    # Every call submits a journey-lock hash to Hedera — real network spend, synchronously.
+    # This is the most expensive door in the API, so it carries the tightest budget.
+    dependencies=[Depends(rate_limit(TRIP_CREATE))],
 )
 async def create_trip_endpoint(
     payload: TripCreateRequest,

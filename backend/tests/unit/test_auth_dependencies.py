@@ -308,14 +308,19 @@ async def test_get_current_driver_returns_driver_read_for_valid_token(
     token = make_token(sub=str(driver_row.id), role="driver")
     credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
 
-    # Two queries now: the driver row, then the single-device session lookup
-    # (app/auth/sessions.py). No session row yet means this token claims the device.
+    # Three queries now: the driver row, then TWO reads of the session row — the idle
+    # check (app/auth/sessions.enforce_driver_idle_timeout) followed by the single-device
+    # check. They are separate deliberately: the idle check has to read last_seen_at
+    # BEFORE the single-device check stamps it forward, or the timeout could never fire.
+    # No session row on either read means a freshly signed-in handset claiming the device.
     db = AsyncMock()
     driver_result = MagicMock()
     driver_result.scalar_one_or_none.return_value = driver_row
+    idle_result = MagicMock()
+    idle_result.scalar_one_or_none.return_value = None
     session_result = MagicMock()
     session_result.scalar_one_or_none.return_value = None
-    db.execute.side_effect = [driver_result, session_result]
+    db.execute.side_effect = [driver_result, idle_result, session_result]
 
     result = await get_current_driver(credentials=credentials, db=db)
 

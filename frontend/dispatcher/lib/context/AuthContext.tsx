@@ -4,6 +4,8 @@ import { createContext, useState, useEffect, useCallback } from 'react'
 import type { AuthState, DispatcherUser } from '@/lib/types/user'
 import { supabase } from '@/lib/supabase/client'
 import { api } from '@/lib/api/client'
+import { useIdleTimeout } from '@/lib/hooks/useIdleTimeout'
+import { clearActivity, recordActivity } from '@shared/lib/session/idle'
 
 export const AuthContext = createContext<AuthState | null>(null)
 
@@ -72,12 +74,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { error } = await supabase.auth.signInWithPassword(credentials)
     setIsLoading(false)
     if (error) throw error
+    // Start the idle clock at the sign-in itself. Without this the first stored activity
+    // would be whatever the user happened to click next, and a session left untouched
+    // immediately after signing in would inherit a stale timestamp from a PREVIOUS
+    // session — expiring far too early, or on a fresh profile not at all.
+    recordActivity(window.localStorage)
   }, [])
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut()
+    // Clear before the state update so any other tab's storage listener sees a signed-out
+    // machine rather than a live timestamp with no session behind it.
+    clearActivity(window.localStorage)
     setUser(null)
   }, [])
+
+  // The inactivity timeout. Armed only while signed in, so the login page carries no
+  // timer. Signing out here is the same path as the button — the SIGNED_OUT event it
+  // fires is what the route guard reacts to.
+  useIdleTimeout(user !== null, signOut)
 
   return (
     <AuthContext.Provider value={{ user, isLoading, signIn, signOut }}>

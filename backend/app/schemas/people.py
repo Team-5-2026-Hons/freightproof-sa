@@ -7,6 +7,10 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from app.db.models.enums import DispatcherRole, IdvsStatus
+from app.schemas.text import LicenseStr, NameStr, PhoneStr
+
+# Mirrors drivers.id_number — String(13), and always exactly 13 digits for an SA ID.
+_ID_NUMBER_LENGTH = 13
 
 
 class UserBase(BaseModel):
@@ -65,20 +69,26 @@ class DriverCreateBody(BaseModel):
 
     organization_id is injected from the dispatcher's JWT — not accepted from the client.
     id_number validation mirrors DriverCreate to keep rules in one place.
+
+    Constrained types (not bare `str`) because this is client input: each ceiling matches
+    the DB column it lands in, so over-length values are a 422 here rather than an
+    asyncpg truncation error surfacing as a 500. Read shapes above stay unconstrained on
+    purpose — they must echo whatever is already stored, including rows that predate
+    these rules. Same split schemas/vehicles.py documents.
     """
     model_config = ConfigDict(from_attributes=True)
 
-    full_name: str
+    full_name: NameStr
     id_number: str
-    phone_number: str
-    license_number: str
+    phone_number: PhoneStr
+    license_number: LicenseStr
     license_expiry: Optional[date] = None
 
     @field_validator("id_number")
     @classmethod
     def validate_id_number(cls, v: str) -> str:
-        if not v.isdigit() or len(v) != 13:
-            raise ValueError("id_number must be exactly 13 digits (SA ID format)")
+        if not v.isdigit() or len(v) != _ID_NUMBER_LENGTH:
+            raise ValueError(f"id_number must be exactly {_ID_NUMBER_LENGTH} digits (SA ID format)")
         return v
 
 
@@ -100,9 +110,9 @@ class DriverUpdateBody(BaseModel):
     """
     model_config = ConfigDict(from_attributes=True)
 
-    full_name: Optional[str] = None
-    phone_number: Optional[str] = None
-    license_number: Optional[str] = None
+    full_name: Optional[NameStr] = None
+    phone_number: Optional[PhoneStr] = None
+    license_number: Optional[LicenseStr] = None
     license_expiry: Optional[date] = None
     is_active: Optional[bool] = None
 

@@ -8,6 +8,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_dispatcher
+from app.core.limits import PP_LOOKUP
+from app.core.rate_limit import rate_limit
 from app.db.session import get_db
 from app.integrations.parcel_perfect import PPUnsupportedError, PPWaybillNotFoundError
 from app.orchestration import consignment_service, pp_lookup_service
@@ -39,8 +41,13 @@ async def get_capabilities_endpoint(
     return pp_lookup_service.get_capabilities()
 
 
+# Both lookups below reach out to Parcel Perfect, whose quota is a partner resource we
+# neither own nor pay for — an unbounded loop here is abuse of someone else's system as
+# much as of ours. The wizard fires one per waybill the dispatcher types, so the budget
+# has to cover a multi-waybill trip entered quickly and nothing beyond that.
 @router.get("/waybills/{waybill_number}", response_model=PPWaybillSummary,
-            summary="Validate a PP waybill reference")
+            summary="Validate a PP waybill reference",
+            dependencies=[Depends(rate_limit(PP_LOOKUP))])
 async def get_waybill_endpoint(
     waybill_number: str,
     current_user: UserRead = Depends(get_current_dispatcher),
@@ -76,7 +83,8 @@ async def get_waybill_endpoint(
 
 
 @router.get("/manifests/{manifest_number}", response_model=list[PPWaybillSummary],
-            summary="List waybills on a PP manifest (mock-only capability)")
+            summary="List waybills on a PP manifest (mock-only capability)",
+            dependencies=[Depends(rate_limit(PP_LOOKUP))])
 async def get_manifest_endpoint(
     manifest_number: int,
     current_user: UserRead = Depends(get_current_dispatcher),

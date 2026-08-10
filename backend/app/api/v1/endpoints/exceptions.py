@@ -10,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_driver
 from app.core.exceptions import ResourceNotFoundError
+from app.core.limits import EVIDENCE_WRITE
+from app.core.rate_limit import rate_limit
 from app.db.session import get_db
 from app.orchestration.exception_service import raise_exception
 from app.schemas.people import DriverRead
@@ -18,7 +20,11 @@ from app.schemas.transit import DriverExceptionCreateBody, TripExceptionRead
 router = APIRouter(prefix="/trips/{trip_id}/exceptions", tags=["exceptions"])
 
 
-@router.post("", response_model=TripExceptionRead, status_code=http_status.HTTP_201_CREATED)
+# Budgeted generously on purpose: a panic alert is the one request on this API that must
+# never be refused because the driver pressed the button more than once. EVIDENCE_WRITE is
+# high enough that only scripted abuse reaches it.
+@router.post("", response_model=TripExceptionRead, status_code=http_status.HTTP_201_CREATED,
+             dependencies=[Depends(rate_limit(EVIDENCE_WRITE))])
 async def raise_exception_endpoint(
     trip_id: UUID,
     payload: DriverExceptionCreateBody,

@@ -16,6 +16,13 @@ from app.main import app
 
 from tests.conftest import auth_header, make_token
 
+# A real JPEG signature (SOI + APP0), padded. The upload path re-derives the content type
+# from the bytes rather than trusting the client's declared one — see
+# app/storage/mime_allowlist.py — so a placeholder like b"fakejpegbytes" is now correctly
+# rejected as "not any allowed format". Tests that want a successful upload have to send
+# something that genuinely looks like an image.
+JPEG_BYTES = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01" + b"\x00" * 32
+
 
 @pytest_asyncio.fixture(autouse=True)
 async def override_get_db(db_session):
@@ -76,7 +83,7 @@ async def test_upload_artifact_returns_201_with_id(client: AsyncClient, seed_tri
             "artifact_type": "photo",
             "captured_at": "2026-06-24T08:00:00Z",
         },
-        files={"file": ("gate.jpg", io.BytesIO(b"fakejpegbytes"), "image/jpeg")},
+        files={"file": ("gate.jpg", io.BytesIO(JPEG_BYTES), "image/jpeg")},
         headers=auth_header(token),
     )
     assert resp.status_code == 201
@@ -85,7 +92,17 @@ async def test_upload_artifact_returns_201_with_id(client: AsyncClient, seed_tri
     assert body["file_hash"] == "a" * 64
 
 
-async def test_upload_artifact_over_10mb_returns_422(client: AsyncClient, seed_trip):
+async def test_upload_artifact_over_10mb_returns_413(client: AsyncClient, seed_trip):
+    """413, not 422, since the size is now rejected from the declared content length
+    BEFORE the body is read — which is the point: an oversized upload no longer has to be
+    spooled to disk in full just to be measured and thrown away.
+
+    413 is also what the driver app already models for this case: it raises a synthetic
+    ApiError(413) client-side (lib/api/artifacts.ts) precisely so an oversized photo is
+    treated as TERMINAL rather than queued for retry (isQueueableFailure retries only
+    status 0 and >=500). A real 413 from the server now takes the same path; a 422 would
+    have been a second, inconsistent code for one condition.
+    """
     trip, driver = seed_trip
 
     token = make_token(sub=str(driver.id), role="driver")
@@ -100,7 +117,34 @@ async def test_upload_artifact_over_10mb_returns_422(client: AsyncClient, seed_t
         files={"file": ("big.jpg", big, "image/jpeg")},
         headers=auth_header(token),
     )
+    assert resp.status_code == 413
+
+
+async def test_upload_of_html_labelled_as_a_photo_is_refused(client: AsyncClient, seed_trip):
+    """The stored-XSS path this endpoint used to leave open.
+
+    The content type was taken from the client and written straight onto the Storage
+    object, so a handset could store a page as "evidence" and the dispatcher's browser
+    would render it when they opened the signed URL. The type is now re-derived from the
+    bytes, so the declared `image/jpeg` no longer buys anything.
+    """
+    trip, driver = seed_trip
+
+    token = make_token(sub=str(driver.id), role="driver")
+    html = io.BytesIO(b"<html><script>alert(document.cookie)</script></html>")
+    resp = await client.post(
+        "/api/v1/artifacts",
+        data={
+            "trip_id": str(trip.id),
+            "artifact_type": "photo",
+            "captured_at": "2026-06-24T08:00:00Z",
+        },
+        files={"file": ("gate.jpg", html, "image/jpeg")},
+        headers=auth_header(token),
+    )
+
     assert resp.status_code == 422
+    assert "Unsupported file type" in resp.json()["detail"]
 
 
 async def test_upload_artifact_for_someone_elses_trip_returns_403(client: AsyncClient, db_session, seed_trip):
@@ -123,7 +167,7 @@ async def test_upload_artifact_for_someone_elses_trip_returns_403(client: AsyncC
             "artifact_type": "photo",
             "captured_at": "2026-06-24T08:00:00Z",
         },
-        files={"file": ("gate.jpg", io.BytesIO(b"fakejpegbytes"), "image/jpeg")},
+        files={"file": ("gate.jpg", io.BytesIO(JPEG_BYTES), "image/jpeg")},
         headers=auth_header(token),
     )
     assert resp.status_code == 403

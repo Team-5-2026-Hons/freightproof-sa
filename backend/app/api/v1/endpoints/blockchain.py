@@ -9,6 +9,8 @@ from app.auth.dependencies import get_current_dispatcher, require_admin_dispatch
 from app.blockchain.anchor_service import list_receipts_for_subject
 from app.blockchain.subject_visibility import assert_subject_visible
 from app.core.exceptions import SubjectNotVisibleError
+from app.core.limits import BLOCKCHAIN_VERIFY
+from app.core.rate_limit import rate_limit
 from app.db.models.enums import DispatcherRole, SubjectType
 from app.db.session import get_db
 from app.orchestration.verification_service import verify_subject
@@ -35,7 +37,10 @@ async def list_receipts(
     return [BlockchainReceiptRead.model_validate(r) for r in receipts]
 
 
-@router.post("/verify", response_model=VerifyResponse)
+# Verification re-reads a Hedera mirror node. Cheap for us, not free for them, and it is
+# the one dispatcher-facing endpoint whose cost is borne by a third party per call.
+@router.post("/verify", response_model=VerifyResponse,
+             dependencies=[Depends(rate_limit(BLOCKCHAIN_VERIFY))])
 async def verify_endpoint(
     payload: VerifyRequest,
     db: AsyncSession = Depends(get_db),

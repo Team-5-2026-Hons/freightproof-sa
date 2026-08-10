@@ -6,6 +6,8 @@ import { mockDrivers } from '@shared/lib/mocks/drivers'
 import { supabase } from '@/lib/supabase'
 import { api } from '@/lib/api/client'
 import { IS_DEMO_MODE } from '@/lib/constants/env'
+import { useIdleTimeout } from '@/lib/hooks/useIdleTimeout'
+import { clearActivity, recordActivity } from '@shared/lib/session/idle'
 
 // Demo mode (default) drives auth from a mock OTP flow with a fixture driver.
 // Real mode exchanges a Supabase phone OTP for a session, then fetches the
@@ -125,6 +127,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await new Promise(resolve => setTimeout(resolve, 600))
       // Persist so the demo session survives a page refresh (see DEMO_SESSION_KEY).
       sessionStorage.setItem(DEMO_SESSION_KEY, 'true')
+      recordActivity(window.localStorage)
       setUser(MOCK_DRIVER)
       setIsLoading(false)
       return
@@ -140,6 +143,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw error
     }
 
+    // Start the idle clock at the sign-in itself — see the dispatcher's AuthContext for
+    // why the first activity stamp cannot be left to the driver's next tap.
+    recordActivity(window.localStorage)
     setUser(await fetchProfile())
     setIsLoading(false)
   }, [fetchProfile])
@@ -151,8 +157,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } else {
       await supabase.auth.signOut()
     }
+    clearActivity(window.localStorage)
     setUser(null)
   }, [])
+
+  // The inactivity timeout, armed only while signed in. Applies in demo mode too: the
+  // walkthrough should behave like the real app, and signOut already handles both.
+  useIdleTimeout(user !== null, signOut)
 
   return (
     <AuthContext.Provider value={{ user, isLoading, requestOtp, signIn, signOut }}>
