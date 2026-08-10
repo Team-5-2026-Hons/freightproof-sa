@@ -61,6 +61,10 @@ const { version: packageJsonVersion } = JSON.parse(
 // will otherwise read the omission as an oversight.
 const nextConfig: NextConfig = {
   output: "export",
+  // Pin the trace root to this monorepo, matching the dispatcher. Without it Next walks
+  // up looking for a lockfile and can adopt a developer's unrelated package-lock.json
+  // from an ancestor directory as the workspace root.
+  outputFileTracingRoot: path.join(__dirname, "../.."),
   // Required for output: 'export' — Next.js image optimisation uses a server; static export cannot.
   images: { unoptimized: true },
   // `next build` fails the whole build on any ESLint error found anywhere in the project,

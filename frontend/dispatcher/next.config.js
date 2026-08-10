@@ -28,8 +28,8 @@ const securityHeaders = [
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Explicitly set the monorepo root so Next.js doesn't mis-detect it
-  // from the stub package-lock.json at the repo root (added for Docker).
+  // Pin the monorepo root explicitly so Next.js never walks up and adopts an unrelated
+  // lockfile from an ancestor directory as its trace root.
   outputFileTracingRoot: path.join(__dirname, '../..'),
   experimental: {
     externalDir: true,

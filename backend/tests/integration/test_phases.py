@@ -137,7 +137,7 @@ async def seed_trip_with_consignment(db_session, seed_trip):
 
 async def _make_artifact(db_session, trip_id) -> str:
     """Insert a real EvidenceArtifact row — phase_events FK-references this table.
-    Same helper as tests/integration/test_handshakes_anchor.py's, reused rather
+    Same helper as tests/integration/test_phase_anchoring.py's, reused rather
     than reinvented."""
     artifact = EvidenceArtifact(
         id=uuid.uuid4(), trip_id=trip_id, artifact_type=ArtifactType.PHOTO,
@@ -777,7 +777,7 @@ async def test_replayed_complete_returns_200_and_does_not_duplicate(client: Asyn
     # session invalidates trip's loaded attributes, and a later `trip.id`
     # access would trigger a lazy load outside a greenlet context
     # (sqlalchemy.exc.MissingGreenlet) — the same known sharp edge noted in
-    # test_handshakes_anchor.py and hit by
+    # test_phase_anchoring.py and hit by
     # test_update_vehicle_invalid_vin_leaves_db_state_unchanged.
     trip_id = trip.id
     token = make_token(sub=str(driver.id), role="driver")
