@@ -794,6 +794,7 @@ export default function TripDetailPage() {
                             phase={phase}
                             expectedCount={expectedCountForLoadingStop(phase.trip_stop_id)}
                             liveScannedOutCount={scannedOutCountForLoadingStop(phase.trip_stop_id)}
+                            artifactsById={artifactsById}
                           />
                           <PhaseOverrideAction phase={phase} tripId={trip.id} tripStatus={trip.status} onOverridden={refetchSilent} />
                         </>

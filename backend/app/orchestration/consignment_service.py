@@ -254,3 +254,28 @@ async def fetch_and_sync_consignment(
         )
 
     return ConsignmentSyncResult(consignment=consignment, warning=warning)
+
+
+async def get_assigned_trip_reference(db: AsyncSession, pp_reference: str) -> Optional[str]:
+    """Read-only check: is this pp_reference already attached to a trip?
+
+    Used by the wizard-time PP lookup (GET /pp/waybills/{ref}) to warn a dispatcher
+    before they try to add a waybill that's already claimed. The authoritative
+    fail-closed check still happens in fetch_and_sync_consignment at trip creation -
+    this is advisory only, same spirit as the rest of the wizard-time lookup.
+
+    Returns None both when no Consignment exists yet for this reference and when one
+    exists but isn't yet linked to a trip.
+    """
+    # No DB unique constraint on parcel_perfect_reference (see fetch_and_sync_consignment's
+    # own docstring) — the same race window could leave more than one Consignment/Trip
+    # pair matching. This is advisory only, so .limit(1) picks one to warn with instead
+    # of raising MultipleResultsFound over what the fail-closed check at trip creation
+    # would reject anyway.
+    result = await db.execute(
+        select(Trip.trip_reference)
+        .join(Consignment, Consignment.trip_id == Trip.id)
+        .where(Consignment.parcel_perfect_reference == pp_reference)
+        .limit(1)
+    )
+    return result.scalars().first()

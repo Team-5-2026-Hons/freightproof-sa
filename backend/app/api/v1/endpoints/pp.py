@@ -4,10 +4,13 @@ import logging
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi import status as http_status
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_dispatcher
+from app.db.session import get_db
 from app.integrations.parcel_perfect import PPUnsupportedError, PPWaybillNotFoundError
-from app.orchestration import pp_lookup_service
+from app.orchestration import consignment_service, pp_lookup_service
 from app.schemas.people import UserRead
 from app.schemas.pp import PPCapabilities, PPWaybillSummary
 
@@ -41,9 +44,10 @@ async def get_capabilities_endpoint(
 async def get_waybill_endpoint(
     waybill_number: str,
     current_user: UserRead = Depends(get_current_dispatcher),
+    db: AsyncSession = Depends(get_db),
 ) -> PPWaybillSummary:
     try:
-        return await pp_lookup_service.get_waybill_summary(waybill_number)
+        summary = await pp_lookup_service.get_waybill_summary(waybill_number)
     except PPWaybillNotFoundError as exc:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except (ValueError, httpx.HTTPError) as exc:
@@ -53,6 +57,22 @@ async def get_waybill_endpoint(
             status_code=http_status.HTTP_502_BAD_GATEWAY,
             detail=_PP_UNREACHABLE_DETAIL,
         ) from exc
+
+    # Advisory only (see get_assigned_trip_reference docstring): a failure here must not
+    # turn a successful PP lookup into a 500 for the dispatcher, so it degrades to None
+    # rather than propagating, mirroring the PP-outage handling above.
+    try:
+        summary.already_assigned_to_trip = await consignment_service.get_assigned_trip_reference(
+            db, waybill_number,
+        )
+    except SQLAlchemyError as exc:
+        logger.warning("Already-assigned check failed for waybill %s: %s", waybill_number, exc)
+        # get_db() commits on a normal return; a failed SELECT leaves the session's
+        # transaction unusable until rolled back, so this must happen before returning.
+        await db.rollback()
+        summary.already_assigned_to_trip = None
+
+    return summary
 
 
 @router.get("/manifests/{manifest_number}", response_model=list[PPWaybillSummary],

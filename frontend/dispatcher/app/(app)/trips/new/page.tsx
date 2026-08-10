@@ -164,7 +164,7 @@ interface AddedWaybill {
 // this is one slot, not an array. 'duplicate' fires when the pulled reference is already
 // in addedWaybills. unitCount here is the pending value shown on the result card before
 // Add commits it into an AddedWaybill.
-type PullStatus = 'idle' | 'loading' | 'success' | 'duplicate' | 'error'
+type PullStatus = 'idle' | 'loading' | 'success' | 'duplicate' | 'assigned' | 'error'
 
 interface PullState {
   status: PullStatus
@@ -319,7 +319,13 @@ export default function TripNewPage() {
     setPull({ status: 'loading', summary: null, unitCount: '', errorMessage: null })
     try {
       const summary = await api.get<PPWaybillSummary>(`/api/v1/pp/waybills/${encodeURIComponent(ref)}`)
-      setPull({ status: 'success', summary, unitCount: String(summary.parcel_count), errorMessage: null })
+      // The summary still shows in full even when already assigned — the dispatcher
+      // needs to see it's a real waybill, just one they can't claim for this trip.
+      if (summary.already_assigned_to_trip) {
+        setPull({ status: 'assigned', summary, unitCount: String(summary.parcel_count), errorMessage: null })
+      } else {
+        setPull({ status: 'success', summary, unitCount: String(summary.parcel_count), errorMessage: null })
+      }
     } catch (err) {
       const msg = err instanceof ApiError && err.status === 404
         ? 'Waybill not found in Parcel Perfect'
@@ -568,7 +574,7 @@ export default function TripNewPage() {
                     <p className="text-[11px] text-err mt-2 font-[500]">{pull.errorMessage}</p>
                   )}
 
-                  {pull.status === 'success' && pull.summary && (
+                  {(pull.status === 'success' || pull.status === 'assigned') && pull.summary && (
                     <div className="rounded-lg bg-surf-low border border-outline-v/20 p-4 mt-3">
                       <div className="flex items-center gap-2 mb-3">
                         <Ic n="file" s={14} className="text-sec" />
@@ -582,19 +588,25 @@ export default function TripNewPage() {
                         <MiniField label="Weight"   value={pull.summary.weight_kg != null ? `${pull.summary.weight_kg} kg` : null} mono />
                         <MiniField label="Dest"     value={pull.summary.dest_town} />
                       </div>
-                      <div className="flex gap-3 items-end">
-                        <div className="flex-1">
-                          <Lbl>Expected units (pallets)</Lbl>
-                          <input
-                            type="number"
-                            min="1"
-                            value={pull.unitCount}
-                            onChange={e => setPull(p => ({ ...p, unitCount: e.target.value }))}
-                            className={inp}
-                          />
+                      {pull.status === 'assigned' ? (
+                        <p className="text-[11px] text-err font-[500]">
+                          Already assigned to trip {pull.summary.already_assigned_to_trip}
+                        </p>
+                      ) : (
+                        <div className="flex gap-3 items-end">
+                          <div className="flex-1">
+                            <Lbl>Expected units (pallets)</Lbl>
+                            <input
+                              type="number"
+                              min="1"
+                              value={pull.unitCount}
+                              onChange={e => setPull(p => ({ ...p, unitCount: e.target.value }))}
+                              className={inp}
+                            />
+                          </div>
+                          <Button onClick={addWaybill}>+ Add</Button>
                         </div>
-                        <Button onClick={addWaybill}>+ Add</Button>
-                      </div>
+                      )}
                     </div>
                   )}
 

@@ -18,6 +18,9 @@ class PPWaybillSummary(BaseModel):
     manifest_number: Optional[int] = None
     is_delivered: bool
     has_delivery_failure: bool
+    # Populated by a FreightProof-side check (not PP) — set when this waybill is
+    # already linked to another trip. See consignment_service.get_assigned_trip_reference.
+    already_assigned_to_trip: Optional[str] = None
 
 
 class PPCapabilities(BaseModel):

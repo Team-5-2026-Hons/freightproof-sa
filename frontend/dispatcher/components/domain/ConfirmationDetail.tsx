@@ -3,7 +3,6 @@
 import { EvidenceDocument } from './EvidenceDocument'
 import { EvidencePhoto } from './EvidencePhoto'
 import { Field, PhaseDetailCard, Section } from './PhaseDetailFields'
-import { PhaseAnchorSection } from './PhaseAnchorSection'
 import { PhaseLocationSection } from './PhaseLocationSection'
 import { PhaseOverrideSection } from './PhaseOverrideSection'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
@@ -15,7 +14,7 @@ interface Props {
   /** Parcels scanned onto the truck at this consignment's PICKUP stop — which on a
    *  cross-dock trip is not the stop immediately before this one. */
   originScannedCount: number | null
-  // Both optional: the POD/location/anchor sections below are unaffected by the
+  // Both optional: the POD/location sections below are unaffected by the
   // reconciliation redesign this component exists for, but the trip detail page's
   // call site still has both to give, so they are defaulted rather than dropped.
   precinct?: Precinct | undefined
@@ -45,7 +44,7 @@ export function ConfirmationDetail({
           artifact={phase.pod_photo_artifact_id ? artifactsById.get(phase.pod_photo_artifact_id) : undefined}
         />
         <EvidenceDocument
-          label="POD signature"
+          label="POD signature (Ed25519)"
           artifact={phase.pod_signature_artifact_id ? artifactsById.get(phase.pod_signature_artifact_id) : undefined}
         />
       </Section>
@@ -72,8 +71,6 @@ export function ConfirmationDetail({
       <PhaseLocationSection phase={phase} precinct={precinct} title="Location at confirmation" />
 
       <PhaseOverrideSection phase={phase} />
-
-      <PhaseAnchorSection phase={phase} />
 
     </PhaseDetailCard>
   )

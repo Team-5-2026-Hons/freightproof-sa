@@ -6,7 +6,6 @@ import { X, Shield } from 'lucide-react'
 import { Ic } from '@/components/ui/Ic'
 import { LiveBadge } from '@/components/layout/LiveBadge'
 import { useAuth } from '@/lib/hooks/useAuth'
-import { useExceptions } from '@/lib/hooks/useExceptions'
 import { cn } from '@shared/lib/utils/cn'
 import { ROUTES } from '@/lib/constants/routes'
 import type { IconName } from '@/components/ui/Ic'
@@ -17,7 +16,6 @@ interface NavItem {
   href: string
   icon: IconName
   activePatterns: string[]
-  badge?: number
 }
 
 interface NavGroup {
@@ -37,13 +35,6 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'Create Trip',  href: ROUTES.tripNew, icon: 'plus',  activePatterns: ['/trips/new'] },
       { label: 'Trip History', href: ROUTES.history,  icon: 'clock', activePatterns: ['/history'] },
-      { label: 'Exceptions',   href: ROUTES.exceptions, icon: 'warn', activePatterns: ['/exceptions'] },
-    ],
-  },
-  {
-    label: 'REPORTING',
-    items: [
-      { label: 'SLA Reports', href: ROUTES.sla, icon: 'bars', activePatterns: ['/sla'] },
     ],
   },
   {
@@ -99,11 +90,6 @@ function NavLink({ item, pathname, onClose }: { item: NavItem; pathname: string;
       )}>
         {item.label}
       </span>
-      {item.badge != null && (
-        <span className="ml-auto bg-err text-white text-[10px] font-[700] rounded-sm px-[6px] py-[1px]">
-          {item.badge}
-        </span>
-      )}
     </Link>
   )
 }
@@ -115,15 +101,6 @@ interface SidebarContentProps {
 function SidebarContent({ onClose }: SidebarContentProps) {
   const pathname = usePathname()
   const { user } = useAuth()
-  const openExceptions = useExceptions({ resolved: false })
-  const navGroups = NAV_GROUPS.map(g => ({
-    ...g,
-    items: g.items.map(item =>
-      item.href === ROUTES.exceptions && openExceptions.length > 0
-        ? { ...item, badge: openExceptions.length }
-        : item,
-    ),
-  }))
 
   return (
     <div className="flex flex-col h-full bg-primary w-[220px] shrink-0">
@@ -154,7 +131,7 @@ function SidebarContent({ onClose }: SidebarContentProps) {
 
       {/* Nav groups */}
       <div className="flex-1 py-2 overflow-y-auto">
-        {navGroups.map(group => (
+        {NAV_GROUPS.map(group => (
           <div key={group.label}>
             {group.label && (
               <div className="text-[10px] font-[700] tracking-[0.12em] uppercase text-white/30 px-[18px] pt-3 pb-1">

@@ -103,6 +103,13 @@ export interface PhaseDescriptor {
   gate_photo_artifact_id: string | null
   pod_photo_artifact_id: string | null
 
+  // Captured at `loading` (schemas/phases.py PhaseEventRead) — the warehouse's linehaul
+  // sheet, distinct from waybill_photo_artifact_id above (that's departure's waybill
+  // copy). Optional ONLY until the driver-pwa fixtures are updated, same convention as
+  // blocked_on above: the server always sends this field, so it becomes a required
+  // `string | null` as soon as those fixtures carry it.
+  linehaul_photo_artifact_id?: string | null
+
   // Present on the backend read schema (schemas/handshakes.py:153) but missing from the
   // old shared HandshakeEvent — a live contract drift. Carried across deliberately so
   // the bug is not ported into the new model.

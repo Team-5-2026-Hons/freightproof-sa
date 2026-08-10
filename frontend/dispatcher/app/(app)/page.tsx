@@ -14,8 +14,6 @@ import { ChecklistRow }   from '@/components/domain/ChecklistRow'
 import type { ColWidths } from '@/components/domain/ChecklistRow'
 import { useTrips }       from '@/lib/hooks/useTrips'
 import { useAuth }        from '@/lib/hooks/useAuth'
-import { useExceptions }  from '@/lib/hooks/useExceptions'
-import { mockTrips }      from '@shared/lib/mocks/trips'
 import { usePrecincts }   from '@/lib/hooks/usePrecincts'
 import { useToast }       from '@/lib/hooks/useToast'
 import { ROUTES }         from '@/lib/constants/routes'
@@ -99,7 +97,6 @@ export default function ActiveTripsPage() {
   // Single fetch for all trips — active and closed are derived client-side
   const { trips: allFetchedTrips, isLoading: tripsLoading, error: tripsError, refetch: refetchTrips } = useTrips()
   const { precincts, error: precinctsError } = usePrecincts()
-  const openExceptions = useExceptions({ resolved: false })
 
   useEffect(() => {
     if (tripsError) {
@@ -143,14 +140,6 @@ export default function ActiveTripsPage() {
     )
     return Math.round((onTime.length / withArrival.length) * 100)
   }, [allTrips])
-
-  const exceptionDescription = useMemo(() => {
-    return openExceptions.slice(0, 2).map(e => {
-      const trip = mockTrips.find(t => t.id === e.trip_id)
-      const ref  = trip?.trip_reference ?? 'Unknown'
-      return `${ref}: ${e.exception_type.replace(/_/g, ' ')}`
-    }).join(' · ')
-  }, [openExceptions])
 
   const filteredTrips = useMemo(() => {
     if (!search.trim()) return allTrips
@@ -209,7 +198,6 @@ export default function ActiveTripsPage() {
       {/* Stat strip — shows placeholders while trips are loading */}
       <div className="flex gap-3 px-6 py-4 bg-surf-low shrink-0">
         <StatCard value={String(allTrips.length)}       label="Active trips"      loading={tripsLoading} />
-        <StatCard value={String(openExceptions.length)} label="Exceptions today" warn={openExceptions.length > 0} />
         <StatCard value={String(completedCount)}         label="Completed today"   loading={tripsLoading} />
         <StatCard value={`${onTimePercent}%`}            label="On-time rate (30d)" success={onTimePercent >= 90} warn={onTimePercent < 70} loading={tripsLoading} />
       </div>
@@ -235,24 +223,6 @@ export default function ActiveTripsPage() {
           action="New Trip"
           onAction={() => router.push(ROUTES.tripNew)}
         />
-
-        {openExceptions.length > 0 && (
-          <div className="flex items-center gap-2 px-6 py-[7px] bg-err/8 border-b border-err/20 shrink-0">
-            <Ic n="warn" s={13} className="text-err shrink-0" />
-            <span className="text-[12px] font-[600] text-err">
-              {openExceptions.length} exception{openExceptions.length > 1 ? 's' : ''} need review
-            </span>
-            {exceptionDescription && (
-              <span className="text-[11px] text-err/60 truncate">· {exceptionDescription}</span>
-            )}
-            <button
-              onClick={() => router.push(ROUTES.exceptions)}
-              className="ml-auto text-[12px] font-[600] text-err hover:text-err/80 transition-colors shrink-0"
-            >
-              Review →
-            </button>
-          </div>
-        )}
 
         {/* Table scroll area */}
         <div ref={scrollAreaRef} className="flex-1 overflow-auto">

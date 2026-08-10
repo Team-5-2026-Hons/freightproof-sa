@@ -1,8 +1,10 @@
 'use client'
 
+import { EvidencePhoto } from './EvidencePhoto'
 import { Field, PhaseDetailCard, Section } from './PhaseDetailFields'
 import { PhaseOverrideSection } from './PhaseOverrideSection'
 import { isClosedPhaseStatus } from '@/lib/types/dev'
+import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 
 interface Props {
@@ -16,12 +18,13 @@ interface Props {
    *  and this is ignored even if still supplied. Null when nothing on the manifest is
    *  booked to collect here — distinct from a real 0 scanned so far. */
   liveScannedOutCount: number | null
+  artifactsById: Map<string, EvidenceArtifactWithUrl>
 }
 
 // Loading is now system-observed: the warehouse's scan is what records what went on the
 // truck, and parcel_count_origin is the scanned tally stamped at close. The driver's own
 // count is gone — he never enters the warehouse and could not honestly produce one.
-export function LoadingDetail({ phase, expectedCount, liveScannedOutCount }: Props) {
+export function LoadingDetail({ phase, expectedCount, liveScannedOutCount, artifactsById }: Props) {
   // Governing distinction: parcel_count_origin is written ONCE at phase close and is the
   // evidence; scanned_out_count is recomputed every request and still moving until then.
   // Swapping a live figure in where the stamped one belongs (or vice versa) is the one
@@ -45,6 +48,22 @@ export function LoadingDetail({ phase, expectedCount, liveScannedOutCount }: Pro
           {missing === 0 ? 'All parcels scanned ✓' : `${missing} not scanned ✗`}
         </div>
       )}
+      {/* linehaul_photo_artifact_id, NOT waybill_photo_artifact_id: that field is only
+          ever set on the departure phase's own row (advance_departure), so reading it
+          here would silently and permanently read null. linehaul_photo_artifact_id is
+          the one genuinely captured during THIS phase (advance_loading) — the
+          warehouse's linehaul sheet, distinct from departure's waybill copy.
+          No wrapping <Section title="Linehaul document"> here: EvidencePhoto already
+          renders that string as its own label, and Section would duplicate it — every
+          other card in this family (Departure's "Seal"/"Seal photo", Confirmation's
+          "Proof of delivery"/"POD photo") keeps the section heading distinct from the
+          photo label for the same reason. This div only mirrors Section's own spacing. */}
+      <div className="py-3 first:pt-0 last:pb-0">
+        <EvidencePhoto
+          label="Linehaul document"
+          artifact={phase.linehaul_photo_artifact_id ? artifactsById.get(phase.linehaul_photo_artifact_id) : undefined}
+        />
+      </div>
       <PhaseOverrideSection phase={phase} />
     </PhaseDetailCard>
   )

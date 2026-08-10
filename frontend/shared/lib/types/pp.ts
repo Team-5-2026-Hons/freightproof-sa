@@ -15,6 +15,9 @@ export interface PPWaybillSummary {
   manifest_number: number | null
   is_delivered: boolean
   has_delivery_failure: boolean
+  // Set (to the owning trip's reference) when this waybill is already linked to
+  // another trip. Checked FreightProof-side, not by Parcel Perfect itself.
+  already_assigned_to_trip: string | null
 }
 
 export interface PPCapabilities {

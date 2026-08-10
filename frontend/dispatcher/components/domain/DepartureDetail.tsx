@@ -2,7 +2,6 @@
 
 import { EvidencePhoto } from './EvidencePhoto'
 import { PhaseDetailCard, Section } from './PhaseDetailFields'
-import { PhaseAnchorSection } from './PhaseAnchorSection'
 import { PhaseOverrideSection } from './PhaseOverrideSection'
 import { PhaseLocationSection } from './PhaseLocationSection'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
@@ -39,17 +38,11 @@ export function DepartureDetail({ phase, precinct, artifactsById }: Props) {
           label="Seal photo"
           artifact={phase.seal_photo_artifact_id ? artifactsById.get(phase.seal_photo_artifact_id) : undefined}
         />
-        <EvidencePhoto
-          label="Waybill photo"
-          artifact={phase.waybill_photo_artifact_id ? artifactsById.get(phase.waybill_photo_artifact_id) : undefined}
-        />
       </Section>
 
       <PhaseLocationSection phase={phase} precinct={precinct} title="Location at departure" />
 
       <PhaseOverrideSection phase={phase} />
-
-      <PhaseAnchorSection phase={phase} />
 
     </PhaseDetailCard>
   )

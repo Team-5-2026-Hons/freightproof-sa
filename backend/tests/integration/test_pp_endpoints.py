@@ -13,9 +13,11 @@ import pytest_asyncio
 from httpx import AsyncClient
 
 from app.core.config import settings
-from app.db.models.enums import OrganizationType
+from app.db.models.enums import IdvsStatus, OrganizationType, TripStatus, VehicleType
 from app.db.models.organisations import Organization
-from app.db.models.people import User
+from app.db.models.people import Driver, User
+from app.db.models.trips import Consignment, Trip
+from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
 from app.main import app
 from app.schemas.pp import PPWaybillSummary
@@ -48,6 +50,60 @@ async def seed_dispatcher(db_session):
     db_session.add(user)
     await db_session.flush()
     return user, org
+
+
+@pytest_asyncio.fixture
+async def seed_trip_with_consignment(db_session, seed_dispatcher):
+    """A trip that already owns the WAY001 consignment — drives the already-assigned check."""
+    user, org = seed_dispatcher
+    driver = Driver(
+        id=uuid.uuid4(), organization_id=org.id, full_name="Driver",
+        id_number="8001015009087", phone_number="+27821234567", license_number="DRV-1",
+    )
+    horse = Vehicle(
+        id=uuid.uuid4(), organization_id=org.id, vehicle_type=VehicleType.HORSE,
+        registration="ABC123GP", pulsit_device_id="PUL-1",
+    )
+    db_session.add_all([driver, horse])
+    await db_session.flush()
+    trip = Trip(
+        id=uuid.uuid4(), trip_reference="FP-TEST-PP", order_number="ORD-PP",
+        operator_organization_id=org.id, driver_id=driver.id, horse_id=horse.id,
+        status=TripStatus.ACTIVE, idvs_check_status=IdvsStatus.VERIFIED,
+        created_by_user_id=user.id,
+    )
+    db_session.add(trip)
+    await db_session.flush()
+    consignment = Consignment(
+        id=uuid.uuid4(), trip_id=trip.id, parcel_perfect_reference="WAY001",
+    )
+    db_session.add(consignment)
+    await db_session.flush()
+    return trip
+
+
+async def test_get_waybill_marks_reference_unassigned_when_no_consignment_exists(
+    client: AsyncClient, seed_dispatcher,
+):
+    user, org = seed_dispatcher
+    token = make_token(sub=str(user.id), role="dispatcher", org_id=str(org.id))
+
+    resp = await client.get("/api/v1/pp/waybills/WAY001", headers=auth_header(token))
+
+    assert resp.status_code == 200
+    assert resp.json()["already_assigned_to_trip"] is None
+
+
+async def test_get_waybill_flags_reference_already_assigned_to_another_trip(
+    client: AsyncClient, seed_dispatcher, seed_trip_with_consignment,
+):
+    user, org = seed_dispatcher
+    token = make_token(sub=str(user.id), role="dispatcher", org_id=str(org.id))
+
+    resp = await client.get("/api/v1/pp/waybills/WAY001", headers=auth_header(token))
+
+    assert resp.status_code == 200
+    assert resp.json()["already_assigned_to_trip"] == "FP-TEST-PP"
 
 
 async def test_capabilities_returns_manifest_lookup_true(client: AsyncClient, seed_dispatcher):

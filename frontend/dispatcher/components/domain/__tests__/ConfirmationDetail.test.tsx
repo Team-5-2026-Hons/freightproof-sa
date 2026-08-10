@@ -3,9 +3,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { ConfirmationDetail } from '../ConfirmationDetail'
 import { makePhase } from './testFixtures'
 
-// ConfirmationDetail still renders PhaseAnchorSection (retained — see the call site
-// note in ConfirmationDetail.tsx), which always mounts ForensicOnly regardless of
-// content. ForensicOnly throws without a real ForensicModeProvider (itself gated on
+// ConfirmationDetail renders EvidencePhoto for the POD photo, which mounts
+// ForensicOnly (via its internal ArtifactProvenance) regardless of content.
+// ForensicOnly throws without a real ForensicModeProvider (itself gated on
 // useAuth), so it is mocked at the module boundary the same way
 // PhaseOverrideAction.test.tsx isolates itself from lib/api/client — this suite is
 // about the reconciliation verdict, not the forensic-mode plumbing.
@@ -63,5 +63,27 @@ describe('ConfirmationDetail', () => {
     // must not read as part of the verdict.
     expect(screen.getByText(/not reconciled against the scans/i)).toBeInTheDocument()
     expect(screen.getByText('Parcels counted by driver')).toBeInTheDocument()
+  })
+
+  it('labels the POD signature as the cryptographic signature, not a generic document', () => {
+    render(
+      <ConfirmationDetail
+        phase={makePhase('confirmation')}
+        originScannedCount={null}
+      />,
+    )
+
+    expect(screen.getByText('POD signature (Ed25519)')).toBeInTheDocument()
+  })
+
+  it('does not render an anchor status section', () => {
+    render(
+      <ConfirmationDetail
+        phase={makePhase('confirmation')}
+        originScannedCount={null}
+      />,
+    )
+
+    expect(screen.queryByText('Anchor')).not.toBeInTheDocument()
   })
 })

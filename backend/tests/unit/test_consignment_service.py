@@ -23,7 +23,7 @@ from app.integrations.parcel_perfect import (
     PPWaybillDetails,
     PPWaybillResponse,
 )
-from app.orchestration.consignment_service import fetch_and_sync_consignment
+from app.orchestration.consignment_service import fetch_and_sync_consignment, get_assigned_trip_reference
 
 # Sentinel distinguishing "no org lookup expected" (accnum="" in the local
 # dummy fixtures below, so fetch_and_sync_consignment never queries for an
@@ -504,3 +504,29 @@ async def test_resync_on_the_same_trip_is_allowed():
 
     assert result.consignment is existing
     assert existing.trip_id == trip_id
+
+
+@pytest.mark.asyncio
+async def test_get_assigned_trip_reference_returns_reference_when_assigned():
+    """A pp_reference already linked to a trip returns that trip's reference."""
+    db = MagicMock()
+    result = MagicMock()
+    result.scalars.return_value.first.return_value = "FP-TEST-PP"
+    db.execute = AsyncMock(return_value=result)
+
+    trip_reference = await get_assigned_trip_reference(db, "WAY001")
+
+    assert trip_reference == "FP-TEST-PP"
+
+
+@pytest.mark.asyncio
+async def test_get_assigned_trip_reference_returns_none_when_unassigned():
+    """No Consignment row (or one with no trip_id) for this reference returns None."""
+    db = MagicMock()
+    result = MagicMock()
+    result.scalars.return_value.first.return_value = None
+    db.execute = AsyncMock(return_value=result)
+
+    trip_reference = await get_assigned_trip_reference(db, "WAY999")
+
+    assert trip_reference is None
