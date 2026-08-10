@@ -1,0 +1,99 @@
+"""FastAPI router for vehicle endpoints."""
+
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth.dependencies import get_current_dispatcher, require_admin_dispatcher
+from app.db.models.enums import DispatcherRole
+from app.core.exceptions import (
+    DuplicateResourceError,
+    HederaServiceError,
+    HederaTimeoutError,
+    ResourceNotFoundError,
+)
+from app.core.limits import FLEET_MUTATION
+from app.core.rate_limit import rate_limit
+from app.db.session import get_db
+from app.orchestration.vehicle_service import (
+    list_vehicles, create_vehicle, update_vehicle, get_vehicle_detail,
+)
+from app.schemas.people import UserRead
+from app.schemas.vehicles import VehicleCreateBody, VehicleDetailResponse, VehicleRead, VehicleUpdateBody
+
+router = APIRouter(prefix="/vehicles", tags=["vehicles"])
+
+
+@router.get("", response_model=list[VehicleRead])
+async def list_vehicles_endpoint(
+    db: AsyncSession = Depends(get_db),
+    current_user: UserRead = Depends(get_current_dispatcher),
+) -> list[VehicleRead]:
+    return await list_vehicles(db=db, organization_id=current_user.organization_id)
+
+
+# Same rationale as the driver mutations: an event row per call, and an anchor on top.
+@router.post("", response_model=VehicleRead, status_code=201,
+             dependencies=[Depends(rate_limit(FLEET_MUTATION))])
+async def create_vehicle_endpoint(
+    body: VehicleCreateBody,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserRead = Depends(require_admin_dispatcher),
+) -> VehicleRead:
+    try:
+        return await create_vehicle(
+            db=db,
+            organization_id=current_user.organization_id,
+            data=body,
+            current_user_id=current_user.id,
+        )
+    except DuplicateResourceError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    except HederaTimeoutError as exc:
+        raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=str(exc))
+    except HederaServiceError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+
+
+@router.patch("/{vehicle_id}", response_model=VehicleRead,
+              dependencies=[Depends(rate_limit(FLEET_MUTATION))])
+async def update_vehicle_endpoint(
+    vehicle_id: UUID,
+    body: VehicleUpdateBody,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserRead = Depends(require_admin_dispatcher),
+) -> VehicleRead:
+    try:
+        return await update_vehicle(
+            db=db,
+            vehicle_id=vehicle_id,
+            organization_id=current_user.organization_id,
+            data=body,
+            current_user_id=current_user.id,
+        )
+    except ResourceNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except HederaTimeoutError as exc:
+        raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=str(exc))
+    except HederaServiceError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+
+
+@router.get("/{vehicle_id}", response_model=VehicleDetailResponse)
+async def get_vehicle_detail_endpoint(
+    vehicle_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserRead = Depends(get_current_dispatcher),
+) -> VehicleDetailResponse:
+    try:
+        detail = await get_vehicle_detail(
+            db=db,
+            vehicle_id=vehicle_id,
+            organization_id=current_user.organization_id,
+        )
+    except ResourceNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    if current_user.role != DispatcherRole.ADMIN_DISPATCHER:
+        detail = detail.model_copy(update={"receipts": []})
+    return detail

@@ -1,0 +1,40 @@
+# FreightProof SA — throwaway Postgres for the backend integration test suite.
+#
+# Separate from docker-compose.dev.yml on purpose. The dev stack has no database
+# (Supabase hosts it), and this container is destructive by nature: the suite runs
+# Base.metadata.drop_all() against it at session teardown (tests/conftest.py).
+# Pointing TEST_DATABASE_URL at a Supabase project would therefore delete that
+# project's tables on every pytest run, while leaving alembic_version behind.
+#
+# Opt-in, so devs not running DB-backed tests are unaffected by `up -d`.
+#
+# Port 5433 on the host avoids colliding with any Postgres already on 5432.
+# tmpfs storage means data never survives a restart — every run starts from an
+# empty database, matching the CI service container exactly.
+#
+# Start:  docker compose -f infrastructure/docker/docker-compose.test.yml up -d
+# Stop:   docker compose -f infrastructure/docker/docker-compose.test.yml down
+
+# Explicit project name. Without it, Compose derives the name from the parent
+# directory, which both compose files share — so this stack would treat the dev
+# stack's containers as orphans, and `down --remove-orphans` here would delete them.
+name: freightproof-test
+
+services:
+
+  test-db:
+    image: postgres:17-alpine
+    container_name: freightproof-test-db
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: freightproof_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d freightproof_test" ]
+      interval: 5s
+      timeout: 3s
+      retries: 10

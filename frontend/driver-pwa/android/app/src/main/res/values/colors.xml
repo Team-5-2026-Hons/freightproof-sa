@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      AppTheme (styles.xml) has always referenced @color/colorPrimary,
+      @color/colorPrimaryDark, and @color/colorAccent, but no values/colors.xml
+      existed anywhere in this res tree (confirmed by searching the full
+      android/app/src/main/res directory) — a stale build/intermediates copy
+      shows the file existed with the stock Android-template values
+      (#3F51B5 / #303F9F / #FF4081) at some earlier point but it was never
+      committed to source. Recreating it here with values that match the
+      black-status-bar redesign rather than restoring the old stock template:
+      colorPrimary/colorPrimaryDark are near-black to match AppTheme.NoActionBar
+      and AppTheme.NoActionBarLaunch's new black status bar; colorAccent reuses
+      the app's existing secondary/accent blue (#0051d5 — see
+      frontend/driver-pwa/tailwind.config.ts `secondary.DEFAULT`) instead of the
+      unrelated Material-boilerplate pink.
+    -->
+    <color name="colorPrimary">#1B1B1C</color>
+    <color name="colorPrimaryDark">#0A0A0C</color>
+    <color name="colorAccent">#0051D5</color>
+</resources>

@@ -65,7 +65,7 @@ If you hit deprecated code in an existing file, flag it under `Deprecation warni
 
 **Python/FastAPI:** All endpoints `async def`. All DB calls via async `get_db()`. Pydantic v2 models in/out, never raw dicts. `tags=["..."]` on every router. Endpoints thin — validate, call service, return. Business logic in `orchestration/`, `auth/`, `blockchain/` etc., never inline.
 
-**TS/Next.js:** App Router, async Server Components where possible. Explicit prop interfaces. `"use client"` only at lowest level needed. Typed fetch wrapper, never raw `fetch()` in components. Client env vars as `process.env.NEXT_PUBLIC_*`.
+**TS/Next.js:** App Router, async Server Components where possible. Explicit prop interfaces. `"use client"` only at lowest level needed — **exception: `driver-pwa/` requires `"use client"` on every page** because `output: 'export'` (required for Capacitor Android APK) is incompatible with Server Components. Typed fetch wrapper, never raw `fetch()` in components. Client env vars as `process.env.NEXT_PUBLIC_*`.
 
 **Database:** Never edit Supabase schema directly — all changes via Alembic. New models must be imported in `db/models/__init__.py`. Every table has `created_at`, `updated_at`. Explicit `ForeignKey()` on FKs.
 
@@ -100,7 +100,7 @@ backend/app/
 ├── db/models/          one file per table
 ├── db/session.py       async engine, get_db()
 ├── integrations/       pulse.py, parcel_perfect.py, idvs.py, twilio.py, sendgrid.py
-├── orchestration/      trip state machine, handshake sequencing, exceptions
+├── orchestration/      trip state machine, phase sequencing, exceptions
 ├── storage/            Supabase Storage I/O + hash verify
 └── tasks/              Celery tasks
 ```
@@ -111,13 +111,13 @@ endpoints → orchestration/auth/storage → integrations/blockchain/crypto → 
 ```
 `integrations/` never imports from `api/` or `orchestration/`. `db/` never imports from elsewhere in `app/`. Endpoints never call `hedera.py` directly — go through orchestration.
 
-**Frontend:** `dispatcher/` (Next.js dashboard), `driver-pwa/` (Next.js + next-pwa), `guard/` (plain HTML+JS, no framework), `client-portal/` (Next.js read-only).
+**Frontend:** `dispatcher/` (Next.js dashboard), `driver-pwa/` (Next.js + Capacitor Android APK + @serwist/next browser PWA; `output: 'export'`; all pages `"use client"`). Both surfaces share types, mocks, constants, and utilities from `frontend/shared/` via the `@shared/*` path alias.
 
 **Stack (do not swap without team agreement):** FastAPI, SQLAlchemy 2.0, Alembic, Celery+Redis, JWT+python-jose, Hedera HCS, Supabase Storage, Next.js 15, Tailwind, Pydantic v2.
 
 ## Domain knowledge
 
-**Five handshakes:** Trip Created → Origin Gate-In → Loading Complete → In Transit → Destination Gate-In → Closed. Orchestration layer validates every transition.
+**Phase model:** every trip runs a plan-driven phase sequence — `trip_creation · activation · loading · departure · in_transit · unloading · confirmation` (P0–P6) — generated from its stops and consignments at creation; length is data, not a constant (single-leg = 7 rows, 3-stop cross-dock = 11). `current_phase`/`current_stop` are caches rebuilt from the phase-event ledger — the ledger is the truth, position is derived, never stored. Orchestration validates every transition against the plan, not `trip.status`.
 
 **Journey lock hash:** SHA-256 of committed trip params at creation, anchored to Hedera HCS. Current record hash ≠ Hedera tx = tampering. Never modify trip params after creation without an explicit exception event.
 
@@ -125,7 +125,7 @@ endpoints → orchestration/auth/storage → integrations/blockchain/crypto → 
 
 **POPIA:** Personal data (identities, GPS, photos, parcel details) stays in PostgreSQL in `af-south-1`. Only SHA-256 hashes go to Hedera. Personal data never reaches blockchain. If code would send PII off-system, stop.
 
-**Driver is the only hands-on user per handshake.** Guards and warehouse staff don't have accounts. Guard page = zero login. Receiver = one-time OTP. Don't add auth for roles documented as having none.
+**Driver is the only hands-on user per phase.** Guards and warehouse staff don't have accounts. Guard page = zero login. Receiver = one-time OTP. Don't add auth for roles documented as having none.
 
 ## Git
 
@@ -136,7 +136,7 @@ endpoints → orchestration/auth/storage → integrations/blockchain/crypto → 
 If asked to commit:
 > "I don't commit — that's yours. Suggested: `[message]`. Files staged. Run `git diff --staged` to review, then `git commit -m "..."`."
 
-**Conventional Commits:** `type(scope): description`. Types: feat, fix, chore, docs, test, refactor. Scopes: auth, orchestration, blockchain, crypto, integrations, db, tasks, storage, api, dispatcher, driver-pwa, guard. One logical change per commit.
+**Conventional Commits:** `type(scope): description`. Types: feat, fix, chore, docs, test, refactor. Scopes: auth, orchestration, blockchain, crypto, integrations, db, tasks, storage, api, dispatcher, driver-pwa, shared. One logical change per commit.
 
 ## Shared files — coordinate before changing
 
@@ -196,4 +196,26 @@ Next: [handoff]
 ```
 
 ---
+
+## Team Graph Policy
+
+Only the developer merging to `main` should run `/graphify .` and commit the result. Other developers should pull and read the committed graph. Do not rebuild the graph locally unless you are the designated maintainer or on `main`.
+
+## Codebase Status
+
+This project is in early-stage active development using agile methodology. The architecture is not finalised. Features and modules will be added incrementally. When the graph is sparse or a module appears incomplete, that is expected — do not infer missing structure from what exists.
+
+## Graph Usage Rules
+
+- Always read `graphify-out/GRAPH_REPORT.md` before answering any architecture or cross-file question.
+- Use the graph to identify which files are relevant before opening them — do not grep the whole repo first.
+- If `graph.json` and the actual source files appear out of sync (e.g. a file referenced in the graph no longer exists), note it but continue — the next commit will rebuild automatically.
+
+---
 *Changes to this file require a PR on `dev` reviewed by all four team members.*
+
+<!-- BEGIN @agent-native/skills -->
+## Efficient Fable
+
+When operating as Claude Fable or another explicitly Fable-class expensive model, preserve Fable for the judgment layer: decomposition, architecture and product tradeoffs, synthesis, risk calls, and final review. Delegate token-heavy research, coding, testing, file inventory, repetitive edits, and independent implementation slices to cheaper subagents when available. Write delegated prompts as self-contained handoff packets with objective, scope, out-of-scope areas, expected evidence, verification commands, and stop conditions. For testing, Fable should suggest the validation direction and important scripts or browser checks, then lighter agents can run them, reduce logs, collect screenshots, and report exact failures and likely causes. Treat delegated reports as leads: Fable should verify important cited files, failures, and high-risk diffs before relying on them. Do not make unsupported quality or speed guarantees; frame savings as workload-dependent.
+<!-- END @agent-native/skills -->

@@ -1,0 +1,73 @@
+# Secrets and credentials
+.env
+.env.*
+*.pem
+*.key
+*.crt
+secrets/
+.infisical.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+backend/.venv/
+*.egg-info/
+dist/
+build/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+coverage/
+.coverage
+
+# Node / Next.js
+node_modules/
+.next/
+frontend/dispatcher/.next/
+frontend/driver-pwa/.next/
+frontend/client-portal/.next/
+out/
+frontend/dispatcher/out/
+frontend/driver-pwa/out/
+
+# Alembic / DB
+migrations/__pycache__/
+*.dump
+*.sql
+*.db
+*.sqlite
+
+# Logs
+*.log
+logs/
+
+# Docker / infra
+infrastructure/docker/
+*.tar
+
+# OS / editor artefacts
+.DS_Store
+.vscode/
+*.swp
+*.swo
+
+# Graphify own output (avoid self-referential graph)
+graphify-out/
+
+# Docs / binary assets
+docs/references/
+docs/*.docx
+docs/*.drawio.html
+frontend/*/public/
+*.png
+*.jpg
+*.jpeg
+*.svg
+*.ico
+*.woff
+*.woff2
+*.ttf

@@ -1,0 +1,26 @@
+updateService Request
+SOAP,JSON,Type,Length,Format,Mandatory,Description,Notes
+quoteno,quoteno,string,[24],,M,quote number to be updated,
+service,service,string,[3],,M,service code to set on updated quote,
+reference,reference,string,[18],,,customer reference,
+updateService Response
+SOAP,JSON,Type,Length,Format,Mandatory,Description,Notes
+errorcode,errorcode,Integer,,,,An integer errorcode. If 0 then there was no error else an error occurred,
+errormessage,errormessage,String,[500],,,The error message if errorcode is a non-zero value,
+results,results,Array,[..],,,An array of results which will always have a single element if non-null,
+updateService Response[results]
+SOAP,JSON,Type,Length,Format,Mandatory,Description,Notes
+quoteno,quoteno,string,,,,quote number generated,
+service,service,string,,,,3 character service code,
+actkg,actkg,float,,,,total mass of shipment in kgs,
+chargemass,chargemass,float,,,,total chargeable mass,
+insurance,insurance,float,,,,insurance charge,
+outly,outly,float,,,,outlying charge,,
+docs,docs,float,,,,documentation charge,,
+handling,handling,float,,,,handling surcharge,,
+cursurcharge,cursurcharge,float,,,,currency surcharge,,
+totsurcharge,totsurcharge,float,,,,total of surcharges,,
+subtotal,subtotal,float,,,,total of charges before vat,,
+vat,vat,float,,,,vat,,
+total,total,float,,,,total charge of quote,,
+cartage,cartage,float,,,,basic transport charge,,
