@@ -102,10 +102,17 @@ app.include_router(pp_router, prefix="/api/v1")
 app.include_router(stream_router, prefix="/api/v1")
 app.include_router(trip_admin_router, prefix="/api/v1")
 
-# Dev trigger panel. Registered only when BOTH DEV_PANEL_ENABLED is set and the
-# environment is not production — see dev_triggers.dev_panel_enabled(). These
-# endpoints can fabricate scans and exceptions, so on an evidence platform they
-# must be structurally absent, not merely guarded, in a production deployment.
+# Dev trigger panel. Registered when DEV_PANEL_ENABLED is set — and ONLY that, since the
+# deployed demo host runs ENVIRONMENT="production" and still needs the panel to drive the
+# scan and Parcel Perfect flows. It is not tied to the _IS_PRODUCTION checks above: those
+# keep /docs and /openapi.json unpublished regardless of this flag, which is exactly why
+# the two are separate. See dev_triggers.dev_panel_enabled() for the full reasoning and
+# what protection remains.
+#
+# These endpoints fabricate scans and exceptions on an evidence platform. When the flag is
+# off the router is never registered, so the paths do not exist rather than being guarded
+# — but the flag is now the only thing making that so. Treat it as production config of
+# the same weight as a credential.
 if dev_panel_enabled():
     app.include_router(dev_triggers_router, prefix="/api/v1")
 
