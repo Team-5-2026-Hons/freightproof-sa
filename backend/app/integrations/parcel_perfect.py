@@ -460,6 +460,11 @@ SEEDED_WAYBILLS: dict[str, PPWaybillResponse] = {
 # pool a demo has only two options: reuse a seeded reference (now a 409, since a
 # consignment belongs to exactly one trip) or type something PP does not know
 # (404). Both are dead ends, and neither is the flow being demonstrated.
+#
+# FREEWB0001-0010 are unlabelled and safe to spend anywhere. FREEWB0011-0015 are
+# explicitly a testing batch (dev/CI use); FREEWB0016-0020 are explicitly a demo
+# batch — leave those alone outside the live walkthrough, since a reference spent
+# by mistake is a 409 mid-demo, not a fixture bug.
 # ---------------------------------------------------------------------------
 
 UNASSIGNED_WAYBILLS: dict[str, PPWaybillResponse] = {
@@ -532,6 +537,73 @@ UNASSIGNED_WAYBILLS: dict[str, PPWaybillResponse] = {
             manifest=UNASSIGNED_MANIFEST_NUMBER, parcel_count=10, weight_kg=430.0,
             declared_value=27500.0,
             contents=[PPContents(item=1, description="Automotive parts", actmass=430.0, pieces=10)],
+        ),
+        # --- Testing batch: spend freely against the dispatcher wizard in dev/CI ---
+        _routed_waybill(
+            waybill="FREEWB0011", origin=_CPT, destination=_JHB,
+            manifest=UNASSIGNED_MANIFEST_NUMBER, parcel_count=7, weight_kg=265.0,
+            declared_value=16200.0,
+            contents=[PPContents(item=1, description="Warehouse racking", actmass=265.0, pieces=7)],
+        ),
+        _routed_waybill(
+            waybill="FREEWB0012", origin=_JHB, destination=_BFN,
+            manifest=UNASSIGNED_MANIFEST_NUMBER, parcel_count=13, weight_kg=580.0,
+            declared_value=29800.0,
+            contents=[PPContents(item=1, description="Packaged stationery", actmass=580.0, pieces=13)],
+        ),
+        _routed_waybill(
+            waybill="FREEWB0013", origin=_BFN, destination=_CPT,
+            manifest=UNASSIGNED_MANIFEST_NUMBER, parcel_count=3, weight_kg=41.0,
+            declared_value=7600.0,
+            contents=[PPContents(item=1, description="Optical instruments", actmass=41.0, pieces=3)],
+        ),
+        # Deliberately off the shared manifest, like FREEWB0004/0009: covers the
+        # one-at-a-time entry path rather than bulk manifest fetch.
+        _routed_waybill(
+            waybill="FREEWB0014", origin=_CPT, destination=_BFN,
+            manifest=None, parcel_count=19, weight_kg=910.0,
+            declared_value=48500.0,
+            contents=[PPContents(item=1, description="Retail apparel", actmass=910.0, pieces=19)],
+        ),
+        _routed_waybill(
+            waybill="FREEWB0015", origin=_JHB, destination=_CPT,
+            manifest=UNASSIGNED_MANIFEST_NUMBER, parcel_count=5, weight_kg=132.0,
+            declared_value=9100.0,
+            contents=[PPContents(item=1, description="Lab reagent kits", actmass=132.0, pieces=5)],
+        ),
+        # --- Demo batch: reserve for the live walkthrough, do not spend in dev/CI ---
+        _routed_waybill(
+            waybill="FREEWB0016", origin=_CPT, destination=_JHB,
+            manifest=UNASSIGNED_MANIFEST_NUMBER, parcel_count=15, weight_kg=690.0,
+            declared_value=35400.0,
+            contents=[PPContents(item=1, description="Consumer appliances", actmass=690.0, pieces=15)],
+        ),
+        _routed_waybill(
+            waybill="FREEWB0017", origin=_CPT, destination=_BFN,
+            manifest=UNASSIGNED_MANIFEST_NUMBER, parcel_count=8, weight_kg=305.0,
+            declared_value=21000.0,
+            contents=[PPContents(item=1, description="Furniture fittings", actmass=305.0, pieces=8)],
+        ),
+        _routed_waybill(
+            waybill="FREEWB0018", origin=_BFN, destination=_JHB,
+            manifest=UNASSIGNED_MANIFEST_NUMBER, parcel_count=22, weight_kg=1040.0,
+            declared_value=57200.0,
+            contents=[PPContents(item=1, description="Bagged agricultural feed", actmass=890.0, pieces=18),
+                      PPContents(item=2, description="Veterinary supplies", actmass=150.0, pieces=4)],
+        ),
+        # Deliberately off the shared manifest, like FREEWB0004/0009: covers the
+        # one-at-a-time entry path rather than bulk manifest fetch.
+        _routed_waybill(
+            waybill="FREEWB0019", origin=_JHB, destination=_CPT,
+            manifest=None, parcel_count=4, weight_kg=76.0,
+            declared_value=13900.0,
+            contents=[PPContents(item=1, description="Returned electronics", actmass=76.0, pieces=4)],
+        ),
+        _routed_waybill(
+            waybill="FREEWB0020", origin=_CPT, destination=_JHB,
+            manifest=UNASSIGNED_MANIFEST_NUMBER, parcel_count=11, weight_kg=470.0,
+            declared_value=26800.0,
+            contents=[PPContents(item=1, description="Household goods", actmass=470.0, pieces=11)],
         ),
     ]
 }
