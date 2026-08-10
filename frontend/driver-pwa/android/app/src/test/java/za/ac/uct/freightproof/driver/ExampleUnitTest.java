@@ -1,4 +1,4 @@
-package com.getcapacitor.myapp;
+package za.ac.uct.freightproof.driver;
 
 import static org.junit.Assert.*;
 

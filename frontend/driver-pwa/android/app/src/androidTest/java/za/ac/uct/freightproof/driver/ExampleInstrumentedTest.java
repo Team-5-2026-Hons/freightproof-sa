@@ -1,4 +1,4 @@
-package com.getcapacitor.myapp;
+package za.ac.uct.freightproof.driver;
 
 import static org.junit.Assert.*;
 
@@ -21,6 +21,6 @@ public class ExampleInstrumentedTest {
         // Context of the app under test.
         Context appContext = InstrumentationRegistry.getInstrumentation().getTargetContext();
 
-        assertEquals("com.getcapacitor.app", appContext.getPackageName());
+        assertEquals("za.ac.uct.freightproof.driver", appContext.getPackageName());
     }
 }

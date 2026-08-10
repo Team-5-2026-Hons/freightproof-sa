@@ -217,6 +217,9 @@ marimo/_lsp/
 __marimo__/
 .DS_Store
 **/.DS_Store
+/.superpowers/
+/package-lock.json
+**/.idea/
 spikes/fp-23-hedera-sdk/.env.spike
 
 # Graphify knowledge graph (cache only — graph.json/GRAPH_REPORT.md/graph.html are committed)

@@ -9,10 +9,7 @@ driver-JWT-authenticated phase endpoints exercised in
 tests/integration/test_phases.py — this file reuses that module's seeding
 fixtures rather than DEMO_MODE auth, since these phases require a real Driver row.
 
-Filename kept as test_handshakes_anchor.py (not renamed to test_phases_anchor.py)
-because it tests anchoring POLICY (fail-open, receipt types, dispatcher-visible
-receipts), not routing — the routing surface itself is covered by
-tests/integration/test_phases.py.
+The routing surface itself is covered by tests/integration/test_phases.py.
 """
 
 import uuid
@@ -136,7 +133,7 @@ async def _phase_event_id(client: AsyncClient, trip_id, token, phase_type: str) 
     return row["phase_event_id"]
 
 
-async def _complete_h1(client: AsyncClient, db_session, trip, token) -> None:
+async def _complete_activation(client: AsyncClient, db_session, trip, token) -> None:
     phase_event_id = await _phase_event_id(client, trip.id, token, "activation")
     resp = await client.post(
         f"/api/v1/trips/{trip.id}/phases/{phase_event_id}/complete",
@@ -150,13 +147,13 @@ async def _complete_h1(client: AsyncClient, db_session, trip, token) -> None:
     assert resp.status_code == 200
 
 
-def _h2_payload() -> dict:
-    # D7/T5 (task 2.6): loading no longer carries the seal — only the driver's
-    # own visual count.
+def _loading_payload() -> dict:
+    # The legacy count field is accepted but ignored so an older offline entry can
+    # still drain; loading no longer captures a driver-entered count.
     return {"phase_type": "loading", "driver_visual_count": 42, "idempotency_key": str(uuid.uuid4())}
 
 
-def _h3_payload(waybill_id: str, seal_photo_id: str, **overrides: object) -> dict:
+def _departure_payload(waybill_id: str, seal_photo_id: str, **overrides: object) -> dict:
     # D7/T5: the seal (waybill photo, seal number, seal photo) is applied at
     # departure now, not loading.
     payload = {
@@ -171,11 +168,11 @@ def _h3_payload(waybill_id: str, seal_photo_id: str, **overrides: object) -> dic
     return payload
 
 
-async def _complete_h2(client: AsyncClient, db_session, trip, token) -> None:
+async def _complete_loading(client: AsyncClient, db_session, trip, token) -> None:
     phase_event_id = await _phase_event_id(client, trip.id, token, "loading")
     resp = await client.post(
         f"/api/v1/trips/{trip.id}/phases/{phase_event_id}/complete",
-        json=_h2_payload(),
+        json=_loading_payload(),
         headers=auth_header(token),
     )
     assert resp.status_code == 200
@@ -219,7 +216,7 @@ async def _drain_anchors(db_session, dispatched) -> None:
     dispatched.clear()
 
 
-async def test_h3_complete_anchors_and_returns_event_hash(client: AsyncClient, db_session, seed_trip):
+async def test_departure_complete_anchors_and_returns_event_hash(client: AsyncClient, db_session, seed_trip):
     """POST departure/complete → 200 with event_hash set on the DEPARTURE row, and no
     receipt yet.
 
@@ -232,8 +229,8 @@ async def test_h3_complete_anchors_and_returns_event_hash(client: AsyncClient, d
     unanchored — regression guard that the anchor really moved, not just got duplicated."""
     trip, driver = seed_trip
     token = make_token(sub=str(driver.id), role="driver")
-    await _complete_h1(client, db_session, trip, token)
-    await _complete_h2(client, db_session, trip, token)
+    await _complete_activation(client, db_session, trip, token)
+    await _complete_loading(client, db_session, trip, token)
     waybill_id = await _make_artifact(db_session, trip.id)
     seal_photo_id = await _make_artifact(db_session, trip.id)
     departure_id = await _phase_event_id(client, trip.id, token, "departure")
@@ -243,7 +240,7 @@ async def test_h3_complete_anchors_and_returns_event_hash(client: AsyncClient, d
 
         resp = await client.post(
             f"/api/v1/trips/{trip.id}/phases/{departure_id}/complete",
-            json=_h3_payload(waybill_id, seal_photo_id),
+            json=_departure_payload(waybill_id, seal_photo_id),
             headers=auth_header(token),
         )
 
@@ -253,16 +250,16 @@ async def test_h3_complete_anchors_and_returns_event_hash(client: AsyncClient, d
     assert departure["event_hash"] is not None
     assert departure["blockchain_receipt_id"] is None
 
-    h2 = next(h for h in body["phases"] if h["phase_type"] == "loading")
-    assert h2["event_hash"] is None
-    assert h2["blockchain_receipt_id"] is None
+    loading_phase = next(h for h in body["phases"] if h["phase_type"] == "loading")
+    assert loading_phase["event_hash"] is None
+    assert loading_phase["blockchain_receipt_id"] is None
 
 
-async def test_h3_complete_hedera_failure_still_returns_200_fail_open(
+async def test_departure_complete_hedera_failure_still_returns_200_fail_open(
     client: AsyncClient, db_session, seed_trip,
 ):
     """D7 (task 2.5's fail-open policy, wired into advance_departure for the
-    first time in task 2.6): unlike the old H2 fail-closed anchor, a Hedera
+    first time in task 2.6): unlike the old loading-phase fail-closed anchor, a Hedera
     failure during departure completion must NOT block the phase from
     completing or the trip from advancing — the seal event already happened.
     No 504/502 here; the endpoint doesn't even catch
@@ -271,8 +268,8 @@ async def test_h3_complete_hedera_failure_still_returns_200_fail_open(
     """
     trip, driver = seed_trip
     token = make_token(sub=str(driver.id), role="driver")
-    await _complete_h1(client, db_session, trip, token)
-    await _complete_h2(client, db_session, trip, token)
+    await _complete_activation(client, db_session, trip, token)
+    await _complete_loading(client, db_session, trip, token)
     waybill_id = await _make_artifact(db_session, trip.id)
     seal_photo_id = await _make_artifact(db_session, trip.id)
     departure_id = await _phase_event_id(client, trip.id, token, "departure")
@@ -282,7 +279,7 @@ async def test_h3_complete_hedera_failure_still_returns_200_fail_open(
 
         resp = await client.post(
             f"/api/v1/trips/{trip.id}/phases/{departure_id}/complete",
-            json=_h3_payload(waybill_id, seal_photo_id),
+            json=_departure_payload(waybill_id, seal_photo_id),
             headers=auth_header(token),
         )
 
@@ -299,7 +296,7 @@ async def test_h3_complete_hedera_failure_still_returns_200_fail_open(
     assert body["status"] == "active"  # departure still advanced the trip, even on a failed anchor
 
 
-async def test_trip_detail_lists_h3_handshake_receipt_for_dispatcher(
+async def test_trip_detail_lists_departure_receipt_for_dispatcher(
     client: AsyncClient, db_session, seed_trip, captured_anchor_dispatches,
 ):
     """The driver→dispatcher anchoring link: after departure anchors, GET
@@ -309,25 +306,25 @@ async def test_trip_detail_lists_h3_handshake_receipt_for_dispatcher(
     driver-anchored receipt from the dispatcher's per-trip evidence view."""
     trip, driver = seed_trip
     driver_token = make_token(sub=str(driver.id), role="driver")
-    await _complete_h1(client, db_session, trip, driver_token)
-    await _complete_h2(client, db_session, trip, driver_token)
+    await _complete_activation(client, db_session, trip, driver_token)
+    await _complete_loading(client, db_session, trip, driver_token)
     waybill_id = await _make_artifact(db_session, trip.id)
     seal_photo_id = await _make_artifact(db_session, trip.id)
     departure_id = await _phase_event_id(client, trip.id, driver_token, "departure")
 
     with patch("app.blockchain.anchor_service.HederaService") as MockService:
         MockService.return_value.submit_hash.return_value = _fake_hedera_receipt()
-        h3_resp = await client.post(
+        departure_resp = await client.post(
             f"/api/v1/trips/{trip.id}/phases/{departure_id}/complete",
-            json=_h3_payload(waybill_id, seal_photo_id),
+            json=_departure_payload(waybill_id, seal_photo_id),
             headers=auth_header(driver_token),
         )
-        assert h3_resp.status_code == 200
+        assert departure_resp.status_code == 200
         # The worker's half, run inside the same patch: without it there is no receipt
         # for the dispatcher to see, and outside the patch it would hit the real SDK.
         await _drain_anchors(db_session, captured_anchor_dispatches)
     departure_id_str = next(
-        h["phase_event_id"] for h in h3_resp.json()["phases"] if h["phase_type"] == "departure"
+        h["phase_event_id"] for h in departure_resp.json()["phases"] if h["phase_type"] == "departure"
     )
 
     # Receipts are role-gated (FP-115): only admin_dispatcher sees the full list,
@@ -347,6 +344,6 @@ async def test_trip_detail_lists_h3_handshake_receipt_for_dispatcher(
 
     assert detail_resp.status_code == 200
     receipts = detail_resp.json()["blockchain_receipts"]
-    handshake_receipts = [r for r in receipts if r["subject_type"] == "phase_event"]
-    assert len(handshake_receipts) == 1
-    assert handshake_receipts[0]["subject_id"] == departure_id_str
+    phase_receipts = [r for r in receipts if r["subject_type"] == "phase_event"]
+    assert len(phase_receipts) == 1
+    assert phase_receipts[0]["subject_id"] == departure_id_str
