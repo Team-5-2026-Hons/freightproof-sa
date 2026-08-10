@@ -176,7 +176,10 @@ describe('network-layer retry', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     // A dropped POST may have already mutated server state, so it must not retry.
-    await expect(api.post('/trips', { order_number: 'X' })).rejects.toBeInstanceOf(TypeError)
+    await expect(api.post('/trips', { order_number: 'X' })).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 0,
+    })
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })

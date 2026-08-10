@@ -44,6 +44,9 @@ const { version: packageJsonVersion } = JSON.parse(
 
 const nextConfig: NextConfig = {
   output: "export",
+  // Keep Next's file tracing inside this monorepo even when a developer has an unrelated
+  // package-lock.json in an ancestor directory.
+  outputFileTracingRoot: path.join(__dirname, "../.."),
   // Required for output: 'export' — Next.js image optimisation uses a server; static export cannot.
   images: { unoptimized: true },
   // `next build` fails the whole build on any ESLint error found anywhere in the project,

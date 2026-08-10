@@ -44,18 +44,12 @@
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>FreightProof needs the camera to capture evidence photos at handshakes.</string>
+	<string>FreightProof uses the camera to capture seal, linehaul, and proof-of-delivery evidence.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>FreightProof needs photo library access to attach evidence photos.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>FreightProof saves captured evidence photos to your library.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>FreightProof records your location at custody handshakes and checkpoints as trip evidence.</string>
-	<!-- DEV ONLY: permits plain-http backend (http://<LAN-IP>:8000) during development. Remove before TestFlight/App Store submission. -->
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSAllowsArbitraryLoads</key>
-		<true/>
-	</dict>
+	<string>FreightProof records location during active trips and checkpoints as journey evidence.</string>
 </dict>
 </plist>

@@ -19,7 +19,7 @@ jobs:
     name: Backend — lint, type-check, test
     runs-on: ubuntu-latest
 
-    # Throwaway Postgres for the DB-backed suite (133 of 320 tests). Isolated per
+    # Throwaway Postgres for the DB-backed suite. Isolated per
     # workflow run, which matters: tests/conftest.py runs Base.metadata.drop_all()
     # at session teardown, so a shared database would have concurrent PRs dropping
     # each other's tables mid-run. Mirrors infrastructure/docker/docker-compose.test.yml.
@@ -90,7 +90,7 @@ jobs:
         run: pytest -m "not slow"
 
   frontend:
-    name: Frontend — lint, type-check
+    name: Dispatcher — lint, type-check, test
     runs-on: ubuntu-latest
 
     steps:
@@ -114,12 +114,14 @@ jobs:
 
       - name: Type-check — tsc
         working-directory: frontend/dispatcher
-        run: npx tsc --noEmit
+        run: npm run type-check
+
+      - name: Test — vitest
+        working-directory: frontend/dispatcher
+        run: npm test
 
   # ---------------------------------------------------------------------------
-  # Driver PWA — previously had no CI at all, while carrying 61 source files.
-  # The scripts already existed; only this job was missing. Runs vitest too,
-  # which the dispatcher job still does not.
+  # Driver PWA checks run independently from the dispatcher application.
   # ---------------------------------------------------------------------------
   driver-pwa:
     name: Driver PWA — lint, type-check, test
