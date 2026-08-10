@@ -4,7 +4,7 @@ import { createContext, useState, useEffect, useCallback, useRef } from 'react'
 import type { AuthState, DriverUser } from '@/lib/types/user'
 import { mockDrivers } from '@shared/lib/mocks/drivers'
 import { supabase } from '@/lib/supabase'
-import { api } from '@/lib/api/client'
+import { api, ApiError } from '@/lib/api/client'
 import { IS_DEMO_MODE } from '@/lib/constants/env'
 import { useIdleTimeout } from '@/lib/hooks/useIdleTimeout'
 import { clearActivity, recordActivity } from '@shared/lib/session/idle'
@@ -44,7 +44,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Logged so a backend 500/network failure here is distinguishable from a
       // driver whose phone simply isn't provisioned yet — both currently end up
       // with user = null, but only one of them should be silent.
-      console.error('Failed to fetch driver profile', err)
+      //
+      // Formatted INTO the message rather than passed as a second argument. On iOS the
+      // Capacitor console bridge serialises each log argument with JSON.stringify, and an
+      // Error's `message`/`stack` are non-enumerable — so `console.error(msg, err)` arrives
+      // in the Xcode console as the literal `{}`, dropping precisely the status and detail
+      // that say which auth invariant broke ("Driver account not found." vs "Invalid
+      // token." vs a 403 role failure). Interpolating survives the bridge.
+      console.error(
+        `Failed to fetch driver profile: ${
+          err instanceof ApiError ? `${err.status} ${err.message}` : String(err)
+        }`,
+      )
       return null
     }
   }, [])

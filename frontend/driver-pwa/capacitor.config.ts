@@ -9,23 +9,21 @@ const config: CapacitorConfig = {
   appName: "FreightProof Driver",
   // 'out' is the Next.js static export directory produced by `next build` with output: 'export'.
   webDir: "out",
-  server: {
-    // iOS defaults to serving the bundled assets from `capacitor://localhost`. Two things
-    // break on that origin, and both fail silently rather than erroring:
-    //
-    //   * Google Maps — the JS API's referrer allow-list accepts only http and https
-    //     schemes, so a capacitor:// origin can never be allow-listed and the in-transit
-    //     map renders blank while every other screen works.
-    //   * CORS — the backend's ALLOWED_ORIGINS would need a second entry carrying a
-    //     non-standard scheme, separate from the one Android already needs.
-    //
-    // 'https' makes the iOS origin `https://localhost`, which is exactly what Capacitor's
-    // default androidScheme already produces. One referrer entry and one CORS entry now
-    // cover both platforms. Changing this after release would orphan anything the WebView
-    // stored under the old origin (localStorage, IndexedDB) — safe here because no build
-    // has shipped yet.
-    iosScheme: "https",
-  },
+  // NO server.iosScheme override — do not add one back. It is tempting, because Android's
+  // androidScheme defaults to 'https' and giving iOS the same origin would collapse two
+  // CORS entries and two Google Maps referrer entries into one. It does not work:
+  // WKWebView reserves the schemes it handles natively, so
+  // WKWebViewConfiguration.setURLSchemeHandler cannot be given 'https'
+  // (@capacitor/cli declarations.d.ts on iosScheme says so outright). Capacitor registers
+  // its asset handler against that scheme unvalidated, and the result is a WebView that
+  // loads local assets but fails every outbound request with `TypeError: Load failed` —
+  // an app that opens, accepts a login, and then cannot reach the API at all.
+  //
+  // So the two platforms deliberately have different origins, and both need listing:
+  //   iOS      capacitor://localhost
+  //   Android  https://localhost
+  // in backend ALLOWED_ORIGINS. Google Maps cannot referrer-restrict capacitor://, so iOS
+  // needs a key restricted by API + quota instead of by referrer (see .env.example).
   plugins: {
     Camera: {
       permissions: ["camera", "photos"],
