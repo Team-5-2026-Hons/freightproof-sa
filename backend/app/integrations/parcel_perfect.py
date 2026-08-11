@@ -605,6 +605,69 @@ UNASSIGNED_WAYBILLS: dict[str, PPWaybillResponse] = {
             declared_value=26800.0,
             contents=[PPContents(item=1, description="Household goods", actmass=470.0, pieces=11)],
         ),
+        # --- Extra demo batch: added to give the live walkthrough more headroom ---
+        _routed_waybill(
+            waybill="FREEWB0021", origin=_CPT, destination=_JHB,
+            manifest=UNASSIGNED_MANIFEST_NUMBER, parcel_count=14, weight_kg=620.0,
+            declared_value=33500.0,
+            contents=[PPContents(item=1, description="Industrial adhesives", actmass=620.0, pieces=14)],
+        ),
+        _routed_waybill(
+            waybill="FREEWB0022", origin=_JHB, destination=_BFN,
+            manifest=UNASSIGNED_MANIFEST_NUMBER, parcel_count=9, weight_kg=385.0,
+            declared_value=20100.0,
+            contents=[PPContents(item=1, description="Cleaning chemicals", actmass=385.0, pieces=9)],
+        ),
+        _routed_waybill(
+            waybill="FREEWB0023", origin=_BFN, destination=_CPT,
+            manifest=UNASSIGNED_MANIFEST_NUMBER, parcel_count=6, weight_kg=198.0,
+            declared_value=11400.0,
+            contents=[PPContents(item=1, description="Printed packaging", actmass=198.0, pieces=6)],
+        ),
+        _routed_waybill(
+            waybill="FREEWB0024", origin=_CPT, destination=_BFN,
+            manifest=None, parcel_count=20, weight_kg=950.0,
+            declared_value=52000.0,
+            contents=[PPContents(item=1, description="Frozen poultry", actmass=810.0, pieces=16),
+                      PPContents(item=2, description="Cold-chain monitors", actmass=140.0, pieces=4)],
+        ),
+        _routed_waybill(
+            waybill="FREEWB0025", origin=_JHB, destination=_CPT,
+            manifest=UNASSIGNED_MANIFEST_NUMBER, parcel_count=7, weight_kg=290.0,
+            declared_value=17800.0,
+            contents=[PPContents(item=1, description="Plumbing fittings", actmass=290.0, pieces=7)],
+        ),
+        _routed_waybill(
+            waybill="FREEWB0026", origin=_CPT, destination=_JHB,
+            manifest=UNASSIGNED_MANIFEST_NUMBER, parcel_count=17, weight_kg=780.0,
+            declared_value=41200.0,
+            contents=[PPContents(item=1, description="Crated glassware", actmass=780.0, pieces=17)],
+        ),
+        _routed_waybill(
+            waybill="FREEWB0027", origin=_BFN, destination=_JHB,
+            manifest=UNASSIGNED_MANIFEST_NUMBER, parcel_count=5, weight_kg=112.0,
+            declared_value=8900.0,
+            contents=[PPContents(item=1, description="Safety equipment", actmass=112.0, pieces=5)],
+        ),
+        _routed_waybill(
+            waybill="FREEWB0028", origin=_CPT, destination=_BFN,
+            manifest=UNASSIGNED_MANIFEST_NUMBER, parcel_count=12, weight_kg=540.0,
+            declared_value=29600.0,
+            contents=[PPContents(item=1, description="Steel fasteners", actmass=540.0, pieces=12)],
+        ),
+        _routed_waybill(
+            waybill="FREEWB0029", origin=_JHB, destination=_CPT,
+            manifest=None, parcel_count=8, weight_kg=215.0,
+            declared_value=14300.0,
+            contents=[PPContents(item=1, description="Refurbished monitors", actmass=215.0, pieces=8)],
+        ),
+        _routed_waybill(
+            waybill="FREEWB0030", origin=_CPT, destination=_JHB,
+            manifest=UNASSIGNED_MANIFEST_NUMBER, parcel_count=25, weight_kg=1150.0,
+            declared_value=62000.0,
+            contents=[PPContents(item=1, description="Tinned food pallets", actmass=980.0, pieces=21),
+                      PPContents(item=2, description="Dry goods cartons", actmass=170.0, pieces=4)],
+        ),
     ]
 }
 
