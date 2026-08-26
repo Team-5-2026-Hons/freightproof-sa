@@ -109,11 +109,15 @@ class Settings(BaseSettings):
     GPS_TOLERANCE_METRES: int = 50
     DEMO_MODE: bool = False
 
-    # Dev trigger panel. Registers a router that can fire scans, PP lifecycle
-    # changes and exceptions. Defaults to False so the panel is absent unless
-    # deliberately switched on — ENVIRONMENT != "production" is the second,
-    # independent condition (see api/v1/endpoints/dev_triggers.dev_panel_enabled).
-    # Both must hold. On an internet-reachable demo host, one switch is not enough.
+    # Dev trigger panel. Registers a router that can fire scans, PP lifecycle changes and
+    # exceptions. Defaults to False so the panel is absent unless deliberately switched
+    # on. This is now the SOLE condition: it used to be paired with ENVIRONMENT !=
+    # "production", but the deployed demo runs as production (to keep /docs unpublished)
+    # and still needs the panel — see api/v1/endpoints/dev_triggers.dev_panel_enabled for
+    # the full reasoning. Setting this True on an internet-reachable host publishes
+    # endpoints that fabricate evidence events; they require a dispatcher token and refuse
+    # unless the integrations are mocked, but nothing else stands behind them now. Turn it
+    # off when the demo window closes.
     DEV_PANEL_ENABLED: bool = False
 
     # The operating day boundary used to decide whether a driver is activating a trip
