@@ -1,12 +1,16 @@
 # FreightProof SA — Iteration 3 Plan
 
 > **Status:** active · **Author:** Ciaran · **Date:** 2026-08-24
-> **Window:** 4 weeks — Sprint 6 (24 Aug → 7 Sep), Sprint 7 (7 Sep → 21 Sep)
+> **Window:** 4 weeks — Sprint 6 (26 Aug → 7 Sep), Sprint 7 (7 Sep → 21 Sep)
 > **Presentation:** week of 21 Sep
 > **Artifact (formatted):** https://claude.ai/code/artifact/0560ceef-7ecc-42a2-8877-326fe579533e
 > **Meeting agenda (artifact):** https://claude.ai/code/artifact/9f14087e-a5a9-4cf2-a5d1-b3df7991cb91
 > **Revised:** 2026-08-25, after verifying the iteration 2 feedback against `dev` —
 > see [iteration2-feedback-response-2026-08-25.md](iteration2-feedback-response-2026-08-25.md)
+> **Revised again:** 2026-08-26, after the sprint 6 planning meeting. §5 now records what is
+> actually on the board with FP numbers. **The Jira board is the source of truth for ownership and
+> sprint membership; this document is the reasoning behind it.** Where the two disagree, the board
+> is right and this file is stale — say so rather than working from the tables here.
 > **Companion documents:** [scale-readiness-2026-08-18.md](scale-readiness-2026-08-18.md) ·
 > [design-notes/2026-08-24-corroboration-parcel-client-views.md](design-notes/2026-08-24-corroboration-parcel-client-views.md)
 
@@ -260,6 +264,12 @@ and together they are the cheapest marks available this iteration.
 | **Driver sees no warnings** | `HoldNotice.tsx` renders on `trip.status === 'exception_hold'`; nothing in `app/` ever sets that status (`trip_service.py:115`). Dead code | Surface open exceptions from the exception list, not from `trip.status`. Asked for in the Q&A too |
 | **Driver cannot photograph an exception** | Backend accepts `supporting_artifact_id`, dispatcher renders it — but `LogExceptionPageClient.tsx` has a picker and a textarea and **no camera** | Drop in the existing `CameraCapture` component. Q&A: *"pictures with time stamps so that we can really know for sure"* |
 
+**What of this is actually committed for Sprint 6** (26 Aug): the seal defect (FP-144), exception
+resolution (FP-146), driver warnings and the exception photo (FP-150), and `/health` (FP-141). The
+vehicle concurrency guard (FP-139), the creation-time clash view (FP-142) and minimum trip duration
+(FP-260) went to the backlog — done this iteration if room appears, otherwise iteration 4. Every gap
+in the table above is still real; three of them are simply not promised this sprint. See §5.
+
 **One defect inside otherwise-good code:** the destination seal comparison (`phase_service.py:1125`)
 compares raw strings, while departure normalises via `_normalized_seal()` (`:929`). A seal typed as
 `"abc123 "` against `"ABC123"` raises a CRITICAL mismatch on a seal that matched. The receiving clerk
@@ -289,8 +299,32 @@ most convincing single artifact for the concurrency question.
 
 ## 5. The two sprints
 
-Owners are a **proposal** drawn from commit authorship in
-[jira-reconciliation-2026-08-04.md](jira-reconciliation-2026-08-04.md) — confirm, don't inherit.
+**Confirmed at the planning meeting on 26 August, and this section now matches the board.** The
+owners below are no longer a proposal drawn from commit authorship — they are what is assigned in
+Jira. Sprint 6 started 26 August at 09:33 and runs to 7 September; every scope change described here
+was made on day 0, in one batch, so the burndown records a single step rather than a drift.
+
+### What changed on 26 August
+
+| Change | Where it landed |
+|---|---|
+| **Pulsit and the geofence are Tim's**, not Ciaran's — FP-68, FP-87, FP-116 as one block | Sprint 6 |
+| **Documentation moved to Sprint 7** — FP-151, FP-152 join FP-162 to FP-166 | Realistic: it gets written in the fortnight before the presentation regardless |
+| **Precinct CRUD added** — FP-259, five subtasks | New. Nothing on the board wrote precincts; the geofence demo could not be staged without hand-written database rows |
+| **Analytics screen pulled forward** — FP-156 | Sprint 6, so it runs alongside the read models it depends on |
+| **Controls partly deferred** — FP-139, FP-142, FP-260 to the backlog | Done this iteration if there is room, otherwise iteration 4 |
+| **Driver-side barcode scanner** — FP-266, subtask of FP-149 | Demo kit, behind the dev panel, because Parcel Perfect has not replied |
+| **Passport support dropped** | Had no ticket; not carried into either sprint |
+
+Three things raised in the meeting were checked against `dev` and turned out to be **already built**:
+the `precincts` table itself (the meeting assumed it needed creating), the `admin_dispatcher` role
+and its gates, and dispatcher call logging — which FP-146 already covers via `DISPATCHER_NOTE`, with
+no migration. Two were **rejected on evidence**: BLE handover (see decision 7) and polygon geofences
+(decision 8).
+
+One claim made in the meeting is **false and must not reach the panel**: that the driver portal is
+disabled outside the geofence. Nothing reads `geofence_radius_metres` or `GPS_TOLERANCE_METRES`
+today — that is precisely what FP-68 builds. Until it lands, we do not have geofence enforcement.
 
 ### The capacity call — made deliberately, not discovered in week three
 
@@ -303,53 +337,88 @@ already; the fix is choosing now.
 | Cut | Why |
 |---|---|
 | Client lens — view-as-client toggle + redaction | Contradicts §3's own POPIA deferral of client-grain cuts. Cutting it *because* of that reasoning is a better presentation slide than building it |
-| Parcel spine UI | Chiko's parcel *search* (Sprint 6) already answers the reviewer's question. The spine visualisation is polish; iteration 4 |
+| ~~Parcel spine UI~~ | **Reversed 26 Aug** — restored as FP-149 (Sprint 7, Ciaran), plus FP-266 for the driver-side scanner. See decision 6 |
 | File splits — all files except `phase_service.py` | Keep the one file with a real seam and a code-review finding behind it; drop the rest of the merge-conflict risk |
 
 **Rebalanced:** Chiko previously carried three of seven Sprint 7 stories, all frontend. Uneven story
 -point distribution is the one criticism we have now received twice — it was raised about Sprint 5.
 
-### Sprint 6 — "Where and who" · Mon 24 Aug → Mon 7 Sep
+### Sprint 6 — "Where and who" · Tue 26 Aug → Mon 7 Sep
 
-| Story | Ticket | Owner |
-|---|---|---|
-| Consignment unique index + failing concurrency test + `IntegrityError`→409 | new | Tom |
-| **Vehicle concurrency guard** (horse + trailers) + creation-time overlap check | new | Tom |
-| **Minimum trip duration** constant + validator | new | Tom |
-| **`/health` DB + Redis probes**; version from config | new | Tom |
-| Pulsit mock client behind `PULSE_USE_MOCK`, fixtures shaped to the real API | FP-87 | Ciaran |
-| `geofence_service` — haversine against precinct radius, tolerance band | new | Ciaran |
-| Write `horse_gps_*`, `pulsit_geofence_confirmed`, `trailer_gps_snapshots` per phase | new | Ciaran |
-| **`_normalized_seal()` at `phase_service.py:1125`** + regression test | new | Ciaran |
-| Raise `GPS_MISMATCH` on disagreement; surface on dispatcher timeline | new | Tim |
-| **Live tamper alert** — emit `TAMPER_DETECTED` from all six system-exception sites | new | Tim |
-| **Exception resolve/override** endpoint + dispatcher UI | new | Tim |
-| Dev trigger: "move the truck" — drives the demo from the UI, no DB edits | new | Tim |
-| **Parcel search** — barcode → current state + derived phase-ledger history | new | Chiko |
-| **Driver-side exception photo** (`CameraCapture`) + open-exceptions on the driver trip view | new | Chiko |
+15 stories, 80 points. Committed.
+
+| Ticket | Story | Owner | Pts |
+|---|---|---|---|
+| FP-138 | The same waybill cannot land on two trips — unique index, failing concurrency test first, `IntegrityError`→409 | Ciaran | 5 |
+| FP-144 | A seal typed with a trailing space raises a false CRITICAL tamper alert — `_normalized_seal()` at the destination comparison | Ciaran | 2 |
+| FP-146 | Exceptions can be resolved, and the phone call gets recorded | Ciaran | 8 |
+| FP-147 | A broken seal pings the dispatcher — emit from all six system-exception sites | Ciaran | 5 |
+| FP-148 | Scope the alert stream so the critical one is not buried | Ciaran | 5 |
+| FP-141 | A health endpoint that actually probes | Ciaran | 3 |
+| FP-259 | An admin dispatcher can create and edit a precinct | Ciaran | 5 |
+| FP-68 | Geofence service — haversine against precinct radius, tolerance band | Tim | 3 |
+| FP-87 | Pulsit client, mock-backed and credential-ready | Tim | 5 |
+| FP-116 | "Move the truck" — drive the demo from the UI | Tim | 2 |
+| FP-143 | Fill the four corroboration columns that are always null | Tim | 5 |
+| FP-145 | Position disagreement raises `GPS_MISMATCH` and shows on the timeline | Tim | 3 |
+| FP-150 | The driver can photograph an exception | Tim | 5 |
+| FP-153 | Analytics read models over the existing ledger | Thomas | 8 |
+| FP-156 | Dispatcher analytics screen *(pulled forward)* | Thomas | 8 |
+| FP-154 | Anchor the evidence artifact hashes | Chiko | 8 |
+
+Distribution: Ciaran 33 · Tim 23 · Thomas 16 · Chiko 8. Uneven, and knowingly so — Chiko's single
+story is on the critical path. If it needs rebalancing mid-sprint, FP-259's subtasks split cleanly.
+
+**The corroboration chain must land in order:** FP-68 → FP-87 → FP-143 → FP-145. FP-259 gates the
+demo staging for all of them, because a geofence check is only as good as the precinct it measures
+against. FP-138 still goes first regardless — the failing concurrency test is the most convincing
+single artifact we can put in front of the concurrency question.
 
 Ships a demo where a truck parked 3 km away fails a handshake the phone alone would have passed —
 **and the dispatcher's screen lights up the moment it does.**
 
 ### Sprint 7 — "Making it answer questions" · Mon 7 Sep → Mon 21 Sep
 
-| Story | Ticket | Owner |
-|---|---|---|
-| `app/analytics/` layer + materialized views + beat refresh | new | Tim |
-| **Blockchain receipt search** — optional `subject_id`, filters, lookup by hash/tx id | new | Tim |
-| Dispatcher analytics screen — driver trends, **vehicle**, lane, facility, corroboration | new | Chiko |
-| **Finish or delete `/sla`** — fold into the analytics screen | new | Chiko |
-| **Driver passport support** — widen `id_number`, add `id_type`, per-type validation | new | Chiko |
-| **Anchor evidence artifact hashes** + payload versioning + verification-compatibility test | new | Ciaran |
-| **Receiver handover** — QR capability token + receiver scan page (design note §9) | new | Ciaran |
-| Pulsit completion route report ingest → lane transit metrics | new | Ciaran |
-| `phase_service.py` split — post-merge window only, public surfaces unchanged | new | Ciaran |
-| **Chain-vs-database boundary document** + write-path walkthrough + demo script | new | Tom |
-| **Evidence packet export** — what an insurer would actually need | new | Tom |
+14 stories. Not yet started; still movable.
 
-Sprint 7 is heavier than Sprint 6. If it has to give, the order of sacrifice is: evidence packet
-export → `phase_service.py` split → passport support. **The artifact anchoring and the handover do
-not give** — they are the two items that answer the panel directly.
+| Ticket | Story | Owner |
+|---|---|---|
+| FP-149 | Find a parcel by barcode and see everywhere it has been *(incl. FP-266, driver-side scanner for the demo — Tim)* | Ciaran |
+| FP-167 | `phase_service.py` split — post-merge window only, public surfaces unchanged | Ciaran |
+| FP-155 | Receiver confirms on their own phone, via a rotating QR | Tim |
+| FP-158 | Pulsit route reports feed lane transit metrics | Tim |
+| FP-161 | Evidence packet export — what an insurer would actually need | Thomas |
+| FP-162 | Chain-versus-database boundary document and write-path walkthrough | Thomas |
+| FP-163 | Two feedback slides: verified as built, and declined with reasons | Thomas |
+| FP-151 | Solution architecture slide and readable package and DB diagrams *(moved from Sprint 6)* | Thomas |
+| FP-157 | Look up a blockchain receipt by hash or transaction id | Chiko |
+| FP-159 | Finish or delete `/sla` | Chiko |
+| FP-164 | Standards adopted, branching strategy and story-point distribution | Chiko |
+| FP-165 | Demo script for what already exists and was never shown | Chiko |
+| FP-166 | Demo rehearsal and reliable phone mirroring | Chiko |
+| FP-152 | Rebuild the state machine as states, not process *(moved from Sprint 6)* | Chiko |
+
+Sprint 7 is heavier than Sprint 6 and ends in presentation week. If it has to give, the order of
+sacrifice is: evidence packet export → `phase_service.py` split. **The artifact anchoring (FP-154,
+Sprint 6) and the receiver handover (FP-155) do not give** — they are the two items that answer the
+panel directly.
+
+**The documentation risk this creates, stated so nobody is surprised by it.** All six documentation
+tickets now sit in the fortnight that also carries the receiver handover, the parcel search and the
+demo rehearsal. Diagrams are the cheapest marks on the marksheet and the easiest thing to run out of
+time for. Start FP-151 and FP-152 in the first week of Sprint 7, not the last.
+
+### The backlog pool — "if there is time"
+
+Deferred on 26 August rather than cut. Done this iteration if room appears, otherwise iteration 4.
+Query them with `labels = "iteration-3" AND sprint IS EMPTY`.
+
+| Ticket | Story |
+|---|---|
+| FP-139 | One horse cannot be on two live trips — vehicle concurrency guard |
+| FP-142 | The dispatcher sees the vehicle clash before creating a trip |
+| FP-260 | A trip cannot be declared with an impossible duration |
+| FP-120 | NFC feasibility and cost analysis vs barcodes and RFID |
 
 ### On the file splits
 
@@ -368,8 +437,13 @@ window straight after a merge to `dev`, tests first.
 | `parcel_events` append-only ledger | The derived timeline already answers the reviewer's question. Revisit iteration 4. |
 | Client-portal scaffold | Still a stub. A third frontend surface while two features land is how iterations slip. |
 | Client-grain analytics | Deferred on the POPIA cut, not on effort. |
-| Client lens / view-as-client toggle | Cut from Sprint 7 — contradicts the same POPIA reasoning above. Cutting it *for that reason* is the better slide. **Contested:** specced in design note §11 and prototyped in the specimens artifact. See decision 6. |
-| Parcel spine UI | Cut from Sprint 7 — **but contested.** Design note §16 calls it "the demo's best screen" and Bruce named parcel search the market gap twice. Decide in the meeting; see decision 6. |
+| Client lens / view-as-client toggle | Cut from Sprint 7 — contradicts the same POPIA reasoning above. Cutting it *for that reason* is the better slide. **Confirmed cut on 26 Aug**; decision 6 is closed. |
+| ~~Parcel spine UI~~ | **No longer cut.** Restored on 26 Aug as FP-149 (Sprint 7), with FP-266 adding the driver-side scanner. Design note §16 called it "the demo's best screen" and Bruce named parcel search the market gap twice. |
+| BLE receiver handover | Not buildable receiver-side — no Web Bluetooth on iOS, and a browser cannot advertise as a peripheral. Decision 7. The QR is the mechanism. |
+| Polygon geofences | Circle and radius only; polygon is a geometry column and a migration. Decision 8. Iteration 4. |
+| Per-dispatcher alert routing / third role tier | Needs a trip-to-dispatcher assignment model that does not exist. Decision 11. Iteration 4. |
+| Stationary-driver push alert | Raised 26 Aug. Derivable from `trip_location_pings` without Pulsit, so it is feasible — but it is new scope and brushes the live-position boundary. Iteration 4. |
+| Blockchain opt-in / opt-out per client | Raised 26 Aug as a commercial question — Hedera costs per transaction, and a client may not want to pay for immutability. A real product question, not iteration 3 work. Note it for the report. |
 | Merkle batching (FP-63) | Iteration 2 carry-over; nothing in the review asked for it. |
 | Real Pulsit sandbox wiring | Mock-only — Pulsit has not replied. `PULSE_USE_MOCK` means real creds are a config change, not a rewrite. |
 | Pulsit cab/door camera footage | New from the Q&A. Different call pattern; design note and a question for Bruce, not a build. |
@@ -385,18 +459,26 @@ The board has drifted twice the same way. Sprint 5 ran 27 July → 10 August, an
 since — including the iteration 2 presentation and the review response — sits in no sprint.
 The fix is starting the sprint on the day the work starts.
 
-1. **Close Sprint 5**; move anything incomplete to the backlog.
-2. **Create and start Sprint 6** dated Mon 24 Aug → Mon 7 Sep; create Sprint 7 now.
-   Sprint creation is **board-UI only** — the Atlassian MCP has no board/sprint API.
+1. ~~**Close Sprint 5**; move anything incomplete to the backlog.~~ **Done.**
+2. ~~**Create and start Sprint 6**; create Sprint 7 now.~~ **Done 26 Aug** — Sprint 6 is active
+   (26 Aug 09:33 → 7 Sep), Sprint 7 exists and is unstarted. Sprint creation is **board-UI only**;
+   the Atlassian MCP has no board or sprint API, though issues can be moved between existing
+   sprints through the sprint field.
 3. **Account for 11–23 Aug**: close review-response work into Sprint 6 with commit evidence in
-   the comments, the approach that worked on 4 August.
-4. **Create the iteration 3 epic**, file the stories under it, put the two-source framing in the
-   epic description.
+   the comments, the approach that worked on 4 August. *Still outstanding.*
+4. ~~**Create the iteration 3 epic**, file the stories under it.~~ **Done** — every Sprint 6 and 7
+   story sits under an epic (FP-2, FP-4, FP-6, FP-7, FP-8, plus FP-136 *Evidence Analytics & Live
+   Alerting* and FP-137 *Documentation Iteration 3*). Put the where/who/so-what framing in the epic
+   descriptions if it is not there yet.
 5. **Clear the eight outstanding items** from `jira-reconciliation-2026-08-04.md` — FP-125 has no
    parent epic, FP-5/6/7 still describe the superseded five-handshake model, FP-74/FP-91
-   duplicate question unresolved.
+   duplicate question unresolved. *Still outstanding.*
 6. **Adopt one rule:** ticket before branch, FP number in the branch name.
 7. **Five minutes of board review** at the Wednesday standup.
+
+**Housekeeping done 26 Aug:** FP-128 to FP-134 (the iteration 2 phase-refactor stages, all Done)
+were re-labelled `iteration-2`. They had been carrying `iteration-3` and polluting every label
+query — `labels = "iteration-3"` now returns only current work.
 
 ---
 
@@ -408,7 +490,12 @@ The fix is starting the sprint on the day the work starts.
 | 2 | ~~QR handover instead of receiver OTP?~~ **Decided in the Q&A.** | **Closed.** Ammar asked for it directly and in detail. There is no receiver OTP to replace — nothing is built — so this is greenfield, not a migration. Building tier 2 (§2); `CLAUDE.md` needs correcting. |
 | 2b | Does the QR handover need receiver accounts, or is the optical capability token enough? | **Token is enough — no accounts.** The secret moves optically, so a SIM swap gains nothing; a texted code would not. Colluding receiver is the residual, surfaced via recurrence analytics. See §2 and design note §9. |
 | 2c | Do driver metrics include ratings/scores, or trends only? | **Trends only.** Promised on the call, but contradicts §3's POPIA line. Decline scores, present the reasoning. Must be settled before the analytics screen is designed. |
-| 6 | **Do the contested cuts stand?** Parcel spine UI and client lens | Both are specced in the design note, prototyped in the specimens artifact, and cut here on capacity. The design note calls the spine "the demo's best screen"; the lens contradicts our own POPIA line. **Recommend: restore the spine, keep the lens cut.** Team call — this doc should not silently override the design note. |
+| 6 | ~~**Do the contested cuts stand?** Parcel spine UI and client lens~~ **Settled 26 Aug.** | **Closed.** The spine is restored as **FP-149** in Sprint 7 — barcode in, everywhere it has been out — with **FP-266** adding a driver-side scanner so it can be demonstrated from a physical label rather than a typed reference. The client lens stays cut, on the POPIA reasoning in §3 rather than on capacity. |
+| 7 | ~~BLE handover instead of the QR?~~ **Settled 26 Aug.** | **Closed — QR stays primary, BLE is not buildable.** The receiver has no app, so their side is a browser: Web Bluetooth does not exist in Safari on iOS at all, and a phone browser cannot advertise as a BLE peripheral — it is a GATT client only. It also costs us the property the design rests on: no install, no account, no SIM in the loop. Recorded on FP-155. **Worth a slide** — evaluating and rejecting it on evidence answers the panel better than never considering it. NFC is a different case: the seal tap is on the driver's own Capacitor Android build, where a native plugin works (FP-120, writeup only). |
+| 8 | ~~Polygon geofences for precincts?~~ **Settled 26 Aug.** | **Closed — circle and radius this iteration.** A polygon needs a geometry column and a migration; `geofence_service` reads a radius either way, so the circle version is what FP-68 consumes with no rework when polygon lands in iteration 4. FP-259 is explicitly scoped without it. |
+| 9 | ~~Can a precinct belong to more than one organization?~~ **Settled 26 Aug.** | **Closed — the schema already answers it.** `principal_organization_id` is the owner, `is_shared` is the cross-org visibility opt-in (SEC-PRECINCT-1). True many-to-many ownership is a migration plus a rework of every org-scoped query, which is a security surface. Not this iteration. Do not reopen. |
+| 10 | Does the receiver handover store an ID number and a selfie? | **Open, and it gates FP-239.** Proposed on 26 Aug. Today receiver name and ID are rendered *into* the signature image and go no further — deliberately. Storing an ID number and a facial image for a person with **no account and no consent** is a materially heavier POPIA position than anything we currently hold. **Recommend: position only for iteration 3**, and present the reasoning. Settle before the scan page is written. |
+| 11 | Per-dispatcher alert routing and a third role tier | **Iteration 4, not now.** Raised on 26 Aug: at RTT scale a tamper alert should ping only the dispatcher who owns that trip. Blocked on four things that do not exist — a trip-to-dispatcher assignment (`created_by_user_id` and `approving_dispatcher_user_id` mean neither), a third `DispatcherRole` value, a per-person Redis channel, and the SSE consumer to match. FP-148 stays org-scoped this sprint; severity scoping is its actual job and is unaffected. |
 | 3 | How far on cross-operator reputation? | Spike the design now, two-org simulation in iteration 4. Strongest idea on the table, easiest to overclaim. |
 | 4 | Driver-auth device binding (live SIM-swap surface)? | Risk-list entry + spike now, implement iteration 4. Raise it with Ammar unprompted. |
 
@@ -416,8 +503,14 @@ The fix is starting the sprint on the day the work starts.
 
 - **Pallet grain (BLOCKING)** — does a `HandlingUnit` sit between waybill and parcel? No such model
   exists; only `Consignment.unit_count_expected`, a count with no entity. Site-visit open question
-  §6.8, parked since July. It now sets the precision of the parcel view — ask Bruce before Sprint 6
-  gets far. See the design note §10.
+  §6.8, parked since July. **Not raised at the 26 August meeting, and it now sets the precision of
+  FP-149**, which is in Sprint 7. Ask Bruce this week. See the design note §10.
+- **Driver trends versus scores (BLOCKING FP-156)** — decision 2c above, still unsettled, and FP-156
+  moved into Sprint 6 on 26 August. It only gates the driver panel: build facility, then vehicle,
+  then lane, and leave the driver panel until the call is minuted. Settle it this week regardless —
+  the answer shapes how the whole screen is framed to the panel.
+- **Receiver ID number and selfie** — decision 10 above. Gates FP-239. Do not add either to the scan
+  page before it is decided.
 - **Time-to-proof manual baseline** — needed from Bruce for the impact panel. Do not invent a
   figure for an industry panel.
 - **Pulsit access** — no reply yet. Everything stays mock-only behind `PULSE_USE_MOCK`; the
