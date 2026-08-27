@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from app.core.config import settings
 from app.core.rate_limit import RateLimitMiddleware
+from app.core.security_headers import SecurityHeadersMiddleware
 from app.api.v1.endpoints.artifacts import router as artifacts_router
 from app.api.v1.endpoints.artifacts import trip_artifacts_router
 from app.api.v1.endpoints.blockchain import router as blockchain_router
@@ -84,6 +85,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Added last so it is outermost of all three — a response leaving through the rate
+# limiter's 429 or a CORS rejection still gets these headers, not just a normal 2xx.
+app.add_middleware(SecurityHeadersMiddleware)
 
 app.include_router(trips_router, prefix="/api/v1")
 app.include_router(auth_router, prefix="/api/v1")
