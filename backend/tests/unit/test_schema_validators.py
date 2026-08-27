@@ -297,3 +297,66 @@ def test_exception_gps_lng_out_of_range_rejected() -> None:
             gps_lat="-26.0942000",
             gps_lng="-181.0000000",
         )
+
+
+# ---------------------------------------------------------------------------
+# Minimum trip duration — a declared schedule must be physically plausible
+# ---------------------------------------------------------------------------
+# Rejecting only arrival <= departure lets a JHB-DBN run be declared as sixty
+# seconds. Nothing downstream questions it: the phase ledger records against that
+# schedule, and every latency figure derived from phase_events inherits the
+# nonsense. This is cheaper to refuse at the door than to detect afterwards.
+
+def _trip_create_request(**overrides):
+    from app.schemas.trips import TripCreateRequest
+    import uuid
+    payload = {
+        "order_number": "FDX-001",
+        "driver_id": uuid.uuid4(),
+        "horse_id": uuid.uuid4(),
+        "origin_precinct_id": uuid.uuid4(),
+        "destination_precinct_id": uuid.uuid4(),
+        "planned_departure_at": datetime(2026, 5, 1, 8, 0, tzinfo=timezone.utc),
+        "consignments": [{"pp_reference": "WAY001", "unit_count_expected": 2}],
+    }
+    payload.update(overrides)
+    return TripCreateRequest(**payload)
+
+
+def test_trip_duration_below_minimum_is_rejected():
+    from app.core.constants import MINIMUM_TRIP_DURATION
+
+    with pytest.raises(ValidationError) as caught:
+        _trip_create_request(
+            planned_arrival_at=datetime(2026, 5, 1, 8, 1, tzinfo=timezone.utc),
+        )
+
+    # The message must name the minimum: "too short" without a number leaves the
+    # dispatcher guessing at what would be accepted.
+    assert str(int(MINIMUM_TRIP_DURATION.total_seconds() // 60)) in str(caught.value)
+
+
+def test_trip_duration_exactly_at_minimum_is_accepted():
+    """The boundary belongs to the valid side — a trip may run exactly the minimum."""
+    from app.core.constants import MINIMUM_TRIP_DURATION
+
+    departure = datetime(2026, 5, 1, 8, 0, tzinfo=timezone.utc)
+    trip = _trip_create_request(planned_arrival_at=departure + MINIMUM_TRIP_DURATION)
+
+    assert trip.planned_arrival_at - trip.planned_departure_at == MINIMUM_TRIP_DURATION
+
+
+def test_trip_arrival_before_departure_still_rejected():
+    """The pre-existing rule must survive: this is not replaced, it is tightened."""
+    with pytest.raises(ValidationError):
+        _trip_create_request(
+            planned_arrival_at=datetime(2026, 5, 1, 7, 0, tzinfo=timezone.utc),
+        )
+
+
+def test_trip_without_arrival_is_unaffected():
+    """planned_arrival_at is optional and stays optional — a trip with no declared
+    arrival has no duration to be implausible."""
+    trip = _trip_create_request(planned_arrival_at=None)
+
+    assert trip.planned_arrival_at is None

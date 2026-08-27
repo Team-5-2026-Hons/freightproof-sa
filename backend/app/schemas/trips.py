@@ -7,6 +7,7 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.core.constants import MINIMUM_TRIP_DURATION
 from app.db.models.enums import IdvsStatus, ParcelStatus, TripStatus, TripType
 from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.phases import PhaseEventRead
@@ -145,12 +146,40 @@ class TripBase(BaseModel):
     planned_arrival_at: Optional[datetime] = None
 
 
+def validate_declared_schedule(
+    planned_departure_at: Optional[datetime],
+    planned_arrival_at: Optional[datetime],
+) -> None:
+    """Reject a declared schedule that could not have happened.
+
+    Shared by both creation schemas rather than written twice: two copies of a rule
+    are two rules, and they drift. Silent when either end is missing — a trip with no
+    declared arrival has no duration to be implausible about, and planned_arrival_at
+    is legitimately optional.
+
+    Raises ValueError, which Pydantic surfaces as a 422 through the API.
+    """
+    if not (planned_departure_at and planned_arrival_at):
+        return
+    if planned_arrival_at <= planned_departure_at:
+        raise ValueError("planned_arrival_at must be after planned_departure_at")
+
+    declared = planned_arrival_at - planned_departure_at
+    if declared < MINIMUM_TRIP_DURATION:
+        minimum_minutes = int(MINIMUM_TRIP_DURATION.total_seconds() // 60)
+        declared_minutes = declared.total_seconds() / 60
+        # Name the minimum and what was given: "too short" on its own leaves the
+        # dispatcher guessing at what would be accepted.
+        raise ValueError(
+            f"planned trip duration must be at least {minimum_minutes} minutes "
+            f"(declared {declared_minutes:g})"
+        )
+
+
 class TripCreate(TripBase):
     @model_validator(mode="after")
     def validate_arrival_after_departure(self) -> "TripCreate":
-        if self.planned_departure_at and self.planned_arrival_at:
-            if self.planned_arrival_at <= self.planned_departure_at:
-                raise ValueError("planned_arrival_at must be after planned_departure_at")
+        validate_declared_schedule(self.planned_departure_at, self.planned_arrival_at)
         return self
 
 
@@ -380,9 +409,7 @@ class TripCreateRequest(BaseModel):
                 "(provide planned_departure_at, or set slot_time on at least "
                 "one of the provided stops)"
             )
-        if self.planned_departure_at and self.planned_arrival_at:
-            if self.planned_arrival_at <= self.planned_departure_at:
-                raise ValueError("planned_arrival_at must be after planned_departure_at")
+        validate_declared_schedule(self.planned_departure_at, self.planned_arrival_at)
         if len(self.trailer_ids) != len(set(self.trailer_ids)):
             raise ValueError("trailer_ids must not contain duplicates")
         if self.trip_type == TripType.LOADED and not self.consignments:
