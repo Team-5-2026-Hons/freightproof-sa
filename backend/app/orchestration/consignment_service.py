@@ -23,13 +23,9 @@ from app.db.models.enums import ParcelStatus
 from app.db.models.organisations import Organization
 from app.db.models.trips import Consignment, Parcel, Trip
 from app.integrations.parcel_perfect import PPWaybillResponse, get_pp_client
+from app.orchestration.integrity import is_unique_violation
 
 logger = logging.getLogger(__name__)
-
-# Postgres unique_violation. Only this code means "somebody else already has this
-# waybill" — any other IntegrityError is a different fault and must not be dressed
-# up as a waybill conflict.
-_UNIQUE_VIOLATION = "23505"
 
 
 @dataclass(frozen=True)
@@ -263,9 +259,7 @@ async def fetch_and_sync_consignment(
     try:
         await db.flush()
     except IntegrityError as exc:
-        orig = getattr(exc, "orig", None)
-        pgcode = getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)
-        if pgcode != _UNIQUE_VIOLATION:
+        if not is_unique_violation(exc):
             raise
         # The transaction is aborted, so nothing can be read until it is rolled back.
         # Rolling back here is safe: every caller of this function already abandons its

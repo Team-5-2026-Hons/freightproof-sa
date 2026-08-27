@@ -35,6 +35,7 @@ from app.db.models.trips import (
     LIVE_ORDER_NUMBER_INDEX, LIVE_TRIP_STATUSES, Trip, TripStop, TripTrailer,
 )
 from app.db.models.vehicles import Vehicle
+from app.orchestration.integrity import is_unique_violation, violated_constraint
 from app.orchestration.phase_gate import blocked_on_by_stop
 from app.orchestration.phase_plan import ANCHORED_PHASES, PlanStop, build_phase_plan
 from app.orchestration.phase_service import recompute_position
@@ -59,9 +60,6 @@ if TYPE_CHECKING:
     from app.orchestration.consignment_service import ConsignmentSyncResult
 
 logger = logging.getLogger(__name__)
-
-# Postgres unique_violation — the only code that can mean a lost order-number race.
-_UNIQUE_VIOLATION = "23505"
 
 
 def _generate_trip_reference() -> str:
@@ -150,18 +148,9 @@ def _order_number_conflict(exc: IntegrityError, order_number: str) -> TripConfli
     fire at the very same flush, and reporting any of those as a duplicate order
     number would send a dispatcher to fix something that is not wrong.
     """
-    orig = getattr(exc, "orig", None)
-    pgcode = getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)
-    if pgcode != _UNIQUE_VIOLATION:
+    if not is_unique_violation(exc):
         return None
-    # SQLAlchemy's asyncpg adapter re-wraps the driver error: it copies sqlstate onto
-    # .orig, but constraint_name survives only on the UniqueViolationError underneath.
-    # Both are checked so this does not silently stop working on a wrapping change —
-    # a miss here costs a dispatcher a 500 in place of a clear 409.
-    constraint = getattr(orig, "constraint_name", None) or getattr(
-        getattr(orig, "__cause__", None), "constraint_name", None
-    )
-    if constraint != LIVE_ORDER_NUMBER_INDEX:
+    if violated_constraint(exc) != LIVE_ORDER_NUMBER_INDEX:
         return None
     return TripConflictError(order_number)
 
@@ -321,6 +310,11 @@ async def create_trip(
         conflict = _order_number_conflict(exc, payload.order_number)
         if conflict is None:
             raise
+        # Rolled back for the same reason the handlers below do it: get_db() rolls back
+        # on exception in production, but every other failure path in this function
+        # states the guarantee itself rather than depending on the session
+        # implementation — a test override or a future Celery caller may not replicate it.
+        await db.rollback()
         logger.warning(
             "Lost order-number race for order_number=%s (org %s)",
             payload.order_number, current_user.organization_id,

@@ -144,3 +144,32 @@ async def test_duplicate_driver_id_number_in_same_org_is_refused(client: AsyncCl
 
     assert second.status_code == 409, second.text
     assert "id_number" in second.json()["detail"]
+
+
+async def test_patching_a_registration_onto_an_existing_one_is_refused(
+    client: AsyncClient, admin
+):
+    """Renaming a vehicle onto another's plate must 409, not 500.
+
+    create_vehicle translates the constraint into a clean 409; update_vehicle flushes
+    without catching anything, so the same collision arrived as an unhandled
+    IntegrityError. Adding the constraint is what made this path reachable at all —
+    before it, the rename simply succeeded and left the fleet holding one plate twice.
+    """
+    first = await client.post(
+        "/api/v1/vehicles", json=_vehicle("CA 444-444", "PLT-P1"), headers=admin["headers"],
+    )
+    assert first.status_code == 201
+    second = await client.post(
+        "/api/v1/vehicles", json=_vehicle("CA 555-555", "PLT-P2"), headers=admin["headers"],
+    )
+    assert second.status_code == 201
+
+    resp = await client.patch(
+        f"/api/v1/vehicles/{second.json()['id']}",
+        json={"registration": "CA 444-444"},
+        headers=admin["headers"],
+    )
+
+    assert resp.status_code == 409, resp.text
+    assert "registration" in resp.json()["detail"]
