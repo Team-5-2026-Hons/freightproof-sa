@@ -28,7 +28,7 @@ from sqlalchemy.exc import IntegrityError
 from app.core.exceptions import DuplicateResourceError, ResourceNotFoundError
 from app.db.models.enums import BlockchainReceiptType, DriverEventType, IdvsStatus, SubjectType
 from app.db.models.events import DriverEvent
-from app.db.models.people import Driver
+from app.db.models.people import UQ_DRIVERS_ORG_ID_NUMBER, Driver
 from app.orchestration.driver_service import create_driver, update_driver
 from app.schemas.people import DriverCreateBody, DriverUpdateBody
 
@@ -40,10 +40,19 @@ _VALID_ID_NUMBER = "9001015009081"
 
 
 class _FakeUniqueViolation(Exception):
-    """Stand-in for asyncpg's UniqueViolationError — carries the sqlstate the
-    service reads to decide DuplicateResourceError vs. re-raise."""
+    """Stand-in for asyncpg's UniqueViolationError.
+
+    Carries both the sqlstate and the constraint name the service reads. The name is
+    not optional detail: the service will not translate a violation it cannot tie to a
+    specific constraint, because naming the wrong field in a 409 sends a dispatcher to
+    correct something that was never wrong.
+    """
 
     sqlstate = _UNIQUE_VIOLATION_SQLSTATE
+
+    def __init__(self, constraint_name: str = UQ_DRIVERS_ORG_ID_NUMBER) -> None:
+        super().__init__(constraint_name)
+        self.constraint_name = constraint_name
 
 
 # ── Test doubles ───────────────────────────────────────────────────────────────

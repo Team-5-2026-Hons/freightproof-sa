@@ -15,13 +15,14 @@ from app.blockchain.critical_fields import (
     VEHICLE_COSMETIC_FIELDS, VEHICLE_CRITICAL_FIELDS, diff_critical_fields,
 )
 from app.core.exceptions import DuplicateResourceError, ResourceNotFoundError
+from app.orchestration.integrity import is_unique_violation, violated_constraint
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import (
     BlockchainReceiptType, SubjectType, VehicleEventType,
 )
 from app.db.models.events import VehicleEvent
 from app.db.models.trips import Trip, TripTrailer
-from app.db.models.vehicles import Vehicle
+from app.db.models.vehicles import VEHICLE_UNIQUE_FIELDS, Vehicle
 from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.events import VehicleEventRead
 from app.schemas.vehicles import VehicleCreateBody, VehicleDetailResponse, VehicleRead, VehicleUpdateBody
@@ -62,11 +63,19 @@ async def create_vehicle(
     try:
         await db.flush()
     except IntegrityError as exc:
-        orig = getattr(exc, "orig", None)
-        pgcode = getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)
-        if pgcode != "23505":
+        if not is_unique_violation(exc):
             raise
-        raise DuplicateResourceError("Vehicle", "registration", data.registration) from exc
+        # Name the field that actually clashed. This used to report every unique
+        # violation as a duplicate registration, so a double-assigned tracker told the
+        # dispatcher their registration was taken — and the registration was fine.
+        field = VEHICLE_UNIQUE_FIELDS.get(violated_constraint(exc) or "")
+        if field is None:
+            # An unmapped constraint: better a 500 that gets investigated than a 409
+            # pointing at a field we are guessing about.
+            raise
+        raise DuplicateResourceError(
+            "Vehicle", field, str(getattr(data, field))
+        ) from exc
 
     snapshot = {
         "registration": vehicle.registration,

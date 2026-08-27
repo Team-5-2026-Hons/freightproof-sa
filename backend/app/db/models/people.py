@@ -4,13 +4,16 @@ import uuid
 from typing import Optional
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, String
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from app.db.models import Base
 from app.db.models.enums import IdvsStatus
+
+# Read by orchestration when naming the field a unique violation actually clashed on.
+UQ_DRIVERS_ORG_ID_NUMBER = "uq_drivers_org_id_number"
 
 
 class User(Base):
@@ -37,6 +40,15 @@ class Driver(Base):
     """Driver entity — authenticates via phone OTP, not email/password."""
 
     __tablename__ = "drivers"
+    __table_args__ = (
+        # One SA ID number, one driver record per organisation. create_driver has
+        # always caught a unique violation and reported it as a duplicate id_number,
+        # but no such constraint existed — the branch was unreachable and duplicates
+        # were accepted. Phone numbers are guarded upstream by Supabase Auth; the
+        # ID number, which is the identity this record is anchored to, was not
+        # guarded anywhere.
+        UniqueConstraint("organization_id", "id_number", name=UQ_DRIVERS_ORG_ID_NUMBER),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     organization_id: Mapped[uuid.UUID] = mapped_column(
