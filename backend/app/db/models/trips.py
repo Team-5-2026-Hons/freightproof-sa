@@ -6,8 +6,8 @@ from datetime import datetime
 from typing import Any, Optional
 
 from sqlalchemy import (
-    Boolean, DateTime, ForeignKey, Integer, Numeric,
-    PrimaryKeyConstraint, String, Text, UniqueConstraint,
+    Boolean, DateTime, ForeignKey, Index, Integer, Numeric,
+    PrimaryKeyConstraint, String, Text, UniqueConstraint, column,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -15,6 +15,22 @@ from sqlalchemy.sql import func
 
 from app.db.models import Base
 from app.db.models.enums import IdvsStatus, ParcelStatus, TripStatus, TripType
+
+# The statuses that make a trip live — one order number may back only one of these
+# at a time. Named here, rather than inline in the guard that reads it, so the
+# partial index on Trip and orchestration's own check are driven from one list.
+# Two copies of this set drifting apart would mean the database and the application
+# disagree about what "already active" means, which is worse than either rule alone.
+LIVE_TRIP_STATUSES: tuple[TripStatus, ...] = (
+    TripStatus.CREATED,
+    TripStatus.ACTIVE,
+    TripStatus.EXCEPTION_HOLD,
+)
+
+# Index name is referenced by orchestration when translating a unique violation back
+# into a domain error, so it lives next to the definition rather than as a literal
+# at the point that catches it.
+LIVE_ORDER_NUMBER_INDEX = "uq_trips_live_order_number"
 
 
 class TripTemplate(Base):
@@ -47,6 +63,16 @@ class Consignment(Base):
     """Cargo consignment pulled from Parcel Perfect — linked to a trip at creation."""
 
     __tablename__ = "consignments"
+    # One waybill, one consignment row (FP-138). The select-then-insert in
+    # consignment_service.fetch_and_sync_consignment cannot close this on its own:
+    # two concurrent callers both find nothing and both insert, and the same cargo
+    # ends up on two trips, each anchoring its own journey-lock hash. Application
+    # code cannot arbitrate that — only the database can, and this is where it does.
+    __table_args__ = (
+        UniqueConstraint(
+            "parcel_perfect_reference", name="uq_consignments_parcel_perfect_reference"
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     trip_id: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -117,6 +143,22 @@ class Trip(Base):
     """Central entity — one row per depot-to-depot trip, progresses through TripStatus states."""
 
     __tablename__ = "trips"
+    # One live trip per (operator, order number). trip_service checks this before
+    # inserting, but a check and an insert are two statements: two dispatchers can
+    # both pass the check while neither has inserted yet, and both get a trip for
+    # the same customer order — each anchoring its own journey-lock hash.
+    #
+    # Partial rather than total on purpose: a closed or cancelled order number is
+    # legitimately reusable, so only live rows take part in the uniqueness.
+    __table_args__ = (
+        Index(
+            LIVE_ORDER_NUMBER_INDEX,
+            "operator_organization_id",
+            "order_number",
+            unique=True,
+            postgresql_where=column("status").in_([s.value for s in LIVE_TRIP_STATUSES]),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     trip_reference: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
