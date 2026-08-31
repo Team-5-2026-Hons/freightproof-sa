@@ -75,6 +75,18 @@ def _get_redis() -> redis_async.Redis:
     return _redis_client
 
 
+def get_redis() -> redis_async.Redis:
+    """Public accessor for the shared client, for callers outside this module.
+
+    Exists so the /health Redis probe can reuse this connection rather than opening a
+    second one to the same server — a health check that dials its own connection is not
+    checking the connection the application actually uses. A thin wrapper rather than a
+    rename so the caching stays in exactly one place, and so this module's own tests,
+    which monkeypatch _get_redis, still control what every caller receives.
+    """
+    return _get_redis()
+
+
 def reset_client() -> None:
     """Drop the cached client so the next call rebuilds it. Tests only."""
     global _redis_client
