@@ -9,6 +9,22 @@ import { clearActivity, recordActivity } from '@shared/lib/session/idle'
 
 export const AuthContext = createContext<AuthState | null>(null)
 
+/**
+ * The credentials were accepted but the dispatcher profile behind them would not load.
+ *
+ * Separate from a credential failure because the two are not the user's problem in the
+ * same way: one is a typo they can fix, the other is the backend being unreachable, and
+ * telling them "invalid credentials" for the second sends them retyping a correct
+ * password. The login form distinguishes the two on this type.
+ */
+export class ProfileUnavailableError extends Error {
+  override readonly name = 'ProfileUnavailableError'
+
+  constructor() {
+    super('Signed in, but your dispatcher profile could not be loaded. Please try again.')
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<DispatcherUser | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -71,15 +87,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = useCallback(async (credentials: { email: string; password: string }) => {
     setIsLoading(true)
-    const { error } = await supabase.auth.signInWithPassword(credentials)
-    setIsLoading(false)
-    if (error) throw error
-    // Start the idle clock at the sign-in itself. Without this the first stored activity
-    // would be whatever the user happened to click next, and a session left untouched
-    // immediately after signing in would inherit a stale timestamp from a PREVIOUS
-    // session — expiring far too early, or on a fresh profile not at all.
-    recordActivity(window.localStorage)
-  }, [])
+    try {
+      const { error } = await supabase.auth.signInWithPassword(credentials)
+      if (error) throw error
+      // Start the idle clock at the sign-in itself. Without this the first stored activity
+      // would be whatever the user happened to click next, and a session left untouched
+      // immediately after signing in would inherit a stale timestamp from a PREVIOUS
+      // session — expiring far too early, or on a fresh profile not at all.
+      recordActivity(window.localStorage)
+      // The profile is loaded HERE, not left to the SIGNED_IN listener above, and this
+      // function does not resolve until it has landed.
+      //
+      // signInWithPassword resolving only means the CREDENTIALS were accepted; `user` is
+      // still a round trip away. The caller navigates the moment we return, and the route
+      // guard reads "finished loading, still no user" as signed-out — so returning early
+      // bounced the dispatcher straight back to /login, and every sign-in took two
+      // attempts. Awaiting it here means the guard already agrees by the time we return.
+      const profile = await fetchProfile()
+      if (!profile) throw new ProfileUnavailableError()
+      setUser(profile)
+    } finally {
+      // In a finally so a failure cannot strand the form in its loading state.
+      setIsLoading(false)
+    }
+  }, [fetchProfile])
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut()
