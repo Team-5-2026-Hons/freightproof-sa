@@ -1,6 +1,7 @@
 """Integration tests for GET /api/v1/drivers."""
 
 import uuid
+from unittest.mock import AsyncMock, patch
 
 import pytest_asyncio
 from httpx import AsyncClient
@@ -13,6 +14,28 @@ from app.db.models.enums import IdvsStatus, OrganizationType
 from app.db.session import get_db
 
 from tests.conftest import auth_header, make_token
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def stub_driver_auth_user():
+    """Never let this file provision a real Supabase Auth account.
+
+    create_driver_auth_user makes a live HTTP call to the Supabase Admin API. Left
+    unpatched, the FIRST run of a creation test here registered a real auth user against
+    the shared project — and every run since got 422 back, which driver_service maps to a
+    409 on a duplicate the test itself created. The tests passed exactly once and were
+    permanently red afterwards.
+
+    Autouse, and at module scope rather than inside the two tests that needed it, because
+    the trap is silent: a new creation test added to this file inherits the same live call
+    and the same one-shot lifetime, and nothing in the failure says so.
+    """
+    with patch(
+        "app.orchestration.driver_service.create_driver_auth_user",
+        new_callable=AsyncMock,
+    ) as mock_auth:
+        mock_auth.side_effect = lambda **kwargs: uuid.uuid4()
+        yield mock_auth
 
 
 @pytest_asyncio.fixture(autouse=True)
