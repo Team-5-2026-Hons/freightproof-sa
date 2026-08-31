@@ -927,6 +927,13 @@ async def _raise_scan_shortfall_if_unrecorded(
 
 
 def _normalized_seal(seal: str) -> str:
+    # Deliberately NOT Optional. None is not a single concept here: for a stored
+    # phase_events.seal_number it means "seal unknown" (an anomaly), but for
+    # payload.seal_number_confirmed it means "no guard re-entry", which is the
+    # normal case and must never be flagged (see advance_departure). Swallowing
+    # None here would let that second, far more common case silently become a
+    # CRITICAL mismatch on every trip. Callers holding a nullable value resolve
+    # what their own None means before calling.
     return seal.strip().upper()
 
 
@@ -1123,7 +1130,15 @@ async def advance_unloading(
     event.seal_number = seal_at_destination
     event.gate_photo_artifact_id = payload.gate_photo_artifact_id
 
-    if seal_at_destination != _normalized_seal(departure_event.seal_number):
+    # "" when the departure row carries no seal at all. The column is nullable and
+    # only the API path runs DepartureCompleteRequest's validator, so a row written
+    # out of band (backfill, dev trigger panel, a row predating the validator) can
+    # reach here as NULL. An unloading whose departure seal is unknown is exactly
+    # the anomaly SEAL_MISMATCH exists for, so it takes the branch below rather
+    # than raising and 500-ing the phase, which would record nothing at all.
+    departure_seal = _normalized_seal(departure_event.seal_number or "")
+
+    if seal_at_destination != departure_seal:
         # Recorded as evidence, but does NOT hold the trip. This branch used to set
         # trip.status = EXCEPTION_HOLD; three reasons it must not:
         #
@@ -1151,7 +1166,7 @@ async def advance_unloading(
             severity=ExceptionSeverity.CRITICAL,
             description=(
                 f"Seal at destination ('{seal_at_destination}') does not match "
-                f"the seal applied at departure ('{_normalized_seal(departure_event.seal_number)}')."
+                f"the seal applied at departure ('{departure_seal}')."
             ),
         ))
     else:

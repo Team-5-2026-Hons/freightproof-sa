@@ -1318,6 +1318,36 @@ async def test_advance_unloading_normalizes_against_a_non_canonical_stored_seal(
 
 
 @pytest.mark.asyncio
+async def test_advance_unloading_treats_a_sealless_departure_as_a_mismatch(db_session, trip_fixture):
+    """The sibling case to the test above: not a non-canonical stored seal, but no
+    stored seal at all. phase_events.seal_number is nullable and only the API path
+    runs DepartureCompleteRequest's validator, so an out-of-band departure row can
+    carry NULL into this comparison. That must record a SEAL_MISMATCH — an unloading
+    whose departure seal is unknown is exactly the anomaly this exception exists for
+    — and must not raise, because a raise would 500 the phase and record nothing."""
+    trip, driver, phases = trip_fixture
+    await _advance_to_arrival(db_session, trip, driver, phases)
+    phases["departure"].seal_number = None
+    await db_session.flush()
+
+    result = await advance_unloading(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading"].id,
+        payload=UnloadingCompleteRequest(
+            phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-1234",
+            gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    assert result.status == TripStatus.ACTIVE  # flagged, not held
+    assert len(result.exceptions) == 1
+    assert result.exceptions[0].exception_type == ExceptionType.SEAL_MISMATCH
+    assert result.exceptions[0].severity == ExceptionSeverity.CRITICAL
+    unloading = next(h for h in result.phases if h.phase_type == PhaseType.UNLOADING)
+    assert unloading.status == PhaseStatus.EXCEPTION
+
+
+@pytest.mark.asyncio
 async def test_advance_unloading_persists_gate_photo_when_provided(db_session, trip_fixture):
     """The seal photo at destination must actually reach the row, not be silently
     dropped — it is the only physical evidence of the seal's state before the truck
