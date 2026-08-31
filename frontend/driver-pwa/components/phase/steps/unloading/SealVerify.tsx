@@ -7,7 +7,7 @@ import { CameraCapture } from '@/components/phase/CameraCapture'
 import { Input } from '@/components/ui/Input'
 import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
 import { useArtifactUpload } from '@/lib/hooks/useArtifactUpload'
-import { isValidSealFormat } from '@/lib/utils/seal-format'
+import { isValidSealFormat, normalizeSeal } from '@/lib/utils/seal-format'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { UnloadingEvidence } from '@/lib/types/evidence-draft'
 
@@ -72,11 +72,12 @@ export function SealVerify({ tripId, phase, stepIndex, draft, onUpdate, onComple
   }
 
   function handleInputChange(value: string) {
-    // Seals are printed uppercase and the backend's format check accepts only uppercase
-    // letters, so normalise on the way in rather than rejecting the driver's shift key.
-    const upper = value.toUpperCase()
-    setInput(upper)
-    onUpdate({ sealNumberAtDestination: upper })
+    // Store the exact value isValidSealFormat checks — not just uppercased — so a
+    // leading/trailing space (a phone keyboard/autocorrect near-certainty) can never
+    // pass this screen's gate while still being what actually gets submitted.
+    const normalized = normalizeSeal(value)
+    setInput(normalized)
+    onUpdate({ sealNumberAtDestination: normalized })
   }
 
   return (

@@ -1119,10 +1119,11 @@ async def advance_unloading(
         db, trip_id=trip_id, artifact_ids=(payload.gate_photo_artifact_id,),
     )
 
-    event.seal_number = payload.seal_number_at_destination
+    seal_at_destination = _normalized_seal(payload.seal_number_at_destination)
+    event.seal_number = seal_at_destination
     event.gate_photo_artifact_id = payload.gate_photo_artifact_id
 
-    if payload.seal_number_at_destination != departure_event.seal_number:
+    if seal_at_destination != _normalized_seal(departure_event.seal_number):
         # Recorded as evidence, but does NOT hold the trip. This branch used to set
         # trip.status = EXCEPTION_HOLD; three reasons it must not:
         #
@@ -1149,8 +1150,8 @@ async def advance_unloading(
             exception_type=ExceptionType.SEAL_MISMATCH, source=ExceptionSource.SYSTEM,
             severity=ExceptionSeverity.CRITICAL,
             description=(
-                f"Seal at destination ('{payload.seal_number_at_destination}') does not match "
-                f"the seal applied at departure ('{departure_event.seal_number}')."
+                f"Seal at destination ('{seal_at_destination}') does not match "
+                f"the seal applied at departure ('{_normalized_seal(departure_event.seal_number)}')."
             ),
         ))
     else:

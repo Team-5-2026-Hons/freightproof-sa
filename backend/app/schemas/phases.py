@@ -26,9 +26,16 @@ _SEAL_NUMBER_MAX_LENGTH = 100
 
 
 def _validate_seal_format(v: str) -> str:
-    if not _SEAL_PATTERN.match(v):
+    # Normalize before matching, not after: a driver/clerk retyping a seal on a phone
+    # keyboard is guaranteed to introduce stray case or whitespace, and rejecting THAT
+    # with a 422 penalizes the caller for something that was never evidence of a bad
+    # seal. Canonicalizing here means every caller — driver-pwa, a future integration,
+    # a Postman request during a demo — gets the same tolerant behaviour for free,
+    # rather than each one having to normalize before it sends the request.
+    normalized = v.strip().upper()
+    if not _SEAL_PATTERN.match(normalized):
         raise ValueError("seal number must be in format XX-#### (e.g. AB-1234)")
-    return v
+    return normalized
 
 
 class PhaseEventRead(BaseModel):

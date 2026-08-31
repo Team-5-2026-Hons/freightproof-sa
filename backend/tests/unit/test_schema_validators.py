@@ -300,6 +300,82 @@ def test_exception_gps_lng_out_of_range_rejected() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Seal number format — _validate_seal_format normalizes (strip/upper) before
+# matching XX-####, so casing/whitespace from a retyped seal is canonicalized
+# rather than rejected. Covers both fields that route through it:
+# DepartureCompleteRequest.seal_number and
+# UnloadingCompleteRequest.seal_number_at_destination. seal_number_confirmed is
+# deliberately NOT covered — it stays free-form so a mistyped confirmation is
+# itself recordable evidence, per app/schemas/phases.py.
+# ---------------------------------------------------------------------------
+
+def _departure_request(**overrides):
+    from app.schemas.phases import DepartureCompleteRequest
+
+    payload = {
+        "phase_type": "departure",
+        "idempotency_key": "idem-1",
+        "seal_number": "AB-1234",
+        "seal_photo_artifact_id": _uuid.uuid4(),
+    }
+    payload.update(overrides)
+    return DepartureCompleteRequest(**payload)
+
+
+def _unloading_request(**overrides):
+    from app.schemas.phases import UnloadingCompleteRequest
+
+    payload = {
+        "phase_type": "unloading",
+        "idempotency_key": "idem-1",
+        "seal_number_at_destination": "AB-1234",
+        "gate_photo_artifact_id": _uuid.uuid4(),
+    }
+    payload.update(overrides)
+    return UnloadingCompleteRequest(**payload)
+
+
+def test_departure_seal_number_canonical_form_is_unchanged():
+    assert _departure_request(seal_number="AB-1234").seal_number == "AB-1234"
+
+
+def test_departure_seal_number_lowercase_and_padding_is_normalized():
+    request = _departure_request(seal_number=" ab-1234 ")
+
+    assert request.seal_number == "AB-1234"
+
+
+def test_departure_seal_number_still_rejects_a_bad_format():
+    from pydantic import ValidationError as PydanticValidationError
+
+    with pytest.raises(PydanticValidationError):
+        _departure_request(seal_number="not-a-seal")
+
+
+def test_unloading_seal_number_at_destination_lowercase_and_padding_is_normalized():
+    request = _unloading_request(seal_number_at_destination=" ab-1234 ")
+
+    assert request.seal_number_at_destination == "AB-1234"
+
+
+def test_unloading_seal_number_at_destination_still_rejects_a_bad_format():
+    from pydantic import ValidationError as PydanticValidationError
+
+    with pytest.raises(PydanticValidationError):
+        _unloading_request(seal_number_at_destination="1234")
+
+
+def test_seal_number_confirmed_stays_free_form_not_normalized():
+    """The one deliberate exception: a mistyped guard confirmation must survive
+    verbatim, because the mismatch it produces against seal_number is itself the
+    evidence. Comparison-time tolerance for THIS field lives in
+    phase_service._normalized_seal, not in schema validation."""
+    request = _departure_request(seal_number="AB-1234", seal_number_confirmed=" not a seal at all ")
+
+    assert request.seal_number_confirmed == " not a seal at all "
+
+
+# ---------------------------------------------------------------------------
 # Minimum trip duration — a declared schedule must be physically plausible
 # ---------------------------------------------------------------------------
 # Rejecting only arrival <= departure lets a JHB-DBN run be declared as sixty

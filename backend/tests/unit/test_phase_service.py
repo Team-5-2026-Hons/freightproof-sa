@@ -1285,6 +1285,39 @@ async def test_advance_unloading_matching_seal_completes(db_session, trip_fixtur
 
 
 @pytest.mark.asyncio
+async def test_advance_unloading_normalizes_against_a_non_canonical_stored_seal(db_session, trip_fixture):
+    """seal_number_at_destination is normalized (stripped/uppercased) by
+    UnloadingCompleteRequest.validate_seal_number before this code ever runs — see
+    _validate_seal_format in app/schemas/phases.py — so the API itself can no longer
+    hand this comparison a mismatched-casing or padded value on the incoming side.
+    But the phase_events.seal_number DB column has no matching CHECK constraint, so a
+    departure row written out of band (a backfill, a legacy row predating the
+    validator, a future integration that writes it directly) could still carry a
+    non-canonical value. This proves the comparison survives that, the same way it
+    already has to for the free-form seal_number_confirmed (see
+    test_advance_departure_seal_number_confirmed_still_supersedes_a_none_flag
+    above)."""
+    trip, driver, phases = trip_fixture
+    await _advance_to_arrival(db_session, trip, driver, phases)
+    phases["departure"].seal_number = " ab-1234 "
+    await db_session.flush()
+
+    result = await advance_unloading(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading"].id,
+        payload=UnloadingCompleteRequest(
+            phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-1234",
+            gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    assert result.status == TripStatus.ACTIVE
+    assert result.exceptions == []
+    unloading = next(h for h in result.phases if h.phase_type == PhaseType.UNLOADING)
+    assert unloading.status == PhaseStatus.COMPLETED
+
+
+@pytest.mark.asyncio
 async def test_advance_unloading_persists_gate_photo_when_provided(db_session, trip_fixture):
     """The seal photo at destination must actually reach the row, not be silently
     dropped — it is the only physical evidence of the seal's state before the truck
