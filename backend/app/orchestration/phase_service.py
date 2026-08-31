@@ -927,6 +927,13 @@ async def _raise_scan_shortfall_if_unrecorded(
 
 
 def _normalized_seal(seal: str) -> str:
+    # Deliberately NOT Optional. None is not a single concept here: for a stored
+    # phase_events.seal_number it means "seal unknown" (an anomaly), but for
+    # payload.seal_number_confirmed it means "no guard re-entry", which is the
+    # normal case and must never be flagged (see advance_departure). Swallowing
+    # None here would let that second, far more common case silently become a
+    # CRITICAL mismatch on every trip. Callers holding a nullable value resolve
+    # what their own None means before calling.
     return seal.strip().upper()
 
 
@@ -1119,10 +1126,57 @@ async def advance_unloading(
         db, trip_id=trip_id, artifact_ids=(payload.gate_photo_artifact_id,),
     )
 
-    event.seal_number = payload.seal_number_at_destination
+    seal_at_destination = _normalized_seal(payload.seal_number_at_destination)
+    event.seal_number = seal_at_destination
     event.gate_photo_artifact_id = payload.gate_photo_artifact_id
 
-    if payload.seal_number_at_destination != departure_event.seal_number:
+    # "" when the departure row carries no seal at all. Reachable in normal
+    # operation, not just from bad data: override_phase resolves a departure
+    # WITHOUT ever writing a seal (its own D3 comment says so — "if this is a
+    # departure, no seal evidence exists to anchor"), and _is_resolved treats
+    # OVERRIDDEN as resolved, so the trip runs on to unloading with a NULL seal.
+    # Normalizing first collapses NULL, "" and whitespace to one "not recorded"
+    # case rather than leaving " " to masquerade as a real seal.
+    departure_seal = _normalized_seal(departure_event.seal_number or "")
+
+    if not departure_seal:
+        # NOT a SEAL_MISMATCH. There is no second seal here to differ from, so
+        # claiming a mismatch would put a false theft indicator into the anchored
+        # record and fire the driver app's critical alert (it treats seal_mismatch
+        # as one of three alarm types) for something the driver did not cause and
+        # cannot fix. The honest fact is narrower: continuity for this leg cannot
+        # be checked. Severity splits on whether that absence is EXPLAINED, because
+        # severity is what the dispatcher actually triages on (its exception list
+        # keys the row's border accent and chip off severity; nothing anywhere reads
+        # this description text, so the distinction cannot live in wording alone):
+        #
+        #   OVERRIDDEN — a dispatcher resolved the departure without a seal being
+        #     captured. Authorised, and already on the ledger as its own
+        #     DISPATCHER_NOTE. WARNING: worth seeing, not an alarm.
+        #   anything else — the departure ran the seal-capture path (advance_departure
+        #     writes seal_number unconditionally from a required field) and STILL has
+        #     no seal. Nothing legitimate produces that, so it is a data-integrity
+        #     anomaly and must stay loud. CRITICAL.
+        #
+        # Neither is INFO: an unverifiable seal chain is exactly what a real seal swap
+        # would hide behind.
+        absence_is_explained = departure_event.status == PhaseStatus.OVERRIDDEN
+        event.status = PhaseStatus.EXCEPTION
+        db.add(TripException(
+            trip_id=trip_id, phase_event_id=event.id,
+            exception_type=ExceptionType.SEAL_UNVERIFIED, source=ExceptionSource.SYSTEM,
+            severity=(
+                ExceptionSeverity.WARNING if absence_is_explained
+                else ExceptionSeverity.CRITICAL
+            ),
+            description=(
+                f"Seal continuity could not be verified for this leg: no seal was "
+                f"recorded at departure (departure phase is "
+                f"'{PhaseStatus(departure_event.status).value}'). Seal at destination "
+                f"was '{seal_at_destination}'."
+            ),
+        ))
+    elif seal_at_destination != departure_seal:
         # Recorded as evidence, but does NOT hold the trip. This branch used to set
         # trip.status = EXCEPTION_HOLD; three reasons it must not:
         #
@@ -1149,8 +1203,8 @@ async def advance_unloading(
             exception_type=ExceptionType.SEAL_MISMATCH, source=ExceptionSource.SYSTEM,
             severity=ExceptionSeverity.CRITICAL,
             description=(
-                f"Seal at destination ('{payload.seal_number_at_destination}') does not match "
-                f"the seal applied at departure ('{departure_event.seal_number}')."
+                f"Seal at destination ('{seal_at_destination}') does not match "
+                f"the seal applied at departure ('{departure_seal}')."
             ),
         ))
     else:

@@ -26,6 +26,14 @@ from app.main import app
 
 from tests.conftest import auth_header, make_token
 
+# A structurally valid VIN: exactly 17 alphanumerics, per _VIN_PATTERN in
+# app/schemas/vehicles.py. Named rather than inlined because the test below asserts on it
+# twice — as the value sent and as the value recorded in the diff — and the two drifting
+# apart would be a confusing failure. The previous literal was 15 characters, which the
+# schema had started rejecting with a 422 before this test ever reached the anchoring
+# behaviour it exists to check.
+_VALID_VIN = "GH698HF7X09009901"
+
 
 @pytest_asyncio.fixture(autouse=True)
 async def override_get_db(db_session: AsyncSession) -> AsyncGenerator[None, None]:
@@ -123,7 +131,7 @@ async def test_mixed_patch_anchors_only_critical_field(
 
         resp = await client.patch(
             f"/api/v1/vehicles/{vehicle.id}",
-            json={"vin_number": "GH698HF7X090099", "make": "Scania"},
+            json={"vin_number": _VALID_VIN, "make": "Scania"},
             headers=headers,
         )
     assert resp.status_code == 200
@@ -134,7 +142,7 @@ async def test_mixed_patch_anchors_only_critical_field(
         )
     ).scalar_one()
     assert event.changed_fields == {
-        "vin_number": {"from": None, "to": "GH698HF7X090099"},
+        "vin_number": {"from": None, "to": _VALID_VIN},
         "make": {"from": "Volvo", "to": "Scania"},
     }
     assert event.blockchain_receipt_id is not None

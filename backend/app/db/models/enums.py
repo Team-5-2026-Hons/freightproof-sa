@@ -85,6 +85,14 @@ class AnchorStatus(str, enum.Enum):
 
 class ExceptionType(str, enum.Enum):
     SEAL_MISMATCH          = "seal_mismatch"
+    # Distinct from SEAL_MISMATCH on purpose. MISMATCH asserts two seals were
+    # recorded and they differ — a theft indicator. UNVERIFIED means no departure
+    # seal exists to compare against — typically because the departure phase was
+    # overridden, which resolves it without ever capturing a seal — so this is a
+    # gap in the chain, not evidence of tampering.
+    # Conflating them puts false positives in front of a dispatcher triaging a
+    # real seal investigation.
+    SEAL_UNVERIFIED        = "seal_unverified"
     PARCEL_COUNT_MISMATCH  = "parcel_count_mismatch"
     GPS_MISMATCH           = "gps_mismatch"
     ROUTE_DEVIATION        = "route_deviation"

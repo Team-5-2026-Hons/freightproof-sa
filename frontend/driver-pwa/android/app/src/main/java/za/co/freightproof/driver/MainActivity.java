@@ -1,4 +1,4 @@
-package za.ac.uct.freightproof.driver;
+package za.co.freightproof.driver;
 
 import com.getcapacitor.BridgeActivity;
 

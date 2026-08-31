@@ -15,13 +15,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.blockchain.anchor_service import anchor_subject
 from app.blockchain.critical_fields import diff_critical_fields
 from app.core.exceptions import DuplicateResourceError, ResourceNotFoundError
+from app.orchestration.integrity import is_unique_violation, violated_constraint
 from app.integrations.supabase_admin import create_driver_auth_user
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import (
     BlockchainReceiptType, DriverEventType, IdvsStatus, SubjectType,
 )
 from app.db.models.events import DriverEvent
-from app.db.models.people import Driver
+from app.db.models.people import UQ_DRIVERS_ORG_ID_NUMBER, Driver
 from app.db.models.trips import Trip
 from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.events import DriverEventRead
@@ -56,6 +57,21 @@ async def create_driver(
     data: DriverCreateBody,
     current_user_id: uuid.UUID,
 ) -> DriverRead:
+    # Refuse a known-duplicate ID number BEFORE provisioning anything in Supabase.
+    # The auth account has to be created first (drivers.id must reference
+    # auth.users(id)), so if the DB constraint were the only guard, every duplicate
+    # would leave an orphaned auth user behind that nothing in this system cleans up.
+    # Advisory only — the unique constraint below is still what decides it if two
+    # dispatchers submit the same ID number at once.
+    existing = await db.execute(
+        select(Driver.id).where(
+            Driver.organization_id == organization_id,
+            Driver.id_number == data.id_number,
+        )
+    )
+    if existing.scalar_one_or_none() is not None:
+        raise DuplicateResourceError("Driver", "id_number", data.id_number)
+
     # Provision a Supabase Auth account first — drivers.id must reference
     # auth.users(id) per the FK constraint added in migration 0003.
     driver_id = await create_driver_auth_user(
@@ -76,9 +92,11 @@ async def create_driver(
     try:
         await db.flush()
     except IntegrityError as exc:
-        orig = getattr(exc, "orig", None)
-        pgcode = getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)
-        if pgcode != "23505":
+        if not is_unique_violation(exc):
+            raise
+        if violated_constraint(exc) != UQ_DRIVERS_ORG_ID_NUMBER:
+            # Some other uniqueness failed. Reporting it as a duplicate ID number
+            # would point the dispatcher at a field that is not the problem.
             raise
         raise DuplicateResourceError("Driver", "id_number", data.id_number) from exc
 

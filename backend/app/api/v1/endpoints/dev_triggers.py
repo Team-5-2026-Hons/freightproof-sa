@@ -59,18 +59,35 @@ _MOCK_REQUIRED_DETAIL = (
     "This trigger requires the mock implementation — check PP_USE_MOCK and SCAN_FEED_USE_MOCK."
 )
 
-_PRODUCTION_ENVIRONMENT = "production"
-
-
 def dev_panel_enabled() -> bool:
     """Whether the dev trigger router should be registered at all.
 
-    Two independent conditions, both defaulting to closed. On an internet-reachable
-    demo host a single switch is not enough: ENVIRONMENT is deployment config that
-    is easy to get wrong, and DEV_PANEL_ENABLED is an explicit opt-in that has to
-    be typed on purpose. Either one being wrong still leaves the panel absent.
+    ONE condition, defaulting to closed. This used to be two — DEV_PANEL_ENABLED *and*
+    ENVIRONMENT != "production" — on the reasoning that a single switch is not enough on
+    an internet-reachable host. The second gate was removed deliberately, not by
+    accident: the deployed demo environment runs with ENVIRONMENT="production" (which is
+    also what removes /docs, /redoc and /openapi.json), and the panel is how the
+    scan-driven and Parcel-Perfect flows are demonstrated without a real depot feed.
+    The alternative was downgrading ENVIRONMENT, which would have re-published the whole
+    OpenAPI surface map to get one router back — strictly worse.
+
+    What still stands between these endpoints and the internet, given the gate that went:
+
+      * This flag defaults to False and is a deliberate opt-in, absent from .env.example
+        values. An unconfigured deployment has no panel.
+      * When it is False the router is not registered AT ALL — the paths 404 rather than
+        403, so nothing is merely guarded.
+      * Every route in this module carries Depends(get_current_dispatcher). There is no
+        anonymous path to any of them.
+      * Each trigger additionally refuses unless the relevant integration is the mock
+        (_MOCK_REQUIRED_DETAIL), so none of them can touch a real partner system.
+
+    What was genuinely lost: a deployment that sets this flag by mistake in production no
+    longer has a second, independent condition to save it. These endpoints fabricate
+    scans and exceptions on an evidence platform, so treat the flag as production config
+    of the same weight as a credential. Turn it off when the demo window closes.
     """
-    return settings.DEV_PANEL_ENABLED and settings.ENVIRONMENT != _PRODUCTION_ENVIRONMENT
+    return settings.DEV_PANEL_ENABLED
 
 
 @router.get("/trips", response_model=list[DevTripSummary], summary="Trips and stops for the panel")

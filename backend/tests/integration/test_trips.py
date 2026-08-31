@@ -6,7 +6,7 @@ tests/conftest.py) via the shared `client` fixture.
 """
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest_asyncio
@@ -881,3 +881,38 @@ async def test_global_handler_preserves_http_exceptions(client: AsyncClient, see
         headers=_auth_headers(seed_data),
     )
     assert unprocessable.status_code == 422
+
+
+async def test_create_trip_422_on_implausibly_short_duration(
+    client: AsyncClient, seed_data, db_session,
+):
+    """A trip declared as one minute is refused at the door, and the 422 says why.
+
+    Only arrival <= departure used to be rejected, so a JHB-DBN run could be booked
+    for sixty seconds. Nothing downstream questions a stored schedule — the phase
+    ledger records against it, and every latency figure derived from phase_events
+    inherits the nonsense. The message must name the minimum, or the dispatcher is
+    left guessing at what would be accepted.
+    """
+    from app.core.constants import MINIMUM_TRIP_DURATION
+
+    departure = datetime.now(UTC)
+    payload = _make_payload(seed_data)
+    payload["order_number"] = "ORD-SHORT-001"
+    payload["planned_departure_at"] = departure.isoformat()
+    payload["planned_arrival_at"] = (departure + timedelta(minutes=1)).isoformat()
+
+    resp = await client.post(
+        "/api/v1/trips", json=payload, headers=_auth_headers(seed_data),
+    )
+
+    assert resp.status_code == 422, resp.text
+    minimum_minutes = str(int(MINIMUM_TRIP_DURATION.total_seconds() // 60))
+    assert minimum_minutes in resp.text, f"422 did not name the minimum: {resp.text[:300]}"
+
+    trips = (
+        await db_session.execute(
+            select(Trip).where(Trip.order_number == "ORD-SHORT-001")
+        )
+    ).scalars().all()
+    assert trips == []

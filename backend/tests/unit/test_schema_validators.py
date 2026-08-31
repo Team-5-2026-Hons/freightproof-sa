@@ -7,7 +7,7 @@ All four tests FAIL until the relevant schema files are implemented.
 import uuid as _uuid
 
 import pytest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pydantic import ValidationError
 
 
@@ -296,4 +296,222 @@ def test_exception_gps_lng_out_of_range_rejected() -> None:
             description="x",
             gps_lat="-26.0942000",
             gps_lng="-181.0000000",
+        )
+
+
+# ---------------------------------------------------------------------------
+# Seal number format — _validate_seal_format normalizes (strip/upper) before
+# matching XX-####, so casing/whitespace from a retyped seal is canonicalized
+# rather than rejected. Covers both fields that route through it:
+# DepartureCompleteRequest.seal_number and
+# UnloadingCompleteRequest.seal_number_at_destination. seal_number_confirmed is
+# deliberately NOT covered — it stays free-form so a mistyped confirmation is
+# itself recordable evidence, per app/schemas/phases.py.
+# ---------------------------------------------------------------------------
+
+def _departure_request(**overrides):
+    from app.schemas.phases import DepartureCompleteRequest
+
+    payload = {
+        "phase_type": "departure",
+        "idempotency_key": "idem-1",
+        "seal_number": "AB-1234",
+        "seal_photo_artifact_id": _uuid.uuid4(),
+    }
+    payload.update(overrides)
+    return DepartureCompleteRequest(**payload)
+
+
+def _unloading_request(**overrides):
+    from app.schemas.phases import UnloadingCompleteRequest
+
+    payload = {
+        "phase_type": "unloading",
+        "idempotency_key": "idem-1",
+        "seal_number_at_destination": "AB-1234",
+        "gate_photo_artifact_id": _uuid.uuid4(),
+    }
+    payload.update(overrides)
+    return UnloadingCompleteRequest(**payload)
+
+
+def test_departure_seal_number_canonical_form_is_unchanged():
+    assert _departure_request(seal_number="AB-1234").seal_number == "AB-1234"
+
+
+def test_departure_seal_number_lowercase_and_padding_is_normalized():
+    request = _departure_request(seal_number=" ab-1234 ")
+
+    assert request.seal_number == "AB-1234"
+
+
+def test_departure_seal_number_still_rejects_a_bad_format():
+    from pydantic import ValidationError as PydanticValidationError
+
+    with pytest.raises(PydanticValidationError):
+        _departure_request(seal_number="not-a-seal")
+
+
+def test_unloading_seal_number_at_destination_lowercase_and_padding_is_normalized():
+    request = _unloading_request(seal_number_at_destination=" ab-1234 ")
+
+    assert request.seal_number_at_destination == "AB-1234"
+
+
+def test_unloading_seal_number_at_destination_still_rejects_a_bad_format():
+    from pydantic import ValidationError as PydanticValidationError
+
+    with pytest.raises(PydanticValidationError):
+        _unloading_request(seal_number_at_destination="1234")
+
+
+def test_seal_number_confirmed_stays_free_form_not_normalized():
+    """The one deliberate exception: a mistyped guard confirmation must survive
+    verbatim, because the mismatch it produces against seal_number is itself the
+    evidence. Comparison-time tolerance for THIS field lives in
+    phase_service._normalized_seal, not in schema validation."""
+    request = _departure_request(seal_number="AB-1234", seal_number_confirmed=" not a seal at all ")
+
+    assert request.seal_number_confirmed == " not a seal at all "
+
+
+# ---------------------------------------------------------------------------
+# Minimum trip duration — a declared schedule must be physically plausible
+# ---------------------------------------------------------------------------
+# Rejecting only arrival <= departure lets a JHB-DBN run be declared as sixty
+# seconds. Nothing downstream questions it: the phase ledger records against that
+# schedule, and every latency figure derived from phase_events inherits the
+# nonsense. This is cheaper to refuse at the door than to detect afterwards.
+
+def _trip_create_request(**overrides):
+    from app.schemas.trips import TripCreateRequest
+    import uuid
+    payload = {
+        "order_number": "FDX-001",
+        "driver_id": uuid.uuid4(),
+        "horse_id": uuid.uuid4(),
+        "origin_precinct_id": uuid.uuid4(),
+        "destination_precinct_id": uuid.uuid4(),
+        "planned_departure_at": datetime(2026, 5, 1, 8, 0, tzinfo=timezone.utc),
+        "consignments": [{"pp_reference": "WAY001", "unit_count_expected": 2}],
+    }
+    payload.update(overrides)
+    return TripCreateRequest(**payload)
+
+
+def test_trip_duration_below_minimum_is_rejected():
+    from app.core.constants import MINIMUM_TRIP_DURATION
+
+    with pytest.raises(ValidationError) as caught:
+        _trip_create_request(
+            planned_arrival_at=datetime(2026, 5, 1, 8, 1, tzinfo=timezone.utc),
+        )
+
+    # The message must name the minimum: "too short" without a number leaves the
+    # dispatcher guessing at what would be accepted.
+    assert str(int(MINIMUM_TRIP_DURATION.total_seconds() // 60)) in str(caught.value)
+
+
+def test_trip_duration_exactly_at_minimum_is_accepted():
+    """The boundary belongs to the valid side — a trip may run exactly the minimum."""
+    from app.core.constants import MINIMUM_TRIP_DURATION
+
+    departure = datetime(2026, 5, 1, 8, 0, tzinfo=timezone.utc)
+    trip = _trip_create_request(planned_arrival_at=departure + MINIMUM_TRIP_DURATION)
+
+    assert trip.planned_arrival_at - trip.planned_departure_at == MINIMUM_TRIP_DURATION
+
+
+def test_trip_arrival_before_departure_still_rejected():
+    """The pre-existing rule must survive: this is not replaced, it is tightened."""
+    with pytest.raises(ValidationError):
+        _trip_create_request(
+            planned_arrival_at=datetime(2026, 5, 1, 7, 0, tzinfo=timezone.utc),
+        )
+
+
+def test_trip_without_arrival_is_unaffected():
+    """planned_arrival_at is optional and stays optional — a trip with no declared
+    arrival has no duration to be implausible."""
+    trip = _trip_create_request(planned_arrival_at=None)
+
+    assert trip.planned_arrival_at is None
+
+
+# ---------------------------------------------------------------------------
+# Minimum duration on the explicit multi-stop route
+# ---------------------------------------------------------------------------
+# The stops path carries its own schedule via per-stop slot_time and needs no
+# trip-level planned_departure_at at all, so a rule that reads only the trip-level
+# fields leaves the whole "booked in sixty seconds" hole open on that route.
+
+def _trip_request_with_stops(first_slot, last_slot, **overrides):
+    from app.schemas.trips import TripCreateRequest
+    import uuid
+    payload = {
+        "order_number": "FDX-STOPS",
+        "driver_id": uuid.uuid4(),
+        "horse_id": uuid.uuid4(),
+        "stops": [
+            {"precinct_id": uuid.uuid4(), "sequence": 1, "slot_time": first_slot},
+            {"precinct_id": uuid.uuid4(), "sequence": 2, "slot_time": last_slot},
+        ],
+        "consignments": [{"pp_reference": "WAY001", "unit_count_expected": 2}],
+    }
+    payload.update(overrides)
+    return TripCreateRequest(**payload)
+
+
+def test_stop_schedule_below_minimum_is_rejected():
+    from app.core.constants import MINIMUM_TRIP_DURATION
+
+    departure = datetime(2026, 5, 1, 8, 0, tzinfo=timezone.utc)
+    with pytest.raises(ValidationError) as caught:
+        _trip_request_with_stops(departure, departure + timedelta(seconds=60))
+
+    assert str(int(MINIMUM_TRIP_DURATION.total_seconds() // 60)) in str(caught.value)
+
+
+def test_stop_schedule_at_minimum_is_accepted():
+    from app.core.constants import MINIMUM_TRIP_DURATION
+
+    departure = datetime(2026, 5, 1, 8, 0, tzinfo=timezone.utc)
+    trip = _trip_request_with_stops(departure, departure + MINIMUM_TRIP_DURATION)
+
+    assert trip.stops[-1].slot_time - trip.stops[0].slot_time == MINIMUM_TRIP_DURATION
+
+
+def test_stop_schedule_span_is_measured_by_sequence_not_list_order():
+    """Stops arrive in whatever order the client sent them; sequence is the route.
+
+    Measuring the first and last entries of the list would read a reversed payload as
+    a negative duration and reject a perfectly good trip.
+    """
+    import uuid
+    from app.schemas.trips import TripCreateRequest
+
+    departure = datetime(2026, 5, 1, 8, 0, tzinfo=timezone.utc)
+    trip = TripCreateRequest(
+        order_number="FDX-ORDER",
+        driver_id=uuid.uuid4(),
+        horse_id=uuid.uuid4(),
+        stops=[
+            {"precinct_id": uuid.uuid4(), "sequence": 2,
+             "slot_time": departure + timedelta(hours=6)},
+            {"precinct_id": uuid.uuid4(), "sequence": 1, "slot_time": departure},
+        ],
+        consignments=[{"pp_reference": "WAY001", "unit_count_expected": 2}],
+    )
+
+    assert trip is not None
+
+
+def test_trip_level_departure_pairs_with_stop_derived_arrival():
+    """A trip-level departure and a stop slot_time still describe one duration."""
+    departure = datetime(2026, 5, 1, 8, 0, tzinfo=timezone.utc)
+    with pytest.raises(ValidationError):
+        _trip_request_with_stops(
+            None,
+            departure + timedelta(seconds=30),
+            planned_departure_at=departure,
         )

@@ -12,6 +12,28 @@ from sqlalchemy.sql import func
 from app.db.models import Base
 from app.db.models.enums import VehicleType
 
+# Constraint names are read by orchestration when translating a unique violation into
+# a message naming the field that actually clashed, so they live beside the definitions
+# rather than as literals at the point that catches them.
+UQ_VEHICLES_ORG_PULSIT = "uq_vehicles_org_pulsit"
+UQ_VEHICLES_ORG_REGISTRATION = "uq_vehicles_org_registration"
+
+# Which user-facing field each constraint is about. A dispatcher can only fix the
+# thing they typed, so the 409 has to name it correctly.
+VEHICLE_UNIQUE_FIELDS: dict[str, str] = {
+    UQ_VEHICLES_ORG_PULSIT: "pulsit_device_id",
+    UQ_VEHICLES_ORG_REGISTRATION: "registration",
+    # vin_number carries unique=True on the column, and the deployed database and the
+    # model metadata disagree about what that index is called: dev has
+    # ix_vehicles_vin_number (created by an earlier migration) while
+    # Base.metadata.create_all produces vehicles_vin_number_key. Both are listed
+    # deliberately — mapping only one would pass every test and return a 500 in
+    # production. That divergence is the model/DB drift flagged separately; this map
+    # tolerates it rather than pretending it is resolved.
+    "vehicles_vin_number_key": "vin_number",
+    "ix_vehicles_vin_number": "vin_number",
+}
+
 
 class Vehicle(Base):
     """Horse (cab) or trailer — distinguished by vehicle_type.
@@ -23,7 +45,12 @@ class Vehicle(Base):
 
     __tablename__ = "vehicles"
     __table_args__ = (
-        UniqueConstraint("organization_id", "pulsit_device_id", name="uq_vehicles_org_pulsit"),
+        UniqueConstraint("organization_id", "pulsit_device_id", name=UQ_VEHICLES_ORG_PULSIT),
+        # One registration per fleet. create_vehicle has always caught a unique
+        # violation and reported it as a duplicate registration, but no constraint on
+        # registration existed — so duplicates were accepted outright, and the message
+        # was in fact describing a clash on pulsit_device_id.
+        UniqueConstraint("organization_id", "registration", name=UQ_VEHICLES_ORG_REGISTRATION),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

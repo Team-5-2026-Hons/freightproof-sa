@@ -2,15 +2,20 @@
 # This is the root of the backend. All routers will be registered here
 # as the API is built out. CORS is configured here for frontend access.
 
+import asyncio
 import logging
+from typing import Literal
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request, Response
 from fastapi import status as http_status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
-from app.core.rate_limit import RateLimitMiddleware
+from app.core.rate_limit import RateLimitMiddleware, get_redis
+from app.core.security_headers import SecurityHeadersMiddleware
 from app.api.v1.endpoints.artifacts import router as artifacts_router
 from app.api.v1.endpoints.artifacts import trip_artifacts_router
 from app.api.v1.endpoints.blockchain import router as blockchain_router
@@ -30,6 +35,7 @@ from app.api.v1.endpoints.trips import router as trips_router
 from app.api.v1.endpoints.vehicles import router as vehicles_router
 from app.auth.router import router as auth_router
 from app.core.realtime import register_realtime_hook
+from app.db.session import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +49,7 @@ _IS_PRODUCTION = settings.ENVIRONMENT == "production"
 app = FastAPI(
     title="FreightProof SA",
     description="Cargo theft and disputed delivery evidence platform",
-    version="0.1.0",
+    version=settings.VERSION,
     docs_url=None if _IS_PRODUCTION else "/docs",
     redoc_url=None if _IS_PRODUCTION else "/redoc",
     openapi_url=None if _IS_PRODUCTION else "/openapi.json",
@@ -85,6 +91,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Added last so it is outermost of all three — a response leaving through the rate
+# limiter's 429 or a CORS rejection still gets these headers, not just a normal 2xx.
+app.add_middleware(SecurityHeadersMiddleware)
+
 app.include_router(trips_router, prefix="/api/v1")
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(drivers_router, prefix="/api/v1")
@@ -102,10 +112,17 @@ app.include_router(pp_router, prefix="/api/v1")
 app.include_router(stream_router, prefix="/api/v1")
 app.include_router(trip_admin_router, prefix="/api/v1")
 
-# Dev trigger panel. Registered only when BOTH DEV_PANEL_ENABLED is set and the
-# environment is not production — see dev_triggers.dev_panel_enabled(). These
-# endpoints can fabricate scans and exceptions, so on an evidence platform they
-# must be structurally absent, not merely guarded, in a production deployment.
+# Dev trigger panel. Registered when DEV_PANEL_ENABLED is set — and ONLY that, since the
+# deployed demo host runs ENVIRONMENT="production" and still needs the panel to drive the
+# scan and Parcel Perfect flows. It is not tied to the _IS_PRODUCTION checks above: those
+# keep /docs and /openapi.json unpublished regardless of this flag, which is exactly why
+# the two are separate. See dev_triggers.dev_panel_enabled() for the full reasoning and
+# what protection remains.
+#
+# These endpoints fabricate scans and exceptions on an evidence platform. When the flag is
+# off the router is never registered, so the paths do not exist rather than being guarded
+# — but the flag is now the only thing making that so. Treat it as production config of
+# the same weight as a credential.
 if dev_panel_enabled():
     app.include_router(dev_triggers_router, prefix="/api/v1")
 
@@ -139,16 +156,131 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     )
 
 
+# ── Health check ──────────────────────────────────────────────────────────────
+# A health endpoint that answers 200 out of process memory only proves the process is
+# running, which is the one failure mode an orchestrator can already see for itself. The
+# outages that actually take FreightProof down leave the process perfectly alive: Supabase
+# drops the connection pool, or Redis goes away and takes the rate limiter and the realtime
+# bus with it. So this endpoint reaches for both dependencies on every call and reports
+# what came back.
+
+_DB_PROBE = text("SELECT 1")
+
+# The literals that appear in the response body, named so the endpoint, the models and the
+# tests cannot drift apart on a typo.
+_STATUS_OK = "ok"
+_STATUS_DEGRADED = "degraded"
+_PROBE_OK = "ok"
+_PROBE_UNAVAILABLE = "unavailable"
+
+# Probe names, which are also the keys of HealthResponse.checks.
+_CHECK_DATABASE = "database"
+_CHECK_REDIS = "redis"
+
+
+class DependencyHealth(BaseModel):
+    """One dependency's probe result."""
+
+    status: Literal["ok", "unavailable"]
+
+    # The exception CLASS name, never its message. /health is unauthenticated by design
+    # (the orchestrator polling it holds no credentials), and a connection error's message
+    # routinely carries the DSN — host, port, and sometimes the user. "ConnectionRefusedError"
+    # is all an operator needs to reach for the right log; the detail is in that log, behind
+    # auth, where it belongs.
+    error: str | None = None
+
+
 class HealthResponse(BaseModel):
-    status: str
+    status: Literal["ok", "degraded"]
     environment: str
     version: str
+    checks: dict[str, DependencyHealth]
+
+
+async def _probe_database(db: AsyncSession) -> DependencyHealth:
+    """Round-trip the smallest possible query against Postgres.
+
+    Uses the request's injected session, so this exercises the same engine and pool the
+    endpoints use — a probe holding a private connection could pass while every real
+    request was starving on an exhausted pool.
+    """
+    try:
+        await asyncio.wait_for(
+            db.execute(_DB_PROBE),
+            timeout=settings.HEALTH_PROBE_TIMEOUT_SECONDS,
+        )
+    # Broad on purpose, and the one place in this codebase where that is right: a health
+    # check whose own failure path raises is worse than no health check, because it turns
+    # a legible "degraded" into a 500 that names no dependency. A timeout arrives as
+    # asyncio.TimeoutError, driver and connection faults as DBAPIError, a session already
+    # poisoned earlier in the request as InvalidRequestError — all of them mean the same
+    # thing here, and none is swallowed: each is logged with its traceback and reported.
+    except Exception as exc:
+        logger.exception("Health probe failed: database unreachable")
+        # A failed statement leaves the session in a transaction that can no longer be
+        # committed, and get_db() commits unconditionally once this handler returns.
+        # Without this rollback the endpoint would still 500 — after correctly working
+        # out that the answer was 503.
+        #
+        # Bounded by the same ceiling as the probe itself, because the case that brought
+        # us here is usually a database that hangs rather than one that refuses: ROLLBACK
+        # has to travel the same dead connection the query just timed out on, so an
+        # unbounded rollback would hand back the hang that wait_for above just escaped.
+        try:
+            await asyncio.wait_for(
+                db.rollback(), timeout=settings.HEALTH_PROBE_TIMEOUT_SECONDS
+            )
+        except Exception:
+            logger.exception("Health probe could not roll back the failed session")
+        return DependencyHealth(status=_PROBE_UNAVAILABLE, error=type(exc).__name__)
+
+    return DependencyHealth(status=_PROBE_OK)
+
+
+async def _probe_redis() -> DependencyHealth:
+    """PING the Redis instance the rate limiter and the realtime bus already share."""
+    try:
+        await asyncio.wait_for(
+            get_redis().ping(),
+            timeout=settings.HEALTH_PROBE_TIMEOUT_SECONDS,
+        )
+    except Exception as exc:  # Same reasoning as _probe_database.
+        logger.exception("Health probe failed: Redis unreachable")
+        return DependencyHealth(status=_PROBE_UNAVAILABLE, error=type(exc).__name__)
+
+    return DependencyHealth(status=_PROBE_OK)
 
 
 @app.get("/health", tags=["system"], response_model=HealthResponse)
-async def health_check() -> HealthResponse:
+async def health_check(
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+) -> HealthResponse:
+    """Report whether this instance can actually reach Postgres and Redis.
+
+    The probes run concurrently, so a degraded answer costs one timeout rather than two
+    and the endpoint's worst case stays inside HEALTH_PROBE_TIMEOUT_SECONDS.
+
+    Answers 503 when either dependency is unreachable. The body carries the same verdict,
+    but the status code is what an orchestrator, a load balancer or an uptime monitor
+    reads without being taught this response shape — a degraded instance answering 200
+    would keep being handed traffic it cannot serve.
+    """
+    database, redis = await asyncio.gather(_probe_database(db), _probe_redis())
+
+    checks = {_CHECK_DATABASE: database, _CHECK_REDIS: redis}
+    degraded = any(check.status != _PROBE_OK for check in checks.values())
+
+    response.status_code = (
+        http_status.HTTP_503_SERVICE_UNAVAILABLE
+        if degraded
+        else http_status.HTTP_200_OK
+    )
+
     return HealthResponse(
-        status="ok",
+        status=_STATUS_DEGRADED if degraded else _STATUS_OK,
         environment=settings.ENVIRONMENT,
-        version="0.1.0",
+        version=settings.VERSION,
+        checks=checks,
     )

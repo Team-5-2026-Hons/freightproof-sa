@@ -185,3 +185,62 @@ describe('network-layer retry', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('request timeout', () => {
+  // Short enough to keep the suite fast, long enough that the stall is unambiguous.
+  const SHORT_TIMEOUT_MS = 60
+
+  // A fetch that never settles on its own — it rejects only once the client aborts it,
+  // and it rejects the way WebKit does: an AbortError carrying "Fetch is aborted", not
+  // the TimeoutError the spec names. That exact shape is what used to slip past the
+  // client's name check, and jsdom's own AbortSignal.timeout is too spec-correct to
+  // reproduce it, so the reason is supplied here deliberately.
+  function stallingFetch() {
+    return vi.fn((_url: string, init: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () =>
+          reject(new DOMException('Fetch is aborted', 'AbortError')),
+        )
+      }),
+    )
+  }
+
+  // Read-only POST: retry is on, so a timeout mistaken for a dropped connection would
+  // visibly cost a second window here.
+  const stalledCall = () =>
+    api.post('/blockchain/verify', {}, { idempotent: true, timeoutMs: SHORT_TIMEOUT_MS })
+
+  it('reports a stalled request as a timeout, whatever the browser calls the abort', async () => {
+    vi.stubGlobal('fetch', stallingFetch())
+
+    await expect(stalledCall()).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 0,
+      message: expect.stringContaining(`timed out after ${SHORT_TIMEOUT_MS}ms`),
+    })
+  })
+
+  // The costly half of the same bug: a timeout that reads as an ordinary network failure
+  // gets retried, so an idempotent call spent two full windows stalling before it spoke.
+  it('does not spend a second window retrying a request that timed out', async () => {
+    const fetchMock = stallingFetch()
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(stalledCall()).rejects.toBeInstanceOf(ApiError)
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  // The retry must survive: a dropped connection is not a timeout, and recovering from a
+  // dead keep-alive is the reason it exists.
+  it('still retries a GET whose connection drops rather than stalls', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce(jsonResponse(200, { recovered: true }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(api.get('/trips')).resolves.toEqual({ recovered: true })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+})

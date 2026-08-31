@@ -74,6 +74,9 @@ async def update_vehicle_endpoint(
         )
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except DuplicateResourceError as exc:
+        # Same conflict the create path returns a 409 for — a rename can collide too.
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     except HederaTimeoutError as exc:
         raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=str(exc))
     except HederaServiceError as exc:

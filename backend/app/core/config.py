@@ -109,11 +109,15 @@ class Settings(BaseSettings):
     GPS_TOLERANCE_METRES: int = 50
     DEMO_MODE: bool = False
 
-    # Dev trigger panel. Registers a router that can fire scans, PP lifecycle
-    # changes and exceptions. Defaults to False so the panel is absent unless
-    # deliberately switched on — ENVIRONMENT != "production" is the second,
-    # independent condition (see api/v1/endpoints/dev_triggers.dev_panel_enabled).
-    # Both must hold. On an internet-reachable demo host, one switch is not enough.
+    # Dev trigger panel. Registers a router that can fire scans, PP lifecycle changes and
+    # exceptions. Defaults to False so the panel is absent unless deliberately switched
+    # on. This is now the SOLE condition: it used to be paired with ENVIRONMENT !=
+    # "production", but the deployed demo runs as production (to keep /docs unpublished)
+    # and still needs the panel — see api/v1/endpoints/dev_triggers.dev_panel_enabled for
+    # the full reasoning. Setting this True on an internet-reachable host publishes
+    # endpoints that fabricate evidence events; they require a dispatcher token and refuse
+    # unless the integrations are mocked, but nothing else stands behind them now. Turn it
+    # off when the demo window closes.
     DEV_PANEL_ENABLED: bool = False
 
     # The operating day boundary used to decide whether a driver is activating a trip
@@ -161,6 +165,21 @@ class Settings(BaseSettings):
     # The defaults cover the local dev ports for dispatcher and driver-pwa.
     # -------------------------------------------------------------------------
     ENVIRONMENT: str = "development"
+
+    # Build version, reported by GET /health and shown as the OpenAPI version. Lives
+    # here rather than as a literal in main.py so a deploy can stamp the running build
+    # (a tag or a commit sha) through the environment: a health endpoint reporting a
+    # version compiled into the source cannot tell you which build is actually serving.
+    VERSION: str = "0.1.0"
+
+    # Hard ceiling on each individual /health dependency probe. The probes exist to
+    # answer "is Postgres/Redis reachable", and an unreachable dependency usually fails
+    # by hanging rather than by refusing — without a bound the health check inherits
+    # that hang, and an orchestrator reads a stalled probe as a container that is merely
+    # slow rather than one that is degraded. Kept short deliberately: the probes run
+    # concurrently, so this is also roughly the endpoint's worst-case latency, and it
+    # has to stay well inside whatever poll interval the orchestrator uses.
+    HEALTH_PROBE_TIMEOUT_SECONDS: float = 2.0
     ALLOWED_ORIGINS: List[str] = [
         "http://localhost:3000",
         "http://localhost:3001",

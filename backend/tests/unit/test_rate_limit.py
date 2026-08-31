@@ -7,9 +7,10 @@ commands the limiter uses, which is also a check that it uses no others.
 
 import time
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from redis.exceptions import ConnectionError as RedisConnectionError
 
 from app.core import rate_limit as rate_limit_module
@@ -80,12 +81,20 @@ def fake_redis(monkeypatch) -> _FakeRedis:
     return client
 
 
-def _request(*, ip: str = "203.0.113.10", headers: dict | None = None) -> SimpleNamespace:
-    """Enough of a Starlette Request for the limiter — it reads only these three things."""
-    return SimpleNamespace(
-        headers=headers or {},
-        client=SimpleNamespace(host=ip),
-        url=SimpleNamespace(path="/api/v1/trips"),
+def _request(*, ip: str = "203.0.113.10", headers: dict | None = None) -> Request:
+    """Enough of a Starlette Request for the limiter — it reads only these three things.
+
+    Cast rather than a real Request: constructing one means hand-building a full ASGI
+    scope for three attribute reads. Declaring the cast here keeps every call site
+    correctly typed instead of scattering per-call ignores through the module.
+    """
+    return cast(
+        Request,
+        SimpleNamespace(
+            headers=headers or {},
+            client=SimpleNamespace(host=ip),
+            url=SimpleNamespace(path="/api/v1/trips"),
+        ),
     )
 
 
@@ -192,6 +201,9 @@ async def test_the_dependency_raises_429_once_the_budget_is_gone(fake_redis, mon
         await dependency(request)
 
     assert exc_info.value.status_code == 429
+    # HTTPException.headers is Optional; assert presence first so the failure reads as
+    # "the limiter sent no headers at all" rather than a TypeError on the subscript.
+    assert exc_info.value.headers is not None
     assert exc_info.value.headers["Retry-After"] == str(_LIMIT.window_seconds)
 
 

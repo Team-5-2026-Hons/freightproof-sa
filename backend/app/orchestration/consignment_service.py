@@ -15,6 +15,7 @@ from decimal import Decimal
 from typing import Any, Optional
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConsignmentAlreadyAssignedError
@@ -22,6 +23,7 @@ from app.db.models.enums import ParcelStatus
 from app.db.models.organisations import Organization
 from app.db.models.trips import Consignment, Parcel, Trip
 from app.integrations.parcel_perfect import PPWaybillResponse, get_pp_client
+from app.orchestration.integrity import is_unique_violation
 
 logger = logging.getLogger(__name__)
 
@@ -110,16 +112,27 @@ async def fetch_and_sync_consignment(
     client_organization_id=None) and a warning is returned for the caller
     to surface to the dispatcher.
 
-    Idempotent under non-concurrent calls (no DB unique constraint on
-    parcel_perfect_reference yet — the select-then-insert has a race window;
-    see schema follow-up): if a Consignment with the same pp_reference already
-    exists, its pp_raw_json, parcel_count_expected, and pp_manifest_number are
-    refreshed and the existing row is returned. Parcel rows are never deleted —
-    only new barcodes are inserted. The caller is responsible for db.commit().
+    Idempotent, and safe under concurrent calls (FP-138): if a Consignment with the
+    same pp_reference already exists, its pp_raw_json, parcel_count_expected, and
+    pp_manifest_number are refreshed and the existing row is returned. Parcel rows
+    are never deleted — only new barcodes are inserted. The caller is responsible
+    for db.commit().
+
+    Concurrency is held by two complementary guards, because one waybill must never
+    end up on two trips each anchoring its own journey-lock hash: the row is locked
+    FOR UPDATE at step 2 so an existing consignment cannot be reassigned out from
+    under a concurrent caller, and the unique constraint on parcel_perfect_reference
+    arbitrates the case where two callers race to insert the first row at all. The
+    lock cannot cover the second case (nothing exists to lock) and the constraint
+    cannot cover the first (one row, two UPDATEs), so both are required.
 
     Raises:
+        ConsignmentAlreadyAssignedError: the waybill is already on another trip —
+            whether that was visible on entry (step 2a) or only became visible when
+            a concurrent caller won the insert (step 6). Both paths raise the same
+            error, so a dispatcher cannot tell which way they lost, and shouldn't.
         Any exception raised by get_pp_client().get_single_waybill() propagates
-        unchanged so callers can handle PP-specific errors (e.g. waybill not found).
+            unchanged so callers can handle PP-specific errors (e.g. waybill not found).
     """
     # Step 1: Fetch fresh waybill data from PP (or mock).
     # We do this first so a PP error aborts before any DB interaction.
@@ -129,8 +142,22 @@ async def fetch_and_sync_consignment(
     # Step 2: Look for an existing Consignment for this pp_reference.
     # Rekeyed on pp_reference alone — PP waybill numbers are unique within a
     # PP instance, and client org is now derived rather than caller-supplied.
+    #
+    # FOR UPDATE holds the row for the rest of this transaction, so a second caller
+    # arriving at the same waybill waits here rather than reading a trip_id that is
+    # about to change underneath it. Without it, two callers both read trip_id=None,
+    # both clear the guard below, and both write their own trip_id at step 5 — the
+    # later write silently taking the cargo off the earlier trip.
+    #
+    # This covers the case where a row already exists. It cannot cover the case where
+    # none does: there is nothing to lock until somebody has inserted, so two callers
+    # racing to create the FIRST row still both fall through to step 4. That half is
+    # arbitrated by the unique constraint on parcel_perfect_reference and handled at
+    # step 6 — the two guards are complementary, and neither is sufficient alone.
     existing_result = await db.execute(
-        select(Consignment).where(Consignment.parcel_perfect_reference == pp_reference)
+        select(Consignment)
+        .where(Consignment.parcel_perfect_reference == pp_reference)
+        .with_for_update()
     )
     consignment: Optional[Consignment] = existing_result.scalar_one_or_none()
 
@@ -224,7 +251,36 @@ async def fetch_and_sync_consignment(
             consignment.client_organization_id = client_org_id
 
     # Step 6: Flush so consignment.id is resolved and can be used as a FK on Parcel rows.
-    await db.flush()
+    #
+    # This is where the INSERT from step 4 actually reaches the database, and so where
+    # the lost half of the race surfaces. Two callers racing to create the first row for
+    # a waybill both get here; the unique constraint on parcel_perfect_reference lets
+    # exactly one through and rejects the other with 23505.
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        if not is_unique_violation(exc):
+            raise
+        # The transaction is aborted, so nothing can be read until it is rolled back.
+        # Rolling back here is safe: every caller of this function already abandons its
+        # whole unit of work when the waybill is refused (see trip_service.create_trip),
+        # and a second rollback there is a no-op.
+        await db.rollback()
+        owner_reference = await get_assigned_trip_reference(db, pp_reference)
+        if owner_reference is None:
+            # The row exists but is on no trip, or the winner rolled back too. Either
+            # way this is not "already assigned to another trip", and saying so would
+            # put a claim in front of a dispatcher that the record does not support.
+            # A truthful 500 beats a tidy lie about who holds the cargo.
+            logger.error(
+                "Unique violation on pp_reference=%s but no owning trip found", pp_reference
+            )
+            raise
+        logger.warning(
+            "Lost insert race for consignment pp_reference=%s to trip %s (attempted trip %s)",
+            pp_reference, owner_reference, trip_id,
+        )
+        raise ConsignmentAlreadyAssignedError(pp_reference, owner_reference) from exc
 
     # Step 7: Gather barcodes that already exist for this consignment (deduplication guard).
     existing_barcodes_result = await db.execute(
@@ -267,11 +323,11 @@ async def get_assigned_trip_reference(db: AsyncSession, pp_reference: str) -> Op
     Returns None both when no Consignment exists yet for this reference and when one
     exists but isn't yet linked to a trip.
     """
-    # No DB unique constraint on parcel_perfect_reference (see fetch_and_sync_consignment's
-    # own docstring) — the same race window could leave more than one Consignment/Trip
-    # pair matching. This is advisory only, so .limit(1) picks one to warn with instead
-    # of raising MultipleResultsFound over what the fail-closed check at trip creation
-    # would reject anyway.
+    # parcel_perfect_reference is unique as of FP-138, so at most one Consignment can
+    # match and the join can yield at most one trip. .limit(1) is kept rather than
+    # switched to scalar_one_or_none() because this is an advisory read on a path that
+    # must never raise at a dispatcher mid-lookup — if that invariant ever breaks, the
+    # right place to find out is the fail-closed check at trip creation, not here.
     result = await db.execute(
         select(Trip.trip_reference)
         .join(Consignment, Consignment.trip_id == Trip.id)

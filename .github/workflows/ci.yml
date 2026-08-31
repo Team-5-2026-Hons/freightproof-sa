@@ -89,6 +89,16 @@ jobs:
           REDIS_URL: redis://localhost:6379/0
         run: pytest -m "not slow"
 
+      # Report-only for now: the dependency tree already has known findings that need
+      # a coordinated, tested version bump (some are coupled to FastAPI's pinned
+      # Starlette range). continue-on-error keeps this from blocking every unrelated PR
+      # until that cleanup lands — surfaced here so it can't be missed, not silently
+      # skipped. Flip continue-on-error to false once the tree is clean.
+      - name: Dependency vulnerability scan — pip-audit (report only)
+        working-directory: backend
+        continue-on-error: true
+        run: pip-audit -r requirements.txt
+
   frontend:
     name: Dispatcher — lint, type-check, test
     runs-on: ubuntu-latest
@@ -119,6 +129,12 @@ jobs:
       - name: Test — vitest
         working-directory: frontend/dispatcher
         run: npm test
+
+      # Report-only for now — see the matching pip-audit step in the backend job for why.
+      - name: Dependency vulnerability scan — npm audit (report only)
+        working-directory: frontend/dispatcher
+        continue-on-error: true
+        run: npm audit --audit-level=high
 
   # ---------------------------------------------------------------------------
   # Driver PWA checks run as their own job: it is a separate npm project with its
@@ -155,3 +171,31 @@ jobs:
       - name: Test — vitest
         working-directory: frontend/driver-pwa
         run: npm test
+
+      # Report-only for now — see the matching pip-audit step in the backend job for why.
+      - name: Dependency vulnerability scan — npm audit (report only)
+        working-directory: frontend/driver-pwa
+        continue-on-error: true
+        run: npm audit --audit-level=high
+
+  # Scans the PR diff (or the pushed commits on dev) for accidentally committed secrets.
+  # .env is gitignored and has never been tracked, but that is one `git add -A` away from
+  # changing — this catches it before a key ever needs rotating. Report-only until a first
+  # clean run confirms no false positives against this repo's fixtures/mocks, same as the
+  # dependency scans above. gitleaks-action is free for public repos (this one is); a
+  # private repo would need GITLEAKS_LICENSE.
+  secret-scan:
+    name: Secret scan — gitleaks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks (report only)
+        uses: gitleaks/gitleaks-action@v2
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

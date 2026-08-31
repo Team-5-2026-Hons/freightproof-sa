@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import case, exists, func, select
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.blockchain.anchor_service import anchor_subject, compute_payload_hash
@@ -31,8 +31,11 @@ from app.db.models.organisations import Precinct
 from app.db.models.phases import PhaseEvent
 from app.db.models.people import Driver
 from app.db.models.transit import TripException
-from app.db.models.trips import Trip, TripStop, TripTrailer
+from app.db.models.trips import (
+    LIVE_ORDER_NUMBER_INDEX, LIVE_TRIP_STATUSES, Trip, TripStop, TripTrailer,
+)
 from app.db.models.vehicles import Vehicle
+from app.orchestration.integrity import is_unique_violation, violated_constraint
 from app.orchestration.phase_gate import blocked_on_by_stop
 from app.orchestration.phase_plan import ANCHORED_PHASES, PlanStop, build_phase_plan
 from app.orchestration.phase_service import recompute_position
@@ -109,29 +112,47 @@ async def _check_order_number_conflict(
     order_number: str,
     operator_org_id: uuid.UUID,
 ) -> None:
-    """Raise TripConflictError if an active trip already has this order_number."""
+    """Raise TripConflictError if an active trip already has this order_number.
+
+    Advisory, not authoritative. This gives a dispatcher a clean 409 in the ordinary
+    case, but a check and an insert are two statements: two dispatchers submitting
+    the same order at the same moment both pass here before either has inserted. The
+    partial unique index behind LIVE_TRIP_STATUSES is what actually decides it, and
+    _order_number_conflict below turns that decision back into this same error.
+    """
     # Coarse set post-Stage-2.2 (T6) — the old per-handshake TripStatus values
     # are gone; ACTIVE now covers everything between activation and closing.
     # EXCEPTION_HOLD is currently unreachable (nothing in app/ sets it — see
     # phase_service._is_resolved) but stays listed: a held trip is by definition
     # still live cargo, so it must keep blocking a duplicate order_number if and
     # when a manual dispatcher hold introduces the status.
-    active_statuses = [
-        TripStatus.CREATED,
-        TripStatus.ACTIVE,
-        TripStatus.EXCEPTION_HOLD,
-    ]
     conflict_exists = await db.execute(
         select(
             exists().where(
                 Trip.order_number == order_number,
                 Trip.operator_organization_id == operator_org_id,
-                Trip.status.in_(active_statuses),
+                Trip.status.in_(LIVE_TRIP_STATUSES),
             )
         )
     )
     if conflict_exists.scalar():
         raise TripConflictError(order_number)
+
+
+def _order_number_conflict(exc: IntegrityError, order_number: str) -> TripConflictError | None:
+    """Translate a lost order-number race into the same error the pre-check raises.
+
+    Returns None when this IntegrityError is something else, so the caller re-raises
+    it untouched. Matching on the index name rather than on 23505 alone matters here:
+    trip_reference, trip_stops and trip_trailers all carry unique constraints that can
+    fire at the very same flush, and reporting any of those as a duplicate order
+    number would send a dispatcher to fix something that is not wrong.
+    """
+    if not is_unique_violation(exc):
+        return None
+    if violated_constraint(exc) != LIVE_ORDER_NUMBER_INDEX:
+        return None
+    return TripConflictError(order_number)
 
 
 def _build_phase_events(
@@ -279,7 +300,26 @@ async def create_trip(
     # table has a use_alter=True FK back to trips, creating a circular dependency
     # in SQLAlchemy's unit-of-work topological sort. Without an explicit flush here,
     # the sort can emit the PhaseEvent INSERT before trips, violating the FK.
-    await db.flush()
+    #
+    # It is also where the trip INSERT lands, and so where a lost order-number race
+    # surfaces: the dispatcher who cleared the pre-check first commits, and the
+    # second one's insert is refused by the partial unique index.
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        conflict = _order_number_conflict(exc, payload.order_number)
+        if conflict is None:
+            raise
+        # Rolled back for the same reason the handlers below do it: get_db() rolls back
+        # on exception in production, but every other failure path in this function
+        # states the guarantee itself rather than depending on the session
+        # implementation — a test override or a future Celery caller may not replicate it.
+        await db.rollback()
+        logger.warning(
+            "Lost order-number race for order_number=%s (org %s)",
+            payload.order_number, current_user.organization_id,
+        )
+        raise conflict from exc
     for stop in trip_stops:
         await db.refresh(stop)
 

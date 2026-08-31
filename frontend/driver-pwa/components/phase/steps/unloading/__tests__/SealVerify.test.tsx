@@ -113,6 +113,19 @@ describe('SealVerify — blind entry', () => {
     // sealVerifiedMatch is absent entirely — the field is gone from UnloadingEvidence.
     expect(onUpdate).toHaveBeenLastCalledWith({ sealNumberAtDestination: 'AB-1234' })
   })
+
+  it('trims stray whitespace so the submitted value matches what the format gate validated', () => {
+    // A phone keyboard/autocorrect near-guarantees a leading or trailing space. Before
+    // normalizeSeal, only toUpperCase() ran here: isValidSealFormat trims to validate, so
+    // this passed the on-screen gate while still 422ing at the backend's untrimmed regex.
+    const onUpdate = vi.fn()
+    renderStep({ onUpdate })
+
+    typeSeal(' ab-1234 ')
+
+    expect(onUpdate).toHaveBeenLastCalledWith({ sealNumberAtDestination: 'AB-1234' })
+    expect(screen.getByRole('slider', { name: 'Swipe to submit' })).toHaveAttribute('aria-disabled', 'false')
+  })
 })
 
 describe('SealVerify — seal number format gate', () => {

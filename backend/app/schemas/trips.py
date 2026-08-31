@@ -7,6 +7,7 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.core.constants import MINIMUM_TRIP_DURATION
 from app.db.models.enums import IdvsStatus, ParcelStatus, TripStatus, TripType
 from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.phases import PhaseEventRead
@@ -145,12 +146,64 @@ class TripBase(BaseModel):
     planned_arrival_at: Optional[datetime] = None
 
 
+def stop_slot_times(stops: Optional[list["TripStopCreate"]]) -> list[datetime]:
+    """Every scheduled slot_time on the route, in sequence order.
+
+    Sequence is the route; list order is only how the client happened to serialise it.
+    Reading the list as sent would see a reversed payload as a negative duration and
+    reject a perfectly good trip.
+    """
+    if not stops:
+        return []
+    return [
+        stop.slot_time
+        for stop in sorted(stops, key=lambda s: s.sequence)
+        if stop.slot_time is not None
+    ]
+
+
+def validate_declared_schedule(
+    planned_departure_at: Optional[datetime],
+    planned_arrival_at: Optional[datetime],
+    *,
+    schedule_source: str = "planned_departure_at/planned_arrival_at",
+) -> None:
+    """Reject a declared schedule that could not have happened.
+
+    Shared by both creation schemas rather than written twice: two copies of a rule
+    are two rules, and they drift. Silent when either end is missing — a trip with no
+    declared arrival has no duration to be implausible about, and planned_arrival_at
+    is legitimately optional.
+
+    schedule_source names where the two times came from, because on the multi-stop
+    route they are stop slot_times rather than the trip-level fields, and an error
+    naming fields the request never sent is an error nobody can act on.
+
+    Raises ValueError, which Pydantic surfaces as a 422 through the API.
+    """
+    if not (planned_departure_at and planned_arrival_at):
+        return
+    if planned_arrival_at <= planned_departure_at:
+        raise ValueError(
+            f"declared arrival must be after declared departure ({schedule_source})"
+        )
+
+    declared = planned_arrival_at - planned_departure_at
+    if declared < MINIMUM_TRIP_DURATION:
+        minimum_minutes = int(MINIMUM_TRIP_DURATION.total_seconds() // 60)
+        declared_minutes = declared.total_seconds() / 60
+        # Name the minimum and what was given: "too short" on its own leaves the
+        # dispatcher guessing at what would be accepted.
+        raise ValueError(
+            f"planned trip duration must be at least {minimum_minutes} minutes "
+            f"(declared {declared_minutes:g}, from {schedule_source})"
+        )
+
+
 class TripCreate(TripBase):
     @model_validator(mode="after")
     def validate_arrival_after_departure(self) -> "TripCreate":
-        if self.planned_departure_at and self.planned_arrival_at:
-            if self.planned_arrival_at <= self.planned_departure_at:
-                raise ValueError("planned_arrival_at must be after planned_departure_at")
+        validate_declared_schedule(self.planned_departure_at, self.planned_arrival_at)
         return self
 
 
@@ -380,9 +433,33 @@ class TripCreateRequest(BaseModel):
                 "(provide planned_departure_at, or set slot_time on at least "
                 "one of the provided stops)"
             )
-        if self.planned_departure_at and self.planned_arrival_at:
-            if self.planned_arrival_at <= self.planned_departure_at:
-                raise ValueError("planned_arrival_at must be after planned_departure_at")
+        # The route carries its own schedule, and on the explicit-stops path it may be
+        # the ONLY schedule — planned_departure_at is not required when a stop has a
+        # slot_time (see the check above). Falling back to the stop bounds is what
+        # stops that route bypassing the duration rule entirely; each half falls back
+        # independently so a trip-level departure and a stop-derived arrival still
+        # describe one duration between them.
+        slots = stop_slot_times(self.stops)
+        effective_departure = self.planned_departure_at or (slots[0] if slots else None)
+        # The arrival is the latest scheduled point strictly after the departure. The
+        # "strictly after" is what stops a single scheduled stop being read as both
+        # ends of the same journey and rejected as a zero-length trip — one timed stop
+        # describes a moment, not a span.
+        later = [
+            slot for slot in slots
+            if effective_departure is None or slot > effective_departure
+        ]
+        effective_arrival = self.planned_arrival_at or (later[-1] if later else None)
+        using_stops = (
+            effective_departure is not self.planned_departure_at
+            or effective_arrival is not self.planned_arrival_at
+        )
+        validate_declared_schedule(
+            effective_departure,
+            effective_arrival,
+            schedule_source="stop slot_time" if using_stops else
+            "planned_departure_at/planned_arrival_at",
+        )
         if len(self.trailer_ids) != len(set(self.trailer_ids)):
             raise ValueError("trailer_ids must not contain duplicates")
         if self.trip_type == TripType.LOADED and not self.consignments:

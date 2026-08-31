@@ -5,6 +5,7 @@ Extracted from resource_service.py — owns list/create/update/detail for Vehicl
 
 import hashlib
 import uuid
+from typing import Any
 
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
@@ -15,16 +16,40 @@ from app.blockchain.critical_fields import (
     VEHICLE_COSMETIC_FIELDS, VEHICLE_CRITICAL_FIELDS, diff_critical_fields,
 )
 from app.core.exceptions import DuplicateResourceError, ResourceNotFoundError
+from app.orchestration.integrity import is_unique_violation, violated_constraint
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import (
     BlockchainReceiptType, SubjectType, VehicleEventType,
 )
 from app.db.models.events import VehicleEvent
 from app.db.models.trips import Trip, TripTrailer
-from app.db.models.vehicles import Vehicle
+from app.db.models.vehicles import VEHICLE_UNIQUE_FIELDS, Vehicle
 from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.events import VehicleEventRead
 from app.schemas.vehicles import VehicleCreateBody, VehicleDetailResponse, VehicleRead, VehicleUpdateBody
+
+
+def _duplicate_vehicle_error(
+    exc: IntegrityError, submitted: dict[str, Any]
+) -> DuplicateResourceError | None:
+    """Translate a unique violation into an error naming the field that clashed.
+
+    Returns None when this is not a uniqueness failure, or when the constraint is not
+    one we can tie to a user-facing field — the caller then re-raises the original.
+    A confident 409 naming the wrong field is worse than a 500: it sends a dispatcher
+    to correct something that was never wrong.
+
+    `submitted` is a plain dict of what the caller sent, deliberately not the ORM row.
+    The session is already in a failed state by the time this runs, so touching a
+    persistent instance can trigger a refresh and raise PendingRollbackError over the
+    top of the error we are trying to report.
+    """
+    if not is_unique_violation(exc):
+        return None
+    field = VEHICLE_UNIQUE_FIELDS.get(violated_constraint(exc) or "")
+    if field is None:
+        return None
+    return DuplicateResourceError("Vehicle", field, str(submitted.get(field, "")))
 
 
 async def list_vehicles(
@@ -62,11 +87,7 @@ async def create_vehicle(
     try:
         await db.flush()
     except IntegrityError as exc:
-        orig = getattr(exc, "orig", None)
-        pgcode = getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)
-        if pgcode != "23505":
-            raise
-        raise DuplicateResourceError("Vehicle", "registration", data.registration) from exc
+        raise _duplicate_vehicle_error(exc, data.model_dump()) or exc
 
     snapshot = {
         "registration": vehicle.registration,
@@ -158,7 +179,14 @@ async def update_vehicle(
     patched = data.model_dump(exclude_unset=True)
     for field, value in patched.items():
         setattr(vehicle, field, value)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        # Renaming a vehicle onto another's registration is the same collision
+        # create_vehicle already handles; without this it arrived as an unhandled
+        # IntegrityError and a 500. `patched` is passed rather than the ORM row
+        # because the session is already failed here — see _duplicate_vehicle_error.
+        raise _duplicate_vehicle_error(exc, patched) or exc
     new = {
         "registration": vehicle.registration,
         "licence_disc_expiry": vehicle.licence_disc_expiry.isoformat() if vehicle.licence_disc_expiry else None,
