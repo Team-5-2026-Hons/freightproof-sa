@@ -88,14 +88,24 @@ async function send(
   const maxAttempts = retry ? 2 : 1
   let res: Response | null = null
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    // Our own controller and flag rather than AbortSignal.timeout(), so "did WE time this
+    // out?" is something we recorded rather than something inferred from the rejection's
+    // name. It was inferred before, and the inference was wrong: WebKit rejects a
+    // timed-out signal as an AbortError ("Fetch is aborted"), not the TimeoutError the
+    // spec names. Every timeout therefore missed the check below and fell through to the
+    // generic branch — so a stalled GET spent a SECOND full window retrying before
+    // surfacing, and told the user it had "failed" rather than timed out.
+    const controller = new AbortController()
+    let timedOut = false
+    const expiry = setTimeout(() => { timedOut = true; controller.abort() }, timeoutMs)
     try {
-      res = await fetch(url, { ...init, headers, signal: AbortSignal.timeout(timeoutMs) })
+      res = await fetch(url, { ...init, headers, signal: controller.signal })
       break
     } catch (err) {
       // A timeout means the socket stalled rather than cleanly dropped. The retry exists
       // only for the immediate NSURLErrorNetworkConnectionLost dead-keep-alive case, so
       // don't spend a second full timeout window — surface it now as a clear error.
-      if (err instanceof DOMException && err.name === 'TimeoutError') {
+      if (timedOut) {
         throw new ApiError(0, `Request to ${url} timed out after ${timeoutMs}ms`)
       }
       if (attempt >= maxAttempts) {
@@ -107,6 +117,8 @@ async function send(
         throw new ApiError(0, `Request to ${url} failed: ${message}`)
       }
       await new Promise(resolve => setTimeout(resolve, NETWORK_RETRY_DELAY_MS))
+    } finally {
+      clearTimeout(expiry)
     }
   }
   // The loop either breaks with a response or throws; this guards the type narrowing.

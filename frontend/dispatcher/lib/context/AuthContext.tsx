@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useState, useEffect, useCallback } from 'react'
+import { createContext, useState, useEffect, useCallback, useRef } from 'react'
 import type { AuthState, DispatcherUser } from '@/lib/types/user'
 import { supabase } from '@/lib/supabase/client'
 import { api } from '@/lib/api/client'
@@ -28,6 +28,12 @@ export class ProfileUnavailableError extends Error {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<DispatcherUser | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  // Claimed by signIn for the SIGNED_IN event its own call is about to raise. signIn
+  // loads the profile itself and cannot return until it lands, so the listener below has
+  // nothing left to do for that event — without this it fetches /auth/me a second time
+  // for the same login. Read by whichever runs first: Supabase may raise SIGNED_IN during
+  // signInWithPassword or shortly after it resolves, and both orderings are handled.
+  const signInWillLoadProfile = useRef(false)
 
   const fetchProfile = useCallback(async (): Promise<DispatcherUser | null> => {
     try {
@@ -69,6 +75,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // transient /auth/me failure) is what was bouncing authenticated users to /login
       // after an idle tab. So we deliberately keep the current user on those events.
       if (event === 'SIGNED_IN') {
+        if (signInWillLoadProfile.current) {
+          // Our own signIn raised this and is already loading the profile. Release the
+          // claim so a LATER sign-in — one that did not come through signIn — still gets
+          // its profile fetched here.
+          signInWillLoadProfile.current = false
+          return
+        }
         // Defer the profile fetch outside this callback. Supabase runs onAuthStateChange
         // *while holding its auth lock*, so any awaited work here would keep the lock held;
         // setTimeout(…, 0) lets the callback return and the lock release first.
@@ -87,6 +100,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = useCallback(async (credentials: { email: string; password: string }) => {
     setIsLoading(true)
+    signInWillLoadProfile.current = true
     try {
       const { error } = await supabase.auth.signInWithPassword(credentials)
       if (error) throw error
@@ -106,6 +120,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const profile = await fetchProfile()
       if (!profile) throw new ProfileUnavailableError()
       setUser(profile)
+    } catch (err) {
+      // Released here rather than in the finally: on the success path the listener may not
+      // have run yet, and clearing the claim before it does would let the duplicate fetch
+      // back in. On the failure path no SIGNED_IN is coming to clear it, so it must be
+      // released or the next successful sign-in's listener would skip a fetch nobody made.
+      signInWillLoadProfile.current = false
+      throw err
     } finally {
       // In a finally so a failure cannot strand the form in its loading state.
       setIsLoading(false)

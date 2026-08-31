@@ -51,8 +51,29 @@ function renderAuth() {
   return renderHook(() => useAuth(), { wrapper: AuthProvider })
 }
 
+// Supabase's onAuthStateChange callback, as this file needs to drive it.
+type AuthListener = (event: string, session: { access_token: string } | null) => void
+
+/** Register the provider's listener and hand it back, so a test can raise events itself. */
+function captureAuthListener(): { current: AuthListener | undefined } {
+  const held: { current: AuthListener | undefined } = { current: undefined }
+  vi.mocked(supabase.auth.onAuthStateChange).mockImplementation(((listener: AuthListener) => {
+    held.current = listener
+    return { data: { subscription: { unsubscribe: vi.fn() } } }
+  }) as unknown as typeof supabase.auth.onAuthStateChange)
+  return held
+}
+
+/** Let a setTimeout(…, 0) deferral run, so "it never fetched" means never rather than not-yet. */
+const flushDeferrals = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
+
 beforeEach(() => {
   vi.clearAllMocks()
+  // Restored per test: captureAuthListener() replaces the implementation, and it would
+  // otherwise leak into whichever test ran next.
+  vi.mocked(supabase.auth.onAuthStateChange).mockImplementation(((): unknown => (
+    { data: { subscription: { unsubscribe: vi.fn() } } }
+  )) as unknown as typeof supabase.auth.onAuthStateChange)
   mockedSignIn.mockResolvedValue({ data: { user: null, session: null }, error: null } as never)
   vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: null } } as never)
 })
@@ -132,5 +153,48 @@ describe('AuthContext.signIn', () => {
 
     expect(mockedGet).not.toHaveBeenCalled()
     expect(result.current.isLoading).toBe(false)
+  })
+})
+
+describe('profile fetching', () => {
+  // signIn awaits the profile itself, and Supabase raises SIGNED_IN during the credential
+  // exchange — so without a claim between them, one login fetched /auth/me twice.
+  it('does not fetch the profile twice for its own sign-in', async () => {
+    const listener = captureAuthListener()
+    mockedGet.mockResolvedValue(PROFILE)
+    mockedSignIn.mockImplementation((async () => {
+      // Where Supabase actually raises it: inside signInWithPassword, before signIn returns.
+      listener.current?.('SIGNED_IN', { access_token: 'tok' })
+      return { data: { user: null, session: null }, error: null }
+    }) as unknown as typeof supabase.auth.signInWithPassword)
+
+    const { result } = renderAuth()
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    mockedGet.mockClear()
+
+    await act(async () => {
+      await result.current.signIn({ email: PROFILE.email, password: 'pw' })
+    })
+    await flushDeferrals()
+
+    expect(mockedGet).toHaveBeenCalledTimes(1)
+    expect(result.current.user).toEqual(PROFILE)
+  })
+
+  // The other half: the claim must be consumed, not left standing, or the next sign-in
+  // that did NOT come through signIn would silently never load a profile.
+  it('still loads the profile for a SIGNED_IN it did not raise', async () => {
+    const listener = captureAuthListener()
+    mockedGet.mockResolvedValue(PROFILE)
+
+    const { result } = renderAuth()
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    mockedGet.mockClear()
+
+    act(() => { listener.current?.('SIGNED_IN', { access_token: 'tok' }) })
+    await flushDeferrals()
+
+    expect(mockedGet).toHaveBeenCalledTimes(1)
+    expect(result.current.user).toEqual(PROFILE)
   })
 })
