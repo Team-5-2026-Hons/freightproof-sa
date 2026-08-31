@@ -1317,17 +1317,29 @@ async def test_advance_unloading_normalizes_against_a_non_canonical_stored_seal(
     assert unloading.status == PhaseStatus.COMPLETED
 
 
+@pytest.mark.parametrize("stored_seal", [None, "", "   "])
 @pytest.mark.asyncio
-async def test_advance_unloading_treats_a_sealless_departure_as_a_mismatch(db_session, trip_fixture):
-    """The sibling case to the test above: not a non-canonical stored seal, but no
-    stored seal at all. phase_events.seal_number is nullable and only the API path
-    runs DepartureCompleteRequest's validator, so an out-of-band departure row can
-    carry NULL into this comparison. That must record a SEAL_MISMATCH — an unloading
-    whose departure seal is unknown is exactly the anomaly this exception exists for
-    — and must not raise, because a raise would 500 the phase and record nothing."""
+async def test_advance_unloading_no_departure_seal_is_unverified_not_a_mismatch(
+    db_session, trip_fixture, stored_seal,
+):
+    """A missing departure seal must NOT be reported as SEAL_MISMATCH. There is no
+    second seal to differ from, so a mismatch would be a false theft indicator in the
+    anchored record — and CRITICAL would fire the driver app's alarm for something the
+    driver did not cause. The narrower truth is SEAL_UNVERIFIED at WARNING.
+
+    This departure is COMPLETED, so the missing seal is UNEXPLAINED — advance_departure
+    writes seal_number unconditionally from a required field, so nothing legitimate
+    produces this row. That stays CRITICAL: the type is corrected (it is not a
+    mismatch) without losing the loud signal a data-integrity anomaly needs. The
+    overridden case, where the absence IS explained, is the WARNING one — see the test
+    below.
+
+    Parametrized because NULL, "" and whitespace all mean "not recorded" and must not
+    diverge — in particular "   " must not survive normalization as a real seal that
+    then mismatches."""
     trip, driver, phases = trip_fixture
     await _advance_to_arrival(db_session, trip, driver, phases)
-    phases["departure"].seal_number = None
+    phases["departure"].seal_number = stored_seal
     await db_session.flush()
 
     result = await advance_unloading(
@@ -1341,10 +1353,65 @@ async def test_advance_unloading_treats_a_sealless_departure_as_a_mismatch(db_se
 
     assert result.status == TripStatus.ACTIVE  # flagged, not held
     assert len(result.exceptions) == 1
-    assert result.exceptions[0].exception_type == ExceptionType.SEAL_MISMATCH
-    assert result.exceptions[0].severity == ExceptionSeverity.CRITICAL
+    assert result.exceptions[0].exception_type == ExceptionType.SEAL_UNVERIFIED
+    assert result.exceptions[0].severity == ExceptionSeverity.CRITICAL  # unexplained
+    # The description must not imply a seal changed — that wording is what made the
+    # old SEAL_MISMATCH reuse misleading to whoever reads the record later.
+    assert "does not match" not in result.exceptions[0].description
     unloading = next(h for h in result.phases if h.phase_type == PhaseType.UNLOADING)
     assert unloading.status == PhaseStatus.EXCEPTION
+
+
+@pytest.mark.asyncio
+async def test_overridden_departure_then_unloading_records_unverified_not_mismatch(
+    db_session, trip_fixture,
+):
+    """The production path this distinction exists for, driven through the real
+    override_phase rather than a hand-set status. A dispatcher overrides a departure
+    the driver cannot complete; override_phase deliberately writes no seal (its own D3
+    comment), _is_resolved treats OVERRIDDEN as resolved, so the trip runs on and
+    unloading finds no seal to compare. Before SEAL_UNVERIFIED existed this produced a
+    CRITICAL seal_mismatch on a trip whose seal was simply never captured."""
+    trip, driver, phases = trip_fixture
+    # scalar_one, not first(): the fixture creates exactly one user for the operator
+    # org, and if that ever changes this should fail saying so rather than handing
+    # None to override_phase and surfacing as an unrelated AttributeError.
+    user = (await db_session.execute(
+        select(User).where(User.organization_id == trip.operator_organization_id)
+    )).scalar_one()
+    await _advance_to_loading(db_session, trip, driver, phases)
+
+    await phase_service.override_phase(
+        db_session, trip_id=trip.id, phase_event_id=phases["departure"].id,
+        operator_organization_id=trip.operator_organization_id, user_id=user.id,
+        note="Driver phone wiped at the depot; departure captured on paper.",
+    )
+    assert phases["departure"].seal_number is None  # the override wrote no seal
+
+    await advance_in_transit(
+        db_session, trip_id=trip.id, driver_id=driver.id,
+        phase_event_id=phases["in_transit"].id, payload=_arrival_payload(),
+    )
+    result = await advance_unloading(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading"].id,
+        payload=UnloadingCompleteRequest(
+            phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-1234",
+            gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    seal_exceptions = [
+        e for e in result.exceptions
+        if e.exception_type in (ExceptionType.SEAL_UNVERIFIED, ExceptionType.SEAL_MISMATCH)
+    ]
+    assert len(seal_exceptions) == 1
+    assert seal_exceptions[0].exception_type == ExceptionType.SEAL_UNVERIFIED
+    # WARNING, not CRITICAL: unlike a completed-but-sealless departure, an override
+    # EXPLAINS the absence and is already on the ledger as its own DISPATCHER_NOTE.
+    assert seal_exceptions[0].severity == ExceptionSeverity.WARNING
+    # Names the cause, so the record explains itself without a second query.
+    assert PhaseStatus.OVERRIDDEN.value in seal_exceptions[0].description
 
 
 @pytest.mark.asyncio

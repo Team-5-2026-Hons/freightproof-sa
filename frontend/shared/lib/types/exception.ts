@@ -4,11 +4,15 @@
 
 export type ExceptionId = string & { readonly __brand: 'ExceptionId' }
 
-// All 18 backend ExceptionType values — see DRIVER_EXCEPTION_TYPES and
+// All 19 backend ExceptionType values — see DRIVER_EXCEPTION_TYPES and
 // SYSTEM_EXCEPTION_TYPES in lib/constants/status-meta.ts for the UI split.
 export type ExceptionType =
   // System-detected (raised automatically by backend validation logic)
   | 'seal_mismatch'
+  // Two seals recorded and they differ (theft indicator, CRITICAL) vs no departure
+  // seal recorded at all, so continuity is uncheckable (WARNING). Kept apart so a
+  // dispatcher filtering for tampering never sees overridden departures.
+  | 'seal_unverified'
   | 'parcel_count_mismatch'
   | 'gps_mismatch'
   | 'route_deviation'
