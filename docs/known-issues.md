@@ -84,9 +84,69 @@ banner returns, do not accept it for the App project — and never for Pods, whi
 
 ---
 
+## 4. The async engine has no pool or connect timeouts
+
+**Files:** `backend/app/db/session.py` (lines 21–24, the `create_async_engine` call).
+
+**Symptom:** Nothing visible yet — this is latent. It surfaces as a request that never
+returns rather than one that fails: the client eventually gives up, the server-side
+handler is still sitting there, and the logs show no error because nothing raised.
+
+**Root cause:** The engine is built with `pool_pre_ping=True` and nothing else. Three
+separate waits are therefore unbounded, each with its own trigger:
+
+1. **Connecting.** asyncpg is given no `timeout`, so opening a new connection waits on
+   the OS TCP timeout. If Supabase is reachable at the network level but not answering
+   — the usual shape of a Supabase incident, as opposed to a clean outage — that wait is
+   measured in minutes, not seconds.
+2. **Waiting for a free connection.** `pool_timeout` defaults to 30s in SQLAlchemy, which
+   *is* a bound, but a 30s queue wait under pool exhaustion is far longer than any
+   request in this system should live. Every handler inherits it.
+3. **Pre-ping.** `pool_pre_ping=True` issues a `SELECT 1` before handing a connection
+   out. That is exactly the right behaviour for Supabase, which drops idle connections
+   aggressively — but the ping is itself an unbounded round trip on a connection that
+   has just been sitting idle, which is precisely the connection most likely to be
+   half-open. The feature that protects us from stale connections is also the one that
+   inherits their hang.
+
+**Relationship to the `/health` fix (issue resolved on this branch):** `/health` was the
+one place where this was *visible*, because it makes an explicit worst-case promise to
+an orchestrator. That endpoint is now bounded from both ends: `asyncio.wait_for` around
+the probe and its cleanup, and a non-committing session dependency so teardown does not
+issue an unbounded `COMMIT`. But that is a bound applied *at one call site*. Every other
+endpoint in the app still sits on the unbounded engine underneath. `/health` is now
+honest about its own latency; it is not evidence that the database layer is bounded.
+
+**Why it was not fixed in the same change:** it is a different failure mode with a much
+wider blast radius. The `/health` fix touches one endpoint and cannot change behaviour
+anywhere else. Adding `connect_args={"timeout": ...}` and a shorter `pool_timeout` to the
+engine changes the failure behaviour of *every* query on *all four* branches at once,
+including Celery tasks and Alembic — and the correct values depend on numbers nobody has
+measured yet (real Supabase connect latency from `af-south-1`, and the pool's actual
+high-water mark under the load the demo generates). Guessing them converts a rare hang
+into a frequent spurious error, which is a worse trade.
+
+**Impact:** Low probability, high severity when it fires, and effectively undiagnosable
+from the logs — the signature of the bug is the *absence* of an error. Most likely to
+appear during a live demo on conference wifi, which is the worst possible time.
+
+**Proposed fix (team decision — `session.py` is imported by every endpoint):**
+1. Measure first. Log connect latency and pool checkout wait for one full demo run;
+   `pool_timeout` and the connect timeout should be set from observed p99, not invented.
+2. Then set `connect_args={"timeout": N, "command_timeout": M}` for asyncpg and an
+   explicit `pool_timeout`, with the values in `core/config.py` rather than as literals,
+   so they can be tuned per environment without a code change.
+3. Consider `pool_recycle` as well, sized under Supabase's idle-connection cutoff. That
+   attacks the same problem from the other side — recycling a connection before it can go
+   stale is cheaper than detecting staleness with a pre-ping that might hang.
+
+**Owner:** unassigned. Raise at the next sprint boundary; do not fold into an unrelated PR.
+
+---
+
 ## Common theme
 
-Both issues stem from the project depending on each developer's local setup being
+Issues 1 and 2 stem from the project depending on each developer's local setup being
 "correct" without defining or enforcing what correct is. Node version and
 `.env.local` contents are invisible and per-machine, so the app works for whoever
 set things up right and mysteriously breaks for everyone else. Pinning the Node
