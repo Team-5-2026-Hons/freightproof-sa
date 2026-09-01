@@ -170,7 +170,14 @@ class Settings(BaseSettings):
     # here rather than as a literal in main.py so a deploy can stamp the running build
     # (a tag or a commit sha) through the environment: a health endpoint reporting a
     # version compiled into the source cannot tell you which build is actually serving.
-    VERSION: str = "0.1.0"
+    #
+    # Named APP_VERSION, not VERSION. This model sets no env_prefix, so each field binds
+    # to a bare environment variable of the same name — and VERSION is generic enough
+    # that a build script, base image or CI job can set it for its own purposes. os.environ
+    # outranks the .env file in pydantic-settings, so that stray value would win silently,
+    # and the field whose entire job is naming the running build would name something
+    # else. The prefix costs nothing and makes the collision implausible.
+    APP_VERSION: str = "0.1.0"
 
     # Hard ceiling on each individual /health dependency probe. The probes exist to
     # answer "is Postgres/Redis reachable", and an unreachable dependency usually fails
