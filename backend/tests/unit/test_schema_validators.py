@@ -10,6 +10,8 @@ import pytest
 from datetime import datetime, timedelta, timezone
 from pydantic import ValidationError
 
+from app.schemas.organisations import PrecinctCreateBody, PrecinctUpdateBody
+
 
 # ---------------------------------------------------------------------------
 # DriverCreate — id_number must be exactly 13 digits
@@ -515,3 +517,114 @@ def test_trip_level_departure_pairs_with_stop_derived_arrival():
             departure + timedelta(seconds=30),
             planned_departure_at=departure,
         )
+
+
+# ---------------------------------------------------------------------------
+# PrecinctCreateBody / PrecinctUpdateBody — constrained request bodies that
+# never accept a client-supplied organization id (SEC-PRECINCT-1)
+# ---------------------------------------------------------------------------
+
+
+def _valid_precinct_payload() -> dict:
+    return {
+        "name": "FedEx DBN — Riverhorse Valley",
+        "address": "12 Sookhai Place, Durban",
+        "latitude": -29.7942,
+        "longitude": 30.9820,
+        "geofence_radius_metres": 200,
+    }
+
+
+def test_precinct_create_body_rejects_client_supplied_organization_id():
+    """The org id comes from the JWT. A body carrying one must not set it.
+
+    Pydantic ignores unknown keys by default, so the assertion is that the field
+    does not exist on the model at all — not that construction fails.
+    """
+    body = PrecinctCreateBody(
+        **_valid_precinct_payload(),
+        principal_organization_id="00000000-0000-0000-0000-0000000000ff",
+    )
+
+    assert not hasattr(body, "principal_organization_id")
+    assert "principal_organization_id" not in body.model_dump()
+
+
+def test_precinct_create_body_accepts_valid_payload():
+    body = PrecinctCreateBody(**_valid_precinct_payload())
+
+    assert body.latitude == -29.7942
+    assert body.geofence_radius_metres == 200
+    assert body.is_shared is False
+
+
+def test_precinct_create_body_defaults_radius_to_200():
+    payload = _valid_precinct_payload()
+    del payload["geofence_radius_metres"]
+
+    assert PrecinctCreateBody(**payload).geofence_radius_metres == 200
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("latitude", 90.1), ("latitude", -90.1), ("latitude", 1000.0),
+        ("longitude", 180.1), ("longitude", -180.1), ("longitude", 1000.0),
+        ("geofence_radius_metres", 0),
+        ("geofence_radius_metres", 49),
+        ("geofence_radius_metres", 5001),
+        ("name", "   "),
+    ],
+)
+def test_precinct_create_body_rejects_out_of_range_field(field, value):
+    payload = _valid_precinct_payload()
+    payload[field] = value
+
+    with pytest.raises(ValidationError):
+        PrecinctCreateBody(**payload)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [("latitude", -90.0), ("latitude", 90.0),
+     ("longitude", -180.0), ("longitude", 180.0),
+     ("geofence_radius_metres", 50), ("geofence_radius_metres", 5000)],
+)
+def test_precinct_create_body_accepts_boundary_values(field, value):
+    payload = _valid_precinct_payload()
+    payload[field] = value
+
+    assert getattr(PrecinctCreateBody(**payload), field) == value
+
+
+def test_precinct_create_body_strips_surrounding_whitespace_from_name():
+    payload = _valid_precinct_payload()
+    payload["name"] = "  Riverhorse Valley  "
+
+    assert PrecinctCreateBody(**payload).name == "Riverhorse Valley"
+
+
+def test_precinct_update_body_allows_empty_patch():
+    """Every field optional — exclude_unset is what makes a partial PATCH work."""
+    assert PrecinctUpdateBody().model_dump(exclude_unset=True) == {}
+
+
+def test_precinct_update_body_tracks_only_supplied_fields():
+    body = PrecinctUpdateBody(geofence_radius_metres=350)
+
+    assert body.model_dump(exclude_unset=True) == {"geofence_radius_metres": 350}
+
+
+def test_precinct_update_body_cannot_transfer_ownership():
+    body = PrecinctUpdateBody(
+        principal_organization_id="00000000-0000-0000-0000-0000000000ff",
+    )
+
+    assert not hasattr(body, "principal_organization_id")
+    assert body.model_dump(exclude_unset=True) == {}
+
+
+@pytest.mark.parametrize("radius", [0, 49, 5001])
+def test_precinct_update_body_rejects_out_of_range_radius(radius):
+    with pytest.raises(ValidationError):
+        PrecinctUpdateBody(geofence_radius_metres=radius)

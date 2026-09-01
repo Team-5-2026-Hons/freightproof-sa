@@ -140,6 +140,8 @@ class BlockchainReceiptType(str, enum.Enum):
     VEHICLE_UPDATED     = "vehicle_updated"
     DRIVER_CREATED      = "driver_created"
     DRIVER_UPDATED      = "driver_updated"
+    PRECINCT_CREATED    = "precinct_created"
+    PRECINCT_UPDATED    = "precinct_updated"
 
 
 class SubjectType(str, enum.Enum):
@@ -149,6 +151,7 @@ class SubjectType(str, enum.Enum):
     VEHICLE_EVENT   = "vehicle_event"
     DRIVER_EVENT    = "driver_event"
     PHASE_EVENT     = "phase_event"
+    PRECINCT_EVENT  = "precinct_event"
 
 
 class VehicleEventType(str, enum.Enum):
@@ -165,6 +168,17 @@ class DriverEventType(str, enum.Enum):
     CREATED          = "created"
     LICENSE_RENEWED  = "license_renewed"
     DEACTIVATED      = "deactivated"
+    COSMETIC_UPDATE  = "cosmetic_update"
+
+
+class PrecinctEventType(str, enum.Enum):
+    CREATED          = "created"
+    # Coordinates moved. Named separately from a resize because the two have
+    # different evidentiary meanings: one changes WHERE the facility is, the
+    # other changes HOW CLOSE a handshake must be to count as inside it.
+    RELOCATED        = "relocated"
+    GEOFENCE_RESIZED = "geofence_resized"
+    SHARING_CHANGED  = "sharing_changed"
     COSMETIC_UPDATE  = "cosmetic_update"
 
 

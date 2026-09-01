@@ -70,3 +70,10 @@ BLOCKCHAIN_VERIFY = RateLimit(max_requests=30, window_seconds=_ONE_MINUTE, name=
 # Dispatcher fleet mutations (driver/vehicle create and update). Each one writes an event
 # row and may anchor, so it is not a free write even though it is not a Hedera submit.
 FLEET_MUTATION = RateLimit(max_requests=60, window_seconds=_ONE_MINUTE, name="fleet_mutation")
+
+# Precinct mutations. Unlike FLEET_MUTATION this is not primarily about cost, though it
+# does anchor: it is a blast-radius cap on an admin-only write that FP-68's geofence
+# verdict depends on. A precinct's coordinates and radius decide whether a handshake is
+# judged inside the facility, so no client should be able to rewrite them hundreds of
+# times a minute.
+PRECINCT_MUTATION = RateLimit(max_requests=60, window_seconds=_ONE_MINUTE, name="precinct_mutation")
