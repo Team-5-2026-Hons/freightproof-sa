@@ -529,6 +529,14 @@ is guessing, and the client and server will drift exactly as §6 describes.
 **Sequencing:** this audit belongs with the Sprint 7 spike, not with implementation. It is
 cheap to do on paper and it is the thing that decides whether the row expansion is evidence
 or decoration.
+
+**Drafted:** [2026-09-02-step-event-payload-audit.md](2026-09-02-step-event-payload-audit.md)
+— all twenty-one event types, test 1 (`exists`) pre-filled against the schema, tests 2–4
+left blank because they are decisions rather than lookups. Its three findings are worth
+reading before implementation is planned: the warehouse events currently source from a
+`declared` column that nothing writes; position now appears at three grains and must be
+settled as one decision; and `seal-broken` and `receiver-signed-off` both need the actor
+answer that Q3 gates.
 ---
 
 ## 10. Blast radius
