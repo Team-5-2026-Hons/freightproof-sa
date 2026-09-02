@@ -15,7 +15,7 @@
 > ([minutes](meeting_minutes/FreightProof_Meeting_Bruce_Minutes_01September2026.md)). Two of the four blocking items
 > in §9 are now closed — the pallet grain and the driver trends-versus-scores call — and the Pulsit
 > access position in §1 has changed from "no reply" to "warm introduction pending".
-> **Companion documents:** [design-notes/2026-09-01-phase-step-event-ledger.md](design-notes/2026-09-01-phase-step-event-ledger.md) · [scale-readiness-2026-08-18.md](scale-readiness-2026-08-18.md) ·
+> **Companion documents:** [design-notes/2026-09-01-phase-step-event-ledger.md](design-notes/2026-09-01-phase-step-event-ledger.md) · [design-notes/2026-09-02-seal-chain-rework.md](design-notes/2026-09-02-seal-chain-rework.md) · [scale-readiness-2026-08-18.md](scale-readiness-2026-08-18.md) ·
 > [design-notes/2026-08-24-corroboration-parcel-client-views.md](design-notes/2026-08-24-corroboration-parcel-client-views.md)
 
 ---
@@ -358,10 +358,11 @@ vehicle concurrency guard (FP-139), the creation-time clash view (FP-142) and mi
 (FP-260) went to the backlog — done this iteration if room appears, otherwise iteration 4. Every gap
 in the table above is still real; three of them are simply not promised this sprint. See §5.
 
-**One defect inside otherwise-good code:** the destination seal comparison (`phase_service.py:1125`)
-compares raw strings, while departure normalises via `_normalized_seal()` (`:929`). A seal typed as
-`"abc123 "` against `"ABC123"` raises a CRITICAL mismatch on a seal that matched. The receiving clerk
-types this on a phone keyboard, so this will happen.
+**~~One defect inside otherwise-good code~~ — FIXED, verified 2026-09-02.** The destination seal
+comparison used to compare raw strings while departure normalised via `_normalized_seal()`, so
+`"abc123 "` against `"ABC123"` raised a CRITICAL mismatch on a seal that matched. `phase_service.py`
+now normalises **both** sides (`:1129` and `:1140`), and `tests/unit/test_phase_service.py:1289`
+covers it. **FP-144 is done — close the ticket.** The text above is stale, not the code.
 
 Two more, from the code marksheet: `/health` returns `status="ok"` unconditionally and never touches
 the database (`main.py:148-153`) — it reports healthy with Postgres down; and `GET
@@ -438,7 +439,7 @@ already; the fix is choosing now.
 | Ticket | Story | Owner | Pts |
 |---|---|---|---|
 | FP-138 | The same waybill cannot land on two trips — unique index, failing concurrency test first, `IntegrityError`→409 | Ciaran | 5 |
-| FP-144 | A seal typed with a trailing space raises a false CRITICAL tamper alert — `_normalized_seal()` at the destination comparison | Ciaran | 2 |
+| FP-144 | ~~A seal typed with a trailing space raises a false CRITICAL tamper alert~~ — **verified complete 2026-09-02**, both sides normalised and tested. Close on the board | Ciaran | 2 |
 | FP-146 | Exceptions can be resolved, and the phone call gets recorded | Ciaran | 8 |
 | FP-147 | A broken seal pings the dispatcher — emit from all six system-exception sites | Ciaran | 5 |
 | FP-148 | Scope the alert stream so the critical one is not buried | Ciaran | 5 |
@@ -562,6 +563,19 @@ The fix is starting the sprint on the day the work starts.
    parent epic, FP-5/6/7 still describe the superseded five-handshake model, FP-74/FP-91
    duplicate question unresolved. *Still outstanding.*
 6. **Adopt one rule:** ticket before branch, FP number in the branch name.
+6b. **Board edits arising from the 1–2 September decisions** *(none of these are written yet —
+   the board is edited by hand):*
+   - **FP-144** — close. Verified complete on `dev`/Ciaran, §4 above.
+   - **FP-156** — unblocked. Decision 2c is closed; build the driver panel as exception trends.
+   - **FP-149** — scope note: **waybill → parcel, no pallet entity** (decision 12). A loss is
+     bounded to the waybill's sealed window.
+   - **FP-155** — description correction: the QR binds to **confirmation** (the receiver's final
+     sign-off after scan-out), *not* to the seal break, which is the first act of unloading. See §2.
+   - **FP-266** — extend beyond the parcel spine to the two seal capture steps.
+   - **New ticket** — the corrected Parcel Perfect ask for X International (decision 13), needed
+     before Bruce meets Giovanni.
+   - **New ticket** — seal format constraint (`^[A-Z]{2}-\d{4}$` rejects real seals; demo risk).
+     See [design-notes/2026-09-02-seal-chain-rework.md](design-notes/2026-09-02-seal-chain-rework.md) §3.1.
 7. **Five minutes of board review** at the Wednesday standup.
 
 **Housekeeping done 26 Aug:** FP-128 to FP-134 (the iteration 2 phase-refactor stages, all Done)
