@@ -199,7 +199,7 @@ Next: [handoff]
 
 ## Team Graph Policy
 
-Only the developer merging to `main` should run `/graphify .` and commit the result. Other developers should pull and read the committed graph. Do not rebuild the graph locally unless you are the designated maintainer or on `main`.
+Only the developer merging to `dev` should run `/graphify .` and commit the result. Other developers should pull and read the committed graph. Do not rebuild the graph locally unless you are the designated maintainer or on `dev`.
 
 ## Codebase Status
 
