@@ -16,6 +16,10 @@ export interface UsePrecincts {
   // FAILED fetch identically to a trip that genuinely has no origin. A transient
   // failure here once read as missing trip data for exactly that reason.
   error: string | null
+  // Exposed so a mutation on the precincts pages can refresh the list in place. The
+  // one-shot retry below is unaffected: it resets only on a completed success, so a
+  // manual refetch cannot re-arm it.
+  refetch: () => void
 }
 
 export function usePrecincts(): UsePrecincts {
@@ -45,5 +49,5 @@ export function usePrecincts(): UsePrecincts {
     refetch()
   }, [error, isLoading, refetch])
 
-  return { precincts: data, isLoading, error }
+  return { precincts: data, isLoading, error, refetch }
 }

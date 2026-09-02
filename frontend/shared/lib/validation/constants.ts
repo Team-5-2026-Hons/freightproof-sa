@@ -37,3 +37,25 @@ export const INTL_PHONE_LENGTH = 12
 
 export const NAME_MAX = 255
 export const LICENSE_MAX = 50
+
+// ── Precinct field constraints ──
+// Mirror backend/app/schemas/organisations.py. The backend stays authoritative; these
+// exist so the form surfaces the same problem before a 422 round-trip.
+export const LATITUDE_MIN = -90
+export const LATITUDE_MAX = 90
+export const LONGITUDE_MIN = -180
+export const LONGITUDE_MAX = 180
+
+// The floor mirrors GPS_TOLERANCE_METRES (50): a geofence narrower than the GPS
+// agreement tolerance makes the corroboration check meaningless. The ceiling catches a
+// kilometres-for-metres unit slip.
+export const GEOFENCE_RADIUS_MIN = 50
+export const GEOFENCE_RADIUS_MAX = 5000
+export const GEOFENCE_RADIUS_DEFAULT = 200
+
+export const PRECINCT_NAME_MAX = 255
+
+// Precinct.address is an unbounded Text column, so this ceiling comes from the Pydantic
+// schema rather than a column width. It exists because the address is copied verbatim
+// into the anchored PrecinctEvent payload; the server enforces it independently.
+export const PRECINCT_ADDRESS_MAX = 500

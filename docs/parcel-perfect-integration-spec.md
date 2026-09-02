@@ -554,6 +554,27 @@ before the presentation, so the warehouse feed is mocked and driven from a dev p
 
 ## C1. Questions for Parcel Perfect
 
+> **Update, 1 September 2026 — the access route changed; the constraint did not.** Parcel Perfect
+> declined a sandbox because we are not attached to a client, so Bruce is routing around them via
+> **X International** (Cape Town, a Parcel Perfect user), who have offered visibility into live
+> events in *their* environment. **§B1 above still applies: no ecomService version exposes scan or
+> tracking events, for any account, at any permission level.** Client-level goodwill does not create
+> an API that is not there — so the ask has to be re-scoped before Bruce meets them, or he will ask
+> for something that cannot be granted:
+>
+> - **Not** "Parcel Perfect API access to scan events" — structurally unavailable (§B1).
+> - **Yes** to either **(a)** their **own warehouse scan feed** — whatever system produces the
+>   scan-in/scan-out events *before* they reach PP — which drops straight into the existing
+>   `ScanFeed` protocol (`backend/app/integrations/scan_feed.py`) as a `WmsScanFeed` beside
+>   `MockScanFeed`, exactly as §B4b-i designed for; or **(b)** **read-only portal access** on a real
+>   account, so the Events / POD / Images tabs can be *observed* and the mock shaped against real
+>   data. Observation, not integration.
+> - Worth asking while we have a live account, because it *is* in the API: does the `manifest` field
+>   move in real time as waybills are manifested onto a vehicle (question 3 below)? That is the one
+>   load-adjacent signal ecomService actually exposes, and only a live account can answer it.
+>
+> Tracked as decision 13 in [iteration3_plan.md](iteration3_plan.md) §8.
+
 Send with the ecom test account request:
 
 1. Is there **any** API — ecomService or otherwise — to **read** waybill tracking/scan

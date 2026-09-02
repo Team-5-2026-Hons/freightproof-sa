@@ -4,7 +4,7 @@ from datetime import date, datetime
 from uuid import UUID
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.db.models.enums import DispatcherRole, IdvsStatus
 from app.schemas.text import LicenseStr, NameStr, PhoneStr
@@ -105,16 +105,25 @@ class DriverUpdate(BaseModel):
 class DriverUpdateBody(BaseModel):
     """Fields the dispatcher may change via PATCH /drivers/{id}.
 
-    All fields are optional — only supplied fields are applied.
+    Every field is omissible — only supplied fields are applied.
     POPIA: license_number is accepted here but only its SHA-256 hash goes to Hedera.
+
+    OMISSIBLE IS NOT THE SAME AS NULLABLE. `Optional[X]` below means the column accepts
+    null and an explicit null clears it; a bare `X = Field(default=None)` means the field
+    may be omitted but may not be nulled, because the column is NOT NULL. Declaring a
+    NOT NULL column Optional lets `{"full_name": null}` pass validation and raise
+    NotNullViolation at flush — a 500 on a well-formed request. See PrecinctUpdateBody in
+    schemas/organisations.py for the full reasoning, and
+    test_patch_schema_nullability_matches_the_model, which pins every PATCH body on this
+    model against the SQLAlchemy column definitions.
     """
     model_config = ConfigDict(from_attributes=True)
 
-    full_name: Optional[NameStr] = None
-    phone_number: Optional[PhoneStr] = None
-    license_number: Optional[LicenseStr] = None
+    full_name: NameStr = Field(default=None)  # type: ignore[assignment]  # exclude_unset drops this default; never read
+    phone_number: PhoneStr = Field(default=None)  # type: ignore[assignment]  # exclude_unset drops this default; never read
+    license_number: LicenseStr = Field(default=None)  # type: ignore[assignment]  # exclude_unset drops this default; never read
     license_expiry: Optional[date] = None
-    is_active: Optional[bool] = None
+    is_active: bool = Field(default=None)  # type: ignore[assignment]  # exclude_unset drops this default; never read
 
 
 class DriverRead(DriverBase):

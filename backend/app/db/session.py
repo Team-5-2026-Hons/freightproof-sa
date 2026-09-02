@@ -32,6 +32,30 @@ AsyncSessionLocal = async_sessionmaker(
 )
 
 
+async def get_read_only_db() -> AsyncGenerator[AsyncSession, None]:
+    """FastAPI dependency for handlers that only read, and must stay bounded.
+
+    Deliberately shares the engine and pool with get_db(): a session on a private
+    connection could report a healthy database while every real request starved on an
+    exhausted pool, which is the opposite of what a health check is for.
+
+    What it does not do is commit. get_db() commits unconditionally on the way out, and
+    that commit is unbounded — on a database that hangs rather than refuses, the COMMIT
+    has to travel the same dead connection the handler already gave up on, so /health
+    would inherit the very hang its per-probe timeouts exist to escape. A reader has
+    nothing to commit, so the safest bound is not to issue the statement at all.
+
+    Teardown is left to the context manager. Note that close() still returns the
+    connection to the pool, which for a live transaction means a ROLLBACK on the wire —
+    so a handler that gives up on a hung connection must call session.invalidate()
+    before returning (see _probe_database in main.py). Invalidation drops the connection
+    outright rather than talking to it, which is the only teardown a dead socket can
+    honour; close() afterwards is then a local no-op.
+    """
+    async with AsyncSessionLocal() as session:
+        yield session
+
+
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """FastAPI dependency that yields a database session per request.
 

@@ -44,7 +44,7 @@ journey-lock hash makes post-hoc trip tampering provable.
 | B2 | Trailer subdivisions / cold-chain zones | Never raised by Bruce; JHB–DBN beachhead is dry freight. | Multi-zone modelling would be needed only for refrigerated transport, not a Load Factor product targeted by this MVP. |
 | B8 | Fleet availability calendar | Operational tooling — stays in LFG's systems. | "We assign a vehicle to a driver for the month — a management function" (Bruce, 3 Mar). |
 | B9 | Driver availability / leave | Operational. | Same as B8. |
-| B11 | Cost management (fuel, food, repairs) | Operational, never raised. | Not a custody event; nothing to anchor. |
+| B11 | Cost management (fuel, food, repairs) | Operational. **No longer "never raised"** — Bruce ranked fuel among his top three analytics needs on 1 Sep (~50 % of operating cost; skimming, tank gauges, 360° cameras). | Still out, on better grounds: fuel telemetry is captured by **Pulsit or the OEM system** (e.g. Isuzu), not by us, and cost management is not a custody event — nothing to anchor. The honest framing is "someone else's sensor, someone else's dashboard", not "nobody asked". |
 | — | Per-parcel scanning | Belongs to **Parcel Perfect**; LFG receives sealed units and cannot see inside (theft risk). | FreightProof correlates PP's scans, does not generate them. |
 | — | Live operational tracking | Real-time location is **Pulsit's core job**. | FreightProof shows **last verified/anchored** position with time + confidence; going live is a question for Bruce, not a default. POPIA exposure on continuous live location. |
 
@@ -59,6 +59,14 @@ journey-lock hash makes post-hoc trip tampering provable.
   enforce** loading rules (that would be operations).
 - **Operator (Load Factor) is liable for the depot-to-depot leg**; the driver is overseen, not legally
   on the hook. FreightProof captures the **depot-to-depot** POD; door-to-door is FedEx's.
+- **Custody transfers when the destination branch scans and breaks the seal** *(Bruce, 1 Sep)*. The
+  seal is a unique barcoded number recorded on the waybill between LFG and the client (e.g. RTT);
+  the origin branch alerts the destination branch that it must remain intact, and the destination
+  verifies it, then breaks it. The driver can read the seal but **does not hold the number in his
+  document set** — so the departure seal capture is *not* a driver-controlled value, which is what
+  makes the destination comparison evidence rather than ceremony. Three mechanisms sit on the
+  vehicle: the **Pulsit geofence door lock**, a mechanical **fifth lock**, and the **barcoded seal**.
+  FreightProof records the seal; the Pulsit door-open event is the corroborating signal.
 - The driver is the only hands-on user per handshake; guards/warehouse staff have no accounts. The
   driver receives the **linehaul** (consolidated unit count + seal + reg + driver details) — **never**
   the manifest or per-parcel contents.
@@ -70,8 +78,10 @@ journey-lock hash makes post-hoc trip tampering provable.
 - **Vehicle camera-feed integration + 5-minute exception clip** (before/after an exception). Bruce
   to raise clip-saving with Pulsit; valuable but out of MVP.
 - **Live truck position on the parcel/trip map** — pending Bruce's call (vs. last-verified, §2).
-- **Per-pallet (`HandlingUnit`) tracking** — pending the "does LFG scan each pallet?" answer (July
-  site visit). See `docs/parcel-traceability.md` §8.
+- ~~**Per-pallet (`HandlingUnit`) tracking**~~ — **decided 1 Sep 2026: not built.** The parcel is the
+  smallest grain and a waybill contains parcels. A pallet unit, if ever needed, is an *additive*
+  entity between `Consignment` and `Parcel` — a later migration, not a rework. See
+  `docs/iteration3_plan.md` §8 decision 12 and `docs/parcel-traceability.md` §8.
 
 ---
 
@@ -79,7 +89,7 @@ journey-lock hash makes post-hoc trip tampering provable.
 
 | # | Question | Owner |
 |---|---|---|
-| 1 | Does LFG scan each pallet or only count + seal? (decides leaf-level model) | Bruce / July visit |
+| 1 | ~~Does LFG scan each pallet or only count + seal?~~ **Closed 1 Sep 2026 — the parcel is the leaf grain; no `HandlingUnit`.** Taken on simplicity grounds, not on new evidence. | ~~Bruce / July visit~~ Team |
 | 2 | Depot-to-depot POD handover: on-device signature vs photo-of-paper (BQ2) | Bruce |
 | 3 | Load-configuration recording depth — blueprint + order only, or more? | Bruce |
 | 4 | Will the lecturer accept "out of scope per industry partner" for B2/B8/B9/B11? | Ammar |

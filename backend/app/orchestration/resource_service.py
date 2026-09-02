@@ -3,9 +3,10 @@
 Layering: imports db/, schemas/, core/exceptions, integrations/ only.
 Never import from api/ or auth/.
 
-Driver and vehicle service functions have been extracted to:
+Driver, vehicle and precinct service functions have been extracted to:
   - orchestration/driver_service.py
   - orchestration/vehicle_service.py
+  - orchestration/precinct_service.py
 """
 
 import uuid
@@ -18,7 +19,6 @@ from app.core.exceptions import ResourceNotFoundError
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import PhaseStatus, SubjectType, TripStatus, TripType
 from app.db.models.phases import PhaseEvent
-from app.db.models.organisations import Precinct
 from app.db.models.people import Driver
 from app.db.models.transit import TripException
 from app.db.models.trips import Consignment, Trip, TripStop, TripTrailer
@@ -27,28 +27,10 @@ from app.orchestration.phase_gate import blocked_on_by_stop
 from app.orchestration.scan_service import scanned_counts_for_trip
 from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.phases import PhaseEventRead
-from app.schemas.organisations import PrecinctRead
 from app.schemas.people import DriverRead
 from app.schemas.transit import TripExceptionRead
 from app.schemas.trips import ConsignmentRead, TripDetailResponse, TripListItemResponse, TripStopRead
 from app.schemas.vehicles import VehicleRead
-
-
-async def list_precincts(db: AsyncSession, organization_id: uuid.UUID) -> list[PrecinctRead]:
-    """Return precincts owned by organization_id, plus any precinct marked is_shared.
-
-    Precincts default to private to their principal_organization_id — a precinct
-    is only visible to other orgs' dispatchers if explicitly opted in via is_shared.
-    """
-    result = await db.execute(
-        select(Precinct)
-        .where(
-            (Precinct.principal_organization_id == organization_id)
-            | (Precinct.is_shared.is_(True))
-        )
-        .order_by(Precinct.name)
-    )
-    return [PrecinctRead.model_validate(p) for p in result.scalars().all()]
 
 
 async def list_trips(

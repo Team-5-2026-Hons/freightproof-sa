@@ -20,7 +20,7 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 from sqlalchemy.exc import OperationalError
 
 from app import main as main_module
-from app.db.session import get_db
+from app.db.session import get_read_only_db
 from app.main import app
 
 _TEST_TIMEOUT_SECONDS = 0.05
@@ -28,11 +28,14 @@ _HANG_SECONDS = 5.0
 
 
 class _StubSession:
-    """Stands in for the AsyncSession that get_db would yield."""
+    """Stands in for the AsyncSession that get_read_only_db would yield."""
 
     def __init__(self, *, raises: Exception | None = None, hangs: bool = False) -> None:
         self._raises = raises
         self._hangs = hangs
+        # Recorded rather than ignored: discarding the connection is what keeps the
+        # endpoint's worst case bounded, so a test can assert it actually happened.
+        self.invalidated = False
 
     async def execute(self, statement: Any) -> Any:
         if self._hangs:
@@ -41,8 +44,8 @@ class _StubSession:
             raise self._raises
         return object()
 
-    async def rollback(self) -> None:
-        return None
+    async def invalidate(self) -> None:
+        self.invalidated = True
 
 
 class _StubRedis:
@@ -63,12 +66,12 @@ def _db_error() -> OperationalError:
 
 
 def _override_db(session: _StubSession) -> None:
-    """Point the endpoint's get_db dependency at `session` for this test."""
+    """Point the endpoint's session dependency at `session` for this test."""
 
     async def _dependency() -> AsyncGenerator[Any, None]:
         yield session
 
-    app.dependency_overrides[get_db] = _dependency
+    app.dependency_overrides[get_read_only_db] = _dependency
 
 
 @pytest.fixture(autouse=True)
@@ -86,7 +89,7 @@ def isolated_dependencies(monkeypatch: pytest.MonkeyPatch) -> Any:
 
     yield
 
-    app.dependency_overrides.pop(get_db, None)
+    app.dependency_overrides.pop(get_read_only_db, None)
 
 
 async def _get_health() -> Any:
@@ -169,7 +172,7 @@ async def test_health_reports_degraded_when_both_dependencies_are_unreachable(
 
 
 async def test_health_does_not_return_500_when_the_database_fails():
-    """The failed session must not blow up in get_db's commit on the way out.
+    """A failed probe must not blow the request up in session teardown.
 
     Named separately from the degraded assertion above because it is a different bug: a
     correct verdict that still leaves the request to die in teardown reads to an
@@ -181,6 +184,23 @@ async def test_health_does_not_return_500_when_the_database_fails():
 
     assert response.status_code != 500
     assert response.json()["status"] == "degraded"
+
+
+async def test_health_discards_the_connection_when_the_database_fails():
+    """The probe must hand back a dead connection, not return it to the pool.
+
+    This is what bounds the endpoint. A session that merely reports "unavailable" still
+    owes a ROLLBACK, and teardown pays it on the wire — over the same connection the
+    probe just gave up on. The stated worst case only holds if the connection is
+    discarded locally instead.
+    """
+    session = _StubSession(raises=_db_error())
+    _override_db(session)
+
+    response = await _get_health()
+
+    assert response.json()["checks"]["database"]["status"] == "unavailable"
+    assert session.invalidated is True
 
 
 # ── Timeouts ──────────────────────────────────────────────────────────────────
@@ -219,7 +239,7 @@ async def test_health_probes_run_concurrently(monkeypatch: pytest.MonkeyPatch):
 async def test_health_reports_version_and_environment_from_settings(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.setattr(main_module.settings, "VERSION", "9.9.9-test")
+    monkeypatch.setattr(main_module.settings, "APP_VERSION", "9.9.9-test")
     monkeypatch.setattr(main_module.settings, "ENVIRONMENT", "staging")
     _override_db(_StubSession())
 

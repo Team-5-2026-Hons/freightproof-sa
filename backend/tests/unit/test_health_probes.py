@@ -26,8 +26,12 @@ _HANG_SECONDS = 5.0
 class _FakeSession:
     """The two AsyncSession methods the DB probe uses, and nothing else.
 
-    Recording rollbacks is the point: the probe must leave the session committable, since
-    get_db() commits after the handler returns.
+    Recording invalidations is the point: a probe that gives up on a connection must
+    discard it, because every alternative way of releasing it talks to the dead socket.
+
+    There is deliberately no commit() and no rollback() here. /health runs on
+    get_read_only_db(), which issues neither, so a probe that reached for one would fail
+    loudly rather than quietly costing a round trip on a connection that cannot answer.
     """
 
     def __init__(
@@ -35,12 +39,12 @@ class _FakeSession:
         *,
         raises: Exception | None = None,
         hangs: bool = False,
-        rollback_hangs: bool = False,
+        invalidate_hangs: bool = False,
     ) -> None:
         self._raises = raises
         self._hangs = hangs
-        self._rollback_hangs = rollback_hangs
-        self.rollbacks = 0
+        self._invalidate_hangs = invalidate_hangs
+        self.invalidations = 0
 
     async def execute(self, statement: Any) -> Any:
         if self._hangs:
@@ -49,9 +53,9 @@ class _FakeSession:
             raise self._raises
         return object()
 
-    async def rollback(self) -> None:
-        self.rollbacks += 1
-        if self._rollback_hangs:
+    async def invalidate(self) -> None:
+        self.invalidations += 1
+        if self._invalidate_hangs:
             await asyncio.sleep(_HANG_SECONDS)
 
 
@@ -129,53 +133,55 @@ async def test_database_probe_returns_within_the_configured_timeout():
     assert elapsed < _HANG_SECONDS
 
 
-async def test_database_probe_rolls_back_the_failed_session():
-    # get_db() commits unconditionally after the handler returns. A session left inside a
-    # failed transaction would raise there, turning a correct 503 into a 500.
+async def test_database_probe_discards_the_failed_session():
+    # The connection the probe just gave up on must not go back to the pool. Releasing it
+    # normally — via ROLLBACK, or the implicit one inside close() — travels that same dead
+    # socket, so the endpoint would inherit the hang its timeout exists to escape.
     session = _FakeSession(raises=_db_error())
 
     await _probe_database(_as_session(session))
 
-    assert session.rollbacks == 1
+    assert session.invalidations == 1
 
 
-async def test_database_probe_does_not_roll_back_a_healthy_session():
+async def test_database_probe_does_not_discard_a_healthy_session():
     session = _FakeSession()
 
     await _probe_database(_as_session(session))
 
-    assert session.rollbacks == 0
+    assert session.invalidations == 0
 
 
-async def test_database_probe_survives_a_failing_rollback():
-    """A session too broken to roll back must still yield a verdict, not an exception."""
+async def test_database_probe_survives_a_failing_invalidate():
+    """A session too broken even to discard must still yield a verdict, not an exception."""
     session = _FakeSession(raises=_db_error())
 
-    async def _broken_rollback() -> None:
+    async def _broken_invalidate() -> None:
         raise _db_error()
 
-    session.rollback = _broken_rollback  # type: ignore[method-assign]
+    session.invalidate = _broken_invalidate  # type: ignore[method-assign]
 
     result = await _probe_database(_as_session(session))
 
     assert result.status == _PROBE_UNAVAILABLE
 
 
-async def test_database_probe_is_bounded_when_the_rollback_also_hangs():
-    """The cleanup must not reintroduce the hang the probe timeout just escaped.
+async def test_database_probe_is_bounded_when_the_cleanup_also_stalls():
+    """Cleanup must not reintroduce the hang the probe timeout just escaped.
 
-    A database that hangs rather than refusing is the common case, and ROLLBACK travels
-    the same dead connection the query timed out on — an unbounded rollback here would
-    stall the whole endpoint for as long as the socket stays open.
+    invalidate() terminates the connection locally, so in production it cannot stall the
+    way ROLLBACK could. This drives the pathological case anyway — the previous cleanup
+    reached for the network and the bound has to hold regardless of which one is in
+    place, so the guarantee is asserted rather than assumed from the implementation.
     """
-    session = _FakeSession(hangs=True, rollback_hangs=True)
+    session = _FakeSession(hangs=True, invalidate_hangs=True)
 
     started = asyncio.get_running_loop().time()
     result = await _probe_database(_as_session(session))
     elapsed = asyncio.get_running_loop().time() - started
 
     assert result.status == _PROBE_UNAVAILABLE
-    assert session.rollbacks == 1
+    assert session.invalidations == 1
     assert elapsed < _HANG_SECONDS
 
 

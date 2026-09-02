@@ -106,13 +106,22 @@ class VehicleUpdate(BaseModel):
 class VehicleUpdateBody(BaseModel):
     """Fields the dispatcher may change via PATCH /vehicles/{id}.
 
-    All fields are optional — only supplied fields are applied.
+    Every field is omissible — only supplied fields are applied.
     vehicle_type is excluded: changing horse↔trailer would silently break trip logic.
+
+    OMISSIBLE IS NOT THE SAME AS NULLABLE. `Optional[X]` below means the column accepts
+    null and an explicit null clears it; a bare `X = Field(default=None)` means the field
+    may be omitted but may not be nulled, because the column is NOT NULL. Declaring a
+    NOT NULL column Optional lets `{"registration": null}` pass validation and raise
+    NotNullViolation at flush — a 500 on a well-formed request. See PrecinctUpdateBody in
+    schemas/organisations.py for the full reasoning, and
+    test_patch_schema_nullability_matches_the_model, which pins every PATCH body on this
+    model against the SQLAlchemy column definitions.
     """
     model_config = ConfigDict(from_attributes=True)
 
-    registration: Optional[RegistrationStr] = None
-    pulsit_device_id: Optional[PulsitDeviceIdStr] = None
+    registration: RegistrationStr = Field(default=None)  # type: ignore[assignment]  # exclude_unset drops this default; never read
+    pulsit_device_id: PulsitDeviceIdStr = Field(default=None)  # type: ignore[assignment]  # exclude_unset drops this default; never read
     vin_number: Optional[VinNumberStr] = None
     licence_disc_expiry: Optional[date] = None
     make: Optional[MakeModelStr] = None
@@ -120,7 +129,7 @@ class VehicleUpdateBody(BaseModel):
     year: Optional[int] = None
     gross_vehicle_mass_kg: Optional[int] = Field(default=None, gt=0)
     length_m: Optional[int] = None
-    is_active: Optional[bool] = None
+    is_active: bool = Field(default=None)  # type: ignore[assignment]  # exclude_unset drops this default; never read
 
     @field_validator("year")
     @classmethod

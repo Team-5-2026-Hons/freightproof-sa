@@ -18,7 +18,7 @@ from app.blockchain.hedera import HederaService
 from app.core.exceptions import HederaServiceError
 from app.crypto.hashing import compute_trip_canonical_payload
 from app.db.models.blockchain import BlockchainReceipt
-from app.db.models.events import DriverEvent, VehicleEvent
+from app.db.models.events import DriverEvent, PrecinctEvent, VehicleEvent
 from app.db.models.enums import PhaseType, SubjectType, VerifyStatus
 from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Trip, TripTrailer
@@ -174,6 +174,30 @@ async def _reconstruct_phase_event_payload(
     return None
 
 
+async def _reconstruct_precinct_event_payload(
+    db: AsyncSession, event_id: uuid.UUID
+) -> dict[str, Any] | None:
+    """Rebuild the canonical payload precinct_service anchored, from the live row.
+
+    Key order and value shapes must match create_precinct/update_precinct exactly —
+    _hash_payload sorts keys, but a renamed key or a Decimal where a float was anchored
+    produces a different hash and reports a mismatch that never happened.
+    """
+    event = (
+        await db.execute(select(PrecinctEvent).where(PrecinctEvent.id == event_id))
+    ).scalar_one_or_none()
+    if event is None:
+        return None
+    return {
+        "precinct_event_id": str(event.id),
+        "precinct_id": str(event.precinct_id),
+        "event_type": event.event_type,
+        "fields": event.changed_fields,
+        "changed_by_user_id": str(event.changed_by_user_id),
+        "timestamp": event.created_at.isoformat(),
+    }
+
+
 def _hash_payload(payload: dict[str, Any]) -> str:
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -210,6 +234,11 @@ async def verify_subject(
         current_hash = _hash_payload(rebuilt)
     elif subject_type == SubjectType.PHASE_EVENT:
         rebuilt = await _reconstruct_phase_event_payload(db, subject_id)
+        if rebuilt is None:
+            return VerifyOutcome(status=VerifyStatus.NO_RECEIPT, receipt=receipt)
+        current_hash = _hash_payload(rebuilt)
+    elif subject_type == SubjectType.PRECINCT_EVENT:
+        rebuilt = await _reconstruct_precinct_event_payload(db, subject_id)
         if rebuilt is None:
             return VerifyOutcome(status=VerifyStatus.NO_RECEIPT, receipt=receipt)
         current_hash = _hash_payload(rebuilt)

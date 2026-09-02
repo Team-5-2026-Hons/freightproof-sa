@@ -11,7 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import SubjectNotVisibleError
 from app.db.models.enums import SubjectType
-from app.db.models.events import DriverEvent, VehicleEvent
+from app.db.models.events import DriverEvent, PrecinctEvent, VehicleEvent
+from app.db.models.organisations import Precinct
 from app.db.models.phases import PhaseEvent
 from app.db.models.people import Driver
 from app.db.models.trips import Trip
@@ -68,6 +69,17 @@ async def assert_subject_visible(
             .where(
                 PhaseEvent.id == subject_id,
                 Trip.operator_organization_id == organization_id,
+            )
+        )
+    elif subject_type == SubjectType.PRECINCT_EVENT:
+        # Scoped to the precinct's OWNER, not to who can see it. is_shared governs the
+        # precinct list; it never opens the audit trail to another organisation.
+        query = (
+            select(PrecinctEvent.id)
+            .join(Precinct, Precinct.id == PrecinctEvent.precinct_id)
+            .where(
+                PrecinctEvent.id == subject_id,
+                Precinct.principal_organization_id == organization_id,
             )
         )
     else:

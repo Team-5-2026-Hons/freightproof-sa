@@ -15,7 +15,7 @@ export type ChangeRow = {
   value: string
 }
 
-// Friendly labels for known field keys (vehicle + driver critical/snapshot fields).
+// Friendly labels for known field keys (vehicle, driver + precinct critical/snapshot fields).
 const FIELD_LABELS: Record<string, string> = {
   registration: 'Registration',
   vehicle_type: 'Vehicle type',
@@ -31,6 +31,10 @@ const FIELD_LABELS: Record<string, string> = {
   license_number_sha256: 'Licence number',
   gross_vehicle_mass_kg: 'GVM',
   length_m: 'Length',
+  latitude: 'Latitude',
+  longitude: 'Longitude',
+  geofence_radius_metres: 'Geofence radius (m)',
+  is_shared: 'Shared with other organisations',
 }
 
 // Keys that are bookkeeping/meta, never real changed-field values.

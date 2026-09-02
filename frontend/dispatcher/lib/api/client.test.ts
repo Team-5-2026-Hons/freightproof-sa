@@ -231,6 +231,57 @@ describe('request timeout', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
+  // A response whose headers arrive normally but whose BODY never settles. This is the
+  // half-open socket the timeout actually exists for, and the half fetch() cannot signal:
+  // it resolved back at the headers, so only the body promise is left to reject. json()
+  // settles solely when the client aborts, so if the window is disarmed on the headers
+  // this response hangs the caller forever.
+  function stallingBodyResponse(signal: AbortSignal | undefined): Response {
+    return {
+      ok: true,
+      status: 200,
+      statusText: 'HTTP 200',
+      json: () =>
+        new Promise<unknown>((_resolve, reject) => {
+          signal?.addEventListener('abort', () =>
+            reject(new DOMException('Fetch is aborted', 'AbortError')),
+          )
+        }),
+    } as unknown as Response
+  }
+
+  // Same short-window call as stalledCall(), so the suite never waits on the real 12s ceiling.
+  const stalledBodyCall = () =>
+    api.post('/blockchain/verify', {}, { idempotent: true, timeoutMs: SHORT_TIMEOUT_MS })
+
+  it('reports a stalled response body as a timeout, not a hang', async () => {
+    const fetchMock = vi.fn((_url: string, init: RequestInit) =>
+      Promise.resolve(stallingBodyResponse(init.signal ?? undefined)),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(stalledBodyCall()).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 0,
+      message: expect.stringContaining(`timed out after ${SHORT_TIMEOUT_MS}ms`),
+    })
+  })
+
+  // Rejecting the caller's promise is only half the job: the socket has to be released
+  // too, or a stalled body leaks a connection for as long as the tab lives.
+  it('aborts the underlying request when the body stalls', async () => {
+    let captured: AbortSignal | undefined
+    const fetchMock = vi.fn((_url: string, init: RequestInit) => {
+      captured = init.signal ?? undefined
+      return Promise.resolve(stallingBodyResponse(captured))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(stalledBodyCall()).rejects.toBeInstanceOf(ApiError)
+
+    expect(captured?.aborted).toBe(true)
+  })
+
   // The retry must survive: a dropped connection is not a timeout, and recovering from a
   // dead keep-alive is the reason it exists.
   it('still retries a GET whose connection drops rather than stalls', async () => {

@@ -21,7 +21,15 @@ const SESSION_TIMEOUT_MS = 8_000
 
 // Hard ceiling on a single backend fetch. A stalled socket (Safari's dead HTTP keep-alive,
 // see the retry note below) otherwise hangs with no error, so the request never settles.
-const REQUEST_TIMEOUT_MS = 12_000
+//
+// Must exceed backend/app/core/config.py's HEDERA_SUBMIT_TIMEOUT_SECONDS (15s): any
+// write that anchors to Hedera (precincts, vehicles, drivers) can legitimately take that
+// long, and the backend's own asyncio.wait_for is what turns a slow/unreachable Hedera
+// call into a clean 504 — if this fires first instead, the client aborts and reports a
+// bare timeout while the backend request is still genuinely in flight, with nothing in
+// its logs yet to explain why. 20s clears that with margin for network/serialisation
+// overhead on top of the backend's own ceiling.
+const REQUEST_TIMEOUT_MS = 20_000
 
 export class ApiError extends Error {
   // status 0 is reserved for client-side failures where no HTTP response was received
@@ -74,19 +82,29 @@ function buildHeaders(token: string | null, init: RequestInit): Record<string, s
   }
 }
 
-// Sends one logical request, returning the raw Response — HTTP status handling (incl. 401) is
-// the caller's job. Includes one retry on a network-layer rejection: Safari reuses an HTTP
-// keep-alive connection that uvicorn has already closed (NSURLErrorNetworkConnectionLost),
-// which a fresh connection fixes. Only safe for idempotent calls, so it is opt-in.
+// A response whose timeout is still armed. fetch() resolves at the *headers*, so the
+// window has to outlive it: a half-open socket stalls in res.json(), not before it.
+// The caller owns disarming and must do so once the body has settled or been abandoned,
+// or the timer fires on a request it no longer represents.
+interface PendingResponse {
+  res: Response
+  timedOut: () => boolean
+  disarm: () => void
+}
+
+// Sends one logical request, returning the response with its timeout still armed — HTTP
+// status handling (incl. 401) and the body read are the caller's job. Includes one retry on
+// a network-layer rejection: Safari reuses an HTTP keep-alive connection that uvicorn has
+// already closed (NSURLErrorNetworkConnectionLost), which a fresh connection fixes. Only
+// safe for idempotent calls, so it is opt-in.
 async function send(
   url: string,
   init: RequestInit,
   headers: Record<string, string>,
   retry: boolean,
   timeoutMs: number,
-): Promise<Response> {
+): Promise<PendingResponse> {
   const maxAttempts = retry ? 2 : 1
-  let res: Response | null = null
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     // Our own controller and flag rather than AbortSignal.timeout(), so "did WE time this
     // out?" is something we recorded rather than something inferred from the rejection's
@@ -99,9 +117,13 @@ async function send(
     let timedOut = false
     const expiry = setTimeout(() => { timedOut = true; controller.abort() }, timeoutMs)
     try {
-      res = await fetch(url, { ...init, headers, signal: controller.signal })
-      break
+      const res = await fetch(url, { ...init, headers, signal: controller.signal })
+      // Deliberately NOT cleared here. Disarming on the headers is what left the body
+      // unbounded: fetch has resolved, but nothing has been read yet, so the window has
+      // to stay armed — and the controller reachable — until request() is done with it.
+      return { res, timedOut: () => timedOut, disarm: () => clearTimeout(expiry) }
     } catch (err) {
+      clearTimeout(expiry)
       // A timeout means the socket stalled rather than cleanly dropped. The retry exists
       // only for the immediate NSURLErrorNetworkConnectionLost dead-keep-alive case, so
       // don't spend a second full timeout window — surface it now as a clear error.
@@ -117,13 +139,10 @@ async function send(
         throw new ApiError(0, `Request to ${url} failed: ${message}`)
       }
       await new Promise(resolve => setTimeout(resolve, NETWORK_RETRY_DELAY_MS))
-    } finally {
-      clearTimeout(expiry)
     }
   }
-  // The loop either breaks with a response or throws; this guards the type narrowing.
-  if (!res) throw new Error(`Request to ${url} produced no response`)
-  return res
+  // The loop either returns a response or throws; this satisfies return-path analysis.
+  throw new Error(`Request to ${url} produced no response`)
 }
 
 async function request<T>(
@@ -136,53 +155,80 @@ async function request<T>(
   const timeoutMs = opts.timeoutMs ?? REQUEST_TIMEOUT_MS
 
   let token = await resolveToken()
-  let res = await send(url, init, buildHeaders(token, init), retry, timeoutMs)
+  let pending = await send(url, init, buildHeaders(token, init), retry, timeoutMs)
 
-  // 401 recovery. The cached token is normally kept fresh by the background auto-refresh, but
-  // after a long idle (timers throttled while the tab was backgrounded) it can be stale, so the
-  // first request races ahead of the visibility-triggered refresh and the backend rejects it.
-  // Refresh the session once via getSession() (which performs the token refresh when expired)
-  // and retry. If it still 401s the session is genuinely dead → sign out, which fires SIGNED_OUT
-  // and lets AuthContext + the route guard send the user to /login.
-  if (res.status === 401) {
-    const { data: { session } } = await withTimeout(
-      supabase.auth.getSession(),
-      SESSION_TIMEOUT_MS,
-      'Auth session refresh',
-    )
-    const refreshed = session?.access_token ?? null
-    // Only retry if the refresh produced a *different* token; an unchanged token means the 401
-    // wasn't a recoverable expiry (e.g. a revoked session), so don't waste a second round-trip.
-    if (refreshed && refreshed !== token) {
-      token = refreshed
-      res = await send(url, init, buildHeaders(token, init), retry, timeoutMs)
+  // Every exit from here disarms the window, including the throwing ones — a timer left
+  // armed would abort a connection the caller has already stopped waiting on.
+  try {
+    // 401 recovery. The cached token is normally kept fresh by the background auto-refresh, but
+    // after a long idle (timers throttled while the tab was backgrounded) it can be stale, so the
+    // first request races ahead of the visibility-triggered refresh and the backend rejects it.
+    // Refresh the session once via getSession() (which performs the token refresh when expired)
+    // and retry. If it still 401s the session is genuinely dead → sign out, which fires SIGNED_OUT
+    // and lets AuthContext + the route guard send the user to /login.
+    if (pending.res.status === 401) {
+      const { data: { session } } = await withTimeout(
+        supabase.auth.getSession(),
+        SESSION_TIMEOUT_MS,
+        'Auth session refresh',
+      )
+      const refreshed = session?.access_token ?? null
+      // Only retry if the refresh produced a *different* token; an unchanged token means the 401
+      // wasn't a recoverable expiry (e.g. a revoked session), so don't waste a second round-trip.
+      if (refreshed && refreshed !== token) {
+        token = refreshed
+        // Abandon the 401 outright: its body is never read, so disarm it here rather than
+        // leaving an armed timer — and a controller nothing can reach — behind on a
+        // response we are about to replace.
+        pending.disarm()
+        pending = await send(url, init, buildHeaders(token, init), retry, timeoutMs)
+      }
+      if (pending.res.status === 401) {
+        // signOut's local session clear succeeds even if its network call fails, so swallow that
+        // failure deliberately — the local sign-out is what matters; we surface the 401 below.
+        await supabase.auth.signOut().catch(() => { /* network sign-out failure is non-fatal here */ })
+        throw new ApiError(401, 'Session expired. Please sign in again.')
+      }
     }
-    if (res.status === 401) {
-      // signOut's local session clear succeeds even if its network call fails, so swallow that
-      // failure deliberately — the local sign-out is what matters; we surface the 401 below.
-      await supabase.auth.signOut().catch(() => { /* network sign-out failure is non-fatal here */ })
-      throw new ApiError(401, 'Session expired. Please sign in again.')
+
+    const res = pending.res
+
+    if (!res.ok) {
+      // Bounded by the still-armed window: an error body that stalls gets aborted and falls
+      // through to statusText instead of hanging. Deliberately not re-reported as a timeout —
+      // the real HTTP status tells the caller more than "timed out" would.
+      const body = await res.json().catch(() => ({ detail: res.statusText }))
+      const raw = (body as { detail?: unknown }).detail
+      const message = Array.isArray(raw)
+        ? (raw[0] as { msg?: string })?.msg ?? res.statusText
+        : (raw as string | undefined) ?? res.statusText
+      throw new ApiError(res.status, message)
     }
-  }
 
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ detail: res.statusText }))
-    const raw = (body as { detail?: unknown }).detail
-    const message = Array.isArray(raw)
-      ? (raw[0] as { msg?: string })?.msg ?? res.statusText
-      : (raw as string | undefined) ?? res.statusText
-    throw new ApiError(res.status, message)
+    try {
+      return (await res.json()) as T
+    } catch (err) {
+      // fetch() resolved back at the headers, so a body that stalls rejects HERE when the
+      // window expires — this is the only point at which that abort can still be named as
+      // the timeout it is, rather than surfacing as a bare AbortError.
+      if (pending.timedOut()) {
+        throw new ApiError(0, `Request to ${url} timed out after ${timeoutMs}ms`)
+      }
+      const message = err instanceof Error ? err.message : String(err)
+      throw new ApiError(0, `Reading the response from ${url} failed: ${message}`)
+    }
+  } finally {
+    pending.disarm()
   }
-
-  return res.json() as Promise<T>
 }
+
 
 export const api = {
   // GETs are idempotent → retry once on a dropped connection.
   get: <T>(path: string): Promise<T> => request<T>(path, {}, { retry: true }),
   // POSTs are not retried by default (a dropped connection may have already mutated state).
   // Pass { idempotent: true } for read-only POSTs (e.g. /blockchain/verify) to opt in.
-  // timeoutMs overrides the 12s ceiling for calls whose backend legitimately works longer
+  // timeoutMs overrides REQUEST_TIMEOUT_MS for calls whose backend legitimately works longer
   // (trip creation waits synchronously on the Hedera anchor).
   post: <T>(path: string, body: unknown, opts?: { idempotent?: boolean; timeoutMs?: number }): Promise<T> =>
     request<T>(

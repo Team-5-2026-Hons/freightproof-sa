@@ -260,7 +260,13 @@ anchored custody chain so a loss can be proven and bounded to a segment."*
 navigable, and `Parcel` already carries `barcode`, `pp_scan_out_at`, `pp_scan_in_at`. The sealed band
 is the trip's phase ledger filtered to the window between the consignment's pickup and delivery stops.
 
-### ⚠ Blocking question — the pallet grain
+### ~~⚠ Blocking question~~ — the pallet grain · **CLOSED 1 September 2026**
+
+> **Resolved: the parcel is the smallest grain. A waybill contains parcels; no `HandlingUnit` sits
+> between them.** Team decision on simplicity grounds — see `iteration3_plan.md` §8 decision 12.
+> **The band above is therefore correct as drawn, at waybill grain**, and FP-149 is scoped
+> waybill → parcel. What follows is retained as the reasoning that was weighed, not as an open
+> question. A pallet entity remains an *additive* migration if the operation ever demands one.
 
 The band above is drawn at **waybill** grain. Bruce's 24 June grain is the **pallet**, which sits
 between waybill and parcel:
@@ -284,9 +290,12 @@ question §6.8, still unanswered.** The July visit reframed the hierarchy to
 do not delete it and do not bake it in — until Bruce/LFG confirm."* That document also warns
 explicitly about "the way the 'pallet grain' assumption nearly was" cemented as fact.
 
-The question was parked when nothing depended on it. **Iteration 3 builds the parcel view, so it now
-sets the grain of the best screen in the demo.** Ask Bruce before Sprint 6 gets far — it is a
-five-minute question with a large downstream consequence (`HandlingUnit` entity + migration, or not).
+The question was parked when nothing depended on it, and iteration 3's parcel view is what forced
+it. **Settled 1 September 2026 by the team, not by Bruce** — chosen as the simplest model that still
+answers the dispute: waybill in, parcels out. State the cost honestly rather than hiding it — a loss
+is bounded to the **waybill's** sealed window rather than a single pallet's, which is looser than the
+pallet grain would have given. The benefit is no new entity, no migration, and a parcel view that
+ships inside the iteration.
 
 ---
 
@@ -475,6 +484,8 @@ The first three are roughly a day and cover the corroboration demo.
 2. **Does the QR handover replace the receiver OTP?** Nothing is built, so the only cost is the decision. Contradicts `CLAUDE.md`; needs team + Bruce.
 3. **How far on cross-operator reputation?** Recommend: spike now, two-org simulation iteration 4.
 4. **Driver-auth device binding?** Live code, unlike the handover. Recommend spike + risk-list entry now; raise with Ammar unprompted.
-5. **Pallet grain — does a `HandlingUnit` sit between waybill and parcel?** Not a team decision — a
-   question for Bruce, and the only genuinely **blocking** item. Sets the precision of the parcel
-   view. Site-visit open question §6.8, parked since July. Ask this week. See §10.
+5. ~~**Pallet grain — does a `HandlingUnit` sit between waybill and parcel?**~~ **CLOSED
+   1 September 2026 — no.** It turned out to *be* a team decision: the parcel is the smallest grain,
+   a waybill contains parcels, and `HandlingUnit` is not built. FP-149 is scoped waybill → parcel,
+   and a loss is bounded to the waybill's sealed window. See §10 and `iteration3_plan.md` §8
+   decision 12.

@@ -35,4 +35,4 @@ from app.db.models.transit import Checkpoint, TripException  # noqa: E402,F401
 from app.db.models.locations import TripLocationPing  # noqa: E402,F401
 from app.db.models.sessions import DriverSession, UserSession  # noqa: E402,F401
 from app.db.models.sla import SlaConfig  # noqa: E402,F401
-from app.db.models.events import DriverEvent, VehicleEvent  # noqa: E402,F401
+from app.db.models.events import DriverEvent, PrecinctEvent, VehicleEvent  # noqa: E402,F401

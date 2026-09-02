@@ -35,7 +35,7 @@ from app.api.v1.endpoints.trips import router as trips_router
 from app.api.v1.endpoints.vehicles import router as vehicles_router
 from app.auth.router import router as auth_router
 from app.core.realtime import register_realtime_hook
-from app.db.session import get_db
+from app.db.session import get_read_only_db
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ _IS_PRODUCTION = settings.ENVIRONMENT == "production"
 app = FastAPI(
     title="FreightProof SA",
     description="Cargo theft and disputed delivery evidence platform",
-    version=settings.VERSION,
+    version=settings.APP_VERSION,
     docs_url=None if _IS_PRODUCTION else "/docs",
     redoc_url=None if _IS_PRODUCTION else "/redoc",
     openapi_url=None if _IS_PRODUCTION else "/openapi.json",
@@ -218,21 +218,32 @@ async def _probe_database(db: AsyncSession) -> DependencyHealth:
     # thing here, and none is swallowed: each is logged with its traceback and reported.
     except Exception as exc:
         logger.exception("Health probe failed: database unreachable")
-        # A failed statement leaves the session in a transaction that can no longer be
-        # committed, and get_db() commits unconditionally once this handler returns.
-        # Without this rollback the endpoint would still 500 — after correctly working
-        # out that the answer was 503.
+        # A failed statement leaves the session holding a transaction it can no longer
+        # complete, and that transaction has to be disposed of before this handler
+        # returns — otherwise teardown does it for us, on the wire, unbounded.
         #
-        # Bounded by the same ceiling as the probe itself, because the case that brought
-        # us here is usually a database that hangs rather than one that refuses: ROLLBACK
-        # has to travel the same dead connection the query just timed out on, so an
-        # unbounded rollback would hand back the hang that wait_for above just escaped.
+        # Discard the connection rather than rolling it back. The case that brought us
+        # here is usually a database that hangs rather than one that refuses, and every
+        # polite way out (ROLLBACK, and the implicit one inside close()) has to travel
+        # the same dead socket the query just timed out on — handing back the hang that
+        # wait_for above exists to escape. A bounded rollback only narrows that window:
+        # when it times out too, the session is still owed a rollback and the connection
+        # still goes back to the pool. invalidate() ends the session by terminating the
+        # connection outright — asyncpg's terminate() closes the transport rather than
+        # asking the server's permission — and lets the pool open a fresh one.
+        #
+        # Still bounded, even though terminating is local work that should not be able to
+        # stall: what this endpoint promises an orchestrator is an answer inside a known
+        # window, and that promise should not rest on an assumption about driver
+        # internals that a dependency bump could quietly invalidate.
         try:
             await asyncio.wait_for(
-                db.rollback(), timeout=settings.HEALTH_PROBE_TIMEOUT_SECONDS
+                db.invalidate(), timeout=settings.HEALTH_PROBE_TIMEOUT_SECONDS
             )
+        # Broad for the same reason as the probe above: this is the failure path, and a
+        # health check that raises while reporting a failure reports nothing at all.
         except Exception:
-            logger.exception("Health probe could not roll back the failed session")
+            logger.exception("Health probe could not discard the failed session")
         return DependencyHealth(status=_PROBE_UNAVAILABLE, error=type(exc).__name__)
 
     return DependencyHealth(status=_PROBE_OK)
@@ -255,12 +266,16 @@ async def _probe_redis() -> DependencyHealth:
 @app.get("/health", tags=["system"], response_model=HealthResponse)
 async def health_check(
     response: Response,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_read_only_db),
 ) -> HealthResponse:
     """Report whether this instance can actually reach Postgres and Redis.
 
-    The probes run concurrently, so a degraded answer costs one timeout rather than two
-    and the endpoint's worst case stays inside HEALTH_PROBE_TIMEOUT_SECONDS.
+    The probes run concurrently, so a degraded answer costs one timeout rather than two:
+    the worst case is HEALTH_PROBE_TIMEOUT_SECONDS for the probe itself, plus the same
+    again for the database probe to discard a connection it gave up on. Both halves are
+    bounded, and the bound now survives teardown — the session is read-only, so nothing
+    is committed on the way out, and a connection that stopped answering has already been
+    terminated rather than handed back to the pool still owing a ROLLBACK.
 
     Answers 503 when either dependency is unreachable. The body carries the same verdict,
     but the status code is what an orchestrator, a load balancer or an uptime monitor
@@ -281,6 +296,6 @@ async def health_check(
     return HealthResponse(
         status=_STATUS_DEGRADED if degraded else _STATUS_OK,
         environment=settings.ENVIRONMENT,
-        version=settings.VERSION,
+        version=settings.APP_VERSION,
         checks=checks,
     )

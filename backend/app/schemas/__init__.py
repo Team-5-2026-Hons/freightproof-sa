@@ -2,7 +2,7 @@
 
 from app.schemas.organisations import (  # noqa: F401
     OrganizationBase, OrganizationCreate, OrganizationUpdate, OrganizationRead,
-    PrecinctBase, PrecinctCreate, PrecinctUpdate, PrecinctRead,
+    PrecinctBase, PrecinctCreateBody, PrecinctUpdateBody, PrecinctRead,
 )
 from app.schemas.people import (  # noqa: F401
     UserBase, UserCreate, UserUpdate, UserRead,
