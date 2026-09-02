@@ -453,3 +453,114 @@ async def test_detail_of_a_precinct_in_another_org_returns_404(
     )
 
     assert resp.status_code == 404
+
+
+@pytest.mark.parametrize(
+    "field", ["name", "latitude", "longitude", "geofence_radius_metres", "is_shared"]
+)
+async def test_update_precinct_rejects_an_explicit_null_with_422(
+    client: AsyncClient, seed_orgs, field: str
+):
+    """A null on a NOT NULL column is a client error, not a server error.
+
+    Before PrecinctUpdateBody distinguished omissible from nullable, this body passed
+    validation, reached setattr(precinct, field, None) and raised NotNullViolation at
+    flush — surfacing as a 500 on a well-formed request no handler could interpret.
+    """
+    with _stub_anchor():
+        created = (
+            await client.post(
+                "/api/v1/precincts", json=_valid_body(), headers=_admin_headers(seed_orgs),
+            )
+        ).json()
+
+    resp = await client.patch(
+        f"/api/v1/precincts/{created['id']}",
+        json={field: None},
+        headers=_admin_headers(seed_orgs),
+    )
+
+    assert resp.status_code == 422
+    # The error must name the offending field so the dispatcher UI can point at it.
+    assert field in str(resp.json()["detail"])
+
+
+async def test_update_precinct_can_still_clear_the_address(client: AsyncClient, seed_orgs):
+    """address is the one nullable column, and an explicit null must still clear it."""
+    with _stub_anchor():
+        created = (
+            await client.post(
+                "/api/v1/precincts", json=_valid_body(), headers=_admin_headers(seed_orgs),
+            )
+        ).json()
+        assert created["address"] is not None
+
+        resp = await client.patch(
+            f"/api/v1/precincts/{created['id']}",
+            json={"address": None},
+            headers=_admin_headers(seed_orgs),
+        )
+
+    assert resp.status_code == 200
+    assert resp.json()["address"] is None
+
+
+async def test_create_precinct_rejects_an_over_length_address(client: AsyncClient, seed_orgs):
+    """address lands in an unbounded Text column with no body-size middleware in front."""
+    body = _valid_body() | {"address": "x" * 501}
+
+    resp = await client.post(
+        "/api/v1/precincts", json=body, headers=_admin_headers(seed_orgs),
+    )
+
+    assert resp.status_code == 422
+
+
+async def test_detail_of_a_shared_precinct_withholds_the_change_history(
+    client: AsyncClient, db_session: AsyncSession, seed_orgs
+):
+    """is_shared publishes WHERE a facility is, never how it got there.
+
+    The events carry every historical coordinate the depot has had and the user ids of
+    the admins who moved it — another organisation's internal record. subject_visibility
+    already refuses to verify these receipts for a non-owner; this is the same rule
+    applied to the read path.
+
+    This is the case that distinguishes "can see the precinct" from "owns the precinct",
+    and no test previously exercised it: an admin caller made the role check pass, and
+    every other detail test was either the owner or a 404.
+    """
+    theirs = Precinct(
+        name="Their Shared Depot",
+        principal_organization_id=seed_orgs["client_org"].id,
+        latitude="-29.8587", longitude="31.0218", is_shared=True,
+    )
+    db_session.add(theirs)
+    await db_session.flush()
+
+    from app.db.models.events import PrecinctEvent
+    from app.db.models.enums import PrecinctEventType
+
+    db_session.add(
+        PrecinctEvent(
+            id=uuid.uuid4(),
+            precinct_id=theirs.id,
+            event_type=PrecinctEventType.RELOCATED.value,
+            changed_fields={"latitude": {"from": -29.1, "to": -29.8587}},
+            changed_by_user_id=seed_orgs["user"].id,
+        )
+    )
+    await db_session.flush()
+
+    resp = await client.get(
+        f"/api/v1/precincts/{theirs.id}", headers=_admin_headers(seed_orgs),
+    )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    # Visible: the current geofence, which is the whole point of sharing.
+    assert body["name"] == "Their Shared Depot"
+    assert body["geofence_radius_metres"] is not None
+    # Withheld: how it got there, and who moved it.
+    assert body["events"] == []
+    assert body["receipts"] == []

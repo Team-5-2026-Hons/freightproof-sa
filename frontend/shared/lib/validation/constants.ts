@@ -54,3 +54,8 @@ export const GEOFENCE_RADIUS_MAX = 5000
 export const GEOFENCE_RADIUS_DEFAULT = 200
 
 export const PRECINCT_NAME_MAX = 255
+
+// Precinct.address is an unbounded Text column, so this ceiling comes from the Pydantic
+// schema rather than a column width. It exists because the address is copied verbatim
+// into the anchored PrecinctEvent payload; the server enforces it independently.
+export const PRECINCT_ADDRESS_MAX = 500

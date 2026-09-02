@@ -1,8 +1,10 @@
 // Precinct-specific validation, built from the generic primitives in rules.ts and the
 // backend-mirrored constraints in constants.ts.
 //
-// `address` is deliberately excluded from PrecinctField: it is a free-text label with
-// no server-side constraint beyond the Text column, and nothing computes on it.
+// `address` is validated for LENGTH only. Nothing computes on it and it is optional, so
+// it has no `required` rule — but it is not unbounded: the Text column has no ceiling of
+// its own, and the value is copied verbatim into the anchored PrecinctEvent payload, so
+// the server caps it and this mirrors that cap.
 // `is_shared` is a boolean Switch and cannot be invalid by construction.
 
 import { required, maxLength, decimalInRange, intInRange } from './rules'
@@ -14,23 +16,25 @@ import {
   GEOFENCE_RADIUS_MIN,
   GEOFENCE_RADIUS_MAX,
   PRECINCT_NAME_MAX,
+  PRECINCT_ADDRESS_MAX,
 } from './constants'
 
 export type PrecinctField =
   | 'name'
+  | 'address'
   | 'latitude'
   | 'longitude'
   | 'geofence_radius_metres'
 
 // Callers supply only the string-valued fields being validated — all form inputs are
-// controlled <input> values, hence all strings. `address` is present so a form's state
-// object satisfies this type directly, but it is never validated.
-export type PrecinctFormValues = Record<PrecinctField, string> & { address: string }
+// controlled <input> values, hence all strings.
+export type PrecinctFormValues = Record<PrecinctField, string>
 
 // Display order of the validated fields, shared by the create and edit forms to focus
 // the first invalid field on submit — kept next to PrecinctField so the two can't drift.
 export const PRECINCT_FIELD_ORDER: readonly PrecinctField[] = [
   'name',
+  'address',
   'latitude',
   'longitude',
   'geofence_radius_metres',
@@ -61,6 +65,9 @@ export function validatePrecinctForm(
 ): Record<PrecinctField, string | null> {
   return {
     name: firstError(values.name, [required(), maxLength(PRECINCT_NAME_MAX)]),
+    // No `required`: an address is optional. maxLength skips empty values, so an omitted
+    // address produces no error while an over-long one is caught before the 422.
+    address: firstError(values.address, [maxLength(PRECINCT_ADDRESS_MAX)]),
     latitude: firstError(values.latitude, [
       required(),
       decimalInRange(LATITUDE_MIN, LATITUDE_MAX, 'Latitude must be between -90 and 90.'),

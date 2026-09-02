@@ -104,12 +104,10 @@ export function PrecinctForm({ precinct }: PrecinctFormProps): React.JSX.Element
 
   function setField(name: PrecinctTextField, value: string): void {
     setForm((prev) => ({ ...prev, [name]: value }))
-    // `address` is in the form state but is not a validated field, so it never enters
-    // `touched` — the set exists only to decide when an error may be surfaced, and
-    // excluding it here is what narrows `name` to PrecinctField without a cast.
-    if (name !== 'address') {
-      setTouched((prev) => new Set(prev).add(name))
-    }
+    // Every text field is validated (address for length only), and PrecinctTextField is
+    // exactly PrecinctField — excluding only the boolean Switch — so this narrows without
+    // a cast and no field is left unable to surface its error.
+    setTouched((prev) => new Set(prev).add(name))
   }
 
   /**
@@ -225,6 +223,7 @@ export function PrecinctForm({ precinct }: PrecinctFormProps): React.JSX.Element
             onChange={handleFieldChange}
             placeholder="12 Sookhai Place, Riverhorse Valley, Durban"
             helperText="A label for people. Nothing is computed from it."
+            error={touched.has('address') ? errors.address ?? undefined : undefined}
           />
 
           <div className="grid grid-cols-2 gap-3">
