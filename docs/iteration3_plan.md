@@ -11,7 +11,11 @@
 > actually on the board with FP numbers. **The Jira board is the source of truth for ownership and
 > sprint membership; this document is the reasoning behind it.** Where the two disagree, the board
 > is right and this file is stale — say so rather than working from the tables here.
-> **Companion documents:** [scale-readiness-2026-08-18.md](scale-readiness-2026-08-18.md) ·
+> **Revised again:** 2026-09-01, after the Bruce call of 1 September
+> ([minutes](meeting_minutes/FreightProof_Meeting_Bruce_Minutes_01September2026.md)). Two of the four blocking items
+> in §9 are now closed — the pallet grain and the driver trends-versus-scores call — and the Pulsit
+> access position in §1 has changed from "no reply" to "warm introduction pending".
+> **Companion documents:** [design-notes/2026-09-01-phase-step-event-ledger.md](design-notes/2026-09-01-phase-step-event-ledger.md) · [scale-readiness-2026-08-18.md](scale-readiness-2026-08-18.md) ·
 > [design-notes/2026-08-24-corroboration-parcel-client-views.md](design-notes/2026-08-24-corroboration-parcel-client-views.md)
 
 ---
@@ -85,10 +89,24 @@ driver were both inside the facility geofence?**
 Pulsit is read at **handshake moments** plus the completion route report Bruce described on
 26 March — not streamed. That keeps FreightProof recording rather than operating.
 
-**Access position for this iteration: mock-only.** Pulsit has not yet replied to our access
-request, so everything is built to the real API shape behind `PULSE_USE_MOCK`, using the Redis
-`mock_state` + dev-trigger pattern already proven for Parcel Perfect. When credentials arrive it is
-a config change, not a rewrite. Do not let the integration block on their reply.
+**Access position for this iteration: still mock-only, but no longer because they are silent.**
+Bruce is introducing us directly to Harry van, Pulsit's commercial director, and is separately
+opening one of their supplier environments (Modco/Martco) as an interim look at the data (1 Sep
+call). Both land around Monday 8 September — inside Sprint 7, with the presentation a week later.
+**That is too late to build against and exactly early enough to shape the mock.** Everything stays
+behind `PULSE_USE_MOCK`, using the Redis `mock_state` + dev-trigger pattern already proven for
+Parcel Perfect; when credentials arrive it is a config change, not a rewrite. The introduction is a
+reason to sharpen the mock's shape, never a reason to wait.
+
+**Ask for the door-open event, not just the position fix.** The 1 September call changed what we
+should be requesting. Bruce described his own operational verification moment as *"the geofence
+doors open, and at that moment Pulsit has seen this verification"* — the rear-door geofence lock is
+Pulsit hardware, and the unlock is a discrete, timestamped, vehicle-sourced event. That is a
+strictly better corroboration signal than a position sample: it is an *act*, not a location, and the
+driver's phone cannot produce it. Take a written data request to the Harry call covering, in
+priority order: (1) door-open / geofence-unlock events, (2) position at an arbitrary timestamp —
+what FP-143 consumes, (3) the completion route report Bruce described on 26 March. Keep the Pulsit
+client surface wide enough that (1) is a method we already have a mock for.
 
 **New from the Q&A:** Pulsit also has cameras in the cab and on the truck doors, and footage
 snippets could in principle be pulled for the window around an exception. That is a different call
@@ -135,6 +153,45 @@ section, which proposed exactly that:
 defeats this, and no handover mechanism survives both parties colluding. What FreightProof can do is
 make collusion leave a trace — the receiver's device and position are anchored, so the same
 "receiver" recurring across unrelated deliveries surfaces in the recurrence analytics.
+
+### The handover the industry already performs — bind to it, don't invent one
+
+The 1 September call answered the handover question sideways, and the sideways answer is better than
+the one we asked for. Bruce was asked how a receiver could counter-sign a delivery; he described the
+**seal** instead:
+
+> "The seal number is recorded on the waybill between ourselves and RTT. The driver may not know
+> that seal — of course he can read it, but nowhere in his set of documents does he have it.
+> Johannesburg branch alerts Durban branch that the seal number needs to be intact. Durban verifies
+> it by scanning it, and then they break it. And that's the moment when custody transfers."
+
+Three consequences, all of which strengthen FP-155:
+
+1. **Custody transfer has a precise, already-operational moment** — the destination branch scanning
+   and breaking the seal. We do not need to invent a confirmation ceremony; we need to witness the
+   one that happens anyway. A QR the receiver scans *at the moment they break the seal* records real
+   practice rather than imposing an extra step on a warehouse.
+2. **The seal is a genuine two-party secret.** The number travels branch-to-branch on the waybill and
+   is deliberately not in the driver's paperwork. Worth stating at examination: our departure seal
+   capture is not a driver-controlled value, which is precisely what makes the destination
+   comparison (`phase_service.py:1125`) evidence rather than ceremony.
+3. **Bruce asked for the cross-check himself** — *"for a backup it would be great if there's somehow
+   a tie-up with that scan of the barcode seal"* — pairing the Pulsit door-open event with the seal
+   scan. That is FP-143 and FP-155 meeting at the same moment, and it is the industry partner
+   specifying it rather than us proposing it.
+
+**Design consequence for FP-155 — corrected 1 Sep, after an earlier draft of this section got it
+wrong.** The seal break and the receiver's sign-off are **not the same moment**; they bracket the
+destination stop at opposite ends. The break is the *first* act on arrival, before anything comes
+off the truck. The QR sign-off is the *last* — the receiver confirming everything was delivered,
+after every parcel is scanned out and the count is settled. So the token binds to the **confirmation**
+phase, not to the break.
+
+Both are still receiver acts, and that is the point: the destination stop opens and closes with
+evidence the driver cannot produce. The residual collusion weakness above is unchanged — but the
+mechanism now maps onto two acts the receiving branch performs anyway, which is a far stronger
+adoption story than a novel handshake. The full act-by-act breakdown is in
+[design-notes/2026-09-01-phase-step-event-ledger.md](design-notes/2026-09-01-phase-step-event-ledger.md).
 
 ### What cannot be built, and why it matters that we say so
 
@@ -235,7 +292,8 @@ Client-grain metrics (disputed-delivery rate, POD completeness) are deferred —
 are where the POPIA reasoning gets harder. This supersedes the 18 August review, which had the
 client grain as the one to build second; the facility grain takes its place.
 
-**Unresolved conflict — decide before the analytics screen is designed.** Driver ratings were asked
+**~~Unresolved conflict~~ — settled 1 September; the reasoning below is kept because it is the
+better slide.** Driver ratings were asked
 for in the Q&A (*"a particularly problematic driver with incidents being reported — is that
 something we're interested in?"*) and answered in the affirmative on the call. That contradicts the
 paragraph above. Both positions are defensible; holding both silently is not.
@@ -245,6 +303,36 @@ Recommendation: keep per-driver **trends** (exception counts, on-time rate), dec
 requested feature on a documented legal ground — while offering the facility grain as the
 alternative that actually finds the problem — demonstrates more judgement than either building it
 quietly or dropping it quietly.
+
+**Settled 1 September — and Bruce's own answer resolves it at no cost.** Asked what analytics matter
+most, he ranked three, and two of them are not ours to build:
+
+| Bruce's priority | Where it actually comes from | Our position |
+|---|---|---|
+| Driver behaviour — fatigue, harsh braking, seat sensors, dash-cam wake-up | **Pulsit hardware**, already deployed and already analysed by them | Not ours. We do not capture it, and duplicating a mature telematics product weakens the evidence claim rather than strengthening it |
+| Fuel — consumption, skimming, tank gauges, 360° cameras (~50 % of operating cost) | Pulsit, or the OEM system (e.g. Isuzu) | Out of scope (B11) — cost management, not a custody event. Correct the *reason* though: it is no longer "never raised" |
+| **Route risk — incident hotspots by route and time of year** (Heidelberg, PMB, Colesberg) | **Our ledger** — exceptions carry type, severity, trip, stop and phase-event FKs | **In scope and already committed.** This is the lane grain in FP-153, cut geographically |
+
+So decision 2c closes without us having to decline anything Bruce wants: **driver behaviour scoring
+is Pulsit's job and they already do it better than we could.** Our driver grain stays exception
+trends over our own ledger, the POPIA line above holds unchanged, and the answer to "do you rate
+drivers" becomes *"Pulsit rates drivers; we evidence exceptions"* — cleaner for the panel than
+either building scores or refusing them.
+
+**The route-risk cut is the cheapest credibility win in the iteration.** It is a geographic slice of
+lane analytics already scoped in FP-153, and the one metric an industry operator named unprompted.
+State the boundary in the same breath: Bruce uses hotspots to *reroute vehicles*, which is
+operations. We surface the history; the rerouting decision stays theirs. That distinction is a
+slide, not a caveat.
+
+**And the positioning point, which is the most important thing in the call.** Bruce's summary of the
+market gap was not "we need more evidence". It was that Pulsit's sensor coverage is excellent while
+*"the industry fails many a time to use the ability of Pulsit — it's pretty fragmented"*, and that
+FreightProof's value is bridging Parcel Perfect, Pulsit and driver management into *"a dashboard
+that is not complicated"*. Read carefully, that is an argument **for** the analytics half of this
+iteration rather than against the evidence half: the anchored ledger is what makes the analytics
+trustworthy, and the analytics are what make the ledger worth reading. Present them as one product,
+not two features — while holding the §6 line on what this does *not* license us to build.
 
 ---
 
@@ -489,7 +577,7 @@ query — `labels = "iteration-3"` now returns only current work.
 | 1 | Does corroboration drive `EvidenceTag`? | Yes — but it changes what "High Evidence" means on phase events already anchored in iteration 2. Domain call, not styling. |
 | 2 | ~~QR handover instead of receiver OTP?~~ **Decided in the Q&A.** | **Closed.** Ammar asked for it directly and in detail. There is no receiver OTP to replace — nothing is built — so this is greenfield, not a migration. Building tier 2 (§2); `CLAUDE.md` needs correcting. |
 | 2b | Does the QR handover need receiver accounts, or is the optical capability token enough? | **Token is enough — no accounts.** The secret moves optically, so a SIM swap gains nothing; a texted code would not. Colluding receiver is the residual, surfaced via recurrence analytics. See §2 and design note §9. |
-| 2c | Do driver metrics include ratings/scores, or trends only? | **Trends only.** Promised on the call, but contradicts §3's POPIA line. Decline scores, present the reasoning. Must be settled before the analytics screen is designed. |
+| 2c | ~~Do driver metrics include ratings/scores, or trends only?~~ **Settled 1 Sep.** | **Closed — trends only, and it costs us nothing.** Bruce confirmed driver behaviour scoring (fatigue, braking, seat sensors) comes from **Pulsit hardware** and is already done there. We do not capture that data, so there is nothing to decline: our driver grain is exception trends over our own ledger, the POPIA line holds, and the panel answer is *"Pulsit rates drivers; we evidence exceptions"*. **FP-156 is unblocked.** See §3. |
 | 6 | ~~**Do the contested cuts stand?** Parcel spine UI and client lens~~ **Settled 26 Aug.** | **Closed.** The spine is restored as **FP-149** in Sprint 7 — barcode in, everywhere it has been out — with **FP-266** adding a driver-side scanner so it can be demonstrated from a physical label rather than a typed reference. The client lens stays cut, on the POPIA reasoning in §3 rather than on capacity. |
 | 7 | ~~BLE handover instead of the QR?~~ **Settled 26 Aug.** | **Closed — QR stays primary, BLE is not buildable.** The receiver has no app, so their side is a browser: Web Bluetooth does not exist in Safari on iOS at all, and a phone browser cannot advertise as a BLE peripheral — it is a GATT client only. It also costs us the property the design rests on: no install, no account, no SIM in the loop. Recorded on FP-155. **Worth a slide** — evaluating and rejecting it on evidence answers the panel better than never considering it. NFC is a different case: the seal tap is on the driver's own Capacitor Android build, where a native plugin works (FP-120, writeup only). |
 | 8 | ~~Polygon geofences for precincts?~~ **Settled 26 Aug.** | **Closed — circle and radius this iteration.** A polygon needs a geometry column and a migration; `geofence_service` reads a radius either way, so the circle version is what FP-68 consumes with no rework when polygon lands in iteration 4. FP-259 is explicitly scoped without it. |
@@ -498,26 +586,49 @@ query — `labels = "iteration-3"` now returns only current work.
 | 11 | Per-dispatcher alert routing and a third role tier | **Iteration 4, not now.** Raised on 26 Aug: at RTT scale a tamper alert should ping only the dispatcher who owns that trip. Blocked on four things that do not exist — a trip-to-dispatcher assignment (`created_by_user_id` and `approving_dispatcher_user_id` mean neither), a third `DispatcherRole` value, a per-person Redis channel, and the SSE consumer to match. FP-148 stays org-scoped this sprint; severity scoping is its actual job and is unaffected. |
 | 3 | How far on cross-operator reputation? | Spike the design now, two-org simulation in iteration 4. Strongest idea on the table, easiest to overclaim. |
 | 4 | Driver-auth device binding (live SIM-swap surface)? | Risk-list entry + spike now, implement iteration 4. Raise it with Ammar unprompted. |
+| 12 | ~~Pallet grain — does a `HandlingUnit` sit between waybill and parcel?~~ **Settled 1 Sep.** | **Closed — no. The parcel is the smallest grain; a waybill contains parcels.** Team decision, taken deliberately for simplicity rather than on new evidence: `Consignment.unit_count_expected` stays a count with no entity, and a pallet unit — if the operation later proves it needs one — is an **additive** migration between `Consignment` and `Parcel`, not a rework. **FP-149 is therefore scoped waybill → parcel.** State the cost plainly rather than implying finer precision: a loss is bounded to the **waybill's** sealed window, not a pallet's. Do not reopen this iteration. |
+| 13 | Is the X International route asking Parcel Perfect for something Parcel Perfect cannot give? | **Open — and it needs a written ask before Bruce meets Giovanni.** [parcel-perfect-integration-spec.md](parcel-perfect-integration-spec.md) §B1 established on 4 August that **no ecomService version exposes scan or tracking events, for any account.** Client-level goodwill does not create an API that isn't there. The buildable ask is X International's **own warehouse scan feed**, which drops into the existing `ScanFeed` protocol (`backend/app/integrations/scan_feed.py`) as a `WmsScanFeed` beside `MockScanFeed` — or read-only portal access, for shaping the mock against real data. Send Bruce the corrected ask this week. |
 
 ## 9. Blocked / needs an answer
 
-- **Pallet grain (BLOCKING)** — does a `HandlingUnit` sit between waybill and parcel? No such model
-  exists; only `Consignment.unit_count_expected`, a count with no entity. Site-visit open question
-  §6.8, parked since July. **Not raised at the 26 August meeting, and it now sets the precision of
-  FP-149**, which is in Sprint 7. Ask Bruce this week. See the design note §10.
-- **Driver trends versus scores (BLOCKING FP-156)** — decision 2c above, still unsettled, and FP-156
-  moved into Sprint 6 on 26 August. It only gates the driver panel: build facility, then vehicle,
-  then lane, and leave the driver panel until the call is minuted. Settle it this week regardless —
-  the answer shapes how the whole screen is framed to the panel.
+**Closed on 1 September** — kept visible rather than deleted, because both were load-bearing:
+
+- ~~**Pallet grain (BLOCKING)**~~ — **closed. The parcel is the smallest grain; a waybill contains
+  parcels.** No `HandlingUnit` entity, now or this iteration. Decision 12 in §8 carries the reasoning
+  and the consequence for FP-149. Propagated to [scope-boundaries.md](scope-boundaries.md) §3–§5,
+  [parcel-traceability.md](parcel-traceability.md) §8, [glossary.md](glossary.md) §6,
+  [facility_visit_findings_2026-07-16.md](facility_visit_findings_2026-07-16.md) §2/§6/§7, the
+  design note §10/§17, and `FreightProof_Full_Picture_v7.md`.
+- ~~**Driver trends versus scores (BLOCKING FP-156)**~~ — **closed, see decision 2c.** Behaviour
+  scoring is Pulsit's, not ours. FP-156 is unblocked; build the driver panel as exception trends.
+
+**Still open — and these three are now the entire Bruce dependency:**
+
 - **Receiver ID number and selfie** — decision 10 above. Gates FP-239. Do not add either to the scan
-  page before it is decided.
-- **Time-to-proof manual baseline** — needed from Bruce for the impact panel. Do not invent a
-  figure for an industry panel.
-- **Pulsit access** — no reply yet. Everything stays mock-only behind `PULSE_USE_MOCK`; the
-  integration must not block on them. Chase, but do not wait.
+  page before it is decided. **Not raised on 1 September.**
+- **Time-to-proof manual baseline** — needed from Bruce for the impact panel. Do not invent a figure
+  for an industry panel. **Not raised on 1 September.**
 - **What insurers actually need** — raised in the Q&A (*"we need to look into what the insurers would
   need"*), and nobody has modelled the insurer as the evidence consumer. Ask Bruce and Ammar; it
-  shapes the evidence-packet export.
+  shapes the evidence-packet export. **Not raised on 1 September.**
+
+> All three were missed on 1 September because the call ran on access rather than domain. Access is
+> now Bruce's action list rather than ours, so there is no reason for the next call to run the same
+> way — **lead it with these three.**
+
+**Access, now in motion rather than blocked:**
+
+- **Pulsit access** — no longer silence. Bruce is introducing Harry van (Pulsit commercial director)
+  and opening a Modco/Martco environment, both ~Mon 8 Sep. **Ciaran is the named point of contact**
+  for credentials and confidentiality, at Bruce's request, and disseminates to the team. Everything
+  stays mock-only behind `PULSE_USE_MOCK`; the integration must not block on the introduction. Take
+  the §1 data request to the call.
+- **Parcel Perfect via X International** — Bruce is routing around Parcel Perfect's refusal via a
+  client (X International, Cape Town) after his Friday meeting with Giovanni. **Send him the
+  corrected ask first** — decision 13. The limitation is structural, not permissional.
+- **Presentation date conflict** — Bruce was told 17–18 September; this plan and the sprint calendar
+  say the week of 21 September. Confirm which and tell him, since his whole action list is paced
+  to it.
 - **Two `CLAUDE.md` drifts** — it documents "Receiver = one-time OTP" and an Ed25519 `crypto/` layer.
   Neither exists (`backend/app/crypto/` holds only `hashing.py`). Four-reviewer PR required.
 - **`DriverSubstitution` write path** — the model exists (`db/models/trips.py:215`); whether anything
