@@ -22,6 +22,7 @@ PRECINCT_CRITICAL_FIELDS additionally anchor to Hedera.
 """
 
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -362,7 +363,7 @@ async def get_precinct_detail(
     ).scalars().all()
 
     event_ids = [e.id for e in events]
-    receipts = []
+    receipts: Sequence[BlockchainReceipt] = []
     if event_ids:
         receipts = (
             await db.execute(

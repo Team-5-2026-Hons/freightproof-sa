@@ -20,6 +20,7 @@ correct regardless of how the annotation is spelled.
 import pytest
 from pydantic import BaseModel, ValidationError
 
+from app.db.models import Base
 from app.db.models.organisations import Precinct
 from app.db.models.people import Driver
 from app.db.models.vehicles import Vehicle
@@ -47,7 +48,7 @@ def _accepts_null(body: type[BaseModel], field: str) -> bool:
 
 @pytest.mark.parametrize(("body", "model"), _PATCH_BODIES)
 def test_patch_schema_nullability_matches_the_model(
-    body: type[BaseModel], model: type
+    body: type[BaseModel], model: type[Base]
 ) -> None:
     columns = {c.name: c.nullable for c in model.__table__.columns}
 

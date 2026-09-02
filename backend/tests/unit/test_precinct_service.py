@@ -123,6 +123,7 @@ async def test_create_precinct_writes_a_created_event_and_anchors_it(db_session:
     assert event.blockchain_receipt_id == receipt.id
 
     anchor.assert_awaited_once()
+    assert anchor.await_args is not None
     kwargs = anchor.await_args.kwargs
     assert kwargs["subject_type"] == SubjectType.PRECINCT_EVENT
     assert kwargs["subject_id"] == event.id
@@ -141,6 +142,7 @@ async def test_created_anchor_payload_carries_the_geofence_in_the_clear(db_sessi
             data=_body(), current_user_id=user_id,
         )
 
+    assert anchor.await_args is not None
     payload = anchor.await_args.kwargs["canonical_payload"]
     assert payload["fields"]["latitude"] == -29.7942
     assert payload["fields"]["longitude"] == 30.9820
@@ -297,6 +299,7 @@ async def test_moving_a_precinct_anchors_a_relocated_event(db_session: AsyncSess
     assert set(events[-1].changed_fields.keys()) == {"latitude", "longitude"}
 
     anchor.assert_awaited_once()
+    assert anchor.await_args is not None
     assert anchor.await_args.kwargs["receipt_type"] == BlockchainReceiptType.PRECINCT_UPDATED
 
 
@@ -500,5 +503,6 @@ async def test_a_mixed_patch_anchors_exactly_what_the_ledger_row_records(
         db_session, uuid.UUID(anchored["precinct_event_id"])
     )
 
+    assert rebuilt is not None
     assert set(anchored["fields"]) == {"latitude", "name"}
     assert _hash_payload(anchored) == _hash_payload(rebuilt)
