@@ -3,13 +3,15 @@
 // and verify result shapes live here so dispatcher and driver-pwa stay in sync.
 
 export type SubjectType =
-  | 'trip' | 'vehicle' | 'driver' | 'vehicle_event' | 'driver_event';
+  | 'trip' | 'vehicle' | 'driver' | 'vehicle_event' | 'driver_event'
+  | 'precinct_event';
 
 export type BlockchainReceiptType =
   | 'journey_lock' | 'pickup' | 'delivery' | 'checkpoint_batch'
   | 'exception_batch' | 'driver_substitution'
   | 'vehicle_created' | 'vehicle_updated'
-  | 'driver_created' | 'driver_updated';
+  | 'driver_created' | 'driver_updated'
+  | 'precinct_created' | 'precinct_updated';
 
 export type BlockchainReceipt = {
   id: string;
@@ -60,6 +62,27 @@ export type DriverEvent = {
   // Arbitrary field-level diff captured at mutation time — shape varies per event type.
   changed_fields: Record<string, unknown>;
   changed_by_user_id: string;
+  blockchain_receipt_id: string | null;
+  created_at: string;
+};
+
+// Mirrors PrecinctEventType in backend/app/db/models/enums.py exactly.
+// A relocation and a resize are separate types because they mean different things
+// evidentially: one changes where the facility is, the other changes how close a
+// handshake must be to count as inside it.
+export type PrecinctEventType =
+  | 'created' | 'relocated' | 'geofence_resized'
+  | 'sharing_changed' | 'cosmetic_update';
+
+export type PrecinctEvent = {
+  id: string;
+  precinct_id: string;
+  event_type: PrecinctEventType;
+  // {field: {from, to}} for updates; a flat snapshot for 'created'.
+  changed_fields: Record<string, unknown>;
+  changed_by_user_id: string;
+  // Null for cosmetic edits, which are logged but never anchored. The absence is
+  // information — it is why no anchor badge renders on that row.
   blockchain_receipt_id: string | null;
   created_at: string;
 };

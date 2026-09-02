@@ -101,3 +101,27 @@ export function intInRange(min: number, max: number, message?: string): Rule {
     return null
   }
 }
+
+const DECIMAL_STRING_PATTERN = /^-?\d+(\.\d+)?$/
+
+/**
+ * Fails when a non-empty value isn't a decimal number within [min, max]. Empty values
+ * are skipped — compose with `required` separately, exactly as `intInRange` does. Used
+ * for GPS coordinates, where `intInRange` would reject every real value.
+ */
+export function decimalInRange(min: number, max: number, message?: string): Rule {
+  const errorMessage = message ?? `Must be a number between ${min} and ${max}.`
+  return (value: string): string | null => {
+    if (value.length === 0) {
+      return null
+    }
+    if (!DECIMAL_STRING_PATTERN.test(value.trim())) {
+      return errorMessage
+    }
+    const parsed = parseFloat(value)
+    if (Number.isNaN(parsed) || parsed < min || parsed > max) {
+      return errorMessage
+    }
+    return null
+  }
+}

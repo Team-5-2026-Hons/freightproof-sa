@@ -45,6 +45,14 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'Drivers',  href: ROUTES.fleetDrivers,  icon: 'user',  activePatterns: ['/fleet/drivers'] },
     ],
   },
+  {
+    // Deliberately unlabelled. A precinct belongs under neither TRIPS nor FLEET, and
+    // inventing a group name before there is a second resident would be guessing at a
+    // taxonomy. When organisations or partners arrive, give this group a label.
+    items: [
+      { label: 'Precincts', href: ROUTES.precincts, icon: 'map', activePatterns: ['/precincts'] },
+    ],
+  },
 ]
 
 const SETTINGS_ITEM: NavItem = {
@@ -182,7 +190,9 @@ function SidebarContent({ onClose, collapsed = false, onToggleCollapse }: Sideba
       {/* Nav groups */}
       <div className="flex-1 py-2 overflow-y-auto">
         {NAV_GROUPS.map(group => (
-          <div key={group.label}>
+          // Keyed on the first item's href, not the label: groups may be unlabelled,
+          // and two unlabelled groups would otherwise collide on an `undefined` key.
+          <div key={group.label ?? group.items[0].href}>
             {group.label && !collapsed && (
               <div className="text-[10px] font-[700] tracking-[0.12em] uppercase text-white/30 px-[18px] pt-3 pb-1">
                 {group.label}

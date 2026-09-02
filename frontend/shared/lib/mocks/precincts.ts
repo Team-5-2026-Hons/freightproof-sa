@@ -17,6 +17,7 @@ export const mockPrecincts: Precinct[] = [
     latitude: -26.0942,
     longitude: 28.1342,
     geofence_radius_metres: 300,
+    is_shared: true,
     created_at: '2024-01-20T08:00:00Z',
   },
   {
@@ -27,6 +28,7 @@ export const mockPrecincts: Precinct[] = [
     latitude: -29.7942,
     longitude: 30.9820,
     geofence_radius_metres: 300,
+    is_shared: true,
     created_at: '2024-01-20T08:00:00Z',
   },
   {
@@ -37,6 +39,7 @@ export const mockPrecincts: Precinct[] = [
     latitude: -26.0961,
     longitude: 28.1368,
     geofence_radius_metres: 250,
+    is_shared: true,
     created_at: '2024-03-01T08:00:00Z',
   },
   {
@@ -47,6 +50,7 @@ export const mockPrecincts: Precinct[] = [
     latitude: -33.8651,
     longitude: 18.5127,
     geofence_radius_metres: 250,
+    is_shared: true,
     created_at: '2024-03-01T08:00:00Z',
   },
 ]

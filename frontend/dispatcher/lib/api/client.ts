@@ -21,7 +21,15 @@ const SESSION_TIMEOUT_MS = 8_000
 
 // Hard ceiling on a single backend fetch. A stalled socket (Safari's dead HTTP keep-alive,
 // see the retry note below) otherwise hangs with no error, so the request never settles.
-const REQUEST_TIMEOUT_MS = 12_000
+//
+// Must exceed backend/app/core/config.py's HEDERA_SUBMIT_TIMEOUT_SECONDS (15s): any
+// write that anchors to Hedera (precincts, vehicles, drivers) can legitimately take that
+// long, and the backend's own asyncio.wait_for is what turns a slow/unreachable Hedera
+// call into a clean 504 — if this fires first instead, the client aborts and reports a
+// bare timeout while the backend request is still genuinely in flight, with nothing in
+// its logs yet to explain why. 20s clears that with margin for network/serialisation
+// overhead on top of the backend's own ceiling.
+const REQUEST_TIMEOUT_MS = 20_000
 
 export class ApiError extends Error {
   // status 0 is reserved for client-side failures where no HTTP response was received

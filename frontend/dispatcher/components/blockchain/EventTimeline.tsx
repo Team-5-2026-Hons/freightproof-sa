@@ -1,6 +1,6 @@
 'use client'
 
-// Ordered list of vehicle or driver events.
+// Ordered list of vehicle, driver or precinct events.
 // Default view (all dispatchers): title + timestamp + humanized changed-fields rows —
 // every dispatcher needs to see what actually changed, not just that something did.
 // Forensic detail (admin + forensic mode ON only): BlockchainBadge — the chain-anchoring
@@ -10,9 +10,11 @@ import { Ic } from '@/components/ui/Ic'
 import { BlockchainBadge } from './BlockchainBadge'
 import { ForensicOnly } from './ForensicOnly'
 import { describeChange } from '@/lib/forensic/describeChange'
-import type { BlockchainReceipt, DriverEvent, VehicleEvent } from '@shared/lib/types/blockchain'
+import type {
+  BlockchainReceipt, DriverEvent, PrecinctEvent, VehicleEvent,
+} from '@shared/lib/types/blockchain'
 
-type Event = VehicleEvent | DriverEvent
+type Event = VehicleEvent | DriverEvent | PrecinctEvent
 
 type Props = {
   events: Event[]
@@ -22,21 +24,34 @@ type Props = {
 
 function describeEvent(e: Event): string {
   const t = e.event_type
-  if (t === 'created') return 'Created'
+  // 'created' and 'cosmetic_update' are shared across all three entity types, so both
+  // discriminate on the id field rather than on the event type alone.
+  const isPrecinct = 'precinct_id' in e
+  if (t === 'created') return isPrecinct ? 'Precinct mapped' : 'Created'
   if (t === 'license_plate_changed') return 'Licence plate changed'
   if (t === 'license_disc_renewed') return 'Licence disc renewed'
   if (t === 'license_renewed') return 'Driver licence renewed'
   if (t === 'vin_updated') return 'VIN updated'
   if (t === 'vehicle_updated') return 'Vehicle details updated'
   if (t === 'deactivated') return 'Deactivated'
-  if (t === 'cosmetic_update') return 'vehicle_id' in e ? 'Vehicle details updated' : 'Driver details updated'
+  if (t === 'relocated') return 'Location corrected'
+  if (t === 'geofence_resized') return 'Geofence radius changed'
+  if (t === 'sharing_changed') return 'Cross-organisation sharing changed'
+  if (t === 'cosmetic_update') {
+    if (isPrecinct) return 'Precinct details updated'
+    return 'vehicle_id' in e ? 'Vehicle details updated' : 'Driver details updated'
+  }
   return t
 }
 
 export function EventTimeline({ events, receipts, className = '' }: Props) {
   const receiptByEvent = new Map<string, BlockchainReceipt>()
   for (const r of receipts) {
-    if (r.subject_type === 'vehicle_event' || r.subject_type === 'driver_event') {
+    if (
+      r.subject_type === 'vehicle_event' ||
+      r.subject_type === 'driver_event' ||
+      r.subject_type === 'precinct_event'
+    ) {
       receiptByEvent.set(r.subject_id, r)
     }
   }
