@@ -312,12 +312,25 @@ async def get_precinct_detail(
     precinct_id: uuid.UUID,
     organization_id: uuid.UUID,
 ) -> PrecinctDetailResponse:
-    """Return a precinct the caller may SEE, with its change history.
+    """Return a precinct the caller may SEE, with its change history if they own it.
 
     Read scoping, not write scoping: own-org OR is_shared, matching list_precincts. A
     dispatcher planning a trip into a client's shared depot can open it and see where
     its geofence sits — they simply cannot edit it, and cannot verify its receipts
     (see subject_visibility, which scopes the audit trail to the owner alone).
+
+    The change history is scoped to the OWNER, not to who can see the precinct. is_shared
+    publishes where a facility is now, so another org can plan a trip into it; it does not
+    publish how it got there. The event rows carry every historical coordinate the depot
+    has ever had and the user ids of the admins who moved it — another organisation's
+    internal record, which sharing a location was never consent to hand over.
+
+    This is the same rule subject_visibility already enforces for verification, stated
+    there as "is_shared governs the precinct list; it never opens the audit trail to
+    another organisation". It is applied HERE, in the service, so ownership is decided in
+    exactly one place: the endpoint's remaining job is the admin-role check on receipts,
+    which is a different question (who may see forensic detail) from this one (whose
+    record is it).
     """
     precinct = (
         await db.execute(
@@ -332,6 +345,13 @@ async def get_precinct_detail(
     ).scalar_one_or_none()
     if precinct is None:
         raise ResourceNotFoundError("Precinct", str(precinct_id))
+
+    # Visible but not owned — reachable only via is_shared. Return the current geofence
+    # (that is what sharing is for) and nothing about how it came to be.
+    if precinct.principal_organization_id != organization_id:
+        return PrecinctDetailResponse(
+            **PrecinctRead.model_validate(precinct).model_dump(), events=[], receipts=[]
+        )
 
     events = (
         await db.execute(

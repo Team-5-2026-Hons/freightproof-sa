@@ -127,10 +127,11 @@ async def get_precinct_detail_endpoint(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
 
     # Receipts are withheld from non-admins, matching get_vehicle_detail_endpoint.
-    # A precinct visible only via is_shared is never the caller's own, so its receipts
-    # are withheld from that caller too — subject_visibility would refuse them anyway,
-    # and showing a hash the viewer cannot verify is worse than showing nothing.
-    is_owner = detail.principal_organization_id == current_user.organization_id
-    if current_user.role != DispatcherRole.ADMIN_DISPATCHER or not is_owner:
+    #
+    # Only the ROLE is checked here. Ownership is already settled in get_precinct_detail,
+    # which returns no events and no receipts for a precinct the caller merely sees via
+    # is_shared — deliberately one rule in one place rather than an ownership test
+    # repeated here that could drift from the one the service applies.
+    if current_user.role != DispatcherRole.ADMIN_DISPATCHER:
         detail = detail.model_copy(update={"receipts": []})
     return detail
