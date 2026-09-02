@@ -12,7 +12,7 @@ import type { Map as LeafletMap, Marker, Circle, DivIcon, TileLayer } from 'leaf
 // CSS file type-checks cleanly with no ambient declaration and no `any` cast needed.
 import 'leaflet/dist/leaflet.css'
 
-import { OSM_TILE_URL_TEMPLATE } from '@/lib/map/tiles'
+import { OSM_TILE_URL_TEMPLATE, TILE_ERROR_FALLBACK_THRESHOLD } from '@/lib/map/tiles'
 
 import { GeofenceSchematic } from './GeofenceSchematic'
 
@@ -48,15 +48,6 @@ const DEFAULT_ZOOM = 16
 // this component emitted with exact equality would almost never match, so "this is an
 // echo of our own gesture" means "within one such rounding step", not identical.
 const POSITION_ECHO_EPSILON_DEGREES = 0.00001
-
-// A handful of individual tile failures (an edge-of-coverage 404, one dropped request)
-// is normal on a healthy map and must not trip the fallback. This many tile errors IN A
-// ROW, with no successful tile load between them, is the signature of the tile SERVER
-// being unreachable — the exact "venue wifi" case the schematic fallback exists for.
-// Chosen empirically: low enough to catch a dead connection within the first screenful
-// of tiles at DEFAULT_ZOOM (which covers roughly half a dozen), high enough that a
-// merely spotty connection does not flicker into the schematic.
-const TILE_ERROR_FALLBACK_THRESHOLD = 6
 
 // Leaflet's vector-layer `color`/`fillColor` options only accept a literal CSS colour
 // string — they can't consume a Tailwind class. Rather than hardcode the hex value
@@ -116,16 +107,30 @@ function createPinIcon(L: typeof import('leaflet')): DivIcon {
  * prevent. Returns a cleanup function so the caller can detach before swapping or
  * removing the layer.
  *
+ * `onRecovered` fires on the first successful tile after the threshold was exceeded, so
+ * the caller can lift its fallback. Without it `failed` was a one-way latch: a transient
+ * outage replaced the map for the rest of the session even once tiles were serving again.
+ *
  * Exported (not just used internally) so this threshold/reset logic — the part of the
  * component with actual branching to get wrong — can be exercised directly against a
- * fake layer, without needing a real Leaflet map or a browser.
+ * fake layer, without needing a real Leaflet map or a browser. See
+ * __tests__/GeofenceMap.test.tsx.
  */
-export function attachTileFailureTracking(layer: TileLayer, onExceeded: () => void): () => void {
+export function attachTileFailureTracking(
+  layer: TileLayer,
+  onExceeded: () => void,
+  onRecovered?: () => void,
+): () => void {
   let consecutiveErrors = 0
+  let exceeded = false
 
   const handleTileError = (): void => {
     consecutiveErrors += 1
-    if (consecutiveErrors >= TILE_ERROR_FALLBACK_THRESHOLD) {
+    // Fire once per failure episode, not on every error past the threshold — the caller
+    // is setting a boolean, and re-firing it on each of a hundred failing tiles is a
+    // hundred redundant renders.
+    if (consecutiveErrors >= TILE_ERROR_FALLBACK_THRESHOLD && !exceeded) {
+      exceeded = true
       onExceeded()
     }
   }
@@ -135,6 +140,10 @@ export function attachTileFailureTracking(layer: TileLayer, onExceeded: () => vo
   // healthy session.
   const handleTileLoad = (): void => {
     consecutiveErrors = 0
+    if (exceeded) {
+      exceeded = false
+      onRecovered?.()
+    }
   }
 
   layer.on('tileerror', handleTileError)
@@ -187,6 +196,17 @@ export function GeofenceMap({
 
   const [source, setSource] = useState<TileSourceKey>('satellite')
   const [failed, setFailed] = useState(false)
+  // Bumped by "Retry map" to re-run the init effect. Needed because `failed` has two
+  // causes with different recoveries: a tile-server outage recovers on its own (the
+  // map is still alive, so a successful tile clears the flag), but a failed Leaflet
+  // import leaves no map at all — clearing the flag alone would reveal an empty frame.
+  // Re-running init tears the old attempt down via the effect's existing cleanup.
+  const [initAttempt, setInitAttempt] = useState(0)
+  // True once Leaflet has loaded and the map exists. The tile-source effect needs this
+  // as a dependency, not just `source`: it bails out while mapRef.current is null, so a
+  // toggle pressed during the dynamic import would otherwise never be applied — the map
+  // stayed on satellite while the control rendered "Street" as selected.
+  const [mapReady, setMapReady] = useState(false)
 
   // Held in a ref so the map-init effect never re-runs when the callback identity
   // changes — re-initialising Leaflet on every parent render would fight the user's pan.
@@ -224,9 +244,11 @@ export function GeofenceMap({
           attribution: chosen.attribution,
           maxZoom: chosen.maxZoom,
         }).addTo(map)
-        tileFailureCleanupRef.current = attachTileFailureTracking(tileRef.current, () => {
-          if (!cancelled) setFailed(true)
-        })
+        tileFailureCleanupRef.current = attachTileFailureTracking(
+          tileRef.current,
+          () => { if (!cancelled) setFailed(true) },
+          () => { if (!cancelled) setFailed(false) },
+        )
 
         circleRef.current = L.circle([latitude, longitude], {
           radius: radiusMetres,
@@ -255,6 +277,7 @@ export function GeofenceMap({
         }
 
         mapRef.current = map
+        setMapReady(true)
       } catch {
         // Chunk or tiles unreachable. The schematic is a correct answer to a narrower
         // question, which beats a blank frame.
@@ -266,6 +289,7 @@ export function GeofenceMap({
 
     return () => {
       cancelled = true
+      setMapReady(false)
       tileFailureCleanupRef.current?.()
       tileFailureCleanupRef.current = null
       mapRef.current?.remove()
@@ -274,10 +298,10 @@ export function GeofenceMap({
       circleRef.current = null
       tileRef.current = null
     }
-    // Deliberately empty: this effect builds the map once. The effects below keep it
+    // Only initAttempt: this effect builds the map once, and the effects below keep it
     // in sync. Re-running it on a coordinate change would reset the user's pan mid-edit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [initAttempt])
 
   // Follow the form's coordinates. A click or drag already showed the dispatcher
   // exactly where they placed the pin, so re-panning there would fight their own
@@ -326,6 +350,8 @@ export function GeofenceMap({
       }).addTo(map)
       tileFailureCleanupRef.current = attachTileFailureTracking(tileRef.current, () => {
         if (!cancelled) setFailed(true)
+      }, () => {
+        if (!cancelled) setFailed(false)
       })
     }
 
@@ -334,22 +360,49 @@ export function GeofenceMap({
     return () => {
       cancelled = true
     }
-  }, [source])
+    // mapReady is a dependency so a source chosen BEFORE Leaflet finished loading is
+    // still applied: swapTiles bails out when mapRef.current is null, and without this
+    // the effect would not run again until `source` next changed — leaving the map on
+    // satellite while the toggle rendered "Street" as selected.
+  }, [source, mapReady])
 
-  if (failed) {
-    return (
-      <div className={`flex flex-col items-center justify-center gap-2 bg-surf-low rounded-lg ${className ?? ''}`}>
-        <GeofenceSchematic radiusMetres={radiusMetres} className="w-[200px] h-[200px]" />
-        <p className="text-[11px] text-on-surf-v">
-          Map unavailable — showing the geofence to scale.
-        </p>
-      </div>
-    )
-  }
-
+  // The schematic is an OVERLAY, not a replacement, and the map stays mounted beneath it.
+  //
+  // Returning early here instead (as this did) unmounted the map container while the
+  // init effect's cleanup never ran — its deps are `[]` and the component is still
+  // mounted — so `mapRef.current` kept a live Leaflet map bound to a div React had
+  // removed, and the coordinate/radius effects went on calling panTo/setRadius against
+  // it for the rest of the session. It also made `failed` unrecoverable: with no map,
+  // no tile could ever load, so nothing could clear the flag.
+  //
+  // Keeping the map alive underneath means a tile that succeeds after an outage resets
+  // the streak and the overlay lifts on its own.
   return (
     <div className={`relative ${className ?? ''}`}>
       <div ref={containerRef} className="w-full h-full rounded-lg overflow-hidden" />
+
+      {failed && (
+        <div
+          className="absolute inset-0 z-[500] flex flex-col items-center justify-center gap-2 bg-surf-low rounded-lg"
+          role="status"
+        >
+          <GeofenceSchematic radiusMetres={radiusMetres} className="w-[200px] h-[200px]" />
+          <p className="text-[11px] text-on-surf-v">
+            Map unavailable — showing the geofence to scale.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setFailed(false)
+              setInitAttempt((attempt) => attempt + 1)
+            }}
+            className="px-[10px] py-[5px] rounded-[4px] text-[10px] font-[700] tracking-[0.06em] uppercase text-on-surf-v hover:text-on-surf"
+          >
+            Retry map
+          </button>
+        </div>
+      )}
+
       <div className="absolute top-3 right-3 z-[400] flex items-center gap-[2px] bg-surf-lowest rounded-md p-[3px] shadow-level-1">
         {(Object.keys(TILE_SOURCES) as TileSourceKey[]).map((key) => (
           <button

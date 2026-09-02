@@ -9,7 +9,12 @@ const CIRCLE_RADIUS_PX = 62
 // The scale bar targets roughly a third of the circle's diameter on screen — big enough
 // to read at a glance without a ruler, small enough that the circle stays the dominant
 // shape in the diagram.
-const SCALE_BAR_TARGET_FRACTION = 0.3
+//
+// Exported because StaticGeofenceThumbnail must target the same fraction for the real
+// map and this schematic to read the same way when one falls back to the other. It kept
+// a private copy of this number with a comment saying the two had to agree, which is an
+// invariant nothing enforced; importing it is what actually keeps them in step.
+export const SCALE_BAR_TARGET_FRACTION = 0.3
 
 // Fallback used only when the caller hands this zero-dependency component a radius it
 // cannot draw (<= 0, NaN, Infinity). Real precinct radii are floored at 50 m by

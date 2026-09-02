@@ -228,7 +228,7 @@ export const api = {
   get: <T>(path: string): Promise<T> => request<T>(path, {}, { retry: true }),
   // POSTs are not retried by default (a dropped connection may have already mutated state).
   // Pass { idempotent: true } for read-only POSTs (e.g. /blockchain/verify) to opt in.
-  // timeoutMs overrides the 12s ceiling for calls whose backend legitimately works longer
+  // timeoutMs overrides REQUEST_TIMEOUT_MS for calls whose backend legitimately works longer
   // (trip creation waits synchronously on the Hedera anchor).
   post: <T>(path: string, body: unknown, opts?: { idempotent?: boolean; timeoutMs?: number }): Promise<T> =>
     request<T>(

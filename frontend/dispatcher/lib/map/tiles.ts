@@ -16,8 +16,16 @@ export const MIN_TILE_ZOOM = 10
 /** OSM's standard raster tile set stops serving useful detail beyond this. */
 export const MAX_TILE_ZOOM = 18
 
-/** Target fraction of the card's width the geofence circle should occupy when auto-picking a zoom. */
-export const FENCE_FRACTION_OF_CARD = 0.55
+/**
+ * Target fraction of the framing box the geofence circle's DIAMETER should occupy when
+ * auto-picking a zoom.
+ *
+ * "Framing box", not "card width". Callers must pass the SMALLER of the viewport's two
+ * dimensions: a thumbnail is wider than it is tall, so framing on width alone picks a
+ * zoom whose circle is taller than the band it is drawn into, and the fence is clipped
+ * top and bottom at every real card width. See zoomForRadius.
+ */
+export const FENCE_FRACTION_OF_FRAME = 0.55
 
 /** Mid-range fallback zoom for radius inputs that can't drive the log2 search (0, negative, NaN). */
 const DEFAULT_TILE_ZOOM = 14
@@ -74,18 +82,27 @@ export function metresPerPixel(latitude: number, zoom: number): number {
 
 /**
  * Integer zoom level that renders a geofence circle at roughly
- * FENCE_FRACTION_OF_CARD of the card's width.
+ * FENCE_FRACTION_OF_FRAME of `framePx`.
+ *
+ * `framePx` must be the SMALLER of the viewport's two dimensions, or the circle is
+ * clipped along the other one. A caller drawing into a fixed-height band passes
+ * Math.min(widthPx, heightPx); a square viewport passes either.
  *
  * Solved in closed form rather than by iterating zoom levels: circle diameter
  * in pixels is monotonic in zoom (metresPerPixel halves each level), so
  * diameter(z) = target can be inverted directly via log2 instead of searching.
+ *
+ * The returned zoom is ROUNDED to an integer, so the drawn radius lands within a factor
+ * of sqrt(2) of the target either way. tiles.test.ts asserts the resulting circle still
+ * fits a 150px band across every realistic width, radius and SA latitude — that headroom
+ * is what makes the rounding safe, and is why the fraction above is not simply raised.
  */
-export function zoomForRadius(radiusMetres: number, latitude: number, cardWidthPx: number): number {
+export function zoomForRadius(radiusMetres: number, latitude: number, framePx: number): number {
   if (!Number.isFinite(radiusMetres) || radiusMetres <= 0) {
     return DEFAULT_TILE_ZOOM
   }
 
-  const targetDiameterPx = FENCE_FRACTION_OF_CARD * cardWidthPx
+  const targetDiameterPx = FENCE_FRACTION_OF_FRAME * framePx
   const latRad = toRadians(clampLatitude(latitude))
   // Guard cos() rounding to 0 at the poles, which would send log2 to -Infinity.
   const cosLat = Math.max(Math.abs(Math.cos(latRad)), Number.EPSILON)
@@ -102,15 +119,45 @@ export function zoomForRadius(radiusMetres: number, latitude: number, cardWidthP
 }
 
 /**
- * OSM raster tile URL template, in the `{z}/{x}/{y}` placeholder form Leaflet consumes
- * directly. Single fixed host, not the deprecated `{s}` subdomain form.
+ * Consecutive tile errors, with no successful load between them, that mean the tile
+ * SERVER is unreachable rather than that one tile 404'd.
  *
- * The one place the tile provider is named. Moving off OSM's donated infrastructure to
- * a host with an actual usage agreement (MapTiler, Stadia, Carto) is meant to be this
- * constant plus a key — so both the static thumbnail and `GeofenceMap` read it from
- * here rather than each carrying its own copy of the URL.
+ * A handful of individual failures (an edge-of-coverage 404, one dropped request) is
+ * normal on a healthy map and must not trip a fallback; a run of them with nothing
+ * succeeding is the "venue wifi" case the schematic fallback exists for. Chosen
+ * empirically: low enough to catch a dead connection within the first screenful of
+ * tiles, high enough that a merely spotty connection does not flicker.
+ *
+ * Lives here, next to the tile URL, because BOTH map surfaces need the same answer —
+ * GeofenceMap had this tolerance and StaticGeofenceThumbnail did not, so a single 404
+ * permanently replaced a thumbnail that the interactive map would have shrugged off.
  */
-export const OSM_TILE_URL_TEMPLATE = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
+export const TILE_ERROR_FALLBACK_THRESHOLD = 6
+
+/**
+ * Fallback tile host: OpenStreetMap's public raster tiles, in the `{z}/{x}/{y}`
+ * placeholder form Leaflet consumes directly. Single fixed host, not the deprecated
+ * `{s}` subdomain form.
+ *
+ * OSM's tile usage policy does not cover production applications — this is a development
+ * and demonstration default, not a deployment target.
+ */
+const OSM_PUBLIC_TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
+
+/**
+ * The raster tile template both map surfaces use — the one place the provider is named,
+ * so the static thumbnail and `GeofenceMap` cannot drift onto different hosts.
+ *
+ * Read from the environment so moving to a host with an actual usage agreement
+ * (MapTiler, Stadia, Carto) is a deploy-time setting rather than a code change: set
+ * NEXT_PUBLIC_TILE_URL to that provider's `{z}/{x}/{y}` template with its key embedded.
+ * Inlined at build time by Next, as all NEXT_PUBLIC_* vars are, so it is fixed per build.
+ */
+// `||`, not `??`: .env.example ships this key present but blank, so the value Next
+// inlines is an empty string rather than undefined. `??` only falls back on null or
+// undefined, which would leave every tile requesting an empty URL.
+export const OSM_TILE_URL_TEMPLATE =
+  process.env.NEXT_PUBLIC_TILE_URL || OSM_PUBLIC_TILE_URL
 
 /** OSM raster tile URL for a tile coordinate. Uses a single fixed host, not the deprecated {s} subdomain form. */
 export function tileUrl(x: number, y: number, zoom: number): string {

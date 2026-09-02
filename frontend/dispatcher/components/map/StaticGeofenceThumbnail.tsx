@@ -2,9 +2,16 @@
 
 import { useEffect, useRef, useState } from 'react'
 
-import { TILE_SIZE_PX, metresPerPixel, tileGrid, tileUrl, zoomForRadius } from '@/lib/map/tiles'
+import {
+  TILE_ERROR_FALLBACK_THRESHOLD,
+  TILE_SIZE_PX,
+  metresPerPixel,
+  tileGrid,
+  tileUrl,
+  zoomForRadius,
+} from '@/lib/map/tiles'
 
-import { GeofenceSchematic, niceScaleMetres } from './GeofenceSchematic'
+import { GeofenceSchematic, SCALE_BAR_TARGET_FRACTION, niceScaleMetres } from './GeofenceSchematic'
 
 // Width assumed until the element has actually been measured — server render, first
 // paint, and any environment without ResizeObserver. Sized to a typical precinct card
@@ -17,10 +24,6 @@ export const DEFAULT_THUMBNAIL_WIDTH_PX = 280
 // slot, not a resized one. Only the WIDTH is fluid: it follows the card, which is sized
 // by a responsive grid and is therefore never a constant we could hardcode.
 const THUMBNAIL_HEIGHT_PX = 150
-
-// Scale bar targets the same fraction of the visible box as GeofenceSchematic uses of
-// its viewbox, so both surfaces (real map vs. schematic fallback) read the same way.
-const SCALE_BAR_TARGET_FRACTION = 0.3
 
 // Distance in pixels of the scale bar's origin corner from the thumbnail's edges.
 const SCALE_BAR_MARGIN_PX = 10
@@ -57,7 +60,13 @@ export function StaticGeofenceThumbnail({
 }: StaticGeofenceThumbnailProps) {
   // A single flag, not per-tile tracking: one broken tile already breaks the illusion
   // of a continuous map, so there is no useful "partially working" state to render.
-  const [hasFailed, setHasFailed] = useState(false)
+  // Counted, not latched. A single tile 404 at the edge of a coverage area is normal
+  // and must not replace the map — only a RUN of failures with nothing loading between
+  // them means the tile server is unreachable. Reset by any successful tile, so a
+  // transient outage recovers on its own instead of stranding the card on the schematic
+  // for the rest of the session. Same policy and same constant as GeofenceMap.
+  const [tileErrorStreak, setTileErrorStreak] = useState(0)
+  const hasFailed = tileErrorStreak >= TILE_ERROR_FALLBACK_THRESHOLD
 
   // The card is sized by a responsive grid (1/2/3 columns), so its width is a runtime
   // fact, not a constant. It feeds both the tile range and `zoomForRadius`'s framing
@@ -83,7 +92,12 @@ export function StaticGeofenceThumbnail({
     return () => observer.disconnect()
   }, [])
 
-  const zoom = zoomForRadius(radiusMetres, latitude, widthPx)
+  // Framed on the SMALLER dimension. The band's height is fixed while its width
+  // follows the card, so framing on width alone picks a zoom whose circle is taller
+  // than the box — at the default 280px width and default 200m radius the fence was
+  // drawn with a 93px radius into 75px of vertical room, clipped top and bottom on
+  // every card. tiles.test.ts pins the invariant across every realistic width/radius.
+  const zoom = zoomForRadius(radiusMetres, latitude, Math.min(widthPx, THUMBNAIL_HEIGHT_PX))
   const tiles = tileGrid(latitude, longitude, zoom, widthPx, THUMBNAIL_HEIGHT_PX)
 
   const metresPerPx = metresPerPixel(latitude, zoom)
@@ -125,7 +139,8 @@ export function StaticGeofenceThumbnail({
               alt=""
               loading="lazy"
               decoding="async"
-              onError={() => setHasFailed(true)}
+              onError={() => setTileErrorStreak((streak) => streak + 1)}
+              onLoad={() => setTileErrorStreak(0)}
               className="absolute max-w-none"
               style={{ left: tile.left, top: tile.top, width: TILE_SIZE_PX, height: TILE_SIZE_PX }}
             />

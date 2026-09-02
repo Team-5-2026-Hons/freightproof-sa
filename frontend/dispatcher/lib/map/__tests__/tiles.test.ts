@@ -250,3 +250,48 @@ describe('tileGrid', () => {
     expect(keys.size).toBe(tiles.length)
   })
 })
+
+describe('geofence framing fits the thumbnail band', () => {
+  // The band StaticGeofenceThumbnail draws into: fluid width, fixed height.
+  const THUMBNAIL_HEIGHT_PX = 150
+  const VERTICAL_BUDGET_PX = THUMBNAIL_HEIGHT_PX / 2
+
+  // Card widths the responsive grid actually produces (grid-cols-1 / sm:2 / xl:3),
+  // and the full span of radii the schema permits.
+  const CARD_WIDTHS = [280, 342, 420, 590, 760]
+  const RADII_METRES = [50, 100, 200, 350, 500, 1000, 2000, 5000]
+  const SA_LATITUDES = [-33.9, -26.2, -22.0]
+
+  // This lives here, on the pure functions, rather than in the component test on
+  // purpose: jsdom has no ResizeObserver, so the component never leaves its default
+  // 280px width and a component-level assertion cannot see the wide-card case at all.
+  // The regression it guards was invisible for exactly that reason.
+  it('never draws a circle taller than the band, at any card width or radius', () => {
+    const clipped: string[] = []
+
+    for (const width of CARD_WIDTHS) {
+      for (const radiusMetres of RADII_METRES) {
+        for (const latitude of SA_LATITUDES) {
+          const zoom = zoomForRadius(radiusMetres, latitude, Math.min(width, THUMBNAIL_HEIGHT_PX))
+          const drawnRadiusPx = radiusMetres / metresPerPixel(latitude, zoom)
+
+          if (drawnRadiusPx > VERTICAL_BUDGET_PX) {
+            clipped.push(
+              `width=${width} radius=${radiusMetres}m lat=${latitude} -> ${drawnRadiusPx.toFixed(1)}px`,
+            )
+          }
+        }
+      }
+    }
+
+    expect(clipped).toEqual([])
+  })
+
+  it('framing on width alone would clip — the bug this guards against', () => {
+    // Pins the reason for Math.min(): the previous framing clipped at the DEFAULT
+    // width and DEFAULT radius, so this is not a wide-screen edge case.
+    const zoom = zoomForRadius(200, -26.2, 280)
+
+    expect(200 / metresPerPixel(-26.2, zoom)).toBeGreaterThan(VERTICAL_BUDGET_PX)
+  })
+})

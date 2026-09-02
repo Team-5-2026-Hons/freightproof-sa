@@ -1,7 +1,13 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
-import { TILE_SIZE_PX, metresPerPixel, tileGrid, zoomForRadius } from '@/lib/map/tiles'
+import {
+  TILE_ERROR_FALLBACK_THRESHOLD,
+  TILE_SIZE_PX,
+  metresPerPixel,
+  tileGrid,
+  zoomForRadius,
+} from '@/lib/map/tiles'
 
 import { DEFAULT_THUMBNAIL_WIDTH_PX, StaticGeofenceThumbnail } from '../StaticGeofenceThumbnail'
 
@@ -18,6 +24,11 @@ const TILE_URL_PATTERN = /^https:\/\/tile\.openstreetmap\.org\/(\d+)\/(\d+)\/(\d
 // exactly the width these expectations are computed against.
 const EXPECTED_WIDTH_PX = DEFAULT_THUMBNAIL_WIDTH_PX
 const EXPECTED_HEIGHT_PX = 150
+
+// The component frames the zoom on the SMALLER dimension so the circle cannot overflow
+// the fixed-height band (see tiles.test.ts for the invariant across every card width).
+// Expectations here derive from the same box rather than restating the rule.
+const EXPECTED_FRAME_PX = Math.min(EXPECTED_WIDTH_PX, EXPECTED_HEIGHT_PX)
 
 function renderThumbnail(radiusMetres = RADIUS_METRES) {
   return render(
@@ -40,7 +51,7 @@ describe('StaticGeofenceThumbnail', () => {
   it('renders OSM tiles at the zoom derived from the geofence radius', () => {
     renderThumbnail()
 
-    const zoom = zoomForRadius(RADIUS_METRES, LATITUDE, EXPECTED_WIDTH_PX)
+    const zoom = zoomForRadius(RADIUS_METRES, LATITUDE, EXPECTED_FRAME_PX)
     const images = tileImages()
     expect(images.length).toBeGreaterThan(0)
 
@@ -71,7 +82,7 @@ describe('StaticGeofenceThumbnail', () => {
   it('positions every tile exactly where the pure tileGrid maths says it goes', () => {
     renderThumbnail()
 
-    const zoom = zoomForRadius(RADIUS_METRES, LATITUDE, EXPECTED_WIDTH_PX)
+    const zoom = zoomForRadius(RADIUS_METRES, LATITUDE, EXPECTED_FRAME_PX)
     const expected = tileGrid(LATITUDE, LONGITUDE, zoom, EXPECTED_WIDTH_PX, EXPECTED_HEIGHT_PX)
     const images = tileImages()
 
@@ -89,7 +100,7 @@ describe('StaticGeofenceThumbnail', () => {
   it('draws the geofence circle to scale for the derived zoom', () => {
     const { container } = renderThumbnail()
 
-    const zoom = zoomForRadius(RADIUS_METRES, LATITUDE, EXPECTED_WIDTH_PX)
+    const zoom = zoomForRadius(RADIUS_METRES, LATITUDE, EXPECTED_FRAME_PX)
     const expectedRadiusPx = RADIUS_METRES / metresPerPixel(LATITUDE, zoom)
 
     const circle = container.querySelector('[data-testid="thumbnail-fence-circle"]')
@@ -125,13 +136,45 @@ describe('StaticGeofenceThumbnail', () => {
     expect(Number(tightZoom)).toBeGreaterThan(Number(wideZoom))
   })
 
-  it('falls back to GeofenceSchematic when any tile fails to load', () => {
+  it('tolerates isolated tile failures instead of abandoning the map', () => {
+    // An edge-of-coverage 404 or one dropped request is normal on a healthy map. This
+    // used to latch to the schematic on the FIRST error, with no reset and no way back,
+    // which contradicted the tolerance GeofenceMap applies to the same problem.
     renderThumbnail()
+    const images = tileImages()
 
-    fireEvent.error(tileImages()[0])
+    for (let i = 0; i < TILE_ERROR_FALLBACK_THRESHOLD - 1; i++) {
+      fireEvent.error(images[i % images.length])
+    }
+
+    expect(screen.getByTestId('thumbnail-fence-circle')).toBeInTheDocument()
+  })
+
+  it('falls back to GeofenceSchematic once tile failures say the server is unreachable', () => {
+    renderThumbnail()
+    const images = tileImages()
+
+    for (let i = 0; i < TILE_ERROR_FALLBACK_THRESHOLD; i++) {
+      fireEvent.error(images[i % images.length])
+    }
 
     expect(screen.queryByTestId('thumbnail-fence-circle')).not.toBeInTheDocument()
     expect(screen.getByTestId('schematic-fence-circle')).toBeInTheDocument()
+  })
+
+  it('a successful tile clears the streak, so scattered failures never accumulate', () => {
+    renderThumbnail()
+    const images = tileImages()
+
+    // Approach the threshold repeatedly, but never reach it without a success between.
+    for (let round = 0; round < 3; round++) {
+      for (let i = 0; i < TILE_ERROR_FALLBACK_THRESHOLD - 1; i++) {
+        fireEvent.error(images[i % images.length])
+      }
+      fireEvent.load(images[0])
+    }
+
+    expect(screen.getByTestId('thumbnail-fence-circle')).toBeInTheDocument()
   })
 
   it('labels the map once on its container, not once per tile fragment', () => {
