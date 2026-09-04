@@ -144,11 +144,101 @@ appear during a live demo on conference wifi, which is the worst possible time.
 
 ---
 
+## 5. `alembic --autogenerate` proposes dropping 17 indexes and the Supabase auth FKs
+
+**Files:** `backend/migrations/versions/0001_initial_schema.py`, `backend/app/db/models/`,
+`backend/tests/conftest.py:183-207`.
+
+**Symptom:** Run `alembic revision --autogenerate` for any model change and the generated
+file contains far more than you asked for. Confirmed 2026-09-03: a one-column addition
+produced **25 operations**. The extra 24 were `DROP INDEX` on 17 indexes —
+`ix_trips_status`, `ix_trips_driver_id`, `ix_trips_created_at_desc`,
+`ix_trips_order_number`, `ix_parcels_barcode`, `ix_parcels_consignment_id`,
+`ix_exceptions_severity`, `ix_exceptions_trip_resolved`, and the rest across
+`blockchain_receipts`, `checkpoints`, `driver_events`, `precinct_events`, `vehicles` —
+plus `DROP CONSTRAINT` on `fk_users_auth_id` and `fk_drivers_auth_id`, the foreign keys
+into Supabase's `auth` schema, and three unrelated FK/unique additions.
+
+**Root cause:** Those objects are created by `0001_initial_schema.py` but were never
+declared on the SQLAlchemy model classes. Autogenerate works by diffing the models
+against the live database, so it reads "in the database, absent from the models" as
+"deliberately deleted" and writes the drop. It is doing exactly what it is designed to
+do; it cannot distinguish *removed* from *never written down*.
+
+It compounds because the two databases have **different sources of truth**: the dev
+database is built by migrations and therefore has the indexes, while
+`tests/conftest.py` builds the test database from the models via
+`Base.metadata.create_all` and therefore does not. The schemas have never matched.
+
+**Impact:** High if it ships, and the danger is how quietly it fails. **Dropping an index
+breaks no test** — every assertion still passes and the application stays correct, it
+just degrades as data grows, and nobody connects that to a migration from weeks earlier.
+The `auth` foreign keys are the more serious half: that is referential integrity into
+Supabase, not a performance question. Nothing is currently damaged — the generated file
+was deleted before it ran, and the dev database was verified afterwards (19 indexes
+present, both auth FKs intact).
+
+**Affects everyone.** This is not one branch. Any developer running autogenerate this
+sprint hits it — relevant to FP-143/FP-145, which are live.
+
+**Workaround, today:** hand-write the migration scoped to the actual change. Precedent:
+`2026_09_03_ciaran_add_exception_resolution_method.py`, which documents the trap inline.
+If you do run autogenerate, read the entire generated file and delete everything you did
+not ask for. Never commit one unread.
+
+**Proposed fix:** declare the missing indexes and constraints on the models
+(`__table_args__`) so autogenerate stops seeing them as absent, which also makes the test
+database match the real one. Roughly a day, touches many model files, and must not be
+folded into a feature PR.
+
+**Owner:** unassigned. Raise at the next sprint boundary.
+
+---
+
+## 6. The test database's clock runs days behind the host
+
+**Files:** `infrastructure/docker/docker-compose.test.yml`, any test comparing a
+database-generated timestamp against a Python-generated one.
+
+**Symptom:** Observed 2026-09-03: `select now(), statement_timestamp(), clock_timestamp()`
+against the test database all returned **2026-08-29** — five days behind the host. Any row
+whose `created_at` / `updated_at` comes from the `func.now()` server default is therefore
+stamped days earlier than a row the test process stamps with `datetime.now(UTC)`.
+
+**Root cause:** container clock drift. A Docker VM's clock does not resynchronise after
+the host sleeps, so a laptop closed over a weekend leaves the database days behind. It is
+per-machine and invisible until something compares the two clocks.
+
+**Impact:** Low severity, high confusion. It does not affect correctness in production —
+only tests that mix the two time sources. It bit an ordering test in
+`tests/unit/test_exception_service.py`: a row created with an explicit "three hours ago"
+Python timestamp sorted *newer* than one the database had just stamped, making a correct
+`ORDER BY created_at DESC` look broken. The failure points at the query, not the clock,
+which is what makes it expensive to diagnose.
+
+**Workaround:** in any test that asserts on ordering or elapsed time, stamp **every**
+timestamp involved from one Python base rather than letting some take the server default.
+Never assert that a database-stamped row is later than a Python-stamped one.
+
+**Fix:** `docker compose -f infrastructure/docker/docker-compose.test.yml restart` resyncs
+it. Worth adding to the test-environment setup notes so it is the first thing checked when
+a time-dependent test fails inexplicably.
+
+**Owner:** unassigned. Environment issue, not code.
+
+---
+
 ## Common theme
 
-Issues 1 and 2 stem from the project depending on each developer's local setup being
-"correct" without defining or enforcing what correct is. Node version and
+Issues 1, 2, 5 and 6 stem from the project depending on something being "correct" without
+defining or enforcing what correct is — a developer's local setup in 1 and 2, and the
+agreement between the models and the database in 5. Node version and
 `.env.local` contents are invisible and per-machine, so the app works for whoever
 set things up right and mysteriously breaks for everyone else. Pinning the Node
 version and hardening the env-var fallback convert "silently depends on local
 setup" into "explicitly defined and self-correcting".
+
+Issue 5 is the same shape one layer down: the models and the migrations have drifted
+because nothing checks that they agree, so the tool built to reconcile them now
+proposes destroying the difference. A CI step asserting that autogenerate produces an
+empty diff would convert it into an error at the moment it is introduced.
