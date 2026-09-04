@@ -82,7 +82,7 @@ from app.db.models.phases import PhaseEvent
 from app.db.models.transit import TripException
 from app.db.models.trips import Consignment, Trip, TripStop
 from app.integrations.scan_feed import ScanDirection
-from app.orchestration import scan_service
+from app.orchestration import corroboration_service, scan_service
 from app.orchestration.phase_gate import blocked_on_by_stop
 from app.orchestration.resource_service import get_trip_detail
 from app.schemas.phases import (
@@ -766,11 +766,13 @@ async def advance_activation(
     _reject_if_another_trip_underway(others)
     await _reject_if_an_earlier_trip_is_due(db, trip, others)
 
-    # GPS cross-reference against Pulsit horse GPS is a feeder check (P1 is not
-    # anchored to Hedera) — Pulsit integration itself is out of scope for this
-    # plan; until it lands, horse_gps fields stay null and the check is skipped
-    # rather than faked, so dispatchers see an honest "not yet cross-checked" state.
+    # Two sources, recorded together: the driver's phone says where the phone is,
+    # then Pulsit says where the vehicle is. The second is what makes the first
+    # corroborated rather than merely asserted. A feeder check — P1 is unanchored,
+    # and a Pulsit outage leaves the columns null ("could not check") rather than
+    # failing the handshake. See orchestration/corroboration_service.py.
     _record_driver_position(event, payload)
+    await corroboration_service.record_phase_corroboration(db, trip=trip, event=event)
     event.status = PhaseStatus.COMPLETED
 
     # First phase off CREATED. LEGACY per-handshake TripStatus values are gone
@@ -815,6 +817,7 @@ async def advance_loading(
     trip, event = gated
 
     _record_driver_position(event, payload)
+    await corroboration_service.record_phase_corroboration(db, trip=trip, event=event)
 
     # Optional evidence: a warehouse that has already gone paperless has no linehaul
     # sheet to hand the driver, and this must never block completion (schema docstring).
@@ -979,9 +982,7 @@ async def advance_departure(
     trip, event = gated
 
     _record_driver_position(event, payload)
-
-    # Pulsit geofence departure confirmation is out of scope until the Pulsit
-    # integration lands; pulsit_geofence_confirmed stays null until then.
+    await corroboration_service.record_phase_corroboration(db, trip=trip, event=event)
 
     # Before any evidence is written: every photo cited must be this trip's own. The
     # waybill id is normally None now (its step was removed 2026-08-10 — see
@@ -1095,6 +1096,7 @@ async def advance_in_transit(
     trip, event = gated
 
     _record_driver_position(event, payload)
+    await corroboration_service.record_phase_corroboration(db, trip=trip, event=event)
     event.status = PhaseStatus.COMPLETED
 
     return await _finish_phase(db, trip=trip, event=event, idempotency_key=payload.idempotency_key)
@@ -1113,6 +1115,7 @@ async def advance_unloading(
     trip, event = gated
 
     _record_driver_position(event, payload)
+    await corroboration_service.record_phase_corroboration(db, trip=trip, event=event)
 
     # T4: this LEG's departure (strictly before this row), not "the trip's" —
     # a multi-stop trip can have several DEPARTURE rows, and a plain
@@ -1263,6 +1266,7 @@ async def advance_confirmation(
     trip, event = gated
 
     _record_driver_position(event, payload)
+    await corroboration_service.record_phase_corroboration(db, trip=trip, event=event)
 
     await _assert_artifacts_belong_to_trip(
         db, trip_id=trip_id,
