@@ -39,6 +39,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.db.models.enums import ExceptionSeverity
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,45 @@ class RealtimeKind(str, Enum):
     TRIP_CLOSED = "trip_closed"
 
 
+class EventSeverity(str, Enum):
+    """How loudly the client should react. Orthogonal to ``kind`` on purpose.
+
+    An earlier revision of this module encoded loudness INTO the kind (a
+    ``tamper_detected`` member sitting beside ``exception_raised``). That conflated
+    two independent questions — *what changed* and *how much it matters* — and the
+    conflation produced a real inversion: the six system-detected exception sites
+    routed CRITICAL rows to the loud kind, while exception_service published every
+    driver-raised exception as the quiet one. A panic button pressed during a
+    hijacking was therefore quieter on the dispatcher's screen than an automated
+    parcel-count check.
+
+    Splitting the axes fixes that at the root rather than at one more call site, and
+    keeps the kind enum free to grow (the step-event ledger adds its own kinds) without
+    needing a loud and a quiet variant of each.
+
+    Deliberately its own enum rather than reusing db.models.enums.ExceptionSeverity:
+    this rides the wire and applies to events that are not exceptions at all — a trip
+    being created is INFO — so the two are free to diverge. The values are kept equal
+    so the mapping below stays a widening, not a translation table.
+    """
+
+    INFO = "info"
+    WARNING = "warning"
+    CRITICAL = "critical"
+
+
+def event_severity(severity: ExceptionSeverity) -> EventSeverity:
+    """Wire severity for an exception being written. Derived, never chosen per site.
+
+    Every caller passes the same value it hands the TripException, so a severity
+    edited later drags its loudness with it and the two cannot drift apart. One site
+    computes its severity at runtime (seal continuity is WARNING when a dispatcher
+    override explains the missing seal, CRITICAL otherwise), which is why a constant
+    per call site was never sufficient.
+    """
+    return EventSeverity(severity.value)
+
+
 class TripEvent(BaseModel):
     """A thin change notification. Carries no trip data by design (see module docstring)."""
 
@@ -70,6 +110,10 @@ class TripEvent(BaseModel):
     resource: Literal["trip"] = "trip"
     id: UUID
     kind: RealtimeKind
+    # Defaults to INFO so the lifecycle emits (created / phase completed / closed) need
+    # say nothing: they are ordinary progress, and only an exception has a case for
+    # interrupting whoever is on shift.
+    severity: EventSeverity = EventSeverity.INFO
     ts: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 

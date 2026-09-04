@@ -25,6 +25,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ResourceNotFoundError
+from app.core.realtime import RealtimeKind, TripEvent, enqueue_event, event_severity
 from app.db.models.enums import (
     ExceptionSeverity, ExceptionSource, ExceptionType, ParcelStatus,
 )
@@ -220,6 +221,16 @@ async def ingest_scans(
         )
 
     await db.flush()
+    if any(r.exception_ids for r in results):
+        # Enqueued here rather than inside _raise_discrepancy: this is the only frame
+        # holding the Trip, and one refetch covers every discrepancy in the batch.
+        enqueue_event(
+            db, trip.operator_organization_id,
+            TripEvent(
+                id=trip_id, kind=RealtimeKind.EXCEPTION_RAISED,
+                severity=event_severity(_DISCREPANCY_SEVERITY),
+            ),
+        )
     logger.info(
         "ingest_scans trip=%s stop=%s direction=%s consignments=%d",
         trip_id, trip_stop_id, direction.value, len(results),

@@ -68,7 +68,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.blockchain.anchor_service import anchor_subject, compute_payload_hash
 from app.core.config import settings
-from app.core.realtime import RealtimeKind, TripEvent, enqueue_event
+from app.core.realtime import RealtimeKind, TripEvent, enqueue_event, event_severity
 from app.core.exceptions import (
     HederaServiceError, HederaTimeoutError, PhaseBlockedError, PhaseSequenceError, PhaseTooEarlyError,
     PhaseTypeMismatchError, ResourceNotFoundError, TripActivationBlockedError, TripStateError,
@@ -846,6 +846,7 @@ async def advance_loading(
 
     scanned_out_total = 0
     expected_total = 0
+    shortfall_recorded = False
     for consignment in consignments:
         counts = await scan_service.scanned_counts_for_consignment(
             db, consignment_id=consignment.id,
@@ -866,10 +867,22 @@ async def advance_loading(
             # NOTHING scanned at all raises nothing there — no events, no row. That
             # is the most serious short count there is and it must not go unrecorded.
             # Hence a presence check rather than an unconditional add.
-            await _raise_scan_shortfall_if_unrecorded(
+            shortfall_recorded |= await _raise_scan_shortfall_if_unrecorded(
                 db, trip_id=trip_id, event=event, consignment=consignment,
                 scanned_out=counts.scanned_out, expected=counts.expected,
             )
+
+    if shortfall_recorded:
+        # After the loop, and only for rows this call actually wrote — the helper
+        # suppresses duplicates of what scan_service already raised at ingest, and a
+        # suppressed duplicate is not news to the dispatcher.
+        enqueue_event(
+            db, trip.operator_organization_id,
+            TripEvent(
+                id=trip_id, kind=RealtimeKind.EXCEPTION_RAISED,
+                severity=event_severity(ExceptionSeverity.WARNING),
+            ),
+        )
 
     # None, not 0, when this stop has no consignments at all: a trip created without
     # a Parcel Perfect reference has no manifest baseline, and 0 would read as
@@ -892,8 +905,13 @@ async def advance_loading(
 async def _raise_scan_shortfall_if_unrecorded(
     db: AsyncSession, *, trip_id: uuid.UUID, event: PhaseEvent,
     consignment: Consignment, scanned_out: int, expected: int,
-) -> None:
+) -> bool:
     """Record a scan-out shortfall only if scan_service has not already recorded one.
+
+    Returns True when a row was written, False when an existing unresolved one made
+    this a no-op. The caller needs the distinction to decide whether to publish a
+    realtime event: it holds the Trip (and so the org id) that this helper does not,
+    and a suppressed duplicate must not wake the dispatcher a second time.
 
     Deliberately keyed on (consignment, stop, type, unresolved) rather than on the
     description string scan_service's own dedup compares: the two writers word the
@@ -911,7 +929,7 @@ async def _raise_scan_shortfall_if_unrecorded(
         )
     )).first()
     if existing is not None:
-        return
+        return False
 
     db.add(TripException(
         trip_id=trip_id, phase_event_id=event.id,
@@ -924,6 +942,7 @@ async def _raise_scan_shortfall_if_unrecorded(
             f"{scanned_out} of {expected} parcel(s) scanned."
         ),
     ))
+    return True
 
 
 def _normalized_seal(seal: str) -> str:
@@ -1034,6 +1053,19 @@ async def advance_departure(
             severity=ExceptionSeverity.CRITICAL,
             description=seal_mismatch_description,
         ))
+        # Emitted for consistency with the other system sites, but deliberately
+        # untested: BOTH entry paths above are dead from any current client. The driver
+        # app sends neither seal_number_confirmed nor guard_verified_seal
+        # (driver-pwa/lib/api/phases.ts:50) — the guard re-entry step was removed
+        # 2026-08-05. The fields survive only so a departure queued offline by an older
+        # build can replay instead of 422-ing forever, which is also why this stays.
+        enqueue_event(
+            db, trip.operator_organization_id,
+            TripEvent(
+                id=trip_id, kind=RealtimeKind.EXCEPTION_RAISED,
+                severity=event_severity(ExceptionSeverity.CRITICAL),
+            ),
+        )
     else:
         event.status = PhaseStatus.COMPLETED
 
@@ -1161,14 +1193,18 @@ async def advance_unloading(
         # Neither is INFO: an unverifiable seal chain is exactly what a real seal swap
         # would hide behind.
         absence_is_explained = departure_event.status == PhaseStatus.OVERRIDDEN
+        # Bound once rather than inlined: the realtime kind below must derive from the
+        # exact severity this row is written with, and two copies of the same
+        # conditional could drift apart.
+        seal_unverified_severity = (
+            ExceptionSeverity.WARNING if absence_is_explained
+            else ExceptionSeverity.CRITICAL
+        )
         event.status = PhaseStatus.EXCEPTION
         db.add(TripException(
             trip_id=trip_id, phase_event_id=event.id,
             exception_type=ExceptionType.SEAL_UNVERIFIED, source=ExceptionSource.SYSTEM,
-            severity=(
-                ExceptionSeverity.WARNING if absence_is_explained
-                else ExceptionSeverity.CRITICAL
-            ),
+            severity=seal_unverified_severity,
             description=(
                 f"Seal continuity could not be verified for this leg: no seal was "
                 f"recorded at departure (departure phase is "
@@ -1176,6 +1212,13 @@ async def advance_unloading(
                 f"was '{seal_at_destination}'."
             ),
         ))
+        enqueue_event(
+            db, trip.operator_organization_id,
+            TripEvent(
+                id=trip_id, kind=RealtimeKind.EXCEPTION_RAISED,
+                severity=event_severity(seal_unverified_severity),
+            ),
+        )
     elif seal_at_destination != departure_seal:
         # Recorded as evidence, but does NOT hold the trip. This branch used to set
         # trip.status = EXCEPTION_HOLD; three reasons it must not:
@@ -1207,6 +1250,13 @@ async def advance_unloading(
                 f"the seal applied at departure ('{departure_seal}')."
             ),
         ))
+        enqueue_event(
+            db, trip.operator_organization_id,
+            TripEvent(
+                id=trip_id, kind=RealtimeKind.EXCEPTION_RAISED,
+                severity=event_severity(ExceptionSeverity.CRITICAL),
+            ),
+        )
     else:
         event.status = PhaseStatus.COMPLETED
         # No LEGACY trip.status assignment here (DEST_GATE_IN is deleted, T6) —
@@ -1319,6 +1369,17 @@ async def advance_confirmation(
                     f"{counts.scanned_in} scanned in at destination."
                 ),
             ))
+
+    if mismatched:
+        # Once, after the loop — a three-waybill discrepancy is still one trip to
+        # refetch, and three identical events would only make the client do it thrice.
+        enqueue_event(
+            db, trip.operator_organization_id,
+            TripEvent(
+                id=trip_id, kind=RealtimeKind.EXCEPTION_RAISED,
+                severity=event_severity(ExceptionSeverity.WARNING),
+            ),
+        )
 
     event.driver_visual_count = payload.driver_visual_count
     event.parcel_count_destination = scanned_in_total
