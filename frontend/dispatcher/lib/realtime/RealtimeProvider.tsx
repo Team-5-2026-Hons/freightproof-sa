@@ -7,6 +7,7 @@ import { BASE_URL } from '@/lib/api/client'
 import { getAccessToken } from '@/lib/supabase/client'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useToast } from '@/lib/hooks/useToast'
+import { toastForEvent } from './ranking'
 import { FRAME_SEPARATOR, STREAM_PATH, backoffMs, parseFrame } from './sse'
 import type { RealtimeEvent, RealtimeStatus } from './types'
 
@@ -54,17 +55,12 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const handleEvent = useCallback((event: RealtimeEvent) => {
     // Fan out to every subscribed screen so the right data refetches in place.
     listenersRef.current.forEach(listener => listener(event))
-    // Global reaction: a driver-raised exception is the one signal a dispatcher must
-    // notice even when not looking at that trip, so it pops a sticky alert. The subject's
-    // detail (GPS, description) never crosses the channel — the dispatcher opens the trip,
-    // whose page has already refetched, to review it.
-    if (event.kind === 'exception_raised') {
-      notify({
-        kind: 'error',
-        title: 'Exception raised',
-        body: 'A driver flagged an exception — open the trip to review.',
-      })
-    }
+    // Global reaction: an exception is the one signal a dispatcher must notice even
+    // when not looking at that trip. What that alert says — and whether there is one
+    // at all — is decided by toastForEvent, kept pure in ./ranking so it can be tested
+    // without standing up an SSE stream and two context providers.
+    const toast = toastForEvent(event)
+    if (toast) notify(toast)
   }, [notify])
 
   useEffect(() => {
