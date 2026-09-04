@@ -18,6 +18,26 @@ interface Props {
  * a panic button carrying the coordinates it was pressed at, reached the dispatcher as a
  * sentence. Renders nothing when the exception carries neither.
  */
+/**
+ * Whether this exception has anything for the panel below to render.
+ *
+ * Exported because a caller has to know BEFORE it decides to offer a chevron. The trip
+ * timeline used to gate on `artifactsById` being present — but that is a Map from
+ * useTripArtifacts and is never absent, so every exception got an expander that opened
+ * onto nothing. Essentially every system-raised exception (seal mismatch, parcel count,
+ * waybill count) carries no artifact and no fix, so that was most rows on the rail, and
+ * it broke the timeline's own rule: a card with no chevron holds nothing to open.
+ *
+ * One predicate, used by the component and by anyone deciding whether to mount it, so
+ * the two cannot drift into disagreeing about what "has evidence" means.
+ */
+export function exceptionHasEvidence(exception: TripException): boolean {
+  const lat = exception.gps_lat
+  const lng = exception.gps_lng
+  const hasFix = lat !== null && lat !== undefined && lng !== null && lng !== undefined
+  return exception.supporting_artifact_id !== null || hasFix
+}
+
 export function ExceptionEvidence({ exception, artifactsById }: Props) {
   const artifactId = exception.supporting_artifact_id
   const artifact   = artifactId ? artifactsById.get(artifactId) : undefined
@@ -26,7 +46,7 @@ export function ExceptionEvidence({ exception, artifactsById }: Props) {
   const lng = exception.gps_lng
   const hasFix = lat !== null && lat !== undefined && lng !== null && lng !== undefined
 
-  if (artifactId === null && !hasFix) return null
+  if (!exceptionHasEvidence(exception)) return null
 
   return (
     <div className="mt-[8px] pt-[8px] border-t border-warn/20 flex items-start gap-5">

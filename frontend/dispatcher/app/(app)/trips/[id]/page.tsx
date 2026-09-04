@@ -30,7 +30,7 @@ import { DepartureDetail }    from '@/components/domain/DepartureDetail'
 import { UnloadingDetail }    from '@/components/domain/UnloadingDetail'
 import { ConfirmationDetail } from '@/components/domain/ConfirmationDetail'
 import { InTransitTimeline }  from '@/components/domain/InTransitTimeline'
-import { ExceptionEvidence }  from '@/components/domain/ExceptionEvidence'
+import { ExceptionEvidence, exceptionHasEvidence } from '@/components/domain/ExceptionEvidence'
 import { ManifestPanel }      from '@/components/domain/ManifestPanel'
 import { CancelTripAction }    from '@/components/domain/CancelTripAction'
 import { PhaseOverrideAction } from '@/components/domain/PhaseOverrideAction'
@@ -48,10 +48,8 @@ import {
 } from '@/lib/phase/derive'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { Trip } from '@shared/lib/types/trip'
-import type { TripException } from '@shared/lib/types/exception'
 import type { Precinct } from '@shared/lib/types/precinct'
 import type { BlockchainReceipt, BlockchainReceiptType, VerifyResult } from '@shared/lib/types/blockchain'
-import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 
 // ── Layout ────────────────────────────────────────────────────────────────────
 // The two fixed costs in the three-column row. Declared here and applied as inline
@@ -153,11 +151,6 @@ interface TimelineEventProps {
   // Rendered unconditionally, unlike expandedContent which needs a click.
   alwaysExpandedContent?: React.ReactNode
   statusPill?: React.ReactNode
-  // Exceptions nested within this phase card when expanded
-  exceptions?: TripException[]
-  showExceptionIndicator?: boolean
-  // Required to render evidence artifacts in nested exceptions
-  artifactsById?: Map<string, EvidenceArtifactWithUrl>
 }
 
 
@@ -165,7 +158,7 @@ function TimelineEvent({
   nodeType, nodeLabel, isLast,
   label, meta, detail, timestamp,
   chainReceipt, excText, resText, expandedContent, alwaysExpandedContent,
-  statusPill, exceptions, showExceptionIndicator, artifactsById,
+  statusPill,
 }: TimelineEventProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   // Every phase type now has its own detail component, so expanding in place is the
@@ -239,14 +232,6 @@ function TimelineEvent({
         </div>
       )}
       {detail && <div className="text-[13px] text-on-surf-v mt-1">{detail}</div>}
-      {exceptions && exceptions.length > 0 && showExceptionIndicator && (
-        <div className="inline-flex items-center gap-[7px] bg-warn-c rounded-sm px-[12px] py-[5px] mt-[6px]">
-          <Ic n="warn" s={13} className="text-warn-onc" />
-          <span className="text-[12px] font-[600] text-warn-onc">
-            {exceptions.length} exception{exceptions.length !== 1 ? 's' : ''}
-          </span>
-        </div>
-      )}
       {excText && (
         <div className="inline-flex items-center gap-[7px] bg-warn-c rounded-sm px-[12px] py-[5px] mt-[6px]">
           <Ic n="warn" s={13} className="text-warn-onc" />
@@ -297,48 +282,6 @@ function TimelineEvent({
 
           {chainReceipt && <ForensicOnly><ChainReceiptTag receipt={chainReceipt} /></ForensicOnly>}
           {isExpanded && expandedContent}
-          {isExpanded && exceptions && exceptions.length > 0 && !alwaysExpandedContent && artifactsById && (
-            <div className="mt-[12px] border-t border-outline-v/20 pt-[12px]">
-              <div className="text-[10px] font-[700] tracking-[0.09em] uppercase text-on-surf-v mb-[8px]">
-                Exceptions ({exceptions.length})
-              </div>
-              <div className="flex flex-col gap-[8px]">
-                {exceptions.map((exc) => (
-                  <div key={exc.id} className="rounded-lg px-4 py-3 bg-warn-c/40 border border-warn/20">
-                    <div className="flex items-start justify-between gap-3 mb-[5px]">
-                      <span className="text-[13px] font-[600] text-warn-onc">
-                        {fmtExceptionType(exc.exception_type)}
-                      </span>
-                      <span className="text-[11px] font-[600] text-sec tabular-nums shrink-0">
-                        {fmtDateTime(exc.created_at)}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-[6px] mb-[5px]">
-                      <Chip
-                        type={EXCEPTION_SEVERITY_META[exc.severity].chipType}
-                        label={EXCEPTION_SEVERITY_META[exc.severity].label}
-                      />
-                      <span className="text-[10px] font-[500] text-on-surf-v">
-                        {EXCEPTION_SOURCE_META[exc.source].label}
-                      </span>
-                    </div>
-                    {exc.description && (
-                      <div className="text-[12px] text-on-surf-v mb-[5px]">
-                        {exc.description}
-                      </div>
-                    )}
-                    {exc.resolved && (
-                      <div className="text-[11px] text-ok flex items-center gap-[4px]">
-                        <Ic n="check" s={11} className="text-ok" />
-                        {exc.resolver_note ? `Resolved · ${exc.resolver_note}` : 'Resolved'}
-                      </div>
-                    )}
-                    <ExceptionEvidence exception={exc} artifactsById={artifactsById} />
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
           {alwaysExpandedContent}
         </div>
       </div>
@@ -865,10 +808,57 @@ export default function TripDetailPage() {
                         />
                       : undefined
                   }
-                  exceptions={ownsExceptionRows ? excItems : undefined}
-                  showExceptionIndicator={excItems.length > 0 && !isPending}
-                  artifactsById={artifactsById}
                 />
+
+                {/* Exceptions are act rows on the rail, not children behind the phase's
+                    chevron. An exception already carries everything a row needs — `source`
+                    is the actor, `created_at` the timestamp, `phase_event_id` the position,
+                    `supporting_artifact_id` the evidence — so nesting it hid a first-class
+                    act inside a detail panel nobody opens unprompted. It also means the
+                    step-event ledger absorbs these rows in iteration 4 rather than
+                    rebuilding them.
+
+                    ownsExceptionRows keeps the in-transit de-duplication: a leg renders
+                    its own exceptions inside its Journey mini-timeline, and emitting them
+                    here as well printed every en-route exception twice. */}
+                {ownsExceptionRows && excItems.map((exc, excIdx) => (
+                  <TimelineEvent
+                    key={exc.id}
+                    nodeType="warn"
+                    // Not a sequence number: an exception has no place in the plan. It
+                    // happened, which is a different claim from "step 4 of 7".
+                    nodeLabel="!"
+                    isLast={isLastItem && excIdx === excItems.length - 1}
+                    label={fmtExceptionType(exc.exception_type)}
+                    statusPill={
+                      <Chip
+                        type={EXCEPTION_SEVERITY_META[exc.severity].chipType}
+                        label={EXCEPTION_SEVERITY_META[exc.severity].label}
+                      />
+                    }
+                    // The actor, named the way every other row on this rail names one.
+                    meta={EXCEPTION_SOURCE_META[exc.source].label}
+                    detail={exc.description || undefined}
+                    timestamp={exc.created_at}
+                    resText={
+                      exc.resolved
+                        ? exc.resolver_note
+                          ? `Resolved · ${exc.resolver_note}`
+                          : 'Resolved'
+                        : undefined
+                    }
+                    // Gated on the exception actually carrying evidence, not on
+                    // artifactsById — which is a Map from useTripArtifacts and is never
+                    // absent, so it offered a chevron on every row and opened most of
+                    // them onto nothing. Same predicate the panel itself uses, so the
+                    // expander and its contents cannot disagree.
+                    expandedContent={
+                      exceptionHasEvidence(exc)
+                        ? <ExceptionEvidence exception={exc} artifactsById={artifactsById} />
+                        : undefined
+                    }
+                  />
+                ))}
               </div>
             )
           })}
@@ -901,6 +891,20 @@ export default function TripDetailPage() {
             <div>
               <InfoRow label="Order"       value={trip.order_number}                mono />
               <InfoRow label="Driver"      value={trip.driver?.full_name ?? '—'} />
+              {/* The number was already on the wire (DriverRead.phone_number, nested in
+                  TripDetailResponse.driver) and simply never rendered. A dispatcher
+                  reacting to an exception was reading it off another system to dial it.
+                  A tel: link, not a call feature: FreightProof records, it does not
+                  dispatch — the phone does the calling and the resolve form records
+                  that it happened. */}
+              {trip.driver?.phone_number && (
+                <InfoRow
+                  label="Phone"
+                  value={trip.driver.phone_number}
+                  href={`tel:${trip.driver.phone_number}`}
+                  mono
+                />
+              )}
               <InfoRow label="Horse"       value={trip.horse?.registration ?? '—'}  mono />
               <InfoRow label="Origin"      value={originShort} />
               <InfoRow label="Destination" value={destShort} />
