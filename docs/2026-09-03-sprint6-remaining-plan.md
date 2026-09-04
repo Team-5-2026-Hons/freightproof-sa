@@ -4,6 +4,11 @@
 > **Board state read from Jira on 2026-09-03.** Code claims verified against `dev`
 > (local `Ciaran` is level with `origin/dev`: `git rev-list --left-right --count` → `0 0`).
 > **Related:** [design-notes/2026-09-02-step-event-ledger-implementation-plan.md](design-notes/2026-09-02-step-event-ledger-implementation-plan.md)
+>
+> **Amended 2026-09-03 (see §8).** FP-147/148A shipped with severity as its own
+> field on `TripEvent`, **not** as a `TAMPER_DETECTED` kind. §2 and §6 below record
+> the original design and the reasoning that produced it; §8 records what changed,
+> why, and the defect the original would have shipped. Read §8 before acting on §2.
 
 ## Where the board actually stands
 
@@ -210,10 +215,10 @@ and its Stage 1+ is iteration 4.
 
 | File | Ticket | Note |
 |---|---|---|
-| `backend/app/core/realtime.py` | FP-147 / 148A | One new `RealtimeKind` |
+| `backend/app/core/realtime.py` | FP-147 / 148A | One new **field** on `TripEvent` — `RealtimeKind` unchanged (§8) |
 | `backend/app/db/models/enums.py` | FP-146 | One new enum |
 | `backend/migrations/versions/` | FP-146 | `git fetch` first — Tim is live on FP-143/145 |
-| `frontend/dispatcher/lib/realtime/types.ts` | FP-147 / 148A | Mirrors the backend kind |
+| `frontend/dispatcher/lib/realtime/types.ts` | FP-147 / 148A | Mirrors the backend `EventSeverity` (§8) |
 
 No `main.py` change — both new routes extend the existing exceptions router. No new
 dependency, so `requirements.txt` and both `package.json` files stay untouched.
@@ -260,24 +265,34 @@ Every line number in this plan and in FP-147 is anchored to `dev` as of 2026-09-
 anything merges first, they move:
 
 ```bash
-grep -n "db.add(TripException(" backend/app/orchestration/phase_service.py \
-                                backend/app/orchestration/scan_service.py \
-                                backend/app/orchestration/trip_service.py
+grep -rn "TripException(" backend/app/orchestration/
 ```
 
-Nine hits. Six are this story. `phase_service.py:560` and `trip_service.py:565` are the
-dispatcher-note sites and stay silent.
+**Corrected 2026-09-03.** The original recipe here grepped `db.add(TripException(` and
+claimed nine hits. It returns **seven**, and silently misses `scan_service.py:344`,
+which assigns to a variable before adding — so a session following it would have built
+five of the six sites and never learned the sixth existed. Match on the constructor,
+not on the call that wraps it.
+
+Nine hits across four files. Six are this story. `phase_service.py:560` and
+`trip_service.py:565` are the dispatcher-note sites and stay silent;
+`exception_service.py:88` is the driver-raised path, which already emitted — though
+see §8, because *what* it emitted turned out to be wrong.
 
 ### The kind is derived from severity, not from a list
 
 Site 3 (`SEAL_UNVERIFIED`) computes its severity at runtime, so it belongs to neither the
 "critical" nor the "warning" group when you are reading the code. **Rule:**
 
-> `TAMPER_DETECTED` when the severity being written is `CRITICAL`, `EXCEPTION_RAISED`
-> otherwise — read from the same value passed to the `TripException`, never hard-coded
-> per site.
+> ~~`TAMPER_DETECTED` when the severity being written is `CRITICAL`,
+> `EXCEPTION_RAISED` otherwise~~ — **superseded, see §8.** The severity is carried on
+> the event as its own field, read from the same value passed to the `TripException`,
+> never hard-coded per site.
 
 One small helper beats six judgement calls, and it cannot drift when a severity changes.
+**That half of the rule was right and survived.** What was wrong was the thing it
+derived: a *kind*, which meant the one site that could not use the helper — the
+driver-raised path — could not participate at all. §8.
 
 ### Site 2 emits but gets no test
 
@@ -304,13 +319,78 @@ kind, and the dispatcher opens the trip, which has already refetched.
 
 ### Done means
 
-- [ ] `TAMPER_DETECTED` on `RealtimeKind` and mirrored in `lib/realtime/types.ts`
-- [ ] Six emits, kind derived from severity
+- [x] ~~`TAMPER_DETECTED` on `RealtimeKind`~~ → `EventSeverity` field on `TripEvent`,
+      mirrored in `lib/realtime/types.ts`. `RealtimeKind` unchanged at four members (§8)
+- [x] **Eight** emits, severity derived — not six. The two the plan called out of
+      scope (`exception_service`) were where the defect lived
 - [ ] `test_realtime_emit.py` extended — five new cases, site 2 documented as excluded
 - [ ] `pytest -q -ra` green **with zero skips**
 - [ ] Provider ranks the two kinds; new copy in place
 - [ ] Manual: destination seal mismatch through `dev_triggers` raises the sticky toast
 - [ ] No phase test needed editing — if one did, a contract moved
+
+---
+
+## 8 · Amendment 2026-09-03 — severity is a field, not a kind
+
+Recorded as a scope change with a date, per §4's own rule that silent drift is the
+problem rather than change.
+
+### What shipped instead
+
+`RealtimeKind` keeps its original four members. `TripEvent` gains
+`severity: EventSeverity` (`info` / `warning` / `critical`), defaulting to `INFO` so the
+lifecycle emits say nothing. A seal mismatch is `kind=exception_raised,
+severity=critical`. The dispatcher provider ranks on the band, not the kind.
+
+### Why — a defect, not a preference
+
+§2 said severity should ride *in* the kind so "the channel stays thin and the POPIA
+surface is untouched". **The POPIA argument does not hold**: a coarse severity band is
+no more identifying than the kind already is, and nothing about the payload changed.
+
+The real problem was structural. Ranking on a kind meant only callers going through the
+kind-derivation helper could rank — and §2 explicitly ruled `exception_service` out of
+scope (correctly: routing it through `raise_exception()` is a circular import). But
+`exception_service.py:22` writes `PANIC_BUTTON`, `SEAL_BROKEN_IN_TRANSIT` and
+driver-raised `SEAL_MISMATCH` as `CRITICAL`, while `:110` hard-coded the quiet kind. The
+first implementation therefore shipped this:
+
+| Event | Dispatcher saw |
+|---|---|
+| System detects a destination seal mismatch | **Sticky critical alert** |
+| Driver presses **panic during a hijacking** | Ordinary toast |
+| Driver reports **the seal broken in transit** | Ordinary toast |
+
+**A hijacking in progress ranked below an automated parcel-count check.** Severity as a
+field fixes it at the root — every site passes the band it writes, including the one
+that could not use the helper — rather than by adding a seventh special case.
+
+It also removes a growth problem the ledger would have hit: with loudness folded into
+the kind, S0.4's artifact kinds and everything after would each need a loud and a quiet
+variant.
+
+### Also changed
+
+- **`toastForEvent` extracted** to `lib/realtime/ranking.ts`, pure and React-free, so
+  the ranking is unit-testable without an SSE stream and two context providers — the
+  same split `sse.ts` already makes. The decision still lives in the realtime layer,
+  not the toast component. §9.4's debounce lands in this file.
+- **A tripwire test** (`test_every_trip_exception_write_site_is_accounted_for`) fails
+  the build when a `TripException` construction site is added or removed. FP-147 fixed
+  six silent instances; the tripwire fixes the *class*, which is what would otherwise
+  recur at site number ten. It also records the two deliberately-silent sites and why.
+- **A SQLAlchemy flush listener was considered and rejected.** Two sites must stay
+  silent, so a blanket listener needs an opt-out list — "impossible to forget the emit"
+  becomes "impossible to forget, unless you forget the opt-out", the same defect
+  mirrored. It would also have to resolve the organisation during flush, and it is the
+  least defensible pattern here at examination.
+
+### Still open
+
+- The manual run (destination seal mismatch through `dev_triggers` → sticky alert).
+- **FP-147's Jira ticket still says "add `TAMPER_DETECTED`".** Update it, or the board
+  and the code disagree.
 
 ---
 
@@ -349,3 +429,28 @@ own phone never did.
 since rejected, in a directory that ships. Either delete the directory or rewrite the README
 to record that guards were designed out. It is the same class of artefact as the dead
 `/sla` page.
+
+---
+
+## 9 · Amendment 2026-09-04 — what shipping FP-146/147/148 exposed
+
+**Sprint 6 work is done and reviewed.** Two follow-ups came out of the review; neither is
+sprint 6 scope and neither blocks the PR.
+
+**1 · Done, in this diff.** `frontend/guard/` and `frontend/shared/lib/mocks/exceptions.ts`
+are deleted — the guard directory per §7's "one thing to act on now" above, and the mocks
+file because FP-146 moved `useExceptions` onto the API and left it with no importers.
+Its re-export in `mocks/index.ts` went with it; `grep` alone missed that line (it read
+`export * from './exceptions'`, matching neither `mockExceptions` nor `mocks/exceptions`)
+and `tsc --noEmit` is what caught it. **Prove a TS file is unreferenced with the compiler,
+not with grep.**
+
+**2 · Deferred, written up.** The exception queue re-downloads the organisation's entire
+exception history on every phase completion of every trip. See
+[design-notes/2026-09-04-exception-queue-scaling.md](design-notes/2026-09-04-exception-queue-scaling.md)
+for the mechanism, four sequenced stories, and the alternatives rejected.
+
+The one thing to know before touching it: **two `TripException` write sites
+(`phase_service.py:560`, `trip_service.py:565`) do not emit `EXCEPTION_RAISED`.** Filtering
+the queue's subscription on kind before fixing that would silently hide dispatcher notes
+from the exceptions screen. That invariant is story A and it gates story B.
