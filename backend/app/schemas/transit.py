@@ -6,7 +6,12 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.db.models.enums import ExceptionSeverity, ExceptionSource, ExceptionType
+from app.db.models.enums import (
+    ExceptionResolutionMethod,
+    ExceptionSeverity,
+    ExceptionSource,
+    ExceptionType,
+)
 from app.schemas.text import CheckpointTypeStr, FreeText, RequiredFreeText
 
 
@@ -161,12 +166,42 @@ class TripExceptionUpdate(BaseModel):
     merkle_batch_id: Optional[UUID] = None
 
 
+class TripExceptionResolveRequest(BaseModel):
+    """Everything a dispatcher may set when resolving. Deliberately only two fields.
+
+    NOT TripExceptionUpdate above, which exposes `resolved`, `resolved_by_user_id`,
+    `resolved_at` and `merkle_batch_id` on the wire. Reusing it would let a caller name
+    someone else as the resolver, at a time of their choosing, and mark the row resolved
+    without saying anything about how — on the one record whose whole purpose is to show
+    who established what. The server takes the resolver from the token and the timestamp
+    from its own clock (orchestration.exception_service.resolve_exception).
+
+    Both fields are mandatory. A resolution with no note is the informal handling this
+    ticket exists to capture, recorded as though it were evidence.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    # RequiredFreeText, not str: lands on a TEXT column with no width of its own, and
+    # is read back as evidence — same reasoning as DriverExceptionCreateBody.description.
+    resolver_note: RequiredFreeText
+    resolution_method: ExceptionResolutionMethod
+
+
 class TripExceptionRead(TripExceptionBase):
     id: UUID
     resolved: bool
     resolved_by_user_id: Optional[UUID] = None
     resolved_at: Optional[datetime] = None
     resolver_note: Optional[str] = None
+    resolution_method: Optional[ExceptionResolutionMethod] = None
     merkle_batch_id: Optional[UUID] = None
+    # Denormalised off the Trip the exception belongs to. The dispatcher's queue spans
+    # every trip in the organisation and each row has to say WHICH trip, so without this
+    # both exception screens would have to fetch the trip list purely to resolve
+    # references. The service's org-scoping join already has the row in hand, so
+    # carrying it costs nothing. Optional because a row built outside that join
+    # (TripExceptionRead.model_validate on a bare ORM object) has no trip loaded.
+    trip_reference: Optional[str] = None
     created_at: datetime
     updated_at: datetime

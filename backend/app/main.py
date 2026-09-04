@@ -23,6 +23,7 @@ from app.api.v1.endpoints.checkpoints import router as checkpoints_router
 from app.api.v1.endpoints.dev_triggers import dev_panel_enabled
 from app.api.v1.endpoints.dev_triggers import router as dev_triggers_router
 from app.api.v1.endpoints.drivers import router as drivers_router
+from app.api.v1.endpoints.exceptions import dispatcher_router as exceptions_dispatcher_router
 from app.api.v1.endpoints.exceptions import router as exceptions_router
 from app.api.v1.endpoints.locations import router as locations_router
 from app.api.v1.endpoints.manifest import router as manifest_router
@@ -105,6 +106,9 @@ app.include_router(phases_router, prefix="/api/v1")
 app.include_router(artifacts_router, prefix="/api/v1")
 app.include_router(trip_artifacts_router, prefix="/api/v1")
 app.include_router(exceptions_router, prefix="/api/v1")
+# Org-scoped sibling of the above: the dispatcher's exception queue spans every trip
+# in the organisation, so it cannot live under the trip-nested prefix.
+app.include_router(exceptions_dispatcher_router, prefix="/api/v1")
 app.include_router(locations_router, prefix="/api/v1")
 app.include_router(checkpoints_router, prefix="/api/v1")
 app.include_router(manifest_router, prefix="/api/v1")

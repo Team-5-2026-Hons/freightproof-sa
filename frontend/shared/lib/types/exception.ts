@@ -37,9 +37,28 @@ export type ExceptionSource = 'system' | 'driver' | 'dispatcher'
 
 export type ExceptionSeverity = 'info' | 'warning' | 'critical'
 
+// How a dispatcher established what happened before resolving. Mirrors the backend
+// ExceptionResolutionMethod (db/models/enums.py).
+//
+// 'no_contact_yet' is not a gap in the list. A dispatcher resolving from evidence alone
+// — the scan feed corrected itself, the photo settles it — must be able to say so rather
+// than pick the nearest wrong answer, which is how a contact log becomes fiction.
+//
+// This records that contact happened. It does not place calls or send messages.
+export type ExceptionResolutionMethod =
+  | 'phoned'
+  | 'whatsapp'
+  | 'in_person'
+  | 'no_contact_yet'
+
 export interface TripException {
   id: ExceptionId
   trip_id: string
+  // Denormalised off the trip by the dispatcher endpoints, which already join it for
+  // org scoping. Without it every row on the exception queue could name only a UUID.
+  // Optional: the driver's own POST response is built from the ORM row alone and has
+  // no trip loaded, and driver-pwa shares this type without reading the field.
+  trip_reference?: string | null
   exception_type: ExceptionType
   source: ExceptionSource
   severity: ExceptionSeverity
@@ -61,6 +80,11 @@ export interface TripException {
   resolved_by_user_id: string | null
   resolved_at: string | null
   resolver_note: string | null
+  // Nullable for every exception resolved before this column existed — backfilling a
+  // guess would put invented contact history onto an evidence record. Optional as well
+  // as nullable so driver-pwa fixtures, which share this type and never read the
+  // field, keep compiling unchanged.
+  resolution_method?: ExceptionResolutionMethod | null
   merkle_batch_id: string | null
   created_at: string
   updated_at: string

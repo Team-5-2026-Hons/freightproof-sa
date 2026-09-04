@@ -1,14 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { TopBar }     from '@/components/ui/TopBar'
 import { SecHead }    from '@/components/ui/SecHead'
 import { Chip }       from '@/components/ui/Chip'
 import { Ic }         from '@/components/ui/Ic'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { Spinner }    from '@/components/ui/Spinner'
+import { Button }     from '@/components/ui/Button'
 import { useExceptions } from '@/lib/hooks/useExceptions'
-import { mockTrips }     from '@shared/lib/mocks/trips'
 import { EXCEPTION_SEVERITY_META, EXCEPTION_SOURCE_META } from '@shared/lib/constants/status-meta'
 import { COPY }   from '@shared/lib/constants/copy'
 import { ROUTES } from '@/lib/constants/routes'
@@ -36,9 +37,19 @@ export default function ExceptionsPage() {
   const router = useRouter()
   const [showResolved, setShowResolved] = useState(false)
 
-  const exceptions  = useExceptions({ resolved: showResolved })
-  const openCount   = useExceptions({ resolved: false }).length
-  const closedCount = useExceptions({ resolved: true }).length
+  // One fetch, not three. This page previously called the hook once per tab plus once
+  // for the visible list; against a real API that is three round trips for one screen,
+  // and the two counts are derivable from the same rows. Fetching everything and
+  // splitting here also keeps the tab counts consistent with the list — three separate
+  // requests could land in any order and disagree.
+  const { exceptions: all, isLoading, error, refetch } = useExceptions()
+
+  const openCount   = useMemo(() => all.filter(e => !e.resolved).length, [all])
+  const closedCount = all.length - openCount
+  const exceptions  = useMemo(
+    () => all.filter(e => e.resolved === showResolved),
+    [all, showResolved],
+  )
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -78,7 +89,44 @@ export default function ExceptionsPage() {
       {/* Content */}
       <div className="flex-1 min-h-0 overflow-auto">
         <div className="mx-6 my-5">
-          {exceptions.length === 0 ? (
+          {/* A background refresh failed while rows were already on screen. The list below
+              is still shown — it is real data, just possibly stale — but the dispatcher has
+              to know it stopped updating, or they will read a queue that silently froze
+              during an incident and believe it is current. */}
+          {error && all.length > 0 && (
+            <div className="mb-4 flex items-center justify-between gap-4 rounded-lg bg-warn-c px-5 py-3">
+              <div className="flex items-center gap-[9px]">
+                <Ic n="warn" s={14} className="text-warn-onc shrink-0" />
+                <span className="text-[12px] font-[600] text-warn-onc">
+                  This list may be out of date — the last refresh failed.
+                </span>
+              </div>
+              <Button size="sm" variant="ghost" onClick={refetch}>Retry</Button>
+            </div>
+          )}
+          {isLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <Spinner size="lg" />
+            </div>
+          ) : error && all.length === 0 ? (
+            /* Ranked ahead of the empty state deliberately. "No exceptions" is the most
+               reassuring thing this screen can say, and saying it because a fetch failed
+               would be the worst error this page could make.
+
+               Gated on having nothing to show. The hook refetches on EVERY trip event in
+               the organisation, so a single blip on a background refresh would otherwise
+               replace a fully-loaded queue with an error page — throwing away good rows
+               the dispatcher was reading because an unrelated refresh failed. With rows
+               in hand the stale list stays up and the banner below carries the warning. */
+            <div className="bg-surf-lowest rounded-lg shadow-level-3 p-10">
+              <EmptyState
+                icon={<Ic n="warn" s={32} className="text-err" />}
+                title="Could not load exceptions"
+                body={error}
+                cta={<Button size="sm" variant="ghost" onClick={refetch}>Try again</Button>}
+              />
+            </div>
+          ) : exceptions.length === 0 ? (
             <div className="bg-surf-lowest rounded-lg shadow-level-3 p-10">
               <EmptyState
                 icon={
@@ -108,7 +156,6 @@ export default function ExceptionsPage() {
                 {exceptions.map(exc => {
                   const sevMeta = EXCEPTION_SEVERITY_META[exc.severity]
                   const srcMeta = EXCEPTION_SOURCE_META[exc.source]
-                  const trip    = mockTrips.find(t => t.id === exc.trip_id)
 
                   return (
                     <div
@@ -148,7 +195,7 @@ export default function ExceptionsPage() {
 
                       {/* Trip ref */}
                       <div className="w-[110px] shrink-0 text-[12px] font-[600] text-sec tabular-nums tracking-[0.04em] truncate">
-                        {trip?.trip_reference ?? '—'}
+                        {exc.trip_reference ?? '—'}
                       </div>
 
                       {/* Timestamp */}

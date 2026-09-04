@@ -35,6 +35,29 @@ class DuplicateResourceError(Exception):
         self.value = value
 
 
+class ExceptionAlreadyResolvedError(Exception):
+    """Raised when a dispatcher resolves an exception a colleague already resolved.
+
+    Not raised on a replay by the SAME dispatcher — a double-tap or a retried request
+    carries the same account, so nothing is lost by returning the stored row unchanged.
+    This fires only when a DIFFERENT user resolved it first, because that is the case
+    where the caller's note and method would be silently discarded.
+
+    The first resolution stays the record: overwriting it would rewrite who established
+    what, and when. But the second dispatcher may have learned something the first did
+    not, so the loss has to be visible to them rather than reported as a success. A 200
+    carrying someone else's note would tell them their account was recorded when it was
+    not — on the one screen whose purpose is to prove otherwise.
+    """
+
+    def __init__(self, exception_id: str) -> None:
+        super().__init__(
+            f"Exception '{exception_id}' was already resolved by another dispatcher. "
+            "Their account is the record; re-read it before resolving again."
+        )
+        self.exception_id = exception_id
+
+
 class PhaseSequenceError(Exception):
     """Raised when a phase is completed out of order (gated on the phase plan, not trip.status).
 

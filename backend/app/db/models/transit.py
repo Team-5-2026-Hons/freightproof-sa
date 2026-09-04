@@ -11,7 +11,12 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from app.db.models import Base
-from app.db.models.enums import ExceptionSeverity, ExceptionSource, ExceptionType
+from app.db.models.enums import (
+    ExceptionResolutionMethod,
+    ExceptionSeverity,
+    ExceptionSource,
+    ExceptionType,
+)
 
 
 class Checkpoint(Base):
@@ -93,6 +98,15 @@ class TripException(Base):
     )
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     resolver_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # How the dispatcher established what happened, alongside the note saying what they
+    # found. Nullable: every exception written before this column existed has no method,
+    # and backfilling a guess would put invented contact history on an evidence record.
+    # String(20), not a native PG enum — matching exception_type/source/severity above
+    # and every other enum column in this codebase. A PG type would also have to be
+    # created and dropped by hand in the migration, for no gain the app can see.
+    resolution_method: Mapped[Optional[ExceptionResolutionMethod]] = mapped_column(
+        String(20), nullable=True
+    )
     merkle_batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("merkle_batches.id"), nullable=True
     )
