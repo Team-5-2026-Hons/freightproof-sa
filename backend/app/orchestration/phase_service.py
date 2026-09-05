@@ -68,6 +68,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.blockchain.anchor_service import anchor_subject, compute_payload_hash
 from app.core.config import settings
+from app.core.geo import haversine_metres
 from app.core.realtime import RealtimeKind, TripEvent, enqueue_event
 from app.core.exceptions import (
     HederaServiceError, HederaTimeoutError, PhaseBlockedError, PhaseSequenceError, PhaseTooEarlyError,
@@ -476,11 +477,167 @@ async def _anchor_or_fail_open(
     event.anchor_status = AnchorStatus.ANCHORED
 
 
+# Where a rendered separation crosses from metres to kilometres. A gap under a
+# kilometre printed as "0.3 km" reads as rounding noise, when 300 m is the
+# difference between standing at the gate and standing across the yard.
+_SEPARATION_KM_THRESHOLD_METRES = 1000
+
+
+def _format_separation(metres: float) -> str:
+    """A distance in the units a dispatcher reads at a glance."""
+    if metres < _SEPARATION_KM_THRESHOLD_METRES:
+        return f"{round(metres)} m"
+    return f"{metres / _SEPARATION_KM_THRESHOLD_METRES:.1f} km"
+
+
+def _phone_tracker_separation_metres(event: PhaseEvent) -> float | None:
+    """How far apart the two independent position sources were, or None.
+
+    None means "not measurable" — one of the two sources recorded no fix — and is
+    never conflated with 0.0, which is a real and opposite claim: the phone and the
+    tracker agreed exactly. Mirrors separationMetres() in the dispatcher's
+    lib/phase/geo.ts, which computes the same number from the same two columns for
+    the same card.
+    """
+    if (
+        event.driver_phone_lat is None or event.driver_phone_lng is None
+        or event.horse_gps_lat is None or event.horse_gps_lng is None
+    ):
+        return None
+    return haversine_metres(
+        event.driver_phone_lat, event.driver_phone_lng,
+        event.horse_gps_lat, event.horse_gps_lng,
+    )
+
+
+async def _raise_position_disagreement_if_unrecorded(
+    db: AsyncSession, *, trip_id: uuid.UUID, event: PhaseEvent,
+) -> None:
+    """Record GPS_MISMATCH when Pulsit measured the vehicle away from this stop (FP-145).
+
+    Consumes what FP-143's corroboration_service wrote moments earlier in this same
+    request; computes nothing about geofences itself.
+
+    ── ONLY FALSE RAISES. NEVER NULL. ────────────────────────────────────────────
+    `is False`, deliberately, and never `not confirmed`. FP-143's three-state column
+    reads NULL for "we could not check" — an unreachable tracker, a dark unit, a
+    precinct with no coordinates — and `not None` is True, so the looser test would
+    put a position disagreement against the name of every driver who drove through a
+    coverage dead zone on the N3. FALSE is a measurement; NULL is an admission that
+    no measurement exists. This one line is what keeps them apart.
+
+    ── Why this lives here and not in exception_service ──────────────────────────
+    exception_service owns DRIVER-raised exceptions: its entry point asserts the
+    caller is the trip's assigned driver and stamps ExceptionSource.DRIVER on the
+    row. Routing a system measurement through it would file the finding as something
+    the driver reported about themselves, which is precisely backwards — the value of
+    this exception is that a source the driver cannot influence produced it. Every
+    other system-detected exception (parcel count, seal mismatch, seal unverified,
+    waybill count) is written here, in this module, with source=SYSTEM; this follows
+    that path rather than inventing a second one. exception_service also imports this
+    module, so the reverse import would be circular.
+
+    ── Idempotent against the phase event ────────────────────────────────────────
+    _gate_and_load already short-circuits a replayed completion before any wrapper
+    body runs, so a re-synced offline handshake should never reach here twice. The
+    existence check is kept anyway, for the same reason FP-143 re-checks a fix's
+    timestamp it has been promised: evidence writes should not depend on another
+    function's invariant holding. One exception per phase event, and the check is
+    NOT filtered on `resolved` — a dispatcher who has already actioned this finding
+    must not have a duplicate reappear when the driver app flushes its queue again.
+
+    Never raises. A handshake is evidence that already physically happened; a fault
+    while annotating it must not undo it. Same fail-open stance as
+    _anchor_or_fail_open and record_phase_corroboration.
+    """
+    if event.pulsit_geofence_confirmed is not False:
+        return
+
+    try:
+        existing = (await db.execute(
+            select(TripException.id).where(
+                TripException.phase_event_id == event.id,
+                TripException.exception_type == ExceptionType.GPS_MISMATCH,
+            )
+        )).first()
+        if existing is not None:
+            return
+
+        separation = _phone_tracker_separation_metres(event)
+        if separation is None:
+            description = (
+                "The vehicle tracker's position is outside this stop's geofence at this "
+                "handshake. Only one of the two position sources recorded a fix, so the "
+                "separation between them could not be measured."
+            )
+        else:
+            description = (
+                f"Driver phone and vehicle tracker reported positions "
+                f"{_format_separation(separation)} apart at this handshake. The tracker's "
+                f"position is outside this stop's geofence."
+            )
+
+        db.add(TripException(
+            trip_id=trip_id,
+            phase_event_id=event.id,
+            # Scoped to the stop the phase is anchored to, as every other
+            # system-detected exception in this module already does.
+            trip_stop_id=event.trip_stop_id,
+            exception_type=ExceptionType.GPS_MISMATCH,
+            source=ExceptionSource.SYSTEM,
+            # WARNING, not CRITICAL, and the choice is the copy rule in code form.
+            # CRITICAL is this codebase's alarm tier: a seal mismatch, a panic button,
+            # a seal broken in transit — findings with no benign reading. A single
+            # geofence measurement has several: tracker drift, a stale cached fix, a
+            # vehicle legitimately parked outside the fence while the driver walks in
+            # to the gate office, or a precinct row whose coordinates or radius are
+            # wrong. Putting a class of finding with real false-positive modes into
+            # the alarm lane is how a dispatcher learns to ignore the alarm lane.
+            # WARNING is also what the comparable measurement disagreement
+            # (PARCEL_COUNT_MISMATCH) already uses. The separation is reported; the
+            # dispatcher decides what it means.
+            severity=ExceptionSeverity.WARNING,
+            description=description,
+            # The driver's own fix, which is what this column means on every other
+            # writer. The tracker's fix has no column here and needs none: both
+            # positions live on the phase_events row this exception points at, and
+            # copying them into the exception would create a second version of the
+            # same coordinates that could drift out of step with the first. The
+            # separation is likewise recomputed at render time from those two
+            # columns, per FP-143's note — no derived value is persisted.
+            gps_lat=event.driver_phone_lat,
+            gps_lng=event.driver_phone_lng,
+        ))
+
+        logger.info(
+            "Recorded GPS_MISMATCH for phase_event_id=%s trip_id=%s: separation=%s",
+            event.id, trip_id,
+            "not measurable" if separation is None else f"{separation:.1f}m",
+        )
+
+    except Exception:
+        # Deliberate broad catch, logged with a traceback per the project's error
+        # rules, not a silent swallow. The driver is standing at a gate and has
+        # already done the thing being recorded.
+        logger.exception(
+            "Could not record a position disagreement for phase_event_id=%s — the "
+            "handshake stands and the corroboration columns still carry the finding",
+            event.id,
+        )
+
+
 async def _finish_phase(
     db: AsyncSession, *, trip: Trip, event: PhaseEvent, idempotency_key: str,
 ) -> TripDetailResponse:
     event.idempotency_key = idempotency_key
     event.completed_at = event.completed_at or datetime.now(UTC)
+
+    # FP-145. Placed on the one path every handshake converges on, and AFTER each
+    # wrapper's own call to record_phase_corroboration, so the verdict being read
+    # here is the one this handshake just produced. Before the flush below, so the
+    # finding is already in the TripDetailResponse this request returns.
+    await _raise_position_disagreement_if_unrecorded(db, trip_id=trip.id, event=event)
+
     await recompute_position(db, trip)
     await db.flush()
 

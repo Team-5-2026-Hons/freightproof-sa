@@ -31,6 +31,7 @@ import { UnloadingDetail }    from '@/components/domain/UnloadingDetail'
 import { ConfirmationDetail } from '@/components/domain/ConfirmationDetail'
 import { InTransitTimeline }  from '@/components/domain/InTransitTimeline'
 import { ExceptionEvidence }  from '@/components/domain/ExceptionEvidence'
+import { PositionDisagreement } from '@/components/domain/PositionDisagreement'
 import { ManifestPanel }      from '@/components/domain/ManifestPanel'
 import { CancelTripAction }    from '@/components/domain/CancelTripAction'
 import { PhaseOverrideAction } from '@/components/domain/PhaseOverrideAction'
@@ -158,6 +159,10 @@ interface TimelineEventProps {
   showExceptionIndicator?: boolean
   // Required to render evidence artifacts in nested exceptions
   artifactsById?: Map<string, EvidenceArtifactWithUrl>
+  // Optional so the "Trip Created" call site (no phase row behind it) keeps compiling
+  // unchanged. Carries the phase's own driver-phone/tracker fixes so a nested gps_mismatch
+  // exception can render PositionDisagreement without a second fetch.
+  phase?: PhaseDescriptor
 }
 
 
@@ -165,7 +170,7 @@ function TimelineEvent({
   nodeType, nodeLabel, isLast,
   label, meta, detail, timestamp,
   chainReceipt, excText, resText, expandedContent, alwaysExpandedContent,
-  statusPill, exceptions, showExceptionIndicator, artifactsById,
+  statusPill, exceptions, showExceptionIndicator, artifactsById, phase,
 }: TimelineEventProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   // Every phase type now has its own detail component, so expanding in place is the
@@ -326,6 +331,11 @@ function TimelineEvent({
                       <div className="text-[12px] text-on-surf-v mb-[5px]">
                         {exc.description}
                       </div>
+                    )}
+                    {/* gps_mismatch is the two-source separation itself — render the measured
+                        fixes and gap on the card that raised it, not just the prose description. */}
+                    {exc.exception_type === 'gps_mismatch' && phase && (
+                      <PositionDisagreement phase={phase} />
                     )}
                     {exc.resolved && (
                       <div className="text-[11px] text-ok flex items-center gap-[4px]">
@@ -868,6 +878,7 @@ export default function TripDetailPage() {
                   exceptions={ownsExceptionRows ? excItems : undefined}
                   showExceptionIndicator={excItems.length > 0 && !isPending}
                   artifactsById={artifactsById}
+                  phase={phase}
                 />
               </div>
             )

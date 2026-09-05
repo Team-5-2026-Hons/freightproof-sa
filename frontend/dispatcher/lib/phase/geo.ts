@@ -60,3 +60,19 @@ export function toCoords(lat: number | null, lng: number | null): Coords | null 
   if (lat === null || lng === null) return null
   return { lat, lng }
 }
+
+// Threshold below which a separation prints as whole metres rather than kilometres.
+const METRES_PER_KM = 1_000
+
+/**
+ * Render a metres value the way a dispatcher reads it: whole metres under a kilometre,
+ * one decimal place of kilometres above it.
+ *
+ * Why not always kilometres: a sub-kilometre gap rendered as "0.3 km" reads as rounding
+ * noise, when 300 m is the difference between the gate and the far side of the yard —
+ * exactly the distinction this platform exists to preserve.
+ */
+export function formatSeparation(metres: number): string {
+  if (metres < METRES_PER_KM) return `${Math.round(metres)} m`
+  return `${(metres / METRES_PER_KM).toFixed(1)} km`
+}
