@@ -462,8 +462,41 @@ rather than a special case.
 **D-10 · Are exceptions act rows?** (§4) Recommended yes, decided **this sprint** with
 FP-146, not in iteration 4 with the ledger.
 
-**D-11 · Where does severity gating live?** (§4) Recommended: `RealtimeKind` and the
-provider, not the toast component — so §9.4's debounce has one home.
+**D-11 · Where does severity gating live?** (§4) ~~Recommended: `RealtimeKind` and the
+provider, not the toast component — so §9.4's debounce has one home.~~
+
+> **Amended 2026-09-05 — taken, and not as recommended.** Half of this shipped, half was
+> wrong. The half that held: ranking does not live in the toast component. The half that did
+> not: it is **not** `RealtimeKind`, and it is not in the provider either.
+>
+> Encoding loudness into the kind conflates *what changed* with *how much it matters*, and
+> the conflation produced a real inversion. Ranking on kind meant `exception_service` could
+> not participate — every driver-raised exception published as the ordinary kind while
+> system-detected seal checks published as the loud one, so **a panic button pressed during a
+> hijacking reached the dispatcher quieter than an automated parcel-count mismatch.**
+>
+> Shipped instead (`4b5512c`): a `severity` field on `TripEvent` (`core/realtime.py`,
+> `EventSeverity` + `event_severity()`), derived from the same value written onto the
+> `TripException` row so the two cannot drift; and ranking in
+> `frontend/dispatcher/lib/realtime/ranking.ts` — a pure module with no React imports, the
+> same split `sse.ts` already makes for frame parsing. Not the provider: a function that can
+> be unit-tested without standing up an SSE stream and two context providers is worth more
+> than one that cannot.
+>
+> **§9.4's debounce still has one home, and it is `ranking.ts`.** That is the only place
+> that sees every event, so it is the only place that can weigh one against another — which
+> is the property D-11 was actually asking for. Stage 4 should extend that module, not the
+> provider and not `RealtimeKind`.
+>
+> The gate that matters when the ledger joins this channel: `toastForEvent` bails on
+> `severity === 'info'`. Without it a resolution (published as `exception_raised` at INFO so
+> the queue refetches) raised a sticky red alarm on every colleague's screen. Any ledger kind
+> that rides this channel for refetch purposes must publish at INFO for the same reason.
+>
+> See [2026-09-04-exception-queue-scaling.md](2026-09-04-exception-queue-scaling.md) for the
+> subscription-filter work this makes possible, and
+> [../2026-09-03-sprint6-remaining-plan.md](../2026-09-03-sprint6-remaining-plan.md) §8 for
+> the same correction recorded against FP-147's original `TAMPER_DETECTED` design.
 
 Still blocked, and routed around rather than through: **Q1** (do not create
 `expected_seal_number`), **Q2** (gates FP-155), **Q3** (gates Stage 6's headline events),
