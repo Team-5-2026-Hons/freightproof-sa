@@ -11,11 +11,40 @@ import { useDevTriggers } from '@/lib/hooks/useDevTriggers'
 import {
   DEMO_EXCEPTION_TYPES,
   isClosedPhaseStatus,
+  PRECINCT_WAYPOINT_ID,
   type DevConsignment,
   type DevTripStop,
   type DevTripSummary,
+  type MoveTruckResponse,
   type ScanDirection,
 } from '@/lib/types/dev'
+
+// Metres-to-kilometres switchover for the "distance from precinct" readout —
+// "3200 m" is harder to eyeball at a glance (and on a projector) than "3.2 km".
+const METRES_PER_KILOMETRE = 1000
+
+// Formats MoveTruckResponse.distance_metres for display, or names the reason
+// there is nothing to show (no fix at all, vs. a fix exactly at the precinct).
+function formatDistance(distanceMetres: number | null): string {
+  if (distanceMetres === null) return 'distance unknown'
+  return distanceMetres >= METRES_PER_KILOMETRE
+    ? `${(distanceMetres / METRES_PER_KILOMETRE).toFixed(1)} km from the precinct`
+    : `${Math.round(distanceMetres)} m from the precinct`
+}
+
+// geofence_confirmed is a tri-state, not a boolean: null on the no_signal waypoint
+// means no verdict was ever reached, which is a materially different fact from a
+// verdict that was reached and failed — collapsing it to falsy would tell the
+// operator a fix existed and failed the geofence when actually there was no fix.
+function verdictLabel(confirmed: boolean | null): string {
+  if (confirmed === null) return 'No verdict — tracker dark'
+  return confirmed ? 'Geofence confirmed' : 'Geofence failed'
+}
+
+function verdictClassName(confirmed: boolean | null): string {
+  if (confirmed === null) return 'text-amber-700'
+  return confirmed ? 'text-emerald-700' : 'text-red-600'
+}
 
 interface DevTriggerPanelProps {
   /** Shown at the top so nobody mistakes this for a product surface. */
@@ -160,12 +189,20 @@ function buildWaybillBreakdown(
 
 export function DevTriggerPanel({ heading }: DevTriggerPanelProps): React.ReactElement {
   const {
-    trips, isLoading, error, lastResult,
+    trips, waypoints, isLoading, error, lastResult,
     loadTrips, triggerScan, closeScanSession, triggerPpChange, triggerException, flushMockState,
+    loadWaypoints, moveTruck,
   } = useDevTriggers()
 
   const [tripId, setTripId] = useState<string>('')
   const [selectedOptionKey, setSelectedOptionKey] = useState<string>('')
+
+  // The last waypoint successfully moved to, and the full response it produced.
+  // Kept separately from `lastResult` (the panel-wide one-line status) because this
+  // needs to stay on screen — precinct, distance, verdict — for as long as the
+  // truck sits at that waypoint, not just until the next unrelated action.
+  const [activeWaypointId, setActiveWaypointId] = useState<string | null>(null)
+  const [moveTruckResult, setMoveTruckResult] = useState<MoveTruckResponse | null>(null)
 
   // Manifest barcodes ticked per waybill reference, and not-on-manifest barcodes
   // added per waybill reference. Both reset whenever the stop+direction selection
@@ -189,6 +226,18 @@ export function DevTriggerPanel({ heading }: DevTriggerPanelProps): React.ReactE
   useEffect(() => {
     void loadTrips()
   }, [loadTrips])
+
+  useEffect(() => {
+    void loadWaypoints()
+  }, [loadWaypoints])
+
+  // A moved-to waypoint and its position readout belong to whichever trip's device
+  // was moved. Carrying it over to a newly selected trip would show one trip's
+  // mock position while narrating a different one.
+  useEffect(() => {
+    setActiveWaypointId(null)
+    setMoveTruckResult(null)
+  }, [tripId])
 
   const selectedTrip = trips.find((t) => t.trip_id === tripId) ?? null
 
@@ -351,6 +400,21 @@ export function DevTriggerPanel({ heading }: DevTriggerPanelProps): React.ReactE
     })
   }
 
+  // Deliberately bypasses the Modal/PendingAction confirmation flow every other
+  // write action in this panel goes through. FP-199: this control is narrated
+  // live off a projector during a demo, and its whole point is "one press, one
+  // move" — a confirm-then-click round trip would turn an instant demo beat into
+  // a fumbled two-step one for no safety benefit (it only ever writes mock
+  // tracker state, never anything evidentiary).
+  const onMoveTruck = async (waypointId: string): Promise<void> => {
+    if (tripId === '') return
+    const result = await moveTruck({ trip_id: tripId, waypoint_id: waypointId })
+    if (result !== null) {
+      setActiveWaypointId(waypointId)
+      setMoveTruckResult(result)
+    }
+  }
+
   const onConfirmPendingAction = async (): Promise<void> => {
     if (pendingAction === null) return
     switch (pendingAction.kind) {
@@ -458,6 +522,90 @@ export function DevTriggerPanel({ heading }: DevTriggerPanelProps): React.ReactE
           <Button onClick={() => void loadTrips()} disabled={isLoading}>
             Refresh trips
           </Button>
+        </div>
+      </Card>
+
+      <Card>
+        <div className="space-y-3 p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="font-medium">Move the truck (dev-mode simulation)</h3>
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-amber-700">
+              Dev only — simulated tracker
+            </span>
+          </div>
+          <p className="text-xs text-slate-500">
+            Writes a fake Pulsit position for the selected trip&apos;s device only.
+            Everything downstream — the geofence check, the corroboration verdict,
+            the phase handshake — is the real orchestration running against that
+            fake position, exactly as it would against a genuine tracker fix.
+          </p>
+
+          {tripId === '' ? (
+            <p className="text-xs text-slate-500">Select a trip above to move its truck.</p>
+          ) : waypoints.length === 0 ? (
+            <p className="text-xs text-slate-500">
+              No waypoints available (is DEV_PANEL_ENABLED and PULSE_USE_MOCK set on the backend?)
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {[...waypoints].sort((a, b) => a.sequence - b.sequence).map((wp) => {
+                const isActive = activeWaypointId === wp.waypoint_id
+                return (
+                  <Button
+                    key={wp.waypoint_id}
+                    variant={isActive ? 'success' : 'secondary'}
+                    size="lg"
+                    full
+                    disabled={isLoading}
+                    onClick={() => void onMoveTruck(wp.waypoint_id)}
+                  >
+                    <span className="flex w-full flex-col items-start gap-0.5 text-left">
+                      <span className="flex items-center gap-2 text-base font-semibold">
+                        {wp.label}
+                        {isActive && (
+                          <span className="rounded-full bg-white/25 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
+                            Active
+                          </span>
+                        )}
+                      </span>
+                      <span className="text-xs font-normal opacity-80">{wp.description}</span>
+                    </span>
+                  </Button>
+                )
+              })}
+            </div>
+          )}
+
+          <Button
+            variant="ghost"
+            onClick={() => void onMoveTruck(PRECINCT_WAYPOINT_ID)}
+            disabled={tripId === '' || isLoading}
+          >
+            Reset to precinct
+          </Button>
+
+          {moveTruckResult !== null && (
+            <div className="space-y-1 rounded-lg border border-outline-v/20 p-3">
+              <p className="text-sm font-semibold">
+                {moveTruckResult.vehicle_registration} · {moveTruckResult.precinct_name}
+              </p>
+              <p className="text-xs text-slate-500">
+                {/* Separate spans (not one interpolated string) so "No fix" stays an
+                    independently-matchable text node rather than being fused with the
+                    distance readout next to it. */}
+                <span>
+                  {moveTruckResult.has_position && moveTruckResult.latitude !== null && moveTruckResult.longitude !== null
+                    ? `${moveTruckResult.latitude}, ${moveTruckResult.longitude}`
+                    : 'No fix'}
+                </span>
+                {' · '}
+                <span>{formatDistance(moveTruckResult.distance_metres)}</span>
+              </p>
+              <p className={`text-xs font-medium ${verdictClassName(moveTruckResult.geofence_confirmed)}`}>
+                {verdictLabel(moveTruckResult.geofence_confirmed)} — {moveTruckResult.verdict_reason}
+              </p>
+            </div>
+          )}
         </div>
       </Card>
 

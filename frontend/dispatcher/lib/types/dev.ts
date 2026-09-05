@@ -161,3 +161,54 @@ export const DEMO_EXCEPTION_TYPES = [
 ] as const
 
 export type DemoExceptionType = (typeof DEMO_EXCEPTION_TYPES)[number]
+
+/**
+ * One preset mock-tracker fix ("waypoint"). Mirrors WaypointRead in
+ * backend/app/schemas/dev.py. Latitude/longitude are strings because the
+ * backend serialises Decimal that way — never coerce them to number, since
+ * float rounding on a coordinate is exactly the kind of drift this endpoint
+ * exists to test.
+ */
+export interface WaypointRead {
+  waypoint_id: string
+  label: string
+  sequence: number
+  description: string
+  latitude: string | null
+  longitude: string | null
+  intended_distance_metres: number | null
+  expected_confirmed: boolean | null
+}
+
+export interface MoveTruckRequest {
+  trip_id: string
+  waypoint_id: string
+}
+
+export interface MoveTruckResponse {
+  trip_id: string
+  waypoint_id: string
+  waypoint_label: string
+  device_id: string
+  vehicle_registration: string
+  precinct_id: string
+  precinct_name: string
+  latitude: string | null
+  longitude: string | null
+  has_position: boolean
+  distance_metres: number | null
+  geofence_radius_metres: number | null
+  gps_tolerance_metres: number
+  // null (not false) on the no_signal waypoint — no fix means no verdict was ever
+  // computed, which is a different fact from a fix that failed the geofence.
+  geofence_confirmed: boolean | null
+  in_tolerance_band: boolean
+  verdict_reason: string
+}
+
+/**
+ * The waypoint_id that resets the mock tracker to sit at the precinct. Shared
+ * between the panel's per-waypoint buttons and its "Reset to precinct" button
+ * so the two never drift onto different literal strings.
+ */
+export const PRECINCT_WAYPOINT_ID = 'precinct'

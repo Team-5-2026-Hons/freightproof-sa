@@ -20,6 +20,8 @@ from app.api.v1.endpoints.artifacts import router as artifacts_router
 from app.api.v1.endpoints.artifacts import trip_artifacts_router
 from app.api.v1.endpoints.blockchain import router as blockchain_router
 from app.api.v1.endpoints.checkpoints import router as checkpoints_router
+from app.api.v1.endpoints.dev_pulsit import move_truck_enabled
+from app.api.v1.endpoints.dev_pulsit import router as dev_pulsit_router
 from app.api.v1.endpoints.dev_triggers import dev_panel_enabled
 from app.api.v1.endpoints.dev_triggers import router as dev_triggers_router
 from app.api.v1.endpoints.drivers import router as drivers_router
@@ -125,6 +127,15 @@ app.include_router(trip_admin_router, prefix="/api/v1")
 # the same weight as a credential.
 if dev_panel_enabled():
     app.include_router(dev_triggers_router, prefix="/api/v1")
+
+# FP-116 "move the truck". A STRICTER guard than the panel above: DEV_PANEL_ENABLED and
+# PULSE_USE_MOCK, both defaulting to closed. Registered separately rather than folded
+# into the block above because staging a tracker position while pointed at live Pulsit
+# would write into a mock nothing reads — a button that lies is worse than no button.
+# Not registered means the paths do not exist, so they 404 rather than being guarded.
+# See dev_pulsit.move_truck_enabled() for why ENVIRONMENT is deliberately not a signal.
+if move_truck_enabled():
+    app.include_router(dev_pulsit_router, prefix="/api/v1")
 
 # Attach the SQLAlchemy after-commit listeners that publish queued realtime events
 # once a request's transaction is durable (see app/core/realtime.py). Idempotent, and

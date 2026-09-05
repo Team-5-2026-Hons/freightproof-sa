@@ -10,16 +10,20 @@ import type {
   ExceptionTriggerRequest,
   ExceptionTriggerResponse,
   FlushMockStateResponse,
+  MoveTruckRequest,
+  MoveTruckResponse,
   PpTriggerRequest,
   PpTriggerResponse,
   ScanTriggerRequest,
   ScanTriggerResponse,
+  WaypointRead,
 } from '@/lib/types/dev'
 
 const DEV_BASE = '/api/v1/dev'
 
 export interface UseDevTriggersResult {
   trips: DevTripSummary[]
+  waypoints: WaypointRead[]
   isLoading: boolean
   error: string | null
   lastResult: string | null
@@ -29,6 +33,8 @@ export interface UseDevTriggersResult {
   triggerPpChange: (body: PpTriggerRequest) => Promise<PpTriggerResponse | null>
   triggerException: (body: ExceptionTriggerRequest) => Promise<ExceptionTriggerResponse | null>
   flushMockState: () => Promise<FlushMockStateResponse | null>
+  loadWaypoints: () => Promise<void>
+  moveTruck: (body: MoveTruckRequest) => Promise<MoveTruckResponse | null>
 }
 
 /**
@@ -38,6 +44,7 @@ export interface UseDevTriggersResult {
  */
 export function useDevTriggers(): UseDevTriggersResult {
   const [trips, setTrips] = useState<DevTripSummary[]>([])
+  const [waypoints, setWaypoints] = useState<WaypointRead[]>([])
   const [isLoading, setIsLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
   const [lastResult, setLastResult] = useState<string | null>(null)
@@ -144,8 +151,38 @@ export function useDevTriggers(): UseDevTriggersResult {
     [run],
   )
 
+  const loadWaypoints = useCallback(async (): Promise<void> => {
+    await run(
+      () => api.get<WaypointRead[]>(`${DEV_BASE}/pulsit/waypoints`),
+      (result) => {
+        setWaypoints(result)
+        // Silent: this fires on mount, and "Loaded 6 waypoint(s)" would bury
+        // whatever the operator was actually doing when the panel first rendered.
+        return null
+      },
+    )
+  }, [run])
+
+  const moveTruck = useCallback(
+    (body: MoveTruckRequest) =>
+      run(
+        () => api.post<MoveTruckResponse>(`${DEV_BASE}/pulsit/move-truck`, body),
+        (result) => {
+          // geofence_confirmed is null (not false) on the no_signal waypoint — a
+          // missing fix never reached a verdict at all, which reads very differently
+          // from a fix that reached one and failed it.
+          const verdict = result.geofence_confirmed === null
+            ? 'no verdict (tracker dark)'
+            : result.geofence_confirmed ? 'geofence confirmed' : 'geofence failed'
+          return `Moved truck to "${result.waypoint_label}": ${verdict}.`
+        },
+      ),
+    [run],
+  )
+
   return {
-    trips, isLoading, error, lastResult,
+    trips, waypoints, isLoading, error, lastResult,
     loadTrips, triggerScan, closeScanSession, triggerPpChange, triggerException, flushMockState,
+    loadWaypoints, moveTruck,
   }
 }
