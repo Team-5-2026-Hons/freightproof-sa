@@ -28,9 +28,15 @@ case "$FILE" in
     fi
     ;;
   *.ts|*.tsx)
-    # Walk up to the package dir (dispatcher / driver-pwa) that owns this file.
-    DIR="$(dirname "$FILE")"
-    while [ "$DIR" != "/" ] && [ ! -f "$DIR/package.json" ]; do DIR="$(dirname "$DIR")"; done
+    # Shared code has no package.json of its own. Lint it with the dispatcher
+    # package, whose TypeScript and ESLint configuration includes frontend/shared.
+    if [[ "$FILE" == "$ROOT/frontend/shared/"* ]]; then
+      DIR="$ROOT/frontend/dispatcher"
+    else
+      # Walk up to the package dir (dispatcher / driver-pwa) that owns this file.
+      DIR="$(dirname "$FILE")"
+      while [ "$DIR" != "/" ] && [ ! -f "$DIR/package.json" ]; do DIR="$(dirname "$DIR")"; done
+    fi
     ESLINT="$DIR/node_modules/.bin/eslint"
     [ -x "$ESLINT" ] || exit 0
     # Only lint when the package actually has an ESLint config. Without one,
