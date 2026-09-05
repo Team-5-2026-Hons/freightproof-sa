@@ -459,3 +459,68 @@ describe('InTransitPageClient arrival attestation (Task 5)', () => {
     expect(mockRouterPush).toHaveBeenLastCalledWith(ROUTES.activeTripDetail)
   })
 })
+
+// FP-150: system-detected exceptions are withheld from the driver's own hub. They are
+// automated, unreviewed detections ABOUT the driver — gps_mismatch (FP-145) asserts the
+// phone and the truck disagree about where they are — and putting one in front of the
+// person it concerns invites them to react to it on the road. The dispatcher still sees
+// every exception; nothing leaves the evidence trail.
+
+describe('InTransitPageClient exception visibility (FP-150)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('hides system-detected exceptions from the driver and excludes them from the count', () => {
+    mockUseTrip.mockReturnValue({
+      trip: baseTrip,
+      isLoading: false,
+      exceptions: [
+        makeException({ exception_type: 'mechanical', source: 'driver', description: 'Brake warning light' }),
+        makeException({ exception_type: 'gps_mismatch', source: 'system', description: 'Phone and vehicle positions disagree' }),
+        makeException({ exception_type: 'route_deviation', source: 'system', description: 'Off the planned route' }),
+      ],
+      ...tripStateFields,
+    })
+
+    render(<InTransitPageClient />)
+
+    expect(screen.getByText(/brake warning light/i)).toBeInTheDocument()
+    expect(screen.queryByText(/positions disagree/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/off the planned route/i)).not.toBeInTheDocument()
+    // Singular: one visible exception, not three.
+    expect(screen.getByText('1 open exception')).toBeInTheDocument()
+  })
+
+  it('still shows dispatcher-raised exceptions, which the driver is meant to act on', () => {
+    mockUseTrip.mockReturnValue({
+      trip: baseTrip,
+      isLoading: false,
+      exceptions: [
+        makeException({ exception_type: 'dispatcher_note', source: 'dispatcher', description: 'Expect delay at Montrose plaza' }),
+      ],
+      ...tripStateFields,
+    })
+
+    render(<InTransitPageClient />)
+
+    expect(screen.getByText(/montrose plaza/i)).toBeInTheDocument()
+  })
+
+  it('renders no exceptions section when every open exception is system-detected', () => {
+    mockUseTrip.mockReturnValue({
+      trip: baseTrip,
+      isLoading: false,
+      exceptions: [
+        makeException({ exception_type: 'gps_mismatch', source: 'system', description: 'Phone and vehicle positions disagree' }),
+      ],
+      ...tripStateFields,
+    })
+
+    render(<InTransitPageClient />)
+
+    // The empty state is the common case, and it must read as "nothing to see" rather
+    // than "0 open exceptions" hinting that something was filtered away.
+    expect(screen.queryByText(/open exception/i)).not.toBeInTheDocument()
+  })
+})

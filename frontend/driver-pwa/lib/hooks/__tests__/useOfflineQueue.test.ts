@@ -17,6 +17,11 @@ vi.mock('@/lib/api/exceptions', () => ({
 vi.mock('@/lib/api/checkpoints', () => ({
   submitCheckpoint: vi.fn().mockResolvedValue({ id: 'cp-1' }),
 }))
+// FP-150: an exception queued with a photo has to upload the image at flush time before
+// it can raise the exception that cites it.
+vi.mock('@/lib/api/artifacts', () => ({
+  uploadArtifact: vi.fn().mockResolvedValue({ id: 'artifact-1', file_hash: 'abc' }),
+}))
 
 // Clear mock call history too — flush() now also runs on every mount, so call counts
 // would otherwise accumulate across tests and break the toHaveBeenCalledTimes asserts.
@@ -511,5 +516,112 @@ describe('useOfflineQueue', () => {
       expect(stored).toHaveLength(1)
       expect(stored[0].kind).toBe('phase')
     })
+  })
+})
+
+// FP-150. A photo taken in a dead zone must not vanish. The queue persists through
+// JSON.stringify into localStorage, so the image travels as a compressed data URL
+// string — a Blob would serialise to {} and disappear silently.
+
+describe('queued exception photos (FP-150)', () => {
+  const PHOTO = { dataUrl: 'data:image/jpeg;base64,/9j/4AAQ==', capturedAt: '2026-09-05T09:00:00Z' }
+  const BODY = { exception_type: 'cargo_damage' as const, description: 'Pallet crushed' }
+
+  it('persists the photo with the entry and reports that it was stored', () => {
+    const { result } = renderHook(() => useOfflineQueue())
+
+    let outcome!: { persisted: boolean; photoPersisted: boolean }
+    act(() => { outcome = result.current.enqueueException('trip-1', BODY, PHOTO) })
+
+    expect(outcome).toEqual({ persisted: true, photoPersisted: true })
+    const stored = JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')
+    expect(stored[0].photoDataUrl).toBe(PHOTO.dataUrl)
+    expect(stored[0].photoCapturedAt).toBe(PHOTO.capturedAt)
+  })
+
+  it('keeps the written report when the photo will not fit in storage, and says so', () => {
+    // localStorage refuses the entry carrying the image (the ~5MB quota is shared with
+    // phase drafts) but accepts the text-only retry.
+    const setItem = vi.spyOn(Storage.prototype, 'setItem')
+      .mockImplementationOnce(() => { throw new Error('QuotaExceededError') })
+    const { result } = renderHook(() => useOfflineQueue())
+
+    let outcome!: { persisted: boolean; photoPersisted: boolean }
+    act(() => { outcome = result.current.enqueueException('trip-1', BODY, PHOTO) })
+
+    // The report survives; the photo does not, and the caller is told which.
+    expect(outcome).toEqual({ persisted: true, photoPersisted: false })
+    const stored = JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')
+    expect(stored).toHaveLength(1)
+    expect(stored[0].body.description).toBe('Pallet crushed')
+    expect(stored[0].photoDataUrl).toBeUndefined()
+    setItem.mockRestore()
+  })
+
+  it('reports that nothing was saved when storage refuses the report outright', () => {
+    const setItem = vi.spyOn(Storage.prototype, 'setItem')
+      .mockImplementation(() => { throw new Error('QuotaExceededError') })
+    const { result } = renderHook(() => useOfflineQueue())
+
+    let outcome!: { persisted: boolean; photoPersisted: boolean }
+    act(() => { outcome = result.current.enqueueException('trip-1', BODY, PHOTO) })
+
+    // flushQueue reads from localStorage, so an unpersisted entry will never be sent.
+    // The caller has to be able to tell the driver that.
+    expect(outcome).toEqual({ persisted: false, photoPersisted: false })
+    setItem.mockRestore()
+  })
+
+  it('uploads the photo at flush, then raises the exception citing the artifact', async () => {
+    const { uploadArtifact } = await import('@/lib/api/artifacts')
+    const { raiseException } = await import('@/lib/api/exceptions')
+    const { result } = renderHook(() => useOfflineQueue())
+    act(() => { result.current.enqueueException('trip-1', BODY, PHOTO) })
+
+    await act(() => result.current.flush())
+
+    expect(uploadArtifact).toHaveBeenCalledWith({
+      tripId: 'trip-1',
+      artifactType: 'photo',
+      dataUrl: PHOTO.dataUrl,
+      // Timestamped when the driver stood in front of the problem, not when signal returned.
+      capturedAt: PHOTO.capturedAt,
+    })
+    expect(raiseException).toHaveBeenCalledWith('trip-1', {
+      ...BODY,
+      supporting_artifact_id: 'artifact-1',
+    })
+    expect(result.current.queueLength).toBe(0)
+  })
+
+  it('sends the report without the photo when the server terminally rejects the image', async () => {
+    const { uploadArtifact } = await import('@/lib/api/artifacts')
+    const { raiseException } = await import('@/lib/api/exceptions')
+    vi.mocked(uploadArtifact).mockRejectedValueOnce(new ApiError(422, 'Unsupported file type'))
+    const { result } = renderHook(() => useOfflineQueue())
+    act(() => { result.current.enqueueException('trip-1', BODY, PHOTO) })
+
+    await act(() => result.current.flush())
+
+    // The photo will be refused identically on every replay. Losing the driver's written
+    // account along with it would be the worse failure, so the report goes unillustrated.
+    expect(raiseException).toHaveBeenCalledWith('trip-1', BODY)
+    expect(result.current.queueLength).toBe(0)
+  })
+
+  it('keeps the entry and its photo queued when the upload fails transiently', async () => {
+    const { uploadArtifact } = await import('@/lib/api/artifacts')
+    const { raiseException } = await import('@/lib/api/exceptions')
+    vi.mocked(uploadArtifact).mockRejectedValueOnce(new TypeError('network unreachable'))
+    const { result } = renderHook(() => useOfflineQueue())
+    act(() => { result.current.enqueueException('trip-1', BODY, PHOTO) })
+
+    await act(() => result.current.flush())
+
+    // Still offline: nothing was raised, and the image is intact for the next attempt.
+    expect(raiseException).not.toHaveBeenCalled()
+    await waitFor(() => expect(result.current.queueLength).toBe(1))
+    const stored = JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')
+    expect(stored[0].photoDataUrl).toBe(PHOTO.dataUrl)
   })
 })
