@@ -31,6 +31,7 @@ import { UnloadingDetail }    from '@/components/domain/UnloadingDetail'
 import { ConfirmationDetail } from '@/components/domain/ConfirmationDetail'
 import { InTransitTimeline }  from '@/components/domain/InTransitTimeline'
 import { ExceptionEvidence, exceptionHasEvidence } from '@/components/domain/ExceptionEvidence'
+import { PositionDisagreement } from '@/components/domain/PositionDisagreement'
 import { ManifestPanel }      from '@/components/domain/ManifestPanel'
 import { CancelTripAction }    from '@/components/domain/CancelTripAction'
 import { PhaseOverrideAction } from '@/components/domain/PhaseOverrideAction'
@@ -821,7 +822,9 @@ export default function TripDetailPage() {
                     ownsExceptionRows keeps the in-transit de-duplication: a leg renders
                     its own exceptions inside its Journey mini-timeline, and emitting them
                     here as well printed every en-route exception twice. */}
-                {ownsExceptionRows && excItems.map((exc, excIdx) => (
+                {ownsExceptionRows && excItems.map((exc, excIdx) => {
+                  const isPositionDisagreement = exc.exception_type === 'gps_mismatch'
+                  return (
                   <TimelineEvent
                     key={exc.id}
                     nodeType="warn"
@@ -852,13 +855,26 @@ export default function TripDetailPage() {
                     // absent, so it offered a chevron on every row and opened most of
                     // them onto nothing. Same predicate the panel itself uses, so the
                     // expander and its contents cannot disagree.
+                    //
+                    // gps_mismatch also expands with no artifact behind it: the exception
+                    // IS the two-source separation, so the measured fixes belong on the row
+                    // that raised it rather than only in its prose description (FP-145).
+                    // Composed at the call site, not inside TimelineEvent — the row stays
+                    // generic about what an act expands to, which is what let the nested
+                    // per-phase exception panel become act rows in the first place.
                     expandedContent={
-                      exceptionHasEvidence(exc)
-                        ? <ExceptionEvidence exception={exc} artifactsById={artifactsById} />
-                        : undefined
+                      isPositionDisagreement || exceptionHasEvidence(exc) ? (
+                        <>
+                          {isPositionDisagreement && <PositionDisagreement phase={phase} />}
+                          {exceptionHasEvidence(exc) && (
+                            <ExceptionEvidence exception={exc} artifactsById={artifactsById} />
+                          )}
+                        </>
+                      ) : undefined
                     }
                   />
-                ))}
+                  )
+                })}
               </div>
             )
           })}

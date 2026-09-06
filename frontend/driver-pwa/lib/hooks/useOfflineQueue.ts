@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react'
 import { submitPhase } from '@/lib/api/phases'
 import { raiseException, type RaiseExceptionBody } from '@/lib/api/exceptions'
+import { uploadArtifact } from '@/lib/api/artifacts'
 import { submitCheckpoint, type CheckpointEvidence } from '@/lib/api/checkpoints'
 import { recordLocations, type LocationPingBody } from '@/lib/api/locations'
 import type { DriverPosition } from '@/lib/types/location'
@@ -38,14 +39,27 @@ interface PhaseQueueEntry {
   enqueuedAt: string
 }
 
-// Exceptions (and panic, which is just exception_type: 'panic_button') have no
-// artifact upload step today, so queuing the already-built request body is enough —
-// unlike phases, there's no separate "upload then complete" sequence to redo.
+// Exceptions (and panic, which is just exception_type: 'panic_button') queue the
+// already-built request body. An exception raised WITH a photo (FP-150) additionally
+// carries the image itself, because the artifact upload it needs has not happened yet:
+// the driver was offline, which is why this is queued at all. That makes this the one
+// entry kind with a genuine "upload then complete" sequence to redo at flush time —
+// see sendException below.
 interface ExceptionQueueEntry {
   kind: 'exception'
   id: string
   tripId: string
   body: RaiseExceptionBody
+  // A compressed JPEG data URL (CameraCapture caps it at 1600px/q70, so ~300–600KB of
+  // base64 rather than the 5–12MB a raw phone photo would be). Stored as a string
+  // because this queue persists through JSON.stringify into localStorage — a Blob or
+  // File would serialise to {} and the photo would vanish silently, which on an
+  // evidence platform is the one outcome worth writing extra code to avoid.
+  photoDataUrl?: string
+  // When the photo was taken, not when the report was filed. Sent as the artifact's
+  // captured_at so a photo queued through a dead zone is still timestamped to the
+  // moment the driver stood in front of the problem.
+  photoCapturedAt?: string
   enqueuedAt: string
 }
 
@@ -76,6 +90,23 @@ interface LocationQueueEntry {
 
 type QueueEntry = PhaseQueueEntry | ExceptionQueueEntry | CheckpointQueueEntry | LocationQueueEntry
 
+/** A photo captured for an exception that could not be uploaded before it was queued. */
+export interface QueuedExceptionPhoto {
+  dataUrl: string
+  capturedAt: string
+}
+
+/**
+ * What actually made it to disk. `persisted: false` means the report will NOT survive a
+ * refresh and will never flush; `photoPersisted: false` with `persisted: true` means the
+ * written report was saved but its photo was dropped to fit. Callers are expected to tell
+ * the driver which of the three happened rather than showing one receipt for all of them.
+ */
+export interface EnqueueExceptionResult {
+  persisted: boolean
+  photoPersisted: boolean
+}
+
 const QUEUE_KEY = 'fp_offline_queue'
 
 function loadQueue(): QueueEntry[] {
@@ -89,14 +120,19 @@ function loadQueue(): QueueEntry[] {
   }
 }
 
-function saveQueue(entries: QueueEntry[]): void {
+// Returns whether the write actually landed. Callers that have just added something
+// the driver is relying on (a queued exception, with or without its photo) need to know
+// the difference between "saved for later" and "gone on refresh" so they can say which.
+function saveQueue(entries: QueueEntry[]): boolean {
   try {
     localStorage.setItem(QUEUE_KEY, JSON.stringify(entries))
+    return true
   } catch {
     // Quota exceeded, private browsing, or storage disabled — queue still
     // updates in memory, but won't survive a refresh. Surface this since the
     // hook's entire purpose is persisting unsent evidence across reloads.
     console.warn(`useOfflineQueue: failed to persist queue for key "${QUEUE_KEY}"`)
+    return false
   }
 }
 
@@ -116,8 +152,46 @@ async function sendEntry(entry: QueueEntry): Promise<void> {
   } else if (entry.kind === 'location') {
     await recordLocations(entry.tripId, entry.pings)
   } else {
-    await raiseException(entry.tripId, entry.body)
+    await sendException(entry)
   }
+}
+
+// Upload-then-raise, mirroring what the exception page does online. Split out because
+// this is the only queued kind whose send is two calls with a value passed between them.
+async function sendException(entry: ExceptionQueueEntry): Promise<void> {
+  let body = entry.body
+
+  // Nothing to upload if there is no photo, or if the page already got an artifact id
+  // before it fell back to the queue — re-uploading then would duplicate the evidence.
+  if (entry.photoDataUrl && !body.supporting_artifact_id) {
+    try {
+      const artifact = await uploadArtifact({
+        tripId: entry.tripId,
+        artifactType: 'photo',
+        dataUrl: entry.photoDataUrl,
+        capturedAt: entry.photoCapturedAt ?? entry.enqueuedAt,
+      })
+      body = { ...body, supporting_artifact_id: artifact.id }
+    } catch (err) {
+      // A terminal 4xx — oversized, unsupported format, wrong driver — will reject this
+      // photo identically on every future flush. Letting it throw would keep the whole
+      // entry queued forever, or eventually drop it and take the driver's written report
+      // down with it. The report is the part that must survive, so send it unillustrated
+      // rather than not at all; the dispatcher still gets the account of what happened.
+      if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
+        console.warn(
+          `useOfflineQueue: queued exception photo rejected (${err.status}) — sending the report without it`,
+          err.message,
+        )
+      } else {
+        // Transient (offline, 5xx, timeout): keep the entry intact, photo included, and
+        // let flushQueue's own classification leave it queued for the next attempt.
+        throw err
+      }
+    }
+  }
+
+  await raiseException(entry.tripId, body)
 }
 
 // ─── Module-scope flush coordination ───────────────────────────────────────────
@@ -318,14 +392,37 @@ export function useOfflineQueue() {
   )
 
   const enqueueException = useCallback(
-    (tripId: string, body: RaiseExceptionBody) => {
-      const entry: ExceptionQueueEntry = {
-        kind: 'exception', id: crypto.randomUUID(), tripId, body,
+    (tripId: string, body: RaiseExceptionBody, photo?: QueuedExceptionPhoto): EnqueueExceptionResult => {
+      const base = {
+        kind: 'exception' as const, id: crypto.randomUUID(), tripId, body,
         enqueuedAt: new Date().toISOString(),
       }
+      const entry: ExceptionQueueEntry = photo
+        ? { ...base, photoDataUrl: photo.dataUrl, photoCapturedAt: photo.capturedAt }
+        : base
+
       const q = [...loadQueue(), entry]
-      saveQueue(q)
-      publishStoreState({ length: q.length })
+      if (saveQueue(q)) {
+        publishStoreState({ length: q.length })
+        return { persisted: true, photoPersisted: photo !== undefined }
+      }
+
+      // The write was refused — on a device that has been offline for a while, almost
+      // always the ~5MB localStorage quota, and the photo is the only part of this entry
+      // large enough to be the cause. Retry without it: a report that reaches the
+      // dispatcher without its photo beats one that never reaches them at all.
+      if (photo) {
+        const textOnly = [...loadQueue(), base]
+        if (saveQueue(textOnly)) {
+          publishStoreState({ length: textOnly.length })
+          return { persisted: true, photoPersisted: false }
+        }
+      }
+
+      // Storage is unavailable entirely (disabled, or full even of text). flushQueue
+      // reads from localStorage, so nothing here will ever be sent — the caller must
+      // tell the driver the report did not save rather than showing a receipt for it.
+      return { persisted: false, photoPersisted: false }
     },
     [],
   )

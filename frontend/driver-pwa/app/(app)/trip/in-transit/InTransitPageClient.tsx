@@ -134,7 +134,17 @@ export default function InTransitPageClient() {
   // trip's fetched/mock exceptions plus everything logged this session (TripContext
   // appends on logException), so a just-submitted exception shows up here immediately.
   // trip.exceptions is only a fetch-time snapshot and would silently drop it.
-  const openExceptions = exceptions.filter((e) => !e.resolved)
+  //
+  // System-detected exceptions (source: 'system' — gps_mismatch, route_deviation,
+  // checkpoint_timeout and the rest) are withheld from the driver's own screen. These are
+  // automated detections ABOUT the driver, raised without human review, and several of
+  // them read as an accusation: gps_mismatch says the phone and the truck disagree about
+  // where they are. Surfacing an unreviewed detection to the person it concerns invites
+  // them to react to it on the road, which is the opposite of what this hub is for. The
+  // dispatcher sees every exception regardless — nothing is hidden from the evidence
+  // trail, only from this one screen. Driver- and dispatcher-raised exceptions stay
+  // visible: those the driver either filed themselves or is meant to act on.
+  const openExceptions = exceptions.filter((e) => !e.resolved && e.source !== 'system')
 
   // Captured here, in component scope, rather than read off `trip` inside the nested
   // handlers below — TS narrows `trip` to non-null in this scope (the guard above), but

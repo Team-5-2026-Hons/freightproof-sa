@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { geofenceOffsetMetres, haversineMetres, separationMetres } from './geo'
+import { formatSeparation, geofenceOffsetMetres, haversineMetres, separationMetres } from './geo'
 
 // Cape Town CBD and a point ~1.11 km due north (0.01° of latitude).
 const CAPE_TOWN = { lat: -33.9249, lng: 18.4241 }
@@ -54,5 +54,23 @@ describe('separationMetres', () => {
 
   it('measures the gap between two fixes', () => {
     expect(separationMetres(CAPE_TOWN, NORTH_1KM)).toBeGreaterThan(1100)
+  })
+})
+
+describe('formatSeparation', () => {
+  it('renders sub-kilometre distances as whole metres, not a rounded-off kilometre figure', () => {
+    expect(formatSeparation(300)).toBe('300 m')
+  })
+
+  it('renders exactly 1000 m as kilometres', () => {
+    expect(formatSeparation(1000)).toBe('1.0 km')
+  })
+
+  it('renders distances above a kilometre as kilometres to one decimal place', () => {
+    expect(formatSeparation(3140)).toBe('3.1 km')
+  })
+
+  it('renders zero as whole metres', () => {
+    expect(formatSeparation(0)).toBe('0 m')
   })
 })

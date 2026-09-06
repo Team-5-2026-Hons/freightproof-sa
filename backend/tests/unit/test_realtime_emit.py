@@ -714,7 +714,10 @@ def test_every_trip_exception_write_site_is_accounted_for():
     """
     expected_sites = {
         # path -> (total construction sites, of which deliberately silent)
-        "app/orchestration/phase_service.py": (6, 1),   # :560 dispatcher override note
+        # The seventh is FP-145's GPS_MISMATCH in _raise_position_disagreement_if_unrecorded,
+        # merged from feature/fp-68-geofence-service. It arrived silent — this test caught
+        # it — and now enqueues EXCEPTION_RAISED like every other system-detected site.
+        "app/orchestration/phase_service.py": (7, 1),   # :560 dispatcher override note
         "app/orchestration/trip_service.py": (1, 1),    # :565 cancellation note
         "app/orchestration/scan_service.py": (1, 0),
         "app/orchestration/exception_service.py": (1, 0),

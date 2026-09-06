@@ -112,6 +112,10 @@ async function fileToCompressedJpegDataUrl(file: File): Promise<string> {
 
 export function CameraCapture({ label, dataUrl, onCapture }: CameraCaptureProps) {
   const [isCapturing, setIsCapturing] = useState(false)
+  // Latches once the native camera has refused (permission denied, or no camera on the
+  // device). From then on this control is a file picker, and says so, rather than a
+  // button that reopens the same refusal every time it is tapped.
+  const [nativeCameraUnavailable, setNativeCameraUnavailable] = useState(false)
   const { notify } = useToast()
 
   const notifyCaptureFailed = useCallback(() => {
@@ -152,32 +156,42 @@ export function CameraCapture({ label, dataUrl, onCapture }: CameraCaptureProps)
     [onCapture, notifyCaptureFailed],
   )
 
+  // The picker the browser path always used, lifted out of handleCapture so the native
+  // path can fall back to it too. The system file chooser needs no CAMERA permission —
+  // which is exactly why it still works for a driver who has denied or revoked it.
+  const openFilePicker = useCallback(() => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/*'
+    input.capture = 'environment'
+    input.onchange = () => {
+      const file = input.files?.[0]
+      if (!file) return
+      handleBrowserFile(file)
+    }
+    input.click()
+  }, [handleBrowserFile])
+
   const handleCapture = useCallback(async () => {
+    // Once the native camera has told us it cannot open — permission denied, or no
+    // camera on the device — stop asking it and go straight to the picker. Re-invoking
+    // a plugin that just refused only re-shows the same refusal.
+    if (nativeCameraUnavailable || !Capacitor.isNativePlatform()) {
+      openFilePicker()
+      return
+    }
+
     setIsCapturing(true)
     try {
-      if (Capacitor.isNativePlatform()) {
-        const photo = await Camera.getPhoto({
-          resultType: CameraResultType.DataUrl,
-          source: CameraSource.Camera,
-          quality: JPEG_QUALITY_PERCENT,
-          // Native-side downscale, applied before the image crosses the bridge as
-          // base64 — same cap as the browser path's canvas step.
-          width: MAX_PHOTO_EDGE_PX,
-        })
-        if (photo.dataUrl) onCapture(photo.dataUrl)
-      } else {
-        // Browser fallback: file input with environment camera hint
-        const input = document.createElement('input')
-        input.type = 'file'
-        input.accept = 'image/*'
-        input.capture = 'environment'
-        input.onchange = () => {
-          const file = input.files?.[0]
-          if (!file) return
-          handleBrowserFile(file)
-        }
-        input.click()
-      }
+      const photo = await Camera.getPhoto({
+        resultType: CameraResultType.DataUrl,
+        source: CameraSource.Camera,
+        quality: JPEG_QUALITY_PERCENT,
+        // Native-side downscale, applied before the image crosses the bridge as
+        // base64 — same cap as the browser path's canvas step.
+        width: MAX_PHOTO_EDGE_PX,
+      })
+      if (photo.dataUrl) onCapture(photo.dataUrl)
     } catch (err) {
       // Without this catch, every native failure silently reset the button — a driver
       // with camera permission blocked could tap forever with zero feedback.
@@ -186,20 +200,28 @@ export function CameraCapture({ label, dataUrl, onCapture }: CameraCaptureProps)
           // The driver backed out of the camera on purpose — feedback would be noise.
           break
         case 'permission-denied':
+          // Offer the way through, not just the reason it failed. A driver at a gate
+          // cannot stop to change OS settings, and this photo is the evidence; the
+          // picker still reaches the camera roll (and, on most Android choosers, the
+          // camera itself) with no CAMERA permission of its own.
+          setNativeCameraUnavailable(true)
           notify({
             kind: 'error',
             title: 'Camera access is blocked',
-            body: "Enable Camera for this app in your phone's settings, then try again.",
+            body: "Enable Camera in your phone's settings, or tap again to choose a photo instead.",
           })
           break
         case 'other':
+          // Could be a device with no camera at all, which fails here exactly like any
+          // other plugin error. Either way the picker is the remaining route to a photo.
           console.error('Camera capture failed', err)
+          setNativeCameraUnavailable(true)
           notifyCaptureFailed()
       }
     } finally {
       setIsCapturing(false)
     }
-  }, [onCapture, notify, notifyCaptureFailed, handleBrowserFile])
+  }, [onCapture, notify, notifyCaptureFailed, openFilePicker, nativeCameraUnavailable])
 
   return (
     <div className="flex flex-col gap-2">
@@ -233,7 +255,11 @@ export function CameraCapture({ label, dataUrl, onCapture }: CameraCaptureProps)
           className="flex h-32 w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-outline-variant bg-surface-container-low text-sm text-surface-on-variant disabled:opacity-60 animate-fade-in-scale motion-reduce:animate-none"
         >
           <CameraIcon className="h-6 w-6" strokeWidth={1.5} aria-hidden />
-          {isCapturing ? 'Opening camera…' : 'Tap to photograph'}
+          {isCapturing
+            ? 'Opening camera…'
+            : nativeCameraUnavailable
+              ? 'Choose a photo instead'
+              : 'Tap to photograph'}
         </button>
       )}
     </div>

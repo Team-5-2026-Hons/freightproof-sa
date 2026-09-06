@@ -8,7 +8,9 @@ import type {
   DevConsignment,
   DevTripStop,
   DevTripSummary,
+  MoveTruckResponse,
   ScanTriggerResponse,
+  WaypointRead,
 } from '@/lib/types/dev'
 
 // Isolate the panel from the real HTTP layer — useDevTriggers itself (and the
@@ -77,6 +79,7 @@ function makeTrip(overrides: Partial<DevTripSummary> = {}): DevTripSummary {
 function makeHookReturn(overrides: Partial<UseDevTriggersResult> = {}): UseDevTriggersResult {
   return {
     trips: [],
+    waypoints: [],
     isLoading: false,
     error: null,
     lastResult: null,
@@ -86,6 +89,8 @@ function makeHookReturn(overrides: Partial<UseDevTriggersResult> = {}): UseDevTr
     triggerPpChange: vi.fn().mockResolvedValue(null),
     triggerException: vi.fn().mockResolvedValue(null),
     flushMockState: vi.fn().mockResolvedValue(null),
+    loadWaypoints: vi.fn().mockResolvedValue(undefined),
+    moveTruck: vi.fn().mockResolvedValue(null),
     ...overrides,
   }
 }
@@ -111,6 +116,42 @@ function makeCloseSessionResponse(
     trip_stop_id: 'stop-1',
     direction: 'out',
     sessions_closed: 1,
+    ...overrides,
+  }
+}
+
+function makeWaypoint(overrides: Partial<WaypointRead> = {}): WaypointRead {
+  return {
+    waypoint_id: 'precinct',
+    label: 'At the precinct',
+    sequence: 1,
+    description: 'Right where the trip starts.',
+    latitude: '-33.9249',
+    longitude: '18.4241',
+    intended_distance_metres: 0,
+    expected_confirmed: true,
+    ...overrides,
+  }
+}
+
+function makeMoveTruckResponse(overrides: Partial<MoveTruckResponse> = {}): MoveTruckResponse {
+  return {
+    trip_id: 'trip-1',
+    waypoint_id: 'precinct',
+    waypoint_label: 'At the precinct',
+    device_id: 'device-1',
+    vehicle_registration: 'CA 123-456',
+    precinct_id: 'precinct-1',
+    precinct_name: 'Cape Town Depot',
+    latitude: '-33.9249',
+    longitude: '18.4241',
+    has_position: true,
+    distance_metres: 0,
+    geofence_radius_metres: 250,
+    gps_tolerance_metres: 30,
+    geofence_confirmed: true,
+    in_tolerance_band: true,
+    verdict_reason: 'Within the geofence radius.',
     ...overrides,
   }
 }
@@ -586,6 +627,119 @@ describe('DevTriggerPanel — Parcel Perfect waybill selection', () => {
 
     expect((screen.getByLabelText('Waybill') as HTMLSelectElement).value).toBe('')
     expect(screen.getByRole('button', { name: /Apply PP change/i })).toBeDisabled()
+  })
+})
+
+describe('DevTriggerPanel — move the truck', () => {
+  it('renders one button per waypoint, in sequence order', () => {
+    const trip = makeTrip()
+    mockedUseDevTriggers.mockReturnValue(makeHookReturn({
+      trips: [trip],
+      waypoints: [
+        makeWaypoint({ waypoint_id: 'three_km', label: '3 km away', sequence: 4 }),
+        makeWaypoint({ waypoint_id: 'precinct', label: 'At the precinct', sequence: 1 }),
+        makeWaypoint({ waypoint_id: 'inside_tolerance', label: '230 m inside tolerance', sequence: 2 }),
+      ],
+    }))
+
+    render(<DevTriggerPanel heading="Dev triggers" />)
+    selectTrip(trip.trip_id)
+
+    const buttons = screen.getAllByRole('button', {
+      name: /At the precinct|230 m inside tolerance|3 km away/,
+    })
+    expect(buttons.map((b) => b.textContent)).toEqual([
+      expect.stringContaining('At the precinct'),
+      expect.stringContaining('230 m inside tolerance'),
+      expect.stringContaining('3 km away'),
+    ])
+  })
+
+  it('calls moveTruck with the pressed waypoint id and shows it as active', async () => {
+    const moveTruck = vi.fn().mockResolvedValue(
+      makeMoveTruckResponse({ waypoint_id: 'inside_tolerance', waypoint_label: '230 m inside tolerance' }),
+    )
+    const trip = makeTrip()
+    mockedUseDevTriggers.mockReturnValue(makeHookReturn({
+      trips: [trip],
+      waypoints: [makeWaypoint({ waypoint_id: 'inside_tolerance', label: '230 m inside tolerance' })],
+      moveTruck,
+    }))
+
+    render(<DevTriggerPanel heading="Dev triggers" />)
+    selectTrip(trip.trip_id)
+
+    fireEvent.click(screen.getByRole('button', { name: /230 m inside tolerance/ }))
+
+    await waitFor(() => expect(moveTruck).toHaveBeenCalledWith({
+      trip_id: trip.trip_id,
+      waypoint_id: 'inside_tolerance',
+    }))
+    expect(await screen.findByText('Active')).toBeInTheDocument()
+    expect(screen.getByText(/Geofence confirmed/i)).toBeInTheDocument()
+  })
+
+  // geofence_confirmed is null (not false) on the no_signal waypoint. Rendering it
+  // as a failure would tell the operator a fix was received and rejected, when
+  // actually no fix was ever received at all.
+  it('renders "no verdict" rather than a failure when the tracker has no signal', async () => {
+    const moveTruck = vi.fn().mockResolvedValue(makeMoveTruckResponse({
+      waypoint_id: 'no_signal',
+      waypoint_label: 'No signal',
+      latitude: null,
+      longitude: null,
+      has_position: false,
+      distance_metres: null,
+      geofence_confirmed: null,
+      in_tolerance_band: false,
+      verdict_reason: 'No tracker fix received.',
+    }))
+    const trip = makeTrip()
+    mockedUseDevTriggers.mockReturnValue(makeHookReturn({
+      trips: [trip],
+      waypoints: [makeWaypoint({ waypoint_id: 'no_signal', label: 'No signal' })],
+      moveTruck,
+    }))
+
+    render(<DevTriggerPanel heading="Dev triggers" />)
+    selectTrip(trip.trip_id)
+
+    fireEvent.click(screen.getByRole('button', { name: /No signal/ }))
+
+    expect(await screen.findByText(/No verdict — tracker dark/i)).toBeInTheDocument()
+    expect(screen.queryByText(/Geofence failed/i)).not.toBeInTheDocument()
+    expect(screen.getByText('No fix')).toBeInTheDocument()
+  })
+
+  it('posts the precinct waypoint id when "Reset to precinct" is pressed', async () => {
+    const moveTruck = vi.fn().mockResolvedValue(null)
+    const trip = makeTrip()
+    mockedUseDevTriggers.mockReturnValue(makeHookReturn({
+      trips: [trip],
+      waypoints: [makeWaypoint()],
+      moveTruck,
+    }))
+
+    render(<DevTriggerPanel heading="Dev triggers" />)
+    selectTrip(trip.trip_id)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset to precinct' }))
+
+    await waitFor(() => expect(moveTruck).toHaveBeenCalledWith({
+      trip_id: trip.trip_id,
+      waypoint_id: 'precinct',
+    }))
+  })
+
+  it('does not call moveTruck when no trip is selected yet', () => {
+    const moveTruck = vi.fn().mockResolvedValue(null)
+    mockedUseDevTriggers.mockReturnValue(makeHookReturn({ trips: [], moveTruck }))
+
+    render(<DevTriggerPanel heading="Dev triggers" />)
+
+    expect(screen.getByText('Select a trip above to move its truck.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Reset to precinct' }))
+    expect(moveTruck).not.toHaveBeenCalled()
   })
 })
 
