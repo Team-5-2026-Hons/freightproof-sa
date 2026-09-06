@@ -55,6 +55,12 @@ describe('toastForEvent', () => {
     expect(panic!.title).toBe('Critical exception')
     expect(countCheck!.title).toBe('Exception raised')
     expect(panic!.title).not.toBe(countCheck!.title)
+    // Wording is not ranking. Both bands render as identical sticky errors, so the only
+    // thing that decides which one survives a burst is the priority the toast surface
+    // evicts on (ToastContext.evictToCap) — asserting titles alone left a critical alert
+    // free to be pushed off screen by three ordinary ones.
+    expect(panic!.priority).toBe('critical')
+    expect(countCheck!.priority).toBe('ordinary')
   })
 
   it('never auto-dismisses an alert', () => {

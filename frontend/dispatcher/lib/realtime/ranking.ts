@@ -46,6 +46,10 @@ export function toastForEvent(event: RealtimeEvent): ToastRequest | null {
     // cannot time out while nobody is at the desk. Both bands qualify: a warning the
     // dispatcher never saw is a warning that did not happen.
     kind: 'error',
+    // Carried through to ToastContext's eviction rule, which is the other half of
+    // ranking on severity: without it both bands render as identical sticky errors and
+    // a burst of ordinary alerts evicts the critical one purely for being older.
+    priority: critical ? 'critical' : 'ordinary',
     title: critical ? 'Critical exception' : 'Exception raised',
     body: critical
       ? 'A critical exception was recorded on a live trip — open it now.'

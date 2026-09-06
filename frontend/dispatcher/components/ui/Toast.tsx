@@ -6,12 +6,20 @@ import { cn } from '@shared/lib/utils/cn'
 
 export type ToastKind = 'info' | 'success' | 'warning' | 'error'
 
+// What a toast is worth when the viewport is full and one of them has to go. `kind`
+// cannot answer that: every exception alert is an 'error', so a panic button and a
+// parcel-count mismatch are indistinguishable to the eviction rule without this.
+export type ToastPriority = 'ordinary' | 'critical'
+
 export interface ToastData {
   id: string
   kind: ToastKind
   title: string
   body?: string
   sticky?: boolean
+  // Absent means ordinary. Optional so every existing caller — trip cancelled, phase
+  // overridden, exception resolved — keeps working untouched.
+  priority?: ToastPriority
 }
 
 interface ToastItemProps {

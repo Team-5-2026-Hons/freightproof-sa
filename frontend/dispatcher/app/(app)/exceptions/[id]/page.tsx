@@ -27,6 +27,10 @@ const RESOLUTION_METHOD_LABELS: Record<ExceptionResolutionMethod, string> = {
   no_contact_yet: 'No contact — resolved from evidence',
 }
 
+// The unselected state of the method field. Not one of the methods: it is the absence of
+// a choice, and it can never be submitted.
+const NO_METHOD_CHOSEN = ''
+
 function fmtType(t: string): string {
   return t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
@@ -53,8 +57,14 @@ export default function ExceptionDetailPage() {
   )
 
   const [resolutionNote, setResolutionNote]   = useState('')
+  // Deliberately empty. This defaulted to 'phoned', so a dispatcher who resolved from
+  // evidence alone and never opened the select filed a record asserting they phoned the
+  // driver — inventing contact history on the one artefact whose whole purpose is to be
+  // true months later in a dispute. The submit control below stays disabled until this
+  // holds a real choice; 'no_contact_yet' is in the list precisely so that dispatcher has
+  // an honest one to make.
   const [resolutionMethod, setResolutionMethod] =
-    useState<ExceptionResolutionMethod>('phoned')
+    useState<ExceptionResolutionMethod | typeof NO_METHOD_CHOSEN>(NO_METHOD_CHOSEN)
   const [resolving, setResolving]             = useState(false)
 
   // ── Loading ──────────────────────────────────────────────────────────────────
@@ -138,7 +148,9 @@ export default function ExceptionDetailPage() {
 
   const handleResolve = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    if (!resolutionNote.trim()) return
+    // Both gates, not just the disabled attribute — a form can still be submitted by
+    // keyboard, and neither field may reach the API unset.
+    if (!resolutionNote.trim() || resolutionMethod === NO_METHOD_CHOSEN) return
     setResolving(true)
     try {
       await resolveException(exceptionId, {
@@ -294,9 +306,11 @@ export default function ExceptionDetailPage() {
                   value={resolutionNote}
                   onChange={e => setResolutionNote(e.target.value)}
                 />
-                {/* Mandatory, and defaulted to the most common case rather than to a
-                    blank. The site visit found this contact happening and going
-                    unrecorded; an optional field would have recorded it just as rarely. */}
+                {/* Mandatory and unset, rather than mandatory and pre-answered. The site
+                    visit found this contact happening and going unrecorded, so an optional
+                    field would have been recorded just as rarely — but a default is worse
+                    than a gap: it writes a specific claim about a specific person nobody
+                    made. The placeholder is `disabled` so it cannot be chosen back into. */}
                 <Select
                   label="How was this established?"
                   value={resolutionMethod}
@@ -304,6 +318,9 @@ export default function ExceptionDetailPage() {
                     setResolutionMethod(e.target.value as ExceptionResolutionMethod)
                   }
                 >
+                  <option value={NO_METHOD_CHOSEN} disabled>
+                    {COPY.confirm.resolveMethodUnset}
+                  </option>
                   {(Object.keys(RESOLUTION_METHOD_LABELS) as ExceptionResolutionMethod[]).map(
                     method => (
                       <option key={method} value={method}>
@@ -316,7 +333,11 @@ export default function ExceptionDetailPage() {
                   <Button
                     type="submit"
                     variant="success"
-                    disabled={!resolutionNote.trim() || resolving}
+                    disabled={
+                      !resolutionNote.trim() ||
+                      resolutionMethod === NO_METHOD_CHOSEN ||
+                      resolving
+                    }
                     loading={resolving}
                     iconLeft={<Ic n="check" s={14} c="white" />}
                   >

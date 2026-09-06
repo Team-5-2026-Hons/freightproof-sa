@@ -58,6 +58,10 @@ export const COPY = {
     panicSent:    'Panic alert sent · Dispatcher and reaction company notified',
     overrideNote: 'Describe why you are overriding this exception',
     resolveNote:  'Describe how this exception was resolved',
+    // The unselected state of the resolve form's method field. Names the act of
+    // choosing, never a method — a placeholder that reads like an answer is how a
+    // default gets submitted unread.
+    resolveMethodUnset: 'Select how this was established',
     addNote:      'Add a note to this exception',
   },
 } as const

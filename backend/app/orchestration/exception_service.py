@@ -204,6 +204,15 @@ async def resolve_exception(
             TripException.id == exception_id,
             Trip.operator_organization_id == organization_id,
         )
+        # The lock, not the read, is what makes the conflict branch below true. Without it
+        # two dispatchers pressing Resolve in the same instant both read resolved=False,
+        # both take the un-resolved path, and both are told their account is the record —
+        # while the second UPDATE quietly waits for the first to commit and then overwrites
+        # its resolver, note, method and timestamp. The first resolution would be gone and
+        # neither dispatcher would ever know, which is the one outcome this function exists
+        # to prevent. Scoped with `of=` so the joined trip row stays free: locking it would
+        # block every unrelated write on that trip for the length of this transaction.
+        .with_for_update(of=TripException)
     )).one_or_none()
     if row is None:
         raise ResourceNotFoundError("TripException", str(exception_id))

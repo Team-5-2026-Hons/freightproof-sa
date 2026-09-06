@@ -52,6 +52,31 @@ beforeEach(() => {
   mockUsePathname.mockReturnValue('/')
 })
 
+describe('Sidebar navigation', () => {
+  it('links to the exceptions queue', () => {
+    // Hidden in 6071ab2 as "not yet live", when the page was mock data behind a route.
+    // It is live now — FP-146 gave it a real org-scoped list, detail and resolve — and a
+    // triage queue a dispatcher cannot reach from the nav is a queue nobody works.
+    renderSidebar()
+
+    expect(screen.getByRole('link', { name: 'Exceptions' }))
+      .toHaveAttribute('href', ROUTES.exceptions)
+  })
+
+  it('keeps the exceptions link reachable from the collapsed rail', async () => {
+    // NavLink carries an aria-label so the icon-only rail stays navigable. Asserted
+    // because this is the one nav entry a dispatcher reaches for mid-incident.
+    const user = userEvent.setup()
+    renderSidebar()
+
+    await user.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
+
+    expect(screen.queryByText('Exceptions')).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Exceptions' }))
+      .toHaveAttribute('href', ROUTES.exceptions)
+  })
+})
+
 describe('Sidebar collapse', () => {
   it('toggling collapses and expands, hiding and restoring label text', async () => {
     const user = userEvent.setup()
