@@ -41,6 +41,9 @@ async def log_checkpoint(
         checkpoint_type=payload.checkpoint_type,
         driver_phone_lat=payload.driver_phone_lat,
         driver_phone_lng=payload.driver_phone_lng,
+        # Task 0A: the driver's own submit-instant, stored unconditionally — never
+        # gated by whether the horse position below ends up timely enough to keep.
+        driver_captured_at=payload.driver_captured_at,
         selfie_artifact_id=payload.selfie_artifact_id,
         cargo_photo_artifact_id=payload.cargo_photo_artifact_id,
         note=payload.note,
@@ -54,8 +57,12 @@ async def log_checkpoint(
 
     # Never raises: a driver logging a roadside checkpoint must not be blocked by an
     # unreachable tracker API. A failure leaves horse_gps null, which means "we could
-    # not check" — see corroboration_service's null-semantics contract.
-    await record_checkpoint_corroboration(db, trip=trip, checkpoint=checkpoint)
+    # not check" — see corroboration_service's null-semantics contract. Task 0A:
+    # driver_captured_at travels through so a stale Pulsit fix cannot masquerade as a
+    # live one — see _within_corroboration_skew.
+    await record_checkpoint_corroboration(
+        db, trip=trip, checkpoint=checkpoint, driver_captured_at=payload.driver_captured_at,
+    )
 
     await db.flush()
     await db.refresh(checkpoint)

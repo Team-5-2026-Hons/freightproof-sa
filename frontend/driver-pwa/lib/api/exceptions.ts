@@ -18,6 +18,14 @@ export interface RaiseExceptionBody {
   // -180..180) on DriverExceptionCreateBody, so never send one axis without the other.
   gps_lat?: number
   gps_lng?: number
+  // Stable id for this exact report, not echoed back on the response. The offline
+  // queue stamps its own entry UUID here at enqueue time and resends it unchanged on
+  // every retry of that entry (lib/hooks/useOfflineQueue.ts enqueueException/
+  // sendException) — so a resubmission caused by a lost response, or by a retry after
+  // the photo uploaded but this POST itself failed, returns the SAME exception
+  // instead of raising a second one for one real-world report. Omitted by the direct
+  // (non-queued) online submit, which has no retry of its own to correlate.
+  client_report_id?: string
 }
 
 export const raiseException = (tripId: string, body: RaiseExceptionBody): Promise<TripException> =>

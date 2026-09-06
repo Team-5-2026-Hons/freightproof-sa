@@ -1,10 +1,12 @@
 """Unit tests for app.orchestration.corroboration_service — pure logic, no DB, no HTTP.
 
-Covers the two module-level helpers that turn a Pulsit fix into what gets written:
+Covers the module-level helpers that turn a Pulsit fix into what gets written:
 
     _geofence_verdict_to_column   the three-state (True / False / None) contract for
                                    phase_events.pulsit_geofence_confirmed
     _snapshot_for_trailer         builds (or refuses to build) a TrailerGpsSnapshot row
+    _within_corroboration_skew   task 0A's timing gate — is a fix close enough to the
+                                   driver's own capture instant to trust at all?
 
 record_phase_corroboration/record_checkpoint_corroboration are not exercised here —
 they need a DB session and the Pulsit client, which belongs in the integration suite
@@ -25,11 +27,12 @@ from decimal import Decimal
 from typing import Optional, cast
 from unittest.mock import patch
 
+from app.core.config import settings
 from app.db.models.organisations import Precinct
 from app.db.models.phases import TrailerGpsSnapshot
 from app.integrations.pulsit import PulsitFix, PulsitFixSource, PulsitFixStatus
 from app.orchestration.corroboration_service import (
-    _geofence_verdict_to_column, _snapshot_for_trailer,
+    _geofence_verdict_to_column, _snapshot_for_trailer, _within_corroboration_skew,
 )
 from app.orchestration.geofence_service import DEFAULT_GEOFENCE_RADIUS_METRES
 
@@ -333,3 +336,91 @@ def test_snapshot_lat_lng_remain_decimal():
     assert isinstance(snapshot.lng, Decimal)
     assert snapshot.lat == precise_lat
     assert snapshot.lng == precise_lng
+
+
+# ---------------------------------------------------------------------------
+# _within_corroboration_skew — task 0A's timing gate
+# ---------------------------------------------------------------------------
+
+
+def test_a_fix_taken_at_the_same_instant_is_within_skew():
+    # Arrange
+    driver_captured_at = _PINNED_NOW
+
+    # Act
+    result = _within_corroboration_skew(fixed_at=_PINNED_NOW, driver_captured_at=driver_captured_at)
+
+    # Assert
+    assert result is True
+
+
+def test_a_fix_just_inside_the_configured_skew_is_within_skew():
+    # Arrange: one second inside the boundary, never exactly on it — a boundary test
+    # written AT the limit is indistinguishable from an off-by-one in either direction.
+    driver_captured_at = _PINNED_NOW
+    fixed_at = _PINNED_NOW + timedelta(seconds=settings.PULSIT_CORROBORATION_MAX_SKEW_SECONDS - 1)
+
+    # Act
+    result = _within_corroboration_skew(fixed_at=fixed_at, driver_captured_at=driver_captured_at)
+
+    # Assert
+    assert result is True
+
+
+def test_a_fix_just_outside_the_configured_skew_is_not_within_skew():
+    # Arrange
+    driver_captured_at = _PINNED_NOW
+    fixed_at = _PINNED_NOW + timedelta(seconds=settings.PULSIT_CORROBORATION_MAX_SKEW_SECONDS + 1)
+
+    # Act
+    result = _within_corroboration_skew(fixed_at=fixed_at, driver_captured_at=driver_captured_at)
+
+    # Assert
+    assert result is False
+
+
+def test_the_skew_is_symmetric_a_fix_taken_before_the_capture_can_also_miss():
+    # Arrange: the driver's own clock is AHEAD of the tracker's last reading — an
+    # offline replay is one route to a large gap, but the sign of the gap does not
+    # matter, only its magnitude.
+    driver_captured_at = _PINNED_NOW
+    fixed_at = _PINNED_NOW - timedelta(hours=3)
+
+    # Act
+    result = _within_corroboration_skew(fixed_at=fixed_at, driver_captured_at=driver_captured_at)
+
+    # Assert
+    assert result is False
+
+
+def test_a_missing_driver_captured_at_is_never_treated_as_safe():
+    # Arrange: an older queued client that predates this field entirely. THE
+    # single most important assertion in this block — treating "we don't know" as
+    # "assume it's fine" is exactly the fabrication task 0A exists to close.
+    fix_taken_right_now = _PINNED_NOW
+
+    # Act
+    result = _within_corroboration_skew(fixed_at=fix_taken_right_now, driver_captured_at=None)
+
+    # Assert
+    assert result is False
+
+
+def test_a_missing_fixed_at_is_never_treated_as_safe():
+    # Arrange: has_position already filters this out upstream in practice, but the
+    # helper itself must not assume a caller always does that filtering first.
+    driver_captured_at = _PINNED_NOW
+
+    # Act
+    result = _within_corroboration_skew(fixed_at=None, driver_captured_at=driver_captured_at)
+
+    # Assert
+    assert result is False
+
+
+def test_both_absent_is_never_treated_as_safe():
+    # Act
+    result = _within_corroboration_skew(fixed_at=None, driver_captured_at=None)
+
+    # Assert
+    assert result is False

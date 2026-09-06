@@ -380,6 +380,116 @@ async def test_entry_missing_its_timestamp_reads_as_unavailable(pulsit_settings)
 
 
 # ---------------------------------------------------------------------------
+# Task 0A: a naive timestamp or an impossible coordinate must never become evidence
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_a_naive_timestamp_reads_as_unavailable(pulsit_settings):
+    # A timestamp with no UTC offset at all — corroboration_service compares fixed_at
+    # against the driver's own timezone-aware capture instant, and a naive value would
+    # silently be treated as UTC by the subtraction, manufacturing a skew verdict from
+    # a value that was never actually anchored to a real instant.
+    payload = json.dumps(
+        {
+            "positions": [
+                {
+                    "device_id": _HORSE, "latitude": -33.9249, "longitude": 18.4241,
+                    "timestamp": "2026-09-04T08:12:03",
+                }
+            ]
+        }
+    )
+    respx.get(url__startswith=_PULSIT_BASE).mock(return_value=httpx.Response(200, text=payload))
+
+    fix = await LivePulsitClient().get_position(_HORSE)
+
+    assert fix.status is PulsitFixStatus.UNAVAILABLE
+    assert fix.lat is None and fix.lng is None
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_an_out_of_range_latitude_reads_as_unavailable(pulsit_settings):
+    # 95 degrees north does not exist — evidence of a location must be a real location.
+    payload = json.dumps(
+        {
+            "positions": [
+                {
+                    "device_id": _HORSE, "latitude": 95.0, "longitude": 18.4241,
+                    "timestamp": "2026-09-04T08:12:03+00:00",
+                }
+            ]
+        }
+    )
+    respx.get(url__startswith=_PULSIT_BASE).mock(return_value=httpx.Response(200, text=payload))
+
+    fix = await LivePulsitClient().get_position(_HORSE)
+
+    assert fix.status is PulsitFixStatus.UNAVAILABLE
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_an_out_of_range_longitude_reads_as_unavailable(pulsit_settings):
+    payload = json.dumps(
+        {
+            "positions": [
+                {
+                    "device_id": _HORSE, "latitude": -33.9249, "longitude": 181.0,
+                    "timestamp": "2026-09-04T08:12:03+00:00",
+                }
+            ]
+        }
+    )
+    respx.get(url__startswith=_PULSIT_BASE).mock(return_value=httpx.Response(200, text=payload))
+
+    fix = await LivePulsitClient().get_position(_HORSE)
+
+    assert fix.status is PulsitFixStatus.UNAVAILABLE
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_a_non_finite_latitude_reads_as_unavailable(pulsit_settings):
+    # JSON has no NaN/Infinity literal, but Pulsit's payload is only ASSUMED — a feed
+    # that emits a non-standard extension (or a client library that decodes one) must
+    # not turn "not a number" into stored evidence.
+    payload = '{"positions": [{"device_id": "%s", "latitude": NaN, "longitude": 18.4241, "timestamp": "2026-09-04T08:12:03+00:00"}]}' % _HORSE
+    respx.get(url__startswith=_PULSIT_BASE).mock(return_value=httpx.Response(200, text=payload))
+
+    fix = await LivePulsitClient().get_position(_HORSE)
+
+    assert fix.status is PulsitFixStatus.UNAVAILABLE
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_one_malformed_coordinate_does_not_discard_the_others_in_the_same_response(pulsit_settings):
+    payload = json.dumps(
+        {
+            "positions": [
+                {
+                    "device_id": _HORSE, "latitude": 95.0, "longitude": 18.4241,
+                    "timestamp": "2026-09-04T08:12:03+00:00",
+                },
+                {
+                    "device_id": _TRAILER_A, "latitude": -33.9251, "longitude": 18.4243,
+                    "timestamp": "2026-09-04T08:12:04+00:00",
+                },
+            ]
+        }
+    )
+    respx.get(url__startswith=_PULSIT_BASE).mock(return_value=httpx.Response(200, text=payload))
+
+    fixes = await LivePulsitClient().get_positions([_HORSE, _TRAILER_A])
+
+    assert fixes[0].status is PulsitFixStatus.UNAVAILABLE
+    assert fixes[1].status is PulsitFixStatus.OK
+
+
+# ---------------------------------------------------------------------------
 # The mock/live switch
 # ---------------------------------------------------------------------------
 

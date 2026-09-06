@@ -5,7 +5,7 @@ from typing import Optional
 from decimal import Decimal
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Numeric, String, Text, column
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -31,6 +31,12 @@ class Checkpoint(Base):
     checkpoint_type: Mapped[str] = mapped_column(String(50), nullable=False)
     driver_phone_lat: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     driver_phone_lng: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
+    # Task 0A: the same field as PhaseEvent.driver_captured_at, and for the same reason
+    # — a checkpoint is offline-queued exactly like a phase handshake, and its horse
+    # position is likewise superseded by a live Pulsit read (corroboration_service's
+    # record_checkpoint_corroboration) that must not be trusted against a stale replay.
+    # See PhaseEvent.driver_captured_at's own comment for the full rationale.
+    driver_captured_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     horse_gps_lat: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     horse_gps_lng: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     selfie_artifact_id: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -55,6 +61,22 @@ class TripException(Base):
     """
 
     __tablename__ = "exceptions"
+    # Task 0B: one report per (trip, client_report_id) — see client_report_id's own
+    # comment below. Declared here, not just in migration ciaran_exc_idempotency,
+    # because Base.metadata.create_all() (every test's schema) only picks up indexes
+    # the model itself declares — mirrors Trip.__table_args__'s identical
+    # LIVE_ORDER_NUMBER_INDEX above it in db/models/trips.py. Partial: rows with no
+    # client_report_id carry no idempotency claim and must never collide with each
+    # other under this index.
+    __table_args__ = (
+        Index(
+            "uq_exceptions_trip_client_report_id",
+            "trip_id",
+            "client_report_id",
+            unique=True,
+            postgresql_where=column("client_report_id").isnot(None),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     trip_id: Mapped[uuid.UUID] = mapped_column(
@@ -83,6 +105,19 @@ class TripException(Base):
     description: Mapped[str] = mapped_column(Text, nullable=False)
     supporting_artifact_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("evidence_artifacts.id"), nullable=True
+    )
+    # Task 0B: the driver app's own stable id for this report — the offline queue's
+    # entry UUID (frontend/driver-pwa lib/hooks/useOfflineQueue.ts), sent as
+    # client_report_id and never regenerated across a retry of the same submission.
+    # Lets exception_service.raise_exception recognise "this exact report, resent"
+    # (a lost response, or a retry after its photo uploaded but the POST itself
+    # failed) and return the existing row instead of inserting a second one.
+    # Nullable: an older installed/queued client omits it, and that submission gets
+    # no idempotency protection rather than being rejected. Uniqueness is enforced
+    # per-trip by a partial index (migration ciaran_exc_idempotency), not `unique=True`
+    # here — a bare column constraint could not express "unique only when present".
+    client_report_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
     )
     # Driver-phone GPS fix captured at the moment the exception was raised (e.g. a
     # panic-button hold) — mirrors Checkpoint.driver_phone_lat/_lng's Numeric(10,7)

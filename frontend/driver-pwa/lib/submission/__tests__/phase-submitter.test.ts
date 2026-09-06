@@ -119,6 +119,7 @@ function harness(overrides: Partial<PhaseSubmissionRequest> = {}): Harness {
     evidence: { capturedAt: '2026-01-01T00:00:00Z' },
     idempotencyKey: 'idem-1',
     position: Promise.resolve<DriverPosition | null>(FIX),
+    driverCapturedAt: '2026-01-01T00:00:00Z',
     enqueuePhase,
     refetchTrip,
     onOutcome: (result) => settle(result),
@@ -147,7 +148,7 @@ describe('startPhaseSubmission — success paths', () => {
     const outcome = await h.outcome
 
     expect(mockSubmitPhase).toHaveBeenCalledWith(
-      TRIP_ID, LOADING_PE, 'loading', h.request.evidence, 'idem-1', FIX,
+      TRIP_ID, LOADING_PE, 'loading', h.request.evidence, 'idem-1', FIX, '2026-01-01T00:00:00Z',
     )
     expect(outcome.kind).toBe('recorded')
     if (outcome.kind !== 'recorded') throw new Error('unreachable')
@@ -233,7 +234,9 @@ describe('startPhaseSubmission — failure paths', () => {
     startPhaseSubmission(h.request)
 
     expect((await h.outcome).kind).toBe('queued')
-    expect(h.enqueuePhase).toHaveBeenCalledWith(TRIP_ID, LOADING_PE, 'loading', h.request.evidence, FIX)
+    expect(h.enqueuePhase).toHaveBeenCalledWith(
+      TRIP_ID, LOADING_PE, 'loading', h.request.evidence, FIX, '2026-01-01T00:00:00Z',
+    )
   })
 
   it('queues a 5xx too — the server may recover', async () => {
@@ -305,7 +308,7 @@ describe('position budget', () => {
     await h.outcome
 
     expect(mockSubmitPhase).toHaveBeenCalledWith(
-      TRIP_ID, LOADING_PE, 'loading', expect.anything(), 'idem-1', null,
+      TRIP_ID, LOADING_PE, 'loading', expect.anything(), 'idem-1', null, expect.any(String),
     )
   })
 
@@ -321,7 +324,7 @@ describe('position budget', () => {
     await second.outcome
 
     expect(mockSubmitPhase).toHaveBeenLastCalledWith(
-      TRIP_ID, 'pe-departure-1', 'loading', expect.anything(), 'idem-1', FIX,
+      TRIP_ID, 'pe-departure-1', 'loading', expect.anything(), 'idem-1', FIX, expect.any(String),
     )
   })
 
@@ -336,7 +339,7 @@ describe('position budget', () => {
     await vi.advanceTimersByTimeAsync(12_000)
 
     expect(mockSubmitPhase).toHaveBeenCalledWith(
-      TRIP_ID, LOADING_PE, 'loading', expect.anything(), 'idem-1', null,
+      TRIP_ID, LOADING_PE, 'loading', expect.anything(), 'idem-1', null, expect.any(String),
     )
   })
 

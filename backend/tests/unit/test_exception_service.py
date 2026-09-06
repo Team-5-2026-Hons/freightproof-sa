@@ -11,10 +11,12 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlalchemy import select
 
 from app.core.exceptions import ExceptionAlreadyResolvedError, ResourceNotFoundError
 from app.core.realtime import EventSeverity, RealtimeKind
 from app.db.models.enums import (
+    ArtifactType,
     ExceptionResolutionMethod,
     ExceptionSeverity,
     ExceptionSource,
@@ -24,12 +26,13 @@ from app.db.models.enums import (
     TripStatus,
     VehicleType,
 )
+from app.db.models.evidence import EvidenceArtifact
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.transit import TripException
 from app.db.models.trips import Trip
 from app.db.models.vehicles import Vehicle
-from app.orchestration.exception_service import list_exceptions, resolve_exception
+from app.orchestration.exception_service import list_exceptions, raise_exception, resolve_exception
 
 _OUTBOX_KEY = "realtime_outbox"
 
@@ -300,3 +303,165 @@ async def test_list_without_a_filter_includes_resolved_rows(db_session):
 
     assert [r.id for r in all_rows] == [seed["exception"].id]
     assert open_rows == []
+
+
+# ── Task 0B: raise_exception — evidence ownership + client_report_id idempotency ──
+
+
+async def _seed_trip(db_session, *, tag: str) -> dict:
+    """One operator org with an active trip and its assigned driver, and NO exception
+    on it yet — unlike _seed above, which pre-seeds one for the resolve tests."""
+    org = Organization(id=uuid.uuid4(), name=f"Op-{tag}", org_type=OrganizationType.OPERATOR)
+    client_org = Organization(
+        id=uuid.uuid4(), name=f"Cl-{tag}", org_type=OrganizationType.PRINCIPAL,
+    )
+    db_session.add_all([org, client_org])
+    await db_session.flush()
+
+    user = User(
+        id=uuid.uuid4(), organization_id=org.id,
+        email=f"disp-{tag}@test.co.za", full_name="Dispatcher",
+    )
+    driver = Driver(
+        id=uuid.uuid4(), organization_id=org.id, full_name="Driver",
+        id_number="8001015009087", phone_number="+27821234567",
+        license_number=f"DRV-{tag}",
+    )
+    horse = Vehicle(
+        id=uuid.uuid4(), organization_id=org.id, vehicle_type=VehicleType.HORSE,
+        registration=f"RG{tag.upper()[:6]}", pulsit_device_id=f"PUL-{tag}",
+    )
+    origin = Precinct(
+        id=uuid.uuid4(), name="O", principal_organization_id=client_org.id,
+        latitude="0", longitude="0",
+    )
+    dest = Precinct(
+        id=uuid.uuid4(), name="D", principal_organization_id=client_org.id,
+        latitude="1", longitude="1",
+    )
+    db_session.add_all([user, driver, horse, origin, dest])
+    await db_session.flush()
+
+    trip = Trip(
+        id=uuid.uuid4(), trip_reference=f"FP-{tag}", order_number=f"ORD-{tag}",
+        operator_organization_id=org.id, client_organization_id=client_org.id,
+        driver_id=driver.id, horse_id=horse.id,
+        origin_precinct_id=origin.id, destination_precinct_id=dest.id,
+        status=TripStatus.ACTIVE, idvs_check_status=IdvsStatus.VERIFIED,
+        created_by_user_id=user.id,
+    )
+    db_session.add(trip)
+    await db_session.flush()
+
+    return {"org": org, "trip": trip, "driver": driver}
+
+
+async def _make_artifact(db_session, trip_id) -> EvidenceArtifact:
+    artifact = EvidenceArtifact(
+        id=uuid.uuid4(), trip_id=trip_id, artifact_type=ArtifactType.PHOTO,
+        s3_key=f"{trip_id}/{uuid.uuid4()}", s3_bucket="evidence-artifacts",
+        file_hash="a" * 64, mime_type="image/jpeg", captured_at=datetime.now(UTC),
+    )
+    db_session.add(artifact)
+    await db_session.flush()
+    return artifact
+
+
+async def test_raise_exception_rejects_an_artifact_from_another_trip(db_session):
+    """The FK on supporting_artifact_id only proves the artifact exists somewhere —
+    the service, not the schema or the database, is what proves it belongs to THIS
+    trip. Must leave no half-written exception and no realtime ping behind."""
+    mine = await _seed_trip(db_session, tag="art-mine")
+    theirs = await _seed_trip(db_session, tag="art-theirs")
+    foreign_artifact = await _make_artifact(db_session, theirs["trip"].id)
+
+    with pytest.raises(ResourceNotFoundError):
+        await raise_exception(
+            db_session, trip_id=mine["trip"].id, driver_id=mine["driver"].id,
+            exception_type=ExceptionType.CARGO_DAMAGE, description="Pallet crushed.",
+            supporting_artifact_id=foreign_artifact.id,
+        )
+
+    assert _outbox(db_session) == []
+
+
+async def test_raise_exception_rejects_an_artifact_that_does_not_exist(db_session):
+    seed = await _seed_trip(db_session, tag="art-missing")
+
+    with pytest.raises(ResourceNotFoundError):
+        await raise_exception(
+            db_session, trip_id=seed["trip"].id, driver_id=seed["driver"].id,
+            exception_type=ExceptionType.CARGO_DAMAGE, description="Pallet crushed.",
+            supporting_artifact_id=uuid.uuid4(),
+        )
+
+
+async def test_raise_exception_accepts_an_artifact_owned_by_this_trip(db_session):
+    seed = await _seed_trip(db_session, tag="art-owned")
+    artifact = await _make_artifact(db_session, seed["trip"].id)
+
+    result = await raise_exception(
+        db_session, trip_id=seed["trip"].id, driver_id=seed["driver"].id,
+        exception_type=ExceptionType.CARGO_DAMAGE, description="Pallet crushed.",
+        supporting_artifact_id=artifact.id,
+    )
+
+    assert result.supporting_artifact_id == artifact.id
+
+
+async def test_raise_exception_replays_the_same_client_report_id(db_session):
+    """A lost response, or the offline queue resending the same queued entry, must
+    return the ORIGINAL exception — no second row, no second realtime event."""
+    seed = await _seed_trip(db_session, tag="idem-replay")
+    report_id = uuid.uuid4()
+
+    first = await raise_exception(
+        db_session, trip_id=seed["trip"].id, driver_id=seed["driver"].id,
+        exception_type=ExceptionType.CARGO_DAMAGE, description="Pallet crushed.",
+        supporting_artifact_id=None, client_report_id=report_id,
+    )
+    db_session.info.pop(_OUTBOX_KEY, None)
+
+    second = await raise_exception(
+        db_session, trip_id=seed["trip"].id, driver_id=seed["driver"].id,
+        exception_type=ExceptionType.CARGO_DAMAGE, description="Pallet crushed.",
+        supporting_artifact_id=None, client_report_id=report_id,
+    )
+
+    assert second.id == first.id
+    assert _outbox(db_session) == []
+    rows = (await db_session.execute(
+        select(TripException).where(TripException.trip_id == seed["trip"].id)
+    )).scalars().all()
+    assert len(rows) == 1
+
+
+async def test_raise_exception_with_a_different_client_report_id_creates_a_new_row(db_session):
+    seed = await _seed_trip(db_session, tag="idem-distinct")
+
+    first = await raise_exception(
+        db_session, trip_id=seed["trip"].id, driver_id=seed["driver"].id,
+        exception_type=ExceptionType.CARGO_DAMAGE, description="First report.",
+        supporting_artifact_id=None, client_report_id=uuid.uuid4(),
+    )
+    second = await raise_exception(
+        db_session, trip_id=seed["trip"].id, driver_id=seed["driver"].id,
+        exception_type=ExceptionType.CARGO_DAMAGE, description="Second, unrelated report.",
+        supporting_artifact_id=None, client_report_id=uuid.uuid4(),
+    )
+
+    assert first.id != second.id
+
+
+async def test_raise_exception_without_a_client_report_id_is_unaffected(db_session):
+    """An older installed client sends none — must behave exactly as before this task,
+    with no idempotency machinery engaged at all."""
+    seed = await _seed_trip(db_session, tag="idem-none")
+
+    result = await raise_exception(
+        db_session, trip_id=seed["trip"].id, driver_id=seed["driver"].id,
+        exception_type=ExceptionType.CARGO_DAMAGE, description="No report id.",
+        supporting_artifact_id=None,
+    )
+
+    assert result.id is not None

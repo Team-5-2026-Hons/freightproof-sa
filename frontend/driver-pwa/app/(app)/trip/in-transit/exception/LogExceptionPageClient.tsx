@@ -1,13 +1,12 @@
 // frontend/driver-pwa/app/(app)/trip/in-transit/exception/LogExceptionPageClient.tsx
 'use client'
 
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { TriangleAlert } from 'lucide-react'
 import { useTrip } from '@/lib/hooks/useTrip'
 import { useToast } from '@/lib/hooks/useToast'
 import { useOfflineQueue, type QueuedExceptionPhoto } from '@/lib/hooks/useOfflineQueue'
-import { useArtifactUpload } from '@/lib/hooks/useArtifactUpload'
 import { contextPhaseEventId } from '@/lib/phase/derive'
 import { ApiError } from '@/lib/api/client'
 import { uploadArtifact } from '@/lib/api/artifacts'
@@ -59,34 +58,20 @@ export default function LogExceptionPageClient() {
   const [submitError, setSubmitError] = useState<null | 'rejected' | 'not-saved'>(null)
   const submitting = stage !== 'idle'
 
-  // Hooks must run before the no-trip guard below returns, so this tolerates a null trip;
-  // uploadNow is never reached without one.
-  const { uploadNow } = useArtifactUpload(trip ? String(trip.id) : '')
-
-  // Identifies the photo currently on screen. A slow upload of a since-retaken photo must
-  // not resolve and attach the wrong image's id to the report.
-  const latestCaptureRef = useRef<string | null>(null)
-
-  const handlePhotoCaptured = useCallback(
-    (dataUrl: string) => {
-      // Stamped at capture, not at submit: this is when the driver stood in front of the
-      // problem, which is the time the evidence trail should carry.
-      const capturedAt = new Date().toISOString()
-      latestCaptureRef.current = capturedAt
-      setPhoto({ dataUrl, capturedAt })
-      setArtifactId(null)
-      setSubmitError(null)
-
-      // Start uploading while the driver types the description, the same trade the phase
-      // steps make. Deliberately fire-and-forget — submit re-uploads if this doesn't
-      // land, and the queue carries the data URL if that fails too, so there is no
-      // outcome here the driver needs to see or act on.
-      void uploadNow(dataUrl, 'photo', capturedAt).then((id) => {
-        if (id && latestCaptureRef.current === capturedAt) setArtifactId(id)
-      })
-    },
-    [uploadNow],
-  )
+  const handlePhotoCaptured = useCallback((dataUrl: string) => {
+    // Task 0B: no eager upload here, unlike the phase steps' useArtifactUpload. This
+    // photo is for an OPTIONAL form the driver can retake or abandon freely — uploading
+    // at capture would create server-side evidence (and spend the driver's data) for a
+    // shot that never gets submitted. Upload begins only in handleSubmit's Step 1,
+    // below, once the driver has actually committed to the report.
+    //
+    // Stamped at capture, not at submit: this is when the driver stood in front of the
+    // problem, which is the time the evidence trail should carry.
+    const capturedAt = new Date().toISOString()
+    setPhoto({ dataUrl, capturedAt })
+    setArtifactId(null)
+    setSubmitError(null)
+  }, [])
 
   async function handleSubmit() {
     if (!type || !trip) return
@@ -145,8 +130,10 @@ export default function LogExceptionPageClient() {
 
     // ── Step 1: make sure the photo exists server-side before the report cites it ──
     let supportingArtifactId = artifactId
-    // Already uploaded (by the eager upload at capture): the bytes are on the server, so
-    // the queue only ever needs to carry the id.
+    // Already uploaded — by Step 1 of an earlier submit attempt on this same photo
+    // (e.g. this upload succeeded but Step 2's raise then failed and the driver hit
+    // Submit again): the bytes are already on the server, so the queue only ever
+    // needs to carry the id.
     if (supportingArtifactId) photoToQueue = undefined
     if (photo && !supportingArtifactId) {
       setStage('uploading-photo')

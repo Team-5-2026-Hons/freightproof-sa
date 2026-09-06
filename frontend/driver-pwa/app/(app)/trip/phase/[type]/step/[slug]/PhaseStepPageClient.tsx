@@ -460,6 +460,11 @@ function usePhaseStepController<T extends PhaseEvidence>(
     onHandOff()
     if (idempotencyKeyRef.current === null) idempotencyKeyRef.current = crypto.randomUUID()
     const evidence = draftRef.current
+    // Task 0A: stamped HERE, at the same instant the driver confirms — mirrors
+    // idempotencyKeyRef above (generated once per attempt, reused across any retry of
+    // that attempt) so a replay from the offline queue reports the ORIGINAL swipe
+    // instant, never the retry's own clock.
+    const driverCapturedAt = new Date().toISOString()
 
     // Return value deliberately ignored: `false` means a submission for this exact
     // phase_event_id is already running, and the right response to that is still to mark
@@ -471,6 +476,7 @@ function usePhaseStepController<T extends PhaseEvidence>(
       phaseType: phase.phase_type,
       evidence,
       idempotencyKey: idempotencyKeyRef.current,
+      driverCapturedAt,
       // Started here, at the moment the driver confirms — but NOT awaited. A cold GPS can
       // take ten seconds to produce a first fix, and that must never sit between the
       // swipe and the transition. The submitter waits for it instead, so the position

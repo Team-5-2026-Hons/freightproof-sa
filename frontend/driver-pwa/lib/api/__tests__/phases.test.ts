@@ -85,6 +85,10 @@ const CONFIRMATION_EVIDENCE: ConfirmationEvidence = {
 
 const IDEMPOTENCY_KEY = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
 
+// Task 0A: the instant this app stamps a submission — distinct from any evidence
+// capturedAt above, and sent on every completePhase call regardless of phase type.
+const DRIVER_CAPTURED_AT = '2026-06-12T10:30:00Z'
+
 describe('submitPhase (real-backend branch)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -94,7 +98,7 @@ describe('submitPhase (real-backend branch)', () => {
     mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
 
     const { submitPhase } = await import('../phases')
-    const result = await submitPhase('trip-1', 'phase-event-1', 'activation', ACTIVATION_EVIDENCE, IDEMPOTENCY_KEY, POSITION)
+    const result = await submitPhase('trip-1', 'phase-event-1', 'activation', ACTIVATION_EVIDENCE, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT)
 
     expect(result.ok).toBe(true)
     expect(mockUploadArtifact).not.toHaveBeenCalled()
@@ -105,6 +109,7 @@ describe('submitPhase (real-backend branch)', () => {
         driver_phone_lat: -26.09,
         driver_phone_lng: 28.13,
         idempotency_key: IDEMPOTENCY_KEY,
+        driver_captured_at: DRIVER_CAPTURED_AT,
       },
       { timeoutMs: 30_000 },
     )
@@ -114,7 +119,7 @@ describe('submitPhase (real-backend branch)', () => {
     mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
 
     const { submitPhase } = await import('../phases')
-    await submitPhase('trip-1', 'phase-event-2', 'loading', LOADING_EVIDENCE, IDEMPOTENCY_KEY, POSITION)
+    await submitPhase('trip-1', 'phase-event-2', 'loading', LOADING_EVIDENCE, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT)
 
     // No data URL was captured, so no upload is attempted and the id is sent as an
     // explicit null — never omitted (see the field's comment on LoadingCompleteRequest).
@@ -128,6 +133,7 @@ describe('submitPhase (real-backend branch)', () => {
         driver_phone_lng: POSITION.lng,
         linehaul_photo_artifact_id: null,
         idempotency_key: IDEMPOTENCY_KEY,
+        driver_captured_at: DRIVER_CAPTURED_AT,
       },
       { timeoutMs: 30_000 },
     )
@@ -142,7 +148,7 @@ describe('submitPhase (real-backend branch)', () => {
     mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
 
     const { submitPhase } = await import('../phases')
-    await submitPhase('trip-1', 'phase-event-3', 'departure', DEPARTURE_EVIDENCE, IDEMPOTENCY_KEY, POSITION)
+    await submitPhase('trip-1', 'phase-event-3', 'departure', DEPARTURE_EVIDENCE, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT)
 
     // ONE upload, not two: the waybill photo is no longer captured at departure
     // ('3-waybill' removed 2026-08-10 — it duplicated loading's linehaul sheet). A second
@@ -166,6 +172,7 @@ describe('submitPhase (real-backend branch)', () => {
         // treats a `false` guard_verified_seal as a CRITICAL seal_mismatch, so a
         // regression that reinstated the field with a falsy default would flag every trip.
         idempotency_key: IDEMPOTENCY_KEY,
+        driver_captured_at: DRIVER_CAPTURED_AT,
       },
       { timeoutMs: 30_000 },
     )
@@ -179,7 +186,7 @@ describe('submitPhase (real-backend branch)', () => {
     const incomplete: DepartureEvidence = { ...DEPARTURE_EVIDENCE, sealNumber: null }
 
     await expect(
-      submitPhase('trip-1', 'phase-event-3', 'departure', incomplete, IDEMPOTENCY_KEY, POSITION),
+      submitPhase('trip-1', 'phase-event-3', 'departure', incomplete, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT),
     ).rejects.toThrow(/Departure evidence incomplete/)
     expect(mockUploadArtifact).not.toHaveBeenCalled()
     expect(mockPost).not.toHaveBeenCalled()
@@ -190,7 +197,7 @@ describe('submitPhase (real-backend branch)', () => {
     mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
 
     const { submitPhase } = await import('../phases')
-    await submitPhase('trip-1', 'phase-event-4', 'unloading', UNLOADING_EVIDENCE, IDEMPOTENCY_KEY, POSITION)
+    await submitPhase('trip-1', 'phase-event-4', 'unloading', UNLOADING_EVIDENCE, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT)
 
     expect(mockPost).toHaveBeenCalledWith(
       '/api/v1/trips/trip-1/phases/phase-event-4/complete',
@@ -203,6 +210,7 @@ describe('submitPhase (real-backend branch)', () => {
         // Required by UnloadingCompleteRequest — the seal as found, intact.
         gate_photo_artifact_id: 'seal-intact-artifact',
         idempotency_key: IDEMPOTENCY_KEY,
+        driver_captured_at: DRIVER_CAPTURED_AT,
       },
       { timeoutMs: 30_000 },
     )
@@ -215,7 +223,7 @@ describe('submitPhase (real-backend branch)', () => {
     await submitPhase('trip-1', 'phase-event-4', 'unloading', {
       ...UNLOADING_EVIDENCE,
       sealIntactPhotoArtifactId: 'artifact-seal-intact',
-    }, IDEMPOTENCY_KEY, POSITION)
+    }, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT)
 
     expect(mockUploadArtifact).not.toHaveBeenCalled()
     expect(mockPost).toHaveBeenCalledWith(
@@ -233,7 +241,7 @@ describe('submitPhase (real-backend branch)', () => {
     await expect(
       submitPhase('trip-1', 'phase-event-4', 'unloading', {
         ...UNLOADING_EVIDENCE, sealIntactPhotoDataUrl: null, sealIntactPhotoArtifactId: null,
-      }, IDEMPOTENCY_KEY, POSITION),
+      }, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT),
     ).rejects.toThrow(/Unloading evidence incomplete/)
     expect(mockUploadArtifact).not.toHaveBeenCalled()
     expect(mockPost).not.toHaveBeenCalled()
@@ -250,7 +258,7 @@ describe('submitPhase (real-backend branch)', () => {
     delete (staleEntry as Partial<UnloadingEvidence>).sealIntactPhotoArtifactId
 
     await expect(
-      submitPhase('trip-1', 'phase-event-4', 'unloading', staleEntry, IDEMPOTENCY_KEY, POSITION),
+      submitPhase('trip-1', 'phase-event-4', 'unloading', staleEntry, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT),
     ).rejects.toThrow(/Unloading evidence incomplete/)
     expect(mockPost).not.toHaveBeenCalled()
   })
@@ -262,7 +270,7 @@ describe('submitPhase (real-backend branch)', () => {
     mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
 
     const { submitPhase } = await import('../phases')
-    await submitPhase('trip-1', 'phase-event-5', 'confirmation', CONFIRMATION_EVIDENCE, IDEMPOTENCY_KEY, POSITION)
+    await submitPhase('trip-1', 'phase-event-5', 'confirmation', CONFIRMATION_EVIDENCE, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT)
 
     expect(mockUploadArtifact).toHaveBeenCalledTimes(2)
     expect(mockPost).toHaveBeenCalledWith(
@@ -281,6 +289,7 @@ describe('submitPhase (real-backend branch)', () => {
         // against itself. The backend derives it from Parcel.pp_scan_in_at instead
         // (schemas/phases.py's ConfirmationCompleteRequest comment).
         idempotency_key: IDEMPOTENCY_KEY,
+        driver_captured_at: DRIVER_CAPTURED_AT,
       },
       { timeoutMs: 30_000 },
     )
@@ -298,7 +307,7 @@ describe('submitPhase (real-backend branch)', () => {
     const { submitPhase } = await import('../phases')
     await submitPhase(
       'trip-1', 'phase-event-5', 'confirmation',
-      { ...CONFIRMATION_EVIDENCE, driverVisualCount: null }, IDEMPOTENCY_KEY, POSITION,
+      { ...CONFIRMATION_EVIDENCE, driverVisualCount: null }, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT,
     )
 
     expect(mockPost).toHaveBeenCalledWith(
@@ -321,7 +330,7 @@ describe('submitPhase (real-backend branch)', () => {
     delete (staleEntry as Partial<ConfirmationEvidence>).driverVisualCount
 
     const { submitPhase } = await import('../phases')
-    await submitPhase('trip-1', 'phase-event-5', 'confirmation', staleEntry, IDEMPOTENCY_KEY, POSITION)
+    await submitPhase('trip-1', 'phase-event-5', 'confirmation', staleEntry, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT)
 
     expect(mockPost).toHaveBeenCalledWith(
       '/api/v1/trips/trip-1/phases/phase-event-5/complete',
@@ -343,7 +352,7 @@ describe('submitPhase (real-backend branch)', () => {
     mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
 
     const { submitPhase } = await import('../phases')
-    await submitPhase('trip-1', 'phase-event-5', 'confirmation', CONFIRMATION_EVIDENCE, IDEMPOTENCY_KEY, POSITION)
+    await submitPhase('trip-1', 'phase-event-5', 'confirmation', CONFIRMATION_EVIDENCE, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT)
 
     const body = JSON.stringify(mockPost.mock.calls[0][1])
     expect(body).not.toContain(CONFIRMATION_EVIDENCE.recipientName)
@@ -357,7 +366,7 @@ describe('submitPhase (real-backend branch)', () => {
     const { submitPhase } = await import('../phases')
 
     await expect(
-      submitPhase('trip-1', 'phase-event-1', 'activation', ACTIVATION_EVIDENCE, IDEMPOTENCY_KEY, null),
+      submitPhase('trip-1', 'phase-event-1', 'activation', ACTIVATION_EVIDENCE, IDEMPOTENCY_KEY, null, DRIVER_CAPTURED_AT),
     ).rejects.toThrow(/Could not get your location/)
     expect(mockUploadArtifact).not.toHaveBeenCalled()
     expect(mockPost).not.toHaveBeenCalled()
@@ -369,7 +378,7 @@ describe('submitPhase (real-backend branch)', () => {
     const { submitPhase } = await import('../phases')
 
     await expect(
-      submitPhase('trip-1', 'phase-event-3', 'departure', DEPARTURE_EVIDENCE, IDEMPOTENCY_KEY, POSITION),
+      submitPhase('trip-1', 'phase-event-3', 'departure', DEPARTURE_EVIDENCE, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT),
     ).rejects.toThrow(/upload failed/)
     expect(mockPost).not.toHaveBeenCalled()
   })
@@ -381,7 +390,7 @@ describe('submitPhase (real-backend branch)', () => {
     const { submitPhase } = await import('../phases')
 
     await expect(
-      submitPhase('trip-1', 'phase-event-0', 'trip_creation', ACTIVATION_EVIDENCE, IDEMPOTENCY_KEY, POSITION),
+      submitPhase('trip-1', 'phase-event-0', 'trip_creation', ACTIVATION_EVIDENCE, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT),
     ).rejects.toThrow(/never completed by a driver action/)
     expect(mockPost).not.toHaveBeenCalled()
   })
@@ -392,8 +401,8 @@ describe('submitPhase (real-backend branch)', () => {
     mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
 
     const { submitPhase } = await import('../phases')
-    await submitPhase('trip-1', 'phase-event-2', 'loading', LOADING_EVIDENCE, 'retry-key-123', POSITION)
-    await submitPhase('trip-1', 'phase-event-2', 'loading', LOADING_EVIDENCE, 'retry-key-123', POSITION)
+    await submitPhase('trip-1', 'phase-event-2', 'loading', LOADING_EVIDENCE, 'retry-key-123', POSITION, DRIVER_CAPTURED_AT)
+    await submitPhase('trip-1', 'phase-event-2', 'loading', LOADING_EVIDENCE, 'retry-key-123', POSITION, DRIVER_CAPTURED_AT)
 
     expect(mockPost).toHaveBeenCalledTimes(2)
     const [firstCallBody] = mockPost.mock.calls[0].slice(1)
@@ -416,7 +425,7 @@ describe('submitPhase (real-backend branch)', () => {
     })
 
     const { submitPhase } = await import('../phases')
-    const result = await submitPhase('trip-1', 'phase-event-2', 'loading', LOADING_EVIDENCE, IDEMPOTENCY_KEY, POSITION)
+    const result = await submitPhase('trip-1', 'phase-event-2', 'loading', LOADING_EVIDENCE, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT)
 
     expect(result.ok).toBe(true)
     expect(result.phaseStatus).toBe('completed')
@@ -433,7 +442,7 @@ describe('submitPhase (real-backend branch)', () => {
     })
 
     const { submitPhase } = await import('../phases')
-    const result = await submitPhase('trip-1', 'phase-event-4', 'unloading', UNLOADING_EVIDENCE, IDEMPOTENCY_KEY, POSITION)
+    const result = await submitPhase('trip-1', 'phase-event-4', 'unloading', UNLOADING_EVIDENCE, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT)
 
     expect(result.ok).toBe(true)
     expect(result.phaseStatus).toBe('exception')
@@ -453,7 +462,7 @@ describe('submitPhase — photos uploaded at capture', () => {
     await submitPhase('trip-1', 'phase-event-3', 'departure', {
       ...DEPARTURE_EVIDENCE,
       sealPhotoArtifactId: 'artifact-seal',
-    }, IDEMPOTENCY_KEY, POSITION)
+    }, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT)
 
     expect(mockUploadArtifact).not.toHaveBeenCalled()
     expect(mockPost).toHaveBeenCalledWith(
@@ -477,7 +486,7 @@ describe('submitPhase — photos uploaded at capture', () => {
     await submitPhase('trip-1', 'phase-event-3', 'departure', {
       ...DEPARTURE_EVIDENCE,
       sealPhotoArtifactId: null,
-    }, IDEMPOTENCY_KEY, POSITION)
+    }, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT)
 
     expect(mockUploadArtifact).toHaveBeenCalledTimes(1)
     expect(mockPost).toHaveBeenCalledWith(
@@ -503,7 +512,7 @@ describe('submitPhase — photos uploaded at capture', () => {
 
     await submitPhase(
       'trip-1', 'phase-event-3', 'departure',
-      LEGACY_QUEUED_DEPARTURE_EVIDENCE, IDEMPOTENCY_KEY, POSITION,
+      LEGACY_QUEUED_DEPARTURE_EVIDENCE, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT,
     )
 
     expect(mockUploadArtifact).toHaveBeenCalledTimes(2)
@@ -532,7 +541,7 @@ describe('submitPhase — photos uploaded at capture', () => {
       waybillPhotoArtifactId: 'artifact-waybill',
       sealPhotoArtifactId: 'artifact-seal',
     }
-    await submitPhase('trip-1', 'phase-event-3', 'departure', replayed, IDEMPOTENCY_KEY, POSITION)
+    await submitPhase('trip-1', 'phase-event-3', 'departure', replayed, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT)
 
     expect(mockUploadArtifact).not.toHaveBeenCalled()
     expect(mockPost).toHaveBeenCalledWith(
@@ -553,7 +562,7 @@ describe('submitPhase — photos uploaded at capture', () => {
       ...LOADING_EVIDENCE,
       linehaulPhotoDataUrl: 'data:image/jpeg;base64,GGGG',
       linehaulPhotoArtifactId: 'artifact-linehaul',
-    }, IDEMPOTENCY_KEY, POSITION)
+    }, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT)
 
     expect(mockUploadArtifact).not.toHaveBeenCalled()
     expect(mockPost).toHaveBeenCalledWith(
@@ -572,7 +581,7 @@ describe('submitPhase — photos uploaded at capture', () => {
       ...LOADING_EVIDENCE,
       linehaulPhotoDataUrl: 'data:image/jpeg;base64,GGGG',
       linehaulPhotoArtifactId: null,
-    }, IDEMPOTENCY_KEY, POSITION)
+    }, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT)
 
     expect(mockUploadArtifact).toHaveBeenCalledTimes(1)
     expect(mockPost).toHaveBeenCalledWith(
@@ -597,7 +606,7 @@ describe('submitPhase — in_transit (arrival attestation)', () => {
     const { submitPhase } = await import('../phases')
     await submitPhase(
       'trip-1', 'phase-in-transit-1', 'in_transit',
-      { capturedAt: '2026-08-09T10:00:00.000Z' }, 'idem-arrival-1', arrivalPosition,
+      { capturedAt: '2026-08-09T10:00:00.000Z' }, 'idem-arrival-1', arrivalPosition, DRIVER_CAPTURED_AT,
     )
 
     expect(mockPost).toHaveBeenCalledWith(
@@ -607,6 +616,7 @@ describe('submitPhase — in_transit (arrival attestation)', () => {
         driver_phone_lat: -29.8587,
         driver_phone_lng: 31.0218,
         idempotency_key: 'idem-arrival-1',
+        driver_captured_at: DRIVER_CAPTURED_AT,
       },
       { timeoutMs: 30_000 },
     )
@@ -620,7 +630,7 @@ describe('submitPhase — in_transit (arrival attestation)', () => {
     const { submitPhase } = await import('../phases')
     await submitPhase(
       'trip-1', 'phase-in-transit-1', 'in_transit',
-      { capturedAt: '2026-08-09T10:00:00.000Z' }, 'idem-arrival-1', null,
+      { capturedAt: '2026-08-09T10:00:00.000Z' }, 'idem-arrival-1', null, DRIVER_CAPTURED_AT,
     )
 
     const [, body] = mockPost.mock.calls[0]
@@ -635,7 +645,7 @@ describe('submitPhase — in_transit (arrival attestation)', () => {
     const { submitPhase } = await import('../phases')
     await submitPhase(
       'trip-1', 'phase-in-transit-1', 'in_transit',
-      { capturedAt: '2026-08-09T10:00:00.000Z' }, 'idem-arrival-1', { lat: -29.8587, lng: 31.0218, accuracyM: 8 },
+      { capturedAt: '2026-08-09T10:00:00.000Z' }, 'idem-arrival-1', { lat: -29.8587, lng: 31.0218, accuracyM: 8 }, DRIVER_CAPTURED_AT,
     )
 
     expect(mockUploadArtifact).not.toHaveBeenCalled()
@@ -662,7 +672,7 @@ describe('submitPhase (demo-mode gate)', () => {
     vi.doMock('@/lib/api/artifacts', () => ({ uploadArtifact: vi.fn() }))
 
     const { submitPhase } = await import('../phases')
-    const promise = submitPhase('trip-1', 'phase-event-1', 'activation', ACTIVATION_EVIDENCE, IDEMPOTENCY_KEY, POSITION)
+    const promise = submitPhase('trip-1', 'phase-event-1', 'activation', ACTIVATION_EVIDENCE, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT)
     await vi.advanceTimersByTimeAsync(500)
     const result = await promise
 

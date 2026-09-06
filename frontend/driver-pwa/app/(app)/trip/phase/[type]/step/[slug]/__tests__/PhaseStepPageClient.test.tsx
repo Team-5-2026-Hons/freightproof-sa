@@ -319,7 +319,7 @@ describe('final step — hands the submission off and returns the driver Home', 
 
     await waitFor(() => expect(mockSubmitPhase).toHaveBeenCalledWith(
       TRIP_ID, LOADING_PE, 'loading', expect.anything(), expect.any(String),
-      { lat: -26.09, lng: 28.13, accuracyM: 8 },
+      { lat: -26.09, lng: 28.13, accuracyM: 8 }, expect.any(String),
     ))
     // The server's own plan replaces the optimistic guess, and the marker is dropped.
     await waitFor(() => expect(mockAdoptTrip).toHaveBeenCalledWith(freshTrip))
@@ -438,7 +438,7 @@ describe('offline-queued submit', () => {
     // the driver was when they swiped rather than where they regained signal.
     await waitFor(() => expect(mockEnqueuePhase).toHaveBeenCalledWith(
       TRIP_ID, LOADING_PE, 'loading', expect.anything(),
-      { lat: -26.09, lng: 28.13, accuracyM: 8 },
+      { lat: -26.09, lng: 28.13, accuracyM: 8 }, expect.any(String),
     ))
     expect(mockNotify).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'success', body: expect.stringContaining('stored on this device') }),

@@ -525,6 +525,25 @@ class LivePulsitClient:
         return (await self.get_positions([device_id]))[0]
 
 
+# Valid coordinate ranges. Anything outside these is not a real position, whatever
+# Pulsit sent — a truncated feed, a unit reporting in the wrong units, a corrupted
+# byte. Evidence platform rule: an impossible coordinate must never become a stored
+# fix, so this is checked here rather than left to whatever eventually reads the row.
+_MIN_LATITUDE, _MAX_LATITUDE = -90, 90
+_MIN_LONGITUDE, _MAX_LONGITUDE = -180, 180
+
+
+def _is_usable_coordinate(value: Decimal, *, minimum: int, maximum: int) -> bool:
+    """A coordinate this module will accept as evidence: finite and in range.
+
+    `is_finite()` rejects NaN and +/-Infinity — Decimal can represent both (unlike a
+    plain float check via `==`), and neither is a location. Task 0A: a fix carrying
+    either must become UNAVAILABLE, never a stored coordinate that later maths (a
+    geofence haversine call) would choke on or silently mis-measure.
+    """
+    return value.is_finite() and minimum <= value <= maximum
+
+
 def _parse_position(device_id: str, entry: dict[str, Any]) -> PulsitFix:
     """Map ONE assumed Pulsit position object onto PulsitFix.
 
@@ -536,8 +555,14 @@ def _parse_position(device_id: str, entry: dict[str, Any]) -> PulsitFix:
          "timestamp": "2026-09-04T08:12:03Z"}
 
     A null latitude or longitude is read as the tracker having no current fix.
-    Anything unreadable is UNAVAILABLE for this device only — one malformed entry
-    must not discard the other trailers in the same response.
+    Anything unreadable — including a non-finite or out-of-range coordinate, or a
+    timestamp with no UTC offset at all (task 0A) — is UNAVAILABLE for this device
+    only; one malformed entry must not discard the other trailers in the same
+    response. A NAIVE timestamp specifically must not become evidence: corroboration
+    (orchestration/corroboration_service.py) compares fixed_at against the driver's
+    own timezone-aware capture instant, and a naive value would silently compare as
+    if it were UTC — manufacturing a skew verdict from a value that was never
+    actually anchored to a real instant.
     """
     lat_raw = entry.get(_PULSIT_FIELD_LAT)
     lng_raw = entry.get(_PULSIT_FIELD_LNG)
@@ -553,6 +578,22 @@ def _parse_position(device_id: str, entry: dict[str, Any]) -> PulsitFix:
     except (KeyError, TypeError, ValueError, InvalidOperation):
         logger.error(
             "Malformed Pulsit position entry for device=%s — treating as unavailable", device_id
+        )
+        return _absent_fix(device_id, PulsitFixStatus.UNAVAILABLE, PulsitFixSource.LIVE)
+
+    if not _is_usable_coordinate(lat, minimum=_MIN_LATITUDE, maximum=_MAX_LATITUDE) or not (
+        _is_usable_coordinate(lng, minimum=_MIN_LONGITUDE, maximum=_MAX_LONGITUDE)
+    ):
+        logger.error(
+            "Pulsit position entry for device=%s has a non-finite or out-of-range "
+            "coordinate — treating as unavailable", device_id,
+        )
+        return _absent_fix(device_id, PulsitFixStatus.UNAVAILABLE, PulsitFixSource.LIVE)
+
+    if fixed_at.tzinfo is None:
+        logger.error(
+            "Pulsit position entry for device=%s has a timezone-naive timestamp — "
+            "treating as unavailable rather than guessing its offset", device_id,
         )
         return _absent_fix(device_id, PulsitFixStatus.UNAVAILABLE, PulsitFixSource.LIVE)
 

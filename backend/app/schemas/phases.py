@@ -86,6 +86,10 @@ class PhaseEventRead(BaseModel):
     dispatcher_override_note: Optional[str] = None
     driver_phone_lat: Optional[float] = None
     driver_phone_lng: Optional[float] = None
+    # Task 0A. The instant the driver's phone submitted, independent of completed_at
+    # (the server's clock). Optional here purely because the underlying column is
+    # nullable for a row a pre-0A client completed.
+    driver_captured_at: Optional[datetime] = None
     horse_gps_lat: Optional[float] = None
     horse_gps_lng: Optional[float] = None
     pulsit_geofence_confirmed: Optional[bool] = None
@@ -179,6 +183,31 @@ class _PhaseCompleteBase(BaseModel):
     # field added here cannot reach a hash by accident.
     driver_phone_lat: Optional[float] = Field(default=None, ge=-90, le=90)
     driver_phone_lng: Optional[float] = Field(default=None, ge=-180, le=180)
+
+    # Task 0A: the instant the driver's OWN PHONE submitted this completion — captured
+    # client-side at swipe time (frontend/driver-pwa/lib/submission/phase-submitter.ts),
+    # not when this request happens to reach the server. This is what lets
+    # corroboration_service tell a live handshake from an offline replay flushed hours
+    # later: comparing a fresh Pulsit fix against a stale driver claim, with no capture
+    # time on the wire, was the exact gap this field exists to close (see
+    # corroboration_service.py's module docstring).
+    #
+    # Optional so a client built before this field existed — an entry already sitting in
+    # a driver's offline queue — still 200s on replay instead of 422ing forever; a
+    # missing value reads as "cannot verify timing" and corroboration accordingly stores
+    # no position/verdict for that handshake, never a fabricated one. New builds always
+    # send it (frontend/driver-pwa/lib/submission/phase-submitter.ts).
+    driver_captured_at: Optional[datetime] = None
+
+    @field_validator("driver_captured_at")
+    @classmethod
+    def validate_driver_captured_at_is_timezone_aware(cls, v: Optional[datetime]) -> Optional[datetime]:
+        # A naive value would silently compare as if it were UTC in corroboration_service,
+        # manufacturing a skew verdict from a timestamp that was never actually anchored
+        # to a real instant. Rejected outright rather than assumed.
+        if v is not None and v.tzinfo is None:
+            raise ValueError("driver_captured_at must be timezone-aware")
+        return v
 
     @model_validator(mode="after")
     def validate_driver_position_pair(self) -> "_PhaseCompleteBase":

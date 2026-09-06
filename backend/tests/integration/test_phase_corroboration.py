@@ -84,8 +84,15 @@ async def override_get_db(db_session):
     app.dependency_overrides.pop(get_db, None)
 
 
-@pytest.fixture
-def pulsit_store(monkeypatch: pytest.MonkeyPatch) -> FakeMockStateStore:
+# name="pulsit_store" pins the fixture's PYTEST-VISIBLE name to the decorator rather
+# than to this def's own identifier. test_gps_mismatch.py imports this fixture under
+# a different Python name (_pulsit_store_fixture) specifically so ITS test functions
+# can still declare a plain `pulsit_store` parameter without ruff reading that
+# parameter as redefining an unused import (F811) — the collision only exists when
+# the import and the parameter share the same literal identifier. Registration by
+# explicit `name=` means pytest resolves the fixture correctly either way.
+@pytest.fixture(name="pulsit_store")
+def _pulsit_store_fixture(monkeypatch: pytest.MonkeyPatch) -> FakeMockStateStore:
     """Run the real MockPulsitClient over a dict, exactly as the dev panel would.
 
     The real client rather than a stub: the point of these tests is the seam between
@@ -102,8 +109,12 @@ async def _stage(device_id: str, lat: Decimal, lng: Decimal, *, fixed_at: dateti
     await MockPulsitClient().stage_position(device_id, lat, lng, fixed_at=fixed_at)
 
 
-@pytest_asyncio.fixture
-async def corroboration_trip(db_session):
+# Same name= reasoning as pulsit_store above — test_gps_mismatch.py imports this
+# fixture as _corroboration_trip_fixture to avoid an F811 collision with its own
+# `corroboration_trip` test parameters, and relies on this explicit name to still
+# resolve correctly.
+@pytest_asyncio.fixture(name="corroboration_trip")
+async def _corroboration_trip_fixture(db_session):
     """A single-leg trip whose origin precinct has real coordinates.
 
     Distinct from test_phases.py's seed_trip, which places both precincts at
@@ -192,21 +203,30 @@ async def _phase_id(client: AsyncClient, trip_id: uuid.UUID, token: str, phase_t
 async def _complete_activation(
     client: AsyncClient, trip: Trip, driver: Driver, *,
     idempotency_key: str | None = None, token: str | None = None,
+    driver_captured_at: str | None = None, omit_driver_captured_at: bool = False,
 ) -> Any:
     # A caller replaying a submission MUST pass the same token: make_token mints a
     # fresh session_id each call, and the one-device-per-driver rule would reject the
     # second request as a different device before it ever reached the replay guard.
     token = token or make_token(sub=str(driver.id), role="driver")
     phase_event_id = await _phase_id(client, trip.id, token, "activation")
+    body: dict[str, Any] = {
+        "phase_type": "activation",
+        "driver_phone_lat": float(_ORIGIN_LAT),
+        "driver_phone_lng": float(_ORIGIN_LNG),
+        "idempotency_key": idempotency_key or f"idem-{uuid.uuid4()}",
+    }
+    # Task 0A: defaults to "now", matching the Pulsit fixture's own default fixed_at
+    # (both _stage's default and the unstaged MOCK_DEVICE_POSITIONS fixture use
+    # datetime.now(UTC)) so an ordinary test stays inside the corroboration skew
+    # without every caller having to think about timing. omit_driver_captured_at
+    # simulates a pre-task-0A client that never sends the field at all.
+    if not omit_driver_captured_at:
+        body["driver_captured_at"] = driver_captured_at or datetime.now(UTC).isoformat()
     return await client.post(
         f"/api/v1/trips/{trip.id}/phases/{phase_event_id}/complete",
         headers=auth_header(token),
-        json={
-            "phase_type": "activation",
-            "driver_phone_lat": float(_ORIGIN_LAT),
-            "driver_phone_lng": float(_ORIGIN_LNG),
-            "idempotency_key": idempotency_key or f"idem-{uuid.uuid4()}",
-        },
+        json=body,
     )
 
 
@@ -332,7 +352,13 @@ async def test_corroboration_is_written_at_every_phase_not_only_the_first(
             resp = await client.post(
                 f"/api/v1/trips/{trip.id}/phases/{phase_event_id}/complete",
                 headers=auth_header(token),
-                json={**body, "idempotency_key": f"idem-{uuid.uuid4()}"},
+                # Task 0A: every phase needs a capture time close to the staged Pulsit
+                # fix's "now" to keep this walk's True/False verdicts meaningful rather
+                # than uniformly NULL.
+                json={
+                    **body, "idempotency_key": f"idem-{uuid.uuid4()}",
+                    "driver_captured_at": datetime.now(UTC).isoformat(),
+                },
             )
             assert resp.status_code == 200, (body["phase_type"], resp.text)
 
@@ -435,7 +461,13 @@ async def test_in_transit_records_position_but_no_geofence_verdict(
     resp = await client.post(
         f"/api/v1/trips/{trip.id}/phases/{phase_event_id}/complete",
         headers=auth_header(token),
-        json={"phase_type": "in_transit", "idempotency_key": f"idem-{uuid.uuid4()}"},
+        # Task 0A: within skew of the staged fix's default "now", so this test still
+        # proves ITS OWN point (a position is stored with no verdict) rather than
+        # accidentally exercising the timing gate instead.
+        json={
+            "phase_type": "in_transit", "idempotency_key": f"idem-{uuid.uuid4()}",
+            "driver_captured_at": datetime.now(UTC).isoformat(),
+        },
     )
 
     assert resp.status_code == 200
@@ -645,6 +677,13 @@ async def test_a_positioned_fix_with_no_reading_time_is_dropped_rather_than_inve
     Reaches past the mock client deliberately: PulsitFix's own contract says a
     positioned fix always carries fixed_at, and this module refuses to depend on
     another story's invariant to decide whether to invent evidence.
+
+    Task 0A supersedes this test's original expectation for the HORSE position too: a
+    fix with no fixed_at cannot be compared against driver_captured_at at all, so
+    _within_corroboration_skew treats it as untimely — the same "cannot verify timing"
+    outcome as a fix that arrives outside the skew window. horse_gps_lat/lng are
+    therefore left null now, not populated, which is the correct extension of the
+    "never invent a timestamp" principle this test is named for.
     """
     trip, driver, org, _stop = corroboration_trip
     trailer = await _attach_trailer(db_session, trip=trip, org=org, device_id=_TRAILER_A_DEVICE)
@@ -671,11 +710,80 @@ async def test_a_positioned_fix_with_no_reading_time_is_dropped_rather_than_inve
 
     assert resp.status_code == 200
     event = await _load_event(db_session, trip, PhaseType.ACTIVATION)
-    # The horse position still lands — phase_events has no timestamp column for it,
-    # so there is nothing to invent there. Only the snapshot row is refused.
-    assert event.horse_gps_lat == _ORIGIN_LAT
+    # A timestampless fix cannot be verified as timely, so neither the horse position
+    # nor the snapshot row is written — both are refused for the same reason.
+    assert event.horse_gps_lat is None
     assert await _load_snapshots(db_session, event) == []
     assert trailer.id is not None
+
+
+# ── Task 0A: the corroboration skew gate ────────────────────────────────────────
+
+
+async def test_a_stale_driver_captured_at_leaves_horse_position_and_verdict_null(
+    client: AsyncClient, db_session, corroboration_trip, pulsit_store,
+):
+    """The horse is genuinely at the origin RIGHT NOW — a live, in-tolerance fix — but
+    the driver's own capture instant is hours old, exactly what an offline queue flush
+    looks like server-side. Task 0A: skew, not agreement, decides whether this counts
+    as evidence at all. Without the gate this would wrongly read as a clean TRUE.
+    """
+    trip, driver, _org, _stop = corroboration_trip
+    await _stage(_HORSE_DEVICE, _ORIGIN_LAT, _ORIGIN_LNG)  # fixed_at defaults to now()
+    stale_capture = (datetime.now(UTC) - timedelta(hours=3)).isoformat()
+
+    resp = await _complete_activation(client, trip, driver, driver_captured_at=stale_capture)
+
+    assert resp.status_code == 200
+    event = await _load_event(db_session, trip, PhaseType.ACTIVATION)
+    assert event.horse_gps_lat is None
+    assert event.horse_gps_lng is None
+    assert event.pulsit_geofence_confirmed is None
+
+
+async def test_a_missing_driver_captured_at_leaves_horse_position_and_verdict_null(
+    client: AsyncClient, db_session, corroboration_trip, pulsit_store,
+):
+    """An older client that predates driver_captured_at entirely gets the same honest
+    NULL as one whose capture time is stale — "we don't know the timing" must never be
+    read as "assume it's live", or every already-queued driver app in the field would
+    silently get its offline replays treated as fresh the moment this ships.
+    """
+    trip, driver, _org, _stop = corroboration_trip
+    await _stage(_HORSE_DEVICE, _ORIGIN_LAT, _ORIGIN_LNG)
+
+    resp = await _complete_activation(client, trip, driver, omit_driver_captured_at=True)
+
+    assert resp.status_code == 200
+    event = await _load_event(db_session, trip, PhaseType.ACTIVATION)
+    assert event.horse_gps_lat is None
+    assert event.pulsit_geofence_confirmed is None
+
+
+async def test_trailer_snapshots_are_written_even_when_the_horse_position_misses_skew(
+    client: AsyncClient, db_session, corroboration_trip, pulsit_store,
+):
+    """The skew gate governs the horse-derived writes only. trailer_gps_snapshots
+    carries its own tracker reading time (captured_at) and is independent evidence in
+    its own right — it has never been compared against driver_captured_at and task 0A
+    does not start now (see the module docstring's "CLOSED by task 0A" section).
+    """
+    trip, driver, org, _stop = corroboration_trip
+    await _attach_trailer(db_session, trip=trip, org=org, device_id=_TRAILER_A_DEVICE)
+    await _stage(_HORSE_DEVICE, _ORIGIN_LAT, _ORIGIN_LNG)
+    await _stage(_TRAILER_A_DEVICE, _ORIGIN_LAT, _ORIGIN_LNG)
+    stale_capture = (datetime.now(UTC) - timedelta(hours=3)).isoformat()
+
+    resp = await _complete_activation(client, trip, driver, driver_captured_at=stale_capture)
+
+    assert resp.status_code == 200
+    event = await _load_event(db_session, trip, PhaseType.ACTIVATION)
+    # The horse position missed skew and was correctly refused...
+    assert event.horse_gps_lat is None
+    # ...but the trailer snapshot, keyed to its OWN tracker time, was not.
+    snapshots = await _load_snapshots(db_session, event)
+    assert len(snapshots) == 1
+    assert snapshots[0].lat == _ORIGIN_LAT
 
 
 # ── The trailer device id is the snapshot, not the live vehicle row ─────────────
@@ -722,7 +830,14 @@ async def _log_checkpoint(
     return await client.post(
         f"/api/v1/trips/{trip.id}/checkpoints",
         headers=auth_header(token),
-        json={"checkpoint_type": "manual", **extra},
+        # Task 0A: defaults to "now" so the checkpoint's horse position stays inside
+        # the corroboration skew by default — same reasoning as _complete_activation's
+        # own default. **extra last so a test can still override it explicitly.
+        json={
+            "checkpoint_type": "manual",
+            "driver_captured_at": datetime.now(UTC).isoformat(),
+            **extra,
+        },
     )
 
 

@@ -21,9 +21,24 @@ FIXTURES: the trip, the precincts, the mocked Pulsit store and the completion he
 are FP-143's, imported rather than rebuilt, so the two stories cannot drift apart on
 what a corroborated handshake looks like. Their provenance note applies here too — no
 position in this module was recorded from real Pulsit hardware.
+
+FIXTURE ALIASING (ruff F811): `corroboration_trip` and `pulsit_store` are imported
+under different Python names below (`_corroboration_trip_fixture`, `_pulsit_store_
+fixture`) even though every test in this file still declares plain `corroboration_trip`
+/`pulsit_store` parameters. Importing them under their OWN names would bind those exact
+identifiers at module scope, and ruff reads every later test parameter of the same name
+as "redefining" that unused import (F811) — this file used to do exactly that and carry
+30 such findings. The two fixtures are registered in test_phase_corroboration.py with an
+explicit `name=` on their decorator (`@pytest.fixture(name="pulsit_store")` etc.), so
+pytest resolves them by that name regardless of which Python identifier they are
+imported as here — aliasing the import is enough to remove the collision without
+changing a single test signature. `override_get_db` needs no alias: it is autouse and
+never appears as a parameter anywhere in this file, so nothing here ever rebinds its
+name.
 """
 
 import uuid
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from httpx import AsyncClient
@@ -38,12 +53,17 @@ from app.orchestration import phase_service
 
 # Imported for their fixture side effects as much as their bodies — `override_get_db`
 # is autouse in its defining module and stays autouse here, which is what points the
-# app's get_db dependency at the test session.
+# app's get_db dependency at the test session. See the module docstring's "FIXTURE
+# ALIASING" note for why corroboration_trip/pulsit_store are imported under different
+# names.
 from tests.integration.test_phase_corroboration import (  # noqa: F401
     _HORSE_DEVICE, _ORIGIN_LAT, _ORIGIN_LNG, _FAR_AWAY_LAT, _FAR_AWAY_LNG,
     _complete_activation, _fake_hedera_receipt, _load_event, _make_artifact,
     _phase_id, _stage,
-    corroboration_trip, override_get_db, pulsit_store,
+    override_get_db,
+)
+from tests.integration.test_phase_corroboration import (  # noqa: F401
+    _corroboration_trip_fixture, _pulsit_store_fixture,
 )
 from tests.conftest import auth_header, make_token
 from app.integrations.pulsit import MockPulsitClient
@@ -189,7 +209,12 @@ async def test_a_handshake_with_no_driver_phone_fix_says_so_rather_than_inventin
     resp = await client.post(
         f"/api/v1/trips/{trip.id}/phases/{phase_event_id}/complete",
         headers=auth_header(token),
-        json={"phase_type": "loading", "idempotency_key": f"idem-{uuid.uuid4()}"},
+        # Task 0A: within skew of the staged fix's default "now" — this test is about
+        # the missing PHONE fix, not about the corroboration timing gate.
+        json={
+            "phase_type": "loading", "idempotency_key": f"idem-{uuid.uuid4()}",
+            "driver_captured_at": datetime.now(UTC).isoformat(),
+        },
     )
 
     assert resp.status_code == 200
@@ -268,6 +293,47 @@ async def test_a_pulsit_outage_raises_nothing(
         side_effect=RuntimeError("Pulsit unreachable"),
     ):
         resp = await _complete_activation(client, trip, driver)
+
+    assert resp.status_code == 200
+    event = await _load_event(db_session, trip, PhaseType.ACTIVATION)
+    assert event.pulsit_geofence_confirmed is None
+    assert await _load_mismatches(db_session, trip) == []
+
+
+async def test_a_stale_capture_time_raises_no_gps_mismatch_even_though_the_fix_is_far_away(
+    client: AsyncClient, db_session, corroboration_trip, pulsit_store,
+):
+    """Task 0A: an untimely fix is 'could not compare', never a manufactured mismatch.
+
+    The tracker really is far away RIGHT NOW, which — if trusted — would read as a
+    clean FALSE verdict and raise (see test_a_false_verdict_raises_exactly_one_gps_
+    mismatch, same coordinates). But the driver's own capture instant is hours old, so
+    the timing cannot be verified, and the honest outcome is silence, not an
+    accusation — this is the offline-replay scenario task 0A exists to close.
+    """
+    trip, driver, _org, _stop = corroboration_trip
+    await _stage(_HORSE_DEVICE, _FAR_AWAY_LAT, _FAR_AWAY_LNG)
+    stale_capture = (datetime.now(UTC) - timedelta(hours=3)).isoformat()
+
+    resp = await _complete_activation(client, trip, driver, driver_captured_at=stale_capture)
+
+    assert resp.status_code == 200
+    event = await _load_event(db_session, trip, PhaseType.ACTIVATION)
+    assert event.pulsit_geofence_confirmed is None
+    assert await _load_mismatches(db_session, trip) == []
+
+
+async def test_a_missing_driver_captured_at_raises_no_gps_mismatch(
+    client: AsyncClient, db_session, corroboration_trip, pulsit_store,
+):
+    """The second route to the same NULL — an older client that never sends
+    driver_captured_at at all gets the identical honest silence as one whose capture
+    time is stale. Never treated as "assume it's live" just because the field is absent.
+    """
+    trip, driver, _org, _stop = corroboration_trip
+    await _stage(_HORSE_DEVICE, _FAR_AWAY_LAT, _FAR_AWAY_LNG)
+
+    resp = await _complete_activation(client, trip, driver, omit_driver_captured_at=True)
 
     assert resp.status_code == 200
     event = await _load_event(db_session, trip, PhaseType.ACTIVATION)

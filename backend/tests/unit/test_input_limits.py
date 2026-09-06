@@ -156,3 +156,21 @@ def test_a_valid_checkpoint_still_passes() -> None:
 
     assert body.checkpoint_type == "manual"
     assert body.note == "fuel stop"
+
+
+def test_checkpoint_driver_captured_at_rejects_a_naive_timestamp() -> None:
+    """Task 0A: a naive value would silently compare as if it were UTC in
+    corroboration_service — rejected outright rather than assumed."""
+    with pytest.raises(ValidationError, match="timezone-aware"):
+        DriverCheckpointCreateBody(
+            checkpoint_type="manual", driver_captured_at="2026-09-06T14:00:00",
+        )
+
+
+def test_checkpoint_driver_captured_at_accepts_a_timezone_aware_timestamp() -> None:
+    body = DriverCheckpointCreateBody(
+        checkpoint_type="manual", driver_captured_at="2026-09-06T14:00:00+00:00",
+    )
+
+    assert body.driver_captured_at is not None
+    assert body.driver_captured_at.tzinfo is not None

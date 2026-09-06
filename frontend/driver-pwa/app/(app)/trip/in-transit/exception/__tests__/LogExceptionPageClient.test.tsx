@@ -19,7 +19,6 @@ const mockRouterPush = vi.fn()
 const mockRouterBack = vi.fn()
 const mockNotify = vi.fn()
 const mockEnqueueException = vi.fn()
-const mockUploadNow = vi.fn()
 const mockUploadArtifact = vi.fn()
 
 vi.mock('next/navigation', () => ({
@@ -36,10 +35,6 @@ vi.mock('@/lib/hooks/useToast', () => ({
 
 vi.mock('@/lib/hooks/useOfflineQueue', () => ({
   useOfflineQueue: () => ({ enqueueException: mockEnqueueException }),
-}))
-
-vi.mock('@/lib/hooks/useArtifactUpload', () => ({
-  useArtifactUpload: () => ({ uploadNow: mockUploadNow }),
 }))
 
 vi.mock('@/lib/api/artifacts', () => ({
@@ -246,9 +241,6 @@ describe('LogExceptionPageClient photo capture (FP-150)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     queueAccepts()
-    // Eager upload at capture does not land by default, so these tests exercise the
-    // submit-time upload. The reuse case is asserted explicitly below.
-    mockUploadNow.mockResolvedValue(null)
   })
 
   it('shows the captured photo back to the driver before they submit', async () => {
@@ -305,25 +297,16 @@ describe('LogExceptionPageClient photo capture (FP-150)', () => {
     })
   })
 
-  it('reuses the id from the upload that started at capture instead of uploading twice', async () => {
-    const logException = vi.fn().mockResolvedValue(undefined)
-    mockUseTrip.mockReturnValue({ trip: { id: 'trip-1' }, logException })
-    mockUploadNow.mockResolvedValue('artifact-eager')
+  it('does not upload the photo until Submit is pressed', async () => {
+    // Task 0B: retaking or abandoning the form must never create server-side evidence —
+    // upload only ever begins at Submit, never at capture.
+    mockUseTrip.mockReturnValue({ trip: { id: 'trip-1' }, logException: vi.fn() })
 
     render(<LogExceptionPageClient />)
     fireEvent.click(screen.getByText('Cargo damage'))
     fireEvent.click(screen.getByText('Photo (optional)'))
-    // Let the eager upload resolve before submitting.
-    await waitFor(() => expect(mockUploadNow).toHaveBeenCalled())
-    fireEvent.click(screen.getByText('Submit exception'))
 
-    await waitFor(() => expect(logException).toHaveBeenCalled())
-    expect(logException).toHaveBeenCalledWith('cargo_damage', {
-      description: '',
-      supporting_artifact_id: 'artifact-eager',
-    })
-    // The bytes are already on the server — uploading them again would duplicate the
-    // artifact and spend a driver's data doing it.
+    expect(await screen.findByAltText('captured photo')).toBeInTheDocument()
     expect(mockUploadArtifact).not.toHaveBeenCalled()
   })
 

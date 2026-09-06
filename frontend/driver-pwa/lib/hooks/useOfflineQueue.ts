@@ -36,6 +36,12 @@ interface PhaseQueueEntry {
   // signal came back would claim the driver completed the phase wherever they happened
   // to reconnect — which is exactly the kind of false evidence this app exists to avoid.
   position: DriverPosition | null
+  // Task 0A: the instant the driver's phone submitted (lib/submission/phase-submitter.ts),
+  // stored WITH the entry for the identical reason `position` above is — a replay hours
+  // later must send the ORIGINAL swipe instant, never the flush-time clock, or the
+  // backend's corroboration skew check would treat a genuinely offline handshake as if
+  // it were live.
+  driverCapturedAt: string
   enqueuedAt: string
 }
 
@@ -145,7 +151,7 @@ async function sendEntry(entry: QueueEntry): Promise<void> {
     // SubmitPhaseResult.phaseStatus; this call only needs to know it didn't throw.
     await submitPhase(
       entry.tripId, entry.phaseEventId, entry.phaseType, entry.evidence,
-      entry.idempotencyKey, entry.position ?? null,
+      entry.idempotencyKey, entry.position ?? null, entry.driverCapturedAt,
     )
   } else if (entry.kind === 'checkpoint') {
     await submitCheckpoint(entry.tripId, entry.evidence)
@@ -154,6 +160,28 @@ async function sendEntry(entry: QueueEntry): Promise<void> {
   } else {
     await sendException(entry)
   }
+}
+
+// Durably records that this entry's photo has already been uploaded — written
+// straight to localStorage (not just held in sendException's local `body`), so a
+// crash or lost response between the upload and the exception POST resumes from the
+// new state instead of redoing an already-completed step. Task 0B: without this, a
+// transient failure on the POST that follows a successful upload would see
+// entry.photoDataUrl still set on the NEXT flush and upload the same image again —
+// one real report ending up with two artifacts.
+function persistUploadedExceptionArtifact(entryId: string, artifactId: string): void {
+  const queue = loadQueue()
+  const updated = queue.map((e) =>
+    e.kind === 'exception' && e.id === entryId
+      ? {
+          ...e,
+          body: { ...e.body, supporting_artifact_id: artifactId },
+          photoDataUrl: undefined,
+          photoCapturedAt: undefined,
+        }
+      : e,
+  )
+  saveQueue(updated)
 }
 
 // Upload-then-raise, mirroring what the exception page does online. Split out because
@@ -172,6 +200,10 @@ async function sendException(entry: ExceptionQueueEntry): Promise<void> {
         capturedAt: entry.photoCapturedAt ?? entry.enqueuedAt,
       })
       body = { ...body, supporting_artifact_id: artifact.id }
+      // Persisted now, before the exception POST below even starts — see
+      // persistUploadedExceptionArtifact's own comment for why this can't wait until
+      // sendException returns.
+      persistUploadedExceptionArtifact(entry.id, artifact.id)
     } catch (err) {
       // A terminal 4xx — oversized, unsupported format, wrong driver — will reject this
       // photo identically on every future flush. Letting it throw would keep the whole
@@ -372,7 +404,7 @@ export function useOfflineQueue() {
   const enqueuePhase = useCallback(
     (
       tripId: string, phaseEventId: string, phaseType: PhaseType, evidence: PhaseEvidence,
-      position: DriverPosition | null,
+      position: DriverPosition | null, driverCapturedAt: string,
     ) => {
       // Generated once, here, and never regenerated — see PhaseQueueEntry.idempotencyKey.
       // Reused as both the queue's own bookkeeping id and the wire idempotency_key so a
@@ -381,7 +413,7 @@ export function useOfflineQueue() {
       const id = crypto.randomUUID()
       const entry: PhaseQueueEntry = {
         kind: 'phase', id, tripId, phaseEventId, phaseType, evidence, idempotencyKey: id,
-        position,
+        position, driverCapturedAt,
         enqueuedAt: new Date().toISOString(),
       }
       const q = [...loadQueue(), entry]
@@ -393,8 +425,16 @@ export function useOfflineQueue() {
 
   const enqueueException = useCallback(
     (tripId: string, body: RaiseExceptionBody, photo?: QueuedExceptionPhoto): EnqueueExceptionResult => {
+      // Generated once, here, and never regenerated — reused as the wire
+      // client_report_id (Task 0B) on every resend of this entry, exactly like
+      // PhaseQueueEntry.idempotencyKey above. Stamped into the body itself (rather
+      // than carried as a sibling field the way idempotencyKey is) because
+      // RaiseExceptionBody already carries every other wire field inline, and
+      // sendException below sends `body` to raiseException as-is.
+      const id = crypto.randomUUID()
       const base = {
-        kind: 'exception' as const, id: crypto.randomUUID(), tripId, body,
+        kind: 'exception' as const, id, tripId,
+        body: { ...body, client_report_id: id },
         enqueuedAt: new Date().toISOString(),
       }
       const entry: ExceptionQueueEntry = photo

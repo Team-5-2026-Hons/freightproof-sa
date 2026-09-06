@@ -42,32 +42,39 @@ Scope fences, so a reader knows what this module deliberately does NOT do:
 ║  honest — see _geofence_verdict_to_column() below.                           ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 
-Offline handshakes and the timestamp gap (decision recorded 2026-09-04):
+Offline handshakes and the timestamp gap (decision recorded 2026-09-04, CLOSED by
+task 0A on 2026-09-06):
 The driver app queues completions offline on the N3 and flushes on reconnect
 (driver-pwa/lib/hooks/useOfflineQueue.ts). A completion queued at 14:00 and
-flushed at 17:00 reaches this module at 17:00, and the phase-complete request body
-carries NO client capture timestamp at all — the queue's own `enqueuedAt` is
-never put on the wire. Pulsit cannot close that gap either: asked at 17:00 it
-returns a fresh 17:00 fix, so the fix's own age does not reveal the delay.
+flushed at 17:00 reaches this module at 17:00. Before task 0A the phase-complete
+request body carried NO client capture timestamp at all, and Pulsit could not close
+that gap either: asked at 17:00 it returns a fresh 17:00 fix, so the fix's own age
+never revealed the delay — the server compared a driver claim from 14:00 against a
+tracker reading from 17:00 as if both described the same instant, manufacturing a
+mismatch (or a match) neither source actually attested to.
 
-The server therefore cannot detect a replayed handshake, and this module does not
-pretend otherwise. What it does instead is refuse to launder the ambiguity:
+Task 0A closes it with `driver_captured_at` — the instant the driver's OWN PHONE
+submitted (schemas/phases.py, schemas/transit.py), carried on the wire and diffed
+against `PulsitFix.fixed_at` by `_within_corroboration_skew` below. Only a fix taken
+within `settings.PULSIT_CORROBORATION_MAX_SKEW_SECONDS` of that instant is trusted:
 
-  * trailer_gps_snapshots.captured_at stores the TRACKER's own reading time
-    (PulsitFix.fixed_at), never now(). A reader comparing it against
-    phase_events.completed_at can see the separation for themselves.
-  * A positioned fix that arrives without its own timestamp is DISCARDED rather
-    than stamped with now(). An invented time on an evidence platform is worse
-    than a missing row.
-  * phase_events.horse_gps_lat/lng have no timestamp column of their own, so they
-    are honestly a fix taken when the SERVER PROCESSED the handshake, not when
-    the driver swiped. On a live submission those are the same instant; on a
-    replayed one they are not.
-
-Closing the gap properly needs an optional client capture timestamp on the wire
-(the pattern LocationPingBody.recorded_at already uses) plus a staleness window.
-That is a shared-contract change spanning FP-70 and the driver app, and was
-deliberately left out of this story rather than half-built here.
+  * `horse_gps_lat/lng` (and the checkpoint's own horse columns) are stored ONLY
+    when the fix is timely. A timing miss leaves them NULL — "could not compare",
+    never a fabricated position.
+  * The geofence verdict is likewise computed only from a timely fix; an untimely
+    one is treated exactly like NO_FIX (see `_geofence_verdict_to_column`), so the
+    existing NULL-is-an-admission contract covers it for free.
+  * `driver_captured_at` absent entirely (a client queued before this field
+    existed) reads as "cannot verify timing" — not as "assume it's live" — so an
+    old client gets the same honest NULL rather than a silently ungated verdict.
+  * `trailer_gps_snapshots.captured_at` is UNCHANGED by this gate: it always stores
+    the TRACKER's own reading time (`PulsitFix.fixed_at`), never now() and never
+    compared against `driver_captured_at`. A trailer snapshot is independent
+    evidence in its own right — a reader comparing it against `completed_at` can
+    still see the separation for themselves, exactly as before task 0A.
+  * `phase_events.horse_gps_lat/lng` still have no timestamp column of their own;
+    that is fine now, because the skew gate means a stored value can only ever be
+    one that was already proven close to `driver_captured_at`.
 
 Where the distance went, for FP-145:
 FP-68's GeofenceVerdict carries distance_metres, and phase_events has no column
@@ -86,11 +93,13 @@ integrations/, never imports from api/.
 
 import logging
 import uuid
+from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.db.models.enums import PhaseType
 from app.db.models.organisations import Precinct
 from app.db.models.phases import PhaseEvent, TrailerGpsSnapshot
@@ -205,6 +214,28 @@ def _geofence_verdict_to_column(
     return verdict.confirmed
 
 
+def _within_corroboration_skew(
+    *, fixed_at: Optional[datetime], driver_captured_at: Optional[datetime],
+) -> bool:
+    """Whether a Pulsit fix and the driver's own capture instant are close enough in
+    time for the fix to stand as corroboration at all (task 0A).
+
+    Both sides must be present and comparable. `driver_captured_at` missing means an
+    older client that predates the field, or a request that genuinely captured no
+    fix; `fixed_at` missing is already filtered upstream by `PulsitFix.has_position`.
+    Either absence resolves to False — "cannot verify timing" — never True, because
+    treating an unknown gap as safe is exactly the fabrication this task exists to
+    close. Both inputs are timezone-aware by the time they reach here (enforced by
+    the Pydantic schema for `driver_captured_at` and by `_parse_position`/`_fix_from_
+    staged` for `fixed_at`), so the subtraction below is never comparing a naive
+    value against an aware one.
+    """
+    if fixed_at is None or driver_captured_at is None:
+        return False
+    skew_seconds = abs((fixed_at - driver_captured_at).total_seconds())
+    return skew_seconds <= settings.PULSIT_CORROBORATION_MAX_SKEW_SECONDS
+
+
 def _snapshot_for_trailer(
     *, phase_event_id: uuid.UUID, trailer_id: uuid.UUID, fix: PulsitFix
 ) -> Optional[TrailerGpsSnapshot]:
@@ -244,13 +275,19 @@ def _snapshot_for_trailer(
 
 
 async def record_phase_corroboration(
-    db: AsyncSession, *, trip: Trip, event: PhaseEvent
+    db: AsyncSession, *, trip: Trip, event: PhaseEvent,
+    driver_captured_at: Optional[datetime] = None,
 ) -> None:
     """Corroborate one phase handshake against Pulsit. NEVER raises.
 
     Called by every advance_* in phase_service.py, immediately after the driver's
     own phone fix is recorded, so the independent reading is taken as close as
     possible to the moment the driver's claim was.
+
+    `driver_captured_at` is the driver's OWN capture instant (task 0A) — passed
+    through from the request payload, never defaulted to now() here. Gates whether
+    the horse position and the geofence verdict below get written at all; see
+    `_within_corroboration_skew` and this module's docstring.
 
     The whole body is wrapped, because the driver is standing at a gate. Pulsit
     being unreachable, a fleet record naming a tracker that does not exist, or a
@@ -299,13 +336,29 @@ async def record_phase_corroboration(
         else:
             trailer_fixes = fixes
 
+        # ── Task 0A: is this fix even close enough in time to trust? ────────────
+        # Checked once, up front, and used to gate BOTH the position write below and
+        # the verdict computation after it — a timing miss must null out both, not
+        # just one of the two things this fix would otherwise support.
+        horse_fix_is_timely = horse_fix is not None and _within_corroboration_skew(
+            fixed_at=horse_fix.fixed_at, driver_captured_at=driver_captured_at,
+        )
+        if horse_fix is not None and horse_fix.has_position and not horse_fix_is_timely:
+            logger.info(
+                "Horse fix for %s is outside the %ss corroboration skew "
+                "(fixed_at=%s driver_captured_at=%s) — leaving horse_gps and the "
+                "geofence verdict as 'could not compare', never a fabricated position",
+                context, settings.PULSIT_CORROBORATION_MAX_SKEW_SECONDS,
+                horse_fix.fixed_at, driver_captured_at,
+            )
+
         # ── FP-193: the horse position ──────────────────────────────────────────
-        if horse_fix is not None and horse_fix.has_position:
+        if horse_fix is not None and horse_fix.has_position and horse_fix_is_timely:
             # Already Decimal from FP-87 — no float round trip on the way into
             # Numeric(10, 7), which is the whole reason PulsitFix parses to Decimal.
             event.horse_gps_lat = horse_fix.lat
             event.horse_gps_lng = horse_fix.lng
-        elif horse_fix is not None:
+        elif horse_fix is not None and not horse_fix.has_position:
             logger.info(
                 "No horse position for %s (status=%s) — horse_gps columns left as they were",
                 context, horse_fix.status.value,
@@ -320,7 +373,13 @@ async def record_phase_corroboration(
             )
         else:
             precinct = await _load_precinct_for_phase(db, event=event)
-            confirmed = _geofence_verdict_to_column(horse_fix, precinct, context=context)
+            # An untimely fix is passed as None rather than the real fix: to
+            # evaluate_geofence, "the fix cannot be trusted for this moment" and "there
+            # was no fix at all" both mean the same thing — could not check — and the
+            # existing NO_FIX branch in _geofence_verdict_to_column already produces the
+            # correct NULL for it without any new reason code.
+            verdict_fix = horse_fix if horse_fix_is_timely else None
+            confirmed = _geofence_verdict_to_column(verdict_fix, precinct, context=context)
             if confirmed is not None:
                 event.pulsit_geofence_confirmed = confirmed
 
@@ -349,7 +408,8 @@ async def record_phase_corroboration(
 
 
 async def record_checkpoint_corroboration(
-    db: AsyncSession, *, trip: Trip, checkpoint: Checkpoint
+    db: AsyncSession, *, trip: Trip, checkpoint: Checkpoint,
+    driver_captured_at: Optional[datetime] = None,
 ) -> None:
     """Corroborate an in-transit checkpoint against Pulsit. NEVER raises.
 
@@ -365,6 +425,11 @@ async def record_checkpoint_corroboration(
     No geofence verdict: a checkpoint happens on the road between precincts, so
     there is no fence to be inside of. Checkpoints have no trailer snapshot table
     either — trailer_gps_snapshots is keyed to a phase_event_id.
+
+    `driver_captured_at` (task 0A) gates the position write exactly as it does in
+    record_phase_corroboration — a checkpoint is offline-queued the same way a phase
+    handshake is, so the same timing-honesty rule applies: see
+    `_within_corroboration_skew` and this module's docstring.
 
     Same fail-open contract as record_phase_corroboration: a driver logging a
     roadside checkpoint must not be blocked by an unreachable tracker API.
@@ -384,6 +449,18 @@ async def record_checkpoint_corroboration(
             logger.info(
                 "No horse position for %s (status=%s) — horse_gps columns left null",
                 context, fix.status.value,
+            )
+            return
+
+        if not _within_corroboration_skew(
+            fixed_at=fix.fixed_at, driver_captured_at=driver_captured_at,
+        ):
+            logger.info(
+                "Horse fix for %s is outside the %ss corroboration skew "
+                "(fixed_at=%s driver_captured_at=%s) — horse_gps columns left null, "
+                "never a fabricated position",
+                context, settings.PULSIT_CORROBORATION_MAX_SKEW_SECONDS,
+                fix.fixed_at, driver_captured_at,
             )
             return
 

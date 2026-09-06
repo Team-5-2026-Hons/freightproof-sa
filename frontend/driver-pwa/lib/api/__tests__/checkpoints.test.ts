@@ -66,6 +66,7 @@ describe('submitCheckpoint (Fix 4: demo-mode gate)', () => {
       checkpoint_type: 'manual',
       driver_phone_lat: EVIDENCE.gpsLat,
       driver_phone_lng: EVIDENCE.gpsLng,
+      driver_captured_at: EVIDENCE.capturedAt,
       selfie_artifact_id: 'selfie-artifact',
       cargo_photo_artifact_id: 'cargo-artifact',
       note: 'All good.',

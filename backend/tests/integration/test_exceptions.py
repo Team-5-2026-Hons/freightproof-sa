@@ -1,13 +1,16 @@
 """Integration tests for POST /trips/{id}/exceptions (driver-raised exceptions)."""
 
 import uuid
+from datetime import UTC, datetime
 
 import pytest_asyncio
 from httpx import AsyncClient
+from sqlalchemy import select
 
 from app.db.models.enums import (
-    IdvsStatus, OrganizationType, PhaseStatus, PhaseType, TripStatus, VehicleType,
+    ArtifactType, IdvsStatus, OrganizationType, PhaseStatus, PhaseType, TripStatus, VehicleType,
 )
+from app.db.models.evidence import EvidenceArtifact
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.phases import PhaseEvent
@@ -18,6 +21,25 @@ from app.db.session import get_db
 from app.main import app
 
 from tests.conftest import auth_header, make_token
+
+_OUTBOX_KEY = "realtime_outbox"
+
+
+def _outbox(db_session) -> list:
+    return db_session.info.get(_OUTBOX_KEY, [])
+
+
+async def _make_artifact(db_session, trip_id):
+    """Insert a real EvidenceArtifact row owned by `trip_id` — mirrors the identical
+    helper in tests/unit/test_phase_service.py."""
+    artifact = EvidenceArtifact(
+        id=uuid.uuid4(), trip_id=trip_id, artifact_type=ArtifactType.PHOTO,
+        s3_key=f"{trip_id}/{uuid.uuid4()}", s3_bucket="evidence-artifacts",
+        file_hash="a" * 64, mime_type="image/jpeg", captured_at=datetime.now(UTC),
+    )
+    db_session.add(artifact)
+    await db_session.flush()
+    return artifact.id
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -349,3 +371,201 @@ async def test_exception_with_a_foreign_phase_event_id_still_records(
     row = await db_session.get(TripException, uuid.UUID(resp.json()["id"]))
     assert row is not None
     assert row.phase_event_id == phases["in_transit"].id
+
+
+# ── Task 0B: evidence ownership ─────────────────────────────────────────────────
+
+
+async def _seed_another_trip(db_session):
+    """A second, unrelated org/trip/driver — standing in for "somebody else's evidence"."""
+    org = Organization(id=uuid.uuid4(), name="Other Org", org_type=OrganizationType.OPERATOR)
+    client_org = Organization(id=uuid.uuid4(), name="Other Client", org_type=OrganizationType.PRINCIPAL)
+    db_session.add_all([org, client_org])
+    await db_session.flush()
+    user = User(id=uuid.uuid4(), organization_id=org.id, email="other-d@test.co.za", full_name="Other D")
+    driver = Driver(
+        id=uuid.uuid4(), organization_id=org.id, full_name="Other Driver",
+        id_number="8001015009099", phone_number="+27821111111", license_number="DRV-OTHER",
+    )
+    horse = Vehicle(
+        id=uuid.uuid4(), organization_id=org.id, vehicle_type=VehicleType.HORSE,
+        registration="XYZ999GP", pulsit_device_id="PUL-OTHER",
+    )
+    origin = Precinct(id=uuid.uuid4(), name="O2", principal_organization_id=client_org.id, latitude="0", longitude="0")
+    dest = Precinct(id=uuid.uuid4(), name="D2", principal_organization_id=client_org.id, latitude="1", longitude="1")
+    db_session.add_all([user, driver, horse, origin, dest])
+    await db_session.flush()
+    trip = Trip(
+        id=uuid.uuid4(), trip_reference="FP-TEST-OTHER", order_number="ORD-OTHER",
+        operator_organization_id=org.id, client_organization_id=client_org.id,
+        driver_id=driver.id, horse_id=horse.id,
+        origin_precinct_id=origin.id, destination_precinct_id=dest.id,
+        status=TripStatus.ACTIVE, idvs_check_status=IdvsStatus.VERIFIED,
+        created_by_user_id=user.id,
+    )
+    db_session.add(trip)
+    await db_session.flush()
+    return trip, driver
+
+
+async def test_supporting_artifact_from_another_trip_is_rejected(
+    client: AsyncClient, db_session, seed_trip,
+):
+    """The FK alone only proves the artifact exists SOMEWHERE — it does not prove it
+    belongs to THIS trip. A photo from a different delivery must never be citable as
+    this trip's evidence."""
+    trip, driver = seed_trip
+    other_trip, _other_driver = await _seed_another_trip(db_session)
+    foreign_artifact_id = await _make_artifact(db_session, other_trip.id)
+    token = make_token(sub=str(driver.id), role="driver")
+
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/exceptions",
+        json={
+            "exception_type": "cargo_damage",
+            "description": "Pallet crushed.",
+            "supporting_artifact_id": str(foreign_artifact_id),
+        },
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 404
+    # No half-written exception, and no dispatcher-facing ping for a rejected claim.
+    rows = await db_session.execute(
+        select(TripException).where(TripException.trip_id == trip.id)
+    )
+    assert rows.all() == []
+    assert _outbox(db_session) == []
+
+
+async def test_supporting_artifact_that_does_not_exist_is_rejected(
+    client: AsyncClient, seed_trip,
+):
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/exceptions",
+        json={
+            "exception_type": "cargo_damage",
+            "description": "Pallet crushed.",
+            "supporting_artifact_id": str(uuid.uuid4()),
+        },
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 404
+
+
+async def test_supporting_artifact_owned_by_this_trip_is_accepted(
+    client: AsyncClient, db_session, seed_trip,
+):
+    trip, driver = seed_trip
+    artifact_id = await _make_artifact(db_session, trip.id)
+    token = make_token(sub=str(driver.id), role="driver")
+
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/exceptions",
+        json={
+            "exception_type": "cargo_damage",
+            "description": "Pallet crushed.",
+            "supporting_artifact_id": str(artifact_id),
+        },
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 201
+    assert resp.json()["supporting_artifact_id"] == str(artifact_id)
+
+
+# ── Task 0B: client_report_id idempotency ───────────────────────────────────────
+
+
+async def test_replaying_the_same_client_report_id_returns_the_original_exception(
+    client: AsyncClient, db_session, seed_trip,
+):
+    """A lost response, or the offline queue retrying the same entry, must not create a
+    second exception for one real-world report — and must not emit a second realtime
+    ping either."""
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+    report_id = str(uuid.uuid4())
+
+    first = await client.post(
+        f"/api/v1/trips/{trip.id}/exceptions",
+        json={
+            "exception_type": "cargo_damage",
+            "description": "Pallet crushed.",
+            "client_report_id": report_id,
+        },
+        headers=auth_header(token),
+    )
+    assert first.status_code == 201
+    _outbox(db_session).clear()
+
+    second = await client.post(
+        f"/api/v1/trips/{trip.id}/exceptions",
+        json={
+            "exception_type": "cargo_damage",
+            "description": "Pallet crushed.",
+            "client_report_id": report_id,
+        },
+        headers=auth_header(token),
+    )
+
+    assert second.status_code == 201
+    assert second.json()["id"] == first.json()["id"]
+    rows = await db_session.execute(
+        select(TripException).where(TripException.trip_id == trip.id)
+    )
+    assert len(rows.all()) == 1
+    assert _outbox(db_session) == []
+
+
+async def test_a_different_client_report_id_creates_a_distinct_exception(
+    client: AsyncClient, db_session, seed_trip,
+):
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+
+    first = await client.post(
+        f"/api/v1/trips/{trip.id}/exceptions",
+        json={
+            "exception_type": "cargo_damage",
+            "description": "First report.",
+            "client_report_id": str(uuid.uuid4()),
+        },
+        headers=auth_header(token),
+    )
+    second = await client.post(
+        f"/api/v1/trips/{trip.id}/exceptions",
+        json={
+            "exception_type": "cargo_damage",
+            "description": "Second, unrelated report.",
+            "client_report_id": str(uuid.uuid4()),
+        },
+        headers=auth_header(token),
+    )
+
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert first.json()["id"] != second.json()["id"]
+    rows = await db_session.execute(
+        select(TripException).where(TripException.trip_id == trip.id)
+    )
+    assert len(rows.all()) == 2
+
+
+async def test_exception_without_a_client_report_id_still_works(client: AsyncClient, seed_trip):
+    """An older installed client omits it entirely — must not 422 or otherwise regress
+    the pre-existing behaviour."""
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/exceptions",
+        json={"exception_type": "cargo_damage", "description": "No report id sent."},
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 201

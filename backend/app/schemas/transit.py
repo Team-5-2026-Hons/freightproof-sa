@@ -4,7 +4,7 @@ from datetime import datetime
 from uuid import UUID
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.db.models.enums import (
     ExceptionResolutionMethod,
@@ -22,6 +22,10 @@ class CheckpointBase(BaseModel):
     checkpoint_type: str
     driver_phone_lat: Optional[float] = None
     driver_phone_lng: Optional[float] = None
+    # Task 0A: mirrors PhaseEventRead.driver_captured_at — the instant the driver's
+    # phone submitted, independent of the server's created_at clock. See
+    # DriverCheckpointCreateBody.driver_captured_at for the full rationale.
+    driver_captured_at: Optional[datetime] = None
     horse_gps_lat: Optional[float] = None
     horse_gps_lng: Optional[float] = None
     selfie_artifact_id: Optional[UUID] = None
@@ -49,10 +53,25 @@ class DriverCheckpointCreateBody(BaseModel):
     driver_phone_lng: Optional[float] = Field(default=None, ge=-180, le=180)
     horse_gps_lat: Optional[float] = Field(default=None, ge=-90, le=90)
     horse_gps_lng: Optional[float] = Field(default=None, ge=-180, le=180)
+    # Task 0A: the instant the driver's own phone submitted this checkpoint. Mirrors
+    # schemas/phases.py's _PhaseCompleteBase.driver_captured_at exactly — a checkpoint
+    # is offline-queued the same way a phase handshake is, and record_checkpoint_
+    # corroboration needs this to tell a live check from a stale replay. Optional for
+    # the same replay-compatibility reason; new builds always send it
+    # (frontend/driver-pwa/lib/api/checkpoints.ts).
+    driver_captured_at: Optional[datetime] = None
     selfie_artifact_id: Optional[UUID] = None
     cargo_photo_artifact_id: Optional[UUID] = None
     note: Optional[FreeText] = None
     is_deviation: bool = False
+
+    @field_validator("driver_captured_at")
+    @classmethod
+    def validate_driver_captured_at_is_timezone_aware(cls, v: Optional[datetime]) -> Optional[datetime]:
+        # A naive value would silently compare as if it were UTC in corroboration_service.
+        if v is not None and v.tzinfo is None:
+            raise ValueError("driver_captured_at must be timezone-aware")
+        return v
 
     @model_validator(mode="after")
     def validate_gps_pairs(self) -> "DriverCheckpointCreateBody":
@@ -149,6 +168,14 @@ class DriverExceptionCreateBody(BaseModel):
     # capture failure must not block the alert itself from sending.
     gps_lat: Optional[float] = Field(default=None, ge=-90, le=90)
     gps_lng: Optional[float] = Field(default=None, ge=-180, le=180)
+    # Request-only idempotency key — not echoed back on TripExceptionRead. The driver
+    # app's offline queue reuses its own entry UUID as this value on every retry of the
+    # same queued submission (frontend/driver-pwa lib/hooks/useOfflineQueue.ts), so a
+    # resend caused by a lost response, or by a retry after the photo uploaded but this
+    # POST itself failed, returns the ORIGINAL exception rather than inserting a second
+    # one for the same real-world report. Optional: an older installed/queued client
+    # omits it and gets no idempotency protection, exactly like phase_event_id above.
+    client_report_id: Optional[UUID] = None
 
     @model_validator(mode="after")
     def validate_gps_pair(self) -> "DriverExceptionCreateBody":

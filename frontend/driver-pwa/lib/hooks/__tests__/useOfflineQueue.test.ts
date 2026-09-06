@@ -43,6 +43,10 @@ const EVIDENCE: ActivationEvidence = {
 // when they swiped, not where they were when signal came back.
 const POSITION: DriverPosition = { lat: -26.09, lng: 28.13, accuracyM: 8 }
 
+// Task 0A: the instant the caller stamped the submission — stored WITH the queue entry
+// for the same reason POSITION above is.
+const DRIVER_CAPTURED_AT = '2026-06-12T10:00:00Z'
+
 const CHECKPOINT_EVIDENCE: CheckpointEvidence = {
   gpsLat: -29.85, gpsLng: 31.02,
   selfieDataUrl: 'data:img/selfie', cargoPhotoDataUrl: 'data:img/cargo',
@@ -57,7 +61,7 @@ describe('useOfflineQueue', () => {
 
   it('enqueuePhase increments queueLength and persists to localStorage', () => {
     const { result } = renderHook(() => useOfflineQueue())
-    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
     expect(result.current.queueLength).toBe(1)
     const stored = JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')
     expect(stored).toHaveLength(1)
@@ -70,7 +74,7 @@ describe('useOfflineQueue', () => {
   // key sent to the server — proving that wiring here, at the point the entry is built.
   it('enqueuePhase stamps the entry id as its own idempotencyKey', () => {
     const { result } = renderHook(() => useOfflineQueue())
-    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
     const stored = JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')
     expect(stored[0].idempotencyKey).toBe(stored[0].id)
     expect(typeof stored[0].idempotencyKey).toBe('string')
@@ -80,7 +84,7 @@ describe('useOfflineQueue', () => {
   it('flush calls submitPhase for each entry and clears the queue', async () => {
     const { submitPhase } = await import('@/lib/api/phases')
     const { result } = renderHook(() => useOfflineQueue())
-    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
     await act(() => result.current.flush())
     expect(submitPhase).toHaveBeenCalledTimes(1)
     expect(result.current.queueLength).toBe(0)
@@ -92,7 +96,7 @@ describe('useOfflineQueue', () => {
     const { submitPhase } = await import('@/lib/api/phases')
     vi.mocked(submitPhase).mockRejectedValueOnce(new ApiError(0, 'timed out'))
     const { result } = renderHook(() => useOfflineQueue())
-    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
 
     await act(() => result.current.flush())
     expect(result.current.queueLength).toBe(1) // transient failure — still queued
@@ -116,7 +120,7 @@ describe('useOfflineQueue', () => {
     const { submitPhase } = await import('@/lib/api/phases')
     vi.mocked(submitPhase).mockResolvedValueOnce({ ok: true, trip: null, phaseStatus: 'completed' })
     const { result } = renderHook(() => useOfflineQueue())
-    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
 
     await act(() => result.current.flush())
 
@@ -139,20 +143,54 @@ describe('useOfflineQueue', () => {
     expect(stored[0].tripId).toBe('trip-1')
   })
 
+  // Task 0B: the entry's own id (generated once, at enqueue time) IS the
+  // client_report_id sent to the server — the exception counterpart to
+  // enqueuePhase's idempotencyKey test above.
+  it('enqueueException stamps the entry id as its own client_report_id', () => {
+    const { result } = renderHook(() => useOfflineQueue())
+    act(() => result.current.enqueueException('trip-1', { exception_type: 'panic_button', description: 'x' }))
+    const stored = JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')
+    expect(stored[0].body.client_report_id).toBe(stored[0].id)
+    expect(typeof stored[0].body.client_report_id).toBe('string')
+  })
+
   it('flush calls raiseException for a queued exception and clears the queue', async () => {
     const { raiseException } = await import('@/lib/api/exceptions')
     const { result } = renderHook(() => useOfflineQueue())
     act(() => result.current.enqueueException('trip-1', { exception_type: 'panic_button', description: 'x' }))
     await act(() => result.current.flush())
-    expect(raiseException).toHaveBeenCalledWith('trip-1', { exception_type: 'panic_button', description: 'x' })
+    expect(raiseException).toHaveBeenCalledWith('trip-1', {
+      exception_type: 'panic_button', description: 'x', client_report_id: expect.any(String),
+    })
     expect(result.current.queueLength).toBe(0)
+  })
+
+  // Task 0B: a lost response (or a retry the driver's app fires while an earlier
+  // attempt is still in flight) must resend the SAME client_report_id, exactly like
+  // enqueuePhase's idempotencyKey — proving the exception path was wired the same way.
+  it('resends the same client_report_id on a retry after a lost response', async () => {
+    const { raiseException } = await import('@/lib/api/exceptions')
+    vi.mocked(raiseException).mockRejectedValueOnce(new ApiError(0, 'timed out'))
+    const { result } = renderHook(() => useOfflineQueue())
+    act(() => result.current.enqueueException('trip-1', { exception_type: 'panic_button', description: 'x' }))
+
+    await act(() => result.current.flush())
+    expect(result.current.queueLength).toBe(1) // transient — still queued
+
+    await act(() => result.current.flush())
+    expect(result.current.queueLength).toBe(0) // second attempt succeeds
+
+    expect(raiseException).toHaveBeenCalledTimes(2)
+    const firstBody = vi.mocked(raiseException).mock.calls[0][1]
+    const secondBody = vi.mocked(raiseException).mock.calls[1][1]
+    expect(firstBody.client_report_id).toBe(secondBody.client_report_id)
   })
 
   it('flush retains a failed entry in the queue and keeps unrelated entries', async () => {
     const { submitPhase } = await import('@/lib/api/phases')
     vi.mocked(submitPhase).mockRejectedValueOnce(new Error('network down'))
     const { result } = renderHook(() => useOfflineQueue())
-    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
     await act(() => result.current.flush())
     expect(result.current.queueLength).toBe(1)
   })
@@ -161,7 +199,7 @@ describe('useOfflineQueue', () => {
     const { submitPhase } = await import('@/lib/api/phases')
     vi.mocked(submitPhase).mockRejectedValueOnce(new ApiError(422, 'invalid evidence'))
     const { result } = renderHook(() => useOfflineQueue())
-    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
     await act(() => result.current.flush())
     expect(result.current.queueLength).toBe(0)
   })
@@ -170,7 +208,7 @@ describe('useOfflineQueue', () => {
     const { submitPhase } = await import('@/lib/api/phases')
     vi.mocked(submitPhase).mockRejectedValueOnce(new ApiError(503, 'service unavailable'))
     const { result } = renderHook(() => useOfflineQueue())
-    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
     await act(() => result.current.flush())
     expect(result.current.queueLength).toBe(1)
   })
@@ -234,7 +272,7 @@ describe('useOfflineQueue', () => {
       // Let the mount-time flush (empty queue, no-op) settle before seeding the queue.
       await act(() => Promise.resolve())
 
-      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
+      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
       expect(result.current.queueLength).toBe(1)
 
       setVisibility('visible')
@@ -252,7 +290,7 @@ describe('useOfflineQueue', () => {
       const { result } = renderHook(() => useOfflineQueue())
       await act(() => Promise.resolve())
 
-      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
+      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
       vi.mocked(submitPhase).mockClear()
 
       setVisibility('hidden')
@@ -275,7 +313,7 @@ describe('useOfflineQueue', () => {
       const { result } = renderHook(() => useOfflineQueue())
       await act(() => Promise.resolve())
 
-      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
+      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
       await act(() => result.current.flush())
 
       expect(result.current.queueLength).toBe(1)
@@ -300,7 +338,7 @@ describe('useOfflineQueue', () => {
       const { result } = renderHook(() => useOfflineQueue())
       await act(() => Promise.resolve())
 
-      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
+      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
 
       // Start a flush that hangs on the phase send, then enqueue a second entry
       // mid-flight — exactly what happens when a driver logs an exception while a
@@ -337,7 +375,7 @@ describe('useOfflineQueue', () => {
       const { result } = renderHook(() => useOfflineQueue())
       await act(() => Promise.resolve())
 
-      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
+      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
 
       // Kick off a flush that will hang on the in-flight submitPhase call, then fire a
       // second flush before the first resolves — the guard should make the second call a
@@ -376,7 +414,7 @@ describe('useOfflineQueue', () => {
       const second = renderHook(() => useOfflineQueue())
       await act(() => Promise.resolve())
 
-      act(() => first.result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
+      act(() => first.result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
 
       // Instance A's flush hangs on the in-flight send; instance B's flush must be a
       // pure no-op against the shared module-scope mutex, not a concurrent re-send.
@@ -402,7 +440,7 @@ describe('useOfflineQueue', () => {
       const second = renderHook(() => useOfflineQueue())
       await act(() => Promise.resolve())
 
-      act(() => first.result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
+      act(() => first.result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
 
       expect(second.result.current.queueLength).toBe(1)
     })
@@ -417,7 +455,7 @@ describe('useOfflineQueue', () => {
       const { result } = renderHook(() => useOfflineQueue())
       await act(() => Promise.resolve())
 
-      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
+      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
       await act(() => result.current.flush())
 
       expect(result.current.queueLength).toBe(0)
@@ -434,7 +472,7 @@ describe('useOfflineQueue', () => {
       const { result } = renderHook(() => useOfflineQueue())
       await act(() => Promise.resolve())
 
-      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
+      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
       await act(() => result.current.flush())
 
       // Dropped from the queue (correct — the evidence landed on a prior attempt),
@@ -459,8 +497,8 @@ describe('useOfflineQueue', () => {
       await act(() => Promise.resolve())
 
       act(() => {
-        result.current.enqueuePhase('trip-1', 'phase-event-in-transit', 'in_transit', EVIDENCE, POSITION)
-        result.current.enqueuePhase('trip-1', 'phase-event-unloading', 'unloading', EVIDENCE, POSITION)
+        result.current.enqueuePhase('trip-1', 'phase-event-in-transit', 'in_transit', EVIDENCE, POSITION, DRIVER_CAPTURED_AT)
+        result.current.enqueuePhase('trip-1', 'phase-event-unloading', 'unloading', EVIDENCE, POSITION, DRIVER_CAPTURED_AT)
       })
 
       await act(() => result.current.flush())
@@ -481,8 +519,8 @@ describe('useOfflineQueue', () => {
       await act(() => Promise.resolve())
 
       act(() => {
-        result.current.enqueuePhase('trip-1', 'phase-event-in-transit', 'in_transit', EVIDENCE, POSITION)
-        result.current.enqueuePhase('trip-2', 'phase-event-unloading', 'unloading', EVIDENCE, POSITION)
+        result.current.enqueuePhase('trip-1', 'phase-event-in-transit', 'in_transit', EVIDENCE, POSITION, DRIVER_CAPTURED_AT)
+        result.current.enqueuePhase('trip-2', 'phase-event-unloading', 'unloading', EVIDENCE, POSITION, DRIVER_CAPTURED_AT)
       })
 
       await act(() => result.current.flush())
@@ -503,7 +541,7 @@ describe('useOfflineQueue', () => {
       await act(() => Promise.resolve())
 
       act(() => {
-        result.current.enqueuePhase('trip-1', 'phase-event-in-transit', 'in_transit', EVIDENCE, POSITION)
+        result.current.enqueuePhase('trip-1', 'phase-event-in-transit', 'in_transit', EVIDENCE, POSITION, DRIVER_CAPTURED_AT)
         result.current.enqueueException('trip-1', { exception_type: 'panic_button', description: 'x' })
       })
 
@@ -589,6 +627,7 @@ describe('queued exception photos (FP-150)', () => {
     })
     expect(raiseException).toHaveBeenCalledWith('trip-1', {
       ...BODY,
+      client_report_id: expect.any(String),
       supporting_artifact_id: 'artifact-1',
     })
     expect(result.current.queueLength).toBe(0)
@@ -605,7 +644,9 @@ describe('queued exception photos (FP-150)', () => {
 
     // The photo will be refused identically on every replay. Losing the driver's written
     // account along with it would be the worse failure, so the report goes unillustrated.
-    expect(raiseException).toHaveBeenCalledWith('trip-1', BODY)
+    expect(raiseException).toHaveBeenCalledWith('trip-1', {
+      ...BODY, client_report_id: expect.any(String),
+    })
     expect(result.current.queueLength).toBe(0)
   })
 
@@ -623,5 +664,37 @@ describe('queued exception photos (FP-150)', () => {
     await waitFor(() => expect(result.current.queueLength).toBe(1))
     const stored = JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')
     expect(stored[0].photoDataUrl).toBe(PHOTO.dataUrl)
+  })
+
+  // Task 0B: the queue's own two-step send (upload, then raise) made resumable across
+  // flushes — a lost/failed response after the photo already landed must not re-upload
+  // it, and must still reuse the same client_report_id so the backend's own idempotency
+  // recognises the retry as the same report.
+  it('does not re-upload the photo on a retry after the exception POST fails transiently post-upload', async () => {
+    const { uploadArtifact } = await import('@/lib/api/artifacts')
+    const { raiseException } = await import('@/lib/api/exceptions')
+    vi.mocked(raiseException).mockRejectedValueOnce(new ApiError(0, 'timed out'))
+    const { result } = renderHook(() => useOfflineQueue())
+    act(() => { result.current.enqueueException('trip-1', BODY, PHOTO) })
+
+    await act(() => result.current.flush())
+
+    expect(result.current.queueLength).toBe(1) // the POST failed transiently — still queued
+    expect(uploadArtifact).toHaveBeenCalledTimes(1)
+    // The upload's result must already be durably persisted: the next flush must not
+    // see a data URL any more, or it would upload the same image a second time.
+    const midway = JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')
+    expect(midway[0].photoDataUrl).toBeUndefined()
+    expect(midway[0].body.supporting_artifact_id).toBe('artifact-1')
+
+    await act(() => result.current.flush())
+
+    expect(result.current.queueLength).toBe(0)
+    expect(uploadArtifact).toHaveBeenCalledTimes(1) // never re-uploaded
+    expect(raiseException).toHaveBeenCalledTimes(2)
+    const firstCall = vi.mocked(raiseException).mock.calls[0][1]
+    const secondCall = vi.mocked(raiseException).mock.calls[1][1]
+    expect(firstCall.client_report_id).toBe(secondCall.client_report_id)
+    expect(secondCall.supporting_artifact_id).toBe('artifact-1')
   })
 })

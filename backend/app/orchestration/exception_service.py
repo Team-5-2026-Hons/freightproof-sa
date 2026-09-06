@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ExceptionAlreadyResolvedError, ResourceNotFoundError
@@ -16,9 +17,11 @@ from app.db.models.enums import (
     ExceptionSource,
     ExceptionType,
 )
+from app.db.models.evidence import EvidenceArtifact
 from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Trip
 from app.db.models.transit import TripException
+from app.orchestration.integrity import is_unique_violation, violated_constraint
 from app.orchestration.phase_service import current_phase_event
 from app.schemas.transit import TripExceptionRead
 
@@ -26,6 +29,11 @@ logger = logging.getLogger(__name__)
 
 # Mirrors TripContext.tsx's criticalTypes set on the frontend — keep these two in sync.
 _CRITICAL_TYPES = {ExceptionType.PANIC_BUTTON, ExceptionType.SEAL_BROKEN_IN_TRANSIT, ExceptionType.SEAL_MISMATCH}
+
+# Name of the partial unique index on (trip_id, client_report_id) — migration
+# ciaran_exc_idempotency. Matched against violated_constraint() below so that some
+# unrelated unique-violation on this table is never misread as a replay.
+_CLIENT_REPORT_ID_INDEX = "uq_exceptions_trip_client_report_id"
 
 
 async def _resolve_phase_context(
@@ -64,11 +72,24 @@ async def _resolve_phase_context(
     return await current_phase_event(db, trip_id)
 
 
+async def _find_by_client_report_id(
+    db: AsyncSession, *, trip_id: uuid.UUID, client_report_id: uuid.UUID,
+) -> TripException | None:
+    result = await db.execute(
+        select(TripException).where(
+            TripException.trip_id == trip_id,
+            TripException.client_report_id == client_report_id,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
 async def raise_exception(
     db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID,
     exception_type: ExceptionType, description: str, supporting_artifact_id: uuid.UUID | None,
     phase_event_id: uuid.UUID | None = None,
     gps_lat: Decimal | None = None, gps_lng: Decimal | None = None,
+    client_report_id: uuid.UUID | None = None,
 ) -> TripExceptionRead:
     """Raises ResourceNotFoundError if the trip doesn't exist, PermissionError if
     driver_id isn't the trip's assigned driver (caller maps PermissionError to 403).
@@ -79,13 +100,49 @@ async def raise_exception(
 
     gps_lat/gps_lng are the driver-phone fix captured by the panic page (spec: "Your
     GPS location will be included") — both-or-neither is already enforced by
-    DriverExceptionCreateBody's validator before this is called, so no re-check here."""
+    DriverExceptionCreateBody's validator before this is called, so no re-check here.
+
+    client_report_id is the driver app's own stable id for this exact report (its
+    offline queue's entry UUID) — see TripException.client_report_id. Replaying it on
+    this trip returns the existing row untouched: no second insert, no second realtime
+    event. Raises no error of its own; a foreign or malformed value simply behaves as
+    if none were sent."""
     result = await db.execute(select(Trip).where(Trip.id == trip_id))
     trip = result.scalar_one_or_none()
     if trip is None:
         raise ResourceNotFoundError("Trip", str(trip_id))
     if trip.driver_id != driver_id:
         raise PermissionError("You are not the assigned driver on this trip.")
+
+    # Evidence ownership, checked before anything is written: the FK alone only proves
+    # the artifact exists SOMEWHERE, not that it belongs to THIS trip. Without this, a
+    # driver (or a replayed/forged request) could cite another trip's photo — a seal
+    # shot from a different delivery — as if it were this trip's own evidence, and it
+    # would hash into this trip's record as though genuine. Raises before any
+    # TripException row is built or any realtime event is queued, so a rejected claim
+    # leaves no trace at all rather than a half-written exception.
+    if supporting_artifact_id is not None:
+        artifact_result = await db.execute(
+            select(EvidenceArtifact.id).where(
+                EvidenceArtifact.id == supporting_artifact_id,
+                EvidenceArtifact.trip_id == trip_id,
+            )
+        )
+        if artifact_result.scalar_one_or_none() is None:
+            raise ResourceNotFoundError("EvidenceArtifact", str(supporting_artifact_id))
+
+    # Idempotent replay, checked before the row is even built: a lost response, or a
+    # retry the offline queue reuses the same client_report_id for, must return the
+    # ORIGINAL exception rather than raise a second one for the same real-world report.
+    # This pre-check is the common case (the earlier attempt already committed and this
+    # process can see it); the race where two attempts land in the same instant is
+    # handled below, after the insert, by the partial unique index.
+    if client_report_id is not None:
+        existing = await _find_by_client_report_id(
+            db, trip_id=trip_id, client_report_id=client_report_id,
+        )
+        if existing is not None:
+            return TripExceptionRead.model_validate(existing)
 
     phase_event = await _resolve_phase_context(
         db, trip_id=trip_id, claimed_phase_event_id=phase_event_id,
@@ -115,11 +172,56 @@ async def raise_exception(
         severity=severity,
         description=description,
         supporting_artifact_id=supporting_artifact_id,
+        client_report_id=client_report_id,
         gps_lat=gps_lat,
         gps_lng=gps_lng,
     )
-    db.add(exc)
-    await db.flush()
+
+    if client_report_id is None:
+        db.add(exc)
+        await db.flush()
+    else:
+        # The pre-check above closes the common case, but two replays of the same
+        # queued entry (a driver's app retrying while an earlier attempt's response is
+        # still in flight) can both pass it before either has inserted. The partial
+        # unique index on (trip_id, client_report_id) lets exactly one of those two
+        # inserts through; this savepoint is what lets the LOSING request recover
+        # instead of dying with it.
+        #
+        # A bare `except IntegrityError` here would be wrong: Postgres aborts the
+        # whole transaction the moment the flush fails, so the SELECT this branch
+        # needs to run next (to find and return the winner) would itself fail with
+        # "current transaction is aborted" — turning a race this code means to
+        # tolerate into a 500. `db.begin_nested()` opens a SAVEPOINT around just the
+        # insert, so only that savepoint rolls back on conflict and the outer
+        # transaction — and this request's earlier reads, and its caller's eventual
+        # commit — remain perfectly usable.
+        try:
+            async with db.begin_nested():
+                db.add(exc)
+                await db.flush()
+        except IntegrityError as integrity_exc:
+            if (
+                not is_unique_violation(integrity_exc)
+                or violated_constraint(integrity_exc) != _CLIENT_REPORT_ID_INDEX
+            ):
+                raise
+            winner = await _find_by_client_report_id(
+                db, trip_id=trip_id, client_report_id=client_report_id,
+            )
+            if winner is None:
+                # The index fired on this exact (trip_id, client_report_id) pair, so a
+                # row satisfying it must exist — unless the winning transaction rolled
+                # back after committing the index entry but before this SELECT ran,
+                # which the index's own guarantees make impossible. Re-raise rather
+                # than silently return nothing to a caller expecting a created row.
+                raise
+            logger.info(
+                "Exception replay lost the insert race, returning the winner: "
+                "trip=%s client_report_id=%s", trip_id, client_report_id,
+            )
+            return TripExceptionRead.model_validate(winner)
+
     await db.refresh(exc)
 
     # Notify dispatchers watching this trip so the exception surfaces live (published on

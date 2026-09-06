@@ -226,6 +226,9 @@ export default function InTransitPageClient() {
     }
 
     const phaseEventId = arrivalPhase.phase_event_id
+    // Task 0A: the same "swipe instant" evidence.capturedAt below already stamps — reused
+    // here rather than taken a second time, so both fields describe the identical moment.
+    const driverCapturedAt = new Date().toISOString()
 
     // Return value deliberately ignored: `false` means a submission for this row is
     // already running, and the right response is still to navigate — the attestation is
@@ -234,8 +237,9 @@ export default function InTransitPageClient() {
       tripId,
       phaseEventId,
       phaseType: 'in_transit',
-      evidence: { capturedAt: new Date().toISOString() },
+      evidence: { capturedAt: driverCapturedAt },
       idempotencyKey: crypto.randomUUID(),
+      driverCapturedAt,
       // Un-awaited: a cold GPS fix can take ten seconds and must never sit between the
       // swipe and the transition. The submitter awaits it internally, so the fix still
       // travels WITH the evidence, including into the offline queue.

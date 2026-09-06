@@ -894,26 +894,36 @@ async def _reject_if_an_earlier_trip_is_due(
 
 
 def _record_driver_position(event: PhaseEvent, payload: PhaseCompleteRequest) -> None:
-    """Stamp the driver's phone fix onto the phase event, when the app sent one.
+    """Stamp the driver's phone fix and capture instant onto the phase event.
 
     Called by every advance_*, not just activation: the PWA no longer has manual
     "Capture GPS Location" steps, it takes a fix silently as the driver swipes to
     confirm, so every phase event can now say where it was completed.
 
-    Only writes when a fix is present. A None must never overwrite a position already
+    Only writes when a value is present. A None must never overwrite something already
     stored by an earlier attempt — a replayed offline submission whose original capture
-    succeeded would otherwise erase it on retry.
+    succeeded would otherwise erase it on retry. The GPS pair and driver_captured_at
+    (task 0A) are gated independently of each other: a phase can carry a capture time
+    with no GPS fix (a denied permission) or an older client's GPS fix with no capture
+    time at all, and neither absence should suppress the other.
 
     POPIA: these columns stay in Postgres. Every canonical payload builder in this
     module is an explicit whitelist, so nothing written here can reach a Hedera hash.
     """
-    if payload.driver_phone_lat is None or payload.driver_phone_lng is None:
-        return
-    # str() before Decimal: handing a float straight to a Numeric(10, 7) column carries
-    # the float's binary rounding error into fixed point (-26.0942 stores as
-    # -26.0941999...). The string form is the coordinate the phone actually reported.
-    event.driver_phone_lat = Decimal(str(payload.driver_phone_lat))
-    event.driver_phone_lng = Decimal(str(payload.driver_phone_lng))
+    if payload.driver_phone_lat is not None and payload.driver_phone_lng is not None:
+        # str() before Decimal: handing a float straight to a Numeric(10, 7) column
+        # carries the float's binary rounding error into fixed point (-26.0942 stores
+        # as -26.0941999...). The string form is the coordinate the phone actually
+        # reported.
+        event.driver_phone_lat = Decimal(str(payload.driver_phone_lat))
+        event.driver_phone_lng = Decimal(str(payload.driver_phone_lng))
+
+    # Task 0A: never substituted with completed_at or datetime.now(UTC) when absent —
+    # an invented capture instant would defeat the entire point of corroboration_
+    # service's skew check, which exists specifically to distrust a value this code
+    # made up.
+    if payload.driver_captured_at is not None:
+        event.driver_captured_at = payload.driver_captured_at
 
 
 async def advance_activation(
@@ -943,7 +953,9 @@ async def advance_activation(
     # and a Pulsit outage leaves the columns null ("could not check") rather than
     # failing the handshake. See orchestration/corroboration_service.py.
     _record_driver_position(event, payload)
-    await corroboration_service.record_phase_corroboration(db, trip=trip, event=event)
+    await corroboration_service.record_phase_corroboration(
+        db, trip=trip, event=event, driver_captured_at=payload.driver_captured_at,
+    )
     event.status = PhaseStatus.COMPLETED
 
     # First phase off CREATED. LEGACY per-handshake TripStatus values are gone
@@ -988,7 +1000,9 @@ async def advance_loading(
     trip, event = gated
 
     _record_driver_position(event, payload)
-    await corroboration_service.record_phase_corroboration(db, trip=trip, event=event)
+    await corroboration_service.record_phase_corroboration(
+        db, trip=trip, event=event, driver_captured_at=payload.driver_captured_at,
+    )
 
     # Optional evidence: a warehouse that has already gone paperless has no linehaul
     # sheet to hand the driver, and this must never block completion (schema docstring).
@@ -1172,7 +1186,9 @@ async def advance_departure(
     trip, event = gated
 
     _record_driver_position(event, payload)
-    await corroboration_service.record_phase_corroboration(db, trip=trip, event=event)
+    await corroboration_service.record_phase_corroboration(
+        db, trip=trip, event=event, driver_captured_at=payload.driver_captured_at,
+    )
 
     # Before any evidence is written: every photo cited must be this trip's own. The
     # waybill id is normally None now (its step was removed 2026-08-10 — see
@@ -1299,7 +1315,9 @@ async def advance_in_transit(
     trip, event = gated
 
     _record_driver_position(event, payload)
-    await corroboration_service.record_phase_corroboration(db, trip=trip, event=event)
+    await corroboration_service.record_phase_corroboration(
+        db, trip=trip, event=event, driver_captured_at=payload.driver_captured_at,
+    )
     event.status = PhaseStatus.COMPLETED
 
     return await _finish_phase(db, trip=trip, event=event, idempotency_key=payload.idempotency_key)
@@ -1318,7 +1336,9 @@ async def advance_unloading(
     trip, event = gated
 
     _record_driver_position(event, payload)
-    await corroboration_service.record_phase_corroboration(db, trip=trip, event=event)
+    await corroboration_service.record_phase_corroboration(
+        db, trip=trip, event=event, driver_captured_at=payload.driver_captured_at,
+    )
 
     # T4: this LEG's departure (strictly before this row), not "the trip's" —
     # a multi-stop trip can have several DEPARTURE rows, and a plain
@@ -1487,7 +1507,9 @@ async def advance_confirmation(
     trip, event = gated
 
     _record_driver_position(event, payload)
-    await corroboration_service.record_phase_corroboration(db, trip=trip, event=event)
+    await corroboration_service.record_phase_corroboration(
+        db, trip=trip, event=event, driver_captured_at=payload.driver_captured_at,
+    )
 
     await _assert_artifacts_belong_to_trip(
         db, trip_id=trip_id,

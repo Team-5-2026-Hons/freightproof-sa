@@ -65,6 +65,7 @@ async def raise_exception_endpoint(
             supporting_artifact_id=payload.supporting_artifact_id,
             phase_event_id=payload.phase_event_id,
             gps_lat=gps_lat, gps_lng=gps_lng,
+            client_report_id=payload.client_report_id,
         )
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
