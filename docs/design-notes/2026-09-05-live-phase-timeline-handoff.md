@@ -5,6 +5,9 @@
 > that protects this codebase lives in conversation, not in code, and a session that starts
 > cold will delete things it should not. Read §5 before touching anything.
 > Every claim carries the command that re-checks it. Line numbers move — match on content.
+> **Implementation authority:**
+> [2026-09-02-step-event-ledger-implementation-plan.md](2026-09-02-step-event-ledger-implementation-plan.md),
+> incorporating the 2026-09-05 correction review on 2026-09-06.
 
 ## 0 · What is being built
 
@@ -30,9 +33,10 @@ were moved onto it on 2026-09-04 (`76afa19`). This adds evidence-capture acts be
    rail ships.
 5. `graphify-out/GRAPH_REPORT.md` before any cross-file question. Do not grep the repo first.
 
-## 2 · Where the code stands
+## 2 · Where the code stood at handoff
 
-Seven commits ahead of `origin/dev` on branch `Ciaran`, tree clean, all suites green:
+Snapshot from 2026-09-05: seven commits ahead of `origin/dev` on branch `Ciaran`, tree
+clean, all suites green. Re-run §6 rather than treating these counts as current:
 
 ```
 c9b15e7  docs: design note + alembic autogenerate issue
@@ -56,18 +60,18 @@ a1037d8  feat(orchestration): live events from system exceptions (FP-147)
   trigger a refetch must publish at `INFO`**, or it raises a sticky red alarm on every
   dispatcher's screen. See D-11's amendment in the ledger plan.
 
-## 3 · The call to make first: cheap path or full path
+## 3 · The recorded call: bounded rail first, full ledger second
 
-There are two ways to build this and they differ by an order of magnitude. **Decide before
-writing code.**
+There are two ways to build this and they differ by an order of magnitude. The authoritative
+plan now decides the release boundary: Path A in Iteration 3, Path B in Iteration 4.
 
-### Path A — capture-time rail (no table, no migration, no `phase_service.py` edit)
+### Path A — attributed capture-event rail (no `phase_steps` table)
 
-Surface `evidence_artifacts.captured_at` as act rows under each phase card. This is S0.3 in
-the ledger plan.
+Surface evidence-producing acts under each phase card. This is S0.3–S0.4 in the ledger plan
+and is the approved Iteration 3 slice.
 
-**Corrected finding, 2026-09-05.** The plan says `captured_at` is *"written today and
-rendered nowhere."* That is wrong — it is already rendered:
+`captured_at` and `created_at` already flow to the dispatcher, but only inside artifact
+details behind a chevron:
 
 ```bash
 grep -rn "captured_at" frontend/dispatcher frontend/shared/lib/types/evidence.ts \
@@ -79,11 +83,34 @@ grep -rn "captured_at" frontend/dispatcher frontend/shared/lib/types/evidence.ts
 | `db/models/evidence.py:46` | `nullable=False` — always populated |
 | `api/v1/endpoints/artifacts.py:37` | collected on upload as a form field |
 | `orchestration/artifact_service.py:94` | **already ordered by it** |
-| `schemas/evidence.py:21` → `types/evidence.ts:17` | already on the wire |
+| `schemas/evidence.py:21,42` → `types/evidence.ts` | client capture and server receipt are already on the wire |
 | `EvidencePhoto.tsx:28`, `EvidenceDocument.tsx:29` | rendered — but *inside* each artifact, behind a chevron |
 
-So Path A is **re-presentation of data already flowing**, not new plumbing. No backend
-change at all. That makes it materially cheaper than the plan implies.
+Use `captured_at` as the event time and show `created_at` as “received” when it differs. That
+distinction makes a delayed offline upload visible instead of pretending client capture and
+server receipt happened together.
+
+Re-presentation alone works only after phase completion, when phase-row artifact FKs exist.
+For the live window, add nullable `phase_event_id` and `step_slug` to
+`evidence_artifacts`, populate both from the five evidence-producing driver steps, validate
+them on upload, enforce their all-or-neither shape with a database check, and refetch the
+separate artifacts endpoint when an INFO upload event arrives. This is a small migration and
+backend change, but still far smaller than Path B.
+
+The completion path must also validate attribution. Extend the current same-trip artifact
+guard so an attributed artifact matches the phase being completed and the expected slug for
+the completion field. Continue accepting unattributed artifacts from older queued clients;
+reject only attributed rows that claim the wrong phase or step. Retakes remain append-only,
+and the artifact ID supplied at completion is the copy of record.
+
+For upload validation, “active” means the trip's current eligible unresolved phase with
+status `PENDING` or `IN_PROGRESS`; do not require `IN_PROGRESS` alone, because current code
+does not set it.
+
+The five current producers are loading linehaul, departure seal, unloading intact seal,
+confirmation POD photo and confirmation POD signature. There is no current live departure
+waybill-photo producer, although an older queued departure may still upload one through the
+legacy compatibility path.
 
 ### Path B — the step-event ledger (Stages 1 → 2 → 4)
 
@@ -97,25 +124,25 @@ Stage 3** — the Merkle/anchoring work is not on this path.
 — "trip adopted", "activation attested" — has no timestamp source without the ledger. If the
 requirement is *every* step timestamped, Path A cannot deliver it and Path B is the answer.
 
-**Recommendation: Path A first, then re-decide.** It is hours rather than days, it delivers
-most of the visible win, and it answers the question that decides whether Path B's rail is
-even viable — the ledger plan's own Stage 4 criterion is *"an 11-phase cross-dock plan
-rendered at ~55 acts in a 420 px column, legible."* Build it on `app/dev/design/page.tsx`
-first with that density case, per §9.3. Find out whether the always-visible rule survives
-**before** building a table to feed it.
+**Decision: Path A in Iteration 3; Path B in Iteration 4.** Path A delivers the visible live
+slice and answers the density question without introducing the full ledger table. Build it
+on `app/dev/design/page.tsx` first with the 11-phase case, then the real page. Describe it as
+the **capture-event rail**, not “every step live.”
 
 ## 4 · Suggested order
 
 ```
 A → B          emit invariant, then kind-filtered subscription
-               (see 2026-09-04-exception-queue-scaling.md; §9.4's precondition
-                for any live rail — A GATES B, do not reorder)
-S0.3           capture-time rail on dev/design first, then the real page   ← Path A
-S0.4           artifact-upload realtime kind, so the rail fills live
-─────────────  re-decide here, with the density question answered
-FP-167         phase_service.py split (Stage 2's preparation)
-D-8            how a derived row reads — decide BEFORE writing Stage 2
+               (see 2026-09-04-exception-queue-scaling.md)
+S0.3           hand-written attribution migration + typed five-producer catalogue
+S0.3           upload validation + completion-time attribution validation
+S0.3           capture-event rail on dev/design first, then the real page
+S0.4           INFO upload event + kind-filtered artifact refetch
+─────────────  Iteration 3 boundary: density case proven; D-8 decided
+FP-167         phase_service.py split (Stage 2 preparation)
 Stage 1 → 2 → 4                                                            ← Path B
+D-9 + D-12 → Stage 3   versioned payload + corrected pre-anchor materialisation
+Stage 5        only after queue replay and prerequisite failures are distinguishable
 ```
 
 ## 5 · Traps — read this before deleting anything
@@ -127,7 +154,7 @@ Stage 1 → 2 → 4                                                            �
 | Thing | Why it stays |
 |---|---|
 | `guard_verified_seal`, `seal_number_confirmed` (`schemas/phases.py`, `phase_service.py`) | No client sends them; the driver app dropped them 2026-08-05. **The offline queue treats a 4xx as terminal and DISCARDS the entry**, so making them required or deleting them permanently strands queued departures carrying valid evidence. The `Optional[bool]` tri-state is load-bearing: `None` = "not collected" and is the normal case; a falsy check stamps a CRITICAL `seal_mismatch` on every trip. Four tests hold the line at `test_phase_service.py:705-790`. Reasoning is at `driver-pwa/lib/api/phases.ts:50`. |
-| `waybill_photo_artifact_id` | Same offline-replay reasoning. |
+| `waybill_photo_artifact_id` | No current live step captures it, but an older queued departure may still upload and attach it. Keep the compatibility path. |
 | The `enqueue_event` in the dead seal-mismatch branch of `advance_departure` | Deliberately emitted, deliberately untested. The comment explains why. Verified accurate 2026-09-04. |
 | `pulsit_geofence_confirmed`, `horse_gps_lat/lng`, `Parcel.pp_scan_out_at/pp_scan_in_at`, `GPS_TOLERANCE_METRES`, `sla_configs` | Real columns nothing writes. Tracked on **FP-143, FP-68, FP-159** — other people's tickets. Out of scope. |
 
@@ -176,6 +203,16 @@ On 2026-09-04 a `grep` for `mockExceptions` / `mocks/exceptions` reported zero i
 It missed `mocks/index.ts`, which re-exported it as `export * from './exceptions'` —
 matching neither pattern. `tsc --noEmit` caught it. Use the compiler.
 
+### 5.6 · Upload attribution alone does not protect phase completion
+
+`_assert_artifacts_belong_to_trip` currently proves only that every cited artifact belongs to
+the trip. After Path A adds attribution, completion must also check the expected
+`(phase_event_id, step_slug)` for each evidence field. Without that second guard, a departure
+seal image can be supplied as POD evidence on the same trip and still pass ownership.
+
+Keep the compatibility branch explicit: an unattributed artifact may come from an older
+queued client and remains valid; an attributed artifact must match. Test both branches.
+
 ## 6 · Baseline — establish before changing anything
 
 ```bash
@@ -210,6 +247,9 @@ If a stale `.next` produces a runtime error like `undefined is not an object (ev
 - **D-10 · Are exceptions act rows?** ✅ Decided yes, shipped `76afa19`.
 - **D-11 · Where does severity gating live?** ✅ Decided, **not as originally recommended** —
   see the amendment in the ledger plan §8.
+- **D-12 · Where are anchored-phase children materialised?** Path B only. Departure and
+  confirmation anchor before `_finish_phase`, so Stage 3 needs the pre-anchor/idempotent
+  materialisation decision recorded in the authoritative plan.
 
 ## 8 · Shared files — coordinate before changing
 
@@ -221,9 +261,14 @@ For this work specifically:
 | File | Path | Note |
 |---|---|---|
 | `core/realtime.py` | S0.4 | Three tickets, one file. Coordinate or serialise |
-| `shared/lib/types/phase.ts` | S0.3 / Stage 4 | Both frontends |
+| `db/models/evidence.py`, `schemas/evidence.py`, `shared/lib/types/evidence.ts` | S0.3 | New nullable attribution crosses backend and both frontends |
+| `api/v1/endpoints/artifacts.py`, `orchestration/artifact_service.py` | S0.3–S0.4 | Validated attributed upload and INFO event |
+| `core/phase_meta.py` | S0.3 / Stage 1 | Evidence-producer catalogue beside, not inside, the screen recipe |
+| `dispatcher/lib/realtime/useLiveResource.ts`, `hooks/useTripArtifacts.ts` | S0.4 | Kind-filtered refetch of the artifact endpoint |
+| `shared/lib/types/phase.ts` | S0.3 / Stage 4 | Both frontends, only if a rail row type is shared |
 | `db/models/enums.py`, `__init__.py`, `migrations/` | Stage 1 | Migration coordination |
-| `orchestration/phase_service.py` | Stage 2 | Hot on three branches — FP-167 first if possible |
+| `migrations/versions/` | S0.3 | Hand-write the artifact-column migration and coordinate heads |
+| `orchestration/phase_service.py` | S0.3 / Stage 2 / Stage 3 | Completion attribution now; FP-167 before ledger derivation if possible |
 
 `main.py` is **not** touched by any of this — the read endpoint extends the existing phases
 router.
