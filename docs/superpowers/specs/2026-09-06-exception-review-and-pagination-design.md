@@ -17,6 +17,58 @@ that must be fixed. Replace it with an evidence-review model that distinguishes 
 ordinary recorded anomaly from a critical event requiring human attention. Add bounded,
 stable pagination to evidence archives without paginating the live attention queue.
 
+## Merged Geofence and Photo Preconditions
+
+The FP-143/145/150 merge makes two previously theoretical exception fields operational:
+`GPS_MISMATCH` now links to Pulsit/phone corroboration, and
+`supporting_artifact_id` now points at a photograph captured by the driver. Those writes
+must be trustworthy before the dispatcher review model is built on top of them.
+
+### Temporally valid corroboration
+
+A current Pulsit fix must not be represented as corroboration of a phase that was
+completed hours earlier and only reached the server when an offline queue flushed. Every
+new phase-completion and checkpoint request carries an aware client capture timestamp,
+stored separately from the server-owned completion/creation time. The field remains
+optional on the backend only so entries already held by an older TestFlight/localStorage
+client can drain; a missing timestamp means “timing cannot be established”, not “use the
+server receive time”.
+
+Horse coordinates and a geofence verdict are written only when the Pulsit fix timestamp
+is within the configured corroboration skew of the client's capture timestamp. Otherwise
+the verdict stays null and no `GPS_MISMATCH` is raised. Trailer snapshots may still be
+stored because they carry their own tracker timestamp and therefore do not pretend to be
+contemporaneous. Live Pulsit coordinates must also be finite and in legal latitude/
+longitude ranges, and tracker timestamps must be timezone-aware.
+
+This preserves the merge's correct three-state rule: `false` means two temporally valid
+measurements disagreed; null means FreightProof could not honestly compare them. The
+maximum skew is a named setting, not a literal buried in orchestration code.
+
+The merged `LivePulsitClient` is an adapter seam built against an explicitly assumed API
+shape. Meeting minutes confirm that access and the real contract were still pending. Keep
+`PULSE_USE_MOCK` enabled until Pulsit's actual authentication, position/history fields,
+timestamp semantics, rate limits, and error contract have been verified. Passing tests
+against hand-built JSON prove FreightProof's adapter behaviour, not compatibility with a
+partner API that has not yet been supplied.
+
+### Exception report and artifact integrity
+
+A driver-raised exception may reference only an evidence artifact belonging to the same
+trip. The service validates this before inserting the exception; a foreign or missing ID
+is rejected without creating an exception or realtime event.
+
+Every driver exception submission carries a stable client report ID. The server stores it
+on the exception and enforces uniqueness per trip, returning the original row on a replay.
+The driver queue reuses its existing entry UUID as that ID. If a queued photo upload
+succeeds before the exception request does, the resulting artifact ID is checkpointed in
+the durable queue entry before the POST, so the next flush does not upload another copy.
+
+The exception screen does not eagerly upload a photograph merely because it was captured.
+It uploads on submit. This avoids permanent unattached artifacts when a driver retakes a
+photo or abandons the form, while retaining the existing compressed-data and offline
+fallback behaviour.
+
 ## Domain Model
 
 ### Review states
@@ -107,7 +159,9 @@ The Needs Review queue is deliberately severity-based, not type-based. With the 
 severity policy it contains panic-button, seal-broken-in-transit, seal-mismatch, and an
 unexplained seal-unverified event. An explained seal-unverified event is only a warning.
 Delivery refusal, cargo damage, mechanical incidents, substitutions, and count mismatches
-are currently warnings and therefore go directly to History.
+are currently warnings and therefore go directly to History. The newly merged
+`GPS_MISMATCH` is also a warning: it produces a visible auto-dismissing warning toast and
+an immutable History record, but not compulsory review.
 
 This is intentional for the present evidence-focused scope: warnings remain visible and
 searchable but do not create compulsory dispatcher administration. If one of those types
@@ -160,7 +214,10 @@ return 404.
 
 This endpoint is required because a detail permalink cannot search only the currently
 loaded archive page. It also prevents downloading the organisation's entire exception
-history to display one record.
+history to display one record. When `supporting_artifact_id` is present, the response
+includes that one organisation/trip-scoped artifact with its short-lived signed URL and
+provenance. The detail page must not download every artifact on the trip merely to render
+the exception's one photograph.
 
 ### Review mutation
 
@@ -213,7 +270,8 @@ The detail screen contains:
 - exception and review-status header;
 - explicit trip lifecycle context, including “Trip closed” or “Trip cancelled”;
 - phase/stop context when linked;
-- immutable exception description and evidence links;
+- immutable exception description, GPS evidence, and the linked supporting photograph
+  with capture time/hash provenance or an explicit retrieval-failure state;
 - review evidence when reviewed;
 - review form when `needs_review`, and a secondary optional “Add review” action for
   `recorded` rows.

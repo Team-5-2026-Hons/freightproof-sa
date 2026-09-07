@@ -19,11 +19,17 @@
 - Use cursor pagination only; never introduce offset pagination or silent result caps.
 - Default page size is 25; accepted range is 1 through 100.
 - Preserve the staged concurrency, toast-priority, form-safety, and sidebar fixes already present on branch `Ciaran`.
+- Treat merged FP-143/145/150 evidence as input to this feature: do not let an offline
+  replay compare a historical handshake with a current tracker fix, and do not accept a
+  cross-trip artifact reference or a duplicate replayed driver report.
 - Only critical severity enters Needs Review. Current critical events are panic button, seal broken in transit, seal mismatch, and unexplained seal-unverified; warnings remain searchable in History.
 - Warning exception toasts are ordinary auto-dismissing warning toasts; critical exception toasts remain sticky errors with critical eviction priority.
 - Do not change `GET /api/v1/trips` or its array response; Trip History gets a new endpoint.
 - Do not modify the driver PWA pagination UX.
 - Follow TDD: observe each new test fail for the intended reason before implementation.
+- Backend tests must stub Hedera, Pulsit, Supabase Storage, and other partner calls. A
+  green isolated rerun after an intermittent live-service failure is not a deterministic
+  suite and does not satisfy a checkpoint.
 - Project policy prohibits agent commits. Stop at the review checkpoints; the developer owns commits.
 
 ---
@@ -34,6 +40,10 @@ New focused files:
 
 - `backend/app/core/pagination.py`: opaque timestamp/UUID cursor encoding and validation.
 - `backend/app/schemas/pagination.py`: generic `CursorPage[T]` response envelope.
+- `backend/migrations/versions/2026_09_06_ciaran_corroboration_capture_time.py`: honest
+  client/tracker time separation for offline-aware corroboration.
+- `backend/migrations/versions/2026_09_06_ciaran_exception_idempotency.py`: replay-safe
+  driver exception reports.
 - `backend/migrations/versions/2026_09_06_ciaran_exception_review_semantics.py`: exception data/column migration.
 - `backend/migrations/versions/2026_09_06_ciaran_trip_history_pagination.py`: terminal-trip backfill and history index.
 - `frontend/dispatcher/components/ui/Pagination.tsx`: presentation-only controls.
@@ -44,6 +54,150 @@ New focused files:
 - Corresponding frontend hook tests and backend integration tests named in each task.
 
 Existing files remain responsible for their current layers; do not move business logic into endpoints or page components.
+
+---
+
+### Task 0A: Make merged Pulsit corroboration temporally honest
+
+**Files:**
+- Modify: `backend/app/core/config.py`
+- Modify: `backend/app/integrations/pulsit.py`
+- Modify: `backend/app/db/models/phases.py`
+- Modify: `backend/app/db/models/transit.py`
+- Modify: `backend/app/schemas/phases.py`
+- Modify: `backend/app/schemas/transit.py`
+- Modify: `backend/app/orchestration/corroboration_service.py`
+- Modify: `backend/app/orchestration/phase_service.py`
+- Modify: `backend/app/orchestration/checkpoint_service.py`
+- Create: `backend/migrations/versions/2026_09_06_ciaran_corroboration_capture_time.py`
+- Modify: `frontend/driver-pwa/lib/api/phases.ts`
+- Modify: `frontend/driver-pwa/lib/api/checkpoints.ts`
+- Modify: `frontend/driver-pwa/lib/hooks/useOfflineQueue.ts`
+- Modify: phase/checkpoint submit callers and their tests identified by `rg -l "submitPhase|submitCheckpoint" frontend/driver-pwa --glob '*.ts' --glob '*.tsx'`
+- Test: `backend/tests/unit/test_pulsit_client.py`
+- Test: `backend/tests/unit/test_corroboration_service.py`
+- Test: `backend/tests/integration/test_phase_corroboration.py`
+- Test: `backend/tests/integration/test_gps_mismatch.py`
+
+**Interfaces:**
+- Adds nullable `driver_captured_at` to `PhaseEvent` and `Checkpoint`.
+- Adds optional backend/required new-client capture time to phase/checkpoint requests.
+- Adds `settings.PULSIT_CORROBORATION_MAX_SKEW_SECONDS`.
+
+- [ ] **Step 1: Write failing timestamp and malformed-fix tests**
+
+Prove an online, timestamp-aligned fix still writes coordinates/verdict; an offline replay
+whose current Pulsit fix is outside the allowed skew leaves the horse coordinates and
+verdict null and raises no `GPS_MISMATCH`; a missing timestamp from an older queued client
+also leaves them null; trailer snapshots retain their own tracker time; naive Pulsit
+timestamps and non-finite/out-of-range coordinates become `UNAVAILABLE`, never evidence.
+
+- [ ] **Step 2: Add capture time without breaking already-queued clients**
+
+The PWA stamps the instant the driver submits and persists it in the offline entry. The
+backend field is optional for compatibility, requires timezone awareness when present,
+and is stored separately from server-owned `completed_at`/`created_at`. Never substitute
+request-receive time when it is absent.
+
+- [ ] **Step 3: Gate corroboration on independent timestamps**
+
+Pass the client capture time into corroboration. Store horse coordinates and calculate a
+geofence verdict only when `abs(fix.fixed_at - driver_captured_at)` is no greater than the
+named configured skew. A timing miss is null/“could not compare”, never false. Apply the
+same rule to the checkpoint extension because it is also offline-queued and its horse
+columns likewise carry no tracker timestamp.
+
+Keep `PULSE_USE_MOCK=true` for execution and UI verification. Do not present the live
+adapter as production-ready until the real Pulsit API contract has been checked against
+its assumed path, bearer authentication, batch query, response fields, timestamp rules,
+rate limits, and historical-position capability.
+
+- [ ] **Step 4: Add the migration and update the chain**
+
+Use revision `ciaran_corr_capture_time`, down revision
+`ciaran_exc_resolution_method`. Add nullable timezone-aware columns only; do not backfill
+an invented client time. Task 0B must descend from this revision.
+
+- [ ] **Step 5: Fix the merged test lint failure**
+
+`tests/integration/test_gps_mismatch.py` currently imports the
+`corroboration_trip`/`pulsit_store` fixtures and then rebinds those names as pytest
+parameters, producing 28 Ruff `F811` failures. Import only helper functions and expose
+fixtures through an appropriate plugin/conftest seam, or alias the imported fixtures so
+pytest can still resolve them without name redefinition. Do not suppress `F811`.
+
+- [ ] **Step 6: Verify the prerequisite**
+
+Run the new unit/integration cases, then `ruff check app tests`, `mypy app`, driver tests,
+and driver type-check. This task is a prerequisite: do not proceed while an offline replay
+can manufacture a position disagreement. If the ordinary trip integration tests still
+instantiate a real `HederaService`, give them a deterministic successful adapter fixture;
+keep the explicit anchoring failure tests in control of their own side effects.
+
+**Developer review checkpoint:** inspect one deliberately delayed queued phase and confirm
+that it completes normally with null corroboration and no exception.
+
+---
+
+### Task 0B: Make driver exception photographs and retries durable
+
+**Files:**
+- Modify: `backend/app/db/models/transit.py`
+- Modify: `backend/app/schemas/transit.py`
+- Modify: `backend/app/orchestration/exception_service.py`
+- Create: `backend/migrations/versions/2026_09_06_ciaran_exception_idempotency.py`
+- Modify: `frontend/driver-pwa/lib/api/exceptions.ts`
+- Modify: `frontend/driver-pwa/lib/hooks/useOfflineQueue.ts`
+- Modify: `frontend/driver-pwa/app/(app)/trip/in-transit/exception/LogExceptionPageClient.tsx`
+- Modify: the corresponding backend integration and driver-PWA tests
+
+**Interfaces:**
+- Adds request-only `client_report_id` and nullable stored exception field of the same
+  name, unique per trip when present.
+- Enforces same-trip ownership for `supporting_artifact_id`.
+
+- [ ] **Step 1: Write failing evidence-integrity tests**
+
+Prove a missing or other-trip artifact ID is rejected without an exception/realtime write;
+the same `(trip_id, client_report_id)` replay returns the original exception and emits no
+second event; and a different report ID creates a distinct exception.
+
+- [ ] **Step 2: Enforce artifact ownership in orchestration**
+
+Before constructing `TripException`, query `EvidenceArtifact` by both artifact ID and
+`trip_id`. Keep the rule in the service rather than trusting the foreign key or frontend.
+
+- [ ] **Step 3: Add server idempotency**
+
+Add the nullable field and a partial unique index on `(trip_id, client_report_id)`. Query
+and return an existing same-trip row before inserting. Handle the unique-index race in a
+savepoint/nested transaction so the session remains usable, then load and return the
+winner; do not catch `IntegrityError` after poisoning the request's outer transaction.
+New clients always send the stable ID; the backend accepts omission only for old
+installed/queued clients.
+
+- [ ] **Step 4: Make the queue's two-step send resumable**
+
+Reuse the queue entry UUID as `client_report_id`. After a queued photo upload succeeds,
+replace that durable entry's body with `supporting_artifact_id` and remove its base64 photo
+before calling the exception endpoint. If that POST fails or its response is lost, the
+next flush reuses both IDs rather than uploading another artifact or inserting another
+exception.
+
+- [ ] **Step 5: Avoid upload-on-capture orphans**
+
+For this optional exception form, retain the compressed data URL locally and begin upload
+only after Submit. Do not create server evidence for a retaken photo or abandoned form.
+Keep the existing terminal-photo-error, storage-quota, and honest receipt behaviours.
+
+- [ ] **Step 6: Add the migration and verify retries**
+
+Use revision `ciaran_exc_idempotency`, down revision `ciaran_corr_capture_time`. Test a
+simulated lost response after a committed exception and a transient failure after a
+successful photo upload. Both must leave one artifact reference and one exception.
+
+**Developer review checkpoint:** inspect the database after repeated offline flushes and
+confirm one logical report produces one exception and does not multiply uploads.
 
 ---
 
@@ -61,7 +215,9 @@ Existing files remain responsible for their current layers; do not move business
 
 **Interfaces:**
 - Produces: `ExceptionReviewStatus`, stored `ExceptionReviewOutcome`, request-only `DispatcherReviewOutcome`, `ExceptionContactMethod`, `TripExceptionReviewRequest`, and renamed review fields on `TripExceptionRead`/`TripException`.
-- Migration base: current branch head `ciaran_exc_resolution_method`. Re-run `alembic heads` before creating the file; if the head changed, stop and coordinate instead of repairing the chain automatically.
+- Migration base: Task 0B head `ciaran_exc_idempotency`. Re-run `alembic heads` before
+  creating the file; if the head changed, stop and coordinate instead of repairing the
+  chain automatically.
 
 - [ ] **Step 1: Write schema tests that define the new request contract**
 
@@ -142,7 +298,7 @@ request/update fields; rename ORM/read fields to `review_status`, `reviewed_by_u
 - [ ] **Step 4: Write the Alembic migration without inventing historical facts**
 
 Use revision `ciaran_exc_review_semantics`, down revision
-`ciaran_exc_resolution_method`, and this upgrade order:
+`ciaran_exc_idempotency`, and this upgrade order:
 
 ```python
 op.add_column("exceptions", sa.Column("review_status", sa.String(20), nullable=True))
@@ -194,7 +350,7 @@ Run:
 ```bash
 cd backend && .venv/bin/pytest tests/unit/test_schema_validators.py -k "exception_review" -q
 cd backend && .venv/bin/alembic upgrade head
-cd backend && .venv/bin/alembic downgrade ciaran_exc_resolution_method
+cd backend && .venv/bin/alembic downgrade ciaran_exc_idempotency
 cd backend && .venv/bin/alembic upgrade head
 cd frontend/dispatcher && npm run type-check
 cd backend && .venv/bin/ruff check app/db/models/enums.py app/db/models/transit.py app/schemas/transit.py migrations/versions/2026_09_06_ciaran_exception_review_semantics.py
@@ -220,6 +376,7 @@ Expected: all commands pass and the migration round trip preserves rows.
 - Test: `backend/tests/unit/test_scan_service.py`
 - Test: `backend/tests/unit/test_phase_service.py`
 - Test: `backend/tests/integration/test_exceptions.py`
+- Modify/test: `backend/tests/integration/test_gps_mismatch.py`
 
 **Interfaces:**
 - Produces: `initial_review_status(severity: ExceptionSeverity) -> ExceptionReviewStatus`.
@@ -258,6 +415,18 @@ def initial_review_status(severity: ExceptionSeverity) -> ExceptionReviewStatus:
 Every `TripException(...)` construction must set `review_status` through this helper or
 through one creation function that calls it. Do not hand-code status at individual sites.
 
+There are **ten** construction sites as of the FP-68 geofence merge (commit `8c5af36`):
+seven in `phase_service.py`, one each in `trip_service.py`, `scan_service.py`, and
+`exception_service.py`. The seventh in `phase_service.py` is FP-145's GPS_MISMATCH in
+`_raise_position_disagreement_if_unrecorded` — it is WARNING, so `RECORDED` is its
+correct target, but it must still route through the helper rather than inherit the
+column's `server_default`; a site that only works by default is a site the next severity
+change breaks silently.
+
+`tests/unit/test_realtime_emit.py::test_every_trip_exception_write_site_is_accounted_for`
+holds the authoritative count. Re-run `rg -n "TripException\(" backend/app` after ANY
+merge from `dev` before trusting this list — it is a snapshot of a moving target.
+
 - [ ] **Step 4: Preserve duplicate suppression semantics explicitly**
 
 Replace both `TripException.resolved.is_(False)` duplicate predicates at
@@ -284,14 +453,19 @@ driver receives the count for display compatibility but gains no review workflow
 
 - [ ] **Step 6: Preserve the driver in-transit incident banner semantics**
 
-Change the driver filter from `!e.resolved` to
-`e.review_status !== 'reviewed'`. It must continue showing both recorded warnings and
-needs-review critical incidents until reviewed; mapping it to `needs_review` would
-silently remove warning incidents from the driver's current-trip context.
+The filter in `InTransitPageClient.tsx` is `!e.resolved && e.source !== 'system'` — the
+source clause arrived with the FP-68 geofence merge and keeps system-detected findings
+(GPS_MISMATCH among them) out of the driver's incident banner. Change ONLY the first
+clause: `e.review_status !== 'reviewed' && e.source !== 'system'`. Dropping the source
+clause would put every system measurement in front of the driver.
+
+It must continue showing both recorded warnings and needs-review critical incidents
+until reviewed; mapping it to `needs_review` would silently remove warning incidents
+from the driver's current-trip context.
 
 - [ ] **Step 7: Run exception, dedup, dispatcher trip-list, and driver-PWA tests**
 
-Run: `cd backend && .venv/bin/pytest tests/unit/test_exception_service.py tests/unit/test_scan_service.py tests/unit/test_phase_service.py tests/integration/test_exceptions.py tests/integration/test_trips.py -q`
+Run: `cd backend && .venv/bin/pytest tests/unit/test_exception_service.py tests/unit/test_scan_service.py tests/unit/test_phase_service.py tests/integration/test_exceptions.py tests/integration/test_gps_mismatch.py tests/integration/test_trips.py -q`
 
 Run: `cd frontend/driver-pwa && npm test -- --run 'app/(app)/trip/in-transit' 'app/(app)/trips' && npm run type-check`
 
@@ -508,7 +682,9 @@ Run: `cd backend && .venv/bin/pytest tests/unit/test_pagination.py -q && .venv/b
 **Files:**
 - Modify: `backend/app/schemas/transit.py`
 - Modify: `backend/app/orchestration/exception_service.py`
+- Modify: `backend/app/orchestration/artifact_service.py`
 - Modify: `backend/app/api/v1/endpoints/exceptions.py`
+- Reuse: `backend/app/schemas/evidence.py`
 - Create: `backend/tests/integration/test_exception_reads.py`
 
 **Interfaces:**
@@ -536,15 +712,21 @@ Run: `cd backend && .venv/bin/pytest tests/integration/test_exception_reads.py -
 
 List rows carry exception ID/type/source/severity/status/description/timestamp, trip
 ID/reference/status, and phase/stop labels. Detail additionally carries complete review
-evidence, trip `closed_at`, IDs required for evidence links, and GPS values already
-authorised by the existing exception read.
+evidence, trip `closed_at`, GPS values already authorised by the existing exception read,
+and the one linked `EvidenceArtifactWithUrl` when present. Keep
+`supporting_artifact_id` as the immutable reference even if signing fails; in that case
+the nested artifact remains present with `signed_url: null` so the UI can distinguish
+“recorded, image unavailable” from “no photo”.
 
 - [ ] **Step 5: Implement organisation-scoped queries**
 
 Queue is unbounded but state-limited and newest-first. History applies filters to both
 the page and count statements, fetches `limit + 1`, encodes the last returned row, and
 uses a tuple comparison below the cursor. Detail uses one joined query and left joins
-optional phase/stop context. Never fetch all exceptions to find one.
+optional phase/stop context. Resolve and sign only the exception's same-trip supporting
+artifact through `artifact_service`; never fetch every trip artifact and never trust the
+artifact ID without the Task 0B ownership invariant. Never fetch all exceptions to find
+one.
 
 - [ ] **Step 6: Declare static routes before `/{exception_id}` and map cursor errors to 422**
 
@@ -712,6 +894,8 @@ Run: `cd frontend/dispatcher && npm test -- --run 'app/(app)/exceptions/page.tes
 **Files:**
 - Modify: `frontend/dispatcher/app/(app)/exceptions/[id]/page.tsx`
 - Modify: `frontend/dispatcher/app/(app)/exceptions/[id]/page.test.tsx`
+- Reuse/modify if necessary: `frontend/dispatcher/components/domain/ExceptionEvidence.tsx`
+- Reuse: `frontend/dispatcher/components/domain/EvidencePhoto.tsx`
 - Modify: `frontend/shared/lib/constants/copy.ts`
 
 **Interfaces:**
@@ -721,9 +905,10 @@ Run: `cd frontend/dispatcher && npm test -- --run 'app/(app)/exceptions/page.tes
 - [ ] **Step 1: Rewrite tests around review semantics**
 
 Tests cover active/closed/cancelled lifecycle banners, explanatory non-blocking copy,
-phase context, required note/outcome, a blank UI contact choice sent explicitly as null, recorded optional
-review action, reviewed evidence rendering, success navigation, 409 colleague handling,
-and handler guards against keyboard submission with missing required fields.
+phase context, required note/outcome, a blank UI contact choice sent explicitly as null,
+recorded optional review action, reviewed evidence rendering, a linked supporting photo
+with provenance, an explicit image-unavailable state, success navigation, 409 colleague
+handling, and handler guards against keyboard submission with missing required fields.
 
 - [ ] **Step 2: Run tests and observe failures against resolution copy/API**
 
@@ -739,7 +924,9 @@ refresh. Rename local variables/actions from resolve to review.
 Outcome starts blank and is required. Contact starts blank and is optional. Note is
 trimmed and required. Show: “Reviewing records your assessment. It does not change or
 reopen the trip.” A reviewed record displays outcome, note, optional contact method,
-review time, and reviewer attribution permitted by the schema.
+review time, and reviewer attribution permitted by the schema. Reuse `ExceptionEvidence`
+and `EvidencePhoto` against the nested detail artifact; do not call
+`GET /trips/{trip_id}/artifacts` from the exception detail page.
 
 - [ ] **Step 5: Run detail tests and all exception frontend tests**
 
@@ -762,7 +949,7 @@ Expected: all pass; no “resolve/open” task language remains except migration
 Run:
 
 ```bash
-rg -n "TripException\.resolved|\.resolved_by_user_id|resolver_note|resolution_method|no_contact_yet|resolve_exception|Open Exceptions" backend/app frontend/dispatcher frontend/driver-pwa frontend/shared
+rg -n "TripException\.resolved|\.resolved_by_user_id|resolver_note|resolution_method|no_contact_yet|resolve_exception|Open Exceptions" backend/app frontend/dispatcher frontend/driver-pwa frontend/shared backend/tests/integration/test_gps_mismatch.py
 ```
 
 Every hit must be a migration/downgrade compatibility reference or be removed. Then run
@@ -772,7 +959,7 @@ and manually classify the remaining phase-ledger language; do not suppress
 
 - [ ] **Step 2: Run all exception, realtime, and migration-focused backend tests**
 
-Run: `cd backend && .venv/bin/pytest tests/integration/test_exception_reads.py tests/integration/test_exceptions.py tests/integration/test_exceptions_dispatcher.py tests/integration/test_exception_scoping.py tests/integration/test_exception_review_concurrency.py tests/unit/test_exceptions.py tests/unit/test_exception_service.py tests/unit/test_scan_service.py tests/unit/test_phase_service.py tests/unit/test_realtime.py tests/unit/test_realtime_emit.py tests/unit/test_pagination.py -q`
+Run: `cd backend && .venv/bin/pytest tests/integration/test_exception_reads.py tests/integration/test_exceptions.py tests/integration/test_exceptions_dispatcher.py tests/integration/test_exception_scoping.py tests/integration/test_exception_review_concurrency.py tests/integration/test_gps_mismatch.py tests/integration/test_phase_corroboration.py tests/unit/test_exceptions.py tests/unit/test_exception_service.py tests/unit/test_scan_service.py tests/unit/test_phase_service.py tests/unit/test_corroboration_service.py tests/unit/test_pulsit_client.py tests/unit/test_realtime.py tests/unit/test_realtime_emit.py tests/unit/test_pagination.py -q`
 
 - [ ] **Step 3: Run all dispatcher exception and pagination tests**
 
@@ -918,7 +1105,7 @@ Expected: history uses the new endpoint while active trips and trip creation con
 
 ### Task 14: Full verification and handoff
 
-**Files:** No planned production changes; fix only defects caused by Tasks 1-13.
+**Files:** No planned production changes; fix only defects caused by the tasks above.
 
 - [ ] **Step 1: Run the complete backend suite**
 
@@ -957,7 +1144,10 @@ Verify: warning appears only in History; critical appears in Needs Review; unrel
 phase completion causes no exception refetch; active/closed/cancelled critical records
 can be reviewed without lifecycle mutation; review disappears from queue and appears in
 History; direct detail URL works beyond page one; filters reset pagination; trip history
-uses close date; new closed trip updates page one without disrupting later pages.
+uses close date; new closed trip updates page one without disrupting later pages. Also
+verify a deliberately delayed offline handshake creates no GPS mismatch, a queued
+exception whose first response is lost produces one row, and its supporting photograph
+renders directly on exception detail.
 
 - [ ] **Step 6: Inspect the final diff and migration heads**
 
@@ -974,8 +1164,10 @@ and no files outside the spec scope.
 
 **Developer handoff:** review and commit logical stages manually. Suggested commit sequence:
 
-1. `refactor(orchestration): replace exception resolution with evidence review`
-2. `feat(api): add exception queue detail and cursor history contracts`
-3. `feat(dispatcher): redesign exception review and history surfaces`
-4. `feat(api): add cursor-paginated trip history`
-5. `feat(dispatcher): paginate trip history with shared controls`
+1. `fix(corroboration): reject temporally unrelated tracker fixes`
+2. `fix(exceptions): make driver reports and artifacts replay-safe`
+3. `refactor(orchestration): replace exception resolution with evidence review`
+4. `feat(api): add exception queue detail and cursor history contracts`
+5. `feat(dispatcher): redesign exception review and history surfaces`
+6. `feat(api): add cursor-paginated trip history`
+7. `feat(dispatcher): paginate trip history with shared controls`

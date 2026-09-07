@@ -234,10 +234,17 @@ export function DevTriggerPanel({ heading }: DevTriggerPanelProps): React.ReactE
   // A moved-to waypoint and its position readout belong to whichever trip's device
   // was moved. Carrying it over to a newly selected trip would show one trip's
   // mock position while narrating a different one.
-  useEffect(() => {
+  //
+  // Adjusted during render rather than in a useEffect, for the same reason and by the
+  // same pattern as resetForKey below: this is state derived from the selection, not a
+  // sync with an external system, and the effect form costs an extra render pass and
+  // trips react-hooks/set-state-in-effect.
+  const [resetForTripId, setResetForTripId] = useState<string>(tripId)
+  if (resetForTripId !== tripId) {
+    setResetForTripId(tripId)
     setActiveWaypointId(null)
     setMoveTruckResult(null)
-  }, [tripId])
+  }
 
   const selectedTrip = trips.find((t) => t.trip_id === tripId) ?? null
 
