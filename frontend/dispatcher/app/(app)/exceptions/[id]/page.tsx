@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { TopBar }     from '@/components/ui/TopBar'
 import { SecHead }    from '@/components/ui/SecHead'
@@ -12,36 +12,49 @@ import { Select }     from '@/components/ui/Select'
 import { Spinner }    from '@/components/ui/Spinner'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { TripIdStamp } from '@/components/domain/TripIdStamp'
-import { ApiError }      from '@/lib/api/client'
-import { useToast }      from '@/lib/hooks/useToast'
-import { useExceptions, resolveException } from '@/lib/hooks/useExceptions'
-import type { ExceptionContactMethod, ExceptionResolutionMethod } from '@shared/lib/types/exception'
-import { EXCEPTION_SEVERITY_META, EXCEPTION_SOURCE_META } from '@shared/lib/constants/status-meta'
+import { ExceptionEvidence } from '@/components/domain/ExceptionEvidence'
+import { ApiError, reviewException } from '@/lib/api/client'
+import { useToast } from '@/lib/hooks/useToast'
+import { useExceptionDetail } from '@/lib/hooks/useExceptionDetail'
+import type {
+  DispatcherReviewOutcome,
+  ExceptionContactMethod,
+  ExceptionReviewStatus,
+} from '@shared/lib/types/exception'
+import type { TripStatus } from '@shared/lib/types/trip'
+import { EXCEPTION_SEVERITY_META, EXCEPTION_SOURCE_META, TRIP_STATUS_META } from '@shared/lib/constants/status-meta'
+import type { ChipType } from '@shared/lib/constants/status-meta'
 import { COPY }   from '@shared/lib/constants/copy'
 import { ROUTES } from '@/lib/constants/routes'
+import { fmtDateTime } from '@shared/lib/utils/datetime'
 
-// The resolve FORM's choices — posted to the still-live /resolve endpoint, which has
-// not been renamed yet (Task 3). Kept distinct from CONTACT_METHOD_LABELS below: the
-// form's request body is the legacy 4-value ExceptionResolutionMethod, while the
-// already-recorded read value comes back as the narrower ExceptionContactMethod.
-const RESOLUTION_METHOD_LABELS: Record<ExceptionResolutionMethod, string> = {
-  phoned:         'Phoned the driver',
-  whatsapp:       'WhatsApp',
-  in_person:      'In person',
-  no_contact_yet: 'No contact — resolved from evidence',
+// Labels for the 5 real, submittable review outcomes — mirrors the old resolve-flow
+// file's RESOLUTION_METHOD_LABELS pattern (a plain Record so a missing case is a
+// compile error, not a silently-blank option).
+const REVIEW_OUTCOME_LABELS: Record<DispatcherReviewOutcome, string> = {
+  no_action_required:     'No action required',
+  handled_externally:     'Handled externally',
+  evidence_verified:      'Evidence verified',
+  data_discrepancy:       'Data discrepancy',
+  referred_for_follow_up: 'Referred for follow-up',
 }
 
-// Labels for the READ-only contact_method field once a review has been recorded.
-// No_contact_yet has no equivalent here — see ExceptionContactMethod's own comment.
+// Reused verbatim from the old resolve-flow file's CONTACT_METHOD_LABELS — these already
+// read correctly, and the review endpoint's ExceptionContactMethod is the exact same
+// three values.
 const CONTACT_METHOD_LABELS: Record<ExceptionContactMethod, string> = {
   phone:     'Phoned the driver',
   whatsapp:  'WhatsApp',
   in_person: 'In person',
 }
 
-// The unselected state of the method field. Not one of the methods: it is the absence of
-// a choice, and it can never be submitted.
-const NO_METHOD_CHOSEN = ''
+// The outcome field's unselected state — a placeholder, never a real value, so the
+// option is rendered `disabled` below and can never be submitted.
+const NO_OUTCOME_CHOSEN = '' as const
+// The contact-method field's blank state — NOT a placeholder. Unlike the outcome above,
+// leaving this blank is a genuine, submittable answer ("no contact happened, reviewed
+// from evidence alone"), so its option is deliberately not disabled.
+const NO_CONTACT_CHOSEN = '' as const
 
 function fmtType(t: string): string {
   return t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
@@ -54,35 +67,65 @@ function fmtTs(iso: string): string {
   })
 }
 
+// Builds "In Transit · Stop 2" from whichever of the two the row actually has, degrading
+// to null (never the literal string "null" or a dangling "· ") when both are absent.
+// Local rather than imported from the list page — this codebase already duplicates
+// small per-page formatting helpers like this one (see fmtType/fmtTs above, and the
+// list page's own copy of all three) rather than sharing them across pages.
+function phaseStopLabel(phaseLabel: string | null, stopLabel: number | null): string | null {
+  const parts: string[] = []
+  if (phaseLabel) parts.push(phaseLabel)
+  if (stopLabel !== null) parts.push(`Stop ${stopLabel}`)
+  return parts.length > 0 ? parts.join(' · ') : null
+}
+
+// Local to this file, deliberately — same reasoning as the list page's own
+// reviewStatusMeta: there is no shared meta for this 3-state badge because nothing
+// outside these two exception screens needs it.
+function reviewStatusMeta(status: ExceptionReviewStatus): { label: string; chipType: ChipType } {
+  switch (status) {
+    case 'reviewed':     return { label: 'Reviewed',     chipType: 'complete' }
+    case 'needs_review': return { label: 'Needs Review', chipType: 'critical' }
+    default:             return { label: 'Recorded',     chipType: 'pending' }
+  }
+}
+
+// Explanatory, non-blocking copy for a trip whose lifecycle has already moved past
+// "active" — reviewing is evidence handling, never trip lifecycle control (see
+// review_exception's own backend docstring), so this never gates the form below; it
+// only exists so a dispatcher reviewing a critical exception on an ended trip is never
+// confused into thinking their review reopens or changes that trip. null for the
+// statuses that need no such reassurance.
+function tripLifecycleNotice(status: TripStatus): string | null {
+  switch (status) {
+    case 'closed':         return 'Trip closed. Reviewing this exception does not reopen the trip.'
+    case 'cancelled':       return 'Trip cancelled. Reviewing this exception does not change the trip.'
+    case 'exception_hold':  return 'Trip on exception hold. Reviewing this exception does not clear the hold.'
+    default:                 return null
+  }
+}
+
 export default function ExceptionDetailPage() {
   const params = useParams()
   const router = useRouter()
   const { notify } = useToast()
 
   const exceptionId = params.id as string
-  // No `resolved` filter: this page is reached by permalink and must be able to open a
-  // resolved exception as readily as an open one.
-  const { exceptions, isLoading, error, refetchSilent } = useExceptions()
-  const exception = useMemo(
-    () => exceptions.find(e => e.id === exceptionId),
-    [exceptions, exceptionId],
-  )
+  const { exception, isLoading, error, refetch, refetchSilent } = useExceptionDetail(exceptionId)
 
-  const [resolutionNote, setResolutionNote]   = useState('')
-  // Deliberately empty. This defaulted to 'phoned', so a dispatcher who resolved from
-  // evidence alone and never opened the select filed a record asserting they phoned the
-  // driver — inventing contact history on the one artefact whose whole purpose is to be
-  // true months later in a dispute. The submit control below stays disabled until this
-  // holds a real choice; 'no_contact_yet' is in the list precisely so that dispatcher has
-  // an honest one to make.
-  const [resolutionMethod, setResolutionMethod] =
-    useState<ExceptionResolutionMethod | typeof NO_METHOD_CHOSEN>(NO_METHOD_CHOSEN)
-  const [resolving, setResolving]             = useState(false)
+  // Only meaningful once review_status is 'recorded' — a 'needs_review' exception shows
+  // the form regardless of this flag (see the JSX below), so there is no need to derive
+  // an initial value from data that may not have loaded yet.
+  const [showReviewForm, setShowReviewForm] = useState(false)
+
+  const [reviewNote, setReviewNote]         = useState('')
+  const [reviewOutcome, setReviewOutcome]   =
+    useState<DispatcherReviewOutcome | typeof NO_OUTCOME_CHOSEN>(NO_OUTCOME_CHOSEN)
+  const [contactMethod, setContactMethod]   =
+    useState<ExceptionContactMethod | typeof NO_CONTACT_CHOSEN>(NO_CONTACT_CHOSEN)
+  const [reviewing, setReviewing]           = useState(false)
 
   // ── Loading ──────────────────────────────────────────────────────────────────
-  // Ranked ahead of the not-found branch below. Without it a slow fetch renders
-  // "Exception not found" for a record that exists and is merely still in flight —
-  // telling a dispatcher chasing a live incident that their evidence is gone.
   if (isLoading) {
     return (
       <div className="flex flex-col flex-1 min-h-0">
@@ -94,13 +137,17 @@ export default function ExceptionDetailPage() {
     )
   }
 
-  // ── Load failed ──────────────────────────────────────────────────────────────
-  // Only when there is nothing to show. The hook refetches on EVERY trip event in the
-  // organisation, so without the `!exception` gate one failed background refresh would
-  // tear down this page mid-use — taking the resolve form with it and destroying a
-  // half-typed account of a live incident. If the exception is already in hand, the page
-  // stays up and a stale read is strictly better than a lost note.
-  if (error && !exception) {
+  // ── Could not load ───────────────────────────────────────────────────────────
+  // useExceptionDetail fetches this one record directly by id — there is no client-side
+  // list search left to distinguish "genuinely not found" from "some other fetch
+  // failure", so `!exception` is the one honest condition covering both. A BACKGROUND
+  // refresh failure (the hook refetches on exception_raised/exception_reviewed events
+  // for this trip) must never reach this branch while a record is already on screen —
+  // without the `!exception` gate, one failed background refresh would tear down this
+  // page mid-use, taking a half-typed review with it and destroying a half-typed
+  // account of a live incident. If the exception is already in hand, the page stays up
+  // and a stale read is strictly better than a lost note.
+  if (!exception) {
     return (
       <div className="flex flex-col flex-1 min-h-0">
         <TopBar title="Exception Detail">
@@ -117,7 +164,7 @@ export default function ExceptionDetailPage() {
           <EmptyState
             icon={<Ic n="warn" s={32} className="text-err" />}
             title="Could not load this exception"
-            body={error}
+            body={error ?? COPY.errors.notFound}
             cta={<Button onClick={() => router.push(ROUTES.exceptions)}>Back to Exceptions</Button>}
           />
         </div>
@@ -125,71 +172,53 @@ export default function ExceptionDetailPage() {
     )
   }
 
-  // ── Not found ────────────────────────────────────────────────────────────────
-  if (!exception) {
-    return (
-      <div className="flex flex-col flex-1 min-h-0">
-        <TopBar title="Exception Detail">
-          <Button
-            variant="secondary"
-            size="sm"
-            iconLeft={<Ic n="back" s={14} className="text-on-surf" />}
-            onClick={() => router.back()}
-          >
-            Back
-          </Button>
-        </TopBar>
-        <div className="flex-1 overflow-auto p-6">
-          <EmptyState
-            icon={<Ic n="warn" s={32} className="text-on-surf-v" />}
-            title="Exception not found"
-            body="This record does not exist or you do not have access to it."
-            cta={
-              <Button onClick={() => router.push(ROUTES.exceptions)}>
-                Back to Exceptions
-              </Button>
-            }
-          />
-        </div>
-      </div>
-    )
-  }
+  const sevMeta    = EXCEPTION_SEVERITY_META[exception.severity]
+  const srcMeta    = EXCEPTION_SOURCE_META[exception.source]
+  const tripMeta   = TRIP_STATUS_META[exception.trip_status]
+  const statusMeta = reviewStatusMeta(exception.review_status)
+  const phaseStop  = phaseStopLabel(exception.phase_label, exception.stop_label)
+  const lifecycleNotice = tripLifecycleNotice(exception.trip_status)
 
-  const sevMeta = EXCEPTION_SEVERITY_META[exception.severity]
-  const srcMeta = EXCEPTION_SOURCE_META[exception.source]
+  const isReviewed   = exception.review_status === 'reviewed'
+  const needsReview  = exception.review_status === 'needs_review'
+  const showForm     = needsReview || showReviewForm
 
-  const handleResolve = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleReview = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    const trimmedNote = reviewNote.trim()
     // Both gates, not just the disabled attribute — a form can still be submitted by
-    // keyboard, and neither field may reach the API unset.
-    if (!resolutionNote.trim() || resolutionMethod === NO_METHOD_CHOSEN) return
-    setResolving(true)
+    // keyboard, and neither field may reach the API unset. Contact method is exempt: it
+    // is optional by design, so it never belongs in this gate.
+    if (!trimmedNote || reviewOutcome === NO_OUTCOME_CHOSEN) return
+    setReviewing(true)
     try {
-      await resolveException(exceptionId, {
-        resolver_note: resolutionNote.trim(),
-        resolution_method: resolutionMethod,
+      await reviewException(exceptionId, {
+        review_note: trimmedNote,
+        review_outcome: reviewOutcome,
+        // Explicit null, not an omitted key — the backend requires the key present so
+        // it can tell "no contact happened" apart from a client that forgot the field.
+        contact_method: contactMethod || null,
       })
-      notify({ kind: 'success', title: COPY.toast.exceptionResolved })
+      notify({ kind: 'success', title: COPY.toast.exceptionReviewed })
       // No refetch before navigating: this hook instance dies with the page, and
       // useAsyncData's mountedRef discards a result that lands after unmount. The list
       // mounts its own hook and fetches on mount, so it is already current on arrival.
       router.push(ROUTES.exceptions)
     } catch (err) {
-      // Surfaced, never swallowed. This used to be a 600ms timer followed by an
-      // unconditional success toast — it reported a resolution that had never been
-      // recorded anywhere, on the one screen whose job is to prove otherwise.
+      // Surfaced, never swallowed — the old resolve flow's bug was a fake unconditional
+      // success toast that reported reviews which had never been recorded.
       const lostTheRace = err instanceof ApiError && err.status === 409
       notify({
         kind: 'error',
-        title: lostTheRace ? 'Already resolved by a colleague' : 'Could not resolve this exception',
+        title: lostTheRace ? 'Already reviewed by a colleague' : 'Could not review this exception',
         body: err instanceof Error ? err.message : 'Please try again.',
       })
-      // Deliberately stay on the page and refetch rather than navigating away. Their note
-      // is still in the textarea, and the refetch swaps the form for the resolution that
-      // won — so they can read what their colleague established and judge whether theirs
-      // adds anything, instead of being bounced to a list that just says "resolved".
+      // Deliberately stay on the page and refetch rather than navigating away. Their
+      // note is still in the form, and the silent refetch swaps it for the colleague's
+      // now-visible completed review, so they can read what was established instead of
+      // being bounced to a list that just says "reviewed".
       if (lostTheRace) refetchSilent()
-      setResolving(false)
+      setReviewing(false)
     }
   }
 
@@ -197,7 +226,7 @@ export default function ExceptionDetailPage() {
     <div className="flex flex-col flex-1 min-h-0">
       <TopBar
         title={fmtType(exception.exception_type)}
-        sub={`${sevMeta.label} · ${exception.review_status === 'reviewed' ? 'Resolved' : 'Open'}`}
+        sub={`${sevMeta.label} · ${statusMeta.label}`}
       >
         <Button
           variant="secondary"
@@ -212,23 +241,48 @@ export default function ExceptionDetailPage() {
       <div className="flex-1 overflow-auto">
         <div className="max-w-3xl mx-auto px-6 py-6 flex flex-col gap-4">
 
-          {/* Related trip banner */}
-          {/* Reference and id both ride on the exception itself (denormalised off the
-              org-scoping join), so this banner costs no second request. */}
-          {exception.trip_reference && (
-            <div className="bg-surf-low rounded-lg px-5 py-4 flex items-center justify-between">
-              <div>
-                <div className="text-[11px] font-[700] tracking-[0.1em] uppercase text-on-surf-v mb-1">
-                  Related Trip
-                </div>
-                <TripIdStamp tripReference={exception.trip_reference} />
+          {/* A background refresh failed while a loaded record stayed on screen — never
+              a full-page error (see the !exception branch's own comment above). */}
+          {error && (
+            <div className="flex items-center justify-between gap-4 rounded-lg bg-warn-c px-5 py-3">
+              <div className="flex items-center gap-[9px]">
+                <Ic n="warn" s={14} className="text-warn-onc shrink-0" />
+                <span className="text-[12px] font-[600] text-warn-onc">
+                  This record may be out of date — the last refresh failed.
+                </span>
               </div>
-              <button
-                onClick={() => router.push(ROUTES.tripDetail(exception.trip_id))}
-                className="flex items-center gap-1 text-[13px] font-[600] text-sec hover:opacity-75 transition-opacity"
-              >
-                View trip <Ic n="chev" s={14} className="text-sec" />
-              </button>
+              <Button size="sm" variant="ghost" onClick={refetch}>Retry</Button>
+            </div>
+          )}
+
+          {/* Related trip banner. Reference and status both ride on the exception
+              itself (denormalised off the org-scoping join), so this costs no second
+              request. */}
+          <div className="bg-surf-low rounded-lg px-5 py-4 flex items-center justify-between">
+            <div>
+              <div className="text-[11px] font-[700] tracking-[0.1em] uppercase text-on-surf-v mb-1">
+                Related Trip
+              </div>
+              <div className="flex items-center gap-2">
+                <TripIdStamp tripReference={exception.trip_reference} />
+                <Chip type={tripMeta.chipType} label={tripMeta.label} />
+              </div>
+            </div>
+            <button
+              onClick={() => router.push(ROUTES.tripDetail(exception.trip_id))}
+              className="flex items-center gap-1 text-[13px] font-[600] text-sec hover:opacity-75 transition-opacity"
+            >
+              View trip <Ic n="chev" s={14} className="text-sec" />
+            </button>
+          </div>
+
+          {/* Trip lifecycle notice — explanatory only. Never disables or hides the
+              review section below: the backend enforces no trip-status gate on the
+              review endpoint at all (see review_exception's own docstring), so neither
+              does this page. */}
+          {lifecycleNotice && (
+            <div className="bg-surf-low rounded-lg px-5 py-3 text-[12px] text-on-surf-v">
+              {lifecycleNotice}
             </div>
           )}
 
@@ -240,10 +294,7 @@ export default function ExceptionDetailPage() {
               {/* Chips + source row */}
               <div className="flex items-center gap-2 mb-5 flex-wrap">
                 <Chip type={sevMeta.chipType} label={sevMeta.label} />
-                <Chip
-                  type={exception.review_status === 'reviewed' ? 'complete' : 'critical'}
-                  label={exception.review_status === 'reviewed' ? 'Resolved' : 'Open'}
-                />
+                <Chip type={statusMeta.chipType} label={statusMeta.label} />
                 <span className="ml-auto text-[11px] text-on-surf-v font-[500]">
                   {srcMeta.label} · {fmtTs(exception.created_at)}
                 </span>
@@ -257,12 +308,9 @@ export default function ExceptionDetailPage() {
               {/* Meta rows */}
               <div className="flex flex-col">
                 {([
-                  ['Source',  srcMeta.label],
-                  ['Raised',  fmtTs(exception.created_at)],
-                  ['Updated', fmtTs(exception.updated_at)],
-                  ...(exception.review_status === 'reviewed' && exception.reviewed_at
-                    ? [['Resolved', fmtTs(exception.reviewed_at)]] as [string, string][]
-                    : []),
+                  ['Source', srcMeta.label],
+                  ['Raised', fmtTs(exception.created_at)],
+                  ...(phaseStop ? [['Phase / Stop', phaseStop]] as [string, string][] : []),
                 ] as [string, string][]).map(([label, value]) => (
                   <div
                     key={label}
@@ -273,17 +321,24 @@ export default function ExceptionDetailPage() {
                   </div>
                 ))}
               </div>
+
+              {/* What the driver/system actually captured — GPS fix and/or photo. */}
+              <ExceptionEvidence exception={exception} artifact={exception.supporting_artifact ?? undefined} />
             </div>
           </div>
 
-          {/* Resolution card */}
-          {exception.review_status === 'reviewed' ? (
+          {/* Review card */}
+          {isReviewed ? (
             <div className="bg-surf-lowest rounded-lg shadow-level-3 overflow-hidden">
-              <SecHead title="Resolution" />
+              <SecHead title="Review" />
               <div className="p-6">
                 <div className="flex items-center gap-2 mb-4">
                   <Ic n="check" s={16} className="text-ok shrink-0" />
-                  <span className="text-[14px] font-[700] text-ok">Exception resolved</span>
+                  <span className="text-[14px] font-[700] text-ok">
+                    {exception.review_outcome && exception.review_outcome !== 'legacy_review'
+                      ? REVIEW_OUTCOME_LABELS[exception.review_outcome]
+                      : 'Reviewed'}
+                  </span>
                 </div>
                 <div className="bg-surf-low rounded-lg p-4 mb-4">
                   <p className="text-[14px] text-on-surf leading-relaxed">
@@ -294,70 +349,92 @@ export default function ExceptionDetailPage() {
                   {exception.reviewed_at && (
                     <div className="flex items-center gap-1.5 text-[11px] font-[500] text-sec tabular-nums">
                       <Ic n="clock" s={10} className="text-sec shrink-0" />
-                      {fmtTs(exception.reviewed_at)}
+                      {fmtDateTime(exception.reviewed_at)}
                     </div>
                   )}
-                  {/* Null for anything resolved before the method was recorded, or
-                      resolved without any contact having happened. Shown as absent
-                      rather than guessed — inventing contact history on an evidence
-                      record is worse than admitting the gap. */}
+                  {/* Null for anything reviewed without any contact having happened —
+                      evidence alone settled it. Shown as absent rather than guessed;
+                      inventing contact history on an evidence record is worse than
+                      admitting the gap. */}
                   {exception.contact_method && (
                     <div className="text-[11px] font-[500] text-sec">
-                      Established: {CONTACT_METHOD_LABELS[exception.contact_method]}
+                      {CONTACT_METHOD_LABELS[exception.contact_method]}
                     </div>
                   )}
                 </div>
+                {/* Deliberately no reviewer identity here. reviewed_by_user_id is a bare
+                    UUID with no name-resolution anywhere in this app — there is no user
+                    directory for a dispatcher-facing page to resolve it against. That is
+                    the whole of "reviewer attribution permitted by the schema": nothing
+                    displayable. Do not "fix" this by printing the raw UUID or inventing
+                    a name. */}
               </div>
             </div>
           ) : (
             <div className="bg-surf-lowest rounded-lg shadow-level-3 overflow-hidden">
-              <SecHead title="Resolve Exception" />
-              <form onSubmit={handleResolve} className="p-6 flex flex-col gap-4">
-                <Input
-                  label="Resolution note"
-                  placeholder={COPY.confirm.resolveNote}
-                  value={resolutionNote}
-                  onChange={e => setResolutionNote(e.target.value)}
-                />
-                {/* Mandatory and unset, rather than mandatory and pre-answered. The site
-                    visit found this contact happening and going unrecorded, so an optional
-                    field would have been recorded just as rarely — but a default is worse
-                    than a gap: it writes a specific claim about a specific person nobody
-                    made. The placeholder is `disabled` so it cannot be chosen back into. */}
-                <Select
-                  label="How was this established?"
-                  value={resolutionMethod}
-                  onChange={e =>
-                    setResolutionMethod(e.target.value as ExceptionResolutionMethod)
-                  }
-                >
-                  <option value={NO_METHOD_CHOSEN} disabled>
-                    {COPY.confirm.resolveMethodUnset}
-                  </option>
-                  {(Object.keys(RESOLUTION_METHOD_LABELS) as ExceptionResolutionMethod[]).map(
-                    method => (
-                      <option key={method} value={method}>
-                        {RESOLUTION_METHOD_LABELS[method]}
-                      </option>
-                    ),
-                  )}
-                </Select>
-                <div className="flex justify-end">
-                  <Button
-                    type="submit"
-                    variant="success"
-                    disabled={
-                      !resolutionNote.trim() ||
-                      resolutionMethod === NO_METHOD_CHOSEN ||
-                      resolving
+              <SecHead title={needsReview ? 'Review Required' : 'Review Exception'} />
+              {showForm ? (
+                <form onSubmit={handleReview} className="p-6 flex flex-col gap-4">
+                  <Input
+                    label="Review note"
+                    placeholder={COPY.confirm.reviewNote}
+                    value={reviewNote}
+                    onChange={e => setReviewNote(e.target.value)}
+                  />
+                  <Select
+                    label="Outcome"
+                    value={reviewOutcome}
+                    onChange={e =>
+                      setReviewOutcome(e.target.value as DispatcherReviewOutcome | typeof NO_OUTCOME_CHOSEN)
                     }
-                    loading={resolving}
-                    iconLeft={<Ic n="check" s={14} c="white" />}
                   >
-                    {COPY.actions.resolve}
+                    <option value={NO_OUTCOME_CHOSEN} disabled>
+                      {COPY.confirm.reviewOutcomeUnset}
+                    </option>
+                    {(Object.keys(REVIEW_OUTCOME_LABELS) as DispatcherReviewOutcome[]).map(outcome => (
+                      <option key={outcome} value={outcome}>
+                        {REVIEW_OUTCOME_LABELS[outcome]}
+                      </option>
+                    ))}
+                  </Select>
+                  {/* Optional. Blank is a real, submittable answer here — not a
+                      placeholder — so its option is not `disabled`, unlike the outcome
+                      field above. */}
+                  <Select
+                    label="Contact method"
+                    value={contactMethod}
+                    onChange={e =>
+                      setContactMethod(e.target.value as ExceptionContactMethod | typeof NO_CONTACT_CHOSEN)
+                    }
+                  >
+                    <option value={NO_CONTACT_CHOSEN}>No contact — reviewed from evidence alone</option>
+                    {(Object.keys(CONTACT_METHOD_LABELS) as ExceptionContactMethod[]).map(method => (
+                      <option key={method} value={method}>
+                        {CONTACT_METHOD_LABELS[method]}
+                      </option>
+                    ))}
+                  </Select>
+                  <p className="text-[12px] text-on-surf-v">{COPY.confirm.reviewNotice}</p>
+                  <div className="flex justify-end">
+                    <Button
+                      type="submit"
+                      variant="success"
+                      disabled={!reviewNote.trim() || reviewOutcome === NO_OUTCOME_CHOSEN || reviewing}
+                      loading={reviewing}
+                      iconLeft={<Ic n="check" s={14} c="white" />}
+                    >
+                      {COPY.actions.submitReview}
+                    </Button>
+                  </div>
+                </form>
+              ) : (
+                <div className="p-6 flex items-center justify-between">
+                  <span className="text-[13px] text-on-surf-v">Not yet reviewed</span>
+                  <Button variant="secondary" size="sm" onClick={() => setShowReviewForm(true)}>
+                    {COPY.actions.addReview}
                   </Button>
                 </div>
-              </form>
+              )}
             </div>
           )}
 

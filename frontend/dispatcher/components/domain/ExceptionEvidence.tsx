@@ -5,9 +5,23 @@ import { Ic } from '@/components/ui/Ic'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 import type { TripException } from '@shared/lib/types/exception'
 
+// Minimal shape both this component and its predicate actually read. Narrower than the
+// full TripException so the exception-detail page's TripExceptionDetail record — which
+// carries these same three fields, all non-optionally — satisfies this structurally with
+// no cast, and without that page having to fabricate an artifactsById Map it has no use
+// for (it already has the one relevant artifact in hand).
+type ExceptionEvidenceSource = Pick<TripException, 'gps_lat' | 'gps_lng' | 'supporting_artifact_id'>
+
 interface Props {
-  exception: TripException
-  artifactsById: Map<string, EvidenceArtifactWithUrl>
+  exception: ExceptionEvidenceSource
+  // Optional: the trip timeline and trip-detail page build this from useTripArtifacts
+  // (a trip-wide fetch); the exception-detail page has no such Map and passes `artifact`
+  // instead. Not required together — see the resolution order below.
+  artifactsById?: Map<string, EvidenceArtifactWithUrl>
+  // Optional: a caller that already holds the one artifact this exception could
+  // reference (the exception-detail page, from its own GET's nested `supporting_artifact`)
+  // passes it directly rather than standing up a one-entry Map.
+  artifact?: EvidenceArtifactWithUrl
 }
 
 /**
@@ -31,16 +45,21 @@ interface Props {
  * One predicate, used by the component and by anyone deciding whether to mount it, so
  * the two cannot drift into disagreeing about what "has evidence" means.
  */
-export function exceptionHasEvidence(exception: TripException): boolean {
+export function exceptionHasEvidence(exception: ExceptionEvidenceSource): boolean {
   const lat = exception.gps_lat
   const lng = exception.gps_lng
   const hasFix = lat !== null && lat !== undefined && lng !== null && lng !== undefined
   return exception.supporting_artifact_id !== null || hasFix
 }
 
-export function ExceptionEvidence({ exception, artifactsById }: Props) {
+export function ExceptionEvidence({ exception, artifactsById, artifact: artifactProp }: Props) {
   const artifactId = exception.supporting_artifact_id
-  const artifact   = artifactId ? artifactsById.get(artifactId) : undefined
+  // An explicitly-passed artifact always wins. There is no case where a caller passes
+  // `artifact` AND needs the Map fallback: TripExceptionDetail's supporting_artifact and
+  // supporting_artifact_id are always in lockstep (both null, or both set), so when
+  // `artifact` is undefined here it is because there genuinely is none — falling through
+  // to the id/Map lookup is exactly what the two Map-based callers still need.
+  const artifact = artifactProp ?? (artifactId ? artifactsById?.get(artifactId) : undefined)
 
   const lat = exception.gps_lat
   const lng = exception.gps_lng

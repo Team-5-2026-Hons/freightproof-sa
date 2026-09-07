@@ -9,13 +9,14 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from app.db.models.enums import (
     DispatcherReviewOutcome,
     ExceptionContactMethod,
-    ExceptionResolutionMethod,
     ExceptionReviewOutcome,
     ExceptionReviewStatus,
     ExceptionSeverity,
     ExceptionSource,
     ExceptionType,
+    TripStatus,
 )
+from app.schemas.evidence import EvidenceArtifactWithUrl
 from app.schemas.text import CheckpointTypeStr, FreeText, RequiredFreeText
 
 
@@ -187,46 +188,11 @@ class DriverExceptionCreateBody(BaseModel):
         return self
 
 
-class TripExceptionUpdate(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    resolved: Optional[bool] = None
-    resolved_by_user_id: Optional[UUID] = None
-    resolved_at: Optional[datetime] = None
-    resolver_note: Optional[FreeText] = None
-    merkle_batch_id: Optional[UUID] = None
-
-
-class TripExceptionResolveRequest(BaseModel):
-    """Everything a dispatcher may set when resolving. Deliberately only two fields.
-
-    NOT TripExceptionUpdate above, which exposes `resolved`, `resolved_by_user_id`,
-    `resolved_at` and `merkle_batch_id` on the wire. Reusing it would let a caller name
-    someone else as the resolver, at a time of their choosing, and mark the row resolved
-    without saying anything about how — on the one record whose whole purpose is to show
-    who established what. The server takes the resolver from the token and the timestamp
-    from its own clock (orchestration.exception_service.resolve_exception).
-
-    Both fields are mandatory. A resolution with no note is the informal handling this
-    ticket exists to capture, recorded as though it were evidence.
-    """
-
-    model_config = ConfigDict(from_attributes=True)
-
-    # RequiredFreeText, not str: lands on a TEXT column with no width of its own, and
-    # is read back as evidence — same reasoning as DriverExceptionCreateBody.description.
-    resolver_note: RequiredFreeText
-    resolution_method: ExceptionResolutionMethod
-
-
 class TripExceptionReviewRequest(BaseModel):
-    """The dispatcher's review action — Task 1 adds this alongside the still-live
-    TripExceptionResolveRequest above; Task 2/3 wires it to a renamed endpoint that
-    replaces /resolve.
+    """The dispatcher's review action.
 
-    Mirrors TripExceptionResolveRequest's own reasoning for taking a narrow body rather
-    than exposing TripException's review fields directly: the server owns the reviewer
-    and the clock, never the request.
+    The narrow request keeps the reviewer and timestamp server-owned rather than
+    accepting either as client input.
 
     `contact_method` is required but nullable, with no default — a caller MUST decide
     whether contact happened at all (unlike `review_outcome`, which has no "not
@@ -240,6 +206,61 @@ class TripExceptionReviewRequest(BaseModel):
     review_note: RequiredFreeText
     review_outcome: DispatcherReviewOutcome
     contact_method: Optional[ExceptionContactMethod]
+
+
+class TripExceptionListItem(BaseModel):
+    """Compact row for the review queue and history list.
+
+    Built explicitly from a (TripException, Trip, phase_type, stop_sequence) tuple in
+    the service layer, not via model_validate on the bare ORM object — the trip
+    reference/status and the phase/stop labels all come from the same org-scoping join,
+    not from TripException's own columns. See exception_service._to_list_item.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    exception_type: ExceptionType
+    source: ExceptionSource
+    severity: ExceptionSeverity
+    review_status: ExceptionReviewStatus
+    description: str
+    created_at: datetime
+
+    trip_id: UUID
+    trip_reference: str
+    trip_status: TripStatus
+
+    # PhaseEvent.phase_type / TripStop.sequence for the phase this exception is scoped
+    # to — None for a trip-level exception with no phase context. Mirrors the existing
+    # Trip.current_phase (str) / Trip.current_stop (int) pairing in schemas/trips.py.
+    phase_label: Optional[str] = None
+    stop_label: Optional[int] = None
+
+
+class TripExceptionDetail(TripExceptionListItem):
+    """Full record for the permalink detail screen: the compact row plus GPS, complete
+    review evidence, the trip's closed time, and the one linked artifact if any."""
+
+    gps_lat: Optional[float] = None
+    gps_lng: Optional[float] = None
+
+    review_outcome: Optional[ExceptionReviewOutcome] = None
+    reviewed_by_user_id: Optional[UUID] = None
+    reviewed_at: Optional[datetime] = None
+    review_note: Optional[str] = None
+    contact_method: Optional[ExceptionContactMethod] = None
+
+    trip_closed_at: Optional[datetime] = None
+
+    # Kept even when signing fails or the artifact cannot be verified as belonging to
+    # this trip — see `supporting_artifact`.
+    supporting_artifact_id: Optional[UUID] = None
+    # None means no photo was ever attached (or the id could not be verified as this
+    # trip's own — Task 0B's ownership invariant). Present with signed_url=None means
+    # the opposite: real evidence, but Storage declined to sign a URL right now. The UI
+    # must be able to tell "no photo" apart from "recorded, image unavailable".
+    supporting_artifact: Optional["EvidenceArtifactWithUrl"] = None
 
 
 class TripExceptionRead(TripExceptionBase):

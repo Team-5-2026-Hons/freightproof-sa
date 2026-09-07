@@ -5,7 +5,7 @@ import { Chip } from '@/components/ui/Chip'
 import { TripIdStamp } from './TripIdStamp'
 import { PhaseChain } from './PhaseChain'
 import { ROUTES } from '@/lib/constants/routes'
-import type { TripSummary } from '@shared/lib/types/trip'
+import type { TripChecklistItem } from '@shared/lib/types/trip'
 import { PHASE_NAMES } from '@shared/lib/constants/phase-meta'
 import { chainNodesFromCounts, tripChipMeta } from '@/lib/phase/derive'
 import type { Precinct } from '@shared/lib/types/precinct'
@@ -22,7 +22,7 @@ export interface ColWidths {
 }
 
 interface ChecklistRowProps {
-  trip: TripSummary
+  trip: TripChecklistItem
   colWidths: ColWidths
   precincts: Precinct[]
   className?: string
@@ -44,7 +44,7 @@ function formatShortDate(iso: string): string {
 // `build_phase_plan`, the else-branch reached solely when `i == last_index`).
 // Everything else might genuinely be a mid-route stop on a cross-dock plan, so it
 // falls back to a numbered "Stop N" rather than risk mislabelling it "Destination".
-function stopRoleLabel(trip: TripSummary): string {
+function stopRoleLabel(trip: TripChecklistItem): string {
   if (trip.current_stop === null) return ''
   if (trip.current_stop === 0) return 'Origin'
   if (trip.current_phase === 'confirmation') return 'Destination'
@@ -55,7 +55,7 @@ function stopRoleLabel(trip: TripSummary): string {
 // before anything else. Otherwise the coarse status covers the terminal states and
 // current_phase covers everything in between — derived server-side from the ledger,
 // never inferred from trip.status the way the three deleted tables did.
-function progressHint(trip: TripSummary): string {
+function progressHint(trip: TripChecklistItem): string {
   if (trip.needs_review_count > 0) {
     return `⚠ ${trip.needs_review_count} exception${trip.needs_review_count > 1 ? 's' : ''}`
   }

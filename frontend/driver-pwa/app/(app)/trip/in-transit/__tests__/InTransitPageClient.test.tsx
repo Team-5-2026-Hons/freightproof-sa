@@ -189,7 +189,7 @@ describe('InTransitPageClient exceptions list (5b)', () => {
     expect(screen.queryByText(/stale snapshot exception/i)).not.toBeInTheDocument()
   })
 
-  it('excludes resolved exceptions from the open count', () => {
+  it('excludes reviewed exceptions from the open count', () => {
     mockUseTrip.mockReturnValue({
       trip: baseTrip,
       isLoading: false,

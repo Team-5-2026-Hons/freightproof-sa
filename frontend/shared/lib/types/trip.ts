@@ -35,12 +35,40 @@ export interface TripStop {
   updated_at: string
 }
 
+// Structural row contract shared by the active-trip list and terminal-trip history.
+// It deliberately includes only what ChecklistRow renders, so the history endpoint
+// does not have to disclose a driver's contact/licence details or a vehicle's full
+// record merely to paint one row.
+export interface TripChecklistItem {
+  id: TripId
+  trip_reference: string
+  order_number: string
+  status: CoarseTripStatus
+  driver: { full_name: string }
+  horse: { registration: string }
+  origin_precinct_id: string | null
+  destination_precinct_id: string | null
+  needs_review_count: number
+  created_at: string
+  current_phase: PhaseType | null
+  current_stop: number | null
+  phase_total: number
+  phase_completed: number
+}
+
+// Purpose-specific response from GET /trips/history. Terminal ordering and date
+// filtering use closed_at; created_at remains separate because the existing row also
+// shows when the trip record was originally created on active-trip screens.
+export interface TripHistoryListItem extends TripChecklistItem {
+  closed_at: string
+}
+
 // Lightweight shape for list views (GET /trips).
 // Nests full driver/horse/trailers — confirmed by API contract §4.1.
 // needs_review_count is derived by the backend service layer — NEEDS_REVIEW rows
 // only (Task 2, FP-146 follow-on); a RECORDED row is on the trip's exception list
 // but is not queued for a dispatcher decision.
-export interface TripSummary {
+export interface TripSummary extends TripChecklistItem {
   id: TripId
   trip_reference: string
   order_number: string

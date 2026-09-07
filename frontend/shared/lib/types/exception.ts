@@ -2,6 +2,14 @@
 // Raised by driver, detected by system, or noted by dispatcher.
 // Mirrors backend TripExceptionRead schema in schemas/transit.py.
 
+// TripStatus is imported type-only. trip.ts already imports TripException from this
+// file, so this closes a trip.ts <-> exception.ts cycle — the same shape trip.ts
+// already carries with phase.ts (see its own "TYPE-ONLY and must stay that way" note).
+// `import type` is erased at compile time, so there is no runtime cycle; it must stay
+// type-only for that to hold.
+import type { TripStatus } from './trip'
+import type { EvidenceArtifactWithUrl } from './evidence'
+
 export type ExceptionId = string & { readonly __brand: 'ExceptionId' }
 
 // All 19 backend ExceptionType values — see DRIVER_EXCEPTION_TYPES and
@@ -37,23 +45,6 @@ export type ExceptionSource = 'system' | 'driver' | 'dispatcher'
 
 export type ExceptionSeverity = 'info' | 'warning' | 'critical'
 
-// How a dispatcher established what happened before resolving. Mirrors the backend
-// ExceptionResolutionMethod (db/models/enums.py). Kept alongside the review types below
-// (not deleted) because the still-live /resolve endpoint's request body
-// (useExceptions.ts resolveException) has not been renamed yet — Task 3 replaces it
-// with the reviewed-status flow that posts ExceptionContactMethod instead.
-//
-// 'no_contact_yet' is not a gap in the list. A dispatcher resolving from evidence alone
-// — the scan feed corrected itself, the photo settles it — must be able to say so rather
-// than pick the nearest wrong answer, which is how a contact log becomes fiction.
-//
-// This records that contact happened. It does not place calls or send messages.
-export type ExceptionResolutionMethod =
-  | 'phoned'
-  | 'whatsapp'
-  | 'in_person'
-  | 'no_contact_yet'
-
 // Where an exception sits in the dispatcher's review workflow (FP-146 follow-on).
 // Mirrors the backend ExceptionReviewStatus. Replaces the old `resolved: boolean` —
 // a two-state flag could not distinguish "nobody has looked at this" from "looked at,
@@ -76,9 +67,8 @@ export type ExceptionReviewOutcome =
 export type DispatcherReviewOutcome = Exclude<ExceptionReviewOutcome, 'legacy_review'>
 
 // How a dispatcher reached someone while reviewing — mirrors the backend
-// ExceptionContactMethod, the successor to ExceptionResolutionMethod above minus
-// NO_CONTACT_YET (which belongs on ExceptionReviewOutcome, not on a field named for the
-// method of a contact that never happened).
+// ExceptionContactMethod. A null contact method records that the evidence settled the
+// review without contact, rather than inventing contact history.
 export type ExceptionContactMethod = 'phone' | 'whatsapp' | 'in_person'
 
 export interface TripException {
@@ -123,4 +113,41 @@ export interface TripException {
   merkle_batch_id: string | null
   created_at: string
   updated_at: string
+}
+
+// Row shape for the three FP-146 follow-on read endpoints (review-queue, history,
+// detail) — replaces the single unpaginated GET /api/v1/exceptions that used
+// TripException above. Mirrors backend TripExceptionListItem.
+export interface TripExceptionListItem {
+  id: ExceptionId
+  exception_type: ExceptionType
+  source: ExceptionSource
+  severity: ExceptionSeverity
+  review_status: ExceptionReviewStatus
+  description: string
+  created_at: string
+  trip_id: string
+  trip_reference: string
+  trip_status: TripStatus
+  phase_label: string | null
+  stop_label: number | null
+}
+
+// GET /api/v1/exceptions/{id} — the list item plus the fields only a single-record
+// view needs (GPS, review outcome, supporting evidence). Mirrors backend
+// TripExceptionDetail.
+export interface TripExceptionDetail extends TripExceptionListItem {
+  gps_lat: number | null
+  gps_lng: number | null
+  review_outcome: ExceptionReviewOutcome | null
+  reviewed_by_user_id: string | null
+  reviewed_at: string | null
+  review_note: string | null
+  contact_method: ExceptionContactMethod | null
+  trip_closed_at: string | null
+  supporting_artifact_id: string | null
+  // Null when there is no photo OR ownership could not be verified. Present with
+  // signed_url: null when the artifact is real but Storage declined to sign it — still
+  // render the record with the image unavailable rather than hiding it.
+  supporting_artifact: EvidenceArtifactWithUrl | null
 }

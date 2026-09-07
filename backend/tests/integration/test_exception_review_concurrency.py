@@ -19,7 +19,7 @@ import pytest_asyncio
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ExceptionAlreadyResolvedError
+from app.core.exceptions import ExceptionAlreadyReviewedError
 from app.db.models.enums import (
     DispatcherReviewOutcome,
     ExceptionContactMethod,
@@ -185,7 +185,7 @@ async def test_simultaneous_reviews_record_exactly_one_dispatcher(test_engine, s
                     review_outcome=outcome,
                     contact_method=contact_method,
                 )
-            except ExceptionAlreadyResolvedError:
+            except ExceptionAlreadyReviewedError:
                 await session.rollback()
                 return user_id, 409
             await session.commit()

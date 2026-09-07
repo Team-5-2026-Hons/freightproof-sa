@@ -350,7 +350,7 @@ describe('legDepartureAt', () => {
 
 describe('recordedExceptionLabel', () => {
   const exception = (id: string): TripException =>
-    ({ id, resolved: false } as unknown as TripException)
+    ({ id } as unknown as TripException)
 
   it('is null on a clean trip', () => {
     expect(recordedExceptionLabel([], SINGLE_LEG_PHASE_PLAN)).toBeNull()
@@ -361,10 +361,10 @@ describe('recordedExceptionLabel', () => {
     expect(recordedExceptionLabel([exception('a'), exception('b')], SINGLE_LEG_PHASE_PLAN)).toBe('2 exceptions')
   })
 
-  it('counts a record regardless of resolved state — there is no resolve workflow yet', () => {
-    const resolved = { ...exception('a'), resolved: true }
+  it('counts a reviewed record as an exception fact', () => {
+    const reviewed = { ...exception('a'), review_status: 'reviewed' as const }
 
-    expect(recordedExceptionLabel([resolved], SINGLE_LEG_PHASE_PLAN)).toBe('1 exception')
+    expect(recordedExceptionLabel([reviewed], SINGLE_LEG_PHASE_PLAN)).toBe('1 exception')
   })
 
   it('reports a held phase carrying no record rather than reading as clean', () => {

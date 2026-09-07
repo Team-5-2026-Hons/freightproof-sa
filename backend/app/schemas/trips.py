@@ -272,6 +272,44 @@ class TripListItemResponse(BaseModel):
     updated_at: datetime
 
 
+class TripHistoryDriverResponse(BaseModel):
+    """Only the driver display value needed by a trip-history row."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    full_name: str
+
+
+class TripHistoryVehicleResponse(BaseModel):
+    """Only the horse display value needed by a trip-history row."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    registration: str
+
+
+class TripHistoryListItemResponse(BaseModel):
+    """Terminal-trip fields consumed by ChecklistRow, with no sensitive detail."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    trip_reference: str
+    order_number: str
+    status: TripStatus
+    driver: TripHistoryDriverResponse
+    horse: TripHistoryVehicleResponse
+    origin_precinct_id: Optional[UUID] = None
+    destination_precinct_id: Optional[UUID] = None
+    needs_review_count: int
+    current_phase: Optional[str] = None
+    current_stop: Optional[int] = None
+    phase_total: int
+    phase_completed: int
+    closed_at: datetime
+    created_at: datetime
+
+
 class DriverTripListItemResponse(BaseModel):
     """One row of GET /api/v1/trips/me — the authenticated driver's own trip list.
 

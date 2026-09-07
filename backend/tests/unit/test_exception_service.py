@@ -1,4 +1,4 @@
-"""FP-146 — review_exception and list_exceptions at the service level.
+"""FP-146 — review_exception at the service level.
 
 Complements tests/integration/test_exceptions_dispatcher.py rather than repeating it.
 The integration tests own the HTTP contract (status codes, request shape); these own the
@@ -13,7 +13,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy import select
 
-from app.core.exceptions import ExceptionAlreadyResolvedError, ResourceNotFoundError
+from app.core.exceptions import ExceptionAlreadyReviewedError, ResourceNotFoundError
 from app.core.realtime import EventSeverity, RealtimeKind
 from app.db.models.enums import (
     ArtifactType,
@@ -37,7 +37,6 @@ from app.db.models.trips import Trip
 from app.db.models.vehicles import Vehicle
 from app.orchestration.exception_service import (
     initial_review_status,
-    list_exceptions,
     raise_exception,
     review_exception,
 )
@@ -217,7 +216,7 @@ async def test_a_second_dispatcher_reviewing_is_told_they_lost(db_session):
     db_session.add(other_dispatcher)
     await db_session.flush()
 
-    with pytest.raises(ExceptionAlreadyResolvedError):
+    with pytest.raises(ExceptionAlreadyReviewedError):
         await _review(
             db_session, seed,
             user_id=other_dispatcher.id,
@@ -243,7 +242,7 @@ async def test_a_review_with_no_recorded_reviewer_counts_as_a_conflict(db_sessio
     exc.reviewed_by_user_id = None
     await db_session.flush()
 
-    with pytest.raises(ExceptionAlreadyResolvedError):
+    with pytest.raises(ExceptionAlreadyReviewedError):
         await _review(db_session, seed)
 
 
@@ -274,63 +273,6 @@ async def test_a_suppressed_repeat_review_enqueues_nothing(db_session):
     await _review(db_session, seed)
 
     assert _outbox(db_session) == []
-
-
-# ── list ─────────────────────────────────────────────────────────────────────
-
-
-async def test_list_is_scoped_to_the_organisation(db_session):
-    mine = await _seed(db_session, tag="l-mine")
-    theirs = await _seed(db_session, tag="l-theirs")
-
-    rows = await list_exceptions(db_session, organization_id=mine["org"].id)
-
-    assert [r.id for r in rows] == [mine["exception"].id]
-    assert theirs["exception"].id not in {r.id for r in rows}
-
-
-async def test_list_returns_newest_first(db_session):
-    """This backs a queue a dispatcher works down; the thing that just happened is the
-    thing they need to see."""
-    seed = await _seed(db_session, tag="order")
-    older = TripException(
-        id=uuid.uuid4(), trip_id=seed["trip"].id,
-        exception_type=ExceptionType.PARCEL_COUNT_MISMATCH,
-        source=ExceptionSource.SYSTEM, severity=ExceptionSeverity.WARNING,
-        description="Earlier finding.",
-    )
-    db_session.add(older)
-    await db_session.flush()
-
-    # BOTH timestamps stamped from one Python base, rather than letting either take the
-    # created_at server default. The default is func.now(), and the test database's clock
-    # runs days behind the host (known-issues §6) — so a row the database stamps is not
-    # reliably "later" than one this process stamps, and an ordering test built on that
-    # mixture asserts the container's clock rather than the ORDER BY.
-    base = datetime.now(UTC)
-    seed["exception"].created_at = base
-    older.created_at = base - timedelta(hours=3)
-    await db_session.flush()
-
-    rows = await list_exceptions(db_session, organization_id=seed["org"].id)
-
-    assert [r.id for r in rows] == [seed["exception"].id, older.id]
-
-
-async def test_list_without_a_filter_includes_resolved_rows(db_session):
-    """`resolved=None` is not `resolved=False`. The detail page opens an exception by id
-    without knowing its state, so an unresolved-only default would make a resolved
-    exception unreachable from its own permalink."""
-    seed = await _seed(db_session, tag="l-all")
-    await _review(db_session, seed)
-
-    all_rows = await list_exceptions(db_session, organization_id=seed["org"].id)
-    open_rows = await list_exceptions(
-        db_session, organization_id=seed["org"].id, resolved=False,
-    )
-
-    assert [r.id for r in all_rows] == [seed["exception"].id]
-    assert open_rows == []
 
 
 # ── Task 0B: raise_exception — evidence ownership + client_report_id idempotency ──

@@ -2,14 +2,16 @@
 
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, time, timedelta, timezone
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, literal, or_, select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ExceptionAlreadyResolvedError, ResourceNotFoundError
+from app.core.config import settings
+from app.core.exceptions import ExceptionAlreadyReviewedError, ResourceNotFoundError
+from app.core.pagination import CursorPosition, decode_cursor, encode_cursor
 from app.core.realtime import RealtimeKind, TripEvent, enqueue_event, event_severity
 from app.db.models.enums import (
     DispatcherReviewOutcome,
@@ -22,11 +24,13 @@ from app.db.models.enums import (
 )
 from app.db.models.evidence import EvidenceArtifact
 from app.db.models.phases import PhaseEvent
-from app.db.models.trips import Trip
+from app.db.models.trips import Trip, TripStop
 from app.db.models.transit import TripException
+from app.orchestration.artifact_service import get_trip_scoped_artifact
 from app.orchestration.integrity import is_unique_violation, violated_constraint
 from app.orchestration.phase_service import current_phase_event
-from app.schemas.transit import TripExceptionRead
+from app.schemas.pagination import CursorPage
+from app.schemas.transit import TripExceptionDetail, TripExceptionListItem, TripExceptionRead
 
 logger = logging.getLogger(__name__)
 
@@ -305,7 +309,7 @@ async def review_exception(
 
     * **Same dispatcher** — idempotent. A double-tap and a replayed request both carry
       the same account, so the stored row comes back unchanged and nothing is lost.
-    * **A different dispatcher** — ``ExceptionAlreadyResolvedError`` (→ 409). Their note,
+    * **A different dispatcher** — ``ExceptionAlreadyReviewedError`` (→ 409). Their note,
       outcome and contact method are being discarded, and they may have established
       something the first reviewer did not. Returning 200 with a colleague's note would
       tell them their account was recorded when it was not.
@@ -315,7 +319,7 @@ async def review_exception(
 
     Raises:
         ResourceNotFoundError: no such exception in this organisation.
-        ExceptionAlreadyResolvedError: another dispatcher reviewed it first.
+        ExceptionAlreadyReviewedError: another dispatcher reviewed it first.
     """
     # Joined rather than fetched separately: the org check and the load are one question
     # ("is there such an exception that this dispatcher may act on"), and splitting them
@@ -361,7 +365,7 @@ async def review_exception(
             "first_reviewer=%s caller=%s",
             exception_id, organization_id, exc.reviewed_by_user_id, user_id,
         )
-        raise ExceptionAlreadyResolvedError(str(exception_id))
+        raise ExceptionAlreadyReviewedError(str(exception_id))
 
     exc.review_status = ExceptionReviewStatus.REVIEWED
     # Explicit conversion keeps the request-only enum (which intentionally excludes
@@ -396,48 +400,213 @@ async def review_exception(
     return _read_with_trip(exc, trip)
 
 
-async def list_exceptions(
+# Recorded/reviewed only — never needs_review. Named once rather than inlined into
+# list_exception_history so get_exception_detail's own note about the queue/history
+# split can point at one place, and so the two review states forming "history" cannot
+# quietly drift apart from the review-queue's own filter below.
+_HISTORY_REVIEW_STATUSES = (ExceptionReviewStatus.RECORDED, ExceptionReviewStatus.REVIEWED)
+
+
+def _to_list_item(
+    exc: TripException, trip: Trip, phase_type: str | None, stop_sequence: int | None,
+) -> TripExceptionListItem:
+    """Build the compact list row from one (exception, trip, phase_type, stop_sequence)
+    tuple — the shape every 4-column join in this module selects.
+
+    Not `TripExceptionListItem.model_validate(exc)`: the trip reference/status and the
+    phase/stop labels live on the joined Trip/PhaseEvent/TripStop rows, not on
+    TripException itself. Raw values are passed straight through rather than
+    `.value`'d — `exc.exception_type`, `trip.status`, `phase_type` all come back from
+    the database as plain `str` (see this module's DB-backed enum columns), and Pydantic
+    coerces them into their declared enum types on construction; `.value`'ing an
+    already-plain string raises AttributeError.
+    """
+    return TripExceptionListItem(
+        id=exc.id,
+        exception_type=exc.exception_type,
+        source=exc.source,
+        severity=exc.severity,
+        review_status=exc.review_status,
+        description=exc.description,
+        created_at=exc.created_at,
+        trip_id=exc.trip_id,
+        trip_reference=trip.trip_reference,
+        trip_status=trip.status,
+        phase_label=phase_type,
+        stop_label=stop_sequence,
+    )
+
+
+def _exception_read_query():
+    """The 4-column join every read function in this module selects from: the exception
+    and its trip (for org scoping and the trip reference/status), plus the phase type
+    and stop sequence the exception is scoped to, if any.
+
+    Only the two scalar columns are pulled off PhaseEvent/TripStop, not the full
+    entities — nothing here needs more of either row, and selecting whole entities
+    would make the outer joins load columns no caller reads.
+    """
+    return (
+        select(TripException, Trip, PhaseEvent.phase_type, TripStop.sequence)
+        .join(Trip, Trip.id == TripException.trip_id)
+        .outerjoin(PhaseEvent, PhaseEvent.id == TripException.phase_event_id)
+        .outerjoin(TripStop, TripStop.id == TripException.trip_stop_id)
+    )
+
+
+async def list_review_queue(
+    db: AsyncSession, *, organization_id: uuid.UUID,
+) -> list[TripExceptionListItem]:
+    """Every needs_review exception in the organisation, newest first.
+
+    Deliberately unpaginated — see the endpoint's own docstring (api/v1/endpoints/
+    exceptions.py) for why: this is a bounded human-work queue, not a full history, and
+    hiding a large critical backlog behind pages would be unsafe.
+    """
+    stmt = (
+        _exception_read_query()
+        .where(
+            Trip.operator_organization_id == organization_id,
+            TripException.review_status == ExceptionReviewStatus.NEEDS_REVIEW,
+        )
+        .order_by(TripException.created_at.desc(), TripException.id.desc())
+    )
+    rows = (await db.execute(stmt)).all()
+    return [_to_list_item(exc, trip, phase_type, stop_sequence) for exc, trip, phase_type, stop_sequence in rows]
+
+
+async def list_exception_history(
     db: AsyncSession,
     *,
     organization_id: uuid.UUID,
-    resolved: bool | None = None,
-) -> list[TripExceptionRead]:
-    """Every exception on the organisation's trips, newest first.
+    limit: int = 25,
+    cursor: str | None = None,
+    q: str | None = None,
+    review_status: ExceptionReviewStatus | None = None,
+    severity: ExceptionSeverity | None = None,
+    from_date: date | None = None,
+    to_date: date | None = None,
+) -> CursorPage[TripExceptionListItem]:
+    """Recorded/reviewed exceptions (never needs_review — that's the review queue's own
+    job), newest first, cursor-paginated on (created_at, id).
 
-    Scoped by joining Trip rather than by filtering a column on TripException, because
-    the exception table carries no organisation of its own — the trip owns that, and
-    deriving it here keeps a single source for who may see what.
+    Raises ValueError (propagated from decode_cursor, uncaught here) for a malformed
+    cursor — the caller maps that to a 422. Decoded before either query below runs, so
+    a bad cursor fails before any work is done on its behalf.
 
-    `resolved=None` means "all", and is not the same as False. The detail page looks one
-    exception up by id without knowing its state, and an unresolved-only default would
-    make a resolved exception unopenable from its own permalink.
-
-    Ordered newest-first: this backs a queue a dispatcher works down, and the thing that
-    just happened is the thing they need.
-
-    `id` breaks the tie, and is not decoration. `created_at` is `server_default=func.now()`,
-    which in Postgres is the TRANSACTION timestamp — so every exception written by one
-    request shares an identical value, and `advance_confirmation` alone can write three.
-    On `created_at` alone their relative order is whatever the planner returns, which can
-    differ between two fetches of the same data; the queue would reshuffle under a
-    dispatcher reading it.
+    from_date/to_date are SA (UTC+settings.OPERATIONS_UTC_OFFSET_HOURS) calendar dates,
+    both inclusive — see phase_service.operating_day for the inverse conversion this
+    mirrors. The exclusive upper bound (start of the day AFTER to_date, in SA time) is
+    what makes to_date read as inclusive rather than as a UTC midnight cutoff that would
+    silently exclude the tail of that SA day.
     """
-    stmt = (
-        select(TripException, Trip)
-        .join(Trip, Trip.id == TripException.trip_id)
-        .where(Trip.operator_organization_id == organization_id)
-        .order_by(TripException.created_at.desc(), TripException.id.desc())
-    )
-    if resolved is not None:
-        # `resolved` stays a bool on this function's own signature (and the dispatcher
-        # endpoint's `?resolved=` query param) — Task 1 only renames the underlying
-        # storage, not this public contract, which Task 2/3 owns. REVIEWED is the one
-        # review_status that means "resolved" under the old two-state model; the other
-        # two (RECORDED, NEEDS_REVIEW) both mean "still open".
-        if resolved:
-            stmt = stmt.where(TripException.review_status == ExceptionReviewStatus.REVIEWED)
-        else:
-            stmt = stmt.where(TripException.review_status != ExceptionReviewStatus.REVIEWED)
+    cursor_position = decode_cursor(cursor) if cursor is not None else None
 
-    rows = (await db.execute(stmt)).all()
-    return [_read_with_trip(exc, trip) for exc, trip in rows]
+    filters = [
+        Trip.operator_organization_id == organization_id,
+        TripException.review_status.in_(_HISTORY_REVIEW_STATUSES),
+    ]
+    if q is not None:
+        pattern = f"%{q}%"
+        filters.append(or_(Trip.trip_reference.ilike(pattern), TripException.description.ilike(pattern)))
+    if review_status is not None:
+        # ANDed with the base recorded/reviewed filter above rather than replacing it —
+        # a caller passing needs_review legitimately gets zero rows, which is correct
+        # and must not be special-cased or rejected.
+        filters.append(TripException.review_status == review_status)
+    if severity is not None:
+        filters.append(TripException.severity == severity)
+    if from_date is not None or to_date is not None:
+        sa_tz = timezone(timedelta(hours=settings.OPERATIONS_UTC_OFFSET_HOURS))
+        if from_date is not None:
+            filters.append(TripException.created_at >= datetime.combine(from_date, time.min, tzinfo=sa_tz))
+        if to_date is not None:
+            filters.append(
+                TripException.created_at < datetime.combine(to_date + timedelta(days=1), time.min, tzinfo=sa_tz)
+            )
+
+    # Same filter set as the page query below, applied independently rather than
+    # derived from it — total_items must reflect every matching row regardless of
+    # limit/cursor, which a query already sliced by LIMIT/keyset cannot answer.
+    count_stmt = (
+        select(func.count())
+        .select_from(TripException)
+        .join(Trip, Trip.id == TripException.trip_id)
+        .where(*filters)
+    )
+    total_items = (await db.execute(count_stmt)).scalar_one()
+
+    page_stmt = (
+        _exception_read_query()
+        .where(*filters)
+        .order_by(TripException.created_at.desc(), TripException.id.desc())
+        .limit(limit + 1)
+    )
+    if cursor_position is not None:
+        # A tuple comparison, not two ANDed column comparisons: the latter cannot
+        # correctly express "strictly below this point in a (created_at, id) ordering"
+        # and would duplicate or skip rows across a page boundary whenever two rows
+        # share a created_at value (see _HISTORY_REVIEW_STATUSES's neighbour
+        # test_history_pagination_has_no_duplicates_or_omissions_with_tied_timestamps).
+        page_stmt = page_stmt.where(
+            tuple_(TripException.created_at, TripException.id)
+            < tuple_(literal(cursor_position.created_at), literal(cursor_position.id))
+        )
+
+    rows = (await db.execute(page_stmt)).all()
+    has_more = len(rows) > limit
+    page_rows = rows[:limit]
+
+    items = [_to_list_item(exc, trip, phase_type, stop_sequence) for exc, trip, phase_type, stop_sequence in page_rows]
+
+    next_cursor: str | None = None
+    if has_more:
+        last_exc = page_rows[-1][0]
+        next_cursor = encode_cursor(CursorPosition(created_at=last_exc.created_at, id=last_exc.id))
+
+    return CursorPage[TripExceptionListItem](items=items, next_cursor=next_cursor, total_items=total_items)
+
+
+async def get_exception_detail(
+    db: AsyncSession, *, exception_id: uuid.UUID, organization_id: uuid.UUID,
+) -> TripExceptionDetail:
+    """One exception, any review state, any trip lifecycle — a permalink target.
+
+    Org-scoped by the same Trip join review_exception uses. Raises
+    ResourceNotFoundError (-> 404, not 403) for a missing or cross-organisation id — a
+    403 would confirm the row exists to a dispatcher with no right to know that.
+    """
+    row = (await db.execute(
+        _exception_read_query().where(
+            TripException.id == exception_id,
+            Trip.operator_organization_id == organization_id,
+        )
+    )).one_or_none()
+    if row is None:
+        raise ResourceNotFoundError("TripException", str(exception_id))
+    exc, trip, phase_type, stop_sequence = row
+
+    # Never trust supporting_artifact_id on its own — get_trip_scoped_artifact
+    # re-checks ownership at read time exactly as raise_exception's own comment on
+    # this same invariant explains: the FK alone only proves the artifact exists
+    # SOMEWHERE, not that it belongs to THIS trip.
+    supporting_artifact = None
+    if exc.supporting_artifact_id is not None:
+        supporting_artifact = await get_trip_scoped_artifact(
+            db, artifact_id=exc.supporting_artifact_id, trip_id=exc.trip_id,
+        )
+
+    list_item = _to_list_item(exc, trip, phase_type, stop_sequence)
+    return TripExceptionDetail(
+        **list_item.model_dump(),
+        gps_lat=exc.gps_lat,
+        gps_lng=exc.gps_lng,
+        review_outcome=exc.review_outcome,
+        reviewed_by_user_id=exc.reviewed_by_user_id,
+        reviewed_at=exc.reviewed_at,
+        review_note=exc.review_note,
+        contact_method=exc.contact_method,
+        trip_closed_at=trip.closed_at,
+        supporting_artifact_id=exc.supporting_artifact_id,
+        supporting_artifact=supporting_artifact,
+    )

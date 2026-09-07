@@ -1,19 +1,16 @@
-"use client"
+'use client'
 
 import { useCallback } from 'react'
 
 import { api } from '@/lib/api/client'
 import { useLiveResource } from '@/lib/realtime/useLiveResource'
-import type {
-  ExceptionResolutionMethod,
-  TripException,
-} from '@shared/lib/types/exception'
+import type { TripExceptionListItem } from '@shared/lib/types/exception'
 import { useAsyncData } from './useAsyncData'
 
-const EMPTY: TripException[] = []
+const EMPTY: TripExceptionListItem[] = []
 
-export interface UseExceptions {
-  exceptions: TripException[]
+export interface UseExceptionQueueResult {
+  items: TripExceptionListItem[]
   isLoading: boolean
   // MUST be surfaced. An exception queue that fails to load renders identically to one
   // that is genuinely empty — and "no exceptions" is the single most reassuring thing
@@ -25,45 +22,35 @@ export interface UseExceptions {
 }
 
 /**
- * Every exception in the caller's organisation, newest first.
+ * Every `needs_review` exception in the caller's organisation, newest first —
+ * GET /api/v1/exceptions/review-queue. Unpaginated: this is a work queue a dispatcher
+ * has to clear, not a browsable archive (that's useExceptionHistory).
  *
- * Takes no arguments, deliberately. The endpoint supports `?resolved=` and the server
- * scopes to the caller's organisation (that scoping is authorisation and cannot happen
- * here), but no screen passes a filter: the list page fetches once and splits the tabs
- * client-side, and the detail page opens an exception by id without knowing its state.
- *
- * The hook previously accepted `resolved` and `tripId`. `resolved` was also SILENTLY
- * BROKEN — useAsyncData holds its fetch function in a ref whose effect depends only on
- * `timeoutMs`, so changing the filter on a mounted hook re-rendered without ever
- * refetching. Rather than reach into a hook every screen shares to fix a path nothing
- * used, both filters are gone; add one back with a test that rerenders, not one that
- * mounts fresh per case.
+ * Takes no arguments, deliberately — the endpoint itself has no filters. The old
+ * useExceptions() accepted (and silently ignored, via useAsyncData's ref-held fetch fn)
+ * a `resolved` filter; that whole shape is gone with the endpoint it called.
  */
-export function useExceptions(): UseExceptions {
+export function useExceptionQueue(): UseExceptionQueueResult {
   // Stable identity: useAsyncData refetches when this changes, and a new closure per
   // render would refetch on every render.
-  const fetchExceptions = useCallback(
-    () => api.get<TripException[]>('/api/v1/exceptions'),
+  const fetchQueue = useCallback(
+    () => api.get<TripExceptionListItem[]>('/api/v1/exceptions/review-queue'),
     [],
   )
 
-  const { data, isLoading, error, refetch, refetchSilent } = useAsyncData<TripException[]>(
-    fetchExceptions,
+  const { data, isLoading, error, refetch, refetchSilent } = useAsyncData<TripExceptionListItem[]>(
+    fetchQueue,
     EMPTY,
   )
 
   // Any trip, not one: this backs a queue spanning every trip in the organisation, so a
   // seal mismatch on a trip nobody is looking at still has to appear. Silent — the list
-  // updates in place rather than flashing a spinner under someone reading it.
-  useLiveResource('trip', 'any', refetchSilent)
+  // updates in place rather than flashing a spinner under someone reading it. Filtered
+  // to exception kinds only: a phase tick or trip close elsewhere shouldn't re-poll a
+  // queue whose membership didn't change.
+  useLiveResource('trip', 'any', refetchSilent, {
+    kinds: ['exception_raised', 'exception_reviewed'],
+  })
 
-  return { exceptions: data, isLoading, error, refetch, refetchSilent }
-}
-
-/** Record how an exception was resolved. The server sets the resolver and the timestamp. */
-export function resolveException(
-  exceptionId: string,
-  body: { resolver_note: string; resolution_method: ExceptionResolutionMethod },
-): Promise<TripException> {
-  return api.patch<TripException>(`/api/v1/exceptions/${exceptionId}/resolve`, body)
+  return { items: data, isLoading, error, refetch, refetchSilent }
 }

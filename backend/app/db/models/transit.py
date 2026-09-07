@@ -151,8 +151,7 @@ class TripException(Base):
     # How the dispatcher established what happened, alongside the note saying what they
     # found. Nullable: every exception written before this column existed has no method,
     # and backfilling a guess would put invented contact history on an evidence record.
-    # ExceptionContactMethod (not the legacy ExceptionResolutionMethod this column was
-    # renamed from — migration ciaran_exc_review_semantics remaps every stored value:
+    # ExceptionContactMethod; migration ciaran_exc_review_semantics remaps every stored value:
     # 'phoned'->'phone', 'no_contact_yet'->NULL — see that enum's own comment for why
     # NO_CONTACT_YET has no equivalent here). String(20), not a native PG enum — matching
     # exception_type/source/severity above and every other enum column in this codebase.

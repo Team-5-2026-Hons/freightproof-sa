@@ -210,28 +210,6 @@ class ParcelStatus(str, enum.Enum):
     EXCEPTION   = "exception"
 
 
-class ExceptionResolutionMethod(str, enum.Enum):
-    """How a dispatcher established what actually happened before resolving.
-
-    Recorded because the site visit found resolution happens informally — a phone call,
-    a WhatsApp message, a conversation in the yard — and none of it reached the record.
-    An exception marked resolved with no trace of *how* is an assertion; with the method
-    and the resolver's note it is evidence about the handling.
-
-    NO_CONTACT_YET is not a gap in the list. A dispatcher resolving from evidence alone
-    (the scan feed corrected itself, the photo settles it) must be able to say so rather
-    than pick the nearest wrong answer, which is how contact logs become fiction.
-
-    This records that contact happened. It does not place calls or send messages —
-    FreightProof records, it does not dispatch.
-    """
-
-    PHONED        = "phoned"
-    WHATSAPP      = "whatsapp"
-    IN_PERSON     = "in_person"
-    NO_CONTACT_YET = "no_contact_yet"
-
-
 class ExceptionReviewStatus(str, enum.Enum):
     """Where an exception sits in the dispatcher's review workflow (FP-146 follow-on).
 
@@ -280,8 +258,7 @@ class DispatcherReviewOutcome(str, enum.Enum):
 
 
 class ExceptionContactMethod(str, enum.Enum):
-    """How a dispatcher reached someone while reviewing an exception — the successor to
-    ExceptionResolutionMethod above, minus NO_CONTACT_YET.
+    """How a dispatcher reached someone while reviewing an exception.
 
     NO_CONTACT_YET has no equivalent here: it recorded the ABSENCE of contact ("resolved
     from evidence alone"), which belongs on ExceptionReviewOutcome (e.g.

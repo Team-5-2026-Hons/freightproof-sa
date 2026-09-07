@@ -109,3 +109,33 @@ async def list_artifacts_for_trip(
             )
         )
     return out
+
+
+async def get_trip_scoped_artifact(
+    db: AsyncSession, *, artifact_id: uuid.UUID, trip_id: uuid.UUID,
+) -> EvidenceArtifactWithUrl | None:
+    """Resolve and sign exactly one artifact, scoped to the trip it must belong to.
+
+    An artifact id that exists but belongs to a different trip is indistinguishable
+    from one that does not exist at all (Task 0B's ownership invariant) — callers must
+    never trust a stored artifact id without this check, even one this same codebase
+    wrote. Returns None only when no such artifact is scoped to this trip; a found
+    artifact is always returned, with signed_url left None if Storage declines to sign
+    it (the artifact is still evidence even when its image can't be fetched right now).
+    """
+    result = await db.execute(
+        select(EvidenceArtifact).where(
+            EvidenceArtifact.id == artifact_id, EvidenceArtifact.trip_id == trip_id,
+        )
+    )
+    artifact = result.scalar_one_or_none()
+    if artifact is None:
+        return None
+
+    signed_url = await create_signed_url(
+        s3_bucket=artifact.s3_bucket, s3_key=artifact.s3_key,
+        ttl_seconds=settings.EVIDENCE_SIGNED_URL_TTL_SECONDS,
+    )
+    return EvidenceArtifactWithUrl.model_validate(artifact).model_copy(
+        update={"signed_url": signed_url}
+    )

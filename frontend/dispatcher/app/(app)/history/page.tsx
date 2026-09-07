@@ -9,30 +9,44 @@ import { Spinner }          from '@/components/ui/Spinner'
 import { Ic }               from '@/components/ui/Ic'
 import { EmptyState }       from '@/components/ui/EmptyState'
 import { DateRangePicker }  from '@/components/ui/DateRangePicker'
+import { Pagination }       from '@/components/ui/Pagination'
 import { ChecklistRow }     from '@/components/domain/ChecklistRow'
 import type { ColWidths }   from '@/components/domain/ChecklistRow'
-import { useTrips }         from '@/lib/hooks/useTrips'
+import { useTripHistory }   from '@/lib/hooks/useTripHistory'
 import { usePrecincts }     from '@/lib/hooks/usePrecincts'
 import { useToast }         from '@/lib/hooks/useToast'
 import { COPY }             from '@shared/lib/constants/copy'
-import type { TripStatus }  from '@shared/lib/types/trip'
 import type { DateRange }   from '@/lib/types/date-range'
 
-const CLOSED_STATUS: TripStatus[] = ['closed', 'cancelled']
-
-// Filtered by trip.updated_at (TripSummary has no dedicated closed_at). Lower bound
-// predates the platform, so the picker opens covering the full history by default —
-// narrowing it is an explicit dispatcher action, not a silent default that hides trips.
+// Lower bound predates the platform, so the picker opens covering the full history by
+// default — narrowing it is an explicit dispatcher action, not a silent default.
 const HISTORY_RANGE_START = '2020-01-01'
+const OPERATIONS_DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Africa/Johannesburg',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+})
 
 function todayStr(): string {
-  return new Date().toISOString().slice(0, 10)
+  // The API interprets date filters on the configured operations calendar. South
+  // African local date is derived by named zone, independent of process timezone
+  // and without duplicating the backend's configurable numeric UTC offset.
+  const parts = OPERATIONS_DATE_FORMATTER.formatToParts(new Date())
+  const getPart = (type: Intl.DateTimeFormatPartTypes): string | undefined => (
+    parts.find((part) => part.type === type)?.value
+  )
+  const year = getPart('year')
+  const month = getPart('month')
+  const day = getPart('day')
+  if (!year || !month || !day) throw new Error('Unable to resolve operations date')
+  return `${year}-${month}-${day}`
 }
 
 type ColId = keyof ColWidths
 
 const COL_HEADERS: { id: ColId; label: string }[] = [
-  { id: 'createdAt', label: 'CREATED'        },
+  { id: 'createdAt', label: 'CLOSED'         },
   { id: 'tripId',    label: 'TRIP ID'        },
   { id: 'order',     label: 'ORDER'          },
   { id: 'driver',    label: 'DRIVER / HORSE' },
@@ -61,14 +75,20 @@ export default function HistoryPage() {
   const resizeRef = useRef<{ id: ColId; startX: number; startW: number } | null>(null)
   const { notify } = useToast()
 
-  const { trips: allTrips, isLoading: tripsLoading, error: tripsError, refetch: refetchTrips } = useTrips({ status: CLOSED_STATUS })
+  const historyFilters = useMemo(() => ({
+    q: search || undefined,
+    precinctId: precinctId || undefined,
+    fromDate: dateRange.from,
+    toDate: dateRange.to,
+  }), [search, precinctId, dateRange])
+  const history = useTripHistory(historyFilters)
   const { precincts, error: precinctsError } = usePrecincts()
 
   useEffect(() => {
-    if (tripsError) {
-      notify({ kind: 'error', title: 'Failed to load trip history', body: tripsError })
+    if (history.error) {
+      notify({ kind: 'error', title: 'Failed to load trip history', body: history.error })
     }
-  }, [tripsError, notify])
+  }, [history.error, notify])
 
   // The precinct filter silently narrows to nothing when this list fails to load,
   // and route names fall back to an em-dash — neither is distinguishable from real data.
@@ -82,23 +102,10 @@ export default function HistoryPage() {
     }
   }, [precinctsError, notify])
 
-  const filteredTrips = useMemo(() => {
-    const term = search.trim().toLowerCase()
-    return allTrips.filter(t => {
-      if (term &&
-        !t.trip_reference.toLowerCase().includes(term) &&
-        !t.driver.full_name.toLowerCase().includes(term) &&
-        !t.order_number.toLowerCase().includes(term)
-      ) return false
-
-      if (precinctId && t.origin_precinct_id !== precinctId && t.destination_precinct_id !== precinctId) return false
-
-      const closedDate = t.updated_at.slice(0, 10)
-      if (closedDate < dateRange.from || closedDate > dateRange.to) return false
-
-      return true
-    })
-  }, [allTrips, search, precinctId, dateRange])
+  const hasNarrowedFilters = search.trim() !== ''
+    || precinctId !== ''
+    || dateRange.from !== HISTORY_RANGE_START
+    || dateRange.to !== todayStr()
 
   function startResize(id: ColId, e: React.MouseEvent) {
     e.preventDefault()
@@ -122,7 +129,7 @@ export default function HistoryPage() {
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <TopBar title="Trip History" sub={`${filteredTrips.length} closed trips`} />
+      <TopBar title="Trip History" sub={`${history.totalItems} closed trips`} />
 
       {/* Search + filters */}
       <div className="flex items-center gap-3 px-6 py-3 shrink-0 flex-wrap">
@@ -154,24 +161,52 @@ export default function HistoryPage() {
         </div>
       </div>
 
+      {history.hasNewHistory && (
+        <div className="mx-6 mb-3 flex items-center justify-between gap-4 rounded-lg bg-sec-c px-5 py-3">
+          <span
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            className="text-[12px] font-[600] text-sec-onc"
+          >
+            New trip history available
+          </span>
+          <Button size="sm" variant="ghost" onClick={history.showNewHistory}>
+            New trip history available — show newest
+          </Button>
+        </div>
+      )}
+
+      {history.isStale && history.items.length > 0 && (
+        <div className="mx-6 mb-3 flex items-center justify-between gap-4 rounded-lg bg-warn-c px-5 py-3">
+          <div className="flex items-center gap-[9px]">
+            <Ic n="warn" s={14} className="shrink-0 text-warn-onc" />
+            <span className="text-[12px] font-[600] text-warn-onc">
+              This list may be out of date — the last refresh failed.
+            </span>
+          </div>
+          <Button size="sm" variant="ghost" onClick={history.refetch}>Retry</Button>
+        </div>
+      )}
+
       {/* Trip list card */}
       <div className="flex-1 overflow-hidden mx-6 mb-6 bg-surf-lowest rounded-lg shadow-level-3 flex flex-col">
         <SecHead title="Closed Trips" />
 
         {/* Table scroll area — x+y scroll together */}
         <div className="flex-1 overflow-auto">
-          {tripsLoading ? (
+          {history.isLoading ? (
             <div className="flex items-center justify-center py-16">
               <Spinner size="lg" />
             </div>
-          ) : tripsError ? (
+          ) : history.error && history.items.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-4 py-16 px-6 text-center">
               <AlertCircle className="w-10 h-10 text-error" />
               <div className="flex flex-col gap-1">
                 <p className="text-sm font-bold text-surface-on">Failed to load trip history</p>
-                <p className="text-xs text-surface-on-variant">{tripsError}</p>
+                <p className="text-xs text-surface-on-variant">{history.error}</p>
               </div>
-              <Button size="sm" variant="ghost" onClick={refetchTrips}>
+              <Button size="sm" variant="ghost" onClick={history.refetch}>
                 Try again
               </Button>
             </div>
@@ -205,7 +240,7 @@ export default function HistoryPage() {
 
               {/* Rows */}
               <div className="divide-y divide-outline-v/10">
-                {allTrips.length === 0 ? (
+                {history.items.length === 0 && !hasNarrowedFilters ? (
                   <div className="p-6">
                     <EmptyState
                       icon={<Ic n="clock" s={32} className="text-on-surf-v" />}
@@ -213,7 +248,7 @@ export default function HistoryPage() {
                       body="Closed trips will appear here."
                     />
                   </div>
-                ) : filteredTrips.length === 0 ? (
+                ) : history.items.length === 0 ? (
                   <div className="p-6">
                     <EmptyState
                       icon={<Ic n="search" s={32} className="text-on-surf-v" />}
@@ -222,8 +257,16 @@ export default function HistoryPage() {
                     />
                   </div>
                 ) : (
-                  filteredTrips.map(trip => (
-                    <ChecklistRow key={trip.id} trip={trip} colWidths={colWidths} precincts={precincts} showProgress={false} />
+                  history.items.map(trip => (
+                    <ChecklistRow
+                      key={trip.id}
+                      // ChecklistRow's first cell is its generic row date. On this
+                      // terminal-only screen that date is closed_at, never updated_at.
+                      trip={{ ...trip, created_at: trip.closed_at }}
+                      colWidths={colWidths}
+                      precincts={precincts}
+                      showProgress={false}
+                    />
                   ))
                 )}
               </div>
@@ -231,6 +274,22 @@ export default function HistoryPage() {
             </div>
           )}
         </div>
+
+        {!history.isLoading && !(history.error && history.items.length === 0) && (
+          <div className="shrink-0 border-t border-outline-v/10 px-5 py-2">
+            <Pagination
+              page={history.page}
+              pageSize={history.pageSize}
+              itemCount={history.items.length}
+              totalItems={history.totalItems}
+              hasPrevious={history.hasPrevious}
+              hasNext={history.hasNext}
+              isLoading={history.isLoading}
+              onPrevious={history.goToPreviousPage}
+              onNext={history.goToNextPage}
+            />
+          </div>
+        )}
       </div>
     </div>
   )
