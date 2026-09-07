@@ -445,7 +445,7 @@ async def test_list_trips_returns_created_trip(client: AsyncClient, seed_data, d
     assert len(body) == 1
     assert body[0]["order_number"] == "ORD-TEST-001"
     assert body[0]["status"] == "created"
-    assert body[0]["open_exception_count"] == 0
+    assert body[0]["needs_review_count"] == 0
     assert "driver" in body[0]
     assert "horse" in body[0]
     assert "trailers" in body[0]

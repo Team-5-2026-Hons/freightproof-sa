@@ -1,4 +1,4 @@
-"""FP-146 — two dispatchers resolving the same exception in the same instant.
+"""FP-146 — two dispatchers reviewing the same exception in the same instant.
 
 Separate module, and separate from the shared `db_session` fixture, deliberately. That
 fixture binds every session to ONE outer connection with
@@ -8,7 +8,7 @@ written against it would pass no matter what the service does. The existing conf
 in tests/unit/test_exception_service.py is sequential for the same reason: it proves the
 409 branch is reachable, and nothing at all about simultaneity.
 
-Proving the FIRST resolution survives needs two independent connections and real commits,
+Proving the FIRST review survives needs two independent connections and real commits,
 so this module opens, commits and cleans up its own rows.
 """
 
@@ -21,7 +21,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ExceptionAlreadyResolvedError
 from app.db.models.enums import (
-    ExceptionResolutionMethod,
+    DispatcherReviewOutcome,
+    ExceptionContactMethod,
+    ExceptionReviewOutcome,
+    ExceptionReviewStatus,
     ExceptionSeverity,
     ExceptionSource,
     ExceptionType,
@@ -35,7 +38,7 @@ from app.db.models.people import Driver, User
 from app.db.models.transit import TripException
 from app.db.models.trips import Trip
 from app.db.models.vehicles import Vehicle
-from app.orchestration.exception_service import resolve_exception
+from app.orchestration.exception_service import review_exception
 
 _FIRST_NOTE = "Phoned the depot; the seal was cut during a lawful SARS inspection."
 _SECOND_NOTE = "Spoke to the driver in person; he says the inspection was at Beitbridge."
@@ -142,49 +145,68 @@ async def seeded(test_engine):
             await _teardown(session, ids)
 
 
-async def test_simultaneous_resolves_record_exactly_one_dispatcher(test_engine, seeded):
-    """Two dispatchers hit Resolve at the same moment. One must win and one must be told
+async def test_simultaneous_reviews_record_exactly_one_dispatcher(test_engine, seeded):
+    """Two dispatchers hit Review at the same moment. One must win and one must be told
     they lost — the outcome the sequential conflict test asserts, held under a real race.
 
-    Without a lock both sessions read ``resolved=False`` before either writes, so both
-    take the un-resolved branch and both return 200. The second UPDATE then blocks on the
-    first's row lock, waits for the commit, and overwrites the resolver, note, method and
-    timestamp of the dispatcher who actually got there first. Two people are told their
-    account is the record; only one of them is, and it is not the first.
+    Without a lock both sessions read ``review_status='recorded'`` before either writes,
+    so both take the un-reviewed branch and both return 200. The second UPDATE then
+    blocks on the first's row lock, waits for the commit, and overwrites the reviewer,
+    note, outcome, contact method and timestamp of the dispatcher who got there first.
+    Two people are told their account is the record; only one of them is.
     """
-    async def attempt(user_id: uuid.UUID, note: str, method: ExceptionResolutionMethod):
+    attempts = {
+        seeded["first_id"]: (
+            _FIRST_NOTE,
+            DispatcherReviewOutcome.EVIDENCE_VERIFIED,
+            ExceptionContactMethod.PHONE,
+        ),
+        seeded["second_id"]: (
+            _SECOND_NOTE,
+            DispatcherReviewOutcome.REFERRED_FOR_FOLLOW_UP,
+            ExceptionContactMethod.IN_PERSON,
+        ),
+    }
+
+    async def attempt(
+        user_id: uuid.UUID,
+        note: str,
+        outcome: DispatcherReviewOutcome,
+        contact_method: ExceptionContactMethod,
+    ) -> tuple[uuid.UUID, int]:
         async with AsyncSession(test_engine, expire_on_commit=False) as session:
             try:
-                await resolve_exception(
+                await review_exception(
                     session,
                     exception_id=seeded["exception_id"],
                     user_id=user_id,
                     organization_id=seeded["org_id"],
-                    resolver_note=note,
-                    resolution_method=method,
+                    review_note=note,
+                    review_outcome=outcome,
+                    contact_method=contact_method,
                 )
             except ExceptionAlreadyResolvedError:
                 await session.rollback()
-                return None
+                return user_id, 409
             await session.commit()
-            return user_id
+            return user_id, 200
 
     outcomes = await asyncio.gather(
-        attempt(seeded["first_id"], _FIRST_NOTE, ExceptionResolutionMethod.PHONED),
-        attempt(seeded["second_id"], _SECOND_NOTE, ExceptionResolutionMethod.IN_PERSON),
+        attempt(seeded["first_id"], *attempts[seeded["first_id"]]),
+        attempt(seeded["second_id"], *attempts[seeded["second_id"]]),
     )
 
-    told_they_won = [user_id for user_id in outcomes if user_id is not None]
-    assert len(told_they_won) == 1, (
-        "both dispatchers were told their resolution was recorded; only one row exists"
-    )
+    assert sorted(status_code for _user_id, status_code in outcomes) == [200, 409]
+    winner = next(user_id for user_id, status_code in outcomes if status_code == 200)
 
     # And the row belongs to the one who was told so. Asserted separately because a lock
     # that serialised the writes but still let the loser overwrite would satisfy the
     # count above while destroying the evidence it is meant to protect.
     async with AsyncSession(test_engine, expire_on_commit=False) as session:
         stored = await session.get(TripException, seeded["exception_id"])
-    winner = told_they_won[0]
-    assert stored.resolved is True
-    assert stored.resolved_by_user_id == winner
-    assert stored.resolver_note == (_FIRST_NOTE if winner == seeded["first_id"] else _SECOND_NOTE)
+    expected_note, expected_outcome, expected_contact = attempts[winner]
+    assert stored.review_status == ExceptionReviewStatus.REVIEWED
+    assert stored.reviewed_by_user_id == winner
+    assert stored.review_note == expected_note
+    assert stored.review_outcome == ExceptionReviewOutcome(expected_outcome.value)
+    assert stored.contact_method == expected_contact

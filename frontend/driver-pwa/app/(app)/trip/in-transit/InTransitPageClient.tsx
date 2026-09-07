@@ -144,7 +144,7 @@ export default function InTransitPageClient() {
   // dispatcher sees every exception regardless — nothing is hidden from the evidence
   // trail, only from this one screen. Driver- and dispatcher-raised exceptions stay
   // visible: those the driver either filed themselves or is meant to act on.
-  const openExceptions = exceptions.filter((e) => !e.resolved && e.source !== 'system')
+  const openExceptions = exceptions.filter((e) => e.review_status !== 'reviewed' && e.source !== 'system')
 
   // Captured here, in component scope, rather than read off `trip` inside the nested
   // handlers below — TS narrows `trip` to non-null in this scope (the guard above), but

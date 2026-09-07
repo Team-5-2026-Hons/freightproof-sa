@@ -20,9 +20,9 @@ from app.core.exceptions import (
 )
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import (
-    AnchorStatus, ArtifactType, BlockchainReceiptType, ExceptionSeverity, ExceptionType,
-    IdvsStatus, OrganizationType, ParcelStatus, PhaseStatus, PhaseType, TripStatus, TripType,
-    VehicleType,
+    AnchorStatus, ArtifactType, BlockchainReceiptType, ExceptionReviewStatus, ExceptionSeverity,
+    ExceptionType, IdvsStatus, OrganizationType, ParcelStatus, PhaseStatus, PhaseType, TripStatus,
+    TripType, VehicleType,
 )
 from app.db.models.evidence import EvidenceArtifact
 from app.db.models.phases import PhaseEvent
@@ -580,6 +580,57 @@ async def test_advance_loading_short_scan_out_flags_but_does_not_hold(db_session
     # Non-blocking: the trip is still ACTIVE, not held — same precedent as the
     # seal-mismatch branches in advance_departure/advance_unloading.
     assert result.status == TripStatus.ACTIVE
+
+
+async def test_scan_shortfall_backstop_records_again_after_review(db_session, trip_fixture):
+    """The backstop's own dedup predicate is `review_status != REVIEWED`, not
+    `!= NEEDS_REVIEW`. The test above only proves a RECORDED row still suppresses a
+    repeat — RECORDED != REVIEWED and RECORDED != NEEDS_REVIEW are both True, so it
+    cannot tell the two predicates apart. They only diverge once a row is actually
+    REVIEWED, which this test forces.
+
+    Called directly against _raise_scan_shortfall_if_unrecorded rather than through
+    advance_loading twice: _gate_and_load treats a phase already COMPLETED/EXCEPTION
+    as an idempotent replay (see _gate_and_load's own comment) and short-circuits
+    before the backstop ever runs a second time, so the public endpoint cannot
+    exercise this predicate twice on the same phase event. Calling the private
+    function directly is the only way to prove what its own dedup query does once a
+    row it would otherwise find has been reviewed — same precedent as this file's
+    existing direct import of _load_phase_event.
+    """
+    trip, driver, phases = trip_fixture
+    event = phases["loading"]
+    consignment = Consignment(
+        trip_id=trip.id, parcel_perfect_reference="PP-BACKSTOP",
+        parcel_count_expected=3, pickup_stop_id=event.trip_stop_id,
+    )
+    db_session.add(consignment)
+    await db_session.flush()
+
+    wrote_first = await phase_service._raise_scan_shortfall_if_unrecorded(
+        db_session, trip_id=trip.id, event=event, consignment=consignment,
+        scanned_out=0, expected=3,
+    )
+    assert wrote_first is True
+
+    first = (await db_session.execute(
+        select(TripException).where(TripException.trip_id == trip.id)
+    )).scalar_one()
+    first.review_status = ExceptionReviewStatus.REVIEWED
+    await db_session.flush()
+
+    # Same call, same arguments — proves the recurrence is recorded because the
+    # prior row was reviewed, not because anything about the shortfall changed.
+    wrote_second = await phase_service._raise_scan_shortfall_if_unrecorded(
+        db_session, trip_id=trip.id, event=event, consignment=consignment,
+        scanned_out=0, expected=3,
+    )
+    assert wrote_second is True
+
+    rows = (await db_session.execute(
+        select(TripException).where(TripException.trip_id == trip.id)
+    )).scalars().all()
+    assert len(rows) == 2
 
 
 @pytest.mark.asyncio

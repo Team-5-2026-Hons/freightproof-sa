@@ -27,7 +27,9 @@ interface ChecklistRowProps {
   precincts: Precinct[]
   className?: string
   // History table hides the phase progress chain — trips there are already
-  // complete or cancelled, so only whether exceptions occurred still matters.
+  // complete or cancelled, so only whether something needs a dispatcher's
+  // attention right now still matters, not whether any exception was ever
+  // recorded (a RECORDED-severity row stays quiet here; see needs_review_count).
   showProgress?: boolean
 }
 
@@ -54,8 +56,8 @@ function stopRoleLabel(trip: TripSummary): string {
 // current_phase covers everything in between — derived server-side from the ledger,
 // never inferred from trip.status the way the three deleted tables did.
 function progressHint(trip: TripSummary): string {
-  if (trip.open_exception_count > 0) {
-    return `⚠ ${trip.open_exception_count} exception${trip.open_exception_count > 1 ? 's' : ''}`
+  if (trip.needs_review_count > 0) {
+    return `⚠ ${trip.needs_review_count} exception${trip.needs_review_count > 1 ? 's' : ''}`
   }
   if (trip.status === 'closed')    return '✓ Closed'
   if (trip.status === 'cancelled') return 'Cancelled'
@@ -101,7 +103,7 @@ export function ChecklistRow({ trip, colWidths, precincts, className, showProgre
         'bg-surf-lowest cursor-pointer transition-colors duration-[120ms]',
         'hover:bg-surf-low divide-x divide-outline/30',
         // Left border accent draws the eye when a trip needs attention
-        trip.open_exception_count > 0 && 'border-l-4 border-err',
+        trip.needs_review_count > 0 && 'border-l-4 border-err',
         className,
       )}
     >
@@ -142,7 +144,7 @@ export function ChecklistRow({ trip, colWidths, precincts, className, showProgre
           <PhaseChain nodes={chainNodes} compact className="shrink-0" />
           <span className={cn(
             'text-[11px] truncate',
-            trip.open_exception_count > 0 ? 'text-warn' :
+            trip.needs_review_count > 0 ? 'text-warn' :
             trip.status === 'closed'       ? 'text-ok'   :
                                              'text-on-surf-v',
           )}>
@@ -151,7 +153,7 @@ export function ChecklistRow({ trip, colWidths, precincts, className, showProgre
         </div>
       ) : (
         <div style={{ width: colWidths.progress }} className="shrink-0 flex items-center min-w-0 px-[6px]">
-          {trip.open_exception_count > 0 ? (
+          {trip.needs_review_count > 0 ? (
             <span className="text-[11px] font-[600] text-warn truncate">{hint}</span>
           ) : (
             <span className="text-[11px] font-[600] text-ok">No exceptions</span>

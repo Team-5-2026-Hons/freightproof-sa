@@ -37,7 +37,9 @@ export interface TripStop {
 
 // Lightweight shape for list views (GET /trips).
 // Nests full driver/horse/trailers — confirmed by API contract §4.1.
-// open_exception_count is derived by the backend service layer.
+// needs_review_count is derived by the backend service layer — NEEDS_REVIEW rows
+// only (Task 2, FP-146 follow-on); a RECORDED row is on the trip's exception list
+// but is not queued for a dispatcher decision.
 export interface TripSummary {
   id: TripId
   trip_reference: string
@@ -53,7 +55,7 @@ export interface TripSummary {
   actual_departure_at: string | null
   planned_arrival_at: string | null
   actual_arrival_at: string | null
-  open_exception_count: number
+  needs_review_count: number
   created_at: string
   updated_at: string
   // Denormalised position cache (parent D6), read-path only. The list view carries

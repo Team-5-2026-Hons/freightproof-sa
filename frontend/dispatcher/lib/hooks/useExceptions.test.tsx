@@ -30,11 +30,12 @@ function makeException(overrides: Partial<TripException> = {}): TripException {
     phase_event_id: null,
     checkpoint_id: null,
     supporting_artifact_id: null,
-    resolved: false,
-    resolved_by_user_id: null,
-    resolved_at: null,
-    resolver_note: null,
-    resolution_method: null,
+    review_status: 'recorded',
+    review_outcome: null,
+    reviewed_by_user_id: null,
+    reviewed_at: null,
+    review_note: null,
+    contact_method: null,
     merkle_batch_id: null,
     created_at: '2026-09-03T10:00:00Z',
     updated_at: '2026-09-03T10:00:00Z',
@@ -122,7 +123,7 @@ describe('resolveException', () => {
     // The server takes the resolver from the token and the timestamp from its own clock.
     // If the client ever started sending them the backend would ignore them, but sending
     // them at all would imply they are the client's to decide.
-    mockedPatch.mockResolvedValue(makeException({ resolved: true }))
+    mockedPatch.mockResolvedValue(makeException({ review_status: 'reviewed' }))
 
     await resolveException('exc-1', {
       resolver_note: 'Phoned the depot.',

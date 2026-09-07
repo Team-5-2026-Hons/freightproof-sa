@@ -11,7 +11,9 @@ import pytest_asyncio
 from httpx import AsyncClient
 
 from app.db.models.enums import (
+    ExceptionContactMethod,
     ExceptionResolutionMethod,
+    ExceptionReviewStatus,
     ExceptionSeverity,
     ExceptionSource,
     ExceptionType,
@@ -163,7 +165,7 @@ async def test_list_with_a_token_for_an_unknown_user_is_401(client: AsyncClient,
 
 async def test_list_filters_on_resolved(client: AsyncClient, db_session, two_orgs):
     mine = two_orgs["mine"]
-    mine["exception"].resolved = True
+    mine["exception"].review_status = ExceptionReviewStatus.REVIEWED
     await db_session.flush()
 
     open_only = await client.get(_LIST, params={"resolved": False}, headers=_headers(mine))
@@ -180,7 +182,7 @@ async def test_list_without_the_filter_returns_both_states(
     without knowing its state, so an unresolved-only default would make a resolved
     exception unopenable from its own permalink."""
     mine = two_orgs["mine"]
-    mine["exception"].resolved = True
+    mine["exception"].review_status = ExceptionReviewStatus.REVIEWED
     await db_session.flush()
 
     res = await client.get(_LIST, headers=_headers(mine))
@@ -201,11 +203,11 @@ async def test_resolve_records_all_five_columns(client: AsyncClient, db_session,
     assert res.status_code == 200
     await db_session.refresh(mine["exception"])
     exc = mine["exception"]
-    assert exc.resolved is True
-    assert exc.resolved_by_user_id == mine["user"].id
-    assert exc.resolved_at is not None
-    assert exc.resolver_note.startswith("Phoned the driver")
-    assert exc.resolution_method == ExceptionResolutionMethod.PHONED
+    assert exc.review_status == ExceptionReviewStatus.REVIEWED
+    assert exc.reviewed_by_user_id == mine["user"].id
+    assert exc.reviewed_at is not None
+    assert exc.review_note.startswith("Phoned the driver")
+    assert exc.contact_method == ExceptionContactMethod.PHONE
 
 
 async def test_resolve_takes_the_resolver_from_the_token_not_the_body(
@@ -227,8 +229,8 @@ async def test_resolve_takes_the_resolver_from_the_token_not_the_body(
     await db_session.refresh(mine["exception"])
     # The extra fields were ignored, not honoured — the authenticated dispatcher owns
     # the resolution and the server owns the clock.
-    assert mine["exception"].resolved_by_user_id == mine["user"].id
-    assert mine["exception"].resolved_at.year != 2020
+    assert mine["exception"].reviewed_by_user_id == mine["user"].id
+    assert mine["exception"].reviewed_at.year != 2020
 
 
 async def test_resolve_without_credentials_is_403(client: AsyncClient, db_session, two_orgs):
@@ -238,7 +240,7 @@ async def test_resolve_without_credentials_is_403(client: AsyncClient, db_sessio
 
     assert res.status_code == 403
     await db_session.refresh(mine["exception"])
-    assert mine["exception"].resolved is False
+    assert mine["exception"].review_status == ExceptionReviewStatus.RECORDED
 
 
 async def test_resolve_with_a_token_for_an_unknown_user_is_401(
@@ -253,7 +255,7 @@ async def test_resolve_with_a_token_for_an_unknown_user_is_401(
 
     assert res.status_code == 401
     await db_session.refresh(mine["exception"])
-    assert mine["exception"].resolved is False
+    assert mine["exception"].review_status == ExceptionReviewStatus.RECORDED
 
 
 async def test_resolve_across_organisations_is_404_not_403(
@@ -269,7 +271,7 @@ async def test_resolve_across_organisations_is_404_not_403(
 
     assert res.status_code == 404
     await db_session.refresh(theirs["exception"])
-    assert theirs["exception"].resolved is False
+    assert theirs["exception"].review_status == ExceptionReviewStatus.RECORDED
 
 
 async def test_resolve_unknown_id_is_404(client: AsyncClient, two_orgs):
@@ -341,9 +343,9 @@ async def test_the_same_dispatcher_resolving_twice_is_200(
     assert first.status_code == 200
     assert second.status_code == 200
     await db_session.refresh(mine["exception"])
-    assert mine["exception"].resolver_note.startswith("Phoned the driver")
-    assert mine["exception"].resolution_method == ExceptionResolutionMethod.PHONED
-    assert second.json()["resolved_at"] == first.json()["resolved_at"]
+    assert mine["exception"].review_note.startswith("Phoned the driver")
+    assert mine["exception"].contact_method == ExceptionContactMethod.PHONE
+    assert second.json()["reviewed_at"] == first.json()["reviewed_at"]
 
 
 async def test_a_second_dispatcher_resolving_is_409(
@@ -385,8 +387,8 @@ async def test_a_second_dispatcher_resolving_is_409(
     # The winner's account is untouched, and the 409 body names no person — it says a
     # colleague resolved it, never who, so the queue leaks no identity to a wrong guess.
     await db_session.refresh(mine["exception"])
-    assert mine["exception"].resolver_note.startswith("Phoned the driver; seal was replaced")
-    assert mine["exception"].resolved_by_user_id == mine["user"].id
+    assert mine["exception"].review_note.startswith("Phoned the driver; seal was replaced")
+    assert mine["exception"].reviewed_by_user_id == mine["user"].id
     assert str(colleague.id) not in second.json()["detail"]
 
 
@@ -422,4 +424,4 @@ async def test_resolution_method_is_on_the_read_schema(client: AsyncClient, two_
     res = await client.get(_LIST, headers=_headers(mine))
 
     row = next(r for r in res.json() if r["id"] == str(mine["exception"].id))
-    assert row["resolution_method"] == ExceptionResolutionMethod.PHONED.value
+    assert row["contact_method"] == ExceptionContactMethod.PHONE.value

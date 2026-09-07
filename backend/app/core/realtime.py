@@ -59,6 +59,7 @@ class RealtimeKind(str, Enum):
     TRIP_CREATED = "trip_created"
     PHASE_COMPLETED = "phase_completed"
     EXCEPTION_RAISED = "exception_raised"
+    EXCEPTION_REVIEWED = "exception_reviewed"
     TRIP_CLOSED = "trip_closed"
 
 

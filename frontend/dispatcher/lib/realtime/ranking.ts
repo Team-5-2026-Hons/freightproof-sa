@@ -32,23 +32,18 @@ export function toastForEvent(event: RealtimeEvent): ToastRequest | null {
   // closing all refetch the relevant screen without interrupting whoever is on shift.
   if (event.kind !== 'exception_raised') return null
 
-  // INFO means the same thing on this kind as it does on every other: progress, refetch
-  // silently, do not interrupt. The only INFO exception event is a RESOLUTION
-  // (exception_service.resolve_exception) — so without this gate, one dispatcher closing
-  // a queue item planted a sticky red "Exception raised" alert on every colleague's
-  // screen, pointing at an incident that had just been CLOSED. Twenty resolutions,
-  // twenty permanent false alarms, and an alert surface nobody trusts.
+  // INFO means the same thing on this kind as it does on every other: refetch silently,
+  // do not interrupt. Reviews now have their own kind, but this remains fail-quiet if an
+  // informational raise reaches the client from an older or malformed publisher.
   if (event.severity === 'info') return null
 
   const critical = event.severity === 'critical'
   return {
-    // 'error' is what exempts a toast from auto-dismiss (ToastContext), so an alert
-    // cannot time out while nobody is at the desk. Both bands qualify: a warning the
-    // dispatcher never saw is a warning that did not happen.
-    kind: 'error',
-    // Carried through to ToastContext's eviction rule, which is the other half of
-    // ranking on severity: without it both bands render as identical sticky errors and
-    // a burst of ordinary alerts evicts the critical one purely for being older.
+    // Only the alarm tier stays until acknowledged. Warning findings use the existing
+    // auto-dismiss path so routine discrepancies do not accumulate as permanent errors.
+    kind: critical ? 'error' : 'warning',
+    // Carried through to ToastContext's eviction rule so a burst of ordinary warnings
+    // cannot evict a critical alert purely for being older.
     priority: critical ? 'critical' : 'ordinary',
     title: critical ? 'Critical exception' : 'Exception raised',
     body: critical

@@ -230,3 +230,66 @@ class ExceptionResolutionMethod(str, enum.Enum):
     WHATSAPP      = "whatsapp"
     IN_PERSON     = "in_person"
     NO_CONTACT_YET = "no_contact_yet"
+
+
+class ExceptionReviewStatus(str, enum.Enum):
+    """Where an exception sits in the dispatcher's review workflow (FP-146 follow-on).
+
+    Replaces the old `resolved: bool` — a two-state flag could not distinguish
+    "nobody has looked at this yet" from "looked at, still needs a decision", which is
+    exactly the gap that let CRITICAL rows sit unactioned indefinitely with no way to
+    tell them apart from a WARNING nobody had reason to open. RECORDED is the default
+    for everything (migration ciaran_exc_review_semantics backfills historical rows by
+    severity); NEEDS_REVIEW and REVIEWED are set by the dispatcher-facing review flow
+    (Task 2/3), not by this migration.
+    """
+
+    RECORDED     = "recorded"
+    NEEDS_REVIEW = "needs_review"
+    REVIEWED     = "reviewed"
+
+
+class ExceptionReviewOutcome(str, enum.Enum):
+    """What a dispatcher concluded when reviewing an exception.
+
+    LEGACY_REVIEW is not a real outcome a dispatcher can choose — see
+    DispatcherReviewOutcome, which is this enum minus that one member. It exists only
+    so migration ciaran_exc_review_semantics can mark a pre-existing `resolved=true`
+    row as "reviewed, but we don't know what was concluded" without inventing a specific
+    finding nobody actually recorded.
+    """
+
+    NO_ACTION_REQUIRED     = "no_action_required"
+    HANDLED_EXTERNALLY     = "handled_externally"
+    EVIDENCE_VERIFIED      = "evidence_verified"
+    DATA_DISCREPANCY       = "data_discrepancy"
+    REFERRED_FOR_FOLLOW_UP = "referred_for_follow_up"
+    LEGACY_REVIEW          = "legacy_review"
+
+
+class DispatcherReviewOutcome(str, enum.Enum):
+    """The choices a dispatcher may actually submit — ExceptionReviewOutcome without
+    LEGACY_REVIEW, which is a migration-only marker no dispatcher should be able to pick
+    for a review happening today."""
+
+    NO_ACTION_REQUIRED     = "no_action_required"
+    HANDLED_EXTERNALLY     = "handled_externally"
+    EVIDENCE_VERIFIED      = "evidence_verified"
+    DATA_DISCREPANCY       = "data_discrepancy"
+    REFERRED_FOR_FOLLOW_UP = "referred_for_follow_up"
+
+
+class ExceptionContactMethod(str, enum.Enum):
+    """How a dispatcher reached someone while reviewing an exception — the successor to
+    ExceptionResolutionMethod above, minus NO_CONTACT_YET.
+
+    NO_CONTACT_YET has no equivalent here: it recorded the ABSENCE of contact ("resolved
+    from evidence alone"), which belongs on ExceptionReviewOutcome (e.g.
+    EVIDENCE_VERIFIED) rather than on a field named for the method OF contact. Migration
+    ciaran_exc_review_semantics maps every historical NO_CONTACT_YET row to NULL rather
+    than inventing a member here for a non-contact.
+    """
+
+    PHONE     = "phone"
+    WHATSAPP  = "whatsapp"
+    IN_PERSON = "in_person"

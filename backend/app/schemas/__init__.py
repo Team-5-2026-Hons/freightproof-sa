@@ -27,6 +27,7 @@ from app.schemas.phases import (  # noqa: F401
 from app.schemas.transit import (  # noqa: F401
     CheckpointBase, CheckpointCreate, CheckpointUpdate, CheckpointRead,
     TripExceptionBase, TripExceptionCreate, TripExceptionUpdate, TripExceptionRead,
+    TripExceptionReviewRequest,
 )
 from app.schemas.evidence import (  # noqa: F401
     EvidenceArtifactBase, EvidenceArtifactCreate, EvidenceArtifactUpdate, EvidenceArtifactRead,

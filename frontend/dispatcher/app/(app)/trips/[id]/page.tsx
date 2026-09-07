@@ -844,9 +844,9 @@ export default function TripDetailPage() {
                     detail={exc.description || undefined}
                     timestamp={exc.created_at}
                     resText={
-                      exc.resolved
-                        ? exc.resolver_note
-                          ? `Resolved · ${exc.resolver_note}`
+                      exc.review_status === 'reviewed'
+                        ? exc.review_note
+                          ? `Resolved · ${exc.review_note}`
                           : 'Resolved'
                         : undefined
                     }

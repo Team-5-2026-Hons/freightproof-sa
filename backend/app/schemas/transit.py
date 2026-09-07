@@ -7,7 +7,11 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.db.models.enums import (
+    DispatcherReviewOutcome,
+    ExceptionContactMethod,
     ExceptionResolutionMethod,
+    ExceptionReviewOutcome,
+    ExceptionReviewStatus,
     ExceptionSeverity,
     ExceptionSource,
     ExceptionType,
@@ -215,13 +219,37 @@ class TripExceptionResolveRequest(BaseModel):
     resolution_method: ExceptionResolutionMethod
 
 
+class TripExceptionReviewRequest(BaseModel):
+    """The dispatcher's review action — Task 1 adds this alongside the still-live
+    TripExceptionResolveRequest above; Task 2/3 wires it to a renamed endpoint that
+    replaces /resolve.
+
+    Mirrors TripExceptionResolveRequest's own reasoning for taking a narrow body rather
+    than exposing TripException's review fields directly: the server owns the reviewer
+    and the clock, never the request.
+
+    `contact_method` is required but nullable, with no default — a caller MUST decide
+    whether contact happened at all (unlike `review_outcome`, which has no "not
+    applicable" option), and an explicit `null` records "reviewed without contacting
+    anyone" (e.g. the evidence alone settled it) rather than a caller having forgotten
+    the field.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    review_note: RequiredFreeText
+    review_outcome: DispatcherReviewOutcome
+    contact_method: Optional[ExceptionContactMethod]
+
+
 class TripExceptionRead(TripExceptionBase):
     id: UUID
-    resolved: bool
-    resolved_by_user_id: Optional[UUID] = None
-    resolved_at: Optional[datetime] = None
-    resolver_note: Optional[str] = None
-    resolution_method: Optional[ExceptionResolutionMethod] = None
+    review_status: ExceptionReviewStatus
+    review_outcome: Optional[ExceptionReviewOutcome] = None
+    reviewed_by_user_id: Optional[UUID] = None
+    reviewed_at: Optional[datetime] = None
+    review_note: Optional[str] = None
+    contact_method: Optional[ExceptionContactMethod] = None
     merkle_batch_id: Optional[UUID] = None
     # Denormalised off the Trip the exception belongs to. The dispatcher's queue spans
     # every trip in the organisation and each row has to say WHICH trip, so without this

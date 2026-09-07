@@ -17,7 +17,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ResourceNotFoundError
 from app.db.models.blockchain import BlockchainReceipt
-from app.db.models.enums import PhaseStatus, SubjectType, TripStatus, TripType
+from app.db.models.enums import (
+    ExceptionReviewStatus, PhaseStatus, SubjectType, TripStatus, TripType,
+)
 from app.db.models.phases import PhaseEvent
 from app.db.models.people import Driver
 from app.db.models.transit import TripException
@@ -77,11 +79,15 @@ async def list_trips(
         if tt.trailer_id in trailers_by_id:
             trailers_by_trip[tt.trip_id].append(trailers_by_id[tt.trailer_id])
 
+    # NEEDS_REVIEW only, not "!= REVIEWED": a RECORDED row (e.g. a WARNING-severity
+    # parcel-count mismatch) is on the trip's exception list but not queued for a
+    # dispatcher decision — counting it here would put every recorded warning in
+    # front of a dispatcher as if it demanded action (Task 2, FP-146 follow-on).
     exc_result = await db.execute(
         select(TripException.trip_id, func.count(TripException.id))
         .where(
             TripException.trip_id.in_(trip_ids),
-            TripException.resolved.is_(False),
+            TripException.review_status == ExceptionReviewStatus.NEEDS_REVIEW,
         )
         .group_by(TripException.trip_id)
     )
@@ -121,7 +127,7 @@ async def list_trips(
             actual_departure_at=t.actual_departure_at,
             planned_arrival_at=t.planned_arrival_at,
             actual_arrival_at=t.actual_arrival_at,
-            open_exception_count=exc_counts.get(t.id, 0),
+            needs_review_count=exc_counts.get(t.id, 0),
             current_phase=t.current_phase,
             current_stop=t.current_stop,
             phase_total=plan_counts.get(t.id, (0, 0))[0],

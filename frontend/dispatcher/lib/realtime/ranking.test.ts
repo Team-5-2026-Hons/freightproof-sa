@@ -1,6 +1,12 @@
-import { describe, expect, it } from 'vitest'
-import { toastForEvent } from './ranking'
+import { act, fireEvent, render, screen } from '@testing-library/react'
+import { createElement } from 'react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { ToastProvider, TOAST_AUTO_DISMISS_MS } from '@/lib/context/ToastContext'
+import { useToast } from '@/lib/hooks/useToast'
+import { toastForEvent, type ToastRequest } from './ranking'
 import type { EventSeverity, RealtimeEvent, RealtimeKind } from './types'
+
+afterEach(() => vi.useRealTimers())
 
 function event(kind: RealtimeKind, severity: EventSeverity = 'info'): RealtimeEvent {
   return {
@@ -10,6 +16,11 @@ function event(kind: RealtimeKind, severity: EventSeverity = 'info'): RealtimeEv
     severity,
     ts: '2026-09-03T10:00:00Z',
   }
+}
+
+function ToastHarness({ toast }: { toast: ToastRequest }) {
+  const { notify } = useToast()
+  return createElement('button', { onClick: () => notify(toast) }, 'Show warning')
 }
 
 describe('toastForEvent', () => {
@@ -32,12 +43,15 @@ describe('toastForEvent', () => {
     expect(toast).not.toBeNull()
     expect(toast!.title).toBe('Critical exception')
     expect(toast!.kind).toBe('error')
+    expect(toast!.priority).toBe('critical')
   })
 
-  it('raises the ordinary alert for a warning exception', () => {
+  it('raises an ordinary auto-dismissing warning for a warning exception', () => {
     const toast = toastForEvent(event('exception_raised', 'warning'))
 
     expect(toast!.title).toBe('Exception raised')
+    expect(toast!.kind).toBe('warning')
+    expect(toast!.priority).toBe('ordinary')
     expect(toast!.body).not.toBe(
       toastForEvent(event('exception_raised', 'critical'))!.body,
     )
@@ -55,26 +69,39 @@ describe('toastForEvent', () => {
     expect(panic!.title).toBe('Critical exception')
     expect(countCheck!.title).toBe('Exception raised')
     expect(panic!.title).not.toBe(countCheck!.title)
-    // Wording is not ranking. Both bands render as identical sticky errors, so the only
-    // thing that decides which one survives a burst is the priority the toast surface
-    // evicts on (ToastContext.evictToCap) — asserting titles alone left a critical alert
-    // free to be pushed off screen by three ordinary ones.
+    // Wording is not ranking. Priority decides which toast survives a burst.
     expect(panic!.priority).toBe('critical')
     expect(countCheck!.priority).toBe('ordinary')
   })
 
-  it('never auto-dismisses an alert', () => {
-    // ToastContext exempts `error` from the auto-dismiss timer. A warning nobody was
-    // at the desk to see is a warning that did not happen.
+  it('keeps only critical exception alerts sticky', () => {
     expect(toastForEvent(event('exception_raised', 'critical'))!.kind).toBe('error')
-    expect(toastForEvent(event('exception_raised', 'warning'))!.kind).toBe('error')
+    expect(toastForEvent(event('exception_raised', 'warning'))!.kind).toBe('warning')
   })
 
-  it('stays silent on an info-severity exception event', () => {
-    // A RESOLUTION, not a new exception: exception_service.resolve_exception publishes
-    // exception_raised at INFO so the queue refetches. Ranking on kind alone turned every
-    // resolution into a sticky red "Exception raised" on every colleague's screen — an
-    // alarm for an incident that had just been closed.
+  it('auto-dismisses a warning exception on the existing timeout', () => {
+    vi.useFakeTimers()
+    const toast = toastForEvent(event('exception_raised', 'warning'))
+    render(createElement(
+      ToastProvider,
+      null,
+      createElement(ToastHarness, { toast: toast! }),
+    ))
+    fireEvent.click(screen.getByRole('button', { name: 'Show warning' }))
+
+    // The provider owns the shared timeout; the rendered ToastItem has no timer of its own.
+    act(() => vi.advanceTimersByTime(TOAST_AUTO_DISMISS_MS - 1))
+    expect(screen.getByText('Exception raised')).toBeInTheDocument()
+
+    act(() => vi.advanceTimersByTime(1))
+    expect(screen.queryByText('Exception raised')).not.toBeInTheDocument()
+  })
+
+  it('stays silent on an exception review event', () => {
+    expect(toastForEvent(event('exception_reviewed'))).toBeNull()
+  })
+
+  it('stays silent on an info-severity exception raise', () => {
     expect(toastForEvent(event('exception_raised', 'info'))).toBeNull()
   })
 

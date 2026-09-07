@@ -38,7 +38,10 @@ export type ExceptionSource = 'system' | 'driver' | 'dispatcher'
 export type ExceptionSeverity = 'info' | 'warning' | 'critical'
 
 // How a dispatcher established what happened before resolving. Mirrors the backend
-// ExceptionResolutionMethod (db/models/enums.py).
+// ExceptionResolutionMethod (db/models/enums.py). Kept alongside the review types below
+// (not deleted) because the still-live /resolve endpoint's request body
+// (useExceptions.ts resolveException) has not been renamed yet — Task 3 replaces it
+// with the reviewed-status flow that posts ExceptionContactMethod instead.
 //
 // 'no_contact_yet' is not a gap in the list. A dispatcher resolving from evidence alone
 // — the scan feed corrected itself, the photo settles it — must be able to say so rather
@@ -50,6 +53,33 @@ export type ExceptionResolutionMethod =
   | 'whatsapp'
   | 'in_person'
   | 'no_contact_yet'
+
+// Where an exception sits in the dispatcher's review workflow (FP-146 follow-on).
+// Mirrors the backend ExceptionReviewStatus. Replaces the old `resolved: boolean` —
+// a two-state flag could not distinguish "nobody has looked at this" from "looked at,
+// still needs a decision".
+export type ExceptionReviewStatus = 'recorded' | 'needs_review' | 'reviewed'
+
+// What a dispatcher concluded when reviewing an exception. Mirrors the backend
+// ExceptionReviewOutcome. 'legacy_review' is migration-only — see
+// DispatcherReviewOutcome, which is every real, submittable choice.
+export type ExceptionReviewOutcome =
+  | 'no_action_required'
+  | 'handled_externally'
+  | 'evidence_verified'
+  | 'data_discrepancy'
+  | 'referred_for_follow_up'
+  | 'legacy_review'
+
+// The choices a dispatcher may actually submit — ExceptionReviewOutcome without the
+// migration-only 'legacy_review' marker. Mirrors the backend DispatcherReviewOutcome.
+export type DispatcherReviewOutcome = Exclude<ExceptionReviewOutcome, 'legacy_review'>
+
+// How a dispatcher reached someone while reviewing — mirrors the backend
+// ExceptionContactMethod, the successor to ExceptionResolutionMethod above minus
+// NO_CONTACT_YET (which belongs on ExceptionReviewOutcome, not on a field named for the
+// method of a contact that never happened).
+export type ExceptionContactMethod = 'phone' | 'whatsapp' | 'in_person'
 
 export interface TripException {
   id: ExceptionId
@@ -76,15 +106,20 @@ export interface TripException {
   // convention in checkpoint.ts. POPIA: stays in Postgres, never anchored to Hedera.
   gps_lat?: number | null
   gps_lng?: number | null
-  resolved: boolean
-  resolved_by_user_id: string | null
-  resolved_at: string | null
-  resolver_note: string | null
-  // Nullable for every exception resolved before this column existed — backfilling a
-  // guess would put invented contact history onto an evidence record. Optional as well
-  // as nullable so driver-pwa fixtures, which share this type and never read the
-  // field, keep compiling unchanged.
-  resolution_method?: ExceptionResolutionMethod | null
+  // Task 1 (FP-146 review semantics): replaces the old `resolved: boolean` — see
+  // ExceptionReviewStatus's own comment for why a two-state flag was not enough.
+  review_status: ExceptionReviewStatus
+  // Set only once review_status reaches 'reviewed'. Null for everything else, and for
+  // every migrated-legacy row that was `resolved=true` with no real finding on record
+  // (those instead carry 'legacy_review').
+  review_outcome: ExceptionReviewOutcome | null
+  reviewed_by_user_id: string | null
+  reviewed_at: string | null
+  review_note: string | null
+  // Nullable for every exception reviewed before this column existed, or reviewed
+  // without any contact having happened (evidence alone settled it) — backfilling a
+  // guess would put invented contact history onto an evidence record.
+  contact_method: ExceptionContactMethod | null
   merkle_batch_id: string | null
   created_at: string
   updated_at: string

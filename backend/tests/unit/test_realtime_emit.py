@@ -1,14 +1,9 @@
 """Emit tests — every orchestration write path enqueues the right realtime event
 onto the request's outbox.
 
-Two families live here. The lifecycle emits (phase completed, trip closed, exception
-raised) came with Stage 3. The system-detected emits below are FP-147: the six sites
-that write a TripException without a driver asking them to, which until now changed the
-dispatcher's data with nothing telling the dispatcher's screen.
-
-The kind is never asserted against a hard-coded constant per site — it is derived from
-the severity the row is written with (kind_for_severity), so these tests pin the mapping
-rather than a duplicate of the branch that produced it.
+Two families live here. Lifecycle writes emit phase/trip progress; every exception
+write emits EXCEPTION_RAISED with a severity derived from the same value persisted on
+the row. Reviews emit EXCEPTION_REVIEWED only when they perform the first transition.
 
 DB-backed (uses the rolled-back db_session), no Hedera and no Redis: _finish_phase and
 raise_exception neither anchor nor publish — publishing is the after_commit hook's job,
@@ -25,12 +20,17 @@ from unittest.mock import MagicMock
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.realtime import EventSeverity, RealtimeKind, event_severity
 from app.blockchain.hedera import HederaReceipt
 from app.db.models.enums import (
     ArtifactType,
+    DispatcherReviewOutcome,
+    ExceptionContactMethod,
+    ExceptionReviewStatus,
     ExceptionSeverity,
+    ExceptionSource,
     ExceptionType,
     IdvsStatus,
     OrganizationType,
@@ -50,7 +50,7 @@ from app.db.models.vehicles import Vehicle
 from app.integrations import scan_feed as scan_feed_module
 from app.integrations.scan_feed import MockScanFeed, ScanDirection
 from app.orchestration import scan_service
-from app.orchestration.exception_service import raise_exception
+from app.orchestration.exception_service import raise_exception, review_exception
 from app.orchestration.phase_service import (
     _finish_phase,
     advance_confirmation,
@@ -258,10 +258,9 @@ async def test_a_hijacking_is_never_quieter_than_a_count_check(db_session):
     assert count_severity == EventSeverity.WARNING
 
 
-async def test_cancel_and_override_enqueue_a_realtime_event(db_session):
-    """Task 6.1 / D9: neither of the two lifecycle exits may leave a dispatcher's
-    screen stale until a manual reload. override -> PHASE_COMPLETED (the plan
-    position moved); cancel -> TRIP_CLOSED (terminal, drop from Active)."""
+async def test_phase_override_enqueues_exception_raised_and_phase_completed(
+    db_session: AsyncSession,
+) -> None:
     trip, _driver, phases = await _seed_trip(db_session, suffix="override")
     # dispatcher_override_user_id is a real FK to users — a bare uuid4() would
     # violate it, unlike operator_organization_id/driver_id above which are read
@@ -280,29 +279,74 @@ async def test_cancel_and_override_enqueue_a_realtime_event(db_session):
     )
 
     override_outbox = _outbox(db_session)
-    assert len(override_outbox) == 1
-    org_id, event = override_outbox[0]
-    assert org_id == trip.operator_organization_id
-    assert event.kind == RealtimeKind.PHASE_COMPLETED
-    assert event.id == trip.id
+    assert [org_id for org_id, _event in override_outbox] == [
+        trip.operator_organization_id,
+        trip.operator_organization_id,
+    ]
+    assert _kinds(db_session) == [
+        RealtimeKind.EXCEPTION_RAISED,
+        RealtimeKind.PHASE_COMPLETED,
+    ]
+    assert _severities(db_session) == [EventSeverity.WARNING, EventSeverity.INFO]
+    assert [event.id for _org_id, event in override_outbox] == [trip.id, trip.id]
 
-    # Pop, not read (mirrors the real after_commit drain) — a second lifecycle
-    # action in the same session must not be judged against the first one's ping.
-    db_session.info.pop(_OUTBOX_KEY, None)
 
-    trip2, _driver2, _phases2 = await _seed_trip(db_session, suffix="cancel")
+async def test_trip_cancellation_enqueues_exception_raised_and_trip_closed(
+    db_session: AsyncSession,
+) -> None:
+    trip, _driver, _phases = await _seed_trip(db_session, suffix="cancel")
 
     await cancel_trip(
-        db_session, trip_id=trip2.id, operator_organization_id=trip2.operator_organization_id,
-        user_id=trip2.created_by_user_id, note="cargo pulled, trip abandoned",
+        db_session, trip_id=trip.id, operator_organization_id=trip.operator_organization_id,
+        user_id=trip.created_by_user_id, note="cargo pulled, trip abandoned",
     )
 
     cancel_outbox = _outbox(db_session)
-    assert len(cancel_outbox) == 1
-    org_id2, event2 = cancel_outbox[0]
-    assert org_id2 == trip2.operator_organization_id
-    assert event2.kind == RealtimeKind.TRIP_CLOSED
-    assert event2.id == trip2.id
+    assert [org_id for org_id, _event in cancel_outbox] == [
+        trip.operator_organization_id,
+        trip.operator_organization_id,
+    ]
+    assert _kinds(db_session) == [
+        RealtimeKind.EXCEPTION_RAISED,
+        RealtimeKind.TRIP_CLOSED,
+    ]
+    assert _severities(db_session) == [EventSeverity.WARNING, EventSeverity.INFO]
+    assert [event.id for _org_id, event in cancel_outbox] == [trip.id, trip.id]
+
+
+async def test_first_exception_review_enqueues_exception_reviewed_at_info(
+    db_session: AsyncSession,
+) -> None:
+    trip, _driver, phases = await _seed_trip(db_session, suffix="review")
+    exception = TripException(
+        trip_id=trip.id,
+        phase_event_id=phases["activation"].id,
+        exception_type=ExceptionType.PANIC_BUTTON,
+        source=ExceptionSource.DRIVER,
+        severity=ExceptionSeverity.CRITICAL,
+        review_status=ExceptionReviewStatus.NEEDS_REVIEW,
+        description="Hijack in progress",
+    )
+    db_session.add(exception)
+    await db_session.flush()
+
+    await review_exception(
+        db_session,
+        exception_id=exception.id,
+        user_id=trip.created_by_user_id,
+        organization_id=trip.operator_organization_id,
+        review_note="Driver reached safely by phone.",
+        review_outcome=DispatcherReviewOutcome.NO_ACTION_REQUIRED,
+        contact_method=ExceptionContactMethod.PHONE,
+    )
+
+    outbox = _outbox(db_session)
+    assert len(outbox) == 1
+    org_id, event = outbox[0]
+    assert org_id == trip.operator_organization_id
+    assert event.id == trip.id
+    assert event.kind == RealtimeKind.EXCEPTION_REVIEWED
+    assert event.severity == EventSeverity.INFO
 
 
 # ── FP-147: system-detected exceptions ───────────────────────────────────────
@@ -405,7 +449,8 @@ def test_every_realtime_kind_names_a_change_not_a_loudness():
     check, so the membership is pinned rather than left to reviewer memory.
     """
     assert {k.value for k in RealtimeKind} == {
-        "trip_created", "phase_completed", "exception_raised", "trip_closed",
+        "trip_created", "phase_completed", "exception_raised", "exception_reviewed",
+        "trip_closed",
     }
 
 
@@ -699,28 +744,25 @@ def test_every_trip_exception_write_site_is_accounted_for():
 
     FP-147 existed because six sites were added over time that wrote an exception and
     told no one — the dispatcher's data changed with nothing waking their screen. The
-    emits above fix those six instances; this fixes the *class*, which is the part that
-    would otherwise recur the next time someone adds a seventh.
+    emits above fix those instances, including the dispatcher notes created during a
+    phase override and cancellation; this fixes the *class*, which is the part that
+    would otherwise recur the next time someone adds another.
 
-    A SQLAlchemy flush listener was considered and rejected. Two sites (the dispatcher
-    notes in phase_service.override_phase and trip_service.cancel_trip) must stay
-    silent, so a blanket listener needs an opt-out list — turning "impossible to forget
-    the emit" into "impossible to forget, unless you forget the opt-out", which is the
-    same defect wearing a hat. It would also have to resolve the organisation during
-    flush. This is cruder and catches the same mistake at the moment it is made.
+    A SQLAlchemy flush listener was considered and rejected because it would have to
+    resolve the organisation during flush. This is cruder and catches the same mistake
+    at the moment it is made.
 
-    If this fails: add the enqueue (or decide the site is deliberately silent, and say
-    why here), then update the count.
+    If this fails: add the enqueue, then update the count.
     """
     expected_sites = {
-        # path -> (total construction sites, of which deliberately silent)
+        # path -> total construction sites
         # The seventh is FP-145's GPS_MISMATCH in _raise_position_disagreement_if_unrecorded,
         # merged from feature/fp-68-geofence-service. It arrived silent — this test caught
         # it — and now enqueues EXCEPTION_RAISED like every other system-detected site.
-        "app/orchestration/phase_service.py": (7, 1),   # :560 dispatcher override note
-        "app/orchestration/trip_service.py": (1, 1),    # :565 cancellation note
-        "app/orchestration/scan_service.py": (1, 0),
-        "app/orchestration/exception_service.py": (1, 0),
+        "app/orchestration/phase_service.py": 7,
+        "app/orchestration/trip_service.py": 1,
+        "app/orchestration/scan_service.py": 1,
+        "app/orchestration/exception_service.py": 1,
     }
 
     root = pathlib.Path(__file__).resolve().parents[2]
@@ -729,7 +771,24 @@ def test_every_trip_exception_write_site_is_accounted_for():
         for path in expected_sites
     }
 
-    assert actual == {path: total for path, (total, _silent) in expected_sites.items()}, (
-        "A TripException write site was added or removed. Every site must either "
-        "enqueue a realtime event or be recorded here as deliberately silent."
+    assert actual == expected_sites, (
+        "A TripException write site was added or removed. Every site must enqueue a "
+        "realtime event."
+    )
+
+    # Task 2 (FP-146 follow-on): every one of the sites counted above must also set
+    # review_status through initial_review_status() rather than hand-coding a value or
+    # relying on the column's server_default — a site that only works by matching the
+    # default is a site the next severity change breaks silently, with nothing here to
+    # catch it. Each site calls it either directly (initial_review_status(...)) or via
+    # a same-module private wrapper (_initial_review_status(...), used where a
+    # top-level import of exception_service would deadlock on a partially-initialised
+    # module — see phase_service.py's and scan_service.py's own copies).
+    review_status_counts = {
+        path: len(re.findall(r"review_status=(?:_?initial_review_status)\(", (root / path).read_text()))
+        for path in expected_sites
+    }
+    assert review_status_counts == actual, (
+        "Every TripException construction must route review_status through "
+        "initial_review_status() — a site is missing it."
     )

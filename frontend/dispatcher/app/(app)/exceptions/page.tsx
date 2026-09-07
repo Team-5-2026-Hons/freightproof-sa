@@ -44,10 +44,10 @@ export default function ExceptionsPage() {
   // requests could land in any order and disagree.
   const { exceptions: all, isLoading, error, refetch } = useExceptions()
 
-  const openCount   = useMemo(() => all.filter(e => !e.resolved).length, [all])
+  const openCount   = useMemo(() => all.filter(e => e.review_status !== 'reviewed').length, [all])
   const closedCount = all.length - openCount
   const exceptions  = useMemo(
-    () => all.filter(e => e.resolved === showResolved),
+    () => all.filter(e => (e.review_status === 'reviewed') === showResolved),
     [all, showResolved],
   )
 

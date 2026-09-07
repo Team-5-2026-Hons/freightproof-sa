@@ -15,8 +15,9 @@ export interface ToastState {
 export const ToastContext = createContext<ToastState | null>(null)
 
 const MAX_TOASTS = 3
-// info and success auto-dismiss; error and sticky require manual dismiss.
-const AUTO_DISMISS_MS = 4000
+// Info, success and warning auto-dismiss; error and explicitly sticky toasts require
+// manual dismissal.
+export const TOAST_AUTO_DISMISS_MS = 4_000
 
 /**
  * Drop toasts until the viewport can hold what is left, lowest priority first.
@@ -56,7 +57,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     const id = crypto.randomUUID()
     setToasts(prev => evictToCap([...prev, { ...toast, id }]))
     if (!toast.sticky && toast.kind !== 'error') {
-      timers.current[id] = setTimeout(() => dismiss(id), AUTO_DISMISS_MS)
+      timers.current[id] = setTimeout(() => dismiss(id), TOAST_AUTO_DISMISS_MS)
     }
   }, [dismiss])
 

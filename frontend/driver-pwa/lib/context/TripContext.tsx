@@ -392,7 +392,13 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
         // dispatcher UI will eventually read: a coordinate pair or null, never one axis.
         gps_lat: hasGpsFix ? gpsLat : null,
         gps_lng: hasGpsFix ? gpsLng : null,
-        resolved: false, resolved_by_user_id: null, resolved_at: null, resolver_note: null,
+        // Mirrors backend initial_review_status (Task 2): CRITICAL starts
+        // needs_review, everything else starts recorded — so a demo-mode
+        // panic/seal-broken exception behaves like the real backend path instead of
+        // always displaying as recorded regardless of severity.
+        review_status: criticalTypes.includes(type) ? 'needs_review' : 'recorded',
+        review_outcome: null, reviewed_by_user_id: null,
+        reviewed_at: null, review_note: null, contact_method: null,
         merkle_batch_id: null,
         created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
       }

@@ -15,16 +15,28 @@ import { TripIdStamp } from '@/components/domain/TripIdStamp'
 import { ApiError }      from '@/lib/api/client'
 import { useToast }      from '@/lib/hooks/useToast'
 import { useExceptions, resolveException } from '@/lib/hooks/useExceptions'
-import type { ExceptionResolutionMethod } from '@shared/lib/types/exception'
+import type { ExceptionContactMethod, ExceptionResolutionMethod } from '@shared/lib/types/exception'
 import { EXCEPTION_SEVERITY_META, EXCEPTION_SOURCE_META } from '@shared/lib/constants/status-meta'
 import { COPY }   from '@shared/lib/constants/copy'
 import { ROUTES } from '@/lib/constants/routes'
 
+// The resolve FORM's choices — posted to the still-live /resolve endpoint, which has
+// not been renamed yet (Task 3). Kept distinct from CONTACT_METHOD_LABELS below: the
+// form's request body is the legacy 4-value ExceptionResolutionMethod, while the
+// already-recorded read value comes back as the narrower ExceptionContactMethod.
 const RESOLUTION_METHOD_LABELS: Record<ExceptionResolutionMethod, string> = {
   phoned:         'Phoned the driver',
   whatsapp:       'WhatsApp',
   in_person:      'In person',
   no_contact_yet: 'No contact — resolved from evidence',
+}
+
+// Labels for the READ-only contact_method field once a review has been recorded.
+// No_contact_yet has no equivalent here — see ExceptionContactMethod's own comment.
+const CONTACT_METHOD_LABELS: Record<ExceptionContactMethod, string> = {
+  phone:     'Phoned the driver',
+  whatsapp:  'WhatsApp',
+  in_person: 'In person',
 }
 
 // The unselected state of the method field. Not one of the methods: it is the absence of
@@ -185,7 +197,7 @@ export default function ExceptionDetailPage() {
     <div className="flex flex-col flex-1 min-h-0">
       <TopBar
         title={fmtType(exception.exception_type)}
-        sub={`${sevMeta.label} · ${exception.resolved ? 'Resolved' : 'Open'}`}
+        sub={`${sevMeta.label} · ${exception.review_status === 'reviewed' ? 'Resolved' : 'Open'}`}
       >
         <Button
           variant="secondary"
@@ -229,8 +241,8 @@ export default function ExceptionDetailPage() {
               <div className="flex items-center gap-2 mb-5 flex-wrap">
                 <Chip type={sevMeta.chipType} label={sevMeta.label} />
                 <Chip
-                  type={exception.resolved ? 'complete' : 'critical'}
-                  label={exception.resolved ? 'Resolved' : 'Open'}
+                  type={exception.review_status === 'reviewed' ? 'complete' : 'critical'}
+                  label={exception.review_status === 'reviewed' ? 'Resolved' : 'Open'}
                 />
                 <span className="ml-auto text-[11px] text-on-surf-v font-[500]">
                   {srcMeta.label} · {fmtTs(exception.created_at)}
@@ -248,8 +260,8 @@ export default function ExceptionDetailPage() {
                   ['Source',  srcMeta.label],
                   ['Raised',  fmtTs(exception.created_at)],
                   ['Updated', fmtTs(exception.updated_at)],
-                  ...(exception.resolved && exception.resolved_at
-                    ? [['Resolved', fmtTs(exception.resolved_at)]] as [string, string][]
+                  ...(exception.review_status === 'reviewed' && exception.reviewed_at
+                    ? [['Resolved', fmtTs(exception.reviewed_at)]] as [string, string][]
                     : []),
                 ] as [string, string][]).map(([label, value]) => (
                   <div
@@ -265,7 +277,7 @@ export default function ExceptionDetailPage() {
           </div>
 
           {/* Resolution card */}
-          {exception.resolved ? (
+          {exception.review_status === 'reviewed' ? (
             <div className="bg-surf-lowest rounded-lg shadow-level-3 overflow-hidden">
               <SecHead title="Resolution" />
               <div className="p-6">
@@ -275,22 +287,23 @@ export default function ExceptionDetailPage() {
                 </div>
                 <div className="bg-surf-low rounded-lg p-4 mb-4">
                   <p className="text-[14px] text-on-surf leading-relaxed">
-                    {exception.resolver_note ?? 'No note provided.'}
+                    {exception.review_note ?? 'No note provided.'}
                   </p>
                 </div>
                 <div className="flex items-center gap-4 flex-wrap">
-                  {exception.resolved_at && (
+                  {exception.reviewed_at && (
                     <div className="flex items-center gap-1.5 text-[11px] font-[500] text-sec tabular-nums">
                       <Ic n="clock" s={10} className="text-sec shrink-0" />
-                      {fmtTs(exception.resolved_at)}
+                      {fmtTs(exception.reviewed_at)}
                     </div>
                   )}
-                  {/* Null for anything resolved before the method was recorded. Shown as
-                      absent rather than guessed — inventing contact history on an
-                      evidence record is worse than admitting the gap. */}
-                  {exception.resolution_method && (
+                  {/* Null for anything resolved before the method was recorded, or
+                      resolved without any contact having happened. Shown as absent
+                      rather than guessed — inventing contact history on an evidence
+                      record is worse than admitting the gap. */}
+                  {exception.contact_method && (
                     <div className="text-[11px] font-[500] text-sec">
-                      Established: {RESOLUTION_METHOD_LABELS[exception.resolution_method]}
+                      Established: {CONTACT_METHOD_LABELS[exception.contact_method]}
                     </div>
                   )}
                 </div>

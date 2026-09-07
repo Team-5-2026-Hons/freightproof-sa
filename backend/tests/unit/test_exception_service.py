@@ -1,9 +1,9 @@
-"""FP-146 — resolve_exception and list_exceptions at the service level.
+"""FP-146 — review_exception and list_exceptions at the service level.
 
 Complements tests/integration/test_exceptions_dispatcher.py rather than repeating it.
 The integration tests own the HTTP contract (status codes, request shape); these own the
-things HTTP cannot see — that the resolver comes from the caller's identity rather than
-anything in the payload, and that a resolution reaches the realtime outbox before the
+things HTTP cannot see — that the reviewer comes from the caller's identity rather than
+anything in the payload, and that a review reaches the realtime outbox before the
 transaction commits.
 """
 
@@ -17,7 +17,10 @@ from app.core.exceptions import ExceptionAlreadyResolvedError, ResourceNotFoundE
 from app.core.realtime import EventSeverity, RealtimeKind
 from app.db.models.enums import (
     ArtifactType,
-    ExceptionResolutionMethod,
+    DispatcherReviewOutcome,
+    ExceptionContactMethod,
+    ExceptionReviewOutcome,
+    ExceptionReviewStatus,
     ExceptionSeverity,
     ExceptionSource,
     ExceptionType,
@@ -32,7 +35,12 @@ from app.db.models.people import Driver, User
 from app.db.models.transit import TripException
 from app.db.models.trips import Trip
 from app.db.models.vehicles import Vehicle
-from app.orchestration.exception_service import list_exceptions, raise_exception, resolve_exception
+from app.orchestration.exception_service import (
+    initial_review_status,
+    list_exceptions,
+    raise_exception,
+    review_exception,
+)
 
 _OUTBOX_KEY = "realtime_outbox"
 
@@ -99,90 +107,109 @@ def _outbox(db_session) -> list:
     return db_session.info.get(_OUTBOX_KEY, [])
 
 
-async def _resolve(db_session, seed, **overrides):
+async def _review(db_session, seed, **overrides):
     kwargs = {
         "exception_id": seed["exception"].id,
         "user_id": seed["user"].id,
         "organization_id": seed["org"].id,
-        "resolver_note": _NOTE,
-        "resolution_method": ExceptionResolutionMethod.PHONED,
+        "review_note": _NOTE,
+        "review_outcome": DispatcherReviewOutcome.EVIDENCE_VERIFIED,
+        "contact_method": ExceptionContactMethod.PHONE,
     }
     kwargs.update(overrides)
-    return await resolve_exception(db_session, **kwargs)
+    return await review_exception(db_session, **kwargs)
 
 
-# ── resolve ──────────────────────────────────────────────────────────────────
+# ── initial review status ────────────────────────────────────────────────────
 
 
-async def test_resolve_sets_the_resolver_from_the_caller(db_session):
+@pytest.mark.parametrize(
+    ("severity", "expected"),
+    [
+        (ExceptionSeverity.CRITICAL, ExceptionReviewStatus.NEEDS_REVIEW),
+        (ExceptionSeverity.WARNING, ExceptionReviewStatus.RECORDED),
+        (ExceptionSeverity.INFO, ExceptionReviewStatus.RECORDED),
+    ],
+)
+def test_initial_review_status_is_derived_from_severity(severity, expected) -> None:
+    assert initial_review_status(severity) == expected
+
+
+# ── review ───────────────────────────────────────────────────────────────────
+
+
+async def test_review_sets_complete_evidence_from_the_caller(db_session):
     """The identity is an argument, never a field on the request body. This is the whole
-    reason resolve_exception takes a narrow note+method instead of TripExceptionUpdate,
-    which would have let a caller name someone else as the resolver."""
-    seed = await _seed(db_session, tag="resolver")
+    reason review_exception takes a narrow request instead of TripExceptionUpdate,
+    which would have let a caller name someone else as the reviewer."""
+    seed = await _seed(db_session, tag="reviewer")
 
     before = datetime.now(UTC)
-    await _resolve(db_session, seed)
+    await _review(db_session, seed)
 
     exc = seed["exception"]
-    assert exc.resolved is True
-    assert exc.resolved_by_user_id == seed["user"].id
-    # == not is: resolution_method is a String(20) column (matching severity/source on
-    # this table), so it round-trips as a plain str. ExceptionResolutionMethod subclasses
+    assert exc.review_status == ExceptionReviewStatus.REVIEWED
+    assert exc.review_outcome == ExceptionReviewOutcome.EVIDENCE_VERIFIED
+    assert exc.reviewed_by_user_id == seed["user"].id
+    # == not is: contact_method is a String(20) column (matching severity/source on
+    # this table), so it round-trips as a plain str. ExceptionContactMethod subclasses
     # str, which makes equality work and identity fail.
-    assert exc.resolution_method == ExceptionResolutionMethod.PHONED
-    assert exc.resolver_note == _NOTE
+    assert exc.contact_method == ExceptionContactMethod.PHONE
+    assert exc.review_note == _NOTE
     # Set by this process, not by the database — deliberately asserted against the Python
     # clock. The test database's own clock cannot be trusted for this (known-issues §6).
-    assert before - timedelta(seconds=5) <= exc.resolved_at <= datetime.now(UTC)
+    assert before - timedelta(seconds=5) <= exc.reviewed_at <= datetime.now(UTC)
 
 
-async def test_resolve_refuses_another_organisations_exception(db_session):
+async def test_review_refuses_another_organisations_exception(db_session):
     """Org scoping is authorisation. A dispatcher holding a valid token for their own
     org must not reach another operator's row by guessing its id."""
     mine = await _seed(db_session, tag="mine")
     theirs = await _seed(db_session, tag="theirs")
 
     with pytest.raises(ResourceNotFoundError):
-        await _resolve(
+        await _review(
             db_session, mine,
             exception_id=theirs["exception"].id,  # their row, my credentials
         )
 
-    assert theirs["exception"].resolved is False
+    assert theirs["exception"].review_status == ExceptionReviewStatus.RECORDED
 
 
-async def test_resolve_of_an_unknown_id_raises(db_session):
+async def test_review_of_an_unknown_id_raises(db_session):
     seed = await _seed(db_session, tag="unknown")
 
     with pytest.raises(ResourceNotFoundError):
-        await _resolve(db_session, seed, exception_id=uuid.uuid4())
+        await _review(db_session, seed, exception_id=uuid.uuid4())
 
 
-async def test_the_same_dispatcher_resolving_twice_is_idempotent(db_session):
+async def test_the_same_dispatcher_reviewing_twice_is_idempotent(db_session):
     """A double-tap or a retried request from the SAME dispatcher carries the same
     account, so nothing is lost by returning the stored row unchanged. This is the case
     the offline/replay path depends on and it must not raise."""
     seed = await _seed(db_session, tag="twice")
 
-    first = await _resolve(db_session, seed)
-    second = await _resolve(
+    first = await _review(db_session, seed)
+    second = await _review(
         db_session, seed,
-        resolver_note="A different account of the same incident.",
-        resolution_method=ExceptionResolutionMethod.IN_PERSON,
+        review_note="A different account of the same incident.",
+        review_outcome=DispatcherReviewOutcome.REFERRED_FOR_FOLLOW_UP,
+        contact_method=ExceptionContactMethod.IN_PERSON,
     )
 
-    assert second.resolved_at == first.resolved_at
-    assert second.resolver_note == _NOTE
-    assert second.resolution_method is ExceptionResolutionMethod.PHONED
+    assert second.reviewed_at == first.reviewed_at
+    assert second.review_note == _NOTE
+    assert second.review_outcome == ExceptionReviewOutcome.EVIDENCE_VERIFIED
+    assert second.contact_method is ExceptionContactMethod.PHONE
 
 
-async def test_a_second_dispatcher_resolving_is_told_they_lost(db_session):
+async def test_a_second_dispatcher_reviewing_is_told_they_lost(db_session):
     """The first account stays the record — but the second dispatcher must not be told
     their note was recorded when it was discarded. They may have established something
-    the first resolver did not, and on an evidence platform a silent drop is the failure.
+    the first reviewer did not, and on an evidence platform a silent drop is the failure.
     """
     seed = await _seed(db_session, tag="race")
-    await _resolve(db_session, seed)
+    await _review(db_session, seed)
     other_dispatcher = User(
         id=uuid.uuid4(), organization_id=seed["org"].id,
         email="second-race@test.co.za", full_name="Second Dispatcher",
@@ -191,59 +218,60 @@ async def test_a_second_dispatcher_resolving_is_told_they_lost(db_session):
     await db_session.flush()
 
     with pytest.raises(ExceptionAlreadyResolvedError):
-        await _resolve(
+        await _review(
             db_session, seed,
             user_id=other_dispatcher.id,
-            resolver_note="Phoned the driver; he says the inspection was at Beitbridge.",
-            resolution_method=ExceptionResolutionMethod.IN_PERSON,
+            review_note="Phoned the driver; he says the inspection was at Beitbridge.",
+            review_outcome=DispatcherReviewOutcome.REFERRED_FOR_FOLLOW_UP,
+            contact_method=ExceptionContactMethod.IN_PERSON,
         )
 
     # The first account survives untouched — the raise is about telling the loser, not
     # about protecting the row, which was never at risk.
     exc = seed["exception"]
-    assert exc.resolver_note == _NOTE
-    assert exc.resolved_by_user_id == seed["user"].id
+    assert exc.review_note == _NOTE
+    assert exc.reviewed_by_user_id == seed["user"].id
 
 
-async def test_a_resolve_with_no_recorded_resolver_counts_as_a_conflict(db_session):
-    """A row resolved before resolved_by_user_id was captured cannot be proved to belong
+async def test_a_review_with_no_recorded_reviewer_counts_as_a_conflict(db_session):
+    """A row reviewed before reviewed_by_user_id was captured cannot be proved to belong
     to this caller, so it is treated as someone else's. Guessing 'probably them' would
     let the NULL case silently discard a note."""
     seed = await _seed(db_session, tag="legacy")
     exc = seed["exception"]
-    exc.resolved = True
-    exc.resolved_by_user_id = None
+    exc.review_status = ExceptionReviewStatus.REVIEWED
+    exc.reviewed_by_user_id = None
     await db_session.flush()
 
     with pytest.raises(ExceptionAlreadyResolvedError):
-        await _resolve(db_session, seed)
+        await _review(db_session, seed)
 
 
-async def test_resolve_enqueues_an_info_event(db_session):
+async def test_review_enqueues_an_info_event(db_session):
     """Other dispatchers are looking at the same queue, so the list must refresh — but a
-    resolution is progress, not an alarm, and must not interrupt anyone mid-shift.
+    review is progress, not an alarm, and must not interrupt anyone mid-shift.
 
     Only visible here: the integration client commits, which drains the outbox.
     """
     seed = await _seed(db_session, tag="emit")
 
-    await _resolve(db_session, seed)
+    await _review(db_session, seed)
 
     assert len(_outbox(db_session)) == 1
     org_id, event = _outbox(db_session)[0]
     assert org_id == seed["org"].id
     assert event.id == seed["trip"].id
-    assert event.kind is RealtimeKind.EXCEPTION_RAISED
+    assert event.kind is RealtimeKind.EXCEPTION_REVIEWED
     assert event.severity is EventSeverity.INFO
 
 
-async def test_a_suppressed_repeat_resolve_enqueues_nothing(db_session):
+async def test_a_suppressed_repeat_review_enqueues_nothing(db_session):
     """No new record, no new event — the same rule the scan-discrepancy emit follows."""
     seed = await _seed(db_session, tag="emit-twice")
-    await _resolve(db_session, seed)
+    await _review(db_session, seed)
     db_session.info.pop(_OUTBOX_KEY, None)
 
-    await _resolve(db_session, seed)
+    await _review(db_session, seed)
 
     assert _outbox(db_session) == []
 
@@ -294,7 +322,7 @@ async def test_list_without_a_filter_includes_resolved_rows(db_session):
     without knowing its state, so an unresolved-only default would make a resolved
     exception unreachable from its own permalink."""
     seed = await _seed(db_session, tag="l-all")
-    await _resolve(db_session, seed)
+    await _review(db_session, seed)
 
     all_rows = await list_exceptions(db_session, organization_id=seed["org"].id)
     open_rows = await list_exceptions(
@@ -310,7 +338,7 @@ async def test_list_without_a_filter_includes_resolved_rows(db_session):
 
 async def _seed_trip(db_session, *, tag: str) -> dict:
     """One operator org with an active trip and its assigned driver, and NO exception
-    on it yet — unlike _seed above, which pre-seeds one for the resolve tests."""
+    on it yet — unlike _seed above, which pre-seeds one for the review tests."""
     org = Organization(id=uuid.uuid4(), name=f"Op-{tag}", org_type=OrganizationType.OPERATOR)
     client_org = Organization(
         id=uuid.uuid4(), name=f"Cl-{tag}", org_type=OrganizationType.PRINCIPAL,
@@ -407,6 +435,9 @@ async def test_raise_exception_accepts_an_artifact_owned_by_this_trip(db_session
     )
 
     assert result.supporting_artifact_id == artifact.id
+    # CARGO_DAMAGE is not in _CRITICAL_TYPES, so it is WARNING severity and starts
+    # RECORDED, not NEEDS_REVIEW (Task 2, FP-146 follow-on).
+    assert result.review_status == ExceptionReviewStatus.RECORDED
 
 
 async def test_raise_exception_replays_the_same_client_report_id(db_session):

@@ -12,7 +12,9 @@ from sqlalchemy.sql import func
 
 from app.db.models import Base
 from app.db.models.enums import (
-    ExceptionResolutionMethod,
+    ExceptionContactMethod,
+    ExceptionReviewOutcome,
+    ExceptionReviewStatus,
     ExceptionSeverity,
     ExceptionSource,
     ExceptionType,
@@ -127,19 +129,34 @@ class TripException(Base):
     # must never be read into any hash/anchoring path.
     gps_lat: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     gps_lng: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
-    resolved: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
-    resolved_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    # Task 1 (FP-146 review semantics, migration ciaran_exc_review_semantics): replaces
+    # the old `resolved: bool`, which could not distinguish "nobody has looked at this"
+    # from "looked at, still needs a decision" — see ExceptionReviewStatus's own comment.
+    # String(20), not a native PG enum, matching every other enum column on this table.
+    review_status: Mapped[ExceptionReviewStatus] = mapped_column(
+        String(20), nullable=False, server_default=ExceptionReviewStatus.RECORDED.value
+    )
+    # What the dispatcher concluded, set only once review_status reaches REVIEWED.
+    # Nullable: unreviewed rows (the overwhelming majority at any moment) have no
+    # outcome yet, and the migration only back-stamps LEGACY_REVIEW onto rows that were
+    # already `resolved=true` — see ExceptionReviewOutcome's own comment.
+    review_outcome: Mapped[Optional[ExceptionReviewOutcome]] = mapped_column(
+        String(30), nullable=True
+    )
+    reviewed_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
-    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    resolver_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    review_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     # How the dispatcher established what happened, alongside the note saying what they
     # found. Nullable: every exception written before this column existed has no method,
     # and backfilling a guess would put invented contact history on an evidence record.
-    # String(20), not a native PG enum — matching exception_type/source/severity above
-    # and every other enum column in this codebase. A PG type would also have to be
-    # created and dropped by hand in the migration, for no gain the app can see.
-    resolution_method: Mapped[Optional[ExceptionResolutionMethod]] = mapped_column(
+    # ExceptionContactMethod (not the legacy ExceptionResolutionMethod this column was
+    # renamed from — migration ciaran_exc_review_semantics remaps every stored value:
+    # 'phoned'->'phone', 'no_contact_yet'->NULL — see that enum's own comment for why
+    # NO_CONTACT_YET has no equivalent here). String(20), not a native PG enum — matching
+    # exception_type/source/severity above and every other enum column in this codebase.
+    contact_method: Mapped[Optional[ExceptionContactMethod]] = mapped_column(
         String(20), nullable=True
     )
     merkle_batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(

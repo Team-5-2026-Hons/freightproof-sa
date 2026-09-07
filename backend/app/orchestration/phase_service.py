@@ -75,8 +75,8 @@ from app.core.exceptions import (
     PhaseTypeMismatchError, ResourceNotFoundError, TripActivationBlockedError, TripStateError,
 )
 from app.db.models.enums import (
-    AnchorStatus, BlockchainReceiptType, ExceptionSeverity, ExceptionSource, ExceptionType,
-    PhaseStatus, PhaseType, SubjectType, TripStatus,
+    AnchorStatus, BlockchainReceiptType, ExceptionReviewStatus, ExceptionSeverity,
+    ExceptionSource, ExceptionType, PhaseStatus, PhaseType, SubjectType, TripStatus,
 )
 from app.db.models.evidence import EvidenceArtifact
 from app.db.models.phases import PhaseEvent
@@ -93,6 +93,23 @@ from app.schemas.phases import (
 from app.schemas.trips import TripDetailResponse
 
 logger = logging.getLogger(__name__)
+
+
+def _initial_review_status(severity: ExceptionSeverity) -> ExceptionReviewStatus:
+    """Delegates to exception_service.initial_review_status (Task 2) so every
+    TripException this module writes routes its review_status through the same
+    severity->status rule as the driver-raised path, instead of hand-coding a value or
+    relying on the column's server_default.
+
+    Imported lazily, not at module scope: exception_service imports
+    phase_service.current_phase_event at ITS module load, so a top-level import here
+    would try to read exception_service while it is still mid-import — deadlocking on
+    the partially-initialised module. This function only runs at request time, by
+    which point both modules have finished loading.
+    """
+    from app.orchestration.exception_service import initial_review_status
+
+    return initial_review_status(severity)
 
 
 async def _load_trip_for_driver(db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID) -> Trip:
@@ -597,6 +614,7 @@ async def _raise_position_disagreement_if_unrecorded(
             # (PARCEL_COUNT_MISMATCH) already uses. The separation is reported; the
             # dispatcher decides what it means.
             severity=ExceptionSeverity.WARNING,
+            review_status=_initial_review_status(ExceptionSeverity.WARNING),
             description=description,
             # The driver's own fix, which is what this column means on every other
             # writer. The tracker's fix has no column here and needs none: both
@@ -731,7 +749,9 @@ async def override_phase(
     db.add(TripException(
         trip_id=trip_id, phase_event_id=event.id,
         exception_type=ExceptionType.DISPATCHER_NOTE, source=ExceptionSource.DISPATCHER,
-        severity=ExceptionSeverity.WARNING, description=note,
+        severity=ExceptionSeverity.WARNING,
+        review_status=_initial_review_status(ExceptionSeverity.WARNING),
+        description=note,
     ))
 
     # May legitimately CLOSE the trip if this was the last unresolved row — that
@@ -739,6 +759,14 @@ async def override_phase(
     # OVERRIDDEN as resolved for gating purposes.
     await recompute_position(db, trip)
     await db.flush()
+
+    enqueue_event(
+        db, trip.operator_organization_id,
+        TripEvent(
+            id=trip.id, kind=RealtimeKind.EXCEPTION_RAISED,
+            severity=event_severity(ExceptionSeverity.WARNING),
+        ),
+    )
 
     # D9: always PHASE_COMPLETED for an override — the plan position moved, same
     # refetch as any completion (unlike _finish_phase, this is not conditional on
@@ -1113,7 +1141,7 @@ async def _raise_scan_shortfall_if_unrecorded(
             TripException.consignment_id == consignment.id,
             TripException.trip_stop_id == event.trip_stop_id,
             TripException.exception_type == ExceptionType.PARCEL_COUNT_MISMATCH,
-            TripException.resolved.is_(False),
+            TripException.review_status != ExceptionReviewStatus.REVIEWED,
         )
     )).first()
     if existing is not None:
@@ -1124,6 +1152,7 @@ async def _raise_scan_shortfall_if_unrecorded(
         consignment_id=consignment.id, trip_stop_id=event.trip_stop_id,
         exception_type=ExceptionType.PARCEL_COUNT_MISMATCH,
         source=ExceptionSource.SYSTEM, severity=ExceptionSeverity.WARNING,
+        review_status=_initial_review_status(ExceptionSeverity.WARNING),
         description=(
             f"Warehouse closed its scan-out session on waybill "
             f"{consignment.parcel_perfect_reference} with "
@@ -1239,6 +1268,7 @@ async def advance_departure(
             trip_id=trip_id, phase_event_id=event.id,
             exception_type=ExceptionType.SEAL_MISMATCH, source=ExceptionSource.DRIVER,
             severity=ExceptionSeverity.CRITICAL,
+            review_status=_initial_review_status(ExceptionSeverity.CRITICAL),
             description=seal_mismatch_description,
         ))
         # Emitted for consistency with the other system sites, but deliberately
@@ -1399,6 +1429,7 @@ async def advance_unloading(
             trip_id=trip_id, phase_event_id=event.id,
             exception_type=ExceptionType.SEAL_UNVERIFIED, source=ExceptionSource.SYSTEM,
             severity=seal_unverified_severity,
+            review_status=_initial_review_status(seal_unverified_severity),
             description=(
                 f"Seal continuity could not be verified for this leg: no seal was "
                 f"recorded at departure (departure phase is "
@@ -1439,6 +1470,7 @@ async def advance_unloading(
             trip_id=trip_id, phase_event_id=event.id,
             exception_type=ExceptionType.SEAL_MISMATCH, source=ExceptionSource.SYSTEM,
             severity=ExceptionSeverity.CRITICAL,
+            review_status=_initial_review_status(ExceptionSeverity.CRITICAL),
             description=(
                 f"Seal at destination ('{seal_at_destination}') does not match "
                 f"the seal applied at departure ('{departure_seal}')."
@@ -1559,6 +1591,7 @@ async def advance_confirmation(
                 consignment_id=consignment.id, trip_stop_id=event.trip_stop_id,
                 exception_type=ExceptionType.WAYBILL_COUNT_MISMATCH,
                 source=ExceptionSource.SYSTEM, severity=ExceptionSeverity.WARNING,
+                review_status=_initial_review_status(ExceptionSeverity.WARNING),
                 description=(
                     f"Parcel count changed in transit on waybill "
                     f"{consignment.parcel_perfect_reference}: "

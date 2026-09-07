@@ -96,6 +96,9 @@ async def test_driver_raises_panic_exception(client: AsyncClient, seed_trip):
     body = resp.json()
     assert body["severity"] == "critical"
     assert body["source"] == "driver"
+    # CRITICAL findings start NEEDS_REVIEW (Task 2, FP-146 follow-on) — a panic
+    # button needs a dispatcher's decision now, not just visibility on the list.
+    assert body["review_status"] == "needs_review"
 
 
 async def test_driver_raises_panic_exception_with_gps_persists_coordinates(

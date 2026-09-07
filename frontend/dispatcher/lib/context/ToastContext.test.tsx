@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { act, render, screen, fireEvent } from '@testing-library/react'
 import { ToastProvider, type Toast } from './ToastContext'
 import { useToast } from '@/lib/hooks/useToast'
 
@@ -10,6 +10,11 @@ const critical = (n: number): Request =>
 
 const ordinary = (n: number): Request =>
   ({ kind: 'error', title: `Exception raised ${n}` })
+
+const warning = (): Request =>
+  ({ kind: 'warning', title: 'Warning exception' })
+
+afterEach(() => vi.useRealTimers())
 
 /** Emits the whole queue in one click, so eviction is exercised through the real
  *  state updater rather than by reaching into it. */
@@ -72,5 +77,17 @@ describe('ToastProvider — overflow eviction', () => {
     expect(onScreen()).toBe(3)
     expect(screen.queryByText('Critical exception 1')).not.toBeInTheDocument()
     expect(screen.getByText('Critical exception 4')).toBeInTheDocument()
+  })
+})
+
+describe('ToastProvider — auto-dismiss', () => {
+  it('owns exactly one timer for an auto-dismissing toast', () => {
+    vi.useFakeTimers()
+
+    emit([warning()])
+
+    expect(vi.getTimerCount()).toBe(1)
+    act(() => vi.runOnlyPendingTimers())
+    expect(screen.queryByText('Warning exception')).not.toBeInTheDocument()
   })
 })

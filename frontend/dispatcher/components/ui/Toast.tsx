@@ -1,14 +1,13 @@
 'use client'
 
-import { useEffect, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { X, CheckCircle2, AlertTriangle, Info, ShieldAlert } from 'lucide-react'
 import { cn } from '@shared/lib/utils/cn'
 
 export type ToastKind = 'info' | 'success' | 'warning' | 'error'
 
-// What a toast is worth when the viewport is full and one of them has to go. `kind`
-// cannot answer that: every exception alert is an 'error', so a panic button and a
-// parcel-count mismatch are indistinguishable to the eviction rule without this.
+// What a toast is worth when the viewport is full and one of them has to go. Critical
+// exception alerts must survive ordinary warnings and routine status notifications.
 export type ToastPriority = 'ordinary' | 'critical'
 
 export interface ToastData {
@@ -18,7 +17,7 @@ export interface ToastData {
   body?: string
   sticky?: boolean
   // Absent means ordinary. Optional so every existing caller — trip cancelled, phase
-  // overridden, exception resolved — keeps working untouched.
+  // overridden, exception reviewed — keeps working untouched.
   priority?: ToastPriority
 }
 
@@ -36,12 +35,6 @@ const kindConfig: Record<ToastKind, { icon: ReactNode; accent: string; role: 'st
 
 function ToastItem({ toast, onDismiss }: ToastItemProps) {
   const { icon, accent, role } = kindConfig[toast.kind]
-
-  useEffect(() => {
-    if (toast.sticky || toast.kind === 'error') return
-    const timer = setTimeout(() => onDismiss(toast.id), 4000)
-    return () => clearTimeout(timer)
-  }, [toast, onDismiss])
 
   return (
     <div

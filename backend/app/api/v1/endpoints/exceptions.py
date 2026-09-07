@@ -2,7 +2,7 @@
 
 The driver raises an exception against a trip they are assigned to, so that route is
 trip-nested and authenticated as a driver. The dispatcher works a queue across every
-trip in their organisation, so the list and the resolve action are org-scoped and
+trip in their organisation, so the list and the review action are org-scoped and
 cannot hang off a /trips/{trip_id} prefix — hence two routers in one module. They share
 a service and a schema; splitting the file would separate code that changes together.
 
@@ -25,13 +25,13 @@ from app.db.session import get_db
 from app.orchestration.exception_service import (
     list_exceptions,
     raise_exception,
-    resolve_exception,
+    review_exception,
 )
 from app.schemas.people import DriverRead, UserRead
 from app.schemas.transit import (
     DriverExceptionCreateBody,
     TripExceptionRead,
-    TripExceptionResolveRequest,
+    TripExceptionReviewRequest,
 )
 
 router = APIRouter(prefix="/trips/{trip_id}/exceptions", tags=["exceptions"])
@@ -94,27 +94,28 @@ async def list_exceptions_endpoint(
 # carries: a write that lands on an evidence record, where a client stuck in a retry loop
 # should be stopped long before it works through every exception in the organisation.
 # Reads on this router stay uncapped beyond the global per-IP net (core/limits.py).
-@dispatcher_router.patch("/{exception_id}/resolve", response_model=TripExceptionRead,
+@dispatcher_router.patch("/{exception_id}/review", response_model=TripExceptionRead,
                          dependencies=[Depends(rate_limit(FLEET_MUTATION))])
-async def resolve_exception_endpoint(
+async def review_exception_endpoint(
     exception_id: UUID,
-    payload: TripExceptionResolveRequest,
+    payload: TripExceptionReviewRequest,
     db: AsyncSession = Depends(get_db),
     current_user: UserRead = Depends(get_current_dispatcher),
 ) -> TripExceptionRead:
-    """Record how this exception was resolved.
+    """Record the dispatcher's immutable review of this exception.
 
-    The body carries only the note and the method. The resolver and the timestamp come
-    from the token and the server clock — see resolve_exception.
+    The body carries the assessment, outcome and a required-but-nullable contact method.
+    The reviewer and timestamp come from the token and server clock — see review_exception.
     """
     try:
-        return await resolve_exception(
+        return await review_exception(
             db,
             exception_id=exception_id,
             user_id=current_user.id,
             organization_id=current_user.organization_id,
-            resolver_note=payload.resolver_note,
-            resolution_method=payload.resolution_method,
+            review_note=payload.review_note,
+            review_outcome=payload.review_outcome,
+            contact_method=payload.contact_method,
         )
     except ResourceNotFoundError as exc:
         # 404 rather than 403 on a wrong-organisation id: a 403 would confirm the row
@@ -123,5 +124,11 @@ async def resolve_exception_endpoint(
     except ExceptionAlreadyResolvedError as exc:
         # 409, not a 200 carrying the winner's row. This caller's note was discarded, and
         # a success response would report an account as recorded that never was. The
-        # detail names no person — it says a colleague resolved it, not who.
-        raise HTTPException(status_code=http_status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        # detail names no person — it says a colleague reviewed it, not who.
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail=(
+                f"Exception '{exception_id}' was already reviewed by a colleague. "
+                "Their review is the record; re-read it before reviewing again."
+            ),
+        ) from exc

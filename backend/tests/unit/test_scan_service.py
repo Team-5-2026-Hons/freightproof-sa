@@ -9,7 +9,9 @@ import uuid
 
 import pytest
 
-from app.db.models.enums import ExceptionSource, ExceptionType, ParcelStatus
+from app.db.models.enums import (
+    ExceptionReviewStatus, ExceptionSource, ExceptionType, ParcelStatus,
+)
 from app.db.models.transit import TripException
 from app.db.models.trips import Consignment, Parcel
 from app.integrations import scan_feed as scan_feed_module
@@ -199,6 +201,45 @@ async def test_repeated_ingest_does_not_duplicate_the_exception(db_session, stor
         select(TripException).where(TripException.trip_id == seeded["trip"].id)
     )).scalars().all()
     assert len(exceptions) == 1
+
+
+async def test_a_new_discrepancy_is_recorded_again_after_the_first_is_reviewed(
+    db_session, store, seeded,
+):
+    """The dedup predicate is `review_status != REVIEWED`, not `!= NEEDS_REVIEW` —
+    the test above only proves a RECORDED row still suppresses a repeat, but
+    RECORDED != REVIEWED and RECORDED != NEEDS_REVIEW are both True, so that test
+    alone cannot tell the two predicates apart. They only diverge once a row is
+    actually REVIEWED: REVIEWED != REVIEWED is False (correctly lets a new
+    occurrence through), REVIEWED != NEEDS_REVIEW is True (would wrongly suppress
+    it forever). This forces a row to REVIEWED and proves the SAME discrepancy
+    recurring is recorded again rather than suppressed for good."""
+    await MockScanFeed().stage_scans(
+        consignment_reference="WAY001", stop_reference=str(seeded["stop"].id),
+        direction=ScanDirection.OUT, barcodes=seeded["barcodes"][:2],
+    )
+    await scan_service.ingest_scans(
+        db_session, trip_id=seeded["trip"].id, trip_stop_id=seeded["stop"].id,
+        direction=ScanDirection.OUT,
+    )
+
+    first = (await db_session.execute(
+        select(TripException).where(TripException.trip_id == seeded["trip"].id)
+    )).scalar_one()
+    first.review_status = ExceptionReviewStatus.REVIEWED
+    await db_session.flush()
+
+    # Same staged feed, unchanged — proves the recurrence is recorded because the
+    # prior row was reviewed, not because anything about the discrepancy itself changed.
+    await scan_service.ingest_scans(
+        db_session, trip_id=seeded["trip"].id, trip_stop_id=seeded["stop"].id,
+        direction=ScanDirection.OUT,
+    )
+
+    exceptions = (await db_session.execute(
+        select(TripException).where(TripException.trip_id == seeded["trip"].id)
+    )).scalars().all()
+    assert len(exceptions) == 2
 
 
 async def test_repeated_ingest_keeps_the_first_scan_timestamp(db_session, store, seeded):

@@ -238,8 +238,10 @@ class TripRead(TripBase):
 class TripListItemResponse(BaseModel):
     """Lightweight trip shape returned by GET /api/v1/trips.
 
-    Excludes handshakes and receipts. open_exception_count is computed
-    by resource_service.list_trips() via a grouped COUNT query.
+    Excludes handshakes and receipts. needs_review_count is computed
+    by resource_service.list_trips() via a grouped COUNT query, counting only
+    review_status == NEEDS_REVIEW (Task 2, FP-146 follow-on) — a RECORDED row is on
+    the trip's exception list but is not queued for a dispatcher decision.
     """
     model_config = ConfigDict(from_attributes=True)
 
@@ -257,7 +259,7 @@ class TripListItemResponse(BaseModel):
     actual_departure_at: Optional[datetime] = None
     planned_arrival_at: Optional[datetime] = None
     actual_arrival_at: Optional[datetime] = None
-    open_exception_count: int
+    needs_review_count: int
     # The list view carries no phase plan, so it cannot derive position at all —
     # these four are the only thing that lets a row read "Unloading · stop 2 · 6/11".
     # phase_total is the plan's OWN length: 7 on a single-leg trip, 11 on a
@@ -304,7 +306,9 @@ class DriverTripListItemResponse(BaseModel):
     actual_departure_at: Optional[datetime] = None
     planned_arrival_at: Optional[datetime] = None
     actual_arrival_at: Optional[datetime] = None
-    open_exception_count: int
+    # NEEDS_REVIEW only (Task 2) — the driver receives this for display parity with
+    # the dispatcher board, but gains no review workflow of their own.
+    needs_review_count: int
     created_at: datetime
     updated_at: datetime
 

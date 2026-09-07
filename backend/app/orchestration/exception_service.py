@@ -1,4 +1,4 @@
-"""Trip exceptions — the driver raising one, and the dispatcher resolving it."""
+"""Trip exceptions — the driver raising one, and the dispatcher reviewing it."""
 
 import logging
 import uuid
@@ -12,7 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import ExceptionAlreadyResolvedError, ResourceNotFoundError
 from app.core.realtime import RealtimeKind, TripEvent, enqueue_event, event_severity
 from app.db.models.enums import (
-    ExceptionResolutionMethod,
+    DispatcherReviewOutcome,
+    ExceptionContactMethod,
+    ExceptionReviewOutcome,
+    ExceptionReviewStatus,
     ExceptionSeverity,
     ExceptionSource,
     ExceptionType,
@@ -34,6 +37,26 @@ _CRITICAL_TYPES = {ExceptionType.PANIC_BUTTON, ExceptionType.SEAL_BROKEN_IN_TRAN
 # ciaran_exc_idempotency. Matched against violated_constraint() below so that some
 # unrelated unique-violation on this table is never misread as a replay.
 _CLIENT_REPORT_ID_INDEX = "uq_exceptions_trip_client_report_id"
+
+def initial_review_status(severity: ExceptionSeverity) -> ExceptionReviewStatus:
+    """Where a freshly-created exception starts in the dispatcher review workflow
+    (Task 2, FP-146 follow-on).
+
+    CRITICAL findings — a panic button, a seal broken in transit, a destination seal
+    mismatch — need a dispatcher's decision now, so they start NEEDS_REVIEW. Everything
+    else (WARNING, INFO) starts RECORDED: visible on the trip's exception list, but not
+    queued for action until a dispatcher chooses to look.
+
+    Every TripException row constructed anywhere in this codebase must route its
+    review_status through this one function rather than hand-coding a value or relying
+    on the column's server_default (which happens to also be RECORDED today) — a site
+    that only works by matching the default is a site the next severity change breaks
+    silently, with no import error or test failure to catch it.
+    """
+    return (
+        ExceptionReviewStatus.NEEDS_REVIEW if severity == ExceptionSeverity.CRITICAL
+        else ExceptionReviewStatus.RECORDED
+    )
 
 
 async def _resolve_phase_context(
@@ -170,6 +193,7 @@ async def raise_exception(
         exception_type=exception_type,
         source=ExceptionSource.DRIVER,
         severity=severity,
+        review_status=initial_review_status(severity),
         description=description,
         supporting_artifact_id=supporting_artifact_id,
         client_report_id=client_report_id,
@@ -250,51 +274,48 @@ def _read_with_trip(exc: TripException, trip: Trip) -> TripExceptionRead:
     )
 
 
-async def resolve_exception(
+async def review_exception(
     db: AsyncSession,
     *,
     exception_id: uuid.UUID,
     user_id: uuid.UUID,
     organization_id: uuid.UUID,
-    resolver_note: str,
-    resolution_method: ExceptionResolutionMethod,
+    review_note: str,
+    review_outcome: DispatcherReviewOutcome,
+    contact_method: ExceptionContactMethod | None,
 ) -> TripExceptionRead:
-    """Record how a dispatcher resolved an exception.
+    """Record a dispatcher's immutable assessment of an exception.
 
-    The site visit found resolution happening informally — a phone call, a WhatsApp
-    message, a word in the yard — and none of it reaching the record. An exception
-    marked resolved with no trace of *how* is an assertion; with the method and the
-    resolver's note it is evidence about the handling. This records that the contact
-    happened. It does not place calls or send messages.
+    Reviewing is evidence handling, not trip lifecycle control. Active, closed and
+    cancelled trips are all reviewable, and this function never changes Trip.status or
+    any PhaseEvent.status. The outcome records what the dispatcher concluded; a nullable
+    contact method records that evidence alone settled the assessment.
 
-    **The server owns the resolver and the clock.** `resolved_by_user_id` comes from the
-    token and `resolved_at` from this process, never from the request body — which is why
-    this takes a narrow note+method rather than the existing TripExceptionUpdate, whose
-    shape would let a caller name someone else as the resolver at a time of their
-    choosing. An evidence record where the client picks its own author is not evidence.
+    **The server owns the reviewer and the clock.** `reviewed_by_user_id` comes from the
+    token and `reviewed_at` from this process, never from the request body.
 
     Org scoping is authorisation, not a filter: the join to Trip means a dispatcher
-    cannot resolve another operator's exception by guessing a UUID. A miss raises
+    cannot review another operator's exception by guessing a UUID. A miss raises
     ResourceNotFoundError (→ 404) rather than a 403, because a 403 confirms the row
     exists to someone with no right to know it.
 
-    The FIRST resolution is the evidence, always — overwriting it with a second note
+    The FIRST review is the evidence, always — overwriting it with a second assessment
     would rewrite the record of who established what, and when. What happens to the
     second call depends on WHO makes it:
 
     * **Same dispatcher** — idempotent. A double-tap and a replayed request both carry
       the same account, so the stored row comes back unchanged and nothing is lost.
-    * **A different dispatcher** — ``ExceptionAlreadyResolvedError`` (→ 409). Their note
-      and method are being discarded, and they may have established something the first
-      resolver did not. Returning 200 with a colleague's note would tell them their
-      account was recorded when it was not.
+    * **A different dispatcher** — ``ExceptionAlreadyResolvedError`` (→ 409). Their note,
+      outcome and contact method are being discarded, and they may have established
+      something the first reviewer did not. Returning 200 with a colleague's note would
+      tell them their account was recorded when it was not.
 
-    A row whose ``resolved_by_user_id`` is NULL (resolved before that column was
+    A row whose ``reviewed_by_user_id`` is NULL (reviewed before that column was
     captured) counts as a different dispatcher: we cannot prove otherwise.
 
     Raises:
         ResourceNotFoundError: no such exception in this organisation.
-        ExceptionAlreadyResolvedError: another dispatcher resolved it first.
+        ExceptionAlreadyResolvedError: another dispatcher reviewed it first.
     """
     # Joined rather than fetched separately: the org check and the load are one question
     # ("is there such an exception that this dispatcher may act on"), and splitting them
@@ -307,62 +328,67 @@ async def resolve_exception(
             Trip.operator_organization_id == organization_id,
         )
         # The lock, not the read, is what makes the conflict branch below true. Without it
-        # two dispatchers pressing Resolve in the same instant both read resolved=False,
-        # both take the un-resolved path, and both are told their account is the record —
+        # two dispatchers pressing Review in the same instant both read an open status,
+        # both take the unreviewed path, and both are told their account is the record —
         # while the second UPDATE quietly waits for the first to commit and then overwrites
-        # its resolver, note, method and timestamp. The first resolution would be gone and
-        # neither dispatcher would ever know, which is the one outcome this function exists
-        # to prevent. Scoped with `of=` so the joined trip row stays free: locking it would
-        # block every unrelated write on that trip for the length of this transaction.
+        # its reviewer, note, outcome, contact method and timestamp. The first review would
+        # be gone and neither dispatcher would ever know, which is the one outcome this
+        # function exists to prevent. Scoped with `of=` so the joined trip row stays free:
+        # locking it would block every unrelated write on that trip for the length of
+        # this transaction.
         .with_for_update(of=TripException)
     )).one_or_none()
     if row is None:
         raise ResourceNotFoundError("TripException", str(exception_id))
     exc, trip = row
 
-    if exc.resolved:
+    if exc.review_status == ExceptionReviewStatus.REVIEWED:
         # Same dispatcher: a double-tap, or a request the client retried. Their account
         # is already the record, so there is nothing to lose and nothing to report —
         # return the stored row exactly as before.
-        if exc.resolved_by_user_id == user_id:
+        if exc.reviewed_by_user_id == user_id:
             logger.info(
-                "Resolve replayed by the same user: exception=%s org=%s",
+                "Review replayed by the same user: exception=%s org=%s",
                 exception_id, organization_id,
             )
             return _read_with_trip(exc, trip)
-        # A different dispatcher got there first — or the row predates resolver capture
+        # A different dispatcher got there first — or the row predates reviewer capture
         # (NULL), where we cannot prove it was this caller and must not assume it. Either
-        # way this call's note and method are about to be dropped, and the caller has to
-        # be told: they may have established something the first resolver did not.
+        # way this call's assessment is about to be dropped, and the caller has to be
+        # told: they may have established something the first reviewer did not.
         logger.info(
-            "Resolve conflicted, already resolved by another user: exception=%s org=%s "
-            "first_resolver=%s caller=%s",
-            exception_id, organization_id, exc.resolved_by_user_id, user_id,
+            "Review conflicted, already reviewed by another user: exception=%s org=%s "
+            "first_reviewer=%s caller=%s",
+            exception_id, organization_id, exc.reviewed_by_user_id, user_id,
         )
         raise ExceptionAlreadyResolvedError(str(exception_id))
 
-    exc.resolved = True
-    exc.resolved_by_user_id = user_id
-    exc.resolved_at = datetime.now(UTC)
-    exc.resolver_note = resolver_note
-    exc.resolution_method = resolution_method
+    exc.review_status = ExceptionReviewStatus.REVIEWED
+    # Explicit conversion keeps the request-only enum (which intentionally excludes
+    # LEGACY_REVIEW) out of the persisted model while preserving the shared value.
+    exc.review_outcome = ExceptionReviewOutcome(review_outcome.value)
+    exc.reviewed_by_user_id = user_id
+    exc.reviewed_at = datetime.now(UTC)
+    exc.review_note = review_note
+    exc.contact_method = contact_method
     await db.flush()
     await db.refresh(exc)
 
-    # Metadata only. resolver_note is free text a dispatcher typed about a person and
+    # Metadata only. review_note is free text a dispatcher typed about a person and
     # about a live incident; it belongs in the record, never in the log.
     logger.info(
-        "Exception resolved: exception=%s trip=%s by=%s method=%s",
-        exception_id, exc.trip_id, user_id, resolution_method.value,
+        "Exception reviewed: exception=%s trip=%s by=%s outcome=%s contact=%s",
+        exception_id, exc.trip_id, user_id, review_outcome.value,
+        contact_method.value if contact_method is not None else None,
     )
 
     # Other dispatchers in the org are looking at the same list. INFO severity: a
-    # resolution is progress, not an alarm — it must refresh a screen without
+    # review is progress, not an alarm — it must refresh a screen without
     # interrupting whoever is working through the queue.
     enqueue_event(
         db, trip.operator_organization_id,
         TripEvent(
-            id=exc.trip_id, kind=RealtimeKind.EXCEPTION_RAISED,
+            id=exc.trip_id, kind=RealtimeKind.EXCEPTION_REVIEWED,
             severity=event_severity(ExceptionSeverity.INFO),
         ),
     )
@@ -403,7 +429,15 @@ async def list_exceptions(
         .order_by(TripException.created_at.desc(), TripException.id.desc())
     )
     if resolved is not None:
-        stmt = stmt.where(TripException.resolved.is_(resolved))
+        # `resolved` stays a bool on this function's own signature (and the dispatcher
+        # endpoint's `?resolved=` query param) — Task 1 only renames the underlying
+        # storage, not this public contract, which Task 2/3 owns. REVIEWED is the one
+        # review_status that means "resolved" under the old two-state model; the other
+        # two (RECORDED, NEEDS_REVIEW) both mean "still open".
+        if resolved:
+            stmt = stmt.where(TripException.review_status == ExceptionReviewStatus.REVIEWED)
+        else:
+            stmt = stmt.where(TripException.review_status != ExceptionReviewStatus.REVIEWED)
 
     rows = (await db.execute(stmt)).all()
     return [_read_with_trip(exc, trip) for exc, trip in rows]

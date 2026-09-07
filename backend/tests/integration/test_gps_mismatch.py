@@ -46,7 +46,7 @@ from sqlalchemy import select
 from unittest.mock import patch
 
 from app.db.models.enums import (
-    ExceptionSeverity, ExceptionSource, ExceptionType, PhaseType,
+    ExceptionReviewStatus, ExceptionSeverity, ExceptionSource, ExceptionType, PhaseType,
 )
 from app.db.models.transit import TripException
 from app.orchestration import phase_service
@@ -115,7 +115,7 @@ async def test_a_false_verdict_raises_exactly_one_gps_mismatch(
     assert exc.severity == ExceptionSeverity.WARNING
     assert exc.phase_event_id == event.id
     assert exc.trip_stop_id == stop0.id
-    assert exc.resolved is False
+    assert exc.review_status == ExceptionReviewStatus.RECORDED
 
 
 async def test_the_exception_carries_both_positions_and_the_separation(
@@ -450,7 +450,7 @@ async def test_a_resolved_finding_does_not_reappear_on_the_next_resync(
     event = await _load_event(db_session, trip, PhaseType.ACTIVATION)
 
     exc = (await _load_mismatches(db_session, trip))[0]
-    exc.resolved = True
+    exc.review_status = ExceptionReviewStatus.REVIEWED
     await db_session.flush()
 
     await phase_service._raise_position_disagreement_if_unrecorded(
