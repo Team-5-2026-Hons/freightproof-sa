@@ -1,5 +1,9 @@
 # Step-Event Payload Audit — What Each Event Can Honestly Carry
 
+> **2026-09-08 geofence update:** “Declared” and “always null” entries for Pulsit
+> geofence evidence are superseded. Current phase/checkpoint corroboration writes tracker
+> coordinates and verdicts; consult the source and current tests for their present contract.
+>
 > **Status:** working document, `exists` column pre-filled · **Author:** Ciaran · **Date:** 2026-09-02
 > **Parent:** [2026-09-01-phase-step-event-ledger.md](2026-09-01-phase-step-event-ledger.md) §9.6
 > **Sibling:** [2026-09-02-seal-chain-rework.md](2026-09-02-seal-chain-rework.md)

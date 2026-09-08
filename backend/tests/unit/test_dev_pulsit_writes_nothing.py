@@ -32,6 +32,7 @@ from app.schemas.dev import MoveTruckRequest
 from tests.conftest import FakeMockStateStore
 
 _DEVICE_ID = "PLT-HORSE-001"
+_ORG_ID = uuid.uuid4()
 _DEPOT_LAT = Decimal("-33.9249")
 _DEPOT_LNG = Decimal("18.4241")
 
@@ -91,7 +92,7 @@ class _FakePrecinct:
 
 
 class _FakeUser:
-    organization_id = uuid.uuid4()
+    organization_id = _ORG_ID
 
 
 @pytest.fixture
@@ -130,14 +131,16 @@ async def test_no_waypoint_writes_through_the_session(wired, waypoint_id: str) -
 async def test_the_only_state_written_is_this_devices_pulsit_key(wired) -> None:
     await _call(WAYPOINT_THREE_KM)
 
-    assert list(wired.data.keys()) == [f"freightproof:mock:pulsit:{_DEVICE_ID}"]
+    assert list(wired.data.keys()) == [
+        f"freightproof:mock:pulsit:{_ORG_ID}:{_DEVICE_ID}"
+    ]
 
 
 async def test_staged_position_is_the_waypoint_coordinate(wired) -> None:
     """Read back through the store, so a staging bug cannot hide behind the response."""
     await _call(WAYPOINT_PRECINCT)
 
-    staged = wired.data[f"freightproof:mock:pulsit:{_DEVICE_ID}"]
+    staged = wired.data[f"freightproof:mock:pulsit:{_ORG_ID}:{_DEVICE_ID}"]
     assert Decimal(staged["lat"]) == _DEPOT_LAT
     assert Decimal(staged["lng"]) == _DEPOT_LNG
     assert staged["status"] == "ok"
@@ -146,7 +149,7 @@ async def test_staged_position_is_the_waypoint_coordinate(wired) -> None:
 async def test_no_signal_stages_an_absent_fix_not_a_coordinate(wired) -> None:
     await _call(WAYPOINT_NO_SIGNAL)
 
-    staged = wired.data[f"freightproof:mock:pulsit:{_DEVICE_ID}"]
+    staged = wired.data[f"freightproof:mock:pulsit:{_ORG_ID}:{_DEVICE_ID}"]
     assert staged["status"] == "no_fix"
     assert "lat" not in staged and "lng" not in staged
 

@@ -1,5 +1,10 @@
 # FreightProof SA — Iteration 3 Plan
 
+> **2026-09-08 geofence update:** Statements below that call Pulsit/geofence evidence
+> “always null” describe the pre-corroboration implementation. The current phase and
+> checkpoint paths write tracker coordinates and geofence verdicts through
+> `corroboration_service.py`; use the source and current tests for implementation guidance.
+>
 > **Status:** active · **Author:** Ciaran · **Date:** 2026-08-24
 > **Window:** 4 weeks — Sprint 6 (26 Aug → 7 Sep), Sprint 7 (7 Sep → 21 Sep)
 > **Presentation:** week of 21 Sep

@@ -1,5 +1,9 @@
 # Live sub-phase timeline — session handoff
 
+> **2026-09-08 geofence update:** The “real columns nothing writes” entry below is
+> superseded for Pulsit/geofence fields. Current phase/checkpoint corroboration writes
+> tracker coordinates and verdicts; verify current source before implementing from this handoff.
+>
 > **Author:** Ciaran · **Date:** 2026-09-05 · **Status:** handoff, work not started
 > **Purpose:** this is the entry point for a fresh session. It exists because the reasoning
 > that protects this codebase lives in conversation, not in code, and a session that starts

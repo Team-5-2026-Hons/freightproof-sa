@@ -14,6 +14,7 @@ behaves correctly against the shape we ASSUMED; they cannot prove the assumption
 Redis is never touched: FakeMockStateStore is injected in its place.
 """
 
+import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -37,6 +38,7 @@ _UNKNOWN_DEVICE = "PLT-NOT-A-REAL-TRACKER"
 _HORSE = "PLT-HORSE-001"
 _TRAILER_A = "PLT-TRAILER-001"
 _TRAILER_B = "PLT-TRAILER-002"
+_ORG_ID = uuid.uuid4()
 
 
 @pytest.fixture
@@ -54,7 +56,7 @@ def mock_store(monkeypatch: pytest.MonkeyPatch) -> FakeMockStateStore:
 
 
 async def test_known_device_returns_fixture_position(mock_store):
-    client = MockPulsitClient()
+    client = MockPulsitClient(_ORG_ID)
 
     fix = await client.get_position(_HORSE)
 
@@ -65,7 +67,7 @@ async def test_known_device_returns_fixture_position(mock_store):
 
 
 async def test_fix_is_labelled_as_mock_sourced(mock_store):
-    client = MockPulsitClient()
+    client = MockPulsitClient(_ORG_ID)
 
     fix = await client.get_position(_HORSE)
 
@@ -73,7 +75,7 @@ async def test_fix_is_labelled_as_mock_sourced(mock_store):
 
 
 async def test_unknown_device_returns_unknown_device_without_raising(mock_store):
-    client = MockPulsitClient()
+    client = MockPulsitClient(_ORG_ID)
 
     fix = await client.get_position(_UNKNOWN_DEVICE)
 
@@ -85,7 +87,7 @@ async def test_unknown_device_returns_unknown_device_without_raising(mock_store)
 
 async def test_unstaged_fixture_timestamp_is_current(mock_store):
     before = datetime.now(UTC)
-    client = MockPulsitClient()
+    client = MockPulsitClient(_ORG_ID)
 
     fix = await client.get_position(_HORSE)
 
@@ -95,7 +97,7 @@ async def test_unstaged_fixture_timestamp_is_current(mock_store):
 
 
 async def test_coordinates_are_decimal_not_float(mock_store):
-    client = MockPulsitClient()
+    client = MockPulsitClient(_ORG_ID)
 
     fix = await client.get_position(_HORSE)
 
@@ -110,7 +112,7 @@ async def test_coordinates_are_decimal_not_float(mock_store):
 
 
 async def test_staged_position_overrides_the_fixture(mock_store):
-    client = MockPulsitClient()
+    client = MockPulsitClient(_ORG_ID)
     await client.stage_position(_HORSE, Decimal("-26.2041"), Decimal("28.0473"))
 
     fix = await client.get_position(_HORSE)
@@ -120,8 +122,24 @@ async def test_staged_position_overrides_the_fixture(mock_store):
     assert fix.lng == Decimal("28.0473")
 
 
+async def test_staged_position_is_isolated_by_organisation(mock_store):
+    first_org = uuid.uuid4()
+    second_org = uuid.uuid4()
+    first_client = MockPulsitClient(first_org)
+    second_client = MockPulsitClient(second_org)
+
+    await first_client.stage_position(
+        _UNKNOWN_DEVICE, Decimal("-26.2041"), Decimal("28.0473")
+    )
+
+    first_fix = await first_client.get_position(_UNKNOWN_DEVICE)
+    second_fix = await second_client.get_position(_UNKNOWN_DEVICE)
+    assert first_fix.status is PulsitFixStatus.OK
+    assert second_fix.status is PulsitFixStatus.UNKNOWN_DEVICE
+
+
 async def test_staged_position_survives_full_decimal_precision(mock_store):
-    client = MockPulsitClient()
+    client = MockPulsitClient(_ORG_ID)
     # Seven decimal places — the full precision of Numeric(10,7). A float
     # round-trip through JSON would not return this value unchanged.
     await client.stage_position(_HORSE, Decimal("-33.9248765"), Decimal("18.4241234"))
@@ -133,7 +151,7 @@ async def test_staged_position_survives_full_decimal_precision(mock_store):
 
 
 async def test_restaging_replaces_rather_than_merges(mock_store):
-    client = MockPulsitClient()
+    client = MockPulsitClient(_ORG_ID)
     await client.stage_position(_HORSE, Decimal("-26.2041"), Decimal("28.0473"))
 
     await client.stage_position(_HORSE, Decimal("-29.0852"), Decimal("26.1596"))
@@ -145,7 +163,7 @@ async def test_restaging_replaces_rather_than_merges(mock_store):
 
 async def test_staged_fixed_at_is_honoured(mock_store):
     moment = datetime(2026, 9, 4, 8, 12, 3, tzinfo=UTC)
-    client = MockPulsitClient()
+    client = MockPulsitClient(_ORG_ID)
 
     await client.stage_position(_HORSE, Decimal("-33.9249"), Decimal("18.4241"), fixed_at=moment)
     fix = await client.get_position(_HORSE)
@@ -154,7 +172,7 @@ async def test_staged_fixed_at_is_honoured(mock_store):
 
 
 async def test_staged_no_fix_reports_no_fix(mock_store):
-    client = MockPulsitClient()
+    client = MockPulsitClient(_ORG_ID)
     await client.stage_no_fix(_HORSE)
 
     fix = await client.get_position(_HORSE)
@@ -171,7 +189,7 @@ async def test_staging_can_take_an_unknown_device_off_the_unknown_path(mock_stor
     This is what lets a dispatcher-created vehicle be demonstrated without editing
     the fixture library.
     """
-    client = MockPulsitClient()
+    client = MockPulsitClient(_ORG_ID)
     await client.stage_position(_UNKNOWN_DEVICE, Decimal("-33.9249"), Decimal("18.4241"))
 
     fix = await client.get_position(_UNKNOWN_DEVICE)
@@ -181,7 +199,7 @@ async def test_staging_can_take_an_unknown_device_off_the_unknown_path(mock_stor
 
 async def test_staging_raises_when_mock_mode_is_off(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(settings, "PULSE_USE_MOCK", False)
-    client = MockPulsitClient()
+    client = MockPulsitClient(_ORG_ID)
 
     with pytest.raises(PulsitUnsupportedError):
         await client.stage_position(_HORSE, Decimal("-33.9249"), Decimal("18.4241"))
@@ -189,16 +207,16 @@ async def test_staging_raises_when_mock_mode_is_off(monkeypatch: pytest.MonkeyPa
 
 async def test_staging_no_fix_raises_when_mock_mode_is_off(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(settings, "PULSE_USE_MOCK", False)
-    client = MockPulsitClient()
+    client = MockPulsitClient(_ORG_ID)
 
     with pytest.raises(PulsitUnsupportedError):
         await client.stage_no_fix(_HORSE)
 
 
 async def test_corrupt_staged_state_degrades_to_no_fix(mock_store):
-    client = MockPulsitClient()
+    client = MockPulsitClient(_ORG_ID)
     # A malformed write by some future trigger: status says OK, coordinates absent.
-    mock_store.data[f"freightproof:mock:pulsit:{_HORSE}"] = {"status": "ok"}
+    mock_store.data[f"freightproof:mock:pulsit:{_ORG_ID}:{_HORSE}"] = {"status": "ok"}
 
     fix = await client.get_position(_HORSE)
 
@@ -211,7 +229,7 @@ async def test_corrupt_staged_state_degrades_to_no_fix(mock_store):
 
 
 async def test_multiple_trailers_return_one_fix_each_in_order(mock_store):
-    client = MockPulsitClient()
+    client = MockPulsitClient(_ORG_ID)
 
     fixes = await client.get_positions([_HORSE, _TRAILER_A, _TRAILER_B])
 
@@ -220,7 +238,7 @@ async def test_multiple_trailers_return_one_fix_each_in_order(mock_store):
 
 
 async def test_batch_mixes_staged_fixture_and_unknown_devices(mock_store):
-    client = MockPulsitClient()
+    client = MockPulsitClient(_ORG_ID)
     await client.stage_position(_TRAILER_A, Decimal("-26.2041"), Decimal("28.0473"))
     await client.stage_no_fix(_TRAILER_B)
 
@@ -236,7 +254,7 @@ async def test_batch_mixes_staged_fixture_and_unknown_devices(mock_store):
 
 async def test_batch_costs_one_store_round_trip(mock_store):
     """Four trailers must not cost four Redis connections — FP-195 reads per trailer."""
-    client = MockPulsitClient()
+    client = MockPulsitClient(_ORG_ID)
 
     await client.get_positions([_HORSE, _TRAILER_A, _TRAILER_B, _UNKNOWN_DEVICE])
 
@@ -244,7 +262,7 @@ async def test_batch_costs_one_store_round_trip(mock_store):
 
 
 async def test_duplicate_device_ids_are_answered_positionally(mock_store):
-    client = MockPulsitClient()
+    client = MockPulsitClient(_ORG_ID)
 
     fixes = await client.get_positions([_HORSE, _HORSE])
 
@@ -254,7 +272,7 @@ async def test_duplicate_device_ids_are_answered_positionally(mock_store):
 
 
 async def test_empty_request_returns_empty_without_touching_the_store(mock_store):
-    client = MockPulsitClient()
+    client = MockPulsitClient(_ORG_ID)
 
     assert await client.get_positions([]) == []
     assert mock_store.batch_calls == 0

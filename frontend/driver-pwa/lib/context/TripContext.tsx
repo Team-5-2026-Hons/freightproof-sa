@@ -364,6 +364,9 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     if (!trip) return
     const description = typeof payload.description === 'string' ? payload.description : ''
     const supportingArtifactId = typeof payload.supporting_artifact_id === 'string' ? payload.supporting_artifact_id : undefined
+    const clientReportId = typeof payload.clientReportId === 'string'
+      ? payload.clientReportId
+      : crypto.randomUUID()
     // The panic page captures a GPS fix and promises the driver it will be included —
     // extract it here so it actually reaches the backend instead of being dropped.
     // Both-or-neither: the backend's DriverExceptionCreateBody validator 422s a
@@ -408,6 +411,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
 
     const created = await raiseException(String(trip.id), {
       exception_type: type, description, supporting_artifact_id: supportingArtifactId,
+      client_report_id: clientReportId,
       ...(phaseEventId ? { phase_event_id: String(phaseEventId) } : {}),
       gps_lat: hasGpsFix ? gpsLat : undefined,
       gps_lng: hasGpsFix ? gpsLng : undefined,

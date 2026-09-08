@@ -57,7 +57,8 @@ from app.orchestration import phase_service
 # ALIASING" note for why corroboration_trip/pulsit_store are imported under different
 # names.
 from tests.integration.test_phase_corroboration import (  # noqa: F401
-    _HORSE_DEVICE, _ORIGIN_LAT, _ORIGIN_LNG, _FAR_AWAY_LAT, _FAR_AWAY_LNG,
+    _HORSE_DEVICE, _OPERATOR_ORG_ID, _ORIGIN_LAT, _ORIGIN_LNG,
+    _FAR_AWAY_LAT, _FAR_AWAY_LNG,
     _complete_activation, _fake_hedera_receipt, _load_event, _make_artifact,
     _phase_id, _stage,
     override_get_db,
@@ -257,7 +258,7 @@ async def test_a_dark_tracker_raises_nothing(
     True and this is the test that fails.
     """
     trip, driver, _org, _stop = corroboration_trip
-    await MockPulsitClient().stage_no_fix(_HORSE_DEVICE)
+    await MockPulsitClient(_OPERATOR_ORG_ID).stage_no_fix(_HORSE_DEVICE)
 
     resp = await _complete_activation(client, trip, driver)
 

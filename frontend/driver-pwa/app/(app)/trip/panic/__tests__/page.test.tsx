@@ -110,6 +110,7 @@ describe('PanicPage no-active-trip guard', () => {
 describe('PanicPage handlePanic sequencing', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockEnqueueException.mockReturnValue({ persisted: true, photoPersisted: false })
     vi.useFakeTimers()
   })
 
@@ -205,9 +206,32 @@ describe('PanicPage handlePanic sequencing', () => {
       description: 'Driver activated panic button.',
       gps_lat: -26.09,
       gps_lng: 28.13,
+      client_report_id: expect.any(String),
     })
+    const livePayload = logException.mock.calls[0][1] as { clientReportId: string }
+    const queuedBody = mockEnqueueException.mock.calls[0][1] as { client_report_id: string }
+    expect(queuedBody.client_report_id).toBe(livePayload.clientReportId)
     expect(mockRouterReplace).toHaveBeenCalledWith(ROUTES.panicSubmittedUrl(true))
     expect(mockRouterReplace).toHaveBeenCalledWith(`${ROUTES.panicSubmitted}?queued=1`)
+  })
+
+  it('shows that the alert was not saved when local storage refuses it', async () => {
+    const logException = vi.fn().mockRejectedValue(new Error('network unreachable'))
+    mockUseTrip.mockReturnValue({ trip: { id: 'trip-123' }, isLoading: false, logException })
+    mockCapture.mockResolvedValue({ latitude: -26.09, longitude: 28.13, accuracy: 5 })
+    mockEnqueueException.mockReturnValue({ persisted: false, photoPersisted: false })
+
+    render(<PanicPage />)
+    confirmPanicSwipe()
+
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/alert was not sent or saved/i)
+    expect(mockRouterReplace).not.toHaveBeenCalledWith(ROUTES.panicSubmittedUrl(true))
   })
 
   it('queued body omits GPS entirely when capture failed — never a partial fix', async () => {
@@ -229,6 +253,7 @@ describe('PanicPage handlePanic sequencing', () => {
     expect(mockEnqueueException).toHaveBeenCalledWith('trip-123', {
       exception_type: 'panic_button',
       description: 'Driver activated panic button.',
+      client_report_id: expect.any(String),
     })
   })
 
@@ -259,6 +284,7 @@ describe('PanicPage handlePanic sequencing', () => {
       exception_type: 'panic_button',
       description: 'Driver activated panic button.',
       phase_event_id: String(inTransit.phase_event_id),
+      client_report_id: expect.any(String),
     })
   })
 
@@ -282,6 +308,7 @@ describe('PanicPage handlePanic sequencing', () => {
     expect(mockEnqueueException).toHaveBeenCalledWith('trip-123', {
       exception_type: 'panic_button',
       description: 'Driver activated panic button.',
+      client_report_id: expect.any(String),
     })
     expect(mockRouterReplace).toHaveBeenCalledWith(ROUTES.panicSubmittedUrl(true))
   })

@@ -327,7 +327,9 @@ async def record_phase_corroboration(
         requested: list[str] = ([horse_device_id] if horse_device_id is not None else [])
         requested.extend(device_id for _, device_id in trailers)
 
-        fixes: list[PulsitFix] = await get_pulsit_client().get_positions(requested)
+        fixes: list[PulsitFix] = await get_pulsit_client(
+            organization_id=trip.operator_organization_id
+        ).get_positions(requested)
 
         horse_fix: Optional[PulsitFix] = None
         if horse_device_id is not None and fixes:
@@ -444,7 +446,9 @@ async def record_checkpoint_corroboration(
             )
             return
 
-        fix = await get_pulsit_client().get_position(horse_device_id)
+        fix = await get_pulsit_client(
+            organization_id=trip.operator_organization_id
+        ).get_position(horse_device_id)
         if not fix.has_position:
             logger.info(
                 "No horse position for %s (status=%s) — horse_gps columns left null",

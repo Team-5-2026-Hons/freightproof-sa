@@ -213,6 +213,33 @@ describe('useOfflineQueue', () => {
     expect(result.current.queueLength).toBe(1)
   })
 
+  it('keeps a rate-limited report and retries it after Retry-After elapses', async () => {
+    vi.useFakeTimers()
+    try {
+      const { raiseException } = await import('@/lib/api/exceptions')
+      vi.mocked(raiseException).mockRejectedValueOnce(new ApiError(429, 'slow down', 1_000))
+      const { result } = renderHook(() => useOfflineQueue())
+      await act(() => Promise.resolve())
+      act(() => result.current.enqueueException(
+        'trip-1', { exception_type: 'panic_button', description: 'Driver panic' },
+      ))
+
+      await act(() => result.current.flush())
+
+      expect(result.current.queueLength).toBe(1)
+      expect(raiseException).toHaveBeenCalledTimes(1)
+
+      await act(() => vi.advanceTimersByTimeAsync(999))
+      expect(raiseException).toHaveBeenCalledTimes(1)
+
+      await act(() => vi.advanceTimersByTimeAsync(1))
+      expect(raiseException).toHaveBeenCalledTimes(2)
+      expect(result.current.queueLength).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   // Fix 3: checkpoints now enqueue and replay through the same offline-queue contract
   // as phases and exceptions.
   it('enqueueCheckpoint increments queueLength and persists to localStorage', () => {
@@ -647,6 +674,26 @@ describe('queued exception photos (FP-150)', () => {
     expect(raiseException).toHaveBeenCalledWith('trip-1', {
       ...BODY, client_report_id: expect.any(String),
     })
+    expect(result.current.queueLength).toBe(0)
+  })
+
+  it('keeps both report and photo when the upload is rate limited', async () => {
+    const { uploadArtifact } = await import('@/lib/api/artifacts')
+    const { raiseException } = await import('@/lib/api/exceptions')
+    vi.mocked(uploadArtifact).mockRejectedValueOnce(new ApiError(429, 'slow down', 60_000))
+    const { result } = renderHook(() => useOfflineQueue())
+    act(() => { result.current.enqueueException('trip-1', BODY, PHOTO) })
+
+    await act(() => result.current.flush())
+
+    expect(raiseException).not.toHaveBeenCalled()
+    expect(result.current.queueLength).toBe(1)
+    const stored = JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')
+    expect(stored[0].photoDataUrl).toBe(PHOTO.dataUrl)
+
+    await act(() => result.current.flush())
+    expect(uploadArtifact).toHaveBeenCalledTimes(2)
+    expect(raiseException).toHaveBeenCalledTimes(1)
     expect(result.current.queueLength).toBe(0)
   })
 

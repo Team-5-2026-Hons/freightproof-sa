@@ -113,12 +113,24 @@ export function useExceptionHistory(filters: ExceptionHistoryFilters): UseExcept
   // has started in the meantime. This is what makes a late, superseded response
   // harmless instead of a race that overwrites fresher data with stale rows.
   const requestGenerationRef = useRef(0)
+  const hasSuccessfulResultRef = useRef(false)
   const cursor = cursorStack[pageIndex]
 
-  const runFetch = useCallback((showLoadingSpinner: boolean) => {
+  const runFetch = useCallback((preserveCurrentResult: boolean) => {
     const generation = ++requestGenerationRef.current
-    if (showLoadingSpinner) setIsLoading(true)
+    const canRetainStaleResult = preserveCurrentResult && hasSuccessfulResultRef.current
+    setIsLoading(true)
     setError(null)
+    if (!preserveCurrentResult) {
+      // A page or filter change is a different query. Clear the previous query's
+      // rows and cursor before starting it so a failed request cannot leave controls
+      // pointing at one result set while rendering another result set's data.
+      setItems(EMPTY)
+      setTotalItems(0)
+      setNextCursor(null)
+      setIsStale(false)
+      hasSuccessfulResultRef.current = false
+    }
 
     api.get<CursorPage<TripExceptionListItem>>(buildQuery(filters, cursor))
       .then((page) => {
@@ -129,13 +141,14 @@ export function useExceptionHistory(filters: ExceptionHistoryFilters): UseExcept
         setError(null)
         setIsStale(false)
         setIsLoading(false)
+        hasSuccessfulResultRef.current = true
       })
       .catch((err: unknown) => {
         if (requestGenerationRef.current !== generation) return
-        // Deliberately do not touch items/totalItems/nextCursor: the previous
-        // successful page stays on screen, flagged stale, rather than being cleared.
+        // A manual refresh of the same successful query may keep its last result.
+        // Foreground page/filter navigation was cleared before this request began.
         setError(err instanceof Error ? err.message : 'An unexpected error occurred')
-        setIsStale(true)
+        setIsStale(canRetainStaleResult)
         setIsLoading(false)
       })
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -143,7 +156,7 @@ export function useExceptionHistory(filters: ExceptionHistoryFilters): UseExcept
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    runFetch(true)
+    runFetch(false)
   }, [runFetch])
 
   const hasPrevious = pageIndex > 0

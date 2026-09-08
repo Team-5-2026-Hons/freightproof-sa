@@ -73,6 +73,7 @@ _FAR_AWAY_LNG = Decimal("28.0473")
 _HORSE_DEVICE = "TEST-HORSE-CORROB"
 _TRAILER_A_DEVICE = "TEST-TRAILER-A"
 _TRAILER_B_DEVICE = "TEST-TRAILER-B"
+_OPERATOR_ORG_ID = uuid.uuid4()
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -106,7 +107,9 @@ def _pulsit_store_fixture(monkeypatch: pytest.MonkeyPatch) -> FakeMockStateStore
 
 async def _stage(device_id: str, lat: Decimal, lng: Decimal, *, fixed_at: datetime | None = None) -> None:
     """Put a tracker at a position, through the same entry point FP-197's dev trigger uses."""
-    await MockPulsitClient().stage_position(device_id, lat, lng, fixed_at=fixed_at)
+    await MockPulsitClient(_OPERATOR_ORG_ID).stage_position(
+        device_id, lat, lng, fixed_at=fixed_at
+    )
 
 
 # Same name= reasoning as pulsit_store above — test_gps_mismatch.py imports this
@@ -121,7 +124,7 @@ async def _corroboration_trip_fixture(db_session):
     (0, 0)/(1, 1) — usable for sequencing tests, useless for a geofence verdict,
     because "confirmed" there would be indistinguishable from a default.
     """
-    org = Organization(id=uuid.uuid4(), name="Org", org_type=OrganizationType.OPERATOR)
+    org = Organization(id=_OPERATOR_ORG_ID, name="Org", org_type=OrganizationType.OPERATOR)
     client_org = Organization(id=uuid.uuid4(), name="Client", org_type=OrganizationType.PRINCIPAL)
     db_session.add_all([org, client_org])
     await db_session.flush()
@@ -416,7 +419,7 @@ async def test_a_dark_tracker_writes_null_not_false(
     is the test that fails if that raw boolean is ever persisted.
     """
     trip, driver, _org, _stop = corroboration_trip
-    await MockPulsitClient().stage_no_fix(_HORSE_DEVICE)
+    await MockPulsitClient(_OPERATOR_ORG_ID).stage_no_fix(_HORSE_DEVICE)
 
     resp = await _complete_activation(client, trip, driver)
 
@@ -527,7 +530,7 @@ async def test_an_unavailable_fix_does_not_erase_a_position_from_an_earlier_atte
     event.horse_gps_lat = _ORIGIN_LAT
     event.horse_gps_lng = _ORIGIN_LNG
     await db_session.flush()
-    await MockPulsitClient().stage_no_fix(_HORSE_DEVICE)
+    await MockPulsitClient(_OPERATOR_ORG_ID).stage_no_fix(_HORSE_DEVICE)
 
     resp = await _complete_activation(client, trip, driver)
 
@@ -592,7 +595,7 @@ async def test_a_trailer_with_no_tracker_gets_no_row_and_does_not_block_the_othe
     dark = await _attach_trailer(db_session, trip=trip, org=org, device_id=_TRAILER_A_DEVICE)
     reporting = await _attach_trailer(db_session, trip=trip, org=org, device_id=_TRAILER_B_DEVICE)
     await _stage(_HORSE_DEVICE, _ORIGIN_LAT, _ORIGIN_LNG)
-    await MockPulsitClient().stage_no_fix(_TRAILER_A_DEVICE)
+    await MockPulsitClient(_OPERATOR_ORG_ID).stage_no_fix(_TRAILER_A_DEVICE)
     await _stage(_TRAILER_B_DEVICE, _ORIGIN_LAT, _ORIGIN_LNG)
 
     resp = await _complete_activation(client, trip, driver)

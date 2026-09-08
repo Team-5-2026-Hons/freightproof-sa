@@ -1,5 +1,9 @@
 # The Phase Step-Event Ledger — What Happens *Inside* a Phase
 
+> **2026-09-08 geofence update:** Statements below that describe
+> `pulsit_geofence_confirmed` as unwritten predate the current corroboration service.
+> Phase/checkpoint flows now write tracker coordinates and geofence verdicts.
+>
 > **Status:** design spec, pre-implementation · **Author:** Ciaran · **Date:** 2026-09-01
 > **Parent:** [../iteration3_plan.md](../iteration3_plan.md)
 > **Sources:** Bruce call 1 Sep ([minutes](../meeting_minutes/FreightProof_Meeting_Bruce_Minutes_01September2026.md)) ·

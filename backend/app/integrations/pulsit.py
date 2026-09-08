@@ -53,6 +53,7 @@ same base URL and credential, with its own mock-state kind.
 """
 
 import logging
+import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -259,7 +260,8 @@ class MockPulsitClient:
     Redis rather than a module-level dict for the reason mock_state.py exists: the
     API and the Celery worker are separate processes, so a position staged in one
     would be invisible to the other, and "move the truck, then watch the next poll
-    notice" could never work in memory.
+    notice" could never work in memory. Keys include the operator organisation so
+    identical partner device IDs in different tenants cannot share staged state.
 
     stage_position() and stage_no_fix() are the simulated outside world and are
     called only by the dev trigger panel (FP-197). get_positions() is the production
@@ -267,8 +269,11 @@ class MockPulsitClient:
     MockScanFeed.
     """
 
+    def __init__(self, organization_id: uuid.UUID) -> None:
+        self._organization_id = organization_id
+
     def _key(self, device_id: str) -> str:
-        return build_key(_PULSIT_KEY_KIND, device_id)
+        return build_key(_PULSIT_KEY_KIND, str(self._organization_id), device_id)
 
     def _require_mock_mode(self) -> None:
         """Guard every staging call. Mirrors stage_waybill_override's check."""
@@ -612,12 +617,13 @@ def _parse_position(device_id: str, entry: dict[str, Any]) -> PulsitFix:
 # ---------------------------------------------------------------------------
 
 
-def get_pulsit_client() -> PulsitClient:
+def get_pulsit_client(*, organization_id: uuid.UUID) -> PulsitClient:
     """Return the configured Pulsit client. Mirrors get_pp_client() and get_scan_feed().
 
     Callers depend on this rather than instantiating a client directly, so that the
     day credentials arrive, flipping PULSE_USE_MOCK to false is the entire change.
+    The organisation scopes mock state; the live client uses its partner credentials.
     """
     if settings.PULSE_USE_MOCK:
-        return MockPulsitClient()
+        return MockPulsitClient(organization_id)
     return LivePulsitClient()

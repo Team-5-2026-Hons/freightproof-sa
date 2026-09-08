@@ -1,5 +1,9 @@
 # Iteration 2 Feedback — Verification Against the Codebase
 
+> **2026-09-08 geofence update:** The “never written” Pulsit verdict finding below is
+> historical. Current phase/checkpoint corroboration writes independent tracker fixes and
+> geofence verdicts; keep the older statement only as an Iteration 2 snapshot.
+>
 > **Status:** draft for team review · **Author:** Ciaran · **Date:** 2026-08-25
 > **Verified against:** `dev` @ 0e23afd, 2026-08-25
 > **Sources:** Iteration 2 Presentation & Demo Evaluation (57/80) · Coding Presentation Marksheet

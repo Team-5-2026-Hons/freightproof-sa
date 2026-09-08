@@ -210,7 +210,7 @@ async function sendException(entry: ExceptionQueueEntry): Promise<void> {
       // entry queued forever, or eventually drop it and take the driver's written report
       // down with it. The report is the part that must survive, so send it unillustrated
       // rather than not at all; the dispatcher still gets the account of what happened.
-      if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
+      if (err instanceof ApiError && err.status >= 400 && err.status < 500 && err.status !== 429) {
         console.warn(
           `useOfflineQueue: queued exception photo rejected (${err.status}) — sending the report without it`,
           err.message,
@@ -239,6 +239,27 @@ async function sendException(entry: ExceptionQueueEntry): Promise<void> {
 // gives every hook instance in the tab one shared flush-in-flight guard and one
 // shared source of truth for queue length / drop notifications.
 let flushingGlobal = false
+const DEFAULT_RATE_LIMIT_RETRY_MS = 60_000
+let rateLimitRetryTimer: ReturnType<typeof setTimeout> | null = null
+let rateLimitRetryAt = 0
+
+function clearRateLimitRetry(): void {
+  if (rateLimitRetryTimer !== null) clearTimeout(rateLimitRetryTimer)
+  rateLimitRetryTimer = null
+  rateLimitRetryAt = 0
+}
+
+function scheduleRateLimitRetry(delayMs: number): void {
+  const retryAt = Date.now() + delayMs
+  if (rateLimitRetryTimer !== null && rateLimitRetryAt <= retryAt) return
+  clearRateLimitRetry()
+  rateLimitRetryAt = retryAt
+  rateLimitRetryTimer = setTimeout(() => {
+    rateLimitRetryTimer = null
+    rateLimitRetryAt = 0
+    void flushQueue()
+  }, delayMs)
+}
 
 interface QueueStoreState {
   length: number
@@ -297,6 +318,7 @@ function dismissDropped(): void {
  */
 export function __resetOfflineQueueStoreForTests(): void {
   flushingGlobal = false
+  clearRateLimitRetry()
   storeState = { length: loadQueue().length, droppedCount: 0 }
 }
 
@@ -341,16 +363,26 @@ async function flushQueue(): Promise<void> {
         await sendEntry(entry)
         disposedIds.add(entry.id)
       } catch (err) {
-        // A real 4xx HTTP response (validation failure, or a 409 meaning this exact
+        // A terminal 4xx HTTP response (validation failure, or a 409 meaning this exact
         // submission already succeeded on an earlier attempt) will never succeed on
-        // retry — drop it instead of retrying forever. status === 0 is the client's
+        // retry — drop it instead of retrying forever. A 429 is temporary and remains
+        // queued until Retry-After elapses. status === 0 is the client's
         // code for "no HTTP response at all" (request/session timeout, offline mid-
         // flush) — that's a transient failure indistinguishable from a network drop,
         // NOT a definitive server rejection, so it must stay queued. Excluding it
         // from this range (rather than the old `status < 500`, which also matched 0)
         // is the fix: the old condition silently discarded any entry that timed out
         // during flush, contradicting the "network errors and 5xx stay queued" intent.
-        const isTerminal4xx = err instanceof ApiError && err.status >= 400 && err.status < 500
+        const isRateLimited = err instanceof ApiError && err.status === 429
+        if (isRateLimited) {
+          scheduleRateLimitRetry(err.retryAfterMs ?? DEFAULT_RATE_LIMIT_RETRY_MS)
+        }
+        const isTerminal4xx = (
+          err instanceof ApiError
+          && err.status >= 400
+          && err.status < 500
+          && !isRateLimited
+        )
         if (isTerminal4xx) {
           disposedIds.add(entry.id)
           // A 409 means an earlier attempt already succeeded server-side — the drop
@@ -383,6 +415,7 @@ async function flushQueue(): Promise<void> {
     const currentQueue = loadQueue()
     const remaining = currentQueue.filter((entry) => !disposedIds.has(entry.id))
     saveQueue(remaining)
+    if (remaining.length === 0) clearRateLimitRetry()
     publishStoreState({
       length: remaining.length,
       droppedCount: storeState.droppedCount + newlyDropped,
@@ -432,9 +465,10 @@ export function useOfflineQueue() {
       // RaiseExceptionBody already carries every other wire field inline, and
       // sendException below sends `body` to raiseException as-is.
       const id = crypto.randomUUID()
+      const clientReportId = body.client_report_id ?? id
       const base = {
         kind: 'exception' as const, id, tripId,
-        body: { ...body, client_report_id: id },
+        body: { ...body, client_report_id: clientReportId },
         enqueuedAt: new Date().toISOString(),
       }
       const entry: ExceptionQueueEntry = photo

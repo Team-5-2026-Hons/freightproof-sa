@@ -175,8 +175,12 @@ policy mapping as a separate product decision; do not special-case it in the UI.
 `GET /api/v1/exceptions/review-queue`
 
 Returns all organisation-scoped `needs_review` rows, newest first. It is intentionally
-unpaginated: this is a bounded human-work queue, and hiding a large critical backlog
-behind pages would be unsafe. Its count is `items.length`.
+unpaginated for the current demo-scale workflow, and hiding a large critical backlog
+behind pages would be unsafe. Operational handling does not impose a technical bound:
+monitor queue count and oldest-item age per organisation. Before sustained production
+volume, define alert thresholds and move to a cursor-paginated transport while keeping a
+prominent total/oldest-age summary so pagination cannot conceal backlog. Its current
+count is `items.length`.
 
 ### Paginated exception history
 

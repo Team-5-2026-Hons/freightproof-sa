@@ -74,10 +74,11 @@ export default function LogExceptionPageClient() {
   }, [])
 
   async function handleSubmit() {
-    if (!type || !trip) return
+    if (!type || !trip || !description.trim()) return
     setSubmitError(null)
 
     const tripId = String(trip.id)
+    const clientReportId = crypto.randomUUID()
     // Captured now, not at flush time — see PanicPageClient for the full reasoning.
     // A breakdown or a seal found broken on the road belongs to the leg being
     // driven, and by the time this entry sends the trip may have reached unloading.
@@ -95,6 +96,7 @@ export default function LogExceptionPageClient() {
         {
           exception_type: type as ExceptionType,
           description,
+          client_report_id: clientReportId,
           ...(supportingArtifactId ? { supporting_artifact_id: supportingArtifactId } : {}),
           ...(phaseEventId ? { phase_event_id: String(phaseEventId) } : {}),
         },
@@ -149,7 +151,12 @@ export default function LogExceptionPageClient() {
         photoToQueue = undefined
       } catch (err) {
         console.error('Failed to upload the exception photo', err)
-        const isTerminal = err instanceof ApiError && err.status >= 400 && err.status < 500
+        const isTerminal = (
+          err instanceof ApiError
+          && err.status >= 400
+          && err.status < 500
+          && err.status !== 429
+        )
         if (isTerminal) {
           // This image will be rejected the same way every time (too large, unsupported
           // format). Same policy as the queue's own sendException: the written report is
@@ -177,6 +184,7 @@ export default function LogExceptionPageClient() {
     try {
       await logException(type, {
         description,
+        clientReportId,
         ...(supportingArtifactId ? { supporting_artifact_id: supportingArtifactId } : {}),
       })
       // Receipt (UX Task 5b): name the chosen category so the driver has explicit proof
@@ -193,7 +201,12 @@ export default function LogExceptionPageClient() {
       // A 4xx (e.g. wrong driver, validation) will fail identically on retry — show the
       // error and let the driver fix/retry manually. A network failure or 5xx is
       // retryable, so queue it and let the driver move on; it syncs on reconnect.
-      const isRetryable = !(err instanceof ApiError) || err.status >= 500
+      const isRetryable = (
+        !(err instanceof ApiError)
+        || err.status === 0
+        || err.status === 429
+        || err.status >= 500
+      )
       if (isRetryable) {
         queueForLater(supportingArtifactId)
       } else {
@@ -258,16 +271,16 @@ export default function LogExceptionPageClient() {
 
         <TextArea
           label="Description"
-          helperText="Optional"
+          helperText="Required"
           className="mb-6"
           rows={4}
-          placeholder="Describe what happened (optional)"
+          placeholder="Describe what happened"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
+          required
         />
 
-        {/* Photo and description sit side by side on purpose: a driver reporting damage
-            usually needs both, and neither is required to file the report. */}
+        {/* The description is required evidence; the photograph remains optional. */}
         <div className="mb-6">
           <CameraCapture label="Photo (optional)" dataUrl={photo?.dataUrl ?? null} onCapture={handlePhotoCaptured} />
         </div>
@@ -289,7 +302,7 @@ export default function LogExceptionPageClient() {
             space and try again, or report this to your dispatcher directly.
           </p>
         )}
-        <Button size="lg" disabled={!type || submitting} onClick={handleSubmit}>
+        <Button size="lg" disabled={!type || !description.trim() || submitting} onClick={handleSubmit}>
           {/* Named stages, not one spinner: the upload is the slow step on a weak signal,
               and the API client uses fetch, which cannot report real upload progress —
               so this says which step is running rather than implying a percentage. */}

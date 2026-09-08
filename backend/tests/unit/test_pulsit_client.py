@@ -23,6 +23,7 @@ respx mocks httpx at the transport layer, so no real network call is made.
 """
 
 import json
+import uuid
 from decimal import Decimal
 
 import httpx
@@ -43,6 +44,7 @@ _PULSIT_BASE = "http://pulsit.test/api"
 _HORSE = "PLT-HORSE-001"
 _TRAILER_A = "PLT-TRAILER-001"
 _TRAILER_B = "PLT-TRAILER-002"
+_ORG_ID = uuid.uuid4()
 
 # ---------------------------------------------------------------------------
 # Hand-built payloads in the ASSUMED response shape. Not recorded. See docstring.
@@ -497,10 +499,10 @@ async def test_one_malformed_coordinate_does_not_discard_the_others_in_the_same_
 def test_factory_returns_mock_when_mock_mode_is_on(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(settings, "PULSE_USE_MOCK", True)
 
-    assert isinstance(get_pulsit_client(), MockPulsitClient)
+    assert isinstance(get_pulsit_client(organization_id=_ORG_ID), MockPulsitClient)
 
 
 def test_factory_returns_live_client_when_mock_mode_is_off(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(settings, "PULSE_USE_MOCK", False)
 
-    assert isinstance(get_pulsit_client(), LivePulsitClient)
+    assert isinstance(get_pulsit_client(organization_id=_ORG_ID), LivePulsitClient)

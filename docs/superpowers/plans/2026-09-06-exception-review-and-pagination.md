@@ -720,7 +720,9 @@ the nested artifact remains present with `signed_url: null` so the UI can distin
 
 - [ ] **Step 5: Implement organisation-scoped queries**
 
-Queue is unbounded but state-limited and newest-first. History applies filters to both
+Queue is unbounded, state-limited and newest-first. Track its count and oldest-item age
+per organisation; add alert thresholds and cursor pagination before sustained production
+volume, while preserving an always-visible backlog summary. History applies filters to both
 the page and count statements, fetches `limit + 1`, encodes the last returned row, and
 uses a tuple comparison below the cursor. Detail uses one joined query and left joins
 optional phase/stop context. Resolve and sign only the exception's same-trip supporting

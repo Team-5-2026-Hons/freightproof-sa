@@ -507,8 +507,10 @@ async def list_exception_history(
         TripException.review_status.in_(_HISTORY_REVIEW_STATUSES),
     ]
     if q is not None:
-        pattern = f"%{q}%"
-        filters.append(or_(Trip.trip_reference.ilike(pattern), TripException.description.ilike(pattern)))
+        filters.append(or_(
+            Trip.trip_reference.icontains(q, autoescape=True),
+            TripException.description.icontains(q, autoescape=True),
+        ))
     if review_status is not None:
         # ANDed with the base recorded/reviewed filter above rather than replacing it —
         # a caller passing needs_review legitimately gets zero rows, which is correct
@@ -520,7 +522,10 @@ async def list_exception_history(
         sa_tz = timezone(timedelta(hours=settings.OPERATIONS_UTC_OFFSET_HOURS))
         if from_date is not None:
             filters.append(TripException.created_at >= datetime.combine(from_date, time.min, tzinfo=sa_tz))
-        if to_date is not None:
+        # date.max has no representable day-after boundary. Omitting the upper
+        # predicate in that one case preserves inclusive semantics because no
+        # Python/driver timestamp can fall beyond the maximum calendar date.
+        if to_date is not None and to_date < date.max:
             filters.append(
                 TripException.created_at < datetime.combine(to_date + timedelta(days=1), time.min, tzinfo=sa_tz)
             )

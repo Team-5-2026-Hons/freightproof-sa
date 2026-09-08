@@ -236,6 +236,40 @@ describe('useExceptionHistory', () => {
     expect(result.current.totalItems).toBe(7)
   })
 
+  it('clears the previous query when a filter-changed request fails', async () => {
+    mockedGet.mockResolvedValueOnce(makePage({ next_cursor: 'old-cursor', total_items: 5 }))
+    const { result, rerender } = renderHook(
+      (props: { severity: ExceptionSeverity }) => useExceptionHistory(props),
+      { initialProps: { severity: 'critical' } },
+    )
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    mockedGet.mockRejectedValueOnce(new Error('Network unreachable'))
+    rerender({ severity: 'warning' })
+
+    await waitFor(() => expect(result.current.error).toBe('Network unreachable'))
+    expect(result.current.items).toEqual([])
+    expect(result.current.totalItems).toBe(0)
+    expect(result.current.hasNext).toBe(false)
+    expect(result.current.isStale).toBe(false)
+  })
+
+  it('clears the previous page and its next cursor when page navigation fails', async () => {
+    mockedGet.mockResolvedValueOnce(makePage({ next_cursor: 'cursor-page-2', total_items: 5 }))
+    const { result } = renderHook(() => useExceptionHistory({}))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    mockedGet.mockRejectedValueOnce(new Error('Network unreachable'))
+    act(() => result.current.goToNextPage())
+
+    await waitFor(() => expect(result.current.error).toBe('Network unreachable'))
+    expect(result.current.page).toBe(2)
+    expect(result.current.items).toEqual([])
+    expect(result.current.totalItems).toBe(0)
+    expect(result.current.hasNext).toBe(false)
+    expect(result.current.isStale).toBe(false)
+  })
+
   it('always reports pageSize 25 regardless of a short last page', async () => {
     mockedGet.mockResolvedValue(makePage({ items: [makeItem()], total_items: 1, next_cursor: null }))
     const { result } = renderHook(() => useExceptionHistory({}))

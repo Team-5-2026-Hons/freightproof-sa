@@ -21,9 +21,10 @@ real column write (FP-143) and the real exception service (FP-145). A reviewer a
 tests/integration/test_dev_pulsit.py asserts it by counting rows before and after.
 
 The verdict returned below is computed with `evaluate_geofence` — the same pure
-function a handshake calls. It is a read, not a write: the panel shows what the next
-handshake WILL find, and it cannot drift from what the handshake actually decides
-because it is not a second implementation of the arithmetic.
+function a handshake calls. It is a read, not a write: the panel shows what the staged
+position would yield for the trip's current precinct at this moment. A later handshake
+can differ if the trip or tracker state changes in between, while identical inputs still
+produce the same arithmetic result.
 """
 
 import logging
@@ -205,7 +206,7 @@ async def move_truck(
             detail=f"Unknown waypoint {body.waypoint_id!r}.",
         )
 
-    client = get_pulsit_client()
+    client = get_pulsit_client(organization_id=current_user.organization_id)
     if not isinstance(client, MockPulsitClient):
         # Unreachable while the router's guard holds — the router is not registered
         # unless PULSE_USE_MOCK is true. Kept because the guard is enforced at import

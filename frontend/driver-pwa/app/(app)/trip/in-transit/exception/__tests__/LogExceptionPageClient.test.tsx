@@ -13,6 +13,7 @@ function walk(plan: readonly PhaseDescriptor[], through: number): PhaseDescripto
 }
 
 const PHOTO_DATA_URL = 'data:image/jpeg;base64,/9j/4AAQSkZJRg=='
+const REQUIRED_DESCRIPTION = 'Driver observed an issue'
 
 const mockUseTrip = vi.fn()
 const mockRouterPush = vi.fn()
@@ -70,6 +71,35 @@ function queueAccepts(photoPersisted = true) {
   mockEnqueueException.mockReturnValue({ persisted: true, photoPersisted })
 }
 
+function enterRequiredDescription(value = REQUIRED_DESCRIPTION) {
+  fireEvent.change(screen.getByLabelText('Description'), { target: { value } })
+}
+
+describe('LogExceptionPageClient required description', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    queueAccepts()
+    mockUseTrip.mockReturnValue({ trip: { id: 'trip-1' }, logException: vi.fn() })
+  })
+
+  it('keeps submit disabled until the driver enters visible description text', () => {
+    render(<LogExceptionPageClient />)
+    fireEvent.click(screen.getByText('Cargo damage'))
+
+    const submit = screen.getByText('Submit exception')
+    expect(screen.getByLabelText('Description')).toBeRequired()
+    expect(submit).toBeDisabled()
+
+    fireEvent.change(screen.getByLabelText('Description'), { target: { value: '   ' } })
+    expect(submit).toBeDisabled()
+
+    fireEvent.change(screen.getByLabelText('Description'), {
+      target: { value: 'Pallet crushed at rear door' },
+    })
+    expect(submit).toBeEnabled()
+  })
+})
+
 describe('LogExceptionPageClient submit receipt (5b)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -82,10 +112,13 @@ describe('LogExceptionPageClient submit receipt (5b)', () => {
 
     render(<LogExceptionPageClient />)
     fireEvent.click(screen.getByText('Cargo damage'))
+    enterRequiredDescription()
     fireEvent.click(screen.getByText('Submit exception'))
 
     await waitFor(() => expect(mockRouterPush).toHaveBeenCalledWith(ROUTES.inTransit))
-    expect(logException).toHaveBeenCalledWith('cargo_damage', { description: '' })
+    expect(logException).toHaveBeenCalledWith('cargo_damage', {
+      description: REQUIRED_DESCRIPTION, clientReportId: expect.any(String),
+    })
     expect(mockNotify).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: 'success',
@@ -101,6 +134,7 @@ describe('LogExceptionPageClient submit receipt (5b)', () => {
 
     render(<LogExceptionPageClient />)
     fireEvent.click(screen.getByText('Vehicle breakdown'))
+    enterRequiredDescription()
     fireEvent.click(screen.getByText('Submit exception'))
 
     await waitFor(() => expect(screen.getByText(/could not submit/i)).toBeInTheDocument())
@@ -125,15 +159,23 @@ describe('LogExceptionPageClient failure feedback (audit fixes)', () => {
 
     render(<LogExceptionPageClient />)
     fireEvent.click(screen.getByText('Cargo damage'))
+    enterRequiredDescription()
     fireEvent.click(screen.getByText('Submit exception'))
 
     await waitFor(() => expect(mockRouterPush).toHaveBeenCalledWith(ROUTES.inTransit))
     expect(mockEnqueueException).toHaveBeenCalledWith(
       'trip-1',
-      { exception_type: 'cargo_damage', description: '' },
+      {
+        exception_type: 'cargo_damage',
+        description: REQUIRED_DESCRIPTION,
+        client_report_id: expect.any(String),
+      },
       // No photo captured, so nothing extra travels with the entry.
       undefined,
     )
+    const livePayload = logException.mock.calls[0][1] as { clientReportId: string }
+    const queuedBody = mockEnqueueException.mock.calls[0][1] as { client_report_id: string }
+    expect(queuedBody.client_report_id).toBe(livePayload.clientReportId)
     expect(mockNotify).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: 'success',
@@ -143,12 +185,27 @@ describe('LogExceptionPageClient failure feedback (audit fixes)', () => {
     )
   })
 
+  it('queues the exception when the API client reports a status-0 timeout', async () => {
+    const logException = vi.fn().mockRejectedValue(new ApiError(0, 'request timed out'))
+    mockUseTrip.mockReturnValue({ trip: { id: 'trip-1' }, logException })
+
+    render(<LogExceptionPageClient />)
+    fireEvent.click(screen.getByText('Cargo damage'))
+    enterRequiredDescription()
+    fireEvent.click(screen.getByText('Submit exception'))
+
+    await waitFor(() => expect(mockEnqueueException).toHaveBeenCalled())
+    expect(mockRouterPush).toHaveBeenCalledWith(ROUTES.inTransit)
+    expect(screen.queryByText(/the report was not accepted/i)).not.toBeInTheDocument()
+  })
+
   it('shows honest not-accepted copy (not connection copy) on a terminal 4xx', async () => {
     const logException = vi.fn().mockRejectedValue(new ApiError(422, 'invalid'))
     mockUseTrip.mockReturnValue({ trip: { id: 'trip-1' }, logException })
 
     render(<LogExceptionPageClient />)
     fireEvent.click(screen.getByText('Cargo damage'))
+    enterRequiredDescription()
     fireEvent.click(screen.getByText('Submit exception'))
 
     await waitFor(() =>
@@ -198,6 +255,7 @@ describe('LogExceptionPageClient phase tagging', () => {
 
     render(<LogExceptionPageClient />)
     fireEvent.click(screen.getByText('Vehicle breakdown'))
+    enterRequiredDescription()
     fireEvent.click(screen.getByText('Submit exception'))
 
     await waitFor(() => expect(mockEnqueueException).toHaveBeenCalled())
@@ -205,8 +263,9 @@ describe('LogExceptionPageClient phase tagging', () => {
       'trip-1',
       {
         exception_type: 'mechanical',
-        description: '',
+        description: REQUIRED_DESCRIPTION,
         phase_event_id: String(inTransit.phase_event_id),
+        client_report_id: expect.any(String),
       },
       undefined,
     )
@@ -220,12 +279,16 @@ describe('LogExceptionPageClient phase tagging', () => {
 
     render(<LogExceptionPageClient />)
     fireEvent.click(screen.getByText('Seal broken in transit'))
+    enterRequiredDescription()
     fireEvent.click(screen.getByText('Submit exception'))
 
     await waitFor(() => expect(mockEnqueueException).toHaveBeenCalled())
     expect(mockEnqueueException).toHaveBeenCalledWith(
       'trip-1',
-      { exception_type: 'seal_broken_in_transit', description: '' },
+      {
+        exception_type: 'seal_broken_in_transit', description: REQUIRED_DESCRIPTION,
+        client_report_id: expect.any(String),
+      },
       undefined,
     )
     expect(mockRouterPush).toHaveBeenCalledWith(ROUTES.inTransit)
@@ -261,6 +324,7 @@ describe('LogExceptionPageClient photo capture (FP-150)', () => {
 
     render(<LogExceptionPageClient />)
     fireEvent.click(screen.getByText('Cargo damage'))
+    enterRequiredDescription()
     fireEvent.click(screen.getByText('Photo (optional)'))
     fireEvent.click(screen.getByText('Submit exception'))
 
@@ -272,7 +336,8 @@ describe('LogExceptionPageClient photo capture (FP-150)', () => {
       capturedAt: expect.any(String),
     })
     expect(logException).toHaveBeenCalledWith('cargo_damage', {
-      description: '',
+      description: REQUIRED_DESCRIPTION,
+      clientReportId: expect.any(String),
       supporting_artifact_id: 'artifact-1',
     })
   })
@@ -293,6 +358,7 @@ describe('LogExceptionPageClient photo capture (FP-150)', () => {
     await waitFor(() => expect(logException).toHaveBeenCalled())
     expect(logException).toHaveBeenCalledWith('cargo_damage', {
       description: 'Pallet crushed on the left side',
+      clientReportId: expect.any(String),
       supporting_artifact_id: 'artifact-1',
     })
   })
@@ -304,6 +370,7 @@ describe('LogExceptionPageClient photo capture (FP-150)', () => {
 
     render(<LogExceptionPageClient />)
     fireEvent.click(screen.getByText('Cargo damage'))
+    enterRequiredDescription()
     fireEvent.click(screen.getByText('Photo (optional)'))
 
     expect(await screen.findByAltText('captured photo')).toBeInTheDocument()
@@ -317,6 +384,7 @@ describe('LogExceptionPageClient photo capture (FP-150)', () => {
 
     render(<LogExceptionPageClient />)
     fireEvent.click(screen.getByText('Cargo damage'))
+    enterRequiredDescription()
     fireEvent.click(screen.getByText('Photo (optional)'))
     fireEvent.click(screen.getByText('Submit exception'))
 
@@ -325,7 +393,10 @@ describe('LogExceptionPageClient photo capture (FP-150)', () => {
     // decision. Without this the photo would be gone the moment the driver navigated.
     expect(mockEnqueueException).toHaveBeenCalledWith(
       'trip-1',
-      { exception_type: 'cargo_damage', description: '' },
+      {
+        exception_type: 'cargo_damage', description: REQUIRED_DESCRIPTION,
+        client_report_id: expect.any(String),
+      },
       { dataUrl: PHOTO_DATA_URL, capturedAt: expect.any(String) },
     )
     expect(mockNotify).toHaveBeenCalledWith(
@@ -345,11 +416,14 @@ describe('LogExceptionPageClient photo capture (FP-150)', () => {
 
     render(<LogExceptionPageClient />)
     fireEvent.click(screen.getByText('Cargo damage'))
+    enterRequiredDescription()
     fireEvent.click(screen.getByText('Photo (optional)'))
     fireEvent.click(screen.getByText('Submit exception'))
 
     await waitFor(() => expect(logException).toHaveBeenCalled())
-    expect(logException).toHaveBeenCalledWith('cargo_damage', { description: '' })
+    expect(logException).toHaveBeenCalledWith('cargo_damage', {
+      description: REQUIRED_DESCRIPTION, clientReportId: expect.any(String),
+    })
     expect(mockNotify).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'error', title: 'Photo could not be attached' }),
     )
@@ -365,6 +439,7 @@ describe('LogExceptionPageClient photo capture (FP-150)', () => {
 
     render(<LogExceptionPageClient />)
     fireEvent.click(screen.getByText('Cargo damage'))
+    enterRequiredDescription()
     fireEvent.click(screen.getByText('Photo (optional)'))
     fireEvent.click(screen.getByText('Submit exception'))
 
@@ -387,6 +462,7 @@ describe('LogExceptionPageClient photo capture (FP-150)', () => {
 
     render(<LogExceptionPageClient />)
     fireEvent.click(screen.getByText('Cargo damage'))
+    enterRequiredDescription()
     fireEvent.click(screen.getByText('Submit exception'))
 
     // Nothing holds this report — not the server, not the device. A "Report saved"

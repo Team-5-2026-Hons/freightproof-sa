@@ -182,7 +182,7 @@ def store(monkeypatch: pytest.MonkeyPatch) -> FakeMockStateStore:
 
 @pytest_asyncio.fixture
 async def pulsit_client(
-    pulsit_app, db_session, monkeypatch: pytest.MonkeyPatch
+    pulsit_app, db_session, store: FakeMockStateStore, monkeypatch: pytest.MonkeyPatch
 ) -> AsyncGenerator[AsyncClient, None]:
     monkeypatch.setattr("app.auth.dependencies._get_jwks", make_jwks)
 
@@ -350,7 +350,9 @@ async def test_moving_the_truck_writes_only_pulsit_mock_state(
     """The one key it may touch is this device's, under the pulsit namespace."""
     await _move(pulsit_client, seeded, WAYPOINT_THREE_KM)
 
-    assert list(store.data.keys()) == [f"freightproof:mock:pulsit:{_DEVICE_ID}"]
+    assert list(store.data.keys()) == [
+        f"freightproof:mock:pulsit:{seeded['org'].id}:{_DEVICE_ID}"
+    ]
 
 
 async def test_pressing_the_same_waypoint_twice_is_idempotent(

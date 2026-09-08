@@ -267,6 +267,29 @@ async def test_history_q_matches_description_case_insensitively(client: AsyncCli
     assert ids == {str(match.id)}
 
 
+@pytest.mark.parametrize(
+    ("query", "expected_description"),
+    [("%", "Literal % marker"), ("_", "Literal _ marker")],
+)
+async def test_history_search_treats_sql_wildcards_as_literal_characters(
+    client: AsyncClient,
+    db_session,
+    query: str,
+    expected_description: str,
+):
+    seed = await _seed_org(db_session, tag=f"q-literal-{ord(query)}")
+    trip = await _make_trip(db_session, seed, tag=f"q-literal-{ord(query)}")
+    await _make_exception(db_session, trip, tag="percent", description="Literal % marker")
+    await _make_exception(db_session, trip, tag="underscore", description="Literal _ marker")
+    await _make_exception(db_session, trip, tag="ordinary", description="Literal X marker")
+
+    res = await client.get(_HISTORY, params={"q": query}, headers=_headers(seed))
+
+    assert res.status_code == 200
+    assert [row["description"] for row in res.json()["items"]] == [expected_description]
+    assert res.json()["total_items"] == 1
+
+
 async def test_history_review_status_filter_narrows(client: AsyncClient, db_session):
     seed = await _seed_org(db_session, tag="rs")
     trip = await _make_trip(db_session, seed, tag="rs")
@@ -343,6 +366,21 @@ async def test_history_date_bounds_are_inclusive_sa_calendar_dates(client: Async
     assert res.status_code == 200
     ids = {row["id"] for row in res.json()["items"]}
     assert ids == {str(row_inside_start.id), str(row_inside_end.id)}
+
+
+async def test_history_accepts_maximum_to_date_without_overflow(client: AsyncClient, db_session):
+    seed = await _seed_org(db_session, tag="date-max")
+    trip = await _make_trip(db_session, seed, tag="date-max")
+    exception = await _make_exception(db_session, trip, tag="date-max")
+
+    res = await client.get(
+        _HISTORY,
+        params={"to_date": date.max.isoformat()},
+        headers=_headers(seed),
+    )
+
+    assert res.status_code == 200
+    assert {row["id"] for row in res.json()["items"]} == {str(exception.id)}
 
 
 async def test_history_total_items_is_exact_and_stable_across_pages(client: AsyncClient, db_session):
