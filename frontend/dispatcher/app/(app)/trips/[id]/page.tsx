@@ -35,6 +35,7 @@ import { PositionDisagreement } from '@/components/domain/PositionDisagreement'
 import { ManifestPanel }      from '@/components/domain/ManifestPanel'
 import { CancelTripAction }    from '@/components/domain/CancelTripAction'
 import { PhaseOverrideAction } from '@/components/domain/PhaseOverrideAction'
+import { TripHeaderSummary }   from './TripHeaderSummary'
 import { EXCEPTION_SEVERITY_META, EXCEPTION_SOURCE_META } from '@shared/lib/constants/status-meta'
 import { delayMinutes, fmtDelay } from '@/lib/format/schedule'
 import { fmtExceptionType } from '@/lib/format/exception'
@@ -152,6 +153,12 @@ interface TimelineEventProps {
   // Rendered unconditionally, unlike expandedContent which needs a click.
   alwaysExpandedContent?: React.ReactNode
   statusPill?: React.ReactNode
+  // Present only for exception acts. It names the owning phase while the caller places
+  // the row on that phase card's secondary chronological stem.
+  exceptionPhaseLabel?: string
+  // Removes the normal gap below a phase card so its owned-event stem can leave the
+  // card edge without a floating break. The exception stack supplies the final gap.
+  hasLinkedExceptions?: boolean
 }
 
 
@@ -159,13 +166,20 @@ function TimelineEvent({
   nodeType, nodeLabel, isLast,
   label, meta, detail, timestamp,
   chainReceipt, excText, resText, expandedContent, alwaysExpandedContent,
-  statusPill,
+  statusPill, exceptionPhaseLabel, hasLinkedExceptions = false,
 }: TimelineEventProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   // Every phase type now has its own detail component, so expanding in place is the
   // only interaction a card has. The manifest is reached from the sidebar instead,
   // which is why the old onCardClick escape hatch is gone.
   const isExpandable = !!expandedContent
+  const isException = exceptionPhaseLabel !== undefined
+  const eventCardStyle = isException
+    ? 'bg-surf-low'
+    : undefined
+  const eventInteractionStyle = isExpandable
+    ? 'transition-shadow duration-150 hover:shadow-md'
+    : ''
 
   const nodeStyle: Record<NodeType, string> = {
     done:    'bg-ok text-white',
@@ -201,6 +215,13 @@ function TimelineEvent({
   // render identical content and cannot drift apart — only the wrapper differs.
   const summary = (
     <>
+      {exceptionPhaseLabel && (
+        // A manifest-like docket reference, not another warning banner. The branch
+        // geometry already establishes ownership; this makes it explicit in words.
+        <div className="mb-[7px] font-mono text-[10px] font-[600] uppercase tracking-[0.12em] text-on-surf-v">
+          {exceptionPhaseLabel} · Exception
+        </div>
+      )}
       <div className="flex items-start justify-between gap-3 mb-[5px]">
         <div className="flex items-center gap-[8px] min-w-0">
           <div className={`text-[15px] font-[700] leading-snug ${nodeType === 'pending' ? 'text-on-surf-v' : 'text-on-surf'}`}>
@@ -249,21 +270,44 @@ function TimelineEvent({
   )
 
   return (
-    <div className="flex gap-[14px]">
-      <div className="flex flex-col items-center shrink-0">
-        <div className={`w-[30px] h-[30px] rounded-full flex items-center justify-center text-[11px] font-[700] shrink-0 ${nodeStyle[nodeType]}`}>
-          {nodeType === 'done' || nodeType === 'cp'
-            ? <Ic n="check" s={14} className="text-white" />
-            : nodeLabel}
+    <div
+      className="relative flex gap-[14px]"
+      data-timeline-kind={isException ? 'exception' : 'phase'}
+      role={isException ? 'group' : undefined}
+      aria-label={isException ? `Exception linked to ${exceptionPhaseLabel} phase` : undefined}
+    >
+      {isException ? (
+        // The caller positions this stem under the phase card rather than the journey
+        // rail. A smaller node keeps the exception chronological without making it a phase.
+        <div className="relative w-[54px] shrink-0" aria-hidden="true">
+          <div
+            className={`absolute left-[14px] top-0 w-0.5 bg-outline-v/30 ${
+              isLast ? 'h-[15px]' : 'bottom-0'
+            }`}
+          />
+          <div className="absolute left-[15px] top-[14px] h-px w-[31px] bg-outline-v/50" />
+          <div className="absolute left-[38px] top-[6px] flex h-[17px] w-[17px] rotate-45 items-center justify-center rounded-[3px] border border-warn-c bg-warn-c text-warn-onc ring-[3px] ring-surf-lowest">
+            <span className="-rotate-45 font-mono text-[9px] font-[800] leading-none">
+              {nodeLabel}
+            </span>
+          </div>
         </div>
-        {!isLast && (
-          <div className={`w-0.5 flex-1 min-h-[20px] my-1 ${lineStyle[nodeType]}`} />
-        )}
-      </div>
+      ) : (
+        <div className="flex flex-col items-center shrink-0">
+          <div className={`w-[30px] h-[30px] rounded-full flex items-center justify-center text-[11px] font-[700] shrink-0 ${nodeStyle[nodeType]}`}>
+            {nodeType === 'done' || nodeType === 'cp'
+              ? <Ic n="check" s={14} className="text-white" />
+              : nodeLabel}
+          </div>
+          {!isLast && (
+            <div className={`w-0.5 flex-1 min-h-[20px] my-1 ${lineStyle[nodeType]}`} />
+          )}
+        </div>
+      )}
 
-      <div className="flex-1 mb-3">
+      <div className={`flex-1 ${hasLinkedExceptions ? 'mb-0' : 'mb-3'}`}>
         <div
-          className={`rounded-lg px-4 py-3 ${cardStyle[nodeType]} ${isExpandable ? 'transition-shadow duration-150 hover:shadow-md' : ''}`}
+          className={`rounded-lg px-4 py-3 ${eventCardStyle ?? cardStyle[nodeType]} ${eventInteractionStyle}`}
         >
           {/* The toggle wraps the SUMMARY only, never the evidence below it. The whole
               card used to carry the onClick, so every Copy button, HashScan link and
@@ -607,12 +651,30 @@ export default function TripDetailPage() {
     if (attachIdx >= 0) timelineItems[attachIdx].exceptions.push(exc)
   }
 
+  // The detail query does not impose an exception order. Sort only the page-local
+  // per-phase arrays so the evidence reads oldest-to-newest without mutating `trip`.
+  for (const item of timelineItems) {
+    item.exceptions.sort((a, b) => {
+      const createdOrder = Date.parse(a.created_at) - Date.parse(b.created_at)
+      return createdOrder !== 0 ? createdOrder : a.id.localeCompare(b.id)
+    })
+  }
+
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <TopBar
         title={trip.trip_reference}
-        sub={`${trip.order_number} · ${originShort} → ${destShort} · ${trip.driver?.full_name ?? '—'} · ${trip.horse?.registration ?? '—'}`}
+        identity={(
+          <TripHeaderSummary
+            trip={trip}
+            origin={originPrecinct}
+            destination={destPrecinct}
+            statusLabel={statusMeta.label}
+            exceptionCount={trip.exceptions.length}
+            expectedParcels={expectedParcels}
+          />
+        )}
         left={backButton}
       >
         <Chip type={statusMeta.chipType} label={statusMeta.label} />
@@ -684,7 +746,7 @@ export default function TripDetailPage() {
             // so it must NOT also emit them as sibling cards — that printed every en-route
             // exception twice, once in the leg and once below it.
             const ownsExceptionRows = phase.phase_type !== 'in_transit'
-            const trailingExcCount  = ownsExceptionRows ? excItems.length : 0
+            const hasLinkedExceptions = ownsExceptionRows && excItems.length > 0
 
             // A pending phase is a future event: it has no evidence yet, so it must not
             // expand, must not open the manifest panel, and must not even LOOK clickable.
@@ -695,12 +757,17 @@ export default function TripDetailPage() {
             const cardTimestamp = phase.phase_type === 'in_transit' ? undefined : phase.completed_at ?? undefined
 
             return (
-              <div key={phase.phase_event_id}>
+              <div
+                key={phase.phase_event_id}
+                role={hasLinkedExceptions ? 'group' : undefined}
+                aria-label={hasLinkedExceptions ? `${name} phase and exceptions` : undefined}
+              >
                 <TimelineEvent
                   nodeType={item.nodeType}
                   nodeLabel={phase.sequence_number}
-                  isLast={isLastItem && trailingExcCount === 0}
+                  isLast={isLastItem}
                   label={name}
+                  hasLinkedExceptions={hasLinkedExceptions}
                   statusPill={
                     item.nodeType === 'active'  ? <Chip type="transit" label="In progress" /> :
                     // The ledger's current gate, but nothing has actually started — a
@@ -811,70 +878,78 @@ export default function TripDetailPage() {
                   }
                 />
 
-                {/* Exceptions are act rows on the rail, not children behind the phase's
-                    chevron. An exception already carries everything a row needs — `source`
-                    is the actor, `created_at` the timestamp, `phase_event_id` the position,
-                    `supporting_artifact_id` the evidence — so nesting it hid a first-class
-                    act inside a detail panel nobody opens unprompted. It also means the
-                    step-event ledger absorbs these rows in iteration 4 rather than
-                    rebuilding them.
+                {/* Exceptions remain visible act rows, not children hidden behind the
+                    phase's chevron. Their secondary stem originates from the phase card,
+                    while `source`, `created_at`, `phase_event_id` and evidence stay on the
+                    same independently expandable TimelineEvent used before.
 
                     ownsExceptionRows keeps the in-transit de-duplication: a leg renders
                     its own exceptions inside its Journey mini-timeline, and emitting them
                     here as well printed every en-route exception twice. */}
-                {ownsExceptionRows && excItems.map((exc, excIdx) => {
-                  const isPositionDisagreement = exc.exception_type === 'gps_mismatch'
-                  return (
-                  <TimelineEvent
-                    key={exc.id}
-                    nodeType="warn"
-                    // Not a sequence number: an exception has no place in the plan. It
-                    // happened, which is a different claim from "step 4 of 7".
-                    nodeLabel="!"
-                    isLast={isLastItem && excIdx === excItems.length - 1}
-                    label={fmtExceptionType(exc.exception_type)}
-                    statusPill={
-                      <Chip
-                        type={EXCEPTION_SEVERITY_META[exc.severity].chipType}
-                        label={EXCEPTION_SEVERITY_META[exc.severity].label}
-                      />
-                    }
-                    // The actor, named the way every other row on this rail names one.
-                    meta={EXCEPTION_SOURCE_META[exc.source].label}
-                    detail={exc.description || undefined}
-                    timestamp={exc.created_at}
-                    resText={
-                      exc.review_status === 'reviewed'
-                        ? exc.review_note
-                          ? `Resolved · ${exc.review_note}`
-                          : 'Resolved'
-                        : undefined
-                    }
-                    // Gated on the exception actually carrying evidence, not on
-                    // artifactsById — which is a Map from useTripArtifacts and is never
-                    // absent, so it offered a chevron on every row and opened most of
-                    // them onto nothing. Same predicate the panel itself uses, so the
-                    // expander and its contents cannot disagree.
-                    //
-                    // gps_mismatch also expands with no artifact behind it: the exception
-                    // IS the two-source separation, so the measured fixes belong on the row
-                    // that raised it rather than only in its prose description (FP-145).
-                    // Composed at the call site, not inside TimelineEvent — the row stays
-                    // generic about what an act expands to, which is what let the nested
-                    // per-phase exception panel become act rows in the first place.
-                    expandedContent={
-                      isPositionDisagreement || exceptionHasEvidence(exc) ? (
-                        <>
-                          {isPositionDisagreement && <PositionDisagreement phase={phase} />}
-                          {exceptionHasEvidence(exc) && (
-                            <ExceptionEvidence exception={exc} artifactsById={artifactsById} />
-                          )}
-                        </>
-                      ) : undefined
-                    }
-                  />
-                  )
-                })}
+                {hasLinkedExceptions && (
+                  <div className="relative pt-[12px]">
+                    {/* The journey rail continues behind the owned stack but never
+                        branches into it; the secondary stem begins at the phase card. */}
+                    {!isLastItem && (
+                      <div className="absolute bottom-0 left-[14px] top-0 w-0.5 bg-outline-v/30" aria-hidden="true" />
+                    )}
+                    <div className="absolute left-[58px] top-0 h-[12px] w-px bg-outline-v/50" aria-hidden="true" />
+
+                    <div className="ml-[44px]">
+                      {excItems.map((exc, excIdx) => {
+                        const isPositionDisagreement = exc.exception_type === 'gps_mismatch'
+                        return (
+                        <TimelineEvent
+                          key={exc.id}
+                          nodeType="warn"
+                          // Not a sequence number: an exception has no place in the plan.
+                          // The smaller owned-event marker records that it happened.
+                          nodeLabel="!"
+                          isLast={excIdx === excItems.length - 1}
+                          label={fmtExceptionType(exc.exception_type)}
+                          exceptionPhaseLabel={name}
+                          statusPill={
+                            <Chip
+                              type={EXCEPTION_SEVERITY_META[exc.severity].chipType}
+                              label={EXCEPTION_SEVERITY_META[exc.severity].label}
+                            />
+                          }
+                          // The actor, named the way every other row on this rail names one.
+                          meta={EXCEPTION_SOURCE_META[exc.source].label}
+                          detail={exc.description || undefined}
+                          timestamp={exc.created_at}
+                          resText={
+                            exc.review_status === 'reviewed'
+                              ? exc.review_note
+                                ? `Resolved · ${exc.review_note}`
+                                : 'Resolved'
+                              : undefined
+                          }
+                          // Gated on the exception actually carrying evidence, not on
+                          // artifactsById — which is a Map from useTripArtifacts and is never
+                          // absent, so it offered a chevron on every row and opened most of
+                          // them onto nothing. Same predicate the panel itself uses, so the
+                          // expander and its contents cannot disagree.
+                          //
+                          // gps_mismatch also expands with no artifact behind it: the exception
+                          // IS the two-source separation, so the measured fixes belong on the row
+                          // that raised it rather than only in its prose description (FP-145).
+                          expandedContent={
+                            isPositionDisagreement || exceptionHasEvidence(exc) ? (
+                              <>
+                                {isPositionDisagreement && <PositionDisagreement phase={phase} />}
+                                {exceptionHasEvidence(exc) && (
+                                  <ExceptionEvidence exception={exc} artifactsById={artifactsById} />
+                                )}
+                              </>
+                            ) : undefined
+                          }
+                        />
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             )
           })}
