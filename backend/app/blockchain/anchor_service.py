@@ -12,11 +12,15 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import defer
 
 from app.blockchain.hedera import HederaService
-from app.blockchain.subject_visibility import assert_subject_visible
+from app.blockchain.subject_visibility import (
+    assert_subject_visible,
+    subject_visibility_query,
+)
 from app.core.config import settings
 from app.core.exceptions import HederaTimeoutError
 from app.db.models.blockchain import BlockchainReceipt
@@ -141,4 +145,54 @@ async def list_receipts_for_subject(
         )
         .order_by(BlockchainReceipt.created_at.desc())
     )
+    return list(result.scalars().all())
+
+
+async def lookup_receipts(
+    db: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    data_hash: str | None = None,
+    hedera_tx_id: str | None = None,
+    subject_id: uuid.UUID | None = None,
+) -> list[BlockchainReceipt]:
+    """Return exact-match receipts visible to an organisation, newest first."""
+    if (data_hash is None) == (hedera_tx_id is None):
+        raise ValueError("exactly one of data_hash or hedera_tx_id must be provided")
+
+    # Filter visibility in SQL, not with one extra round trip per matching receipt.
+    # EXISTS also keeps hidden/orphaned subjects out without multiplying results.
+    query = (
+        select(BlockchainReceipt)
+        .where(or_(
+            *(
+                and_(
+                    BlockchainReceipt.subject_type == subject_type,
+                    subject_visibility_query(
+                        subject_type=subject_type,
+                        subject_id=BlockchainReceipt.subject_id,
+                        organization_id=organization_id,
+                    ).exists(),
+                )
+                for subject_type in SubjectType
+            )
+        ))
+        .options(defer(BlockchainReceipt.payload_json, raiseload=True))
+    )
+
+    if data_hash is not None:
+        query = query.where(BlockchainReceipt.data_hash == data_hash)
+    else:
+        query = query.where(BlockchainReceipt.hedera_tx_id == hedera_tx_id)
+
+    if subject_id is not None:
+        query = query.where(BlockchainReceipt.subject_id == subject_id)
+
+    result = await db.execute(
+        query.order_by(
+            BlockchainReceipt.created_at.desc(),
+            BlockchainReceipt.id.desc(),
+        )
+    )
+
     return list(result.scalars().all())

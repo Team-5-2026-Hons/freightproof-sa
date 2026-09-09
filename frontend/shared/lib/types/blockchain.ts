@@ -4,7 +4,7 @@
 
 export type SubjectType =
   | 'trip' | 'vehicle' | 'driver' | 'vehicle_event' | 'driver_event'
-  | 'precinct_event';
+  | 'precinct_event' | 'phase_event';
 
 export type BlockchainReceiptType =
   | 'journey_lock' | 'pickup' | 'delivery' | 'checkpoint_batch'

@@ -4,13 +4,16 @@ import uuid
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from app.db.models import Base
 from app.db.models.enums import BlockchainReceiptType, MerkleBatchType, SubjectType
+
+BLOCKCHAIN_RECEIPT_DATA_HASH_INDEX = "ix_blockchain_receipts_data_hash"
+BLOCKCHAIN_RECEIPT_HEDERA_TX_INDEX = "ix_blockchain_receipts_hedera_tx"
 
 
 class BlockchainReceipt(Base):
@@ -22,6 +25,10 @@ class BlockchainReceipt(Base):
     """
 
     __tablename__ = "blockchain_receipts"
+    __table_args__ = (
+        Index(BLOCKCHAIN_RECEIPT_DATA_HASH_INDEX, "data_hash"),
+        Index(BLOCKCHAIN_RECEIPT_HEDERA_TX_INDEX, "hedera_tx_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     # trip_id kept for backward compatibility with trip-scoped queries.

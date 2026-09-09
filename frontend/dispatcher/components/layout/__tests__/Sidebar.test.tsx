@@ -9,6 +9,10 @@ import { ROUTES } from '@/lib/constants/routes'
 // usePathname is mocked at the module boundary with a controllable return value —
 // the same approach ConfirmationDetail.test.tsx uses for useAuth.
 const mockUsePathname = vi.fn(() => '/')
+const mockAuth = vi.hoisted(() => ({
+  role: 'dispatcher' as 'dispatcher' | 'admin_dispatcher',
+}))
+
 vi.mock('next/navigation', () => ({
   usePathname: () => mockUsePathname(),
 }))
@@ -21,7 +25,7 @@ vi.mock('@/lib/hooks/useAuth', () => ({
       email: 'jane@freightproof.test',
       full_name: 'Jane Dispatcher',
       is_active: true,
-      role: 'dispatcher',
+      role: mockAuth.role,
     },
     isLoading: false,
     signIn: vi.fn(),
@@ -50,6 +54,25 @@ function renderSidebar() {
 beforeEach(() => {
   window.localStorage.clear()
   mockUsePathname.mockReturnValue('/')
+  mockAuth.role = 'dispatcher'
+})
+
+describe('Sidebar role-based navigation', () => {
+  it('hides the receipt lookup and its empty group from regular dispatchers', () => {
+    renderSidebar()
+
+    expect(screen.queryByRole('link', { name: 'Receipt Lookup' })).not.toBeInTheDocument()
+    expect(screen.queryByText('BLOCKCHAIN')).not.toBeInTheDocument()
+  })
+
+  it('shows the receipt lookup to admin dispatchers', () => {
+    mockAuth.role = 'admin_dispatcher'
+    renderSidebar()
+
+    expect(screen.getByRole('link', { name: 'Receipt Lookup' }))
+      .toHaveAttribute('href', ROUTES.blockchainReceipts)
+    expect(screen.getByText('BLOCKCHAIN')).toBeInTheDocument()
+  })
 })
 
 describe('Sidebar navigation', () => {
