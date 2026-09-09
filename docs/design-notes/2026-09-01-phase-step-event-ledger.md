@@ -1,5 +1,11 @@
 # The Phase Step-Event Ledger — What Happens *Inside* a Phase
 
+> **Iteration 4 follow-up (9 September 2026):** A dedicated destination Arrival custody
+> check is proposed alongside the child ledger. See the canonical
+> [deferred Arrival proposal](../known-issues.md#10-deferred--dedicated-arrival-custody-check-phase-iteration-4-candidate).
+> This would deliberately revise the “do not make the phase plan finer” assumption below
+> for one custody stage; it is not implemented or an instruction to change current plans.
+
 > **2026-09-08 geofence update:** Statements below that describe
 > `pulsit_geofence_confirmed` as unwritten predate the current corroboration service.
 > Phase/checkpoint flows now write tracker coordinates and geofence verdicts.

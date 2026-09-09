@@ -4,7 +4,7 @@ A running list of environment and code issues to raise with the team. Each entry
 records the symptom, root cause, impact, and proposed fix. Delete an entry once it
 is resolved (and, if it changed shared behaviour, note it in the relevant spec).
 
-Two parts. **Known issues** (1-7) are defects and tech debt. **Deferred work** (8-9) is
+Two parts. **Known issues** (1-7) are defects and tech debt. **Deferred work** (8 onward) is
 scoped work that has been deliberately postponed — not broken, but decided and parked,
 recorded so the reasoning does not have to be re-derived when it is picked up. Both live
 here rather than in separate design notes so there is one place to look.
@@ -514,3 +514,78 @@ across two trip records, which damages the evidence more than it simplifies the 
 **Note for the write-up.** Both the chosen and rejected options are defensible, and the
 reasoning above — evidential continuity over implementation simplicity — is the kind of
 trade-off worth being able to defend at examination. Keep this section.
+
+---
+
+## 10. Deferred — dedicated arrival custody-check phase (iteration 4 candidate)
+
+**Recorded:** 9 September 2026. **Status:** preferred product direction; deferred for
+iteration 4 planning alongside the full phase child ledger. Not implemented, assigned,
+or approved for immediate execution. This entry is the canonical record of the proposal.
+
+**Reason:** Departure records the outbound seal and location. A corresponding Arrival
+phase should record the seal as found at the destination BEFORE opening, with its own
+location evidence and completion state. Unloading should then describe unloading alone.
+The existing in-transit “Arrived” milestone records the end of driving; it does not replace
+this destination custody check. Reaching the gate and completing inspection can be hours
+apart, so their timestamps must remain distinct.
+
+**Proposed sequence for new single-leg trips:** trip creation → activation → loading →
+departure → in transit → arrival → unloading → confirmation.
+
+**Proposed responsibilities:**
+
+- In transit ends on the driver's existing arrival attestation; retain that actual-arrival
+  timestamp and mini-timeline milestone.
+- Arrival belongs to the destination stop. Move destination seal number/intact photo,
+  departure-to-arrival seal comparison and associated seal exceptions from unloading into
+  it. Capture phone position and timely tracker corroboration against that destination.
+- Arrival inspection must be recordable before warehouse scan completion. Keep the
+  unloading scan gate on unloading, not on arrival.
+- Unloading retains warehouse scan completion and the applicable independent driver
+  observations. Confirmation retains POD and final reconciliation.
+- If recording the subsequent seal-opening act is required, model it as an explicitly
+  attributed child event. Do not infer that opening happened at arrival or substitute a
+  broken-seal photo for the intact inspection photo. Actor and evidence requirements for
+  seal opening still need a team/domain decision.
+
+**Relationship to the child ledger:** This adds a distinct custody stage to the parent
+plan; the child ledger records acts within that stage (inspection, captures and potentially
+opening). It is not a proposal to promote every capture step into a phase. The existing
+ledger spec says “Do not make the phase plan finer”; adopting this proposal requires a
+deliberate, narrow revision of that assumption before implementation, not silently doing
+both designs at once.
+
+**Implementation coordination:** Use
+[the authoritative step-event implementation plan](design-notes/2026-09-02-step-event-ledger-implementation-plan.md)
+as the execution home when iteration 4 is planned. Reconcile its §6 scope and seal-chain
+design first, assign an owner, and add a bounded arrival work item with acceptance tests.
+The two features can be delivered in coordinated stages; an Arrival phase does not
+technically require the entire child ledger to ship first.
+
+**Work required:** backend phase type/plan generation, destination lookup, transitions,
+request contracts and seal exception ownership; shared types/recipes; driver routes,
+drafts and offline retries; dispatcher timeline/location views; anchor-payload decisions
+and compatibility tests. Reuse existing seal capture and comparison components/logic.
+
+**Compatibility fence:** Existing trips retain their committed plans, historical seal
+attribution and hashes. Agree how old and new plans coexist before creating migrations
+or changing shared phase recipes. An in-flight/queued old-client unloading submission
+must not become invalid merely because a new client supports Arrival. Preserve existing
+empty-leg behaviour; define the new Arrival behaviour for trips with no cargo/seal.
+Multi-leg expansion remains outside this request and must not regress.
+
+**Acceptance criteria for the future work:**
+
+1. End-of-driving time and arrival-inspection completion time are separately visible.
+2. A destination seal mismatch can be recorded before unloading scans finish, with the
+   exception attached to Arrival and no automatic loss of later delivery evidence.
+3. Geofence checks use the destination, with missing/untimely fixes remaining unknown.
+4. Retries/offline replay do not duplicate inspection events or exceptions.
+5. Legacy trips and queued submissions still work; cancellation/overrides remain honest.
+6. Applicable seal evidence remains covered by the agreed integrity model; moving fields
+   does not silently drop them from verification or rewrite existing receipts.
+
+**Next planning action:** review this entry when opening the iteration 4 child-ledger
+work, settle compatibility and seal-opening attribution, then revise the authoritative
+implementation plan. No application changes are authorised by this backlog entry.

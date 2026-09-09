@@ -1,5 +1,12 @@
 # Step-Event Ledger — Implementation Plan and the Sequencing Call
 
+> **Iteration 4 planning checkpoint (9 September 2026):** Before executing the full child
+> ledger in §6, reconcile the
+> [dedicated Arrival custody-check proposal](../known-issues.md#10-deferred--dedicated-arrival-custody-check-phase-iteration-4-candidate).
+> It separates destination seal inspection from unloading and requires explicit old/new
+> plan compatibility. The linked backlog entry records the direction and acceptance
+> criteria; this plan has not yet been revised to authorise its implementation.
+
 > **Status:** authoritative plan, pre-implementation · **Author:** Ciaran · **Date:** 2026-09-02
 > · **Last verified:** 2026-09-06
 > **Parent:** [2026-09-01-phase-step-event-ledger.md](2026-09-01-phase-step-event-ledger.md)
