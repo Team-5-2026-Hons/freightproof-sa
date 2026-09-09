@@ -4,6 +4,11 @@ A running list of environment and code issues to raise with the team. Each entry
 records the symptom, root cause, impact, and proposed fix. Delete an entry once it
 is resolved (and, if it changed shared behaviour, note it in the relevant spec).
 
+Two parts. **Known issues** (1-7) are defects and tech debt. **Deferred work** (8-9) is
+scoped work that has been deliberately postponed — not broken, but decided and parked,
+recorded so the reasoning does not have to be re-derived when it is picked up. Both live
+here rather than in separate design notes so there is one place to look.
+
 ---
 
 ## 1. `??` fallback in `supabase.ts` fails on empty-string env vars
@@ -228,7 +233,90 @@ a time-dependent test fails inexplicably.
 
 ---
 
+## 7. No stamped destination count exists between unloading and confirmation
+
+**Files:** `backend/app/orchestration/phase_service.py` (`advance_unloading`,
+`advance_confirmation`), `backend/app/db/models/phases.py`,
+`frontend/dispatcher/lib/phase/derive.ts` (`destinationScannedCount`),
+`frontend/dispatcher/lib/phase/trip-detail.ts` (`cargoFact`).
+
+**Symptom:** A trip that has arrived and finished unloading still reports its ORIGIN
+count in the detail header, while the manifest panel beside it shows every parcel
+scanned in at the destination. The two surfaces describe the same trip and disagree.
+
+Observed on `FP-20260812-02275C10` (9 September 2026, `status: active`,
+`current_phase: confirmation`):
+
+| Source | Value |
+| --- | --- |
+| Header — Recorded arrival | 12 Aug 2026, 11:52 |
+| Header — Cargo | `14 booked · 14 recorded at origin` |
+| loading phase (`completed`) | `parcel_count_origin` = 14 |
+| **unloading phase (`completed`)** | `parcel_count_destination` = **NULL** |
+| confirmation phase (`pending`) | `parcel_count_destination` = NULL |
+| consignment | expected 14, scanned out 14, **scanned in 14** |
+| manifest parcels | 14 scanned out, **14 scanned in** |
+
+**Root cause:** `parcel_count_destination` is written in exactly one place —
+`advance_confirmation` — onto the CONFIRMATION event. Unloading closes without stamping
+anything, so between unloading completing and confirmation completing there is no
+stamped destination figure in existence for the header to show. It falls back to the
+origin count, which is the newest stamped fact available and is genuinely stale as a
+statement about where the cargo is. `UnloadingDetail` already documents the gap from the
+other side: "There is no stamped equivalent on this phase to fall back to once unloading
+closes."
+
+**This is not an artifact of the Parcel Perfect simulation.** The live destination
+figure exists in the parcel scan rows and is what the manifest reads; the stamped one
+does not exist yet by design. Replacing the seeded feed with the real integration would
+reproduce the gap exactly. The simulation only flatters the display in a second way —
+expected, scanned-out and scanned-in all agree in the demo data, so the header looks
+tidier than real data would make it.
+
+**Impact:** Medium severity on an evidence page. Nothing recorded is wrong and nothing is
+lost: the count is in the scan rows and is anchored at confirmation. But the trip detail
+header — the one surface a dispatcher reads first — states an origin figure for a trip
+that has demonstrably arrived and been unloaded, without saying the destination figure is
+not due yet. On a platform whose claim is "this is what happened", a stale summary that
+does not announce itself as stale is the wrong default.
+
+**Proposed fix (team decision — changes what the ledger records):** stamp a destination
+count on the UNLOADING event at close, as `advance_loading` already does for
+`parcel_count_origin`, and have `destinationScannedCount` prefer the final unloading and
+fall back to confirmation. This makes the stamped record follow the goods rather than
+waiting for the paperwork.
+
+Open questions for the team, none of them settled here:
+
+- Does the unloading stamp get anchored, or is it evidence held off-chain until
+  confirmation anchors the authoritative figure? Anchoring it means a second
+  `PHASE_EVENT` payload shape and a `verification_service` branch to rebuild it.
+- On a cross-dock, every intermediate unloading would stamp a count. That is arguably
+  correct — each is a real handover — but it changes what "destination count" means for
+  a trip with three stops.
+- `parcel_count_destination` already exists as a column on every phase row, so no
+  migration is needed to hold the value. A migration WOULD be needed if the team wants
+  the two stamps distinguished by name rather than by which phase carries them.
+
+**Rejected for now (recorded so they are not re-proposed as fixes):**
+
+- *Copy-only* — say "14 recorded at origin · destination count due at confirmation".
+  Honest and cheap, and a reasonable stopgap, but it explains the gap rather than
+  closing it.
+- *Show the live scan in the header* — puts a figure recomputed per request next to
+  stamped, anchored evidence in the same block. The header's whole discipline is that
+  its numbers are stamped; the manifest is where live counts belong.
+
+**Owner:** unassigned. Backend `orchestration/` work with a frontend follow-up; raised
+from the dispatcher trip detail review, 9 September 2026.
+
+---
+
 ## Common theme
+
+Issue 7 stands apart from the rest: it is not a setup or drift problem but a modelling
+decision whose consequence only shows up on screen, where the newest stamped fact and the
+current state of the goods are not the same thing.
 
 Issues 1, 2, 5 and 6 stem from the project depending on something being "correct" without
 defining or enforcing what correct is — a developer's local setup in 1 and 2, and the
@@ -242,3 +330,187 @@ Issue 5 is the same shape one layer down: the models and the migrations have dri
 because nothing checks that they agree, so the tool built to reconcile them now
 proposes destroying the difference. A CI step asserting that autogenerate produces an
 empty diff would convert it into an error at the moment it is introduced.
+
+---
+
+# Deferred work
+
+Recorded deliberately, not started. These are not defects. Each entry states what was
+decided, what it touches, and what is still open, so it can be picked up cold.
+
+## 8. Trip detail load time — remaining plan (D)
+
+**Status:** items A-C shipped on branch `Ciaran` (9 September 2026); D not started.
+
+**Symptom:** the dispatcher trip detail page took roughly ten seconds to become useful.
+
+**Measurements.** Clean cold load of `/trips/{id}`, dispatcher app in dev, backend on
+Supabase `af-south-1`:
+
+| Time | Event |
+| --- | --- |
+| 0-636ms | page shell loads |
+| 666-2251ms | `GET /auth/me` (1585ms) — no data request is in flight during this |
+| 2270ms | trip/artifacts/precincts requests finally start |
+| ~10081ms | last response lands |
+
+Per-call backend latency ranged 1.9-6.3s. `/trips/{id}` was requested five times and
+`/precincts` twice in that single load; two of the five are React StrictMode
+double-invoking effects in dev and will not occur in production.
+
+Caveat on the numbers: browser resource timings are cross-origin
+(`localhost:3000` → `127.0.0.1:8000`) without `Timing-Allow-Origin`, so `requestStart`
+and `responseStart` are zeroed. Only total `duration` is trustworthy from the client.
+Any finer attribution must be measured server-side.
+
+**Root cause of the backend latency:**
+`backend/app/orchestration/resource_service.py::get_trip_detail` issues **ten sequential
+`await db.execute(...)` round-trips** — trip, driver, horse, trip_trailers, trailers,
+phases, exceptions, blockchain_receipts, stops, consignments — each awaited before the
+next begins. There is no `selectinload` anywhere in the trip read path. At ~200-400ms
+round-trip latency to `af-south-1`, ten serial queries account for 2-4s, which matches
+the observed range. **The cost is round-trip count, not query cost.**
+
+**Already shipped (A-C):**
+
+- Shared stale-while-revalidate cache in `useTripResource`, covering trip, artifacts and
+  manifest. Re-entering a trip renders in ~24ms. Every mount still revalidates, and
+  SSE-driven refreshes are forced so they never join a request issued before the event.
+- Loading shell: the real layout with skeletons, replacing a bare centred spinner.
+- Header seed: both list pages write their rows to `lib/trips/tripSeed.ts`; the detail
+  header renders from that row immediately. Measured header at 750ms against a timeline
+  at 6754ms on the same navigation.
+- Timeline shows when the record was last read; jump-to-current moved into the timeline
+  pane.
+
+**Remaining plan (D).** Do these in order and stop when it is fast enough.
+**Measure again after each.**
+
+*D1 — batch the trip detail queries (highest value).* Replace the ten sequential executes
+in `get_trip_detail` with `selectinload` eager loading, collapsing them to roughly two or
+three round-trips. Expected: 2-6s → plausibly under 1s.
+
+Constraint: these cannot be parallelised with `asyncio.gather` on a single
+`AsyncSession` — SQLAlchemy async sessions are not concurrency-safe. Eager loading is the
+route, not concurrency.
+
+Risk: eager loading must not change the response shape. Run the trip integration tests
+before and after and diff a real `TripDetailResponse` payload.
+
+Ownership: backend work in `orchestration/`. Check sprint ownership before starting — it
+is not obviously the dispatcher UI owner's file.
+
+*D2 — unblock the auth gate.* ~1.6s of every cold load passes with zero data requests in
+flight, waiting on `/auth/me` in `AuthProvider`. The trip fetch depends on the access
+token, not on the dispatcher profile, so the two can run in parallel. Reclaims most of
+that window.
+
+*D3 — split the endpoint into staged loads.* Only if D1 and D2 leave it slow.
+`GET /trips/{id}` returns the summary; a new `GET /trips/{id}/phases` returns the ledger;
+fire both in parallel so header and panel paint on the first and the timeline on the
+second. Deliberately last: splitting a slow endpoint in two does not reduce ten
+round-trips, it just spreads them. D1 must come first or this mostly moves the problem.
+
+**The rule that constrained the header seed, and constrains D3.** A fact that has not
+loaded yet must render as loading — never as an em-dash or a zero. On this page those are
+evidentiary claims: `originScannedCount` returning null already means "no origin count was
+recorded", which is a statement about the trip, and a not-yet-fetched value is not
+entitled to make it. Any staged load must keep unfetched facts visibly pending, which is
+why `tripHeaderFacts` returns `null` for cargo when only a list row is known, and why the
+history seed leaves arrival unread rather than substituting `closed_at` — closing a trip
+is not arriving.
+
+---
+
+## 9. Dispatcher call logging and driver substitution
+
+**Status:** neither started. Recorded because neither is safe to bolt on. The read-only
+driver modal (`frontend/dispatcher/components/trips/DriverModal.tsx`) is the surface both
+would eventually attach to.
+
+### 9a. Dispatcher call logging
+
+**Intent.** A dispatcher opens the driver modal on a live trip, calls the driver, and
+records that the call happened. The record appears in the trip timeline. Most likely
+during `in_transit`, but it must be possible in any phase.
+
+**Why this is recording, not operating.** It passes the scope test in CLAUDE.md: it
+captures *that contact occurred*, which is evidence. It must not become a task list, a
+dispatch queue, or anything that tells a dispatcher what to do next.
+
+**What already exists — do not duplicate it.** Contact is already modelled, but only
+inside exception review:
+
+- `ExceptionContactMethod` in `backend/app/db/models/enums.py`: `phone`, `whatsapp`,
+  `in_person`.
+- `contact_method` on the exception review columns in `backend/app/db/models/transit.py`.
+- The enum's docstring is worth reading: `NO_CONTACT_YET` was deliberately removed,
+  because the ABSENCE of contact belongs on the review outcome, not on a field named for
+  the method OF contact. Any trip-level design should honour that same distinction.
+
+A free-floating trip call log would create a second, parallel record of dispatcher
+contact. Reuse the vocabulary; do not invent a competing one.
+
+**Open questions to settle before building:**
+
+1. **Is a contact event anchored to Hedera?** Phase events and exceptions are. A contact
+   log is dispatcher-authored evidence, so the honest answer is probably yes — but that
+   makes it a chain write, with the cost and failure modes that implies, and it means a
+   mistyped log entry is permanent. Decide explicitly.
+2. **Is it attached to a phase, or only to the trip?** The trip timeline is plan-driven
+   and derives position from the phase ledger. A contact event has no phase of its own.
+   Simplest coherent answer: trip-scoped with a timestamp, rendered in chronological
+   position — the same treatment trip-level exceptions already get in `TripTimeline`'s
+   "Trip record" section.
+3. **What is actually recorded?** At minimum: who logged it, when, method, and free text.
+   Whether the call *reached* the driver is a separate fact from whether it was attempted,
+   and conflating them would repeat the `NO_CONTACT_YET` mistake.
+4. **POPIA.** Call notes are free text about a named person and will end up holding
+   personal detail. They stay in Postgres in `af-south-1`; only a hash may be anchored.
+
+**Rough shape of the work.** New model + hand-written Alembic migration (autogenerate
+drifts on this project — see issue 5), registration in `db/models/__init__.py`, Pydantic
+v2 schemas, a thin endpoint delegating to orchestration, timeline rendering as a third
+event kind alongside phases and exceptions, and unit plus integration tests. This is a
+sprint item, not an afternoon.
+
+### 9b. Driver substitution
+
+**The constraint that decides the design.** `compute_journey_lock_hash` in
+`backend/app/crypto/hashing.py` takes `driver_id`, `horse_id` and `trailer_ids` among its
+inputs. **The driver is inside the journey lock.**
+
+So mutating `trip.driver_id` on an existing trip makes the stored record stop hashing to
+its anchored value, and the Record Integrity check reports tampering — correctly. That is
+the mechanism working, not a bug to route around. CLAUDE.md is explicit: trip parameters
+are never modified after creation without an explicit exception event.
+
+**Chosen direction: option 1 — amendment on the ledger.** Agreed 9 September 2026.
+
+The original journey lock stays valid over the original parameters, because those remain
+true: this trip *was* created with driver X. The substitution is recorded as its own
+anchored amendment naming the outgoing driver, the incoming driver, who authorised it and
+when. Verification then checks the original lock plus the ordered chain of amendments.
+
+This preserves exactly what the platform exists to prove — that the original driver was
+on the trip — while letting the record reflect what actually happened afterwards.
+
+The rejected alternative was closing the trip and re-creating it under the new driver with
+a fresh lock. It keeps verification trivially simple but fragments one physical journey
+across two trip records, which damages the evidence more than it simplifies the code.
+
+**What this touches:**
+
+- A new anchored amendment record, and a decision on whether it is a variant of the
+  existing exception event or its own type.
+- `verification_service._reconstruct_trip_payload` — verification stops being "rebuild the
+  payload and compare one hash" and becomes "rebuild the original, then apply the ordered
+  amendments". This is the substantive change and it deserves its own tests, including a
+  trip with two successive substitutions.
+- The frontend integrity summary, which currently reports a single match/mismatch verdict
+  and would need to express "matches, with N recorded amendments".
+- Whatever authorisation rule governs who may substitute a driver.
+
+**Note for the write-up.** Both the chosen and rejected options are defensible, and the
+reasoning above — evidential continuity over implementation simplicity — is the kind of
+trade-off worth being able to defend at examination. Keep this section.
