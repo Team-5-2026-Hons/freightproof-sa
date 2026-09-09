@@ -995,6 +995,9 @@ async def test_advance_in_transit_closes_the_leg_and_records_arrival_position(
     await db_session.refresh(phases["in_transit"])
     assert phases["in_transit"].status == PhaseStatus.COMPLETED
     assert phases["in_transit"].completed_at is not None
+    await db_session.refresh(trip)
+    assert trip.actual_arrival_at == phases["in_transit"].completed_at
+    assert result.actual_arrival_at == phases["in_transit"].completed_at
     assert float(phases["in_transit"].driver_phone_lat) == pytest.approx(-29.8587)
     assert float(phases["in_transit"].driver_phone_lng) == pytest.approx(31.0218)
 
@@ -1057,6 +1060,8 @@ async def test_advance_in_transit_replay_is_idempotent(db_session, trip_fixture)
 
     await db_session.refresh(phases["in_transit"])
     assert phases["in_transit"].completed_at == first_completed_at
+    await db_session.refresh(trip)
+    assert trip.actual_arrival_at == first_completed_at
 
 
 @pytest.mark.asyncio
@@ -1301,6 +1306,8 @@ async def test_advance_departure_leaves_all_in_transit_rows_pending_until_each_a
     assert phases["in_transit_1"].status == PhaseStatus.COMPLETED
     assert phases["in_transit_2"].status == PhaseStatus.PENDING  # not reached back into
     leg_1_arrival_at = phases["in_transit_1"].completed_at
+    await db_session.refresh(trip)
+    assert trip.actual_arrival_at is None
 
     # Leg 2's departure leaves IN_TRANSIT_2 PENDING. Does not affect leg 1.
     await advance_departure(
@@ -1321,6 +1328,8 @@ async def test_advance_departure_leaves_all_in_transit_rows_pending_until_each_a
     await db_session.refresh(phases["in_transit_2"])
     assert phases["in_transit_2"].status == PhaseStatus.COMPLETED
     assert phases["in_transit_1"].completed_at == leg_1_arrival_at
+    await db_session.refresh(trip)
+    assert trip.actual_arrival_at == phases["in_transit_2"].completed_at
 
 
 # ── advance_unloading ────────────────────────────────────────────────────────
@@ -1667,6 +1676,9 @@ async def test_advance_confirmation_matching_counts_closes_trip(
     assert result.status == TripStatus.CLOSED
     assert result.closed_at is not None
     assert result.exceptions == []
+    await db_session.refresh(trip)
+    assert trip.actual_arrival_at == phases["in_transit"].completed_at
+    assert result.actual_arrival_at == phases["in_transit"].completed_at
 
     h5 = next(h for h in result.phases if h.phase_type == PhaseType.CONFIRMATION)
     # The hash is computed in-request; the receipt is not. Closing the trip no longer

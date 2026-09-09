@@ -664,6 +664,19 @@ async def _finish_phase(
     event.idempotency_key = idempotency_key
     event.completed_at = event.completed_at or datetime.now(UTC)
 
+    if event.phase_type == PhaseType.IN_TRANSIT and event.status == PhaseStatus.COMPLETED:
+        # The trip-wide arrival is the final driving leg's evidence timestamp.
+        # Intermediate stops and dispatcher overrides do not attest final arrival.
+        later_leg = await db.execute(
+            select(PhaseEvent.id).where(
+                PhaseEvent.trip_id == trip.id,
+                PhaseEvent.phase_type == PhaseType.IN_TRANSIT,
+                PhaseEvent.sequence_number > event.sequence_number,
+            ).limit(1)
+        )
+        if later_leg.scalar_one_or_none() is None:
+            trip.actual_arrival_at = event.completed_at
+
     # FP-145. Placed on the one path every handshake converges on, and AFTER each
     # wrapper's own call to record_phase_corroboration, so the verdict being read
     # here is the one this handshake just produced. Before the flush below, so the
@@ -1639,8 +1652,6 @@ async def advance_confirmation(
     # confirmation's real point: recompute_position (called inside
     # _finish_phase) finds no unresolved rows left and closes the trip
     # generically, instead of this wrapper hardcoding "I am always last."
-    trip.actual_arrival_at = trip.actual_arrival_at or datetime.now(UTC)
-
     return await _finish_phase(db, trip=trip, event=event, idempotency_key=payload.idempotency_key)
 
 
