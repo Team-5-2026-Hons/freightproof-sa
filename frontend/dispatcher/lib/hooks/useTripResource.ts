@@ -11,6 +11,17 @@ const LIVE_REFRESH_DELAY_MS = 200
 // through a long trip list cannot grow the cache without bound.
 const MAX_IDLE_ENTRIES = 30
 
+// A refusal is not a failure to fetch, and the two must not be handled alike.
+//
+// Holding the last successful copy behind an error is right for a timeout or a 500: the
+// record is still this dispatcher's and still true, and blanking an evidence page over a
+// flaky network would be the worse outcome. It is wrong for these three. 401 and 403 mean
+// the server has said this record may not be shown to whoever is asking, and 404 is how
+// this backend answers for a trip belonging to another organisation — deliberately, so
+// the response does not leak that it exists. Answering any of them by leaving the record
+// on screen is the client overruling the server on access.
+const WITHDRAWN_STATUSES: readonly number[] = [401, 403, 404]
+
 export interface TripResourceState<T> {
   data: T
   /** No data yet and a request is running — the only state that may blank the view. */
@@ -32,6 +43,9 @@ type Snapshot<T> = Omit<TripResourceState<T>, 'refetch' | 'refetchSilent'>
 interface Entry<T> {
   /** Replaced wholesale on every change: useSyncExternalStore compares by identity. */
   snapshot: Snapshot<T>
+  /** The empty value for this key, kept so a withdrawn record can be reset to pristine
+   *  rather than merely blanked — `load` has no other way to reach it. */
+  initial: T
   listeners: Set<() => void>
   inflight: Promise<void> | null
   /** Last issued request number, and the newest one already applied. */
@@ -86,6 +100,7 @@ function getEntry<T>(key: string, initial: T): Entry<T> {
   if (existing) return existing
   const entry: Entry<T> = {
     snapshot: { data: initial, isLoading: true, isValidating: false, error: null, errorStatus: null, lastUpdated: null },
+    initial,
     listeners: new Set(), inflight: null, issued: 0, applied: 0, debounce: null,
   }
   cache.set(key, entry as Entry<unknown>)
@@ -145,11 +160,19 @@ function load<T>(key: string, entry: Entry<T>, force: boolean): Promise<void> {
     // Promise wrapping also handles a synchronous client failure without leaving a spinner.
     void Promise.resolve().then(() => api.get<T>(key)).then(
       result => settle({ data: result, isLoading: false, error: null, errorStatus: null, lastUpdated: Date.now() }),
-      (err: unknown) => settle({
-        isLoading: false,
-        error: err instanceof Error ? err.message : 'An unexpected error occurred',
-        errorStatus: err instanceof ApiError ? err.status : null,
-      }),
+      (err: unknown) => {
+        const status = err instanceof ApiError ? err.status : null
+        const withdrawn = status !== null && WITHDRAWN_STATUSES.includes(status)
+        settle({
+          isLoading: false,
+          error: err instanceof Error ? err.message : 'An unexpected error occurred',
+          errorStatus: status,
+          // Back to pristine, not merely blank: lastUpdated is what tells the next mount
+          // whether it has anything to show behind a revalidation, so leaving it set
+          // would suppress the loading state over a record that is no longer there.
+          ...(withdrawn ? { data: entry.initial, lastUpdated: null } : {}),
+        })
+      },
     )
   }).finally(() => {
     if (entry.inflight === request) entry.inflight = null

@@ -165,3 +165,56 @@ describe('forgetting the signed-in dispatcher\'s records', () => {
     expect(second.result.current).toMatchObject({ manifest: null, isLoading: true })
   })
 })
+
+describe('a record the server refuses to serve', () => {
+  it.each([401, 403, 404])('drops what it held when the server answers %s', async status => {
+    const trip = { id: 'trip-a', trip_reference: 'FP-A' }
+    vi.mocked(api.get).mockResolvedValueOnce(trip)
+    const { result } = renderHook(() => useTripDetail('a'))
+    await flush()
+    expect(result.current.trip).toEqual(trip)
+
+    vi.mocked(api.get).mockRejectedValue(new ApiError(status, 'Refused'))
+    act(() => result.current.refetch())
+    await flush()
+
+    // Answering a refusal by leaving the record on screen is the client overruling the
+    // server on access. 404 counts: it is how this backend replies for another
+    // organisation's trip, so that the response does not leak that it exists.
+    expect(result.current.trip).toBeNull()
+    expect(result.current.errorStatus).toBe(status)
+  })
+
+  it('leaves nothing behind for the next mount to show', async () => {
+    vi.mocked(api.get).mockResolvedValueOnce({ id: 'trip-a' })
+    const first = renderHook(() => useTripDetail('a'))
+    await flush()
+    vi.mocked(api.get).mockRejectedValue(new ApiError(403, 'Refused'))
+    act(() => first.result.current.refetch())
+    await flush()
+    first.unmount()
+
+    vi.mocked(api.get).mockReturnValue(new Promise(() => {}) as never)
+    const second = renderHook(() => useTripDetail('a'))
+
+    // lastUpdated had to be cleared alongside the data: it is what decides whether a
+    // mount shows a loading state or renders behind a silent revalidation.
+    expect(second.result.current).toMatchObject({ trip: null, isLoading: true })
+  })
+
+  it('still keeps the record through a failure that is not a refusal', async () => {
+    const trip = { id: 'trip-a', trip_reference: 'FP-A' }
+    vi.mocked(api.get).mockResolvedValueOnce(trip)
+    const { result } = renderHook(() => useTripDetail('a'))
+    await flush()
+
+    vi.mocked(api.get).mockRejectedValue(new ApiError(500, 'Unavailable'))
+    act(() => result.current.refetch())
+    await flush()
+
+    // A 500 or a timeout means the fetch failed, not that the record stopped being this
+    // dispatcher's. Blanking an evidence page over a flaky network is the worse outcome.
+    expect(result.current.trip).toEqual(trip)
+    expect(result.current.errorStatus).toBe(500)
+  })
+})

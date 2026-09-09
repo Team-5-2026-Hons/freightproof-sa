@@ -19,6 +19,11 @@ describe('safeReturnTo', () => {
     ['a backslash pair', '/\\\\example.com/phish'],
     ['a tab smuggled between the slashes', '/\t/example.com/phish'],
     ['a newline smuggled between the slashes', '/\n/example.com/phish'],
+    // Climbing above root leaves a pathname of "//host". The input resolves on-origin,
+    // so only checking what is RETURNED rejects these.
+    ['a parent segment that climbs above root', '/a/..//example.com'],
+    ['a bare climb above root', '/..//example.com'],
+    ['a climb above root carrying a path and query', '/a/b/../..//evil.com/x?q=1'],
     ['a relative path that could resolve anywhere', 'trips/abc'],
     ['an empty value', ''],
     ['a missing parameter', null],
@@ -27,11 +32,28 @@ describe('safeReturnTo', () => {
     expect(safeReturnTo(value, '/fallback')).toBe('/fallback')
   })
 
-  it('never returns a value that resolves off-origin', () => {
-    for (const [, value] of rejected) {
+  // The property the two origin checks exist to hold. Deliberately spans ACCEPTED inputs
+  // as well as rejected ones: an earlier version of this test looped over the rejected
+  // list alone, so every case returned the fallback and it could not fail — which is how
+  // the climb-above-root family got through in the first place.
+  it('never returns a value that resolves off-origin, whatever it accepts', () => {
+    const everyInput: readonly (string | null)[] = [
+      ...rejected.map(([, value]) => value),
+      '/trips/abc?panel=information',
+      '/trips/abc?panel=manifest#phase-2',
+      '/a/..//example.com',
+      '/a/../trips/abc',
+      '/',
+    ]
+
+    for (const value of everyInput) {
       const result = safeReturnTo(value, '/fallback')
       expect(new URL(result, 'https://dispatcher.test').origin).toBe('https://dispatcher.test')
     }
+  })
+
+  it('still honours a legitimate parent segment that stays on the origin', () => {
+    expect(safeReturnTo('/a/../trips/abc', '/fallback')).toBe('/trips/abc')
   })
 })
 

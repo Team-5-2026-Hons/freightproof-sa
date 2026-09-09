@@ -32,19 +32,28 @@ const PROBE_ORIGIN = 'https://freightproof.invalid'
  * tabs and newlines ("/\t/evil.com") are stripped to the same effect.
  */
 export function safeReturnTo(value: string | null | undefined, fallback: string): string {
-  // Still required alongside the origin check below: it is what rejects an absolute URL
+  // Still required alongside the origin checks below: it is what rejects an absolute URL
   // outright, so this only ever honours a path, never a rewritten same-origin href.
   if (!value || !value.startsWith('/')) return fallback
-  let resolved: URL
   try {
-    resolved = new URL(value, PROBE_ORIGIN)
+    const resolved = new URL(value, PROBE_ORIGIN)
+    if (resolved.origin !== PROBE_ORIGIN) return fallback
+
+    // The parser's own normalisation, never the raw input — the router must be handed
+    // exactly the string that was validated, not one that can still be re-read
+    // differently.
+    const path = `${resolved.pathname}${resolved.search}${resolved.hash}`
+
+    // Then validate what is RETURNED, because normalising can MANUFACTURE a
+    // protocol-relative value the input never contained: "/a/..//evil.com" climbs above
+    // root, leaving a pathname of "//evil.com". As input that resolved on-origin and
+    // passed the check above; as output it leaves the origin. Checking the input alone
+    // reopened exactly the "//host" case the prefix test this replaced used to reject.
+    if (new URL(path, PROBE_ORIGIN).origin !== PROBE_ORIGIN) return fallback
+    return path
   } catch {
     return fallback
   }
-  if (resolved.origin !== PROBE_ORIGIN) return fallback
-  // The parser's own normalisation, never the raw input — the router must be handed
-  // exactly the string that was validated, not one that can still be re-read differently.
-  return `${resolved.pathname}${resolved.search}${resolved.hash}`
 }
 
 /** Append a return path to a destination, preserving any query it already carries. */
