@@ -1,0 +1,130 @@
+'use client'
+
+import { useState } from 'react'
+import type { Precinct } from '@shared/lib/types/precinct'
+import type { Driver } from '@shared/lib/types/driver'
+import { Chip } from '@/components/ui/Chip'
+import { Button } from '@/components/ui/Button'
+import { Skeleton } from '@/components/ui/Skeleton'
+import { Ic } from '@/components/ui/Ic'
+import { ForensicControls } from '@/components/blockchain/ForensicControls'
+import { DriverModal } from './DriverModal'
+import { RecordLink, RECORD_AFFORDANCE } from '@/components/ui/RecordLink'
+import { precinctLabel, type HeaderFact, type TripHeaderFacts, type TripVehicles, type VehicleRef } from '@/lib/phase/trip-detail'
+import { tripChipMeta } from '@/lib/phase/derive'
+import { ROUTES } from '@/lib/constants/routes'
+import { withReturnTo } from '@/lib/navigation/returnTo'
+
+export type TripPanel = 'information' | 'manifest' | 'exceptions'
+interface Props {
+  facts: TripHeaderFacts
+  precincts: Precinct[]
+  /** Absent until the record loads: a list row knows the name and nothing else. */
+  driver: Driver | null
+  /** This trip's own URL, handed to the fleet pages so their Back returns here. */
+  returnTo: string
+  onBack: () => void
+  onPanel: (panel: TripPanel) => void
+}
+
+export function TripSummary({ facts, precincts, driver, returnTo, onBack, onPanel }: Props) {
+  const [driverOpen, setDriverOpen] = useState(false)
+  const status = tripChipMeta(facts.status, facts.currentPhase)
+  const route = `${precinctLabel(precincts.find(p => p.id === facts.originPrecinctId))} → ${precinctLabel(precincts.find(p => p.id === facts.destinationPrecinctId))}`
+
+  return (
+    <header className="shrink-0 border-b border-outline-v/30 bg-surf-lowest px-4 py-4 md:px-6">
+      <div className="flex flex-wrap items-start gap-3">
+        <Button variant="secondary" size="sm" onClick={onBack}>Back</Button>
+        <div className="min-w-0 flex-1 basis-48">
+          <h1 className="break-words text-lg font-extrabold leading-tight text-on-surf">{facts.reference}</h1>
+          <p className="mt-1 text-xs text-on-surf-v">Order {facts.orderNumber}</p>
+          {/* Not blue: the design system reserves --sec for links, actions and
+              identifiers (trip ids, timestamps). A route is a description of two places,
+              so colouring it like a link invited clicks it never answered. */}
+          <p className="mt-1 text-sm font-semibold text-on-surf">{route}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Chip type={status.chipType} label={status.label} />
+          <ForensicControls />
+        </div>
+      </div>
+      <div className="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+        <SummaryCell label="Driver">
+          {driver
+            ? <>
+                <button type="button" onClick={() => setDriverOpen(true)} className={RECORD_AFFORDANCE}>
+                  {facts.driverName}<Ic n="chev" s={12} aria-hidden />
+                </button>
+                {/* Always visible: reaching the driver is the most common reason to open
+                    this modal, so the number should not need a click of its own. */}
+                <a href={`tel:${driver.phone_number}`} className="block text-xs tabular-nums text-on-surf-v hover:text-on-surf">{driver.phone_number}</a>
+              </>
+            : <p className="mt-1 break-words font-semibold text-on-surf">{facts.driverName}</p>}
+        </SummaryCell>
+        <SummaryCell label="Vehicle">
+          {facts.vehicle
+            ? <VehicleLines vehicles={facts.vehicle} returnTo={returnTo} />
+            : <Skeleton className="mt-1 h-4 w-40 max-w-full rounded-md" />}
+        </SummaryCell>
+        <SummaryFact fact={facts.schedule} pendingLabel="Schedule" />
+        <SummaryFact fact={facts.cargo} pendingLabel="Cargo" />
+      </div>
+      <nav aria-label="Trip sections" className="mt-4 flex flex-wrap gap-2">
+        {/* Panel triggers only exist below the dock width. Once the panel is permanent it
+            owns its own switcher, and duplicating it here would give the same three views
+            two competing controls. */}
+        <span className="contents xl:hidden">
+          <Button variant="secondary" size="sm" onClick={() => onPanel('information')}>Trip information</Button>
+          <Button variant="secondary" size="sm" onClick={() => onPanel('manifest')}>Manifest</Button>
+          <Button variant={facts.needsReviewCount ? 'primary' : 'secondary'} size="sm" onClick={() => onPanel('exceptions')}>
+            {facts.exceptionsTotal === null
+              ? `${facts.needsReviewCount} need review`
+              : `${facts.exceptionsTotal} exceptions · ${facts.needsReviewCount} need review`}
+          </Button>
+        </span>
+      </nav>
+      {driver && <DriverModal driver={driver} open={driverOpen} onClose={() => setDriverOpen(false)} />}
+    </header>
+  )
+}
+
+function SummaryCell({ label, children }: { label: string; children: React.ReactNode }) {
+  return <div className="min-w-0 border-l-2 border-outline-v/30 pl-3"><p className="text-xs text-on-surf-v">{label}</p>{children}</div>
+}
+
+/** Registrations alone do not say which is the truck and which is towed. */
+function VehicleLines({ vehicles, returnTo }: { vehicles: TripVehicles; returnTo: string }) {
+  return <>
+    <VehicleLine role="Horse" vehicle={vehicles.horse} returnTo={returnTo} strong />
+    {vehicles.trailers === null
+      ? <Skeleton className="mt-1 h-3 w-24 max-w-full rounded-md" />
+      : vehicles.trailers.length === 0
+        ? <p className="mt-0.5 text-xs text-on-surf-v">No trailers</p>
+        : vehicles.trailers.map(trailer => <VehicleLine key={trailer.registration} role="Trailer" vehicle={trailer} returnTo={returnTo} />)}
+  </>
+}
+
+function VehicleLine({ role, vehicle, returnTo, strong = false }: { role: string; vehicle: VehicleRef; returnTo: string; strong?: boolean }) {
+  const size = strong ? 'text-sm' : 'text-xs'
+  // Linkable only once the trip record has loaded: a list row carries the registration
+  // but not the fleet id, and a link that cannot resolve is worse than plain text.
+  return <p className="flex flex-wrap items-center gap-x-1 break-words">
+    <span className={`${size} text-on-surf-v`}>{role}</span>
+    {vehicle.id
+      ? <RecordLink href={withReturnTo(ROUTES.fleetVehicleDetail(vehicle.id), returnTo)} className={`${size} tabular-nums`}>{vehicle.registration}</RecordLink>
+      : <span className={`${size} tabular-nums font-semibold text-on-surf`}>{vehicle.registration}</span>}
+  </p>
+}
+
+/** A null fact is one the record has not delivered yet — shown as loading, never as an
+ *  em-dash, which on this page would assert that nothing was recorded. */
+function SummaryFact({ fact, pendingLabel }: { fact: HeaderFact | null; pendingLabel: string }) {
+  if (!fact) return <SummaryCell label={pendingLabel}><Skeleton className="mt-1 h-4 w-40 max-w-full rounded-md" /></SummaryCell>
+  return (
+    <SummaryCell label={fact.label}>
+      <p className="mt-1 break-words font-semibold text-on-surf">{fact.value}</p>
+      {fact.note && <p className="mt-0.5 text-xs text-on-surf-v">{fact.note}</p>}
+    </SummaryCell>
+  )
+}

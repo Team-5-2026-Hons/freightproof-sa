@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Ic } from '@/components/ui/Ic'
 import { TextArea } from '@/components/ui/TextArea'
@@ -42,7 +43,7 @@ export function CancelTripAction({ tripId, status, onCancelled }: Props) {
   }
 
   async function submit() {
-    if (!note.trim()) return
+    if (submitting || !note.trim()) return
     setSubmitting(true)
     try {
       await cancelTrip(tripId, note.trim())
@@ -71,21 +72,12 @@ export function CancelTripAction({ tripId, status, onCancelled }: Props) {
         Cancel trip
       </Button>
 
-      {open && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-          onClick={close}
-        >
-          <div
-            className="w-full max-w-[440px] rounded-xl bg-surf-lowest shadow-xl p-6"
-            onClick={e => e.stopPropagation()}
-          >
+      <Modal open={open} onClose={close} closeDisabled={submitting} title={'Cancel this trip?'}>
             <div className="flex items-start gap-3 mb-4">
               <div className="mt-[2px] shrink-0 rounded-full bg-err-c p-[6px]">
                 <Ic n="warn" s={16} className="text-err" />
               </div>
               <div>
-                <div className="text-[16px] font-[700] text-on-surf">Cancel this trip?</div>
                 <div className="text-[13px] text-on-surf-v mt-[4px] leading-relaxed">
                   This trip will be cancelled, never deleted — every phase and every piece
                   of evidence already recorded stays exactly as it is on the trip&apos;s
@@ -117,9 +109,7 @@ export function CancelTripAction({ tripId, status, onCancelled }: Props) {
                 Keep trip active
               </Button>
             </div>
-          </div>
-        </div>
-      )}
+      </Modal>
     </>
   )
 }

@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { MapPinOff } from 'lucide-react'
 
 import { TopBar } from '@/components/ui/TopBar'
@@ -17,6 +17,7 @@ import { EventTimeline } from '@/components/blockchain/EventTimeline'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { usePrecinctDetail } from '@/lib/hooks/usePrecinctDetail'
 import { ROUTES } from '@/lib/constants/routes'
+import { RETURN_TO_PARAM, safeReturnTo } from '@/lib/navigation/returnTo'
 
 // 5 dp ≈ 1 m. Coordinates are identifiers here, not measurements — they are read to be
 // compared against a maps app, so they render at a fixed precision.
@@ -25,6 +26,10 @@ const COORDINATE_PRECISION = 5
 export default function PrecinctDetailPage(): React.JSX.Element {
   const router = useRouter()
   const params = useParams<{ id: string }>()
+  const search = useSearchParams()
+  // A precinct is reached from its list or from a trip stop that names it. Back means
+  // "where I came from", which only the caller can say.
+  const backTo = safeReturnTo(search.get(RETURN_TO_PARAM), ROUTES.precincts)
   const { precinct, isLoading, error, refetch } = usePrecinctDetail(params.id)
   const { user } = useAuth()
 
@@ -35,7 +40,7 @@ export default function PrecinctDetailPage(): React.JSX.Element {
     <Button
       variant="secondary"
       size="sm"
-      onClick={() => router.push(ROUTES.precincts)}
+      onClick={() => router.push(backTo)}
       iconLeft={<Ic n="back" s={14} className="text-on-surf" />}
     >
       Back

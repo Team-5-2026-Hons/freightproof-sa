@@ -93,9 +93,10 @@ describe('UnloadingDetail', () => {
     expect(screen.queryByText(/scan in progress/i)).not.toBeInTheDocument()
   })
 
-  it('leaves the seal verdict untouched — derived from phase.status, not recomputed', () => {
+  it('uses recorded seal exception severity instead of guessing from phase status', () => {
     render(
       <UnloadingDetail
+        sealException={{ exception_type: 'seal_mismatch', severity: 'critical' }}
         phase={{ ...makePhase('unloading'), status: 'exception', seal_number: 'SEAL-A' }}
         allPhases={[{ ...makePhase('departure'), sequence_number: 0, seal_number: 'SEAL-A', status: 'completed' }]}
         artifactsById={NO_ARTIFACTS}
@@ -106,4 +107,13 @@ describe('UnloadingDetail', () => {
 
     expect(screen.getByText(/mismatch — recorded as a critical exception/i)).toBeInTheDocument()
   })
+})
+
+it('does not turn a missing departure seal into a critical mismatch', () => {
+  render(<UnloadingDetail phase={makePhase('unloading', { status: 'exception', seal_number: 'A' })}
+    allPhases={[]} artifactsById={NO_ARTIFACTS} scannedInCount={4} expectedAtStopCount={3}
+    sealException={{ exception_type: 'seal_unverified', severity: 'warning' }} />)
+  expect(screen.getByText('Seal continuity unverified')).toBeInTheDocument()
+  expect(screen.getByText('1 excess scanned')).toBeInTheDocument()
+  expect(screen.queryByText(/critical exception/i)).not.toBeInTheDocument()
 })

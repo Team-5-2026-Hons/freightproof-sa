@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { TopBar }     from '@/components/ui/TopBar'
 import { SecHead }    from '@/components/ui/SecHead'
 import { Chip }       from '@/components/ui/Chip'
@@ -26,6 +26,7 @@ import { EXCEPTION_SEVERITY_META, EXCEPTION_SOURCE_META, TRIP_STATUS_META } from
 import type { ChipType } from '@shared/lib/constants/status-meta'
 import { COPY }   from '@shared/lib/constants/copy'
 import { ROUTES } from '@/lib/constants/routes'
+import { RETURN_TO_PARAM, safeReturnTo } from '@/lib/navigation/returnTo'
 import { fmtDateTime } from '@shared/lib/utils/datetime'
 
 // Labels for the 5 real, submittable review outcomes — mirrors the old resolve-flow
@@ -108,6 +109,11 @@ function tripLifecycleNotice(status: TripStatus): string | null {
 export default function ExceptionDetailPage() {
   const params = useParams()
   const router = useRouter()
+  const search = useSearchParams()
+  // An exception is opened from its own list or from the trip whose timeline records it.
+  // ExceptionSummary has always appended this parameter; nothing read it until now, so
+  // reviewing an exception reached from a trip still ejected the reader to the list.
+  const backTo = safeReturnTo(search.get(RETURN_TO_PARAM), ROUTES.exceptions)
   const { notify } = useToast()
 
   const exceptionId = params.id as string
@@ -155,7 +161,7 @@ export default function ExceptionDetailPage() {
             variant="secondary"
             size="sm"
             iconLeft={<Ic n="back" s={14} className="text-on-surf" />}
-            onClick={() => router.back()}
+            onClick={() => router.push(backTo)}
           >
             Back
           </Button>
@@ -201,9 +207,11 @@ export default function ExceptionDetailPage() {
       })
       notify({ kind: 'success', title: COPY.toast.exceptionReviewed })
       // No refetch before navigating: this hook instance dies with the page, and
-      // useAsyncData's mountedRef discards a result that lands after unmount. The list
-      // mounts its own hook and fetches on mount, so it is already current on arrival.
-      router.push(ROUTES.exceptions)
+      // useAsyncData's mountedRef discards a result that lands after unmount. Whichever
+      // screen receives us mounts its own hook and fetches on mount — the trip detail
+      // page may paint a cached copy first, but it always revalidates, so a review made
+      // here cannot leave a stale review status on screen.
+      router.push(backTo)
     } catch (err) {
       // Surfaced, never swallowed — the old resolve flow's bug was a fake unconditional
       // success toast that reported reviews which had never been recorded.
@@ -232,7 +240,7 @@ export default function ExceptionDetailPage() {
           variant="secondary"
           size="sm"
           iconLeft={<Ic n="back" s={14} className="text-on-surf" />}
-          onClick={() => router.back()}
+          onClick={() => router.push(backTo)}
         >
           Back
         </Button>

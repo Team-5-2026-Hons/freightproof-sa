@@ -13,6 +13,7 @@ import { Pagination }       from '@/components/ui/Pagination'
 import { ChecklistRow }     from '@/components/domain/ChecklistRow'
 import type { ColWidths }   from '@/components/domain/ChecklistRow'
 import { useTripHistory }   from '@/lib/hooks/useTripHistory'
+import { putTripSeeds }     from '@/lib/trips/tripSeed'
 import { usePrecincts }     from '@/lib/hooks/usePrecincts'
 import { useToast }         from '@/lib/hooks/useToast'
 import { COPY }             from '@shared/lib/constants/copy'
@@ -82,6 +83,8 @@ export default function HistoryPage() {
     toDate: dateRange.to,
   }), [search, precinctId, dateRange])
   const history = useTripHistory(historyFilters)
+  // Same as the active list: a history row carries enough to name the trip on arrival.
+  useEffect(() => { putTripSeeds(history.items) }, [history.items])
   const { precincts, error: precinctsError } = usePrecincts()
 
   useEffect(() => {

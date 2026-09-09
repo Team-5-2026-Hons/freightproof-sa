@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { TopBar }    from '@/components/ui/TopBar'
 import { Chip }      from '@/components/ui/Chip'
 import { Spinner }   from '@/components/ui/Spinner'
@@ -22,6 +22,7 @@ import {
 } from '@/lib/hooks/useResizablePanel'
 import { api } from '@/lib/api/client'
 import { ROUTES } from '@/lib/constants/routes'
+import { RETURN_TO_PARAM, safeReturnTo } from '@/lib/navigation/returnTo'
 import { validateVehicleForm, vinFieldFeedback, VEHICLE_FIELD_ORDER, type VehicleField } from '@shared/lib/validation/vehicle'
 import { VIN_LENGTH } from '@shared/lib/validation/constants'
 import { AdminOnly } from '@/components/auth/AdminOnly'
@@ -42,6 +43,10 @@ type EditState = {
 export default function VehicleDetailPage() {
   const router = useRouter()
   const params = useParams<{ id: string }>()
+  const search = useSearchParams()
+  // A vehicle is reached from its list, a search, or the trip that is using it. Back
+  // means "where I came from", which only the caller can say.
+  const backTo = safeReturnTo(search.get(RETURN_TO_PARAM), ROUTES.fleetVehicles)
   const { data: vehicle, isLoading, error, refetchSilent } = useVehicleDetail(params.id)
 
   const [isEditing, setIsEditing] = useState(false)
@@ -58,7 +63,7 @@ export default function VehicleDetailPage() {
     <Button
       variant="secondary"
       size="sm"
-      onClick={() => router.push(ROUTES.fleetVehicles)}
+      onClick={() => router.push(backTo)}
       iconLeft={<Ic n="back" s={14} className="text-on-surf" />}
     >
       Back

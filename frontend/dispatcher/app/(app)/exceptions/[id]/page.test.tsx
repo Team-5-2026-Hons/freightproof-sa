@@ -26,9 +26,11 @@ vi.mock('@/lib/hooks/useAuth', () => ({
 
 const push = vi.fn()
 const back = vi.fn()
+let searchParams = new URLSearchParams()
 vi.mock('next/navigation', () => ({
   useParams: () => ({ id: '11111111-1111-1111-1111-111111111111' }),
   useRouter: () => ({ push, back }),
+  useSearchParams: () => searchParams,
 }))
 
 vi.mock('@/lib/hooks/useExceptionDetail', () => ({
@@ -167,6 +169,7 @@ function fillValidForm() {
 
 beforeEach(() => {
   push.mockReset()
+  searchParams = new URLSearchParams()
   back.mockReset()
   refetch.mockReset()
   refetchSilent.mockReset()
@@ -380,6 +383,32 @@ describe('Exception detail — submit outcomes', () => {
 
     await waitFor(() => expect(push).toHaveBeenCalledWith('/exceptions'))
     expect(screen.getByText('Exception reviewed.')).toBeInTheDocument()
+  })
+
+  it('on success from a trip, returns to that trip rather than the exceptions list', async () => {
+    // The reader came from a trip timeline. Ejecting them to the list after a review
+    // loses the record they were working through.
+    searchParams = new URLSearchParams({ returnTo: '/trips/abc?panel=exceptions' })
+    mockDetail(baseException())
+    renderPage()
+
+    fillValidForm()
+    fireEvent.click(submitButton())
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/trips/abc?panel=exceptions'))
+  })
+
+  it('ignores a return path that would leave the app', async () => {
+    // The parameter is attacker-controllable via the address bar, so an off-origin value
+    // must never become a redirect the app performs on the reader's behalf.
+    searchParams = new URLSearchParams({ returnTo: 'https://example.com/phish' })
+    mockDetail(baseException())
+    renderPage()
+
+    fillValidForm()
+    fireEvent.click(submitButton())
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/exceptions'))
   })
 
   it('on a 409, does not navigate away, shows colleague-conflict messaging, and refetches silently', async () => {

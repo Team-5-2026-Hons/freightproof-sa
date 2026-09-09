@@ -13,6 +13,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { api } from '@/lib/api/client'
 import { supabase } from '@/lib/supabase/client'
 import type { DispatcherUser } from '@/lib/types/user'
+import { clearSessionCaches } from '@/lib/cache/sessionCache'
 
 vi.mock('@/lib/api/client', () => ({ api: { get: vi.fn() } }))
 vi.mock('@/lib/supabase/client', () => ({
@@ -31,10 +32,12 @@ vi.mock('@/lib/supabase/client', () => ({
 // The idle timer is wiring around real timers and a BroadcastChannel; none of it is what
 // these tests are about, and leaving it live only adds a source of open handles.
 vi.mock('@/lib/hooks/useIdleTimeout', () => ({ useIdleTimeout: vi.fn() }))
+vi.mock('@/lib/cache/sessionCache', () => ({ clearSessionCaches: vi.fn(), registerSessionCache: vi.fn(() => () => {}) }))
 
 const { AuthProvider, ProfileUnavailableError } = await import('./AuthContext')
 const { useAuth } = await import('@/lib/hooks/useAuth')
 
+const mockedClearCaches = vi.mocked(clearSessionCaches)
 const mockedGet = vi.mocked(api.get)
 const mockedSignIn = vi.mocked(supabase.auth.signInWithPassword)
 
@@ -196,5 +199,63 @@ describe('profile fetching', () => {
 
     expect(mockedGet).toHaveBeenCalledTimes(1)
     expect(result.current.user).toEqual(PROFILE)
+  })
+})
+
+/**
+ * Trip records are cached at module scope and this app never reloads the page, so nothing
+ * in the browser discards them when the signed-in dispatcher changes. See
+ * lib/cache/sessionCache.ts for what that would otherwise leave on screen.
+ */
+describe('AuthContext cache scoping', () => {
+  it('forgets the previous dispatcher\'s records on sign-out', async () => {
+    mockedGet.mockResolvedValue(PROFILE)
+    const listener = captureAuthListener()
+    const { result } = renderAuth()
+
+    // Signing in is itself a change of identity, so a session always starts from an
+    // empty cache — that first call is the baseline the sign-out is measured against.
+    await act(async () => { await result.current.signIn({ email: PROFILE.email, password: 'pw' }) })
+    expect(mockedClearCaches).toHaveBeenCalledTimes(1)
+
+    act(() => { listener.current?.('SIGNED_OUT', null) })
+
+    expect(mockedClearCaches).toHaveBeenCalledTimes(2)
+  })
+
+  it('forgets them when one identity replaces another without passing through null', async () => {
+    const other: DispatcherUser = { ...PROFILE, id: 'f0a1b2c3-0000-4000-8000-000000000009' as DispatcherUser['id'], email: 'other@linbroexpress.co.za' }
+    mockedGet.mockResolvedValue(PROFILE)
+    const listener = captureAuthListener()
+    const { result } = renderAuth()
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    // A sign-in raised from another tab, which is the case that never passes through a
+    // signed-out state: the provider keeps rendering while the identity behind it swaps.
+    act(() => { listener.current?.('SIGNED_IN', { access_token: 'tok' }) })
+    await flushDeferrals()
+    expect(mockedClearCaches).toHaveBeenCalledTimes(1)
+
+    mockedGet.mockResolvedValue(other)
+    act(() => { listener.current?.('SIGNED_IN', { access_token: 'tok2' }) })
+    await flushDeferrals()
+
+    expect(result.current.user).toEqual(other)
+    expect(mockedClearCaches).toHaveBeenCalledTimes(2)
+  })
+
+  it('leaves the caches alone while the same dispatcher stays signed in', async () => {
+    mockedGet.mockResolvedValue(PROFILE)
+    const listener = captureAuthListener()
+    const { result } = renderAuth()
+    await act(async () => { await result.current.signIn({ email: PROFILE.email, password: 'pw' }) })
+
+    // A token refresh is the same session; clearing here would throw away a live page's
+    // records for nothing, on a timer the dispatcher never sees.
+    mockedClearCaches.mockClear()
+    act(() => { listener.current?.('TOKEN_REFRESHED', { access_token: 'tok2' }) })
+    await flushDeferrals()
+
+    expect(mockedClearCaches).not.toHaveBeenCalled()
   })
 })

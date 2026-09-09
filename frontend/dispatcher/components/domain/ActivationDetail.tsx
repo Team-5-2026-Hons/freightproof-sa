@@ -10,6 +10,9 @@ import type { Precinct } from '@shared/lib/types/precinct'
 import type { Trip } from '@shared/lib/types/trip'
 
 interface Props {
+  artifactLoading?: boolean
+  artifactError?: string | null
+  onRetryArtifacts?: () => void
   phase: PhaseDescriptor
   trip: Trip
   // The precinct this phase is anchored to, resolved by the page from phase.stop_sequence.

@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase/client'
 import { api } from '@/lib/api/client'
 import { useIdleTimeout } from '@/lib/hooks/useIdleTimeout'
 import { clearActivity, recordActivity } from '@shared/lib/session/idle'
+import { clearSessionCaches } from '@/lib/cache/sessionCache'
 
 export const AuthContext = createContext<AuthState | null>(null)
 
@@ -34,6 +35,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // for the same login. Read by whichever runs first: Supabase may raise SIGNED_IN during
   // signInWithPassword or shortly after it resolves, and both orderings are handled.
   const signInWillLoadProfile = useRef(false)
+  // Which identity the client-side caches currently hold records for. Starts at null
+  // because that is what an unauthenticated tab holds, and a sign-in is then a change
+  // like any other — deliberately, so a session always begins from an empty cache
+  // however the previous one ended, including paths that never raise SIGNED_OUT.
+  const cachedIdentity = useRef<string | null>(null)
 
   const fetchProfile = useCallback(async (): Promise<DispatcherUser | null> => {
     try {
@@ -140,6 +146,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     clearActivity(window.localStorage)
     setUser(null)
   }, [])
+
+  // Cached trip records belong to the dispatcher who was entitled to read them, and this
+  // app never reloads the page: signing out is a state change, so module-scope caches
+  // survive it and would answer the next dispatcher's first render from the previous
+  // one's records. Keyed on the change rather than on sign-out alone, because a session
+  // can also be replaced without ever passing through null (another tab signing in).
+  useEffect(() => {
+    const identity = user?.id ?? null
+    if (cachedIdentity.current === identity) return
+    cachedIdentity.current = identity
+    clearSessionCaches()
+  }, [user?.id])
 
   // The inactivity timeout. Armed only while signed in, so the login page carries no
   // timer. Signing out here is the same path as the button — the SIGNED_OUT event it

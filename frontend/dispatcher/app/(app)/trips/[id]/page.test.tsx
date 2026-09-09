@@ -13,6 +13,7 @@ const notify = vi.fn()
 vi.mock('next/navigation', () => ({
   useParams: () => ({ id: TRIP_0040_ID }),
   useRouter: () => ({ push }),
+  useSearchParams: () => new URLSearchParams(),
 }))
 
 vi.mock('@/lib/supabase/client', () => ({
@@ -33,6 +34,7 @@ vi.mock('@/lib/hooks/useTripArtifacts', () => ({
     artifacts: [],
     byId: new Map(),
     isLoading: false,
+    isValidating: false,
     error: null,
     refetch: vi.fn(),
   }),
@@ -99,15 +101,38 @@ function tripWithLoadingExceptionsOutOfOrder(): Trip {
   }
 }
 
+/** A trip stopped mid-drive: departure done, in_transit the lowest unresolved row. */
+function tripDriving(): Trip {
+  const trip = mockTrips.find(candidate => candidate.id === TRIP_0040_ID)
+  if (!trip) throw new Error('TRIP_0040 fixture is missing')
+
+  const ordered = [...trip.phases].sort((a, b) => a.sequence_number - b.sequence_number)
+  const transit = ordered.find(phase => phase.phase_type === 'in_transit')
+  if (!transit) throw new Error('TRIP_0040 in_transit phase is missing')
+
+  return {
+    ...trip,
+    status: 'active',
+    exceptions: [],
+    phases: ordered.map(phase =>
+      phase.sequence_number < transit.sequence_number
+        ? { ...phase, status: 'completed' as const }
+        : { ...phase, status: 'pending' as const, completed_at: null }),
+  }
+}
+
 beforeEach(() => {
   push.mockReset()
   notify.mockReset()
   mockedUseTripDetail.mockReturnValue({
     trip: tripWithLoadingExceptionsOutOfOrder(),
     isLoading: false,
+    isValidating: false,
     error: null,
     refetch: vi.fn(),
     refetchSilent: vi.fn(),
+    errorStatus: null,
+    lastUpdated: Date.now(),
   })
 })
 
@@ -144,63 +169,47 @@ describe('Trip detail phase timeline', () => {
   })
 })
 
-describe('Trip detail header summary', () => {
-  it('keeps the important trip summary visible and reveals the overview on hover', () => {
-    vi.useFakeTimers()
-
-    try {
-      render(<TripDetailPage />)
-
-      const summary = screen.getByRole('button', {
-        name: 'Show trip overview for TRP-2026-0040',
-      })
-      expect(summary).toHaveTextContent('FX-ORD-2026-0040')
-      expect(summary).toHaveTextContent('FedEx JHB → FedEx DBN')
-      expect(summary).toHaveTextContent('Thabo Formby')
-      expect(summary).toHaveTextContent('KZN 56-78 YP')
-      expect(screen.queryByRole('region', { name: 'Trip overview' })).not.toBeInTheDocument()
-
-      fireEvent.mouseEnter(summary)
-      act(() => vi.advanceTimersByTime(150))
-
-      const overview = screen.getByRole('region', { name: 'Trip overview' })
-      expect(overview).toHaveTextContent('Linbro Park')
-      expect(overview).toHaveTextContent('Riverhorse Valley')
-      expect(overview).toHaveTextContent('+27825550002')
-      expect(overview).toHaveTextContent('0 parcels booked')
-      expect(overview).toHaveTextContent('Planned depart')
-      expect(overview).toHaveTextContent('Planned arrival')
-      expect(overview).not.toHaveTextContent('Actual depart')
-      expect(overview).not.toHaveTextContent('Actual arrival')
-      expect(overview).not.toHaveTextContent('Origin count')
-      expect(overview).not.toHaveTextContent('Seal')
-      expect(overview).not.toHaveTextContent('Blockchain')
-      expect(overview).not.toHaveTextContent('Not recorded')
-
-      fireEvent.mouseLeave(summary)
-      fireEvent.mouseEnter(overview)
-      act(() => vi.advanceTimersByTime(180))
-      expect(screen.getByRole('region', { name: 'Trip overview' })).toBeInTheDocument()
-
-      fireEvent.mouseLeave(overview)
-      act(() => vi.advanceTimersByTime(180))
-      expect(screen.queryByRole('region', { name: 'Trip overview' })).not.toBeInTheDocument()
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
-  it('opens for keyboard focus and closes with Escape', () => {
+describe('Trip detail in-transit disclosure', () => {
+  it('keeps the journey open with no toggle while the truck is driving', () => {
+    mockedUseTripDetail.mockReturnValue({
+      trip: tripDriving(), isLoading: false, isValidating: false, error: null,
+      refetch: vi.fn(), refetchSilent: vi.fn(), errorStatus: null, lastUpdated: Date.now(),
+    })
     render(<TripDetailPage />)
 
-    const summary = screen.getByRole('button', {
-      name: 'Show trip overview for TRP-2026-0040',
+    const inTransit = screen.getByRole('group', { name: /In Transit phase/i })
+
+    // No disclosure at all: the drive is the live part of the page, so there is nothing
+    // to open and therefore no chevron to suggest something is hidden.
+    expect(within(inTransit).queryByRole('button', { expanded: false })).toBeNull()
+    expect(within(inTransit).queryByRole('button', { expanded: true })).toBeNull()
+  })
+
+  it('leaves a completed phase collapsed behind its own toggle', () => {
+    mockedUseTripDetail.mockReturnValue({
+      trip: tripDriving(), isLoading: false, isValidating: false, error: null,
+      refetch: vi.fn(), refetchSilent: vi.fn(), errorStatus: null, lastUpdated: Date.now(),
     })
+    render(<TripDetailPage />)
 
-    fireEvent.focus(summary)
-    expect(screen.getByRole('region', { name: 'Trip overview' })).toBeInTheDocument()
+    const loading = screen.getByRole('group', { name: /^Loading phase$/i })
 
-    fireEvent.keyDown(summary, { key: 'Escape' })
-    expect(screen.queryByRole('region', { name: 'Trip overview' })).not.toBeInTheDocument()
+    expect(within(loading).getByRole('button', { expanded: false })).toBeInTheDocument()
+  })
+})
+
+describe('Trip detail summary and panels', () => {
+  it('keeps the route summary visible and opens the exception panel', () => {
+    render(<TripDetailPage />)
+    expect(screen.getByRole('heading', { name: 'TRP-2026-0040' })).toBeInTheDocument()
+    expect(screen.getByText('FedEx JHB → FedEx DBN')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /exceptions ·/i }))
+    expect(push).toHaveBeenCalledWith(expect.stringContaining('panel=exceptions'), { scroll: false })
+  })
+
+  it('opens the information panel with a compact trip record', () => {
+    render(<TripDetailPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'Trip information' }))
+    expect(push).toHaveBeenCalledWith(expect.stringContaining('panel=information'), { scroll: false })
   })
 })
