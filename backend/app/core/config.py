@@ -112,6 +112,16 @@ class Settings(BaseSettings):
     SCAN_FEED_USE_MOCK: bool = True
 
     # -------------------------------------------------------------------------
+    # Analytics (FP-153)
+    # -------------------------------------------------------------------------
+    # How often Celery beat rebuilds the analytics materialized views
+    # (app/tasks/analytics.py). The views count closed trips only, so they track trip
+    # closures rather than live movement; 15 minutes keeps a just-closed trip visible
+    # soon after while costing one full recompute per cycle. Lower it for a demo, but
+    # never below the time one refresh takes, or runs queue up behind each other.
+    ANALYTICS_REFRESH_INTERVAL_SECONDS: int = 900
+
+    # -------------------------------------------------------------------------
     # Runtime config
     # -------------------------------------------------------------------------
     # Used by the (upcoming) H1/H4 gate geofence check — see feature/gps-warehouse-geofencing.
