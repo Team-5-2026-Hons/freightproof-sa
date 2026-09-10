@@ -129,6 +129,22 @@ export function originScannedCount(phases: readonly PhaseDescriptor[]): number |
   return sortedPlan(phases).find(phase => phase.phase_type === 'loading')?.parcel_count_origin ?? null
 }
 
+/** The count recorded when delivery was CONFIRMED at the final stop.
+ *
+ *  Read off the confirmation row, never unloading: parcel_count_destination is written
+ *  in exactly one place, advance_confirmation (orchestration/phase_service.py), onto the
+ *  CONFIRMATION event — the same split UnloadingDetail's own scannedInCount comment
+ *  describes. Reading unloading here found a column that is always NULL, so the
+ *  destination branch of every caller was unreachable and a delivered trip went on
+ *  reporting its origin count.
+ *
+ *  The LAST confirmation, mirroring originScannedCount taking the first loading from the
+ *  other end: on a cross-dock, stop 2's confirmation is a handover, not the destination.
+ *  Null means no destination count has been recorded, never zero. */
+export function destinationScannedCount(phases: readonly PhaseDescriptor[]): number | null {
+  return sortedPlan(phases).filter(phase => phase.phase_type === 'confirmation').at(-1)?.parcel_count_destination ?? null
+}
+
 /** The seal applied at THIS unloading's own leg's departure — mirrors the backend's
  *  _find_departure_for_leg (phase_service.py): the highest-sequence departure strictly
  *  before this unloading row, never "the trip's" departure. A cross-dock trip has one

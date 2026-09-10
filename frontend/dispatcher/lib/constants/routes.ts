@@ -11,6 +11,7 @@ export const ROUTES = {
   exceptionDetail: (id: string) => `/exceptions/${id}`,
   sla:             '/sla',
   fleetVehicles:   '/fleet/vehicles',
+  fleetVehicleDetail: (id: string) => `/fleet/vehicles/${id}`,
   fleetDrivers:    '/fleet/drivers',
   precincts:       '/precincts',
   precinctDetail:  (id: string) => `/precincts/${id}`,

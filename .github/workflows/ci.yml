@@ -15,6 +15,23 @@ on:
 
 jobs:
 
+  agent-config:
+    name: Agent setup — config and hook checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Claude settings JSON
+        run: python3 -m json.tool .claude/settings.json > /dev/null
+
+      - name: Validate agent shell scripts
+        run: bash -n .claude/hooks/*.sh scripts/update-graph.sh
+
+      - name: Test edit-time lint hook
+        run: .claude/hooks/test-lint-changed.sh
+
   backend:
     name: Backend — lint, type-check, test
     runs-on: ubuntu-latest
@@ -130,6 +147,14 @@ jobs:
         working-directory: frontend/dispatcher
         run: npm test
 
+      - name: Build — Next.js production bundle
+        working-directory: frontend/dispatcher
+        env:
+          NEXT_PUBLIC_API_URL: https://api.example.invalid
+          NEXT_PUBLIC_SUPABASE_URL: https://test.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon-key
+        run: npm run build
+
       # Report-only for now — see the matching pip-audit step in the backend job for why.
       - name: Dependency vulnerability scan — npm audit (report only)
         working-directory: frontend/dispatcher
@@ -171,6 +196,14 @@ jobs:
       - name: Test — vitest
         working-directory: frontend/driver-pwa
         run: npm test
+
+      - name: Build — Next.js static export
+        working-directory: frontend/driver-pwa
+        env:
+          NEXT_PUBLIC_API_URL: https://api.example.invalid
+          NEXT_PUBLIC_SUPABASE_URL: https://test.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon-key
+        run: npm run build
 
       # Report-only for now — see the matching pip-audit step in the backend job for why.
       - name: Dependency vulnerability scan — npm audit (report only)

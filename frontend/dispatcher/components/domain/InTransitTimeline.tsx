@@ -150,11 +150,11 @@ export function InTransitTimeline({
               <div className="text-[11px] text-on-surf-v mt-[2px]">{node.detail}</div>
             )}
 
-            {node.exception?.resolved && (
+            {node.exception?.review_status === 'reviewed' && (
               <div className="text-[11px] text-ok mt-[3px] flex items-center gap-[4px]">
                 <Ic n="check" s={11} className="text-ok" />
-                {node.exception.resolver_note
-                  ? `Resolved · ${node.exception.resolver_note}`
+                {node.exception.review_note
+                  ? `Resolved · ${node.exception.review_note}`
                   : 'Resolved'}
               </div>
             )}

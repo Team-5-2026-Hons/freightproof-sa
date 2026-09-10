@@ -19,9 +19,11 @@ export default function PanicPageClient() {
   const { capture } = useLocation()
   const { enqueueException } = useOfflineQueue()
   const [sending, setSending] = useState(false)
+  const [saveFailed, setSaveFailed] = useState(false)
 
   async function handlePanic() {
     setSending(true)
+    setSaveFailed(false)
     // This is an emergency action gated behind a 3s hold, so the driver has
     // already committed several seconds to triggering it. GPS capture here
     // resolves quickly (~300ms dev fallback; real native lock typically
@@ -32,6 +34,7 @@ export default function PanicPageClient() {
     // lightweight loading state below so the UI doesn't appear frozen.
     const result = await capture()
     const description = 'Driver activated panic button.'
+    const clientReportId = crypto.randomUUID()
     // Tracks whether the alert actually reached the backend vs. was only queued
     // on-device — PanicSubmittedPageClient needs this to avoid claiming "your
     // dispatcher has been notified" when nothing has actually sent yet.
@@ -42,6 +45,7 @@ export default function PanicPageClient() {
         triggeredAt: new Date().toISOString(),
         gpsLat: result?.latitude ?? null,
         gpsLng: result?.longitude ?? null,
+        clientReportId,
       })
     } catch (err) {
       // Emergency action — don't strand the driver on this screen if the network call
@@ -51,20 +55,29 @@ export default function PanicPageClient() {
       // same evidence the live send would have, or the "location will be included"
       // promise silently breaks exactly when the driver is offline and most at risk.
       console.error('Failed to send panic alert to backend — queued for retry', err)
-      if (trip) {
-        const phaseEventId = contextPhaseEventId(trip.phases)
-        enqueueException(String(trip.id), {
-          exception_type: 'panic_button',
-          description,
-          // Resolved HERE, not at flush time. This entry can sit in the queue until the
-          // driver regains signal — possibly after they have arrived and the trip has
-          // moved on — and the alert has to keep saying where the driver actually was
-          // when they pressed it, not where the trip ended up.
-          ...(phaseEventId ? { phase_event_id: String(phaseEventId) } : {}),
-          // Both-or-neither: the backend 422s a partial fix, which would make the
-          // queue drop this entry as a terminal failure — send the pair or nothing.
-          ...(result ? { gps_lat: result.latitude, gps_lng: result.longitude } : {}),
-        })
+      if (!trip) {
+        setSaveFailed(true)
+        setSending(false)
+        return
+      }
+      const phaseEventId = contextPhaseEventId(trip.phases)
+      const enqueueResult = enqueueException(String(trip.id), {
+        exception_type: 'panic_button',
+        description,
+        client_report_id: clientReportId,
+        // Resolved HERE, not at flush time. This entry can sit in the queue until the
+        // driver regains signal — possibly after they have arrived and the trip has
+        // moved on — and the alert has to keep saying where the driver actually was
+        // when they pressed it, not where the trip ended up.
+        ...(phaseEventId ? { phase_event_id: String(phaseEventId) } : {}),
+        // Both-or-neither: the backend 422s a partial fix, which would make the
+        // queue drop this entry as a terminal failure — send the pair or nothing.
+        ...(result ? { gps_lat: result.latitude, gps_lng: result.longitude } : {}),
+      })
+      if (!enqueueResult.persisted) {
+        setSaveFailed(true)
+        setSending(false)
+        return
       }
       queued = true
     }
@@ -119,6 +132,11 @@ export default function PanicPageClient() {
         {sending && (
           <p className="mt-2 text-sm opacity-75" role="status">
             Capturing location and sending alert…
+          </p>
+        )}
+        {saveFailed && (
+          <p className="mt-3 rounded-xl bg-error-on px-4 py-3 text-sm font-semibold text-error" role="alert">
+            This alert was not sent or saved. Contact dispatch directly, free device storage, then try again.
           </p>
         )}
       </div>

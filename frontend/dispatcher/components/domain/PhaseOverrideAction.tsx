@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Ic } from '@/components/ui/Ic'
 import { TextArea } from '@/components/ui/TextArea'
@@ -68,7 +69,7 @@ export function PhaseOverrideAction({ phase, tripId, tripStatus, onOverridden }:
   }
 
   async function submit() {
-    if (!note.trim()) return
+    if (submitting || !note.trim()) return
     setSubmitting(true)
     try {
       await overridePhase(tripId, phase.phase_event_id, note.trim())
@@ -101,23 +102,12 @@ export function PhaseOverrideAction({ phase, tripId, tripStatus, onOverridden }:
         Record as unable to complete
       </button>
 
-      {open && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-          onClick={close}
-        >
-          <div
-            className="w-full max-w-[440px] rounded-xl bg-surf-lowest shadow-xl p-6"
-            onClick={e => e.stopPropagation()}
-          >
+      <Modal open={open} onClose={close} closeDisabled={submitting} title={`Record ${phaseName} as unable to complete`}>
             <div className="flex items-start gap-3 mb-4">
               <div className="mt-[2px] shrink-0 rounded-full bg-warn-c p-[6px]">
                 <Ic n="warn" s={16} className="text-warn" />
               </div>
               <div>
-                <div className="text-[16px] font-[700] text-on-surf">
-                  Record {phaseName} as unable to complete
-                </div>
                 <div className="text-[13px] text-on-surf-v mt-[4px] leading-relaxed">
                   This does not mark {phaseName.toLowerCase()} as done — it records that the
                   driver could not complete it (lost phone, left the depot, device wiped),
@@ -150,9 +140,7 @@ export function PhaseOverrideAction({ phase, tripId, tripStatus, onOverridden }:
                 Go back
               </Button>
             </div>
-          </div>
-        </div>
-      )}
+      </Modal>
     </div>
   )
 }

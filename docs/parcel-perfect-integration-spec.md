@@ -1,5 +1,9 @@
 # Parcel Perfect Integration — Field Mapping & Scan-Status Spec
 
+> **2026-09-08 geofence update:** The later statement that
+> `pulsit_geofence_confirmed` stays null is historical. Current phase/checkpoint
+> corroboration writes tracker coordinates and geofence verdicts.
+
 **Status:** Draft for team review · **Author:** Ciaran · **Date:** 2026-08-04
 **Scope:** `backend/app/integrations/parcel_perfect.py` and its immediate consumers.
 **Not in scope:** trip orchestration, phase model, Hedera anchoring.

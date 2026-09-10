@@ -22,10 +22,11 @@ from app.core.exceptions import (
     TripStateError,
 )
 from app.crypto.hashing import compute_journey_lock_hash, compute_trip_canonical_payload
-from app.core.realtime import RealtimeKind, TripEvent, enqueue_event
+from app.core.realtime import RealtimeKind, TripEvent, enqueue_event, event_severity
 from app.db.models.enums import (
-    AnchorStatus, BlockchainReceiptType, ExceptionSeverity, ExceptionSource, ExceptionType,
-    IdvsStatus, PhaseStatus, SubjectType, TripStatus, TripType, VehicleType,
+    AnchorStatus, BlockchainReceiptType, ExceptionReviewStatus, ExceptionSeverity,
+    ExceptionSource, ExceptionType, IdvsStatus, PhaseStatus, SubjectType, TripStatus,
+    TripType, VehicleType,
 )
 from app.db.models.organisations import Precinct
 from app.db.models.phases import PhaseEvent
@@ -35,6 +36,7 @@ from app.db.models.trips import (
     LIVE_ORDER_NUMBER_INDEX, LIVE_TRIP_STATUSES, Trip, TripStop, TripTrailer,
 )
 from app.db.models.vehicles import Vehicle
+from app.orchestration.exception_service import initial_review_status
 from app.orchestration.integrity import is_unique_violation, violated_constraint
 from app.orchestration.phase_gate import blocked_on_by_stop
 from app.orchestration.phase_plan import ANCHORED_PHASES, PlanStop, build_phase_plan
@@ -530,10 +532,12 @@ async def cancel_trip(
     Raises ResourceNotFoundError (404) if the trip doesn't exist or belongs to a
     different org, and TripStateError (409) if it is already CLOSED or CANCELLED.
     """
+    # Serialize the terminal-state check so a racing retry observes the first
+    # cancellation instead of writing a second ledger row and realtime alert.
     result = await db.execute(
         select(Trip).where(
             Trip.id == trip_id, Trip.operator_organization_id == operator_organization_id,
-        )
+        ).with_for_update(of=Trip)
     )
     trip = result.scalar_one_or_none()
     if trip is None:
@@ -556,7 +560,7 @@ async def cancel_trip(
     # D5: the human intervention lands on the ledger, not just in an audit column.
     #
     # The acting dispatcher is carried in the description rather than a column
-    # because TripException has no raised_by_user_id — only resolved_by_user_id.
+    # because TripException has no raised_by_user_id — only reviewed_by_user_id.
     # override_phase escapes this via PhaseEvent.dispatcher_override_user_id, but a
     # cancellation has no phase row to hang an actor on, and an anonymous "this trip
     # was abandoned" record is exactly the kind of unattributable evidence this
@@ -565,9 +569,18 @@ async def cancel_trip(
     db.add(TripException(
         trip_id=trip.id, exception_type=ExceptionType.DISPATCHER_NOTE,
         source=ExceptionSource.DISPATCHER, severity=ExceptionSeverity.WARNING,
+        review_status=initial_review_status(ExceptionSeverity.WARNING),
         description=f"{_CANCELLED_BY_PREFIX}{user_id}: {note}",
     ))
     await db.flush()
+
+    enqueue_event(
+        db, trip.operator_organization_id,
+        TripEvent(
+            id=trip.id, kind=RealtimeKind.EXCEPTION_RAISED,
+            severity=event_severity(ExceptionSeverity.WARNING),
+        ),
+    )
 
     # D9: published on commit — the dispatcher's list must drop this trip from
     # Active on the same refetch trip_closed already triggers.
@@ -691,6 +704,9 @@ async def list_trips_for_driver(
     def precinct_name(precinct_id: uuid.UUID | None) -> str | None:
         return None if precinct_id is None else precinct_names.get(precinct_id)
 
+    # NEEDS_REVIEW only, not "!= REVIEWED" — a RECORDED row is on the driver's own
+    # trip for context, but is not a review-workflow item (the driver has no review
+    # action at all; see Task 2, FP-146 follow-on).
     exc_counts: dict[uuid.UUID, int] = {
         row[0]: row[1]
         for row in (
@@ -698,7 +714,7 @@ async def list_trips_for_driver(
                 select(TripException.trip_id, func.count(TripException.id))
                 .where(
                     TripException.trip_id.in_(trip_ids),
-                    TripException.resolved.is_(False),
+                    TripException.review_status == ExceptionReviewStatus.NEEDS_REVIEW,
                 )
                 .group_by(TripException.trip_id)
             )
@@ -720,7 +736,7 @@ async def list_trips_for_driver(
             actual_departure_at=t.actual_departure_at,
             planned_arrival_at=t.planned_arrival_at,
             actual_arrival_at=t.actual_arrival_at,
-            open_exception_count=exc_counts.get(t.id, 0),
+            needs_review_count=exc_counts.get(t.id, 0),
             created_at=t.created_at,
             updated_at=t.updated_at,
         )

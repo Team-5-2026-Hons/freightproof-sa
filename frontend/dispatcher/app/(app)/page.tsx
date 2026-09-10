@@ -13,6 +13,7 @@ import { EmptyState }     from '@/components/ui/EmptyState'
 import { ChecklistRow }   from '@/components/domain/ChecklistRow'
 import type { ColWidths } from '@/components/domain/ChecklistRow'
 import { useTrips }       from '@/lib/hooks/useTrips'
+import { putTripSeeds }   from '@/lib/trips/tripSeed'
 import { useAuth }        from '@/lib/hooks/useAuth'
 import { usePrecincts }   from '@/lib/hooks/usePrecincts'
 import { useToast }       from '@/lib/hooks/useToast'
@@ -96,6 +97,9 @@ export default function ActiveTripsPage() {
 
   // Single fetch for all trips — active and closed are derived client-side
   const { trips: allFetchedTrips, isLoading: tripsLoading, error: tripsError, refetch: refetchTrips } = useTrips()
+  // Hand what this list already knows to the detail page, so opening a row paints its
+  // header immediately instead of waiting on the full record.
+  useEffect(() => { putTripSeeds(allFetchedTrips) }, [allFetchedTrips])
   const { precincts, error: precinctsError } = usePrecincts()
 
   useEffect(() => {

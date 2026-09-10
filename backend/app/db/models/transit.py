@@ -5,13 +5,20 @@ from typing import Optional
 from decimal import Decimal
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Numeric, String, Text, column
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from app.db.models import Base
-from app.db.models.enums import ExceptionSeverity, ExceptionSource, ExceptionType
+from app.db.models.enums import (
+    ExceptionContactMethod,
+    ExceptionReviewOutcome,
+    ExceptionReviewStatus,
+    ExceptionSeverity,
+    ExceptionSource,
+    ExceptionType,
+)
 
 
 class Checkpoint(Base):
@@ -26,6 +33,12 @@ class Checkpoint(Base):
     checkpoint_type: Mapped[str] = mapped_column(String(50), nullable=False)
     driver_phone_lat: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     driver_phone_lng: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
+    # Task 0A: the same field as PhaseEvent.driver_captured_at, and for the same reason
+    # — a checkpoint is offline-queued exactly like a phase handshake, and its horse
+    # position is likewise superseded by a live Pulsit read (corroboration_service's
+    # record_checkpoint_corroboration) that must not be trusted against a stale replay.
+    # See PhaseEvent.driver_captured_at's own comment for the full rationale.
+    driver_captured_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     horse_gps_lat: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     horse_gps_lng: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     selfie_artifact_id: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -50,6 +63,22 @@ class TripException(Base):
     """
 
     __tablename__ = "exceptions"
+    # Task 0B: one report per (trip, client_report_id) — see client_report_id's own
+    # comment below. Declared here, not just in migration ciaran_exc_idempotency,
+    # because Base.metadata.create_all() (every test's schema) only picks up indexes
+    # the model itself declares — mirrors Trip.__table_args__'s identical
+    # LIVE_ORDER_NUMBER_INDEX above it in db/models/trips.py. Partial: rows with no
+    # client_report_id carry no idempotency claim and must never collide with each
+    # other under this index.
+    __table_args__ = (
+        Index(
+            "uq_exceptions_trip_client_report_id",
+            "trip_id",
+            "client_report_id",
+            unique=True,
+            postgresql_where=column("client_report_id").isnot(None),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     trip_id: Mapped[uuid.UUID] = mapped_column(
@@ -79,6 +108,19 @@ class TripException(Base):
     supporting_artifact_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("evidence_artifacts.id"), nullable=True
     )
+    # Task 0B: the driver app's own stable id for this report — the offline queue's
+    # entry UUID (frontend/driver-pwa lib/hooks/useOfflineQueue.ts), sent as
+    # client_report_id and never regenerated across a retry of the same submission.
+    # Lets exception_service.raise_exception recognise "this exact report, resent"
+    # (a lost response, or a retry after its photo uploaded but the POST itself
+    # failed) and return the existing row instead of inserting a second one.
+    # Nullable: an older installed/queued client omits it, and that submission gets
+    # no idempotency protection rather than being rejected. Uniqueness is enforced
+    # per-trip by a partial index (migration ciaran_exc_idempotency), not `unique=True`
+    # here — a bare column constraint could not express "unique only when present".
+    client_report_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
     # Driver-phone GPS fix captured at the moment the exception was raised (e.g. a
     # panic-button hold) — mirrors Checkpoint.driver_phone_lat/_lng's Numeric(10,7)
     # naming and precision above. Nullable: system- and dispatcher-raised exceptions
@@ -87,12 +129,35 @@ class TripException(Base):
     # must never be read into any hash/anchoring path.
     gps_lat: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     gps_lng: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
-    resolved: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
-    resolved_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    # Task 1 (FP-146 review semantics, migration ciaran_exc_review_semantics): replaces
+    # the old `resolved: bool`, which could not distinguish "nobody has looked at this"
+    # from "looked at, still needs a decision" — see ExceptionReviewStatus's own comment.
+    # String(20), not a native PG enum, matching every other enum column on this table.
+    review_status: Mapped[ExceptionReviewStatus] = mapped_column(
+        String(20), nullable=False, server_default=ExceptionReviewStatus.RECORDED.value
+    )
+    # What the dispatcher concluded, set only once review_status reaches REVIEWED.
+    # Nullable: unreviewed rows (the overwhelming majority at any moment) have no
+    # outcome yet, and the migration only back-stamps LEGACY_REVIEW onto rows that were
+    # already `resolved=true` — see ExceptionReviewOutcome's own comment.
+    review_outcome: Mapped[Optional[ExceptionReviewOutcome]] = mapped_column(
+        String(30), nullable=True
+    )
+    reviewed_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
-    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    resolver_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    review_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # How the dispatcher established what happened, alongside the note saying what they
+    # found. Nullable: every exception written before this column existed has no method,
+    # and backfilling a guess would put invented contact history on an evidence record.
+    # ExceptionContactMethod; migration ciaran_exc_review_semantics remaps every stored value:
+    # 'phoned'->'phone', 'no_contact_yet'->NULL — see that enum's own comment for why
+    # NO_CONTACT_YET has no equivalent here). String(20), not a native PG enum — matching
+    # exception_type/source/severity above and every other enum column in this codebase.
+    contact_method: Mapped[Optional[ExceptionContactMethod]] = mapped_column(
+        String(20), nullable=True
+    )
     merkle_batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("merkle_batches.id"), nullable=True
     )

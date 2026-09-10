@@ -23,6 +23,7 @@ vi.mock('next/navigation', () => ({
 }))
 
 const demoDriver = mockDrivers[0]
+const CLIENT_REPORT_ID = '34d124eb-1708-42e8-9341-87f890ee16fd'
 
 // Reuse the shared fixture so the trip shape stays in lockstep with the mocks the
 // demo-mode tests use — only the transport (real API mocks below) differs.
@@ -62,10 +63,12 @@ function createdException(overrides: Partial<TripException>): TripException {
     supporting_artifact_id: null,
     gps_lat: null,
     gps_lng: null,
-    resolved: false,
-    resolved_by_user_id: null,
-    resolved_at: null,
-    resolver_note: null,
+    review_status: 'recorded',
+    review_outcome: null,
+    reviewed_by_user_id: null,
+    reviewed_at: null,
+    review_note: null,
+    contact_method: null,
     merkle_batch_id: null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -86,6 +89,7 @@ function Probe() {
             triggeredAt: new Date().toISOString(),
             gpsLat: -26.0942,
             gpsLng: 28.1342,
+            clientReportId: CLIENT_REPORT_ID,
           })
         }
       >
@@ -141,6 +145,7 @@ describe('TripContext.logException (real mode) — GPS reaches raiseException', 
         description: 'Driver activated panic button.',
         gps_lat: -26.0942,
         gps_lng: 28.1342,
+        client_report_id: CLIENT_REPORT_ID,
       }),
     )
   })

@@ -4,9 +4,19 @@ from datetime import datetime
 from uuid import UUID
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.db.models.enums import ExceptionSeverity, ExceptionSource, ExceptionType
+from app.db.models.enums import (
+    DispatcherReviewOutcome,
+    ExceptionContactMethod,
+    ExceptionReviewOutcome,
+    ExceptionReviewStatus,
+    ExceptionSeverity,
+    ExceptionSource,
+    ExceptionType,
+    TripStatus,
+)
+from app.schemas.evidence import EvidenceArtifactWithUrl
 from app.schemas.text import CheckpointTypeStr, FreeText, RequiredFreeText
 
 
@@ -17,6 +27,10 @@ class CheckpointBase(BaseModel):
     checkpoint_type: str
     driver_phone_lat: Optional[float] = None
     driver_phone_lng: Optional[float] = None
+    # Task 0A: mirrors PhaseEventRead.driver_captured_at — the instant the driver's
+    # phone submitted, independent of the server's created_at clock. See
+    # DriverCheckpointCreateBody.driver_captured_at for the full rationale.
+    driver_captured_at: Optional[datetime] = None
     horse_gps_lat: Optional[float] = None
     horse_gps_lng: Optional[float] = None
     selfie_artifact_id: Optional[UUID] = None
@@ -44,10 +58,25 @@ class DriverCheckpointCreateBody(BaseModel):
     driver_phone_lng: Optional[float] = Field(default=None, ge=-180, le=180)
     horse_gps_lat: Optional[float] = Field(default=None, ge=-90, le=90)
     horse_gps_lng: Optional[float] = Field(default=None, ge=-180, le=180)
+    # Task 0A: the instant the driver's own phone submitted this checkpoint. Mirrors
+    # schemas/phases.py's _PhaseCompleteBase.driver_captured_at exactly — a checkpoint
+    # is offline-queued the same way a phase handshake is, and record_checkpoint_
+    # corroboration needs this to tell a live check from a stale replay. Optional for
+    # the same replay-compatibility reason; new builds always send it
+    # (frontend/driver-pwa/lib/api/checkpoints.ts).
+    driver_captured_at: Optional[datetime] = None
     selfie_artifact_id: Optional[UUID] = None
     cargo_photo_artifact_id: Optional[UUID] = None
     note: Optional[FreeText] = None
     is_deviation: bool = False
+
+    @field_validator("driver_captured_at")
+    @classmethod
+    def validate_driver_captured_at_is_timezone_aware(cls, v: Optional[datetime]) -> Optional[datetime]:
+        # A naive value would silently compare as if it were UTC in corroboration_service.
+        if v is not None and v.tzinfo is None:
+            raise ValueError("driver_captured_at must be timezone-aware")
+        return v
 
     @model_validator(mode="after")
     def validate_gps_pairs(self) -> "DriverCheckpointCreateBody":
@@ -144,6 +173,14 @@ class DriverExceptionCreateBody(BaseModel):
     # capture failure must not block the alert itself from sending.
     gps_lat: Optional[float] = Field(default=None, ge=-90, le=90)
     gps_lng: Optional[float] = Field(default=None, ge=-180, le=180)
+    # Request-only idempotency key — not echoed back on TripExceptionRead. The driver
+    # app's offline queue reuses its own entry UUID as this value on every retry of the
+    # same queued submission (frontend/driver-pwa lib/hooks/useOfflineQueue.ts), so a
+    # resend caused by a lost response, or by a retry after the photo uploaded but this
+    # POST itself failed, returns the ORIGINAL exception rather than inserting a second
+    # one for the same real-world report. Optional: an older installed/queued client
+    # omits it and gets no idempotency protection, exactly like phase_event_id above.
+    client_report_id: Optional[UUID] = None
 
     @model_validator(mode="after")
     def validate_gps_pair(self) -> "DriverExceptionCreateBody":
@@ -151,22 +188,96 @@ class DriverExceptionCreateBody(BaseModel):
         return self
 
 
-class TripExceptionUpdate(BaseModel):
+class TripExceptionReviewRequest(BaseModel):
+    """The dispatcher's review action.
+
+    The narrow request keeps the reviewer and timestamp server-owned rather than
+    accepting either as client input.
+
+    `contact_method` is required but nullable, with no default — a caller MUST decide
+    whether contact happened at all (unlike `review_outcome`, which has no "not
+    applicable" option), and an explicit `null` records "reviewed without contacting
+    anyone" (e.g. the evidence alone settled it) rather than a caller having forgotten
+    the field.
+    """
+
     model_config = ConfigDict(from_attributes=True)
 
-    resolved: Optional[bool] = None
-    resolved_by_user_id: Optional[UUID] = None
-    resolved_at: Optional[datetime] = None
-    resolver_note: Optional[FreeText] = None
-    merkle_batch_id: Optional[UUID] = None
+    review_note: RequiredFreeText
+    review_outcome: DispatcherReviewOutcome
+    contact_method: Optional[ExceptionContactMethod]
+
+
+class TripExceptionListItem(BaseModel):
+    """Compact row for the review queue and history list.
+
+    Built explicitly from a (TripException, Trip, phase_type, stop_sequence) tuple in
+    the service layer, not via model_validate on the bare ORM object — the trip
+    reference/status and the phase/stop labels all come from the same org-scoping join,
+    not from TripException's own columns. See exception_service._to_list_item.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    exception_type: ExceptionType
+    source: ExceptionSource
+    severity: ExceptionSeverity
+    review_status: ExceptionReviewStatus
+    description: str
+    created_at: datetime
+
+    trip_id: UUID
+    trip_reference: str
+    trip_status: TripStatus
+
+    # PhaseEvent.phase_type / TripStop.sequence for the phase this exception is scoped
+    # to — None for a trip-level exception with no phase context. Mirrors the existing
+    # Trip.current_phase (str) / Trip.current_stop (int) pairing in schemas/trips.py.
+    phase_label: Optional[str] = None
+    stop_label: Optional[int] = None
+
+
+class TripExceptionDetail(TripExceptionListItem):
+    """Full record for the permalink detail screen: the compact row plus GPS, complete
+    review evidence, the trip's closed time, and the one linked artifact if any."""
+
+    gps_lat: Optional[float] = None
+    gps_lng: Optional[float] = None
+
+    review_outcome: Optional[ExceptionReviewOutcome] = None
+    reviewed_by_user_id: Optional[UUID] = None
+    reviewed_at: Optional[datetime] = None
+    review_note: Optional[str] = None
+    contact_method: Optional[ExceptionContactMethod] = None
+
+    trip_closed_at: Optional[datetime] = None
+
+    # Kept even when signing fails or the artifact cannot be verified as belonging to
+    # this trip — see `supporting_artifact`.
+    supporting_artifact_id: Optional[UUID] = None
+    # None means no photo was ever attached (or the id could not be verified as this
+    # trip's own — Task 0B's ownership invariant). Present with signed_url=None means
+    # the opposite: real evidence, but Storage declined to sign a URL right now. The UI
+    # must be able to tell "no photo" apart from "recorded, image unavailable".
+    supporting_artifact: Optional["EvidenceArtifactWithUrl"] = None
 
 
 class TripExceptionRead(TripExceptionBase):
     id: UUID
-    resolved: bool
-    resolved_by_user_id: Optional[UUID] = None
-    resolved_at: Optional[datetime] = None
-    resolver_note: Optional[str] = None
+    review_status: ExceptionReviewStatus
+    review_outcome: Optional[ExceptionReviewOutcome] = None
+    reviewed_by_user_id: Optional[UUID] = None
+    reviewed_at: Optional[datetime] = None
+    review_note: Optional[str] = None
+    contact_method: Optional[ExceptionContactMethod] = None
     merkle_batch_id: Optional[UUID] = None
+    # Denormalised off the Trip the exception belongs to. The dispatcher's queue spans
+    # every trip in the organisation and each row has to say WHICH trip, so without this
+    # both exception screens would have to fetch the trip list purely to resolve
+    # references. The service's org-scoping join already has the row in hand, so
+    # carrying it costs nothing. Optional because a row built outside that join
+    # (TripExceptionRead.model_validate on a bare ORM object) has no trip loaded.
+    trip_reference: Optional[str] = None
     created_at: datetime
     updated_at: datetime

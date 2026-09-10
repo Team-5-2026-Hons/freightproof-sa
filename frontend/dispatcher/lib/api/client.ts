@@ -4,6 +4,7 @@
 
 import { supabase, getAccessToken } from '@/lib/supabase/client'
 import type { Trip } from '@shared/lib/types/trip'
+import type { TripException, DispatcherReviewOutcome, ExceptionContactMethod } from '@shared/lib/types/exception'
 
 // Exported so non-fetch transports that can't use this wrapper — notably the SSE
 // stream reader in lib/realtime — hit the same backend origin without re-deriving it.
@@ -259,4 +260,26 @@ export function cancelTrip(tripId: string, note: string): Promise<Trip> {
  *  legal while the phase is PENDING or IN_PROGRESS server-side (409 otherwise). */
 export function overridePhase(tripId: string, phaseEventId: string, note: string): Promise<Trip> {
   return api.post<Trip>(`/api/v1/trips/${tripId}/phases/${phaseEventId}/override`, { note })
+}
+
+/** PATCH /exceptions/{exceptionId}/review — dispatcher records their assessment of an
+ *  exception (FP-146 review flow). `contact_method` must be sent explicitly, including as
+ *  `null` ("no contact happened, reviewed from evidence alone") — the backend requires the
+ *  key present and treats a missing key differently from an explicit null. Reviewing is
+ *  evidence handling, not trip lifecycle control (see review_exception's own backend
+ *  docstring): it never touches Trip.status, so it is exactly as legal on a closed or
+ *  cancelled trip as an active one — there is no client-side gate to match here.
+ *
+ *  Returns whatever review_exception_endpoint's response_model actually is today
+ *  (TripExceptionRead, backend schemas/transit.py) — mirrored on the frontend by the
+ *  `TripException` type (see its own header comment). That shape is narrower than
+ *  TripExceptionDetail (no trip_status/phase_label/supporting_artifact), so the caller
+ *  should not try to re-render the exception-detail page from this response directly —
+ *  call refetchSilent() from useExceptionDetail instead, which reads through the same
+ *  GET every other view of this record uses. */
+export function reviewException(
+  exceptionId: string,
+  body: { review_note: string; review_outcome: DispatcherReviewOutcome; contact_method: ExceptionContactMethod | null },
+): Promise<TripException> {
+  return api.patch<TripException>(`/api/v1/exceptions/${exceptionId}/review`, body)
 }

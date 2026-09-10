@@ -107,6 +107,33 @@ same `Trip` / `TripStop` / `Consignment` rows. See FP-112 plan §A.6.
 
 ---
 
+## 5b. Parcel counts: stamped versus live
+
+Two numbers describe the same cargo and legitimately differ. Copy must never blur them.
+
+| | Stamped (phase evidence) | Live (Parcel Perfect) |
+| --- | --- | --- |
+| Fields | `PhaseEvent.parcel_count_origin`, `parcel_count_destination` | `Consignment.scanned_out_count`, `scanned_in_count`; `Parcel.pp_scan_out_at`, `pp_scan_in_at` |
+| Written | ONCE, at phase close | recomputed on every request |
+| Is it evidence? | yes — this is what the handshake attests | no — a current view of another system |
+| UI wording | **"recorded at origin / destination"** | **"scanned out / scanned in"**, always with "current" |
+
+Both ultimately originate from a warehouse scan, so *scan versus count* is **not** the
+distinction — `parcel_count_origin` is, in `LoadingDetail`'s words, "the scanned tally
+stamped at close". The distinction is **stamped versus live**, and it is why the trip
+header and the manifest panel can show different numbers for one trip without either
+being wrong.
+
+Surfaces that summarise (trip header, timeline phase cards) say **recorded**. The phase
+detail panels keep "Scanned onto truck" / "Scanned out (origin depot)" because they sit
+inside an evidence context with explicit labels, and `LoadingDetail` deliberately switches
+between the live and stamped figure depending on whether the phase has closed.
+
+A parcel with no recorded count is **unrecorded**, which is not the same as missing. No
+surface may compute a shortfall from the absence of a count.
+
+---
+
 ## 6. Open questions (→ July site visit / Bruce)
 
 1. ~~**Does LFG scan/identify each pallet, or only count units + seal the truck?**~~ **ANSWERED —

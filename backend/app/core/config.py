@@ -89,6 +89,15 @@ class Settings(BaseSettings):
     PULSE_USE_MOCK: bool = True
     PULSE_API_KEY: str = ""
     PULSE_API_URL: str = ""
+    # Task 0A (FP-68 follow-up): the largest gap a Pulsit fix and the driver's OWN
+    # capture instant may sit apart and still corroborate each other. Wider than a
+    # single request round trip on purpose — a live handshake's fix and capture are
+    # taken within the same request, but Pulsit's OWN reporting interval (how often a
+    # parked tracker refreshes its position, not something this codebase controls) can
+    # be a few minutes on its own. 300s covers a normal tracker refresh cadence with
+    # margin while still rejecting an offline handshake replayed hours later — the
+    # exact gap this task exists to close (see corroboration_service.py).
+    PULSIT_CORROBORATION_MAX_SKEW_SECONDS: int = 300
     PP_USE_MOCK: bool = True
     PP_API_KEY: str = ""        # Parcel Perfect login email / username
     PP_API_PASSWORD: str = ""   # Parcel Perfect login password (used in MD5 auth flow)

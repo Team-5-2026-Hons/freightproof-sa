@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import pytest_asyncio
 from sqlalchemy import select
+from sqlalchemy.dialects import postgresql
 
 from app.core.exceptions import HederaTimeoutError, PPSyncError, ResourceNotFoundError
 from app.db.models.enums import AnchorStatus, DispatcherRole, OrganizationType, PhaseStatus, PhaseType, TripStatus, TripType, VehicleType
@@ -90,6 +91,28 @@ def _make_db() -> AsyncMock:
     db.rollback = AsyncMock()
     db.add = MagicMock()
     return db
+
+
+@pytest.mark.asyncio
+async def test_cancel_trip_locks_trip_before_checking_terminal_status() -> None:
+    """The terminal-status decision must happen while holding the trip row lock."""
+    from app.orchestration.trip_service import cancel_trip
+
+    db = _make_db()
+    db.execute.side_effect = RuntimeError("statement captured")
+
+    with pytest.raises(RuntimeError, match="statement captured"):
+        await cancel_trip(
+            db,
+            trip_id=uuid.uuid4(),
+            operator_organization_id=uuid.uuid4(),
+            user_id=uuid.uuid4(),
+            note="cargo pulled",
+        )
+
+    statement = db.execute.await_args.args[0]
+    compiled = str(statement.compile(dialect=postgresql.dialect()))
+    assert "FOR UPDATE OF trips" in compiled
 
 
 @pytest.mark.asyncio

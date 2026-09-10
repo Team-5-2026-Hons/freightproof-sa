@@ -86,6 +86,26 @@ describe('api client', () => {
     vi.unstubAllGlobals()
   })
 
+  it('carries the Retry-After delay on a rate-limit error', async () => {
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: new Headers({ 'Retry-After': '7' }),
+      json: () => Promise.resolve({ detail: 'Too many requests' }),
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+
+    const { api } = await import('../client')
+
+    await expect(api.post('/api/v1/trips/trip-1/exceptions', {})).rejects.toMatchObject({
+      status: 429,
+      retryAfterMs: 7_000,
+    })
+
+    vi.unstubAllGlobals()
+  })
+
   it('falls back to a bounded getSession() when the token cache is cold', async () => {
     mockGetAccessToken.mockReturnValue(null)
     mockGetSession.mockResolvedValue({ data: { session: { access_token: 'fresh-token' } } })

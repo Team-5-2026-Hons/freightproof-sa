@@ -8,6 +8,9 @@ import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 
 interface Props {
+  artifactLoading?: boolean
+  artifactError?: string | null
+  onRetryArtifacts?: () => void
   phase: PhaseDescriptor
   /** Manifest baseline from Parcel Perfect's tracks[]. Null when the trip carries no
    *  PP reference — common, and not a failure. */
@@ -24,7 +27,7 @@ interface Props {
 // Loading is now system-observed: the warehouse's scan is what records what went on the
 // truck, and parcel_count_origin is the scanned tally stamped at close. The driver's own
 // count is gone — he never enters the warehouse and could not honestly produce one.
-export function LoadingDetail({ phase, expectedCount, liveScannedOutCount, artifactsById }: Props) {
+export function LoadingDetail({ artifactLoading, artifactError, onRetryArtifacts, phase, expectedCount, liveScannedOutCount, artifactsById }: Props) {
   // Governing distinction: parcel_count_origin is written ONCE at phase close and is the
   // evidence; scanned_out_count is recomputed every request and still moving until then.
   // Swapping a live figure in where the stamped one belongs (or vice versa) is the one
@@ -45,7 +48,7 @@ export function LoadingDetail({ phase, expectedCount, liveScannedOutCount, artif
       </Section>
       {hasBoth && (
         <div className={`text-[11px] font-[600] px-3 pb-3 ${missing === 0 ? 'text-ok' : 'text-warn'}`}>
-          {missing === 0 ? 'All parcels scanned ✓' : `${missing} not scanned ✗`}
+          {missing === 0 ? 'All parcels scanned ✓' : missing < 0 ? `${Math.abs(missing)} excess scanned` : `${missing} not scanned ✗`}
         </div>
       )}
       {/* linehaul_photo_artifact_id, NOT waybill_photo_artifact_id: that field is only
@@ -60,7 +63,9 @@ export function LoadingDetail({ phase, expectedCount, liveScannedOutCount, artif
           photo label for the same reason. This div only mirrors Section's own spacing. */}
       <div className="py-3 first:pt-0 last:pb-0">
         <EvidencePhoto
+          loading={artifactLoading} error={artifactError} onRetry={onRetryArtifacts}
           label="Linehaul document"
+          artifactId={phase.linehaul_photo_artifact_id}
           artifact={phase.linehaul_photo_artifact_id ? artifactsById.get(phase.linehaul_photo_artifact_id) : undefined}
         />
       </div>

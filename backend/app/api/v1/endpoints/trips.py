@@ -9,6 +9,7 @@ GET  /trips/{trip_id}   — get full trip detail by ID (dispatcher).
 """
 
 import logging
+from datetime import date
 from typing import Annotated
 from uuid import UUID
 
@@ -27,10 +28,11 @@ from app.core.exceptions import (
     TripConflictError,
 )
 from app.core.limits import TRIP_CREATE
+from app.core.pagination import CursorPosition, decode_cursor
 from app.core.rate_limit import rate_limit
 from app.db.models.enums import DispatcherRole, TripStatus
 from app.db.session import get_db
-from app.orchestration.resource_service import get_trip_detail, list_trips
+from app.orchestration.resource_service import get_trip_detail, list_trip_history, list_trips
 from app.orchestration.trip_service import (
     create_trip,
     get_active_trip_for_driver,
@@ -38,10 +40,12 @@ from app.orchestration.trip_service import (
     list_trips_for_driver,
 )
 from app.schemas.people import DriverRead, UserRead
+from app.schemas.pagination import CursorPage
 from app.schemas.trips import (
     DriverTripListItemResponse,
     TripCreateRequest,
     TripDetailResponse,
+    TripHistoryListItemResponse,
     TripListItemResponse,
 )
 
@@ -126,6 +130,48 @@ async def list_trips_endpoint(
         db=db,
         operator_organization_id=current_user.organization_id,
         status_filter=status,
+    )
+
+
+@router.get(
+    "/history",
+    response_model=CursorPage[TripHistoryListItemResponse],
+    summary="Cursor-paginated trip history for the dispatcher's organisation",
+)
+async def list_trip_history_endpoint(
+    limit: int = Query(default=25, ge=1, le=100),
+    cursor: str | None = None,
+    q: str | None = Query(default=None, max_length=255),
+    precinct_id: UUID | None = None,
+    from_date: date | None = None,
+    to_date: date | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserRead = Depends(get_current_dispatcher),
+) -> CursorPage[TripHistoryListItemResponse]:
+    """Closed and cancelled trips ordered by their terminal timestamp.
+
+    Date bounds are inclusive calendar dates in the configured operations timezone;
+    q matches trip reference, order number, or driver name.
+    """
+    cursor_position: CursorPosition | None = None
+    if cursor is not None:
+        try:
+            cursor_position = decode_cursor(cursor)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(exc),
+            ) from exc
+
+    return await list_trip_history(
+        db,
+        operator_organization_id=current_user.organization_id,
+        limit=limit,
+        cursor_position=cursor_position,
+        q=q,
+        precinct_id=precinct_id,
+        from_date=from_date,
+        to_date=to_date,
     )
 
 

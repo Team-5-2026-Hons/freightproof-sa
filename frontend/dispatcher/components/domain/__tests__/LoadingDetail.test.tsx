@@ -137,3 +137,9 @@ describe('LoadingDetail', () => {
     expect(screen.getByText('Not captured')).toBeInTheDocument()
   })
 })
+
+it('labels an excess scan without a negative shortage', () => {
+  render(<LoadingDetail phase={makePhase('loading')} expectedCount={3} liveScannedOutCount={5} artifactsById={NO_ARTIFACTS} />)
+  expect(screen.getByText('2 excess scanned')).toBeInTheDocument()
+  expect(screen.queryByText(/-2 not scanned/)).not.toBeInTheDocument()
+})

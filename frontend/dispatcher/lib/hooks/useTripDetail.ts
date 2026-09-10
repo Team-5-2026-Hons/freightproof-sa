@@ -1,14 +1,15 @@
 'use client'
 
-import { api } from '@/lib/api/client'
 import type { Trip } from '@shared/lib/types/trip'
-import { useLiveResource } from '@/lib/realtime/useLiveResource'
-import { useAsyncData } from './useAsyncData'
+import { useTripResource } from './useTripResource'
 
 export interface UseTripDetailResult {
   trip: Trip | null
   isLoading: boolean
+  isValidating: boolean
   error: string | null
+  errorStatus: number | null
+  lastUpdated: number | null
   refetch: () => void
   // Refetches without flipping isLoading — used after a dispatcher mutation (cancel,
   // phase override) so the page's own content stays on screen instead of being
@@ -17,12 +18,6 @@ export interface UseTripDetailResult {
 }
 
 export function useTripDetail(tripId: string): UseTripDetailResult {
-  const { data, isLoading, error, refetch, refetchSilent } = useAsyncData<Trip | null>(
-    () => api.get<Trip>(`/api/v1/trips/${tripId}`),
-    null,
-  )
-  // Live: refetch in place (no spinner) whenever this trip changes — phase ticks,
-  // exceptions, receipts appear without a reload.
-  useLiveResource('trip', tripId, refetchSilent)
-  return { trip: data, isLoading, error, refetch, refetchSilent }
+  const { data, ...resource } = useTripResource<Trip | null>(tripId, '', null)
+  return { trip: data, ...resource }
 }

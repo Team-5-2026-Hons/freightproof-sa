@@ -129,6 +129,7 @@ type EnqueuePhase = (
   phaseType: PhaseType,
   evidence: PhaseEvidence,
   position: DriverPosition | null,
+  driverCapturedAt: string,
 ) => void
 
 export interface PhaseSubmissionRequest {
@@ -151,6 +152,13 @@ export interface PhaseSubmissionRequest {
    * they weren't.
    */
   position: Promise<DriverPosition | null>
+  /**
+   * Task 0A: the instant the caller (the step controller) considers this attempt
+   * submitted — generated once per logical attempt, same as idempotencyKey, and reused
+   * across any retry of that attempt so a replay from the offline queue still reports the
+   * ORIGINAL swipe instant, never a retry's own clock.
+   */
+  driverCapturedAt: string
   /** The localStorage failure path (lib/hooks/useOfflineQueue.ts). */
   enqueuePhase: EnqueuePhase
   /** Used ONLY to resolve a 409 — did an earlier attempt of this phase already land? */
@@ -238,11 +246,13 @@ const DEFAULT_CONFLICT_MESSAGE = 'Trip state changed unexpectedly. Please retry 
 const DEFAULT_TERMINAL_MESSAGE = 'Could not submit. Please try again.'
 
 async function runSubmission(request: PhaseSubmissionRequest): Promise<PhaseSubmissionOutcome> {
-  const { tripId, phaseEventId, phaseType, evidence, idempotencyKey } = request
+  const { tripId, phaseEventId, phaseType, evidence, idempotencyKey, driverCapturedAt } = request
   const position = await resolvePosition(request.position)
 
   try {
-    const result = await submitPhase(tripId, phaseEventId, phaseType, evidence, idempotencyKey, position)
+    const result = await submitPhase(
+      tripId, phaseEventId, phaseType, evidence, idempotencyKey, position, driverCapturedAt,
+    )
     if (result.trip !== null && result.trip.status === 'exception_hold') {
       return { kind: 'hold', trip: result.trip }
     }
@@ -279,9 +289,9 @@ async function runSubmission(request: PhaseSubmissionRequest): Promise<PhaseSubm
 
     if (isQueueableFailure(err)) {
       // Network error, 5xx, or a status-0 timeout — queue for retry once connectivity or
-      // the server recovers. The position goes WITH the entry so a replay hours later
-      // still reports where the driver was when they swiped.
-      request.enqueuePhase(tripId, phaseEventId, phaseType, evidence, position)
+      // the server recovers. The position and the capture instant go WITH the entry so a
+      // replay hours later still reports where — and when — the driver actually swiped.
+      request.enqueuePhase(tripId, phaseEventId, phaseType, evidence, position, driverCapturedAt)
       return { kind: 'queued' }
     }
 

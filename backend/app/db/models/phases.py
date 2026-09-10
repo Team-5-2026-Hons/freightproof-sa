@@ -80,6 +80,17 @@ class PhaseEvent(Base):
     dispatcher_override_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     driver_phone_lat: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     driver_phone_lng: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
+    # Task 0A: the instant the DRIVER'S OWN PHONE submitted this completion — distinct
+    # from completed_at/created_at below, which are the server's clock stamped when the
+    # request was PROCESSED. An offline-queued completion can sit for hours between the
+    # two; without this column corroboration_service has no way to tell a live handshake
+    # from a stale replay, and a fresh Pulsit fix taken at PROCESS time gets compared
+    # against a driver claim from hours earlier as if both described the same moment.
+    # Nullable because it is optional on the wire (schemas/phases.py) for compatibility
+    # with an already-queued client that predates this field — never backfilled with
+    # completed_at or now(), which would be exactly the fabrication this column exists
+    # to prevent. Timezone-aware only; enforced at the schema layer, not here.
+    driver_captured_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     horse_gps_lat: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     horse_gps_lng: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     pulsit_geofence_confirmed: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)

@@ -6,6 +6,7 @@ ORM rows, so the panel's contract is explicit and does not drift with the schema
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -211,3 +212,75 @@ class FlushMockStateResponse(BaseModel):
     """Result of clearing staged mock state. Evidence in Postgres is untouched."""
 
     keys_deleted: int
+
+
+# ---------------------------------------------------------------------------
+# FP-116 "move the truck" — dev-only Pulsit mock position control
+# ---------------------------------------------------------------------------
+
+
+class WaypointRead(BaseModel):
+    """One waypoint the presenter can move the truck to.
+
+    Served by the panel rather than hardcoded in TypeScript, so the ordered route and
+    its distances have exactly one definition (core/demo_waypoints.py) and a coordinate
+    corrected in Python cannot leave a stale copy on screen.
+    """
+
+    waypoint_id: str
+    label: str
+    sequence: int
+    description: str
+    # None only for the "no signal" waypoint, which is the tracker going dark rather
+    # than a place — never defaulted to 0.0, which is a real coordinate.
+    latitude: Optional[Decimal]
+    longitude: Optional[Decimal]
+    intended_distance_metres: Optional[int]
+    expected_confirmed: Optional[bool]
+
+
+class MoveTruckRequest(BaseModel):
+    """Move one trip's horse tracker to a waypoint. Writes Pulsit mock state only."""
+
+    trip_id: uuid.UUID
+    waypoint_id: str
+
+
+class MoveTruckResponse(BaseModel):
+    """Where the truck now is, and what the geofence makes of it.
+
+    Carries the measured distance and the real verdict so the panel displays actual
+    state rather than restating what it just asked for. The verdict is computed by the
+    same `orchestration.geofence_service.evaluate_geofence` a handshake uses — read
+    only, nothing here is persisted.
+    """
+
+    trip_id: uuid.UUID
+    waypoint_id: str
+    waypoint_label: str
+
+    # Which tracker actually moved, echoed back so the panel can prove it addressed the
+    # trip's own horse rather than a device id someone typed.
+    device_id: str
+    vehicle_registration: str
+
+    # The precinct the distance below is measured FROM — the trip's current stop. Named
+    # in the response because it is not always the origin, and a distance without its
+    # reference point is not a fact.
+    precinct_id: uuid.UUID
+    precinct_name: str
+
+    latitude: Optional[Decimal]
+    longitude: Optional[Decimal]
+    has_position: bool
+
+    # None when there is no fix to measure. Distinct from 0.0, which means the tracker
+    # is sitting exactly on the precinct centre.
+    distance_metres: Optional[float]
+    geofence_radius_metres: Optional[int]
+    gps_tolerance_metres: int
+    # None on the no-signal waypoint: no fix means no verdict, deliberately not `false`.
+    # A tracker that cannot be reached has not accused anyone.
+    geofence_confirmed: Optional[bool]
+    in_tolerance_band: bool
+    verdict_reason: str

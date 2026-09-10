@@ -2,6 +2,14 @@
 // Raised by driver, detected by system, or noted by dispatcher.
 // Mirrors backend TripExceptionRead schema in schemas/transit.py.
 
+// TripStatus is imported type-only. trip.ts already imports TripException from this
+// file, so this closes a trip.ts <-> exception.ts cycle — the same shape trip.ts
+// already carries with phase.ts (see its own "TYPE-ONLY and must stay that way" note).
+// `import type` is erased at compile time, so there is no runtime cycle; it must stay
+// type-only for that to hold.
+import type { TripStatus } from './trip'
+import type { EvidenceArtifactWithUrl } from './evidence'
+
 export type ExceptionId = string & { readonly __brand: 'ExceptionId' }
 
 // All 19 backend ExceptionType values — see DRIVER_EXCEPTION_TYPES and
@@ -37,9 +45,40 @@ export type ExceptionSource = 'system' | 'driver' | 'dispatcher'
 
 export type ExceptionSeverity = 'info' | 'warning' | 'critical'
 
+// Where an exception sits in the dispatcher's review workflow (FP-146 follow-on).
+// Mirrors the backend ExceptionReviewStatus. Replaces the old `resolved: boolean` —
+// a two-state flag could not distinguish "nobody has looked at this" from "looked at,
+// still needs a decision".
+export type ExceptionReviewStatus = 'recorded' | 'needs_review' | 'reviewed'
+
+// What a dispatcher concluded when reviewing an exception. Mirrors the backend
+// ExceptionReviewOutcome. 'legacy_review' is migration-only — see
+// DispatcherReviewOutcome, which is every real, submittable choice.
+export type ExceptionReviewOutcome =
+  | 'no_action_required'
+  | 'handled_externally'
+  | 'evidence_verified'
+  | 'data_discrepancy'
+  | 'referred_for_follow_up'
+  | 'legacy_review'
+
+// The choices a dispatcher may actually submit — ExceptionReviewOutcome without the
+// migration-only 'legacy_review' marker. Mirrors the backend DispatcherReviewOutcome.
+export type DispatcherReviewOutcome = Exclude<ExceptionReviewOutcome, 'legacy_review'>
+
+// How a dispatcher reached someone while reviewing — mirrors the backend
+// ExceptionContactMethod. A null contact method records that the evidence settled the
+// review without contact, rather than inventing contact history.
+export type ExceptionContactMethod = 'phone' | 'whatsapp' | 'in_person'
+
 export interface TripException {
   id: ExceptionId
   trip_id: string
+  // Denormalised off the trip by the dispatcher endpoints, which already join it for
+  // org scoping. Without it every row on the exception queue could name only a UUID.
+  // Optional: the driver's own POST response is built from the ORM row alone and has
+  // no trip loaded, and driver-pwa shares this type without reading the field.
+  trip_reference?: string | null
   exception_type: ExceptionType
   source: ExceptionSource
   severity: ExceptionSeverity
@@ -57,11 +96,58 @@ export interface TripException {
   // convention in checkpoint.ts. POPIA: stays in Postgres, never anchored to Hedera.
   gps_lat?: number | null
   gps_lng?: number | null
-  resolved: boolean
-  resolved_by_user_id: string | null
-  resolved_at: string | null
-  resolver_note: string | null
+  // Task 1 (FP-146 review semantics): replaces the old `resolved: boolean` — see
+  // ExceptionReviewStatus's own comment for why a two-state flag was not enough.
+  review_status: ExceptionReviewStatus
+  // Set only once review_status reaches 'reviewed'. Null for everything else, and for
+  // every migrated-legacy row that was `resolved=true` with no real finding on record
+  // (those instead carry 'legacy_review').
+  review_outcome: ExceptionReviewOutcome | null
+  reviewed_by_user_id: string | null
+  reviewed_at: string | null
+  review_note: string | null
+  // Nullable for every exception reviewed before this column existed, or reviewed
+  // without any contact having happened (evidence alone settled it) — backfilling a
+  // guess would put invented contact history onto an evidence record.
+  contact_method: ExceptionContactMethod | null
   merkle_batch_id: string | null
   created_at: string
   updated_at: string
+}
+
+// Row shape for the three FP-146 follow-on read endpoints (review-queue, history,
+// detail) — replaces the single unpaginated GET /api/v1/exceptions that used
+// TripException above. Mirrors backend TripExceptionListItem.
+export interface TripExceptionListItem {
+  id: ExceptionId
+  exception_type: ExceptionType
+  source: ExceptionSource
+  severity: ExceptionSeverity
+  review_status: ExceptionReviewStatus
+  description: string
+  created_at: string
+  trip_id: string
+  trip_reference: string
+  trip_status: TripStatus
+  phase_label: string | null
+  stop_label: number | null
+}
+
+// GET /api/v1/exceptions/{id} — the list item plus the fields only a single-record
+// view needs (GPS, review outcome, supporting evidence). Mirrors backend
+// TripExceptionDetail.
+export interface TripExceptionDetail extends TripExceptionListItem {
+  gps_lat: number | null
+  gps_lng: number | null
+  review_outcome: ExceptionReviewOutcome | null
+  reviewed_by_user_id: string | null
+  reviewed_at: string | null
+  review_note: string | null
+  contact_method: ExceptionContactMethod | null
+  trip_closed_at: string | null
+  supporting_artifact_id: string | null
+  // Null when there is no photo OR ownership could not be verified. Present with
+  // signed_url: null when the artifact is real but Storage declined to sign it — still
+  // render the record with the image unavailable rather than hiding it.
+  supporting_artifact: EvidenceArtifactWithUrl | null
 }

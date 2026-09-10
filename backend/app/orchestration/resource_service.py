@@ -11,13 +11,18 @@ Driver, vehicle and precinct service functions have been extracted to:
 
 import uuid
 from collections import defaultdict
+from datetime import date, datetime, time, timedelta, timezone
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, literal, or_, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.exceptions import ResourceNotFoundError
+from app.core.pagination import CursorPosition, encode_cursor
 from app.db.models.blockchain import BlockchainReceipt
-from app.db.models.enums import PhaseStatus, SubjectType, TripStatus, TripType
+from app.db.models.enums import (
+    ExceptionReviewStatus, PhaseStatus, SubjectType, TripStatus, TripType,
+)
 from app.db.models.phases import PhaseEvent
 from app.db.models.people import Driver
 from app.db.models.transit import TripException
@@ -28,8 +33,17 @@ from app.orchestration.scan_service import scanned_counts_for_trip
 from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.phases import PhaseEventRead
 from app.schemas.people import DriverRead
+from app.schemas.pagination import CursorPage
 from app.schemas.transit import TripExceptionRead
-from app.schemas.trips import ConsignmentRead, TripDetailResponse, TripListItemResponse, TripStopRead
+from app.schemas.trips import (
+    ConsignmentRead,
+    TripDetailResponse,
+    TripHistoryDriverResponse,
+    TripHistoryListItemResponse,
+    TripHistoryVehicleResponse,
+    TripListItemResponse,
+    TripStopRead,
+)
 from app.schemas.vehicles import VehicleRead
 
 
@@ -77,11 +91,15 @@ async def list_trips(
         if tt.trailer_id in trailers_by_id:
             trailers_by_trip[tt.trip_id].append(trailers_by_id[tt.trailer_id])
 
+    # NEEDS_REVIEW only, not "!= REVIEWED": a RECORDED row (e.g. a WARNING-severity
+    # parcel-count mismatch) is on the trip's exception list but not queued for a
+    # dispatcher decision — counting it here would put every recorded warning in
+    # front of a dispatcher as if it demanded action (Task 2, FP-146 follow-on).
     exc_result = await db.execute(
         select(TripException.trip_id, func.count(TripException.id))
         .where(
             TripException.trip_id.in_(trip_ids),
-            TripException.resolved.is_(False),
+            TripException.review_status == ExceptionReviewStatus.NEEDS_REVIEW,
         )
         .group_by(TripException.trip_id)
     )
@@ -121,7 +139,7 @@ async def list_trips(
             actual_departure_at=t.actual_departure_at,
             planned_arrival_at=t.planned_arrival_at,
             actual_arrival_at=t.actual_arrival_at,
-            open_exception_count=exc_counts.get(t.id, 0),
+            needs_review_count=exc_counts.get(t.id, 0),
             current_phase=t.current_phase,
             current_stop=t.current_stop,
             phase_total=plan_counts.get(t.id, (0, 0))[0],
@@ -131,6 +149,154 @@ async def list_trips(
         )
         for t in trips
     ]
+
+
+async def list_trip_history(
+    db: AsyncSession,
+    *,
+    operator_organization_id: uuid.UUID,
+    limit: int = 25,
+    cursor_position: CursorPosition | None = None,
+    q: str | None = None,
+    precinct_id: uuid.UUID | None = None,
+    from_date: date | None = None,
+    to_date: date | None = None,
+) -> CursorPage[TripHistoryListItemResponse]:
+    """Closed/cancelled trips, newest close first, keyset-paginated.
+
+    The opaque shared cursor's timestamp field is named ``created_at`` internally, but
+    its value here is always Trip.closed_at. The API boundary decodes it before calling
+    this query so malformed client input fails without doing database work.
+    """
+    filters = [
+        Trip.operator_organization_id == operator_organization_id,
+        Trip.status.in_([TripStatus.CLOSED, TripStatus.CANCELLED]),
+        Trip.closed_at.is_not(None),
+    ]
+    if q is not None:
+        filters.append(or_(
+            Trip.trip_reference.icontains(q, autoescape=True),
+            Trip.order_number.icontains(q, autoescape=True),
+            Driver.full_name.icontains(q, autoescape=True),
+        ))
+    if precinct_id is not None:
+        filters.append(or_(
+            Trip.origin_precinct_id == precinct_id,
+            Trip.destination_precinct_id == precinct_id,
+        ))
+    if from_date is not None or to_date is not None:
+        operations_tz = timezone(timedelta(hours=settings.OPERATIONS_UTC_OFFSET_HOURS))
+        if from_date is not None:
+            filters.append(
+                Trip.closed_at >= datetime.combine(from_date, time.min, tzinfo=operations_tz)
+            )
+        # date.max has no representable day-after boundary. Omitting the upper
+        # predicate in that one case preserves inclusive semantics because no
+        # Python/driver timestamp can fall beyond the maximum calendar date.
+        if to_date is not None and to_date < date.max:
+            filters.append(
+                Trip.closed_at
+                < datetime.combine(to_date + timedelta(days=1), time.min, tzinfo=operations_tz)
+            )
+
+    count_stmt = (
+        select(func.count())
+        .select_from(Trip)
+        .join(Driver, Driver.id == Trip.driver_id)
+        .where(*filters)
+    )
+    total_items = (await db.execute(count_stmt)).scalar_one()
+
+    page_stmt = (
+        select(Trip, Driver)
+        .join(Driver, Driver.id == Trip.driver_id)
+        .where(*filters)
+        .order_by(Trip.closed_at.desc(), Trip.id.desc())
+        .limit(limit + 1)
+    )
+    if cursor_position is not None:
+        page_stmt = page_stmt.where(
+            tuple_(Trip.closed_at, Trip.id)
+            < tuple_(literal(cursor_position.created_at), literal(cursor_position.id))
+        )
+
+    rows = (await db.execute(page_stmt)).all()
+    has_more = len(rows) > limit
+    page_rows = rows[:limit]
+    trips = [trip for trip, _driver in page_rows]
+
+    if not trips:
+        return CursorPage[TripHistoryListItemResponse](
+            items=[], next_cursor=None, total_items=total_items,
+        )
+
+    trip_ids = [trip.id for trip in trips]
+    horse_ids = list({trip.horse_id for trip in trips})
+    horses_result = await db.execute(select(Vehicle).where(Vehicle.id.in_(horse_ids)))
+    horses_by_id: dict[uuid.UUID, Vehicle] = {
+        vehicle.id: vehicle for vehicle in horses_result.scalars().all()
+    }
+
+    exceptions_result = await db.execute(
+        select(TripException.trip_id, func.count(TripException.id))
+        .where(
+            TripException.trip_id.in_(trip_ids),
+            TripException.review_status == ExceptionReviewStatus.NEEDS_REVIEW,
+        )
+        .group_by(TripException.trip_id)
+    )
+    exception_counts: dict[uuid.UUID, int] = {
+        trip_id: count for trip_id, count in exceptions_result.all()
+    }
+
+    phases_result = await db.execute(
+        select(
+            PhaseEvent.trip_id,
+            func.count(PhaseEvent.id),
+            func.count(PhaseEvent.id).filter(
+                PhaseEvent.status.in_([PhaseStatus.COMPLETED, PhaseStatus.OVERRIDDEN])
+            ),
+        )
+        .where(PhaseEvent.trip_id.in_(trip_ids))
+        .group_by(PhaseEvent.trip_id)
+    )
+    phase_counts: dict[uuid.UUID, tuple[int, int]] = {
+        trip_id: (total, completed)
+        for trip_id, total, completed in phases_result.all()
+    }
+
+    items = [
+        TripHistoryListItemResponse(
+            id=trip.id,
+            trip_reference=trip.trip_reference,
+            order_number=trip.order_number,
+            status=trip.status,
+            driver=TripHistoryDriverResponse.model_validate(driver),
+            horse=TripHistoryVehicleResponse.model_validate(horses_by_id[trip.horse_id]),
+            origin_precinct_id=trip.origin_precinct_id,
+            destination_precinct_id=trip.destination_precinct_id,
+            needs_review_count=exception_counts.get(trip.id, 0),
+            current_phase=trip.current_phase,
+            current_stop=trip.current_stop,
+            phase_total=phase_counts.get(trip.id, (0, 0))[0],
+            phase_completed=phase_counts.get(trip.id, (0, 0))[1],
+            closed_at=trip.closed_at,
+            created_at=trip.created_at,
+        )
+        for trip, driver in page_rows
+    ]
+
+    next_cursor: str | None = None
+    if has_more:
+        last_trip = page_rows[-1][0]
+        next_cursor = encode_cursor(CursorPosition(
+            created_at=last_trip.closed_at,
+            id=last_trip.id,
+        ))
+
+    return CursorPage[TripHistoryListItemResponse](
+        items=items, next_cursor=next_cursor, total_items=total_items,
+    )
 
 
 async def get_trip_detail(

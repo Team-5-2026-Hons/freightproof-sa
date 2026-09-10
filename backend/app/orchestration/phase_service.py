@@ -68,21 +68,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.blockchain.anchor_service import anchor_subject, compute_payload_hash
 from app.core.config import settings
-from app.core.realtime import RealtimeKind, TripEvent, enqueue_event
+from app.core.geo import haversine_metres
+from app.core.realtime import RealtimeKind, TripEvent, enqueue_event, event_severity
 from app.core.exceptions import (
     HederaServiceError, HederaTimeoutError, PhaseBlockedError, PhaseSequenceError, PhaseTooEarlyError,
     PhaseTypeMismatchError, ResourceNotFoundError, TripActivationBlockedError, TripStateError,
 )
 from app.db.models.enums import (
-    AnchorStatus, BlockchainReceiptType, ExceptionSeverity, ExceptionSource, ExceptionType,
-    PhaseStatus, PhaseType, SubjectType, TripStatus,
+    AnchorStatus, BlockchainReceiptType, ExceptionReviewStatus, ExceptionSeverity,
+    ExceptionSource, ExceptionType, PhaseStatus, PhaseType, SubjectType, TripStatus,
 )
 from app.db.models.evidence import EvidenceArtifact
 from app.db.models.phases import PhaseEvent
 from app.db.models.transit import TripException
 from app.db.models.trips import Consignment, Trip, TripStop
 from app.integrations.scan_feed import ScanDirection
-from app.orchestration import scan_service
+from app.orchestration import corroboration_service, scan_service
 from app.orchestration.phase_gate import blocked_on_by_stop
 from app.orchestration.resource_service import get_trip_detail
 from app.schemas.phases import (
@@ -92,6 +93,23 @@ from app.schemas.phases import (
 from app.schemas.trips import TripDetailResponse
 
 logger = logging.getLogger(__name__)
+
+
+def _initial_review_status(severity: ExceptionSeverity) -> ExceptionReviewStatus:
+    """Delegates to exception_service.initial_review_status (Task 2) so every
+    TripException this module writes routes its review_status through the same
+    severity->status rule as the driver-raised path, instead of hand-coding a value or
+    relying on the column's server_default.
+
+    Imported lazily, not at module scope: exception_service imports
+    phase_service.current_phase_event at ITS module load, so a top-level import here
+    would try to read exception_service while it is still mid-import — deadlocking on
+    the partially-initialised module. This function only runs at request time, by
+    which point both modules have finished loading.
+    """
+    from app.orchestration.exception_service import initial_review_status
+
+    return initial_review_status(severity)
 
 
 async def _load_trip_for_driver(db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID) -> Trip:
@@ -476,11 +494,195 @@ async def _anchor_or_fail_open(
     event.anchor_status = AnchorStatus.ANCHORED
 
 
+# Where a rendered separation crosses from metres to kilometres. A gap under a
+# kilometre printed as "0.3 km" reads as rounding noise, when 300 m is the
+# difference between standing at the gate and standing across the yard.
+_SEPARATION_KM_THRESHOLD_METRES = 1000
+
+
+def _format_separation(metres: float) -> str:
+    """A distance in the units a dispatcher reads at a glance."""
+    if metres < _SEPARATION_KM_THRESHOLD_METRES:
+        return f"{round(metres)} m"
+    return f"{metres / _SEPARATION_KM_THRESHOLD_METRES:.1f} km"
+
+
+def _phone_tracker_separation_metres(event: PhaseEvent) -> float | None:
+    """How far apart the two independent position sources were, or None.
+
+    None means "not measurable" — one of the two sources recorded no fix — and is
+    never conflated with 0.0, which is a real and opposite claim: the phone and the
+    tracker agreed exactly. Mirrors separationMetres() in the dispatcher's
+    lib/phase/geo.ts, which computes the same number from the same two columns for
+    the same card.
+    """
+    if (
+        event.driver_phone_lat is None or event.driver_phone_lng is None
+        or event.horse_gps_lat is None or event.horse_gps_lng is None
+    ):
+        return None
+    return haversine_metres(
+        event.driver_phone_lat, event.driver_phone_lng,
+        event.horse_gps_lat, event.horse_gps_lng,
+    )
+
+
+async def _raise_position_disagreement_if_unrecorded(
+    db: AsyncSession, *, trip: Trip, event: PhaseEvent,
+) -> None:
+    """Record GPS_MISMATCH when Pulsit measured the vehicle away from this stop (FP-145).
+
+    Consumes what FP-143's corroboration_service wrote moments earlier in this same
+    request; computes nothing about geofences itself.
+
+    ── ONLY FALSE RAISES. NEVER NULL. ────────────────────────────────────────────
+    `is False`, deliberately, and never `not confirmed`. FP-143's three-state column
+    reads NULL for "we could not check" — an unreachable tracker, a dark unit, a
+    precinct with no coordinates — and `not None` is True, so the looser test would
+    put a position disagreement against the name of every driver who drove through a
+    coverage dead zone on the N3. FALSE is a measurement; NULL is an admission that
+    no measurement exists. This one line is what keeps them apart.
+
+    ── Why this lives here and not in exception_service ──────────────────────────
+    exception_service owns DRIVER-raised exceptions: its entry point asserts the
+    caller is the trip's assigned driver and stamps ExceptionSource.DRIVER on the
+    row. Routing a system measurement through it would file the finding as something
+    the driver reported about themselves, which is precisely backwards — the value of
+    this exception is that a source the driver cannot influence produced it. Every
+    other system-detected exception (parcel count, seal mismatch, seal unverified,
+    waybill count) is written here, in this module, with source=SYSTEM; this follows
+    that path rather than inventing a second one. exception_service also imports this
+    module, so the reverse import would be circular.
+
+    ── Idempotent against the phase event ────────────────────────────────────────
+    _gate_and_load already short-circuits a replayed completion before any wrapper
+    body runs, so a re-synced offline handshake should never reach here twice. The
+    existence check is kept anyway, for the same reason FP-143 re-checks a fix's
+    timestamp it has been promised: evidence writes should not depend on another
+    function's invariant holding. One exception per phase event, and the check is
+    NOT filtered on `resolved` — a dispatcher who has already actioned this finding
+    must not have a duplicate reappear when the driver app flushes its queue again.
+
+    Never raises. A handshake is evidence that already physically happened; a fault
+    while annotating it must not undo it. Same fail-open stance as
+    _anchor_or_fail_open and record_phase_corroboration.
+    """
+    if event.pulsit_geofence_confirmed is not False:
+        return
+
+    try:
+        existing = (await db.execute(
+            select(TripException.id).where(
+                TripException.phase_event_id == event.id,
+                TripException.exception_type == ExceptionType.GPS_MISMATCH,
+            )
+        )).first()
+        if existing is not None:
+            return
+
+        separation = _phone_tracker_separation_metres(event)
+        if separation is None:
+            description = (
+                "The vehicle tracker's position is outside this stop's geofence at this "
+                "handshake. Only one of the two position sources recorded a fix, so the "
+                "separation between them could not be measured."
+            )
+        else:
+            description = (
+                f"Driver phone and vehicle tracker reported positions "
+                f"{_format_separation(separation)} apart at this handshake. The tracker's "
+                f"position is outside this stop's geofence."
+            )
+
+        db.add(TripException(
+            trip_id=trip.id,
+            phase_event_id=event.id,
+            # Scoped to the stop the phase is anchored to, as every other
+            # system-detected exception in this module already does.
+            trip_stop_id=event.trip_stop_id,
+            exception_type=ExceptionType.GPS_MISMATCH,
+            source=ExceptionSource.SYSTEM,
+            # WARNING, not CRITICAL, and the choice is the copy rule in code form.
+            # CRITICAL is this codebase's alarm tier: a seal mismatch, a panic button,
+            # a seal broken in transit — findings with no benign reading. A single
+            # geofence measurement has several: tracker drift, a stale cached fix, a
+            # vehicle legitimately parked outside the fence while the driver walks in
+            # to the gate office, or a precinct row whose coordinates or radius are
+            # wrong. Putting a class of finding with real false-positive modes into
+            # the alarm lane is how a dispatcher learns to ignore the alarm lane.
+            # WARNING is also what the comparable measurement disagreement
+            # (PARCEL_COUNT_MISMATCH) already uses. The separation is reported; the
+            # dispatcher decides what it means.
+            severity=ExceptionSeverity.WARNING,
+            review_status=_initial_review_status(ExceptionSeverity.WARNING),
+            description=description,
+            # The driver's own fix, which is what this column means on every other
+            # writer. The tracker's fix has no column here and needs none: both
+            # positions live on the phase_events row this exception points at, and
+            # copying them into the exception would create a second version of the
+            # same coordinates that could drift out of step with the first. The
+            # separation is likewise recomputed at render time from those two
+            # columns, per FP-143's note — no derived value is persisted.
+            gps_lat=event.driver_phone_lat,
+            gps_lng=event.driver_phone_lng,
+        ))
+
+        logger.info(
+            "Recorded GPS_MISMATCH for phase_event_id=%s trip_id=%s: separation=%s",
+            event.id, trip.id,
+            "not measurable" if separation is None else f"{separation:.1f}m",
+        )
+
+        # FP-147's invariant: a system-detected exception that tells no one leaves the
+        # dispatcher's screen showing a trip that no longer matches the record. WARNING
+        # to match the row written above — event_severity widens the same value rather
+        # than restating it, so the toast band cannot drift from the stored severity.
+        # Inside the try: enqueue_event only appends to a session-local buffer, but if
+        # it ever raises, a handshake the driver already completed must not 400.
+        enqueue_event(
+            db, trip.operator_organization_id,
+            TripEvent(
+                id=trip.id, kind=RealtimeKind.EXCEPTION_RAISED,
+                severity=event_severity(ExceptionSeverity.WARNING),
+            ),
+        )
+
+    except Exception:
+        # Deliberate broad catch, logged with a traceback per the project's error
+        # rules, not a silent swallow. The driver is standing at a gate and has
+        # already done the thing being recorded.
+        logger.exception(
+            "Could not record a position disagreement for phase_event_id=%s — the "
+            "handshake stands and the corroboration columns still carry the finding",
+            event.id,
+        )
+
+
 async def _finish_phase(
     db: AsyncSession, *, trip: Trip, event: PhaseEvent, idempotency_key: str,
 ) -> TripDetailResponse:
     event.idempotency_key = idempotency_key
     event.completed_at = event.completed_at or datetime.now(UTC)
+
+    if event.phase_type == PhaseType.IN_TRANSIT and event.status == PhaseStatus.COMPLETED:
+        # The trip-wide arrival is the final driving leg's evidence timestamp.
+        # Intermediate stops and dispatcher overrides do not attest final arrival.
+        later_leg = await db.execute(
+            select(PhaseEvent.id).where(
+                PhaseEvent.trip_id == trip.id,
+                PhaseEvent.phase_type == PhaseType.IN_TRANSIT,
+                PhaseEvent.sequence_number > event.sequence_number,
+            ).limit(1)
+        )
+        if later_leg.scalar_one_or_none() is None:
+            trip.actual_arrival_at = event.completed_at
+
+    # FP-145. Placed on the one path every handshake converges on, and AFTER each
+    # wrapper's own call to record_phase_corroboration, so the verdict being read
+    # here is the one this handshake just produced. Before the flush below, so the
+    # finding is already in the TripDetailResponse this request returns.
+    await _raise_position_disagreement_if_unrecorded(db, trip=trip, event=event)
+
     await recompute_position(db, trip)
     await db.flush()
 
@@ -560,7 +762,9 @@ async def override_phase(
     db.add(TripException(
         trip_id=trip_id, phase_event_id=event.id,
         exception_type=ExceptionType.DISPATCHER_NOTE, source=ExceptionSource.DISPATCHER,
-        severity=ExceptionSeverity.WARNING, description=note,
+        severity=ExceptionSeverity.WARNING,
+        review_status=_initial_review_status(ExceptionSeverity.WARNING),
+        description=note,
     ))
 
     # May legitimately CLOSE the trip if this was the last unresolved row — that
@@ -568,6 +772,14 @@ async def override_phase(
     # OVERRIDDEN as resolved for gating purposes.
     await recompute_position(db, trip)
     await db.flush()
+
+    enqueue_event(
+        db, trip.operator_organization_id,
+        TripEvent(
+            id=trip.id, kind=RealtimeKind.EXCEPTION_RAISED,
+            severity=event_severity(ExceptionSeverity.WARNING),
+        ),
+    )
 
     # D9: always PHASE_COMPLETED for an override — the plan position moved, same
     # refetch as any completion (unlike _finish_phase, this is not conditional on
@@ -723,26 +935,36 @@ async def _reject_if_an_earlier_trip_is_due(
 
 
 def _record_driver_position(event: PhaseEvent, payload: PhaseCompleteRequest) -> None:
-    """Stamp the driver's phone fix onto the phase event, when the app sent one.
+    """Stamp the driver's phone fix and capture instant onto the phase event.
 
     Called by every advance_*, not just activation: the PWA no longer has manual
     "Capture GPS Location" steps, it takes a fix silently as the driver swipes to
     confirm, so every phase event can now say where it was completed.
 
-    Only writes when a fix is present. A None must never overwrite a position already
+    Only writes when a value is present. A None must never overwrite something already
     stored by an earlier attempt — a replayed offline submission whose original capture
-    succeeded would otherwise erase it on retry.
+    succeeded would otherwise erase it on retry. The GPS pair and driver_captured_at
+    (task 0A) are gated independently of each other: a phase can carry a capture time
+    with no GPS fix (a denied permission) or an older client's GPS fix with no capture
+    time at all, and neither absence should suppress the other.
 
     POPIA: these columns stay in Postgres. Every canonical payload builder in this
     module is an explicit whitelist, so nothing written here can reach a Hedera hash.
     """
-    if payload.driver_phone_lat is None or payload.driver_phone_lng is None:
-        return
-    # str() before Decimal: handing a float straight to a Numeric(10, 7) column carries
-    # the float's binary rounding error into fixed point (-26.0942 stores as
-    # -26.0941999...). The string form is the coordinate the phone actually reported.
-    event.driver_phone_lat = Decimal(str(payload.driver_phone_lat))
-    event.driver_phone_lng = Decimal(str(payload.driver_phone_lng))
+    if payload.driver_phone_lat is not None and payload.driver_phone_lng is not None:
+        # str() before Decimal: handing a float straight to a Numeric(10, 7) column
+        # carries the float's binary rounding error into fixed point (-26.0942 stores
+        # as -26.0941999...). The string form is the coordinate the phone actually
+        # reported.
+        event.driver_phone_lat = Decimal(str(payload.driver_phone_lat))
+        event.driver_phone_lng = Decimal(str(payload.driver_phone_lng))
+
+    # Task 0A: never substituted with completed_at or datetime.now(UTC) when absent —
+    # an invented capture instant would defeat the entire point of corroboration_
+    # service's skew check, which exists specifically to distrust a value this code
+    # made up.
+    if payload.driver_captured_at is not None:
+        event.driver_captured_at = payload.driver_captured_at
 
 
 async def advance_activation(
@@ -766,11 +988,15 @@ async def advance_activation(
     _reject_if_another_trip_underway(others)
     await _reject_if_an_earlier_trip_is_due(db, trip, others)
 
-    # GPS cross-reference against Pulsit horse GPS is a feeder check (P1 is not
-    # anchored to Hedera) — Pulsit integration itself is out of scope for this
-    # plan; until it lands, horse_gps fields stay null and the check is skipped
-    # rather than faked, so dispatchers see an honest "not yet cross-checked" state.
+    # Two sources, recorded together: the driver's phone says where the phone is,
+    # then Pulsit says where the vehicle is. The second is what makes the first
+    # corroborated rather than merely asserted. A feeder check — P1 is unanchored,
+    # and a Pulsit outage leaves the columns null ("could not check") rather than
+    # failing the handshake. See orchestration/corroboration_service.py.
     _record_driver_position(event, payload)
+    await corroboration_service.record_phase_corroboration(
+        db, trip=trip, event=event, driver_captured_at=payload.driver_captured_at,
+    )
     event.status = PhaseStatus.COMPLETED
 
     # First phase off CREATED. LEGACY per-handshake TripStatus values are gone
@@ -815,6 +1041,9 @@ async def advance_loading(
     trip, event = gated
 
     _record_driver_position(event, payload)
+    await corroboration_service.record_phase_corroboration(
+        db, trip=trip, event=event, driver_captured_at=payload.driver_captured_at,
+    )
 
     # Optional evidence: a warehouse that has already gone paperless has no linehaul
     # sheet to hand the driver, and this must never block completion (schema docstring).
@@ -846,6 +1075,7 @@ async def advance_loading(
 
     scanned_out_total = 0
     expected_total = 0
+    shortfall_recorded = False
     for consignment in consignments:
         counts = await scan_service.scanned_counts_for_consignment(
             db, consignment_id=consignment.id,
@@ -866,10 +1096,22 @@ async def advance_loading(
             # NOTHING scanned at all raises nothing there — no events, no row. That
             # is the most serious short count there is and it must not go unrecorded.
             # Hence a presence check rather than an unconditional add.
-            await _raise_scan_shortfall_if_unrecorded(
+            shortfall_recorded |= await _raise_scan_shortfall_if_unrecorded(
                 db, trip_id=trip_id, event=event, consignment=consignment,
                 scanned_out=counts.scanned_out, expected=counts.expected,
             )
+
+    if shortfall_recorded:
+        # After the loop, and only for rows this call actually wrote — the helper
+        # suppresses duplicates of what scan_service already raised at ingest, and a
+        # suppressed duplicate is not news to the dispatcher.
+        enqueue_event(
+            db, trip.operator_organization_id,
+            TripEvent(
+                id=trip_id, kind=RealtimeKind.EXCEPTION_RAISED,
+                severity=event_severity(ExceptionSeverity.WARNING),
+            ),
+        )
 
     # None, not 0, when this stop has no consignments at all: a trip created without
     # a Parcel Perfect reference has no manifest baseline, and 0 would read as
@@ -892,8 +1134,13 @@ async def advance_loading(
 async def _raise_scan_shortfall_if_unrecorded(
     db: AsyncSession, *, trip_id: uuid.UUID, event: PhaseEvent,
     consignment: Consignment, scanned_out: int, expected: int,
-) -> None:
+) -> bool:
     """Record a scan-out shortfall only if scan_service has not already recorded one.
+
+    Returns True when a row was written, False when an existing unresolved one made
+    this a no-op. The caller needs the distinction to decide whether to publish a
+    realtime event: it holds the Trip (and so the org id) that this helper does not,
+    and a suppressed duplicate must not wake the dispatcher a second time.
 
     Deliberately keyed on (consignment, stop, type, unresolved) rather than on the
     description string scan_service's own dedup compares: the two writers word the
@@ -907,23 +1154,25 @@ async def _raise_scan_shortfall_if_unrecorded(
             TripException.consignment_id == consignment.id,
             TripException.trip_stop_id == event.trip_stop_id,
             TripException.exception_type == ExceptionType.PARCEL_COUNT_MISMATCH,
-            TripException.resolved.is_(False),
+            TripException.review_status != ExceptionReviewStatus.REVIEWED,
         )
     )).first()
     if existing is not None:
-        return
+        return False
 
     db.add(TripException(
         trip_id=trip_id, phase_event_id=event.id,
         consignment_id=consignment.id, trip_stop_id=event.trip_stop_id,
         exception_type=ExceptionType.PARCEL_COUNT_MISMATCH,
         source=ExceptionSource.SYSTEM, severity=ExceptionSeverity.WARNING,
+        review_status=_initial_review_status(ExceptionSeverity.WARNING),
         description=(
             f"Warehouse closed its scan-out session on waybill "
             f"{consignment.parcel_perfect_reference} with "
             f"{scanned_out} of {expected} parcel(s) scanned."
         ),
     ))
+    return True
 
 
 def _normalized_seal(seal: str) -> str:
@@ -979,9 +1228,9 @@ async def advance_departure(
     trip, event = gated
 
     _record_driver_position(event, payload)
-
-    # Pulsit geofence departure confirmation is out of scope until the Pulsit
-    # integration lands; pulsit_geofence_confirmed stays null until then.
+    await corroboration_service.record_phase_corroboration(
+        db, trip=trip, event=event, driver_captured_at=payload.driver_captured_at,
+    )
 
     # Before any evidence is written: every photo cited must be this trip's own. The
     # waybill id is normally None now (its step was removed 2026-08-10 — see
@@ -1032,8 +1281,22 @@ async def advance_departure(
             trip_id=trip_id, phase_event_id=event.id,
             exception_type=ExceptionType.SEAL_MISMATCH, source=ExceptionSource.DRIVER,
             severity=ExceptionSeverity.CRITICAL,
+            review_status=_initial_review_status(ExceptionSeverity.CRITICAL),
             description=seal_mismatch_description,
         ))
+        # Emitted for consistency with the other system sites, but deliberately
+        # untested: BOTH entry paths above are dead from any current client. The driver
+        # app sends neither seal_number_confirmed nor guard_verified_seal
+        # (driver-pwa/lib/api/phases.ts:50) — the guard re-entry step was removed
+        # 2026-08-05. The fields survive only so a departure queued offline by an older
+        # build can replay instead of 422-ing forever, which is also why this stays.
+        enqueue_event(
+            db, trip.operator_organization_id,
+            TripEvent(
+                id=trip_id, kind=RealtimeKind.EXCEPTION_RAISED,
+                severity=event_severity(ExceptionSeverity.CRITICAL),
+            ),
+        )
     else:
         event.status = PhaseStatus.COMPLETED
 
@@ -1095,6 +1358,9 @@ async def advance_in_transit(
     trip, event = gated
 
     _record_driver_position(event, payload)
+    await corroboration_service.record_phase_corroboration(
+        db, trip=trip, event=event, driver_captured_at=payload.driver_captured_at,
+    )
     event.status = PhaseStatus.COMPLETED
 
     return await _finish_phase(db, trip=trip, event=event, idempotency_key=payload.idempotency_key)
@@ -1113,6 +1379,9 @@ async def advance_unloading(
     trip, event = gated
 
     _record_driver_position(event, payload)
+    await corroboration_service.record_phase_corroboration(
+        db, trip=trip, event=event, driver_captured_at=payload.driver_captured_at,
+    )
 
     # T4: this LEG's departure (strictly before this row), not "the trip's" —
     # a multi-stop trip can have several DEPARTURE rows, and a plain
@@ -1161,14 +1430,19 @@ async def advance_unloading(
         # Neither is INFO: an unverifiable seal chain is exactly what a real seal swap
         # would hide behind.
         absence_is_explained = departure_event.status == PhaseStatus.OVERRIDDEN
+        # Bound once rather than inlined: the realtime kind below must derive from the
+        # exact severity this row is written with, and two copies of the same
+        # conditional could drift apart.
+        seal_unverified_severity = (
+            ExceptionSeverity.WARNING if absence_is_explained
+            else ExceptionSeverity.CRITICAL
+        )
         event.status = PhaseStatus.EXCEPTION
         db.add(TripException(
             trip_id=trip_id, phase_event_id=event.id,
             exception_type=ExceptionType.SEAL_UNVERIFIED, source=ExceptionSource.SYSTEM,
-            severity=(
-                ExceptionSeverity.WARNING if absence_is_explained
-                else ExceptionSeverity.CRITICAL
-            ),
+            severity=seal_unverified_severity,
+            review_status=_initial_review_status(seal_unverified_severity),
             description=(
                 f"Seal continuity could not be verified for this leg: no seal was "
                 f"recorded at departure (departure phase is "
@@ -1176,6 +1450,13 @@ async def advance_unloading(
                 f"was '{seal_at_destination}'."
             ),
         ))
+        enqueue_event(
+            db, trip.operator_organization_id,
+            TripEvent(
+                id=trip_id, kind=RealtimeKind.EXCEPTION_RAISED,
+                severity=event_severity(seal_unverified_severity),
+            ),
+        )
     elif seal_at_destination != departure_seal:
         # Recorded as evidence, but does NOT hold the trip. This branch used to set
         # trip.status = EXCEPTION_HOLD; three reasons it must not:
@@ -1202,11 +1483,19 @@ async def advance_unloading(
             trip_id=trip_id, phase_event_id=event.id,
             exception_type=ExceptionType.SEAL_MISMATCH, source=ExceptionSource.SYSTEM,
             severity=ExceptionSeverity.CRITICAL,
+            review_status=_initial_review_status(ExceptionSeverity.CRITICAL),
             description=(
                 f"Seal at destination ('{seal_at_destination}') does not match "
                 f"the seal applied at departure ('{departure_seal}')."
             ),
         ))
+        enqueue_event(
+            db, trip.operator_organization_id,
+            TripEvent(
+                id=trip_id, kind=RealtimeKind.EXCEPTION_RAISED,
+                severity=event_severity(ExceptionSeverity.CRITICAL),
+            ),
+        )
     else:
         event.status = PhaseStatus.COMPLETED
         # No LEGACY trip.status assignment here (DEST_GATE_IN is deleted, T6) —
@@ -1263,6 +1552,9 @@ async def advance_confirmation(
     trip, event = gated
 
     _record_driver_position(event, payload)
+    await corroboration_service.record_phase_corroboration(
+        db, trip=trip, event=event, driver_captured_at=payload.driver_captured_at,
+    )
 
     await _assert_artifacts_belong_to_trip(
         db, trip_id=trip_id,
@@ -1312,6 +1604,7 @@ async def advance_confirmation(
                 consignment_id=consignment.id, trip_stop_id=event.trip_stop_id,
                 exception_type=ExceptionType.WAYBILL_COUNT_MISMATCH,
                 source=ExceptionSource.SYSTEM, severity=ExceptionSeverity.WARNING,
+                review_status=_initial_review_status(ExceptionSeverity.WARNING),
                 description=(
                     f"Parcel count changed in transit on waybill "
                     f"{consignment.parcel_perfect_reference}: "
@@ -1319,6 +1612,17 @@ async def advance_confirmation(
                     f"{counts.scanned_in} scanned in at destination."
                 ),
             ))
+
+    if mismatched:
+        # Once, after the loop — a three-waybill discrepancy is still one trip to
+        # refetch, and three identical events would only make the client do it thrice.
+        enqueue_event(
+            db, trip.operator_organization_id,
+            TripEvent(
+                id=trip_id, kind=RealtimeKind.EXCEPTION_RAISED,
+                severity=event_severity(ExceptionSeverity.WARNING),
+            ),
+        )
 
     event.driver_visual_count = payload.driver_visual_count
     event.parcel_count_destination = scanned_in_total
@@ -1348,8 +1652,6 @@ async def advance_confirmation(
     # confirmation's real point: recompute_position (called inside
     # _finish_phase) finds no unresolved rows left and closes the trip
     # generically, instead of this wrapper hardcoding "I am always last."
-    trip.actual_arrival_at = trip.actual_arrival_at or datetime.now(UTC)
-
     return await _finish_phase(db, trip=trip, event=event, idempotency_key=payload.idempotency_key)
 
 

@@ -1,10 +1,11 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '@/lib/api/client'
 import { Ic } from '@/components/ui/Ic'
 import { useToast } from '@/lib/hooks/useToast'
-import { ForensicOnly } from './ForensicOnly'
+import { Modal } from '@/components/ui/Modal'
+import { fmtDateTime } from '@shared/lib/utils/datetime'
 import type { SubjectType, VerifyResult } from '@shared/lib/types/blockchain'
 
 type Props = {
@@ -12,14 +13,14 @@ type Props = {
   subjectId: string
   // When true: fires on mount, result persists (no auto-reset), shows Re-check link.
   autoVerify?: boolean
-  onResult?: (r: VerifyResult) => void
+  onResult?: (r: VerifyResult, checkedAt: string) => void
   className?: string
 }
 
 type UIState =
   | { kind: 'idle' }
   | { kind: 'verifying' }
-  | { kind: 'result'; result: VerifyResult }
+  | { kind: 'result'; result: VerifyResult; checkedAt: string }
 
 function SpinnerRing() {
   return (
@@ -32,14 +33,7 @@ function SpinnerRing() {
 
 function MismatchReport({ result, onClose }: { result: VerifyResult; onClose: () => void }) {
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-[480px] rounded-xl bg-surf-lowest shadow-xl p-6"
-        onClick={e => e.stopPropagation()}
-      >
+    <Modal open onClose={onClose} title="Mismatch report">
         <div className="flex items-start justify-between mb-4">
           <div>
             <div className="flex items-center gap-2 text-[16px] font-[700] text-on-surf">
@@ -52,16 +46,11 @@ function MismatchReport({ result, onClose }: { result: VerifyResult; onClose: ()
                 : 'The blockchain record does not match the expected hash.'}
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="ml-4 shrink-0 text-[22px] leading-[1] text-on-surf-v hover:text-on-surf"
-          >
-            ×
-          </button>
+
         </div>
 
         <div className="mb-5 rounded-lg bg-err-c px-3 py-[10px] text-[12px] leading-relaxed text-on-err-c">
-          This trip&apos;s data may have been altered after it was anchored on the blockchain. Do not act on this trip — escalate to your supervisor immediately.
+          The selected record does not match its expected anchor. Review the discrepancy.
         </div>
 
         <div className="space-y-3">
@@ -95,8 +84,7 @@ function MismatchReport({ result, onClose }: { result: VerifyResult; onClose: ()
         >
           Close
         </button>
-      </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -104,23 +92,32 @@ export function VerifyButton({
   subjectType, subjectId, autoVerify = false, onResult, className = '',
 }: Props) {
   const { notify } = useToast()
+  const resultCallback = useRef(onResult)
+  const requestVersion = useRef(0)
+  const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => { resultCallback.current = onResult }, [onResult])
   const [ui, setUi] = useState<UIState>(autoVerify ? { kind: 'verifying' } : { kind: 'idle' })
   const [showReport, setShowReport] = useState(false)
 
   const verify = useCallback(async () => {
+    const version = ++requestVersion.current
+    if (resetTimer.current) clearTimeout(resetTimer.current)
     setUi({ kind: 'verifying' })
     try {
       const result = await api.post<VerifyResult>('/api/v1/blockchain/verify', {
         subject_type: subjectType,
         subject_id: subjectId,
       }, { idempotent: true })
-      setUi({ kind: 'result', result })
-      onResult?.(result)
+      if (version !== requestVersion.current) return
+      const checkedAt = new Date().toISOString()
+      setUi({ kind: 'result', result, checkedAt })
+      resultCallback.current?.(result, checkedAt)
       // Manual verifies auto-reset after 8s; auto-verify results stay visible.
       if (!autoVerify) {
-        setTimeout(() => setUi({ kind: 'idle' }), 8000)
+        resetTimer.current = setTimeout(() => setUi({ kind: 'idle' }), 8000)
       }
     } catch (err) {
+      if (version !== requestVersion.current) return
       setUi({ kind: 'idle' })
       notify({
         kind: 'error',
@@ -128,11 +125,22 @@ export function VerifyButton({
         body: err instanceof Error ? err.message : 'Could not reach the verification service.',
       })
     }
-  }, [subjectType, subjectId, autoVerify, onResult, notify])
+  }, [subjectType, subjectId, autoVerify, notify])
 
   // Defer to next tick so verify()'s synchronous setUi call doesn't fire during render.
   useEffect(() => {
-    if (autoVerify) setTimeout(() => { void verify() }, 0)
+    const initialVersion = requestVersion.current
+    const timer = setTimeout(() => {
+      if (initialVersion !== requestVersion.current) return
+      setShowReport(false)
+      if (autoVerify) void verify()
+      else setUi({ kind: 'idle' })
+    }, 0)
+    return () => {
+      clearTimeout(timer)
+      if (resetTimer.current) clearTimeout(resetTimer.current)
+      requestVersion.current += 1
+    }
   }, [autoVerify, verify])
 
   const reCheckButton = autoVerify ? (
@@ -163,10 +171,11 @@ export function VerifyButton({
           <div className="rounded-[var(--r-md)] bg-ok-c px-[10px] py-[8px]">
             <div className="flex items-center gap-[6px] text-[12px] font-[700] text-on-ok-c">
               <Ic n="shield" s={13} className="text-ok" />
-              Records intact
+              {subjectType === 'trip' ? 'Committed trip details match' : 'Selected record matches'}
             </div>
             <div className="mt-[4px] text-[11px] leading-snug text-on-ok-c/80">
-              All data matches the blockchain record. Nothing has been altered.
+              {subjectType === 'trip' ? 'Committed trip details match their anchor. Photos, scans and other evidence are not covered by this check.' : 'The selected record matches its blockchain anchor.'}
+              <div>Checked {fmtDateTime(ui.checkedAt)}</div>
             </div>
           </div>
           {reCheckButton}
@@ -177,18 +186,18 @@ export function VerifyButton({
     if (r.status === 'db_mismatch' || r.status === 'hedera_mismatch') {
       return (
         <div className={`mt-2 ${className}`}>
-          <ForensicOnly>
+          <>
             {showReport && <MismatchReport result={r} onClose={() => setShowReport(false)} />}
-          </ForensicOnly>
+          </>
           <div className="rounded-[var(--r-md)] bg-err-c px-[10px] py-[8px]">
             <div className="flex items-center gap-[6px] text-[12px] font-[700] text-on-err-c">
               <Ic n="warn" s={13} className="text-err" />
               Mismatch Detected
             </div>
             <div className="mt-[4px] text-[11px] leading-snug text-on-err-c/80">
-              This trip&apos;s data does not match the blockchain record. Escalate immediately.
+              The selected record does not match its blockchain anchor. Review the discrepancy.
             </div>
-            <ForensicOnly>
+            <>
               <button
                 onClick={() => setShowReport(true)}
                 className="mt-[6px] flex items-center gap-[5px] rounded-[var(--r-sm)] border border-err/30 bg-err/10 px-[8px] py-[4px] text-[10px] font-[600] text-on-err-c transition-colors hover:bg-err/20"
@@ -196,7 +205,7 @@ export function VerifyButton({
                 <Ic n="file" s={10} className="text-on-err-c" />
                 View Mismatch Report
               </button>
-            </ForensicOnly>
+            </>
           </div>
           {reCheckButton}
         </div>
@@ -222,7 +231,7 @@ export function VerifyButton({
     return (
       <div className={`mt-2 ${className}`}>
         <div className="text-[11px] font-[500] text-chain-onc opacity-60">
-          No anchor on file for this trip
+          No anchor on file for this record
         </div>
         {reCheckButton}
       </div>

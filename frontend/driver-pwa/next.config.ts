@@ -67,16 +67,6 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: path.join(__dirname, "../.."),
   // Required for output: 'export' — Next.js image optimisation uses a server; static export cannot.
   images: { unoptimized: true },
-  // `next build` fails the whole build on any ESLint error found anywhere in the project,
-  // not just in files this build actually touches — discovered while verifying FIX 3/4/5:
-  // app/global-error.tsx (@next/next/no-html-link-for-pages) and lib/context/AuthContext.tsx
-  // (a stale `react-hooks/set-state-in-effect` disable comment, orphaned by the
-  // eslint-config-next 15 downgrade in FIX 5 — see package.json) are both outside this
-  // change's scope and owned by other in-progress work. `npm run lint` still runs
-  // separately (unaffected by this) and still reports both — this only stops an unrelated
-  // file's lint state from blocking everyone's production build. Flagged for the team:
-  // consider re-enabling once those two are resolved.
-  eslint: { ignoreDuringBuilds: true },
   env: {
     NEXT_PUBLIC_APP_VERSION: packageJsonVersion,
   },

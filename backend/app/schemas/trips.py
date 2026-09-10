@@ -238,8 +238,10 @@ class TripRead(TripBase):
 class TripListItemResponse(BaseModel):
     """Lightweight trip shape returned by GET /api/v1/trips.
 
-    Excludes handshakes and receipts. open_exception_count is computed
-    by resource_service.list_trips() via a grouped COUNT query.
+    Excludes handshakes and receipts. needs_review_count is computed
+    by resource_service.list_trips() via a grouped COUNT query, counting only
+    review_status == NEEDS_REVIEW (Task 2, FP-146 follow-on) — a RECORDED row is on
+    the trip's exception list but is not queued for a dispatcher decision.
     """
     model_config = ConfigDict(from_attributes=True)
 
@@ -257,7 +259,7 @@ class TripListItemResponse(BaseModel):
     actual_departure_at: Optional[datetime] = None
     planned_arrival_at: Optional[datetime] = None
     actual_arrival_at: Optional[datetime] = None
-    open_exception_count: int
+    needs_review_count: int
     # The list view carries no phase plan, so it cannot derive position at all —
     # these four are the only thing that lets a row read "Unloading · stop 2 · 6/11".
     # phase_total is the plan's OWN length: 7 on a single-leg trip, 11 on a
@@ -268,6 +270,44 @@ class TripListItemResponse(BaseModel):
     phase_completed: int
     created_at: datetime
     updated_at: datetime
+
+
+class TripHistoryDriverResponse(BaseModel):
+    """Only the driver display value needed by a trip-history row."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    full_name: str
+
+
+class TripHistoryVehicleResponse(BaseModel):
+    """Only the horse display value needed by a trip-history row."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    registration: str
+
+
+class TripHistoryListItemResponse(BaseModel):
+    """Terminal-trip fields consumed by ChecklistRow, with no sensitive detail."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    trip_reference: str
+    order_number: str
+    status: TripStatus
+    driver: TripHistoryDriverResponse
+    horse: TripHistoryVehicleResponse
+    origin_precinct_id: Optional[UUID] = None
+    destination_precinct_id: Optional[UUID] = None
+    needs_review_count: int
+    current_phase: Optional[str] = None
+    current_stop: Optional[int] = None
+    phase_total: int
+    phase_completed: int
+    closed_at: datetime
+    created_at: datetime
 
 
 class DriverTripListItemResponse(BaseModel):
@@ -304,7 +344,9 @@ class DriverTripListItemResponse(BaseModel):
     actual_departure_at: Optional[datetime] = None
     planned_arrival_at: Optional[datetime] = None
     actual_arrival_at: Optional[datetime] = None
-    open_exception_count: int
+    # NEEDS_REVIEW only (Task 2) — the driver receives this for display parity with
+    # the dispatcher board, but gains no review workflow of their own.
+    needs_review_count: int
     created_at: datetime
     updated_at: datetime
 

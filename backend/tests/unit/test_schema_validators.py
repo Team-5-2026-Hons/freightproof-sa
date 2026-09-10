@@ -628,3 +628,54 @@ def test_precinct_update_body_cannot_transfer_ownership():
 def test_precinct_update_body_rejects_out_of_range_radius(radius):
     with pytest.raises(ValidationError):
         PrecinctUpdateBody(geofence_radius_metres=radius)
+
+
+# ---------------------------------------------------------------------------
+# TripExceptionReviewRequest — the dispatcher review action (Task 1, FP-146)
+# ---------------------------------------------------------------------------
+
+def test_exception_review_requires_note_and_outcome() -> None:
+    from app.schemas.transit import TripExceptionReviewRequest
+
+    with pytest.raises(ValidationError):
+        TripExceptionReviewRequest(
+            review_note="   ", review_outcome="evidence_verified", contact_method=None
+        )
+
+
+def test_exception_review_allows_no_contact() -> None:
+    from app.db.models.enums import DispatcherReviewOutcome
+    from app.schemas.transit import TripExceptionReviewRequest
+
+    request = TripExceptionReviewRequest(
+        review_note="Photograph confirms the recorded seal.",
+        review_outcome=DispatcherReviewOutcome.EVIDENCE_VERIFIED,
+        contact_method=None,
+    )
+    assert request.contact_method is None
+
+
+def test_exception_review_requires_explicit_contact_choice() -> None:
+    from app.schemas.transit import TripExceptionReviewRequest
+
+    # model_validate rather than the constructor: the whole point of this test is that
+    # omitting contact_method fails, so mypy's required-kwarg check on the constructor
+    # (which model_validate's Any-typed input sidesteps) can't be satisfied by adding it.
+    with pytest.raises(ValidationError):
+        TripExceptionReviewRequest.model_validate(
+            {
+                "review_note": "Photograph confirms the recorded seal.",
+                "review_outcome": "evidence_verified",
+            }
+        )
+
+
+def test_exception_review_rejects_migration_only_outcome() -> None:
+    from app.schemas.transit import TripExceptionReviewRequest
+
+    with pytest.raises(ValidationError):
+        TripExceptionReviewRequest(
+            review_note="Historical record.",
+            review_outcome="legacy_review",
+            contact_method=None,
+        )

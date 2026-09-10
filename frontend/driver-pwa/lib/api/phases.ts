@@ -19,8 +19,18 @@ import { uploadArtifact, type ArtifactType } from './artifacts'
 // Every variant carries idempotency_key — the offline-queue entry id (or an
 // online-path equivalent generated the same way, see submitPhase below), so a
 // resubmitted completion returns the current state instead of duplicating evidence.
+//
+// driver_captured_at is the instant THIS APP stamped the submission (submitPhase's
+// own `new Date().toISOString()`, taken before any network call and persisted into
+// the offline queue entry alongside it) — never re-taken at replay/flush time, which
+// would claim the driver was wherever they happened to reconnect. Backend schema
+// treats it as optional (compatibility with an entry already queued under a build
+// that predates this field), but this build always sends it — see backend
+// schemas/phases.py's own comment on why an absent value must not be treated as "safe
+// to corroborate".
 interface PhaseCompleteRequestBase {
   idempotency_key: string
+  driver_captured_at: string
 }
 
 // Mirrors backend schemas/phases.py's ActivationCompleteRequest..ConfirmationCompleteRequest
@@ -211,6 +221,11 @@ export interface SubmitPhaseResult {
 // driver_phone_lat/lng on every row and the backend now persists them for every phase.
 // Null is legal and normal (a warehouse roof, a denied permission) and never blocks a
 // submission — except for activation, whose origin-gate position the backend requires.
+//
+// `driverCapturedAt` is the instant the caller stamped the submission attempt (task 0A)
+// — generated once per logical attempt (mirroring idempotencyKey) and reused across any
+// retry of that same attempt, including a replay from the offline queue, so a resend
+// hours later still reports the ORIGINAL swipe instant rather than the retry's own clock.
 export async function submitPhase(
   tripId: string,
   phaseEventId: string,
@@ -218,6 +233,7 @@ export async function submitPhase(
   evidence: PhaseEvidence,
   idempotencyKey: string,
   position: DriverPosition | null,
+  driverCapturedAt: string,
 ): Promise<SubmitPhaseResult> {
   if (IS_DEMO_MODE) {
     await new Promise<void>((resolve) => setTimeout(resolve, 400))
@@ -247,6 +263,7 @@ export async function submitPhase(
         driver_phone_lat: position.lat,
         driver_phone_lng: position.lng,
         idempotency_key: idempotencyKey,
+        driver_captured_at: driverCapturedAt,
       })
       break
     }
@@ -270,6 +287,7 @@ export async function submitPhase(
         ...driverPosition(position),
         linehaul_photo_artifact_id: linehaulPhotoId,
         idempotency_key: idempotencyKey,
+        driver_captured_at: driverCapturedAt,
       })
       break
     }
@@ -298,6 +316,7 @@ export async function submitPhase(
         seal_number: e.sealNumber,
         seal_photo_artifact_id: sealPhotoId,
         idempotency_key: idempotencyKey,
+        driver_captured_at: driverCapturedAt,
       })
       break
     }
@@ -321,6 +340,7 @@ export async function submitPhase(
         seal_number_at_destination: e.sealNumberAtDestination,
         gate_photo_artifact_id: sealIntactPhotoId,
         idempotency_key: idempotencyKey,
+        driver_captured_at: driverCapturedAt,
       })
       break
     }
@@ -348,6 +368,7 @@ export async function submitPhase(
         // either way.
         driver_visual_count: e.driverVisualCount ?? null,
         idempotency_key: idempotencyKey,
+        driver_captured_at: driverCapturedAt,
       })
       break
     }
@@ -358,6 +379,7 @@ export async function submitPhase(
         phase_type: 'in_transit',
         ...driverPosition(position),
         idempotency_key: idempotencyKey,
+        driver_captured_at: driverCapturedAt,
       })
       break
     }

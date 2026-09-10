@@ -28,6 +28,8 @@ export const COPY = {
     retakePhoto:        'Retake',
     viewTrip:           'View trip',
     resolve:            'Resolve',
+    addReview:          'Add review',
+    submitReview:       'Submit review',
     override:           'Override',
     escalate:           'Escalate',
     addNote:            'Add note',
@@ -47,7 +49,7 @@ export const COPY = {
     panicSent:         'Panic alert sent · Dispatcher and security notified',
     exceptionLogged:   'Exception logged',
     overrideApplied:   'Override applied · Trip may continue',
-    exceptionResolved: 'Exception resolved',
+    exceptionReviewed: 'Exception reviewed.',
     exportStarted:     'Export started — your PDF will download shortly',
     pickupAnchored:    (ref: string) => `Pickup anchored · Receipt #${ref}`,
     deliveryAnchored:  (ref: string) => `Delivery anchored · Receipt #${ref}`,
@@ -57,7 +59,16 @@ export const COPY = {
     panicHold:    'Swipe to send panic alert',
     panicSent:    'Panic alert sent · Dispatcher and reaction company notified',
     overrideNote: 'Describe why you are overriding this exception',
-    resolveNote:  'Describe how this exception was resolved',
     addNote:      'Add a note to this exception',
+    // Recording a review is evidence capture, not an operational resolution.
+    reviewNote:         'Describe your assessment of this exception',
+    // The outcome placeholder is disabled so it can never be
+    // submitted. Contrast with the contact-method field's own blank option (rendered
+    // inline in the page, not disabled): there, blank is a real, submittable answer.
+    reviewOutcomeUnset: 'Select an outcome',
+    // Exact wording from the design spec. Reviewing an exception is evidence handling,
+    // never trip lifecycle control — this sentence is what stops a dispatcher reviewing a
+    // closed or cancelled trip's exception from assuming their review reopens anything.
+    reviewNotice:       'Reviewing records your assessment. It does not change or reopen the trip.',
   },
 } as const

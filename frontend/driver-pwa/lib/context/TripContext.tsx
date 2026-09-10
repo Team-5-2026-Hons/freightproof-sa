@@ -364,6 +364,9 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     if (!trip) return
     const description = typeof payload.description === 'string' ? payload.description : ''
     const supportingArtifactId = typeof payload.supporting_artifact_id === 'string' ? payload.supporting_artifact_id : undefined
+    const clientReportId = typeof payload.clientReportId === 'string'
+      ? payload.clientReportId
+      : crypto.randomUUID()
     // The panic page captures a GPS fix and promises the driver it will be included —
     // extract it here so it actually reaches the backend instead of being dropped.
     // Both-or-neither: the backend's DriverExceptionCreateBody validator 422s a
@@ -392,7 +395,13 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
         // dispatcher UI will eventually read: a coordinate pair or null, never one axis.
         gps_lat: hasGpsFix ? gpsLat : null,
         gps_lng: hasGpsFix ? gpsLng : null,
-        resolved: false, resolved_by_user_id: null, resolved_at: null, resolver_note: null,
+        // Mirrors backend initial_review_status (Task 2): CRITICAL starts
+        // needs_review, everything else starts recorded — so a demo-mode
+        // panic/seal-broken exception behaves like the real backend path instead of
+        // always displaying as recorded regardless of severity.
+        review_status: criticalTypes.includes(type) ? 'needs_review' : 'recorded',
+        review_outcome: null, reviewed_by_user_id: null,
+        reviewed_at: null, review_note: null, contact_method: null,
         merkle_batch_id: null,
         created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
       }
@@ -402,6 +411,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
 
     const created = await raiseException(String(trip.id), {
       exception_type: type, description, supporting_artifact_id: supportingArtifactId,
+      client_report_id: clientReportId,
       ...(phaseEventId ? { phase_event_id: String(phaseEventId) } : {}),
       gps_lat: hasGpsFix ? gpsLat : undefined,
       gps_lng: hasGpsFix ? gpsLng : undefined,

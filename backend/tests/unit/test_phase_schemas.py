@@ -54,3 +54,40 @@ def test_trip_creation_is_still_not_driver_addressable():
 def test_phase_type_enum_still_has_seven_members():
     """Guards against someone 'solving' this by adding an enum member."""
     assert len(list(PhaseType)) == 7
+
+
+# ---------------------------------------------------------------------------
+# Task 0A: driver_captured_at
+# ---------------------------------------------------------------------------
+
+
+def test_driver_captured_at_is_optional_for_an_older_queued_client():
+    """A client that predates this field must still 200, never 422 forever."""
+    parsed = _ADAPTER.validate_python(
+        {"phase_type": "in_transit", "idempotency_key": str(uuid.uuid4())}
+    )
+
+    assert parsed.driver_captured_at is None
+
+
+def test_driver_captured_at_is_accepted_when_timezone_aware():
+    parsed = _ADAPTER.validate_python({
+        "phase_type": "in_transit",
+        "idempotency_key": str(uuid.uuid4()),
+        "driver_captured_at": "2026-09-06T14:00:00+00:00",
+    })
+
+    assert parsed.driver_captured_at is not None
+    assert parsed.driver_captured_at.tzinfo is not None
+
+
+def test_driver_captured_at_rejects_a_naive_timestamp():
+    """A naive value would silently compare as if it were UTC in corroboration_
+    service, manufacturing a skew verdict from a timestamp never actually anchored to
+    a real instant — rejected outright rather than assumed."""
+    with pytest.raises(ValidationError):
+        _ADAPTER.validate_python({
+            "phase_type": "in_transit",
+            "idempotency_key": str(uuid.uuid4()),
+            "driver_captured_at": "2026-09-06T14:00:00",
+        })

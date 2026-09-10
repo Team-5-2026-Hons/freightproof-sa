@@ -36,6 +36,10 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'Create Trip',  href: ROUTES.tripNew, icon: 'plus',  activePatterns: ['/trips/new'] },
       { label: 'Trip History', href: ROUTES.history,  icon: 'clock', activePatterns: ['/history'] },
+      // Hidden in 6071ab2 as "not yet live", back now that FP-146 gave the queue a real
+      // org-scoped list, detail page and resolve flow. `activePatterns` covers the detail
+      // route too, so the entry stays lit while a dispatcher works one exception.
+      { label: 'Exceptions',   href: ROUTES.exceptions, icon: 'warn', activePatterns: ['/exceptions'] },
     ],
   },
   {

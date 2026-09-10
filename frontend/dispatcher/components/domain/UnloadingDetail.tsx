@@ -8,7 +8,13 @@ import { isClosedPhaseStatus } from '@/lib/types/dev'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 
+import type { TripException } from '@shared/lib/types/exception'
+
 interface Props {
+  artifactLoading?: boolean
+  artifactError?: string | null
+  onRetryArtifacts?: () => void
+  sealException?: Pick<TripException, 'exception_type' | 'severity'>
   phase: PhaseDescriptor
   // Needed to find THIS leg's own departure — see departureSealForLeg. A cross-dock
   // trip has one departure per leg, so a plain "the trip's departure" lookup would
@@ -28,8 +34,8 @@ interface Props {
   expectedAtStopCount: number | null
 }
 
-export function UnloadingDetail({
-  phase, allPhases, artifactsById, scannedInCount, expectedAtStopCount,
+export function UnloadingDetail({ artifactLoading, artifactError, onRetryArtifacts,
+  phase, allPhases, artifactsById, scannedInCount, expectedAtStopCount, sealException,
 }: Props) {
   const departureSeal = departureSealForLeg(allPhases, phase)
 
@@ -42,17 +48,14 @@ export function UnloadingDetail({
   const hasBoth = expectedAtStopCount !== null && scannedInCount !== null
   const missing = hasBoth ? expectedAtStopCount - scannedInCount : 0
 
-  // Read, never re-derived. advance_unloading sets this row to EXCEPTION on exactly
-  // one condition — the destination seal not matching this leg's departure seal — so
-  // the phase status IS the recorded verdict. Recomputing it here from the two seal
-  // strings would let the dispatcher show "integrity confirmed" next to an exception
-  // the backend actually raised, which on an evidence platform is the one thing this
-  // panel must never do. The seals stay on screen so the verdict can be checked by eye.
-  const verdict = phase.status === 'exception'
+  // An exceptional phase alone does not identify which seal finding was recorded.
+  const verdict = sealException?.exception_type === 'seal_mismatch'
     ? 'mismatch'
-    : phase.status === 'completed'
-      ? 'match'
-      : null
+    : sealException?.exception_type === 'seal_unverified' || !departureSeal || !phase.seal_number
+      ? 'unverified'
+      : phase.status === 'completed' && departureSeal === phase.seal_number
+        ? 'match'
+        : 'unverified'
 
   return (
     <PhaseDetailCard>
@@ -68,7 +71,7 @@ export function UnloadingDetail({
       </Section>
       {hasBoth && (
         <div className={`text-[11px] font-[600] px-3 pb-3 ${missing === 0 ? 'text-ok' : 'text-warn'}`}>
-          {missing === 0 ? 'All parcels scanned ✓' : `${missing} not scanned ✗`}
+          {missing === 0 ? 'All parcels scanned ✓' : missing < 0 ? `${Math.abs(missing)} excess scanned` : `${missing} not scanned ✗`}
         </div>
       )}
       {!resolved && (
@@ -93,14 +96,18 @@ export function UnloadingDetail({
         </div>
         <Field label="Seal at departure (this leg)" value={departureSeal} mono />
         {verdict !== null && (
-          <div className={`col-span-2 text-[12px] font-[600] ${verdict === 'match' ? 'text-ok' : 'text-err'}`}>
+          <div className={`col-span-2 text-[12px] font-[600] ${verdict === 'match' ? 'text-ok' : sealException?.severity === 'critical' ? 'text-err' : 'text-warn'}`}>
             {verdict === 'match'
-              ? 'Seal matches — integrity confirmed ✓'
-              : 'Mismatch — recorded as a critical exception ✗'}
+              ? 'Recorded seals match ✓'
+              : verdict === 'mismatch'
+                ? `Mismatch — recorded as a ${sealException?.severity ?? 'recorded'} exception ✗`
+                : 'Seal continuity unverified'}
           </div>
         )}
         <EvidencePhoto
+          loading={artifactLoading} error={artifactError} onRetry={onRetryArtifacts}
           label="Seal photo at destination"
+          artifactId={phase.gate_photo_artifact_id}
           artifact={phase.gate_photo_artifact_id ? artifactsById.get(phase.gate_photo_artifact_id) : undefined}
         />
       </Section>

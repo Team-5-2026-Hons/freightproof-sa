@@ -10,6 +10,9 @@ import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { Precinct } from '@shared/lib/types/precinct'
 
 interface Props {
+  artifactLoading?: boolean
+  artifactError?: string | null
+  onRetryArtifacts?: () => void
   phase: PhaseDescriptor
   /** Parcels scanned onto the truck at this consignment's PICKUP stop — which on a
    *  cross-dock trip is not the stop immediately before this one. */
@@ -28,7 +31,7 @@ interface Props {
 // (the F1 fence on unloading/VisualCount.tsx). Folding it into the automated verdict
 // would spend that independence for nothing, since the two depot scans already settle
 // the count. It is recorded and anchored as evidence in its own right.
-export function ConfirmationDetail({
+export function ConfirmationDetail({ artifactLoading, artifactError, onRetryArtifacts,
   phase, originScannedCount, precinct, artifactsById = new Map(),
 }: Props) {
   const destination = phase.parcel_count_destination
@@ -40,11 +43,15 @@ export function ConfirmationDetail({
 
       <Section title="Proof of delivery">
         <EvidencePhoto
+          loading={artifactLoading} error={artifactError} onRetry={onRetryArtifacts}
           label="POD photo"
+          artifactId={phase.pod_photo_artifact_id}
           artifact={phase.pod_photo_artifact_id ? artifactsById.get(phase.pod_photo_artifact_id) : undefined}
         />
         <EvidenceDocument
+          loading={artifactLoading} error={artifactError} onRetry={onRetryArtifacts}
           label="POD signature (Ed25519)"
+          artifactId={phase.pod_signature_artifact_id}
           artifact={phase.pod_signature_artifact_id ? artifactsById.get(phase.pod_signature_artifact_id) : undefined}
         />
       </Section>
@@ -57,7 +64,7 @@ export function ConfirmationDetail({
         <div className={`text-[11px] font-[600] px-3 pb-3 ${unaccounted === 0 ? 'text-ok' : 'text-warn'}`}>
           {unaccounted === 0
             ? 'Counts agree ✓'
-            : `${unaccounted} parcel unaccounted for in transit ✗`}
+            : unaccounted < 0 ? `${Math.abs(unaccounted)} excess parcels scanned at destination` : `${unaccounted} parcel unaccounted for in transit ✗`}
         </div>
       )}
 
