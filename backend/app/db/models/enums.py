@@ -270,3 +270,21 @@ class ExceptionContactMethod(str, enum.Enum):
     PHONE     = "phone"
     WHATSAPP  = "whatsapp"
     IN_PERSON = "in_person"
+
+
+class HandoverTokenRejectionReason(str, enum.Enum):
+    """Why a receiver capability-token redemption (FP-155/FP-236) was refused.
+
+    Every value here is written to HandoverTokenAttempt on the rejecting path — the
+    rejected attempt is itself evidence, not just a 4xx response. UNKNOWN covers a
+    presented token whose hash matches no row at all, which is deliberately
+    indistinguishable from EXPIRED/ALREADY_REDEEMED to the caller (FP-239's public
+    page must not become an oracle) even though the true reason is still recorded
+    server-side.
+    """
+
+    EXPIRED          = "expired"
+    ALREADY_REDEEMED = "already_redeemed"
+    WRONG_TRIP       = "wrong_trip"
+    WRONG_STOP       = "wrong_stop"
+    UNKNOWN          = "unknown"
