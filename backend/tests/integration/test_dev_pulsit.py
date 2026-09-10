@@ -21,6 +21,7 @@ from typing import AsyncGenerator
 
 import pytest
 import pytest_asyncio
+from fastapi.routing import APIRoute
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import func, select
 
@@ -66,7 +67,13 @@ _DEVICE_ID = "PLT-HORSE-001"
 
 
 def _routes_with_prefix(prefix: str) -> list[str]:
-    return [r.path for r in app_main.app.routes if r.path.startswith(prefix)]
+    # BaseRoute doesn't declare .path; every route FastAPI registers via a decorator
+    # is an APIRoute, which does.
+    return [
+        r.path
+        for r in app_main.app.routes
+        if isinstance(r, APIRoute) and r.path.startswith(prefix)
+    ]
 
 
 def _reload_with(*, panel: bool, mock: bool, environment: str = "development") -> list[str]:

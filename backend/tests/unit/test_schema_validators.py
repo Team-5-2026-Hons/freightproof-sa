@@ -638,7 +638,9 @@ def test_exception_review_requires_note_and_outcome() -> None:
     from app.schemas.transit import TripExceptionReviewRequest
 
     with pytest.raises(ValidationError):
-        TripExceptionReviewRequest(review_note="   ", review_outcome="evidence_verified")
+        TripExceptionReviewRequest(
+            review_note="   ", review_outcome="evidence_verified", contact_method=None
+        )
 
 
 def test_exception_review_allows_no_contact() -> None:
@@ -656,10 +658,15 @@ def test_exception_review_allows_no_contact() -> None:
 def test_exception_review_requires_explicit_contact_choice() -> None:
     from app.schemas.transit import TripExceptionReviewRequest
 
+    # model_validate rather than the constructor: the whole point of this test is that
+    # omitting contact_method fails, so mypy's required-kwarg check on the constructor
+    # (which model_validate's Any-typed input sidesteps) can't be satisfied by adding it.
     with pytest.raises(ValidationError):
-        TripExceptionReviewRequest(
-            review_note="Photograph confirms the recorded seal.",
-            review_outcome="evidence_verified",
+        TripExceptionReviewRequest.model_validate(
+            {
+                "review_note": "Photograph confirms the recorded seal.",
+                "review_outcome": "evidence_verified",
+            }
         )
 
 

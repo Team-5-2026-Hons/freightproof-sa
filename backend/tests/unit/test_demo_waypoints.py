@@ -9,6 +9,7 @@ verdict uses, and every intended verdict is re-derived through the real
 """
 
 from decimal import Decimal
+from typing import cast
 
 import pytest
 
@@ -25,9 +26,11 @@ from app.core.demo_waypoints import (
     WAYPOINT_PRECINCT,
     WAYPOINT_THREE_KM,
     WAYPOINT_DISTANCE_TOLERANCE_METRES,
+    DemoWaypoint,
     get_waypoint,
 )
 from app.core.geo import haversine_metres
+from app.db.models.organisations import Precinct
 from app.orchestration.geofence_service import (
     DEFAULT_GEOFENCE_RADIUS_METRES,
     GeofenceVerdictReason,
@@ -57,14 +60,28 @@ class _FakePrecinct:
         self.geofence_radius_metres = radius
 
 
-def _anchor_precinct() -> _FakePrecinct:
-    return _FakePrecinct(DEMO_ANCHOR_LATITUDE, DEMO_ANCHOR_LONGITUDE, _SEEDED_RADIUS_METRES)
+def _anchor_precinct() -> Precinct:
+    # cast, not a real Precinct row: _FakePrecinct is structurally complete for the
+    # three attributes evaluate_geofence reads (see its docstring above), and building
+    # an actual ORM instance here would reintroduce the DB coupling this fake exists
+    # to avoid. The cast tells mypy what every call site already relies on at runtime.
+    return cast(
+        Precinct,
+        _FakePrecinct(DEMO_ANCHOR_LATITUDE, DEMO_ANCHOR_LONGITUDE, _SEEDED_RADIUS_METRES),
+    )
 
 
-def _measured_distance(waypoint) -> float:
+def _measured_distance(waypoint: DemoWaypoint) -> float:
+    assert waypoint.latitude is not None and waypoint.longitude is not None
     return haversine_metres(
         waypoint.latitude, waypoint.longitude, DEMO_ANCHOR_LATITUDE, DEMO_ANCHOR_LONGITUDE
     )
+
+
+def _fix(waypoint: DemoWaypoint) -> TrackerFix:
+    lat, lng = waypoint.latitude, waypoint.longitude
+    assert lat is not None and lng is not None
+    return TrackerFix(lat=lat, lng=lng)
 
 
 def test_every_positioned_waypoint_is_at_its_intended_distance() -> None:
@@ -89,7 +106,7 @@ def test_waypoint_verdicts_match_what_the_real_geofence_decides() -> None:
 
     verdicts = {
         w.waypoint_id: evaluate_geofence(
-            TrackerFix(lat=w.latitude, lng=w.longitude),
+            _fix(w),
             precinct,
             tolerance_metres=_SEEDED_TOLERANCE_METRES,
         )
@@ -114,14 +131,16 @@ def test_the_marginal_waypoint_is_actually_in_the_tolerance_band() -> None:
     waypoint = DEMO_WAYPOINTS_BY_ID[WAYPOINT_INSIDE_TOLERANCE]
 
     verdict = evaluate_geofence(
-        TrackerFix(lat=waypoint.latitude, lng=waypoint.longitude),
+        _fix(waypoint),
         _anchor_precinct(),
         tolerance_metres=_SEEDED_TOLERANCE_METRES,
     )
+    distance = verdict.distance_metres
 
     assert verdict.confirmed is True
     assert verdict.in_tolerance_band is True
-    assert _SEEDED_RADIUS_METRES < verdict.distance_metres <= (
+    assert distance is not None
+    assert _SEEDED_RADIUS_METRES < distance <= (
         _SEEDED_RADIUS_METRES + _SEEDED_TOLERANCE_METRES
     )
 
@@ -131,14 +150,16 @@ def test_the_first_failing_waypoint_clears_the_band_rather_than_grazing_it() -> 
     waypoint = DEMO_WAYPOINTS_BY_ID[WAYPOINT_OUTSIDE_TOLERANCE]
 
     verdict = evaluate_geofence(
-        TrackerFix(lat=waypoint.latitude, lng=waypoint.longitude),
+        _fix(waypoint),
         _anchor_precinct(),
         tolerance_metres=_SEEDED_TOLERANCE_METRES,
     )
+    distance = verdict.distance_metres
 
     assert verdict.confirmed is False
     assert verdict.in_tolerance_band is False
-    assert verdict.distance_metres > _SEEDED_RADIUS_METRES + _SEEDED_TOLERANCE_METRES
+    assert distance is not None
+    assert distance > _SEEDED_RADIUS_METRES + _SEEDED_TOLERANCE_METRES
 
 
 def test_no_signal_waypoint_carries_no_coordinates_at_all() -> None:
