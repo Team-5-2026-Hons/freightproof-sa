@@ -17,6 +17,7 @@ export const ROUTES = {
   precinctDetail:  (id: string) => `/precincts/${id}`,
   precinctNew:     '/precincts/new',
   precinctEdit:    (id: string) => `/precincts/${id}/edit`,
+  blockchainReceipts: '/blockchain/receipts',
   settings:        '/settings',
   login:           '/login',
   devTokens:       '/dev/tokens',
