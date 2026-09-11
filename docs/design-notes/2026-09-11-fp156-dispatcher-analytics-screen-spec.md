@@ -2,7 +2,7 @@
 
 Author: Tom (Thomas Davis), with Claude · Written 2026-09-11
 Status: **PLANNING — not yet executed. Reviewed against the live repo and corrected on
-2026-09-11 (see §0). Sync with `dev` before executing (see §7).** Every claim below was verified against the live
+2026-09-11 (see §0). Synced with `dev` on 2026-09-11 (see §7) — ready for a PLAN block.** Every claim below was verified against the live
 repo (file + line cited) on 2026-09-11, after an earlier attempt this session went wrong
 (a research subagent wrote unrequested code; a wrong assumption about local infra was
 corrected). Nothing here is carried over from that attempt without being re-checked.
@@ -27,7 +27,7 @@ older copy.
 
 | # | Correction | Where |
 |---|---|---|
-| 1 | `dev` moved (Chiko's PR #45). Its migration shares a parent with FP-153's, which gives two Alembic heads. It also changed `Sidebar.tsx`, `Sidebar.test.tsx` and `routes.ts`, which FP-156 edits. **Sync before executing.** | §1, §4.1, §6, §7 |
+| 1 | `dev` moved (Chiko's PR #45). Its migration shares a parent with FP-153's, which gives two Alembic heads. It also changed `Sidebar.tsx`, `Sidebar.test.tsx` and `routes.ts`, which FP-156 edits. **Synced 2026-09-11 (§7).** | §1, §4.1, §6, §7 |
 | 2 | Precinct names must be looked up **by id only**, not filtered by the operator's org. Precincts belong to the client organisation, so that filter returns no names. | §3.1, §3.3, §3.5 |
 | 3 | The per-vehicle `trips-since-incident` endpoint is removed (it caused one HTTP call per table row). The value now comes back inside the streaks response. | §3.3, §3.5, §4.4, §5 |
 | 4 | `Driver.full_name` is at `people.py:57`, not line 31 (that is `User.full_name`). `Trip.driver_id` → `drivers.id` is confirmed, so that open question is closed. | §3.3 |
@@ -38,18 +38,22 @@ older copy.
 | 9 | The `'use client'` note was reclassified: it is a standards gap, not a deprecation. | §4.1 |
 | 10 | Tab order source (Ciaran's Jira comment) was not re-verified in review. | §4.3 |
 | 11 | Demo seed data is tracked in FP-153 **§11.9**, not "§11.8 item 4" (that item is post-migration checks). | §6 |
+| 12 | In local `DEMO_MODE` every request acts as a fixed demo company, so the screen only ever shows that company's closed trips. | §4.2 |
 
 ---
 
 ## 1. Confirmed current repo state (verified 2026-09-11)
 
-- Branch `fp-156-analytics-screen`, current `HEAD` = `1b29dea` (`docs: add FP-153 build
-  record and FP-156 handoff`), one commit after `e0cc8e4` (`feat(db): add FP-153 analytics
-  materialized views, read layer and refresh task`) — confirmed via `git log --oneline -5`.
-  Working tree is clean (`git status`).
-- Single Alembic head: **`tom_analytics_read_models`**, confirmed by parsing every
-  `revision`/`down_revision` pair in `backend/migrations/versions/*.py` — no migration has
-  landed on top of it on this branch.
+- Branch `fp-156-analytics-screen`, `HEAD` = `b06a3ac` after the §7 sync. That commit
+  merged the fp-153 branch, which had itself merged `origin/dev` at `48b5605`. The branch
+  now contains:
+  - FP-153 (`e0cc8e4`, `1b29dea`)
+  - this spec (`52b99bc`)
+  - Chiko's PR #45 (`e6bbcae`)
+- **Two Alembic heads on this branch since the sync:** `tom_analytics_read_models` and
+  `chiko_receipt_hash_index`. Both have `down_revision = "ciaran_trip_history_page"`
+  (confirmed by parsing the migration files; no alembic command was run). Before the sync
+  the branch had the single head `tom_analytics_read_models`.
 - **`dev` has moved since this branch was cut (found by `git fetch` in the 2026-09-11
   review).** Chiko's PR #45 (merge `e6bbcae`) added
   `backend/migrations/versions/2026_09_11_chiko_add_receipt_hash_index.py`: revision
@@ -67,8 +71,8 @@ older copy.
     - Its test, `components/layout/__tests__/Sidebar.test.tsx`.
     - `frontend/dispatcher/lib/constants/routes.ts`: new `blockchainReceipts` entry.
     - A new route, `frontend/dispatcher/app/(app)/blockchain/receipts/`.
-  - **Sync with `dev` before touching these (§7).** §4.1 cites the post-sync (`origin/dev`)
-    line numbers.
+  - **Synced 2026-09-11 (§7).** §4.1's line numbers are confirmed against this branch's
+    working tree after the sync.
 - FP-153's read layer is present exactly as its own build record describes, confirmed by
   reading the files directly (not the spec's description of them):
   - `backend/app/analytics/driver_metrics.py` — `get_driver_metrics(db, *, organization_id,
@@ -303,7 +307,7 @@ without a reason).
   (`api.get<T>` relies on a browser-side Supabase session token — `lib/api/client.ts:67-76`
   — with no server-side equivalent anywhere in this app).
 - `frontend/dispatcher/components/layout/Sidebar.tsx` — add an item to `NAV_GROUPS`. Line
-  numbers below are for the **post-sync `origin/dev` version** (§7):
+  numbers below are confirmed against this branch after the §7 sync:
   - `NAV_GROUPS` starts at line 28, with groups OVERVIEW, TRIPS, FLEET and so on. There is
     now an admin-only BLOCKCHAIN group (from line 62), and groups are filtered per role
     through `visibleGroups` (line 144).
@@ -342,6 +346,14 @@ Instead:
   therefore throws an `ApiError` (`lib/api/client.ts:35-45`), which the panel renders through `DataTable`'s existing `error`/
   `onRetry` prop path (`DataTable.tsx:38-53`) — the same failure path every other page
   already has, not a new one.
+- **Local `DEMO_MODE` shows only the demo company's data (added 2026-09-11).** With
+  `DEMO_MODE=true`, `get_current_dispatcher` returns a fixed stub user whose
+  `organization_id` is `00000000-0000-0000-0000-000000000002`
+  (`backend/app/auth/dependencies.py:47-60`, "must match the org created by DB seeds").
+  Because every analytics endpoint scopes by `current_user.organization_id`, a local
+  demo-mode screen shows only closed trips belonging to that org. An empty screen locally
+  can therefore mean "no closed demo-org trips", not a bug. Real dispatcher logins see their
+  own org.
 
 ### 4.3 Components
 
@@ -472,11 +484,14 @@ Run with `cd frontend/dispatcher && npm test`.
 
 ---
 
-## 7. Before executing — sync with `dev` (decided 2026-09-11)
+## 7. Sync with `dev` — DONE 2026-09-11
 
-Chiko's PR #45 changed three files FP-156 edits (§1), so sync **before** writing code, not
-after. Otherwise those edits will conflict later. The developer runs every git write
-command; Claude does not (CLAUDE.md).
+Chiko's PR #45 changed three files FP-156 edits (§1), so the sync was done **before**
+writing any code, to avoid conflicts later. **It is complete — results are at the end of
+this section.** The steps are kept as the record, and as the recipe for bringing later
+FP-153 changes (such as the `down_revision` fix) into this branch. Use
+`git merge --no-edit …` to skip the commit-message editor. The developer runs every git
+write command; Claude does not (CLAUDE.md).
 
 ```
 # on fp-156-analytics-screen: commit this spec first so nothing is left loose
@@ -508,3 +523,18 @@ Then confirm the base is green before building, one run at a time:
 2. `cd frontend/dispatcher && npm test`
 
 If either fails, stop and investigate before starting FP-156 work.
+
+**Results (2026-09-11):**
+- **Merges were clean:**
+  - `48b5605` brought `origin/dev` into fp-153. It was completed with
+    `git commit --no-edit` after the commit-message editor failed.
+  - `b06a3ac` brought fp-153 into fp-156.
+- **Frontend `npm test`:** 44 files, **485 tests passed**.
+- **Backend `pytest`** (isolated throwaway database): **1322 passed, 4 skipped, 1 failed.**
+  - The failure was `tests/integration/test_drivers.py::test_create_driver_appears_in_subsequent_list`,
+    which returned 504. A real Hedera testnet `submit_hash` call ran past the 15 s
+    `HEDERA_SUBMIT_TIMEOUT_SECONDS` limit.
+  - Re-run alone, it passed both times (8.2 s and 10.3 s).
+  - Chiko's PR #45 changed no submit or timeout logic in `app/blockchain/anchor_service.py`.
+  - Classified as a transient Hedera testnet timeout, not a regression. **The base is
+    green.**
