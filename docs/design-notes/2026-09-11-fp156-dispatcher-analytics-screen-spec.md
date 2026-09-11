@@ -1,14 +1,20 @@
 # FP-156 — Dispatcher Analytics Screen — Build Spec
 
 Author: Tom (Thomas Davis), with Claude · Written 2026-09-11
-Status: **PLANNING — not yet executed. Reviewed against the live repo and corrected on
-2026-09-11 (see §0). Synced with `dev` on 2026-09-11 (see §7) — ready for a PLAN block.** Every claim below was verified against the live
+Status: **COMPLETE — 2026-09-11. Built in three stages, each reviewed by Tom, then checked
+in the browser. Read §8 (build record) first.** Not merged yet: FP-156 depends on FP-153,
+whose migration is not applied to Supabase (§8.7). Confirmed decisions are in §0.1 and
+review corrections in §0. The branch was synced with `dev` on 2026-09-11 (§7). Every claim
+below was verified against the live
 repo (file + line cited) on 2026-09-11, after an earlier attempt this session went wrong
 (a research subagent wrote unrequested code; a wrong assumption about local infra was
 corrected). Nothing here is carried over from that attempt without being re-checked.
 Branch: `fp-156-analytics-screen`, confirmed created off `fp-153-analytics-read-models`.
 
 ## How to use this document
+
+**FP-156 is built. Start with §8, the build record: what exists, how it was verified, and
+what is still open. §0 and §0.1 hold the decisions; §1–§7 are the plan it was built from.**
 
 Same purpose as `2026-09-10-fp153-analytics-read-models-spec.md`: a complete handoff so a
 fresh session can execute FP-156 correctly without re-deriving decisions. Every fact is
@@ -39,6 +45,27 @@ older copy.
 | 10 | Tab order source (Ciaran's Jira comment) was not re-verified in review. | §4.3 |
 | 11 | Demo seed data is tracked in FP-153 **§11.9**, not "§11.8 item 4" (that item is post-migration checks). | §6 |
 | 12 | In local `DEMO_MODE` every request acts as a fixed demo company, so the screen only ever shows that company's closed trips. | §4.2 |
+| 13 | *(PLAN review)* A **missing** token returns **403**, not 401 (`get_current_dispatcher`: "Missing authentication credentials."; `test_trip_history.py:451` asserts 403). An **invalid or expired** token returns **401** (`_decode_token`). The tests assert both. | §3.5 |
+| 14 | *(PLAN review)* The default month range is computed in `Africa/Johannesburg` with `Intl.DateTimeFormat`, as `history/page.tsx:24-37` does, not from the browser's local calendar. A browser set to UTC would show the previous month from 00:00 to 02:00 SAST on the 1st. | §4.3 |
+| 15 | *(PLAN review)* CLAUDE.md requires unit tests for `orchestration/`. The service's name-attaching step is a pure function with its own unit tests (`tests/unit/test_analytics_service.py`). The DB lookups are covered by the integration tests. | §3.1, §3.5 |
+| 16 | *(PLAN review)* The hooks must not be built on `useAsyncData`. It does not refetch when its fetcher changes (`run` depends only on `timeoutMs`), so changing the range would keep showing the old range. Use the `useTripHistory` pattern. | §4.2 |
+| 17 | *(PLAN review)* Tab order verified against Ciaran's 26 Aug comment on FP-156. Closes #10. | §4.3 |
+| 18 | *(PLAN review)* "Awaiting Pulsit" is live-trip copy. On a closed trip a missing reading was never taken, so the facility column is headed **"Unwitnessed (no Pulsit reading)"**. | §4.4 |
+| 19 | *(PLAN review)* Nothing in the repo runs Celery beat (the Compose worker has no `-B`; there is no Railway config). After the migration the views would be built once (`WITH DATA`) and never refresh. The refresh label no longer claims an interval, and beat is a team-meeting item. | §4.5, §6, §6.1 |
+| 20 | *(Browser check)* Before the migration, the browser does **not** see the HTTP 500. `main.py`'s catch-all `Exception` handler runs outside the CORS middleware, so the 500 has no `access-control-allow-origin` header. The browser drops it, and the panel shows `Request to … failed: Load failed` (the client's `ApiError(0, …)` for "no response"). Verified by an in-process simulation: an unhandled 500 had no CORS header, while a handled 422 on the same path had one. This affects every endpoint's unhandled 500s, not just FP-156. The error state and retry work as intended. | §4.2, §6.1 |
+
+### 0.1 PLAN decisions — confirmed by Tom, 2026-09-11
+
+| # | Decision |
+|---|---|
+| 1 | **Default range:** the current SAST month plus the previous two (3 months inclusive), computed in `Africa/Johannesburg` (§0 #14). |
+| 2 | **Sidebar:** the Analytics link goes in the **OVERVIEW** group, under Dashboard, with no admin-only flag. |
+| 3 | **Tabs:** Facility, Vehicle, Lane, Driver, with **Facility selected on load**. |
+| 4 | **Label wording:** *"Closed trips only. Figures update periodically, so a recently closed trip may take a while to appear."* No interval is claimed, because beat is unconfirmed (§0 #19). |
+| 5 | **Response schemas:** flat subclasses of the frozen models, so the computed rates carry over and the JSON stays flat for `DataTable`'s `key: keyof T` columns. Precedent: `PrecinctDetailResponse(PrecinctRead)`, `DriverDetailResponse(DriverRead)`. `DriverMetricsResponse(DriverMetrics)` + `driver_name: str \| None`; `VehicleMetricsResponse(VehicleMetrics)` + `registration: str \| None`; `VehicleStreakResponse(VehicleStreak)` + `trips_since_last_incident: int` (**no registration**: the panel joins to the monthly rows by `vehicle_id`); `LaneMetricsResponse(LaneMetrics)` + `origin_precinct_name`, `destination_precinct_name: str \| None`; `FacilityMetricsResponse(FacilityMetrics)` + `precinct_name: str \| None`. |
+| 6 | **Driver panel:** built **last**, trends only. Decision 06 (per-driver trends, no automated score) is recorded by a Jira comment on FP-156 that Tom posts. |
+| 7 | **Unit tests** for `analytics_service`: yes (§0 #15). |
+| 8 | **Frontend mechanics:** one private fetch helper plus a thin hook per grain (§0 #16). The streaks hook takes no range, so it doesn't refetch when the range changes. `MonthRangePicker` uses month and year selects, not `<input type="month">`, whose desktop browser support is patchy. |
 
 ---
 
@@ -152,10 +179,11 @@ them; it does not reinterpret them.
 
 | File | Purpose |
 |---|---|
-| `backend/app/schemas/analytics_api.py` | Thin response wrappers adding a `name` (or `registration`) field around the frozen `app/schemas/analytics.py` models. Never edits that file. |
+| `backend/app/schemas/analytics_api.py` | Flat subclasses of the frozen `app/schemas/analytics.py` models that add the name fields (exact shapes: §0.1 #5). Never edits that file. |
 | `backend/app/orchestration/analytics_service.py` | Calls `app.analytics.*`, then batch-looks-up display names: drivers and vehicles filtered by `organization_id`, precincts **by id only** (§3.3). Also attaches `trips_since_last_incident` to every row of the streaks result (§3.3). |
 | `backend/app/api/v1/endpoints/analytics.py` | The router. |
 | `backend/tests/integration/test_analytics_endpoints.py` | Endpoint contract tests. |
+| `backend/tests/unit/test_analytics_service.py` | Unit tests for the service's pure name-attaching step (§0 #15). |
 
 ### 3.2 Auth and org scoping — confirmed pattern, not invented
 
@@ -270,7 +298,7 @@ Test cases: FP-153 §11.9's list (1–5), plus 6–7 added by the 2026-09-11 rev
 1. 200, hand-computed values against a small seed (one org, one closed trip with known phase
    events) — not re-deriving FP-153's own metric math, which `test_analytics.py`'s 14 tests
    already cover.
-2. 401 — missing/invalid token.
+2. 403 — missing token; 401 — invalid or expired token (corrected, §0 #13).
 3. 422 — malformed month range (`validate_month_range` raising `ValueError`) and a
    malformed date string (FastAPI's own validation).
 4. Cross-org isolation — via the `_seed_other_org` pattern.
@@ -282,6 +310,8 @@ Test cases: FP-153 §11.9's list (1–5), plus 6–7 added by the 2026-09-11 rev
    facility responses. This guards the §3.3 scoping correction.
 7. Every streaks row carries `trips_since_last_incident`, equal to calling
    `trips_since_last_incident()` directly for that vehicle.
+8. Unit (`tests/unit/test_analytics_service.py`): a missing name gives `None`, and the row is
+   kept, in its original order (§0 #15).
 
 Run one pytest at a time. The local test database is shared by every pytest process on
 the machine (FP-153 §11.7).
@@ -314,8 +344,8 @@ without a reason).
   - Follow the existing `{ label, href: ROUTES.x, icon, activePatterns }` shape (e.g. the
     Exceptions entry at line 43).
   - Analytics is for **all** dispatchers: the endpoints use `get_current_dispatcher`, not
-    `require_admin_dispatcher`. So it gets no admin-only flag. Which group it sits in is a
-    PLAN-time choice.
+    `require_admin_dispatcher`. So it gets no admin-only flag. It goes in **OVERVIEW, under
+    Dashboard** (§0.1 #2).
 - `frontend/dispatcher/components/layout/__tests__/Sidebar.test.tsx` (exists on `dev`) — add
   a test that the Analytics link renders for a regular dispatcher, in the style of "links to
   the exceptions queue" (line 79).
@@ -334,7 +364,7 @@ Instead:
 - **Presentational panel components take data as props.** They can be built and manually
   checked today using a hand-written example object shaped exactly like §1's confirmed
   Pydantic models — no backend, no database, no Supabase connection needed for this part.
-- **One hook per grain**, following `useTripHistory.ts`'s exact pattern: builds a query
+- **One hook per grain**, following `useTripHistory.ts`'s pattern (not `useAsyncData`, §0 #16): builds a query
   string (lines 45-54), calls `api.get<T>(path)` (line 111), tracks `isLoading`/`error`/
   data in state. This always calls the **real** endpoint — nothing to toggle, nothing to
   remember to switch over later.
@@ -362,14 +392,14 @@ Instead:
   the developer's explicit decision (free start/end month choice, no presets). This is a
   distinct control from `DateRangePicker` (day-granularity `DateRange` type,
   `lib/types/date-range.ts`), not a duplicate of it.
-  - **Default on first load (proposed 2026-09-11, confirm in the PLAN):** the current month
-    and the two before it (3 months inclusive), taken from the browser's local calendar.
-    Dispatchers operate in SAST, which is also the views' month boundary (FP-153 Q4).
+  - **Default on first load (confirmed 2026-09-11, §0.1 #1):** the current month and the
+    two before it (3 months inclusive), computed in `Africa/Johannesburg` with
+    `Intl.DateTimeFormat`, as `history/page.tsx:24-37` does. Not the browser's local
+    calendar (§0 #14). SAST is also the views' month boundary (FP-153 Q4).
   - It must only ever emit first-of-month dates, and must not allow a start after the end.
 - `Tabs.tsx` (existing, unmodified) — `Tab[]` array (`{id, label}`), ordered **Facility,
-  Vehicle, Lane, Driver**, matching Ciaran's sequencing comment on the FP-156 Jira ticket.
-  (That comment was not re-verified in the 2026-09-11 review. Check the ticket before relying
-  on the order.)
+  Vehicle, Lane, Driver**, matching Ciaran's sequencing comment on the FP-156 Jira ticket
+  (verified 2026-09-11, §0 #17). Facility is selected on first load.
 - `DataTable.tsx` (existing, unmodified) — its `Column.render` function
   (`DataTable.tsx:11`) is exactly where the "67% (2/3)" and "—" display rules get
   implemented, per-column.
@@ -381,9 +411,10 @@ Instead:
 ### 4.4 Panel-specific requirements
 
 - **FacilityPanel** — `confirmed_count`/`mismatch_count`/`unwitnessed_count` +
-  `corroboration_rate`. Reuses `PhaseLocationSection.tsx`'s exact copy (lines 56-60) for the
-  three states so the language matches the rest of the app: *"Awaiting Pulsit" / "Confirmed
-  ✓" / "Mismatch ✗"*.
+  `corroboration_rate`. Reuses `PhaseLocationSection.tsx`'s copy (lines 57-59) for
+  *"Confirmed ✓"* and *"Mismatch ✗"*. The unwitnessed column is headed **"Unwitnessed (no
+  Pulsit reading)"**, not "Awaiting Pulsit": that is live-trip copy, and on a closed trip
+  the reading was never taken (§0 #18).
 - **VehiclePanel** — the monthly `vehicle_analytics` numbers, **plus** the streaks
   endpoint's per-vehicle `highest_streak_trips`, `lowest_streak_trips` (nullable, shown as
   "—") and `trips_since_last_incident`, shown next to them. That is one extra call in total,
@@ -402,10 +433,10 @@ Instead:
 - The confirmation-dwell caveat is visible next to that specific number.
 - `unwitnessed_count` shown as its own Pulsit-coverage figure, not folded into the rate.
 - A visible note that only **closed** trips are counted.
-- "Data refreshes every ~15 minutes" as a static label (developer's decision) — no live
-  timestamp, no backend change. **This is only true if a Celery beat process runs where the
-  app is deployed.** Docker Compose runs a worker with no beat (FP-153 §11.6). Confirm
-  before shipping the label; otherwise word it "Updated periodically".
+- A static label with confirmed wording (§0.1 #4): *"Closed trips only. Figures update
+  periodically, so a recently closed trip may take a while to appear."* No live timestamp,
+  no backend change. It deliberately claims no interval, because nothing in the repo runs
+  Celery beat (§0 #19).
 
 ### 4.6 Frontend tests (added 2026-09-11)
 
@@ -479,8 +510,30 @@ Run with `cd frontend/dispatcher && npm test`.
   coordinated with the team and belongs on the `fp-153-analytics-read-models` branch, not in
   this ticket. Until it lands, nobody runs `alembic upgrade` (the developer's constraint
   already covers this).
-- **Celery beat in the deployed environment** must be confirmed before the "refreshes every
-  ~15 minutes" label ships (§4.5).
+- **Nothing in the repo runs Celery beat** (updated 2026-09-11):
+  - Compose runs `celery -A app.tasks worker` without `-B` (`docker-compose.dev.yml:73`).
+  - The repo has no Railway config for the deployed backend (`README.md:396`).
+  - After the FP-153 migration, the views would be built once (`WITH DATA`) and never
+    refresh.
+
+  The label no longer claims an interval (§4.5). Where beat runs is a team decision (§6.1).
+
+### 6.1 For the next team meeting
+
+1. **Celery beat.** Nothing runs it, so after the FP-153 migration the analytics views would
+   never refresh. The Parcel Perfect poll's beat entry is affected the same way (FP-153
+   §11.6). Decide where beat runs on Railway.
+2. **Two Alembic heads.** `tom_analytics_read_models` and `chiko_receipt_hash_index` share a
+   parent. Agree the `down_revision` fix on the fp-153 branch.
+3. **Decision 06.** Tom posts a comment on FP-156 recording "per-driver trends, no automated
+   score".
+4. **FP-156 is marked Done in Jira** (last updated 7 Sep), while FP-243 to FP-246 are all
+   To Do.
+5. **KPI confirmation with Bruce** is still outstanding (FP-153 §10, §11.8 item 5).
+6. **Unhandled 500s reach the browser as "Load failed"** (§0 #20). `main.py`'s catch-all
+   handler sits outside CORS, so the response carries no CORS header. The client then
+   treats it as a network failure: it retries once, then shows a generic error instead of
+   the server's message. This is a shared-file fix for the whole app, not for FP-156.
 
 ---
 
@@ -538,3 +591,255 @@ If either fails, stop and investigate before starting FP-156 work.
   - Chiko's PR #45 changed no submit or timeout logic in `app/blockchain/anchor_service.py`.
   - Classified as a transient Hedera testnet timeout, not a regression. **The base is
     green.**
+
+---
+
+## 8. Build record — COMPLETE (2026-09-11)
+
+### 8.0 Status
+
+- Built on `fp-156-analytics-screen` in three stages. Tom reviewed each one before the next
+  began: backend, then frontend building blocks, then panels and page.
+- Checked in the browser by Tom on 2026-09-11 against the real local backend (§8.6).
+- **Not merged.** FP-156 depends on FP-153, which is also unmerged, and whose migration is not
+  applied to Supabase. Until it is, every tab shows its error state (§8.6, §8.7).
+- No Alembic command was run, no migration file was touched, and no FP-153 file was edited
+  (`app/analytics/*`, `schemas/analytics.py`, the migration, `test_analytics.py`).
+
+### 8.1 Backend — what was built
+
+Five read-only endpoints, all `tags=["analytics"]`, `async`, using `get_db` and
+`get_current_dispatcher`. Any dispatcher may call them, not only admins. The organisation
+always comes from the token, never from the request.
+
+| Endpoint | Response | Notes |
+|---|---|---|
+| `GET /api/v1/analytics/facilities?start_month&end_month` | `list[FacilityMetricsResponse]` | + `precinct_name` |
+| `GET /api/v1/analytics/vehicles?start_month&end_month` | `list[VehicleMetricsResponse]` | + `registration` |
+| `GET /api/v1/analytics/vehicles/streaks` | `list[VehicleStreakResponse]` | No month range. + `trips_since_last_incident` on every row |
+| `GET /api/v1/analytics/lanes?start_month&end_month` | `list[LaneMetricsResponse]` | + `origin_precinct_name`, `destination_precinct_name` |
+| `GET /api/v1/analytics/drivers?start_month&end_month` | `list[DriverMetricsResponse]` | + `driver_name` |
+
+Status codes, all tested:
+- **200:** the rows. An empty list when there are no closed trips.
+- **403:** a missing token, or a driver token.
+- **401:** a malformed or expired token.
+- **422:** a date string that is malformed or missing (FastAPI's own validation), or a
+  mid-month date, or a start after the end (explicit, see below).
+
+Files:
+- `backend/app/schemas/analytics_api.py`: five flat subclasses of the frozen FP-153 models.
+  They add only the name fields, so every computed rate is inherited (§0.1 #5).
+- `backend/app/orchestration/analytics_service.py`:
+  - `check_month_range`: wraps FP-153's `validate_month_range`, so the endpoint never
+    reaches below the orchestration layer.
+  - Pure `attach_driver_names`, `attach_vehicle_registrations`, `attach_lane_names` and
+    `attach_facility_names`. They keep each row and its order, and a missing name becomes
+    `None`. They rebuild each response from the row's stored fields, so the rates are
+    recomputed from the same counts.
+  - One name query per grain. Drivers and vehicles are filtered by `organization_id`;
+    precincts are looked up **by id only** (§3.3). Every rule is in the module docstring.
+  - `list_*`, one per endpoint. Streaks run FP-153's `trips_since_last_incident` once per
+    vehicle, one after another (a single `AsyncSession` runs one statement at a time).
+- `backend/app/api/v1/endpoints/analytics.py`: the router. Only `check_month_range` sits
+  inside the `try` that turns `ValueError` into a 422. Any other `ValueError` is a defect
+  and still surfaces as a 500, following the trip-history precedent
+  (`test_history_does_not_misreport_non_cursor_value_errors_as_422`).
+- `backend/app/main.py` (**shared file**): one import and one `include_router`.
+
+### 8.2 Frontend — what was built
+
+- **Route `/analytics`** (`frontend/dispatcher/app/(app)/analytics/page.tsx`, `'use client'`
+  like every dispatcher page):
+  - Layout: TopBar, the `MonthRangePicker`, then the closed-trips note, then the tabs
+    **Facility, Vehicle, Lane, Driver**, with Facility selected on load.
+  - A `role="tabpanel"` region holds a section header and the active panel.
+  - One small connector per tab, so **only the visible tab fetches**. Switching tabs
+    refetches.
+- **Navigation:**
+  - `lib/constants/routes.ts`: `analytics: '/analytics'`.
+  - `components/layout/Sidebar.tsx`: an "Analytics" link in OVERVIEW under Dashboard,
+    with the `bars` icon and no admin-only flag.
+- **Types:** `frontend/shared/lib/types/analytics.ts` mirrors the five responses. Every rate
+  and average is `number | null`, and ids use the existing `DriverId`, `VehicleId` and
+  `PrecinctId` types.
+- **Formatting:** `lib/format/analytics.ts`:
+  - `fmtRate` gives "67% (2/3)". `fmtRatio` gives "1.50 (3/2)", used for exceptions per
+    trip.
+  - `fmtMinutes` gives "2 h 15 m", and `fmtHours` uses the same form.
+  - `fmtScheduleDelta` reuses `fmtDelay` from `schedule.ts`, so "late" and "early" mean the
+    same thing everywhere.
+  - `fmtOptionalCount` shows a missing count as "—" and a real 0 as 0.
+  - `NO_DATA = '—'`.
+- **Month logic:** `lib/format/month.ts`:
+  - The current month comes from the `Africa/Johannesburg` calendar (§0 #14).
+  - `defaultMonthRange()` gives that month plus the two before it.
+  - Helpers: `addMonths`, `toMonth`, `parseMonth`.
+  - The `MonthRange` type lives in `lib/types/month-range.ts`.
+- **`components/ui/MonthRangePicker.tsx`:**
+  - Month and year selects for From and To, reusing `Select`.
+  - It only ever emits first-of-month dates.
+  - The bound the dispatcher moves wins and the other follows it, so the range is never
+    inverted.
+  - Months after the current SAST month are disabled, and a year change that would land in
+    one is pulled back.
+  - The earliest year is 2020, matching the history page.
+- **`lib/hooks/useAnalytics.ts`:**
+  - One private fetch helper, following the `useTripHistory` pattern (not `useAsyncData`,
+    §0 #16).
+  - A generation counter throws away a slow reply for an old range.
+  - Rows are cleared when the range changes, so old numbers never sit under a new label.
+  - `refetch` for retry.
+  - Hooks: `useFacilityAnalytics`, `useVehicleAnalytics`, `useLaneAnalytics` and
+    `useDriverAnalytics`. `useVehicleStreaks` takes no range, so it never refetches on a
+    range change.
+- **`lib/hooks/useSortedRows.ts`:** client-side sorting for `DataTable`. Clicking a column
+  flips its direction or sorts a new column ascending. No data always sorts **last**, in
+  both directions.
+- **`components/analytics/`:**
+  - `FacilityPanel`: Precinct, Corroboration rate, Confirmed ✓, Mismatch ✗, and
+    **Unwitnessed (no Pulsit reading)**. A note explains the rate's denominator.
+  - `VehiclePanel`:
+    - Registration, Trips, and mechanical info, warning and critical as separate columns.
+    - Mean time between breakdowns, driving time, longest clean streak, shortest completed
+      streak, and trips since last incident.
+    - `joinStreaks` joins the single streaks response onto the monthly rows by
+      `vehicle_id`.
+    - A note says streaks cover the vehicle's whole history.
+  - `LanePanel`:
+    - Lane ("origin → destination"), Trips, Exceptions per trip, Transit time, and Against
+      schedule.
+    - Each duration cell leads with the median and P90, with the mean, range and number of
+      trips beneath.
+    - A note explains which trips count against schedule.
+  - `DriverPanel`:
+    - Driver, Trips, and Trips with exceptions.
+    - Info, warning and critical exceptions as separate columns.
+    - On-time departures, dispatcher overrides, and average activation, loading, departure,
+      unloading and confirmation times.
+    - The confirmation column carries a † pointing to the caveat under the table.
+  - `copy.ts`: all analytics copy. The confirmation caveat is copied **verbatim** from the
+    backend schema's `computed_field` description; keep the two in step.
+
+### 8.3 Display rules, as implemented
+
+- Every rate is shown with its counts ("67% (2/3)"). A null, or a zero denominator, reads
+  "—", never "0%".
+- Severities are separate columns. The API's `total_exceptions_count` and
+  `mechanical_exceptions_count` are **not shown**, so nothing on screen is a merged number.
+- There is **no score, rating or rank column**, and a test checks for this. Every table opens
+  sorted by name, so the driver tab never opens as a ranking (decision 06).
+- The confirmation caveat is visible beside that column, via †.
+- Unwitnessed is its own column and is kept out of the corroboration rate. "Awaiting Pulsit"
+  is never used for a closed trip (§0 #18).
+- Page note, with the confirmed wording: *"Closed trips only. Figures update periodically, so
+  a recently closed trip may take a while to appear."*
+- A missing name reads "—", and the row is always kept.
+
+### 8.4 Deviations from §3–§4 (all deliberate)
+
+- **Four files not named in §4:** `lib/format/month.ts`, `lib/types/month-range.ts`,
+  `lib/hooks/useSortedRows.ts` and `components/analytics/copy.ts`.
+- **Where the copy lives:** analytics copy is in `components/analytics/copy.ts`, not in
+  `shared/lib/constants/copy.ts`. That file is imported by both apps, and these strings are
+  dispatcher-only. Only 6 dispatcher files use the shared `COPY` anyway.
+- **Month-range check placement:** `check_month_range` lives in the service, not the
+  endpoint, to keep the layering. It is the only call inside the 422 `try`.
+- **Totals not displayed**, as in §8.3.
+- **Only the active tab fetches**, rather than all five requests on every visit.
+- **No page-level test.** The page was verified in the browser instead (§8.6).
+
+### 8.5 Tests and verification
+
+- **Backend: 61 new tests.**
+  - `tests/unit/test_analytics_service.py` (11): month-range checks, missing name gives
+    `None` with the row kept, order kept, stored counts and computed rates unchanged, each
+    lane end named independently, unwitnessed kept out of the facility rate.
+  - `tests/integration/test_analytics_endpoints.py` (50, including parametrized cases):
+    - Every status code in §8.1.
+    - A service `ValueError` is not misreported as a 422.
+    - Empty lists when there are no trips.
+    - Hand-computed values for every grain, from one seeded timeline.
+    - A client-owned, non-shared precinct is still named.
+    - Another organisation's driver comes back with a null name.
+    - Isolation between operators on a shared lane.
+    - Streak rows equal a direct `trips_since_last_incident()` call.
+  - It uses a local copy of FP-153's `views` fixture, which runs the migration's own
+    `UPGRADE_STATEMENTS` inside a rolled-back transaction.
+- **Frontend: 77 new tests.**
+
+  | File | Tests |
+  |---|---|
+  | `format/month.test.ts` | 8 |
+  | `format/analytics.test.ts` | 17 |
+  | `MonthRangePicker.test.tsx` | 7 |
+  | `useAnalytics.test.tsx` | 11 |
+  | `useSortedRows.test.ts` | 5 |
+  | `FacilityPanel.test.tsx` | 7 |
+  | `VehiclePanel.test.tsx` | 8 |
+  | `LanePanel.test.tsx` | 7 |
+  | `DriverPanel.test.tsx` | 6 |
+  | `Sidebar.test.tsx` | +1 |
+- **Final results:**
+  - Backend: **1384 passed, 4 skipped**, which is 1323 base tests plus 61 new. ruff and
+    mypy are clean.
+  - Frontend: **562 passed** (53 files). `tsc --noEmit` and eslint are clean.
+- **To re-run:**
+  - `cd backend && pytest tests/unit/test_analytics_service.py tests/integration/test_analytics_endpoints.py`
+  - `cd frontend/dispatcher && npm test`
+- **Caution:** run one backend pytest at a time, because the local test database is shared.
+  The project's Stop hook runs the backend unit tests at the end of every Claude turn. A full
+  suite left running in the background across a turn end collides with it, so run the full
+  suite in the foreground (about 5 minutes).
+
+### 8.6 Browser check (2026-09-11)
+
+Tom ran the backend (`uvicorn`, port 8000) and the dispatcher (`npm run dev`, port 3000)
+locally, and logged in with a real account. `DEMO_MODE` was off: an unauthenticated request
+got 403.
+
+Confirmed on screen:
+- The Analytics link is lit in OVERVIEW.
+- The default range is July–September 2026.
+- The tab order is right, with Facility on load, and each tab has its section title.
+- The closed-trips note, the facility and lane notes, the whole-history streaks note, and
+  the † confirmation caveat are all present.
+
+Every tab shows **"Failed to load" with Try again**. This is expected, because the FP-153
+views don't exist on Supabase yet. The message reads `Request to … failed: Load failed`
+rather than the server's 500. That is §0 #20: `main.py`'s catch-all 500 carries no CORS
+header, so the browser discards it. An in-process simulation proved this. It affects the
+whole app, not just FP-156, and is on the team list.
+
+### 8.7 Still open — none of it is FP-156 code
+
+1. **The FP-153 merge, then applying its migration to Supabase**, after the two-heads fix
+   (§6). Until then every analytics endpoint returns 500 on the shared DB. Once FP-153
+   merges to `dev`, Tom brings FP-156 up to date with `dev`.
+2. **Celery beat** runs nowhere, so without it the views never refresh (§6.1 #1).
+3. **Unhandled 500s reach the browser as "Load failed"** (§0 #20, §6.1 #6).
+4. **Decision 06:** Tom posts this comment on FP-156:
+   > **Decision 06: the driver panel shows per-driver trends, not an automated score.** The
+   > panel shows trips, exceptions by severity, on-time departures, time in each phase and
+   > overrides, every rate beside its counts. There is no score, rating or ranking.
+   > - **POPIA:** a score from drivers' location and phase data would be automated profiling
+   >   of employees.
+   > - **FP-153 §3 rule 4:** there is no defensible weighting for a blended score.
+   > - **The data itself:** the schema has no score field
+   >   (`app/schemas/analytics.py`: "No blended score exists anywhere here, by design").
+   >
+   > The facility, vehicle and lane panels come first, so a depot or truck problem isn't read
+   > as a driver problem.
+5. **Jira:** FP-156 is marked Done while FP-243 to FP-246 are To Do. Close the subtasks
+   when this merges.
+6. **Demo-day seed data:** realistic closed trips, so the screen isn't empty (FP-153 §11.9).
+7. **KPI confirmation with Bruce** is still outstanding.
+
+### 8.8 After the migration is applied — what to check
+
+- Open `/analytics`. Every tab should load tables, not the error state.
+- Compare one well-understood closed trip against its phase ledger: facility counts, lane
+  transit time, and the driver's time in each phase.
+- Change the month range and confirm the tables refetch. Confirm "—" appears where a
+  denominator is zero, never "0%".
+- If the numbers never change after new trips close, Celery beat isn't running (§8.7 #2).
