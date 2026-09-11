@@ -1,14 +1,14 @@
 """add blockchain receipt data hash index
 
 Revision ID: chiko_receipt_hash_index
-Revises: ciaran_precinct_events
-Create Date: 2026-09-08
+Revises: ciaran_trip_history_page
+Create Date: 2026-09-11
 """
 
 from alembic import op
 
 revision = "chiko_receipt_hash_index"
-down_revision = "ciaran_precinct_events"
+down_revision = "ciaran_trip_history_page"
 branch_labels = None
 depends_on = None
 
