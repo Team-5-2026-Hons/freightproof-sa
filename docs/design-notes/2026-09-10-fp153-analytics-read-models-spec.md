@@ -406,7 +406,7 @@ Other deviations from the original text, all deliberate:
 
 ### 11.3 What was built, file by file
 
-**Migration** — `backend/migrations/versions/2026_09_10_tom_analytics_read_models.py`
+**Migration** — `backend/migrations/versions/2026_09_12_tom_analytics_read_models.py`
 - Revision `tom_analytics_read_models`, down-revision `ciaran_trip_history_page`.
   Hand-written: Alembic autogenerate cannot emit materialized views.
 - Creates `driver_analytics`, `vehicle_analytics`, `vehicle_incident_streaks`,
@@ -675,3 +675,14 @@ Supabase → prepare closed demo trips so the screen is not empty on demo day.
 **Do not, in FP-156:** read `trips.actual_departure_at`; change the view SQL (that needs a
 new migration and a new decision); re-add the metrics dropped in §7; add a blended score;
 take the organisation from anywhere but the auth token.
+
+### 11.10 Linearization fix (2026-09-11)
+
+Chiko's FP-157 (`chiko_receipt_hash_index`) landed on `dev` after this branch's migration
+was written, moving the Alembic head past `ciaran_trip_history_page`. Fixed before merge:
+`down_revision` changed from `ciaran_trip_history_page` to `chiko_receipt_hash_index`
+(docstring updated to match), and the migration file renamed
+`2026_09_10_tom_analytics_read_models.py` → `2026_09_12_tom_analytics_read_models.py` so
+`versions/` stays chronological. `revision = "tom_analytics_read_models"` is unchanged.
+`backend/tests/integration/test_analytics.py`'s `_MIGRATION_PATH` was updated to the new
+filename in the same commit. No other file references the old filename.
