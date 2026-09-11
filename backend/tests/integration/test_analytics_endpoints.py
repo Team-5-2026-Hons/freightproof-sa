@@ -62,7 +62,7 @@ _ALL = [*_MONTHLY, _STREAKS]
 
 _MIGRATION_PATH = (
     Path(__file__).resolve().parents[2]
-    / "migrations" / "versions" / "2026_09_10_tom_analytics_read_models.py"
+    / "migrations" / "versions" / "2026_09_12_tom_analytics_read_models.py"
 )
 
 # SAST, the zone the views bucket months in — a fixed offset is exact (no DST).
