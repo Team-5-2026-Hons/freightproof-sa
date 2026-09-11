@@ -6,7 +6,7 @@ so no information about other orgs is leaked.
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import SQLColumnExpression, Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import SubjectNotVisibleError
@@ -19,14 +19,13 @@ from app.db.models.trips import Trip
 from app.db.models.vehicles import Vehicle
 
 
-async def assert_subject_visible(
-    db: AsyncSession,
+def subject_visibility_query(
     *,
     subject_type: SubjectType,
-    subject_id: uuid.UUID,
+    subject_id: uuid.UUID | SQLColumnExpression[uuid.UUID],
     organization_id: uuid.UUID,
-) -> None:
-    """Raise SubjectNotVisibleError if subject is outside the caller's organisation."""
+) -> Select[tuple[uuid.UUID]]:
+    """Share the same tenant rules between single-subject checks and receipt queries."""
     if subject_type == SubjectType.TRIP:
         query = select(Trip.id).where(
             Trip.id == subject_id,
@@ -85,6 +84,22 @@ async def assert_subject_visible(
     else:
         raise SubjectNotVisibleError(str(subject_type), str(subject_id))
 
+    return query
+
+
+async def assert_subject_visible(
+    db: AsyncSession,
+    *,
+    subject_type: SubjectType,
+    subject_id: uuid.UUID,
+    organization_id: uuid.UUID,
+) -> None:
+    """Raise SubjectNotVisibleError if subject is outside the caller's organisation."""
+    query = subject_visibility_query(
+        subject_type=subject_type,
+        subject_id=subject_id,
+        organization_id=organization_id,
+    )
     result = await db.execute(query.limit(1))
     if result.scalar_one_or_none() is None:
         raise SubjectNotVisibleError(str(subject_type), str(subject_id))

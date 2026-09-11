@@ -17,6 +17,7 @@ interface NavItem {
   href: string
   icon: IconName
   activePatterns: string[]
+  adminOnly?: boolean
 }
 
 interface NavGroup {
@@ -55,6 +56,18 @@ const NAV_GROUPS: NavGroup[] = [
     // taxonomy. When organisations or partners arrive, give this group a label.
     items: [
       { label: 'Precincts', href: ROUTES.precincts, icon: 'map', activePatterns: ['/precincts'] },
+    ],
+  },
+  {
+    label: 'BLOCKCHAIN',
+    items: [
+      {
+        label: 'Receipt Lookup',
+        href: ROUTES.blockchainReceipts,
+        icon: 'hex',
+        activePatterns: [ROUTES.blockchainReceipts],
+        adminOnly: true,
+      },
     ],
   },
 ]
@@ -128,6 +141,12 @@ interface SidebarContentProps {
 function SidebarContent({ onClose, collapsed = false, onToggleCollapse }: SidebarContentProps) {
   const pathname = usePathname()
   const { user } = useAuth()
+  const visibleGroups = NAV_GROUPS
+    .map(group => ({
+      ...group,
+      items: group.items.filter(item => !item.adminOnly || user?.role === 'admin_dispatcher'),
+    }))
+    .filter(group => group.items.length > 0)
 
   return (
     <div
@@ -193,7 +212,7 @@ function SidebarContent({ onClose, collapsed = false, onToggleCollapse }: Sideba
 
       {/* Nav groups */}
       <div className="flex-1 py-2 overflow-y-auto">
-        {NAV_GROUPS.map(group => (
+        {visibleGroups.map(group => (
           // Keyed on the first item's href, not the label: groups may be unlabelled,
           // and two unlabelled groups would otherwise collide on an `undefined` key.
           <div key={group.label ?? group.items[0].href}>

@@ -1,14 +1,17 @@
 """Pydantic v2 schemas for BlockchainReceipt, MerkleBatch, MerkleBatchLeaf."""
 
+import re
 from datetime import datetime
-from uuid import UUID
 from typing import Any, Optional
+from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from app.db.models.enums import BlockchainReceiptType, MerkleBatchType, SubjectType, VerifyStatus
 
 _VALID_LEAF_SOURCE_TYPES = frozenset({"checkpoint", "exception", "artifact"})
+_DATA_HASH_PATTERN = re.compile(r"[0-9a-f]{64}")
+_HEDERA_TX_ID_MAX_LENGTH = 200
 
 
 class BlockchainReceiptBase(BaseModel):
@@ -123,6 +126,46 @@ class BlockchainReceiptRead(BaseModel):
     hedera_consensus_timestamp: Optional[datetime] = None
     hedera_tx_id: Optional[str] = None
     created_at: datetime
+
+
+class BlockchainReceiptLookupQuery(BaseModel):
+    """Validated query parameters for reverse receipt lookup."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    data_hash: Optional[str] = None
+    hedera_tx_id: Optional[str] = None
+    subject_id: Optional[UUID] = None
+
+    @field_validator("data_hash")
+    @classmethod
+    def normalize_data_hash(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        if _DATA_HASH_PATTERN.fullmatch(normalized) is None:
+            raise ValueError("data_hash must be exactly 64 hexadecimal characters")
+        return normalized
+
+    @field_validator("hedera_tx_id")
+    @classmethod
+    def normalize_hedera_tx_id(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("hedera_tx_id must not be blank")
+        if len(normalized) > _HEDERA_TX_ID_MAX_LENGTH:
+            raise ValueError(
+                f"hedera_tx_id must be at most {_HEDERA_TX_ID_MAX_LENGTH} characters"
+            )
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_exactly_one_lookup_value(self) -> "BlockchainReceiptLookupQuery":
+        if (self.data_hash is None) == (self.hedera_tx_id is None):
+            raise ValueError("exactly one of data_hash or hedera_tx_id must be provided")
+        return self
 
 
 class VerifyRequest(BaseModel):
