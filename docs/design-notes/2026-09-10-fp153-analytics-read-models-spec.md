@@ -1,7 +1,8 @@
 # FP-153 — Analytics Read Models — Build Spec
 
 Author: Tom (Thomas Davis) · Written 2026-09-10, after extended metric-design review
-Status: metrics locked, ready to implement
+Status: **IMPLEMENTED** (commit `e0cc8e4`, 2026-09-10). §1–§10 are the original spec; §11 is
+the build record, the decisions that SUPERSEDE parts of §1–§10, and the FP-156 handoff.
 Branch: `fp-153-analytics-read-models` (already exists, already rebased on current `dev`)
 
 ## How to use this document
@@ -341,3 +342,336 @@ later.
 - Jira board status for FP-153/FP-156/FP-259 all read "Done" despite no corresponding
   code having been merged for FP-153/156 specifically — this is a known, intentional
   team practice (confirmed directly by the developer), not a discrepancy to re-investigate.
+
+---
+
+## 11. Build record and FP-156 handoff (added 2026-09-11)
+
+### 11.0 How to use this section
+
+This section records what was actually built for FP-153, every decision taken during the
+build, and the agreed starting plan for FP-156. A fresh session starting FP-156 should:
+
+1. Read CLAUDE.md, then **this §11 in full**. §1–§10 above are the original spec and are
+   still the rationale, but **§11.2 overrides them wherever they disagree**.
+2. Treat the FP-153 code as the contract FP-156 builds on (§11.5). Do not change the
+   view SQL or the metric definitions as part of FP-156 — that would need a new migration
+   and a new decision.
+3. Start FP-156 with a normal CLAUDE.md PLAN block. The open questions it needs answered
+   are listed in §11.9.
+
+### 11.1 Status when this was written
+
+- Branch `fp-153-analytics-read-models`, commit `e0cc8e4`
+  (`feat(db): add FP-153 analytics materialized views, read layer and refresh task`).
+- Being pushed for team review. **NOT merged to `dev`. Migration NOT applied to the shared
+  Supabase database.** Until it is applied there, the analytics views exist only inside
+  the test suite.
+- Verification done: ruff clean; mypy clean on every new module; `alembic heads` shows a
+  single head (`tom_analytics_read_models`); offline `alembic upgrade --sql` rendered 5
+  views and 5 unique indexes and no reference to `actual_departure_at`. Full backend suite
+  on an isolated database: **1288 passed, 4 skipped** (baseline before FP-153: 1247 passed,
+  4 skipped; FP-153 added 41 tests, all passing).
+
+### 11.2 Decisions taken during the build — these SUPERSEDE §1–§10 where they differ
+
+Found by reading the live code before building; each was put to the developer and
+approved on 2026-09-10.
+
+| # | Problem found in the live code | Decision (now implemented) | Overrides |
+|---|---|---|---|
+| Q1 | Precincts can be shared between operators (`Precinct.is_shared`). Grains with no organisation key would mix operators' trips in lane and facility rows — a cross-tenant leak. | **Every grain is keyed by `operator_organization_id` first**, including the unique indexes. Every read function requires an `organization_id`. | Grain definitions in §4, §5, §6, §8 |
+| Q2 | `trips.actual_departure_at` is overwritten on **every** departure (`phase_service.py:1318`, `advance_departure`), so a multi-stop trip holds its LAST leg's time. | A trip's departure = **`MIN(phase_events.completed_at)` over its `departure` rows with status `completed` or `exception`**, read from the phase ledger. `trips.actual_departure_at` is **never read**. Used for the month bucket, on-time, and lane duration. | §3 rule 6, §4 on-time, §6 `actual_transit_minutes` |
+| Q3 | Overridden phases carry a dispatcher-click timestamp, and `override_phase` never runs corroboration, so they are permanently `NULL` — the same pollution §8 excludes `in_transit` for. | **`overridden` phases are excluded from all timings (dwell, driving hours) and from all facility counts.** They still count in `override_count` and `phase_events_count`. A dwell or leg is only measured when **both** ends are `completed`/`exception`. Consequence: a closed trip whose every departure was overridden has no ledger departure and is **excluded from every grain**. | §4 dwell, §5 driving hours, §8 |
+| Q4 | Which timezone decides the month? A departure at 00:40 SAST on the 1st is still the previous month in UTC. | **Months are calendar months in SAST** (`Africa/Johannesburg`, i.e. UTC+2, matching `OPERATIONS_UTC_OFFSET_HOURS`). | §3 rule 2 |
+| Q5 | Two MECHANICAL reports on one trip: a 0-trip streak between them? | **An incident = a closed trip with ≥1 MECHANICAL exception.** Two reports on one trip are one incident. Back-to-back incident *trips* still give a genuine 0. | §5 streaks |
+
+Other deviations from the original text, all deliberate:
+
+- **Five materialized views, no table.** `vehicle_incident_streaks` is a materialized view
+  too (full-history recompute, no write path), so **no ORM model was added to
+  `db/models/__init__.py`** (§1 and §9 anticipated a table).
+- **Lane rows exclude trips whose `origin_precinct_id` or `destination_precinct_id` is
+  NULL** — a trip with an unknown endpoint is on no lane. Those trips still count in the
+  driver, vehicle and facility grains.
+- **`.env.example` has `ANALYTICS_REFRESH_INTERVAL_SECONDS=900`, not an empty key** (§9
+  said "key name only"): a blank integer makes `Settings()` fail validation when the file is
+  copied verbatim. Matches the existing `PP_POLL_INTERVAL_SECONDS=60` precedent.
+- **§6's median "worked proof" is flawed** — its two datasets give 8h both ways. The tests
+  use `[100, 200, 300]` + `[1000]` instead: pooled median 250 vs 600 for the average of the
+  monthly medians.
+- The views have no `created_at`/`updated_at` — they are derived relations, not tables.
+- Two extra modules not named in §9: `app/analytics/rollup.py` (shared sum-across-months
+  helper) and `app/analytics/stats.py` (pure maths).
+
+### 11.3 What was built, file by file
+
+**Migration** — `backend/migrations/versions/2026_09_10_tom_analytics_read_models.py`
+- Revision `tom_analytics_read_models`, down-revision `ciaran_trip_history_page`.
+  Hand-written: Alembic autogenerate cannot emit materialized views.
+- Creates `driver_analytics`, `vehicle_analytics`, `vehicle_incident_streaks`,
+  `lane_analytics`, `facility_analytics`, each `WITH DATA`.
+- One unique index per view on exactly its grain, named `uq_<view>_grain` — required for
+  `REFRESH MATERIALIZED VIEW CONCURRENTLY`.
+- A guarded `DO $$ … $$` block that `REVOKE ALL`s the five views from the `anon` and
+  `authenticated` roles when those roles exist (a no-op on plain Postgres). Reason: RLS
+  cannot be enabled on a materialized view, and Supabase's default privileges would
+  otherwise expose every operator's analytics through the Data API — the hole
+  `0003_tom_rls_policies` closed for tables.
+- Exposes module-level `UPGRADE_STATEMENTS` and `DOWNGRADE_STATEMENTS` tuples.
+  `upgrade()`/`downgrade()` just `op.execute` them. The tests load these same constants.
+- The SQL is self-contained (no imports from `app/`), following the repo convention that a
+  migration is a frozen record. Shared CTE fragments (`closed_trips` with the ledger
+  departure and SAST month, `trip_exceptions`, `trip_phases` with `LAG` over
+  `sequence_number`) are Python strings spliced into each view.
+
+**Read layer** — `backend/app/analytics/`
+| File | Contents |
+|---|---|
+| `__init__.py` | Docstring only — deliberately imports nothing (avoids a circular import with `schemas/analytics.py`). |
+| `views.py` | Read-only ORM mappings of the five views on a **separate** `AnalyticsViewBase` (not `app.db.models.Base`, or `create_all` in tests and Alembic autogenerate would treat them as tables). Classes: `DriverAnalyticsView`, `VehicleAnalyticsView`, `VehicleIncidentStreaksView`, `LaneAnalyticsView`, `FacilityAnalyticsView`. Also `ANALYTICS_VIEWS`, `ANALYTICS_VIEW_NAMES`, and `ATTESTED_PHASE_STATUSES = (COMPLETED, EXCEPTION)`. |
+| `stats.py` | Pure maths: `safe_ratio` (None on a zero denominator), `percentile` (linear interpolation — same as Postgres `percentile_cont`), `validate_month_range`, `MEDIAN_FRACTION`, `P90_FRACTION`. |
+| `rollup.py` | `sum_over_months(...)`: SUMs every non-grain column of a monthly view across an inclusive month range, grouped by the entity key, scoped to one organisation. Selects columns, never ORM entities (an entity would sit in the session identity map and serve stale values after a refresh). |
+| `driver_metrics.py` | `get_driver_metrics` |
+| `vehicle_metrics.py` | `get_vehicle_metrics`, `get_vehicle_streaks`, `trips_since_last_incident` (live query on base tables, same definitions as the streaks view) |
+| `lane_metrics.py` | `get_lane_metrics`: concatenates the monthly arrays per lane, then computes statistics once. |
+| `facility_metrics.py` | `get_facility_metrics` |
+| `refresh.py` | `refresh_analytics_views(conn, *, concurrently=True) -> list[str]` and `AnalyticsRefreshError(failed_views)`. Refreshes each view; a failure is logged and the rest still run; raises at the end if anything failed. |
+
+**Result models** — `backend/app/schemas/analytics.py` (Pydantic v2, frozen). Each model
+carries the summed raw counts **plus** `@computed_field` rates derived from them, so a
+rate is divided exactly once and can never disagree with its counts. A derived value is
+`None` when its denominator is 0 ("no data", not 0%).
+
+**Refresh task** — `backend/app/tasks/analytics.py`: Celery task
+`tasks.analytics.refresh_views` (function `refresh_analytics`). Creates a short-lived
+engine with `isolation_level="AUTOCOMMIT"` (CONCURRENTLY cannot run inside a transaction),
+refreshes concurrently, disposes the engine. Retries up to 3 times, 60 s apart.
+
+**Shared files changed (additive only):**
+- `app/tasks/__init__.py` — beat entry `"analytics-refresh-views"` → `tasks.analytics.refresh_views`
+  every `settings.ANALYTICS_REFRESH_INTERVAL_SECONDS`, plus an explicit import of the task.
+- `app/core/config.py` — `ANALYTICS_REFRESH_INTERVAL_SECONDS: int = 900` (15 min).
+- `backend/.env.example` — `ANALYTICS_REFRESH_INTERVAL_SECONDS=900`.
+
+### 11.4 Metric definitions exactly as implemented
+
+Applies to every view: **closed trips only** (`trips.status = 'closed'`); **departure from
+the ledger** (Q2); **month = SAST month of that departure** (Q4); **grain starts with
+`operator_organization_id`** (Q1); attested = phase status `completed` or `exception`.
+
+- **`driver_analytics`** — (org, `driver_id`, `month_start`)
+  - `trip_count`; `trips_with_exceptions_count`; `total_exceptions_count` split into
+    `info_/warning_/critical_exceptions_count`. Exceptions of every type and source count.
+  - `departures_with_plan_count` = trips with `planned_departure_at`;
+    `on_time_departures_count` = ledger departure `<=` planned (strict, no grace).
+  - Dwell sum/count for activation, loading, departure, unloading, confirmation = this
+    row's `completed_at` minus the previous row's in `sequence_number` order, only when
+    **both** rows are attested. Multi-stop occurrences pool (two loadings = two
+    observations). `in_transit` and `trip_creation` are never dwell.
+  - `phase_events_count` = **all** phase rows of those trips (including `trip_creation` and
+    overridden rows — the spec's literal definition); `override_count` = rows with
+    `dispatcher_override_user_id` set.
+- **`vehicle_analytics`** — (org, `vehicle_id` = `trips.horse_id`, `month_start`)
+  - `trip_count`; `mechanical_exceptions_count` (MECHANICAL only, never
+    VEHICLE_SUBSTITUTION) split by severity.
+  - `mechanical_gap_minutes_sum`/`_count`: for each MECHANICAL exception, minutes since the
+    previous one on the same (org, vehicle), by `exceptions.created_at`, over the vehicle's
+    whole closed-trip history. The gap belongs to the month of the later breakdown's trip.
+    The first-ever breakdown has no gap.
+  - `driving_hours_sum`: for each `in_transit` row whose predecessor is `departure`, both
+    attested, `in_transit.completed_at − departure.completed_at`, summed across all legs.
+- **`vehicle_incident_streaks`** — (org, `vehicle_id`), whole history, no month.
+  - A closed trip's segment = how many incident trips came before it, ordered by
+    (ledger departure, trip id). Clean trips sharing a segment form one streak. Segments
+    `0..incident_count` are enumerated explicitly, so an empty segment (back-to-back
+    incidents) exists with length 0.
+  - `highest_streak_trips` = MAX over all segments **including** the open (current) one.
+  - `lowest_streak_trips` = MIN over **completed** segments only; NULL if the vehicle has
+    never had an incident.
+  - Worked examples (all asserted in tests), with `.` = clean trip and `X` = incident:
+    `..X.XX.` → (2, 0); `.X...` → (3, 1); `..` → (2, NULL); `.2.` (two reports on one trip)
+    → (1, 1).
+- **`lane_analytics`** — (org, `origin_precinct_id`, `destination_precinct_id`, `month_start`)
+  - `trip_count`; `exception_count`.
+  - `actual_transit_minutes[]` = `actual_arrival_at − ledger departure` per trip with a
+    known arrival. `actual_arrival_at` is stamped by `phase_service` only from a
+    **completed** (not overridden) final `in_transit`.
+  - `schedule_delta_minutes[]` = actual − (`planned_arrival_at − planned_departure_at`),
+    per trip, only when both planned timestamps exist.
+  - Arrays are ordered by trip id; empty arrays are `{}`, never NULL.
+- **`facility_analytics`** — (org, `trip_stops.precinct_id`, `month_start`)
+  - `confirmed_count` / `mismatch_count` / `unwitnessed_count` =
+    `pulsit_geofence_confirmed` TRUE / FALSE / NULL, over attested, non-`in_transit` phase
+    rows joined to their stop's precinct. `trip_creation` has no stop, so it drops out.
+
+### 11.5 The read API FP-156 builds on
+
+All functions are `async`, take an `AsyncSession` as `db`, and use keyword-only arguments
+after it. Month bounds are **inclusive, first-of-month `date`s**; anything else raises
+`ValueError` (FP-156 should turn that into a 422). Results are ordered by entity id.
+Results contain **ids only — no names** (see §11.9).
+
+```python
+get_driver_metrics(db, *, organization_id, start_month, end_month, driver_ids=None) -> list[DriverMetrics]
+get_vehicle_metrics(db, *, organization_id, start_month, end_month, vehicle_ids=None) -> list[VehicleMetrics]
+get_vehicle_streaks(db, *, organization_id, vehicle_ids=None) -> list[VehicleStreak]   # no month range, by design
+trips_since_last_incident(db, *, organization_id, vehicle_id) -> int                    # live; closed trips only;
+                                                                                        # no incident ever -> all closed trips
+get_lane_metrics(db, *, organization_id, start_month, end_month,
+                 origin_precinct_id=None, destination_precinct_id=None) -> list[LaneMetrics]
+get_facility_metrics(db, *, organization_id, start_month, end_month, precinct_ids=None) -> list[FacilityMetrics]
+```
+
+| Model | Stored fields (summed) | Computed fields (None when denominator is 0) |
+|---|---|---|
+| `DriverMetrics` | `driver_id`, `trip_count`, `trips_with_exceptions_count`, `total_exceptions_count`, `info_/warning_/critical_exceptions_count`, `departures_with_plan_count`, `on_time_departures_count`, `<phase>_dwell_minutes_sum` + `<phase>_dwell_events_count` for the 5 phases, `phase_events_count`, `override_count` | `exception_trip_rate`, `on_time_departure_rate`, `override_rate`, `activation_/loading_/departure_/unloading_/confirmation_dwell_minutes_avg` (the last carries the "slow receiver" caveat in its schema `description`) |
+| `VehicleMetrics` | `vehicle_id`, `trip_count`, `mechanical_exceptions_count`, `mechanical_info_/warning_/critical_count`, `mechanical_gap_minutes_sum`, `mechanical_gap_count`, `driving_hours_sum` | `mean_minutes_between_mechanical` |
+| `VehicleStreak` | `vehicle_id`, `highest_streak_trips`, `lowest_streak_trips` (nullable) | — |
+| `DurationStats` | `sample_count`, `mean`, `minimum`, `maximum`, `median`, `p90` (all minutes) | built by `DurationStats.from_values(values)` |
+| `LaneMetrics` | `origin_precinct_id`, `destination_precinct_id`, `trip_count`, `exception_count`, `actual_transit_minutes: DurationStats`, `schedule_delta_minutes: DurationStats` | `exception_density` |
+| `FacilityMetrics` | `precinct_id`, `confirmed_count`, `mismatch_count`, `unwitnessed_count` | `corroboration_rate` = confirmed ÷ (confirmed + mismatch); unwitnessed is excluded from the denominator on purpose |
+
+Computed fields are included when a model is serialised, so a FastAPI `response_model` of
+these types returns the rates automatically.
+
+### 11.6 Refresh and operations
+
+- Beat fires `tasks.analytics.refresh_views` every `ANALYTICS_REFRESH_INTERVAL_SECONDS`
+  (default 900). The numbers can therefore be up to ~15 minutes old — acceptable because
+  only closed trips count. Postgres records no "last refreshed" time for a materialized
+  view, so none is exposed yet (see §11.9).
+- To see it run locally: `cd backend && celery -A app.tasks worker -B --loglevel=info`.
+- `infrastructure/docker/docker-compose.dev.yml` runs `celery -A app.tasks worker` with
+  **no beat**, so in Compose neither this refresh nor the existing Parcel Perfect poll ever
+  fires. Flagged to the team, not changed (shared file).
+- `REFRESH MATERIALIZED VIEW` requires the **owner** of the view. The database user the
+  Celery worker connects as must be the user that ran the migration, or refreshes fail
+  with "must be owner".
+
+### 11.7 Tests and how to run them
+
+- `backend/tests/unit/test_analytics_stats.py` (19 tests): ratio, percentile (including
+  pooled vs averaged medians), month validation, `DurationStats`, computed rates, the
+  confirmation caveat, facility rate excluding unwitnessed.
+- `backend/tests/unit/test_analytics_task.py` (8 tests): the refresh loop (concurrent and
+  plain, partial failure), the AUTOCOMMIT engine and its disposal, task retry, beat
+  registration.
+- `backend/tests/integration/test_analytics.py` (14 tests). The test DB is built by
+  `create_all()`, which knows nothing about views, so the `views` fixture **loads the
+  migration file with `importlib` and runs its `UPGRADE_STATEMENTS` inside the test's
+  rolled-back transaction** — the SQL under test is the SQL that ships. `_refresh()` then
+  refreshes non-concurrently (CONCURRENTLY cannot run inside that transaction). One test
+  runs a real CONCURRENTLY refresh on its own AUTOCOMMIT connection and drops the views
+  in `finally`. **FP-156's endpoint tests should reuse this `views` fixture pattern.**
+- **Shared local test DB caution:** `TEST_DATABASE_URL` is a local Postgres shared by every
+  pytest process on the machine. Each run `create_all`s at start and `drop_all`s at the end,
+  so two overlapping runs (for example two Claude sessions) delete each other's tables.
+  On 2026-09-10 three full runs showed 110–152 failures, all
+  `relation "organizations" does not exist`, because another pytest process was running at
+  the same time. The fix is to run one suite at a time. To prove a result, run against a
+  throwaway database: `CREATE DATABASE`, override `TEST_DATABASE_URL` in the environment for
+  that run, then `DROP DATABASE … WITH (FORCE)`.
+
+### 11.8 Known defects and open items carried forward
+
+1. **For Ciaran (not fixed here):** `phase_service.py:1318` sets
+   `trip.actual_departure_at = datetime.now(UTC)` on every departure. Suggested fix: only set
+   it while it is still NULL. FP-153 is unaffected (it never reads the column); anything
+   else using it for multi-stop trips is wrong until fixed.
+2. **The views depend on columns of `trips`, `phase_events`, `exceptions` and `trip_stops`.**
+   A future migration that ALTERs or DROPs one of those columns will fail ("cannot alter
+   type of a column used by a view") unless it drops and recreates the affected views.
+   The whole team needs to know this.
+3. **The migration has not yet run through Alembic against Supabase.** Its exact SQL is
+   exercised by the tests, but its first real `alembic upgrade` will be on the shared DB.
+   Before applying: `git fetch`, check that `dev` has no newer migration (if it does,
+   `down_revision` needs updating — coordinate, per CLAUDE.md), and run `alembic current`
+   (in July 2026 the shared DB was stamped with a revision missing from `dev`).
+   `alembic downgrade -1` removes the views.
+4. After applying: check that the 5 views exist, that the Supabase Data API **cannot**
+   read them with the anon key, that a manual refresh succeeds, and that the numbers match
+   one well-understood closed trip.
+5. KPI confirmation with Bruce (§10) is still outstanding, now covering Q1–Q5 as well.
+6. FP-243 to FP-246 (FP-156 subtasks) still have titles only.
+
+### 11.9 FP-156 — plan agreed on 2026-09-11 (starting point, not yet a PLAN block)
+
+**What FP-156 is:** the dispatcher-facing analytics screen — a working visual frontend,
+plus the small backend layer (API endpoints) that FP-153 deliberately did not build.
+
+**Branching and database — read before starting:**
+- FP-153 is **not merged**. FP-156 must be built on top of it: create the FP-156 branch
+  **from `fp-153-analytics-read-models`**, not from `dev`. After FP-153 merges, rebase
+  FP-156 onto `dev` (the developer runs all git write commands). If FP-153 changes during
+  review, FP-156 needs rebasing onto the new FP-153 commit.
+- The views **do not exist on the shared Supabase DB** until the FP-153 migration is
+  applied there with team agreement. Until then:
+  - Backend endpoints are built and proven with integration tests using the §11.7
+    `views` fixture pattern.
+  - The frontend is built against mock data (check how existing dispatcher pages use
+    `frontend/shared/lib/mocks/` before choosing the approach).
+  - Hitting the real endpoint against the shared DB will fail ("relation does not exist")
+    until the migration is applied. That is expected, not a bug.
+
+**Questions to settle in the FP-156 PLAN block, with recommendations:**
+1. What "last N months" means → recommend the current SAST month plus the previous N−1
+   (the views count only closed trips, so the current month is simply partial). Options:
+   1/2/3/6/12/24.
+2. Which metrics appear on the first screen → confirm with Bruce if possible; default to all
+   four grains as tabs.
+3. Entity names (driver name, horse registration, precinct name) → recommend joining them
+   server-side in a small service, so the frontend never cross-references ids.
+4. Whether to show a "last refreshed" time → it does not exist yet. The cheapest option is
+   for the refresh task to record a timestamp (for example in Redis) and an endpoint to
+   return it. This is a real backend change, so decide explicitly. The minimum is a static
+   "refreshed every 15 minutes" label.
+5. Endpoint shape → recommend one GET per grain, plus streaks and trips-since-last-incident.
+
+**Backend (small):**
+- New `backend/app/api/v1/endpoints/analytics.py`, `tags=["analytics"]`, every endpoint
+  `async def`, `Depends(get_db)` and `Depends(get_current_dispatcher)`. The organisation
+  comes from `current_user.organization_id` (`UserRead`), **never from a query parameter**.
+- Query params `start_month`/`end_month` (or a months count converted server-side using
+  SAST); a `ValueError` from `validate_month_range` becomes a 422.
+- Endpoints stay thin (CLAUDE.md): validate, then call a service, then return. Name
+  enrichment belongs in a small service (for example `app/orchestration/analytics_service.py`)
+  that calls `app.analytics.*` and looks up names scoped to the organisation. Response
+  models: the §11.5 schemas, or thin wrappers adding a `name`.
+- Register the router in `backend/app/main.py` (**shared file** — flag it in TASK COMPLETE).
+- Integration tests per endpoint: 200 with hand-computed values, 401, 422 (bad months),
+  and **cross-organisation isolation** (operator B's data never appears for operator A).
+  Also check whether a driver token is rejected (403). Follow
+  `tests/integration/test_trip_history.py` for endpoint-test style.
+
+**Frontend (dispatcher, Next.js 15 App Router):**
+- New route `frontend/dispatcher/app/(app)/analytics/page.tsx`, alongside the existing
+  `trips`, `history`, `exceptions`, `fleet`, `precincts`, `sla` routes.
+- Navigation: add the link in `frontend/dispatcher/components/layout/Sidebar.tsx` and the
+  route constant in `frontend/dispatcher/lib/constants/routes.ts`.
+- Data through the existing typed client `frontend/dispatcher/lib/api/client.ts` — never
+  raw `fetch()` in components.
+- Types in a new `frontend/shared/lib/types/analytics.ts` mirroring §11.5, including the
+  computed fields and `null`s. No `any`.
+- Charts: **`recharts` ^3.8.1 is already a dispatcher dependency**, so no new package is
+  needed (and `package.json` is a shared file, so avoid adding one). Tables carry most of
+  the information; add charts only where they help.
+- Layout: tabs for Driver / Vehicle / Lane / Facility, a range picker, and sortable tables.
+  Vehicle shows streaks and trips since last incident next to the monthly numbers.
+- Display rules that keep the data honest (these come from the spec and must not be dropped):
+  - Show every rate with its counts, e.g. "67% (2/3)". Show "—" for `null`, never 0%.
+  - Severities stay as separate counts. **Never** a blended score.
+  - Show the confirmation-dwell caveat (slow receiver) next to that number.
+  - Show `unwitnessed_count` as its own Pulsit coverage figure, consistent with the
+    existing "Awaiting Pulsit" state (`PhaseLocationSection.tsx`).
+  - Explain in the UI that only closed trips count.
+- Server Components where possible, `"use client"` only at the lowest interactive level
+  (for example the range picker and tabs).
+
+**Suggested order:** settle the questions above → backend endpoints and service with tests →
+shared types → page scaffold on mock data → wire to the real API once the migration is on
+Supabase → prepare closed demo trips so the screen is not empty on demo day.
+
+**Do not, in FP-156:** read `trips.actual_departure_at`; change the view SQL (that needs a
+new migration and a new decision); re-add the metrics dropped in §7; add a blended score;
+take the organisation from anywhere but the auth token.
