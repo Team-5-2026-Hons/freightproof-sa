@@ -30,6 +30,9 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'OVERVIEW',
     items: [
       { label: 'Dashboard', href: ROUTES.home, icon: 'home', activePatterns: ['/'] },
+      // Every dispatcher, not admins only: the analytics endpoints are read-only and
+      // org-scoped (get_current_dispatcher), unlike the receipt lookup below.
+      { label: 'Analytics', href: ROUTES.analytics, icon: 'bars', activePatterns: [ROUTES.analytics] },
     ],
   },
   {

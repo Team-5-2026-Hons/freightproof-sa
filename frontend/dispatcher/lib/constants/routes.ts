@@ -3,6 +3,7 @@
 
 export const ROUTES = {
   home:            '/',
+  analytics:       '/analytics',
   trips:           '/trips',
   tripDetail:      (id: string) => `/trips/${id}`,
   tripNew:         '/trips/new',

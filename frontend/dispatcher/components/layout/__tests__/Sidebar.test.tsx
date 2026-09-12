@@ -76,6 +76,15 @@ describe('Sidebar role-based navigation', () => {
 })
 
 describe('Sidebar navigation', () => {
+  it('links a regular dispatcher to analytics', () => {
+    // The analytics endpoints take any dispatcher (get_current_dispatcher, not
+    // require_admin_dispatcher), so unlike the receipt lookup this entry is never hidden.
+    renderSidebar()
+
+    expect(screen.getByRole('link', { name: 'Analytics' }))
+      .toHaveAttribute('href', ROUTES.analytics)
+  })
+
   it('links to the exceptions queue', () => {
     // Hidden in 6071ab2 as "not yet live", when the page was mock data behind a route.
     // It is live now — FP-146 gave it a real org-scoped list, detail and resolve — and a
