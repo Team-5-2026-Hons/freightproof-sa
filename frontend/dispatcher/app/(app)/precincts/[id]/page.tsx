@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import React, { useState } from 'react'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { MapPinOff } from 'lucide-react'
 
@@ -8,12 +8,13 @@ import { TopBar } from '@/components/ui/TopBar'
 import { Button } from '@/components/ui/Button'
 import { Spinner } from '@/components/ui/Spinner'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { SecHead } from '@/components/ui/SecHead'
+import { Tabs, type Tab } from '@/components/ui/Tabs'
 import { InfoRow } from '@/components/ui/InfoRow'
 import { Ic } from '@/components/ui/Ic'
 import { AdminOnly } from '@/components/auth/AdminOnly'
 import { GeofenceMap } from '@/components/map/GeofenceMap'
 import { EventTimeline } from '@/components/blockchain/EventTimeline'
+import { PrecinctAnalyticsSummary } from '@/components/analytics/PrecinctAnalyticsSummary'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { usePrecinctDetail } from '@/lib/hooks/usePrecinctDetail'
 import { ROUTES } from '@/lib/constants/routes'
@@ -22,6 +23,16 @@ import { RETURN_TO_PARAM, safeReturnTo } from '@/lib/navigation/returnTo'
 // 5 dp ≈ 1 m. Coordinates are identifiers here, not measurements — they are read to be
 // compared against a maps app, so they render at a fixed precision.
 const COORDINATE_PRECISION = 5
+
+// The history keeps this page's own name for it. Every precinct gets both views.
+const LOWER_PANEL_TABS = [
+  { id: 'history', label: 'Change History' },
+  { id: 'analytics', label: 'Analytics' },
+] as const satisfies readonly Tab[]
+
+type LowerPanelTabId = (typeof LOWER_PANEL_TABS)[number]['id']
+
+const LOWER_PANEL_ID = 'precinct-lower-panel'
 
 export default function PrecinctDetailPage(): React.JSX.Element {
   const router = useRouter()
@@ -32,6 +43,7 @@ export default function PrecinctDetailPage(): React.JSX.Element {
   const backTo = safeReturnTo(search.get(RETURN_TO_PARAM), ROUTES.precincts)
   const { precinct, isLoading, error, refetch } = usePrecinctDetail(params.id)
   const { user } = useAuth()
+  const [lowerTab, setLowerTab] = useState<LowerPanelTabId>('history')
 
   // Present in every state (loading/error/success), same as the vehicle detail page —
   // a header that only appears once data resolves reads as broken chrome, and without
@@ -119,17 +131,36 @@ export default function PrecinctDetailPage(): React.JSX.Element {
           </div>
 
           <div className="p-6">
-            <SecHead title="Change history" />
-            {/* The point of the ledger: a rename appears here with no anchor badge, a
-                geofence change with one. DESIGN_SYSTEM 10.3 — the absence is the information. */}
-            <EventTimeline events={precinct.events} receipts={precinct.receipts} />
-            {precinct.receipts.length === 0 && precinct.events.length > 0 && (
-              // Receipts are withheld from non-admins and for precincts visible only via
-              // is_shared, so an empty list is not evidence that nothing was anchored.
-              <p className="text-[11px] text-on-surf-v mt-3">
-                Anchoring records are shown to administrators of the owning organisation.
-              </p>
-            )}
+            <Tabs
+              tabs={LOWER_PANEL_TABS}
+              active={lowerTab}
+              onChange={(id) => setLowerTab(id === 'analytics' ? 'analytics' : 'history')}
+              panelId={LOWER_PANEL_ID}
+              ariaLabel="Precinct history or analytics"
+              className="mb-4"
+            />
+            <div id={LOWER_PANEL_ID} role="tabpanel" aria-labelledby={`tab-${lowerTab}`} tabIndex={0}>
+              {lowerTab === 'history' ? (
+                <>
+                  {/* The point of the ledger: a rename appears here with no anchor badge, a
+                      geofence change with one. DESIGN_SYSTEM 10.3 — the absence is the information. */}
+                  <EventTimeline events={precinct.events} receipts={precinct.receipts} />
+                  {precinct.receipts.length === 0 && precinct.events.length > 0 && (
+                    // Receipts are withheld from non-admins and for precincts visible only via
+                    // is_shared, so an empty list is not evidence that nothing was anchored.
+                    <p className="text-[11px] text-on-surf-v mt-3">
+                      Anchoring records are shown to administrators of the owning organisation.
+                    </p>
+                  )}
+                </>
+              ) : (
+                // This column is off-white, so the summary sits on a white card for its grey
+                // tiles to read, as in the 4A mockup.
+                <div className="bg-surf-lowest rounded-lg shadow-level-2 p-5">
+                  <PrecinctAnalyticsSummary precinctId={precinct.id} />
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

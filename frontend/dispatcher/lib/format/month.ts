@@ -55,3 +55,23 @@ export function defaultMonthRange(now: Date = new Date()): MonthRange {
   const end = operationsMonth(now)
   return { start: addMonths(end, -(DEFAULT_RANGE_MONTHS - 1)), end }
 }
+
+// Fixed rather than Intl: some locales abbreviate September as "Sept", and the label should
+// read the same in every browser.
+const MONTH_ABBREVIATIONS = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+] as const
+
+function fmtMonth({ year, month }: { year: number; month: number }): string {
+  return `${MONTH_ABBREVIATIONS[month - 1]} ${year}`
+}
+
+/** "Sep 2026" for one month, "Jul – Sep 2026" within a year, "Nov 2025 – Jan 2026" across
+ *  a year boundary. */
+export function fmtMonthRange(range: MonthRange): string {
+  const start = parseMonth(range.start)
+  const end = parseMonth(range.end)
+  if (range.start === range.end) return fmtMonth(end)
+  const startLabel = start.year === end.year ? MONTH_ABBREVIATIONS[start.month - 1] : fmtMonth(start)
+  return `${startLabel} – ${fmtMonth(end)}`
+}

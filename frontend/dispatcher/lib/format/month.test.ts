@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addMonths, defaultMonthRange, operationsMonth, parseMonth, toMonth } from './month'
+import { addMonths, defaultMonthRange, fmtMonthRange, operationsMonth, parseMonth, toMonth } from './month'
 
 describe('operationsMonth', () => {
   it('reads the month from the SAST calendar, not UTC', () => {
@@ -40,6 +40,20 @@ describe('defaultMonthRange', () => {
 
     expect(range.start).toMatch(/^\d{4}-\d{2}-01$/)
     expect(range.end).toMatch(/^\d{4}-\d{2}-01$/)
+  })
+})
+
+describe('fmtMonthRange', () => {
+  it('names the year once for a range within one year', () => {
+    expect(fmtMonthRange({ start: '2026-07-01', end: '2026-09-01' })).toBe('Jul – Sep 2026')
+  })
+
+  it('names both years for a range that crosses one', () => {
+    expect(fmtMonthRange({ start: '2025-11-01', end: '2026-01-01' })).toBe('Nov 2025 – Jan 2026')
+  })
+
+  it('names a single month once', () => {
+    expect(fmtMonthRange({ start: '2026-09-01', end: '2026-09-01' })).toBe('Sep 2026')
   })
 })
 
