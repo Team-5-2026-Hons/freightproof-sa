@@ -15,6 +15,17 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     DATABASE_URL: str
 
+    # Persistent connections this engine keeps open, and the extra connections it may
+    # open under burst before a checkout waits. Supabase's session-mode pooler caps the
+    # whole project at 15 concurrent clients regardless of how many backend instances are
+    # talking to it — four devs each running their own local server share that one
+    # ceiling. Defaults are deliberately small (2 + 1 = 3 per instance) so that all four
+    # devs running at once total 12, leaving headroom for Alembic, psql, and one-off
+    # scripts. Raise only with the team's awareness that it eats into a limit everyone
+    # shares.
+    DB_POOL_SIZE: int = 2
+    DB_MAX_OVERFLOW: int = 1
+
     # Separate async PostgreSQL URL for integration tests.
     # Must point at a throwaway database — tests create and drop tables.
     # Leave empty to skip integration tests automatically.
