@@ -8,6 +8,8 @@ in core/config.py exist to keep each instance's footprint well under that shared
 limit — these tests guard the wiring and the safety margin, not the DB itself.
 """
 
+from sqlalchemy.pool import QueuePool
+
 from app.core.config import settings
 from app.db.session import engine
 
@@ -20,6 +22,10 @@ MAX_CONCURRENT_BACKEND_INSTANCES = 4
 
 
 def test_engine_pool_size_matches_configured_setting() -> None:
+    # engine.pool is typed as the abstract Pool base (no .size()); asserting the
+    # concrete class narrows it for mypy and doubles as a check that create_async_engine
+    # still hands out a QueuePool rather than something like NullPool.
+    assert isinstance(engine.pool, QueuePool)
     assert engine.pool.size() == settings.DB_POOL_SIZE
 
 
