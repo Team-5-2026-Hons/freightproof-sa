@@ -624,6 +624,65 @@ async def test_detail_phase_and_stop_labels_are_none_when_absent(client: AsyncCl
     assert body["stop_label"] is None
 
 
+async def test_detail_carries_the_breakdown_vehicle_for_a_horse(client: AsyncClient, db_session):
+    seed = await _seed_org(db_session, tag="vhorse")
+    trip = await _make_trip(db_session, seed, tag="vhorse")
+    exc = await _make_exception(
+        db_session, trip, tag="vhorse", exception_type=ExceptionType.MECHANICAL,
+        source=ExceptionSource.DRIVER, vehicle_id=seed["horse"].id,
+    )
+
+    res = await client.get(_detail_url(exc.id), headers=_headers(seed))
+
+    assert res.status_code == 200
+    body = res.json()
+    assert body["vehicle_id"] == str(seed["horse"].id)
+    assert body["vehicle_registration"] == seed["horse"].registration
+    assert body["vehicle_type"] == VehicleType.HORSE.value
+
+
+async def test_detail_carries_the_breakdown_vehicle_for_a_trailer(client: AsyncClient, db_session):
+    seed = await _seed_org(db_session, tag="vtrailer")
+    trip = await _make_trip(db_session, seed, tag="vtrailer")
+    trailer = Vehicle(
+        id=uuid.uuid4(), organization_id=seed["org"].id, vehicle_type=VehicleType.TRAILER,
+        registration="TRLVTRLR", pulsit_device_id="PUL-vtrailer-trl",
+    )
+    db_session.add(trailer)
+    await db_session.flush()
+    exc = await _make_exception(
+        db_session, trip, tag="vtrailer", exception_type=ExceptionType.MECHANICAL,
+        source=ExceptionSource.DRIVER, vehicle_id=trailer.id,
+    )
+
+    res = await client.get(_detail_url(exc.id), headers=_headers(seed))
+
+    assert res.status_code == 200
+    body = res.json()
+    assert body["vehicle_id"] == str(trailer.id)
+    assert body["vehicle_registration"] == trailer.registration
+    assert body["vehicle_type"] == VehicleType.TRAILER.value
+
+
+async def test_detail_vehicle_fields_are_null_when_unattributed(client: AsyncClient, db_session):
+    """Every breakdown from before the driver was asked "truck or trailer" looks like
+    this — the page must be able to say the vehicle wasn't recorded."""
+    seed = await _seed_org(db_session, tag="vnone")
+    trip = await _make_trip(db_session, seed, tag="vnone")
+    exc = await _make_exception(
+        db_session, trip, tag="vnone", exception_type=ExceptionType.MECHANICAL,
+        source=ExceptionSource.DRIVER,
+    )
+
+    res = await client.get(_detail_url(exc.id), headers=_headers(seed))
+
+    assert res.status_code == 200
+    body = res.json()
+    assert body["vehicle_id"] is None
+    assert body["vehicle_registration"] is None
+    assert body["vehicle_type"] is None
+
+
 # ── route ordering + old route removal ───────────────────────────────────────
 
 

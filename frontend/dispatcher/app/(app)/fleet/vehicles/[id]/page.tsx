@@ -16,6 +16,7 @@ import { BlockchainBadge } from '@/components/blockchain/BlockchainBadge'
 import { EventTimeline }   from '@/components/blockchain/EventTimeline'
 import { ForensicOnly }    from '@/components/blockchain/ForensicOnly'
 import { useVehicleDetail } from '@/lib/hooks/useVehicleDetail'
+import { VEHICLE_TYPE_LABELS } from '@/lib/format/vehicle'
 import {
   useResizablePanel,
   DETAIL_PANEL_DEFAULT_W,
@@ -42,8 +43,9 @@ type EditState = {
   is_active: boolean
 }
 
-// Horses only: FP-153's vehicle analytics are keyed on Trip.horse_id, so a trailer has no
-// figures to show and keeps the history panel on its own.
+// Every vehicle, horse or trailer, can switch its history panel to its analytics. The
+// vehicle views cover trailers since the trailer analytics work, which supersedes the
+// toggle spec's original horses-only rule.
 const RIGHT_PANEL_TABS = [
   { id: 'history', label: 'Immutable History' },
   { id: 'analytics', label: 'Analytics' },
@@ -105,7 +107,7 @@ export default function VehicleDetailPage() {
   }
 
   const latestReceipt = vehicle.receipts[0] ?? null
-  const typeLabel = vehicle.vehicle_type === 'horse' ? 'Horse' : 'Trailer'
+  const typeLabel = VEHICLE_TYPE_LABELS[vehicle.vehicle_type]
   const subtitle = [vehicle.make, vehicle.model, vehicle.year ? String(vehicle.year) : null]
     .filter(Boolean).join(' ')
 
@@ -346,33 +348,22 @@ export default function VehicleDetailPage() {
 
         </div>
 
-        {/* RIGHT — scrollable immutable history, takes remaining space. A horse can switch it
-            to its analytics; a trailer has none (FP-153 §5), so it shows history only. */}
+        {/* RIGHT — scrollable immutable history, takes remaining space. Every vehicle,
+            horse or trailer, can switch it to its own analytics. */}
         <div className="flex-1 overflow-y-auto p-6 bg-surf-lowest">
-          {vehicle.vehicle_type === 'horse' ? (
-            <>
-              <Tabs
-                tabs={RIGHT_PANEL_TABS}
-                active={rightTab}
-                onChange={(id) => setRightTab(id === 'analytics' ? 'analytics' : 'history')}
-                panelId={RIGHT_PANEL_ID}
-                ariaLabel="Vehicle history or analytics"
-                className="mb-4"
-              />
-              <div id={RIGHT_PANEL_ID} role="tabpanel" aria-labelledby={`tab-${rightTab}`} tabIndex={0}>
-                {rightTab === 'history'
-                  ? <EventTimeline events={vehicle.events} receipts={vehicle.receipts} />
-                  : <VehicleAnalyticsSummary vehicleId={vehicle.id} />}
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="text-[11px] font-[700] tracking-[0.1em] uppercase text-on-surf-v mb-3">
-                Immutable History
-              </div>
-              <EventTimeline events={vehicle.events} receipts={vehicle.receipts} />
-            </>
-          )}
+          <Tabs
+            tabs={RIGHT_PANEL_TABS}
+            active={rightTab}
+            onChange={(id) => setRightTab(id === 'analytics' ? 'analytics' : 'history')}
+            panelId={RIGHT_PANEL_ID}
+            ariaLabel="Vehicle history or analytics"
+            className="mb-4"
+          />
+          <div id={RIGHT_PANEL_ID} role="tabpanel" aria-labelledby={`tab-${rightTab}`} tabIndex={0}>
+            {rightTab === 'history'
+              ? <EventTimeline events={vehicle.events} receipts={vehicle.receipts} />
+              : <VehicleAnalyticsSummary vehicleId={vehicle.id} vehicleType={vehicle.vehicle_type} />}
+          </div>
         </div>
       </div>
     </div>

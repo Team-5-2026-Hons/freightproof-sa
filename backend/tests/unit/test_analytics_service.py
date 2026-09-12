@@ -10,7 +10,9 @@ from datetime import date
 
 import pytest
 
+from app.db.models.enums import VehicleType
 from app.orchestration.analytics_service import (
+    VehicleLabel,
     attach_driver_names,
     attach_facility_names,
     attach_lane_names,
@@ -120,13 +122,30 @@ def test_attach_driver_names_keeps_every_count_and_rate() -> None:
 # ── Vehicles, lanes, facilities ──────────────────────────────────────────────
 
 
+def test_attach_vehicle_registrations_sets_registration_and_type() -> None:
+    horse, trailer = _vehicle_metrics(), _vehicle_metrics()
+    labels = {
+        horse.vehicle_id: VehicleLabel("CA 123-456", VehicleType.HORSE),
+        trailer.vehicle_id: VehicleLabel("CA 654-321", VehicleType.TRAILER),
+    }
+
+    responses = attach_vehicle_registrations([horse, trailer], labels)
+
+    assert [(response.registration, response.vehicle_type) for response in responses] == [
+        ("CA 123-456", VehicleType.HORSE), ("CA 654-321", VehicleType.TRAILER),
+    ]
+
+
 def test_attach_vehicle_registrations_missing_registration_is_none() -> None:
     known, unknown = _vehicle_metrics(), _vehicle_metrics()
 
-    responses = attach_vehicle_registrations([known, unknown], {known.vehicle_id: "CA 123-456"})
+    responses = attach_vehicle_registrations(
+        [known, unknown], {known.vehicle_id: VehicleLabel("CA 123-456", VehicleType.HORSE)},
+    )
 
     assert [response.registration for response in responses] == ["CA 123-456", None]
-    assert responses[1].model_dump(exclude={"registration"}) == unknown.model_dump()
+    assert [response.vehicle_type for response in responses] == [VehicleType.HORSE, None]
+    assert responses[1].model_dump(exclude={"registration", "vehicle_type"}) == unknown.model_dump()
 
 
 def test_attach_lane_names_names_each_end_independently() -> None:

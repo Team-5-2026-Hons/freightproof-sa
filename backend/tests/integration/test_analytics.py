@@ -4,13 +4,16 @@ A materialized view cannot be tested without Postgres, so these live here rather
 tests/unit (FP-230 calls them unit tests; this project's taxonomy says otherwise).
 
 The test database is built with create_all(), which knows nothing about views, so the
-`views` fixture runs the migration's own UPGRADE_STATEMENTS inside each test's rolled-back
-transaction — the SQL under test is exactly the SQL that ships. Every expected number is
-hand-computed from the seeded timeline in the same test.
+`views` fixture runs the migrations' own UPGRADE_STATEMENTS inside each test's rolled-back
+transaction — the SQL under test is exactly the SQL that ships. That is FP-153's
+migration, then the trailer analytics migration that recreates the two vehicle views for
+horses and trailers. Every expected number is hand-computed from the seeded timeline in
+the same test.
 """
 
 import importlib.util
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta, timezone
 from pathlib import Path
@@ -48,12 +51,18 @@ from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.phases import PhaseEvent
 from app.db.models.transit import TripException
-from app.db.models.trips import Trip, TripStop
+from app.db.models.trips import Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 
 _MIGRATION_PATH = (
     Path(__file__).resolve().parents[2]
     / "migrations" / "versions" / "2026_09_12_tom_analytics_read_models.py"
+)
+# Drops and recreates vehicle_analytics and vehicle_incident_streaks for horses AND
+# trailers. Always run after FP-153's statements, the order Alembic applies them in.
+_TRAILER_MIGRATION_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "migrations" / "versions" / "2026_09_12_tom_trailer_vehicle_analytics.py"
 )
 
 # SAST, the zone the views bucket months in — a fixed offset is exact (no DST).
@@ -64,16 +73,17 @@ _SAST = timezone(timedelta(hours=settings.OPERATIONS_UTC_OFFSET_HOURS))
 _MECHANICAL_AT_MINUTE = 200
 
 
-def _load_migration() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("tom_analytics_read_models", _MIGRATION_PATH)
+def _load_migration(path: Path, name: str) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
-        raise RuntimeError(f"cannot load migration at {_MIGRATION_PATH}")
+        raise RuntimeError(f"cannot load migration at {path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-_MIGRATION = _load_migration()
+_MIGRATION = _load_migration(_MIGRATION_PATH, "tom_analytics_read_models")
+_TRAILER_MIGRATION = _load_migration(_TRAILER_MIGRATION_PATH, "tom_trailer_vehicle_analytics")
 
 
 # ── Timeline building blocks ─────────────────────────────────────────────────
@@ -172,6 +182,14 @@ def _new_horse(org: Organization) -> Vehicle:
     )
 
 
+def _new_trailer(org: Organization) -> Vehicle:
+    tag = uuid.uuid4().hex[:8].upper()
+    return Vehicle(
+        id=uuid.uuid4(), organization_id=org.id, vehicle_type=VehicleType.TRAILER,
+        registration=f"T{tag}", pulsit_device_id=f"PUL-T{tag}",
+    )
+
+
 async def _new_operator(db: AsyncSession) -> Operator:
     org = Organization(id=uuid.uuid4(), name="Other operator", org_type=OrganizationType.OPERATOR)
     db.add(org)
@@ -199,11 +217,13 @@ async def _trip(
     stops: list[Precinct],
     status: TripStatus = TripStatus.CLOSED,
     horse: Vehicle | None = None,
+    trailers: Sequence[Vehicle] = (),
     planned_departure_minute: float | None = None,
     planned_duration_minutes: float | None = None,
     on_a_lane: bool = True,
 ) -> Trip:
-    """Seed one trip, its stops and its full phase ledger exactly as `steps` describe."""
+    """Seed one trip, its trailers, its stops and its full phase ledger exactly as
+    `steps` describe."""
 
     def at(minute: float | None) -> datetime | None:
         return None if minute is None else start + timedelta(minutes=minute)
@@ -245,6 +265,14 @@ async def _trip(
     db.add(trip)
     await db.flush()
 
+    # Linked exactly as trip creation does it (trip_service), snapshot included.
+    db.add_all([
+        TripTrailer(
+            trip_id=trip.id, trailer_id=trailer.id,
+            pulsit_device_id_snapshot=trailer.pulsit_device_id,
+        )
+        for trailer in trailers
+    ])
     trip_stops = [
         TripStop(id=uuid.uuid4(), trip_id=trip.id, precinct_id=precinct.id, sequence=index + 1)
         for index, precinct in enumerate(stops)
@@ -279,28 +307,39 @@ async def _exception(
     severity: ExceptionSeverity,
     *,
     at: datetime,
+    vehicle: Vehicle | None = None,
 ) -> None:
+    """`vehicle` is the vehicle the breakdown was recorded against. None means nothing
+    was recorded (every exception before trailer analytics), which counts for the horse."""
     db.add(TripException(
         id=uuid.uuid4(), trip_id=trip.id, exception_type=exception_type,
         source=ExceptionSource.SYSTEM, severity=severity,
         description="seeded by test_analytics", created_at=at,
+        vehicle_id=vehicle.id if vehicle is not None else None,
     ))
     await db.flush()
 
 
 async def _vehicle_history(
     db: AsyncSession, operator: Operator, horse: Vehicle, month: date, stops: list[Precinct], pattern: str,
+    *, trailer: Vehicle | None = None,
 ) -> None:
     """One closed trip per character, a day apart, in order: '.' clean,
-    'X' one mechanical exception, '2' two mechanical exceptions on the same trip."""
+    'X' one mechanical exception, '2' two mechanical exceptions on the same trip.
+
+    With `trailer`, it rides on every trip and each breakdown is recorded against it.
+    Without, breakdowns record no vehicle and so count for the horse."""
     for day, mark in enumerate(pattern, start=1):
         start = _start(month, day)
-        trip = await _trip(db, operator, start=start, steps=_single_leg(), stops=stops, horse=horse)
+        trip = await _trip(
+            db, operator, start=start, steps=_single_leg(), stops=stops, horse=horse,
+            trailers=[trailer] if trailer is not None else [],
+        )
         breakdowns = {".": 0, "X": 1, "2": 2}[mark]
         for n in range(breakdowns):
             await _exception(
                 db, trip, ExceptionType.MECHANICAL, ExceptionSeverity.WARNING,
-                at=start + timedelta(minutes=_MECHANICAL_AT_MINUTE + n),
+                at=start + timedelta(minutes=_MECHANICAL_AT_MINUTE + n), vehicle=trailer,
             )
 
 
@@ -315,7 +354,7 @@ async def _refresh(db: AsyncSession) -> None:
 
 @pytest_asyncio.fixture
 async def views(db_session: AsyncSession) -> None:
-    for statement in _MIGRATION.UPGRADE_STATEMENTS:
+    for statement in (*_MIGRATION.UPGRADE_STATEMENTS, *_TRAILER_MIGRATION.UPGRADE_STATEMENTS):
         await db_session.execute(text(statement))
 
 
@@ -631,6 +670,218 @@ async def test_vehicle_streaks_and_trips_since_last_incident(
     assert since == {"mixed": 1, "record": 3, "clean": 2, "double": 1}
 
 
+# ── Trailers (trailer analytics spec, Stage 2) ───────────────────────────────
+
+
+async def _vehicle_rows(db: AsyncSession, operator: Operator, month: date) -> dict[uuid.UUID, Any]:
+    return {
+        row.vehicle_id: row
+        for row in await get_vehicle_metrics(
+            db, organization_id=operator.org.id, start_month=month, end_month=month
+        )
+    }
+
+
+async def _streaks(db: AsyncSession, operator: Operator) -> dict[uuid.UUID, tuple[int, int | None]]:
+    return {
+        streak.vehicle_id: (streak.highest_streak_trips, streak.lowest_streak_trips)
+        for streak in await get_vehicle_streaks(db, organization_id=operator.org.id)
+    }
+
+
+@pytest.mark.usefixtures("views")
+async def test_trailer_is_credited_with_its_trips_and_driving_hours(
+    db_session: AsyncSession, operator: Operator, lane: list[Precinct], month: date,
+) -> None:
+    trailer = _new_trailer(operator.org)
+    db_session.add(trailer)
+    await db_session.flush()
+    await _trip(db_session, operator, start=_start(month, 10), steps=_single_leg(), stops=lane,
+                trailers=[trailer])
+    await _refresh(db_session)
+
+    rows = await _vehicle_rows(db_session, operator, month)
+
+    assert rows.keys() == {operator.horse.id, trailer.id}
+    # One single-leg trip of 300 minutes on the road: the trailer travelled all of it.
+    assert (rows[trailer.id].trip_count, rows[trailer.id].driving_hours_sum) == (1, pytest.approx(5.0))
+    assert rows[trailer.id].mechanical_exceptions_count == 0
+    assert (rows[operator.horse.id].trip_count, rows[operator.horse.id].driving_hours_sum) == (
+        1, pytest.approx(5.0)
+    )
+
+
+@pytest.mark.usefixtures("views")
+async def test_interlink_breakdown_counts_only_for_the_trailer_it_was_recorded_against(
+    db_session: AsyncSession, operator: Operator, lane: list[Precinct], month: date,
+) -> None:
+    front, rear = _new_trailer(operator.org), _new_trailer(operator.org)
+    db_session.add_all([front, rear])
+    await db_session.flush()
+    trip = await _trip(db_session, operator, start=_start(month, 10), steps=_single_leg(),
+                       stops=lane, trailers=[front, rear])
+    await _exception(db_session, trip, ExceptionType.MECHANICAL, ExceptionSeverity.WARNING,
+                     at=_start(month, 10, hour=11), vehicle=rear)
+    await _refresh(db_session)
+
+    rows = await _vehicle_rows(db_session, operator, month)
+    streaks = await _streaks(db_session, operator)
+
+    assert rows[rear.id].mechanical_exceptions_count == 1
+    assert rows[front.id].mechanical_exceptions_count == 0
+    assert rows[operator.horse.id].mechanical_exceptions_count == 0
+    assert all(row.trip_count == 1 for row in rows.values())
+    # The rear trailer's one trip is an incident; the others ran it clean.
+    assert streaks == {rear.id: (0, 0), front.id: (1, None), operator.horse.id: (1, None)}
+
+
+@pytest.mark.usefixtures("views")
+async def test_breakdown_gaps_are_measured_per_vehicle(
+    db_session: AsyncSession, operator: Operator, lane: list[Precinct], month: date,
+) -> None:
+    front, rear = _new_trailer(operator.org), _new_trailer(operator.org)
+    db_session.add_all([front, rear])
+    await db_session.flush()
+    first = await _trip(db_session, operator, start=_start(month, 5), steps=_single_leg(),
+                        stops=lane, trailers=[front, rear])
+    second = await _trip(db_session, operator, start=_start(month, 20), steps=_single_leg(),
+                         stops=lane, trailers=[front, rear])
+    t1 = _start(month, 5, hour=11)
+    t2 = _start(month, 20, hour=11)
+    t3 = _start(month, 20, hour=12)
+    await _exception(db_session, first, ExceptionType.MECHANICAL, ExceptionSeverity.WARNING,
+                     at=t1, vehicle=rear)
+    await _exception(db_session, second, ExceptionType.MECHANICAL, ExceptionSeverity.WARNING,
+                     at=t2, vehicle=front)
+    await _exception(db_session, second, ExceptionType.MECHANICAL, ExceptionSeverity.WARNING,
+                     at=t3, vehicle=rear)
+    await _refresh(db_session)
+
+    rows = await _vehicle_rows(db_session, operator, month)
+
+    # The front trailer's breakdown is its first ever: it is not measured from the rear
+    # trailer's earlier one, even though both rode on the same trips.
+    assert (rows[front.id].mechanical_exceptions_count, rows[front.id].mechanical_gap_count) == (1, 0)
+    # The rear trailer's second breakdown is measured from its own first.
+    assert (rows[rear.id].mechanical_exceptions_count, rows[rear.id].mechanical_gap_count) == (2, 1)
+    assert rows[rear.id].mechanical_gap_minutes_sum == pytest.approx(_minutes(t3 - t1))
+    assert rows[operator.horse.id].mechanical_exceptions_count == 0
+
+
+@pytest.mark.usefixtures("views")
+async def test_unattributed_breakdown_counts_for_the_horse_only(
+    db_session: AsyncSession, operator: Operator, lane: list[Precinct], month: date,
+) -> None:
+    """Every breakdown from before drivers were asked "truck or trailer" looks like this.
+    It keeps counting for the horse, exactly as before (spec decision 2)."""
+    trailer = _new_trailer(operator.org)
+    db_session.add(trailer)
+    await db_session.flush()
+    trip = await _trip(db_session, operator, start=_start(month, 10), steps=_single_leg(),
+                       stops=lane, trailers=[trailer])
+    await _exception(db_session, trip, ExceptionType.MECHANICAL, ExceptionSeverity.WARNING,
+                     at=_start(month, 10, hour=11))
+    await _refresh(db_session)
+
+    rows = await _vehicle_rows(db_session, operator, month)
+    streaks = await _streaks(db_session, operator)
+
+    assert rows[operator.horse.id].mechanical_exceptions_count == 1
+    assert rows[trailer.id].mechanical_exceptions_count == 0
+    assert streaks == {operator.horse.id: (0, 0), trailer.id: (1, None)}
+
+
+@pytest.mark.usefixtures("views")
+async def test_breakdown_recorded_against_the_horse_counts_for_no_trailer(
+    db_session: AsyncSession, operator: Operator, lane: list[Precinct], month: date,
+) -> None:
+    trailer = _new_trailer(operator.org)
+    db_session.add(trailer)
+    await db_session.flush()
+    trip = await _trip(db_session, operator, start=_start(month, 10), steps=_single_leg(),
+                       stops=lane, trailers=[trailer])
+    await _exception(db_session, trip, ExceptionType.MECHANICAL, ExceptionSeverity.WARNING,
+                     at=_start(month, 10, hour=11), vehicle=operator.horse)
+    await _refresh(db_session)
+
+    rows = await _vehicle_rows(db_session, operator, month)
+    streaks = await _streaks(db_session, operator)
+
+    assert rows[operator.horse.id].mechanical_exceptions_count == 1
+    assert rows[trailer.id].mechanical_exceptions_count == 0
+    assert streaks == {operator.horse.id: (0, 0), trailer.id: (1, None)}
+
+
+@pytest.mark.usefixtures("views")
+async def test_trailer_streaks_and_trips_since_last_incident(
+    db_session: AsyncSession, operator: Operator, lane: list[Precinct], month: date,
+) -> None:
+    """FP-153 §11.4's worked examples, applied to trailers. Every breakdown is recorded
+    against a trailer, so the horse pulling them all keeps a clean record."""
+    trailers = {name: _new_trailer(operator.org) for name in ("mixed", "record", "clean", "double")}
+    db_session.add_all(trailers.values())
+    await db_session.flush()
+    patterns = {"mixed": "..X.XX.", "record": ".X...", "clean": "..", "double": ".2."}
+    for name, pattern in patterns.items():
+        await _vehicle_history(db_session, operator, operator.horse, month, lane, pattern,
+                               trailer=trailers[name])
+    await _refresh(db_session)
+
+    streaks = await _streaks(db_session, operator)
+    since = {
+        name: await trips_since_last_incident(
+            db_session, organization_id=operator.org.id, vehicle_id=trailer.id
+        )
+        for name, trailer in trailers.items()
+    }
+    horse_since = await trips_since_last_incident(
+        db_session, organization_id=operator.org.id, vehicle_id=operator.horse.id
+    )
+
+    assert streaks[trailers["mixed"].id] == (2, 0)
+    assert streaks[trailers["record"].id] == (3, 1)
+    assert streaks[trailers["clean"].id] == (2, None)
+    assert streaks[trailers["double"].id] == (1, 1)
+    # trips_since_last_incident equals each trailer's open segment.
+    assert since == {"mixed": 1, "record": 3, "clean": 2, "double": 1}
+    total_trips = sum(len(pattern) for pattern in patterns.values())
+    assert streaks[operator.horse.id] == (total_trips, None)
+    assert horse_since == total_trips
+
+
+@pytest.mark.usefixtures("views")
+async def test_unattributed_breakdown_does_not_break_a_trailer_streak(
+    db_session: AsyncSession, operator: Operator, lane: list[Precinct], month: date,
+) -> None:
+    """The live count and the view must use the same attribution rule: a breakdown with
+    no vehicle resets the horse's streak, never the trailer's."""
+    trailer = _new_trailer(operator.org)
+    db_session.add(trailer)
+    await db_session.flush()
+    trips = [
+        await _trip(db_session, operator, start=_start(month, day), steps=_single_leg(),
+                    stops=lane, trailers=[trailer])
+        for day in (1, 2, 3)
+    ]
+    await _exception(db_session, trips[1], ExceptionType.MECHANICAL, ExceptionSeverity.WARNING,
+                     at=_start(month, 2, hour=11))
+    await _refresh(db_session)
+
+    streaks = await _streaks(db_session, operator)
+    trailer_since = await trips_since_last_incident(
+        db_session, organization_id=operator.org.id, vehicle_id=trailer.id
+    )
+    horse_since = await trips_since_last_incident(
+        db_session, organization_id=operator.org.id, vehicle_id=operator.horse.id
+    )
+
+    assert streaks[trailer.id] == (3, None)
+    assert trailer_since == 3
+    # The horse: '.X.' — one clean run closed by the breakdown, one still open.
+    assert streaks[operator.horse.id] == (1, 1)
+    assert horse_since == 1
+
+
 # ── Lane ─────────────────────────────────────────────────────────────────────
 
 
@@ -792,11 +1043,17 @@ async def test_analytics_are_scoped_to_operator_organization(
 async def test_refresh_concurrently_succeeds_on_every_view(test_engine: AsyncEngine) -> None:
     # Its own AUTOCOMMIT connection: CONCURRENTLY cannot run inside db_session's
     # transaction. Views are dropped in `finally` so session teardown's drop_all()
-    # never meets a view depending on its tables.
+    # never meets a view depending on its tables. FP-153's downgrade drops all five
+    # views by name, which covers the trailer migration's recreated two as well.
+    # Refreshing CONCURRENTLY also proves the recreated views got their unique indexes.
     async with test_engine.connect() as raw:
         conn = await raw.execution_options(isolation_level="AUTOCOMMIT")
         try:
-            for statement in (*_MIGRATION.DOWNGRADE_STATEMENTS, *_MIGRATION.UPGRADE_STATEMENTS):
+            for statement in (
+                *_MIGRATION.DOWNGRADE_STATEMENTS,
+                *_MIGRATION.UPGRADE_STATEMENTS,
+                *_TRAILER_MIGRATION.UPGRADE_STATEMENTS,
+            ):
                 await conn.execute(text(statement))
 
             refreshed = await refresh_analytics_views(conn, concurrently=True)
@@ -809,7 +1066,8 @@ async def test_refresh_concurrently_succeeds_on_every_view(test_engine: AsyncEng
 
 @pytest.mark.usefixtures("views")
 async def test_migration_downgrade_drops_every_view(db_session: AsyncSession) -> None:
-    for statement in _MIGRATION.DOWNGRADE_STATEMENTS:
+    # Alembic order: the trailer migration comes off first, then FP-153's.
+    for statement in (*_TRAILER_MIGRATION.DOWNGRADE_STATEMENTS, *_MIGRATION.DOWNGRADE_STATEMENTS):
         await db_session.execute(text(statement))
 
     remaining = await db_session.execute(
@@ -818,3 +1076,34 @@ async def test_migration_downgrade_drops_every_view(db_session: AsyncSession) ->
     )
 
     assert remaining.all() == []
+
+
+@pytest.mark.usefixtures("views")
+async def test_trailer_migration_downgrade_restores_the_horse_only_views(
+    db_session: AsyncSession, operator: Operator, lane: list[Precinct], month: date,
+) -> None:
+    trailer = _new_trailer(operator.org)
+    db_session.add(trailer)
+    await db_session.flush()
+    await _trip(db_session, operator, start=_start(month, 10), steps=_single_leg(), stops=lane,
+                trailers=[trailer])
+
+    for statement in _TRAILER_MIGRATION.DOWNGRADE_STATEMENTS:
+        await db_session.execute(text(statement))
+    await _refresh(db_session)
+
+    metrics = await get_vehicle_metrics(
+        db_session, organization_id=operator.org.id, start_month=month, end_month=month
+    )
+    streaks = await get_vehicle_streaks(db_session, organization_id=operator.org.id)
+    indexes = await db_session.execute(
+        text("SELECT indexname FROM pg_indexes WHERE indexname = ANY(:names)"),
+        {"names": ["uq_vehicle_analytics_grain", "uq_vehicle_incident_streaks_grain"]},
+    )
+
+    # FP-153's views know nothing of trailers: the horse is the only vehicle again.
+    assert [row.vehicle_id for row in metrics] == [operator.horse.id]
+    assert [streak.vehicle_id for streak in streaks] == [operator.horse.id]
+    assert sorted(row.indexname for row in indexes) == [
+        "uq_vehicle_analytics_grain", "uq_vehicle_incident_streaks_grain",
+    ]

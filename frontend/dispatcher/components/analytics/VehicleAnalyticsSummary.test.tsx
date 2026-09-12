@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { defaultMonthRange, fmtMonthRange } from '@/lib/format/month'
 import { useVehicleAnalytics, useVehicleStreaks, type AnalyticsResult } from '@/lib/hooks/useAnalytics'
 import type { VehicleMetrics, VehicleStreak } from '@shared/lib/types/analytics'
+import type { VehicleType } from '@shared/lib/types/vehicle'
 import { ANALYTICS_COPY } from './copy'
 import { VehicleAnalyticsSummary } from './VehicleAnalyticsSummary'
 
@@ -29,6 +30,7 @@ function makeVehicle(overrides: Partial<VehicleMetrics> = {}): VehicleMetrics {
   return {
     vehicle_id: VEHICLE_ID,
     registration: 'CA 123-456',
+    vehicle_type: 'horse',
     trip_count: 4,
     mechanical_exceptions_count: 3,
     mechanical_info_count: 1,
@@ -59,13 +61,14 @@ function makeResult<T>(overrides: Partial<AnalyticsResult<T>>): AnalyticsResult<
 function renderSummary(
   vehicles: Partial<AnalyticsResult<VehicleMetrics>> = {},
   streaks: Partial<AnalyticsResult<VehicleStreak>> = {},
+  vehicleType: VehicleType = 'horse',
 ) {
   const vehiclesResult = makeResult<VehicleMetrics>({ rows: [makeVehicle()], ...vehicles })
   const streaksResult = makeResult<VehicleStreak>({ rows: [makeStreak()], ...streaks })
   mockedVehicles.mockReturnValue(vehiclesResult)
   mockedStreaks.mockReturnValue(streaksResult)
 
-  render(<VehicleAnalyticsSummary vehicleId={VEHICLE_ID} />)
+  render(<VehicleAnalyticsSummary vehicleId={VEHICLE_ID} vehicleType={vehicleType} />)
 
   return { vehicles: vehiclesResult, streaks: streaksResult }
 }
@@ -239,5 +242,21 @@ describe('VehicleAnalyticsSummary — no closed trips in the range', () => {
     expect(valueOf(LONGEST)).toBe('—')
     expect(valueOf(SHORTEST)).toBe('—')
     expect(valueOf(SINCE_LAST)).toBe('—')
+  })
+})
+
+// Trailer analytics: a trailer's breakdowns count only from when drivers began naming the
+// vehicle, so its earlier trips read as clean — and the page has to say so.
+describe('VehicleAnalyticsSummary — trailer note', () => {
+  it("tells a trailer's reader why its earlier trips read as clean", () => {
+    renderSummary({}, {}, 'trailer')
+
+    expect(screen.getByText(ANALYTICS_COPY.trailerNote)).toBeInTheDocument()
+  })
+
+  it('shows no trailer note on a horse', () => {
+    renderSummary()
+
+    expect(screen.queryByText(ANALYTICS_COPY.trailerNote)).not.toBeInTheDocument()
   })
 })

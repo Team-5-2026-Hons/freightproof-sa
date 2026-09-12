@@ -2,6 +2,7 @@
 
 import logging
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, date, datetime, time, timedelta, timezone
 from decimal import Decimal
 
@@ -21,11 +22,13 @@ from app.db.models.enums import (
     ExceptionSeverity,
     ExceptionSource,
     ExceptionType,
+    VehicleType,
 )
 from app.db.models.evidence import EvidenceArtifact
 from app.db.models.phases import PhaseEvent
-from app.db.models.trips import Trip, TripStop
+from app.db.models.trips import Trip, TripStop, TripTrailer
 from app.db.models.transit import TripException
+from app.db.models.vehicles import Vehicle
 from app.orchestration.artifact_service import get_trip_scoped_artifact
 from app.orchestration.integrity import is_unique_violation, violated_constraint
 from app.orchestration.phase_service import current_phase_event
@@ -99,6 +102,105 @@ async def _resolve_phase_context(
     return await current_phase_event(db, trip_id)
 
 
+def pick_breakdown_vehicle(
+    *, exception_type: ExceptionType, vehicle_type: VehicleType | None,
+    trailer_id: uuid.UUID | None, horse_id: uuid.UUID,
+    trip_trailer_ids: Sequence[uuid.UUID], trip_id: uuid.UUID,
+) -> uuid.UUID | None:
+    """The vehicle a driver-raised exception is recorded against, or None.
+
+    The driver only answers "Truck or Trailer?" (vehicle_type), plus a trailer's plate
+    (trailer_id) on a trip with two or more trailers. This works out the exact vehicle
+    from the trip itself: its horse, or the trailers in trip_trailers. Doing it on the
+    server is safe for a report flushed from the offline queue hours later, because
+    trip_trailers is written only at trip creation and never changes afterwards.
+
+    Never raises. A claim that doesn't fit the trip is dropped with a warning and the
+    result is None. The driver app's offline queue treats any 4xx as final and discards
+    the report, so rejecting it would lose a breakdown over its least important field
+    (the same reasoning as _resolve_phase_context above). None counts for the horse in
+    the analytics, so a warning here is the only trace of a trailer answer that couldn't
+    be resolved.
+
+    trip_id is used only to say which trip a warning is about.
+    """
+    if exception_type != ExceptionType.MECHANICAL:
+        if vehicle_type is not None or trailer_id is not None:
+            logger.warning(
+                "Exception on trip=%s is %s, not mechanical, but carried vehicle_type=%s "
+                "trailer_id=%s. Ignoring them: only a breakdown records a vehicle.",
+                trip_id, exception_type.value, vehicle_type, trailer_id,
+            )
+        return None
+
+    if vehicle_type is None:
+        # An older app that doesn't ask the question.
+        if trailer_id is not None:
+            logger.warning(
+                "Breakdown on trip=%s carried trailer_id=%s with no vehicle_type. "
+                "Ignoring it and recording no vehicle.",
+                trip_id, trailer_id,
+            )
+        return None
+
+    if vehicle_type == VehicleType.HORSE:
+        if trailer_id is not None:
+            logger.warning(
+                "Breakdown on trip=%s was reported against the truck but also carried "
+                "trailer_id=%s. Ignoring the trailer_id.",
+                trip_id, trailer_id,
+            )
+        return horse_id
+
+    if not trip_trailer_ids:
+        logger.warning(
+            "Breakdown on trip=%s was reported against a trailer, but the trip has no "
+            "trailers. Recording no vehicle.",
+            trip_id,
+        )
+        return None
+
+    if len(trip_trailer_ids) == 1:
+        # "Trailer" alone already names it, so the app sends no plate here.
+        only_trailer_id = trip_trailer_ids[0]
+        if trailer_id is not None and trailer_id != only_trailer_id:
+            logger.warning(
+                "Breakdown on trip=%s named trailer_id=%s, but the trip's only trailer is "
+                "%s. Recording the trip's trailer.",
+                trip_id, trailer_id, only_trailer_id,
+            )
+        return only_trailer_id
+
+    if trailer_id in trip_trailer_ids:
+        return trailer_id
+    logger.warning(
+        "Breakdown on trip=%s was reported against a trailer, but trailer_id=%s is not one "
+        "of the trip's %d trailers. Recording no vehicle.",
+        trip_id, trailer_id, len(trip_trailer_ids),
+    )
+    return None
+
+
+async def _resolve_breakdown_vehicle(
+    db: AsyncSession, *, trip: Trip, exception_type: ExceptionType,
+    vehicle_type: VehicleType | None, trailer_id: uuid.UUID | None,
+) -> uuid.UUID | None:
+    """Load the trip's trailers and hand the decision to pick_breakdown_vehicle."""
+    # A report carrying neither field always resolves to None. Skipping the query is
+    # purely a saving, since that is every report from an older app and every
+    # non-breakdown report from a new one.
+    if vehicle_type is None and trailer_id is None:
+        return None
+    result = await db.execute(
+        select(TripTrailer.trailer_id).where(TripTrailer.trip_id == trip.id)
+    )
+    return pick_breakdown_vehicle(
+        exception_type=exception_type, vehicle_type=vehicle_type, trailer_id=trailer_id,
+        horse_id=trip.horse_id, trip_trailer_ids=list(result.scalars().all()),
+        trip_id=trip.id,
+    )
+
+
 async def _find_by_client_report_id(
     db: AsyncSession, *, trip_id: uuid.UUID, client_report_id: uuid.UUID,
 ) -> TripException | None:
@@ -117,9 +219,14 @@ async def raise_exception(
     phase_event_id: uuid.UUID | None = None,
     gps_lat: Decimal | None = None, gps_lng: Decimal | None = None,
     client_report_id: uuid.UUID | None = None,
+    vehicle_type: VehicleType | None = None, trailer_id: uuid.UUID | None = None,
 ) -> TripExceptionRead:
     """Raises ResourceNotFoundError if the trip doesn't exist, PermissionError if
     driver_id isn't the trip's assigned driver (caller maps PermissionError to 403).
+
+    vehicle_type/trailer_id are the driver's "truck or trailer" answer on a breakdown.
+    The stored vehicle_id is worked out from the trip by pick_breakdown_vehicle, which
+    never raises: an answer that doesn't fit the trip is stored as no vehicle.
 
     phase_event_id is where the driver was when this happened, as the client observed
     it — see _resolve_phase_context for why the claim is trusted and what happens when
@@ -175,6 +282,13 @@ async def raise_exception(
         db, trip_id=trip_id, claimed_phase_event_id=phase_event_id,
     )
 
+    # After the replay return above, so a resent report keeps the vehicle it was first
+    # stored with, even if the resend answers differently.
+    vehicle_id = await _resolve_breakdown_vehicle(
+        db, trip=trip, exception_type=exception_type,
+        vehicle_type=vehicle_type, trailer_id=trailer_id,
+    )
+
     # Bound before the row rather than inlined into it: the realtime event below must
     # carry the same severity the row is written with. While these were two separate
     # expressions the event did not carry one at all — every driver-raised exception
@@ -203,6 +317,7 @@ async def raise_exception(
         client_report_id=client_report_id,
         gps_lat=gps_lat,
         gps_lng=gps_lng,
+        vehicle_id=vehicle_id,
     )
 
     if client_report_id is None:
@@ -601,6 +716,22 @@ async def get_exception_detail(
             db, artifact_id=exc.supporting_artifact_id, trip_id=exc.trip_id,
         )
 
+    # Looked up only for a breakdown that recorded its vehicle. Scoped to the
+    # organisation, the same as the analytics vehicle names. The id always comes from
+    # this trip's own horse or trailers, so a miss means the vehicle row is gone. The
+    # id is still returned, with no registration, rather than hidden.
+    vehicle_registration: str | None = None
+    vehicle_type: VehicleType | None = None
+    if exc.vehicle_id is not None:
+        vehicle_row = (await db.execute(
+            select(Vehicle.registration, Vehicle.vehicle_type).where(
+                Vehicle.id == exc.vehicle_id,
+                Vehicle.organization_id == organization_id,
+            )
+        )).one_or_none()
+        if vehicle_row is not None:
+            vehicle_registration, vehicle_type = vehicle_row
+
     list_item = _to_list_item(exc, trip, phase_type, stop_sequence)
     return TripExceptionDetail(
         **list_item.model_dump(),
@@ -612,6 +743,9 @@ async def get_exception_detail(
         review_note=exc.review_note,
         contact_method=exc.contact_method,
         trip_closed_at=trip.closed_at,
+        vehicle_id=exc.vehicle_id,
+        vehicle_registration=vehicle_registration,
+        vehicle_type=vehicle_type,
         supporting_artifact_id=exc.supporting_artifact_id,
         supporting_artifact=supporting_artifact,
     )

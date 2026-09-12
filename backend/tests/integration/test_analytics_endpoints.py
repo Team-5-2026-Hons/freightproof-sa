@@ -6,14 +6,15 @@ every streaks row carries trips_since_last_incident. Expected numbers are hand-c
 from the one seeded timeline below.
 
 The test DB is built by create_all(), which knows nothing about views, so the `views`
-fixture runs the FP-153 migration's own UPGRADE_STATEMENTS inside the test's rolled-back
-transaction. It is a local copy of test_analytics.py's fixture rather than an import, so
-FP-153's test file stays untouched.
+fixture runs the FP-153 migration's own UPGRADE_STATEMENTS, then the trailer analytics
+migration's, inside the test's rolled-back transaction. It is a local copy of
+test_analytics.py's fixture rather than an import, so neither test file depends on the
+other.
 """
 
 import importlib.util
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -44,7 +45,7 @@ from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.phases import PhaseEvent
 from app.db.models.transit import TripException
-from app.db.models.trips import Trip, TripStop
+from app.db.models.trips import Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
 from app.main import app
@@ -64,6 +65,11 @@ _MIGRATION_PATH = (
     Path(__file__).resolve().parents[2]
     / "migrations" / "versions" / "2026_09_12_tom_analytics_read_models.py"
 )
+# Recreates the two vehicle views for horses AND trailers; runs after FP-153's statements.
+_TRAILER_MIGRATION_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "migrations" / "versions" / "2026_09_12_tom_trailer_vehicle_analytics.py"
+)
 
 # SAST, the zone the views bucket months in — a fixed offset is exact (no DST).
 _SAST = timezone(timedelta(hours=settings.OPERATIONS_UTC_OFFSET_HOURS))
@@ -71,16 +77,17 @@ _MINUTES_PER_HOUR = 60
 _MONTHS_BACK = 3
 
 
-def _load_migration() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("tom_analytics_read_models", _MIGRATION_PATH)
+def _load_migration(path: Path, name: str) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
-        raise RuntimeError(f"cannot load migration at {_MIGRATION_PATH}")
+        raise RuntimeError(f"cannot load migration at {path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-_MIGRATION = _load_migration()
+_MIGRATION = _load_migration(_MIGRATION_PATH, "tom_analytics_read_models")
+_TRAILER_MIGRATION = _load_migration(_TRAILER_MIGRATION_PATH, "tom_trailer_vehicle_analytics")
 
 
 # ── The one hand-computed timeline ───────────────────────────────────────────
@@ -162,6 +169,14 @@ def _new_horse(org: Organization) -> Vehicle:
     )
 
 
+def _new_trailer(org: Organization) -> Vehicle:
+    tag = uuid.uuid4().hex[:8].upper()
+    return Vehicle(
+        id=uuid.uuid4(), organization_id=org.id, vehicle_type=VehicleType.TRAILER,
+        registration=f"T{tag}", pulsit_device_id=f"PUL-T{tag}",
+    )
+
+
 async def _other_operator(db: AsyncSession) -> _Operator:
     tag = uuid.uuid4().hex[:8]
     org = Organization(
@@ -191,9 +206,10 @@ async def _seed_trip(
     start: datetime,
     horse: Vehicle | None = None,
     driver: Driver | None = None,
+    trailers: Sequence[Vehicle] = (),
     breakdown: bool = False,
 ) -> Trip:
-    """One closed trip following _TIMELINE, with its stops and full phase ledger."""
+    """One closed trip following _TIMELINE, with its trailers, stops and full phase ledger."""
 
     def at(minute: float) -> datetime:
         return start + timedelta(minutes=minute)
@@ -219,6 +235,14 @@ async def _seed_trip(
     db.add(trip)
     await db.flush()
 
+    # Linked exactly as trip creation does it (trip_service), snapshot included.
+    db.add_all([
+        TripTrailer(
+            trip_id=trip.id, trailer_id=trailer.id,
+            pulsit_device_id_snapshot=trailer.pulsit_device_id,
+        )
+        for trailer in trailers
+    ])
     trip_stops = [
         TripStop(id=uuid.uuid4(), trip_id=trip.id, precinct_id=precinct.id, sequence=index + 1)
         for index, precinct in enumerate(stops)
@@ -286,7 +310,7 @@ async def override_get_db(db_session: AsyncSession) -> AsyncIterator[None]:
 
 @pytest_asyncio.fixture
 async def views(db_session: AsyncSession) -> None:
-    for statement in _MIGRATION.UPGRADE_STATEMENTS:
+    for statement in (*_MIGRATION.UPGRADE_STATEMENTS, *_TRAILER_MIGRATION.UPGRADE_STATEMENTS):
         await db_session.execute(text(statement))
 
 
@@ -537,6 +561,40 @@ async def test_vehicle_streaks_carry_trips_since_last_incident(
             db_session, organization_id=operator.org.id, vehicle_id=horse.id,
         )
         assert rows[str(horse.id)]["trips_since_last_incident"] == direct
+
+
+@pytest.mark.usefixtures("views")
+async def test_vehicle_analytics_include_trailers_with_their_type(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    operator: _Operator,
+    lane: list[Precinct],
+    month: date,
+) -> None:
+    trailer = _new_trailer(operator.org)
+    db_session.add(trailer)
+    await db_session.flush()
+    await _seed_trip(db_session, operator, stops=lane, start=_start(month), trailers=[trailer])
+    await _refresh(db_session)
+    headers = _headers(operator)
+
+    vehicles = await client.get(_VEHICLES, params=_range(month), headers=headers)
+    streaks = await client.get(_STREAKS, headers=headers)
+
+    assert vehicles.status_code == 200
+    rows = {row["vehicle_id"]: row for row in vehicles.json()}
+    assert rows.keys() == {str(operator.horse.id), str(trailer.id)}
+    horse_row, trailer_row = rows[str(operator.horse.id)], rows[str(trailer.id)]
+    assert (horse_row["vehicle_type"], horse_row["registration"]) == (
+        VehicleType.HORSE.value, operator.horse.registration,
+    )
+    assert (trailer_row["vehicle_type"], trailer_row["registration"]) == (
+        VehicleType.TRAILER.value, trailer.registration,
+    )
+    assert trailer_row["trip_count"] == 1
+    assert trailer_row["driving_hours_sum"] == pytest.approx(_TRANSIT_MINUTES / _MINUTES_PER_HOUR)
+    assert streaks.status_code == 200
+    assert {row["vehicle_id"] for row in streaks.json()} == {str(operator.horse.id), str(trailer.id)}
 
 
 async def test_lane_analytics_returns_hand_computed_durations(

@@ -1,7 +1,7 @@
 """FastAPI router for the dispatcher analytics screen (FP-156).
 
 GET /analytics/drivers           per-driver trends over a month range
-GET /analytics/vehicles          per-horse numbers over a month range
+GET /analytics/vehicles          per-vehicle (horse and trailer) numbers over a month range
 GET /analytics/vehicles/streaks  whole-history streaks + trips since last incident (no range)
 GET /analytics/lanes             origin -> destination lanes over a month range
 GET /analytics/facilities        Pulsit corroboration per precinct over a month range
@@ -81,7 +81,7 @@ async def list_driver_analytics_endpoint(
 @router.get(
     "/vehicles",
     response_model=list[VehicleMetricsResponse],
-    summary="Per-horse closed-trip numbers over an inclusive month range",
+    summary="Per-vehicle (horse and trailer) closed-trip numbers over an inclusive month range",
 )
 async def list_vehicle_analytics_endpoint(
     start_month: date,
@@ -101,7 +101,7 @@ async def list_vehicle_analytics_endpoint(
 @router.get(
     "/vehicles/streaks",
     response_model=list[VehicleStreakResponse],
-    summary="Whole-history clean-trip streaks and trips since the last incident, per horse",
+    summary="Whole-history clean-trip streaks and trips since the last incident, per vehicle",
 )
 async def list_vehicle_streaks_endpoint(
     db: AsyncSession = Depends(get_db),

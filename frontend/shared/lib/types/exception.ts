@@ -9,6 +9,7 @@
 // type-only for that to hold.
 import type { TripStatus } from './trip'
 import type { EvidenceArtifactWithUrl } from './evidence'
+import type { VehicleId, VehicleType } from './vehicle'
 
 export type ExceptionId = string & { readonly __brand: 'ExceptionId' }
 
@@ -96,6 +97,13 @@ export interface TripException {
   // convention in checkpoint.ts. POPIA: stays in Postgres, never anchored to Hedera.
   gps_lat?: number | null
   gps_lng?: number | null
+  // The vehicle a breakdown was recorded against: the trip's horse or one of its
+  // trailers, worked out by the server from the driver's "truck or trailer" answer.
+  // Null for every other exception type, and for breakdowns reported before drivers were
+  // asked. Required rather than optional (unlike gps_lat above): every response typed as
+  // TripException (the raise POST, a trip's exceptions, the review PATCH) is backend
+  // TripExceptionRead, which always carries it.
+  vehicle_id: VehicleId | null
   // Task 1 (FP-146 review semantics): replaces the old `resolved: boolean` — see
   // ExceptionReviewStatus's own comment for why a two-state flag was not enough.
   review_status: ExceptionReviewStatus
@@ -145,6 +153,13 @@ export interface TripExceptionDetail extends TripExceptionListItem {
   review_note: string | null
   contact_method: ExceptionContactMethod | null
   trip_closed_at: string | null
+  // The vehicle a breakdown was recorded against, with the plate and kind the backend
+  // looked up for it. All three are null when no vehicle was recorded: every other
+  // exception type, and every breakdown from before drivers were asked "truck or
+  // trailer". vehicle_id set with the other two null means the vehicle row is gone.
+  vehicle_id: VehicleId | null
+  vehicle_registration: string | null
+  vehicle_type: VehicleType | null
   supporting_artifact_id: string | null
   // Null when there is no photo OR ownership could not be verified. Present with
   // signed_url: null when the artifact is real but Storage declined to sign it — still

@@ -129,6 +129,18 @@ class TripException(Base):
     # must never be read into any hash/anchoring path.
     gps_lat: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     gps_lng: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
+    # The exact vehicle a MECHANICAL exception belongs to: the trip's horse or one of its
+    # trailers, worked out by exception_service.pick_breakdown_vehicle from the driver's
+    # "truck or trailer" answer. Needed because trailers attach through trip_trailers
+    # (many-to-many), so the trip alone cannot say which trailer on an interlink broke
+    # down. Nullable and never backfilled: every other exception type, every breakdown
+    # recorded before this column existed, and every report from an app that doesn't ask
+    # the question has no vehicle, and the analytics count those for the horse (trailer
+    # analytics spec, decision 2). The FK is named explicitly to match the migration,
+    # because Base has no naming_convention.
+    vehicle_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("vehicles.id", name="fk_exceptions_vehicle_id"), nullable=True
+    )
     # Task 1 (FP-146 review semantics, migration ciaran_exc_review_semantics): replaces
     # the old `resolved: bool`, which could not distinguish "nobody has looked at this"
     # from "looked at, still needs a decision" — see ExceptionReviewStatus's own comment.

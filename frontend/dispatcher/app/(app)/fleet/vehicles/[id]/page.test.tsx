@@ -34,9 +34,11 @@ vi.mock('@/lib/hooks/useVehicleDetail', () => ({
 }))
 
 // The summary fetches and has its own tests. Here only whether it mounts, and for which
-// vehicle, matters.
+// vehicle and kind, matters.
 vi.mock('@/components/analytics/VehicleAnalyticsSummary', () => ({
-  VehicleAnalyticsSummary: ({ vehicleId }: { vehicleId: string }) => <p>Analytics for {vehicleId}</p>,
+  VehicleAnalyticsSummary: ({ vehicleId, vehicleType }: { vehicleId: string; vehicleType: string }) => (
+    <p>Analytics for {vehicleId} ({vehicleType})</p>
+  ),
 }))
 
 const mockedUseVehicleDetail = vi.mocked(useVehicleDetail)
@@ -103,15 +105,25 @@ describe('Vehicle detail — right panel for a horse', () => {
   })
 })
 
+// Flipped by the trailer analytics work. This used to pin the horses-only rule (a trailer
+// had no analytics data at all); trailers now have figures, so they get the same toggle.
 describe('Vehicle detail — right panel for a trailer', () => {
-  it('shows the history on its own, with no toggle and no analytics', () => {
-    // A trailer has no analytics data at all (FP-153 §5), so the panel must stay as it was.
+  it('offers history and analytics, opening on history', () => {
     renderPage(makeVehicle({ vehicle_type: 'trailer' }))
 
-    expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
-    expect(screen.queryByRole('tab')).not.toBeInTheDocument()
-    expect(screen.getByText('Immutable History')).toBeInTheDocument()
+    expect(screen.getByRole('tablist')).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Immutable History' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: 'Analytics' })).toHaveAttribute('aria-selected', 'false')
     expect(screen.getByText(TIMELINE_ENTRY)).toBeInTheDocument()
-    expect(screen.queryByText(/Analytics for/)).not.toBeInTheDocument()
+  })
+
+  it("switches to this trailer's analytics, telling the summary it is a trailer", () => {
+    renderPage(makeVehicle({ vehicle_type: 'trailer' }))
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Analytics' }))
+
+    expect(screen.getByRole('tabpanel', { name: 'Analytics' }))
+      .toHaveTextContent(`Analytics for ${VEHICLE_ID} (trailer)`)
+    expect(screen.queryByText(TIMELINE_ENTRY)).not.toBeInTheDocument()
   })
 })

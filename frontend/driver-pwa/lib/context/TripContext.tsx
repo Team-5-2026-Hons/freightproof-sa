@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import type { Trip } from '@shared/lib/types/trip'
 import type { PhaseStatus } from '@shared/lib/types/phase'
 import type { TripException, ExceptionType } from '@shared/lib/types/exception'
+import type { VehicleId, VehicleType } from '@shared/lib/types/vehicle'
 import { mockTrips } from '@shared/lib/mocks/trips'
 import { ROUTES } from '@/lib/constants/routes'
 import { IS_DEMO_MODE } from '@/lib/constants/env'
@@ -27,6 +28,24 @@ const TERMINAL_STATUSES: readonly Trip['status'][] = ['closed', 'cancelled']
 // week-old selection resurfacing ahead of the server's own choice of current trip is
 // exactly the confusion this whole change set out to fix.
 const SELECTED_TRIP_KEY = 'fp.selectedTripId'
+
+// Demo mode has no server to work out which vehicle a breakdown belongs to, so it
+// mirrors what exception_service.pick_breakdown_vehicle decides for a well-formed report:
+// the truck, the trailer the driver named, or the trip's only trailer. The server's rules
+// are the real ones; this only keeps the demo record shaped like a real one.
+function demoBreakdownVehicleId(
+  trip: Trip,
+  type: ExceptionType,
+  vehicleType: VehicleType | undefined,
+  trailerId: string | undefined,
+): VehicleId | null {
+  if (type !== 'mechanical' || vehicleType === undefined) return null
+  if (vehicleType === 'horse') return trip.horse?.id ?? null
+  const named = trip.trailers.find((trailer) => String(trailer.id) === trailerId)
+  if (named) return named.id
+  const onlyTrailer = trip.trailers.length === 1 ? trip.trailers[0] : undefined
+  return onlyTrailer?.id ?? null
+}
 
 function readSelectedTripId(): string | null {
   // Guarded for SSR/static-export prerender, where window does not exist.
@@ -374,6 +393,13 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     const gpsLat = typeof payload.gpsLat === 'number' ? payload.gpsLat : undefined
     const gpsLng = typeof payload.gpsLng === 'number' ? payload.gpsLng : undefined
     const hasGpsFix = gpsLat !== undefined && gpsLng !== undefined
+    // The driver's "truck or trailer" answer on a breakdown (LogExceptionPageClient).
+    // Only the two real kinds pass; anything else goes as no answer, which the server
+    // records as no vehicle rather than rejecting the report.
+    const rawVehicleType = payload.vehicleType
+    const vehicleType: VehicleType | undefined =
+      rawVehicleType === 'horse' || rawVehicleType === 'trailer' ? rawVehicleType : undefined
+    const trailerId = typeof payload.trailerId === 'string' ? payload.trailerId : undefined
 
     // WHERE this happened, stamped at the moment it happened. Read off `trip` — the
     // OPTIMISTIC plan, not serverTrip — on purpose: a driver who swiped departure three
@@ -395,6 +421,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
         // dispatcher UI will eventually read: a coordinate pair or null, never one axis.
         gps_lat: hasGpsFix ? gpsLat : null,
         gps_lng: hasGpsFix ? gpsLng : null,
+        vehicle_id: demoBreakdownVehicleId(trip, type, vehicleType, trailerId),
         // Mirrors backend initial_review_status (Task 2): CRITICAL starts
         // needs_review, everything else starts recorded — so a demo-mode
         // panic/seal-broken exception behaves like the real backend path instead of
@@ -413,6 +440,8 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       exception_type: type, description, supporting_artifact_id: supportingArtifactId,
       client_report_id: clientReportId,
       ...(phaseEventId ? { phase_event_id: String(phaseEventId) } : {}),
+      ...(vehicleType ? { vehicle_type: vehicleType } : {}),
+      ...(trailerId ? { trailer_id: trailerId } : {}),
       gps_lat: hasGpsFix ? gpsLat : undefined,
       gps_lng: hasGpsFix ? gpsLng : undefined,
     })
