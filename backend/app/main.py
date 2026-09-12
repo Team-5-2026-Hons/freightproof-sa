@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.rate_limit import RateLimitMiddleware, get_redis
 from app.core.security_headers import SecurityHeadersMiddleware
+from app.api.v1.endpoints.analytics import router as analytics_router
 from app.api.v1.endpoints.artifacts import router as artifacts_router
 from app.api.v1.endpoints.artifacts import trip_artifacts_router
 from app.api.v1.endpoints.blockchain import router as blockchain_router
@@ -117,6 +118,7 @@ app.include_router(manifest_router, prefix="/api/v1")
 app.include_router(pp_router, prefix="/api/v1")
 app.include_router(stream_router, prefix="/api/v1")
 app.include_router(trip_admin_router, prefix="/api/v1")
+app.include_router(analytics_router, prefix="/api/v1")
 
 # Dev trigger panel. Registered when DEV_PANEL_ENABLED is set — and ONLY that, since the
 # deployed demo host runs ENVIRONMENT="production" and still needs the panel to drive the

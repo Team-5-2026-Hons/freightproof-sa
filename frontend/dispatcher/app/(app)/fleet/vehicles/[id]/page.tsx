@@ -10,6 +10,8 @@ import { Ic }        from '@/components/ui/Ic'
 import { InfoRow }   from '@/components/ui/InfoRow'
 import { FormField } from '@/components/ui/FormField'
 import { Switch }    from '@/components/ui/Switch'
+import { Tabs, type Tab } from '@/components/ui/Tabs'
+import { VehicleAnalyticsSummary } from '@/components/analytics/VehicleAnalyticsSummary'
 import { BlockchainBadge } from '@/components/blockchain/BlockchainBadge'
 import { EventTimeline }   from '@/components/blockchain/EventTimeline'
 import { ForensicOnly }    from '@/components/blockchain/ForensicOnly'
@@ -40,6 +42,17 @@ type EditState = {
   is_active: boolean
 }
 
+// Horses only: FP-153's vehicle analytics are keyed on Trip.horse_id, so a trailer has no
+// figures to show and keeps the history panel on its own.
+const RIGHT_PANEL_TABS = [
+  { id: 'history', label: 'Immutable History' },
+  { id: 'analytics', label: 'Analytics' },
+] as const satisfies readonly Tab[]
+
+type RightPanelTabId = (typeof RIGHT_PANEL_TABS)[number]['id']
+
+const RIGHT_PANEL_ID = 'vehicle-right-panel'
+
 export default function VehicleDetailPage() {
   const router = useRouter()
   const params = useParams<{ id: string }>()
@@ -54,6 +67,7 @@ export default function VehicleDetailPage() {
   const [touched, setTouched] = useState<Set<VehicleField>>(new Set())
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [rightTab, setRightTab] = useState<RightPanelTabId>('history')
   const { width: panelWidth, startResize } = useResizablePanel(
     DETAIL_PANEL_DEFAULT_W,
     { min: DETAIL_PANEL_MIN_W, max: DETAIL_PANEL_MAX_W },
@@ -332,12 +346,33 @@ export default function VehicleDetailPage() {
 
         </div>
 
-        {/* RIGHT — scrollable immutable history, takes remaining space */}
+        {/* RIGHT — scrollable immutable history, takes remaining space. A horse can switch it
+            to its analytics; a trailer has none (FP-153 §5), so it shows history only. */}
         <div className="flex-1 overflow-y-auto p-6 bg-surf-lowest">
-          <div className="text-[11px] font-[700] tracking-[0.1em] uppercase text-on-surf-v mb-3">
-            Immutable History
-          </div>
-          <EventTimeline events={vehicle.events} receipts={vehicle.receipts} />
+          {vehicle.vehicle_type === 'horse' ? (
+            <>
+              <Tabs
+                tabs={RIGHT_PANEL_TABS}
+                active={rightTab}
+                onChange={(id) => setRightTab(id === 'analytics' ? 'analytics' : 'history')}
+                panelId={RIGHT_PANEL_ID}
+                ariaLabel="Vehicle history or analytics"
+                className="mb-4"
+              />
+              <div id={RIGHT_PANEL_ID} role="tabpanel" aria-labelledby={`tab-${rightTab}`} tabIndex={0}>
+                {rightTab === 'history'
+                  ? <EventTimeline events={vehicle.events} receipts={vehicle.receipts} />
+                  : <VehicleAnalyticsSummary vehicleId={vehicle.id} />}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="text-[11px] font-[700] tracking-[0.1em] uppercase text-on-surf-v mb-3">
+                Immutable History
+              </div>
+              <EventTimeline events={vehicle.events} receipts={vehicle.receipts} />
+            </>
+          )}
         </div>
       </div>
     </div>
