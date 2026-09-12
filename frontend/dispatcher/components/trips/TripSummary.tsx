@@ -9,11 +9,10 @@ import { Skeleton } from '@/components/ui/Skeleton'
 import { Ic } from '@/components/ui/Ic'
 import { ForensicControls } from '@/components/blockchain/ForensicControls'
 import { DriverModal } from './DriverModal'
-import { RecordLink, RECORD_AFFORDANCE } from '@/components/ui/RecordLink'
+import { VehicleModal } from './VehicleModal'
+import { RECORD_AFFORDANCE } from '@/components/ui/RecordLink'
 import { precinctLabel, type HeaderFact, type TripHeaderFacts, type TripVehicles, type VehicleRef } from '@/lib/phase/trip-detail'
 import { tripChipMeta } from '@/lib/phase/derive'
-import { ROUTES } from '@/lib/constants/routes'
-import { withReturnTo } from '@/lib/navigation/returnTo'
 
 export type TripPanel = 'information' | 'manifest' | 'exceptions'
 interface Props {
@@ -29,6 +28,9 @@ interface Props {
 
 export function TripSummary({ facts, precincts, driver, returnTo, onBack, onPanel }: Props) {
   const [driverOpen, setDriverOpen] = useState(false)
+  // One shared modal instance for the horse and however many trailers there are, holding
+  // which one is currently open rather than a boolean per vehicle.
+  const [openVehicle, setOpenVehicle] = useState<{ vehicle: VehicleRef; role: string } | null>(null)
   const status = tripChipMeta(facts.status, facts.currentPhase)
   const route = `${precinctLabel(precincts.find(p => p.id === facts.originPrecinctId))} → ${precinctLabel(precincts.find(p => p.id === facts.destinationPrecinctId))}`
 
@@ -64,7 +66,7 @@ export function TripSummary({ facts, precincts, driver, returnTo, onBack, onPane
         </SummaryCell>
         <SummaryCell label="Vehicle">
           {facts.vehicle
-            ? <VehicleLines vehicles={facts.vehicle} returnTo={returnTo} />
+            ? <VehicleLines vehicles={facts.vehicle} onOpen={(vehicle, role) => setOpenVehicle({ vehicle, role })} />
             : <Skeleton className="mt-1 h-4 w-40 max-w-full rounded-md" />}
         </SummaryCell>
         <SummaryFact fact={facts.schedule} pendingLabel="Schedule" />
@@ -84,7 +86,16 @@ export function TripSummary({ facts, precincts, driver, returnTo, onBack, onPane
           </Button>
         </span>
       </nav>
-      {driver && <DriverModal driver={driver} open={driverOpen} onClose={() => setDriverOpen(false)} />}
+      {driver && <DriverModal driver={driver} open={driverOpen} onClose={() => setDriverOpen(false)} returnTo={returnTo} />}
+      {openVehicle && (
+        <VehicleModal
+          vehicle={openVehicle.vehicle}
+          role={openVehicle.role}
+          open
+          onClose={() => setOpenVehicle(null)}
+          returnTo={returnTo}
+        />
+      )}
     </header>
   )
 }
@@ -94,25 +105,29 @@ function SummaryCell({ label, children }: { label: string; children: React.React
 }
 
 /** Registrations alone do not say which is the truck and which is towed. */
-function VehicleLines({ vehicles, returnTo }: { vehicles: TripVehicles; returnTo: string }) {
+function VehicleLines({ vehicles, onOpen }: { vehicles: TripVehicles; onOpen: (vehicle: VehicleRef, role: string) => void }) {
   return <>
-    <VehicleLine role="Horse" vehicle={vehicles.horse} returnTo={returnTo} strong />
+    <VehicleLine role="Horse" vehicle={vehicles.horse} onOpen={onOpen} strong />
     {vehicles.trailers === null
       ? <Skeleton className="mt-1 h-3 w-24 max-w-full rounded-md" />
       : vehicles.trailers.length === 0
         ? <p className="mt-0.5 text-xs text-on-surf-v">No trailers</p>
-        : vehicles.trailers.map(trailer => <VehicleLine key={trailer.registration} role="Trailer" vehicle={trailer} returnTo={returnTo} />)}
+        : vehicles.trailers.map(trailer => <VehicleLine key={trailer.registration} role="Trailer" vehicle={trailer} onOpen={onOpen} />)}
   </>
 }
 
-function VehicleLine({ role, vehicle, returnTo, strong = false }: { role: string; vehicle: VehicleRef; returnTo: string; strong?: boolean }) {
+function VehicleLine(
+  { role, vehicle, onOpen, strong = false }: { role: string; vehicle: VehicleRef; onOpen: (vehicle: VehicleRef, role: string) => void; strong?: boolean },
+) {
   const size = strong ? 'text-sm' : 'text-xs'
-  // Linkable only once the trip record has loaded: a list row carries the registration
-  // but not the fleet id, and a link that cannot resolve is worse than plain text.
+  // Openable only once the trip record has loaded: a list row carries the registration
+  // but not the fleet id, and a preview that cannot resolve is worse than plain text.
   return <p className="flex flex-wrap items-center gap-x-1 break-words">
     <span className={`${size} text-on-surf-v`}>{role}</span>
     {vehicle.id
-      ? <RecordLink href={withReturnTo(ROUTES.fleetVehicleDetail(vehicle.id), returnTo)} className={`${size} tabular-nums`}>{vehicle.registration}</RecordLink>
+      ? <button type="button" onClick={() => onOpen(vehicle, role)} className={`${RECORD_AFFORDANCE} ${size} tabular-nums`}>
+          {vehicle.registration}<Ic n="chev" s={12} aria-hidden />
+        </button>
       : <span className={`${size} tabular-nums font-semibold text-on-surf`}>{vehicle.registration}</span>}
   </p>
 }

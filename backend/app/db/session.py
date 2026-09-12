@@ -18,9 +18,16 @@ from app.core.config import settings
 # pool_pre_ping=True reissues a cheap SELECT 1 before each checkout so stale
 # connections to Supabase (which drops idle connections aggressively) are
 # detected and recycled rather than surfaced as errors in request handlers.
+#
+# pool_size/max_overflow are explicit (not SQLAlchemy's default 5+10=15) because that
+# default happens to equal Supabase's session-mode pooler ceiling of 15 clients for the
+# whole project — one backend instance alone could exhaust every slot four devs share.
+# See DB_POOL_SIZE/DB_MAX_OVERFLOW in core/config.py for the reasoning.
 engine = create_async_engine(
     settings.DATABASE_URL,
     pool_pre_ping=True,
+    pool_size=settings.DB_POOL_SIZE,
+    max_overflow=settings.DB_MAX_OVERFLOW,
 )
 
 # expire_on_commit=False prevents SQLAlchemy from expiring all attributes after

@@ -170,13 +170,33 @@ describe('tripHeaderFacts', () => {
     expect(tripHeaderFacts(null, seed())?.vehicle?.trailers).toBeNull()
     expect(tripHeaderFacts(null, seed({ trailers: [] }))?.vehicle?.trailers).toEqual([])
     expect(tripHeaderFacts(null, seed({ trailers: [{ registration: 'CF 7280' }] }))?.vehicle?.trailers)
-      .toEqual([{ id: null, registration: 'CF 7280' }])
+      .toEqual([{
+        id: null, registration: 'CF 7280',
+        make: null, model: null, year: null, vin_number: null, gross_vehicle_mass_kg: null, length_m: null,
+      }])
   })
 
   it('links the horse through to its fleet record once the trip has loaded', () => {
     const facts = tripHeaderFacts(base, null)
 
     expect(facts?.vehicle?.horse.id).toBe(base.horse?.id ?? null)
+  })
+
+  it('carries the loaded fleet record through instead of dropping it back to a ref', () => {
+    const detailed: Trip = { ...base, horse: { ...base.horse!, make: 'Scania', model: 'R500', year: 2021 } }
+
+    const facts = tripHeaderFacts(detailed, null)
+
+    expect(facts?.vehicle?.horse.make).toBe('Scania')
+    expect(facts?.vehicle?.horse.model).toBe('R500')
+    expect(facts?.vehicle?.horse.year).toBe(2021)
+  })
+
+  it('leaves vehicle detail fields null for a seed, which never carries them', () => {
+    const facts = tripHeaderFacts(null, seed())
+
+    expect(facts?.vehicle?.horse.make).toBeNull()
+    expect(facts?.vehicle?.horse.model).toBeNull()
   })
 })
 

@@ -4,7 +4,7 @@ A running list of environment and code issues to raise with the team. Each entry
 records the symptom, root cause, impact, and proposed fix. Delete an entry once it
 is resolved (and, if it changed shared behaviour, note it in the relevant spec).
 
-Two parts. **Known issues** (1-7) are defects and tech debt. **Deferred work** (8 onward) is
+Two parts. **Known issues** (1-7, 11) are defects and tech debt. **Deferred work** (8 onward) is
 scoped work that has been deliberately postponed — not broken, but decided and parked,
 recorded so the reasoning does not have to be re-derived when it is picked up. Both live
 here rather than in separate design notes so there is one place to look.
@@ -309,6 +309,68 @@ Open questions for the team, none of them settled here:
 
 **Owner:** unassigned. Backend `orchestration/` work with a frontend follow-up; raised
 from the dispatcher trip detail review, 9 September 2026.
+
+---
+
+## 11. Trip list rows carry no exception total, only a needs-review count
+
+**Files:** `backend/app/orchestration/resource_service.py` (`_list_trip_history`
+exception aggregate, ~line 239), `backend/app/schemas/trips.py`,
+`frontend/shared/lib/types/trip.ts` (`TripChecklistItem`),
+`frontend/dispatcher/components/domain/ChecklistRow.tsx`.
+
+**Symptom:** the trip history table's EXCEPTIONS column reported "No exceptions" for a
+trip that opens to show two. Reproduced on `FP-20260811-4EBE7BB4`.
+
+**Root cause:** the list aggregate counts NEEDS_REVIEW rows only —
+
+```python
+.where(
+    TripException.trip_id.in_(trip_ids),
+    TripException.review_status == ExceptionReviewStatus.NEEDS_REVIEW,
+)
+```
+
+— so a trip whose exceptions have all been reviewed reaches `needs_review_count == 0`
+while its record still holds them. `TripChecklistItem` carries that count and nothing
+else, so the row had no way to tell "none recorded" apart from "none still owed", and the
+copy chose the stronger of the two readings.
+
+**Partially fixed (11 September 2026):** the column now says **"None need review"**, which
+is the claim the data actually supports. The false statement is gone, but so is the
+distinction: a trip with genuinely zero exceptions now reads the same as one with twelve
+reviewed ones.
+
+**Proposed fix:** add a total alongside the filtered count. The query two blocks below it
+in the same function already does exactly this for phases and is the pattern to copy:
+
+```python
+select(
+    TripException.trip_id,
+    func.count(TripException.id),
+    func.count(TripException.id).filter(
+        TripException.review_status == ExceptionReviewStatus.NEEDS_REVIEW
+    ),
+).where(TripException.trip_id.in_(trip_ids)).group_by(TripException.trip_id)
+```
+
+Then `exception_count` on `TripChecklistItem`, and the column becomes
+`2 recorded · 0 need review` — the same sentence the trip detail header already uses.
+
+**Scope note:** no migration, and no extra round-trip — it is one more aggregate column on
+a query that already runs. It does touch `schemas/trips.py` (three response models derive
+from the affected shape) and the shared `TripChecklistItem`. The driver PWA is NOT
+affected: it defines its own `DriverTripSummary` in `frontend/driver-pwa/lib/types/
+driver-trip.ts` rather than extending the shared type. Still worth a word with whoever
+owns the trip endpoints before changing the list contract.
+
+**Impact:** low severity now that the false claim is gone, medium before it. The remaining
+cost is that a dispatcher scanning history cannot see which closed trips have exceptions
+on record without opening each one — which is most of the reason to scan history.
+
+**Owner:** unassigned. Raised 11 September 2026.
+
+---
 
 ---
 
