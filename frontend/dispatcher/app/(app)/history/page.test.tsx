@@ -235,3 +235,25 @@ describe('Trip History page', () => {
     expect(refetch).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('History exceptions column', () => {
+  it('never tells a dispatcher a trip has no exceptions', () => {
+    // needs_review_count counts NEEDS_REVIEW rows only. A trip whose exceptions have all
+    // been reviewed reaches zero here while its record still holds them, so the row used
+    // to state "No exceptions" about a trip that opens to show two.
+    mockedUseTripHistory.mockReturnValue(historyState({ items: [makeTrip({ needs_review_count: 0 })], totalItems: 1 }))
+
+    renderPage()
+
+    expect(screen.queryByText('No exceptions')).toBeNull()
+    expect(screen.getByText('None need review')).toBeInTheDocument()
+  })
+
+  it('still leads with the count when something is owed', () => {
+    mockedUseTripHistory.mockReturnValue(historyState({ items: [makeTrip({ needs_review_count: 2 })], totalItems: 1 }))
+
+    renderPage()
+
+    expect(screen.getByText(/2 exceptions/)).toBeInTheDocument()
+  })
+})

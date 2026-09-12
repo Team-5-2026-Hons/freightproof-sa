@@ -1,17 +1,23 @@
 import type { Trip } from '@shared/lib/types/trip'
 import type { Precinct } from '@shared/lib/types/precinct'
 import { InfoRow } from '@/components/ui/InfoRow'
+import { RECORD_AFFORDANCE } from '@/components/ui/RecordLink'
+import { Ic } from '@/components/ui/Ic'
 import { CancelTripAction } from '@/components/domain/CancelTripAction'
 import { currentSealNumber } from '@/lib/phase/derive'
 import { tripArrival, tripConfirmation, precinctLabel } from '@/lib/phase/trip-detail'
 import { fmtFull } from '@shared/lib/utils/datetime'
-import { ROUTES } from '@/lib/constants/routes'
-import { RecordLink } from '@/components/ui/RecordLink'
-import { withReturnTo } from '@/lib/navigation/returnTo'
 import { delayMinutes, fmtDelay } from '@/lib/format/schedule'
 
-interface Props { trip: Trip; precincts: Precinct[]; onChanged: () => void; returnTo: string }
-export function TripInformation({ trip, precincts, onChanged, returnTo }: Props) {
+interface Props {
+  trip: Trip; precincts: Precinct[]; onChanged: () => void
+  /** Owned by the caller, not this panel: below the dock width this panel renders inside
+   *  DetailPanel's own overlay <dialog>, and a modal nested inside another open modal
+   *  centers on its ancestor's box instead of the viewport. The caller renders the
+   *  preview as a sibling of DetailPanel instead. */
+  onOpenPrecinct: (precinct: Precinct) => void
+}
+export function TripInformation({ trip, precincts, onChanged, onOpenPrecinct }: Props) {
   return <div className="space-y-6">
     {/* Order, driver, phone, horse and trailers used to live here. The header now holds
         all of them permanently on screen and the driver modal holds the phone, so
@@ -27,17 +33,23 @@ export function TripInformation({ trip, precincts, onChanged, returnTo }: Props)
       <InfoRow label={trip.status === 'cancelled' ? 'Cancelled' : 'Closed'} value={trip.closed_at ? fmtFull(trip.closed_at) : 'Not yet'} />
     </section>
     <section><h3 className="mb-2 text-sm font-bold text-on-surf">Route</h3>
-      {[...trip.stops].sort((a, b) => a.sequence - b.sequence).map((stop, i) => <div key={stop.id} className="border-b border-outline-v/20 py-3 text-sm">
-        {/* Through to the precinct record: a dispatcher checking a stop usually wants its
-            geofence or contact details, which live on that page and nowhere here. */}
-        <p className="flex flex-wrap items-center gap-x-1 font-semibold text-on-surf">
-          <span>{i + 1}.</span>
-          <RecordLink href={withReturnTo(ROUTES.precinctDetail(stop.precinct_id), returnTo)}>
-            {precinctLabel(precincts.find(p => p.id === stop.precinct_id))}
-          </RecordLink>
-        </p>
-        {stop.slot_time && <p className="mt-1 text-xs text-on-surf-v">Slot {fmtFull(stop.slot_time)}</p>}
-      </div>)}
+      {[...trip.stops].sort((a, b) => a.sequence - b.sequence).map((stop, i) => {
+        const precinct = precincts.find(p => p.id === stop.precinct_id)
+        return <div key={stop.id} className="border-b border-outline-v/20 py-3 text-sm">
+          {/* A preview first: a dispatcher checking a stop usually wants its geofence or
+              contact details, which live on the precinct record and nowhere here. Openable
+              only once the precinct itself has loaded — same rule as the header's vehicles. */}
+          <p className="flex flex-wrap items-center gap-x-1 font-semibold text-on-surf">
+            <span>{i + 1}.</span>
+            {precinct
+              ? <button type="button" onClick={() => onOpenPrecinct(precinct)} className={RECORD_AFFORDANCE}>
+                  {precinctLabel(precinct)}<Ic n="chev" s={12} aria-hidden />
+                </button>
+              : <span>{precinctLabel(precinct)}</span>}
+          </p>
+          {stop.slot_time && <p className="mt-1 text-xs text-on-surf-v">Slot {fmtFull(stop.slot_time)}</p>}
+        </div>
+      })}
     </section>
     <CancelTripAction tripId={trip.id} status={trip.status} onCancelled={onChanged} />
   </div>

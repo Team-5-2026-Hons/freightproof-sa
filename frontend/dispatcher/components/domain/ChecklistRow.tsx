@@ -156,7 +156,15 @@ export function ChecklistRow({ trip, colWidths, precincts, className, showProgre
           {trip.needs_review_count > 0 ? (
             <span className="text-[11px] font-[600] text-warn truncate">{hint}</span>
           ) : (
-            <span className="text-[11px] font-[600] text-ok">No exceptions</span>
+            // NOT "No exceptions". needs_review_count counts NEEDS_REVIEW rows only, so a
+            // trip whose exceptions have all been reviewed reaches zero here while its
+            // record still holds them — and the row was stating, of a trip with two
+            // recorded exceptions, that it had none. This payload carries no total
+            // (TripChecklistItem has needs_review_count and nothing else), so the honest
+            // claim is the one the count actually supports. Restoring the stronger
+            // "no exceptions at all" reading needs a total on the list row; see
+            // docs/known-issues.md issue 11.
+            <span className="text-[11px] font-[600] text-ok">None need review</span>
           )}
         </div>
       )}
