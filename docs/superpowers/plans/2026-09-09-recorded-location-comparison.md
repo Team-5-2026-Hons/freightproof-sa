@@ -1,6 +1,7 @@
 # Recorded location comparison maps
 
-Status: deferred proposal, recorded 9 September 2026. No implementation started.
+Status: proposal recorded 9 September 2026; Stage 1 contract review completed 12 September
+2026 (see the section at the end). No implementation started.
 
 ## Handoff
 
@@ -9,7 +10,8 @@ single-leg dispatcher design and assess maps comparing a driver's phone with the
 tracker at recorded phases or exceptions. Build an on-demand evidence viewer using the
 existing map stack, not a live fleet dashboard. Read CLAUDE.md and the current graph
 before execution. Source contracts must be checked again because this is a future plan.
-The next step is Stage 1's data-contract review, not a UI implementation or migration.
+Stage 1's data-contract review is done — read "2026-09-12 contract review" below before
+Stage 2; it amends the rules and scope above.
 Implementation and shared-file/migration ownership must be agreed separately.
 
 ## Decision and scope
@@ -157,7 +159,45 @@ actually need them; keep precinct editing behaviour intact.
 - Arrival geofence: leave the current backend rule intact unless a destination lookup and
   corresponding tests are independently approved.
 
+## 2026-09-12 contract review (Stage 1 findings)
+
+Stage 1 was carried out as a source check against the branch at `0eac054` (Ciaran, with
+FP-68 merged). These findings amend the sections above; where they conflict, this section
+wins. No code, schema, data or tests were changed for this review.
+
+### Corrections to "What exists and what is missing"
+
+| Claim / rule | Finding | Amendment |
+| --- | --- | --- |
+| Driver capture time "must be checked against the shared frontend read contract" | `PhaseEventRead.driver_captured_at` exists (`backend/app/schemas/phases.py`) and the driver app sends it, but `PhaseDescriptor` in `frontend/shared/lib/types/phase.ts` does not declare it, so the dispatcher cannot read it today. | Stage 2 adds `driver_captured_at: string \| null` to `PhaseDescriptor`. This is a `frontend/shared/` change — flag it in TASK COMPLETE. |
+| Horse fix time "is not a separate phase column" | Confirmed (`corroboration_service.py`, module docstring). However, the skew gate only persists a horse fix already proven within tolerance of `driver_captured_at`. | Label the tracker fix as captured "within N s of the driver capture" (N = the corroboration skew constant), never with its own timestamp. |
+| Rule 2: "distinguish mocked and production sources where known" | `PulsitFixSource` (mock/live) lives on the in-memory fix and is never persisted to `phase_events`. Not knowable from the read model. | Dropped for v1. A `horse_fix_source` column is a separate, ownership-agreed task. |
+| Rule 5: historical geometry, radius and tolerance "may be drawn only if recorded" | Distance, radius and tolerance are logged at verdict time and not stored. | Confirmed: v1 draws only "Current precinct boundary — reference only", or omits it. No persistence added in v1. |
+| Stage 2: "keep its normal summary" | `PhaseLocationSection.tsx` already violates rules 4–5: it computes `geofenceOffsetMetres` against the *current* precinct in the browser, and renders a null verdict as "Awaiting Pulsit". After FP-68, null means "not evaluated" (in-transit, no usable fix, skew-gate failure, or unresolved precinct). | Stage 2 rewords the existing summary: null → "Not verified", drop the per-fix browser-computed fence offset or label it as against the current boundary. The summary must not outlive the plan's own rules. |
+| Rule 7 and Stage 3: `gps_mismatch` exception evidence | FP-145 raises `gps_mismatch` only on `pulsit_geofence_confirmed is False` — the *tracker* was outside the stop's fence. The exception row stores the driver phone position. `PositionDisagreement` shows phone-vs-tracker separation, which is context for the dispatcher, not the trigger (also noted in `docs/reviews/2026-09-10-ciaran-branch-review.md`). | The exception view states the trigger explicitly ("Vehicle tracker outside the facility boundary") and presents the separation as an accompanying measurement, not the reason. No phone-vs-tracker disagreement rule exists; do not imply one. |
+| (not mentioned) trailer positions | `trailer_gps_snapshots` is written per trailer per phase and `TrailerGpsSnapshotRead` exists, but no endpoint returns snapshots. | Out of scope for v1. Recorded here so the viewer's data model leaves room for additional labelled fixes later. |
+
+Still accurate and unchanged: loading and unloading omit the location section;
+`GeofenceMap.tsx` is editing-oriented (draggable marker, `onPositionChange`) so a separate
+read-only renderer is the right shape; in-transit deliberately carries no verdict
+(`_PHASES_WITHOUT_A_GEOFENCE_VERDICT`).
+
+### Revised scope for v1
+
+- Read-side only. No migration, no new persistence, no backend changes.
+- One shared-type addition (`driver_captured_at` on `PhaseDescriptor`).
+- Stage 1 is closed by this section. Execution starts at Stage 2.
+
+### Preconditions before Stage 2
+
+1. Merge `origin/dev` into the working branch first (it carries the PR #48 merge commit and
+   FP-236, unrelated but avoids a mid-feature rebase).
+2. Confirm with Tim that dispatcher-side display of the FP-68 verdict is not inside
+   FP-87 / FP-116. Backend Pulsit/geofence work is his per `iteration3_plan.md`.
+
 ## Progress
 
 - 2026-09-09: proposal recorded only. Existing map/data paths inspected. No application
   code, schema, data, tests or deployment changed for this planning task.
+- 2026-09-12: Stage 1 contract review completed against source; findings recorded above.
+  No application code, schema, data or tests changed.
