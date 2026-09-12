@@ -8,9 +8,10 @@ import { Ic } from '@/components/ui/Ic'
 /**
  * The single affordance for "this names another record you can open".
  *
- * Shared as a constant because the trip header's driver opens a dialog while its vehicles
- * and the panel's precincts navigate away — different mechanics, and a reader should not
- * have to learn that from how they look. min-h-9 is the touch target, not decoration.
+ * Shared as a constant so a driver, vehicle or precinct name all read the same way even
+ * though most of them open a preview modal via a plain <button> rather than this
+ * component directly — RecordLink itself now only backs links that navigate immediately.
+ * min-h-9 is the touch target, not decoration.
  */
 export const RECORD_AFFORDANCE =
   'inline-flex min-h-9 items-center gap-1 rounded-md text-left font-semibold text-sec ' +

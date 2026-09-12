@@ -14,6 +14,7 @@ export const ROUTES = {
   fleetVehicles:   '/fleet/vehicles',
   fleetVehicleDetail: (id: string) => `/fleet/vehicles/${id}`,
   fleetDrivers:    '/fleet/drivers',
+  fleetDriverDetail: (id: string) => `/fleet/drivers/${id}`,
   precincts:       '/precincts',
   precinctDetail:  (id: string) => `/precincts/${id}`,
   precinctNew:     '/precincts/new',

@@ -67,8 +67,18 @@ export interface HeaderFact {
 }
 
 /** One vehicle on the trip. `id` is null when only a list row is known, which is what
- *  decides whether the header can link through to the fleet record. */
-export interface VehicleRef { id: string | null; registration: string }
+ *  decides whether the header can open the fleet preview at all — the detail fields
+ *  below arrive at the same time `id` does, so they are never shown without it. */
+export interface VehicleRef {
+  id: string | null
+  registration: string
+  make: string | null
+  model: string | null
+  year: number | null
+  vin_number: string | null
+  gross_vehicle_mass_kg: number | null
+  length_m: number | null
+}
 
 export interface TripVehicles {
   horse: VehicleRef
@@ -167,13 +177,39 @@ function cargoFact(trip: Trip): HeaderFact {
   return { label: 'Cargo', value: `${booked ?? 'Unknown'} booked`, note: recorded }
 }
 
+/** Either a full fleet record or the bare registration a list row carries — the fields a
+ *  list cannot know simply come out undefined, which toVehicleRef renders as null. */
+interface VehicleSource {
+  id?: string
+  registration: string
+  make?: string | null
+  model?: string | null
+  year?: number | null
+  vin_number?: string | null
+  gross_vehicle_mass_kg?: number | null
+  length_m?: number | null
+}
+
+function toVehicleRef(vehicle: VehicleSource | undefined): VehicleRef {
+  return {
+    id: vehicle?.id ?? null,
+    registration: vehicle?.registration ?? 'Unassigned',
+    make: vehicle?.make ?? null,
+    model: vehicle?.model ?? null,
+    year: vehicle?.year ?? null,
+    vin_number: vehicle?.vin_number ?? null,
+    gross_vehicle_mass_kg: vehicle?.gross_vehicle_mass_kg ?? null,
+    length_m: vehicle?.length_m ?? null,
+  }
+}
+
 function vehicles(
-  horse: { id?: string; registration: string } | undefined,
-  trailers: readonly { id?: string; registration: string }[] | undefined,
+  horse: VehicleSource | undefined,
+  trailers: readonly VehicleSource[] | undefined,
 ): TripVehicles {
   return {
-    horse: { id: horse?.id ?? null, registration: horse?.registration ?? 'Unassigned' },
-    trailers: trailers === undefined ? null : trailers.map(t => ({ id: t.id ?? null, registration: t.registration })),
+    horse: toVehicleRef(horse),
+    trailers: trailers === undefined ? null : trailers.map(toVehicleRef),
   }
 }
 
