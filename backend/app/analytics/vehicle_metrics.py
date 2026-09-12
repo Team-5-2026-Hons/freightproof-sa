@@ -1,10 +1,16 @@
-"""Vehicle grain — horses only (spec §5). Trailers are a deliberate future extension."""
+"""Vehicle grain — horses and trailers.
+
+The trailer analytics spec (docs/design-notes/2026-09-12-trailer-analytics-spec.md)
+supersedes FP-153 §5's "horses only". A trip counts for its horse and for every trailer
+on it. A breakdown counts only for the vehicle it was recorded against, or for the trip's
+horse when no vehicle was recorded.
+"""
 
 import uuid
 from collections.abc import Sequence
 from datetime import date
 
-from sqlalchemy import exists, func, select, tuple_
+from sqlalchemy import and_, exists, func, or_, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.analytics.rollup import sum_over_months
@@ -16,7 +22,7 @@ from app.analytics.views import (
 from app.db.models.enums import ExceptionType, PhaseType, TripStatus
 from app.db.models.phases import PhaseEvent
 from app.db.models.transit import TripException
-from app.db.models.trips import Trip
+from app.db.models.trips import Trip, TripTrailer
 from app.schemas.analytics import VehicleMetrics, VehicleStreak
 
 
@@ -28,7 +34,8 @@ async def get_vehicle_metrics(
     end_month: date,
     vehicle_ids: Sequence[uuid.UUID] | None = None,
 ) -> list[VehicleMetrics]:
-    """Every horse with at least one closed trip departing in [start_month, end_month]."""
+    """Every vehicle, horse or trailer, with at least one closed trip departing in
+    [start_month, end_month]."""
     rows = await sum_over_months(
         db,
         view=VehicleAnalyticsView,
@@ -69,14 +76,21 @@ async def trips_since_last_incident(
     organization_id: uuid.UUID,
     vehicle_id: uuid.UUID,
 ) -> int:
-    """Closed trips this horse has run since its most recent mechanical incident.
+    """Closed trips this vehicle, horse or trailer, has run since its most recent
+    mechanical incident.
 
     Live, never stored (spec §5): it is a current-state fact, not a period activity
     count, and has no meaning inside a month bucket. Reads the base tables with the SAME
-    definitions the vehicle_incident_streaks view uses — closed trips, ordered by their
-    ledger departure, an incident being a trip with at least one MECHANICAL exception —
-    so this number always equals that view's open segment. A horse with no incident
-    returns all its closed trips: the streak has run since its first trip.
+    definitions the vehicle_incident_streaks view uses, so this number always equals that
+    view's open segment:
+      - a closed trip is on the vehicle when the vehicle is its horse or one of its
+        trailers;
+      - trips are ordered by their ledger departure;
+      - an incident is a trip with at least one MECHANICAL exception belonging to this
+        vehicle: recorded against it, or recorded against no vehicle on a trip it was the
+        horse of (trailer analytics spec, decision 2).
+    A vehicle with no incident returns all its closed trips: the streak has run since its
+    first trip.
     """
     # Departure from the phase ledger, not trips.actual_departure_at: that cache is
     # overwritten on every leg of a multi-stop trip and holds the LAST departure.
@@ -90,14 +104,24 @@ async def trips_since_last_incident(
         .group_by(PhaseEvent.trip_id)
         .subquery()
     )
+    on_this_vehicle = or_(
+        Trip.horse_id == vehicle_id,
+        exists().where(TripTrailer.trip_id == Trip.id, TripTrailer.trailer_id == vehicle_id),
+    )
     closed_trips_of_vehicle = (
         Trip.operator_organization_id == organization_id,
-        Trip.horse_id == vehicle_id,
+        on_this_vehicle,
         Trip.status == TripStatus.CLOSED,
     )
+    # The views' attribution rule, exactly: a breakdown recorded against this vehicle, or
+    # one recorded against no vehicle on a trip this vehicle was the horse of.
     is_incident = exists().where(
         TripException.trip_id == Trip.id,
         TripException.exception_type == ExceptionType.MECHANICAL,
+        or_(
+            TripException.vehicle_id == vehicle_id,
+            and_(TripException.vehicle_id.is_(None), Trip.horse_id == vehicle_id),
+        ),
     )
 
     last_incident = (

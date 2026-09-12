@@ -31,6 +31,10 @@ const activeTrip = mockTrips.find(
   (t) => t.driver?.id === demoDriver.id && !['closed', 'cancelled'].includes(t.status),
 )
 if (!activeTrip) throw new Error('Fixture drift: mockDrivers[0] has no active mock trip')
+// The trailer a driver names on an interlink breakdown — taken from the fixture so the
+// id is one the trip really carries.
+const namedTrailer = activeTrip.trailers[activeTrip.trailers.length - 1]
+if (!namedTrailer) throw new Error('Fixture drift: mockDrivers[0]\'s active trip has no trailer')
 
 const mockFetchMyActiveTrip = vi.fn()
 vi.mock('@/lib/api/trips', () => ({
@@ -69,6 +73,7 @@ function createdException(overrides: Partial<TripException>): TripException {
     reviewed_at: null,
     review_note: null,
     contact_method: null,
+    vehicle_id: null,
     merkle_batch_id: null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -106,6 +111,27 @@ function Probe() {
         }
       >
         log-panic-no-gps
+      </button>
+      <button
+        onClick={() =>
+          ctx.logException('mechanical', {
+            description: 'Brake line burst on the rear trailer.',
+            vehicleType: 'trailer',
+            trailerId: String(namedTrailer.id),
+          })
+        }
+      >
+        log-trailer-breakdown
+      </button>
+      <button
+        onClick={() =>
+          ctx.logException('mechanical', {
+            description: 'Warning light on the dash.',
+            vehicleType: 'bakkie',
+          })
+        }
+      >
+        log-breakdown-unknown-kind
       </button>
     </div>
   )
@@ -165,5 +191,62 @@ describe('TripContext.logException (real mode) — GPS reaches raiseException', 
       String(activeTrip!.id),
       expect.objectContaining({ gps_lat: undefined, gps_lng: undefined }),
     )
+  })
+})
+
+// Trailer analytics: the page hands logException the driver's "truck or trailer" answer
+// as vehicleType/trailerId; it must reach the server as vehicle_type/trailer_id.
+describe('TripContext.logException (real mode) — the breakdown vehicle reaches raiseException', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockFetchMyActiveTrip.mockResolvedValue(activeTrip)
+  })
+
+  it('passes vehicleType/trailerId through as vehicle_type/trailer_id', async () => {
+    mockRaiseException.mockResolvedValue(
+      createdException({ exception_type: 'mechanical', vehicle_id: namedTrailer.id }),
+    )
+    await renderAndWaitForTrip()
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('log-trailer-breakdown'))
+    })
+
+    expect(mockRaiseException).toHaveBeenCalledWith(
+      String(activeTrip!.id),
+      expect.objectContaining({
+        exception_type: 'mechanical',
+        vehicle_type: 'trailer',
+        trailer_id: String(namedTrailer.id),
+      }),
+    )
+  })
+
+  it('sends neither field when the report carries no vehicle answer', async () => {
+    mockRaiseException.mockResolvedValue(createdException({}))
+    await renderAndWaitForTrip()
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('log-panic-with-gps'))
+    })
+
+    const body = mockRaiseException.mock.calls[0][1] as Record<string, unknown>
+    expect(body).not.toHaveProperty('vehicle_type')
+    expect(body).not.toHaveProperty('trailer_id')
+  })
+
+  it('drops a vehicle kind that is neither horse nor trailer instead of sending it', async () => {
+    // The server would 422 an unknown kind, and the offline queue discards any 4xx —
+    // so an unknown value is sent as no answer, and the report still lands.
+    mockRaiseException.mockResolvedValue(createdException({ exception_type: 'mechanical' }))
+    await renderAndWaitForTrip()
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('log-breakdown-unknown-kind'))
+    })
+
+    const body = mockRaiseException.mock.calls[0][1] as Record<string, unknown>
+    expect(body).toMatchObject({ exception_type: 'mechanical' })
+    expect(body).not.toHaveProperty('vehicle_type')
   })
 })

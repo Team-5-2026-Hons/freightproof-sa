@@ -15,6 +15,7 @@ from app.db.models.enums import (
     ExceptionSource,
     ExceptionType,
     TripStatus,
+    VehicleType,
 )
 from app.schemas.evidence import EvidenceArtifactWithUrl
 from app.schemas.text import CheckpointTypeStr, FreeText, RequiredFreeText
@@ -181,6 +182,16 @@ class DriverExceptionCreateBody(BaseModel):
     # one for the same real-world report. Optional: an older installed/queued client
     # omits it and gets no idempotency protection, exactly like phase_event_id above.
     client_report_id: Optional[UUID] = None
+    # The driver's answer to "Truck or Trailer?" on a vehicle breakdown: horse ("Truck")
+    # or trailer. The server works out the exact vehicle from the trip itself
+    # (exception_service.pick_breakdown_vehicle), so the driver never has to identify a
+    # vehicle by id. Optional: older installed apps, and reports already sitting in a
+    # phone's offline queue, send neither field, and those breakdowns are stored with no
+    # vehicle rather than rejected.
+    vehicle_type: Optional[VehicleType] = None
+    # Sent only when the trip has two or more trailers and the driver picked one by its
+    # registration plate. With a single trailer, "Trailer" already says which one.
+    trailer_id: Optional[UUID] = None
 
     @model_validator(mode="after")
     def validate_gps_pair(self) -> "DriverExceptionCreateBody":
@@ -253,6 +264,15 @@ class TripExceptionDetail(TripExceptionListItem):
 
     trip_closed_at: Optional[datetime] = None
 
+    # The vehicle a breakdown was recorded against, so the dispatcher can see which one
+    # it was. All three are None when no vehicle was recorded: every non-mechanical
+    # exception, and breakdowns from before the driver was asked "truck or trailer".
+    # Registration and type are looked up from the vehicle row, not stored on the
+    # exception.
+    vehicle_id: Optional[UUID] = None
+    vehicle_registration: Optional[str] = None
+    vehicle_type: Optional[VehicleType] = None
+
     # Kept even when signing fails or the artifact cannot be verified as belonging to
     # this trip — see `supporting_artifact`.
     supporting_artifact_id: Optional[UUID] = None
@@ -272,6 +292,9 @@ class TripExceptionRead(TripExceptionBase):
     review_note: Optional[str] = None
     contact_method: Optional[ExceptionContactMethod] = None
     merkle_batch_id: Optional[UUID] = None
+    # The vehicle a mechanical exception was recorded against — see
+    # TripException.vehicle_id. None for every other type and for unattributed breakdowns.
+    vehicle_id: Optional[UUID] = None
     # Denormalised off the Trip the exception belongs to. The dispatcher's queue spans
     # every trip in the organisation and each row has to say WHICH trip, so without this
     # both exception screens would have to fetch the trip list purely to resolve

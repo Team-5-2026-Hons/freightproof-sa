@@ -7,6 +7,7 @@ anything in the payload, and that a review reaches the realtime outbox before th
 transaction commits.
 """
 
+import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -37,6 +38,7 @@ from app.db.models.trips import Trip
 from app.db.models.vehicles import Vehicle
 from app.orchestration.exception_service import (
     initial_review_status,
+    pick_breakdown_vehicle,
     raise_exception,
     review_exception,
 )
@@ -438,3 +440,194 @@ async def test_raise_exception_without_a_client_report_id_is_unaffected(db_sessi
     )
 
     assert result.id is not None
+
+
+# ── Trailer analytics Stage 1: pick_breakdown_vehicle (pure, no DB) ─────────────
+# One test per row of the spec's §5.2 table, plus the stray-field variants. Every
+# failure path returns None and logs a warning, never raises: the offline queue discards
+# a report on any 4xx, and a breakdown must never be lost over its vehicle.
+
+_SERVICE_LOGGER = "app.orchestration.exception_service"
+
+
+def _pick(**overrides) -> uuid.UUID | None:
+    kwargs = {
+        "exception_type": ExceptionType.MECHANICAL,
+        "vehicle_type": None,
+        "trailer_id": None,
+        "horse_id": uuid.uuid4(),
+        "trip_trailer_ids": [],
+        "trip_id": uuid.uuid4(),
+    }
+    kwargs.update(overrides)
+    return pick_breakdown_vehicle(**kwargs)
+
+
+def _warnings(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+    return [
+        record for record in caplog.records
+        if record.name == _SERVICE_LOGGER and record.levelno == logging.WARNING
+    ]
+
+
+@pytest.mark.parametrize(
+    ("vehicle_type", "send_trailer_id"),
+    [(VehicleType.HORSE, False), (VehicleType.TRAILER, False), (None, True)],
+)
+def test_pick_breakdown_vehicle_non_mechanical_with_vehicle_fields_is_none_and_warns(
+    caplog, vehicle_type, send_trailer_id,
+) -> None:
+    caplog.set_level(logging.WARNING, logger=_SERVICE_LOGGER)
+    trailer_id = uuid.uuid4()
+
+    result = _pick(
+        exception_type=ExceptionType.CARGO_DAMAGE, vehicle_type=vehicle_type,
+        trailer_id=trailer_id if send_trailer_id else None, trip_trailer_ids=[trailer_id],
+    )
+
+    assert result is None
+    assert len(_warnings(caplog)) == 1
+
+
+def test_pick_breakdown_vehicle_non_mechanical_without_vehicle_fields_is_none_silently(
+    caplog,
+) -> None:
+    caplog.set_level(logging.WARNING, logger=_SERVICE_LOGGER)
+
+    result = _pick(exception_type=ExceptionType.PANIC_BUTTON)
+
+    assert result is None
+    assert _warnings(caplog) == []
+
+
+def test_pick_breakdown_vehicle_old_client_without_vehicle_type_is_none(caplog) -> None:
+    caplog.set_level(logging.WARNING, logger=_SERVICE_LOGGER)
+
+    result = _pick(vehicle_type=None, trip_trailer_ids=[uuid.uuid4()])
+
+    assert result is None
+    assert _warnings(caplog) == []
+
+
+def test_pick_breakdown_vehicle_trailer_id_without_vehicle_type_is_none_and_warns(
+    caplog,
+) -> None:
+    caplog.set_level(logging.WARNING, logger=_SERVICE_LOGGER)
+    trailer_id = uuid.uuid4()
+
+    result = _pick(vehicle_type=None, trailer_id=trailer_id, trip_trailer_ids=[trailer_id])
+
+    assert result is None
+    assert len(_warnings(caplog)) == 1
+
+
+def test_pick_breakdown_vehicle_horse_answer_returns_the_trips_horse(caplog) -> None:
+    caplog.set_level(logging.WARNING, logger=_SERVICE_LOGGER)
+    horse_id = uuid.uuid4()
+
+    result = _pick(vehicle_type=VehicleType.HORSE, horse_id=horse_id, trip_trailer_ids=[uuid.uuid4()])
+
+    assert result == horse_id
+    assert _warnings(caplog) == []
+
+
+def test_pick_breakdown_vehicle_horse_answer_ignores_a_stray_trailer_id_and_warns(
+    caplog,
+) -> None:
+    caplog.set_level(logging.WARNING, logger=_SERVICE_LOGGER)
+    horse_id = uuid.uuid4()
+    trailer_id = uuid.uuid4()
+
+    result = _pick(
+        vehicle_type=VehicleType.HORSE, horse_id=horse_id,
+        trailer_id=trailer_id, trip_trailer_ids=[trailer_id],
+    )
+
+    assert result == horse_id
+    assert len(_warnings(caplog)) == 1
+
+
+def test_pick_breakdown_vehicle_trailer_answer_on_a_trip_with_no_trailers_is_none_and_warns(
+    caplog,
+) -> None:
+    caplog.set_level(logging.WARNING, logger=_SERVICE_LOGGER)
+
+    result = _pick(vehicle_type=VehicleType.TRAILER, trip_trailer_ids=[])
+
+    assert result is None
+    assert len(_warnings(caplog)) == 1
+
+
+def test_pick_breakdown_vehicle_trailer_answer_with_one_trailer_returns_it(caplog) -> None:
+    caplog.set_level(logging.WARNING, logger=_SERVICE_LOGGER)
+    only_trailer_id = uuid.uuid4()
+
+    result = _pick(vehicle_type=VehicleType.TRAILER, trip_trailer_ids=[only_trailer_id])
+
+    assert result == only_trailer_id
+    assert _warnings(caplog) == []
+
+
+def test_pick_breakdown_vehicle_one_trailer_with_its_own_trailer_id_does_not_warn(
+    caplog,
+) -> None:
+    caplog.set_level(logging.WARNING, logger=_SERVICE_LOGGER)
+    only_trailer_id = uuid.uuid4()
+
+    result = _pick(
+        vehicle_type=VehicleType.TRAILER, trailer_id=only_trailer_id,
+        trip_trailer_ids=[only_trailer_id],
+    )
+
+    assert result == only_trailer_id
+    assert _warnings(caplog) == []
+
+
+def test_pick_breakdown_vehicle_one_trailer_with_a_different_trailer_id_returns_the_trips_and_warns(
+    caplog,
+) -> None:
+    caplog.set_level(logging.WARNING, logger=_SERVICE_LOGGER)
+    only_trailer_id = uuid.uuid4()
+
+    result = _pick(
+        vehicle_type=VehicleType.TRAILER, trailer_id=uuid.uuid4(),
+        trip_trailer_ids=[only_trailer_id],
+    )
+
+    assert result == only_trailer_id
+    assert len(_warnings(caplog)) == 1
+
+
+def test_pick_breakdown_vehicle_interlink_with_a_named_trailer_returns_it(caplog) -> None:
+    caplog.set_level(logging.WARNING, logger=_SERVICE_LOGGER)
+    front, rear = uuid.uuid4(), uuid.uuid4()
+
+    result = _pick(vehicle_type=VehicleType.TRAILER, trailer_id=rear, trip_trailer_ids=[front, rear])
+
+    assert result == rear
+    assert _warnings(caplog) == []
+
+
+def test_pick_breakdown_vehicle_interlink_without_a_trailer_id_is_none_and_warns(
+    caplog,
+) -> None:
+    caplog.set_level(logging.WARNING, logger=_SERVICE_LOGGER)
+
+    result = _pick(vehicle_type=VehicleType.TRAILER, trip_trailer_ids=[uuid.uuid4(), uuid.uuid4()])
+
+    assert result is None
+    assert len(_warnings(caplog)) == 1
+
+
+def test_pick_breakdown_vehicle_interlink_with_a_foreign_trailer_id_is_none_and_warns(
+    caplog,
+) -> None:
+    caplog.set_level(logging.WARNING, logger=_SERVICE_LOGGER)
+
+    result = _pick(
+        vehicle_type=VehicleType.TRAILER, trailer_id=uuid.uuid4(),
+        trip_trailer_ids=[uuid.uuid4(), uuid.uuid4()],
+    )
+
+    assert result is None
+    assert len(_warnings(caplog)) == 1

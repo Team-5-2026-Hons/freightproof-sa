@@ -2,14 +2,17 @@ import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { VehicleMetrics, VehicleStreak } from '@shared/lib/types/analytics'
+import { ANALYTICS_COPY } from './copy'
 import { VehiclePanel, joinStreaks, type VehiclePanelProps } from './VehiclePanel'
 
 const VEHICLE_ID = 'vehicle-1' as VehicleMetrics['vehicle_id']
+const TRAILER_ID = 'vehicle-trailer' as VehicleMetrics['vehicle_id']
 
 function makeVehicle(overrides: Partial<VehicleMetrics> = {}): VehicleMetrics {
   return {
     vehicle_id: VEHICLE_ID,
     registration: 'CA 123-456',
+    vehicle_type: 'horse',
     trip_count: 4,
     mechanical_exceptions_count: 3,
     mechanical_info_count: 1,
@@ -45,6 +48,12 @@ function cellUnder(header: string): HTMLElement {
   const index = screen.getAllByRole('columnheader').findIndex((th) => th.textContent === header)
   const [, firstRow] = screen.getAllByRole('row')
   return within(firstRow).getAllByRole('cell')[index]
+}
+
+/** Every body row's text in one column, top to bottom. */
+function columnText(header: string): string[] {
+  const index = screen.getAllByRole('columnheader').findIndex((th) => th.textContent === header)
+  return screen.getAllByRole('row').slice(1).map((row) => within(row).getAllByRole('cell')[index].textContent ?? '')
 }
 
 describe('VehiclePanel', () => {
@@ -86,6 +95,33 @@ describe('VehiclePanel', () => {
     renderPanel({ vehicles: [makeVehicle({ mechanical_gap_count: 0, mean_minutes_between_mechanical: null })] })
 
     expect(cellUnder('Mean time between breakdowns')).toHaveTextContent('—')
+  })
+
+  it("shows each vehicle's type straight after its registration", () => {
+    renderPanel({
+      vehicles: [
+        makeVehicle(),
+        makeVehicle({ vehicle_id: TRAILER_ID, registration: 'TRL 222 GP', vehicle_type: 'trailer' }),
+      ],
+      streaks: [],
+    })
+
+    const headers = screen.getAllByRole('columnheader').map((th) => th.textContent)
+    expect(headers.indexOf('Type')).toBe(headers.indexOf('Registration') + 1)
+    // Sorted by registration: CA 123-456 (the horse), then TRL 222 GP (the trailer).
+    expect(columnText('Type')).toEqual(['Horse', 'Trailer'])
+  })
+
+  it('shows a missing type as a dash', () => {
+    renderPanel({ vehicles: [makeVehicle({ vehicle_type: null })] })
+
+    expect(cellUnder('Type')).toHaveTextContent('—')
+  })
+
+  it('says why a trailer\'s earlier trips read as clean', () => {
+    renderPanel()
+
+    expect(screen.getByText(ANALYTICS_COPY.trailerNote)).toBeInTheDocument()
   })
 })
 

@@ -18,6 +18,12 @@ export const ANALYTICS_COPY = {
   streaksNote:
     "Streaks and trips since last incident cover each vehicle's whole history, not only the selected months.",
 
+  // Trailer analytics, decision 3. A breakdown names its vehicle only since drivers were
+  // asked "truck or trailer", so a trailer's earlier trips have no breakdowns to count and
+  // read as clean. Dateless on purpose: no rollout date is hard-coded anywhere.
+  trailerNote:
+    'Trailer breakdowns are only counted from when drivers began naming the vehicle, so earlier trips count as clean.',
+
   facilityRateNote:
     'Corroboration rate is confirmed ÷ (confirmed + mismatch). Unwitnessed phases had no Pulsit reading: a coverage gap at the precinct, not counted as a failure.',
 

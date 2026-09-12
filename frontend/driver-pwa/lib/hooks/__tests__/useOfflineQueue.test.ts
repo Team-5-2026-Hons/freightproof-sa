@@ -165,6 +165,25 @@ describe('useOfflineQueue', () => {
     expect(result.current.queueLength).toBe(0)
   })
 
+  // Trailer analytics: the driver's "truck or trailer" answer rides in the body, so a
+  // breakdown queued in a dead zone reaches the server with it, unchanged.
+  it('keeps a breakdown\'s vehicle answer through the queue unchanged', async () => {
+    const { raiseException } = await import('@/lib/api/exceptions')
+    const { result } = renderHook(() => useOfflineQueue())
+    act(() => result.current.enqueueException('trip-1', {
+      exception_type: 'mechanical', description: 'x', vehicle_type: 'trailer', trailer_id: 'trailer-2',
+    }))
+    const stored = JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')
+
+    await act(() => result.current.flush())
+
+    expect(stored[0].body).toMatchObject({ vehicle_type: 'trailer', trailer_id: 'trailer-2' })
+    expect(raiseException).toHaveBeenCalledWith('trip-1', {
+      exception_type: 'mechanical', description: 'x', client_report_id: expect.any(String),
+      vehicle_type: 'trailer', trailer_id: 'trailer-2',
+    })
+  })
+
   // Task 0B: a lost response (or a retry the driver's app fires while an earlier
   // attempt is still in flight) must resend the SAME client_report_id, exactly like
   // enqueuePhase's idempotencyKey — proving the exception path was wired the same way.

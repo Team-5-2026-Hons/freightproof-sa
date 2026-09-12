@@ -90,6 +90,7 @@ function makeException(overrides: Partial<TripException>): TripException {
     reviewed_at: null,
     review_note: null,
     contact_method: null,
+    vehicle_id: null,
     merkle_batch_id: null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),

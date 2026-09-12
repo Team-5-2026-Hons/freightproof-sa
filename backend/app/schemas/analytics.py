@@ -99,7 +99,7 @@ class DriverMetrics(BaseModel):
 
 
 class VehicleMetrics(BaseModel):
-    """One horse's closed trips over a month range."""
+    """One vehicle's closed trips over a month range, horse or trailer."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -121,7 +121,8 @@ class VehicleMetrics(BaseModel):
 
 
 class VehicleStreak(BaseModel):
-    """Whole-history clean-trip streaks for one horse — not affected by a month range."""
+    """Whole-history clean-trip streaks for one vehicle, horse or trailer — not affected by
+    a month range."""
 
     model_config = ConfigDict(frozen=True)
 

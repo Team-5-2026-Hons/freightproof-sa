@@ -4,6 +4,7 @@ import { useMemo } from 'react'
 
 import { DataTable, type Column } from '@/components/ui/DataTable'
 import { NO_DATA, fmtHours, fmtMinutes, fmtOptionalCount } from '@/lib/format/analytics'
+import { VEHICLE_TYPE_LABELS } from '@/lib/format/vehicle'
 import { useSortedRows } from '@/lib/hooks/useSortedRows'
 import type { VehicleMetrics, VehicleStreak } from '@shared/lib/types/analytics'
 import { ANALYTICS_COPY } from './copy'
@@ -45,6 +46,11 @@ const COLUMNS: Column<VehicleRow>[] = [
     key: 'registration', label: 'Registration', sortable: true,
     render: (_, row) => row.registration ?? NO_DATA,
   },
+  {
+    // Horses and trailers share this table, so every row says which it is.
+    key: 'vehicle_type', label: 'Type', sortable: true,
+    render: (_, row) => (row.vehicle_type ? VEHICLE_TYPE_LABELS[row.vehicle_type] : NO_DATA),
+  },
   { key: 'trip_count', label: 'Trips', sortable: true },
   { key: 'mechanical_info_count', label: 'Mechanical (info)', sortable: true },
   { key: 'mechanical_warning_count', label: 'Mechanical (warning)', sortable: true },
@@ -71,7 +77,8 @@ const COLUMNS: Column<VehicleRow>[] = [
   },
 ]
 
-/** Horses only (FP-153 §5). Answers "the driver's fault or the truck's?". */
+/** Horses and trailers in one table (trailer analytics spec). Answers "the driver's fault
+ *  or the vehicle's?". */
 export function VehiclePanel({ vehicles, streaks, isLoading, error, onRetry }: VehiclePanelProps) {
   const rows = useMemo(() => joinStreaks(vehicles, streaks), [vehicles, streaks])
   const sorted = useSortedRows(rows, { key: 'registration', dir: 'asc' })
@@ -89,6 +96,7 @@ export function VehiclePanel({ vehicles, streaks, isLoading, error, onRetry }: V
         empty={ANALYTICS_COPY.empty}
       />
       <p className="text-[12px] text-on-surf-v">{ANALYTICS_COPY.streaksNote}</p>
+      <p className="text-[12px] text-on-surf-v">{ANALYTICS_COPY.trailerNote}</p>
     </div>
   )
 }

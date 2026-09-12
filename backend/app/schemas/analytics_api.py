@@ -7,13 +7,15 @@ effects:
     beside it and can never disagree with them;
   - the JSON stays flat, so each table column is one top-level key.
 
-app/schemas/analytics.py itself is never edited — it is FP-153's contract.
+The fields and rates of app/schemas/analytics.py are never changed here — they are
+FP-153's contract.
 
 A name is None when no row is found for its id, for example a driver record belonging to
 another organisation. The metrics row is still returned: dropping it would silently
 change the totals a dispatcher is reading.
 """
 
+from app.db.models.enums import VehicleType
 from app.schemas.analytics import (
     DriverMetrics,
     FacilityMetrics,
@@ -30,9 +32,12 @@ class DriverMetricsResponse(DriverMetrics):
 
 
 class VehicleMetricsResponse(VehicleMetrics):
-    """One horse's closed-trip numbers, with its registration."""
+    """One vehicle's closed-trip numbers, horse or trailer, with its registration and type."""
 
     registration: str | None
+    # Horses and trailers come back in one list, so each row says which it is. None when
+    # the vehicle row isn't found, the same as registration.
+    vehicle_type: VehicleType | None
 
 
 class VehicleStreakResponse(VehicleStreak):

@@ -1,9 +1,11 @@
 # Trailer Analytics — Per-Vehicle Breakdown Attribution — Build Spec
 
 Author: Tom (Thomas Davis), with Claude · Written 2026-09-12
-Status: **PLANNED, not built.** A handoff spec for a fresh session to execute.
+Status: **BUILT — all four stages built and reviewed by Tom on 2026-09-12. The branch is
+ready for its PR to `dev`.** §13 records what each stage built. The two migrations are
+applied only after the merge (§9).
 Branch: `trailer-analytics`, created 2026-09-12 from `origin/dev` at `df9c2be` (after FP-156
-merged as PR #47). Only §4 step 6 (commit and push this spec) remains before Stage 1.
+merged as PR #47). Stages 1–4 go in as a single commit on this branch.
 No Jira ticket exists for this work yet. Do not invent one.
 
 ## How to use this document
@@ -155,16 +157,17 @@ therefore read 0 for horses and trailers alike. That is true today and is out of
 
 ## 4. Step 0 — branch setup (Tom runs these, not Claude)
 
-**Status 2026-09-12: steps 1–5 are DONE.** FP-156 merged as PR #47 (`df9c2be`), and
-`trailer-analytics` was created from `origin/dev`. **Only step 6 remains.** Steps 1–5 are
-kept below for the record.
+**Status 2026-09-12: all six steps are DONE.** FP-156 merged as PR #47 (`df9c2be`),
+`trailer-analytics` was created from `origin/dev`, and this spec was committed as the
+branch's first commit (`a3dd025`) and pushed with `-u`. The steps are kept below for the
+record.
 
-**Why step 6 uses `push -u`:** `git switch -c trailer-analytics origin/dev` makes the new
-branch track `origin/dev`. `push -u origin trailer-analytics` points it at its own remote
-branch instead. Until step 6 has run, don't use a bare `git push`.
+**Why step 6 used `push -u`:** `git switch -c trailer-analytics origin/dev` made the new
+branch track `origin/dev`. `push -u origin trailer-analytics` pointed it at its own remote
+branch instead, so a bare `git push` now goes to `origin/trailer-analytics`.
 
-CLAUDE.md forbids Claude from running git write commands. Tom runs each command below
-**one at a time**. This spec file is currently **untracked** on `trailer-analytics`.
+CLAUDE.md forbids Claude from running git write commands. Tom ran each command below
+**one at a time**. (This spec was untracked on `trailer-analytics` until step 6.)
 
 Step 1 — open the FP-156 pull request:
 
@@ -568,9 +571,20 @@ deviations from this spec with Tom's approval, and the commit Tom made.)*
 
 | Stage | Status | Commit | Notes |
 |---|---|---|---|
-| 0 — branch | steps 1–5 done 2026-09-12; step 6 (commit + push this spec) pending | FP-156 = PR #47, `df9c2be` | branch created from `origin/dev` |
-| 1 — capture | not started | | |
-| 2 — read models | not started | | |
-| 3 — driver app | not started | | |
-| 4 — dispatcher | not started | | |
+| 0 — branch | done 2026-09-12 (steps 1–6) | FP-156 = PR #47, `df9c2be`; spec = `a3dd025` | branch created from `origin/dev`; pushed with `-u`, now tracks `origin/trailer-analytics` |
+| 1 — capture | built and reviewed 2026-09-12 | single commit on trailer-analytics | **Built:** `exceptions.vehicle_id` (FK named `fk_exceptions_vehicle_id`); migration `2026_09_12_tom_add_exception_vehicle.py` (`tom_add_exception_vehicle` ← `tom_analytics_read_models`, single head confirmed by reading the scripts with alembic's `ScriptDirectory`; no alembic command run, not applied anywhere); `DriverExceptionCreateBody.vehicle_type`/`trailer_id`; `TripExceptionRead.vehicle_id`; `TripExceptionDetail.vehicle_id`/`vehicle_registration`/`vehicle_type`; pure `pick_breakdown_vehicle` + async `_resolve_breakdown_vehicle` in `exception_service.py`, run after the replay return; endpoint passes both fields. **Tests:** 29 new — 15 unit (`test_exception_service.py`, every §5.2 row + stray-field variants, pure, no DB), 11 integration (`test_exceptions.py`: all §5.4 cases, the replay case, plus 401 invalid token / 403 missing token), 3 integration (`test_exception_reads.py`: horse, trailer, unattributed). Full suite **1413 passed, 4 skipped** (= 1384 + 29); ruff and mypy clean. **Deviations, approved by Tom:** D1 `pick_breakdown_vehicle` also takes `trip_id=` (log context only); D2 FK named explicitly (Base has no naming_convention); D3 a `trailer_id` with no `vehicle_type` → None + warning, and a lone `trailer_id` on a non-mechanical type counts as "non-null"; D4 the 401/403 driver-POST tests; D5 the detail vehicle lookup is scoped to the organisation. Trailer ids are queried only when the body carries a vehicle field. **Test note:** a test that sends two requests as one driver must reuse one token — `make_token` mints a new session each call and the one-device rule refuses the second. |
+| 2 — read models | built and reviewed 2026-09-12 | single commit on trailer-analytics | **Built:** migration `2026_09_12_tom_trailer_vehicle_analytics.py` (`tom_trailer_vehicle_analytics` ← `tom_add_exception_vehicle`, single head confirmed via `ScriptDirectory`; no alembic command run, not applied anywhere) drops and recreates `vehicle_analytics` + `vehicle_incident_streaks` over a `vehicle_trips` CTE (horse UNION ALL `trip_trailers`) with one shared attribution predicate; driving hours computed per trip, then credited to every vehicle on it; output columns unchanged; both unique indexes + the guarded REVOKE recreated; `DOWNGRADE_STATEMENTS` restore FP-153's horse-only views from a frozen copy. `trips_since_last_incident` uses the same on-vehicle and attribution rules. `VehicleMetricsResponse.vehicle_type`; `_vehicle_registrations`/`attach_vehicle_registrations` carry a `VehicleLabel(registration, vehicle_type)`. Now-false "horse" wording fixed in `vehicle_metrics.py`, `analytics_service.py`, `analytics_api.py`, `schemas/analytics.py` (docstrings only) and the analytics endpoint (docstring + 2 summaries). **Tests:** 10 new — 8 in `test_analytics.py` (single trailer credited, interlink breakdown on one trailer only, gaps per vehicle, unattributed → horse only, horse-attributed → no trailer, FP-153 §11.4 streak examples on trailers + `trips_since_last_incident`, unattributed breakdown doesn't break a trailer streak, downgrade restores horse-only views + indexes), 1 in `test_analytics_endpoints.py` (trailer row with `vehicle_type`, trailer in streaks), 1 in `test_analytics_service.py` (+1 updated to the new mapping). Both `views` fixtures run both migrations; the refresh-concurrently and drop-every-view tests cover both files. **Every existing horse test passed unchanged** (decision 2's regression proof). Analytics tests 85 passed (75 + 10); full suite **1423 passed, 4 skipped** (= 1413 + 10); ruff and mypy clean. **Decisions, approved by Tom:** S1 trimmed trip-keyed `trip_phases` CTE — on Tom's condition it keeps FP-153's window exactly (LAG over every phase row incl. trip_creation, `PARTITION BY trip_id ORDER BY sequence_number`, filters only afterwards); S2 names kept, `VehicleLabel` NamedTuple; S3 `schemas/analytics.py` docstrings fixed; S4 no `vehicle_type` on `VehicleStreakResponse`; S5 a `vehicle_id` not on its own trip is counted nowhere (SQL comment; unreachable via Stage 1). |
+| 3 — driver app | built and reviewed 2026-09-12 | single commit on trailer-analytics | **Built:** after "Vehicle breakdown" the page asks "Which vehicle broke down?" (Truck / Trailer; code says `horse`), and on 2+ trailer trips "Which trailer? Check the registration plate." (one button per registration). A rigid truck gets no question and sends `vehicle_type: 'horse'`. The §7.1 rules live in one unexported `breakdownVehicle` function in `LogExceptionPageClient.tsx`, used by the submit gate and both bodies (queued `vehicle_type`/`trailer_id`, online `vehicleType`/`trailerId`); changing category clears the answer. A local `OptionButton` (same classes, adds `aria-pressed`) now renders the category picker and both new lists. `RaiseExceptionBody.vehicle_type`/`trailer_id`; `TripContext.logException` accepts only `'horse'`/`'trailer'` and passes both through (demo mode sets a matching `vehicle_id` via `demoBreakdownVehicleId`). Shared `TripException.vehicle_id: VehicleId \| null` (required — Tom's Q1), so `vehicle_id: null` added to the 8 mock exceptions in `shared/lib/mocks/trips.ts`, two driver-pwa test builders and one dispatcher test literal. `useOfflineQueue.ts` unchanged (it sends the built body as-is). **Tests:** 14 new — 7 page (rigid truck, one trailer, interlink plate, switch back to truck, submit gate, category change clears, queued body), 3 `TripContext.real` (pass-through, absent, unknown kind dropped), 3 `TripContext` demo (named trailer, truck, non-breakdown), 1 `useOfflineQueue` (fields survive enqueue → flush). Two existing page tests now expect `vehicle_type: 'horse'` for a rigid truck (intended change). driver-pwa **743 passed** (729 + 14), dispatcher **616 passed**, both `tsc --noEmit` clean, eslint 0 errors; backend unchanged, 1423 passed / 4 skipped. **Decisions, approved by Tom:** Q1 required `vehicle_id`; V1 question wording; V2 `OptionButton` with `aria-pressed`; V3 rules in one function in the page. **Heads-up:** Android drivers need a new APK build; until then their breakdowns carry no vehicle and count for the horse. |
+| 4 — dispatcher | built and reviewed 2026-09-12 | single commit on trailer-analytics | **Built:** shared `VehicleMetrics.vehicle_type` and `TripExceptionDetail.vehicle_id`/`vehicle_registration`/`vehicle_type` (all required-nullable, W3). New `lib/format/vehicle.ts` `VEHICLE_TYPE_LABELS` (`'Horse'`/`'Trailer'`, W1), used by the `/analytics` Type column, the exception Vehicle row and the vehicle page's own `typeLabel` (`VehicleCard`'s inline copy left alone, out of scope). `VehiclePanel`: sortable **Type** column after Registration (`—` when null) and the trailer note under the table beside `streaksNote`. `ANALYTICS_COPY.trailerNote` verbatim from decision 3. `VehicleAnalyticsSummary` takes `vehicleType`; the note shows for trailers only, after both sections (W4). Vehicle detail page: horse-only ternary removed, so every vehicle gets the History/Analytics toggle; passes `vehicleType`. Exception detail page: on `mechanical` only, a "Vehicle" meta row after Phase / Stop, text from pure `fmtBreakdownVehicle` in `lib/format/exception.ts` (W2) — `Trailer · <reg>` / `Horse · <reg>`, `Not recorded` when `vehicle_id` is null, `—` when the vehicle row is gone; plain text, not a link (W5). **Tests:** 14 new (net) — 3 `VehiclePanel` (Type column after Registration, null → `—`, note), 2 `VehicleAnalyticsSummary` (note for trailer, none for horse), 4 exception page (trailer, horse, Not recorded, no row for other types), 4 `fmtBreakdownVehicle` unit, and the old trailer regression test on the vehicle page **flipped** into 2 (trailer gets the toggle; its analytics mount with `vehicleType` trailer; horse tests unchanged). Builders gained the new fields in `VehiclePanel.test`, `VehicleAnalyticsSummary.test`, the exception page test and `useExceptionDetail.test`. dispatcher **630 passed** (616 + 14), driver-pwa 743 passed, both `tsc --noEmit` clean, eslint clean; backend unchanged, 1423 passed / 4 skipped. **Decisions, approved by Tom:** W1–W5. **Browser check:** §9 step 3, after the migrations are applied. |
 | Migrations applied to shared DB | not started | | |
+
+**Linearization (2026-09-12, before the PR).** While this branch was in progress, `dev`
+gained Tim's `tim_handover_tokens` (FP-236, PRs #48 and #49), which also revises
+`tom_analytics_read_models`. Merged as they were, that gives Alembic two heads, and
+`alembic upgrade head` refuses to run. Fixed on this branch the same way as FP-153 §11.10:
+`origin/dev` (`79727b4`) was merged in, and `tom_add_exception_vehicle.down_revision` was
+changed to `tim_handover_tokens`. Tim's file is unchanged, and the two migrations share no
+table. The chain is now `tom_analytics_read_models → tim_handover_tokens →
+tom_add_exception_vehicle → tom_trailer_vehicle_analytics (head)`. Before applying (§9),
+`alembic current` on the shared DB should read `tom_analytics_read_models` or
+`tim_handover_tokens`.

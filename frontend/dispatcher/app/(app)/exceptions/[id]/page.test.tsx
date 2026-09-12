@@ -8,6 +8,7 @@ import { useExceptionDetail } from '@/lib/hooks/useExceptionDetail'
 import { ApiError, reviewException } from '@/lib/api/client'
 import type { TripException, TripExceptionDetail } from '@shared/lib/types/exception'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
+import type { VehicleId } from '@shared/lib/types/vehicle'
 
 // client.ts imports the Supabase client at module scope, which throws without real env
 // vars — mocked the same way lib/api/client.test.ts and CancelTripAction.test.tsx do.
@@ -93,6 +94,9 @@ function baseException(overrides: Partial<TripExceptionDetail> = {}): TripExcept
     review_note: null,
     contact_method: null,
     trip_closed_at: null,
+    vehicle_id: null,
+    vehicle_registration: null,
+    vehicle_type: null,
     supporting_artifact_id: null,
     supporting_artifact: null,
     ...overrides,
@@ -121,6 +125,7 @@ const REVIEWED_RESPONSE: TripException = {
   reviewed_at: '2026-09-04T09:30:00Z',
   review_note: 'Evidence settles it.',
   contact_method: null,
+  vehicle_id: null,
   merkle_batch_id: null,
   created_at: '2026-09-03T10:00:00Z',
   updated_at: '2026-09-04T09:30:00Z',
@@ -248,6 +253,52 @@ describe('Exception detail — phase/stop context', () => {
 
     expect(screen.queryByText(/null/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/^·/)).not.toBeInTheDocument()
+  })
+})
+
+// Trailer analytics: a breakdown shows which vehicle it was recorded against.
+describe('Exception detail — breakdown vehicle', () => {
+  /** The value beside the "Vehicle" meta label, or null when there is no such row. */
+  function vehicleRow(): string | null {
+    return screen.queryByText('Vehicle')?.nextElementSibling?.textContent ?? null
+  }
+
+  it('names the trailer a breakdown was recorded against', () => {
+    mockDetail(baseException({
+      exception_type: 'mechanical',
+      vehicle_id: 'vehicle-trailer' as VehicleId,
+      vehicle_registration: 'TRL 222 GP',
+      vehicle_type: 'trailer',
+    }))
+    renderPage()
+
+    expect(vehicleRow()).toBe('Trailer · TRL 222 GP')
+  })
+
+  it('names the horse a breakdown was recorded against', () => {
+    mockDetail(baseException({
+      exception_type: 'mechanical',
+      vehicle_id: 'vehicle-horse' as VehicleId,
+      vehicle_registration: 'CA 123-456',
+      vehicle_type: 'horse',
+    }))
+    renderPage()
+
+    expect(vehicleRow()).toBe('Horse · CA 123-456')
+  })
+
+  it('says "Not recorded" for a breakdown reported before drivers named the vehicle', () => {
+    mockDetail(baseException({ exception_type: 'mechanical' }))
+    renderPage()
+
+    expect(vehicleRow()).toBe('Not recorded')
+  })
+
+  it('shows no Vehicle row for any other exception type', () => {
+    mockDetail(baseException({ exception_type: 'seal_mismatch' }))
+    renderPage()
+
+    expect(vehicleRow()).toBeNull()
   })
 })
 
