@@ -165,6 +165,15 @@ class Settings(BaseSettings):
     SESSION_IDLE_TIMEOUT_MINUTES: int = 10
 
     # -------------------------------------------------------------------------
+    # Receiver handover (FP-155)
+    # -------------------------------------------------------------------------
+    # How long a capability token stays redeemable after issue. The ticket's design
+    # band is 5-15 minutes; 10 sits in the middle. Not the QR's on-screen rotation
+    # interval (FP-237) — that is a display refresh, this is the server-side grant
+    # window the rotation lives inside.
+    HANDOVER_TOKEN_EXPIRY_MINUTES: int = 10
+
+    # -------------------------------------------------------------------------
     # Rate limiting (core/rate_limit.py; budgets live in core/limits.py)
     # -------------------------------------------------------------------------
     # Off switch for local development and tests. Never set False in a deployed
