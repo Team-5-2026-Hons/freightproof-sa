@@ -9,6 +9,7 @@ transaction commits.
 
 import logging
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -450,17 +451,25 @@ async def test_raise_exception_without_a_client_report_id_is_unaffected(db_sessi
 _SERVICE_LOGGER = "app.orchestration.exception_service"
 
 
-def _pick(**overrides) -> uuid.UUID | None:
-    kwargs = {
-        "exception_type": ExceptionType.MECHANICAL,
-        "vehicle_type": None,
-        "trailer_id": None,
-        "horse_id": uuid.uuid4(),
-        "trip_trailer_ids": [],
-        "trip_id": uuid.uuid4(),
-    }
-    kwargs.update(overrides)
-    return pick_breakdown_vehicle(**kwargs)
+def _pick(
+    *,
+    exception_type: ExceptionType = ExceptionType.MECHANICAL,
+    vehicle_type: VehicleType | None = None,
+    trailer_id: uuid.UUID | None = None,
+    horse_id: uuid.UUID | None = None,
+    trip_trailer_ids: Sequence[uuid.UUID] = (),
+) -> uuid.UUID | None:
+    """pick_breakdown_vehicle with a breakdown's defaults: a fresh horse and trip on every
+    call, and no trailers unless a test names them. Explicit parameters rather than a
+    **kwargs dict, so mypy (which CI runs over the tests too) checks every call's types."""
+    return pick_breakdown_vehicle(
+        exception_type=exception_type,
+        vehicle_type=vehicle_type,
+        trailer_id=trailer_id,
+        horse_id=horse_id if horse_id is not None else uuid.uuid4(),
+        trip_trailer_ids=trip_trailer_ids,
+        trip_id=uuid.uuid4(),
+    )
 
 
 def _warnings(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
