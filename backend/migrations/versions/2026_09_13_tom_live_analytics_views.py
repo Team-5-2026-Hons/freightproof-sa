@@ -1,7 +1,7 @@
 """Live analytics: the five analytics views become plain views instead of materialized ones
 
 Revision ID: tom_live_analytics_views
-Revises: tom_trailer_vehicle_analytics
+Revises: tim_handover_confirm
 Create Date: 2026-09-13
 
 FP-153 built the analytics read models as materialized views: a stored snapshot that only
@@ -42,7 +42,9 @@ test is the SQL shipped.
 from alembic import op
 
 revision = "tom_live_analytics_views"
-down_revision = "tom_trailer_vehicle_analytics"
+# Chained after Tim's FP-155 handover migration, which merged to dev first from the same
+# parent (tom_trailer_vehicle_analytics). The two touch no common tables.
+down_revision = "tim_handover_confirm"
 branch_labels = None
 depends_on = None
 

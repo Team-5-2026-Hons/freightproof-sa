@@ -1,7 +1,8 @@
 # Live analytics views — decision record
 
 Author: Tom (Thomas Davis) · 2026-09-13 · Branch `fix/analytics-live-views`
-Migration: `tom_live_analytics_views` (revises `tom_trailer_vehicle_analytics`)
+Migration: `tom_live_analytics_views` (revises `tim_handover_confirm`, FP-155's migration,
+which merged to `dev` first from the same parent)
 
 ## 1. The problem
 
