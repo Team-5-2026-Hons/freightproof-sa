@@ -1,60 +1,70 @@
-import { formatSeparation, separationMetres, toCoords } from '@/lib/phase/geo'
+import { PHASE_NAMES } from '@shared/lib/constants/phase-meta'
+import { fmtDateTime } from '@shared/lib/utils/datetime'
+import { locationEvidenceForPhase } from '@/lib/phase/location-evidence'
+import { LocationEvidencePanel } from './LocationEvidencePanel'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
+import type { Precinct } from '@shared/lib/types/precinct'
+import type { ExceptionSource } from '@shared/lib/types/exception'
 
 export interface PositionDisagreementProps {
   phase: PhaseDescriptor
+  precinct: Precinct | undefined
+  // The trigger sentence below states a verdict the SYSTEM's own tracker fix produced;
+  // it must never be shown for a driver-raised gps_mismatch (DriverExceptionCreateBody
+  // lets a driver submit that exception_type too), since a driver row carries no such
+  // tracker verdict. Required, not defaulted, so a caller can't forget to pass it and
+  // silently render an unearned trigger line.
+  source: ExceptionSource
 }
 
-// Matches PhaseLocationSection's own vocabulary for these two states, so the same gap in
-// the record reads the same way whichever card a dispatcher opens it from.
-const NO_FIX_RECORDED = 'No fix recorded'
-const NOT_COMPUTABLE  = 'Not computable'
+// The backend raises `gps_mismatch` ONLY when the vehicle tracker's own fix fell outside
+// the stop's geofence (`pulsit_geofence_confirmed is False`); there is no phone-vs-tracker
+// disagreement rule on the backend. Exported so the exception-detail page states the same
+// trigger in the same words rather than drifting into its own paraphrase of the fact.
+export const GPS_MISMATCH_TRIGGER = 'Vehicle tracker outside the facility boundary'
+
+const LINKED_PHASE_LOCATIONS_LABEL = 'Linked phase locations'
+const PHASE_NOT_COMPLETED = 'Phase not completed'
+// These fixes belong to the PHASE the exception is linked to, captured when the phase
+// itself completed, never a separate position recorded for the exception. Says so
+// explicitly so a dispatcher does not mistake a phase fix for the exception's own moment.
+const LINKED_PHASE_LOCATIONS_NOTE =
+  "These are the phase's own recorded fixes, captured when the phase completed, not a separate position for this exception."
 
 /**
- * The measured gap behind a `gps_mismatch` exception: what the driver's phone reported,
- * and what the tracker bolted to the vehicle reported, independently of each other.
+ * The evidence behind a `gps_mismatch` exception: the stored trigger (the vehicle
+ * tracker fell outside the stop's geofence, the only rule the backend actually applies),
+ * followed by the linked phase's own recorded location fixes, shown as context.
  *
- * Deliberately takes no precinct/geofence prop. The separation between the two sources is
- * well-defined whether or not a precinct can be resolved for this phase, so this component
- * reports only what the two sources measured against EACH OTHER — never against a boundary
- * it cannot name. That keeps it renderable for every phase a `gps_mismatch` can land on,
- * including ones with no stop to anchor a geofence to.
- *
- * Reports a fact, not a verdict: it states a measured distance between two independent
- * sources and leaves what that distance means to the dispatcher reading it.
+ * The driver phone vs. vehicle tracker separation rendered inside the panel below is an
+ * accompanying measurement, never the reason for the exception: there is no
+ * phone-vs-tracker disagreement rule on the backend, and presenting the separation as a
+ * "reason" would misrepresent what was actually checked. The trigger line above states
+ * the stored tracker verdict explicitly so the two can never be confused.
  */
-export function PositionDisagreement({ phase }: PositionDisagreementProps) {
-  const driverFix  = toCoords(phase.driver_phone_lat, phase.driver_phone_lng)
-  const trackerFix = toCoords(phase.horse_gps_lat, phase.horse_gps_lng)
-  const separation = separationMetres(driverFix, trackerFix)
+export function PositionDisagreement({ phase, precinct, source }: PositionDisagreementProps) {
+  const evidence = locationEvidenceForPhase(phase, precinct)
+  const contextLabel = `${LINKED_PHASE_LOCATIONS_LABEL}: ${PHASE_NAMES[phase.phase_type]}${precinct ? ` at ${precinct.name}` : ''}`
 
   return (
-    <div className="mt-[8px] pt-[8px] border-t border-warn/20 flex flex-wrap items-start gap-x-5 gap-y-2">
-      <PositionFix label="Driver phone" lat={phase.driver_phone_lat} lng={phase.driver_phone_lng} />
-      <PositionFix label="Vehicle tracker" lat={phase.horse_gps_lat} lng={phase.horse_gps_lng} />
-      <div>
-        <div className="text-[10px] text-on-surf-v mb-[1px]">Driver / vehicle separation</div>
-        <div className="text-[12px] font-[500] text-on-surf tabular-nums">
-          {separation === null ? NOT_COMPUTABLE : formatSeparation(separation)}
+    <div className="mt-[8px] pt-[8px] border-t border-warn/20">
+      {/* Only a system-raised exception carries the tracker's own geofence verdict: a
+          driver-raised gps_mismatch has no such fix to assert this sentence about. The
+          "Linked phase locations" panel below still renders either way: it shows the
+          phase's own recorded fixes, which exist independently of who raised the exception. */}
+      {source === 'system' && (
+        <p data-testid="gps-mismatch-trigger" className="text-[12px] font-[700] text-on-surf">
+          {GPS_MISMATCH_TRIGGER}
+        </p>
+      )}
+      <div className="mt-3">
+        <div className="text-[11px] font-[700] text-sec">
+          {LINKED_PHASE_LOCATIONS_LABEL} · {phase.completed_at ? fmtDateTime(phase.completed_at) : PHASE_NOT_COMPLETED}
         </div>
+        <p className="mt-[2px] text-[11px] text-on-surf-v">{LINKED_PHASE_LOCATIONS_NOTE}</p>
       </div>
-    </div>
-  )
-}
-
-/** One source's fix, or a plain statement that it reported none — never a blank field. */
-function PositionFix({
-  label, lat, lng,
-}: {
-  label: string
-  lat: number | null
-  lng: number | null
-}) {
-  return (
-    <div>
-      <div className="text-[10px] text-on-surf-v mb-[1px]">{label}</div>
-      <div className="font-mono text-[12px] tracking-[0.04em] text-on-surf tabular-nums">
-        {lat === null || lng === null ? NO_FIX_RECORDED : `${lat.toFixed(6)}, ${lng.toFixed(6)}`}
+      <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-[5px]">
+        <LocationEvidencePanel evidence={evidence} contextLabel={contextLabel} />
       </div>
     </div>
   )

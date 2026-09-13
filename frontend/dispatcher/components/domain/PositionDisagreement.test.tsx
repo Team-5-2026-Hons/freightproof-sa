@@ -1,10 +1,68 @@
 import { describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { PositionDisagreement } from './PositionDisagreement'
+import { VIEW_ON_MAP_LABEL } from './LocationEvidencePanel'
 import { makePhase } from './__tests__/testFixtures'
+import { mockPrecincts } from '@shared/lib/mocks/precincts'
+import { fmtDateTime } from '@shared/lib/utils/datetime'
+
+const PRECINCT = mockPrecincts[0]!
 
 describe('PositionDisagreement', () => {
-  it('renders both source positions and the separation between them', () => {
+  it('states the stored trigger explicitly, never as a phone-vs-tracker disagreement or an unstated "reason"', () => {
+    render(
+      <PositionDisagreement
+        phase={makePhase('departure', { pulsit_geofence_confirmed: false })}
+        precinct={undefined}
+        source="system"
+      />,
+    )
+
+    expect(screen.getByTestId('gps-mismatch-trigger')).toHaveTextContent('Vehicle tracker outside the facility boundary')
+    expect(screen.queryByText(/disagreement/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/reason/i)).not.toBeInTheDocument()
+  })
+
+  it('renders no trigger line for a driver-raised gps_mismatch (a driver row carries no tracker verdict)', () => {
+    render(
+      <PositionDisagreement
+        phase={makePhase('departure', { pulsit_geofence_confirmed: false })}
+        precinct={undefined}
+        source="driver"
+      />,
+    )
+
+    expect(screen.queryByTestId('gps-mismatch-trigger')).not.toBeInTheDocument()
+    expect(screen.queryByText('Vehicle tracker outside the facility boundary')).not.toBeInTheDocument()
+    // The linked-phase-locations panel still renders regardless of source.
+    expect(screen.getByText(/Linked phase locations/)).toBeInTheDocument()
+  })
+
+  it('labels the phase fixes as linked phase locations, with the phase completion time', () => {
+    render(
+      <PositionDisagreement
+        phase={makePhase('departure', { completed_at: '2026-05-09T07:04:00Z' })}
+        precinct={undefined}
+        source="system"
+      />,
+    )
+
+    expect(screen.getByText(`Linked phase locations · ${fmtDateTime('2026-05-09T07:04:00Z')}`)).toBeInTheDocument()
+  })
+
+  it('says plainly when the linked phase has not completed, rather than inventing a time', () => {
+    render(
+      <PositionDisagreement
+        phase={makePhase('departure', { completed_at: null })}
+        precinct={undefined}
+        source="system"
+      />,
+    )
+
+    expect(screen.getByText('Linked phase locations · Phase not completed')).toBeInTheDocument()
+  })
+
+  it('shows the separation and the comparison disclosure inside the panel when both fixes are present', () => {
     render(
       <PositionDisagreement
         phase={makePhase('departure', {
@@ -12,37 +70,17 @@ describe('PositionDisagreement', () => {
           driver_phone_lng: 18.4241,
           horse_gps_lat: -33.9351,
           horse_gps_lng: 18.4241,
-          pulsit_geofence_confirmed: false,
         })}
+        precinct={undefined}
+        source="system"
       />,
     )
 
-    expect(screen.getByText('Driver phone')).toBeInTheDocument()
-    expect(screen.getByText('Vehicle tracker')).toBeInTheDocument()
-    expect(screen.getByText('-33.924900, 18.424100')).toBeInTheDocument()
-    expect(screen.getByText('-33.935100, 18.424100')).toBeInTheDocument()
-    // ~1.13 km apart at these coordinates — rendered in km, not metres, above the threshold.
     expect(screen.getByText('1.1 km')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: VIEW_ON_MAP_LABEL })).toBeInTheDocument()
   })
 
-  it('renders a sub-kilometre gap as whole metres, not a rounded-off kilometre figure', () => {
-    render(
-      <PositionDisagreement
-        phase={makePhase('departure', {
-          driver_phone_lat: -33.9249,
-          driver_phone_lng: 18.4241,
-          horse_gps_lat: -33.92760,
-          horse_gps_lng: 18.4241,
-        })}
-      />,
-    )
-
-    // ~300 m apart — must read as metres, since the story explicitly rules out "0.3 km".
-    expect(screen.getByText(/^\d+ m$/)).toBeInTheDocument()
-    expect(screen.queryByText(/km$/)).not.toBeInTheDocument()
-  })
-
-  it('states plainly when the tracker reported no position, without inventing a distance', () => {
+  it('shows the driver point and "Comparison unavailable" when the tracker fix is missing', () => {
     render(
       <PositionDisagreement
         phase={makePhase('departure', {
@@ -51,50 +89,41 @@ describe('PositionDisagreement', () => {
           horse_gps_lat: null,
           horse_gps_lng: null,
         })}
+        precinct={undefined}
+        source="system"
       />,
     )
 
-    expect(screen.getByText('Vehicle tracker')).toBeInTheDocument()
-    expect(screen.getByText('No fix recorded')).toBeInTheDocument()
-    expect(screen.getByText('Not computable')).toBeInTheDocument()
-    // Never a bogus zero-metre separation when one source is silent.
-    expect(screen.queryByText('0 m')).not.toBeInTheDocument()
+    expect(screen.getByText('-33.924900, 18.424100')).toBeInTheDocument()
+    expect(screen.getByText('Comparison unavailable')).toBeInTheDocument()
   })
 
-  it('states plainly when the driver phone reported no position, symmetric with the tracker case', () => {
+  it('renders the stored outside-tolerance verdict, alongside the trigger line (not in place of it)', () => {
     render(
       <PositionDisagreement
-        phase={makePhase('departure', {
-          driver_phone_lat: null,
-          driver_phone_lng: null,
-          horse_gps_lat: -33.9249,
-          horse_gps_lng: 18.4241,
-        })}
+        phase={makePhase('departure', { pulsit_geofence_confirmed: false })}
+        precinct={undefined}
+        source="system"
       />,
     )
 
-    expect(screen.getByText('Driver phone')).toBeInTheDocument()
-    expect(screen.getByText('No fix recorded')).toBeInTheDocument()
-    expect(screen.getByText('Not computable')).toBeInTheDocument()
+    expect(screen.getByTestId('gps-mismatch-trigger')).toBeInTheDocument()
+    expect(screen.getByText('Outside accepted tolerance')).toBeInTheDocument()
   })
 
-  it('renders both positions and a separation for a phase with no resolvable precinct', () => {
-    // stop_sequence is null (trip_creation is the phase type where that is legitimate —
-    // phase.ts). The component takes no precinct prop at all, so it must render regardless.
+  it('states there is no boundary recorded when the precinct cannot be resolved', () => {
     render(
-      <PositionDisagreement
-        phase={makePhase('trip_creation', {
-          stop_sequence: null,
-          driver_phone_lat: -33.9249,
-          driver_phone_lng: 18.4241,
-          horse_gps_lat: -33.9351,
-          horse_gps_lng: 18.4241,
-        })}
-      />,
+      <PositionDisagreement phase={makePhase('departure')} precinct={undefined} source="system" />,
     )
 
-    expect(screen.getByText('Driver phone')).toBeInTheDocument()
-    expect(screen.getByText('Vehicle tracker')).toBeInTheDocument()
-    expect(screen.getByText('1.1 km')).toBeInTheDocument()
+    expect(screen.getByText('No boundary recorded for this phase')).toBeInTheDocument()
+  })
+
+  it('shows the reference-boundary label and precinct name when a precinct is resolved', () => {
+    render(
+      <PositionDisagreement phase={makePhase('departure')} precinct={PRECINCT} source="system" />,
+    )
+
+    expect(screen.getByText(new RegExp(`Current precinct boundary \\(reference only\\): ${PRECINCT.name}`))).toBeInTheDocument()
   })
 })

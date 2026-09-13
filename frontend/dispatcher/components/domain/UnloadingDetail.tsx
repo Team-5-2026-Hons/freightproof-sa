@@ -2,11 +2,14 @@
 
 import { EvidencePhoto } from './EvidencePhoto'
 import { Field, PhaseDetailCard, Section } from './PhaseDetailFields'
+import { PhaseLocationSection } from './PhaseLocationSection'
 import { PhaseOverrideSection } from './PhaseOverrideSection'
 import { departureSealForLeg } from '@/lib/phase/derive'
+import { locationEvidenceForPhase, hasLocationEvidence } from '@/lib/phase/location-evidence'
 import { isClosedPhaseStatus } from '@/lib/types/dev'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
+import type { Precinct } from '@shared/lib/types/precinct'
 
 import type { TripException } from '@shared/lib/types/exception'
 
@@ -32,10 +35,12 @@ interface Props {
   /** Manifest baseline for this stop — summed parcel_count_expected over the same
    *  consignments. Same null-is-not-zero rule as scannedInCount. */
   expectedAtStopCount: number | null
+  // The precinct this phase is anchored to, resolved by the page from the phase's stop.
+  precinct: Precinct | undefined
 }
 
 export function UnloadingDetail({ artifactLoading, artifactError, onRetryArtifacts,
-  phase, allPhases, artifactsById, scannedInCount, expectedAtStopCount, sealException,
+  phase, allPhases, artifactsById, scannedInCount, expectedAtStopCount, sealException, precinct,
 }: Props) {
   const departureSeal = departureSealForLeg(allPhases, phase)
 
@@ -80,9 +85,6 @@ export function UnloadingDetail({ artifactLoading, artifactError, onRetryArtifac
         </p>
       )}
 
-      {/* No location section here — unlike activation, neither this phase's request
-          schema nor the backend's advance_unloading captures driver_phone_lat/lng or
-          horse_gps_lat/lng. Showing it would just be four permanently-blank rows. */}
       <Section title="Seal">
         <div className="col-span-2">
           <div className="text-[10px] text-on-surf-v mb-[3px]">Seal at destination</div>
@@ -111,6 +113,18 @@ export function UnloadingDetail({ artifactLoading, artifactError, onRetryArtifac
           artifact={phase.gate_photo_artifact_id ? artifactsById.get(phase.gate_photo_artifact_id) : undefined}
         />
       </Section>
+
+      {/* hasLocationEvidence guards the section so a row with neither a fix nor a stored
+          verdict does not grow an empty "Location at unloading" heading. This is NOT
+          because the backend fails to capture a fix here: UnloadingCompleteRequest
+          extends _PhaseCompleteBase, advance_unloading records the driver's position and
+          runs corroboration against it, and the driver app sends its position for
+          unloading. A null phone fix is a legitimate outcome of that capture (indoor,
+          permission denied, offline), not evidence the contract omits the field; the gate
+          keys off what was actually recorded, not off what the contract allows. */}
+      {hasLocationEvidence(locationEvidenceForPhase(phase, precinct)) && (
+        <PhaseLocationSection phase={phase} precinct={precinct} title="Location at unloading" />
+      )}
 
       <PhaseOverrideSection phase={phase} />
 

@@ -93,6 +93,9 @@ export interface PhaseDescriptor {
   horse_gps_lat: number | null
   horse_gps_lng: number | null
   pulsit_geofence_confirmed: boolean | null
+  // When the driver's device captured the phone fix (mirrors PhaseEventRead.driver_captured_at).
+  // Optional ONLY until the driver-pwa fixtures are updated; same convention as blocked_on above.
+  driver_captured_at?: string | null
 
   // Captured at `departure`, NOT at `loading` — parent D7 and §2.6. Verified again at
   // `unloading` before the doors open. Moving this is the highest-risk edit in the

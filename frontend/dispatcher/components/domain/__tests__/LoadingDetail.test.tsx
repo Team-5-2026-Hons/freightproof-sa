@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { LoadingDetail } from '../LoadingDetail'
+import { VIEW_ON_MAP_LABEL } from '../LocationEvidencePanel'
 import { makePhase } from './testFixtures'
 import type { ArtifactId, EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 
@@ -24,6 +25,7 @@ describe('LoadingDetail', () => {
         expectedCount={3}
         liveScannedOutCount={null}
         artifactsById={NO_ARTIFACTS}
+        precinct={undefined}
       />,
     )
 
@@ -39,6 +41,7 @@ describe('LoadingDetail', () => {
         expectedCount={3}
         liveScannedOutCount={null}
         artifactsById={NO_ARTIFACTS}
+        precinct={undefined}
       />,
     )
 
@@ -52,6 +55,7 @@ describe('LoadingDetail', () => {
         expectedCount={null}
         liveScannedOutCount={null}
         artifactsById={NO_ARTIFACTS}
+        precinct={undefined}
       />,
     )
 
@@ -69,6 +73,7 @@ describe('LoadingDetail', () => {
         expectedCount={3}
         liveScannedOutCount={2}
         artifactsById={NO_ARTIFACTS}
+        precinct={undefined}
       />,
     )
 
@@ -86,6 +91,7 @@ describe('LoadingDetail', () => {
         expectedCount={3}
         liveScannedOutCount={1}
         artifactsById={NO_ARTIFACTS}
+        precinct={undefined}
       />,
     )
 
@@ -116,6 +122,7 @@ describe('LoadingDetail', () => {
         expectedCount={null}
         liveScannedOutCount={null}
         artifactsById={new Map([['artifact-1', artifact]])}
+        precinct={undefined}
       />,
     )
 
@@ -130,6 +137,7 @@ describe('LoadingDetail', () => {
         expectedCount={null}
         liveScannedOutCount={null}
         artifactsById={NO_ARTIFACTS}
+        precinct={undefined}
       />,
     )
 
@@ -139,7 +147,57 @@ describe('LoadingDetail', () => {
 })
 
 it('labels an excess scan without a negative shortage', () => {
-  render(<LoadingDetail phase={makePhase('loading')} expectedCount={3} liveScannedOutCount={5} artifactsById={NO_ARTIFACTS} />)
+  render(<LoadingDetail phase={makePhase('loading')} expectedCount={3} liveScannedOutCount={5} artifactsById={NO_ARTIFACTS} precinct={undefined} />)
   expect(screen.getByText('2 excess scanned')).toBeInTheDocument()
   expect(screen.queryByText(/-2 not scanned/)).not.toBeInTheDocument()
+})
+
+// Task 3: loading is system-observed and most rows never carry a fix at all, so the
+// section must appear ONLY when there is something to show it: hasLocationEvidence's
+// three-way split, exercised end to end through the rendered component.
+describe('LoadingDetail: location section', () => {
+  it('shows no location heading when neither a fix nor a stored verdict is recorded', () => {
+    render(
+      <LoadingDetail
+        phase={makePhase('loading', { status: 'completed' })}
+        expectedCount={null}
+        liveScannedOutCount={null}
+        artifactsById={NO_ARTIFACTS}
+        precinct={undefined}
+      />,
+    )
+
+    expect(screen.queryByText('Location at loading')).not.toBeInTheDocument()
+  })
+
+  it('shows the heading and the comparison disclosure when a driver fix was recorded', () => {
+    render(
+      <LoadingDetail
+        phase={makePhase('loading', { status: 'completed', driver_phone_lat: -33.9249, driver_phone_lng: 18.4241 })}
+        expectedCount={null}
+        liveScannedOutCount={null}
+        artifactsById={NO_ARTIFACTS}
+        precinct={undefined}
+      />,
+    )
+
+    expect(screen.getByText('Location at loading')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: VIEW_ON_MAP_LABEL })).toBeInTheDocument()
+  })
+
+  it('shows the heading and the stored verdict, with no "View on map" button, when only a verdict was recorded', () => {
+    render(
+      <LoadingDetail
+        phase={makePhase('loading', { status: 'completed', pulsit_geofence_confirmed: false })}
+        expectedCount={null}
+        liveScannedOutCount={null}
+        artifactsById={NO_ARTIFACTS}
+        precinct={undefined}
+      />,
+    )
+
+    expect(screen.getByText('Location at loading')).toBeInTheDocument()
+    expect(screen.getByText('Outside accepted tolerance')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: VIEW_ON_MAP_LABEL })).not.toBeInTheDocument()
+  })
 })

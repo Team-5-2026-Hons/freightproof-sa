@@ -3,7 +3,9 @@
 import { Ic } from '@/components/ui/Ic'
 import { Chip } from '@/components/ui/Chip'
 import { ExceptionEvidence } from './ExceptionEvidence'
+import { PhaseLocationSection } from './PhaseLocationSection'
 import { legDepartureAt } from '@/lib/phase/derive'
+import { hasAnyFix, locationEvidenceForPhase } from '@/lib/phase/location-evidence'
 import { fmtExceptionType } from '@/lib/format/exception'
 import { fmtDateTime } from '@shared/lib/utils/datetime'
 import { EXCEPTION_SEVERITY_META, EXCEPTION_SOURCE_META } from '@shared/lib/constants/status-meta'
@@ -50,6 +52,14 @@ export function InTransitTimeline({
   phase, allPhases, exceptions, artifactsById, originName, destinationName,
 }: Props) {
   const departedAt = legDepartureAt(allPhases, phase)
+
+  // undefined, not the destination precinct: this leg's stop is the ORIGIN it departed
+  // from, so a boundary drawn from the destination would compare an arrival fix against
+  // the wrong fence (see the brief's binding rule on in-transit). The stored verdict is
+  // also never present here (verdictFor already reads in_transit as
+  // 'no_verdict_for_phase' unless the backend stored one), which is the explicit absence
+  // this section exists to show, not to fill in.
+  const arrivalEvidence = locationEvidenceForPhase(phase, undefined)
 
   // Built in three cases rather than two nested ternaries, because "not yet departed" is
   // a real third state: the truck is still at origin, so it is neither departed NOR en
@@ -171,6 +181,14 @@ export function InTransitTimeline({
         <Ic n="clock" s={10} className="text-on-surf-v" />
         Weighbridges, driver and vehicle changes await the Pulsit integration.
       </div>
+
+      {/* precinct is deliberately undefined (see arrivalEvidence above): no boundary is
+          ever drawn for a transit leg. The verdict line reads "No geofence verdict is
+          recorded for transit legs", which is the required explicit absence: a fix may
+          exist, but nothing here is allowed to imply it was checked against a fence. */}
+      {hasAnyFix(arrivalEvidence) && (
+        <PhaseLocationSection phase={phase} precinct={undefined} title="Recorded location at arrival" />
+      )}
     </div>
   )
 }

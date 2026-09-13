@@ -27,9 +27,9 @@ export function PhaseEvidence({ trip, phase, precincts, onChanged, ...evidence }
   switch (phase.phase_type) {
     case 'trip_creation': content = <TripCreatedDetail trip={trip} />; break
     case 'activation': content = <ActivationDetail {...shared} trip={trip} precinct={precinct} />; break
-    case 'loading': content = <LoadingDetail {...shared} expectedCount={countAtStop(trip, phase, 'out', 'expected')} liveScannedOutCount={countAtStop(trip, phase, 'out', 'scanned')} />; break
+    case 'loading': content = <LoadingDetail {...shared} expectedCount={countAtStop(trip, phase, 'out', 'expected')} liveScannedOutCount={countAtStop(trip, phase, 'out', 'scanned')} precinct={precinct} />; break
     case 'departure': content = <DepartureDetail {...shared} precinct={precinct} />; break
-    case 'unloading': content = <UnloadingDetail {...shared} allPhases={trip.phases} scannedInCount={countAtStop(trip, phase, 'in', 'scanned')} expectedAtStopCount={countAtStop(trip, phase, 'in', 'expected')}
+    case 'unloading': content = <UnloadingDetail {...shared} allPhases={trip.phases} scannedInCount={countAtStop(trip, phase, 'in', 'scanned')} expectedAtStopCount={countAtStop(trip, phase, 'in', 'expected')} precinct={precinct}
       sealException={trip.exceptions.find(e => e.phase_event_id === phase.phase_event_id && (e.exception_type === 'seal_mismatch' || e.exception_type === 'seal_unverified'))} />; break
     case 'confirmation': content = <ConfirmationDetail {...shared} precinct={precinct} originScannedCount={originScannedCount(trip.phases)} />; break
     case 'in_transit': {

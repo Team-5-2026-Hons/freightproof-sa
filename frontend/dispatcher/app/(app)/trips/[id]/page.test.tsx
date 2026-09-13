@@ -198,6 +198,48 @@ describe('Trip detail in-transit disclosure', () => {
   })
 })
 
+describe('Trip detail hash-anchored phase scroll', () => {
+  it('scrolls a #phase-<id> hash into view on load, without auto-expanding the row', () => {
+    const trip = tripWithLoadingExceptionsOutOfOrder()
+    const loading = trip.phases.find(phase => phase.phase_type === 'loading')
+    if (!loading) throw new Error('TRIP_0040 loading phase is missing')
+
+    // getBoundingClientRect is always zeroed in jsdom, which would make the scroll math
+    // a silent no-op either way; stub it so the hash-anchored row and everything else
+    // report distinguishable positions, the same way a real layout would.
+    const rectSpy = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      return { top: this.id.startsWith('phase-') ? 250 : 0 } as DOMRect
+    })
+    window.location.hash = `#phase-${loading.phase_event_id}`
+
+    try {
+      const { container } = render(<TripDetailPage />)
+
+      const scrollParent = container.querySelector<HTMLElement>('.overflow-y-auto')
+      if (!scrollParent) throw new Error('timeline scroll container not found')
+      expect(scrollParent.scrollTop).toBe(250)
+
+      // Landing on the row is not the same as opening it: PhaseTimelineItem's own
+      // toggle state is untouched, same as the "Jump to current phase" button.
+      const loadingRow = screen.getByRole('group', { name: 'Loading phase and exceptions' })
+      expect(within(loadingRow).getByRole('button', { expanded: false })).toBeInTheDocument()
+    } finally {
+      window.location.hash = ''
+      rectSpy.mockRestore()
+    }
+  })
+
+  it('does not throw when the hash names a phase that is not on this trip', () => {
+    window.location.hash = '#phase-does-not-exist'
+
+    try {
+      expect(() => render(<TripDetailPage />)).not.toThrow()
+    } finally {
+      window.location.hash = ''
+    }
+  })
+})
+
 describe('Trip detail summary and panels', () => {
   it('keeps the route summary visible and opens the exception panel', () => {
     render(<TripDetailPage />)

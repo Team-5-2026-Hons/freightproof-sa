@@ -10,11 +10,11 @@ interface ModalProps {
   title: string
   children: ReactNode
   footer?: ReactNode
-  size?: 'sm' | 'md' | 'lg'
+  size?: 'sm' | 'md' | 'lg' | 'xl'
   closeDisabled?: boolean
 }
 
-const sizeClasses = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl' }
+const sizeClasses = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-6xl' }
 
 export function Modal({ open, onClose, title, children, footer, size = 'md', closeDisabled = false }: ModalProps) {
   const titleId = useId()

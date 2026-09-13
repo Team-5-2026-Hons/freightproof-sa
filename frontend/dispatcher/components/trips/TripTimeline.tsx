@@ -1,20 +1,43 @@
 'use client'
 
+import type { ReactNode } from 'react'
 import type { Trip } from '@shared/lib/types/trip'
 import type { Precinct } from '@shared/lib/types/precinct'
+import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 import { PHASE_NAMES } from '@shared/lib/constants/phase-meta'
 import { fmtTime } from '@shared/lib/utils/datetime'
 import { Button } from '@/components/ui/Button'
-import { sortedPlan, nodeTypeFor } from '@/lib/phase/derive'
-import { currentTripPhase, phaseStopLabel } from '@/lib/phase/trip-detail'
-import { PhaseTimelineItem } from './PhaseTimelineItem'
+import { sortedPlan, nodeTypeFor, type PhaseNodeType } from '@/lib/phase/derive'
+import { currentTripPhase, phaseStopLabel, precinctAtPhase } from '@/lib/phase/trip-detail'
+import { locationEvidenceForPhase, hasLocationEvidence } from '@/lib/phase/location-evidence'
+import { PhaseTimelineItem, PHASE_ANCHOR_PREFIX } from './PhaseTimelineItem'
 import { PhaseEvidence } from './PhaseEvidence'
 import { ExceptionSummary } from '@/components/domain/ExceptionSummary'
 import { ExceptionEvidence, exceptionHasEvidence } from '@/components/domain/ExceptionEvidence'
 import { PositionDisagreement } from '@/components/domain/PositionDisagreement'
+import { LocationEvidenceSummary } from '@/components/domain/LocationEvidenceSummary'
 import { ForensicOnly } from '@/components/blockchain/ForensicOnly'
 import { ChainReceiptTag } from '@/components/blockchain/ChainReceiptTag'
+
+// Phase types the compact location verdict applies to. trip_creation has no fix fields
+// worth reading and in_transit gets its own "Recorded location at arrival" section
+// instead (with an explicit no-verdict line); a chip here would pre-empt that and
+// imply a checked boundary that in-transit never has, see location-evidence.ts.
+const LOCATION_SUMMARY_PHASE_TYPES: readonly PhaseDescriptor['phase_type'][] =
+  ['activation', 'loading', 'departure', 'unloading', 'confirmation']
+
+/** The row's compact verdict chip, or undefined for a phase type/state this summary does
+ *  not cover. A `pending` node has not run yet, so there is nothing recorded to show.
+ *  Also undefined whenever `hasLocationEvidence` is false: LoadingDetail/UnloadingDetail
+ *  gate their own "Location at ..." section on that exact same check, so a row must never
+ *  advertise a chip here for a section the opened card does not have. */
+function evidenceSummaryFor(trip: Trip, phase: PhaseDescriptor, precincts: Precinct[], nodeType: PhaseNodeType): ReactNode {
+  if (nodeType === 'pending' || !LOCATION_SUMMARY_PHASE_TYPES.includes(phase.phase_type)) return undefined
+  const evidence = locationEvidenceForPhase(phase, precinctAtPhase(trip, phase, precincts))
+  if (!hasLocationEvidence(evidence)) return undefined
+  return <LocationEvidenceSummary evidence={evidence} />
+}
 
 interface Props {
   trip: Trip; precincts: Precinct[]; artifactsById: Map<string, EvidenceArtifactWithUrl>
@@ -57,9 +80,10 @@ export function TripTimeline({ trip, precincts, returnTo, lastUpdated, onJump, .
           && active?.phase_event_id === phase.phase_event_id
           && trip.status !== 'created'
         return <div key={phase.phase_event_id} role="group" aria-label={`${PHASE_NAMES[phase.phase_type]} phase${exceptions.length ? ' and exceptions' : ''}`}>
-          <PhaseTimelineItem id={`phase-${phase.phase_event_id}`} number={phase.sequence_number} label={PHASE_NAMES[phase.phase_type]} meta={phaseStopLabel(trip, phase, precincts)} summary={summary} timestamp={phase.completed_at} nodeType={nodeType}
+          <PhaseTimelineItem id={`${PHASE_ANCHOR_PREFIX}${phase.phase_event_id}`} number={phase.sequence_number} label={PHASE_NAMES[phase.phase_type]} meta={phaseStopLabel(trip, phase, precincts)} summary={summary} timestamp={phase.completed_at} nodeType={nodeType}
             initialOpen={active?.phase_event_id === phase.phase_event_id && trip.status !== 'created'} cancelled={trip.status === 'cancelled'} overridden={phase.status === 'overridden'}
             isLast={isLastPhase && exceptions.length === 0} alwaysOpen={driving}
+            evidenceSummary={evidenceSummaryFor(trip, phase, precincts, nodeType)}
             warning={phase.anchor_status === 'failed' ? 'Anchor failed — receipt still owed' : undefined}
             receipt={receipt ? <ForensicOnly><ChainReceiptTag receipt={receipt} /></ForensicOnly> : undefined}>
             {nodeType !== 'pending' && !(trip.status === 'cancelled' && nodeType === 'next') && <PhaseEvidence trip={trip} phase={phase} precincts={precincts} {...evidence} />}
@@ -81,7 +105,9 @@ export function TripTimeline({ trip, precincts, returnTo, lastUpdated, onJump, .
                 <ExceptionSummary exception={exception} phaseLabel={PHASE_NAMES[phase.phase_type]} returnTo={returnTo} />
                 {(exceptionHasEvidence(exception) || exception.exception_type === 'gps_mismatch') && <details className="rounded-b-lg bg-surf-low px-4 pb-3 text-sm">
                   <summary className="cursor-pointer py-3 font-semibold text-sec">Supporting evidence</summary>
-                  {exception.exception_type === 'gps_mismatch' && <PositionDisagreement phase={phase} />}
+                  {exception.exception_type === 'gps_mismatch' && (
+                    <PositionDisagreement phase={phase} precinct={precinctAtPhase(trip, phase, precincts)} source={exception.source} />
+                  )}
                   <ExceptionEvidence exception={exception} artifactsById={evidence.artifactsById} />
                 </details>}
               </div>

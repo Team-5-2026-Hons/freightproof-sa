@@ -13,6 +13,7 @@ import { Spinner }    from '@/components/ui/Spinner'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { TripIdStamp } from '@/components/domain/TripIdStamp'
 import { ExceptionEvidence } from '@/components/domain/ExceptionEvidence'
+import { GPS_MISMATCH_TRIGGER } from '@/components/domain/PositionDisagreement'
 import { ApiError, reviewException } from '@/lib/api/client'
 import { useToast } from '@/lib/hooks/useToast'
 import { useExceptionDetail } from '@/lib/hooks/useExceptionDetail'
@@ -307,6 +308,19 @@ export default function ExceptionDetailPage() {
                   {srcMeta.label} · {fmtTs(exception.created_at)}
                 </span>
               </div>
+
+              {/* The stored trigger, stated explicitly: a gps_mismatch is raised ONLY
+                  when the vehicle tracker's own fix fell outside the stop's geofence,
+                  never from a phone-vs-tracker disagreement. Imported from
+                  PositionDisagreement so the timeline and this page can never drift into
+                  paraphrasing the fact differently. Gated on source === 'system' too: a
+                  driver can also raise a gps_mismatch (DriverExceptionCreateBody accepts
+                  it), and that row carries no tracker verdict for this sentence to state. */}
+              {exception.exception_type === 'gps_mismatch' && exception.source === 'system' && (
+                <p data-testid="gps-mismatch-trigger" className="text-[13px] font-[700] text-on-surf mb-3">
+                  {GPS_MISMATCH_TRIGGER}
+                </p>
+              )}
 
               {/* Description */}
               <div className="bg-surf-low rounded-lg p-4 mb-5">

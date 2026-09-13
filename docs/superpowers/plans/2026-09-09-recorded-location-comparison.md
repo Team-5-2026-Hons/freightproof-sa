@@ -1,7 +1,8 @@
 # Recorded location comparison maps
 
 Status: proposal recorded 9 September 2026; Stage 1 contract review completed 12 September
-2026 (see the section at the end). No implementation started.
+2026; Stage 2 to 4 implemented 12 September 2026, read-side and schematic-only (see the
+"2026-09-12 Stage 2 to 4 implementation record" section at the end).
 
 ## Handoff
 
@@ -195,9 +196,125 @@ read-only renderer is the right shape; in-transit deliberately carries no verdic
 2. Confirm with Tim that dispatcher-side display of the FP-68 verdict is not inside
    FP-87 / FP-116. Backend Pulsit/geofence work is his per `iteration3_plan.md`.
 
+## 2026-09-12 Stage 2 to 4 implementation record
+
+### Scope shipped
+
+Read-side only. Schematic-only renderer (`LocationComparisonSchematic.tsx`): no tiles,
+no Leaflet, no backend changes, no migration. Dispatcher-side display work only; backend
+untouched (`git status --short backend/` from the repo root returned empty).
+
+### Files created/modified
+
+From `git status --short frontend/` at the repo root:
+
+Modified:
+- `frontend/dispatcher/app/(app)/exceptions/[id]/page.test.tsx`
+- `frontend/dispatcher/app/(app)/exceptions/[id]/page.tsx`
+- `frontend/dispatcher/app/(app)/trips/[id]/page.test.tsx`
+- `frontend/dispatcher/app/(app)/trips/[id]/page.tsx`
+- `frontend/dispatcher/components/domain/InTransitTimeline.tsx`
+- `frontend/dispatcher/components/domain/LoadingDetail.tsx`
+- `frontend/dispatcher/components/domain/PhaseLocationSection.tsx`
+- `frontend/dispatcher/components/domain/PositionDisagreement.test.tsx`
+- `frontend/dispatcher/components/domain/PositionDisagreement.tsx`
+- `frontend/dispatcher/components/domain/UnloadingDetail.tsx`
+- `frontend/dispatcher/components/domain/__tests__/LoadingDetail.test.tsx`
+- `frontend/dispatcher/components/domain/__tests__/UnloadingDetail.test.tsx`
+- `frontend/dispatcher/components/trips/PhaseEvidence.tsx`
+- `frontend/dispatcher/components/trips/PhaseTimelineItem.tsx`
+- `frontend/dispatcher/components/trips/TripTimeline.tsx`
+- `frontend/shared/lib/types/phase.ts`
+
+Created:
+- `frontend/dispatcher/components/domain/LocationEvidencePanel.tsx`
+- `frontend/dispatcher/components/domain/LocationEvidenceSummary.tsx`
+- `frontend/dispatcher/components/domain/__tests__/InTransitTimeline.location.test.tsx`
+- `frontend/dispatcher/components/domain/__tests__/LocationEvidencePanel.test.tsx`
+- `frontend/dispatcher/components/domain/__tests__/PhaseLocationSection.test.tsx`
+- `frontend/dispatcher/components/map/LocationComparisonSchematic.tsx`
+- `frontend/dispatcher/components/map/__tests__/LocationComparisonSchematic.test.tsx`
+- `frontend/dispatcher/components/trips/TripTimeline.test.tsx`
+- `frontend/dispatcher/lib/phase/location-evidence.test.ts`
+- `frontend/dispatcher/lib/phase/location-evidence.ts`
+
+### Rulings taken during implementation
+
+- Tiles enabled by user decision on 12 Sept after browser review: `LocationComparisonMap.tsx`
+  (Leaflet + Esri/OSM tiles, the same stack `GeofenceMap.tsx` already uses for precincts)
+  renders the comparison; the SVG schematic (`LocationComparisonSchematic.tsx`) is kept
+  only as its tile-failure fallback, not as the primary v1 rendering. The inline
+  `<details>` disclosure was replaced by a single "View on map" button that opens the
+  existing `Modal` directly: the double disclosure (phase card → details → "Larger view"
+  modal) was poor UX, and the inline schematic rendered badly at card width.
+- `driver_captured_at?: string | null` added to `PhaseDescriptor` as optional, following
+  the file's `blocked_on` convention (driver-pwa fixtures are another developer's
+  directory).
+- The tracker fix is labelled "Captured within the corroboration window of the driver
+  capture" without stating N; the skew constant is backend config not exposed to the
+  frontend.
+- The per-fix browser-computed fence offset was dropped from `PhaseLocationSection` (it
+  was computed against the CURRENT boundary); the current boundary is now drawn and
+  labelled "Current precinct boundary (reference only)".
+- In-transit rows receive no precinct (their stop is the origin); the verdict line reads
+  "No geofence verdict is recorded for transit legs".
+- `gps_mismatch` surfaces state the trigger "Vehicle tracker outside the facility
+  boundary"; phone/tracker separation is shown as context under "Linked phase locations".
+- The exception-detail "View linked phase locations" hand-off was dropped: backend
+  `TripExceptionDetail` (schemas/transit.py) does not expose `phase_event_id`, and v1
+  forbids backend changes. Follow-up: expose the field, then add the button; the trip
+  page already scrolls to `#phase-<id>`.
+- Analytics labels ("Confirmed ✓ / Mismatch ✗") were left unchanged; their comments citing
+  PhaseLocationSection wording are now stale.
+
+### Verification results
+
+From `frontend/dispatcher`:
+1. `npx vitest run`: Test Files 72 passed (72); Tests 711 passed (711).
+2. `npx tsc --noEmit`: no output, no errors.
+3. `npx eslint .`: 2 problems (0 errors, 2 warnings); both pre-existing warnings in
+   `components/domain/EvidencePhoto.tsx` (`@next/next/no-img-element`, lines 91 and 98),
+   unrelated to this feature.
+4. `npx next build`: compiled successfully; 19/19 static pages generated; route table
+   printed with no build errors; the same 2 pre-existing ESLint warnings surfaced during
+   lint-and-type-check, no errors.
+
+From `frontend/driver-pwa`:
+5. `npx tsc --noEmit`: no output, no errors.
+6. `npx vitest run`: Test Files 82 passed (82); Tests 729 passed (729).
+
+Backend: NOT run. No backend files changed; `git status --short backend/` from the repo
+root returned empty, confirming this.
+
+### Environment limitations
+
+Browser check: NOT performed. No backend/seeded data reachable in the implementation session; the 390/768/1440 width, short-screen and enlarged-text checks remain open before release.
+
 ## Progress
 
 - 2026-09-09: proposal recorded only. Existing map/data paths inspected. No application
   code, schema, data, tests or deployment changed for this planning task.
 - 2026-09-12: Stage 1 contract review completed against source; findings recorded above.
   No application code, schema, data or tests changed.
+- 2026-09-12: Stage 2 to 4 verification run completed (Task 5). `frontend/dispatcher`:
+  vitest 72 files/711 tests passed, `tsc --noEmit` clean, `eslint .` 0 errors/2
+  pre-existing warnings, `next build` succeeded. `frontend/driver-pwa`: `tsc --noEmit`
+  clean, vitest 82 files/729 tests passed. Backend confirmed untouched
+  (`git status --short backend/` empty). No application code was modified as part of
+  this verification task; see "2026-09-12 Stage 2 to 4 implementation record" above for the
+  full file list and rulings. Full report at
+  `.superpowers/sdd/2026-09-09-recorded-location-comparison/task-5-report.md`.
+- 2026-09-12 (Task R2): reworked the presentation per the 12 Sept browser-review
+  decision above: `LocationEvidencePanel.tsx` no longer renders the `<details>`
+  disclosure, the inline schematic, or the "Larger view" button; a single "View on map"
+  `Button` (rendered only when `hasAnyFix(evidence)`) now opens the existing `Modal`
+  directly, which mounts `LocationComparisonMap` plus a legend line and the
+  separation/verdict text so the map is never the only carrier of the fact. Panel and
+  four consumer test files (`PhaseLocationSection`, `PositionDisagreement`,
+  `LoadingDetail`, `UnloadingDetail`) updated accordingly. `frontend/dispatcher`:
+  `npx vitest run components/domain` 10 files/72 tests passed; `npx vitest run` (whole
+  suite) 73 files/727 tests passed; `npx tsc --noEmit` clean; `npx eslint components/domain`
+  0 errors/2 pre-existing warnings (unrelated, `EvidencePhoto.tsx`). Grep confirmed
+  "Compare recorded locations" and "Larger view" no longer appear anywhere under
+  `components/`, `app/`, `lib/`. Full report at
+  `.superpowers/sdd/2026-09-09-recorded-location-comparison/task-r2-report.md`.

@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useRef } from 'react'
+import { Suspense, useEffect, useRef, type RefObject } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/Button'
 import { Spinner } from '@/components/ui/Spinner'
@@ -10,6 +10,7 @@ import { TripSummary, type TripPanel } from '@/components/trips/TripSummary'
 import { TripDetailSkeleton } from '@/components/trips/TripDetailSkeleton'
 import { TripTimeline } from '@/components/trips/TripTimeline'
 import { TripDetailPanel } from '@/components/trips/TripDetailPanel'
+import { PHASE_ANCHOR_PREFIX } from '@/components/trips/PhaseTimelineItem'
 import type { ExceptionFilter } from '@/components/trips/TripExceptionsPanel'
 import { IntegritySummary } from '@/components/blockchain/IntegritySummary'
 import { useTripDetail } from '@/lib/hooks/useTripDetail'
@@ -20,6 +21,19 @@ import { getTripSeed } from '@/lib/trips/tripSeed'
 import { ROUTES } from '@/lib/constants/routes'
 
 const PANELS: readonly string[] = ['information', 'manifest', 'exceptions']
+
+/** Scrolls `item` to the top of `timelineRef`'s own scroll container: the exact
+ *  positioning both the "Jump to current phase" button and the `#phase-<id>` hash-anchor
+ *  effect below need, so the one rule for it lives in one place instead of two copies
+ *  drifting apart. The hash target exists for a future exception-detail deep link; it
+ *  needs `phase_event_id` added to `TripExceptionDetail` first (see the plan doc); no
+ *  page links to it yet. A missing element (a stale hash, or a phase not yet rendered) is
+ *  silently a no-op, never a thrown error. */
+function scrollIntoTimeline(timelineRef: RefObject<HTMLDivElement | null>, item: HTMLElement | null): void {
+  if (item && timelineRef.current) {
+    timelineRef.current.scrollTop += item.getBoundingClientRect().top - timelineRef.current.getBoundingClientRect().top
+  }
+}
 
 export default function TripDetailPage() {
   return <Suspense fallback={<Spinner size="lg" />}><TripDetailRoute /></Suspense>
@@ -65,9 +79,26 @@ function TripDetail({ tripId }: { tripId: string }) {
     if (!trip) return
     const active = currentTripPhase(trip)
     if (!active) return
-    const item = document.getElementById(`phase-${active.phase_event_id}`)
-    if (item && timelineRef.current) timelineRef.current.scrollTop += item.getBoundingClientRect().top - timelineRef.current.getBoundingClientRect().top
+    scrollIntoTimeline(timelineRef, document.getElementById(`${PHASE_ANCHOR_PREFIX}${active.phase_event_id}`))
   }
+
+  // Handles a `#phase-<id>` hash on arrival, whatever put it there. Scroll that row into
+  // view once the timeline has a trip to render rows for, but never auto-expand it
+  // (PhaseTimelineItem's own open state is untouched), the same way `jump()` never opens
+  // the card it scrolls to. No exception-detail page links to this hash yet (that needs
+  // `phase_event_id` on `TripExceptionDetail` first, see the plan doc), so today this
+  // only fires for a hand-typed or bookmarked URL; it costs nothing to keep wired up for
+  // when that link exists. Keyed on
+  // `trip?.id` alone, not `trip` itself: useTripDetail's background refetches replace the
+  // whole trip object on every poll, and re-running this on each one would yank a reader
+  // who has since scrolled elsewhere back down to the linked phase.
+  useEffect(() => {
+    if (!trip) return
+    const hash = window.location.hash
+    if (!hash.startsWith(`#${PHASE_ANCHOR_PREFIX}`)) return
+    scrollIntoTimeline(timelineRef, document.getElementById(hash.slice(1)))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trip?.id])
 
   if (!trip) {
     if (isLoading) return <TripDetailSkeleton onBack={back}

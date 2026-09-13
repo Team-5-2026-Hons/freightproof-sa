@@ -2,10 +2,13 @@
 
 import { EvidencePhoto } from './EvidencePhoto'
 import { Field, PhaseDetailCard, Section } from './PhaseDetailFields'
+import { PhaseLocationSection } from './PhaseLocationSection'
 import { PhaseOverrideSection } from './PhaseOverrideSection'
+import { locationEvidenceForPhase, hasLocationEvidence } from '@/lib/phase/location-evidence'
 import { isClosedPhaseStatus } from '@/lib/types/dev'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
+import type { Precinct } from '@shared/lib/types/precinct'
 
 interface Props {
   artifactLoading?: boolean
@@ -22,12 +25,14 @@ interface Props {
    *  booked to collect here — distinct from a real 0 scanned so far. */
   liveScannedOutCount: number | null
   artifactsById: Map<string, EvidenceArtifactWithUrl>
+  // The precinct this phase is anchored to, resolved by the page from the phase's stop.
+  precinct: Precinct | undefined
 }
 
 // Loading is now system-observed: the warehouse's scan is what records what went on the
 // truck, and parcel_count_origin is the scanned tally stamped at close. The driver's own
 // count is gone — he never enters the warehouse and could not honestly produce one.
-export function LoadingDetail({ artifactLoading, artifactError, onRetryArtifacts, phase, expectedCount, liveScannedOutCount, artifactsById }: Props) {
+export function LoadingDetail({ artifactLoading, artifactError, onRetryArtifacts, phase, expectedCount, liveScannedOutCount, artifactsById, precinct }: Props) {
   // Governing distinction: parcel_count_origin is written ONCE at phase close and is the
   // evidence; scanned_out_count is recomputed every request and still moving until then.
   // Swapping a live figure in where the stamped one belongs (or vice versa) is the one
@@ -69,6 +74,14 @@ export function LoadingDetail({ artifactLoading, artifactError, onRetryArtifacts
           artifact={phase.linehaul_photo_artifact_id ? artifactsById.get(phase.linehaul_photo_artifact_id) : undefined}
         />
       </div>
+      {/* hasLocationEvidence guards the section so a row with neither a fix nor a stored
+          verdict does not grow an empty "Location at loading" heading with four blank
+          fields underneath it. A null phone fix here is a legitimate outcome of capture
+          (indoor, permission denied, offline); the gate keys off what was actually
+          recorded for this row, not off what the request contract allows it to carry. */}
+      {hasLocationEvidence(locationEvidenceForPhase(phase, precinct)) && (
+        <PhaseLocationSection phase={phase} precinct={precinct} title="Location at loading" />
+      )}
       <PhaseOverrideSection phase={phase} />
     </PhaseDetailCard>
   )

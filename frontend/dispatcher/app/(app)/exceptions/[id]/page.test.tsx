@@ -251,6 +251,29 @@ describe('Exception detail — phase/stop context', () => {
   })
 })
 
+describe('Exception detail: gps_mismatch trigger', () => {
+  it('states the stored trigger explicitly for a gps_mismatch exception', () => {
+    mockDetail(baseException({ exception_type: 'gps_mismatch' }))
+    renderPage()
+
+    expect(screen.getByTestId('gps-mismatch-trigger')).toHaveTextContent('Vehicle tracker outside the facility boundary')
+  })
+
+  it('renders no trigger line for a non-gps exception', () => {
+    mockDetail(baseException({ exception_type: 'seal_mismatch' }))
+    renderPage()
+
+    expect(screen.queryByTestId('gps-mismatch-trigger')).not.toBeInTheDocument()
+  })
+
+  it('renders no trigger line for a driver-raised gps_mismatch (a driver row carries no tracker verdict)', () => {
+    mockDetail(baseException({ exception_type: 'gps_mismatch', source: 'driver' }))
+    renderPage()
+
+    expect(screen.queryByTestId('gps-mismatch-trigger')).not.toBeInTheDocument()
+  })
+})
+
 describe('Exception detail — review form gating', () => {
   it('disables submit until both note and outcome are present; contact method is never required', () => {
     mockDetail(baseException())

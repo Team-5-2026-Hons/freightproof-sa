@@ -6,6 +6,15 @@ import { Ic } from '@/components/ui/Ic'
 import { fmtDateTime } from '@shared/lib/utils/datetime'
 import type { PhaseNodeType } from '@/lib/phase/derive'
 
+// The `id` this component renders its root `<div>` with is always `${PHASE_ANCHOR_PREFIX}${phase_event_id}`
+// (built by the caller: see TripTimeline.tsx). Exported as the one source of truth so
+// every place that builds or reads that anchor id (the trip page's own `jump()` and its
+// hash-scroll effect) uses the exact same prefix rather than re-typing a literal that
+// could drift. The hash target has no exception-detail link pointing at it yet; that
+// needs `phase_event_id` on `TripExceptionDetail` first (see the plan doc), but the
+// prefix is already shared so that future deep link costs nothing to wire up.
+export const PHASE_ANCHOR_PREFIX = 'phase-'
+
 // 'next' vs 'active': see PhaseNodeType's doc comment in lib/phase/derive.ts — 'next' is
 // the ledger's current gate with nothing yet done, 'active' is genuinely under way.
 // Carrying the distinction in the node itself, not only in the status chip, is what stops
@@ -49,11 +58,15 @@ interface Props {
    *  content is the thing being watched — a drive in progress — a collapsed card hides
    *  the only part of the page that is still changing. */
   alwaysOpen?: boolean
+  /** Compact recorded-location verdict for this row: a chip plus separation, or nothing
+   *  when there is no fix and no evaluation yet. Must read without expanding the card, so
+   *  it lives in the summary area alongside `summary`, not inside `children`. */
+  evidenceSummary?: ReactNode
 }
 
 export function PhaseTimelineItem({
   id, label, meta, summary, timestamp, nodeType, number, initialOpen, cancelled,
-  overridden, children, warning, receipt, isLast, alwaysOpen = false,
+  overridden, children, warning, receipt, isLast, alwaysOpen = false, evidenceSummary,
 }: Props) {
   const [open, setOpen] = useState(initialOpen)
   const contentId = useId()
@@ -81,6 +94,11 @@ export function PhaseTimelineItem({
     </div>
     {meta && <div className="mb-[6px] text-[11px] font-[500] text-on-surf-v">{meta}</div>}
     {summary && <div className="mt-1 text-[13px] text-on-surf-v">{summary}</div>}
+    {/* Chip + separation only, no interactive content, so this is safe to nest inside
+        the summary's own toggle <button> below. Must be visible without expanding the
+        card: this is the row's whole point, a verdict readable at a glance down the
+        timeline. */}
+    {evidenceSummary && <div className="mt-[6px]">{evidenceSummary}</div>}
   </>
 
   return <div id={id} className="relative flex min-w-0 scroll-mt-4 gap-[14px]">

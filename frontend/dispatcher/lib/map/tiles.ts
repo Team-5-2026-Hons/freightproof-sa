@@ -159,6 +159,36 @@ const OSM_PUBLIC_TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
 export const OSM_TILE_URL_TEMPLATE =
   process.env.NEXT_PUBLIC_TILE_URL || OSM_PUBLIC_TILE_URL
 
+// Tile sources. Both are keyless; attribution is required by each provider's terms and
+// is rendered by Leaflet's own attribution control, so do not strip it.
+//
+// Satellite is the default because the task is "put this pin on that building", and a
+// street map cannot answer it. Street is the toggle for reading road access and names.
+//
+// Lives here rather than in GeofenceMap.tsx (its original home) because
+// LocationComparisonMap needs the exact same two sources and the exact same toggle
+// behaviour: moving them next to the other tile constants is what keeps both map
+// surfaces on the same providers instead of each carrying its own copy that can drift.
+export const TILE_SOURCES = {
+  satellite: {
+    label: 'Satellite',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    attribution: 'Imagery &copy; Esri',
+    maxZoom: 19,
+  },
+  street: {
+    // Shared with the list thumbnail rather than spelled out again here, so the tile
+    // provider is named in exactly one place. Note this is the keyless single host;
+    // NOT the `{s}.tile.openstreetmap.org` subdomain form, which OSM has deprecated.
+    label: 'Street',
+    url: OSM_TILE_URL_TEMPLATE,
+    attribution: '&copy; OpenStreetMap contributors',
+    maxZoom: 19,
+  },
+} as const
+
+export type TileSourceKey = keyof typeof TILE_SOURCES
+
 /** OSM raster tile URL for a tile coordinate. Uses a single fixed host, not the deprecated {s} subdomain form. */
 export function tileUrl(x: number, y: number, zoom: number): string {
   return OSM_TILE_URL_TEMPLATE.replace('{z}', String(zoom))

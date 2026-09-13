@@ -12,34 +12,9 @@ import type { Map as LeafletMap, Marker, Circle, DivIcon, TileLayer } from 'leaf
 // CSS file type-checks cleanly with no ambient declaration and no `any` cast needed.
 import 'leaflet/dist/leaflet.css'
 
-import { OSM_TILE_URL_TEMPLATE, TILE_ERROR_FALLBACK_THRESHOLD } from '@/lib/map/tiles'
+import { TILE_ERROR_FALLBACK_THRESHOLD, TILE_SOURCES, type TileSourceKey } from '@/lib/map/tiles'
 
 import { GeofenceSchematic } from './GeofenceSchematic'
-
-// Tile sources. Both are keyless; attribution is required by each provider's terms and
-// is rendered by Leaflet's own attribution control, so do not strip it.
-//
-// Satellite is the default because the task is "put this pin on that building", and a
-// street map cannot answer it. Street is the toggle for reading road access and names.
-const TILE_SOURCES = {
-  satellite: {
-    label: 'Satellite',
-    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    attribution: 'Imagery &copy; Esri',
-    maxZoom: 19,
-  },
-  street: {
-    // Shared with the list thumbnail rather than spelled out again here, so the tile
-    // provider is named in exactly one place. Note this is the keyless single host —
-    // NOT the `{s}.tile.openstreetmap.org` subdomain form, which OSM has deprecated.
-    label: 'Street',
-    url: OSM_TILE_URL_TEMPLATE,
-    attribution: '&copy; OpenStreetMap contributors',
-    maxZoom: 19,
-  },
-} as const
-
-type TileSourceKey = keyof typeof TILE_SOURCES
 
 const DEFAULT_ZOOM = 16
 
