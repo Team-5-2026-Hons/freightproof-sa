@@ -1,14 +1,15 @@
 """Integration tests for the FP-153 analytics read models.
 
-A materialized view cannot be tested without Postgres, so these live here rather than in
-tests/unit (FP-230 calls them unit tests; this project's taxonomy says otherwise).
+A view cannot be tested without Postgres, so these live here rather than in tests/unit
+(FP-230 calls them unit tests; this project's taxonomy says otherwise).
 
 The test database is built with create_all(), which knows nothing about views, so the
 `views` fixture runs the migrations' own UPGRADE_STATEMENTS inside each test's rolled-back
 transaction — the SQL under test is exactly the SQL that ships. That is FP-153's
 migration, then the trailer analytics migration that recreates the two vehicle views for
-horses and trailers. Every expected number is hand-computed from the seeded timeline in
-the same test.
+horses and trailers, then the live-views migration that turns all five into plain views.
+The views are live, so seeded rows only need flushing, never refreshing. Every expected
+number is hand-computed from the seeded timeline in the same test.
 """
 
 import importlib.util
@@ -23,12 +24,11 @@ from typing import Any
 import pytest
 import pytest_asyncio
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.analytics.driver_metrics import get_driver_metrics
 from app.analytics.facility_metrics import get_facility_metrics
 from app.analytics.lane_metrics import get_lane_metrics
-from app.analytics.refresh import refresh_analytics_views
 from app.analytics.vehicle_metrics import (
     get_vehicle_metrics,
     get_vehicle_streaks,
@@ -64,6 +64,11 @@ _TRAILER_MIGRATION_PATH = (
     Path(__file__).resolve().parents[2]
     / "migrations" / "versions" / "2026_09_12_tom_trailer_vehicle_analytics.py"
 )
+# Turns all five into plain (live) views. Always run last, the order Alembic applies it in.
+_LIVE_MIGRATION_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "migrations" / "versions" / "2026_09_13_tom_live_analytics_views.py"
+)
 
 # SAST, the zone the views bucket months in — a fixed offset is exact (no DST).
 _SAST = timezone(timedelta(hours=settings.OPERATIONS_UTC_OFFSET_HOURS))
@@ -84,6 +89,7 @@ def _load_migration(path: Path, name: str) -> ModuleType:
 
 _MIGRATION = _load_migration(_MIGRATION_PATH, "tom_analytics_read_models")
 _TRAILER_MIGRATION = _load_migration(_TRAILER_MIGRATION_PATH, "tom_trailer_vehicle_analytics")
+_LIVE_MIGRATION = _load_migration(_LIVE_MIGRATION_PATH, "tom_live_analytics_views")
 
 
 # ── Timeline building blocks ─────────────────────────────────────────────────
@@ -343,18 +349,16 @@ async def _vehicle_history(
             )
 
 
-async def _refresh(db: AsyncSession) -> None:
-    await db.flush()
-    # Non-concurrent: CONCURRENTLY cannot run inside the test's transaction.
-    await refresh_analytics_views(await db.connection(), concurrently=False)
-
-
 # ── Fixtures ─────────────────────────────────────────────────────────────────
 
 
 @pytest_asyncio.fixture
 async def views(db_session: AsyncSession) -> None:
-    for statement in (*_MIGRATION.UPGRADE_STATEMENTS, *_TRAILER_MIGRATION.UPGRADE_STATEMENTS):
+    for statement in (
+        *_MIGRATION.UPGRADE_STATEMENTS,
+        *_TRAILER_MIGRATION.UPGRADE_STATEMENTS,
+        *_LIVE_MIGRATION.UPGRADE_STATEMENTS,
+    ):
         await db_session.execute(text(statement))
 
 
@@ -415,7 +419,7 @@ async def test_driver_metrics_counts_closed_trips_only(
         db_session, operator, start=_start(month, 15), stops=lane, status=TripStatus.CANCELLED,
         steps=_pending_from(_single_leg(), PhaseType.IN_TRANSIT),
     )
-    await _refresh(db_session)
+    await db_session.flush()
 
     [metrics] = await get_driver_metrics(
         db_session, organization_id=operator.org.id, start_month=month, end_month=month
@@ -451,7 +455,7 @@ async def test_driver_metrics_range_sums_months_before_dividing(
                 stops=lane, planned_departure_minute=30)
     await _trip(db_session, operator, start=_start(next_month, 5), steps=_single_leg(),
                 stops=lane, planned_departure_minute=120)
-    await _refresh(db_session)
+    await db_session.flush()
 
     [first] = await get_driver_metrics(
         db_session, organization_id=operator.org.id, start_month=month, end_month=month
@@ -486,7 +490,7 @@ async def test_multi_stop_trip_measured_from_first_ledger_departure(
         db_session, operator, start=start, steps=_cross_dock(),
         stops=[seed["origin"], mid, seed["dest"]], planned_departure_minute=60,
     )
-    await _refresh(db_session)
+    await db_session.flush()
 
     [driver] = await get_driver_metrics(
         db_session, organization_id=operator.org.id, start_month=month, end_month=month
@@ -525,7 +529,7 @@ async def test_month_bucket_follows_south_african_time(
     start = midnight - timedelta(minutes=60)
     departed = start + timedelta(minutes=100)
     await _trip(db_session, operator, start=start, steps=_single_leg(), stops=lane)
-    await _refresh(db_session)
+    await db_session.flush()
 
     in_month = await get_driver_metrics(
         db_session, organization_id=operator.org.id, start_month=month, end_month=month
@@ -547,7 +551,7 @@ async def test_trip_without_attested_departure_is_excluded(
         db_session, operator, start=_start(month, 10), stops=lane,
         steps=_with(_single_leg(), PhaseType.DEPARTURE, status=PhaseStatus.OVERRIDDEN),
     )
-    await _refresh(db_session)
+    await db_session.flush()
 
     drivers = await get_driver_metrics(
         db_session, organization_id=operator.org.id, start_month=month, end_month=month
@@ -583,7 +587,7 @@ async def test_vehicle_metrics_mechanical_breakdown_and_gaps(
     await _exception(db_session, double, ExceptionType.MECHANICAL, ExceptionSeverity.CRITICAL, at=t2)
     await _exception(db_session, double, ExceptionType.MECHANICAL, ExceptionSeverity.INFO, at=t3)
     await _exception(db_session, later, ExceptionType.MECHANICAL, ExceptionSeverity.WARNING, at=t4)
-    await _refresh(db_session)
+    await db_session.flush()
 
     [this_month] = await get_vehicle_metrics(
         db_session, organization_id=operator.org.id, start_month=month, end_month=month
@@ -615,7 +619,7 @@ async def test_overridden_leg_contributes_no_timing(
         db_session, operator, start=_start(month, 10), stops=lane,
         steps=_with(_single_leg(), PhaseType.IN_TRANSIT, status=PhaseStatus.OVERRIDDEN),
     )
-    await _refresh(db_session)
+    await db_session.flush()
 
     [vehicle] = await get_vehicle_metrics(
         db_session, organization_id=operator.org.id, start_month=month, end_month=month
@@ -650,7 +654,7 @@ async def test_vehicle_streaks_and_trips_since_last_incident(
         db_session, operator, start=_start(month, 25), horse=horses["mixed"], stops=lane,
         status=TripStatus.ACTIVE, steps=_pending_from(_single_leg(), PhaseType.IN_TRANSIT),
     )
-    await _refresh(db_session)
+    await db_session.flush()
 
     streaks = {
         streak.vehicle_id: (streak.highest_streak_trips, streak.lowest_streak_trips)
@@ -698,7 +702,7 @@ async def test_trailer_is_credited_with_its_trips_and_driving_hours(
     await db_session.flush()
     await _trip(db_session, operator, start=_start(month, 10), steps=_single_leg(), stops=lane,
                 trailers=[trailer])
-    await _refresh(db_session)
+    await db_session.flush()
 
     rows = await _vehicle_rows(db_session, operator, month)
 
@@ -722,7 +726,7 @@ async def test_interlink_breakdown_counts_only_for_the_trailer_it_was_recorded_a
                        stops=lane, trailers=[front, rear])
     await _exception(db_session, trip, ExceptionType.MECHANICAL, ExceptionSeverity.WARNING,
                      at=_start(month, 10, hour=11), vehicle=rear)
-    await _refresh(db_session)
+    await db_session.flush()
 
     rows = await _vehicle_rows(db_session, operator, month)
     streaks = await _streaks(db_session, operator)
@@ -755,7 +759,7 @@ async def test_breakdown_gaps_are_measured_per_vehicle(
                      at=t2, vehicle=front)
     await _exception(db_session, second, ExceptionType.MECHANICAL, ExceptionSeverity.WARNING,
                      at=t3, vehicle=rear)
-    await _refresh(db_session)
+    await db_session.flush()
 
     rows = await _vehicle_rows(db_session, operator, month)
 
@@ -781,7 +785,7 @@ async def test_unattributed_breakdown_counts_for_the_horse_only(
                        stops=lane, trailers=[trailer])
     await _exception(db_session, trip, ExceptionType.MECHANICAL, ExceptionSeverity.WARNING,
                      at=_start(month, 10, hour=11))
-    await _refresh(db_session)
+    await db_session.flush()
 
     rows = await _vehicle_rows(db_session, operator, month)
     streaks = await _streaks(db_session, operator)
@@ -802,7 +806,7 @@ async def test_breakdown_recorded_against_the_horse_counts_for_no_trailer(
                        stops=lane, trailers=[trailer])
     await _exception(db_session, trip, ExceptionType.MECHANICAL, ExceptionSeverity.WARNING,
                      at=_start(month, 10, hour=11), vehicle=operator.horse)
-    await _refresh(db_session)
+    await db_session.flush()
 
     rows = await _vehicle_rows(db_session, operator, month)
     streaks = await _streaks(db_session, operator)
@@ -825,7 +829,7 @@ async def test_trailer_streaks_and_trips_since_last_incident(
     for name, pattern in patterns.items():
         await _vehicle_history(db_session, operator, operator.horse, month, lane, pattern,
                                trailer=trailers[name])
-    await _refresh(db_session)
+    await db_session.flush()
 
     streaks = await _streaks(db_session, operator)
     since = {
@@ -865,7 +869,7 @@ async def test_unattributed_breakdown_does_not_break_a_trailer_streak(
     ]
     await _exception(db_session, trips[1], ExceptionType.MECHANICAL, ExceptionSeverity.WARNING,
                      at=_start(month, 2, hour=11))
-    await _refresh(db_session)
+    await db_session.flush()
 
     streaks = await _streaks(db_session, operator)
     trailer_since = await trips_since_last_incident(
@@ -909,7 +913,7 @@ async def test_lane_metrics_pool_months_before_percentiles(
     for hour in (11, 12):
         await _exception(db_session, trips[0], ExceptionType.ROUTE_DEVIATION,
                          ExceptionSeverity.WARNING, at=_start(month, 5, hour=hour))
-    await _refresh(db_session)
+    await db_session.flush()
 
     [first] = await get_lane_metrics(
         db_session, organization_id=operator.org.id, start_month=month, end_month=month
@@ -948,7 +952,7 @@ async def test_lane_metrics_skip_trips_with_unknown_endpoint(
 ) -> None:
     await _trip(db_session, operator, start=_start(month, 10), steps=_single_leg(),
                 stops=lane, on_a_lane=False)
-    await _refresh(db_session)
+    await db_session.flush()
 
     lanes = await get_lane_metrics(
         db_session, organization_id=operator.org.id, start_month=month, end_month=month
@@ -986,7 +990,7 @@ async def test_facility_metrics_three_states_without_in_transit_or_overrides(
             PhaseType.LOADING, status=PhaseStatus.OVERRIDDEN,
         ),
     )
-    await _refresh(db_session)
+    await db_session.flush()
 
     rows = {
         row.precinct_id: row
@@ -1013,7 +1017,7 @@ async def test_analytics_are_scoped_to_operator_organization(
     await _trip(db_session, operator, start=_start(month, 10), steps=_single_leg(), stops=lane)
     for day in (11, 12):
         await _trip(db_session, other, start=_start(month, day), steps=_single_leg(), stops=lane)
-    await _refresh(db_session)
+    await db_session.flush()
 
     [mine] = await get_lane_metrics(
         db_session, organization_id=operator.org.id, start_month=month, end_month=month
@@ -1040,38 +1044,72 @@ async def test_analytics_are_scoped_to_operator_organization(
 # ── Migration mechanics ──────────────────────────────────────────────────────
 
 
-async def test_refresh_concurrently_succeeds_on_every_view(test_engine: AsyncEngine) -> None:
-    # Its own AUTOCOMMIT connection: CONCURRENTLY cannot run inside db_session's
-    # transaction. Views are dropped in `finally` so session teardown's drop_all()
-    # never meets a view depending on its tables. FP-153's downgrade drops all five
-    # views by name, which covers the trailer migration's recreated two as well.
-    # Refreshing CONCURRENTLY also proves the recreated views got their unique indexes.
-    async with test_engine.connect() as raw:
-        conn = await raw.execution_options(isolation_level="AUTOCOMMIT")
-        try:
-            for statement in (
-                *_MIGRATION.DOWNGRADE_STATEMENTS,
-                *_MIGRATION.UPGRADE_STATEMENTS,
-                *_TRAILER_MIGRATION.UPGRADE_STATEMENTS,
-            ):
-                await conn.execute(text(statement))
+@pytest.mark.usefixtures("views")
+async def test_live_views_migration_makes_every_view_a_plain_security_invoker_view(
+    db_session: AsyncSession,
+) -> None:
+    relations = await db_session.execute(
+        text(
+            # relkind is Postgres's one-byte "char" type, which asyncpg returns as bytes.
+            "SELECT relname, relkind::text AS relkind, reloptions FROM pg_class "
+            "WHERE relname = ANY(:names) AND relnamespace = current_schema()::regnamespace"
+        ),
+        {"names": list(ANALYTICS_VIEW_NAMES)},
+    )
 
-            refreshed = await refresh_analytics_views(conn, concurrently=True)
-        finally:
-            for statement in _MIGRATION.DOWNGRADE_STATEMENTS:
-                await conn.execute(text(statement))
+    by_name = {row.relname: row for row in relations}
+    assert sorted(by_name) == sorted(ANALYTICS_VIEW_NAMES)
+    # 'v' is a plain view ('m' would be materialized): nothing to refresh, never stale.
+    assert {row.relkind for row in by_name.values()} == {"v"}
+    assert all("security_invoker=true" in (row.reloptions or []) for row in by_name.values())
 
-    assert refreshed == list(ANALYTICS_VIEW_NAMES)
+
+@pytest.mark.usefixtures("views")
+async def test_live_views_migration_downgrade_restores_materialized_views(
+    db_session: AsyncSession, operator: Operator, lane: list[Precinct], month: date,
+) -> None:
+    await _trip(db_session, operator, start=_start(month, 10), steps=_single_leg(), stops=lane)
+
+    for statement in _LIVE_MIGRATION.DOWNGRADE_STATEMENTS:
+        await db_session.execute(text(statement))
+
+    materialized = await db_session.execute(
+        text("SELECT matviewname FROM pg_matviews WHERE matviewname = ANY(:names)"),
+        {"names": list(ANALYTICS_VIEW_NAMES)},
+    )
+    indexes = await db_session.execute(
+        text("SELECT indexname FROM pg_indexes WHERE indexname = ANY(:names)"),
+        {"names": [f"uq_{name}_grain" for name in ANALYTICS_VIEW_NAMES]},
+    )
+    [metrics] = await get_driver_metrics(
+        db_session, organization_id=operator.org.id, start_month=month, end_month=month
+    )
+
+    assert sorted(row.matviewname for row in materialized) == sorted(ANALYTICS_VIEW_NAMES)
+    # The unique indexes REFRESH ... CONCURRENTLY needs are back on every view.
+    assert sorted(row.indexname for row in indexes) == sorted(
+        f"uq_{name}_grain" for name in ANALYTICS_VIEW_NAMES
+    )
+    # Recreated WITH DATA, so the snapshot already holds the trip seeded before it.
+    assert metrics.trip_count == 1
 
 
 @pytest.mark.usefixtures("views")
 async def test_migration_downgrade_drops_every_view(db_session: AsyncSession) -> None:
-    # Alembic order: the trailer migration comes off first, then FP-153's.
-    for statement in (*_TRAILER_MIGRATION.DOWNGRADE_STATEMENTS, *_MIGRATION.DOWNGRADE_STATEMENTS):
+    # Alembic order, newest first: the live views go back to materialized, then the
+    # trailer migration comes off, then FP-153's.
+    for statement in (
+        *_LIVE_MIGRATION.DOWNGRADE_STATEMENTS,
+        *_TRAILER_MIGRATION.DOWNGRADE_STATEMENTS,
+        *_MIGRATION.DOWNGRADE_STATEMENTS,
+    ):
         await db_session.execute(text(statement))
 
     remaining = await db_session.execute(
-        text("SELECT matviewname FROM pg_matviews WHERE matviewname = ANY(:names)"),
+        text(
+            "SELECT matviewname FROM pg_matviews WHERE matviewname = ANY(:names) "
+            "UNION ALL SELECT viewname FROM pg_views WHERE viewname = ANY(:names)"
+        ),
         {"names": list(ANALYTICS_VIEW_NAMES)},
     )
 
@@ -1088,9 +1126,13 @@ async def test_trailer_migration_downgrade_restores_the_horse_only_views(
     await _trip(db_session, operator, start=_start(month, 10), steps=_single_leg(), stops=lane,
                 trailers=[trailer])
 
-    for statement in _TRAILER_MIGRATION.DOWNGRADE_STATEMENTS:
+    # Alembic order: the live views come off first (back to materialized), then the
+    # trailer migration. Both recreate their views WITH DATA, so the seeded trip is in them.
+    for statement in (
+        *_LIVE_MIGRATION.DOWNGRADE_STATEMENTS,
+        *_TRAILER_MIGRATION.DOWNGRADE_STATEMENTS,
+    ):
         await db_session.execute(text(statement))
-    await _refresh(db_session)
 
     metrics = await get_vehicle_metrics(
         db_session, organization_id=operator.org.id, start_month=month, end_month=month

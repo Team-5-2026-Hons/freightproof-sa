@@ -1,4 +1,4 @@
-"""FP-153 analytics read layer — query functions over the analytics materialized views.
+"""FP-153 analytics read layer — query functions over the live analytics views.
 
 One module per grain (driver_metrics, vehicle_metrics, lane_metrics, facility_metrics).
 Each takes an organisation and an inclusive month range, sums the raw monthly

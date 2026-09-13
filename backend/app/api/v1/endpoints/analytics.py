@@ -8,7 +8,7 @@ GET /analytics/facilities        Pulsit corroboration per precinct over a month 
 
 Read-only, so any dispatcher may call these (get_current_dispatcher), not only admins.
 The organisation always comes from the token, never from the request. Figures count
-closed trips only, and are only as fresh as the last materialized-view refresh.
+closed trips only. The views are live, so a trip counts from the moment it closes.
 
 start_month and end_month are inclusive first-of-month dates. FastAPI's own validation
 rejects a value that is not a date. _require_valid_month_range rejects the rest (a

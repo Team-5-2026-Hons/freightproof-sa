@@ -1,13 +1,14 @@
-"""Read-only ORM mappings for the FP-153 analytics materialized views.
+"""Read-only ORM mappings for the FP-153 analytics views.
 
 Mapped on their own DeclarativeBase, deliberately NOT on app.db.models.Base: anything on
 Base.metadata is created as a real TABLE by the test suite's create_all(), and would be
-proposed as a new table by Alembic autogenerate. These relations are materialized views
-owned by migration tom_analytics_read_models; this module only describes their columns
-so queries use typed attributes instead of raw SQL strings.
+proposed as a new table by Alembic autogenerate. These relations are plain views, worked
+out from the evidence tables on every read (migration tom_live_analytics_views); this
+module only describes their columns so queries use typed attributes instead of raw SQL
+strings.
 
-The primary keys below are each view's grain (the unique index REFRESH ... CONCURRENTLY
-requires), declared only because the ORM needs an identity. Nothing is ever written
+The primary keys below are each view's grain, declared only because the ORM needs an
+identity: a plain view has no index or constraint behind them. Nothing is ever written
 through these classes.
 """
 
