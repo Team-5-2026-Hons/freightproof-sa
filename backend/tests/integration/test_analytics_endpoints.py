@@ -7,9 +7,9 @@ from the one seeded timeline below.
 
 The test DB is built by create_all(), which knows nothing about views, so the `views`
 fixture runs the FP-153 migration's own UPGRADE_STATEMENTS, then the trailer analytics
-migration's, inside the test's rolled-back transaction. It is a local copy of
-test_analytics.py's fixture rather than an import, so neither test file depends on the
-other.
+migration's, then the live-views migration's, inside the test's rolled-back transaction.
+It is a local copy of test_analytics.py's fixture rather than an import, so neither test
+file depends on the other. The views are live, so seeded rows only need flushing.
 """
 
 import importlib.util
@@ -27,7 +27,6 @@ from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.analytics.refresh import refresh_analytics_views
 from app.analytics.vehicle_metrics import trips_since_last_incident
 from app.core.config import settings
 from app.db.models.enums import (
@@ -70,6 +69,11 @@ _TRAILER_MIGRATION_PATH = (
     Path(__file__).resolve().parents[2]
     / "migrations" / "versions" / "2026_09_12_tom_trailer_vehicle_analytics.py"
 )
+# Turns all five into plain (live) views; runs last, as Alembic applies it.
+_LIVE_MIGRATION_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "migrations" / "versions" / "2026_09_13_tom_live_analytics_views.py"
+)
 
 # SAST, the zone the views bucket months in — a fixed offset is exact (no DST).
 _SAST = timezone(timedelta(hours=settings.OPERATIONS_UTC_OFFSET_HOURS))
@@ -88,6 +92,7 @@ def _load_migration(path: Path, name: str) -> ModuleType:
 
 _MIGRATION = _load_migration(_MIGRATION_PATH, "tom_analytics_read_models")
 _TRAILER_MIGRATION = _load_migration(_TRAILER_MIGRATION_PATH, "tom_trailer_vehicle_analytics")
+_LIVE_MIGRATION = _load_migration(_LIVE_MIGRATION_PATH, "tom_live_analytics_views")
 
 
 # ── The one hand-computed timeline ───────────────────────────────────────────
@@ -289,12 +294,6 @@ async def _run_history(
         )
 
 
-async def _refresh(db: AsyncSession) -> None:
-    await db.flush()
-    # Non-concurrent: CONCURRENTLY cannot run inside the test's transaction.
-    await refresh_analytics_views(await db.connection(), concurrently=False)
-
-
 # ── Fixtures ─────────────────────────────────────────────────────────────────
 
 
@@ -310,7 +309,11 @@ async def override_get_db(db_session: AsyncSession) -> AsyncIterator[None]:
 
 @pytest_asyncio.fixture
 async def views(db_session: AsyncSession) -> None:
-    for statement in (*_MIGRATION.UPGRADE_STATEMENTS, *_TRAILER_MIGRATION.UPGRADE_STATEMENTS):
+    for statement in (
+        *_MIGRATION.UPGRADE_STATEMENTS,
+        *_TRAILER_MIGRATION.UPGRADE_STATEMENTS,
+        *_LIVE_MIGRATION.UPGRADE_STATEMENTS,
+    ):
         await db_session.execute(text(statement))
 
 
@@ -350,7 +353,7 @@ async def closed_trip(
 ) -> Trip:
     """The hand-computed trip, with one mechanical breakdown, visible through the views."""
     trip = await _seed_trip(db_session, operator, stops=lane, start=_start(month), breakdown=True)
-    await _refresh(db_session)
+    await db_session.flush()
     return trip
 
 
@@ -473,6 +476,25 @@ async def test_analytics_without_closed_trips_returns_empty_list(
     assert response.json() == []
 
 
+@pytest.mark.usefixtures("views")
+async def test_analytics_count_a_trip_closed_after_an_earlier_read(
+    client: AsyncClient, db_session: AsyncSession, operator: _Operator, lane: list[Precinct],
+    month: date,
+) -> None:
+    # The 2026-09-13 bug: the views were snapshots, so a trip closed after the last refresh
+    # never appeared. Live views must count it on the very next request, with no refresh.
+    # One token for both requests: each make_token() call opens a new session.
+    headers = _headers(operator)
+    await _seed_trip(db_session, operator, stops=lane, start=_start(month, 5))
+    before = await client.get(_DRIVERS, params=_range(month), headers=headers)
+    await _seed_trip(db_session, operator, stops=lane, start=_start(month, 6))
+
+    after = await client.get(_DRIVERS, params=_range(month), headers=headers)
+
+    assert [row["trip_count"] for row in before.json()] == [1]
+    assert [row["trip_count"] for row in after.json()] == [2]
+
+
 async def test_driver_analytics_returns_named_hand_computed_trends(
     client: AsyncClient, closed_trip: Trip, operator: _Operator, month: date,
 ) -> None:
@@ -537,7 +559,7 @@ async def test_vehicle_streaks_carry_trips_since_last_incident(
     await _run_history(db_session, operator, operator.horse, lane, month, ".X..")
     # '..' — never broken down: lowest is null, and every closed trip counts since.
     await _run_history(db_session, operator, clean_horse, lane, month, "..")
-    await _refresh(db_session)
+    await db_session.flush()
 
     response = await client.get(_STREAKS, headers=_headers(operator))
 
@@ -575,7 +597,7 @@ async def test_vehicle_analytics_include_trailers_with_their_type(
     db_session.add(trailer)
     await db_session.flush()
     await _seed_trip(db_session, operator, stops=lane, start=_start(month), trailers=[trailer])
-    await _refresh(db_session)
+    await db_session.flush()
     headers = _headers(operator)
 
     vehicles = await client.get(_VEHICLES, params=_range(month), headers=headers)
@@ -683,7 +705,7 @@ async def test_driver_outside_the_organisation_is_never_named(
     but the name lookup is org-scoped, so the name comes back null rather than leaking."""
     stranger = await _other_operator(db_session)
     await _seed_trip(db_session, operator, stops=lane, start=_start(month), driver=stranger.driver)
-    await _refresh(db_session)
+    await db_session.flush()
 
     response = await client.get(_DRIVERS, params=_range(month), headers=_headers(operator))
 
@@ -707,7 +729,7 @@ async def test_analytics_never_include_another_operators_trips(
     still count only the caller's own trip."""
     other = await _other_operator(db_session)
     await _seed_trip(db_session, other, stops=lane, start=_start(month, day=11), breakdown=True)
-    await _refresh(db_session)
+    await db_session.flush()
     headers = _headers(operator)
 
     drivers = (await client.get(_DRIVERS, params=_range(month), headers=headers)).json()

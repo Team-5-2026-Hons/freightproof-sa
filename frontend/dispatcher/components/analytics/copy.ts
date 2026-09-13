@@ -3,10 +3,11 @@
 // dispatcher-only.
 
 export const ANALYTICS_COPY = {
-  // Confirmed wording (FP-156 spec §0.1 #4). It claims no refresh interval on purpose:
-  // nothing in the repo runs Celery beat yet (spec §0 #19).
+  // The views are live since docs/design-notes/2026-09-13-live-analytics-views.md, so the
+  // old "may take a while to appear" caveat is gone. "Each time this page loads" is the
+  // honest limit: an open page doesn't redraw on its own when a trip closes.
   scopeNote:
-    'Closed trips only. Figures update periodically, so a recently closed trip may take a while to appear.',
+    'Closed trips only. Figures are worked out each time this page loads, so a trip appears as soon as it has closed.',
 
   // Verbatim from the computed_field description of confirmation_dwell_minutes_avg in
   // backend/app/schemas/analytics.py, the source of truth for this caveat. Keep in step.

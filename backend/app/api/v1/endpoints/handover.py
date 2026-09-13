@@ -82,6 +82,10 @@ _GENERIC_NOT_FOUND = "This delivery confirmation link is not valid."
 HANDOVER_SESSION_COOKIE = "fp_handover_session"
 _COOKIE_PATH = "/api/v1/handover"
 
+# The driver-facing refusal for a confirmation phase that can't be handed over. Shared by
+# _load_confirmation_event and the token endpoint's stop check so the two can't drift apart.
+_CONFIRMATION_NOT_FOUND = "Confirmation phase not found."
+
 
 def _not_found() -> HTTPException:
     return HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=_GENERIC_NOT_FOUND)
@@ -114,7 +118,7 @@ async def _load_confirmation_event(
 
     if event is None or event.trip_stop_id is None:
         raise HTTPException(
-            status_code=http_status.HTTP_404_NOT_FOUND, detail="Confirmation phase not found.",
+            status_code=http_status.HTTP_404_NOT_FOUND, detail=_CONFIRMATION_NOT_FOUND,
         )
     return event
 
@@ -139,6 +143,14 @@ async def issue_handover_token_endpoint(
     event = await _load_confirmation_event(
         db, trip_id=trip_id, phase_event_id=phase_event_id, driver_id=current_driver.id,
     )
+    # _load_confirmation_event already refuses a confirmation with no stop, but the type
+    # checker can't see that through the call. Checking again narrows trip_stop_id to a
+    # UUID for rotate_capability_token, and keeps this call safe if that guard ever moves.
+    trip_stop_id = event.trip_stop_id
+    if trip_stop_id is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail=_CONFIRMATION_NOT_FOUND,
+        )
 
     # Refuse to re-open a handover that already happened. Without this the driver could
     # keep minting tokens against a confirmed delivery, and every one would be a live
@@ -154,7 +166,7 @@ async def issue_handover_token_endpoint(
             db,
             phase_event_id=event.id,
             trip_id=trip_id,
-            trip_stop_id=event.trip_stop_id,
+            trip_stop_id=trip_stop_id,
             force=force,
         )
         await db.commit()
