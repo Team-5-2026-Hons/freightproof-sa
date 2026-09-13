@@ -71,5 +71,11 @@ STEP_SLUGS: dict[PhaseType, tuple[str, ...]] = {
     # numbers: the prefix orders the recipe, it is not an index, and renumbering would
     # break every stored draft key and deep link.
     PhaseType.UNLOADING: ("2-seal-verify", "4-visual-count"),
-    PhaseType.CONFIRMATION: ("1-pod-photo", "2-pod-signature", "3-reconciliation", "4-closed"),
+    # "2-pod-signature" became "2-receiver-handover" (2026-09-13, FP-155). The step no
+    # longer captures anything on the driver's phone: it displays a rotating QR, and the
+    # signature is produced on the RECEIVER's own device, on the public page that scan
+    # opens (api/v1/endpoints/handover.py). The slug keeps its number, per the note
+    # above. Mirrored by frontend/shared/lib/constants/phase-meta.ts — the contract test
+    # parses THAT file, so the two must change together.
+    PhaseType.CONFIRMATION: ("1-pod-photo", "2-receiver-handover", "3-reconciliation", "4-closed"),
 }

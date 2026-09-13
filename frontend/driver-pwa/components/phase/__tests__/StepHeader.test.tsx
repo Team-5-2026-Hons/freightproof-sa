@@ -81,12 +81,12 @@ describe('StepHeader', () => {
     it('works from a later step too (confirmation, step 3 back to step 2)', () => {
       // confirmation, not departure: departure is down to two steps since '3-waybill'
       // was removed, so it no longer HAS a stepIndex 2 to walk back from. confirmation's
-      // slugs: ['1-pod-photo', '2-pod-signature', '3-reconciliation', '4-closed'].
+      // slugs: ['1-pod-photo', '2-receiver-handover', '3-reconciliation', '4-closed'].
       render(<StepHeader phase={makePhase('confirmation')} stepIndex={2} />)
 
       fireEvent.click(screen.getByRole('button', { name: 'Back to previous step' }))
 
-      expect(mockPush).toHaveBeenCalledWith(phaseStepRoute('confirmation', '2-pod-signature'))
+      expect(mockPush).toHaveBeenCalledWith(phaseStepRoute('confirmation', '2-receiver-handover'))
     })
   })
 })

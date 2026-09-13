@@ -5,7 +5,7 @@
 // blank, the instant must survive being read in another timezone, and a canvas that
 // refuses a context must fail rather than emit an empty artifact.
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { renderAttestation, formatPosition, formatSignedAt, fitText } from '../render-attestation'
+import { renderAttestation, formatPosition, formatSignedAt, fitText } from '@shared/lib/utils/render-attestation'
 
 const MOCK_PNG_DATA_URL = 'data:image/png;base64,YXR0ZXN0YXRpb24='
 const SIGNED_AT = '2026-08-04T18:14:33.000Z'

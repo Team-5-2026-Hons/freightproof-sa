@@ -349,13 +349,20 @@ export async function submitPhase(
       // No driverVisualCount check: the count is optional evidence now, not a completion
       // gate (2026-08-08) — see UnloadingEvidence.driverVisualCount's comment. Only the
       // POD photo and signature remain required.
-      if (e.podPhotoDataUrl === null || !e.podSignatureDataUrl) {
-        throw new Error('Confirmation evidence incomplete — POD photo and signature are required.')
+      //
+      // The signature half is no longer an upload this app performs (FP-155). The
+      // receiver's own browser rendered the attestation and the server stored it, so the
+      // draft already holds a real artifact id rather than a data URL awaiting upload —
+      // there is nothing here to upload and nothing to re-send if an upload failed. A
+      // missing id means the receiver never confirmed, which the handover step is
+      // supposed to have made impossible to walk past.
+      if (e.podPhotoDataUrl === null || !e.podSignatureArtifactId) {
+        throw new Error('Confirmation evidence incomplete — POD photo and receiver confirmation are required.')
       }
-      const [podPhotoId, podSignatureId] = await Promise.all([
-        artifactIdFor(tripId, 'photo', e.podPhotoArtifactId, e.podPhotoDataUrl, capturedAt),
-        artifactIdFor(tripId, 'document', e.podSignatureArtifactId, e.podSignatureDataUrl, capturedAt),
-      ])
+      const podPhotoId = await artifactIdFor(
+        tripId, 'photo', e.podPhotoArtifactId, e.podPhotoDataUrl, capturedAt,
+      )
+      const podSignatureId = e.podSignatureArtifactId
       updatedTrip = await completePhase(tripId, phaseEventId, {
         phase_type: 'confirmation',
         ...driverPosition(position),

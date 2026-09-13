@@ -30,6 +30,8 @@ from app.api.v1.endpoints.exceptions import dispatcher_router as exceptions_disp
 from app.api.v1.endpoints.exceptions import router as exceptions_router
 from app.api.v1.endpoints.locations import router as locations_router
 from app.api.v1.endpoints.manifest import router as manifest_router
+from app.api.v1.endpoints.handover import public_router as handover_public_router
+from app.api.v1.endpoints.handover import router as handover_router
 from app.api.v1.endpoints.phases import router as phases_router
 from app.api.v1.endpoints.pp import router as pp_router
 from app.api.v1.endpoints.precincts import router as precincts_router
@@ -106,6 +108,10 @@ app.include_router(vehicles_router, prefix="/api/v1")
 app.include_router(precincts_router, prefix="/api/v1")
 app.include_router(blockchain_router, prefix="/api/v1")
 app.include_router(phases_router, prefix="/api/v1")
+app.include_router(handover_router, prefix="/api/v1")
+# Unauthenticated by design (FP-239) — the capability token in the path is the whole
+# authorisation. See endpoints/handover.py for the four rules that govern it.
+app.include_router(handover_public_router, prefix="/api/v1")
 app.include_router(artifacts_router, prefix="/api/v1")
 app.include_router(trip_artifacts_router, prefix="/api/v1")
 app.include_router(exceptions_router, prefix="/api/v1")
