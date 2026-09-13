@@ -77,3 +77,16 @@ FLEET_MUTATION = RateLimit(max_requests=60, window_seconds=_ONE_MINUTE, name="fl
 # judged inside the facility, so no client should be able to rewrite them hundreds of
 # times a minute.
 PRECINCT_MUTATION = RateLimit(max_requests=60, window_seconds=_ONE_MINUTE, name="precinct_mutation")
+
+# Rotating-QR issuance (FP-237). A driver standing on the handover step issues one token
+# per HANDOVER_ROTATION_SECONDS — at the default 20s that is 3/minute, over a grant
+# window of 10 minutes, so a legitimate handover spends about 30. Sized to absorb a
+# reconnect storm (the step re-issues when it regains focus or signal) without letting a
+# wedged client mint tokens in a loop.
+HANDOVER_ISSUE = RateLimit(max_requests=60, window_seconds=_ONE_MINUTE, name="handover_issue")
+
+# The two PUBLIC handover routes, counted per IP because a receiver holds no token to
+# count against. Tighter than anything else here for a reason: these are the only
+# unauthenticated write-capable routes in the API, and the confirm path accepts an image.
+# A real receiver loads the page once and confirms once.
+HANDOVER_PUBLIC = RateLimit(max_requests=20, window_seconds=_ONE_MINUTE, name="handover_public")

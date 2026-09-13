@@ -34,7 +34,7 @@ import { ConfirmDeparture } from './departure/ConfirmDeparture'
 import { SealVerify } from './unloading/SealVerify'
 import { VisualCount as UnloadingVisualCount } from './unloading/VisualCount'
 import { PodPhoto } from './confirmation/PodPhoto'
-import { PodSignature } from './confirmation/PodSignature'
+import { ReceiverHandover } from './confirmation/ReceiverHandover'
 import { Reconciliation } from './confirmation/Reconciliation'
 import { Closed } from './confirmation/Closed'
 
@@ -53,7 +53,10 @@ type DepartureSlug = '2-capture-seal' | '4-departure'
 // '1-hand-waybill' is gone (2026-08-08) alongside '3-seal-break-inspection': it captured
 // nothing the server accepts. Seal verification now leads the phase.
 type UnloadingSlug = '2-seal-verify' | '4-visual-count'
-type ConfirmationSlug = '1-pod-photo' | '2-pod-signature' | '3-reconciliation' | '4-closed'
+// '2-pod-signature' became '2-receiver-handover' (2026-09-13, FP-155): the step shows a
+// rotating QR and the signature is produced on the receiver's own phone. Slug keeps its
+// number, per the notes above; only the name changed, because the meaning did.
+type ConfirmationSlug = '1-pod-photo' | '2-receiver-handover' | '3-reconciliation' | '4-closed'
 
 export interface StepRegistry {
   // Empty recipe — trip_creation is dispatcher-side, before the driver is ever involved.
@@ -89,7 +92,7 @@ export const STEP_REGISTRY: StepRegistry = {
   },
   confirmation: {
     '1-pod-photo': PodPhoto,
-    '2-pod-signature': PodSignature,
+    '2-receiver-handover': ReceiverHandover,
     '3-reconciliation': Reconciliation,
     '4-closed': Closed,
   },

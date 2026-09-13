@@ -55,8 +55,7 @@ const UNLOADING_INITIAL: UnloadingEvidence = {
 // ConfirmationStep below — never hard-coded here.
 const CONFIRMATION_INITIAL_BASE: Omit<ConfirmationEvidence, 'driverVisualCount'> = {
   podPhotoDataUrl: null, podPhotoArtifactId: null,
-  podSignatureDataUrl: null, podSignatureArtifactId: null,
-  recipientName: null, recipientIdNumber: null,
+  podSignatureArtifactId: null, receiverConfirmedAt: null,
   reconciliationNote: null, capturedAt: null,
 }
 

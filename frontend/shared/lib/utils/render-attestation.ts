@@ -9,11 +9,16 @@
 // consumer can already display — which is what keeps this change inside the driver app:
 // no backend schema change, no Alembic migration, no dispatcher work.
 //
+// Moved to shared/ (2026-09-13, FP-155): the attestation is now rendered on the
+// RECEIVER's device, in frontend/receiver, and the driver app no longer renders one at
+// all. It lives here because two surfaces draw the same artifact, and a second copy
+// would let them drift into producing two different images for one evidence type.
+//
 // The image is the human-readable face of the attestation. Its evidential weight comes
 // from the artifact hash anchored downstream, not from the pixels.
 
-import { ATTESTATION_CANVAS_COLOURS } from '@/lib/tokens'
-import type { DriverPosition } from '@/lib/types/location'
+import { ATTESTATION_CANVAS_COLOURS } from '@shared/lib/constants/attestation-colours'
+import type { PositionFix } from '@shared/lib/types/position'
 
 // Canvas geometry. Sized for legibility when a dispute reviewer opens the artifact at
 // full width, not for the phone screen it is generated on.
@@ -66,7 +71,7 @@ export interface AttestationFields {
   /** ISO 8601 instant the receiver completed the swipe. */
   signedAt: string
   /** Fix taken at the moment of signing, or null when the phone could not produce one. */
-  position: DriverPosition | null
+  position: PositionFix | null
   /** The trip this delivery closes — ties the image to a record if it is ever exported. */
   tripId: string
   /**
@@ -109,7 +114,7 @@ export function fitText(ctx: CanvasRenderingContext2D, value: string, maxWidthPx
  * being omitted: a reviewer must be able to tell "the phone had no fix" apart from "this
  * attestation predates location capture", and a blank row says neither.
  */
-export function formatPosition(position: DriverPosition | null): string {
+export function formatPosition(position: PositionFix | null): string {
   if (position === null) return LOCATION_UNAVAILABLE
 
   const lat = position.lat.toFixed(COORD_DECIMALS)

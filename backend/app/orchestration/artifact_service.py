@@ -51,6 +51,38 @@ async def create_artifact(
     if trip.driver_id != captured_by_driver_id:
         raise PermissionError("You are not the assigned driver on this trip.")
 
+    return await _persist_artifact(
+        db,
+        trip_id=trip_id,
+        file_bytes=file_bytes,
+        verified_mime_type=verified_mime_type,
+        artifact_type=artifact_type,
+        captured_at=captured_at,
+        captured_by_driver_id=captured_by_driver_id,
+        captured_lat=captured_lat,
+        captured_lng=captured_lng,
+    )
+
+
+async def _persist_artifact(
+    db: AsyncSession,
+    *,
+    trip_id: uuid.UUID,
+    file_bytes: bytes,
+    verified_mime_type: str,
+    artifact_type: ArtifactType,
+    captured_at: datetime,
+    captured_by_driver_id: uuid.UUID | None,
+    captured_lat: Decimal | None,
+    captured_lng: Decimal | None,
+) -> EvidenceArtifactRead:
+    """Upload the bytes and write the row.
+
+    Assumes the caller has already decided the upload is authorised. That decision
+    differs per caller — the assigned driver for create_artifact, a redeemed capability
+    token for create_receiver_artifact — and deliberately does not live here, so neither
+    check can be skipped by routing around this function.
+    """
     upload = await upload_evidence_file(
         trip_id=str(trip_id), file_bytes=file_bytes, mime_type=verified_mime_type,
     )
@@ -72,6 +104,54 @@ async def create_artifact(
     await db.flush()
     await db.refresh(artifact)
     return EvidenceArtifactRead.model_validate(artifact)
+
+
+async def create_receiver_artifact(
+    db: AsyncSession,
+    *,
+    trip_id: uuid.UUID,
+    file_bytes: bytes,
+    mime_type: str,
+    artifact_type: ArtifactType,
+    captured_at: datetime,
+    captured_lat: Decimal | None = None,
+    captured_lng: Decimal | None = None,
+) -> EvidenceArtifactRead:
+    """Store an artifact produced by a receiver holding a redeemed capability token.
+
+    Deliberately NOT create_artifact with a nullable driver id. That function's
+    `trip.driver_id != captured_by_driver_id` check is its reason to exist, and making it
+    skippable would put an `if caller_is_trusted` branch inside the one place that decides
+    whether an upload belongs to its trip. The authorisation here is a different thing
+    entirely — a single-use capability token the caller has already redeemed — and it
+    belongs to the caller, not to this function.
+
+    Both attribution columns are left NULL, which is the honest record: nobody with an
+    account on this system captured this. The evidence that it came from the receiver is
+    the HandoverConfirmation row referencing it, not a column here pointing at a driver
+    who was standing on the other side of the transaction.
+    """
+    if len(file_bytes) > MAX_FILE_SIZE_BYTES:
+        raise ValueError(f"File exceeds the {MAX_FILE_SIZE_BYTES} byte limit.")
+
+    # Before the trip lookup: an unsupported file is rejected without spending a query.
+    verified_mime_type = resolve_mime_type(file_bytes, mime_type)
+
+    trip = (await db.execute(select(Trip).where(Trip.id == trip_id))).scalar_one_or_none()
+    if trip is None:
+        raise ResourceNotFoundError("Trip", str(trip_id))
+
+    return await _persist_artifact(
+        db,
+        trip_id=trip_id,
+        file_bytes=file_bytes,
+        verified_mime_type=verified_mime_type,
+        artifact_type=artifact_type,
+        captured_at=captured_at,
+        captured_by_driver_id=None,
+        captured_lat=captured_lat,
+        captured_lng=captured_lng,
+    )
 
 
 async def list_artifacts_for_trip(

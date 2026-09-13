@@ -5,7 +5,7 @@
 // fat-fingering a digit at a loading bay, produces evidence of what actually happened at
 // the door, and refusing to store it destroys that record.
 import { describe, it, expect } from 'vitest'
-import { looksLikeSaIdNumber, hasRecipientIdentity } from '../sa-id'
+import { looksLikeSaIdNumber, hasRecipientIdentity } from '@shared/lib/utils/sa-id'
 
 const VALID_SA_ID = '9202204720082'
 

@@ -156,8 +156,14 @@ export interface ConfirmationEvidence {
   // signature — both required, not either/or.
   podPhotoDataUrl: string | null
   podPhotoArtifactId: string | null
-  podSignatureDataUrl: string | null
+  // Set from the handover poll (lib/hooks/useRotatingHandover.ts), never rendered on
+  // this device. podSignatureDataUrl is gone with PodSignature.tsx (FP-155): the
+  // attestation PNG is now rendered in the RECEIVER's browser and uploaded by the
+  // server, so the driver's phone never holds the image at all.
   podSignatureArtifactId: string | null
+  // Server-stamped instant the receiver confirmed. Display only — the evidence of when
+  // is the handover_confirmations row, not this copy.
+  receiverConfirmedAt: string | null
   // Who signed. A signature with no identifiable signer is the weakest possible proof of
   // delivery — "someone at the warehouse swiped" is not a defence in a disputed-delivery
   // claim. Both values are rendered INTO the attestation PNG
@@ -169,8 +175,7 @@ export interface ConfirmationEvidence {
   // so it never enters a phase row, a canonical payload, or a Hedera anchor. It lives in
   // this draft only until the phase submits, at which point clearDraft() removes it from
   // the device alongside the rest of the evidence.
-  recipientName: string | null
-  recipientIdNumber: string | null
+
   // Carried forward from the UnloadingEvidence captured immediately before this phase
   // (see this file's header comment) — this is the value actually submitted as
   // ConfirmationCompleteRequest.driver_visual_count.
