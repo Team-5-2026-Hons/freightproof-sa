@@ -249,17 +249,34 @@ class Settings(BaseSettings):
         # neither can be collapsed into the other.
         "capacitor://localhost",
         "https://localhost",
-        # The public receiver app (frontend/receiver, FP-155). Needs to be here in its
-        # own right AND paired with allow_credentials=True below, because the handover
-        # binding cookie is only sent on a cross-origin request when both hold.
-        #
-        # Deployment constraint, not just a dev convenience: that cookie is SameSite=Strict,
-        # so the receiver app and this API must share a registrable domain
-        # (receiver.example.co.za and api.example.co.za do; two unrelated domains do not).
-        # Put them on unrelated domains and the cookie is silently never sent, every
-        # handover fails its binding check, and the 404 it produces says nothing about why.
-        "http://localhost:3002",
     ]
+
+    @property
+    def cors_allowed_origins(self) -> List[str]:
+        """ALLOWED_ORIGINS, plus the receiver app's own origin — always.
+
+        Derived rather than listed, because listing it does not work. ALLOWED_ORIGINS is
+        an env-overridable field: the moment a developer or a deployment sets it in .env,
+        the whole default list above is REPLACED, and any receiver origin written there is
+        silently gone. That is not hypothetical — it is what broke the first real
+        two-phone test of this feature.
+
+        The receiver app's origin is, by definition, an origin this API must accept: it is
+        the page we ourselves told the receiver to open, via a URL this API composed
+        (handover_service.build_scan_url). Requiring anyone to keep that fact in sync
+        across two settings is a drift waiting to happen, and the failure it produces is
+        near-undebuggable — a browser-side CORS refusal that surfaces as the handover's
+        deliberately generic 404.
+
+        Deployment note, unchanged by this: the binding cookie is SameSite=Strict, so the
+        receiver app and this API must still share a registrable domain
+        (receiver.example.co.za and api.example.co.za do; two unrelated domains do not).
+        CORS being correct does not rescue a cookie the browser declines to send.
+        """
+        receiver_origin = self.HANDOVER_RECEIVER_BASE_URL.rstrip("/")
+        if not receiver_origin or receiver_origin in self.ALLOWED_ORIGINS:
+            return self.ALLOWED_ORIGINS
+        return [*self.ALLOWED_ORIGINS, receiver_origin]
 
     # model_config replaces the deprecated class Config syntax.
     # In local dev, pydantic-settings reads from backend/.env automatically.

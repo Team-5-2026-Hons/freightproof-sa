@@ -80,20 +80,24 @@ export function ReceiverHandover({
   }
 
   return (
-    <main className="flex min-h-dvh flex-col">
+    <main className="flex min-h-dvh flex-col overflow-x-hidden">
       <StepHeader phase={phase} stepIndex={stepIndex} />
-      <div className="flex flex-1 flex-col items-center gap-6 p-4">
-        <p className="text-lg leading-relaxed text-surface-on-variant">
+      {/* justify-center, so the code sits in the middle of whatever space is left rather
+          than stacking from the top and pushing the status text off a short screen. */}
+      <div className="flex flex-1 flex-col items-center justify-center gap-5 px-4 py-6">
+        <p className="max-w-sm text-center text-base leading-relaxed text-surface-on-variant">
           Ask the receiver to scan this code with their phone camera. They sign on their
           own device.
         </p>
 
-        {/* White plate, always — the QR must not inherit a dark theme (QrCode.tsx). */}
-        <div className="rounded-2xl bg-white p-4 shadow-sm">
+        {/* White plate, always — the QR must not inherit a dark theme (QrCode.tsx). The
+            plate is sized by its content, and the content caps its own width, so neither
+            can push the page wider than the viewport. */}
+        <div className="rounded-2xl bg-white p-3 shadow-sm">
           <QrCode value={scanUrl} />
         </div>
 
-        <div className="flex flex-col items-center gap-1 text-center">
+        <div className="flex max-w-sm flex-col items-center gap-1 text-center">
           {receiverOpened ? (
             <>
               <p className="text-base font-medium text-surface-on">

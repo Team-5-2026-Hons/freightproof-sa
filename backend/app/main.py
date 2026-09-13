@@ -89,9 +89,12 @@ app.add_middleware(RateLimitMiddleware)
 # CORS is configured here rather than per-router so that all endpoints
 # inherit the same origin policy. In production, ALLOWED_ORIGINS will
 # be restricted to the actual domain.
+#
+# cors_allowed_origins, not ALLOWED_ORIGINS: the receiver app's origin is folded in by
+# that property so it cannot be lost when a .env overrides the list — see its docstring.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_origins=settings.cors_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

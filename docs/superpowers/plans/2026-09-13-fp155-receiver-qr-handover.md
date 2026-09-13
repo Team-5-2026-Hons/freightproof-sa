@@ -2692,6 +2692,62 @@ code"*, shown only once the link has been opened.
 
 ---
 
+## Testing the handover with two phones (read this before trying)
+
+The default config cannot work across two devices, and the way it fails is silent. Every
+value below defaults to `localhost`, which on the receiver's phone means *their own phone*.
+
+1. **Find the machine's LAN address** — `ipconfig getifaddr en0`. Call it `<LAN>`.
+2. **Start the backend bound to all interfaces, with the receiver origin set:**
+
+   ```bash
+   cd backend
+   HANDOVER_RECEIVER_BASE_URL=http://<LAN>:3002 \
+     .venv/bin/uvicorn app.main:app --reload --host 0.0.0.0
+   ```
+
+   This one variable does two jobs: it is what `build_scan_url` encodes into the QR, and
+   `Settings.cors_allowed_origins` derives the CORS origin from it, so the two cannot
+   drift apart.
+
+3. **Start the receiver app on the LAN, pointed at the LAN API:**
+
+   ```bash
+   cd frontend/receiver
+   NEXT_PUBLIC_API_URL=http://<LAN>:8000 npx next dev --port 3002 --hostname 0.0.0.0
+   ```
+
+   `--hostname 0.0.0.0` is not optional. Next binds to localhost by default and the page
+   is then unreachable from any other device, with no error anywhere — the scanning phone
+   just times out.
+
+4. **Check both from the other phone's browser** before scanning anything:
+   `http://<LAN>:3002/h/anything` should render "This link is no longer valid" (the page
+   is reachable and the API answered), not a connection error.
+
+### Why each of these fails silently
+
+| Missed step | What the receiver sees | What the logs say |
+|---|---|---|
+| `HANDOVER_RECEIVER_BASE_URL` left as localhost | Browser cannot connect | Nothing — the request never arrives |
+| Receiver app not started, or bound to localhost | Browser cannot connect | Nothing |
+| `NEXT_PUBLIC_API_URL` left as localhost | "This link is no longer valid" | Nothing — the fetch never leaves their phone |
+| Receiver origin missing from CORS | "This link is no longer valid" | Nothing server-side; a CORS error in *their* console |
+
+The bottom two are the cruel ones: the page's own error handling deliberately renders one
+generic message for every failure, including a network failure, so that it cannot be used
+as an oracle for live tokens (`HandoverPageClient`'s catch block says so explicitly). That
+is correct behaviour and should not be "fixed" — but it means a config problem and a dead
+token are indistinguishable from the receiver's side. Check the table above before
+debugging the token logic.
+
+The CORS row is now structurally prevented: `cors_allowed_origins` folds the receiver
+origin in automatically. It is listed because it is what actually happened on the first
+two-phone attempt — a `.env` that sets `ALLOWED_ORIGINS` replaces the default list
+wholesale, so the receiver origin written into `config.py` was never in effect at runtime.
+
+---
+
 ## Known gaps, stated rather than hidden
 
 1. **A driver with two phones still defeats this.** He can read the token off his own screen and POST it himself. The design documents already concede this in terms (`docs/iteration2-feedback-response-2026-08-25.md` §7, "The honest framing"). What this buys is a *provable* fraud: an independent GPS fix, a distinct user-agent, an IP, and a timestamp that must all line up with a story. Tier 2 — a client-nominated contact — is the next rung and is not in this plan.
