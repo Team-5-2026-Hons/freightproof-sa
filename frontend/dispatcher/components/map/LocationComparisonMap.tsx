@@ -484,17 +484,20 @@ export function LocationComparisonMap({ evidence, className }: Props) {
         line.addTo(layerGroup)
       }
 
-      // Only ever `evidence.boundary`: the CURRENT precinct boundary, explicitly
-      // labelled as a reference, never historical fence geometry (see
-      // BoundaryReference.provenance in lib/phase/location-evidence.ts). The label
+      // Only ever the CURRENT precinct boundary, explicitly labelled as a reference,
+      // never historical fence geometry (see BoundaryReference.provenance in
+      // lib/phase/location-evidence.ts). Read through validBoundary, the same guard the
+      // framing and the distance row use, so a boundary those two ignore is never drawn
+      // here either. The label
       // itself is NOT drawn on the map (no bindTooltip); anchored at the circle centre
       // it would sit directly on top of the driver-phone marker's own label whenever the
       // driver is near the precinct centre, which is the normal case. The modal that
       // hosts this map renders the same BOUNDARY_REFERENCE_LABEL text as a legend line
       // beneath the map instead (see components/domain/LocationEvidencePanel.tsx).
-      if (evidence.boundary) {
-        const circle: Circle = L.circle([evidence.boundary.coords.lat, evidence.boundary.coords.lng], {
-          radius: evidence.boundary.radiusMetres,
+      const boundary = validBoundary(evidence)
+      if (boundary !== null) {
+        const circle: Circle = L.circle([boundary.coords.lat, boundary.coords.lng], {
+          radius: boundary.radiusMetres,
           className: BOUNDARY_CIRCLE_CLASS,
           weight: BOUNDARY_CIRCLE_WEIGHT,
           fillOpacity: BOUNDARY_CIRCLE_FILL_OPACITY,
