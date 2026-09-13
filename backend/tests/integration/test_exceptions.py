@@ -15,7 +15,7 @@ from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.phases import PhaseEvent
 from app.db.models.transit import TripException
-from app.db.models.trips import Trip, TripStop
+from app.db.models.trips import Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
 from app.main import app
@@ -572,3 +572,211 @@ async def test_exception_without_a_client_report_id_still_works(client: AsyncCli
     )
 
     assert resp.status_code == 201
+
+
+# ── auth ────────────────────────────────────────────────────────────────────────
+
+
+async def test_raise_exception_with_an_invalid_token_returns_401(client: AsyncClient, seed_trip):
+    trip, _driver = seed_trip
+
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/exceptions",
+        json={"exception_type": "mechanical", "description": "Engine warning light."},
+        headers=auth_header("not-a-jwt"),
+    )
+
+    assert resp.status_code == 401
+
+
+async def test_raise_exception_without_a_token_returns_403(client: AsyncClient, seed_trip):
+    trip, _driver = seed_trip
+
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/exceptions",
+        json={"exception_type": "mechanical", "description": "Engine warning light."},
+    )
+
+    assert resp.status_code == 403
+
+
+# ── Trailer analytics Stage 1: which vehicle broke down ─────────────────────────
+
+
+async def _attach_trailers(db_session, trip: Trip, count: int) -> list[Vehicle]:
+    """Trailers on `trip`, linked through trip_trailers exactly as trip creation does."""
+    trailers = [
+        Vehicle(
+            id=uuid.uuid4(), organization_id=trip.operator_organization_id,
+            vehicle_type=VehicleType.TRAILER,
+            registration=f"TRL{uuid.uuid4().hex[:6].upper()}",
+            pulsit_device_id=f"PUL-TRL-{uuid.uuid4().hex[:8]}",
+        )
+        for _ in range(count)
+    ]
+    db_session.add_all(trailers)
+    await db_session.flush()
+    db_session.add_all([
+        TripTrailer(
+            trip_id=trip.id, trailer_id=trailer.id,
+            pulsit_device_id_snapshot=trailer.pulsit_device_id,
+        )
+        for trailer in trailers
+    ])
+    await db_session.flush()
+    return trailers
+
+
+async def _post_exception(
+    client: AsyncClient, trip: Trip, driver: Driver, *, token: str | None = None, **fields,
+):
+    """POST a driver exception. Pass `token` to send several requests from one device:
+    make_token gives each call a new session, and the one-device-per-driver rule
+    (app/auth/sessions.py) refuses a second session for the same driver."""
+    body = {"exception_type": "mechanical", "description": "Vehicle breakdown.", **fields}
+    return await client.post(
+        f"/api/v1/trips/{trip.id}/exceptions",
+        json=body,
+        headers=auth_header(token or make_token(sub=str(driver.id), role="driver")),
+    )
+
+
+async def _stored_vehicle_id(db_session, resp) -> uuid.UUID | None:
+    row = await db_session.get(TripException, uuid.UUID(resp.json()["id"]))
+    assert row is not None
+    return row.vehicle_id
+
+
+async def test_breakdown_on_the_truck_records_the_trips_horse(
+    client: AsyncClient, db_session, seed_trip,
+):
+    trip, driver = seed_trip
+    await _attach_trailers(db_session, trip, 1)
+
+    resp = await _post_exception(client, trip, driver, vehicle_type="horse")
+
+    assert resp.status_code == 201
+    assert resp.json()["vehicle_id"] == str(trip.horse_id)
+    assert await _stored_vehicle_id(db_session, resp) == trip.horse_id
+
+
+async def test_breakdown_on_the_only_trailer_records_that_trailer(
+    client: AsyncClient, db_session, seed_trip,
+):
+    """With one trailer, "Trailer" alone names it — the app sends no trailer_id."""
+    trip, driver = seed_trip
+    (trailer,) = await _attach_trailers(db_session, trip, 1)
+
+    resp = await _post_exception(client, trip, driver, vehicle_type="trailer")
+
+    assert resp.status_code == 201
+    assert await _stored_vehicle_id(db_session, resp) == trailer.id
+
+
+async def test_interlink_breakdown_on_a_named_trailer_records_that_trailer(
+    client: AsyncClient, db_session, seed_trip,
+):
+    trip, driver = seed_trip
+    _front, rear = await _attach_trailers(db_session, trip, 2)
+
+    resp = await _post_exception(
+        client, trip, driver, vehicle_type="trailer", trailer_id=str(rear.id),
+    )
+
+    assert resp.status_code == 201
+    assert await _stored_vehicle_id(db_session, resp) == rear.id
+
+
+async def test_interlink_trailer_breakdown_without_a_trailer_id_records_no_vehicle(
+    client: AsyncClient, db_session, seed_trip,
+):
+    """Can't tell which trailer, so no vehicle — but the report itself still lands
+    (201), because the offline queue discards anything answered with a 4xx."""
+    trip, driver = seed_trip
+    await _attach_trailers(db_session, trip, 2)
+
+    resp = await _post_exception(client, trip, driver, vehicle_type="trailer")
+
+    assert resp.status_code == 201
+    assert await _stored_vehicle_id(db_session, resp) is None
+
+
+async def test_breakdown_naming_another_trips_trailer_records_no_vehicle(
+    client: AsyncClient, db_session, seed_trip,
+):
+    trip, driver = seed_trip
+    await _attach_trailers(db_session, trip, 2)
+    other_trip, _other_driver = await _seed_another_trip(db_session)
+    (foreign_trailer,) = await _attach_trailers(db_session, other_trip, 1)
+
+    resp = await _post_exception(
+        client, trip, driver, vehicle_type="trailer", trailer_id=str(foreign_trailer.id),
+    )
+
+    assert resp.status_code == 201
+    assert await _stored_vehicle_id(db_session, resp) is None
+
+
+async def test_vehicle_type_on_a_non_mechanical_exception_records_no_vehicle(
+    client: AsyncClient, db_session, seed_trip,
+):
+    trip, driver = seed_trip
+
+    resp = await _post_exception(
+        client, trip, driver, exception_type="cargo_damage", vehicle_type="horse",
+    )
+
+    assert resp.status_code == 201
+    assert await _stored_vehicle_id(db_session, resp) is None
+
+
+async def test_breakdown_from_an_older_app_without_vehicle_fields_records_no_vehicle(
+    client: AsyncClient, db_session, seed_trip,
+):
+    """Old installed apps and already-queued reports send neither field. Stored with no
+    vehicle, which the analytics count for the horse (spec decision 2)."""
+    trip, driver = seed_trip
+    await _attach_trailers(db_session, trip, 1)
+
+    resp = await _post_exception(client, trip, driver)
+
+    assert resp.status_code == 201
+    assert resp.json()["vehicle_id"] is None
+    assert await _stored_vehicle_id(db_session, resp) is None
+
+
+async def test_unknown_vehicle_type_returns_422(client: AsyncClient, db_session, seed_trip):
+    trip, driver = seed_trip
+
+    resp = await _post_exception(client, trip, driver, vehicle_type="bakkie")
+
+    assert resp.status_code == 422
+    rows = await db_session.execute(
+        select(TripException).where(TripException.trip_id == trip.id)
+    )
+    assert rows.all() == []
+
+
+async def test_replay_with_a_different_vehicle_type_keeps_the_original_vehicle(
+    client: AsyncClient, db_session, seed_trip,
+):
+    """A resend returns the stored row untouched: the vehicle is decided once, by the
+    first submission, like every other field of the report."""
+    trip, driver = seed_trip
+    await _attach_trailers(db_session, trip, 1)
+    report_id = str(uuid.uuid4())
+    # One token for both: a replay is the same phone resending its queued report.
+    token = make_token(sub=str(driver.id), role="driver")
+
+    first = await _post_exception(
+        client, trip, driver, token=token, vehicle_type="horse", client_report_id=report_id,
+    )
+    second = await _post_exception(
+        client, trip, driver, token=token, vehicle_type="trailer", client_report_id=report_id,
+    )
+
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert second.json()["id"] == first.json()["id"]
+    assert second.json()["vehicle_id"] == str(trip.horse_id)
+    assert await _stored_vehicle_id(db_session, second) == trip.horse_id

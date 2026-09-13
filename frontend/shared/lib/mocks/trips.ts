@@ -107,7 +107,7 @@ const EXCEPTIONS_0035: TripException[] = [
     phase_event_id: null, checkpoint_id: null, supporting_artifact_id: 'art-0035-damage',
     review_status: 'reviewed', review_outcome: 'legacy_review', reviewed_by_user_id: 'user-dispatcher-01',
     reviewed_at: '2026-05-04T08:30:00Z', review_note: 'Confirmed pre-existing. Client notified. No further action.',
-    contact_method: null,
+    contact_method: null, vehicle_id: null,
     merkle_batch_id: null, created_at: '2026-05-03T19:00:00Z', updated_at: '2026-05-04T08:30:00Z',
   },
   {
@@ -120,7 +120,7 @@ const EXCEPTIONS_0035: TripException[] = [
     phase_event_id: null, checkpoint_id: null, supporting_artifact_id: null,
     review_status: 'reviewed', review_outcome: 'legacy_review', reviewed_by_user_id: 'user-dispatcher-01',
     reviewed_at: '2026-05-04T09:00:00Z', review_note: 'FedEx to re-schedule delivery. Parcels returned to DBN hub.',
-    contact_method: null,
+    contact_method: null, vehicle_id: null,
     merkle_batch_id: null, created_at: '2026-05-03T18:45:00Z', updated_at: '2026-05-04T09:00:00Z',
   },
 ]
@@ -182,7 +182,7 @@ const EXCEPTIONS_0039: TripException[] = [
     description: 'Pulsit horse GPS (KZN 56-78 YP) placed vehicle 420 m outside the FedEx DBN geofence at gate-in. Manual check confirmed driver was at correct location.',
     phase_event_id: null, checkpoint_id: null, supporting_artifact_id: null,
     review_status: 'recorded', review_outcome: null, reviewed_by_user_id: null, reviewed_at: null,
-    review_note: null, contact_method: null,
+    review_note: null, contact_method: null, vehicle_id: null,
     merkle_batch_id: null, created_at: '2026-05-09T07:04:00Z', updated_at: '2026-05-09T07:04:00Z',
   },
 ]
@@ -209,7 +209,7 @@ const EXCEPTIONS_0040: TripException[] = [
     phase_event_id: null, checkpoint_id: null, supporting_artifact_id: null,
     review_status: 'reviewed', review_outcome: 'legacy_review', reviewed_by_user_id: 'user-dispatcher-01',
     reviewed_at: '2026-05-09T13:10:00Z', review_note: 'Driver confirmed scheduled break. No issue.',
-    contact_method: null,
+    contact_method: null, vehicle_id: null,
     merkle_batch_id: null, created_at: '2026-05-09T12:52:00Z', updated_at: '2026-05-09T13:10:00Z',
   },
 ]
@@ -235,7 +235,7 @@ const EXCEPTIONS_0041: TripException[] = [
     description: 'Vehicle deviated 2.1 km off the N3 near Van Reenen\'s Pass. Driver reported road works diversion.',
     phase_event_id: null, checkpoint_id: null, supporting_artifact_id: null,
     review_status: 'recorded', review_outcome: null, reviewed_by_user_id: null, reviewed_at: null,
-    review_note: null, contact_method: null,
+    review_note: null, contact_method: null, vehicle_id: null,
     merkle_batch_id: null, created_at: '2026-05-09T13:22:00Z', updated_at: '2026-05-09T13:22:00Z',
   },
   {
@@ -247,7 +247,7 @@ const EXCEPTIONS_0041: TripException[] = [
     description: 'Route deviation confirmed as N3 road works diversion at Van Reenen\'s. Monitoring ETA impact — expected +25 min delay.',
     phase_event_id: null, checkpoint_id: null, supporting_artifact_id: null,
     review_status: 'recorded', review_outcome: null, reviewed_by_user_id: null, reviewed_at: null,
-    review_note: null, contact_method: null,
+    review_note: null, contact_method: null, vehicle_id: null,
     merkle_batch_id: null, created_at: '2026-05-09T13:35:00Z', updated_at: '2026-05-09T13:35:00Z',
   },
 ]
@@ -273,7 +273,7 @@ const EXCEPTIONS_0042: TripException[] = [
     description: 'Seal FP-5678 found broken at Harrismith fuel stop. Driver photographed damaged seal. Possible unauthorised access during stop.',
     phase_event_id: null, checkpoint_id: null, supporting_artifact_id: 'art-0042-broken-seal',
     review_status: 'needs_review', review_outcome: null, reviewed_by_user_id: null, reviewed_at: null,
-    review_note: null, contact_method: null,
+    review_note: null, contact_method: null, vehicle_id: null,
     merkle_batch_id: null, created_at: '2026-05-09T07:41:00Z', updated_at: '2026-05-09T07:41:00Z',
   },
   {
@@ -285,7 +285,7 @@ const EXCEPTIONS_0042: TripException[] = [
     description: 'Parcel Perfect scan-out count (42) does not match driver visual count (40) recorded at loading. Discrepancy of 2 parcels.',
     phase_event_id: null, checkpoint_id: null, supporting_artifact_id: null,
     review_status: 'needs_review', review_outcome: null, reviewed_by_user_id: null, reviewed_at: null,
-    review_note: null, contact_method: null,
+    review_note: null, contact_method: null, vehicle_id: null,
     merkle_batch_id: null, created_at: '2026-05-08T17:30:00Z', updated_at: '2026-05-08T17:30:00Z',
   },
 ]

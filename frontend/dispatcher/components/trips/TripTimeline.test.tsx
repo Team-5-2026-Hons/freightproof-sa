@@ -141,6 +141,8 @@ describe('TripTimeline: gps_mismatch exception evidence', () => {
       reviewed_at: null,
       review_note: null,
       contact_method: null,
+      // A gps_mismatch is not a breakdown, so it names no vehicle (trailer analytics, dev).
+      vehicle_id: null,
       merkle_batch_id: null,
       created_at: '2026-05-01T00:00:00Z',
       updated_at: '2026-05-01T00:00:00Z',

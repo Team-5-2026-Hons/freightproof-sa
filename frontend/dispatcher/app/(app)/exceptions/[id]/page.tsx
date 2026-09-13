@@ -17,10 +17,12 @@ import { GPS_MISMATCH_TRIGGER } from '@/components/domain/PositionDisagreement'
 import { ApiError, reviewException } from '@/lib/api/client'
 import { useToast } from '@/lib/hooks/useToast'
 import { useExceptionDetail } from '@/lib/hooks/useExceptionDetail'
+import { fmtBreakdownVehicle } from '@/lib/format/exception'
 import type {
   DispatcherReviewOutcome,
   ExceptionContactMethod,
   ExceptionReviewStatus,
+  ExceptionType,
 } from '@shared/lib/types/exception'
 import type { TripStatus } from '@shared/lib/types/trip'
 import { EXCEPTION_SEVERITY_META, EXCEPTION_SOURCE_META, TRIP_STATUS_META } from '@shared/lib/constants/status-meta'
@@ -57,6 +59,10 @@ const NO_OUTCOME_CHOSEN = '' as const
 // leaving this blank is a genuine, submittable answer ("no contact happened, reviewed
 // from evidence alone"), so its option is deliberately not disabled.
 const NO_CONTACT_CHOSEN = '' as const
+
+// The one exception type that records which vehicle it happened to (trailer analytics).
+// Any other type showing a Vehicle row would read "Not recorded" for no reason.
+const BREAKDOWN_TYPE: ExceptionType = 'mechanical'
 
 function fmtType(t: string): string {
   return t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
@@ -333,6 +339,9 @@ export default function ExceptionDetailPage() {
                   ['Source', srcMeta.label],
                   ['Raised', fmtTs(exception.created_at)],
                   ...(phaseStop ? [['Phase / Stop', phaseStop]] as [string, string][] : []),
+                  ...(exception.exception_type === BREAKDOWN_TYPE
+                    ? [['Vehicle', fmtBreakdownVehicle(exception)]] as [string, string][]
+                    : []),
                 ] as [string, string][]).map(([label, value]) => (
                   <div
                     key={label}

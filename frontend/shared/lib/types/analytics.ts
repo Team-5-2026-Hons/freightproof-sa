@@ -8,7 +8,7 @@
 
 import type { DriverId } from './driver'
 import type { PrecinctId } from './precinct'
-import type { VehicleId } from './vehicle'
+import type { VehicleId, VehicleType } from './vehicle'
 
 export interface DriverMetrics {
   driver_id: DriverId
@@ -51,6 +51,9 @@ export interface VehicleMetrics {
   vehicle_id: VehicleId
   /** null when no vehicle in the caller's organisation matches the id. */
   registration: string | null
+  /** Horses and trailers come back in one list, so each row says which it is. null when
+   *  no vehicle in the caller's organisation matches the id, the same as registration. */
+  vehicle_type: VehicleType | null
   trip_count: number
   mechanical_exceptions_count: number
   mechanical_info_count: number

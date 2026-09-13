@@ -1,7 +1,7 @@
 // frontend/driver-pwa/app/(app)/trip/in-transit/exception/LogExceptionPageClient.tsx
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { TriangleAlert } from 'lucide-react'
 import { useTrip } from '@/lib/hooks/useTrip'
@@ -16,6 +16,7 @@ import { TextArea } from '@/components/ui/TextArea'
 import { CameraCapture } from '@/components/phase/CameraCapture'
 import { SubpageHeader } from '@/components/layout/SubpageHeader'
 import type { ExceptionType } from '@shared/lib/types/exception'
+import type { Vehicle, VehicleId, VehicleType } from '@shared/lib/types/vehicle'
 import { DRIVER_EXCEPTION_TYPES } from '@shared/lib/constants/status-meta'
 
 // Labels for the driver-selectable exceptions. Options are DERIVED from the shared
@@ -35,6 +36,79 @@ const EXCEPTION_OPTIONS = DRIVER_EXCEPTION_TYPES
   .filter((value) => value !== 'panic_button')
   .map((value) => ({ value, label: EXCEPTION_LABELS[value] ?? value }))
 
+// The one category that records WHICH vehicle it happened to (trailer analytics spec).
+const BREAKDOWN_TYPE: ExceptionType = 'mechanical'
+
+// Drivers call the horse "the truck", so the button says Truck while the code and the
+// API say horse (trailer analytics spec, decision 6).
+const VEHICLE_LABELS: Record<VehicleType, string> = {
+  horse: 'Truck',
+  trailer: 'Trailer',
+}
+const VEHICLE_OPTIONS: readonly VehicleType[] = ['horse', 'trailer']
+
+// The breakdown fields a report sends, in the wire's own names (RaiseExceptionBody).
+interface BreakdownVehicleFields {
+  vehicle_type?: VehicleType
+  trailer_id?: string
+}
+
+/**
+ * Whether the "which vehicle" answer is complete, and what it sends (trailer analytics
+ * spec §7.1). The driver only says truck or trailer, plus a plate when "trailer" alone is
+ * ambiguous; the server works out the exact vehicle from the trip. One function, so the
+ * submit gate and both request bodies can never disagree about the rules:
+ *
+ *   not a breakdown        → nothing to ask, nothing sent
+ *   no trailers            → nothing to ask: it can only be the truck
+ *   one trailer            → Truck or Trailer
+ *   two or more trailers   → Truck or Trailer, and for Trailer, which plate
+ */
+function breakdownVehicle(
+  type: ExceptionType | null,
+  trailers: readonly Vehicle[],
+  vehicleType: VehicleType | null,
+  trailerId: VehicleId | null,
+): { complete: boolean; fields: BreakdownVehicleFields } {
+  if (type !== BREAKDOWN_TYPE) return { complete: true, fields: {} }
+  if (trailers.length === 0 || vehicleType === 'horse') {
+    return { complete: true, fields: { vehicle_type: 'horse' } }
+  }
+  if (vehicleType === 'trailer' && trailers.length === 1) {
+    return { complete: true, fields: { vehicle_type: 'trailer' } }
+  }
+  if (vehicleType === 'trailer' && trailerId !== null) {
+    return { complete: true, fields: { vehicle_type: 'trailer', trailer_id: String(trailerId) } }
+  }
+  return { complete: false, fields: {} }
+}
+
+interface OptionButtonProps {
+  selected: boolean
+  onClick: () => void
+  children: ReactNode
+}
+
+// One style for every choice on this screen (the category, truck or trailer, and the
+// trailer plate), so the breakdown questions look and behave exactly like the picker
+// above them. aria-pressed tells a screen reader which option is chosen.
+function OptionButton({ selected, onClick, children }: OptionButtonProps) {
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      onClick={onClick}
+      className={`rounded-xl border px-4 py-3 text-left text-sm font-medium transition-colors ${
+        selected
+          ? 'border-secondary bg-secondary/10 text-secondary'
+          : 'border-outline-variant bg-surface-container-lowest text-surface-on'
+      }`}
+    >
+      {children}
+    </button>
+  )
+}
+
 // What the submit button is currently doing. The photo upload gets its own label because
 // it is the slow step on a bad signal — a driver watching "Submitting…" for thirty
 // seconds has no way to tell a large upload from a hung one.
@@ -51,6 +125,9 @@ export default function LogExceptionPageClient() {
   // Set once the photo is safely uploaded, so a retried submit references the existing
   // artifact instead of uploading the same image a second time.
   const [artifactId, setArtifactId] = useState<string | null>(null)
+  // The answer to "Which vehicle broke down?", and on an interlink, which trailer.
+  const [vehicleType, setVehicleType] = useState<VehicleType | null>(null)
+  const [trailerId, setTrailerId] = useState<VehicleId | null>(null)
 
   const [stage, setStage] = useState<SubmitStage>('idle')
   // Two genuinely different failures that must not share one message: the server
@@ -73,8 +150,24 @@ export default function LogExceptionPageClient() {
     setSubmitError(null)
   }, [])
 
+  function chooseType(next: ExceptionType) {
+    setType(next)
+    // A new category starts the vehicle question afresh, so an answer given for a
+    // breakdown can never ride along on a report of another kind.
+    setVehicleType(null)
+    setTrailerId(null)
+  }
+
+  function chooseVehicleType(next: VehicleType) {
+    // A plate chosen under "Trailer" means nothing once the answer changes.
+    if (next !== vehicleType) setTrailerId(null)
+    setVehicleType(next)
+  }
+
   async function handleSubmit() {
     if (!type || !trip || !description.trim()) return
+    const vehicle = breakdownVehicle(type, trip.trailers, vehicleType, trailerId)
+    if (!vehicle.complete) return
     setSubmitError(null)
 
     const tripId = String(trip.id)
@@ -97,6 +190,8 @@ export default function LogExceptionPageClient() {
           exception_type: type as ExceptionType,
           description,
           client_report_id: clientReportId,
+          // In the queued body too, so a report sent from a dead zone keeps its answer.
+          ...vehicle.fields,
           ...(supportingArtifactId ? { supporting_artifact_id: supportingArtifactId } : {}),
           ...(phaseEventId ? { phase_event_id: String(phaseEventId) } : {}),
         },
@@ -185,6 +280,8 @@ export default function LogExceptionPageClient() {
       await logException(type, {
         description,
         clientReportId,
+        ...(vehicle.fields.vehicle_type ? { vehicleType: vehicle.fields.vehicle_type } : {}),
+        ...(vehicle.fields.trailer_id ? { trailerId: vehicle.fields.trailer_id } : {}),
         ...(supportingArtifactId ? { supporting_artifact_id: supportingArtifactId } : {}),
       })
       // Receipt (UX Task 5b): name the chosen category so the driver has explicit proof
@@ -243,6 +340,15 @@ export default function LogExceptionPageClient() {
     )
   }
 
+  const trailers = trip.trailers
+  const vehicleAnswer = breakdownVehicle(type, trailers, vehicleType, trailerId)
+  // Asked only when there is a choice: a rigid truck has no trailer that could have
+  // broken down.
+  const asksVehicle = type === BREAKDOWN_TYPE && trailers.length > 0
+  // On an interlink, "Trailer" alone can't say which one, so the plate is asked for.
+  // The driver can read it straight off the trailer.
+  const asksPlate = asksVehicle && vehicleType === 'trailer' && trailers.length > 1
+
   return (
     <main className="flex min-h-dvh flex-col">
       {/* Named destination (not router.back()): guarantees where the driver lands
@@ -255,19 +361,45 @@ export default function LogExceptionPageClient() {
       <div className="flex flex-1 flex-col p-4">
         <div className="flex flex-col gap-3 mb-6">
           {EXCEPTION_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              onClick={() => setType(opt.value)}
-              className={`rounded-xl border px-4 py-3 text-left text-sm font-medium transition-colors ${
-                type === opt.value
-                  ? 'border-secondary bg-secondary/10 text-secondary'
-                  : 'border-outline-variant bg-surface-container-lowest text-surface-on'
-              }`}
-            >
+            <OptionButton key={opt.value} selected={type === opt.value} onClick={() => chooseType(opt.value)}>
               {opt.label}
-            </button>
+            </OptionButton>
           ))}
         </div>
+
+        {asksVehicle && (
+          <div role="group" aria-labelledby="breakdown-vehicle-question" className="flex flex-col gap-3 mb-6">
+            <p id="breakdown-vehicle-question" className="text-sm font-medium text-surface-on">
+              Which vehicle broke down?
+            </p>
+            {VEHICLE_OPTIONS.map((option) => (
+              <OptionButton
+                key={option}
+                selected={vehicleType === option}
+                onClick={() => chooseVehicleType(option)}
+              >
+                {VEHICLE_LABELS[option]}
+              </OptionButton>
+            ))}
+          </div>
+        )}
+
+        {asksPlate && (
+          <div role="group" aria-labelledby="breakdown-trailer-question" className="flex flex-col gap-3 mb-6">
+            <p id="breakdown-trailer-question" className="text-sm font-medium text-surface-on">
+              Which trailer? Check the registration plate.
+            </p>
+            {trailers.map((trailer) => (
+              <OptionButton
+                key={String(trailer.id)}
+                selected={trailerId === trailer.id}
+                onClick={() => setTrailerId(trailer.id)}
+              >
+                {trailer.registration}
+              </OptionButton>
+            ))}
+          </div>
+        )}
 
         <TextArea
           label="Description"
@@ -302,7 +434,11 @@ export default function LogExceptionPageClient() {
             space and try again, or report this to your dispatcher directly.
           </p>
         )}
-        <Button size="lg" disabled={!type || !description.trim() || submitting} onClick={handleSubmit}>
+        <Button
+          size="lg"
+          disabled={!type || !description.trim() || !vehicleAnswer.complete || submitting}
+          onClick={handleSubmit}
+        >
           {/* Named stages, not one spinner: the upload is the slow step on a weak signal,
               and the API client uses fetch, which cannot report real upload progress —
               so this says which step is running rather than implying a percentage. */}

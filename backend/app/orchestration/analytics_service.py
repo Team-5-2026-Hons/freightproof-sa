@@ -24,7 +24,7 @@ name lookups are scoped differently, on purpose:
 import uuid
 from collections.abc import Collection, Mapping, Sequence
 from datetime import date
-from typing import TypeVar
+from typing import NamedTuple, TypeVar
 
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -39,6 +39,7 @@ from app.analytics.vehicle_metrics import (
     get_vehicle_streaks,
     trips_since_last_incident,
 )
+from app.db.models.enums import VehicleType
 from app.db.models.organisations import Precinct
 from app.db.models.people import Driver
 from app.db.models.vehicles import Vehicle
@@ -57,6 +58,14 @@ from app.schemas.analytics_api import (
 )
 
 ResponseT = TypeVar("ResponseT", bound=BaseModel)
+
+
+class VehicleLabel(NamedTuple):
+    """What the screen shows to identify a vehicle. Horses and trailers share one table,
+    so the plate alone doesn't say which kind a row is."""
+
+    registration: str
+    vehicle_type: VehicleType
 
 
 def check_month_range(start_month: date, end_month: date) -> None:
@@ -93,13 +102,20 @@ def attach_driver_names(
 
 
 def attach_vehicle_registrations(
-    metrics: Sequence[VehicleMetrics], registrations: Mapping[uuid.UUID, str],
+    metrics: Sequence[VehicleMetrics], labels: Mapping[uuid.UUID, VehicleLabel],
 ) -> list[VehicleMetricsResponse]:
-    """Order preserved. A horse with no registration found keeps its row, named None."""
-    return [
-        _extend(VehicleMetricsResponse, row, registration=registrations.get(row.vehicle_id))
-        for row in metrics
-    ]
+    """Order preserved. A vehicle with no row found keeps its metrics row, with
+    registration and vehicle_type both None."""
+    responses: list[VehicleMetricsResponse] = []
+    for row in metrics:
+        label = labels.get(row.vehicle_id)
+        responses.append(_extend(
+            VehicleMetricsResponse,
+            row,
+            registration=label.registration if label is not None else None,
+            vehicle_type=label.vehicle_type if label is not None else None,
+        ))
+    return responses
 
 
 def attach_lane_names(
@@ -146,16 +162,21 @@ async def _driver_names(
 
 async def _vehicle_registrations(
     db: AsyncSession, *, organization_id: uuid.UUID, vehicle_ids: Collection[uuid.UUID],
-) -> dict[uuid.UUID, str]:
+) -> dict[uuid.UUID, VehicleLabel]:
     if not vehicle_ids:
         return {}
     result = await db.execute(
-        select(Vehicle.id, Vehicle.registration).where(
+        select(Vehicle.id, Vehicle.registration, Vehicle.vehicle_type).where(
             Vehicle.organization_id == organization_id,
             Vehicle.id.in_(vehicle_ids),
         )
     )
-    return dict(result.tuples().all())
+    # vehicle_type is a String column, so it comes back as a plain str. Converted here
+    # so the label really holds the enum its annotation promises.
+    return {
+        vehicle_id: VehicleLabel(registration, VehicleType(vehicle_type))
+        for vehicle_id, registration, vehicle_type in result.tuples().all()
+    }
 
 
 async def _precinct_names(
@@ -191,18 +212,18 @@ async def list_vehicle_analytics(
     metrics = await get_vehicle_metrics(
         db, organization_id=organization_id, start_month=start_month, end_month=end_month,
     )
-    registrations = await _vehicle_registrations(
+    labels = await _vehicle_registrations(
         db, organization_id=organization_id, vehicle_ids={row.vehicle_id for row in metrics},
     )
-    return attach_vehicle_registrations(metrics, registrations)
+    return attach_vehicle_registrations(metrics, labels)
 
 
 async def list_vehicle_streaks(
     db: AsyncSession, *, organization_id: uuid.UUID,
 ) -> list[VehicleStreakResponse]:
-    """Whole-history streaks, each carrying the horse's live trips-since-last-incident.
+    """Whole-history streaks, each carrying the vehicle's live trips-since-last-incident.
 
-    One query per horse, because FP-153's trips_since_last_incident is per-vehicle and
+    One query per vehicle, because FP-153's trips_since_last_incident is per-vehicle and
     frozen. That is acceptable at current fleet size, and it keeps the screen at ONE HTTP
     request for the whole table. The queries run one after another: an AsyncSession can
     only run one statement at a time.

@@ -15,6 +15,15 @@ function walk(plan: readonly PhaseDescriptor[], through: number): PhaseDescripto
 const PHOTO_DATA_URL = 'data:image/jpeg;base64,/9j/4AAQSkZJRg=='
 const REQUIRED_DESCRIPTION = 'Driver observed an issue'
 
+// Trip shapes for the "which vehicle broke down" question — only the fields the page
+// reads. A rigid truck (no trailers) is the default: most tests here are about something
+// other than the vehicle.
+const RIGID_TRIP = { id: 'trip-1', trailers: [] }
+const FRONT_TRAILER = { id: 'trailer-front', registration: 'TRL 111 GP' }
+const REAR_TRAILER = { id: 'trailer-rear', registration: 'TRL 222 GP' }
+const SINGLE_TRAILER_TRIP = { ...RIGID_TRIP, trailers: [FRONT_TRAILER] }
+const INTERLINK_TRIP = { ...RIGID_TRIP, trailers: [FRONT_TRAILER, REAR_TRAILER] }
+
 const mockUseTrip = vi.fn()
 const mockRouterPush = vi.fn()
 const mockRouterBack = vi.fn()
@@ -79,7 +88,7 @@ describe('LogExceptionPageClient required description', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     queueAccepts()
-    mockUseTrip.mockReturnValue({ trip: { id: 'trip-1' }, logException: vi.fn() })
+    mockUseTrip.mockReturnValue({ trip: RIGID_TRIP, logException: vi.fn() })
   })
 
   it('keeps submit disabled until the driver enters visible description text', () => {
@@ -108,7 +117,7 @@ describe('LogExceptionPageClient submit receipt (5b)', () => {
 
   it('fires a success toast naming the chosen category, then navigates to the hub', async () => {
     const logException = vi.fn().mockResolvedValue(undefined)
-    mockUseTrip.mockReturnValue({ trip: { id: 'trip-1' }, logException })
+    mockUseTrip.mockReturnValue({ trip: RIGID_TRIP, logException })
 
     render(<LogExceptionPageClient />)
     fireEvent.click(screen.getByText('Cargo damage'))
@@ -130,7 +139,7 @@ describe('LogExceptionPageClient submit receipt (5b)', () => {
 
   it('does not fire a success toast on a terminal 4xx failure; shows the inline error instead', async () => {
     const logException = vi.fn().mockRejectedValue(new ApiError(422, 'invalid'))
-    mockUseTrip.mockReturnValue({ trip: { id: 'trip-1' }, logException })
+    mockUseTrip.mockReturnValue({ trip: RIGID_TRIP, logException })
 
     render(<LogExceptionPageClient />)
     fireEvent.click(screen.getByText('Vehicle breakdown'))
@@ -155,7 +164,7 @@ describe('LogExceptionPageClient failure feedback (audit fixes)', () => {
 
   it('on a network failure, queues the exception, fires the saved-on-device toast, and advances to the hub', async () => {
     const logException = vi.fn().mockRejectedValue(new TypeError('network unreachable'))
-    mockUseTrip.mockReturnValue({ trip: { id: 'trip-1' }, logException })
+    mockUseTrip.mockReturnValue({ trip: RIGID_TRIP, logException })
 
     render(<LogExceptionPageClient />)
     fireEvent.click(screen.getByText('Cargo damage'))
@@ -187,7 +196,7 @@ describe('LogExceptionPageClient failure feedback (audit fixes)', () => {
 
   it('queues the exception when the API client reports a status-0 timeout', async () => {
     const logException = vi.fn().mockRejectedValue(new ApiError(0, 'request timed out'))
-    mockUseTrip.mockReturnValue({ trip: { id: 'trip-1' }, logException })
+    mockUseTrip.mockReturnValue({ trip: RIGID_TRIP, logException })
 
     render(<LogExceptionPageClient />)
     fireEvent.click(screen.getByText('Cargo damage'))
@@ -201,7 +210,7 @@ describe('LogExceptionPageClient failure feedback (audit fixes)', () => {
 
   it('shows honest not-accepted copy (not connection copy) on a terminal 4xx', async () => {
     const logException = vi.fn().mockRejectedValue(new ApiError(422, 'invalid'))
-    mockUseTrip.mockReturnValue({ trip: { id: 'trip-1' }, logException })
+    mockUseTrip.mockReturnValue({ trip: RIGID_TRIP, logException })
 
     render(<LogExceptionPageClient />)
     fireEvent.click(screen.getByText('Cargo damage'))
@@ -220,7 +229,7 @@ describe('LogExceptionPageClient back link (5d)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     queueAccepts()
-    mockUseTrip.mockReturnValue({ trip: { id: 'trip-1' }, logException: vi.fn() })
+    mockUseTrip.mockReturnValue({ trip: RIGID_TRIP, logException: vi.fn() })
   })
 
   it('shows a "← In-Transit Hub" back target (SubpageHeader) that pushes the hub route (not router.back)', () => {
@@ -251,7 +260,7 @@ describe('LogExceptionPageClient phase tagging', () => {
     const logException = vi.fn().mockRejectedValue(new Error('offline'))
     const phases = walk(SINGLE_LEG_PHASE_PLAN, 3)
     const inTransit = phases.find((p) => p.phase_type === 'in_transit')!
-    mockUseTrip.mockReturnValue({ trip: { id: 'trip-1', phases }, logException })
+    mockUseTrip.mockReturnValue({ trip: { ...RIGID_TRIP, phases }, logException })
 
     render(<LogExceptionPageClient />)
     fireEvent.click(screen.getByText('Vehicle breakdown'))
@@ -266,6 +275,8 @@ describe('LogExceptionPageClient phase tagging', () => {
         description: REQUIRED_DESCRIPTION,
         phase_event_id: String(inTransit.phase_event_id),
         client_report_id: expect.any(String),
+        // A rigid truck: the breakdown can only be the truck's, so it says so.
+        vehicle_type: 'horse',
       },
       undefined,
     )
@@ -275,7 +286,7 @@ describe('LogExceptionPageClient phase tagging', () => {
     // Runs inside the catch block of an already-failed send — a throw here would lose
     // the report outright. Untagged beats unsent.
     const logException = vi.fn().mockRejectedValue(new Error('offline'))
-    mockUseTrip.mockReturnValue({ trip: { id: 'trip-1' }, logException })
+    mockUseTrip.mockReturnValue({ trip: RIGID_TRIP, logException })
 
     render(<LogExceptionPageClient />)
     fireEvent.click(screen.getByText('Seal broken in transit'))
@@ -295,6 +306,153 @@ describe('LogExceptionPageClient phase tagging', () => {
   })
 })
 
+// Trailer analytics (Stage 3): a breakdown records WHICH vehicle broke down. The driver
+// answers only "Truck or Trailer?", plus a plate on an interlink; the server works out
+// the exact vehicle from the trip.
+
+describe('LogExceptionPageClient asks which vehicle broke down', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    queueAccepts()
+  })
+
+  function chooseBreakdown() {
+    fireEvent.click(screen.getByText('Vehicle breakdown'))
+    enterRequiredDescription()
+  }
+
+  it('asks nothing on a rigid truck and records the breakdown against the truck', async () => {
+    const logException = vi.fn().mockResolvedValue(undefined)
+    mockUseTrip.mockReturnValue({ trip: RIGID_TRIP, logException })
+
+    render(<LogExceptionPageClient />)
+    chooseBreakdown()
+    expect(screen.queryByText('Which vehicle broke down?')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText('Submit exception'))
+
+    await waitFor(() => expect(logException).toHaveBeenCalled())
+    expect(logException).toHaveBeenCalledWith('mechanical', {
+      description: REQUIRED_DESCRIPTION, clientReportId: expect.any(String), vehicleType: 'horse',
+    })
+  })
+
+  it('asks Truck or Trailer on a one-trailer trip, and sends no trailer id for the trailer', async () => {
+    const logException = vi.fn().mockResolvedValue(undefined)
+    mockUseTrip.mockReturnValue({ trip: SINGLE_TRAILER_TRIP, logException })
+
+    render(<LogExceptionPageClient />)
+    chooseBreakdown()
+    expect(screen.getByText('Truck')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('Trailer'))
+    // "Trailer" alone names the only trailer, so no plate is asked for.
+    expect(screen.queryByText(FRONT_TRAILER.registration)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText('Submit exception'))
+
+    await waitFor(() => expect(logException).toHaveBeenCalled())
+    expect(logException).toHaveBeenCalledWith('mechanical', {
+      description: REQUIRED_DESCRIPTION, clientReportId: expect.any(String), vehicleType: 'trailer',
+    })
+  })
+
+  it('lists each trailer plate on an interlink and sends the chosen trailer', async () => {
+    const logException = vi.fn().mockResolvedValue(undefined)
+    mockUseTrip.mockReturnValue({ trip: INTERLINK_TRIP, logException })
+
+    render(<LogExceptionPageClient />)
+    chooseBreakdown()
+    fireEvent.click(screen.getByText('Trailer'))
+    expect(screen.getByText(FRONT_TRAILER.registration)).toBeInTheDocument()
+    fireEvent.click(screen.getByText(REAR_TRAILER.registration))
+    expect(screen.getByText('Trailer')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText(REAR_TRAILER.registration)).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(screen.getByText('Submit exception'))
+
+    await waitFor(() => expect(logException).toHaveBeenCalled())
+    expect(logException).toHaveBeenCalledWith('mechanical', {
+      description: REQUIRED_DESCRIPTION, clientReportId: expect.any(String),
+      vehicleType: 'trailer', trailerId: REAR_TRAILER.id,
+    })
+  })
+
+  it('drops the plate when the driver switches back to the truck', async () => {
+    const logException = vi.fn().mockResolvedValue(undefined)
+    mockUseTrip.mockReturnValue({ trip: INTERLINK_TRIP, logException })
+
+    render(<LogExceptionPageClient />)
+    chooseBreakdown()
+    fireEvent.click(screen.getByText('Trailer'))
+    fireEvent.click(screen.getByText(REAR_TRAILER.registration))
+    fireEvent.click(screen.getByText('Truck'))
+    expect(screen.queryByText(REAR_TRAILER.registration)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText('Submit exception'))
+
+    await waitFor(() => expect(logException).toHaveBeenCalled())
+    expect(logException).toHaveBeenCalledWith('mechanical', {
+      description: REQUIRED_DESCRIPTION, clientReportId: expect.any(String), vehicleType: 'horse',
+    })
+  })
+
+  it('keeps submit disabled until the vehicle, and on an interlink the plate, is chosen', () => {
+    mockUseTrip.mockReturnValue({ trip: INTERLINK_TRIP, logException: vi.fn() })
+
+    render(<LogExceptionPageClient />)
+    chooseBreakdown()
+    const submit = screen.getByText('Submit exception')
+
+    expect(submit).toBeDisabled()
+    fireEvent.click(screen.getByText('Trailer'))
+    expect(submit).toBeDisabled()
+    fireEvent.click(screen.getByText(FRONT_TRAILER.registration))
+    expect(submit).toBeEnabled()
+  })
+
+  it('clears the answer when the driver picks another category, which sends neither field', async () => {
+    const logException = vi.fn().mockResolvedValue(undefined)
+    mockUseTrip.mockReturnValue({ trip: INTERLINK_TRIP, logException })
+
+    render(<LogExceptionPageClient />)
+    chooseBreakdown()
+    fireEvent.click(screen.getByText('Trailer'))
+    fireEvent.click(screen.getByText(REAR_TRAILER.registration))
+    fireEvent.click(screen.getByText('Cargo damage'))
+    expect(screen.queryByText('Which vehicle broke down?')).not.toBeInTheDocument()
+    // Back on breakdown, the earlier answer is gone and has to be given again.
+    fireEvent.click(screen.getByText('Vehicle breakdown'))
+    expect(screen.getByText('Submit exception')).toBeDisabled()
+    fireEvent.click(screen.getByText('Cargo damage'))
+    fireEvent.click(screen.getByText('Submit exception'))
+
+    await waitFor(() => expect(logException).toHaveBeenCalled())
+    expect(logException).toHaveBeenCalledWith('cargo_damage', {
+      description: REQUIRED_DESCRIPTION, clientReportId: expect.any(String),
+    })
+  })
+
+  it('keeps the answer in the queued body when the report goes offline', async () => {
+    const logException = vi.fn().mockRejectedValue(new TypeError('network unreachable'))
+    mockUseTrip.mockReturnValue({ trip: INTERLINK_TRIP, logException })
+
+    render(<LogExceptionPageClient />)
+    chooseBreakdown()
+    fireEvent.click(screen.getByText('Trailer'))
+    fireEvent.click(screen.getByText(REAR_TRAILER.registration))
+    fireEvent.click(screen.getByText('Submit exception'))
+
+    await waitFor(() => expect(mockEnqueueException).toHaveBeenCalled())
+    expect(mockEnqueueException).toHaveBeenCalledWith(
+      'trip-1',
+      {
+        exception_type: 'mechanical',
+        description: REQUIRED_DESCRIPTION,
+        client_report_id: expect.any(String),
+        vehicle_type: 'trailer',
+        trailer_id: REAR_TRAILER.id,
+      },
+      undefined,
+    )
+  })
+})
+
 // FP-150: the driver photographs the problem. The photo must reach the SAME evidence
 // trail the phase steps already feed — POST /api/v1/artifacts, then the returned id on
 // the exception as supporting_artifact_id — and must never disappear quietly when any
@@ -307,7 +465,7 @@ describe('LogExceptionPageClient photo capture (FP-150)', () => {
   })
 
   it('shows the captured photo back to the driver before they submit', async () => {
-    mockUseTrip.mockReturnValue({ trip: { id: 'trip-1' }, logException: vi.fn() })
+    mockUseTrip.mockReturnValue({ trip: RIGID_TRIP, logException: vi.fn() })
 
     render(<LogExceptionPageClient />)
     expect(screen.queryByAltText('captured photo')).not.toBeInTheDocument()
@@ -319,7 +477,7 @@ describe('LogExceptionPageClient photo capture (FP-150)', () => {
 
   it('uploads the photo and attaches its artifact id to the report', async () => {
     const logException = vi.fn().mockResolvedValue(undefined)
-    mockUseTrip.mockReturnValue({ trip: { id: 'trip-1' }, logException })
+    mockUseTrip.mockReturnValue({ trip: RIGID_TRIP, logException })
     mockUploadArtifact.mockResolvedValue({ id: 'artifact-1', file_hash: 'abc' })
 
     render(<LogExceptionPageClient />)
@@ -344,7 +502,7 @@ describe('LogExceptionPageClient photo capture (FP-150)', () => {
 
   it('keeps the description working alongside the photo', async () => {
     const logException = vi.fn().mockResolvedValue(undefined)
-    mockUseTrip.mockReturnValue({ trip: { id: 'trip-1' }, logException })
+    mockUseTrip.mockReturnValue({ trip: RIGID_TRIP, logException })
     mockUploadArtifact.mockResolvedValue({ id: 'artifact-1', file_hash: 'abc' })
 
     render(<LogExceptionPageClient />)
@@ -366,7 +524,7 @@ describe('LogExceptionPageClient photo capture (FP-150)', () => {
   it('does not upload the photo until Submit is pressed', async () => {
     // Task 0B: retaking or abandoning the form must never create server-side evidence —
     // upload only ever begins at Submit, never at capture.
-    mockUseTrip.mockReturnValue({ trip: { id: 'trip-1' }, logException: vi.fn() })
+    mockUseTrip.mockReturnValue({ trip: RIGID_TRIP, logException: vi.fn() })
 
     render(<LogExceptionPageClient />)
     fireEvent.click(screen.getByText('Cargo damage'))
@@ -379,7 +537,7 @@ describe('LogExceptionPageClient photo capture (FP-150)', () => {
 
   it('queues the photo itself when the upload fails on a dead network', async () => {
     const logException = vi.fn()
-    mockUseTrip.mockReturnValue({ trip: { id: 'trip-1' }, logException })
+    mockUseTrip.mockReturnValue({ trip: RIGID_TRIP, logException })
     mockUploadArtifact.mockRejectedValue(new TypeError('network unreachable'))
 
     render(<LogExceptionPageClient />)
@@ -409,7 +567,7 @@ describe('LogExceptionPageClient photo capture (FP-150)', () => {
 
   it('sends the report without the photo when the server terminally rejects the image', async () => {
     const logException = vi.fn().mockResolvedValue(undefined)
-    mockUseTrip.mockReturnValue({ trip: { id: 'trip-1' }, logException })
+    mockUseTrip.mockReturnValue({ trip: RIGID_TRIP, logException })
     // 413 is what lib/api/artifacts.ts throws for an oversized photo — it will fail the
     // same way on every retry, so the written report must not be held hostage to it.
     mockUploadArtifact.mockRejectedValue(new ApiError(413, 'Photo is too large to upload'))
@@ -432,7 +590,7 @@ describe('LogExceptionPageClient photo capture (FP-150)', () => {
   })
 
   it('tells the driver when the photo could not be stored on the device', async () => {
-    mockUseTrip.mockReturnValue({ trip: { id: 'trip-1' }, logException: vi.fn() })
+    mockUseTrip.mockReturnValue({ trip: RIGID_TRIP, logException: vi.fn() })
     mockUploadArtifact.mockRejectedValue(new TypeError('network unreachable'))
     // localStorage refused the entry with the image attached; the queue kept the text.
     queueAccepts(false)
@@ -455,7 +613,7 @@ describe('LogExceptionPageClient photo capture (FP-150)', () => {
 
   it('says nothing was saved when the device cannot store the report at all', async () => {
     mockUseTrip.mockReturnValue({
-      trip: { id: 'trip-1' },
+      trip: RIGID_TRIP,
       logException: vi.fn().mockRejectedValue(new TypeError('network unreachable')),
     })
     mockEnqueueException.mockReturnValue({ persisted: false, photoPersisted: false })

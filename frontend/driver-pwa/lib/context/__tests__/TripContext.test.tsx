@@ -39,6 +39,11 @@ const authValue: AuthState = {
 const openPhase = activeTrip.phases.find((p) => p.status === 'pending' || p.status === 'in_progress')
 if (!openPhase) throw new Error('Fixture drift: mockDrivers[0]\'s active trip has no open phase')
 
+// Trailer analytics: the demo trip is an interlink, so "Trailer" needs a plate — the
+// last trailer is the one the driver names below. Taken from the fixture, not hardcoded.
+if (activeTrip.trailers.length < 2) throw new Error('Fixture drift: mockDrivers[0]\'s active trip is not an interlink')
+const namedTrailer = activeTrip.trailers[activeTrip.trailers.length - 1]
+
 function Probe() {
   const ctx = useContext(TripContext)
   if (!ctx) return null
@@ -55,6 +60,7 @@ function Probe() {
       {/* JSON.stringify keeps null ("null") distinguishable from undefined ("") so the
           GPS tests below can tell "explicitly no fix" apart from "field missing". */}
       <span data-testid="last-gps">{last ? JSON.stringify([last.gps_lat, last.gps_lng]) : ''}</span>
+      <span data-testid="last-vehicle">{last ? JSON.stringify(last.vehicle_id) : ''}</span>
       <span data-testid="open-phase-status">
         {ctx.trip?.phases.find((p) => p.phase_event_id === openPhase!.phase_event_id)?.status ?? ''}
       </span>
@@ -80,6 +86,24 @@ function Probe() {
         }
       >
         log-panic-with-gps
+      </button>
+      <button
+        onClick={() =>
+          ctx.logException('mechanical', {
+            description: 'Brake line burst on the rear trailer.',
+            vehicleType: 'trailer',
+            trailerId: String(namedTrailer.id),
+          })
+        }
+      >
+        log-trailer-breakdown
+      </button>
+      <button
+        onClick={() =>
+          ctx.logException('mechanical', { description: 'Warning light on the dash.', vehicleType: 'horse' })
+        }
+      >
+        log-truck-breakdown
       </button>
     </div>
   )
@@ -155,6 +179,38 @@ describe('TripContext session exceptions (5b)', () => {
     })
 
     expect(screen.getByTestId('last-gps')).toHaveTextContent(JSON.stringify([null, null]))
+  })
+
+  // Trailer analytics: demo mode has no server to work out the vehicle, so its local
+  // record must carry the same vehicle_id the server would store.
+  it('demo logException records the named trailer as the breakdown vehicle', async () => {
+    await renderAndWaitForTrip()
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('log-trailer-breakdown'))
+    })
+
+    expect(screen.getByTestId('last-vehicle')).toHaveTextContent(JSON.stringify(namedTrailer.id))
+  })
+
+  it('demo logException records the truck when the driver answers Truck', async () => {
+    await renderAndWaitForTrip()
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('log-truck-breakdown'))
+    })
+
+    expect(screen.getByTestId('last-vehicle')).toHaveTextContent(JSON.stringify(activeTrip.horse?.id ?? null))
+  })
+
+  it('demo logException records no vehicle for a report that is not a breakdown', async () => {
+    await renderAndWaitForTrip()
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('log-exception'))
+    })
+
+    expect(screen.getByTestId('last-vehicle')).toHaveTextContent(JSON.stringify(null))
   })
 })
 

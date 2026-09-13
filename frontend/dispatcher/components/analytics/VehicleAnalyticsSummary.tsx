@@ -7,7 +7,8 @@ import { defaultMonthRange, fmtMonthRange } from '@/lib/format/month'
 import { useVehicleAnalytics, useVehicleStreaks } from '@/lib/hooks/useAnalytics'
 import type { MonthRange } from '@/lib/types/month-range'
 import type { VehicleMetrics, VehicleStreak } from '@shared/lib/types/analytics'
-import type { VehicleId } from '@shared/lib/types/vehicle'
+import type { VehicleId, VehicleType } from '@shared/lib/types/vehicle'
+import { ANALYTICS_COPY } from './copy'
 import {
   AnalyticsSummaryFrame, DetailRow, EmptyNote, ListRow, ListRows, SectionDivider,
   SectionHeading, SeverityStrip, StatTile, StatTiles,
@@ -15,6 +16,8 @@ import {
 
 export interface VehicleAnalyticsSummaryProps {
   vehicleId: VehicleId
+  // Only a trailer needs the note that its earlier breakdowns could not be tied to it.
+  vehicleType: VehicleType
 }
 
 const LABELS = {
@@ -40,13 +43,13 @@ const SUMMARY_COPY = {
   tripMany: 'trips',
 } as const
 
-/** One horse's analytics on its own detail page: the Vehicle tab's figures from
- *  /analytics as stat tiles, since a one-row table reads as broken UI.
+/** One vehicle's analytics, horse or trailer, on its own detail page: the Vehicle tab's
+ *  figures from /analytics as stat tiles, since a one-row table reads as broken UI.
  *
  *  The endpoints take no vehicle filter, so this fetches the organisation's lists and
  *  picks this vehicle out client-side. A server-side filter is backend work, left out on
  *  purpose. */
-export function VehicleAnalyticsSummary({ vehicleId }: VehicleAnalyticsSummaryProps) {
+export function VehicleAnalyticsSummary({ vehicleId, vehicleType }: VehicleAnalyticsSummaryProps) {
   const [range, setRange] = useState<MonthRange>(() => defaultMonthRange())
   const vehicles = useVehicleAnalytics(range)
   const streaks = useVehicleStreaks()
@@ -73,6 +76,10 @@ export function VehicleAnalyticsSummary({ vehicleId }: VehicleAnalyticsSummaryPr
         monthly={vehicles.rows.find((row) => row.vehicle_id === vehicleId)}
         streak={streaks.rows.find((row) => row.vehicle_id === vehicleId)}
       />
+      {/* After both sections: it explains the breakdown figures in each of them. */}
+      {vehicleType === 'trailer' && (
+        <p className="text-[12px] text-on-surf-v">{ANALYTICS_COPY.trailerNote}</p>
+      )}
     </AnalyticsSummaryFrame>
   )
 }
