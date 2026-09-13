@@ -46,10 +46,8 @@ function makeDraft(overrides: Partial<ConfirmationEvidence> = {}): ConfirmationE
   return {
     podPhotoDataUrl: 'data:image/jpeg;base64,POD',
     podPhotoArtifactId: null,
-    podSignatureDataUrl: 'data:image/png;base64,SIG',
-    podSignatureArtifactId: null,
-    recipientName: 'Nomsa Dlamini',
-    recipientIdNumber: '9202204720082',
+    podSignatureArtifactId: 'receiver-signature-artifact',
+    receiverConfirmedAt: '2026-09-13T10:05:00.000Z',
     driverVisualCount: 31,
     reconciliationNote: null,
     capturedAt: null,
@@ -94,8 +92,10 @@ describe('Closed — POD evidence stays mandatory', () => {
     expect(swipe).toBeDisabled()
   })
 
-  it('blocks closure without the receiver signature', () => {
-    const swipe = renderStep(makeDraft({ podSignatureDataUrl: null }))
+  it('blocks closure until the receiver has confirmed', () => {
+    // podSignatureArtifactId is written by the handover poll (FP-155), so a null here
+    // means the receiver never scanned — not that an upload failed.
+    const swipe = renderStep(makeDraft({ podSignatureArtifactId: null }))
 
     expect(swipe).toBeDisabled()
   })

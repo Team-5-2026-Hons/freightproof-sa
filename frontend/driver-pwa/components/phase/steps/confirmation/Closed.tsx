@@ -29,14 +29,17 @@ export function Closed({ tripId, phase, stepIndex, draft, onComplete }: ClosedPr
   // the swipe stayed disabled forever with nothing on screen explaining why, and the
   // driver's only escape was abandoning a delivered trip. What this phase genuinely
   // cannot be completed without is the POD evidence, which is what remains below.
+  // The signature half is now the RECEIVER's confirmation (FP-155), so what this gates
+  // on is the artifact id the handover poll wrote into the draft — there is no local
+  // image to check for any more.
   const isReady =
     draft.podPhotoDataUrl !== null &&
-    Boolean(draft.podSignatureDataUrl)
+    Boolean(draft.podSignatureArtifactId)
 
   // confirmation is gated on the destination warehouse's scan-IN session, exactly as
   // loading is on scan-OUT and unloading on scan-IN (GATED_PHASES, phase_gate.py). Until
   // this landed, this phase was gated server-side and silent here: the driver captured
-  // the POD photo, took the receiver's signature and did the reconciliation, then swiped
+  // the POD photo, took the receiver's confirmation and did the reconciliation, then swiped
   // and ate a bare 409 standing at the customer's gate with nothing on screen explaining
   // it. Coalesced to null first for the same reason as loading/Linehaul.tsx — `blocked_on`
   // is optional on the shared type, so `!== null` alone reads `undefined !== null` and is

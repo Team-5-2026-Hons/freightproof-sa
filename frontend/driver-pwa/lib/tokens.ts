@@ -10,20 +10,20 @@
 // Values are copied from the hex scale in tailwind.config.ts and must stay in step with
 // it — they are the same palette, reached a different way.
 
+// Moved to shared (2026-09-13, FP-155) — the receiver app renders the same document.
+// Re-exported rather than deleted so existing importers in this app are untouched.
+export { ATTESTATION_CANVAS_COLOURS } from '@shared/lib/constants/attestation-colours'
+
 /**
- * Palette for the POD attestation image (lib/utils/render-attestation.ts).
+ * The QR code's own two colours (FP-238).
  *
- * Deliberately the light-surface values regardless of the device theme: this is a
- * document that gets exported, printed and read in a dispute, not a screen that follows
- * the driver's dark-mode preference.
+ * Not from the palette, and deliberately not theme-aware — the one place in this app
+ * where that is correct. A QR is decoded by a camera, not read by a person: the spec's
+ * contrast assumption is pure black modules on a pure white quiet zone, and rendering it
+ * in themed greys produces a code that a phone in a dim warehouse simply fails to read.
+ * Dark mode must not reach this.
  */
-export const ATTESTATION_CANVAS_COLOURS = {
-  /** surf-lowest — the document ground. */
-  background: '#ffffff',
-  /** on-surf — headings and values. */
-  title: '#1b1b1c',
-  /** on-surf-v — field labels, one step back from the values they describe. */
-  label: '#46464f',
-  /** outline.v — the rule under the title. */
-  rule: '#c7c6ca',
+export const QR_CANVAS_COLOURS = {
+  dark: '#000000',
+  light: '#ffffff',
 } as const

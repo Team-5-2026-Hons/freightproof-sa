@@ -184,6 +184,21 @@ class Settings(BaseSettings):
     # window the rotation lives inside.
     HANDOVER_TOKEN_EXPIRY_MINUTES: int = 10
 
+    # How often the driver's screen replaces the displayed QR with a freshly issued
+    # token. Not a security boundary on its own — HANDOVER_TOKEN_EXPIRY_MINUTES is —
+    # but it bounds how long a photograph of the driver's screen stays redeemable,
+    # which is the attack the rotation exists for. Short enough that a photo taken
+    # across a warehouse is dead before it is useful; long enough that a receiver
+    # fumbling their camera app does not watch the code change under them.
+    HANDOVER_ROTATION_SECONDS: int = 20
+
+    # Origin of the public receiver app (frontend/receiver), used to build the URL
+    # encoded into the QR. Must be reachable from a receiver's own mobile data — never
+    # localhost in a deployed environment, or every scan dead-ends on their phone. No
+    # trailing slash; build_scan_url strips one rather than emitting a double slash
+    # some QR readers mangle.
+    HANDOVER_RECEIVER_BASE_URL: str = "http://localhost:3002"
+
     # -------------------------------------------------------------------------
     # Rate limiting (core/rate_limit.py; budgets live in core/limits.py)
     # -------------------------------------------------------------------------
@@ -229,7 +244,39 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: List[str] = [
         "http://localhost:3000",
         "http://localhost:3001",
+        # driver-pwa native shells (see frontend/driver-pwa/capacitor.config.ts):
+        # iOS keeps the capacitor:// scheme, Android is https:// — both required,
+        # neither can be collapsed into the other.
+        "capacitor://localhost",
+        "https://localhost",
     ]
+
+    @property
+    def cors_allowed_origins(self) -> List[str]:
+        """ALLOWED_ORIGINS, plus the receiver app's own origin — always.
+
+        Derived rather than listed, because listing it does not work. ALLOWED_ORIGINS is
+        an env-overridable field: the moment a developer or a deployment sets it in .env,
+        the whole default list above is REPLACED, and any receiver origin written there is
+        silently gone. That is not hypothetical — it is what broke the first real
+        two-phone test of this feature.
+
+        The receiver app's origin is, by definition, an origin this API must accept: it is
+        the page we ourselves told the receiver to open, via a URL this API composed
+        (handover_service.build_scan_url). Requiring anyone to keep that fact in sync
+        across two settings is a drift waiting to happen, and the failure it produces is
+        near-undebuggable — a browser-side CORS refusal that surfaces as the handover's
+        deliberately generic 404.
+
+        Deployment note, unchanged by this: the binding cookie is SameSite=Strict, so the
+        receiver app and this API must still share a registrable domain
+        (receiver.example.co.za and api.example.co.za do; two unrelated domains do not).
+        CORS being correct does not rescue a cookie the browser declines to send.
+        """
+        receiver_origin = self.HANDOVER_RECEIVER_BASE_URL.rstrip("/")
+        if not receiver_origin or receiver_origin in self.ALLOWED_ORIGINS:
+            return self.ALLOWED_ORIGINS
+        return [*self.ALLOWED_ORIGINS, receiver_origin]
 
     # model_config replaces the deprecated class Config syntax.
     # In local dev, pydantic-settings reads from backend/.env automatically.

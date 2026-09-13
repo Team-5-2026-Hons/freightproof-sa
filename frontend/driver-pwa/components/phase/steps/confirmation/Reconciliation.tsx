@@ -61,8 +61,8 @@ export function Reconciliation({ tripId, phase, stepIndex, draft, onUpdate, onCo
             <StatusMark ok={draft.podPhotoDataUrl !== null} />
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-base text-surface-on-variant">Receiver signature</span>
-            <StatusMark ok={Boolean(draft.podSignatureDataUrl)} />
+            <span className="text-base text-surface-on-variant">Receiver confirmation</span>
+            <StatusMark ok={Boolean(draft.podSignatureArtifactId)} />
           </div>
         </div>
       </div>

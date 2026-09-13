@@ -72,7 +72,13 @@ export const STEP_SLUGS: Record<PhaseType, readonly string[]> = {
   // the note above. Mirrored by backend/app/core/phase_meta.py — the contract test
   // parses THIS file, so the two must change together.
   unloading: ['2-seal-verify', '4-visual-count'],
-  confirmation: ['1-pod-photo', '2-pod-signature', '3-reconciliation', '4-closed'],
+  // '2-pod-signature' became '2-receiver-handover' (2026-09-13, FP-155). The step no
+  // longer captures anything on the driver's phone: it displays a rotating QR, and the
+  // signature is produced on the RECEIVER's own device, on the public page that scan
+  // opens. The slug keeps its number, per the note above — the prefix orders the recipe
+  // and renumbering would break every deep link and stored draft key — but the name had
+  // to change, because a driver standing on this step now signs nothing.
+  confirmation: ['1-pod-photo', '2-receiver-handover', '3-reconciliation', '4-closed'],
 }
 
 // Positionally paired with STEP_SLUGS above — same length, same order, per phase.
@@ -85,7 +91,7 @@ export const STEP_NAMES: Record<PhaseType, readonly string[]> = {
   departure: ['Capture Seal', 'Confirm Departure'],
   in_transit: [],
   unloading: ['Verify Seal', 'Visual Count'],
-  confirmation: ['Photograph POD', 'Capture Signature', 'Reconciliation', 'Trip Closed'],
+  confirmation: ['Photograph POD', 'Receiver Handover', 'Reconciliation', 'Trip Closed'],
 }
 
 // Which phases carry a Hedera anchor, and under which failure policy — parent plan D7.
