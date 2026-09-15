@@ -290,7 +290,11 @@ Expected: FAIL — `cannot import name 'extend_token_for_verification'`
 
 - [ ] **Step 3: Add the function to `handover_service.py`**
 
-Append after `mark_token_opened`:
+First check the module has a logger — at the time of writing it did **not**, and the
+function below calls `logger.info()`, which would be a `NameError` on the refusal path.
+If absent, add `import logging` to the import block and
+`logger = logging.getLogger(__name__)` after the imports, matching every other
+`orchestration/*.py` module. Then append this after `mark_token_opened`:
 
 ```python
 async def extend_token_for_verification(

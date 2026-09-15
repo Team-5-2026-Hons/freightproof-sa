@@ -6,8 +6,11 @@ session lifecycle, tier resolution and exception raising arrive in Stage 2.
 Layering: orchestration -> integrations, db. No HTTP concerns belong here.
 """
 
+import hashlib
 import logging
 import unicodedata
+import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Optional
 
@@ -16,7 +19,22 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.db.models.receiver_verification import IdvsQuotaLedger
+from app.core.realtime import RealtimeKind, TripEvent, enqueue_event, event_severity
+from app.db.models.enums import (
+    ExceptionSeverity,
+    ExceptionSource,
+    ExceptionType,
+    ReceiverVerificationStatus,
+    ReceiverVerificationTier,
+    ReceiverVerificationUnverifiedReason,
+)
+from app.db.models.handover import HandoverCapabilityToken
+from app.db.models.receiver_verification import IdvsQuotaLedger, ReceiverIdentityVerification
+from app.db.models.transit import TripException
+from app.db.models.trips import Trip
+from app.integrations.idvs import IdvsClient, IdvsDecisionStatus, IdvsError, IdvsSession
+from app.orchestration.exception_service import initial_review_status
+from app.orchestration.handover_service import extend_token_for_verification
 
 logger = logging.getLogger(__name__)
 
@@ -131,3 +149,303 @@ async def consume_quota_slot(db: AsyncSession, *, provider: str = PROVIDER_DIDIT
         )
         return False
     return True
+
+
+@dataclass(frozen=True)
+class Verdict:
+    """What we concluded, derived from what the vendor said plus our own cross-check.
+
+    Separate from IdvsDecision on purpose: that is the vendor's vocabulary, this is ours,
+    and the mapping between them is a judgement this module owns rather than something a
+    parser should be making.
+    """
+
+    status: ReceiverVerificationStatus
+    tier: ReceiverVerificationTier
+    unverified_reason: Optional[ReceiverVerificationUnverifiedReason] = None
+    exception_type: Optional[ExceptionType] = None
+
+
+def resolve_verdict(
+    *, status: IdvsDecisionStatus, identity_match: Optional[bool],
+) -> Verdict:
+    """Map a vendor status and cross-check result onto our verdict and its exception.
+
+    Two rules do all the work here, and both are the spec's:
+
+    1. A GAP is not a MISMATCH. ABANDONED and EXPIRED mean no check completed, which has
+       benign readings (lost signal, walked away) and raises RECEIVER_ID_UNVERIFIED.
+       DECLINED and a failed cross-check mean a check completed and disagreed, which does
+       not, and raises RECEIVER_ID_MISMATCH. Conflating them would put false positives in
+       front of a dispatcher triaging a real investigation — the reasoning enums.py
+       already records for SEAL_UNVERIFIED versus SEAL_MISMATCH.
+
+    2. identity_match None means there was nothing to compare, NOT that it disagreed.
+       An APPROVED session with no extracted document data is still VERIFIED; treating
+       absence of evidence as evidence of fraud would manufacture mismatches out of a
+       vendor's field coverage.
+
+    A non-terminal status yields PENDING and no exception. Nothing is raised for a check
+    still in flight — the sweeper terminalises it later, and only then is there a fact.
+    """
+    if not status.is_terminal:
+        return Verdict(
+            status=ReceiverVerificationStatus.PENDING,
+            tier=ReceiverVerificationTier.DOCUMENT_AND_FACE,
+        )
+
+    if status is IdvsDecisionStatus.APPROVED:
+        if identity_match is False:
+            return Verdict(
+                status=ReceiverVerificationStatus.FAILED,
+                tier=ReceiverVerificationTier.DOCUMENT_AND_FACE,
+                exception_type=ExceptionType.RECEIVER_ID_MISMATCH,
+            )
+        return Verdict(
+            status=ReceiverVerificationStatus.VERIFIED,
+            tier=ReceiverVerificationTier.DOCUMENT_AND_FACE,
+        )
+
+    if status is IdvsDecisionStatus.DECLINED:
+        return Verdict(
+            status=ReceiverVerificationStatus.FAILED,
+            tier=ReceiverVerificationTier.DOCUMENT_AND_FACE,
+            exception_type=ExceptionType.RECEIVER_ID_MISMATCH,
+        )
+
+    # ABANDONED / EXPIRED — the gap case.
+    return Verdict(
+        status=ReceiverVerificationStatus.UNVERIFIED,
+        tier=ReceiverVerificationTier.DOCUMENT_AND_FACE,
+        # Both ABANDONED and EXPIRED map here. The enum has no EXPIRED member on
+        # purpose: from the evidence record's point of view "they walked away" and "the
+        # link aged out" are the same fact — no check completed — and inventing two
+        # reasons would imply a distinction a dispatcher cannot act on differently.
+        unverified_reason=ReceiverVerificationUnverifiedReason.ABANDONED,
+        exception_type=ExceptionType.RECEIVER_ID_UNVERIFIED,
+    )
+
+
+async def raise_verification_exception(
+    db: AsyncSession,
+    *,
+    trip: Trip,
+    phase_event_id: uuid.UUID,
+    trip_stop_id: Optional[uuid.UUID],
+    verdict: Verdict,
+) -> None:
+    """Record a verification finding as a TripException, and tell the dispatcher.
+
+    Severity follows the gap/mismatch split rather than being uniform. A MISMATCH is a
+    fraud indicator with no benign reading and gets WARNING; an UNVERIFIED gap gets INFO,
+    because "the receiver had no ID on them" is an ordinary Tuesday on a warehouse floor
+    and does not belong in the same lane as a disagreeing document. Putting a class of
+    finding with real false-positive modes into the alarm lane is how a dispatcher learns
+    to ignore the alarm lane — the reasoning phase_service.py records for GPS_MISMATCH.
+
+    Never CRITICAL. This codebase reserves that for findings that stop a trip — a seal
+    mismatch, a panic button — and an identity check cannot, by the spec's own rule that
+    verification never gates a delivery.
+
+    Broad except, logged with a traceback: the receiver has already confirmed, and a
+    failure to file paperwork about it must not unwind a delivery that happened.
+    """
+    if verdict.exception_type is None:
+        return
+
+    severity = (
+        ExceptionSeverity.WARNING
+        if verdict.exception_type is ExceptionType.RECEIVER_ID_MISMATCH
+        else ExceptionSeverity.INFO
+    )
+    description = (
+        "The identity presented by the receiver did not match the verified document."
+        if verdict.exception_type is ExceptionType.RECEIVER_ID_MISMATCH
+        else (
+            "The receiver's identity could not be verified at handover "
+            f"({verdict.unverified_reason.value if verdict.unverified_reason else 'unknown'})."
+        )
+    )
+
+    try:
+        db.add(TripException(
+            trip_id=trip.id,
+            phase_event_id=phase_event_id,
+            trip_stop_id=trip_stop_id,
+            exception_type=verdict.exception_type,
+            source=ExceptionSource.SYSTEM,
+            severity=severity,
+            review_status=initial_review_status(severity),
+            description=description,
+        ))
+        await db.flush()
+
+        # FP-147's invariant: a system-detected exception that tells no one leaves the
+        # dispatcher's screen showing a trip that no longer matches the record.
+        enqueue_event(
+            db, trip.operator_organization_id,
+            TripEvent(
+                id=trip.id,
+                kind=RealtimeKind.EXCEPTION_RAISED,
+                severity=event_severity(severity),
+            ),
+        )
+    except Exception:
+        logger.exception(
+            "Could not record a receiver verification exception for trip=%s phase_event=%s "
+            "— the verification row still carries the finding",
+            trip.id, phase_event_id,
+        )
+
+
+def hash_consent_text(consent_text: str) -> str:
+    """SHA-256 of the exact wording shown to the receiver.
+
+    The hash, never the text. An s27(1)(a) consent basis is only as good as proof of WHAT
+    was agreed to, and hashing makes that provable without copying the paragraph into
+    every row — which also makes the wording versioned content rather than a UI string
+    somebody edits freely.
+    """
+    return hashlib.sha256(consent_text.encode("utf-8")).hexdigest()
+
+
+async def record_consent(
+    db: AsyncSession, *, token: HandoverCapabilityToken, consent_text: str,
+) -> ReceiverIdentityVerification:
+    """Create the verification row at the moment the receiver consents.
+
+    Before any vendor call and before any confirmation exists. The row starts PENDING with
+    a token_id and no handover_confirmation_id — see the model's docstring for why that
+    ordering is the design rather than an oversight.
+    """
+    verification = ReceiverIdentityVerification(
+        id=uuid.uuid4(),
+        token_id=token.id,
+        trip_id=token.trip_id,
+        status=ReceiverVerificationStatus.PENDING,
+        tier=ReceiverVerificationTier.DOCUMENT_AND_FACE,
+        provider=PROVIDER_DIDIT,
+        consent_given_at=datetime.now(UTC),
+        consent_text_hash=hash_consent_text(consent_text),
+    )
+    db.add(verification)
+    await db.flush()
+    return verification
+
+
+async def start_verification(
+    db: AsyncSession,
+    *,
+    token: HandoverCapabilityToken,
+    verification: ReceiverIdentityVerification,
+    client: IdvsClient,
+) -> Optional[IdvsSession]:
+    """Claim quota, create a vendor session, and extend the token to cover it.
+
+    Quota is claimed BEFORE the vendor call, never after. The whole point of the hard stop
+    is that session 501 is never created — checking afterwards would mean paying for the
+    thing we decided not to buy.
+
+    Returns None on every degradation path. The caller sends the receiver down the tier
+    ladder instead of failing: a vendor outage, a spent quota and an unreachable network
+    all end with a confirmable delivery carrying an honest reason.
+    """
+    if not await consume_quota_slot(db, provider=PROVIDER_DIDIT):
+        verification.status = ReceiverVerificationStatus.UNVERIFIED
+        verification.unverified_reason = ReceiverVerificationUnverifiedReason.QUOTA_EXHAUSTED
+        await db.flush()
+        return None
+
+    try:
+        session = await client.create_session(reference=str(verification.id))
+    except IdvsError:
+        logger.exception("IDVS session creation failed for verification=%s", verification.id)
+        verification.status = ReceiverVerificationStatus.UNVERIFIED
+        verification.unverified_reason = ReceiverVerificationUnverifiedReason.VENDOR_UNAVAILABLE
+        await db.flush()
+        return None
+
+    # Persisted BEFORE the receiver is redirected. This is the security rule in spec §7.1:
+    # the client never names a session, so it can never substitute somebody else's
+    # approved one — we only ever fetch a decision for the id we stored ourselves.
+    verification.provider_session_id = session.session_id
+    await db.flush()
+
+    # Best-effort. A token that cannot be extended still works; it just gives the receiver
+    # less time, which degrades the tier rather than failing the handover.
+    await extend_token_for_verification(db, token_id=token.id)
+
+    return session
+
+
+async def resolve_verification(
+    db: AsyncSession,
+    *,
+    verification: ReceiverIdentityVerification,
+    client: IdvsClient,
+    typed_name: str,
+    typed_id_number: str,
+) -> Verdict:
+    """Fetch the authoritative decision and write our verdict.
+
+    THE security boundary of this feature. The session id comes from our own row, never
+    from the caller — spec §7.1, and the exact failure Didit's own team patched in their
+    WordPress plugin, where a browser could post {status: "Approved"} and be believed.
+    Our receiver route is unauthenticated by design, so trusting a client-supplied status
+    would let anyone holding a live QR self-declare VERIFIED.
+
+    A vendor that cannot be reached leaves the row PENDING rather than guessing. The
+    sweeper terminalises it later; inventing a verdict here would put a fact in the
+    evidence record that nobody established.
+    """
+    if verification.provider_session_id is None:
+        return Verdict(
+            status=ReceiverVerificationStatus.UNVERIFIED,
+            tier=verification.tier,
+            unverified_reason=ReceiverVerificationUnverifiedReason.VENDOR_UNAVAILABLE,
+            exception_type=ExceptionType.RECEIVER_ID_UNVERIFIED,
+        )
+
+    try:
+        decision = await client.get_decision(verification.provider_session_id)
+    except IdvsError:
+        logger.exception(
+            "IDVS decision fetch failed for verification=%s — left PENDING for the sweeper",
+            verification.id,
+        )
+        return Verdict(status=ReceiverVerificationStatus.PENDING, tier=verification.tier)
+
+    match = identity_matches(
+        typed_name=typed_name,
+        typed_id_number=typed_id_number,
+        extracted_surname=decision.extracted_surname,
+        extracted_id_number=decision.extracted_id_number,
+    )
+    verdict = resolve_verdict(status=decision.status, identity_match=match)
+
+    verification.identity_match = match
+    verification.status = verdict.status
+    verification.tier = verdict.tier
+    verification.unverified_reason = verdict.unverified_reason
+    verification.provider_decision_at = decision.decided_at
+    await db.flush()
+
+    return verdict
+
+
+async def attach_confirmation(
+    db: AsyncSession, *, token_id: uuid.UUID, handover_confirmation_id: uuid.UUID,
+) -> None:
+    """Link a verification to the confirmation the receiver went on to sign.
+
+    Separate from record_consent because the two happen at different moments and a
+    receiver may verify and then walk away. A verification with a NULL
+    handover_confirmation_id is not an error state — it is the honest record of someone
+    who proved who they were and then did not sign.
+    """
+    await db.execute(
+        update(ReceiverIdentityVerification)
+        .where(ReceiverIdentityVerification.token_id == token_id)
+        .values(handover_confirmation_id=handover_confirmation_id)
+    )
+    await db.flush()

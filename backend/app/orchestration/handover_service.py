@@ -10,6 +10,7 @@ Layering: orchestration -> db only, per CLAUDE.md. No caller-specific concerns
 """
 
 import hashlib
+import logging
 import secrets
 import uuid
 from dataclasses import dataclass
@@ -28,6 +29,8 @@ from app.db.models.handover import (
     HandoverConfirmation,
     HandoverTokenAttempt,
 )
+
+logger = logging.getLogger(__name__)
 
 # 32 random bytes (256 bits) base64url-encoded — far beyond brute-force range for a
 # token that lives at most HANDOVER_TOKEN_EXPIRY_MINUTES. Never derived from trip,
@@ -275,6 +278,53 @@ async def mark_token_opened(db: AsyncSession, *, token_id: uuid.UUID) -> Optiona
     await db.flush()
 
     return raw_secret if claimed is not None else None
+
+
+async def extend_token_for_verification(
+    db: AsyncSession, *, token_id: uuid.UUID,
+) -> bool:
+    """Push a token's expiry out once, to cover an identity-verification round trip.
+
+    HANDOVER_TOKEN_EXPIRY_MINUTES is sized for a receiver who types a name and swipes. A
+    document scan plus a live face check on a stranger's phone can outlast it, and a token
+    that dies mid-verification strands the delivery behind a generic 404 the receiver has
+    no way to recover from.
+
+    ONE shot, enforced by the database, not by the caller. The conditional
+    `WHERE verification_extended_at IS NULL` is what makes a second request a no-op, so a
+    client cannot walk a token forward indefinitely by asking again — the same
+    single-claim idiom mark_token_opened uses on opened_at, for the same reason.
+
+    Refuses a redeemed token: once a delivery is confirmed the grant is spent, and
+    extending it would resurrect a credential that should be dead.
+
+    Returns True if this call performed the extension, False otherwise (already extended,
+    redeemed, or unknown) — never raises, because the caller degrades the evidence tier
+    on False rather than failing the handover.
+    """
+    now = datetime.now(UTC)
+    extended = (
+        await db.execute(
+            update(HandoverCapabilityToken)
+            .where(
+                HandoverCapabilityToken.id == token_id,
+                HandoverCapabilityToken.verification_extended_at.is_(None),
+                HandoverCapabilityToken.redeemed_at.is_(None),
+            )
+            .values(
+                verification_extended_at=now,
+                expires_at=HandoverCapabilityToken.expires_at
+                + timedelta(minutes=settings.IDVS_TOKEN_EXTENSION_MINUTES),
+            )
+            .returning(HandoverCapabilityToken.id)
+        )
+    ).scalar_one_or_none()
+    await db.flush()
+
+    if extended is None:
+        logger.info("Token extension refused for token=%s (already extended, redeemed or unknown)", token_id)
+        return False
+    return True
 
 
 def session_secret_matches(

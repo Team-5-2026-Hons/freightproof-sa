@@ -31,22 +31,33 @@ from app.db.models.enums import (
 class ReceiverIdentityVerification(Base):
     """One identity check against one handover confirmation.
 
-    The unique constraint on handover_confirmation_id is what makes "a delivery is
-    verified at most once" true at the database rather than at the application's word —
-    the same reasoning HandoverConfirmation applies to its own phase_event_id.
+    Keyed on the capability token rather than the confirmation, because the spec's
+    ordering is verify-then-confirm: this row exists before the receiver signs. The
+    unique constraint on token_id is what makes "one verification per grant" true at
+    the database rather than at the application's word.
     """
 
     __tablename__ = "receiver_identity_verifications"
     __table_args__ = (
-        UniqueConstraint(
-            "handover_confirmation_id",
-            name="uq_receiver_identity_verifications_confirmation_id",
-        ),
+        # Keyed on the TOKEN, not the confirmation. The spec's ordering (§6) is
+        # verify-then-confirm: this row is created when the receiver consents, which is
+        # before they sign and therefore before any handover_confirmations row exists.
+        # The token is the only identifier that exists for the whole exchange.
+        UniqueConstraint("token_id", name="uq_receiver_identity_verifications_token_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    handover_confirmation_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("handover_confirmations.id"), nullable=False
+    # The grant this verification was performed against. Non-null and unique: a
+    # verification with no token did not come from a scan, and one token yields at most
+    # one verification.
+    token_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("handover_capability_tokens.id"), nullable=False
+    )
+    # Filled in at confirm time, not at creation. NULL is the ordinary state for a
+    # verification whose receiver has not signed yet — and the permanent state for one
+    # who verified and then walked away, which is itself part of the record.
+    handover_confirmation_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("handover_confirmations.id"), nullable=True
     )
     # Denormalised off the confirmation so a dispatcher's trip view resolves a
     # verification with one row read, matching what HandoverCapabilityToken does with
