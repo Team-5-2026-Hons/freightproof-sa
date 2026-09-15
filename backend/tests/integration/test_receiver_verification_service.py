@@ -100,11 +100,12 @@ async def test_consent_records_the_hash_of_the_wording_not_the_wording(db_sessio
 
 
 async def test_start_verification_returns_a_session_and_stores_its_id(db_session, seeded_phase_event):
-    _, token = await _fresh_token(db_session, seeded_phase_event)
+    raw_token, token = await _fresh_token(db_session, seeded_phase_event)
     v = await record_consent(db_session, token=token, consent_text=_CONSENT)
 
     session = await start_verification(
-        db_session, token=token, verification=v, client=MockIdvsClient(),
+        db_session, token=token, raw_token=raw_token, verification=v,
+        client=MockIdvsClient(),
     )
 
     assert session is not None
@@ -115,11 +116,12 @@ async def test_quota_exhaustion_degrades_without_calling_the_vendor(
     db_session, seeded_phase_event, monkeypatch,
 ):
     monkeypatch.setattr(settings, "IDVS_MONTHLY_SESSION_LIMIT", 0)
-    _, token = await _fresh_token(db_session, seeded_phase_event)
+    raw_token, token = await _fresh_token(db_session, seeded_phase_event)
     v = await record_consent(db_session, token=token, consent_text=_CONSENT)
 
     session = await start_verification(
-        db_session, token=token, verification=v, client=MockIdvsClient(),
+        db_session, token=token, raw_token=raw_token, verification=v,
+        client=MockIdvsClient(),
     )
 
     assert session is None
@@ -129,10 +131,12 @@ async def test_quota_exhaustion_degrades_without_calling_the_vendor(
 
 
 async def test_resolve_fetches_the_decision_for_our_stored_session_id(db_session, seeded_phase_event):
-    _, token = await _fresh_token(db_session, seeded_phase_event)
+    raw_token, token = await _fresh_token(db_session, seeded_phase_event)
     v = await record_consent(db_session, token=token, consent_text=_CONSENT)
     client = MockIdvsClient()
-    await start_verification(db_session, token=token, verification=v, client=client)
+    await start_verification(
+        db_session, token=token, raw_token=raw_token, verification=v, client=client,
+    )
 
     await resolve_verification(
         db_session, verification=v, client=client,
@@ -144,10 +148,12 @@ async def test_resolve_fetches_the_decision_for_our_stored_session_id(db_session
 
 
 async def test_a_declined_session_is_failed_not_unverified(db_session, seeded_phase_event):
-    _, token = await _fresh_token(db_session, seeded_phase_event)
+    raw_token, token = await _fresh_token(db_session, seeded_phase_event)
     v = await record_consent(db_session, token=token, consent_text=_CONSENT)
     client = MockIdvsClient()
-    await start_verification(db_session, token=token, verification=v, client=client)
+    await start_verification(
+        db_session, token=token, raw_token=raw_token, verification=v, client=client,
+    )
     await client.stage_decision(v.provider_session_id, status=IdvsDecisionStatus.DECLINED)
 
     await resolve_verification(
@@ -159,10 +165,12 @@ async def test_a_declined_session_is_failed_not_unverified(db_session, seeded_ph
 
 
 async def test_extracted_identity_disagreeing_with_typed_identity_fails(db_session, seeded_phase_event):
-    _, token = await _fresh_token(db_session, seeded_phase_event)
+    raw_token, token = await _fresh_token(db_session, seeded_phase_event)
     v = await record_consent(db_session, token=token, consent_text=_CONSENT)
     client = MockIdvsClient()
-    await start_verification(db_session, token=token, verification=v, client=client)
+    await start_verification(
+        db_session, token=token, raw_token=raw_token, verification=v, client=client,
+    )
     await client.stage_decision(
         v.provider_session_id,
         status=IdvsDecisionStatus.APPROVED,
@@ -183,7 +191,7 @@ async def test_attach_confirmation_links_the_row_after_the_receiver_signs(db_ses
     # A synthetic UUID would violate the real FK on handover_confirmation_id in this test
     # database (Postgres), so a genuine handover_confirmations row is created here via
     # record_handover_confirmation — same as Stage 2B's end-to-end flow will produce.
-    _, token = await _fresh_token(db_session, seeded_phase_event)
+    raw_token, token = await _fresh_token(db_session, seeded_phase_event)
     v = await record_consent(db_session, token=token, consent_text=_CONSENT)
     artifact = EvidenceArtifact(
         id=uuid.uuid4(), trip_id=token.trip_id, artifact_type=ArtifactType.PHOTO,

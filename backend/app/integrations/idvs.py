@@ -1,8 +1,8 @@
 """Didit identity-verification client — document and live-face checks on a receiver.
 
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║  THE RESPONSE SHAPE IN THIS MODULE IS ASSUMED FROM PUBLIC DOCUMENTATION ONLY. ║
-║  NO ACCOUNT HAS BEEN PROVISIONED AND NO RESPONSE HAS BEEN OBSERVED.           ║
+║  SESSION CREATE AND SESSION DECISION WERE OBSERVED LIVE ON 2026-09-15.        ║
+║  A COMPLETED id_verifications[] ITEM AND A WEBHOOK DELIVERY WERE NOT.         ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 
 Same posture as pulsit.py, for the same reason: the integration is built now behind
@@ -15,15 +15,27 @@ in exactly two places:
 `IdvsDecision` — what callers actually consume — is ours, not Didit's, and is designed
 not to move. Raw vendor JSON never leaves this module.
 
-Assumption inventory, so a reviewer can audit the guess rather than discover it:
+Evidence inventory, so a reviewer can tell what is known from what is still assumed.
 
-  * Sessions are created by POST to /v3/session/ with an x-api-key header.
-  * The response carries session_id and session_url (Didit's documented field names).
-  * Decisions are read by GET /v3/session/{id}/decision/.
+CONFIRMED against a real session created on the live API (2026-09-15):
+
+  * POST /v3/session/ with an x-api-key header, body {workflow_id, vendor_data, callback}.
+  * Its response carries session_id and the hosted URL under `url`.
+  * GET /v3/session/{id}/decision/ returns the feature arrays at the TOP level, and
+    spells the same hosted URL `session_url` here. Unpopulated arrays come back as
+    JSON null, not [].
   * Status is a string among Not Started / In Progress / Approved / Declined /
-    In Review / Abandoned / Expired.
-  * Extracted document fields live under a nested object; the exact path is the
-    single most likely thing to change when a real response is first seen.
+    In Review / Abandoned / Expired / Kyc Expired / Resubmitted.
+
+STILL ASSUMED, from vendor documentation only — these are what to check first when
+something does not line up:
+
+  * A COMPLETED id_verifications[] item carries last_name and document_number. The array
+    itself was observed; a populated one was not, because completing a session needs a
+    real document in front of a real camera.
+  * A webhook delivery nests the decision under `decision`, alongside envelope fields,
+    and signs the raw body as hex HMAC-SHA256 in X-Signature with unix seconds in
+    X-Timestamp. No delivery has been received yet.
 
 Layering: integrations -> config, mock_state. Never imports from api/ or orchestration/.
 
@@ -54,11 +66,26 @@ _DIDIT_SESSION_PATH = "/v3/session/"
 _DIDIT_DECISION_PATH = "/v3/session/{session_id}/decision/"
 _DIDIT_API_KEY_HEADER = "x-api-key"
 _DIDIT_FIELD_SESSION_ID = "session_id"
-_DIDIT_FIELD_SESSION_URL = "session_url"
+# The two endpoints spell the hosted-flow URL DIFFERENTLY, which is why this is a tuple
+# read in order rather than a single name. Observed 2026-09-15 against a real session:
+# POST /v3/session/ answers with `url` and carries no `session_url`; GET .../decision/
+# answers with `session_url` and carries no `url`. Only create_session consumes this, but
+# reading both means a vendor that unifies them later does not break us.
+_DIDIT_FIELDS_SESSION_URL = ("url", "session_url")
 _DIDIT_FIELD_STATUS = "status"
+# Webhook deliveries nest the whole decision under `decision`, as a sibling of the
+# envelope fields; the decision endpoint returns the same feature arrays at the top level.
+# _extracted_identity below handles both, which is why this constant still exists.
 _DIDIT_FIELD_DECISION = "decision"
-_DIDIT_FIELD_SURNAME = "surname"
+# Extracted document data lives in a plural feature ARRAY, not a flat object — each item
+# carries the node_id of the workflow step that produced it. Observed as `null` (not `[]`)
+# on a session that has not completed, so every read here has to survive None.
+_DIDIT_FIELD_ID_VERIFICATIONS = "id_verifications"
+_DIDIT_FIELD_SURNAME = "last_name"
 _DIDIT_FIELD_ID_NUMBER = "document_number"
+# Where the receiver is returned to when the hosted flow finishes. Per-session, and Didit
+# appends ?verificationSessionId=&status= to whatever we give it.
+_DIDIT_FIELD_CALLBACK = "callback"
 # -----------------------------------------------------------------------------
 
 
@@ -141,9 +168,15 @@ class IdvsClient(Protocol):
     test pass a stub without inheriting anything.
     """
 
-    async def create_session(self, *, reference: str) -> IdvsSession:
+    async def create_session(self, *, reference: str, callback_url: str) -> IdvsSession:
         """Start a verification. `reference` is our own opaque handle, echoed back by the
         vendor so a webhook can be tied to a handover without trusting the browser.
+
+        `callback_url` is REQUIRED rather than optional, and deliberately so: without it
+        the vendor's hosted flow ends on the vendor's own domain and the receiver never
+        comes back to us. The verification then sits PENDING until the sweeper calls it
+        abandoned, and the delivery confirms at a degraded tier for no reason anyone can
+        see. A required argument makes that a type error instead of a silent outage.
         """
         ...
 
@@ -179,7 +212,11 @@ class MockIdvsClient:
                 "Cannot stage an IDVS decision while IDVS_USE_MOCK is false"
             )
 
-    async def create_session(self, *, reference: str) -> IdvsSession:
+    async def create_session(self, *, reference: str, callback_url: str) -> IdvsSession:
+        # callback_url is accepted and ignored on purpose. The mock's session_url already
+        # points back into our own app, so there is nothing for a vendor to redirect; the
+        # parameter exists so this class stays substitutable for DiditIdvsClient and a
+        # test that forgets the callback fails in the mock too, not only in production.
         session_id = f"mock-{uuid.uuid4().hex}"
         await self._store.set_json(
             self._key(session_id),
@@ -228,22 +265,57 @@ class MockIdvsClient:
         )
 
 
+def _extracted_identity(payload: dict[str, Any]) -> tuple[Optional[str], Optional[str]]:
+    """Pull the surname and document number out of whichever shape we were handed.
+
+    Two shapes reach this module and they nest differently, which is the entire reason
+    this is a function rather than two dictionary lookups:
+
+        decision endpoint   {"status": ..., "id_verifications": [ ... ]}
+        webhook delivery    {"status": ..., "decision": {"id_verifications": [ ... ]}}
+
+    When `decision` is present we look ONLY inside it. Falling back to the top level after
+    an empty decision block would let envelope fields impersonate document data.
+
+    Every step is defensive because every step has a real None case: the arrays come back
+    as JSON null before a session completes (observed, not hypothesised), a declined or
+    abandoned session carries no document at all, and a workflow without the ID step never
+    produces one. None means "nothing to compare" everywhere upstream, never "no match".
+    """
+    block = payload.get(_DIDIT_FIELD_DECISION)
+    source = block if isinstance(block, dict) else payload
+
+    rows = source.get(_DIDIT_FIELD_ID_VERIFICATIONS)
+    if not isinstance(rows, list) or not rows:
+        return None, None
+
+    first = rows[0]
+    if not isinstance(first, dict):
+        logger.warning("IDVS id_verifications[0] was not an object: %r", type(first))
+        return None, None
+
+    return (
+        first.get(_DIDIT_FIELD_SURNAME) or None,
+        first.get(_DIDIT_FIELD_ID_NUMBER) or None,
+    )
+
+
 def _parse_decision(payload: dict[str, Any], *, fallback_session_id: str) -> IdvsDecision:
     """Read one vendor decision object.
 
-    THE quarantine point. When a real Didit response is first observed, this function and
-    the _DIDIT_* constants above are the only things that should need to change — every
-    caller consumes IdvsDecision, which is ours.
+    THE quarantine point. This function, _extracted_identity and the _DIDIT_* constants
+    above are the only things that should need to change when the vendor's shape moves —
+    every caller consumes IdvsDecision, which is ours.
 
-    Tolerant by design: a missing decision block yields None extracted fields rather than
+    Tolerant by design: missing document data yields None extracted fields rather than
     raising, because an abandoned or in-progress session legitimately has none, and a
     parser that raises on the ordinary case would turn a normal outcome into a 500.
+
+    `status` is read from the top level in both shapes — a webhook carries it on the
+    envelope beside `decision`, not inside it.
     """
     raw_status = payload.get(_DIDIT_FIELD_STATUS)
-    decision_block = payload.get(_DIDIT_FIELD_DECISION) or {}
-    if not isinstance(decision_block, dict):
-        logger.warning("IDVS decision block was not an object: %r", type(decision_block))
-        decision_block = {}
+    surname, id_number = _extracted_identity(payload)
 
     return IdvsDecision(
         session_id=str(payload.get(_DIDIT_FIELD_SESSION_ID) or fallback_session_id),
@@ -252,8 +324,8 @@ def _parse_decision(payload: dict[str, Any], *, fallback_session_id: str) -> Idv
             if raw_status is not None
             else IdvsDecisionStatus.IN_PROGRESS
         ),
-        extracted_surname=decision_block.get(_DIDIT_FIELD_SURNAME) or None,
-        extracted_id_number=decision_block.get(_DIDIT_FIELD_ID_NUMBER) or None,
+        extracted_surname=surname,
+        extracted_id_number=id_number,
         decided_at=datetime.now(UTC),
     )
 
@@ -277,7 +349,7 @@ class DiditIdvsClient:
     def _headers(self) -> dict[str, str]:
         return {_DIDIT_API_KEY_HEADER: settings.IDVS_API_KEY, "Accept": "application/json"}
 
-    async def create_session(self, *, reference: str) -> IdvsSession:
+    async def create_session(self, *, reference: str, callback_url: str) -> IdvsSession:
         self._require_configuration()
         url = settings.IDVS_API_URL.rstrip("/") + _DIDIT_SESSION_PATH
         body = {
@@ -285,6 +357,10 @@ class DiditIdvsClient:
             # Our own handle, echoed back on the webhook. It is how a vendor callback is
             # tied to a handover without the browser ever naming a session.
             "vendor_data": reference,
+            # Where the receiver lands when the hosted flow finishes. Didit appends
+            # ?verificationSessionId=&status= to it, which our route ignores — the token
+            # it needs is in the path, and nothing the vendor appends is trusted anyway.
+            _DIDIT_FIELD_CALLBACK: callback_url,
         }
 
         try:
@@ -299,9 +375,18 @@ class DiditIdvsClient:
             raise IdvsError("Could not create an IDVS session.") from exc
 
         session_id = payload.get(_DIDIT_FIELD_SESSION_ID)
-        session_url = payload.get(_DIDIT_FIELD_SESSION_URL)
+        # First key present wins. This endpoint was observed to answer with `url`; the
+        # decision endpoint uses `session_url` for the same value, and an earlier version
+        # of this client read only the latter — which made every live session creation
+        # raise, degrade the tier, and send the receiver past the check without one.
+        session_url = next(
+            (payload[field] for field in _DIDIT_FIELDS_SESSION_URL if payload.get(field)),
+            None,
+        )
         if not session_id or not session_url:
-            raise IdvsError("IDVS session response was missing session_id or session_url.")
+            raise IdvsError(
+                "IDVS session response was missing session_id or a hosted session URL."
+            )
 
         return IdvsSession(session_id=str(session_id), session_url=str(session_url))
 

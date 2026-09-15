@@ -35,11 +35,20 @@ from app.db.models.transit import TripException
 from app.db.models.trips import Trip
 from app.integrations.idvs import IdvsClient, IdvsDecisionStatus, IdvsError, IdvsSession, _parse_decision
 from app.orchestration.exception_service import initial_review_status
-from app.orchestration.handover_service import extend_token_for_verification
+from app.orchestration.handover_service import build_scan_url, extend_token_for_verification
 
 logger = logging.getLogger(__name__)
 
 PROVIDER_DIDIT = "didit"
+
+# How far out of step with our clock a webhook may be and still be acted on. The vendor's
+# own integration guidance names 300 seconds, and a valid signature alone cannot supply
+# this: HMAC proves a body was authored by the secret holder, not that it was authored
+# recently, so a delivery captured once can otherwise be replayed against this public
+# route indefinitely. A protocol constant rather than a config field on purpose — it is
+# fixed by the vendor's contract, not by which environment we are deployed in, and
+# core/config.py is a shared file that four developers' .env files have to track.
+WEBHOOK_MAX_CLOCK_SKEW_SECONDS = 300
 
 
 def _strip_diacritics(value: str) -> str:
@@ -338,6 +347,7 @@ async def start_verification(
     db: AsyncSession,
     *,
     token: HandoverCapabilityToken,
+    raw_token: str,
     verification: ReceiverIdentityVerification,
     client: IdvsClient,
 ) -> Optional[IdvsSession]:
@@ -350,6 +360,20 @@ async def start_verification(
     Returns None on every degradation path. The caller sends the receiver down the tier
     ladder instead of failing: a vendor outage, a spent quota and an unreachable network
     all end with a confirmable delivery carrying an honest reason.
+
+    `raw_token` is the presented token, which the `token` ROW cannot supply — it stores
+    only a hash, deliberately and irreversibly. It is needed because the vendor's hosted
+    flow has to be told where to send the receiver back to, and that address is this
+    handover's own page.
+
+    Handing the vendor a live capability token is a considered trade, not an oversight.
+    The token alone confirms nothing: redemption also requires the HttpOnly binding cookie
+    minted when the receiver first opened the page and held only by their browser, which
+    is precisely what FP-240 built it for. So the worst a leaked callback URL yields is a
+    rendered scan page, never a confirmed delivery. The alternative — a return page that
+    recovers the token from sessionStorage — keeps it from the vendor but strands any
+    receiver whose browser refuses storage, and a stranded receiver cannot confirm at all.
+    Between a bounded exposure and an unbounded failure, this takes the bounded one.
     """
     if not await consume_quota_slot(db, provider=PROVIDER_DIDIT):
         verification.status = ReceiverVerificationStatus.UNVERIFIED
@@ -358,7 +382,9 @@ async def start_verification(
         return None
 
     try:
-        session = await client.create_session(reference=str(verification.id))
+        session = await client.create_session(
+            reference=str(verification.id), callback_url=build_scan_url(raw_token),
+        )
     except IdvsError:
         logger.exception("IDVS session creation failed for verification=%s", verification.id)
         verification.status = ReceiverVerificationStatus.UNVERIFIED
@@ -469,6 +495,46 @@ def verify_webhook_signature(raw_body: bytes, presented_signature: Optional[str]
 
     expected = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, presented_signature)
+
+
+def webhook_timestamp_is_fresh(
+    presented_timestamp: Optional[str],
+    *,
+    max_skew_seconds: int = WEBHOOK_MAX_CLOCK_SKEW_SECONDS,
+) -> bool:
+    """Whether a webhook was dispatched recently enough to act on.
+
+    FAILS CLOSED, like verify_webhook_signature and for the same reason: a missing or
+    unparseable timestamp is refused rather than waved through. The vendor sends one on
+    every delivery, so its absence means either a forgery or something we do not
+    understand, and neither deserves the benefit of the doubt on a route that writes to
+    the evidence record.
+
+    Absolute difference, not "older than": a timestamp far in the FUTURE is just as
+    suspicious as a stale one, and clamping only one side leaves the replay window open to
+    anyone who can pick their own clock.
+
+    The realistic failure mode is our own server drifting rather than an attack, which is
+    why the caller logs the delta — a webhook rejected for freshness and a webhook
+    rejected for a bad signature need to be distinguishable at 2am.
+    """
+    if not presented_timestamp:
+        return False
+
+    try:
+        dispatched_at = int(presented_timestamp)
+    except (TypeError, ValueError):
+        logger.warning("IDVS webhook carried an unparseable timestamp: %r", presented_timestamp)
+        return False
+
+    skew = abs(int(datetime.now(UTC).timestamp()) - dispatched_at)
+    if skew > max_skew_seconds:
+        logger.warning(
+            "Rejected an IDVS webhook %ss out of date (limit %ss) — replay, or check this "
+            "server's clock", skew, max_skew_seconds,
+        )
+        return False
+    return True
 
 
 async def ingest_webhook_decision(

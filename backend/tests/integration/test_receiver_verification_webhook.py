@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import json
 import uuid
+from datetime import UTC, datetime
 
 import pytest_asyncio
 from sqlalchemy import select
@@ -27,8 +28,10 @@ from app.db.models.trips import Trip, TripStop
 from app.orchestration.handover_service import issue_capability_token
 from app.orchestration.receiver_verification_service import (
     PROVIDER_DIDIT,
+    WEBHOOK_MAX_CLOCK_SKEW_SECONDS,
     ingest_webhook_decision,
     verify_webhook_signature,
+    webhook_timestamp_is_fresh,
 )
 
 _SECRET = "test-webhook-secret"
@@ -249,3 +252,36 @@ async def test_sweep_leaves_a_fresh_pending_row_alone(db_session, pending_verifi
     assert swept == 0
     await db_session.refresh(pending_verification)
     assert pending_verification.status == ReceiverVerificationStatus.PENDING
+
+
+# --- Replay protection --------------------------------------------------------
+#
+# A valid HMAC proves a body was written by the secret holder. It says nothing about WHEN,
+# so a single captured delivery is otherwise replayable against this public route forever.
+
+
+def test_a_current_timestamp_is_fresh():
+    now = str(int(datetime.now(UTC).timestamp()))
+
+    assert webhook_timestamp_is_fresh(now) is True
+
+
+def test_a_timestamp_beyond_the_skew_window_is_rejected():
+    stale = str(int(datetime.now(UTC).timestamp()) - WEBHOOK_MAX_CLOCK_SKEW_SECONDS - 1)
+
+    assert webhook_timestamp_is_fresh(stale) is False
+
+
+def test_a_timestamp_far_in_the_future_is_rejected():
+    """Clamped on both sides: an attacker who picks their own clock must not get a pass."""
+    ahead = str(int(datetime.now(UTC).timestamp()) + WEBHOOK_MAX_CLOCK_SKEW_SECONDS + 1)
+
+    assert webhook_timestamp_is_fresh(ahead) is False
+
+
+def test_a_missing_timestamp_fails_closed():
+    assert webhook_timestamp_is_fresh(None) is False
+
+
+def test_an_unparseable_timestamp_fails_closed():
+    assert webhook_timestamp_is_fresh("not-a-number") is False

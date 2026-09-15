@@ -76,6 +76,7 @@ from app.orchestration.receiver_verification_service import (
     resolve_verification,
     start_verification,
     verify_webhook_signature,
+    webhook_timestamp_is_fresh,
 )
 from app.schemas.handover import (
     HandoverConfirmRequest,
@@ -113,9 +114,19 @@ def _not_found() -> HTTPException:
     return HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=_GENERIC_NOT_FOUND)
 
 
-# Header the vendor signs with. An assumed name, quarantined here like the _DIDIT_*
-# constants in integrations/idvs.py — one line to change when the real one is known.
+# Headers the vendor signs with. Case-insensitive on the way in, so the spelling here is
+# cosmetic. Quarantined beside each other like the _DIDIT_* constants in
+# integrations/idvs.py.
+#
+# Didit sends three signature variants. This is the raw-body one, which is correct for us
+# specifically because `await request.body()` below reads the bytes before any parser
+# touches them — the documented failure mode for X-Signature is middleware that re-encodes
+# the JSON first, and we have none. X-Signature-V2 is the vendor's recommendation and
+# signs a canonicalised form instead; adopting it would mean guessing that canonicalisation
+# exactly, and replacing a verified assumption with an unverified one is a bad trade. Once
+# a real delivery has been captured, prefer V2 and keep this as the fallback.
 _DIDIT_SIGNATURE_HEADER = "x-signature"
+_DIDIT_TIMESTAMP_HEADER = "x-timestamp"
 
 
 def _verification_state(v: ReceiverIdentityVerification) -> HandoverVerificationState:
@@ -338,7 +349,16 @@ async def scan_handover_endpoint(
             # no visible cause.
             secure=settings.ENVIRONMENT != "development",
             path=_COOKIE_PATH,
-            max_age=settings.HANDOVER_TOKEN_EXPIRY_MINUTES * 60,
+            # Must cover the token's LONGEST possible life, not its nominal one. A
+            # verification extends the token by IDVS_TOKEN_EXTENSION_MINUTES, so sizing
+            # this to HANDOVER_TOKEN_EXPIRY_MINUTES alone meant a receiver whose document
+            # check ran long came back to a live token and a dead cookie — and a dead
+            # cookie fails the binding check, which is reported as the same generic 404 as
+            # a forged link. The mock vendor returns in seconds and never exposed this;
+            # a real document-and-liveness round trip does.
+            max_age=(
+                settings.HANDOVER_TOKEN_EXPIRY_MINUTES + settings.IDVS_TOKEN_EXTENSION_MINUTES
+            ) * 60,
         )
 
     return HandoverScanResponse(
@@ -504,7 +524,13 @@ async def handover_verify_endpoint(
         raise _not_found()
 
     session = await start_verification(
-        db, token=token, verification=verification, client=get_idvs_client(),
+        db,
+        token=token,
+        # The row stores only a hash; the vendor has to be told where to send the receiver
+        # back to, and that address is built from the presented token.
+        raw_token=raw_token,
+        verification=verification,
+        client=get_idvs_client(),
     )
     await db.commit()
 
@@ -590,6 +616,19 @@ async def handover_webhook_endpoint(
 
     if not verify_webhook_signature(raw_body, signature):
         logger.warning("Rejected an IDVS webhook with an invalid or missing signature")
+        raise HTTPException(
+            status_code=http_status.HTTP_401_UNAUTHORIZED, detail="Invalid signature.",
+        )
+
+    # Checked AFTER the signature, deliberately. An unsigned caller learns nothing about
+    # our clock this way, and the freshness rule is about replay of GENUINE deliveries —
+    # a valid signature on a body captured last week is exactly the attack this stops,
+    # and HMAC alone cannot: it proves authorship, never recency.
+    #
+    # 401 rather than 200 so a delivery merely delayed past the window is retried by the
+    # vendor instead of being silently dropped.
+    if not webhook_timestamp_is_fresh(request.headers.get(_DIDIT_TIMESTAMP_HEADER)):
+        logger.warning("Rejected an IDVS webhook with a stale or missing timestamp")
         raise HTTPException(
             status_code=http_status.HTTP_401_UNAUTHORIZED, detail="Invalid signature.",
         )
