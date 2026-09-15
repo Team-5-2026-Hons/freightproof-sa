@@ -58,7 +58,7 @@ export function defaultMonthRange(now: Date = new Date()): MonthRange {
 
 // Fixed rather than Intl: some locales abbreviate September as "Sept", and the label should
 // read the same in every browser.
-const MONTH_ABBREVIATIONS = [
+export const MONTH_ABBREVIATIONS = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
 ] as const
 

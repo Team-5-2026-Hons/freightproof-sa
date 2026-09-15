@@ -18,8 +18,7 @@ export interface PrecinctAnalyticsSummaryProps {
   precinctId: PrecinctId
 }
 
-// Same wording as FacilityPanel's columns. "Confirmed ✓" / "Mismatch ✗" match
-// PhaseLocationSection; unwitnessed deliberately avoids its live-trip "Awaiting Pulsit",
+// "Confirmed ✓" / "Mismatch ✗" match PhaseLocationSection; unwitnessed deliberately avoids its live-trip "Awaiting Pulsit",
 // because on a closed trip the reading was never taken (FP-156 §0 #18).
 const LABELS = {
   corroborationRate: 'Corroboration rate',
@@ -90,7 +89,7 @@ function Figures({ rangeLabel, metrics }: { rangeLabel: string; metrics: Facilit
         <StatTiles>
           <StatTile
             label={LABELS.corroborationRate}
-            // Same denominator as FacilityPanel: unwitnessed is deliberately left out, since
+            // Same denominator as the fleet page's tracker agreement (chart 5.1): unwitnessed is left out, since
             // "could not check" is not a failed check.
             value={fmtRate(metrics.corroboration_rate, metrics.confirmed_count, metrics.confirmed_count + metrics.mismatch_count)}
             accent

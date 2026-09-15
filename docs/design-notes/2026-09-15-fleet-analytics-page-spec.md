@@ -70,6 +70,10 @@ creates or switches branches.
 | D19 | New **PeriodControl** component instead of reusing `components/ui/DateRangePicker.tsx`. | `DateRangePicker` computes "today" in UTC (`toISOString`), fixes presets at module load, and cannot express "All time". Don't modify it (other pages use it). |
 | D20 | Cancellation notes are **not** parsed into tooltips; the table view lists each cancelled trip with a link to its trip page (where the note is shown). | The note is stored inside a free-text exception description behind an internal prefix (`trip_service._CANCELLED_BY_PREFIX`); parsing that is fragile. |
 | D21 | 3.5 "risky times" compares **share of driving time** against **share of problems raised during the driving step** (any severity), not critical-only. | Critical-only would be almost always empty and would include depot findings (a seal mismatch at unloading is not a road risk). Report this refinement to Tom in Stage 4. |
+| D22 | **Chart card look (§7.7)**: the question and trip count move behind a small "i" button next to the title; every chart has a y-axis heading; week labels show the Monday–Sunday range ("7–13 Sep") instead of "w/c". Built into the shared card and chart wrappers, so every tab follows it. | Tom's browser review of Stage 2 (2026-09-15): a cleaner card face and clearer axes; "w/c" (week commencing) was not self-explanatory. |
+| D23 | **On time review (2026-09-15):** 2.3 becomes five **step tiles** (typical time, change vs the previous period, own-scale trend line); 2.5 becomes a **diverging histogram** (early bands left, grey "On plan" in the middle, over bands right, all growing up from one baseline, whole period); every bucket gets a **tick mark** with evenly spaced one-line labels; card controls sit on the **title row** with no caption; the "Faded…" note moves into the **"i" popover** (§7.7 items 3–5). | Tom's browser review. The stacked 2.3 was flattened by one ~4-day sign-off average (steps differ 100-fold, so one shared scale fails). The downward-only 2.5 looked upside down, and a dot per trip does not scale to 1,000 trips (a pie was rejected: two slices, and it cannot show how far off plan). The 3–9 Aug dot looked misplaced because Recharts' `preserveStartEnd` hid its label and shifted the end label off its point. Tom keeps one-line labels ("13–19 Jul"). |
+| D24 | **On time, second review (2026-09-15):** chart **2.3 Where the time goes is removed** (tiles, endpoint field and helpers all deleted). Chart **2.5** gets its **y-axis down the middle**, where "on plan" is: early bands on its left, over bands on its right, **"Trips" written level above the axis**, **"On plan" under it** ("On plan · N trips" when any trip was exactly on plan). There is no grey On plan column and **no summary text on the card face**; the summary moves to the table view. Built as `charts/SplitColumns.tsx`: two ordinary bar charts sharing one count scale. | Tom's browser review. The step tiles read badly on real data (every step "1–3 min", broken sparklines), so Tom removed the chart rather than try a third design. 2.5's axis sat at the far left with the summary line above the bars, where Tom asked for the axis in the middle and no text on the chart. Per-driver step timings stay on the driver detail pages. |
+| D25 | **Problems, Review desk, Evidence and Routes review (2026-09-15):** **3.1** draws problem **counts** per bucket (warning under critical), with the rate per trip in the tooltip ("8 problems across 2 trips (4 per trip)") and the table. **`receiver_id_mismatch` joins the theft signs** (extends D12; `receiver_id_unverified` stays out). **4.4** becomes a **donut**, total reviews in the centre, "count · %" per outcome in the legend, a Share column in the table (4.3 is unchanged, left for the team to discuss). **Evidence:** 5.1's agreement line and 5.7's same-phone / rejected-scan line move into the "i" popover; **5.4 Blockchain receipts is removed** (the `receipts` field is gone from `/evidence`; the Receipts owed tile stays and still links to the tab); 5.7 spans the full width. **Routes & sites:** Busiest sites and Lane risk share the top row, Driving time per lane and the map take the full width; 6.3 names each dot (all of them up to 6 lanes, else only the busy-and-risky ones), draws faint lines at the average lane and labels the top-right corner "Busy and risky"; the map's scroll-wheel zoom switches on after a click in the map (street level, the tiles' own max zoom) and off when the pointer leaves; the incident table shows 10 rows plus "Load 10 more", and clicking a row flies to that pin and opens its popup. **Period presets follow View by** (§3). **Back link:** a report opened from the map comes back to the same tab, View by and period (§3). | Tom's browser review. "Per 100 trips" read "400 per 100" on two trips. Tom asked for variety (a pie) on 4.4; a donut suits five parts of one whole and keeps a place for the total. The agreement and flags lines describe the chart rather than being the chart. Receipts were unnecessary for now. Overrides reading 0 was checked and is correct: all 4 overridden steps in the data are on cancelled trips, which trends never count. Map filters are later work. |
 
 ### Rejected alternatives (so nobody re-proposes them)
 
@@ -108,8 +112,19 @@ creates or switches branches.
 - Each tab keeps its own control state for the visit (page-level `Record<TabId, TabControls>`), so switching tabs
   and back does not reset choices.
 - Defaults: View by **Week**; Period **Last 12 weeks**. Activity's pattern charts: Period **All time**.
-- Period presets (rows, in this order): **Last 4 weeks · Last 12 weeks · Last 12 months · This year · All time ·
-  Custom range…** (two date inputs). All dates are SAST calendar dates.
+- Period presets depend on View by (D25; `PRESETS_BY_GRAIN` in `lib/format/period.ts`), each list ending in
+  **Custom range…** (two date inputs). All dates are SAST calendar dates.
+  - Week: **Last 4 weeks · Last 12 weeks · Last 26 weeks · This year · All time**
+  - Month: **Last 3 months · Last 6 months · Last 12 months · This year · All time**
+  - Year: **This year · Last 3 years · All time**
+  - Routes & sites (no View by) and the pattern charts: **Last 4 weeks · Last 12 weeks · Last 12 months · This year ·
+    All time** (`GENERAL_PRESETS`).
+  - Changing View by keeps a period the new list offers (and any custom range); otherwise it switches to that View
+    by's default: Last 12 weeks (Week), Last 12 months (Month), All time (Year) — `periodForGrain`.
+- Back link (D25): the map's "Open" links carry `returnTo=/analytics?tab=…&grain=…&period=…` (plus `start`/`end` for a
+  custom range), built by `components/analytics/fleet/navigation.ts`. The exception page's Back button already honours
+  `returnTo`. On arrival the page restores that tab's View by and period from the address, then replaces the address
+  with plain `?tab=…`. Trip links carry no `returnTo`: the trip detail page's Back button does not read it yet.
 - A View-by option that would produce more than `MAX_TREND_BUCKETS` (53) buckets for the chosen period is disabled
   with a tooltip "Too many weeks for this period — choose Month"; if the current choice becomes invalid after a period
   change, switch to the next coarser grain and show a one-line note.
@@ -199,20 +214,43 @@ Form: columns in fixed order. Delta = actual − planned (minutes). Buckets: **E
 `LATE_BUCKET_EDGES_MINUTES = (15, 60, 180)`). Early + On time bars neutral grey; the four late bars use the validated
 lateness ramp (§7.3). Test invariant: Early + On time = the on-time count in 2.1 for the same period.
 
-**2.3 Where the time goes** — *"Which part of the trip is slowing us down?"*
-Form: stacked columns per bucket, five slices in plan order with slots 1–5: **Loading** (gap ending at an attested
-`loading` row) · **Waiting to leave** (`departure`) · **Driving** (`in_transit`, G14) · **Unloading** (`unloading`) ·
-**Sign-off** (`confirmation`). Value = average minutes per slice (sum/count, G15). **Activation is excluded** (it
-measures trip creation → driver start, i.e. how far ahead the trip was booked). Sign-off note, verbatim:
-`ANALYTICS_COPY.confirmationDwellCaveat`. Tooltip lists all five slices with counts.
+**2.3 Where the time goes** — **removed (D24).** Neither the stacked columns (Stage 3) nor the step tiles (D23)
+read well on real data, so Tom removed the chart. Its endpoint field (`time_steps`), the `previous_period` helper and
+the `StepTiles` component are deleted. Per-driver step timings stay on the driver detail pages ("average time in each
+phase").
 
-**2.5 Plans vs reality** — *"Are our planned times realistic?"*
-Form: diverging columns around a zero baseline: **over plan** upward (slot 2 orange), **under plan** downward (slot 1
-blue). Data per bucket: closed trips with `planned_departure_at`, `planned_arrival_at` and `actual_arrival_at`; delta
-= (actual_arrival − departure(G3)) − (planned_arrival − planned_departure) — identical to the lane view's
-`schedule_delta_minutes`. Counts over (> 0), under (< 0), on plan (= 0); median minutes over and under. Tooltip:
-"12 over plan (typically 45 min) · 5 early (typically 30 min)". Caption: "Faster than planned usually means the plan
-was too generous — it is not a measure of driving speed."
+**2.5 Plans vs reality** — *"Are our planned times realistic?"* (D23, reworked in D24; covers the whole period, not
+affected by View by)
+Form: **split histogram with the y-axis down the middle**, where "on plan" is. Every column grows **upward** from
+one baseline:
+- **Left of the axis**, furthest first: **3 h+ · 1–3 h · 15–60 min · 0–15 min** (finished early, slot 1 blue).
+- **Right of the axis**, nearest first: **0–15 min · 15–60 min · 1–3 h · 3 h+** (ran over, slot 2 orange).
+- Both halves share one whole-number count scale (`countTicks`), so their gridlines meet at the axis.
+- **"Trips"** is written level above the middle axis, not rotated.
+- **"On plan"** sits under the axis. It reads "On plan · N trips" when any trip was exactly on plan: those trips are
+  named, not drawn, because a column there would sit on the axis itself.
+- The side captions sit under the x-axis: "← Finished early" on the left, "Ran over →" on the right.
+- **No text on the card face** (Tom, D24). The legend shows the two colours only.
+
+It is built as `charts/SplitColumns.tsx`: two ordinary Recharts bar charts side by side. The right one draws its
+y-axis on its left edge, so every mark keeps the usual rules.
+
+Band edges reuse `LATE_BUCKET_EDGES_MINUTES = (15, 60, 180)`, measured in absolute minutes off plan:
+- 0–15 = more than 0 up to 15
+- 15–60 = more than 15 up to 60
+- 1–3 h = more than 60 up to 180
+- 3 h+ = more than 180
+- On plan = exactly 0
+
+The data: closed trips with `planned_departure_at`, `planned_arrival_at` and `actual_arrival_at`; delta =
+(actual_arrival − departure(G3)) − (planned_arrival − planned_departure). This is identical to the lane view's
+`schedule_delta_minutes`.
+
+The one-line summary *"11 finished early (typically 40 min) · 5 ran over (typically 20 min)"* (medians, positive
+minutes) appears **only in the table view**, above the band table. Tooltip per column: "5 trips finished 15–60 min
+early". Behind the "i": "Faster than planned usually means the plan was too generous — it is not a
+measure of driving speed." The table view lists the bands with their counts and the two typical values. Invariant:
+the bands add up to the number of trips with a full plan.
 
 ### 5.3 Problems tab (`GET /analytics/fleet/problems?start&end&grain`)
 
@@ -220,10 +258,12 @@ All counts: exceptions **on the closed-trip set** (G4), excluding `dispatcher_no
 (recorded automatically for every cancellation and override) are not counted as problems, so totals can be lower than
 on driver pages."*
 
-**3.1 Problems per 100 trips** — *"Are things getting better or worse?"*
-Form: stacked columns, **warning** (`#ffb95f`) under **critical** (`#ba1a1a`), legend with icons. Value = count ÷ trips
-× 100 per bucket. Tooltip: "9 problems across 41 trips (22 per 100)". `info` is returned but not drawn (nothing
-creates it today); it appears in the table view if ever non-zero.
+**3.1 Problems over time** (was "per 100 trips", changed in D25) — *"Are things getting better or worse?"*
+Form: stacked columns, **warning** (`#ffb95f`) under **critical** (`#ba1a1a`), legend with icons. Value = the **count**
+of problems per bucket. Tooltip: each count, then "8 problems across 2 trips (4 per trip)"; the table has a Per trip
+column (one decimal, "—" with no trips). The response still carries `warning_per_100` / `critical_per_100`; the page no
+longer reads them. `info` is returned but not drawn (nothing creates it today); it appears in the table view if ever
+non-zero.
 
 **3.2 Theft warning signs** — *"Is theft risk going up?"*
 Form: one line (total of D12 types) with dots; tooltip lists each type's count; table view one column per type.
@@ -261,8 +301,10 @@ Python from the org's critical `(created_at, reviewed_at)` pairs (pure function,
 **4.3 How fast critical problems get reviewed** — line: **median** hours from `created_at` to `reviewed_at`, for
 critical exceptions reviewed in each bucket (bucket by `reviewed_at`). Tooltip also shows the mean and the count.
 
-**4.4 What reviews concluded** (Period) — horizontal bars, single hue (slot 1), one per `DispatcherReviewOutcome`
-(no action needed · handled elsewhere · evidence confirmed · data discrepancy · referred for follow-up), all
+**4.4 What reviews concluded** (Period) — a **donut** (D25; `charts/DonutChart.tsx`), one slice per
+`DispatcherReviewOutcome` (no action needed · handled elsewhere · evidence confirmed · data discrepancy · referred for
+follow-up) in series slots 1–5, fixed per outcome; zero outcomes draw no slice but stay in the legend and table. Total
+reviews in the centre ("5 reviews"); legend "Data discrepancy · 3 · 60%"; the table adds a Share column. All
 severities, reviews with `reviewed_at` in the period. Caption: "A large *data discrepancy* share means automatic checks
 are raising false alarms."
 
@@ -278,7 +320,8 @@ counted by `pulsit_geofence_confirmed` TRUE / FALSE / NULL. Headline: agreement 
 rows of the closed-trip set (same definition as the driver view's `override_rate`). Caption: "An override skips the
 driver's photos, seal and tracker check — the weakest evidence we hold."
 
-**5.4 Blockchain receipts** (Period) — three horizontal bars **anchored · pending · failed** for anchored-phase rows
+**5.4 Blockchain receipts — REMOVED (D25).** What is still owed stays on the Receipts owed tile. Original design, kept
+for reference: (Period) three horizontal bars **anchored · pending · failed** for anchored-phase rows
 (`ANCHORED_PHASES`) that were **attested with `completed_at` in the period** (any trip status), plus a separate line
 "N steps were overridden and are never anchored". Caption: "A receipt is the tamper-proof stamp proving a step's record
 hasn't changed. A failed receipt is one still owed." Note: Chiko's FP-154 (`origin/Chiko`, not on `dev` yet) adds a
@@ -354,7 +397,11 @@ GET /tiles -> {
   receipts_owed: { pending_count: int, failed_count: int },
   licence_expiry: { drivers: ExpiryBands, vehicle_discs: ExpiryBands },
       ExpiryBands { expired: int, within_30_days: int, within_90_days: int, within_180_days: int, no_date: int }
-  unused_vehicles: { window_days: int, vehicles: [{ vehicle_id, registration, vehicle_type }] } }
+  unused_vehicles: { window_days: int, vehicles: [{ vehicle_id, registration, vehicle_type }] },
+  all_time_start: date }
+      all_time_start = SAST date of the org's first trips.created_at (or today). Added in Stage 1 with Tom's
+      OK (2026-09-15): the page loads tiles first, so it knows which View-by options "All time" allows
+      (≤ 53 bars) before any tab requests data.
 
 GET /activity -> { period, trips: [{ bucket_start, is_partial, loaded_count, empty_count }],
   cancellations: [{ bucket_start, is_partial, cancelled_count, ended_count, cancelled_rate }],
@@ -370,11 +417,10 @@ GET /on-time -> { period,
                   on_time_arrivals, on_time_departure_rate, on_time_arrival_rate }],
   lateness: { departures: [LatenessBar], arrivals: [LatenessBar] },
       LatenessBar { band: "early" | "on_time" | "late_1_15" | "late_15_60" | "late_60_180" | "late_over_180", trip_count }
-  time_split: [{ bucket_start, is_partial, loading: SliceStat, waiting_to_leave: SliceStat, driving: SliceStat,
-                 unloading: SliceStat, sign_off: SliceStat }],
-      SliceStat { minutes_sum: float, event_count: int, minutes_avg: float | null }
-  plan_vs_actual: [{ bucket_start, is_partial, over_count, under_count, on_plan_count,
-                     median_over_minutes: float | null, median_under_minutes: float | null }] }
+  plan_spread: { bands: [{ band: "early_over_180" | "early_60_180" | "early_15_60" | "early_0_15" | "on_plan" |
+                                 "over_0_15" | "over_15_60" | "over_60_180" | "over_over_180", trip_count }],
+                 early_count, over_count, on_plan_count,
+                 median_early_minutes: float | null, median_over_minutes: float | null } }   # whole period (D23)
 
 GET /problems -> { period,
   per_trip: [{ bucket_start, is_partial, trip_count, info_count, warning_count, critical_count,
@@ -394,7 +440,6 @@ GET /review -> { period,
 GET /evidence -> { period,
   tracker: [{ bucket_start, is_partial, confirmed_count, mismatch_count, unwitnessed_count, agreement_rate }],
   overrides: [{ bucket_start, is_partial, phase_count, override_count, override_rate }],
-  receipts: { anchored_count, pending_count, failed_count, overridden_unanchored_count },
   receiver_signoff: [{ bucket_start, is_partial, confirmation_count, receiver_scan_count, receiver_scan_rate }],
   signoff_flags: { same_phone_count, rejected_attempt_count } }
 
@@ -495,6 +540,112 @@ Label (sentence case) · value (semibold, proportional figures) · one sub-line 
 | Error | message + Retry (refetch only that tab's query) — never leave stale numbers under a new period |
 | No observations | `components/ui/EmptyState.tsx`: title "Not enough data yet", body specific to the chart (e.g. "No closed trips departed in this period.") |
 | Low sample | chart renders, plus the line "Based on only N trips — read with care" when N < `LOW_SAMPLE_TRIPS = 5` (constant in `period.ts` or `copy.ts`) |
+
+### 7.7 Chart card look — Tom's review of Stage 2 (2026-09-15), applies to every chart (D22)
+
+**1. Info button instead of the question and basis lines.**
+- The title stays where it is. Immediately to its right sits a small info button: lucide-react's `Info` icon, 14 px,
+  `text-on-surf-v`, hover `text-on-surf`. lucide-react is already a dependency (`DateRangePicker` uses it);
+  `components/ui/Ic.tsx` has no info icon.
+- Clicking toggles a popover anchored under the button with two lines: the chart's **question**
+  (`text-[13px] font-[600] text-on-surf`, e.g. "Are we getting busier?") and its **basis**
+  (`text-[12px] text-on-surf-v`, e.g. "Closed trips, by the day they first departed · 16 trips").
+  Neither line is printed on the card face any more.
+- Behaviour: `aria-label="About this chart: <title>"`, `aria-expanded`, `aria-controls` pointing at the popover.
+  It closes on a second click, on **Escape** (focus returns to the button) and on a click outside. Styling: white
+  surface, `rounded-lg`, `shadow-level-5`, `p-3`, `max-w-[280px]`, `z-[10]` (the same layer as `DateRangePicker`'s
+  popover).
+- Build it once as `components/analytics/fleet/InfoPopover.tsx` and use it inside `ChartCard`. No chart builds its own.
+- **The low-sample warning stays on the card face** ("Based on only N trips — read with care"). It is a warning,
+  not a description, and must be seen without clicking.
+
+**2. A y-axis heading on every chart.**
+- Every chart wrapper (`TrendColumns`, `TrendLines`, `PatternStrip`, and later `CategoryBars`, `DivergingColumns`,
+  `LaneScatter`) takes a **required** `yLabel: string`. It is drawn rotated −90° along the value axis
+  (Recharts `YAxis label={{ value, angle: -90, position: 'insideLeft' }}`) in the axis text style. Widen
+  `Y_AXIS_WIDTH` in `charts/chartStyle.ts` so it never overlaps the tick numbers.
+- Horizontal bar charts put the heading on their value axis (the x-axis) instead.
+- The wording lives in `fleet/copy.ts`:
+
+| Chart | Axis heading |
+|---|---|
+| 1.1 Trips over time | Trips |
+| 1.7 Cancellations | Cancelled trips |
+| 1.3 Busy patterns (each of the four) | Avg per day |
+| 2.1 On-time departures and arrivals | % on time |
+| 2.2 How late is late | Trips |
+| 2.3 Where the time goes | removed (D24) |
+| 2.5 Plans vs reality | Trips, written level above the middle axis (D24) |
+| 3.1 Problems over time | Problems (D25) |
+| 3.2 Theft warning signs | Theft signs |
+| 3.3 Most common problems / 3.4 Where in the trip | Problems |
+| 3.5 Risky times of day | % of total |
+| 4.1 Waiting now / 4.2 Is the pile growing | Problems waiting |
+| 4.3 Time to review | Hours |
+| 4.4 What reviews concluded | none: a donut; the total is in its centre (D25) |
+| 5.1 Tracker agreement | Checks |
+| 5.2 Overrides | % of steps overridden |
+| 5.4 Blockchain receipts | removed (D25) |
+| 5.7 Receiver sign-off | % scanned by receiver |
+| 1.6 Busiest sites | Pickups and deliveries |
+| 2.4 Driving time per lane | Minutes |
+| 6.3 Lane risk | y: Problems per trip · x: Trips on the lane |
+
+**3. Week labels show the Monday–Sunday range instead of "w/c".**
+- The axis tick, from `fmtBucketLabel(start, 'week')` in `lib/format/period.ts`, reads **"7–13 Sep"** within one
+  month, **"29 Jun–5 Jul"** across two months and **"29 Dec–4 Jan"** across a year end. The tick never shows the year.
+- The tooltip header and the table view show the full range with the year: "29 Jun – 5 Jul 2026",
+  "29 Dec 2025 – 4 Jan 2026". Use an en dash (–).
+- Month ("Sep 2026") and year ("2026") labels are unchanged. Partial buckets keep their existing "part week" /
+  "so far" wording.
+- Labels stay on **one line** ("13–19 Jul") — Tom's choice. Never rotate or shrink the text: the tooltip carries the
+  full range. How every bucket stays visible is item 4.
+
+**4. Every bucket is visible on the axis (D23).**
+- A small tick mark sits under **every** bucket, labelled or not, so every dot and bar visibly belongs to a week,
+  month or year.
+- When not every label fits, label every *n*-th bucket counting back from the **newest**. The newest bucket is always
+  labelled, directly under its point. *n* is the smallest step at which labels don't collide, worked out from the
+  rendered chart width and the label width (both named constants in `chartStyle.ts`). Put it in a pure helper,
+  e.g. `labelStep(bucketCount, plotWidth)`, so it can be unit-tested.
+- Replace Recharts' `interval="preserveStartEnd"`: it spaces labels unevenly and shifts the end label off its
+  point. That is why the 3–9 Aug dot looked misplaced in Tom's review.
+- Give the chart enough left and right margin that the first and last labels are centred under their points, never
+  pushed inward.
+- Applies to every chart with a time axis (`TrendColumns`, `TrendLines`).
+
+**5. Card header: one row, no captions (D23).**
+- The title and its "i" sit on the left. Any card control (the Departures | Arrivals switch, "Show all") sits on the
+  right, followed by "Show table". All of them are vertically centred on one row.
+- No caption above a control: remove the grey "SHOW" label. The control keeps an accessible name instead (e.g.
+  `aria-label="Show departures or arrivals"`).
+- The row may wrap under the title only when the card is too narrow.
+
+**6. The "Faded…" note goes behind the "i" (D23).**
+- "Faded: a part week, month or year at either end of the period, or one still running" becomes the last line of the
+  info popover on every card that can show a partial bucket. It no longer appears in the legend row.
+- The faded styling itself is unchanged.
+
+**Tests.**
+- `labelStep`: the newest bucket is always labelled; step 1 when everything fits; labels never closer than the
+  minimum gap.
+- `ChartCard`: the "Faded…" line is in the popover, not on the card face. The header has no "Show" caption, and
+  the switch has an accessible name.
+- Plan spread (D24):
+  - the band edges at 0, 15, 16, 60, 61, 180 and 181 minutes either side
+  - the bands add up to the trips with a full plan
+  - "Trips" above the middle axis, "On plan · N trips" under it
+  - no summary on the card face; in the table view it uses positive minutes
+  - the On time response has no `time_steps`
+- Existing look-pass tests:
+- `period.test.ts`: week label within a month, across months, across a year end, and the full form with years.
+- `ChartCard.test.tsx`:
+  - the popover is closed by default (the question is not visible)
+  - clicking shows the question and basis
+  - Escape closes it and returns focus to the button
+  - a click outside closes it
+  - the low-sample warning is visible without opening it
+- Chart wrappers: `yLabel` is required by the types. Don't assert SVG geometry, because jsdom draws at zero size.
 
 ---
 
@@ -682,6 +833,29 @@ alerting, notifications, or any action that responds to a problem.
   whatever `anchor_status` says.
 - **Home page tile removal** — Tom has told Ciaran; done in Stage 8 as a separate, minimal edit.
 
+### Handle at merge time (recorded 2026-09-15, after Stage 1)
+
+Tom merges `dev` into this branch only once the whole feature is built. `dev` has already moved on with the changes
+below. Don't stop for R6 at each stage because of these; only stop if something on this branch breaks.
+
+- **FP-154 anchoring and recovery (Chiko)** is now on `dev`. The Receipts owed tile and chart 5.4 read `anchor_status`
+  either way. After merging, re-run `test_fleet_tiles.py` and the Stage 6 evidence tests.
+- **Receiver identity verification**, with migration `tim_add_receiver_verification`. Check that the migration chain
+  still has one head after the merge (this branch adds no migration). Also check whether chart 5.7 (receiver
+  sign-off) should count a verified receiver differently.
+- **New exception types `receiver_id_mismatch` and `receiver_id_unverified`.**
+  - Adding `receiver_id_mismatch` to `THEFT_SIGNAL_TYPES` (`backend/app/analytics/fleet/constants.py`) is a
+    candidate: it means the person who signed was not the expected receiver. Tom to decide.
+  - `receiver_id_unverified` is the analogue of `seal_unverified` (a check that couldn't run), so by D12's
+    reasoning it is probably not a theft sign.
+  - Both need labels in `lib/format/exception.ts` if that file doesn't already cover them on `dev`.
+  - Charts 3.3 and 3.4 pick them up automatically, because they list every type with a count above zero.
+- **Model tidy-up on `dev` (seen 2026-09-15, before Stage 3)**: commits `31dc4a0`, `c928125` and `970749b` edit
+  `db/models/{blockchain,events,handover,transit,trips,vehicles}.py` and add migration
+  `tim_close_blockchain_receipt_fk_drift` (Alembic autogenerate drift fix). This branch reads those models but
+  never edits them. After merging, re-run the whole backend suite. If a column the fleet queries read was
+  renamed, the fleet tests will fail on it.
+
 ---
 
 ## 13. Research notes (why these KPIs)
@@ -707,12 +881,14 @@ alerting, notifications, or any action that responds to a problem.
 
 | Stage | Status | Tests (backend / dispatcher) | Notes |
 |---|---|---|---|
-| 0 Baseline | not started | | |
-| 1 Skeleton + tiles | not started | | |
-| 2 Activity | not started | | |
-| 3 On time | not started | | |
-| 4 Problems | not started | | |
-| 5 Review desk | not started | | |
-| 6 Evidence | not started | | |
-| 7 Routes & sites | not started | | |
-| 8 Clean-up + home | not started | | |
+| 0 Baseline | DONE 2026-09-15 (awaiting Tom's sign-off) | 1459 passed, 4 skipped, 0 failed / 760 passed (73 files) | ruff + `mypy .` clean (291 files); eslint 0 errors, 2 existing `<img>` warnings in `EvidencePhoto.tsx`; type-check clean; `npm run build` passes. `dev` had nothing new. CI on `dev` is red with 34 known Hedera-config failures (CI has no `HEDERA_TOPIC_ID`); they all pass locally. |
+| 1 Skeleton + tiles | DONE 2026-09-15 (Tom checked in the browser and signed off) | 1539 passed, 4 skipped, 0 failed / 821 passed (80 files); lint 0 errors, build passes | Deviations: (1) tiles response gains `all_time_start` (Tom OK'd; §6 updated). (2) Chart colours live in `frontend/dispatcher/lib/tokens.ts`, not `lib/charts/palette.ts`: eslint's no-raw-hex rule exempts only `lib/tokens.ts`. (3) `base.py` holds only the departures + closed-trip builders; the step-gap and problem builders arrive with the stages that first use them. (4) `MONTH_ABBREVIATIONS` exported from `lib/format/month.ts` for reuse. (5) Grain fitting is derived, not stored: a shorter period brings the dispatcher's own grain back. `resolveTabQuery` in `period.ts` is what tabs use from Stage 2. |
+| 2 Activity | DONE 2026-09-15 (Tom signed off). Then the §7.7 chart-card look pass (D22) was built the same day; Tom's browser check of it is pending | 1567 passed, 4 skipped, 0 failed (backend unchanged by the look pass) / 854 passed (82 files); lint 0 errors; `npm run build` passes | Look pass: `InfoPopover` in `ChartCard`; a required `yLabel` on `TrendColumns`, `TrendLines` and `PatternStrip` (`Y_AXIS_WIDTH` 36 → 56, `yAxisHeading` in `chartStyle.ts`); `fmtBucketLabel` week → "7–13 Sep", new `fmtBucketRange` ("7–13 Sep 2026", "29 Jun – 5 Jul 2026") for tooltips and tables. **Addition to §7.7:** `ChartCard` gained a `caveat` line on the card face, because the month chart's "Needs a full year of history…" note was in its basis and would otherwise have moved behind the "i". Within one month the full form is "7–13 Sep 2026" (unspaced dash). Earlier Stage 2 notes: | Pattern charts' own control is labelled "Pattern period". The cancellations table shows the per-bucket counts and, under them, the cancelled-trip list with links (D20). Faded partial buckets are explained in a legend note; "so far" / "part week" appear in tooltips and tables, not on the axis. The busiest pattern bar is the highest average (earliest on a tie). `RadioToggle` is shared by View by and Departures/Arrivals. Chart geometry lives in `charts/chartStyle.ts`. An All-time trend request waits for the tiles' `all_time_start`. |
+| 3 On time | DONE 2026-09-15 (built in the Stages 3–7 run; Tom's browser check at the end) | fleet backend 119 passed incl. the §8 consistency test against `/analytics/drivers` and the Early + On time invariant; ruff + `mypy .` clean / fleet vitest 103 passed; lint 0 errors | One per-trip query and one step-gap query (`base.trip_steps`, LAG over the whole plan), aggregated in pure functions. Captions (2.1, 2.5) are a third line in the "i" popover (`ChartCard note`); the 2.3 sign-off caveat is on the card face (`caveat`). 2.2's Departures/Arrivals switch sits in a new always-visible `ChartCard controls` slot. 2.5 medians are positive minutes on both sides. New shared wrappers: `CategoryBars` (columns/bars, stacked or side by side) and `DivergingColumns`; fleet helpers in `fleet/format.ts`. |
+| 4 Problems | DONE 2026-09-15 (Stages 3–7 run; Tom's browser check at the end) | fleet backend 133 passed; ruff + `mypy .` clean / fleet vitest 111 passed; lint 0 errors | Problems read once, with the linked step (outer join); `dispatcher_note` excluded once via `EXCLUDED_FROM_PROBLEMS`. `by_step` returns every step, zeros included (the page hides trip creation and activation at zero). `by_type` ties sort by type name. The 3.5 shares are divided once in the builder; `periods.day_block` added. Warning/critical legend keys carry icons (`ChartLegend icon`). The D21 caveat sits above the 3.5 table; its caption is in the popover. |
+| 5 Review desk | DONE 2026-09-15 (Stages 3–7 run; Tom's browser check at the end) | fleet backend 142 passed; ruff + `mypy .` clean / fleet vitest 117 passed; lint 0 errors | The queue is rebuilt in Python from the organisation's critical (created_at, reviewed_at) pairs, whole history, `legacy_review` excluded, each bucket measured at min(bucket end, period end, now). Outcomes list all five real outcomes in enum order, zeros included. Tab note: the tab covers open and closed trips alike (unlike the rest of the page). "Waiting now" and the queue draw zeros instead of the "not enough data" state. |
+| 6 Evidence | DONE 2026-09-15 (Stages 3–7 run; Tom's browser check at the end) | fleet backend 151 passed; ruff + `mypy .` clean / fleet vitest 123 passed; lint 0 errors | Tracker = the facility view's definition (attested stop steps, in_transit and overridden out). Override share over every closed-trip step (the driver view's denominator). Receipts over any trip status by step `completed_at`, with `ANCHORED_PHASES` passed in by the service; overridden steps reported as a line on the card, not a bar. Same-phone = confirmations in the period with `bearer_token_present`; rejected attempts joined to the organisation's trips through `presented_trip_id`. `ChartLegend` icons became any node (lucide ✓/✗ for the tracker). |
+| 7 Routes & sites | DONE 2026-09-15 (Stages 3–7 run; Tom's browser check at the end) | full §8 CI: backend 1624 passed, 4 skipped, 0 failed; ruff + `mypy .` clean (318 files) / dispatcher 892 passed (88 files); lint 0 errors; type-check clean; `npm run build` passes (`/analytics` 145 kB) | Sites: deliveries only on loaded trips; top 10 + "Show all". Lanes: DurationStats over pooled driving minutes, problems without dispatcher notes; lanes under 5 trips faded. Precinct names by id only in the service (G16). Incident pins carry exactly the §6 keys (tested: no driver fields). `IncidentMap` follows `GeofenceMap` (dynamic Leaflet, tile-failure tracking reused, street tiles, `isolate` so Leaflet panes can't cover the "i" popovers); popup built with textContent. Every tab is now built, so the page's "built in Stage N" placeholder was removed. |
+| 3b On time rework (D23) | DONE 2026-09-15 (after Tom's browser review of On time; his browser check of the rework is pending) | on-time integration + fleet unit tests 102 passed; ruff + mypy clean on every changed file / dispatcher 904 passed (89 files), fleet 144; lint 0 errors; type-check clean; `npm run build` not run (Tom's dev server is up) | **Axis (every time-axis chart):** `charts/axisTicks.tsx` has `labelStep(bucketCount, plotWidth, labelWidth)` and `isLabelled` (every n-th bucket counting back from the newest). It is `.tsx` because it also renders the tick. Plot width is the `width` Recharts passes to the tick, so there is no extra measuring hook. Label width is estimated as characters × `AXIS_CHAR_WIDTH_PX` (6.2), and `AXIS_LABEL_GAP_PX` is 12. A tick mark sits under every bucket (`interval={0}`, new token `TICK_COLOR`). `preserveStartEnd` and `minTickGap` are gone from `TrendColumns` and `TrendLines`. `TIME_CHART_MARGIN` has a 32 px right margin, and `TrendLines` pads 16 px at each end, so end labels sit under their points. **Card header:** `RadioToggle showLabel={false}` names the group with `aria-label`; `EventSwitch` is "Show departures or arrivals" and has no caption. **Faded note:** `ChartCard timeAxis` adds it as the popover's last line (`InfoPopover footnote`); it is off every legend on every tab. **2.3:** `StepTiles` shows five tiles, `fmtDuration`, lucide up/down arrows with words, and a hand-drawn SVG sparkline that is decorative (values in the table) and breaks where a bucket has no gaps. The change is rounded to the minute, and shows "No change" when that rounds to 0 (the spec doesn't cover equal). **2.5:** `CategoryBars` columns in nine bands, a `ChartCard summary` line on the face, a three-key legend, and "← Finished early" / "Ran over →" under the axis. 2.3 and 2.5 span the full width. **Backend:** `periods.previous_period`, `PlanBand` and `plan_band`. `step_gaps` takes a window and an optional grain, and runs a second time for the previous period. `get_on_time(compare_previous=start is not None)`. `DivergingColumns.tsx` was deleted. |
+| 3c Tab reviews (D25) | DONE 2026-09-15 (after Tom's browser review of Problems, Review desk, Evidence and Routes; his browser check of the changes is pending) | full suite 1771 passed, 4 skipped, 0 failed; `mypy .` clean; ruff's only error is the unused `sa` import in Tim's `2026_09_15_tim_close_blockchain_receipt_fk_drift.py` (not this branch's) / dispatcher 943 passed (90 files); lint 0 errors; type-check clean; `npm run build` passes (`/analytics` 154 kB) | **Backend:** `RECEIVER_ID_MISMATCH` in `THEFT_SIGNAL_TYPES`; `evidence.receipts()`, the `Receipts` schema and the `receipts` response field deleted. **Frontend:** `fmtExceptionType` writes "ID" in capitals. `ProblemsTab` 3.1 on counts. New `charts/DonutChart.tsx` (Recharts Pie, 58–82 % radii, clockwise from 12 o'clock, 2 px surface gap, centre label as an HTML overlay). `EvidenceTab`: `ReceiptsCard` deleted; the agreement line leads 5.1's basis; the flags line is 5.7's `note`. `LaneScatter` gained `pointLabel`, `cornerLabel` and mean-x / mean-y `ReferenceLine`s in `TICK_COLOR` (solid: dashes would read as a target); a name sits on the side of its dot away from the average. `IncidentMap` keeps a `Map` of markers by exception id and takes `selection` (`{id, seq}`: `seq` lets the same row fly back after the map was moved) and `returnTo`; selecting scrolls the map into view, `flyTo` at zoom ≥ 15, opens the popup on `moveend`. `IncidentsCard` is keyed by the period so a new period starts at 10 rows. `period.ts`: `PRESETS_BY_GRAIN`, `GENERAL_PRESETS`, `periodForGrain`, new presets. `PeriodControl` takes `presets`; `ControlRow` passes the list and applies `periodForGrain` on a View by change. New `fleet/navigation.ts` (`analyticsReturnHref`, `controlsFromSearch`, `hasReturnedControls`, shared `TAB_PARAM`); the return state lives in the address, not browser storage, so the server and browser draw the same first frame. **Follow-up (Tom's check):** 2.4's lane names were crammed (3-line names in 32 px rows, lines 1em apart), so `CategoryBars` gained `categoryAxisWidth`, `rowHeight` and `categoryGap` (defaults unchanged for every other chart) and draws category names with Recharts `Text` at `CATEGORY_LINE_HEIGHT` 1.3em; 2.4 uses a 280 px name column, 64 px rows and a 30 % gap between lanes. |
+| 8 Clean-up + home | DONE 2026-09-15 (Tom's browser check pending) | full §8 CI: backend 1771 passed, 4 skipped, 0 failed; `mypy .` clean (334 files); ruff's only error is the unused `sa` import in Tim's `2026_09_15_tim_close_blockchain_receipt_fk_drift.py` / dispatcher 911 passed (86 files; −32 = the deleted panel tests and the lanes hook case); lint 0 errors (2 existing `<img>` warnings); type-check clean; `npm run build` **not run** (Tom's dev server was on :3000 and a build overwrites its `.next`; it passed at 154 kB after D25) | `{Driver,Facility,Lane,Vehicle}Panel.tsx` + tests deleted; `useLaneAnalytics` and its test row removed; `ANALYTICS_COPY.scopeNote`, `streaksNote`, `laneNote` removed (`confirmationDwellCaveat`, `trailerNote`, `facilityRateNote`, `empty` are still used). Comments in the three detail-page summaries that named the deleted panels were reworded, so the step-1 grep returns nothing. Home page: stat strip, `closedTrips`, `completedCount`, `onTimePercent` and the `StatCard` import removed; nothing else changed. `components/ui/StatCard.tsx` is now unused but kept (UI kit). Backend untouched (D17: `/analytics/lanes` etc. stay). Claude's `git fetch` cannot authenticate (no SSH key), so rule 4 used Tom's last fetch: `dev` had nothing new. |

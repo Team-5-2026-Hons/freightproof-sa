@@ -20,3 +20,13 @@ window.matchMedia = window.matchMedia || function (query: string): MediaQueryLis
     dispatchEvent: () => false,
   } as unknown as MediaQueryList
 }
+
+// jsdom does not implement ResizeObserver, and Recharts' ResponsiveContainer creates one on
+// mount. A no-op is enough: chart tests assert on visible text and the table view, never on
+// measured SVG geometry.
+class ResizeObserverStub {
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {}
+}
+globalThis.ResizeObserver = globalThis.ResizeObserver || (ResizeObserverStub as unknown as typeof ResizeObserver)

@@ -7,7 +7,6 @@ import type { FacilityMetrics } from '@shared/lib/types/analytics'
 import {
   useDriverAnalytics,
   useFacilityAnalytics,
-  useLaneAnalytics,
   useVehicleAnalytics,
   useVehicleStreaks,
 } from './useAnalytics'
@@ -47,7 +46,6 @@ describe('analytics hooks', () => {
   it.each([
     ['facilities', useFacilityAnalytics],
     ['vehicles', useVehicleAnalytics],
-    ['lanes', useLaneAnalytics],
     ['drivers', useDriverAnalytics],
   ] as const)('requests /%s with the inclusive month range', async (grain, useGrain) => {
     mockedGet.mockResolvedValue([])
