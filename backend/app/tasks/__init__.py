@@ -43,22 +43,18 @@ celery.conf.beat_schedule = {
     },
 }
 
-# Explicit import registers the parcel_perfect tasks with the Celery registry.
-# autodiscover_tasks() only scans for a tasks.py in each listed package; it will not
-# find sibling modules like parcel_perfect.py without this explicit import. It must
-# stay below `celery = Celery(...)` above, since parcel_perfect.py imports `celery`
-# back from this module (E402 is a false positive on a required circular-import guard).
-from app.tasks.parcel_perfect import sync_active_consignments as sync_active_consignments  # noqa: E402
-from app.tasks.verification import sweep_abandoned as sweep_abandoned  # noqa: E402
-# Explicit imports register sibling task modules with the Celery registry.
-# autodiscover_tasks() only scans for a tasks.py in each listed package. These must
-# stay below `celery = Celery(...)` because both modules import `celery` back from here.
+# Explicit imports register the sibling task modules with the Celery registry.
+# autodiscover_tasks() only scans for a tasks.py inside each listed package, so it will not
+# find siblings like parcel_perfect.py without these. They must stay below
+# `celery = Celery(...)` above, because each of these modules imports `celery` back from
+# this one (E402 is a false positive on a required circular-import guard).
 from app.tasks.blockchain import (  # noqa: E402
     PHASE_ANCHOR_RECOVERY_INTERVAL_SECONDS,
     anchor_phase_event_task as anchor_phase_event_task,
     recover_phase_anchors_task as recover_phase_anchors_task,
 )
 from app.tasks.parcel_perfect import sync_active_consignments as sync_active_consignments  # noqa: E402
+from app.tasks.verification import sweep_abandoned as sweep_abandoned  # noqa: E402
 
 celery.conf.beat_schedule["recover-phase-anchors"] = {
     "task": "tasks.blockchain.recover_phase_anchors",
