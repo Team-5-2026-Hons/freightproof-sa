@@ -182,3 +182,4 @@ class VerifyResponse(BaseModel):
     receipt: Optional[BlockchainReceiptRead] = None
     expected_hash: Optional[str] = None
     current_hash: Optional[str] = None
+    evidence_verified: bool = False

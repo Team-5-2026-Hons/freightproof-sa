@@ -161,23 +161,25 @@ class HederaService:
         self._private_key = _require_non_empty("HEDERA_PRIVATE_KEY", private_key)
         self._topic_id = _require_non_empty("HEDERA_TOPIC_ID", topic_id)
 
-        self._adapter = adapter or _SdkHederaAdapter(
-            network=self._network,
-            account_id=self._account_id,
-            private_key=self._private_key,
-        )
+        # Mirror-node verification is HTTP-only. Do not load Java or initialize a
+        # signing client on the API event loop just to read a public receipt.
+        self._adapter = adapter
 
         self._mirror_base_url = (
             mirror_base_url.strip().rstrip("/")
             if mirror_base_url
             else _default_mirror_url(self._network)
         )
-        self._http_client = http_client or httpx.Client(timeout=10.0)
+        self._http_client = http_client
 
     def submit_hash(self, hash_hex: str) -> HederaReceipt:
         """Submit a SHA-256 hash to HCS and return the resulting receipt."""
         normalized_hash = _normalize_sha256_hex(hash_hex)
         try:
+            if self._adapter is None:
+                self._adapter = _SdkHederaAdapter(
+                    network=self._network, account_id=self._account_id, private_key=self._private_key,
+                )
             return self._adapter.submit_message(self._topic_id, normalized_hash)
         except HederaServiceError:
             raise
@@ -201,12 +203,18 @@ class HederaService:
         )
 
         try:
-            response = self._http_client.get(endpoint)
+            if self._http_client is not None:
+                response = self._http_client.get(endpoint)
+            else:
+                with httpx.Client(timeout=10.0) as client:
+                    response = client.get(endpoint)
             response.raise_for_status()
             payload = response.json()
         except Exception as exc:
             raise HederaVerifyError("Failed to query Hedera mirror node.") from exc
 
+        if not isinstance(payload, dict):
+            raise HederaVerifyError("Mirror node response is not a JSON object.")
         encoded_message = payload.get("message")
         if not isinstance(encoded_message, str) or not encoded_message:
             raise HederaVerifyError("Mirror node response missing message payload.")

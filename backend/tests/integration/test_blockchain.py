@@ -289,6 +289,7 @@ def _fake_outcome_with_hashes() -> VerifyOutcome:
         expected_hash=_EXPECTED_HASH,
         current_hash=_CURRENT_HASH,
         receipt=None,
+        evidence_verified=True,
     )
 
 
@@ -323,6 +324,7 @@ async def test_verify_hides_hashes_for_dispatcher() -> None:
     assert body["expected_hash"] is None
     assert body["current_hash"] is None
     assert body["receipt"] is None
+    assert body["evidence_verified"] is True
 
 
 @pytest.mark.asyncio
@@ -355,3 +357,4 @@ async def test_verify_exposes_hashes_for_admin() -> None:
     assert body["status"] == "db_mismatch"
     assert body["expected_hash"] == _EXPECTED_HASH
     assert body["current_hash"] == _CURRENT_HASH
+    assert body["evidence_verified"] is True

@@ -9,6 +9,11 @@ import type { Trip } from '@shared/lib/types/trip'
 
 const push = vi.fn()
 const notify = vi.fn()
+const forensicMode = vi.hoisted(() => ({
+  canViewForensics: true,
+  forensicOn: true,
+  toggle: vi.fn(),
+}))
 
 vi.mock('next/navigation', () => ({
   useParams: () => ({ id: TRIP_0040_ID }),
@@ -45,7 +50,7 @@ vi.mock('@/lib/hooks/useToast', () => ({
 }))
 
 vi.mock('@/lib/context/ForensicModeContext', () => ({
-  useForensicMode: () => ({ canViewForensics: false, forensicOn: false, toggle: vi.fn() }),
+  useForensicMode: () => forensicMode,
 }))
 
 vi.mock('@/lib/hooks/useElementWidth', () => ({
@@ -58,12 +63,12 @@ vi.mock('@/lib/hooks/useResizablePanel', () => ({
   useResizablePanel: () => ({ width: 0, startResize: vi.fn() }),
 }))
 
-vi.mock('@/components/blockchain/ForensicOnly', () => ({
-  ForensicOnly: ({ children }: { children: React.ReactNode }) => children,
-}))
-
 vi.mock('@/components/blockchain/VerifyButton', () => ({
-  VerifyButton: () => null,
+  VerifyButton: ({ subjectType, subjectId, ariaLabel }: {
+    subjectType: string; subjectId: string; ariaLabel?: string
+  }) => (
+    <span data-testid="verify-subject" aria-label={ariaLabel}>{subjectType}:{subjectId}</span>
+  ),
 }))
 
 const mockedUseTripDetail = vi.mocked(useTripDetail)
@@ -124,6 +129,9 @@ function tripDriving(): Trip {
 beforeEach(() => {
   push.mockReset()
   notify.mockReset()
+  forensicMode.canViewForensics = true
+  forensicMode.forensicOn = true
+  forensicMode.toggle.mockReset()
   mockedUseTripDetail.mockReturnValue({
     trip: tripWithLoadingExceptionsOutOfOrder(),
     isLoading: false,
@@ -166,6 +174,95 @@ describe('Trip detail phase timeline', () => {
 
     expect(exceptionRows[0]).toHaveTextContent('Cargo Damage')
     expect(exceptionRows[1]).toHaveTextContent('Checkpoint Timeout')
+  })
+
+  it.each([
+    ['departure', 'pickup'],
+    ['confirmation', 'delivery'],
+  ] as const)('attaches %s evidence verification to its phase-event subject', (phaseType, receiptType) => {
+    const base = tripWithLoadingExceptionsOutOfOrder()
+    const evidencePhase = base.phases.find(phase => phase.phase_type === phaseType)
+    if (!evidencePhase) throw new Error(`${phaseType} phase fixture is missing`)
+    const receiptId = `phase-receipt-${receiptType}`
+    mockedUseTripDetail.mockReturnValue({
+      trip: {
+        ...base,
+        phases: base.phases.map(phase => phase.phase_event_id === evidencePhase.phase_event_id
+          ? { ...phase, blockchain_receipt_id: receiptId }
+          : phase),
+        blockchain_receipts: [...base.blockchain_receipts, {
+          id: receiptId,
+          subject_type: 'phase_event',
+          subject_id: evidencePhase.phase_event_id,
+          receipt_type: receiptType,
+          data_hash: 'a'.repeat(64),
+          hedera_topic_id: '0.0.12345',
+          hedera_sequence_number: 7,
+          hedera_consensus_timestamp: '2026-05-08T09:22:00Z',
+          hedera_tx_id: null,
+          created_at: '2026-05-08T09:22:00Z',
+        }],
+      },
+      isLoading: false, isValidating: false, error: null,
+      refetch: vi.fn(), refetchSilent: vi.fn(), errorStatus: null, lastUpdated: Date.now(),
+    })
+
+    render(<TripDetailPage />)
+
+    const phaseGroup = screen.getByRole('group', { name: new RegExp(`^${phaseType} phase$`, 'i') })
+    const verification = within(phaseGroup).getByTestId('verify-subject')
+    expect(verification).toHaveTextContent(
+      `phase_event:${evidencePhase.phase_event_id}`,
+    )
+    expect(verification).toHaveAttribute(
+      'aria-label', `Verify integrity for ${phaseType[0].toUpperCase()}${phaseType.slice(1)} receipt, phase ${evidencePhase.sequence_number}`,
+    )
+  })
+
+  it('does not offer evidence verification for a non-evidence phase receipt', () => {
+    render(<TripDetailPage />)
+
+    const creationGroup = screen.getByRole('group', { name: /^Trip Created phase$/i })
+    expect(within(creationGroup).queryByTestId('verify-subject')).toBeNull()
+  })
+
+  it.each([
+    ['forensic mode is off', true, false],
+    ['the dispatcher is not an admin', false, true],
+  ] as const)('hides evidence verification when %s', (_case, canViewForensics, forensicOn) => {
+    const base = tripWithLoadingExceptionsOutOfOrder()
+    const departure = base.phases.find(phase => phase.phase_type === 'departure')
+    if (!departure) throw new Error('departure phase fixture is missing')
+    const receiptId = 'phase-receipt-pickup'
+    mockedUseTripDetail.mockReturnValue({
+      trip: {
+        ...base,
+        phases: base.phases.map(phase => phase.phase_event_id === departure.phase_event_id
+          ? { ...phase, blockchain_receipt_id: receiptId }
+          : phase),
+        blockchain_receipts: [...base.blockchain_receipts, {
+          id: receiptId,
+          subject_type: 'phase_event',
+          subject_id: departure.phase_event_id,
+          receipt_type: 'pickup',
+          data_hash: 'a'.repeat(64),
+          hedera_topic_id: '0.0.12345',
+          hedera_sequence_number: 7,
+          hedera_consensus_timestamp: '2026-05-08T09:22:00Z',
+          hedera_tx_id: null,
+          created_at: '2026-05-08T09:22:00Z',
+        }],
+      },
+      isLoading: false, isValidating: false, error: null,
+      refetch: vi.fn(), refetchSilent: vi.fn(), errorStatus: null, lastUpdated: Date.now(),
+    })
+    forensicMode.canViewForensics = canViewForensics
+    forensicMode.forensicOn = forensicOn
+
+    render(<TripDetailPage />)
+
+    const departureGroup = screen.getByRole('group', { name: /^Departure phase$/i })
+    expect(within(departureGroup).queryByTestId('verify-subject')).toBeNull()
   })
 })
 
