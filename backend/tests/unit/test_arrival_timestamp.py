@@ -29,7 +29,14 @@ def arrival_context(monkeypatch: pytest.MonkeyPatch) -> tuple[AsyncMock, Trip, P
     db.execute.return_value = MagicMock()
     db.execute.return_value.scalar_one_or_none.return_value = None
     monkeypatch.setattr(phase_service, "_gate_and_load", AsyncMock(return_value=(trip, event)))
-    monkeypatch.setattr(phase_service.corroboration_service, "record_phase_corroboration", AsyncMock())
+    # Corroboration now returns the tracker fix for proximity assessment. This fixture
+    # models an unavailable tracker explicitly rather than letting AsyncMock return a
+    # truthy mock object whose fake timestamp reaches the evaluator.
+    monkeypatch.setattr(
+        phase_service.corroboration_service,
+        "record_phase_corroboration",
+        AsyncMock(return_value=None),
+    )
     monkeypatch.setattr(phase_service, "_raise_position_disagreement_if_unrecorded", AsyncMock())
     monkeypatch.setattr(phase_service, "recompute_position", AsyncMock())
     monkeypatch.setattr(phase_service, "enqueue_event", MagicMock())

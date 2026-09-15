@@ -91,3 +91,25 @@ def test_driver_captured_at_rejects_a_naive_timestamp():
             "idempotency_key": str(uuid.uuid4()),
             "driver_captured_at": "2026-09-06T14:00:00",
         })
+
+
+def test_location_warning_acknowledgement_is_optional_and_preserves_the_driver_reason():
+    """The acknowledgement is driver context, not a client-supplied assessment verdict."""
+    parsed = _ADAPTER.validate_python({
+        "phase_type": "in_transit",
+        "idempotency_key": str(uuid.uuid4()),
+        "location_warning_acknowledged_at": "2026-09-15T14:00:00+00:00",
+        "location_warning_reason": "Truck is waiting at the gate.",
+    })
+
+    assert parsed.location_warning_acknowledged_at is not None
+    assert parsed.location_warning_reason == "Truck is waiting at the gate."
+
+
+def test_location_warning_reason_rejects_blank_acknowledgement():
+    with pytest.raises(ValidationError):
+        _ADAPTER.validate_python({
+            "phase_type": "in_transit",
+            "idempotency_key": str(uuid.uuid4()),
+            "location_warning_reason": "   ",
+        })

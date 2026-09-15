@@ -277,8 +277,17 @@ def _snapshot_for_trailer(
 async def record_phase_corroboration(
     db: AsyncSession, *, trip: Trip, event: PhaseEvent,
     driver_captured_at: Optional[datetime] = None,
-) -> None:
+) -> Optional[PulsitFix]:
     """Corroborate one phase handshake against Pulsit. NEVER raises.
+
+    Returns the raw horse `PulsitFix` this call obtained — whether or not it turned
+    out timely enough to be written anywhere — or `None` if no fix could be obtained
+    at all (no device on record, or the whole call failed). Task 5's
+    orchestration/action_location_service.py needs the SAME fix this function
+    already fetched to assemble its own assessment; returning it here is what makes
+    that a second CONSUMER of one Pulsit read rather than a second Pulsit round trip
+    for the same handshake (R12) — see the callers in phase_service.py, each of
+    which passes this return value straight through to `_finish_phase`.
 
     Called by every advance_* in phase_service.py, immediately after the driver's
     own phone fix is recorded, so the independent reading is taken as close as
@@ -398,6 +407,8 @@ async def record_phase_corroboration(
                 continue
             db.add(snapshot)
 
+        return horse_fix
+
     except Exception:
         # Fail-open, mirroring _anchor_or_fail_open's stance on Hedera: the
         # handshake is evidence that already physically happened, and no external
@@ -407,12 +418,13 @@ async def record_phase_corroboration(
             "Pulsit corroboration failed for %s — handshake continues, corroboration "
             "recorded as unavailable", context,
         )
+        return None
 
 
 async def record_checkpoint_corroboration(
     db: AsyncSession, *, trip: Trip, checkpoint: Checkpoint,
     driver_captured_at: Optional[datetime] = None,
-) -> None:
+) -> Optional[PulsitFix]:
     """Corroborate an in-transit checkpoint against Pulsit. NEVER raises.
 
     Scope note for review: FP-143 as written covers phase handshakes only. This
@@ -435,6 +447,13 @@ async def record_checkpoint_corroboration(
 
     Same fail-open contract as record_phase_corroboration: a driver logging a
     roadside checkpoint must not be blocked by an unreachable tracker API.
+
+    Returns the raw fix obtained (whether or not it was usable/timely enough to be
+    written to horse_gps_lat/lng), or `None` if none could be obtained at all —
+    same R12 contract as record_phase_corroboration, for the same reason:
+    checkpoint_service.log_checkpoint passes this straight to
+    action_location_service.build_checkpoint_assessment rather than asking Pulsit a
+    second time for the same checkpoint.
     """
     context = f"checkpoint_id={checkpoint.id} trip_id={trip.id}"
     try:
@@ -444,7 +463,7 @@ async def record_checkpoint_corroboration(
                 "No vehicle row for horse_id=%s on trip_id=%s — cannot corroborate %s",
                 trip.horse_id, trip.id, context,
             )
-            return
+            return None
 
         fix = await get_pulsit_client(
             organization_id=trip.operator_organization_id
@@ -454,7 +473,7 @@ async def record_checkpoint_corroboration(
                 "No horse position for %s (status=%s) — horse_gps columns left null",
                 context, fix.status.value,
             )
-            return
+            return fix
 
         if not _within_corroboration_skew(
             fixed_at=fix.fixed_at, driver_captured_at=driver_captured_at,
@@ -466,16 +485,18 @@ async def record_checkpoint_corroboration(
                 context, settings.PULSIT_CORROBORATION_MAX_SKEW_SECONDS,
                 fix.fixed_at, driver_captured_at,
             )
-            return
+            return fix
 
         checkpoint.horse_gps_lat = fix.lat
         checkpoint.horse_gps_lng = fix.lng
+        return fix
 
     except Exception:
         logger.exception(
             "Pulsit corroboration failed for %s — checkpoint continues, corroboration "
             "recorded as unavailable", context,
         )
+        return None
 
 
 __all__ = [

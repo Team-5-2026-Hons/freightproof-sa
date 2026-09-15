@@ -7,7 +7,7 @@ import { raiseException, type RaiseExceptionBody } from '@/lib/api/exceptions'
 import { uploadArtifact } from '@/lib/api/artifacts'
 import { submitCheckpoint, type CheckpointEvidence } from '@/lib/api/checkpoints'
 import { recordLocations, type LocationPingBody } from '@/lib/api/locations'
-import type { DriverPosition } from '@/lib/types/location'
+import type { DriverPosition, LocationWarningAcknowledgement } from '@/lib/types/location'
 import { ApiError } from '@/lib/api/client'
 import type { PhaseType } from '@shared/lib/types/phase'
 import type { PhaseEvidence } from '@/lib/types/evidence-draft'
@@ -42,6 +42,9 @@ interface PhaseQueueEntry {
   // backend's corroboration skew check would treat a genuinely offline handshake as if
   // it were live.
   driverCapturedAt: string
+  // Acknowledgement is evidence of the warning the driver saw at the original
+  // attempt. It must travel with the queued capture, never be requested on replay.
+  acknowledgement: LocationWarningAcknowledgement | null
   enqueuedAt: string
 }
 
@@ -151,7 +154,7 @@ async function sendEntry(entry: QueueEntry): Promise<void> {
     // SubmitPhaseResult.phaseStatus; this call only needs to know it didn't throw.
     await submitPhase(
       entry.tripId, entry.phaseEventId, entry.phaseType, entry.evidence,
-      entry.idempotencyKey, entry.position ?? null, entry.driverCapturedAt,
+      entry.idempotencyKey, entry.position ?? null, entry.driverCapturedAt, entry.acknowledgement ?? null,
     )
   } else if (entry.kind === 'checkpoint') {
     await submitCheckpoint(entry.tripId, entry.evidence)
@@ -438,6 +441,7 @@ export function useOfflineQueue() {
     (
       tripId: string, phaseEventId: string, phaseType: PhaseType, evidence: PhaseEvidence,
       position: DriverPosition | null, driverCapturedAt: string,
+      acknowledgement: LocationWarningAcknowledgement | null = null,
     ) => {
       // Generated once, here, and never regenerated — see PhaseQueueEntry.idempotencyKey.
       // Reused as both the queue's own bookkeeping id and the wire idempotency_key so a
@@ -446,7 +450,7 @@ export function useOfflineQueue() {
       const id = crypto.randomUUID()
       const entry: PhaseQueueEntry = {
         kind: 'phase', id, tripId, phaseEventId, phaseType, evidence, idempotencyKey: id,
-        position, driverCapturedAt,
+        position, driverCapturedAt, acknowledgement: acknowledgement ?? null,
         enqueuedAt: new Date().toISOString(),
       }
       const q = [...loadQueue(), entry]

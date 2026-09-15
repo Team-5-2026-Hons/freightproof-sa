@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useEffect, useRef, type RefObject } from 'react'
+import { Suspense, useEffect, useRef, useState, type RefObject } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/Button'
 import { Spinner } from '@/components/ui/Spinner'
@@ -21,6 +21,7 @@ import { getTripSeed } from '@/lib/trips/tripSeed'
 import { ROUTES } from '@/lib/constants/routes'
 
 const PANELS: readonly string[] = ['information', 'manifest', 'exceptions']
+const DOCKED_PANEL_QUERY = '(min-width: 1280px)'
 
 /** Scrolls `item` to the top of `timelineRef`'s own scroll container: the exact
  *  positioning both the "Jump to current phase" button and the `#phase-<id>` hash-anchor
@@ -58,17 +59,27 @@ function TripDetail({ tripId }: { tripId: string }) {
   // asked for this", which is what raises the overlay.
   const panel: TripPanel = selected ?? 'information'
   const filter: ExceptionFilter = search.get('exceptions') === 'all' ? 'all' : 'needs_review'
+  const phaseQuery = search.get('phase')
+  // A phase id belongs to this trip only when it appears in this plan. Keep an invalid
+  // URL visible as a recoverable state below rather than silently showing unrelated
+  // records — a copied link must never look successful when it is not.
+  const selectedPhaseId = trip && phaseQuery && trip.phases.some(phase => phase.phase_event_id === phaseQuery) ? phaseQuery : null
+  const invalidPhaseId = trip && phaseQuery && !selectedPhaseId ? phaseQuery : null
+  const [revealRequest, setRevealRequest] = useState<{ phaseId: string; requestId: number } | null>(null)
+  const [pendingOverlayReveal, setPendingOverlayReveal] = useState<string | null>(null)
   const returnTo = `${ROUTES.tripDetail(tripId)}${search.size ? `?${search.toString()}` : ''}`
   // What the list that led here already knew. Lets the header name the trip immediately
   // instead of holding the whole page behind one slow record fetch.
   const seed = getTripSeed(tripId)
   const facts = tripHeaderFacts(trip, seed)
 
-  function setPanel(next: TripPanel | null, nextFilter?: ExceptionFilter): void {
+  function setPanel(next: TripPanel | null, nextFilter?: ExceptionFilter, nextPhaseId?: string | null): void {
     const query = new URLSearchParams(search.toString())
     if (next) query.set('panel', next)
     else query.delete('panel')
     if (nextFilter) query.set('exceptions', nextFilter)
+    if (next !== 'exceptions' || nextPhaseId === null) query.delete('phase')
+    else if (nextPhaseId) query.set('phase', nextPhaseId)
     const suffix = query.toString()
     router.push(`${ROUTES.tripDetail(tripId)}${suffix ? `?${suffix}` : ''}`, { scroll: false })
   }
@@ -81,6 +92,27 @@ function TripDetail({ tripId }: { tripId: string }) {
     if (!active) return
     scrollIntoTimeline(timelineRef, document.getElementById(`${PHASE_ANCHOR_PREFIX}${active.phase_event_id}`))
   }
+
+  function showInTimeline(phaseId: string): void {
+    const requestReveal = () => setRevealRequest(previous => ({ phaseId, requestId: (previous?.requestId ?? 0) + 1 }))
+    if (window.matchMedia(DOCKED_PANEL_QUERY).matches) {
+      requestReveal()
+      return
+    }
+    // The overlay's focus trap must be gone before moving focus into the timeline. The
+    // docked panel stays put: it is a sibling column, not an overlay to dismiss.
+    setPendingOverlayReveal(phaseId)
+    setPanel(null)
+  }
+
+  useEffect(() => {
+    if (!pendingOverlayReveal || selected !== null) return
+    const frame = window.requestAnimationFrame(() => {
+      setRevealRequest(previous => ({ phaseId: pendingOverlayReveal, requestId: (previous?.requestId ?? 0) + 1 }))
+      setPendingOverlayReveal(null)
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [pendingOverlayReveal, selected])
 
   // Handles a `#phase-<id>` hash on arrival, whatever put it there. Scroll that row into
   // view once the timeline has a trip to render rows for, but never auto-expand it
@@ -120,12 +152,16 @@ function TripDetail({ tripId }: { tripId: string }) {
         {precinctsError && <ResourceWarning message={`Location names could not be refreshed. ${precinctsError}`} onRetry={retryPrecincts} />}
         {artifacts.error && <ResourceWarning message={`Evidence could not be refreshed. ${artifacts.error}`} onRetry={artifacts.refetch} />}
         <div ref={timelineRef} className="min-h-0 flex-1 overflow-y-auto bg-surf-lowest">
-          <TripTimeline trip={trip} precincts={precincts} artifactsById={artifacts.byId} artifactLoading={artifacts.isLoading} artifactError={artifacts.error} onRetryArtifacts={artifacts.refetch} onChanged={refetchSilent} returnTo={returnTo} lastUpdated={lastUpdated} onJump={jump} />
+          <TripTimeline trip={trip} precincts={precincts} artifactsById={artifacts.byId} artifactLoading={artifacts.isLoading} artifactError={artifacts.error} onRetryArtifacts={artifacts.refetch} onChanged={refetchSilent} returnTo={returnTo} lastUpdated={lastUpdated} onJump={jump}
+            onOpenExceptions={phaseId => setPanel('exceptions', 'all', phaseId)} revealRequest={revealRequest}
+            onRevealHandled={phaseId => scrollIntoTimeline(timelineRef, document.getElementById(`${PHASE_ANCHOR_PREFIX}${phaseId}`))} />
           <IntegritySummary trip={trip} />
         </div>
       </div>
-      <TripDetailPanel panel={panel} trip={trip} precincts={precincts} filter={filter} overlayOpen={selected !== null}
-        onSelect={setPanel} onClose={() => setPanel(null)} onFilter={value => setPanel('exceptions', value)} onChanged={refetchSilent} returnTo={returnTo} />
+      <TripDetailPanel panel={panel} trip={trip} precincts={precincts} filter={filter} selectedPhaseId={selectedPhaseId} invalidPhaseId={invalidPhaseId} overlayOpen={selected !== null}
+        onSelect={setPanel} onClose={() => setPanel(null)} onFilter={value => setPanel('exceptions', value, selectedPhaseId)}
+        onClearPhaseFilter={() => setPanel('exceptions', undefined, null)} onShowInTimeline={showInTimeline}
+        onChanged={refetchSilent} returnTo={returnTo} />
     </div>
   </div>
 }

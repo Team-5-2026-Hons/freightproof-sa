@@ -114,6 +114,19 @@ function Probe() {
       </button>
       <button
         onClick={() =>
+          ctx.logException('cargo_damage', {
+            description: 'Pallet damaged.',
+            gpsLat: -26.0942,
+            gpsLng: 28.1342,
+            driverCapturedAt: '2026-09-15T10:00:00Z',
+            driverAccuracyMetres: 5,
+          })
+        }
+      >
+        log-exception-with-capture
+      </button>
+      <button
+        onClick={() =>
           ctx.logException('mechanical', {
             description: 'Brake line burst on the rear trailer.',
             vehicleType: 'trailer',
@@ -190,6 +203,23 @@ describe('TripContext.logException (real mode) — GPS reaches raiseException', 
     expect(mockRaiseException).toHaveBeenCalledWith(
       String(activeTrip!.id),
       expect.objectContaining({ gps_lat: undefined, gps_lng: undefined }),
+    )
+  })
+
+  it('preserves a page-captured timestamp and accuracy on the API request', async () => {
+    mockRaiseException.mockResolvedValue(createdException({}))
+    await renderAndWaitForTrip()
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('log-exception-with-capture'))
+    })
+
+    expect(mockRaiseException).toHaveBeenCalledWith(
+      String(activeTrip!.id),
+      expect.objectContaining({
+        driver_captured_at: '2026-09-15T10:00:00Z',
+        driver_accuracy_metres: 5,
+      }),
     )
   })
 })

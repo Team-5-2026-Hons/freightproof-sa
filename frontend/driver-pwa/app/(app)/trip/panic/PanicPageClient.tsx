@@ -24,15 +24,9 @@ export default function PanicPageClient() {
   async function handlePanic() {
     setSending(true)
     setSaveFailed(false)
-    // This is an emergency action gated behind a 3s hold, so the driver has
-    // already committed several seconds to triggering it. GPS capture here
-    // resolves quickly (~300ms dev fallback; real native lock typically
-    // well under 2s) — awaiting it before logException means the alert
-    // record actually carries coordinates instead of racing to send one
-    // without location data. We accept the brief additional wait in
-    // exchange for a complete, defensible payload; `sending` drives a
-    // lightweight loading state below so the UI doesn't appear frozen.
-    const result = await capture()
+    // Emergency delivery is never held behind device GPS. Start the best-effort
+    // capture for the app's foreground trail, but submit the panic record now.
+    void capture()
     const description = 'Driver activated panic button.'
     const clientReportId = crypto.randomUUID()
     // Tracks whether the alert actually reached the backend vs. was only queued
@@ -43,8 +37,6 @@ export default function PanicPageClient() {
       await logException('panic_button', {
         description,
         triggeredAt: new Date().toISOString(),
-        gpsLat: result?.latitude ?? null,
-        gpsLng: result?.longitude ?? null,
         clientReportId,
       })
     } catch (err) {
@@ -70,9 +62,6 @@ export default function PanicPageClient() {
         // moved on — and the alert has to keep saying where the driver actually was
         // when they pressed it, not where the trip ended up.
         ...(phaseEventId ? { phase_event_id: String(phaseEventId) } : {}),
-        // Both-or-neither: the backend 422s a partial fix, which would make the
-        // queue drop this entry as a terminal failure — send the pair or nothing.
-        ...(result ? { gps_lat: result.latitude, gps_lng: result.longitude } : {}),
       })
       if (!enqueueResult.persisted) {
         setSaveFailed(true)
@@ -127,11 +116,11 @@ export default function PanicPageClient() {
         <h1 className="mb-2 text-2xl font-bold">Panic Alert</h1>
         <p className="text-lg leading-relaxed opacity-90">
           Swipe the button below to send an emergency alert to your dispatcher.
-          Your GPS location will be included.
+          Your alert will be sent immediately. Location is recorded only when available.
         </p>
         {sending && (
           <p className="mt-2 text-sm opacity-75" role="status">
-            Capturing location and sending alert…
+            Sending alert…
           </p>
         )}
         {saveFailed && (

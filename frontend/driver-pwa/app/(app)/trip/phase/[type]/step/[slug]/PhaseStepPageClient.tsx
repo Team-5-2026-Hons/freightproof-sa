@@ -11,11 +11,11 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import type { ComponentType } from 'react'
+import type { ComponentType, ReactNode } from 'react'
 import { usePhaseDraft } from '@/lib/hooks/usePhaseDraft'
 import { useVisualCountCarry } from '@/lib/hooks/useVisualCountCarry'
 import { useTrip } from '@/lib/hooks/useTrip'
-import { useLocationTrail } from '@/lib/hooks/useLocationTrail'
+import { useLocation } from '@/lib/hooks/useLocation'
 import { useToast } from '@/lib/hooks/useToast'
 import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
 import {
@@ -31,6 +31,7 @@ import { Button } from '@/components/ui/Button'
 import { HoldNotice } from '@/components/trip/HoldNotice'
 import { stepComponentFor } from '@/components/phase/steps/registry'
 import { fetchLinehaul } from '@/lib/api/manifest'
+import { previewPhaseLocation } from '@/lib/api/phases'
 import type { Trip } from '@shared/lib/types/trip'
 import type { PhaseDescriptor, PhaseType } from '@shared/lib/types/phase'
 import type { Linehaul as LinehaulDocument } from '@shared/lib/types/manifest'
@@ -38,6 +39,9 @@ import type {
   ActivationEvidence, LoadingEvidence, DepartureEvidence, UnloadingEvidence,
   ConfirmationEvidence, PhaseEvidence,
 } from '@/lib/types/evidence-draft'
+import type { ActionLocationAssessment } from '@shared/lib/types/action-location'
+import type { DriverPosition, LocationWarningAcknowledgement } from '@/lib/types/location'
+import { LocationCheckNotice } from '@/components/phase/LocationCheckNotice'
 
 const ACTIVATION_INITIAL: ActivationEvidence = { capturedAt: null }
 const LOADING_INITIAL: LoadingEvidence = {
@@ -312,15 +316,26 @@ function usePhaseStepController<T extends PhaseEvidence>(
   // and because SwipeToConfirm treats a synchronous onConfirm as "stay latched, the caller
   // is navigating" — which is exactly right here and is what stops a second swipe firing a
   // duplicate confirm into an in-flight route change.
-): { draft: T; onUpdate: (patch: Partial<T>) => void; onComplete: () => void | Promise<void> } {
+): {
+  draft: T
+  onUpdate: (patch: Partial<T>) => void
+  onComplete: () => void | Promise<void>
+  locationCheckNotice: ReactNode
+} {
   const router = useRouter()
   const { notify } = useToast()
   const { enqueuePhase } = useOfflineQueue()
   const { refetchTrip, adoptTrip, markPhaseSyncing, clearPhaseSyncing } = useTrip()
-  const { capturePosition } = useLocationTrail()
+  const { capture } = useLocation()
   const tripId = String(trip.id)
 
   const [draft, updateDraftRaw, clearDraft] = usePhaseDraft<T>(tripId, phase.phase_event_id, initial)
+  const [locationAssessment, setLocationAssessment] = useState<ActionLocationAssessment | null>(null)
+  const [locationPreviewLoading, setLocationPreviewLoading] = useState(false)
+  const [locationPreviewError, setLocationPreviewError] = useState<string | null>(null)
+  const [pendingPosition, setPendingPosition] = useState<DriverPosition | null>(null)
+  const [pendingCapturedAt, setPendingCapturedAt] = useState<string | null>(null)
+  const [offlineLocationCheck, setOfflineLocationCheck] = useState(false)
 
   // Mirrors `draft` synchronously. Every submittable phase's FINAL step either reviews
   // already-captured evidence (no onUpdate call at all — e.g. confirmation/Closed.tsx)
@@ -374,6 +389,22 @@ function usePhaseStepController<T extends PhaseEvidence>(
     })
   }
 
+  function notifyFinalLocationWarning(addressedPhase: PhaseDescriptor | null): void {
+    const assessment = addressedPhase?.action_location_assessment
+    const hasReliableWarning = assessment !== null && assessment !== undefined && (
+      (assessment.proximity === 'separated' && assessment.separation_metres !== null)
+      || assessment.truck_in_precinct === false
+    )
+    if (!hasReliableWarning) return
+    // Preview is only an early indication. The completion response is authoritative,
+    // so a newer tracker reading may legitimately surface a warning after a pass.
+    notify({
+      kind: 'error',
+      title: 'Location warning recorded',
+      body: 'The final location check found a discrepancy. Your action was still recorded for review.',
+    })
+  }
+
   // Mid-phase only. isFinalStep decides which of the two onComplete implementations a
   // step gets, so by construction nextStepRoute here can only ever return the next slug
   // in THIS phase's own recipe — the end-of-phase walk it also knows how to do is
@@ -404,6 +435,7 @@ function usePhaseStepController<T extends PhaseEvidence>(
         // Demo mode returns no trip (no backend call happened), so the marker IS the only
         // record that this phase is done — it stays until the app is reloaded.
         notifyPhaseRecorded(recordedNotice(outcome.addressedPhase))
+        notifyFinalLocationWarning(outcome.addressedPhase)
         return
       }
       case 'hold': {
@@ -455,7 +487,11 @@ function usePhaseStepController<T extends PhaseEvidence>(
 
   // The whole point of Workstream 1: synchronous, so the driver is on Home before the
   // first byte of their evidence leaves the phone.
-  function handOffSubmission() {
+  function handOffSubmission(
+    position: DriverPosition | null,
+    driverCapturedAt: string,
+    acknowledgement: LocationWarningAcknowledgement | null,
+  ) {
     onHandOff()
     if (idempotencyKeyRef.current === null) idempotencyKeyRef.current = crypto.randomUUID()
     const evidence = draftRef.current
@@ -463,8 +499,6 @@ function usePhaseStepController<T extends PhaseEvidence>(
     // idempotencyKeyRef above (generated once per attempt, reused across any retry of
     // that attempt) so a replay from the offline queue reports the ORIGINAL swipe
     // instant, never the retry's own clock.
-    const driverCapturedAt = new Date().toISOString()
-
     // Return value deliberately ignored: `false` means a submission for this exact
     // phase_event_id is already running, and the right response to that is still to mark
     // and navigate — the driver's evidence is on its way either way, and leaving them on
@@ -476,12 +510,10 @@ function usePhaseStepController<T extends PhaseEvidence>(
       evidence,
       idempotencyKey: idempotencyKeyRef.current,
       driverCapturedAt,
-      // Started here, at the moment the driver confirms — but NOT awaited. A cold GPS can
-      // take ten seconds to produce a first fix, and that must never sit between the
-      // swipe and the transition. The submitter waits for it instead, so the position
-      // still travels WITH the evidence (including into the offline queue) and a replay
-      // hours later still says where the driver actually was when they swiped.
-      position: capturePosition(),
+      // This is the exact phone fix used for preview. Replacing it after an assessment
+      // would compare a different location than the driver saw, so retry replaces both.
+      position: Promise.resolve(position),
+      acknowledgement,
       enqueuePhase,
       refetchTrip,
       onOutcome: (outcome) => handleOutcome(outcome, evidence),
@@ -493,22 +525,98 @@ function usePhaseStepController<T extends PhaseEvidence>(
     router.push(ROUTES.home)
   }
 
+  async function startLocationCheck(): Promise<void> {
+    if (locationPreviewLoading) return
+    const attemptStartedAt = new Date().toISOString()
+    setLocationPreviewLoading(true)
+    setLocationPreviewError(null)
+    setLocationAssessment(null)
+    setPendingPosition(null)
+    setPendingCapturedAt(null)
+
+    const offline = typeof navigator !== 'undefined' && !navigator.onLine
+    setOfflineLocationCheck(offline)
+    const coords = await capture()
+    if (coords === null) {
+      setPendingCapturedAt(attemptStartedAt)
+      setLocationPreviewLoading(false)
+      return
+    }
+
+    const position: DriverPosition = {
+      lat: coords.latitude, lng: coords.longitude, accuracyM: coords.accuracy, capturedAt: coords.capturedAt,
+    }
+    setPendingPosition(position)
+    setPendingCapturedAt(coords.capturedAt)
+    if (offline) {
+      // Offline prevents only the ephemeral comparison. Keep this exact phone fix
+      // with the later queue envelope; substituting a reconnect-time reading would
+      // fabricate where the phase was completed.
+      setLocationPreviewLoading(false)
+      return
+    }
+    try {
+      const assessment = await previewPhaseLocation(tripId, phase.phase_event_id, {
+        lat: position.lat,
+        lng: position.lng,
+        accuracy_metres: position.accuracyM,
+        captured_at: coords.capturedAt,
+      })
+      const requiresAcknowledgement =
+        (assessment.proximity === 'separated' && assessment.separation_metres !== null)
+        || assessment.truck_in_precinct === false
+      if (requiresAcknowledgement || assessment.proximity === 'unverified') {
+        setLocationAssessment(assessment)
+      } else {
+        // A pass or an honest "could not compare" never needs a driver exception.
+        // It must not add a new interaction gate to the existing phase sequence.
+        handOffSubmission(position, coords.capturedAt, null)
+      }
+    } catch (err) {
+      console.error('PhaseStepPageClient: location preview failed', err)
+      setLocationPreviewError('Location preview failed')
+    } finally {
+      setLocationPreviewLoading(false)
+    }
+  }
+
+  function continueAfterLocationCheck(reason: string | null): void {
+    const capturedAt = pendingCapturedAt ?? new Date().toISOString()
+    const acknowledgement = reason === null
+      ? null
+      : { acknowledgedAt: new Date().toISOString(), reason }
+    handOffSubmission(pendingPosition, capturedAt, acknowledgement)
+  }
+
   // The final step of a phase always returns the driver Home — it is what makes the
   // in-transit hub reachable, and it is the difference between finishing a phase and
   // being marched straight into the next one.
-  const onComplete = isFinalStep ? handOffSubmission : advanceWithinPhase
+  const onComplete = isFinalStep ? () => { void startLocationCheck() } : advanceWithinPhase
+  const showLocationNotice = isFinalStep && (locationPreviewLoading || pendingCapturedAt !== null)
+  const locationCheckNotice = showLocationNotice ? (
+    <div className="mt-4">
+      {offlineLocationCheck && <p className="mb-2 text-sm text-surface-on-variant">Location not verified while offline.</p>}
+      <LocationCheckNotice
+        assessment={locationAssessment}
+        loading={locationPreviewLoading}
+        error={locationPreviewError}
+        onRetry={() => { void startLocationCheck() }}
+        onContinue={continueAfterLocationCheck}
+      />
+    </div>
+  ) : null
 
-  return { draft, onUpdate, onComplete }
+  return { draft, onUpdate, onComplete, locationCheckNotice }
 }
 
 function ActivationStep({ trip, phase, slug, stepIndex, isFinalStep, onHandOff }: StepControllerProps) {
   const tripId = String(trip.id)
-  const { draft, onUpdate, onComplete } = usePhaseStepController<ActivationEvidence>(
+  const { draft, onUpdate, onComplete, locationCheckNotice } = usePhaseStepController<ActivationEvidence>(
     trip, phase, slug, isFinalStep, ACTIVATION_INITIAL, onHandOff, () => {},
   )
   const StepComponent = stepComponentFor(phase.phase_type, slug)
   if (!StepComponent) return <UnknownStep phaseType={phase.phase_type} slug={slug} />
-  return renderStep(StepComponent, { tripId, phase, stepIndex, draft, onUpdate, onComplete })
+  return <>{renderStep(StepComponent, { tripId, phase, stepIndex, draft, onUpdate, onComplete })}{locationCheckNotice}</>
 }
 
 // Exported (rather than kept module-private like its sibling XStep functions) so
@@ -517,7 +625,7 @@ function ActivationStep({ trip, phase, slug, stepIndex, isFinalStep, onHandOff }
 // catch a missing prop here (renderStep's ComponentType<never> cast).
 export function LoadingStep({ trip, phase, slug, stepIndex, isFinalStep, onHandOff }: StepControllerProps) {
   const tripId = String(trip.id)
-  const { draft, onUpdate, onComplete } = usePhaseStepController<LoadingEvidence>(
+  const { draft, onUpdate, onComplete, locationCheckNotice } = usePhaseStepController<LoadingEvidence>(
     trip, phase, slug, isFinalStep, LOADING_INITIAL, onHandOff, () => {},
   )
 
@@ -536,7 +644,7 @@ export function LoadingStep({ trip, phase, slug, stepIndex, isFinalStep, onHandO
 
   const StepComponent = stepComponentFor(phase.phase_type, slug)
   if (!StepComponent) return <UnknownStep phaseType={phase.phase_type} slug={slug} />
-  return renderStep(StepComponent, { tripId, phase, stepIndex, draft, onUpdate, onComplete, linehaul })
+  return <>{renderStep(StepComponent, { tripId, phase, stepIndex, draft, onUpdate, onComplete, linehaul })}{locationCheckNotice}</>
 }
 
 function DepartureStep({ trip, phase, slug, stepIndex, isFinalStep, onHandOff }: StepControllerProps) {
@@ -546,18 +654,18 @@ function DepartureStep({ trip, phase, slug, stepIndex, isFinalStep, onHandOff }:
   // that display is gone (2026-08-05) because showing a driver the expected number is
   // not verification. advance_unloading compares against this leg's own departure event
   // server-side, so nothing on the device needs to remember the seal.
-  const { draft, onUpdate, onComplete } = usePhaseStepController<DepartureEvidence>(
+  const { draft, onUpdate, onComplete, locationCheckNotice } = usePhaseStepController<DepartureEvidence>(
     trip, phase, slug, isFinalStep, DEPARTURE_INITIAL, onHandOff, () => {},
   )
   const StepComponent = stepComponentFor(phase.phase_type, slug)
   if (!StepComponent) return <UnknownStep phaseType={phase.phase_type} slug={slug} />
-  return renderStep(StepComponent, { tripId, phase, stepIndex, draft, onUpdate, onComplete })
+  return <>{renderStep(StepComponent, { tripId, phase, stepIndex, draft, onUpdate, onComplete })}{locationCheckNotice}</>
 }
 
 function UnloadingStep({ trip, phase, slug, stepIndex, isFinalStep, onHandOff }: StepControllerProps) {
   const tripId = String(trip.id)
   const [, setVisualCountCarry] = useVisualCountCarry(tripId)
-  const { draft, onUpdate, onComplete } = usePhaseStepController<UnloadingEvidence>(
+  const { draft, onUpdate, onComplete, locationCheckNotice } = usePhaseStepController<UnloadingEvidence>(
     trip, phase, slug, isFinalStep, UNLOADING_INITIAL, onHandOff,
     (_freshTrip, evidence) => setVisualCountCarry(evidence.driverVisualCount),
   )
@@ -565,20 +673,20 @@ function UnloadingStep({ trip, phase, slug, stepIndex, isFinalStep, onHandOff }:
   if (!StepComponent) return <UnknownStep phaseType={phase.phase_type} slug={slug} />
   // No per-slug extra props any more: SealVerify's referenceSealNumber was the only one,
   // and the seal is now entered blind (see that component's header comment).
-  return renderStep(StepComponent, { tripId, phase, stepIndex, draft, onUpdate, onComplete })
+  return <>{renderStep(StepComponent, { tripId, phase, stepIndex, draft, onUpdate, onComplete })}{locationCheckNotice}</>
 }
 
 function ConfirmationStep({ trip, phase, slug, stepIndex, isFinalStep, onHandOff }: StepControllerProps) {
   const tripId = String(trip.id)
   const [carriedVisualCount, , clearVisualCountCarry] = useVisualCountCarry(tripId)
   const initial: ConfirmationEvidence = { ...CONFIRMATION_INITIAL_BASE, driverVisualCount: carriedVisualCount }
-  const { draft, onUpdate, onComplete } = usePhaseStepController<ConfirmationEvidence>(
+  const { draft, onUpdate, onComplete, locationCheckNotice } = usePhaseStepController<ConfirmationEvidence>(
     trip, phase, slug, isFinalStep, initial, onHandOff,
     () => clearVisualCountCarry(),
   )
   const StepComponent = stepComponentFor(phase.phase_type, slug)
   if (!StepComponent) return <UnknownStep phaseType={phase.phase_type} slug={slug} />
-  return renderStep(StepComponent, { tripId, phase, stepIndex, draft, onUpdate, onComplete })
+  return <>{renderStep(StepComponent, { tripId, phase, stepIndex, draft, onUpdate, onComplete })}{locationCheckNotice}</>
 }
 
 // InTransitStep is gone with in_transit's step recipe. Its single step ('1-arrival')

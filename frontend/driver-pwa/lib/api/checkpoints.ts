@@ -14,6 +14,9 @@ export interface LogCheckpointBody {
   // same backend-compatibility reason as phases.ts's driver_captured_at, but this build
   // always sends it.
   driver_captured_at?: string
+  driver_accuracy_metres?: number
+  client_report_id?: string
+  phase_event_id?: string
   horse_gps_lat?: number
   horse_gps_lng?: number
   selfie_artifact_id?: string
@@ -37,6 +40,11 @@ export interface CheckpointEvidence {
   note: string
   isDeviation: boolean
   capturedAt: string
+  // Generated at the driver action boundary and retained by the offline queue so a
+  // retried checkpoint is the same evidence record, not a second checkpoint.
+  clientReportId?: string
+  accuracyM?: number | null
+  phaseEventId?: string
 }
 
 // Raw endpoint call — only ever invoked from submitCheckpoint's real-backend branch
@@ -89,6 +97,9 @@ export async function submitCheckpoint(tripId: string, evidence: CheckpointEvide
     // CheckpointPageClient.tsx), so replaying this from the offline queue sends the
     // ORIGINAL submit instant, never the flush-time clock.
     driver_captured_at: evidence.capturedAt,
+    ...(typeof evidence.accuracyM === 'number' ? { driver_accuracy_metres: evidence.accuracyM } : {}),
+    ...(evidence.clientReportId ? { client_report_id: evidence.clientReportId } : {}),
+    ...(evidence.phaseEventId ? { phase_event_id: evidence.phaseEventId } : {}),
     selfie_artifact_id: selfie.id,
     cargo_photo_artifact_id: cargoPhoto.id,
     note: evidence.note || undefined,

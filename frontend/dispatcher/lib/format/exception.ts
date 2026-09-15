@@ -13,9 +13,13 @@ import { VEHICLE_TYPE_LABELS } from './vehicle'
 // drivers were asked "truck or trailer". The analytics count those for the horse.
 export const VEHICLE_NOT_RECORDED = 'Not recorded'
 
+const EXCEPTION_TYPE_LABELS: Partial<Record<string, string>> = {
+  driver_vehicle_separation: 'Driver–vehicle separation',
+}
+
 /** "waybill_count_mismatch" -> "Waybill Count Mismatch". */
 export function fmtExceptionType(type: string): string {
-  return type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+  return EXCEPTION_TYPE_LABELS[type] ?? type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
 
 /** A breakdown's Vehicle row: "Trailer · TRL 222 GP". "Not recorded" when no vehicle was

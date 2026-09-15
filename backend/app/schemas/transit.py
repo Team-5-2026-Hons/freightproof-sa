@@ -1,5 +1,6 @@
 """Pydantic v2 schemas for Checkpoint and TripException."""
 
+import math
 from datetime import datetime
 from uuid import UUID
 from typing import Optional
@@ -17,6 +18,7 @@ from app.db.models.enums import (
     TripStatus,
     VehicleType,
 )
+from app.schemas.action_location import ActionLocationAssessment
 from app.schemas.evidence import EvidenceArtifactWithUrl
 from app.schemas.text import CheckpointTypeStr, FreeText, RequiredFreeText
 
@@ -54,6 +56,9 @@ class DriverCheckpointCreateBody(BaseModel):
     is a 422, not a row that can never be plotted.
     """
 
+    # Keep assessment verdicts server-owned: this body carries the raw capture only.
+    model_config = ConfigDict(extra="forbid")
+
     checkpoint_type: CheckpointTypeStr
     driver_phone_lat: Optional[float] = Field(default=None, ge=-90, le=90)
     driver_phone_lng: Optional[float] = Field(default=None, ge=-180, le=180)
@@ -66,6 +71,18 @@ class DriverCheckpointCreateBody(BaseModel):
     # the same replay-compatibility reason; new builds always send it
     # (frontend/driver-pwa/lib/api/checkpoints.ts).
     driver_captured_at: Optional[datetime] = None
+    # R8 (Task 5): mirrors _PhaseCompleteBase.driver_accuracy_metres exactly — the
+    # phone's own claimed accuracy at driver_phone_lat/lng, feeding proximity_
+    # service.evaluate_proximity via action_location_service.build_checkpoint_
+    # assessment. Not a DB column; lives only inside the checkpoint's own
+    # action_location_assessment JSONB snapshot.
+    driver_accuracy_metres: Optional[float] = Field(default=None, ge=0)
+    # Stable across every retry of one queued checkpoint. Optional so installs that
+    # predate replay protection remain able to drain their local queue.
+    client_report_id: Optional[UUID] = None
+    # The leg observed at capture time. It is verified against the URL trip before
+    # persistence; the server must never re-derive an offline replay from current state.
+    phase_event_id: Optional[UUID] = None
     selfie_artifact_id: Optional[UUID] = None
     cargo_photo_artifact_id: Optional[UUID] = None
     note: Optional[FreeText] = None
@@ -77,6 +94,14 @@ class DriverCheckpointCreateBody(BaseModel):
         # A naive value would silently compare as if it were UTC in corroboration_service.
         if v is not None and v.tzinfo is None:
             raise ValueError("driver_captured_at must be timezone-aware")
+        return v
+
+    @field_validator("driver_accuracy_metres")
+    @classmethod
+    def validate_driver_accuracy_metres_is_finite(cls, v: Optional[float]) -> Optional[float]:
+        # Matches _PhaseCompleteBase's identical rule: ge=0 alone lets inf through.
+        if v is not None and not math.isfinite(v):
+            raise ValueError("driver_accuracy_metres must be a finite number")
         return v
 
     @model_validator(mode="after")
@@ -98,6 +123,12 @@ class CheckpointUpdate(BaseModel):
 class CheckpointRead(CheckpointBase):
     id: UUID
     merkle_batch_id: Optional[UUID] = None
+    # Task 5: the versioned proximity snapshot for this checkpoint's own handshake
+    # (orchestration/action_location_service.build_checkpoint_assessment). Never a
+    # precinct check — a checkpoint happens on the road, so those fields are always
+    # None here. Validated through ActionLocationAssessment, never a raw dict.
+    action_location_assessment: Optional[ActionLocationAssessment] = None
+    phase_event_id: Optional[UUID] = None
     created_at: datetime
 
 
@@ -152,6 +183,9 @@ class TripExceptionCreate(TripExceptionBase):
 class DriverExceptionCreateBody(BaseModel):
     """Slim exception-creation body for the driver endpoint — trip_id comes from the URL path."""
 
+    # A report can supply its own raw location but never a backend assessment verdict.
+    model_config = ConfigDict(extra="forbid")
+
     exception_type: ExceptionType
     # RequiredFreeText, not str: this lands on a TEXT column with no width of its own, so
     # without a ceiling one authenticated driver can write as much as they like. It is
@@ -174,6 +208,16 @@ class DriverExceptionCreateBody(BaseModel):
     # capture failure must not block the alert itself from sending.
     gps_lat: Optional[float] = Field(default=None, ge=-90, le=90)
     gps_lng: Optional[float] = Field(default=None, ge=-180, le=180)
+    # R8 (Task 5): mirrors _PhaseCompleteBase.driver_accuracy_metres — the phone's own
+    # claimed accuracy at gps_lat/lng. NOT wired to build an assessment by this story
+    # (exception_service.py is outside Task 5's scope — see orchestration/
+    # action_location_service.py's module docstring); accepted and validated now so a
+    # later task can populate exceptions.action_location_assessment (R13) without a
+    # client-facing schema change.
+    driver_accuracy_metres: Optional[float] = Field(default=None, ge=0)
+    # The device timestamp belongs to this report's capture, not to its later queue
+    # flush. Optional for legacy reports, whose assessment remains unverified.
+    driver_captured_at: Optional[datetime] = None
     # Request-only idempotency key — not echoed back on TripExceptionRead. The driver
     # app's offline queue reuses its own entry UUID as this value on every retry of the
     # same queued submission (frontend/driver-pwa lib/hooks/useOfflineQueue.ts), so a
@@ -192,6 +236,20 @@ class DriverExceptionCreateBody(BaseModel):
     # Sent only when the trip has two or more trailers and the driver picked one by its
     # registration plate. With a single trailer, "Trailer" already says which one.
     trailer_id: Optional[UUID] = None
+
+    @field_validator("driver_accuracy_metres")
+    @classmethod
+    def validate_driver_accuracy_metres_is_finite(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and not math.isfinite(v):
+            raise ValueError("driver_accuracy_metres must be a finite number")
+        return v
+
+    @field_validator("driver_captured_at")
+    @classmethod
+    def validate_driver_captured_at_is_timezone_aware(cls, v: Optional[datetime]) -> Optional[datetime]:
+        if v is not None and v.tzinfo is None:
+            raise ValueError("driver_captured_at must be timezone-aware")
+        return v
 
     @model_validator(mode="after")
     def validate_gps_pair(self) -> "DriverExceptionCreateBody":
@@ -247,6 +305,11 @@ class TripExceptionListItem(BaseModel):
     # Trip.current_phase (str) / Trip.current_stop (int) pairing in schemas/trips.py.
     phase_label: Optional[str] = None
     stop_label: Optional[int] = None
+    # Task 5 (R13): a driver exception report's own capture assessment, when one was
+    # built for it (not wired by this story — see DriverExceptionCreateBody.
+    # driver_accuracy_metres's comment). Inherited by TripExceptionDetail below.
+    # Validated through ActionLocationAssessment, never served as a raw dict.
+    action_location_assessment: Optional[ActionLocationAssessment] = None
 
 
 class TripExceptionDetail(TripExceptionListItem):
@@ -292,6 +355,10 @@ class TripExceptionRead(TripExceptionBase):
     review_note: Optional[str] = None
     contact_method: Optional[ExceptionContactMethod] = None
     merkle_batch_id: Optional[UUID] = None
+    # The read-only, server-built snapshot carried by a driver report when a later
+    # capture flow supplies one. Kept off TripExceptionBase so POST bodies cannot
+    # submit a backend verdict as evidence.
+    action_location_assessment: Optional[ActionLocationAssessment] = None
     # The vehicle a mechanical exception was recorded against — see
     # TripException.vehicle_id. None for every other type and for unattributed breakdowns.
     vehicle_id: Optional[UUID] = None

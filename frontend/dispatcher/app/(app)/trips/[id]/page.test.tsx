@@ -9,11 +9,12 @@ import type { Trip } from '@shared/lib/types/trip'
 
 const push = vi.fn()
 const notify = vi.fn()
+const navigation = vi.hoisted(() => ({ search: new URLSearchParams() }))
 
 vi.mock('next/navigation', () => ({
   useParams: () => ({ id: TRIP_0040_ID }),
   useRouter: () => ({ push }),
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => navigation.search,
 }))
 
 vi.mock('@/lib/supabase/client', () => ({
@@ -124,6 +125,7 @@ function tripDriving(): Trip {
 beforeEach(() => {
   push.mockReset()
   notify.mockReset()
+  navigation.search = new URLSearchParams()
   mockedUseTripDetail.mockReturnValue({
     trip: tripWithLoadingExceptionsOutOfOrder(),
     isLoading: false,
@@ -143,6 +145,7 @@ describe('Trip detail phase timeline', () => {
     const loadingGroup = screen.getByRole('group', {
       name: 'Loading phase and exceptions',
     })
+    fireEvent.click(within(loadingGroup).getByRole('button', { name: '2 exceptions · 0 need review' }))
     const exceptionRows = within(loadingGroup).getAllByRole('group', {
       name: 'Exception linked to Loading phase',
     })
@@ -160,6 +163,7 @@ describe('Trip detail phase timeline', () => {
     const loadingGroup = screen.getByRole('group', {
       name: 'Loading phase and exceptions',
     })
+    fireEvent.click(within(loadingGroup).getByRole('button', { name: '2 exceptions · 0 need review' }))
     const exceptionRows = within(loadingGroup).getAllByRole('group', {
       name: 'Exception linked to Loading phase',
     })
@@ -222,7 +226,7 @@ describe('Trip detail hash-anchored phase scroll', () => {
       // Landing on the row is not the same as opening it: PhaseTimelineItem's own
       // toggle state is untouched, same as the "Jump to current phase" button.
       const loadingRow = screen.getByRole('group', { name: 'Loading phase and exceptions' })
-      expect(within(loadingRow).getByRole('button', { expanded: false })).toBeInTheDocument()
+      expect(within(loadingRow).getAllByRole('button', { expanded: false })[0]).toBeInTheDocument()
     } finally {
       window.location.hash = ''
       rectSpy.mockRestore()
@@ -245,7 +249,7 @@ describe('Trip detail summary and panels', () => {
     render(<TripDetailPage />)
     expect(screen.getByRole('heading', { name: 'TRP-2026-0040' })).toBeInTheDocument()
     expect(screen.getByText('FedEx JHB → FedEx DBN')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /exceptions ·/i }))
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Trip sections' })).getByRole('button', { name: /exceptions ·/i }))
     expect(push).toHaveBeenCalledWith(expect.stringContaining('panel=exceptions'), { scroll: false })
   })
 
@@ -253,5 +257,29 @@ describe('Trip detail summary and panels', () => {
     render(<TripDetailPage />)
     fireEvent.click(screen.getByRole('button', { name: 'Trip information' }))
     expect(push).toHaveBeenCalledWith(expect.stringContaining('panel=information'), { scroll: false })
+  })
+
+  it('routes a phase group to the all-exceptions panel scope for that exact phase', () => {
+    const trip = tripWithLoadingExceptionsOutOfOrder()
+    const loading = trip.phases.find(phase => phase.phase_type === 'loading')
+    if (!loading) throw new Error('TRIP_0040 loading phase is missing')
+    render(<TripDetailPage />)
+
+    const loadingGroup = screen.getByRole('group', { name: 'Loading phase and exceptions' })
+    fireEvent.click(within(loadingGroup).getByRole('button', { name: 'View in panel' }))
+
+    expect(push).toHaveBeenCalledWith(
+      expect.stringContaining(`panel=exceptions&exceptions=all&phase=${loading.phase_event_id}`),
+      { scroll: false },
+    )
+  })
+
+  it('shows a recoverable invalid phase URL instead of another phase or trip record', () => {
+    navigation.search = new URLSearchParams('panel=exceptions&exceptions=all&phase=foreign-phase')
+    render(<TripDetailPage />)
+
+    expect(screen.getByText('This phase filter is not part of this trip.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Clear phase filter' }))
+    expect(push).toHaveBeenCalledWith(`/trips/${TRIP_0040_ID}?panel=exceptions&exceptions=all`, { scroll: false })
   })
 })

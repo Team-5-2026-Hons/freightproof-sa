@@ -8,6 +8,7 @@ export interface LocationCoords {
   latitude: number
   longitude: number
   accuracy: number
+  capturedAt: string
 }
 
 export type LocationStatus = 'idle' | 'capturing' | 'captured' | 'error'
@@ -38,7 +39,9 @@ export interface LocationState {
 // call site is load-bearing for that guarantee — Next.js inlines NODE_ENV at build
 // time, so a production bundle can never take this branch, even if geolocation is
 // unavailable or every attempt fails.
-const LINBRO_PARK: LocationCoords = { latitude: -26.0942, longitude: 28.1342, accuracy: 5 }
+const LINBRO_PARK: LocationCoords = {
+  latitude: -26.0942, longitude: 28.1342, accuracy: 5, capturedAt: '',
+}
 
 // W3C GeolocationPositionError codes (https://w3c.github.io/geolocation/#position-error).
 // Named instead of inlined per the project's no-magic-numbers rule, and reused below
@@ -90,6 +93,7 @@ function getBrowserPosition(): Promise<LocationCoords> {
           latitude: pos.coords.latitude,
           longitude: pos.coords.longitude,
           accuracy: pos.coords.accuracy,
+          capturedAt: new Date().toISOString(),
         })
       },
       (err) => reject(err),
@@ -117,6 +121,7 @@ export function useLocation(): LocationState {
           latitude: pos.coords.latitude,
           longitude: pos.coords.longitude,
           accuracy: pos.coords.accuracy,
+          capturedAt: new Date().toISOString(),
         }
       } else {
         try {
@@ -128,7 +133,7 @@ export function useLocation(): LocationState {
           // a shipped build — see the LINBRO_PARK comment above.
           if (process.env.NODE_ENV === 'development') {
             console.warn('[useLocation] browser geolocation unavailable, using dev fallback:', browserErr)
-            result = LINBRO_PARK
+            result = { ...LINBRO_PARK, capturedAt: new Date().toISOString() }
           } else {
             throw browserErr
           }

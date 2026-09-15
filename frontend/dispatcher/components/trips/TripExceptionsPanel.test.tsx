@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { TripExceptionsPanel } from './TripExceptionsPanel'
@@ -54,5 +54,36 @@ describe('TripExceptionsPanel filters', () => {
     // trip, and only one of them is good news.
     expect(screen.getByRole('button', { name: 'Needs review · 0' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'All recorded · 12' })).toBeInTheDocument()
+  })
+
+  it('scopes counts to a selected phase, can clear that filter, and sends a linked record back to its timeline phase', () => {
+    const trip = mockTrips.find(candidate => candidate.id === TRIP_0040_ID)
+    if (!trip) throw new Error('TRIP_0040 fixture is missing')
+    const phase = trip.phases.find(candidate => candidate.phase_type === 'loading')
+    if (!phase) throw new Error('TRIP_0040 loading phase is missing')
+    const linked = { ...trip.exceptions[0]!, id: 'linked-loading' as TripException['id'], phase_event_id: phase.phase_event_id, review_status: 'recorded' as const }
+    const tripLevel = { ...linked, id: 'trip-level' as TripException['id'], phase_event_id: null, review_status: 'needs_review' as const }
+    const onClearPhaseFilter = vi.fn()
+    const onShowInTimeline = vi.fn()
+
+    render(<TripExceptionsPanel trip={{ ...trip, exceptions: [linked, tripLevel] }} filter="all" selectedPhaseId={phase.phase_event_id} onFilter={vi.fn()} onClearPhaseFilter={onClearPhaseFilter} onShowInTimeline={onShowInTimeline} returnTo="/trips/x" />)
+
+    expect(screen.getByText('Selected phase · 1 of 2 trip exceptions')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'All recorded · 1' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Needs review · 0' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Show in timeline' }))
+    expect(onShowInTimeline).toHaveBeenCalledWith(phase.phase_event_id)
+    fireEvent.click(screen.getByRole('button', { name: 'Clear phase filter' }))
+    expect(onClearPhaseFilter).toHaveBeenCalledOnce()
+  })
+
+  it('shows an invalid phase filter instead of silently displaying another trip record', () => {
+    const onClearPhaseFilter = vi.fn()
+    render(<TripExceptionsPanel trip={tripWith(1, 1)} filter="all" invalidPhaseId="foreign-phase" onFilter={vi.fn()} onClearPhaseFilter={onClearPhaseFilter} returnTo="/trips/x" />)
+
+    expect(screen.getByText('This phase filter is not part of this trip.')).toBeInTheDocument()
+    expect(screen.queryByText('Cargo Damage')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Clear phase filter' }))
+    expect(onClearPhaseFilter).toHaveBeenCalledOnce()
   })
 })

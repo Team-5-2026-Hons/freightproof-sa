@@ -152,6 +152,14 @@ function makeMoveTruckResponse(overrides: Partial<MoveTruckResponse> = {}): Move
     geofence_confirmed: true,
     in_tolerance_band: true,
     verdict_reason: 'Within the geofence radius.',
+    // FP-197 Task 3 additions. Null by default (as they are in legacy waypoint mode)
+    // — tests for scenario mode override these explicitly.
+    target_trip_stop_id: null,
+    target_precinct_name: null,
+    target_distance_metres: null,
+    scenario: null,
+    expected_trip_stop_id: 'stop-1',
+    expected_precinct_name: 'Cape Town Depot',
     ...overrides,
   }
 }
@@ -740,6 +748,152 @@ describe('DevTriggerPanel — move the truck', () => {
     expect(screen.getByText('Select a trip above to move its truck.')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Reset to precinct' }))
     expect(moveTruck).not.toHaveBeenCalled()
+  })
+})
+
+// FP-197 Task 3: trip-stop-relative scenario mode, alongside the legacy fixed
+// waypoints covered above.
+describe('DevTriggerPanel — move relative to a trip stop', () => {
+  it('builds stop options labelled by position, keyed on stop id (not name)', () => {
+    const origin = makeStop({ trip_stop_id: 'stop-a', sequence: 1, precinct_name: 'Johannesburg CBD' })
+    const destination = makeStop({ trip_stop_id: 'stop-b', sequence: 2, precinct_name: 'Durban Point' })
+    const trip = makeTrip({ stops: [origin, destination] })
+    mockedUseDevTriggers.mockReturnValue(makeHookReturn({ trips: [trip] }))
+
+    render(<DevTriggerPanel heading="Dev triggers" />)
+    selectTrip(trip.trip_id)
+
+    const select = screen.getByLabelText('Trip stop') as HTMLSelectElement
+    const options = Array.from(select.options).map((o) => ({ value: o.value, label: o.textContent }))
+    expect(options[1]).toEqual({ value: 'stop-a', label: 'At origin — Johannesburg CBD' })
+    expect(options[2]).toEqual({ value: 'stop-b', label: 'At destination — Durban Point' })
+  })
+
+  it('disables every scenario button except "Go dark (no signal)" until a stop is chosen', () => {
+    const trip = makeTrip({ stops: [makeStop()] })
+    mockedUseDevTriggers.mockReturnValue(makeHookReturn({ trips: [trip] }))
+
+    render(<DevTriggerPanel heading="Dev triggers" />)
+    selectTrip(trip.trip_id)
+
+    expect(screen.getByRole('button', { name: 'At the stop' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Just inside tolerance' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '3 km from the stop' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Go dark \(no signal\)/ })).not.toBeDisabled()
+  })
+
+  it('calls moveTruck with the selected scenario and trip stop id once a stop is chosen', async () => {
+    const moveTruck = vi.fn().mockResolvedValue(makeMoveTruckResponse({
+      scenario: 'three_km', target_trip_stop_id: 'stop-1', target_precinct_name: 'Cape Town Depot',
+      target_distance_metres: 3000,
+    }))
+    const trip = makeTrip({ stops: [makeStop({ trip_stop_id: 'stop-1' })] })
+    mockedUseDevTriggers.mockReturnValue(makeHookReturn({ trips: [trip], moveTruck }))
+
+    render(<DevTriggerPanel heading="Dev triggers" />)
+    selectTrip(trip.trip_id)
+    fireEvent.change(screen.getByLabelText('Trip stop'), { target: { value: 'stop-1' } })
+
+    fireEvent.click(screen.getByRole('button', { name: '3 km from the stop' }))
+
+    await waitFor(() => expect(moveTruck).toHaveBeenCalledWith({
+      trip_id: trip.trip_id, scenario: 'three_km', trip_stop_id: 'stop-1',
+    }))
+    expect(await screen.findByText('Active')).toBeInTheDocument()
+  })
+
+  it('fires the no_signal scenario without a stop selected, omitting trip_stop_id', async () => {
+    const moveTruck = vi.fn().mockResolvedValue(makeMoveTruckResponse({
+      scenario: 'no_signal', has_position: false, latitude: null, longitude: null,
+      distance_metres: null, geofence_confirmed: null,
+    }))
+    const trip = makeTrip({ stops: [makeStop()] })
+    mockedUseDevTriggers.mockReturnValue(makeHookReturn({ trips: [trip], moveTruck }))
+
+    render(<DevTriggerPanel heading="Dev triggers" />)
+    selectTrip(trip.trip_id)
+
+    fireEvent.click(screen.getByRole('button', { name: /Go dark \(no signal\)/ }))
+
+    await waitFor(() => expect(moveTruck).toHaveBeenCalledWith({
+      trip_id: trip.trip_id, scenario: 'no_signal', trip_stop_id: undefined,
+    }))
+  })
+
+  it('clears the move-truck result and its Active marker when the selected stop changes', async () => {
+    const moveTruck = vi.fn().mockResolvedValue(makeMoveTruckResponse({ scenario: 'at_stop' }))
+    const stopA = makeStop({ trip_stop_id: 'stop-a', sequence: 1 })
+    const stopB = makeStop({ trip_stop_id: 'stop-b', sequence: 2, precinct_name: 'Durban Point' })
+    const trip = makeTrip({ stops: [stopA, stopB] })
+    mockedUseDevTriggers.mockReturnValue(makeHookReturn({ trips: [trip], moveTruck }))
+
+    render(<DevTriggerPanel heading="Dev triggers" />)
+    selectTrip(trip.trip_id)
+    fireEvent.change(screen.getByLabelText('Trip stop'), { target: { value: 'stop-a' } })
+    fireEvent.click(screen.getByRole('button', { name: 'At the stop' }))
+    expect(await screen.findByText('Active')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Trip stop'), { target: { value: 'stop-b' } })
+
+    expect(screen.queryByText('Active')).not.toBeInTheDocument()
+  })
+
+  it('changing the selected trip clears a scenario-mode result too', async () => {
+    const moveTruck = vi.fn().mockResolvedValue(makeMoveTruckResponse({ scenario: 'at_stop' }))
+    const stop = makeStop({ trip_stop_id: 'stop-1' })
+    const tripOne = makeTrip({ trip_id: 'trip-1', stops: [stop] })
+    const tripTwo = makeTrip({ trip_id: 'trip-2', trip_reference: 'TRP-0099', stops: [stop] })
+    mockedUseDevTriggers.mockReturnValue(makeHookReturn({ trips: [tripOne, tripTwo], moveTruck }))
+
+    render(<DevTriggerPanel heading="Dev triggers" />)
+    selectTrip('trip-1')
+    fireEvent.change(screen.getByLabelText('Trip stop'), { target: { value: 'stop-1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'At the stop' }))
+    expect(await screen.findByText('Active')).toBeInTheDocument()
+
+    selectTrip('trip-2')
+
+    expect(screen.queryByText('Active')).not.toBeInTheDocument()
+    expect((screen.getByLabelText('Trip stop') as HTMLSelectElement).value).toBe('')
+  })
+
+  // Decisions doc: "stale asynchronous responses [must be] rejected by a selection
+  // key". Without the guard in DevTriggerPanel.onMoveTruckScenario, a slow response
+  // for an earlier selection could land AFTER a later one and silently overwrite it.
+  it('discards a stale move-truck response after the selection changed mid-flight', async () => {
+    let resolveFirst: (value: MoveTruckResponse | null) => void = () => {}
+    const firstPromise = new Promise<MoveTruckResponse | null>((resolve) => { resolveFirst = resolve })
+    const moveTruck = vi.fn()
+      .mockImplementationOnce(() => firstPromise)
+      .mockResolvedValueOnce(makeMoveTruckResponse({
+        scenario: 'at_stop', target_trip_stop_id: 'stop-b', target_precinct_name: 'Durban Point',
+      }))
+    const stopA = makeStop({ trip_stop_id: 'stop-a', sequence: 1, precinct_name: 'Johannesburg CBD' })
+    const stopB = makeStop({ trip_stop_id: 'stop-b', sequence: 2, precinct_name: 'Durban Point' })
+    const trip = makeTrip({ stops: [stopA, stopB] })
+    mockedUseDevTriggers.mockReturnValue(makeHookReturn({ trips: [trip], moveTruck }))
+
+    render(<DevTriggerPanel heading="Dev triggers" />)
+    selectTrip(trip.trip_id)
+    fireEvent.change(screen.getByLabelText('Trip stop'), { target: { value: 'stop-a' } })
+    fireEvent.click(screen.getByRole('button', { name: 'At the stop' })) // the SLOW request
+
+    // Before it resolves, the operator moves on to a different stop and fires again.
+    fireEvent.change(screen.getByLabelText('Trip stop'), { target: { value: 'stop-b' } })
+    fireEvent.click(screen.getByRole('button', { name: 'At the stop' }))
+
+    // "Simulated target — <name>" is the result panel's own wording — unlike a bare
+    // precinct name, it cannot also match the unrelated trip-picker option text.
+    expect(await screen.findByText(/Simulated target — Durban Point/)).toBeInTheDocument()
+
+    // Now let the STALE first request resolve. It must not clobber the fresh result.
+    resolveFirst(makeMoveTruckResponse({
+      scenario: 'at_stop', target_trip_stop_id: 'stop-a', target_precinct_name: 'Johannesburg CBD',
+    }))
+    await waitFor(() => expect(moveTruck).toHaveBeenCalledTimes(2))
+
+    expect(screen.queryByText(/Simulated target — Johannesburg CBD/)).not.toBeInTheDocument()
+    expect(screen.getByText(/Simulated target — Durban Point/)).toBeInTheDocument()
   })
 })
 

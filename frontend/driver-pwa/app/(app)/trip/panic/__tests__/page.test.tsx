@@ -136,7 +136,7 @@ describe('PanicPage handlePanic sequencing', () => {
     })
   }
 
-  it('captures GPS, logs the exception with coords, and navigates to panic/submitted', async () => {
+  it('starts best-effort location capture but submits panic immediately', async () => {
     const logException = vi.fn()
     mockUseTrip.mockReturnValue({ trip: { id: 'trip-123' }, isLoading: false, logException })
     mockCapture.mockResolvedValue({ latitude: -26.09, longitude: 28.13, accuracy: 5 })
@@ -155,12 +155,12 @@ describe('PanicPage handlePanic sequencing', () => {
     expect(mockCapture).toHaveBeenCalled()
     expect(logException).toHaveBeenCalledWith(
       'panic_button',
-      expect.objectContaining({ gpsLat: -26.09, gpsLng: 28.13 }),
+      expect.objectContaining({ description: 'Driver activated panic button.' }),
     )
     expect(mockRouterReplace).toHaveBeenCalledWith(ROUTES.panicSubmitted)
   })
 
-  it('still logs and navigates when GPS capture fails (resolves to null)', async () => {
+  it('still logs and navigates when location capture is unavailable', async () => {
     const logException = vi.fn()
     mockUseTrip.mockReturnValue({ trip: { id: 'trip-123' }, isLoading: false, logException })
     mockCapture.mockResolvedValue(null)
@@ -176,7 +176,26 @@ describe('PanicPage handlePanic sequencing', () => {
     expect(mockCapture).toHaveBeenCalled()
     expect(logException).toHaveBeenCalledWith(
       'panic_button',
-      expect.objectContaining({ gpsLat: null, gpsLng: null }),
+      expect.objectContaining({ description: 'Driver activated panic button.' }),
+    )
+    expect(mockRouterReplace).toHaveBeenCalledWith(ROUTES.panicSubmitted)
+  })
+
+  it('does not wait for a stalled location adapter before sending the panic report', async () => {
+    const logException = vi.fn().mockResolvedValue(undefined)
+    mockUseTrip.mockReturnValue({ trip: { id: 'trip-123' }, isLoading: false, logException })
+    mockCapture.mockReturnValue(new Promise(() => {}))
+
+    render(<PanicPage />)
+    confirmPanicSwipe()
+
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(logException).toHaveBeenCalledWith(
+      'panic_button', expect.objectContaining({ description: 'Driver activated panic button.' }),
     )
     expect(mockRouterReplace).toHaveBeenCalledWith(ROUTES.panicSubmitted)
   })
@@ -198,14 +217,11 @@ describe('PanicPage handlePanic sequencing', () => {
       await Promise.resolve()
     })
 
-    // The queued body must carry the captured GPS pair too — a retry that sends
-    // without location would break the page's "location will be included" promise
-    // precisely in the offline case panic queuing exists for.
+    // Panic is never held behind GPS. The offline entry remains a complete emergency
+    // report even while the best-effort location capture is still pending.
     expect(mockEnqueueException).toHaveBeenCalledWith('trip-123', {
       exception_type: 'panic_button',
       description: 'Driver activated panic button.',
-      gps_lat: -26.09,
-      gps_lng: 28.13,
       client_report_id: expect.any(String),
     })
     const livePayload = logException.mock.calls[0][1] as { clientReportId: string }

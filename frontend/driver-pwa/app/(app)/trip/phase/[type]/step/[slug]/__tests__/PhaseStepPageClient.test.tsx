@@ -30,6 +30,27 @@ const mockAdoptTrip = vi.fn()
 // Workstream 1's optimistic advance, owned by TripContext.
 const mockMarkPhaseSyncing = vi.fn()
 const mockClearPhaseSyncing = vi.fn()
+const mockLocationCapture = vi.fn()
+const mockPreviewPhaseLocation = vi.fn()
+
+const FRESH_LOCATION = {
+  latitude: -26.09,
+  longitude: 28.13,
+  accuracy: 8,
+  capturedAt: '2026-09-15T10:00:00Z',
+}
+
+const PASSING_ASSESSMENT = {
+  schema_version: 1 as const,
+  policy_version: '2026-09-15.1',
+  evaluated_at: '2026-09-15T10:00:01Z',
+  driver_lat: -26.09, driver_lng: 28.13, driver_captured_at: FRESH_LOCATION.capturedAt, driver_accuracy_metres: 8,
+  tracker_lat: -26.09, tracker_lng: 28.13, tracker_captured_at: '2026-09-15T10:00:01Z',
+  separation_metres: 4, proximity: 'within_limit' as const, reasons: [],
+  max_separation_metres: 100, max_age_seconds: 60, max_skew_seconds: 30, max_phone_accuracy_metres: 50,
+  expected_trip_stop_id: 'stop-1', precinct_id: 'precinct-1', precinct_lat: null, precinct_lng: null,
+  precinct_radius_metres: null, precinct_tolerance_metres: null, driver_in_precinct: true, truck_in_precinct: true,
+}
 
 interface MockTripState {
   trip: Trip
@@ -67,12 +88,18 @@ const mockCapturePosition = vi.fn(async () => ({ lat: -26.09, lng: 28.13, accura
 vi.mock('@/lib/hooks/useLocationTrail', () => ({
   useLocationTrail: () => ({ capturePosition: mockCapturePosition, recordHere: vi.fn() }),
 }))
+vi.mock('@/lib/hooks/useLocation', () => ({
+  useLocation: () => ({ capture: () => mockLocationCapture() }),
+}))
 
 vi.mock('@/lib/hooks/useToast', () => ({ useToast: () => ({ notify: mockNotify }) }))
 vi.mock('@/lib/hooks/useOfflineQueue', () => ({
   useOfflineQueue: () => ({ enqueuePhase: mockEnqueuePhase }),
 }))
-vi.mock('@/lib/api/phases', () => ({ submitPhase: (...args: unknown[]) => mockSubmitPhase(...args) }))
+vi.mock('@/lib/api/phases', () => ({
+  submitPhase: (...args: unknown[]) => mockSubmitPhase(...args),
+  previewPhaseLocation: (...args: unknown[]) => mockPreviewPhaseLocation(...args),
+}))
 
 // departure's recipe is ['2-capture-seal', '4-departure'], so its first step is the
 // mid-phase "advance, don't submit" case. It used to be activation's
@@ -182,10 +209,13 @@ function makeTrip(phases: PhaseDescriptor[], overrides: Partial<Trip> = {}): Tri
 beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
+  Object.defineProperty(window.navigator, 'onLine', { value: true, configurable: true })
   // The submitter's in-flight registry, failure list and last-known-fix cache all live at
   // module scope (that is the point of it) — vitest's per-test isolation cannot reach them.
   __resetPhaseSubmitterForTests()
   mockRefetchTrip.mockResolvedValue(null)
+  mockLocationCapture.mockResolvedValue(FRESH_LOCATION)
+  mockPreviewPhaseLocation.mockResolvedValue(PASSING_ASSESSMENT)
 })
 
 afterEach(() => {
@@ -283,7 +313,7 @@ describe('final step — hands the submission off and returns the driver Home', 
     return trip
   }
 
-  it('navigates to Home in the same tick as the swipe, before the submit has resolved', () => {
+  it('navigates to Home after a passing preview, before the submit has resolved', async () => {
     renderLoadingFinalStep()
     // A submit that never settles: if the navigation depended on it at all, this test
     // could not pass. This is the whole complaint Workstream 1 exists to fix.
@@ -292,40 +322,48 @@ describe('final step — hands the submission off and returns the driver Home', 
     render(<PhaseStepPageClient />)
     fireEvent.click(screen.getByText('submit-loading'))
 
-    expect(mockRouterPush).toHaveBeenCalledWith('/')
+    await waitFor(() => expect(mockRouterPush).toHaveBeenCalledWith('/'))
     // ...and the phase is optimistically advanced first, so Home's first render does not
     // re-offer the step the driver just finished.
     expect(mockMarkPhaseSyncing).toHaveBeenCalledWith(LOADING_PE)
   })
 
-  it('does not wait on the GPS fix either — a cold phone cannot delay the transition', () => {
+  it('shows a non-accusatory notice and requires an explicit continue when a fresh phone fix is unavailable', async () => {
     renderLoadingFinalStep()
     mockSubmitPhase.mockReturnValue(new Promise(() => {}))
-    mockCapturePosition.mockReturnValueOnce(new Promise(() => {}))
+    mockLocationCapture.mockResolvedValueOnce(null)
 
     render(<PhaseStepPageClient />)
     fireEvent.click(screen.getByText('submit-loading'))
 
-    expect(mockRouterPush).toHaveBeenCalledWith('/')
+    await screen.findByText('We could not compare your location with the truck. Your action can still be recorded.')
+    expect(mockRouterPush).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    await waitFor(() => expect(mockRouterPush).toHaveBeenCalledWith('/'))
   })
 
   it('submits in the background with the captured position, then reconciles with adoptTrip', async () => {
     const trip = renderLoadingFinalStep()
-    const freshTrip = makeTrip([{ ...trip.phases[0], status: 'completed' }, trip.phases[1]])
+    const freshTrip = makeTrip([{
+      ...trip.phases[0], status: 'completed',
+      action_location_assessment: { ...PASSING_ASSESSMENT, proximity: 'separated', separation_metres: 130 },
+    }, trip.phases[1]])
     mockSubmitPhase.mockResolvedValue({ ok: true, trip: freshTrip, phaseStatus: 'completed' })
 
     render(<PhaseStepPageClient />)
     fireEvent.click(screen.getByText('submit-loading'))
 
     await waitFor(() => expect(mockSubmitPhase).toHaveBeenCalledWith(
-      TRIP_ID, LOADING_PE, 'loading', expect.anything(), expect.any(String),
-      { lat: -26.09, lng: 28.13, accuracyM: 8 }, expect.any(String),
+      TRIP_ID, LOADING_PE, 'loading', expect.objectContaining({ capturedAt: null }), expect.any(String),
+      { lat: -26.09, lng: 28.13, accuracyM: 8, capturedAt: FRESH_LOCATION.capturedAt },
+      FRESH_LOCATION.capturedAt, null,
     ))
     // The server's own plan replaces the optimistic guess, and the marker is dropped.
     await waitFor(() => expect(mockAdoptTrip).toHaveBeenCalledWith(freshTrip))
     expect(mockClearPhaseSyncing).toHaveBeenCalledWith(LOADING_PE)
     // The toast fires from wherever the driver has navigated to, not from the step screen.
     expect(mockNotify).toHaveBeenCalledWith(expect.objectContaining({ kind: 'success', title: 'Loading recorded' }))
+    expect(mockNotify).toHaveBeenCalledWith(expect.objectContaining({ title: 'Location warning recorded' }))
     // No second navigation: the driver was sent Home at swipe time and stays there.
     expect(mockRouterPush).toHaveBeenCalledTimes(1)
     expect(mockRouterPush).toHaveBeenCalledWith('/')
@@ -352,6 +390,41 @@ describe('final step — hands the submission off and returns the driver Home', 
     })
     await waitFor(() => expect(localStorage.getItem(draftKey)).toBeNull())
   })
+
+  it('replaces capture and preview on retry, then sends a reasoned reliable-warning acknowledgement', async () => {
+    renderLoadingFinalStep()
+    const retryCapture = { ...FRESH_LOCATION, latitude: -26.091, capturedAt: '2026-09-15T10:01:00Z' }
+    const mismatch = { ...PASSING_ASSESSMENT, proximity: 'separated' as const, separation_metres: 320 }
+    mockLocationCapture.mockResolvedValueOnce(FRESH_LOCATION).mockResolvedValueOnce(retryCapture)
+    mockPreviewPhaseLocation.mockResolvedValue(mismatch)
+    mockSubmitPhase.mockResolvedValue({ ok: true, trip: null, phaseStatus: 'completed' })
+
+    render(<PhaseStepPageClient />)
+    fireEvent.click(screen.getByText('submit-loading'))
+
+    await screen.findByText('Driver and truck were recorded 320 m apart. Limit: 100 m.')
+    expect(mockPreviewPhaseLocation).toHaveBeenLastCalledWith(TRIP_ID, LOADING_PE, {
+      lat: FRESH_LOCATION.latitude, lng: FRESH_LOCATION.longitude,
+      accuracy_metres: FRESH_LOCATION.accuracy, captured_at: FRESH_LOCATION.capturedAt,
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with exception' }))
+    expect(screen.getByText('Please provide a reason before continuing.')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry location' }))
+    await waitFor(() => expect(mockPreviewPhaseLocation).toHaveBeenLastCalledWith(TRIP_ID, LOADING_PE, {
+      lat: retryCapture.latitude, lng: retryCapture.longitude,
+      accuracy_metres: retryCapture.accuracy, captured_at: retryCapture.capturedAt,
+    }))
+    fireEvent.change(screen.getByLabelText('Reason for continuing'), { target: { value: 'Truck is at the gate.' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with exception' }))
+
+    await waitFor(() => expect(mockSubmitPhase).toHaveBeenLastCalledWith(
+      TRIP_ID, LOADING_PE, 'loading', expect.anything(), expect.any(String),
+      expect.objectContaining({ lat: retryCapture.latitude, capturedAt: retryCapture.capturedAt }),
+      retryCapture.capturedAt,
+      expect.objectContaining({ reason: 'Truck is at the gate.' }),
+    ))
+  })
 })
 
 describe('the optimistic advance must not redirect this screen into the next phase', () => {
@@ -373,6 +446,7 @@ describe('the optimistic advance must not redirect this screen into the next pha
 
     const { rerender } = render(<PhaseStepPageClient />)
     fireEvent.click(screen.getByText('submit-loading'))
+    await waitFor(() => expect(mockRouterPush).toHaveBeenCalledWith('/'))
     rerender(<PhaseStepPageClient />)
 
     expect(mockRouterPush).toHaveBeenCalledWith('/')
@@ -437,8 +511,9 @@ describe('offline-queued submit', () => {
     // The position is queued WITH the entry, so a replay hours later still reports where
     // the driver was when they swiped rather than where they regained signal.
     await waitFor(() => expect(mockEnqueuePhase).toHaveBeenCalledWith(
-      TRIP_ID, LOADING_PE, 'loading', expect.anything(),
-      { lat: -26.09, lng: 28.13, accuracyM: 8 }, expect.any(String),
+      TRIP_ID, LOADING_PE, 'loading', expect.objectContaining({ capturedAt: '2026-01-01T00:00:00Z' }),
+      { lat: -26.09, lng: 28.13, accuracyM: 8, capturedAt: FRESH_LOCATION.capturedAt },
+      FRESH_LOCATION.capturedAt, null,
     ))
     expect(mockNotify).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'success', body: expect.stringContaining('stored on this device') }),

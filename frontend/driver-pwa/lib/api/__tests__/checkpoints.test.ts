@@ -8,6 +8,8 @@ const EVIDENCE: CheckpointEvidence = {
   cargoPhotoDataUrl: 'data:image/jpeg;base64,BBBB',
   note: 'All good.', isDeviation: false,
   capturedAt: '2026-06-12T10:00:00Z',
+  clientReportId: 'd0a29a8e-94d3-4a16-879d-46fbf6619999',
+  phaseEventId: '5f20a790-4fd3-4d40-9b9e-d7d3b7903249',
 }
 
 describe('submitCheckpoint (Fix 4: demo-mode gate)', () => {
@@ -67,6 +69,8 @@ describe('submitCheckpoint (Fix 4: demo-mode gate)', () => {
       driver_phone_lat: EVIDENCE.gpsLat,
       driver_phone_lng: EVIDENCE.gpsLng,
       driver_captured_at: EVIDENCE.capturedAt,
+      client_report_id: EVIDENCE.clientReportId,
+      phase_event_id: EVIDENCE.phaseEventId,
       selfie_artifact_id: 'selfie-artifact',
       cargo_photo_artifact_id: 'cargo-artifact',
       note: 'All good.',

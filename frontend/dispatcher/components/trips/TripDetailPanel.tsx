@@ -16,11 +16,13 @@ const TITLES: Record<TripPanel, string> = { information: 'Trip information', man
 
 interface Props {
   panel: TripPanel; trip: Trip; precincts: Precinct[]; filter: ExceptionFilter
+  selectedPhaseId?: string | null; invalidPhaseId?: string | null
   overlayOpen: boolean
   onSelect: (panel: TripPanel) => void
-  onClose: () => void; onFilter: (value: ExceptionFilter) => void; onChanged: () => void; returnTo: string
+  onClose: () => void; onFilter: (value: ExceptionFilter) => void; onClearPhaseFilter?: () => void
+  onShowInTimeline?: (phaseId: string) => void; onChanged: () => void; returnTo: string
 }
-export function TripDetailPanel({ panel, trip, precincts, filter, overlayOpen, onSelect, onClose, onFilter, onChanged, returnTo }: Props) {
+export function TripDetailPanel({ panel, trip, precincts, filter, selectedPhaseId, invalidPhaseId, overlayOpen, onSelect, onClose, onFilter, onClearPhaseFilter, onShowInTimeline, onChanged, returnTo }: Props) {
   const needsReview = trip.exceptions.filter(e => e.review_status === 'needs_review').length
   // Rendered as siblings of DetailPanel, not inside it: below the dock width DetailPanel
   // wraps its own children in a <dialog>, and a modal nested inside another open modal
@@ -39,7 +41,7 @@ export function TripDetailPanel({ panel, trip, precincts, filter, overlayOpen, o
       onClose={onClose} overlayOpen={overlayOpen} ariaLabel="Trip detail">
       {panel === 'information' && <TripInformation trip={trip} precincts={precincts} onOpenPrecinct={setOpenPrecinct} onCancelTrip={() => setCancelOpen(true)} />}
       {panel === 'manifest' && <ManifestContent tripId={trip.id} />}
-      {panel === 'exceptions' && <TripExceptionsPanel trip={trip} filter={filter} onFilter={onFilter} returnTo={returnTo} />}
+      {panel === 'exceptions' && <TripExceptionsPanel trip={trip} filter={filter} selectedPhaseId={selectedPhaseId} invalidPhaseId={invalidPhaseId} onFilter={onFilter} onClearPhaseFilter={onClearPhaseFilter} onShowInTimeline={onShowInTimeline} returnTo={returnTo} />}
     </DetailPanel>
     {openPrecinct && <PrecinctModal precinct={openPrecinct} open onClose={() => setOpenPrecinct(null)} returnTo={returnTo} />}
     <CancelTripDialog tripId={trip.id} status={trip.status} open={cancelOpen} onClose={() => setCancelOpen(false)} onCancelled={onChanged} />

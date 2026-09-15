@@ -12,7 +12,8 @@ import type {
   ConfirmationEvidence, DepartureEvidence,
   LoadingEvidence, PhaseEvidence, UnloadingEvidence,
 } from '@/lib/types/evidence-draft'
-import type { DriverPosition } from '@/lib/types/location'
+import type { DriverPosition, LocationWarningAcknowledgement } from '@/lib/types/location'
+import type { ActionLocationAssessment, DriverLocationCapture } from '@shared/lib/types/action-location'
 import { IS_DEMO_MODE } from '@/lib/constants/env'
 import { uploadArtifact, type ArtifactType } from './artifacts'
 
@@ -31,6 +32,8 @@ import { uploadArtifact, type ArtifactType } from './artifacts'
 interface PhaseCompleteRequestBase {
   idempotency_key: string
   driver_captured_at: string
+  location_warning_acknowledged_at?: string
+  location_warning_reason?: string
 }
 
 // Mirrors backend schemas/phases.py's ActivationCompleteRequest..ConfirmationCompleteRequest
@@ -141,6 +144,25 @@ export type PhaseCompleteRequest =
 // retries it and the backend's idempotency gate short-circuits the duplicate as a 200,
 // which is harmless but wastes a retry cycle the client could have avoided.
 const PHASE_SUBMIT_TIMEOUT_MS = 30_000
+const LOCATION_PREVIEW_TIMEOUT_MS = 5_000
+
+export type { DriverLocationCapture }
+
+export const previewPhaseLocation = (
+  tripId: string,
+  phaseEventId: string,
+  capture: DriverLocationCapture,
+): Promise<ActionLocationAssessment> =>
+  api.post<ActionLocationAssessment>(
+    `/api/v1/trips/${tripId}/phases/${phaseEventId}/location-preview`,
+    {
+      driver_phone_lat: capture.lat,
+      driver_phone_lng: capture.lng,
+      driver_captured_at: capture.captured_at,
+      driver_accuracy_metres: capture.accuracy_metres,
+    },
+    { timeoutMs: LOCATION_PREVIEW_TIMEOUT_MS },
+  )
 
 // Raw endpoint call. Always 200 on success, INCLUDING when the phase records a mismatch
 // (evidence, not a client error) and INCLUDING when its Hedera anchor failed (fail-open,
@@ -166,9 +188,24 @@ export const completePhase = (
 function driverPosition(position: DriverPosition | null): {
   driver_phone_lat?: number
   driver_phone_lng?: number
+  driver_accuracy_metres?: number
 } {
   if (position === null) return {}
-  return { driver_phone_lat: position.lat, driver_phone_lng: position.lng }
+  return {
+    driver_phone_lat: position.lat,
+    driver_phone_lng: position.lng,
+    ...(position.accuracyM === null ? {} : { driver_accuracy_metres: position.accuracyM }),
+  }
+}
+
+function locationWarningAcknowledgement(
+  acknowledgement: LocationWarningAcknowledgement | null | undefined,
+): Pick<PhaseCompleteRequestBase, 'location_warning_acknowledged_at' | 'location_warning_reason'> {
+  if (acknowledgement === null || acknowledgement === undefined) return {}
+  return {
+    location_warning_acknowledged_at: acknowledgement.acknowledgedAt,
+    location_warning_reason: acknowledgement.reason,
+  }
 }
 
 // Resolves the artifact id for one captured photo: the id the early upload already
@@ -234,6 +271,7 @@ export async function submitPhase(
   idempotencyKey: string,
   position: DriverPosition | null,
   driverCapturedAt: string,
+  acknowledgement: LocationWarningAcknowledgement | null = null,
 ): Promise<SubmitPhaseResult> {
   if (IS_DEMO_MODE) {
     await new Promise<void>((resolve) => setTimeout(resolve, 400))
@@ -244,6 +282,7 @@ export async function submitPhase(
   // read directly off the union without a cast, unlike the old handshakes.ts, which
   // needed one because HandshakeEvidence's members didn't all share it as cleanly.
   const capturedAt = evidence.capturedAt ?? new Date().toISOString()
+  const acknowledgementFields = locationWarningAcknowledgement(acknowledgement)
 
   let updatedTrip: Trip
 
@@ -262,8 +301,10 @@ export async function submitPhase(
         phase_type: 'activation',
         driver_phone_lat: position.lat,
         driver_phone_lng: position.lng,
+        ...(position.accuracyM === null ? {} : { driver_accuracy_metres: position.accuracyM }),
         idempotency_key: idempotencyKey,
         driver_captured_at: driverCapturedAt,
+        ...acknowledgementFields,
       })
       break
     }
@@ -288,6 +329,7 @@ export async function submitPhase(
         linehaul_photo_artifact_id: linehaulPhotoId,
         idempotency_key: idempotencyKey,
         driver_captured_at: driverCapturedAt,
+        ...acknowledgementFields,
       })
       break
     }
@@ -317,6 +359,7 @@ export async function submitPhase(
         seal_photo_artifact_id: sealPhotoId,
         idempotency_key: idempotencyKey,
         driver_captured_at: driverCapturedAt,
+        ...acknowledgementFields,
       })
       break
     }
@@ -341,6 +384,7 @@ export async function submitPhase(
         gate_photo_artifact_id: sealIntactPhotoId,
         idempotency_key: idempotencyKey,
         driver_captured_at: driverCapturedAt,
+        ...acknowledgementFields,
       })
       break
     }
@@ -376,6 +420,7 @@ export async function submitPhase(
         driver_visual_count: e.driverVisualCount ?? null,
         idempotency_key: idempotencyKey,
         driver_captured_at: driverCapturedAt,
+        ...acknowledgementFields,
       })
       break
     }
@@ -387,6 +432,7 @@ export async function submitPhase(
         ...driverPosition(position),
         idempotency_key: idempotencyKey,
         driver_captured_at: driverCapturedAt,
+        ...acknowledgementFields,
       })
       break
     }

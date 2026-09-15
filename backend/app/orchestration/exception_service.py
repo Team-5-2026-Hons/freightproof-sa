@@ -1,5 +1,6 @@
 """Trip exceptions — the driver raising one, and the dispatcher reviewing it."""
 
+import asyncio
 import logging
 import uuid
 from collections.abc import Sequence
@@ -29,6 +30,8 @@ from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Trip, TripStop, TripTrailer
 from app.db.models.transit import TripException
 from app.db.models.vehicles import Vehicle
+from app.integrations.pulsit import PulsitFix, PulsitFixSource, PulsitFixStatus, get_pulsit_client
+from app.orchestration import action_location_service
 from app.orchestration.artifact_service import get_trip_scoped_artifact
 from app.orchestration.integrity import is_unique_violation, violated_constraint
 from app.orchestration.phase_service import current_phase_event
@@ -44,6 +47,54 @@ _CRITICAL_TYPES = {ExceptionType.PANIC_BUTTON, ExceptionType.SEAL_BROKEN_IN_TRAN
 # ciaran_exc_idempotency. Matched against violated_constraint() below so that some
 # unrelated unique-violation on this table is never misread as a replay.
 _CLIENT_REPORT_ID_INDEX = "uq_exceptions_trip_client_report_id"
+_DRIVER_REPORT_TRACKER_TIMEOUT_SECONDS = 2.0
+
+
+async def _driver_report_assessment(
+    db: AsyncSession,
+    *,
+    trip: Trip,
+    exc: TripException,
+    driver_captured_at: datetime | None,
+    driver_accuracy_metres: float | None,
+) -> None:
+    """Attach one optional comparison after the primary report row is flushed."""
+    device_result = await db.execute(
+        select(Vehicle.pulsit_device_id).where(Vehicle.id == trip.horse_id)
+    )
+    device_id = device_result.scalar_one_or_none()
+    source = PulsitFixSource.MOCK if settings.PULSE_USE_MOCK else PulsitFixSource.LIVE
+    horse_fix = PulsitFix(
+        device_id=device_id or "unavailable", status=PulsitFixStatus.UNAVAILABLE,
+        source=source, lat=None, lng=None, fixed_at=None,
+    )
+    if device_id is not None:
+        try:
+            horse_fix = await asyncio.wait_for(
+                get_pulsit_client(organization_id=trip.operator_organization_id).get_position(device_id),
+                timeout=_DRIVER_REPORT_TRACKER_TIMEOUT_SECONDS,
+            )
+        except Exception as telemetry_error:
+            logger.warning(
+                "Driver-report tracker comparison unavailable for trip=%s exception=%s: %s",
+                trip.id, exc.id, telemetry_error,
+            )
+
+    # This is deliberately transient. It reuses the road-event assessment builder but
+    # is never stored as a checkpoint or turned into a separation exception.
+    from app.db.models.transit import Checkpoint
+
+    capture = Checkpoint(
+        trip_id=trip.id, checkpoint_type="driver_exception_capture",
+        driver_phone_lat=exc.gps_lat, driver_phone_lng=exc.gps_lng,
+        driver_captured_at=driver_captured_at,
+    )
+    assessment = action_location_service.build_checkpoint_assessment(
+        checkpoint=capture, horse_fix=horse_fix,
+        driver_accuracy_metres=driver_accuracy_metres, evaluated_at=datetime.now(UTC),
+    )
+    exc.action_location_assessment = assessment.model_dump(mode="json")
+    await db.flush()
 
 def initial_review_status(severity: ExceptionSeverity) -> ExceptionReviewStatus:
     """Where a freshly-created exception starts in the dispatcher review workflow
@@ -218,6 +269,8 @@ async def raise_exception(
     exception_type: ExceptionType, description: str, supporting_artifact_id: uuid.UUID | None,
     phase_event_id: uuid.UUID | None = None,
     gps_lat: Decimal | None = None, gps_lng: Decimal | None = None,
+    driver_captured_at: datetime | None = None,
+    driver_accuracy_metres: float | None = None,
     client_report_id: uuid.UUID | None = None,
     vehicle_type: VehicleType | None = None, trailer_id: uuid.UUID | None = None,
 ) -> TripExceptionRead:
@@ -365,6 +418,18 @@ async def raise_exception(
             )
             return TripExceptionRead.model_validate(winner)
 
+    await db.refresh(exc)
+
+    # Telemetry is enrichment, never a gate. The driver report has already been
+    # inserted, and an unavailable/slow tracker produces an unverified snapshot on
+    # this same row rather than a recursively-generated system exception.
+    await _driver_report_assessment(
+        db,
+        trip=trip,
+        exc=exc,
+        driver_captured_at=driver_captured_at,
+        driver_accuracy_metres=driver_accuracy_metres,
+    )
     await db.refresh(exc)
 
     # Notify dispatchers watching this trip so the exception surfaces live (published on

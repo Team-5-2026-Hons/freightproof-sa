@@ -1,13 +1,18 @@
 """Integration tests for POST /trips/{id}/checkpoints (driver checkpoint logging)."""
 
 import uuid
+from datetime import UTC, datetime
 
 import pytest_asyncio
 from httpx import AsyncClient
+from sqlalchemy import select
 
-from app.db.models.enums import IdvsStatus, OrganizationType, TripStatus, VehicleType
+from app.db.models.enums import IdvsStatus, OrganizationType, PhaseStatus, PhaseType, TripStatus, VehicleType
+from app.db.models.evidence import EvidenceArtifact
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
+from app.db.models.phases import PhaseEvent
+from app.db.models.transit import Checkpoint
 from app.db.models.trips import Trip
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
@@ -92,3 +97,84 @@ async def test_driver_cannot_log_checkpoint_on_someone_elses_trip(client: AsyncC
         headers=auth_header(token),
     )
     assert resp.status_code == 403
+
+
+async def test_checkpoint_replay_preserves_validated_phase_context(client: AsyncClient, db_session, seed_trip):
+    """A retry returns the same evidence rather than today's phase assignment."""
+    trip, driver = seed_trip
+    phase = PhaseEvent(
+        trip_id=trip.id, phase_type=PhaseType.IN_TRANSIT,
+        sequence_number=4, status=PhaseStatus.PENDING,
+    )
+    db_session.add(phase)
+    await db_session.flush()
+    token = make_token(sub=str(driver.id), role="driver")
+    report_id = str(uuid.uuid4())
+    payload = {
+        "checkpoint_type": "manual", "client_report_id": report_id,
+        "phase_event_id": str(phase.id),
+        "driver_phone_lat": -26.0942, "driver_phone_lng": 28.1342,
+        "driver_captured_at": "2026-09-15T10:00:00Z", "driver_accuracy_metres": 5,
+    }
+
+    first = await client.post(
+        f"/api/v1/trips/{trip.id}/checkpoints", json=payload, headers=auth_header(token),
+    )
+    assert first.status_code == 201
+    phase.status = PhaseStatus.COMPLETED
+    await db_session.flush()
+    replay = await client.post(
+        f"/api/v1/trips/{trip.id}/checkpoints", json=payload, headers=auth_header(token),
+    )
+
+    assert replay.status_code == 201
+    assert replay.json()["id"] == first.json()["id"]
+    assert replay.json()["phase_event_id"] == str(phase.id)
+    rows = (await db_session.execute(select(Checkpoint).where(Checkpoint.trip_id == trip.id))).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].phase_event_id == phase.id
+
+
+async def test_checkpoint_client_report_ids_and_foreign_evidence_are_scoped(
+    client: AsyncClient, db_session, seed_trip,
+):
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+
+    first = await client.post(
+        f"/api/v1/trips/{trip.id}/checkpoints",
+        json={"checkpoint_type": "manual", "client_report_id": str(uuid.uuid4())},
+        headers=auth_header(token),
+    )
+    second = await client.post(
+        f"/api/v1/trips/{trip.id}/checkpoints",
+        json={"checkpoint_type": "manual", "client_report_id": str(uuid.uuid4())},
+        headers=auth_header(token),
+    )
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert first.json()["id"] != second.json()["id"]
+
+    other_trip = Trip(
+        id=uuid.uuid4(), trip_reference="FP-FOREIGN-CKPT", order_number="ORD-FOREIGN-CKPT",
+        operator_organization_id=trip.operator_organization_id,
+        client_organization_id=trip.client_organization_id, driver_id=trip.driver_id,
+        horse_id=trip.horse_id, origin_precinct_id=trip.origin_precinct_id,
+        destination_precinct_id=trip.destination_precinct_id, status=TripStatus.ACTIVE,
+        idvs_check_status=IdvsStatus.VERIFIED, created_by_user_id=trip.created_by_user_id,
+    )
+    db_session.add(other_trip)
+    await db_session.flush()
+    foreign_artifact = EvidenceArtifact(
+        id=uuid.uuid4(), trip_id=other_trip.id, artifact_type="photo",
+        s3_key=f"foreign/{uuid.uuid4()}", s3_bucket="evidence-artifacts",
+        file_hash="a" * 64, mime_type="image/jpeg", captured_at=datetime.now(UTC),
+    )
+    db_session.add(foreign_artifact)
+    await db_session.flush()
+    rejected = await client.post(
+        f"/api/v1/trips/{trip.id}/checkpoints",
+        json={"checkpoint_type": "manual", "selfie_artifact_id": str(foreign_artifact.id)},
+        headers=auth_header(token),
+    )
+    assert rejected.status_code == 404

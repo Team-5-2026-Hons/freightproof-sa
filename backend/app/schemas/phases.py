@@ -7,6 +7,7 @@ idempotency_key). Serves the frozen contract's PhaseDescriptor — parent plan
 rather than as columns.
 """
 
+import math
 import re
 from datetime import datetime
 from typing import Annotated, Any, Literal, Optional, Union
@@ -16,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from app.core.phase_meta import STEP_SLUGS
 from app.db.models.enums import AnchorStatus, PhaseStatus, PhaseType
+from app.schemas.action_location import ActionLocationAssessment
 
 _SEAL_PATTERN = re.compile(r"^[A-Z]{2}-\d{4}$")
 
@@ -93,6 +95,15 @@ class PhaseEventRead(BaseModel):
     horse_gps_lat: Optional[float] = None
     horse_gps_lng: Optional[float] = None
     pulsit_geofence_confirmed: Optional[bool] = None
+    # Task 5: the versioned driver-phone-vs-tracker proximity snapshot (plus precinct
+    # membership facts) assembled at completion time by orchestration/action_location_
+    # service.build_phase_assessment. Validated through ActionLocationAssessment on
+    # every read (from_attributes maps the stored JSONB dict straight through
+    # model_validate) — never served as a raw dict. None for every row completed
+    # before this column existed, and never backfilled.
+    action_location_assessment: Optional[ActionLocationAssessment] = None
+    location_warning_acknowledged_at: Optional[datetime] = None
+    location_warning_reason: Optional[str] = None
     seal_number: Optional[str] = None
     seal_photo_artifact_id: Optional[UUID] = None
     waybill_photo_artifact_id: Optional[UUID] = None
@@ -162,6 +173,11 @@ class TrailerGpsSnapshotRead(TrailerGpsSnapshotBase):
 
 
 class _PhaseCompleteBase(BaseModel):
+    # Completion requests may carry raw driver evidence only. In particular, clients
+    # must not smuggle a server-evaluated ActionLocationAssessment verdict into the
+    # ledger; that snapshot is assembled after corroboration and is read-only.
+    model_config = ConfigDict(extra="forbid")
+
     # The driver app's offline-queue entry id. Stored on the row unconditionally;
     # a resubmitted completion with the same key returns current state instead of
     # erroring or duplicating — drivers lose signal, replay is normal.
@@ -199,6 +215,23 @@ class _PhaseCompleteBase(BaseModel):
     # send it (frontend/driver-pwa/lib/submission/phase-submitter.ts).
     driver_captured_at: Optional[datetime] = None
 
+    # R8 (Task 5, trip-location-timeline-improvements): the phone's own claimed
+    # accuracy at the moment of driver_phone_lat/lng, feeding proximity_service.
+    # evaluate_proximity's `poor_accuracy`/`missing_accuracy` gates via orchestration/
+    # action_location_service.build_phase_assessment. NOT a phase_events column —
+    # it lives only inside the action_location_assessment JSONB snapshot (schemas/
+    # action_location.py). Optional so a client built before this field existed
+    # still 200s on replay: an omitted value reads as `missing_accuracy`, which
+    # forces the proximity verdict to 'unverified' rather than a fabricated pass.
+    driver_accuracy_metres: Optional[float] = Field(default=None, ge=0)
+
+    # Task 7: acknowledgement of the warning the driver saw during the optional
+    # preview. This is deliberately separate from action_location_assessment: the
+    # latter is only assembled from independent measurements by the backend after the
+    # final completion request, while these fields describe the driver's own context.
+    location_warning_acknowledged_at: Optional[datetime] = None
+    location_warning_reason: Optional[str] = Field(default=None, max_length=1_000)
+
     @field_validator("driver_captured_at")
     @classmethod
     def validate_driver_captured_at_is_timezone_aware(cls, v: Optional[datetime]) -> Optional[datetime]:
@@ -208,6 +241,36 @@ class _PhaseCompleteBase(BaseModel):
         if v is not None and v.tzinfo is None:
             raise ValueError("driver_captured_at must be timezone-aware")
         return v
+
+    @field_validator("driver_accuracy_metres")
+    @classmethod
+    def validate_driver_accuracy_metres_is_finite(cls, v: Optional[float]) -> Optional[float]:
+        # ge=0 above already rejects a negative value; this additionally rejects
+        # inf/nan, which `ge` alone would let through (float('inf') >= 0 is True) and
+        # which ActionLocationAssessment's own validator would then reject at
+        # persistence time — better as a 422 here than a 500 building the assessment.
+        if v is not None and not math.isfinite(v):
+            raise ValueError("driver_accuracy_metres must be a finite number")
+        return v
+
+    @field_validator("location_warning_acknowledged_at")
+    @classmethod
+    def validate_location_warning_acknowledged_at_is_timezone_aware(
+        cls, v: Optional[datetime],
+    ) -> Optional[datetime]:
+        if v is not None and v.tzinfo is None:
+            raise ValueError("location_warning_acknowledged_at must be timezone-aware")
+        return v
+
+    @field_validator("location_warning_reason")
+    @classmethod
+    def validate_location_warning_reason_is_nonblank(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        normalized = v.strip()
+        if not normalized:
+            raise ValueError("location_warning_reason must not be blank")
+        return normalized
 
     @model_validator(mode="after")
     def validate_driver_position_pair(self) -> "_PhaseCompleteBase":

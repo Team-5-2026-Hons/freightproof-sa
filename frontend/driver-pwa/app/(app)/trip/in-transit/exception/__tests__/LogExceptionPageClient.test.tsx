@@ -30,6 +30,7 @@ const mockRouterBack = vi.fn()
 const mockNotify = vi.fn()
 const mockEnqueueException = vi.fn()
 const mockUploadArtifact = vi.fn()
+const mockCaptureLocation = vi.fn()
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockRouterPush, back: mockRouterBack, replace: vi.fn() }),
@@ -37,6 +38,10 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/lib/hooks/useTrip', () => ({
   useTrip: () => mockUseTrip(),
+}))
+
+vi.mock('@/lib/hooks/useLocation', () => ({
+  useLocation: () => ({ capture: mockCaptureLocation }),
 }))
 
 vi.mock('@/lib/hooks/useToast', () => ({
@@ -75,6 +80,10 @@ vi.mock('@/components/phase/CameraCapture', () => ({
   ),
 }))
 
+beforeEach(() => {
+  mockCaptureLocation.mockResolvedValue(null)
+})
+
 /** Default queue behaviour: the write lands, photo included where one was passed. */
 function queueAccepts(photoPersisted = true) {
   mockEnqueueException.mockReturnValue({ persisted: true, photoPersisted })
@@ -87,6 +96,7 @@ function enterRequiredDescription(value = REQUIRED_DESCRIPTION) {
 describe('LogExceptionPageClient required description', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockCaptureLocation.mockResolvedValue(null)
     queueAccepts()
     mockUseTrip.mockReturnValue({ trip: RIGID_TRIP, logException: vi.fn() })
   })
@@ -250,6 +260,7 @@ describe('LogExceptionPageClient back link (5d)', () => {
 describe('LogExceptionPageClient phase tagging', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockCaptureLocation.mockResolvedValue(null)
     queueAccepts()
   })
 
@@ -303,6 +314,37 @@ describe('LogExceptionPageClient phase tagging', () => {
       undefined,
     )
     expect(mockRouterPush).toHaveBeenCalledWith(ROUTES.inTransit)
+  })
+})
+
+describe('LogExceptionPageClient location capture', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    queueAccepts()
+  })
+
+  it('forwards the original phone capture metadata to both direct and queued reports', async () => {
+    const logException = vi.fn().mockRejectedValue(new Error('offline'))
+    mockUseTrip.mockReturnValue({ trip: RIGID_TRIP, logException })
+    mockCaptureLocation.mockResolvedValue({
+      latitude: -26.0942, longitude: 28.1342, accuracy: 5,
+      capturedAt: '2026-09-15T10:00:00Z',
+    })
+
+    render(<LogExceptionPageClient />)
+    fireEvent.click(screen.getByText('Cargo damage'))
+    enterRequiredDescription()
+    fireEvent.click(screen.getByText('Submit exception'))
+
+    await waitFor(() => expect(mockEnqueueException).toHaveBeenCalled())
+    expect(logException).toHaveBeenCalledWith('cargo_damage', expect.objectContaining({
+      gpsLat: -26.0942, gpsLng: 28.1342,
+      driverCapturedAt: '2026-09-15T10:00:00Z', driverAccuracyMetres: 5,
+    }))
+    expect(mockEnqueueException).toHaveBeenCalledWith('trip-1', expect.objectContaining({
+      gps_lat: -26.0942, gps_lng: 28.1342,
+      driver_captured_at: '2026-09-15T10:00:00Z', driver_accuracy_metres: 5,
+    }), undefined)
   })
 })
 
