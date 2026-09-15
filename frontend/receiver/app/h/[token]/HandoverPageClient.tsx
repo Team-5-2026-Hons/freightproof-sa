@@ -48,6 +48,9 @@ const IDENTITY_STASH_KEY = 'fp_handover_identity'
 interface StashedIdentity {
   name: string
   idNumber: string
+  /** Where to come back to. The mock vendor page has only a session id in its URL and no
+      capability token, so the return path has to travel with the identity. */
+  token: string
 }
 
 function stashIdentity(identity: StashedIdentity): void {
@@ -248,7 +251,7 @@ export function HandoverPageClient({ token }: { token: string }) {
         if (started.session_url !== null) {
           // Stashed immediately before leaving: once window.location.assign fires, this
           // component and all its state cease to exist.
-          stashIdentity({ name, idNumber })
+          stashIdentity({ name, idNumber, token })
           window.location.assign(started.session_url)
           return
         }
