@@ -78,6 +78,10 @@ class HandoverScanResponse(BaseModel):
     destination_name: str
     waybill_references: list[str]
     expires_at: datetime
+    # Null until the receiver consents. Non-null tells a returning browser what already
+    # happened, so the page can resume without remembering anything itself — which matters
+    # because the vendor redirect lands in a fresh page load with no client state.
+    verification: Optional["HandoverVerificationState"] = None
 
 
 class HandoverConfirmRequest(BaseModel):
@@ -121,3 +125,45 @@ class HandoverConfirmResponse(BaseModel):
 
     confirmed_at: datetime
     trip_reference: str
+
+
+class HandoverConsentRequest(BaseModel):
+    """The receiver's explicit agreement to a biometric identity check.
+
+    POPIA s27(1)(a) is the exemption this feature relies on to process biometrics at all,
+    and that exemption is only as good as proof of WHAT was agreed to. The client sends the
+    exact wording it displayed; the server stores its SHA-256, never the text.
+
+    `consent_text` is bounded so an anonymous caller cannot post a novel into an
+    unauthenticated route.
+    """
+
+    consent_text: str = Field(min_length=1, max_length=4000)
+    # False when the receiver says they have no ID document on them. Not a refusal — it
+    # routes them to the selfie-only tier, which still confirms the delivery.
+    has_document: bool = True
+
+
+class HandoverVerifyResponse(BaseModel):
+    """Where to send the receiver next, or why we are not sending them anywhere.
+
+    `session_url` is None on every degradation path — quota spent, vendor unreachable, no
+    document. The client reads that as "go straight to signing at a lower tier", never as
+    an error, because the delivery must remain confirmable.
+    """
+
+    session_url: Optional[str] = None
+    tier: str
+    unverified_reason: Optional[str] = None
+
+
+class HandoverVerificationState(BaseModel):
+    """What the receiver's page shows about its own verification."""
+
+    status: str
+    tier: str
+    unverified_reason: Optional[str] = None
+    identity_match: Optional[bool] = None
+
+
+HandoverScanResponse.model_rebuild()

@@ -90,3 +90,14 @@ HANDOVER_ISSUE = RateLimit(max_requests=60, window_seconds=_ONE_MINUTE, name="ha
 # unauthenticated write-capable routes in the API, and the confirm path accepts an image.
 # A real receiver loads the page once and confirms once.
 HANDOVER_PUBLIC = RateLimit(max_requests=20, window_seconds=_ONE_MINUTE, name="handover_public")
+
+# Starting a verification is the only public route that can spend money, so it gets the
+# tightest budget in this file. A legitimate handover starts at most one session, and
+# retries after a failed attempt are the only reason this is above 1.
+IDVS_VERIFY = RateLimit(max_requests=5, window_seconds=_ONE_MINUTE, name="idvs_verify")
+
+# The vendor's webhook. Higher than IDVS_VERIFY because Didit retries a failed delivery up
+# to five times with exponential backoff, and a legitimate burst of retries must not be
+# throttled into permanent loss. Still bounded: it is a public, unauthenticated route, and
+# an attacker who cannot forge the HMAC gains nothing by flooding it except our CPU.
+IDVS_WEBHOOK = RateLimit(max_requests=60, window_seconds=_ONE_MINUTE, name="idvs_webhook")

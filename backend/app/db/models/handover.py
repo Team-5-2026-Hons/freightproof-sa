@@ -73,6 +73,13 @@ class HandoverCapabilityToken(Base):
     # the driver's screen can say "the receiver has opened the link" instead of leaving
     # them watching a code with no idea whether the scan worked.
     opened_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Set the one time this token's life was extended to cover an identity verification
+    # (spec §6.3). Its NULL-ness is the gate, not a flag a caller checks: the conditional
+    # UPDATE in extend_token_for_verification keys on it, so the extension is
+    # single-claim at the database exactly as opened_at is.
+    verification_extended_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # SHA-256 hex of the browser-binding secret minted on that first page load, never the
     # secret itself — the same rule token_hash above follows, for the same reason.
     #

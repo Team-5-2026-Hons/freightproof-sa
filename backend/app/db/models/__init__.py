@@ -41,3 +41,7 @@ from app.db.models.handover import (  # noqa: E402,F401
     HandoverConfirmation,
     HandoverTokenAttempt,
 )
+from app.db.models.receiver_verification import (  # noqa: E402,F401
+    IdvsQuotaLedger,
+    ReceiverIdentityVerification,
+)
