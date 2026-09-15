@@ -7,14 +7,15 @@ Layering: orchestration -> integrations, db. No HTTP concerns belong here.
 """
 
 import hashlib
+import hmac
 import logging
 import unicodedata
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
-from typing import Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any, Optional
 
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,7 +33,7 @@ from app.db.models.handover import HandoverCapabilityToken
 from app.db.models.receiver_verification import IdvsQuotaLedger, ReceiverIdentityVerification
 from app.db.models.transit import TripException
 from app.db.models.trips import Trip
-from app.integrations.idvs import IdvsClient, IdvsDecisionStatus, IdvsError, IdvsSession
+from app.integrations.idvs import IdvsClient, IdvsDecisionStatus, IdvsError, IdvsSession, _parse_decision
 from app.orchestration.exception_service import initial_review_status
 from app.orchestration.handover_service import extend_token_for_verification
 
@@ -449,3 +450,132 @@ async def attach_confirmation(
         .values(handover_confirmation_id=handover_confirmation_id)
     )
     await db.flush()
+
+
+def verify_webhook_signature(raw_body: bytes, presented_signature: Optional[str]) -> bool:
+    """Whether a webhook body really came from the vendor.
+
+    FAILS CLOSED. An unset IDVS_WEBHOOK_SECRET refuses every delivery rather than accepting
+    every delivery — a misconfigured deployment must lose webhooks, not accept forged ones.
+    This is the only thing standing between a real decision and an attacker's, on a public
+    unauthenticated route.
+
+    compare_digest, never `==`: a byte-wise comparison leaks how much of a forged signature
+    was correct, which is enough to construct one a byte at a time.
+    """
+    secret = settings.IDVS_WEBHOOK_SECRET
+    if not secret or not presented_signature:
+        return False
+
+    expected = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, presented_signature)
+
+
+async def ingest_webhook_decision(
+    db: AsyncSession, *, payload: dict[str, Any],
+) -> None:
+    """Apply a vendor-pushed decision to the verification it belongs to.
+
+    The BACKSTOP, not the primary path. The receiver's own return trip resolves most
+    verifications synchronously; this catches the ones where they closed the tab or lost
+    signal before the page could poll.
+
+    Three rules, all from the spec:
+
+      * Unknown session — return quietly. The route 200s so the vendor stops retrying into
+        a wall, and a session we never created is not something we can act on.
+      * Already terminal — annotate, never overwrite. A late arrival must not rewrite a
+        trip that has closed; that would break the invariant the whole ordering exists to
+        protect. The finding is still kept, because this codebase records inconvenient
+        facts rather than discarding them.
+      * Idempotent — Didit retries up to five times. A second delivery of the same decision
+        must change nothing, which falls out of the two rules above rather than needing a
+        dedupe table.
+    """
+    session_id = payload.get("session_id")
+    if not session_id:
+        logger.warning("IDVS webhook carried no session_id; ignoring")
+        return
+
+    verification = (
+        await db.execute(
+            select(ReceiverIdentityVerification).where(
+                ReceiverIdentityVerification.provider_session_id == str(session_id)
+            )
+        )
+    ).scalar_one_or_none()
+
+    if verification is None:
+        logger.info("IDVS webhook for unknown session=%s; ignoring", session_id)
+        return
+
+    decision = _parse_decision(payload, fallback_session_id=str(session_id))
+
+    # `!=`, never `is not`. These columns are mapped_column(String(20)), not a
+    # SQLAlchemy Enum, so a row loaded in a fresh session comes back as a bare str
+    # rather than the enum member. Identity comparison would therefore be True for
+    # EVERY webhook in production — where the request always has its own session —
+    # and the backstop would annotate every decision as late instead of resolving
+    # any. Value comparison works because these enums subclass str.
+    if verification.status != ReceiverVerificationStatus.PENDING:
+        verification.late_decision_status = decision.status.value
+        verification.late_decision_at = datetime.now(UTC)
+        await db.flush()
+        logger.info(
+            "Late IDVS decision for verification=%s recorded as annotation (status stands at %s)",
+            # Coerced, not `.value` directly: status is a String column, so a row
+            # loaded in a fresh session is a bare str and `.value` would raise
+            # AttributeError — turning this log line into a 500 on the webhook.
+            verification.id, ReceiverVerificationStatus(verification.status).value,
+        )
+        return
+
+    verdict = resolve_verdict(status=decision.status, identity_match=verification.identity_match)
+    verification.status = verdict.status
+    verification.unverified_reason = verdict.unverified_reason
+    verification.provider_decision_at = decision.decided_at
+    await db.flush()
+
+
+async def load_verification_for_token(
+    db: AsyncSession, *, token_id: uuid.UUID,
+) -> Optional[ReceiverIdentityVerification]:
+    """The verification for one grant, or None if the receiver never consented."""
+    return (
+        await db.execute(
+            select(ReceiverIdentityVerification).where(
+                ReceiverIdentityVerification.token_id == token_id
+            )
+        )
+    ).scalar_one_or_none()
+
+
+async def sweep_abandoned_verifications(db: AsyncSession, *, older_than_seconds: int) -> int:
+    """Terminalise PENDING verifications that no decision ever arrived for.
+
+    The enforcement arm of the spec's invariant: no trip may end with a verification in
+    flight. A receiver who starts a check and closes the tab leaves a PENDING row that no
+    webhook will ever resolve, and an evidence record whose state is "we are still waiting"
+    a week later is not a record at all.
+
+    Returns how many rows were terminalised, so the task can log a number rather than a
+    shrug.
+    """
+    cutoff = datetime.now(UTC) - timedelta(seconds=older_than_seconds)
+    stale = (
+        await db.execute(
+            select(ReceiverIdentityVerification).where(
+                ReceiverIdentityVerification.status == ReceiverVerificationStatus.PENDING,
+                ReceiverIdentityVerification.created_at < cutoff,
+            )
+        )
+    ).scalars().all()
+
+    for verification in stale:
+        verification.status = ReceiverVerificationStatus.UNVERIFIED
+        verification.unverified_reason = ReceiverVerificationUnverifiedReason.ABANDONED
+    await db.flush()
+
+    if stale:
+        logger.info("Swept %d abandoned receiver verifications", len(stale))
+    return len(stale)

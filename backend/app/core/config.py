@@ -224,6 +224,13 @@ class Settings(BaseSettings):
     # Applied once, capped, and only to a token a human has demonstrably opened.
     IDVS_TOKEN_EXTENSION_MINUTES: int = 10
 
+    # How long a PENDING verification may sit before the sweeper calls it abandoned.
+    # Comfortably longer than IDVS_DECISION_POLL_SECONDS: the receiver's own page gives up
+    # first and records ABANDONED itself, so this only catches the ones where the page
+    # never got to run at all — a closed tab, a dead battery.
+    IDVS_ABANDON_AFTER_SECONDS: int = 1800
+    IDVS_SWEEP_INTERVAL_SECONDS: int = 300
+
     # -------------------------------------------------------------------------
     # Rate limiting (core/rate_limit.py; budgets live in core/limits.py)
     # -------------------------------------------------------------------------

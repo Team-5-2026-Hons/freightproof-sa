@@ -37,6 +37,10 @@ celery.conf.beat_schedule = {
         "task": "tasks.pp.sync_active_consignments",
         "schedule": settings.PP_POLL_INTERVAL_SECONDS,
     },
+    "idvs-sweep-abandoned-verifications": {
+        "task": "tasks.verification.sweep_abandoned",
+        "schedule": settings.IDVS_SWEEP_INTERVAL_SECONDS,
+    },
 }
 
 # Explicit import registers the parcel_perfect tasks with the Celery registry.
@@ -45,3 +49,4 @@ celery.conf.beat_schedule = {
 # stay below `celery = Celery(...)` above, since parcel_perfect.py imports `celery`
 # back from this module (E402 is a false positive on a required circular-import guard).
 from app.tasks.parcel_perfect import sync_active_consignments as sync_active_consignments  # noqa: E402
+from app.tasks.verification import sweep_abandoned as sweep_abandoned  # noqa: E402

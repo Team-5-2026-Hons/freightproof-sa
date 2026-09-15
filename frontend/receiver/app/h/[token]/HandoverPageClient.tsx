@@ -12,7 +12,17 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { Swipe } from '@/components/Swipe'
-import { confirmHandover, fetchScan, type HandoverScan } from '@/lib/api'
+import { ConsentGate } from '@/components/ConsentGate'
+import { SelfieCapture } from '@/components/SelfieCapture'
+import {
+  confirmHandover,
+  fetchScan,
+  recordConsent,
+  resolveVerification,
+  startVerification,
+  type HandoverScan,
+} from '@/lib/api'
+import { consentPayloadText } from '@/lib/consent'
 import { renderAttestation } from '@shared/lib/utils/render-attestation'
 import { hasRecipientIdentity, looksLikeSaIdNumber } from '@shared/lib/utils/sa-id'
 import type { PositionFix } from '@shared/lib/types/position'
@@ -22,7 +32,64 @@ import type { PositionFix } from '@shared/lib/types/position'
 // precondition, so the swipe proceeds without one rather than hanging on it.
 const GEO_TIMEOUT_MS = 8_000
 
-type Status = 'loading' | 'invalid' | 'ready' | 'signing' | 'done'
+// The typed identity has to survive a full navigation to the vendor's domain and back.
+// React state does not — the page is destroyed and rebuilt — and without it
+// resolveVerification would cross-check the vendor's extracted document against two empty
+// strings. That reports "nothing to compare" rather than a mismatch, which silently
+// disables the substitution defence the cross-check exists for: a receiver could forward
+// the vendor link to a confederate who completes it with their own genuine ID, and nothing
+// would notice.
+//
+// sessionStorage, not localStorage: it dies with the tab, which is the right lifetime for
+// a stranger's ID number on a device we do not own. Every access is wrapped because
+// private-browsing modes throw on access rather than returning null.
+const IDENTITY_STASH_KEY = 'fp_handover_identity'
+
+interface StashedIdentity {
+  name: string
+  idNumber: string
+}
+
+function stashIdentity(identity: StashedIdentity): void {
+  try {
+    sessionStorage.setItem(IDENTITY_STASH_KEY, JSON.stringify(identity))
+  } catch {
+    // Storage unavailable. The cross-check degrades to "nothing to compare", which is
+    // recorded honestly as that rather than as a mismatch.
+  }
+}
+
+function readStashedIdentity(): StashedIdentity | null {
+  try {
+    const raw = sessionStorage.getItem(IDENTITY_STASH_KEY)
+    if (raw === null) return null
+    const parsed: unknown = JSON.parse(raw)
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      typeof (parsed as Partial<StashedIdentity>).name === 'string' &&
+      typeof (parsed as Partial<StashedIdentity>).idNumber === 'string'
+    ) {
+      return parsed as StashedIdentity
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+function clearStashedIdentity(): void {
+  try {
+    sessionStorage.removeItem(IDENTITY_STASH_KEY)
+  } catch {
+    // Nothing to clear, or storage is unavailable. Either way there is nothing to do.
+  }
+}
+
+// 'consent' / 'verifying' / 'selfie' sit between 'loading' and 'ready' — the identity check
+// FP-249 adds. None of them may become a dead end: every path out of them lands back on
+// 'ready' (or, for 'done'/'invalid', somewhere the existing flow already handles).
+type Status = 'loading' | 'invalid' | 'consent' | 'verifying' | 'selfie' | 'ready' | 'signing' | 'done'
 
 /** Resolves to a fix, or to null on refusal, failure or timeout. Never rejects. */
 function capturePosition(): Promise<PositionFix | null> {
@@ -48,20 +115,70 @@ export function HandoverPageClient({ token }: { token: string }) {
   const [name, setName] = useState('')
   const [idNumber, setIdNumber] = useState('')
   const [message, setMessage] = useState('')
+  // Busy flag for ConsentGate's own `busy` prop, distinct from `status`: the "no ID" and
+  // "decline" paths stay on the consent screen while their recordConsent call is in
+  // flight, so the screen needs its own in-progress indicator rather than a page swap.
+  const [consentBusy, setConsentBusy] = useState(false)
+  // Tier-3 artifact only — held here so it isn't lost between capture and the confirm
+  // swipe. There is no upload endpoint for it yet; wiring it to the backend is a
+  // follow-up, not part of this stage.
+  const [selfiePhoto, setSelfiePhoto] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
-    fetchScan(token)
-      .then((res) => { if (!cancelled) { setScan(res); setStatus('ready') } })
-      .catch((err: unknown) => {
-        if (cancelled) return
-        // Every failure lands here identically, including a network error. Telling a
-        // receiver with no signal that their link is invalid is a small lie; telling a
-        // prober which of their guesses was live is a security hole. The lie is cheaper.
-        console.warn('[handover] scan lookup failed:', err)
-        setStatus('invalid')
-      })
+
+    async function loadScan(): Promise<void> {
+      const res = await fetchScan(token)
+      if (cancelled) return
+      setScan(res)
+
+      if (res.verification === null) {
+        // First load, never consented yet.
+        setStatus('consent')
+        return
+      }
+
+      if (res.verification.status === 'pending') {
+        // Returning from the vendor's redirect. The name/ID typed before departing are
+        // what the vendor's extracted identity gets cross-checked against — if this
+        // browser context lost them, resolveVerification below has nothing to compare
+        // and the check degrades rather than blocking the delivery, which is correct.
+        // Recovered from sessionStorage, not from React state: this is a fresh page load
+        // created by the vendor's redirect, so the state that held these is long gone.
+        const stashed = readStashedIdentity()
+        if (stashed !== null && !cancelled) {
+          setName(stashed.name)
+          setIdNumber(stashed.idNumber)
+        }
+        try {
+          await resolveVerification(token, stashed?.name ?? name, stashed?.idNumber ?? idNumber)
+        } catch (err: unknown) {
+          // A failed resolve must never strand the receiver mid-check — the delivery
+          // still happened and still has to be confirmable.
+          console.warn('[handover] verification resolve failed:', err)
+        }
+        // Cleared whether or not the resolve succeeded: a retained ID number on someone
+        // else's phone is a liability, and it has already served its only purpose.
+        clearStashedIdentity()
+        if (!cancelled) setStatus('ready')
+        return
+      }
+
+      // Verification already settled (verified / failed / unverified) — nothing left to do.
+      setStatus('ready')
+    }
+
+    loadScan().catch((err: unknown) => {
+      if (cancelled) return
+      // Every failure lands here identically, including a network error. Telling a
+      // receiver with no signal that their link is invalid is a small lie; telling a
+      // prober which of their guesses was live is a security hole. The lie is cheaper.
+      console.warn('[handover] scan lookup failed:', err)
+      setStatus('invalid')
+    })
     return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per token; name/
+    // idNumber are read only on the resume-from-vendor branch, not re-triggers.
   }, [token])
 
   const handleSign = useCallback(async () => {
@@ -113,6 +230,78 @@ export function HandoverPageClient({ token }: { token: string }) {
     }
   }, [scan, name, idNumber, token])
 
+  const handleConsentProceed = useCallback(async (hasDocument: boolean) => {
+    // Identity must exist before either recordConsent or startVerification — the vendor
+    // cross-check compares against these values, and an empty string would compare
+    // against nothing and silently report no mismatch. ConsentGate is only rendered once
+    // this already holds (see the 'consent' screen below), so this is a defensive guard,
+    // not the primary gate.
+    if (!hasRecipientIdentity(name, idNumber)) return
+
+    if (hasDocument) {
+      // Moves off the consent screen immediately — a vendor call can take a moment, and
+      // there is nothing left for ConsentGate's own busy state to do once we've left it.
+      setStatus('verifying')
+      try {
+        await recordConsent(token, consentPayloadText(), true)
+        const started = await startVerification(token)
+        if (started.session_url !== null) {
+          // Stashed immediately before leaving: once window.location.assign fires, this
+          // component and all its state cease to exist.
+          stashIdentity({ name, idNumber })
+          window.location.assign(started.session_url)
+          return
+        }
+        // Null session_url is a degraded tier (quota spent, vendor down, no document
+        // detected), never an error — the reason is recorded server-side, not shown here.
+        setStatus('ready')
+      } catch (err: unknown) {
+        // A vendor outage or network blip must never leave a receiver unable to confirm a
+        // delivery that physically happened.
+        console.warn('[handover] verification start failed:', err)
+        setStatus('ready')
+      }
+      return
+    }
+
+    setConsentBusy(true)
+    try {
+      await recordConsent(token, consentPayloadText(), false)
+      setStatus('selfie')
+    } catch (err: unknown) {
+      console.warn('[handover] consent record failed:', err)
+      setStatus('ready')
+    } finally {
+      setConsentBusy(false)
+    }
+  }, [name, idNumber, token])
+
+  const handleConsentDecline = useCallback(async () => {
+    setConsentBusy(true)
+    try {
+      await recordConsent(token, consentPayloadText(), false)
+    } catch (err: unknown) {
+      // Declining consent must still leave the receiver able to confirm the delivery.
+      console.warn('[handover] consent decline record failed:', err)
+    } finally {
+      setConsentBusy(false)
+      setStatus('ready')
+    }
+  }, [token])
+
+  const handleSelfieCaptured = useCallback((dataUrl: string) => {
+    setSelfiePhoto(dataUrl)
+    setStatus('ready')
+  }, [])
+
+  const handleSelfieSkip = useCallback(() => {
+    setStatus('ready')
+  }, [])
+
+  // Computed unconditionally: the consent screen and the ready screen both show this hint
+  // against the same shared name/idNumber state.
+  const showIdShapeHint = idNumber.trim().length > 0 && !looksLikeSaIdNumber(idNumber)
+
   if (status === 'loading') {
     return (
       <main className="flex min-h-dvh items-center justify-center p-6">
@@ -147,7 +336,78 @@ export function HandoverPageClient({ token }: { token: string }) {
     )
   }
 
-  const showIdShapeHint = idNumber.trim().length > 0 && !looksLikeSaIdNumber(idNumber)
+  if (status === 'verifying') {
+    return (
+      <main className="flex min-h-dvh flex-col items-center justify-center gap-3 p-6 text-center">
+        <h1 className="text-xl font-medium text-neutral-900">Taking you to the identity check</h1>
+        <p className="max-w-sm text-sm text-neutral-600">
+          You&apos;ll be sent to our verification provider for a moment, then brought back
+          here to confirm the delivery.
+        </p>
+      </main>
+    )
+  }
+
+  if (status === 'consent' || status === 'selfie') {
+    const identityKnown = hasRecipientIdentity(name, idNumber)
+
+    return (
+      <main className="mx-auto flex min-h-dvh max-w-md flex-col gap-6 p-5">
+        <header className="flex flex-col gap-1">
+          <h1 className="text-xl font-medium text-neutral-900">Confirm this delivery</h1>
+          <p className="text-sm text-neutral-600">
+            {scan?.destination_name} · {scan?.trip_reference}
+          </p>
+        </header>
+
+        <div className="flex flex-col gap-4">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-neutral-900">Your full name</span>
+            <input
+              className="rounded-lg border border-neutral-300 px-3 py-3 text-base"
+              value={name}
+              autoComplete="off"
+              disabled={consentBusy}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-neutral-900">Your ID number</span>
+            <input
+              className="rounded-lg border border-neutral-300 px-3 py-3 text-base"
+              value={idNumber}
+              inputMode="numeric"
+              autoComplete="off"
+              disabled={consentBusy}
+              onChange={(e) => setIdNumber(e.target.value)}
+            />
+            {showIdShapeHint && (
+              <span className="text-xs text-neutral-500">
+                This is not a 13 digit SA ID number. It will still be recorded as entered.
+              </span>
+            )}
+          </label>
+        </div>
+
+        {status === 'selfie' ? (
+          <SelfieCapture onCaptured={handleSelfieCaptured} onSkip={handleSelfieSkip} />
+        ) : identityKnown ? (
+          <ConsentGate
+            onProceed={(hasDocument) => { void handleConsentProceed(hasDocument) }}
+            onDecline={() => { void handleConsentDecline() }}
+            busy={consentBusy}
+          />
+        ) : (
+          // resolveVerification and recordConsent both cross-check or attribute against
+          // these fields — ConsentGate stays off-screen until there's something to check.
+          <p className="text-sm text-neutral-500">
+            Enter your name and ID number above to continue.
+          </p>
+        )}
+      </main>
+    )
+  }
+
   const isSigning = status === 'signing'
 
   return (
