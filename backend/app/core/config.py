@@ -200,6 +200,41 @@ class Settings(BaseSettings):
     HANDOVER_RECEIVER_BASE_URL: str = "http://localhost:3002"
 
     # -------------------------------------------------------------------------
+    # Receiver identity verification (Didit)
+    # -------------------------------------------------------------------------
+    # The Didit workflow selecting the full KYC bundle — document + passive liveness +
+    # face match + IP. Server-side config rather than a per-request choice, so the
+    # verification a receiver gets cannot be downgraded by anything the client sends.
+    IDVS_WORKFLOW_ID: str = ""
+
+    # HMAC secret for the vendor's webhook. The webhook is a public write-capable route,
+    # and this is the only thing separating a real decision from a forged one.
+    IDVS_WEBHOOK_SECRET: str = ""
+
+    # HARD stop, not a warning threshold. Didit's free tier is 500 sessions per calendar
+    # month and session 501 bills silently with no rate limit at the boundary, so the
+    # limit has to be enforced on our side or not at all. At the ceiling the handover
+    # degrades to a lower evidence tier; it never bills and it never blocks a delivery.
+    IDVS_MONTHLY_SESSION_LIMIT: int = 500
+
+    # Ceiling on the outbound session-creation call. Deliberately short: a receiver is
+    # standing in a warehouse with a driver waiting, and a slow vendor must degrade the
+    # tier rather than hold up the handover.
+    IDVS_SESSION_TIMEOUT_SECONDS: int = 10
+
+    # How long the receiver's browser waits for a decision after returning from the
+    # vendor before giving up and recording ABANDONED. Bounds the handover so a trip can
+    # never end with a verification still in flight.
+    IDVS_DECISION_POLL_SECONDS: int = 90
+
+    # One-shot extension of the capability token's life when a verification starts.
+    # The token expires in HANDOVER_TOKEN_EXPIRY_MINUTES, which is shorter than a
+    # document-and-selfie round trip can take; without this a slow verification would
+    # burn the grant and leave the delivery unconfirmable behind a generic 404.
+    # Applied once, capped, and only to a token a human has demonstrably opened.
+    IDVS_TOKEN_EXTENSION_MINUTES: int = 10
+
+    # -------------------------------------------------------------------------
     # Rate limiting (core/rate_limit.py; budgets live in core/limits.py)
     # -------------------------------------------------------------------------
     # Off switch for local development and tests. Never set False in a deployed
