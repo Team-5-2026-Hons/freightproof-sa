@@ -12,21 +12,29 @@ fixtures rather than DEMO_MODE auth, since these phases require a real Driver ro
 The routing surface itself is covered by tests/integration/test_phases.py.
 """
 
+import asyncio
+import base64
+import hashlib
 import uuid
 from datetime import UTC, datetime
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 import pytest_asyncio
+import respx
+from sqlalchemy import select
 from httpx import AsyncClient
 
 from app.blockchain.hedera import HederaReceipt
+from app.core.config import settings
 from app.core.exceptions import HederaTimeoutError
 from app.db.models.enums import (
     ArtifactType, BlockchainReceiptType, IdvsStatus, OrganizationType, PhaseStatus, PhaseType,
     TripStatus, VehicleType,
 )
 from app.db.models.evidence import EvidenceArtifact
+from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.phases import PhaseEvent
@@ -185,7 +193,7 @@ def captured_anchor_dispatches(monkeypatch):
     Anchoring runs on the worker now, dispatched from the session's after_commit hook —
     and an integration request DOES commit, so without this the test outcome would depend
     on whether a Redis broker happens to be running (broker up: queued and never run;
-    broker down: _dispatch_anchor's inline fallback writes the receipt). Capturing makes
+    broker down: _dispatch_anchor's local fallback attempts a receipt). Capturing makes
     it deterministic, and _drain_anchors runs the same entry point the worker calls.
     """
     dispatched: list[tuple[str, dict, str]] = []
@@ -203,9 +211,10 @@ async def _drain_anchors(db_session, dispatched) -> None:
     """Commit first — the override of get_db in these tests doesn't commit, so the
     after_commit hook that dispatches the anchor hasn't fired yet — then run every queued
     anchor exactly as the worker would."""
-    from app.orchestration.phase_service import anchor_phase_event
+    from app.orchestration.phase_service import _BACKGROUND_ANCHOR_TASKS, anchor_phase_event
 
     await db_session.commit()
+    await asyncio.gather(*_BACKGROUND_ANCHOR_TASKS)
     for phase_event_id, canonical_payload, receipt_type in dispatched:
         await anchor_phase_event(
             db_session, phase_event_id=uuid.UUID(phase_event_id),
@@ -347,3 +356,125 @@ async def test_trip_detail_lists_departure_receipt_for_dispatcher(
     phase_receipts = [r for r in receipts if r["subject_type"] == "phase_event"]
     assert len(phase_receipts) == 1
     assert phase_receipts[0]["subject_id"] == departure_id_str
+
+
+@pytest.mark.parametrize("phase_type", ["departure", "confirmation", "receiver_confirmation"])
+@respx.mock
+async def test_upload_complete_anchor_verify_and_detect_replacement_end_to_end(
+    client, db_session, seed_trip, captured_anchor_dispatches, monkeypatch, phase_type,
+):
+    """Only external Storage/HCS transports are fake; HTTP, hashing and SQL are real."""
+    trip, driver = seed_trip
+    driver_token = make_token(sub=str(driver.id), role="driver")
+    objects: dict[str, bytes] = {}
+    storage_client = MagicMock()
+
+    def store(path: str, file_bytes: bytes, file_options: dict) -> None:
+        objects[path] = file_bytes
+
+    storage_client.storage.from_.return_value.upload.side_effect = store
+    monkeypatch.setattr("app.storage.supabase_storage._get_client", lambda: storage_client)
+
+    async def upload(label: str) -> str:
+        content = b"\xff\xd8\xff" + label.encode()
+        response = await client.post("/api/v1/artifacts", headers=auth_header(driver_token),
+            data={"trip_id": str(trip.id), "artifact_type": "photo", "captured_at": datetime.now(UTC).isoformat()},
+            files={"file": ("evidence.jpg", content, "image/jpeg")})
+        assert response.status_code == 201
+        assert response.json()["file_hash"] == hashlib.sha256(content).hexdigest()
+        return response.json()["id"]
+
+    async def complete(name: str, fields: dict) -> str:
+        event_id = await _phase_event_id(client, trip.id, driver_token, name)
+        response = await client.post(
+            f"/api/v1/trips/{trip.id}/phases/{event_id}/complete",
+            headers=auth_header(driver_token),
+            json={"phase_type": name, "idempotency_key": str(uuid.uuid4()), **fields},
+        )
+        assert response.status_code == 200
+        return event_id
+
+    await _complete_activation(client, db_session, trip, driver_token)
+    await _complete_loading(client, db_session, trip, driver_token)
+    selected_artifact_id = await upload("seal")
+    event_id = await complete("departure", {"seal_number": "AB-1234", "seal_photo_artifact_id": selected_artifact_id})
+    if phase_type != "departure":
+        await complete("in_transit", {})
+        await complete("unloading", {"seal_number_at_destination": "AB-1234", "gate_photo_artifact_id": await upload("arrival")})
+        selected_artifact_id = await upload("POD")
+        if phase_type == "receiver_confirmation":
+            confirmation_id = await _phase_event_id(client, trip.id, driver_token, "confirmation")
+            handover_url = f"/api/v1/trips/{trip.id}/phases/{confirmation_id}/handover"
+            issued = await client.post(f"{handover_url}/tokens", headers=auth_header(driver_token))
+            assert issued.status_code == 201
+            token = issued.json()["scan_url"].rsplit("/", 1)[1]
+            opened = await client.get(f"/api/v1/handover/{token}")
+            assert opened.status_code == 200
+            signature_bytes = b"\x89PNG\r\n\x1a\n" + b"receiver attestation"
+            confirmed = await client.post(f"/api/v1/handover/{token}/confirm", json={
+                "receiver_name": "Test Receiver",
+                "receiver_id_number": "9202204720082",
+                "signature_png_base64": base64.b64encode(signature_bytes).decode(),
+            })
+            assert confirmed.status_code == 201
+            handover = await client.get(handover_url, headers=auth_header(driver_token))
+            assert handover.status_code == 200
+            signature_id = handover.json()["signature_artifact_id"]
+            receiver_artifact = await db_session.get(EvidenceArtifact, uuid.UUID(signature_id))
+            assert receiver_artifact.captured_by_driver_id is None
+            assert receiver_artifact.file_hash == hashlib.sha256(signature_bytes).hexdigest()
+        else:
+            signature_id = await upload("signature")
+        event_id = await complete("confirmation", {
+            "pod_photo_artifact_id": selected_artifact_id,
+            "pod_signature_artifact_id": signature_id,
+        })
+        if phase_type == "receiver_confirmation":
+            selected_artifact_id = signature_id
+
+    await _drain_anchors(db_session, captured_anchor_dispatches)
+    event = await db_session.get(PhaseEvent, uuid.UUID(event_id))
+    receipt = await db_session.get(BlockchainReceipt, event.blockchain_receipt_id)
+    assert receipt.payload_json["payload_version"] == 2
+    assert receipt.data_hash == event.event_hash
+    artifact = await db_session.get(EvidenceArtifact, uuid.UUID(selected_artifact_id))
+    original_hash = artifact.file_hash
+
+    prefix = f"{settings.SUPABASE_URL.rstrip('/')}/storage/v1/object/authenticated/evidence-artifacts/"
+
+    def download(request: httpx.Request) -> httpx.Response:
+        key = request.url.path.split("/evidence-artifacts/", 1)[1]
+        assert request.url.params["cacheNonce"]
+        return httpx.Response(200, content=objects[key])
+
+    storage = respx.get(url__startswith=prefix).mock(side_effect=download)
+    mirror = respx.get(url__regex=r"/api/v1/topics/.*/messages/\d+").respond(200, json={
+        "message": base64.b64encode(receipt.data_hash.encode()).decode(),
+    })
+    user = (await db_session.execute(select(User).where(User.id == trip.created_by_user_id))).scalar_one()
+    headers = auth_header(make_token(sub=str(user.id), role="admin_dispatcher", org_id=str(user.organization_id)))
+    body = {"subject_type": "phase_event", "subject_id": event_id}
+
+    verified = await client.post("/api/v1/blockchain/verify", headers=headers, json=body)
+    assert verified.status_code == 200
+    assert verified.json()["status"] == "verified"
+    assert verified.json()["evidence_verified"] is True
+    assert mirror.call_count == 1
+
+    objects[artifact.s3_key] = b"replaced after anchoring"
+    changed = await client.post("/api/v1/blockchain/verify", headers=headers, json=body)
+    assert changed.json()["status"] == "db_mismatch"
+    assert changed.json()["evidence_verified"] is False
+    assert artifact.file_hash == original_hash
+    assert mirror.call_count == 1  # Local mismatch never spends a Hedera read.
+
+    storage.respond(503)
+    unavailable = await client.post("/api/v1/blockchain/verify", headers=headers, json=body)
+    assert unavailable.json()["status"] == "error"
+    assert mirror.call_count == 1
+
+    regular_headers = auth_header(make_token(sub=str(user.id), role="dispatcher", org_id=str(user.organization_id)))
+    redacted = await client.post("/api/v1/blockchain/verify", headers=regular_headers, json=body)
+    assert redacted.json()["receipt"] is None
+    assert redacted.json()["expected_hash"] is None
+    assert redacted.json()["current_hash"] is None

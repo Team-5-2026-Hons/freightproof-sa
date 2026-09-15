@@ -71,6 +71,10 @@ If you hit deprecated code in an existing file, flag it under `Deprecation warni
 
 **Alembic conflicts (critical with 4 devs):** Before `alembic revision --autogenerate`: `git fetch origin`, check for unmerged migrations on `dev`, rebase if any exist. Name migration files with your name (`2026_04_15_tim_add_vehicle_trailer.py`). If two devs have conflicting migrations, don't fix the revision chain yourself — flag it and coordinate.
 
+**⚠ Autogenerate emits 28 destructive operations that are not yours. ALWAYS prune.** Every `alembic revision --autogenerate` on this repo adds ~21 `drop_index`, 5 constraint-churn ops, and — worst — `drop_constraint` on `fk_users_auth_id` and `fk_drivers_auth_id`, the Supabase Auth identity links. Committing an unpruned migration breaks authentication on the next real upgrade, and **CI will not catch it** (CI never runs Alembic; tests build schema via `Base.metadata.create_all`, not migrations). After generating, read the whole file and delete every operation you did not intend, in `upgrade()` and `downgrade()`. Verify with `grep -nE "op\.[a-z_]+\(" <file>` — every line must be one you can explain. Run `alembic check` to see the current drift. Full explanation and the fix plan: [`docs/design-notes/2026-09-15-alembic-autogenerate-drift.md`](docs/design-notes/2026-09-15-alembic-autogenerate-drift.md).
+
+**Never `alembic upgrade` from a feature branch.** `DATABASE_URL` is the shared Supabase dev database and records one `alembic_version`. Stamping it with a revision that exists only on your branch breaks alembic for the other three devs until you merge. Apply from `dev`, after merge.
+
 ## Testing
 
 Every backend feature needs tests. Task isn't done until tests pass.

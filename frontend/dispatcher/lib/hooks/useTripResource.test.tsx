@@ -37,6 +37,20 @@ beforeEach(() => {
 afterEach(() => { listeners.clear(); vi.useRealTimers() })
 
 describe('trip resource recovery', () => {
+  it('refreshes an owed phase receipt and stops after the worker links it', async () => {
+    const phase = { completed_at: '2026-09-12T12:00:00Z', event_hash: 'a'.repeat(64),
+      blockchain_receipt_id: null, anchor_status: 'pending' }
+    vi.mocked(api.get).mockResolvedValueOnce({ id: 'a', phases: [phase] })
+      .mockResolvedValue({ id: 'a', phases: [{ ...phase, blockchain_receipt_id: 'receipt', anchor_status: 'anchored' }] })
+    const { result, unmount } = renderHook(() => useTripDetail('a'))
+    await flush()
+    await act(async () => vi.advanceTimersByTimeAsync(10_000))
+    expect(result.current.trip?.phases[0].blockchain_receipt_id).toBe('receipt')
+    await act(async () => vi.advanceTimersByTimeAsync(30_000))
+    expect(api.get).toHaveBeenCalledTimes(2)
+    unmount()
+  })
+
   it.each([404, 500, 0])('keeps the manifest failure status %s distinct', async status => {
     vi.mocked(api.get).mockRejectedValue(new ApiError(status, 'Unavailable'))
     const { result } = renderHook(() => useManifest('a'))

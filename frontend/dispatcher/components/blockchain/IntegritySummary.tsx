@@ -15,7 +15,8 @@ export function IntegritySummary({ trip }: { trip: Trip }) {
   return <section aria-label="Record integrity" className="mx-auto mb-6 w-full max-w-4xl px-4 md:px-6">
     <div className="rounded-lg border border-outline-v/30 bg-surf-low p-4">
       <h2 className="text-sm font-bold text-on-surf">Record integrity</h2>
-      <p className="mt-1 text-xs text-on-surf-v">Verification checks the committed trip details. It does not verify every photo or phase record.</p>
+      <p className="mt-1 text-xs text-on-surf-v">This check covers committed trip details only.</p>
+      <ForensicOnly><p className="mt-1 text-xs text-on-surf-v">Verify pickup and delivery receipts on the timeline. Evidence bytes are covered when the receipt supports them.</p></ForensicOnly>
       {tally.failed > 0 && <p className="mt-2 text-sm font-semibold text-warn">{tally.failed} failed anchors — receipts still owed</p>}
       <ForensicOnly><p className="mt-2 text-xs text-on-surf-v">{tally.anchored} of {tally.owed} phase receipts anchored</p></ForensicOnly>
       <VerifyButton subjectType="trip" subjectId={trip.id} autoVerify onResult={onResult} />

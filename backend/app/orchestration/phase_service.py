@@ -26,7 +26,7 @@ shared core for everything generic:
 
 advance_departure (P3) and advance_confirmation (P6) anchor to Hedera HCS per
 api_contract_dispatcher_driver.md §3.4: a JSON-native canonical payload is
-built (compute_departure_canonical_payload / compute_confirmation_canonical_payload),
+built by explicit versioned departure/confirmation payload builders,
 hashed via the shared compute_payload_hash()
 (app/blockchain/anchor_service.py — the same hasher trips and vehicles use),
 then anchor_subject() submits it to Hedera and persists a BlockchainReceipt.
@@ -45,9 +45,10 @@ because a ~4-6s submit inside the request meant the driver stood holding the
 swipe control for the whole round trip. The phase completes and returns with
 anchor_status still PENDING; the receipt lands moments later and the driver
 app already renders that interval ("anchoring in progress", AnchorProgress).
-If the broker is unreachable the anchor runs inline exactly as it used to —
-nothing in this codebase retries a FAILED anchor, so a dropped dispatch would
-mean permanently unanchored evidence.
+If the broker is unreachable an in-process async fallback starts immediately;
+the request does not wait for Hedera, and failures remain visible through
+anchor_status and logs. A periodic worker also recovers overdue receipts from
+the committed phase ledger, including dispatches lost during process failure.
 advance_activation, advance_loading, advance_unloading remain unanchored
 feeders by design — they record cross-checks (GPS, driver visual count, seal
 continuity at destination) that support the anchored departure/confirmation
@@ -93,6 +94,17 @@ from app.schemas.phases import (
 from app.schemas.trips import TripDetailResponse
 
 logger = logging.getLogger(__name__)
+
+PHASE_PAYLOAD_VERSION_V2 = 2
+
+_PHASE_RECEIPT_TYPES = {
+    PhaseType.DEPARTURE: BlockchainReceiptType.PICKUP,
+    PhaseType.CONFIRMATION: BlockchainReceiptType.DELIVERY,
+}
+
+# asyncio keeps only weak references to scheduled tasks. Retain dispatches and
+# fallback anchors until their completion callback has observed the result.
+_BACKGROUND_ANCHOR_TASKS: set[asyncio.Task[bool]] = set()
 
 
 def _initial_review_status(severity: ExceptionSeverity) -> ExceptionReviewStatus:
@@ -171,7 +183,7 @@ async def _load_phase_event(
 
 async def _assert_artifacts_belong_to_trip(
     db: AsyncSession, *, trip_id: uuid.UUID, artifact_ids: tuple[uuid.UUID | None, ...],
-) -> None:
+) -> dict[uuid.UUID, str]:
     """Every artifact a phase cites as its evidence must belong to THIS trip.
 
     Without this, a caller could attach any artifact UUID in the system to a phase:
@@ -188,26 +200,29 @@ async def _assert_artifacts_belong_to_trip(
     otherwise see it.
 
     None entries are skipped so optional artifact fields can pass through unchanged.
+    Returns the owned artifacts' stored SHA-256 digests so an anchoring caller does
+    not need a second database round trip after this ownership check.
     """
     present = {aid for aid in artifact_ids if aid is not None}
     if not present:
-        return
+        return {}
 
     result = await db.execute(
-        select(EvidenceArtifact.id).where(
+        select(EvidenceArtifact.id, EvidenceArtifact.file_hash).where(
             EvidenceArtifact.id.in_(present),
             EvidenceArtifact.trip_id == trip_id,
         )
     )
-    owned = {row for (row,) in result.all()}
+    owned = {artifact_id: file_hash for artifact_id, file_hash in result.all()}
 
-    missing = present - owned
+    missing = present - owned.keys()
     if missing:
         # Sorted so the message is deterministic across runs — this ends up in an
         # API error body and in test assertions.
         raise ResourceNotFoundError(
             "EvidenceArtifact", ", ".join(sorted(str(m) for m in missing)),
         )
+    return owned
 
 
 def _is_resolved(status: PhaseStatus) -> bool:  # T3
@@ -370,7 +385,9 @@ async def anchor_phase_event(
     contract (canonical payload in, fail-open on Hedera trouble) stays defined here
     rather than being duplicated in a worker.
     """
-    result = await db.execute(select(PhaseEvent).where(PhaseEvent.id == phase_event_id))
+    result = await db.execute(
+        select(PhaseEvent).where(PhaseEvent.id == phase_event_id).with_for_update()
+    )
     event = result.scalar_one_or_none()
     if event is None:
         # Nothing to anchor and nothing to retry — the row a receipt was owed against is
@@ -378,10 +395,64 @@ async def anchor_phase_event(
         # the transaction that wrote this row has committed.
         logger.error("Anchor requested for unknown phase_event_id=%s", phase_event_id)
         return False
+
+    event.updated_at = datetime.now(UTC)
+
+    # Celery delivery is at-least-once. Serialize duplicate workers on this row and
+    # never submit a second HCS message once the first worker linked its receipt.
+    if event.blockchain_receipt_id is not None:
+        event.anchor_status = AnchorStatus.ANCHORED
+        return True
+
+    payload_hash = compute_payload_hash(canonical_payload)
+    expected_receipt_type = _PHASE_RECEIPT_TYPES.get(event.phase_type)
+    if event.event_hash != payload_hash or receipt_type != expected_receipt_type:
+        logger.error(
+            "Rejected invalid anchor task for phase_event_id=%s: payload or receipt type mismatch",
+            phase_event_id,
+        )
+        event.anchor_status = AnchorStatus.FAILED
+        return False
+
     await _anchor_or_fail_open(
         db, event=event, canonical_payload=canonical_payload, receipt_type=receipt_type,
     )
     return event.anchor_status == AnchorStatus.ANCHORED
+
+
+async def recover_phase_anchor(db: AsyncSession, *, due_before: datetime) -> bool | None:
+    """Attempt one overdue receipt; None means no eligible unlocked row remains.
+
+    Each attempt gets its own transaction in the task. SKIP LOCKED prevents two
+    recovery workers from waiting on the same phase, and updated_at rotates failures
+    to the back of the queue instead of starving newer debts.
+    """
+    from app.orchestration.verification_service import reconstruct_pending_phase_payload
+
+    event = (await db.execute(
+        select(PhaseEvent).where(
+            PhaseEvent.phase_type.in_(_PHASE_RECEIPT_TYPES),
+            PhaseEvent.status.in_((PhaseStatus.COMPLETED, PhaseStatus.EXCEPTION)),
+            PhaseEvent.anchor_status.in_((AnchorStatus.PENDING, AnchorStatus.FAILED)),
+            PhaseEvent.event_hash.is_not(None),
+            PhaseEvent.blockchain_receipt_id.is_(None),
+            PhaseEvent.completed_at.is_not(None),
+            PhaseEvent.updated_at < due_before,
+        ).order_by(PhaseEvent.updated_at, PhaseEvent.id).limit(1).with_for_update(skip_locked=True)
+    )).scalar_one_or_none()
+    if event is None:
+        return None
+
+    event.updated_at = datetime.now(UTC)
+    payload = await reconstruct_pending_phase_payload(db, event)
+    if payload is None:
+        event.anchor_status = AnchorStatus.FAILED
+        logger.error("Cannot recover original payload for phase_event_id=%s; receipt still owed", event.id)
+        return False
+    return await anchor_phase_event(
+        db, phase_event_id=event.id, canonical_payload=payload,
+        receipt_type=_PHASE_RECEIPT_TYPES[event.phase_type],
+    )
 
 
 def _dispatch_anchor(
@@ -401,10 +472,9 @@ def _dispatch_anchor(
     * It fires on after_commit, never before. The worker opens its OWN session, so a task
       dispatched mid-transaction could look for a phase_event row that isn't committed yet
       and find nothing.
-    * If the broker cannot be reached, it anchors INLINE instead, exactly as this code did
-      before. Nothing in this codebase retries an anchor_status = FAILED debt, so a
-      silently dropped dispatch would mean permanently unanchored evidence — a slow
-      submit is a far better failure than that.
+    * If the broker cannot be reached, it schedules an immediate in-process fallback.
+      This preserves the anchor attempt without turning the API event loop into a
+      blocking Hedera worker.
     """
     # Imported at call time: tasks/blockchain.py imports this module back, and Celery's
     # own import is heavy enough to be worth keeping out of the request path's cold start.
@@ -412,46 +482,72 @@ def _dispatch_anchor(
 
     event_id = event.id
     payload = dict(canonical_payload)
+    event.anchor_status = AnchorStatus.PENDING
 
-    def _send(_session: Any) -> None:
+    async def _publish() -> bool:
         try:
-            anchor_phase_event_task.delay(str(event_id), payload, receipt_type.value)
+            await asyncio.to_thread(
+                anchor_phase_event_task.delay, str(event_id), payload, receipt_type.value,
+            )
         except Exception:  # noqa: BLE001 — any broker failure, not just one library's
             logger.exception(
-                "Could not queue the anchor for phase_event_id=%s — anchoring inline instead",
+                "Could not queue the anchor for phase_event_id=%s — scheduling local fallback",
                 event_id,
             )
-            _anchor_inline_after_dispatch_failure(
+            _schedule_anchor_after_dispatch_failure(
                 phase_event_id=event_id, canonical_payload=payload, receipt_type=receipt_type,
             )
+        return True
+
+    def _send(_session: Any) -> None:
+        _retain_anchor_task(asyncio.get_running_loop().create_task(_publish()), event_id)
 
     # sync_session: SQLAlchemy's event system is synchronous, and after_commit is the
     # only hook that fires once this request's write is actually durable.
     event_module.listens_for(db.sync_session, "after_commit", once=True)(_send)
 
 
-def _anchor_inline_after_dispatch_failure(
+def _schedule_anchor_after_dispatch_failure(
     *, phase_event_id: uuid.UUID, canonical_payload: dict[str, Any],
     receipt_type: BlockchainReceiptType,
 ) -> None:
-    """Last-resort synchronous anchor when the broker is unreachable.
+    """Start a last-resort in-process anchor when the broker is unreachable.
 
-    Runs in its own session because the request's transaction has already committed by
-    the time this is reachable (see _dispatch_anchor's after_commit hook), so the anchor
-    lands as its own small write rather than reopening a closed transaction.
+    The coroutine uses its own session because the request transaction has committed.
+    Scheduling it on the existing server loop avoids both illegal nested asyncio.run()
+    calls and blocking every request while Hedera responds.
     """
     from app.tasks.blockchain import _anchor
 
-    try:
-        asyncio.run(_anchor(
-            phase_event_id=phase_event_id,
-            canonical_payload=canonical_payload,
-            receipt_type=receipt_type,
-        ))
-    except Exception:  # noqa: BLE001 — this is already the fallback path
-        logger.exception(
-            "Inline anchor fallback failed for phase_event_id=%s — receipt owed", phase_event_id,
-        )
+    anchor = _anchor(
+        phase_event_id=phase_event_id,
+        canonical_payload=canonical_payload,
+        receipt_type=receipt_type,
+    )
+    task = asyncio.get_running_loop().create_task(anchor)
+    _retain_anchor_task(task, phase_event_id)
+
+
+def _retain_anchor_task(task: asyncio.Task[bool], phase_event_id: uuid.UUID) -> None:
+    """Observe best-effort dispatch/fallback work; the ledger backs crash recovery."""
+    _BACKGROUND_ANCHOR_TASKS.add(task)
+
+    def _observe_result(completed: asyncio.Task[bool]) -> None:
+        _BACKGROUND_ANCHOR_TASKS.discard(completed)
+        try:
+            completed.result()
+        except asyncio.CancelledError:
+            logger.warning(
+                "Background anchor work cancelled for phase_event_id=%s; recovery will retry",
+                phase_event_id,
+            )
+        except Exception:  # noqa: BLE001 — task boundary must observe every failure
+            logger.exception(
+                "Background anchor work failed for phase_event_id=%s; recovery will retry",
+                phase_event_id,
+            )
+
+    task.add_done_callback(_observe_result)
 
 
 async def _anchor_or_fail_open(
@@ -482,9 +578,7 @@ async def _anchor_or_fail_open(
             canonical_payload=canonical_payload, receipt_type=receipt_type, trip_id=event.trip_id,
         )
     except (HederaTimeoutError, HederaServiceError) as exc:
-        # logger.exception (not .error) so the traceback and the caught exception's
-        # own message are captured — with no retry mechanism yet, this log line is
-        # the only trail that a receipt is owed at all.
+        # Preserve the failure reason while the worker retries the durable debt.
         logger.exception(
             "Anchor failed for phase_event_id=%s (fail-open, D7): retry owed — %s", event.id, exc,
         )
@@ -792,7 +886,7 @@ async def override_phase(
 # Display format for the date a driver is told to come back on. Day-month-year with a
 # full month name: unambiguous to a South African reader, and never confusable with the
 # US month-first ordering the way a numeric date would be.
-_SCHEDULED_DATE_FORMAT = "%-d %B %Y"
+_SCHEDULED_DATE_FORMAT = "%d %B %Y"
 
 
 def operating_day(moment: datetime) -> date:
@@ -860,7 +954,7 @@ async def _reject_if_not_due(db: AsyncSession, trip: Trip) -> None:
 
     if is_before_scheduled_day(datetime.now(UTC), scheduled):
         raise PhaseTooEarlyError(
-            operating_day(scheduled).strftime(_SCHEDULED_DATE_FORMAT), "Activation",
+            operating_day(scheduled).strftime(_SCHEDULED_DATE_FORMAT).lstrip("0"), "Activation",
         )
 
 
@@ -1006,10 +1100,10 @@ async def advance_activation(
     return await _finish_phase(db, trip=trip, event=event, idempotency_key=payload.idempotency_key)
 
 
-def compute_departure_canonical_payload(
+def compute_departure_canonical_payload_v1(
     *, phase_event_id: uuid.UUID, trip_id: uuid.UUID, seal_number: str,
 ) -> dict[str, str]:
-    """Canonical departure payload anchored to Hedera (PICKUP receipt).
+    """Reproduce the legacy departure payload for pre-FP-154 receipts.
 
     JSON-native (UUIDs stringified explicitly) so compute_payload_hash's plain
     json.dumps (no default=str fallback) never has to guess how to serialize a
@@ -1025,6 +1119,26 @@ def compute_departure_canonical_payload(
         "trip_id": str(trip_id),
         "phase_type": "departure",
         "seal_number": seal_number,
+    }
+
+
+def compute_departure_canonical_payload_v2(
+    *, phase_event_id: uuid.UUID, trip_id: uuid.UUID, seal_number: str,
+    seal_photo_sha256: str, waybill_photo_sha256: str | None,
+) -> dict[str, str | int | None]:
+    """Canonical departure payload with role-labelled evidence commitments.
+
+    Artifact IDs and Storage paths remain off-chain. The optional waybill key is
+    always present so reconstruction has one deterministic v2 shape.
+    """
+    return {
+        "payload_version": PHASE_PAYLOAD_VERSION_V2,
+        "phase_event_id": str(phase_event_id),
+        "trip_id": str(trip_id),
+        "phase_type": "departure",
+        "seal_number": seal_number,
+        "seal_photo_sha256": seal_photo_sha256,
+        "waybill_photo_sha256": waybill_photo_sha256,
     }
 
 
@@ -1236,7 +1350,7 @@ async def advance_departure(
     # waybill id is normally None now (its step was removed 2026-08-10 — see
     # DepartureCompleteRequest); the helper skips None entries, so a replayed offline
     # entry that still carries one is checked exactly as before.
-    await _assert_artifacts_belong_to_trip(
+    artifact_hashes = await _assert_artifacts_belong_to_trip(
         db, trip_id=trip_id,
         artifact_ids=(payload.waybill_photo_artifact_id, payload.seal_photo_artifact_id),
     )
@@ -1303,8 +1417,16 @@ async def advance_departure(
     # D7: the anchor moves whole to departure. Runs unconditionally regardless
     # of the mismatch outcome above — a mismatch is evidence in its own right,
     # not a reason to withhold the anchor (matching confirmation's precedent).
-    canonical_payload = compute_departure_canonical_payload(
-        phase_event_id=event.id, trip_id=trip_id, seal_number=payload.seal_number,
+    canonical_payload = compute_departure_canonical_payload_v2(
+        phase_event_id=event.id,
+        trip_id=trip_id,
+        seal_number=payload.seal_number,
+        seal_photo_sha256=artifact_hashes[payload.seal_photo_artifact_id],
+        waybill_photo_sha256=(
+            artifact_hashes[payload.waybill_photo_artifact_id]
+            if payload.waybill_photo_artifact_id is not None
+            else None
+        ),
     )
     event.event_hash = compute_payload_hash(canonical_payload)
     # Queued, not awaited: this used to hold the driver's swipe open for the whole
@@ -1505,16 +1627,16 @@ async def advance_unloading(
     return await _finish_phase(db, trip=trip, event=event, idempotency_key=payload.idempotency_key)
 
 
-def compute_confirmation_canonical_payload(
+def compute_confirmation_canonical_payload_v1(
     *, phase_event_id: uuid.UUID, trip_id: uuid.UUID, pp_scan_in_count: int,
     driver_visual_count: int | None,
 ) -> dict[str, str | int | None]:
-    """Canonical confirmation payload anchored to Hedera (DELIVERY receipt).
+    """Reproduce the legacy confirmation payload for pre-FP-154 receipts.
 
     Anchored unconditionally, independent of whether the counts match — a
     mismatch is evidence in its own right (recorded separately as a
     TripException), not a reason to withhold the anchor. Same POPIA/JSON-native
-    rules as compute_departure_canonical_payload: no GPS/photos/PII, no completed_at.
+    rules as the departure payload: no GPS/photos/PII, no completed_at.
 
     phase_type is "confirmation", not "unloading" — task 2.7 corrects a
     pre-existing mislabel, not just a rename: this builder has only ever been
@@ -1539,6 +1661,24 @@ def compute_confirmation_canonical_payload(
     }
 
 
+def compute_confirmation_canonical_payload_v2(
+    *, phase_event_id: uuid.UUID, trip_id: uuid.UUID, pp_scan_in_count: int,
+    driver_visual_count: int | None, pod_photo_sha256: str,
+    pod_signature_sha256: str,
+) -> dict[str, str | int | None]:
+    """Canonical confirmation payload with separate POD and signature commitments."""
+    return {
+        "payload_version": PHASE_PAYLOAD_VERSION_V2,
+        "phase_event_id": str(phase_event_id),
+        "trip_id": str(trip_id),
+        "phase_type": "confirmation",
+        "pp_scan_in_count": pp_scan_in_count,
+        "driver_visual_count": driver_visual_count,
+        "pod_photo_sha256": pod_photo_sha256,
+        "pod_signature_sha256": pod_signature_sha256,
+    }
+
+
 async def advance_confirmation(
     db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID, phase_event_id: uuid.UUID,
     payload: ConfirmationCompleteRequest,
@@ -1556,7 +1696,7 @@ async def advance_confirmation(
         db, trip=trip, event=event, driver_captured_at=payload.driver_captured_at,
     )
 
-    await _assert_artifacts_belong_to_trip(
+    artifact_hashes = await _assert_artifacts_belong_to_trip(
         db, trip_id=trip_id,
         artifact_ids=(payload.pod_photo_artifact_id, payload.pod_signature_artifact_id),
     )
@@ -1627,13 +1767,15 @@ async def advance_confirmation(
     event.driver_visual_count = payload.driver_visual_count
     event.parcel_count_destination = scanned_in_total
 
-    canonical_payload = compute_confirmation_canonical_payload(
+    canonical_payload = compute_confirmation_canonical_payload_v2(
         phase_event_id=event.id, trip_id=trip_id,
         # Key name unchanged — see the schema comment. Its provenance is now the
         # warehouse feed rather than Parcel Perfect; its name is a mild misnomer and
         # stays, because verification_service rebuilds every historical anchor from it.
         pp_scan_in_count=scanned_in_total,
         driver_visual_count=payload.driver_visual_count,
+        pod_photo_sha256=artifact_hashes[payload.pod_photo_artifact_id],
+        pod_signature_sha256=artifact_hashes[payload.pod_signature_artifact_id],
     )
     event.event_hash = compute_payload_hash(canonical_payload)
 

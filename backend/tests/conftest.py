@@ -19,6 +19,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, AsyncGenerator
+from unittest.mock import Mock
 
 import pytest
 import pytest_asyncio
@@ -71,6 +72,23 @@ from app.main import app  # noqa: E402
 # and substitute a fake Redis, so the behaviour is still covered — just not by accident,
 # from every other test in the suite.
 settings.RATE_LIMIT_ENABLED = False
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def isolate_anchor_dispatch(monkeypatch: pytest.MonkeyPatch) -> AsyncGenerator[None, None]:
+    """Never publish test phase IDs to the development broker; drain per-loop work.
+
+    Module-specific capture/failure fixtures replace this stub when they test the
+    queue boundary. Draining before pytest closes the loop keeps tasks from leaking
+    into the next test without changing the application's async dispatch behavior.
+    """
+    from app.orchestration.phase_service import _BACKGROUND_ANCHOR_TASKS
+    from app.tasks.blockchain import anchor_phase_event_task
+
+    monkeypatch.setattr(anchor_phase_event_task, "delay", Mock(return_value=None))
+    yield
+    while _BACKGROUND_ANCHOR_TASKS:
+        await asyncio.gather(*tuple(_BACKGROUND_ANCHOR_TASKS))
 
 # ── Test EC key pair (generated once per process) ─────────────────────────────
 # Used to sign test JWTs with ES256, mirroring how Supabase signs real tokens.

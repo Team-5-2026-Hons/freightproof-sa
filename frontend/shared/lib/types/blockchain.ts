@@ -34,6 +34,7 @@ export type VerifyResult = {
   receipt: BlockchainReceipt | null;
   expected_hash: string | null;
   current_hash: string | null;
+  evidence_verified: boolean;
 };
 
 // Mirrors VehicleEventType enum in backend/app/db/models/enums.py exactly.

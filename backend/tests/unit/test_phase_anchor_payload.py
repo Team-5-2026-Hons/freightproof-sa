@@ -6,13 +6,13 @@ wrapper stubbed at the import boundary anchor_service uses it through — the
 same approach as tests/unit/test_phase_service.py's autouse fixture, kept
 consistent here rather than mixing in a second mocking style.
 
-compute_departure_canonical_payload/compute_confirmation_canonical_payload
-(renamed by task 2.7 from compute_h2_canonical_payload/compute_h5_canonical_payload)
-are exercised here under their current names.
+The explicit v1 builders preserve historical receipts, while v2 builders add
+role-labelled evidence hashes without exposing artifact IDs or private data.
 """
 
+import asyncio
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from unittest.mock import MagicMock
 
@@ -20,10 +20,11 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import select
 
+from app.blockchain.anchor_service import compute_payload_hash
 from app.blockchain.hedera import HederaReceipt
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import (
-    ArtifactType, BlockchainReceiptType, ExceptionType, ParcelStatus, PhaseStatus, PhaseType, IdvsStatus,
+    AnchorStatus, ArtifactType, BlockchainReceiptType, ExceptionType, ParcelStatus, PhaseStatus, PhaseType, IdvsStatus,
     OrganizationType, SubjectType, TripStatus, VehicleType, VerifyStatus,
 )
 from app.db.models.evidence import EvidenceArtifact
@@ -37,11 +38,16 @@ from app.integrations import scan_feed as scan_feed_module
 from app.integrations.scan_feed import MockScanFeed, ScanDirection
 from app.orchestration import scan_service
 from app.orchestration.phase_service import (
+    _BACKGROUND_ANCHOR_TASKS,
     advance_activation, advance_confirmation, advance_departure, advance_in_transit, advance_loading,
-    advance_unloading, compute_confirmation_canonical_payload, compute_departure_canonical_payload,
+    advance_unloading, compute_confirmation_canonical_payload_v1,
+    compute_confirmation_canonical_payload_v2, compute_departure_canonical_payload_v1,
+    compute_departure_canonical_payload_v2,
+    recover_phase_anchor,
 )
 from app.orchestration.phase_service import anchor_phase_event
 from app.orchestration.verification_service import verify_subject
+from app.storage.supabase_storage import EvidenceObjectNotFoundError, EvidenceStorageUnavailableError
 from app.schemas.phases import (
     ActivationCompleteRequest, ConfirmationCompleteRequest, DepartureCompleteRequest,
     InTransitCompleteRequest, LoadingCompleteRequest, UnloadingCompleteRequest,
@@ -79,6 +85,16 @@ def stub_hedera_service(monkeypatch):
     )
     monkeypatch.setattr("app.blockchain.anchor_service.HederaService", mock_cls)
     return mock_cls
+
+
+@pytest.fixture(autouse=True)
+def stub_evidence_storage_hash(monkeypatch):
+    async def _stored_hash(*, s3_bucket: str, s3_key: str) -> str:
+        return "a" * 64
+
+    monkeypatch.setattr(
+        "app.orchestration.verification_service.hash_stored_evidence_file", _stored_hash,
+    )
 
 
 @pytest_asyncio.fixture
@@ -160,11 +176,11 @@ async def trip_fixture(db_session):
     return trip, driver, phases
 
 
-async def _make_artifact(db_session, trip_id):
+async def _make_artifact(db_session, trip_id, *, file_hash="a" * 64):
     artifact = EvidenceArtifact(
         id=uuid.uuid4(), trip_id=trip_id, artifact_type=ArtifactType.PHOTO,
         s3_key=f"{trip_id}/{uuid.uuid4()}", s3_bucket="evidence-artifacts",
-        file_hash="a" * 64, mime_type="image/jpeg",
+        file_hash=file_hash, mime_type="image/jpeg",
         captured_at=datetime.now(UTC),
     )
     db_session.add(artifact)
@@ -172,7 +188,10 @@ async def _make_artifact(db_session, trip_id):
     return artifact.id
 
 
-async def _advance_to_departure(db_session, trip, driver, phases):
+async def _advance_to_departure(
+    db_session, trip, driver, phases, *,
+    waybill_hash: str | None = "a" * 64, seal_hash: str = "a" * 64,
+):
     """D7/T5 (task 2.6): the seal — and the anchor — moved from loading to
     departure, so this is now the helper that produces an anchored handshake."""
     await advance_activation(
@@ -188,8 +207,14 @@ async def _advance_to_departure(db_session, trip, driver, phases):
     return await advance_departure(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["departure"].id,
         payload=DepartureCompleteRequest(phase_type=PhaseType.DEPARTURE, 
-            waybill_photo_artifact_id=await _make_artifact(db_session, trip.id), seal_number="AB-1234",
-            seal_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            waybill_photo_artifact_id=(
+                await _make_artifact(db_session, trip.id, file_hash=waybill_hash)
+                if waybill_hash is not None else None
+            ),
+            seal_number="AB-1234",
+            seal_photo_artifact_id=await _make_artifact(
+                db_session, trip.id, file_hash=seal_hash,
+            ),
             guard_verified_seal=True, idempotency_key=str(uuid.uuid4()),
         ),
     )
@@ -226,13 +251,13 @@ async def _advance_to_unloading(db_session, trip, driver, phases):
 
 # ── Payload shape: no GPS/artifact/PII keys (pure logic, no DB) ────────────────
 
-def test_departure_canonical_payload_excludes_gps_artifacts_and_pii():
+def test_departure_v1_payload_remains_byte_compatible():
     """T5/task 2.6: driver_visual_count is gone from this payload — it stays
     on loading, unanchored, and never travels with the seal to departure."""
     event_id = uuid.uuid4()
     trip_id = uuid.uuid4()
 
-    payload = compute_departure_canonical_payload(
+    payload = compute_departure_canonical_payload_v1(
         phase_event_id=event_id, trip_id=trip_id, seal_number="AB-1234",
     )
 
@@ -243,11 +268,11 @@ def test_departure_canonical_payload_excludes_gps_artifacts_and_pii():
     }
 
 
-def test_confirmation_canonical_payload_excludes_gps_artifacts_and_pii():
+def test_confirmation_v1_payload_remains_byte_compatible():
     event_id = uuid.uuid4()
     trip_id = uuid.uuid4()
 
-    payload = compute_confirmation_canonical_payload(
+    payload = compute_confirmation_canonical_payload_v1(
         phase_event_id=event_id, trip_id=trip_id, pp_scan_in_count=42, driver_visual_count=40,
     )
 
@@ -258,14 +283,14 @@ def test_confirmation_canonical_payload_excludes_gps_artifacts_and_pii():
     }
 
 
-def test_confirmation_canonical_payload_keeps_null_count_key_present():
+def test_confirmation_v1_payload_keeps_null_count_key_present():
     """driver_visual_count is now Optional (the driver may skip the count) — the
     key must stay PRESENT with value None, never be omitted, so
     verification_service's rebuild reproduces the same JSON shape and hash."""
     event_id = uuid.uuid4()
     trip_id = uuid.uuid4()
 
-    payload = compute_confirmation_canonical_payload(
+    payload = compute_confirmation_canonical_payload_v1(
         phase_event_id=event_id, trip_id=trip_id, pp_scan_in_count=42, driver_visual_count=None,
     )
 
@@ -274,6 +299,69 @@ def test_confirmation_canonical_payload_keeps_null_count_key_present():
     assert payload == {
         "phase_event_id": str(event_id), "trip_id": str(trip_id),
         "phase_type": "confirmation", "pp_scan_in_count": 42, "driver_visual_count": None,
+    }
+
+
+def test_departure_v2_payload_commits_role_labelled_artifact_hashes():
+    event_id = uuid.uuid4()
+    trip_id = uuid.uuid4()
+
+    payload = compute_departure_canonical_payload_v2(
+        phase_event_id=event_id,
+        trip_id=trip_id,
+        seal_number="AB-1234",
+        seal_photo_sha256="a" * 64,
+        waybill_photo_sha256="b" * 64,
+    )
+
+    assert not (_FORBIDDEN_KEYS & payload.keys())
+    assert payload == {
+        "payload_version": 2,
+        "phase_event_id": str(event_id),
+        "trip_id": str(trip_id),
+        "phase_type": "departure",
+        "seal_number": "AB-1234",
+        "seal_photo_sha256": "a" * 64,
+        "waybill_photo_sha256": "b" * 64,
+    }
+
+
+def test_departure_v2_payload_keeps_optional_waybill_hash_key_present():
+    payload = compute_departure_canonical_payload_v2(
+        phase_event_id=uuid.uuid4(),
+        trip_id=uuid.uuid4(),
+        seal_number="AB-1234",
+        seal_photo_sha256="a" * 64,
+        waybill_photo_sha256=None,
+    )
+
+    assert "waybill_photo_sha256" in payload
+    assert payload["waybill_photo_sha256"] is None
+
+
+def test_confirmation_v2_payload_commits_distinct_pod_and_signature_hashes():
+    event_id = uuid.uuid4()
+    trip_id = uuid.uuid4()
+
+    payload = compute_confirmation_canonical_payload_v2(
+        phase_event_id=event_id,
+        trip_id=trip_id,
+        pp_scan_in_count=42,
+        driver_visual_count=40,
+        pod_photo_sha256="a" * 64,
+        pod_signature_sha256="b" * 64,
+    )
+
+    assert not (_FORBIDDEN_KEYS & payload.keys())
+    assert payload == {
+        "payload_version": 2,
+        "phase_event_id": str(event_id),
+        "trip_id": str(trip_id),
+        "phase_type": "confirmation",
+        "pp_scan_in_count": 42,
+        "driver_visual_count": 40,
+        "pod_photo_sha256": "a" * 64,
+        "pod_signature_sha256": "b" * 64,
     }
 
 
@@ -305,6 +393,7 @@ async def _drain_anchors(db_session, dispatched) -> None:
     is still rolled back when the test ends.
     """
     await db_session.commit()
+    await asyncio.gather(*_BACKGROUND_ANCHOR_TASKS)
     for phase_event_id, canonical_payload, receipt_type in dispatched:
         await anchor_phase_event(
             db_session, phase_event_id=uuid.UUID(phase_event_id),
@@ -338,6 +427,9 @@ async def test_advance_departure_anchors_with_pickup_receipt_type(
     assert receipt.subject_type == SubjectType.PHASE_EVENT
     assert receipt.receipt_type == BlockchainReceiptType.PICKUP
     assert receipt.data_hash == departure.event_hash
+    assert receipt.payload_json["payload_version"] == 2
+    assert receipt.payload_json["seal_photo_sha256"] == "a" * 64
+    assert receipt.payload_json["waybill_photo_sha256"] == "a" * 64
 
 
 @pytest.mark.asyncio
@@ -351,7 +443,9 @@ async def test_advance_confirmation_anchors_with_delivery_receipt_type(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["confirmation"].id,
         payload=ConfirmationCompleteRequest(phase_type=PhaseType.CONFIRMATION,
             pod_photo_artifact_id=await _make_artifact(db_session, trip.id),
-            pod_signature_artifact_id=await _make_artifact(db_session, trip.id),
+            pod_signature_artifact_id=await _make_artifact(
+                db_session, trip.id, file_hash="b" * 64,
+            ),
             driver_visual_count=42, idempotency_key=str(uuid.uuid4()),
         ),
     )
@@ -366,6 +460,28 @@ async def test_advance_confirmation_anchors_with_delivery_receipt_type(
     assert receipt.subject_type == SubjectType.PHASE_EVENT
     assert receipt.receipt_type == BlockchainReceiptType.DELIVERY
     assert receipt.data_hash == h5.event_hash
+    assert receipt.payload_json["payload_version"] == 2
+    assert receipt.payload_json["pod_photo_sha256"] == "a" * 64
+    assert receipt.payload_json["pod_signature_sha256"] == "b" * 64
+
+
+@pytest.mark.asyncio
+async def test_advance_departure_v2_anchors_null_for_absent_legacy_waybill(
+    db_session, trip_fixture, captured_anchor_dispatches,
+):
+    trip, driver, phases = trip_fixture
+
+    await _advance_to_departure(
+        db_session, trip, driver, phases, waybill_hash=None,
+    )
+    await _drain_anchors(db_session, captured_anchor_dispatches)
+
+    receipt = (await db_session.execute(
+        select(BlockchainReceipt).where(
+            BlockchainReceipt.id == phases["departure"].blockchain_receipt_id,
+        )
+    )).scalar_one()
+    assert receipt.payload_json["waybill_photo_sha256"] is None
 
 
 # Task 7 removed test_advance_confirmation_anchors_even_on_count_mismatch from
@@ -511,6 +627,7 @@ async def test_verify_subject_after_departure_reconstructs_matching_payload(
     )
 
     assert outcome.status == VerifyStatus.VERIFIED
+    assert outcome.evidence_verified is True
     stub_service.verify_hash.assert_called_once_with(
         outcome.receipt.hedera_topic_id, outcome.receipt.hedera_sequence_number, outcome.receipt.data_hash,
     )
@@ -543,6 +660,7 @@ async def test_verify_subject_after_confirmation_reconstructs_matching_payload(
     )
 
     assert outcome.status == VerifyStatus.VERIFIED
+    assert outcome.evidence_verified is True
     stub_service.verify_hash.assert_called_once_with(
         outcome.receipt.hedera_topic_id, outcome.receipt.hedera_sequence_number, outcome.receipt.data_hash,
     )
@@ -583,6 +701,433 @@ async def test_verify_subject_after_confirmation_with_null_visual_count_reconstr
     )
 
     assert outcome.status == VerifyStatus.VERIFIED
+    assert outcome.evidence_verified is True
     stub_service.verify_hash.assert_called_once_with(
         outcome.receipt.hedera_topic_id, outcome.receipt.hedera_sequence_number, outcome.receipt.data_hash,
     )
+
+
+@pytest.mark.asyncio
+async def test_verify_subject_preserves_unversioned_departure_receipt_compatibility(
+    db_session, trip_fixture,
+):
+    trip, _driver, phases = trip_fixture
+    departure = phases["departure"]
+    departure.seal_number = "AB-1234"
+    payload = compute_departure_canonical_payload_v1(
+        phase_event_id=departure.id, trip_id=trip.id, seal_number=departure.seal_number,
+    )
+    receipt = BlockchainReceipt(
+        id=uuid.uuid4(), trip_id=trip.id,
+        subject_type=SubjectType.PHASE_EVENT, subject_id=departure.id,
+        receipt_type=BlockchainReceiptType.PICKUP,
+        payload_json=payload, data_hash=compute_payload_hash(payload),
+        hedera_topic_id="0.0.12345", hedera_sequence_number=12,
+    )
+    db_session.add(receipt)
+    await db_session.flush()
+    stub_service = MagicMock()
+    stub_service.verify_hash.return_value = True
+
+    outcome = await verify_subject(
+        db_session, subject_type=SubjectType.PHASE_EVENT, subject_id=departure.id,
+        hedera_service=stub_service,
+    )
+
+    assert outcome.status == VerifyStatus.VERIFIED
+    assert outcome.evidence_verified is False
+    stub_service.verify_hash.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_verify_subject_preserves_unversioned_confirmation_receipt_compatibility(
+    db_session, trip_fixture,
+):
+    trip, _driver, phases = trip_fixture
+    confirmation = phases["confirmation"]
+    confirmation.parcel_count_destination = 42
+    confirmation.driver_visual_count = 40
+    payload = compute_confirmation_canonical_payload_v1(
+        phase_event_id=confirmation.id,
+        trip_id=trip.id,
+        pp_scan_in_count=confirmation.parcel_count_destination,
+        driver_visual_count=confirmation.driver_visual_count,
+    )
+    receipt = BlockchainReceipt(
+        id=uuid.uuid4(), trip_id=trip.id,
+        subject_type=SubjectType.PHASE_EVENT, subject_id=confirmation.id,
+        receipt_type=BlockchainReceiptType.DELIVERY,
+        payload_json=payload, data_hash=compute_payload_hash(payload),
+        hedera_topic_id="0.0.12345", hedera_sequence_number=12,
+    )
+    db_session.add(receipt)
+    await db_session.flush()
+    stub_service = MagicMock()
+    stub_service.verify_hash.return_value = True
+
+    outcome = await verify_subject(
+        db_session, subject_type=SubjectType.PHASE_EVENT, subject_id=confirmation.id,
+        hedera_service=stub_service,
+    )
+
+    assert outcome.status == VerifyStatus.VERIFIED
+    assert outcome.evidence_verified is False
+    stub_service.verify_hash.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_verify_subject_preserves_migrated_handshake_loading_receipt(
+    db_session, trip_fixture,
+):
+    trip, _driver, phases = trip_fixture
+    loading = phases["loading"]
+    loading.seal_number = "AB-1234"
+    loading.driver_visual_count = 42
+    payload = {
+        "handshake_event_id": str(loading.id),
+        "trip_id": str(trip.id),
+        "handshake_type": "loading",
+        "seal_number": loading.seal_number,
+        "driver_visual_count": loading.driver_visual_count,
+    }
+    db_session.add(BlockchainReceipt(
+        id=uuid.uuid4(), trip_id=trip.id,
+        subject_type=SubjectType.PHASE_EVENT, subject_id=loading.id,
+        receipt_type=BlockchainReceiptType.PICKUP,
+        payload_json=payload, data_hash=compute_payload_hash(payload),
+        hedera_topic_id="0.0.12345", hedera_sequence_number=12,
+    ))
+    await db_session.flush()
+    stub_service = MagicMock()
+    stub_service.verify_hash.return_value = True
+
+    outcome = await verify_subject(
+        db_session, subject_type=SubjectType.PHASE_EVENT, subject_id=loading.id,
+        hedera_service=stub_service,
+    )
+
+    assert outcome.status == VerifyStatus.VERIFIED
+    assert outcome.evidence_verified is False
+    stub_service.verify_hash.assert_called_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("phase_name", ["unloading", "confirmation"])
+async def test_verify_subject_preserves_migrated_handshake_unloading_receipt(
+    db_session, trip_fixture, phase_name,
+):
+    trip, _driver, phases = trip_fixture
+    event = phases[phase_name]
+    event.parcel_count_destination = 42
+    event.driver_visual_count = 40
+    payload = {
+        "handshake_event_id": str(event.id),
+        "trip_id": str(trip.id),
+        "handshake_type": "unloading",
+        "pp_scan_in_count": event.parcel_count_destination,
+        "driver_visual_count": event.driver_visual_count,
+    }
+    db_session.add(BlockchainReceipt(
+        id=uuid.uuid4(), trip_id=trip.id,
+        subject_type=SubjectType.PHASE_EVENT, subject_id=event.id,
+        receipt_type=BlockchainReceiptType.DELIVERY,
+        payload_json=payload, data_hash=compute_payload_hash(payload),
+        hedera_topic_id="0.0.12345", hedera_sequence_number=12,
+    ))
+    await db_session.flush()
+    stub_service = MagicMock()
+    stub_service.verify_hash.return_value = True
+
+    outcome = await verify_subject(
+        db_session, subject_type=SubjectType.PHASE_EVENT, subject_id=event.id,
+        hedera_service=stub_service,
+    )
+
+    assert outcome.status == VerifyStatus.VERIFIED
+    assert outcome.evidence_verified is False
+    stub_service.verify_hash.assert_called_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("payload_version", [1, True, "2", 999])
+async def test_verify_subject_rejects_explicit_or_unknown_phase_payload_version(
+    db_session, trip_fixture, payload_version,
+):
+    trip, _driver, phases = trip_fixture
+    departure = phases["departure"]
+    departure.seal_number = "AB-1234"
+    payload = {
+        "payload_version": payload_version,
+        "phase_event_id": str(departure.id),
+        "trip_id": str(trip.id),
+        "phase_type": "departure",
+        "seal_number": departure.seal_number,
+    }
+    db_session.add(BlockchainReceipt(
+        id=uuid.uuid4(), trip_id=trip.id,
+        subject_type=SubjectType.PHASE_EVENT, subject_id=departure.id,
+        receipt_type=BlockchainReceiptType.PICKUP,
+        payload_json=payload, data_hash=compute_payload_hash(payload),
+        hedera_topic_id="0.0.12345", hedera_sequence_number=12,
+    ))
+    await db_session.flush()
+    stub_service = MagicMock()
+
+    outcome = await verify_subject(
+        db_session, subject_type=SubjectType.PHASE_EVENT, subject_id=departure.id,
+        hedera_service=stub_service,
+    )
+
+    assert outcome.status == VerifyStatus.ERROR
+    stub_service.verify_hash.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_verify_subject_detects_tampered_artifact_hash_before_storage_or_hedera(
+    db_session, trip_fixture, captured_anchor_dispatches,
+):
+    trip, driver, phases = trip_fixture
+    await _advance_to_departure(db_session, trip, driver, phases)
+    await _drain_anchors(db_session, captured_anchor_dispatches)
+    seal = await db_session.get(EvidenceArtifact, phases["departure"].seal_photo_artifact_id)
+    seal.file_hash = "b" * 64
+    await db_session.flush()
+    stub_service = MagicMock()
+
+    outcome = await verify_subject(
+        db_session, subject_type=SubjectType.PHASE_EVENT,
+        subject_id=phases["departure"].id, hedera_service=stub_service,
+    )
+
+    assert outcome.status == VerifyStatus.DB_MISMATCH
+    assert outcome.current_hash != outcome.expected_hash
+    stub_service.verify_hash.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_verify_subject_reports_missing_anchored_phase_fields_as_mismatch(
+    db_session, trip_fixture, captured_anchor_dispatches,
+):
+    trip, driver, phases = trip_fixture
+    await _advance_to_departure(db_session, trip, driver, phases)
+    await _drain_anchors(db_session, captured_anchor_dispatches)
+    phases["departure"].seal_number = None
+    await db_session.flush()
+    stub_service = MagicMock()
+
+    outcome = await verify_subject(
+        db_session, subject_type=SubjectType.PHASE_EVENT,
+        subject_id=phases["departure"].id, hedera_service=stub_service,
+    )
+
+    assert outcome.status == VerifyStatus.DB_MISMATCH
+    assert outcome.receipt is not None
+    stub_service.verify_hash.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_verify_subject_detects_swapped_artifact_roles(
+    db_session, trip_fixture, captured_anchor_dispatches,
+):
+    trip, driver, phases = trip_fixture
+    await _advance_to_departure(
+        db_session, trip, driver, phases,
+        waybill_hash="a" * 64, seal_hash="b" * 64,
+    )
+    await _drain_anchors(db_session, captured_anchor_dispatches)
+    departure = phases["departure"]
+    departure.seal_photo_artifact_id, departure.waybill_photo_artifact_id = (
+        departure.waybill_photo_artifact_id, departure.seal_photo_artifact_id,
+    )
+    await db_session.flush()
+    stub_service = MagicMock()
+
+    outcome = await verify_subject(
+        db_session, subject_type=SubjectType.PHASE_EVENT,
+        subject_id=departure.id, hedera_service=stub_service,
+    )
+
+    assert outcome.status == VerifyStatus.DB_MISMATCH
+    assert outcome.current_hash != outcome.expected_hash
+    stub_service.verify_hash.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_verify_subject_detects_replaced_storage_bytes(
+    db_session, trip_fixture, captured_anchor_dispatches, monkeypatch,
+):
+    trip, driver, phases = trip_fixture
+    await _advance_to_departure(db_session, trip, driver, phases)
+    await _drain_anchors(db_session, captured_anchor_dispatches)
+    seal = await db_session.get(EvidenceArtifact, phases["departure"].seal_photo_artifact_id)
+
+    async def _stored_hash(*, s3_bucket: str, s3_key: str) -> str:
+        return "b" * 64 if s3_key == seal.s3_key else "a" * 64
+
+    monkeypatch.setattr(
+        "app.orchestration.verification_service.hash_stored_evidence_file", _stored_hash,
+    )
+    stub_service = MagicMock()
+
+    outcome = await verify_subject(
+        db_session, subject_type=SubjectType.PHASE_EVENT,
+        subject_id=phases["departure"].id, hedera_service=stub_service,
+    )
+
+    assert outcome.status == VerifyStatus.DB_MISMATCH
+    assert outcome.current_hash != outcome.expected_hash
+    stub_service.verify_hash.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_verify_subject_treats_missing_storage_object_as_mismatch(
+    db_session, trip_fixture, captured_anchor_dispatches, monkeypatch,
+):
+    trip, driver, phases = trip_fixture
+    await _advance_to_departure(db_session, trip, driver, phases)
+    await _drain_anchors(db_session, captured_anchor_dispatches)
+
+    async def _missing(*, s3_bucket: str, s3_key: str) -> str:
+        raise EvidenceObjectNotFoundError("missing")
+
+    monkeypatch.setattr(
+        "app.orchestration.verification_service.hash_stored_evidence_file", _missing,
+    )
+    stub_service = MagicMock()
+
+    outcome = await verify_subject(
+        db_session, subject_type=SubjectType.PHASE_EVENT,
+        subject_id=phases["departure"].id, hedera_service=stub_service,
+    )
+
+    assert outcome.status == VerifyStatus.DB_MISMATCH
+    stub_service.verify_hash.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_verify_subject_treats_storage_outage_as_error_not_tampering(
+    db_session, trip_fixture, captured_anchor_dispatches, monkeypatch,
+):
+    trip, driver, phases = trip_fixture
+    await _advance_to_departure(db_session, trip, driver, phases)
+    await _drain_anchors(db_session, captured_anchor_dispatches)
+
+    async def _unavailable(*, s3_bucket: str, s3_key: str) -> str:
+        raise EvidenceStorageUnavailableError("unavailable")
+
+    monkeypatch.setattr(
+        "app.orchestration.verification_service.hash_stored_evidence_file", _unavailable,
+    )
+    stub_service = MagicMock()
+
+    outcome = await verify_subject(
+        db_session, subject_type=SubjectType.PHASE_EVENT,
+        subject_id=phases["departure"].id, hedera_service=stub_service,
+    )
+
+    assert outcome.status == VerifyStatus.ERROR
+    stub_service.verify_hash.assert_not_called()
+
+
+@pytest.mark.parametrize("phase_type", [PhaseType.DEPARTURE, PhaseType.CONFIRMATION])
+@pytest.mark.parametrize("version", [1, 2])
+async def test_recovery_restores_lost_dispatch_without_changing_original_hash(
+    db_session, trip_fixture, stub_hedera_service, phase_type, version,
+):
+    trip, _driver, phases = trip_fixture
+    event = phases[phase_type.value]
+    event.status = PhaseStatus.COMPLETED
+    event.anchor_status = AnchorStatus.PENDING
+    event.completed_at = datetime.now(UTC) - timedelta(minutes=10)
+    event.updated_at = event.completed_at
+    if phase_type == PhaseType.DEPARTURE:
+        event.seal_number = "AB-1234"
+        event.seal_photo_artifact_id = await _make_artifact(db_session, trip.id)
+        args = dict(phase_event_id=event.id, trip_id=trip.id, seal_number=event.seal_number)
+        payload = (
+            compute_departure_canonical_payload_v1(**args) if version == 1 else
+            compute_departure_canonical_payload_v2(**args, seal_photo_sha256="a" * 64, waybill_photo_sha256=None)
+        )
+    else:
+        event.parcel_count_destination = 42
+        event.driver_visual_count = None
+        event.pod_photo_artifact_id = await _make_artifact(db_session, trip.id)
+        event.pod_signature_artifact_id = await _make_artifact(db_session, trip.id)
+        args = dict(phase_event_id=event.id, trip_id=trip.id, pp_scan_in_count=42, driver_visual_count=None)
+        payload = (
+            compute_confirmation_canonical_payload_v1(**args) if version == 1 else
+            compute_confirmation_canonical_payload_v2(**args, pod_photo_sha256="a" * 64, pod_signature_sha256="a" * 64)
+        )
+    event.event_hash = compute_payload_hash(payload)
+    await db_session.flush()
+    event.updated_at = event.completed_at
+    await db_session.flush()
+
+    assert await recover_phase_anchor(db_session, due_before=datetime.now(UTC) - timedelta(minutes=5)) is True
+    await db_session.flush()
+
+    receipt = await db_session.get(BlockchainReceipt, event.blockchain_receipt_id)
+    assert receipt.payload_json == payload
+    assert receipt.data_hash == event.event_hash == compute_payload_hash(payload)
+    assert event.anchor_status == AnchorStatus.ANCHORED
+    assert await recover_phase_anchor(db_session, due_before=datetime.now(UTC)) is None
+    stub_hedera_service.return_value.submit_hash.assert_called_once()
+
+
+async def test_recovery_refuses_changed_evidence_and_does_not_starve_the_next_debt(
+    db_session, trip_fixture, captured_anchor_dispatches, stub_hedera_service,
+):
+    trip, driver, phases = trip_fixture
+    await _advance_to_departure(db_session, trip, driver, phases)
+    event = phases["departure"]
+    original_hash = event.event_hash
+    artifact = await db_session.get(EvidenceArtifact, event.seal_photo_artifact_id)
+    artifact.file_hash = "b" * 64
+    event.updated_at = datetime.now(UTC) - timedelta(minutes=10)
+    await db_session.flush()
+    due_before = datetime.now(UTC) - timedelta(minutes=5)
+
+    assert await recover_phase_anchor(db_session, due_before=due_before) is False
+    await db_session.flush()
+
+    assert event.event_hash == original_hash
+    assert event.anchor_status == AnchorStatus.FAILED
+    assert event.blockchain_receipt_id is None
+    assert await recover_phase_anchor(db_session, due_before=due_before) is None
+    stub_hedera_service.return_value.submit_hash.assert_not_called()
+
+
+async def test_recovery_waits_for_recent_or_incomplete_phases(db_session, trip_fixture):
+    _trip, _driver, phases = trip_fixture
+    event = phases["departure"]
+    event.anchor_status = AnchorStatus.PENDING
+    event.event_hash = "a" * 64
+    await db_session.flush()
+
+    assert await recover_phase_anchor(db_session, due_before=datetime.now(UTC)) is None
+
+
+async def test_recovery_retries_failed_hedera_submission(db_session, trip_fixture, stub_hedera_service):
+    from app.core.exceptions import HederaServiceError
+
+    trip, _driver, phases = trip_fixture
+    event = phases["departure"]
+    event.status = PhaseStatus.COMPLETED
+    event.anchor_status = AnchorStatus.FAILED
+    event.completed_at = datetime.now(UTC) - timedelta(minutes=10)
+    event.updated_at = event.completed_at
+    event.seal_number = "AB-1234"
+    payload = compute_departure_canonical_payload_v1(
+        phase_event_id=event.id, trip_id=trip.id, seal_number=event.seal_number,
+    )
+    event.event_hash = compute_payload_hash(payload)
+    await db_session.flush()
+    stub_hedera_service.return_value.submit_hash.side_effect = HederaServiceError("offline")
+
+    assert await recover_phase_anchor(db_session, due_before=datetime.now(UTC)) is False
+    await db_session.flush()
+    assert event.anchor_status == AnchorStatus.FAILED
+    stub_hedera_service.return_value.submit_hash.side_effect = None
+
+    assert await recover_phase_anchor(db_session, due_before=datetime.now(UTC) + timedelta(minutes=1)) is True
+    assert event.anchor_status == AnchorStatus.ANCHORED

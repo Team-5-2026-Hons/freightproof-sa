@@ -25,6 +25,7 @@ govern it, and none are negotiable:
 """
 
 import base64
+import json
 import logging
 from datetime import UTC, datetime
 from typing import Optional
@@ -38,14 +39,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_driver
 from app.core.config import settings
-from app.core.limits import HANDOVER_ISSUE, HANDOVER_PUBLIC
+from app.core.limits import HANDOVER_ISSUE, HANDOVER_PUBLIC, IDVS_VERIFY, IDVS_WEBHOOK
 from app.core.rate_limit import rate_limit
-from app.db.models.enums import ArtifactType, PhaseType
+from app.db.models.enums import (
+    ArtifactType,
+    PhaseType,
+    ReceiverVerificationStatus,
+    ReceiverVerificationTier,
+    ReceiverVerificationUnverifiedReason,
+)
 from app.db.models.handover import HandoverCapabilityToken
 from app.db.models.organisations import Precinct
 from app.db.models.phases import PhaseEvent
+from app.db.models.receiver_verification import ReceiverIdentityVerification
 from app.db.models.trips import Consignment, Trip, TripStop
 from app.db.session import get_db
+from app.integrations.idvs import get_idvs_client
 from app.orchestration.artifact_service import create_receiver_artifact
 from app.orchestration.handover_service import (
     build_scan_url,
@@ -58,12 +67,26 @@ from app.orchestration.handover_service import (
     rotate_capability_token,
     session_secret_matches,
 )
+from app.orchestration.receiver_verification_service import (
+    attach_confirmation,
+    ingest_webhook_decision,
+    load_verification_for_token,
+    raise_verification_exception,
+    record_consent,
+    resolve_verification,
+    start_verification,
+    verify_webhook_signature,
+    webhook_timestamp_is_fresh,
+)
 from app.schemas.handover import (
     HandoverConfirmRequest,
     HandoverConfirmResponse,
+    HandoverConsentRequest,
     HandoverScanResponse,
     HandoverStatusResponse,
     HandoverTokenResponse,
+    HandoverVerificationState,
+    HandoverVerifyResponse,
 )
 from app.schemas.people import DriverRead
 
@@ -89,6 +112,40 @@ _CONFIRMATION_NOT_FOUND = "Confirmation phase not found."
 
 def _not_found() -> HTTPException:
     return HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=_GENERIC_NOT_FOUND)
+
+
+# Headers the vendor signs with. Case-insensitive on the way in, so the spelling here is
+# cosmetic. Quarantined beside each other like the _DIDIT_* constants in
+# integrations/idvs.py.
+#
+# Didit sends three signature variants. This is the raw-body one, which is correct for us
+# specifically because `await request.body()` below reads the bytes before any parser
+# touches them — the documented failure mode for X-Signature is middleware that re-encodes
+# the JSON first, and we have none. X-Signature-V2 is the vendor's recommendation and
+# signs a canonicalised form instead; adopting it would mean guessing that canonicalisation
+# exactly, and replacing a verified assumption with an unverified one is a bad trade. Once
+# a real delivery has been captured, prefer V2 and keep this as the fallback.
+_DIDIT_SIGNATURE_HEADER = "x-signature"
+_DIDIT_TIMESTAMP_HEADER = "x-timestamp"
+
+
+def _verification_state(v: ReceiverIdentityVerification) -> HandoverVerificationState:
+    # Coerced through the enum constructor, not read with `.value` directly: these
+    # columns are mapped_column(String(20)) per the enum-comparison trap this feature has
+    # already been bitten by once. `v` is only guaranteed to still be the exact Python
+    # object a service function set an enum onto when nothing else queried it since — any
+    # other load (a second request, a second query in the same request) hands back a
+    # bare `str`, which has no `.value` and would 500 this route. EnumClass(x) accepts
+    # either an existing member or its raw string value, so this is correct for both.
+    return HandoverVerificationState(
+        status=ReceiverVerificationStatus(v.status).value,
+        tier=ReceiverVerificationTier(v.tier).value,
+        unverified_reason=(
+            ReceiverVerificationUnverifiedReason(v.unverified_reason).value
+            if v.unverified_reason else None
+        ),
+        identity_match=v.identity_match,
+    )
 
 
 async def _load_confirmation_event(
@@ -273,6 +330,8 @@ async def scan_handover_endpoint(
         )
     ).scalars().all()
 
+    verification = await load_verification_for_token(db, token_id=token.id)
+
     await db.commit()
 
     if session_secret is not None:
@@ -290,7 +349,16 @@ async def scan_handover_endpoint(
             # no visible cause.
             secure=settings.ENVIRONMENT != "development",
             path=_COOKIE_PATH,
-            max_age=settings.HANDOVER_TOKEN_EXPIRY_MINUTES * 60,
+            # Must cover the token's LONGEST possible life, not its nominal one. A
+            # verification extends the token by IDVS_TOKEN_EXTENSION_MINUTES, so sizing
+            # this to HANDOVER_TOKEN_EXPIRY_MINUTES alone meant a receiver whose document
+            # check ran long came back to a live token and a dead cookie — and a dead
+            # cookie fails the binding check, which is reported as the same generic 404 as
+            # a forged link. The mock vendor returns in seconds and never exposed this;
+            # a real document-and-liveness round trip does.
+            max_age=(
+                settings.HANDOVER_TOKEN_EXPIRY_MINUTES + settings.IDVS_TOKEN_EXTENSION_MINUTES
+            ) * 60,
         )
 
     return HandoverScanResponse(
@@ -298,6 +366,7 @@ async def scan_handover_endpoint(
         destination_name=destination_name or "Destination",
         waybill_references=[w for w in waybills if w],
         expires_at=token.expires_at,
+        verification=_verification_state(verification) if verification is not None else None,
     )
 
 
@@ -367,6 +436,13 @@ async def confirm_handover_endpoint(
             # header; anything that HAS one was already holding a session of ours.
             bearer_token_present=bool(request.headers.get("authorization")),
         )
+        # Link the verification the receiver completed before signing. Separate from the
+        # confirmation row because the two happen at different moments and a receiver may
+        # verify and then walk away — a verification with no confirmation is a real state,
+        # not an error.
+        await attach_confirmation(
+            db, token_id=token.id, handover_confirmation_id=confirmation.id,
+        )
         await db.commit()
     except SQLAlchemyError:
         await db.rollback()
@@ -379,3 +455,191 @@ async def confirm_handover_endpoint(
     return HandoverConfirmResponse(
         confirmed_at=confirmation.confirmed_at, trip_reference=trip.trip_reference,
     )
+
+
+@public_router.post(
+    "/{raw_token}/consent",
+    response_model=HandoverVerificationState,
+    status_code=http_status.HTTP_201_CREATED,
+    summary="Record the receiver's consent to an identity check (public, no auth)",
+    dependencies=[Depends(rate_limit(HANDOVER_PUBLIC))],
+)
+async def handover_consent_endpoint(
+    raw_token: str,
+    payload: HandoverConsentRequest,
+    db: AsyncSession = Depends(get_db),
+) -> HandoverVerificationState:
+    """Create the verification row. Must precede any vendor session.
+
+    Consent first, always. POPIA s27(1)(a) is what makes the biometric check lawful at all,
+    and a check started before consent was recorded is one we cannot justify afterwards.
+    """
+    token = await _live_token(db, raw_token)
+
+    existing = await load_verification_for_token(db, token_id=token.id)
+    if existing is not None:
+        # Idempotent: a receiver who reloads mid-flow must not create a second row, and the
+        # unique constraint on token_id would refuse it anyway.
+        return _verification_state(existing)
+
+    verification = await record_consent(db, token=token, consent_text=payload.consent_text)
+    if not payload.has_document:
+        verification.tier = ReceiverVerificationTier.SELFIE_ONLY
+        verification.status = ReceiverVerificationStatus.UNVERIFIED
+        verification.unverified_reason = ReceiverVerificationUnverifiedReason.NO_DOCUMENT
+
+    try:
+        await db.commit()
+    except SQLAlchemyError:
+        await db.rollback()
+        logger.exception("Failed to record handover consent for token")
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not record consent.",
+        ) from None
+
+    return _verification_state(verification)
+
+
+@public_router.post(
+    "/{raw_token}/verify",
+    response_model=HandoverVerifyResponse,
+    summary="Start a vendor identity session (public, no auth)",
+    dependencies=[Depends(rate_limit(IDVS_VERIFY))],
+)
+async def handover_verify_endpoint(
+    raw_token: str,
+    db: AsyncSession = Depends(get_db),
+) -> HandoverVerifyResponse:
+    """Claim quota, create the session, extend the token, hand back a URL.
+
+    `session_url` is None on every degradation path and that is NOT an error — the client
+    proceeds to signing at a lower tier. A delivery must stay confirmable when a vendor is
+    down, and this is where that promise is kept.
+    """
+    token = await _live_token(db, raw_token)
+    verification = await load_verification_for_token(db, token_id=token.id)
+    if verification is None:
+        # No consent recorded — refuse, identically to every other public failure.
+        raise _not_found()
+
+    session = await start_verification(
+        db,
+        token=token,
+        # The row stores only a hash; the vendor has to be told where to send the receiver
+        # back to, and that address is built from the presented token.
+        raw_token=raw_token,
+        verification=verification,
+        client=get_idvs_client(),
+    )
+    await db.commit()
+
+    return HandoverVerifyResponse(
+        session_url=session.session_url if session is not None else None,
+        # See _verification_state's comment: coerced through the enum, never read via a
+        # bare `.value`, because this `verification` came back from a fresh query and its
+        # String(20) columns carry no automatic enum coercion.
+        tier=ReceiverVerificationTier(verification.tier).value,
+        unverified_reason=(
+            ReceiverVerificationUnverifiedReason(verification.unverified_reason).value
+            if verification.unverified_reason else None
+        ),
+    )
+
+
+@public_router.post(
+    "/{raw_token}/verify/resolve",
+    response_model=HandoverVerificationState,
+    summary="Fetch the authoritative decision (public, no auth, EMPTY BODY)",
+    dependencies=[Depends(rate_limit(HANDOVER_PUBLIC))],
+)
+async def handover_resolve_endpoint(
+    raw_token: str,
+    receiver_name: str = "",
+    receiver_id_number: str = "",
+    db: AsyncSession = Depends(get_db),
+) -> HandoverVerificationState:
+    """THE security boundary. Takes no session identifier from anyone.
+
+    The client can say "I am back" and nothing else. The session id comes from our own row,
+    written before the redirect. This is the exact failure Didit patched in their own
+    WordPress plugin, where a browser could post {status: "Approved"} and be believed — and
+    our exposure is worse, because this route has no authentication at all by design.
+
+    receiver_name / receiver_id_number are the typed identity to cross-check against the
+    document. They are what the receiver already gave us, not a claim about the session.
+    """
+    token = await _live_token(db, raw_token)
+    verification = await load_verification_for_token(db, token_id=token.id)
+    if verification is None:
+        raise _not_found()
+
+    verdict = await resolve_verification(
+        db,
+        verification=verification,
+        client=get_idvs_client(),
+        typed_name=receiver_name,
+        typed_id_number=receiver_id_number,
+    )
+
+    if verdict.exception_type is not None:
+        trip = (await db.execute(select(Trip).where(Trip.id == token.trip_id))).scalar_one()
+        await raise_verification_exception(
+            db, trip=trip, phase_event_id=token.phase_event_id,
+            trip_stop_id=token.trip_stop_id, verdict=verdict,
+        )
+
+    await db.commit()
+    return _verification_state(verification)
+
+
+@public_router.post(
+    "/webhooks/didit",
+    status_code=http_status.HTTP_200_OK,
+    summary="Vendor decision webhook (public, HMAC-verified)",
+    dependencies=[Depends(rate_limit(IDVS_WEBHOOK))],
+)
+async def handover_webhook_endpoint(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
+    """Signed backstop for decisions the receiver's own return never delivered.
+
+    Returns 200 for everything it accepts, including an unknown session — the vendor
+    retries five times on a non-200, and making it retry into a wall for a session we
+    never created helps nobody.
+
+    A bad signature is the one exception: 401, logged, nothing written.
+    """
+    raw_body = await request.body()
+    signature = request.headers.get(_DIDIT_SIGNATURE_HEADER)
+
+    if not verify_webhook_signature(raw_body, signature):
+        logger.warning("Rejected an IDVS webhook with an invalid or missing signature")
+        raise HTTPException(
+            status_code=http_status.HTTP_401_UNAUTHORIZED, detail="Invalid signature.",
+        )
+
+    # Checked AFTER the signature, deliberately. An unsigned caller learns nothing about
+    # our clock this way, and the freshness rule is about replay of GENUINE deliveries —
+    # a valid signature on a body captured last week is exactly the attack this stops,
+    # and HMAC alone cannot: it proves authorship, never recency.
+    #
+    # 401 rather than 200 so a delivery merely delayed past the window is retried by the
+    # vendor instead of being silently dropped.
+    if not webhook_timestamp_is_fresh(request.headers.get(_DIDIT_TIMESTAMP_HEADER)):
+        logger.warning("Rejected an IDVS webhook with a stale or missing timestamp")
+        raise HTTPException(
+            status_code=http_status.HTTP_401_UNAUTHORIZED, detail="Invalid signature.",
+        )
+
+    try:
+        payload = json.loads(raw_body)
+    except ValueError:
+        logger.warning("IDVS webhook body was not valid JSON")
+        # 200, not 400: the signature was ours, so retrying will not help.
+        return {"status": "ignored"}
+
+    await ingest_webhook_decision(db, payload=payload)
+    await db.commit()
+    return {"status": "ok"}

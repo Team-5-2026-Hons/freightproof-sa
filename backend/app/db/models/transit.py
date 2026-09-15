@@ -25,6 +25,11 @@ class Checkpoint(Base):
     """Driver-logged or Pulsit-pulled in-transit event between phases."""
 
     __tablename__ = "checkpoints"
+    # Declared so autogenerate stops proposing to drop an index that already exists
+    # in the deployed database (created by an earlier migration, never modelled here).
+    __table_args__ = (
+        Index("ix_checkpoints_trip_created", "trip_id", "created_at"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     trip_id: Mapped[uuid.UUID] = mapped_column(
@@ -78,6 +83,10 @@ class TripException(Base):
             unique=True,
             postgresql_where=column("client_report_id").isnot(None),
         ),
+        # Declared so autogenerate stops proposing to drop indexes that already exist
+        # in the deployed database (created by an earlier migration, never modelled here).
+        Index("ix_exceptions_severity", "severity"),
+        Index("ix_exceptions_trip_review_status", "trip_id", "review_status"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

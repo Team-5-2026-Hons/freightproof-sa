@@ -287,6 +287,12 @@ class DepartureCompleteRequest(_PhaseCompleteBase):
     def validate_seal_number(cls, v: str) -> str:
         return _validate_seal_format(v)
 
+    @model_validator(mode="after")
+    def validate_distinct_evidence_roles(self) -> "DepartureCompleteRequest":
+        if self.waybill_photo_artifact_id == self.seal_photo_artifact_id:
+            raise ValueError("waybill and seal evidence must use different artifacts")
+        return self
+
 
 class InTransitCompleteRequest(_PhaseCompleteBase):
     # The driver attesting "I have arrived" — the act that closes the driving leg.
@@ -367,10 +373,16 @@ class ConfirmationCompleteRequest(_PhaseCompleteBase):
     # Optional (not required) as of the scan-driven
     # redesign: the driver may now skip the count at unloading and at
     # confirmation, matching LoadingCompleteRequest's own Optional field above.
-    # A skipped count still anchors — compute_confirmation_canonical_payload
-    # keeps the key present with value None rather than omitting it, which is
+    # A skipped count still anchors — the versioned confirmation payload builders
+    # keep the key present with value None rather than omitting it, which is
     # what keeps verification_service's rebuild reproducible.
     driver_visual_count: Optional[int] = None
+
+    @model_validator(mode="after")
+    def validate_distinct_evidence_roles(self) -> "ConfirmationCompleteRequest":
+        if self.pod_photo_artifact_id == self.pod_signature_artifact_id:
+            raise ValueError("POD photo and signature must use different artifacts")
+        return self
 
 
 # Decision S5. One endpoint, six real shapes: Pydantic picks the member from

@@ -14,9 +14,13 @@ from app.db.models.enums import ArtifactType
 from app.db.models.trips import Trip
 from app.schemas.evidence import EvidenceArtifactRead, EvidenceArtifactWithUrl
 from app.storage.mime_allowlist import resolve_mime_type
-from app.storage.supabase_storage import create_signed_url, upload_evidence_file
+from app.storage.supabase_storage import (
+    MAX_EVIDENCE_FILE_SIZE_BYTES,
+    create_signed_url,
+    upload_evidence_file,
+)
 
-MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
+MAX_FILE_SIZE_BYTES = MAX_EVIDENCE_FILE_SIZE_BYTES
 
 
 async def create_artifact(
