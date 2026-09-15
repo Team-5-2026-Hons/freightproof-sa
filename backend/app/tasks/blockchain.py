@@ -15,6 +15,7 @@ payload and the fail-open contract stay defined in exactly one place.
 import asyncio
 import logging
 import uuid
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from celery import Task
@@ -25,6 +26,10 @@ from app.db.models.enums import BlockchainReceiptType
 from app.tasks import celery
 
 logger = logging.getLogger(__name__)
+
+PHASE_ANCHOR_RECOVERY_INTERVAL_SECONDS = 60
+_RECOVERY_DELAY_SECONDS = 300
+_RECOVERY_BATCH_SIZE = 20
 
 
 async def _anchor(
@@ -60,6 +65,8 @@ async def _anchor(
 @celery.task(
     name="tasks.blockchain.anchor_phase_event",
     bind=True,
+    acks_late=True,
+    reject_on_worker_lost=True,
     max_retries=3,
     default_retry_delay=30,
 )
@@ -68,13 +75,13 @@ def anchor_phase_event_task(
 ) -> bool:
     """Anchor a completed phase event. Arguments are JSON-native for the broker.
 
-    Never raises on a Hedera failure — anchor_phase_event records that as
-    anchor_status = FAILED (the fail-open contract, D7) and returns False. Celery's
-    retries are reserved for the task itself failing to run at all (DB unreachable,
-    engine startup), which is the one case where retrying can change the outcome.
+    anchor_phase_event records a Hedera failure as anchor_status = FAILED (the
+    request remains fail-open), then False makes this worker retry the owed receipt.
+    Infrastructure failures that prevent the attempt also retry through the same
+    bounded Celery policy.
     """
     try:
-        return asyncio.run(_anchor(
+        anchored = asyncio.run(_anchor(
             phase_event_id=uuid.UUID(phase_event_id),
             canonical_payload=canonical_payload,
             receipt_type=BlockchainReceiptType(receipt_type),
@@ -82,3 +89,34 @@ def anchor_phase_event_task(
     except Exception as exc:  # noqa: BLE001 — re-raised via Celery's retry below
         logger.exception("Anchor task failed for phase_event_id=%s — retrying", phase_event_id)
         raise self.retry(exc=exc)
+    if not anchored:
+        error = RuntimeError("Phase receipt is still owed")
+        logger.warning("Anchor not written for phase_event_id=%s — retrying", phase_event_id)
+        raise self.retry(exc=error)
+    return True
+
+
+async def _recover_anchors() -> int:
+    """Drain a bounded batch of ledger debts, committing every attempt separately."""
+    from app.orchestration.phase_service import recover_phase_anchor
+
+    engine = create_async_engine(settings.DATABASE_URL, pool_pre_ping=True)
+    session_factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+    due_before = datetime.now(UTC) - timedelta(seconds=_RECOVERY_DELAY_SECONDS)
+    recovered = 0
+    try:
+        for _ in range(_RECOVERY_BATCH_SIZE):
+            async with session_factory() as db, db.begin():
+                result = await recover_phase_anchor(db, due_before=due_before)
+            if result is None:
+                break
+            recovered += int(result)
+        return recovered
+    finally:
+        await engine.dispose()
+
+
+@celery.task(name="tasks.blockchain.recover_phase_anchors", acks_late=True, reject_on_worker_lost=True)
+def recover_phase_anchors_task() -> int:
+    """Beat retries debts even after publish loss, restart, or exhausted task retries."""
+    return asyncio.run(_recover_anchors())

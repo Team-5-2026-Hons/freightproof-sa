@@ -125,3 +125,19 @@ def test_missing_config_raises() -> None:
             topic_id="0.0.2002",
             adapter=_FakeAdapter(),
         )
+
+
+def test_verification_does_not_initialize_native_sdk(monkeypatch: pytest.MonkeyPatch) -> None:
+    def forbidden_sdk(**_kwargs: object) -> None:
+        pytest.fail("A read-only verification must not initialize the signing SDK")
+
+    monkeypatch.setattr("app.blockchain.hedera._SdkHederaAdapter", forbidden_sdk)
+    encoded = base64.b64encode(("a" * 64).encode()).decode()
+    with httpx.Client(transport=httpx.MockTransport(
+        lambda _request: httpx.Response(200, json={"message": encoded}),
+    )) as client:
+        service = HederaService(
+            network="testnet", account_id="0.0.1", private_key="unused", topic_id="0.0.2",
+            http_client=client,
+        )
+        assert service.verify_hash("0.0.2", 1, "a" * 64) is True

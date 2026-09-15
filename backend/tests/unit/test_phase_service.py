@@ -1,5 +1,6 @@
 """Unit tests for the phase completion engine (advance_activation..advance_confirmation)."""
 
+import asyncio
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -36,7 +37,7 @@ from app.integrations.scan_feed import MockScanFeed, ScanDirection
 from app.orchestration import phase_service, scan_service
 from app.orchestration.phase_plan import PlanStop, build_phase_plan
 from app.orchestration.phase_service import (
-    _load_phase_event,
+    _BACKGROUND_ANCHOR_TASKS, _load_phase_event, _schedule_anchor_after_dispatch_failure,
     advance_activation, advance_confirmation, advance_departure, advance_in_transit, advance_loading,
     advance_unloading,
     anchor_phase_event,
@@ -721,6 +722,7 @@ async def test_advance_departure_happy_path_completes(
     # The anchor is queued on commit, not awaited in-request.
     assert captured_anchor_dispatches == []
     await db_session.commit()
+    await asyncio.gather(*_BACKGROUND_ANCHOR_TASKS)
     assert len(captured_anchor_dispatches) == 1
     dispatched_event_id, dispatched_payload, dispatched_type = captured_anchor_dispatches[0]
     assert dispatched_event_id == str(phases["departure"].id)
@@ -749,6 +751,7 @@ async def test_advance_departure_guard_refused_creates_exception_but_departs(
     # D7: the anchor is queued regardless of the mismatch outcome — a mismatch is
     # evidence in its own right, not a reason to withhold the receipt.
     await db_session.commit()
+    await asyncio.gather(*_BACKGROUND_ANCHOR_TASKS)
     assert len(captured_anchor_dispatches) == 1
 
 
@@ -784,6 +787,7 @@ async def test_advance_departure_guard_verified_seal_none_records_no_exception(
     assert departure.status == PhaseStatus.COMPLETED
     # The anchor still goes out — nothing about "not collected" withholds the receipt.
     await db_session.commit()
+    await asyncio.gather(*_BACKGROUND_ANCHOR_TASKS)
     assert len(captured_anchor_dispatches) == 1
 
 
@@ -1690,6 +1694,7 @@ async def test_advance_confirmation_matching_counts_closes_trip(
     # Departure (walked above) queued its own PICKUP anchor, so assert on this phase's
     # dispatch rather than the total.
     await db_session.commit()
+    await asyncio.gather(*_BACKGROUND_ANCHOR_TASKS)
     confirmation_dispatches = [d for d in captured_anchor_dispatches if d[0] == str(phases["confirmation"].id)]
     assert len(confirmation_dispatches) == 1
     assert confirmation_dispatches[0][2] == BlockchainReceiptType.DELIVERY.value
@@ -2780,10 +2785,12 @@ async def test_anchor_phase_event_fails_open_on_hedera_trouble(
         "app.orchestration.phase_service.anchor_subject",
         AsyncMock(side_effect=hedera_exception),
     )
+    payload = {"phase_event_id": str(phases["departure"].id)}
+    phases["departure"].event_hash = compute_payload_hash(payload)
 
     anchored = await anchor_phase_event(
         db_session, phase_event_id=phases["departure"].id,
-        canonical_payload={"phase_event_id": str(phases["departure"].id)},
+        canonical_payload=payload,
         receipt_type=BlockchainReceiptType.PICKUP,
     )
 
@@ -2797,10 +2804,12 @@ async def test_anchor_phase_event_writes_the_receipt(db_session, trip_fixture):
     """The other half of the split: the worker turns a PENDING phase into an ANCHORED one
     with a real receipt, which is what the driver app's anchor badge waits for."""
     trip, driver, phases = trip_fixture
+    payload = {"phase_event_id": str(phases["departure"].id), "seal_number": "AB-1234"}
+    phases["departure"].event_hash = compute_payload_hash(payload)
 
     anchored = await anchor_phase_event(
         db_session, phase_event_id=phases["departure"].id,
-        canonical_payload={"phase_event_id": str(phases["departure"].id), "seal_number": "AB-1234"},
+        canonical_payload=payload,
         receipt_type=BlockchainReceiptType.PICKUP,
     )
 
@@ -2811,6 +2820,58 @@ async def test_anchor_phase_event_writes_the_receipt(db_session, trip_fixture):
         select(BlockchainReceipt).where(BlockchainReceipt.id == phases["departure"].blockchain_receipt_id)
     )).scalar_one()
     assert receipt.receipt_type == BlockchainReceiptType.PICKUP
+
+
+@pytest.mark.asyncio
+async def test_anchor_phase_event_does_not_resubmit_an_anchored_event(
+    db_session, trip_fixture, stub_hedera_service,
+):
+    _trip, _driver, phases = trip_fixture
+    departure = phases["departure"]
+    payload = {"phase_event_id": str(departure.id), "seal_number": "AB-1234"}
+    departure.event_hash = compute_payload_hash(payload)
+
+    first = await anchor_phase_event(
+        db_session, phase_event_id=departure.id,
+        canonical_payload=payload, receipt_type=BlockchainReceiptType.PICKUP,
+    )
+    second = await anchor_phase_event(
+        db_session, phase_event_id=departure.id,
+        canonical_payload=payload, receipt_type=BlockchainReceiptType.PICKUP,
+    )
+
+    assert first is True
+    assert second is True
+    stub_hedera_service.return_value.submit_hash.assert_called_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "payload_changed,receipt_type",
+    [
+        (True, BlockchainReceiptType.PICKUP),
+        (False, BlockchainReceiptType.DELIVERY),
+    ],
+    ids=["payload", "receipt_type"],
+)
+async def test_anchor_phase_event_rejects_task_arguments_not_bound_to_the_event(
+    db_session, trip_fixture, stub_hedera_service, payload_changed, receipt_type,
+):
+    _trip, _driver, phases = trip_fixture
+    departure = phases["departure"]
+    expected_payload = {"phase_event_id": str(departure.id), "seal_number": "AB-1234"}
+    departure.event_hash = compute_payload_hash(expected_payload)
+    queued_payload = {**expected_payload, "seal_number": "ZZ-9999"} if payload_changed else expected_payload
+
+    anchored = await anchor_phase_event(
+        db_session, phase_event_id=departure.id,
+        canonical_payload=queued_payload, receipt_type=receipt_type,
+    )
+
+    assert anchored is False
+    assert departure.anchor_status == AnchorStatus.FAILED
+    assert departure.blockchain_receipt_id is None
+    stub_hedera_service.return_value.submit_hash.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -2826,15 +2887,14 @@ async def test_anchor_phase_event_ignores_an_unknown_event(db_session, trip_fixt
 
 
 @pytest.mark.asyncio
-async def test_a_broker_failure_falls_back_to_anchoring_inline(
+async def test_a_broker_failure_schedules_a_local_anchor_fallback(
     db_session, trip_fixture, monkeypatch,
 ):
     """The safety net for moving anchoring off the request path.
 
-    Nothing in this codebase retries an anchor_status = FAILED debt, so a dispatch that
-    vanishes into an unreachable broker would mean permanently unanchored evidence. When
-    the queue can't be reached the anchor runs inline instead — slow, which is a far
-    better failure than silent.
+    A dispatch that vanishes into an unreachable broker would mean permanently
+    unanchored evidence. The request therefore starts a local attempt without waiting
+    for Hedera on the API event loop.
     """
     trip, driver, phases = trip_fixture
     await _advance_to_loading(db_session, trip, driver, phases)
@@ -2847,7 +2907,7 @@ async def test_a_broker_failure_falls_back_to_anchoring_inline(
     monkeypatch.setattr("app.tasks.blockchain.anchor_phase_event_task", _BrokenBroker)
     inline_calls: list[uuid.UUID] = []
     monkeypatch.setattr(
-        "app.orchestration.phase_service._anchor_inline_after_dispatch_failure",
+        "app.orchestration.phase_service._schedule_anchor_after_dispatch_failure",
         lambda **kwargs: inline_calls.append(kwargs["phase_event_id"]),
     )
 
@@ -2857,7 +2917,29 @@ async def test_a_broker_failure_falls_back_to_anchoring_inline(
     )
     await db_session.commit()
 
+    await asyncio.gather(*_BACKGROUND_ANCHOR_TASKS)
     assert inline_calls == [phases["departure"].id]
+
+
+@pytest.mark.asyncio
+async def test_local_anchor_fallback_runs_on_the_request_event_loop(monkeypatch):
+    phase_event_id = uuid.uuid4()
+    calls: list[uuid.UUID] = []
+
+    async def _anchor(**kwargs: Any) -> bool:
+        calls.append(kwargs["phase_event_id"])
+        return True
+
+    monkeypatch.setattr("app.tasks.blockchain._anchor", _anchor)
+
+    _schedule_anchor_after_dispatch_failure(
+        phase_event_id=phase_event_id,
+        canonical_payload={"phase_event_id": str(phase_event_id)},
+        receipt_type=BlockchainReceiptType.PICKUP,
+    )
+    await asyncio.sleep(0)
+
+    assert calls == [phase_event_id]
 
 
 # ── D8: row locking on _load_phase_event ────────────────────────────────────
@@ -3782,10 +3864,14 @@ async def test_confirmation_with_no_driver_visual_count_completes_and_stores_nul
     # Reproducible: hashing the canonical payload again from the stored fields
     # (exactly what verification_service._reconstruct_phase_event_payload does)
     # must land on the SAME hash — the None key stayed present, not omitted.
-    expected_payload = phase_service.compute_confirmation_canonical_payload(
+    pod_photo = await db_session.get(EvidenceArtifact, ready_to_confirm["pod_photo_id"])
+    pod_signature = await db_session.get(EvidenceArtifact, ready_to_confirm["pod_signature_id"])
+    expected_payload = phase_service.compute_confirmation_canonical_payload_v2(
         phase_event_id=event.id, trip_id=ready_to_confirm["trip"].id,
         pp_scan_in_count=event.parcel_count_destination,
         driver_visual_count=event.driver_visual_count,
+        pod_photo_sha256=pod_photo.file_hash,
+        pod_signature_sha256=pod_signature.file_hash,
     )
     assert expected_payload["driver_visual_count"] is None
     assert "driver_visual_count" in expected_payload  # present, never omitted
