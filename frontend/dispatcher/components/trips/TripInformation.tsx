@@ -3,21 +3,24 @@ import type { Precinct } from '@shared/lib/types/precinct'
 import { InfoRow } from '@/components/ui/InfoRow'
 import { RECORD_AFFORDANCE } from '@/components/ui/RecordLink'
 import { Ic } from '@/components/ui/Ic'
-import { CancelTripAction } from '@/components/domain/CancelTripAction'
+import { Button } from '@/components/ui/Button'
+import { isTripTerminal } from '@/components/domain/CancelTripAction'
 import { currentSealNumber } from '@/lib/phase/derive'
 import { tripArrival, tripConfirmation, precinctLabel } from '@/lib/phase/trip-detail'
 import { fmtFull } from '@shared/lib/utils/datetime'
 import { delayMinutes, fmtDelay } from '@/lib/format/schedule'
 
 interface Props {
-  trip: Trip; precincts: Precinct[]; onChanged: () => void
+  trip: Trip; precincts: Precinct[]
   /** Owned by the caller, not this panel: below the dock width this panel renders inside
    *  DetailPanel's own overlay <dialog>, and a modal nested inside another open modal
    *  centers on its ancestor's box instead of the viewport. The caller renders the
-   *  preview as a sibling of DetailPanel instead. */
+   *  precinct preview and the cancellation dialog as siblings of DetailPanel instead —
+   *  this panel only raises the request, never a <dialog> of its own. */
   onOpenPrecinct: (precinct: Precinct) => void
+  onCancelTrip: () => void
 }
-export function TripInformation({ trip, precincts, onChanged, onOpenPrecinct }: Props) {
+export function TripInformation({ trip, precincts, onOpenPrecinct, onCancelTrip }: Props) {
   return <div className="space-y-6">
     {/* Order, driver, phone, horse and trailers used to live here. The header now holds
         all of them permanently on screen and the driver modal holds the phone, so
@@ -51,7 +54,11 @@ export function TripInformation({ trip, precincts, onChanged, onOpenPrecinct }: 
         </div>
       })}
     </section>
-    <CancelTripAction tripId={trip.id} status={trip.status} onCancelled={onChanged} />
+    {!isTripTerminal(trip.status) && (
+      <Button variant="danger" size="sm" full onClick={onCancelTrip}>
+        Cancel trip
+      </Button>
+    )}
   </div>
 }
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   BOUNDARY_NEARBY_METRES,
+  COMPARISON_MAP_INTERACTION,
   boundaryDistanceMetres,
   boundaryIsNearby,
   comparisonBounds,
@@ -305,6 +306,16 @@ describe('boundaryIsNearby', () => {
     })
 
     expect(boundaryIsNearby(evidence)).toBe(false)
+  })
+})
+
+describe('COMPARISON_MAP_INTERACTION', () => {
+  // Leaflet is never mounted in this file (see the top-of-file comment), so this
+  // constant — spread into `L.map(...)` in the component itself — is the only surface
+  // of the scroll-wheel-zoom behaviour a jsdom test can reach at all; a live map's real
+  // wheel-event handling is a browser-check concern, not a unit-test one.
+  it('enables scroll-wheel zoom, unlike the embedded (non-modal) GeofenceMap', () => {
+    expect(COMPARISON_MAP_INTERACTION.scrollWheelZoom).toBe(true)
   })
 })
 
