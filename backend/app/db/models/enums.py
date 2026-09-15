@@ -107,6 +107,13 @@ class ExceptionType(str, enum.Enum):
     DRIVER_SUBSTITUTION    = "driver_substitution"
     CHECKPOINT_TIMEOUT     = "checkpoint_timeout"
     WAYBILL_COUNT_MISMATCH = "waybill_count_mismatch"
+    # Kept apart for the reason SEAL_UNVERIFIED and SEAL_MISMATCH are kept apart, a few
+    # lines above. MISMATCH asserts an identity was checked and disagreed — a fraud
+    # indicator. UNVERIFIED means no check completed, which is a gap in the chain and has
+    # several benign readings (no ID on them, no signal, quota spent). Conflating them
+    # puts false positives in front of a dispatcher triaging a real investigation.
+    RECEIVER_ID_MISMATCH   = "receiver_id_mismatch"
+    RECEIVER_ID_UNVERIFIED = "receiver_id_unverified"
     SEQUENCE_VIOLATION     = "sequence_violation"
     PANIC_BUTTON           = "panic_button"
     DELIVERY_REFUSED       = "delivery_refused"
@@ -208,6 +215,48 @@ class IdvsStatus(str, enum.Enum):
     PENDING  = "pending"
     VERIFIED = "verified"
     FAILED   = "failed"
+
+
+class ReceiverVerificationStatus(str, enum.Enum):
+    """Where one receiver's identity check ended up.
+
+    PENDING exists only while a Didit session is in flight. The spec's invariant is that
+    no trip reaches a terminal state with a PENDING row still open — the sweeper and the
+    phase-completion hook in Stage 2 are what enforce that, not this enum.
+    """
+
+    PENDING    = "pending"
+    VERIFIED   = "verified"
+    FAILED     = "failed"
+    UNVERIFIED = "unverified"
+
+
+class ReceiverVerificationTier(str, enum.Enum):
+    """How much evidence the check actually produced.
+
+    SELFIE_ONLY is presence evidence, not identity evidence: a live face with no document
+    to match against proves a human confirmed, never who they were.
+    """
+
+    DOCUMENT_AND_FACE = "document_and_face"
+    SELFIE_ONLY       = "selfie_only"
+    TYPED_ONLY        = "typed_only"
+
+
+class ReceiverVerificationUnverifiedReason(str, enum.Enum):
+    """Why a check did not reach a verdict.
+
+    Never free text, for the reason HandoverTokenRejectionReason gives: the evidence has
+    to stay queryable, and a dispatcher triaging deliveries needs to separate "the
+    receiver had no ID on them" from "our vendor was down".
+    """
+
+    NO_DOCUMENT        = "no_document"
+    DECLINED_CONSENT   = "declined_consent"
+    NO_CONNECTION      = "no_connection"
+    QUOTA_EXHAUSTED    = "quota_exhausted"
+    VENDOR_UNAVAILABLE = "vendor_unavailable"
+    ABANDONED          = "abandoned"
 
 
 class ParcelStatus(str, enum.Enum):

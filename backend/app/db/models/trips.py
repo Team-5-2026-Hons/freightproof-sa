@@ -7,7 +7,7 @@ from typing import Any, Optional
 
 from sqlalchemy import (
     Boolean, DateTime, ForeignKey, Index, Integer, Numeric,
-    PrimaryKeyConstraint, String, Text, UniqueConstraint, column,
+    PrimaryKeyConstraint, String, Text, UniqueConstraint, column, desc,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -122,6 +122,12 @@ class Parcel(Base):
     """Individual parcel within a consignment — tracked via Parcel Perfect barcode."""
 
     __tablename__ = "parcels"
+    # Declared so autogenerate stops proposing to drop indexes that already exist
+    # in the deployed database (created by an earlier migration, never modelled here).
+    __table_args__ = (
+        Index("ix_parcels_barcode", "barcode"),
+        Index("ix_parcels_consignment_id", "consignment_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     consignment_id: Mapped[uuid.UUID] = mapped_column(
@@ -158,6 +164,13 @@ class Trip(Base):
             unique=True,
             postgresql_where=column("status").in_([s.value for s in LIVE_TRIP_STATUSES]),
         ),
+        # Declared so autogenerate stops proposing to drop indexes that already exist
+        # in the deployed database (created by an earlier migration, never modelled here).
+        Index("ix_trips_driver_id", "driver_id"),
+        Index("ix_trips_order_number", "order_number"),
+        Index("ix_trips_status", "status"),
+        Index("ix_trips_org_status_closed_id", "operator_organization_id", "status", "closed_at", "id"),
+        Index("ix_trips_created_at_desc", desc("created_at")),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -264,6 +277,11 @@ class DriverSubstitution(Base):
     """
 
     __tablename__ = "driver_substitutions"
+    # Declared so autogenerate stops proposing to drop an index that already exists
+    # in the deployed database (created by an earlier migration, never modelled here).
+    __table_args__ = (
+        Index("ix_driver_substitutions_trip_id", "trip_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     trip_id: Mapped[uuid.UUID] = mapped_column(

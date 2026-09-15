@@ -18,7 +18,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Numeric, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -45,8 +45,12 @@ class HandoverCapabilityToken(Base):
     """
 
     __tablename__ = "handover_capability_tokens"
+    # token_hash is a unique INDEX in the deployed database (not a unique constraint) —
+    # declared as an Index here, and phase_event_id below, so autogenerate stops
+    # proposing to drop/replace indexes that already exist and were never modelled.
     __table_args__ = (
-        UniqueConstraint("token_hash", name="uq_handover_capability_tokens_token_hash"),
+        Index("uq_handover_capability_tokens_token_hash", "token_hash", unique=True),
+        Index("ix_handover_capability_tokens_phase_event", "phase_event_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -73,6 +77,13 @@ class HandoverCapabilityToken(Base):
     # the driver's screen can say "the receiver has opened the link" instead of leaving
     # them watching a code with no idea whether the scan worked.
     opened_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Set the one time this token's life was extended to cover an identity verification
+    # (spec §6.3). Its NULL-ness is the gate, not a flag a caller checks: the conditional
+    # UPDATE in extend_token_for_verification keys on it, so the extension is
+    # single-claim at the database exactly as opened_at is.
+    verification_extended_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # SHA-256 hex of the browser-binding secret minted on that first page load, never the
     # secret itself — the same rule token_hash above follows, for the same reason.
     #
@@ -106,6 +117,11 @@ class HandoverTokenAttempt(Base):
     """
 
     __tablename__ = "handover_token_attempts"
+    # Declared so autogenerate stops proposing to drop an index that already exists
+    # in the deployed database (created by an earlier migration, never modelled here).
+    __table_args__ = (
+        Index("ix_handover_token_attempts_token_id", "token_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     token_id: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -151,6 +167,9 @@ class HandoverConfirmation(Base):
     __tablename__ = "handover_confirmations"
     __table_args__ = (
         UniqueConstraint("phase_event_id", name="uq_handover_confirmations_phase_event_id"),
+        # Declared so autogenerate stops proposing to drop an index that already exists
+        # in the deployed database (created by an earlier migration, never modelled here).
+        Index("ix_handover_confirmations_trip_id", "trip_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

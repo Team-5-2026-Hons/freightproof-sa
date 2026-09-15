@@ -22,6 +22,7 @@ import { PositionDisagreement } from '@/components/domain/PositionDisagreement'
 import { LocationEvidenceSummary } from '@/components/domain/LocationEvidenceSummary'
 import { ForensicOnly } from '@/components/blockchain/ForensicOnly'
 import { ChainReceiptTag } from '@/components/blockchain/ChainReceiptTag'
+import { VerifyButton } from '@/components/blockchain/VerifyButton'
 
 // Phase types the compact location verdict applies to. trip_creation has no fix fields
 // worth reading and in_transit gets its own "Recorded location at arrival" section
@@ -108,6 +109,7 @@ export function TripTimeline({ trip, precincts, returnTo, lastUpdated, onJump, o
           .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at) || a.id.localeCompare(b.id)))
         const receipt = trip.blockchain_receipts.find(r => r.id === phase.blockchain_receipt_id)
           ?? (phase.phase_type === 'trip_creation' ? trip.blockchain_receipts.find(r => r.receipt_type === 'journey_lock') : undefined)
+        const verifiesEvidence = receipt?.receipt_type === 'pickup' || receipt?.receipt_type === 'delivery'
         const summary = [phase.parcel_count_origin !== null ? `${phase.parcel_count_origin} recorded at origin` : null, phase.seal_number ? `Seal ${phase.seal_number}` : null].filter(Boolean).join(' · ')
         const isLastPhase = phaseIndex === phases.length - 1
         const isTransit = phase.phase_type === 'in_transit'
@@ -170,7 +172,14 @@ export function TripTimeline({ trip, precincts, returnTo, lastUpdated, onJump, o
             evidenceSummary={evidenceSummaryFor(trip, phase, precincts, nodeType)}
             persistentContent={<>{journeySummary}{exceptionDetail}</>}
             warning={phase.anchor_status === 'failed' ? 'Anchor failed — receipt still owed' : undefined}
-            receipt={receipt ? <ForensicOnly><ChainReceiptTag receipt={receipt} /></ForensicOnly> : undefined}>
+            receipt={receipt ? <ForensicOnly>
+              <ChainReceiptTag receipt={receipt} />
+              {verifiesEvidence && <VerifyButton
+                subjectType="phase_event"
+                subjectId={phase.phase_event_id}
+                ariaLabel={`Verify integrity for ${PHASE_NAMES[phase.phase_type]} receipt, phase ${phase.sequence_number}`}
+              />}
+            </ForensicOnly> : undefined}>
             {showEvidence && <PhaseEvidence trip={trip} phase={phase} precincts={precincts} {...evidence} />}
           </PhaseTimelineItem>
         </div>

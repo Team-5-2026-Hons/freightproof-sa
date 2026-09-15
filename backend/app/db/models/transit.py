@@ -29,6 +29,10 @@ class Checkpoint(Base):
     # docstring): mirrors uq_exceptions_trip_client_report_id exactly. Declared here,
     # not just in the migration, so Base.metadata.create_all() (every test's schema)
     # carries the same constraint the real database will.
+    #
+    # ix_checkpoints_trip_created declared so autogenerate stops proposing to drop an
+    # index that already exists in the deployed database (created by an earlier
+    # migration, never modelled here).
     __table_args__ = (
         Index(
             "uq_checkpoints_trip_client_report_id",
@@ -37,6 +41,7 @@ class Checkpoint(Base):
             unique=True,
             postgresql_where=column("client_report_id").isnot(None),
         ),
+        Index("ix_checkpoints_trip_created", "trip_id", "created_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -129,6 +134,10 @@ class TripException(Base):
                 "exception_type = 'driver_vehicle_separation' AND checkpoint_id IS NOT NULL"
             ),
         ),
+        # Declared so autogenerate stops proposing to drop indexes that already exist
+        # in the deployed database (created by an earlier migration, never modelled here).
+        Index("ix_exceptions_severity", "severity"),
+        Index("ix_exceptions_trip_review_status", "trip_id", "review_status"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

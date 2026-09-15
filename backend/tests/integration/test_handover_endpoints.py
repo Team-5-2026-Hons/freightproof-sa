@@ -208,7 +208,18 @@ async def test_scan_reveals_nothing_about_the_driver(client, handover_trip, driv
 
     body = (await client.get(f"/api/v1/handover/{token}")).json()
 
-    assert set(body) == {"trip_reference", "destination_name", "waybill_references", "expires_at"}
+    # `verification` was added by the receiver identity-verification feature. It widens
+    # this set but NOT the blast radius: it carries only the receiver's own check state
+    # (status, tier, reason, whether their typed identity matched their document) and
+    # nothing about the driver, the cargo, or any other stop. Kept exhaustive on purpose —
+    # a new field here must be an argued decision, not something that appears by accident.
+    assert set(body) == {
+        "trip_reference", "destination_name", "waybill_references", "expires_at",
+        "verification",
+    }
+    assert set(body["verification"] or {}) <= {
+        "status", "tier", "unverified_reason", "identity_match",
+    }
 
 
 async def test_the_first_scan_sets_a_binding_cookie_and_later_ones_do_not(

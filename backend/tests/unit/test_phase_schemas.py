@@ -4,7 +4,12 @@ import pytest
 from pydantic import TypeAdapter, ValidationError
 
 from app.db.models.enums import PhaseType
-from app.schemas.phases import InTransitCompleteRequest, PhaseCompleteRequest
+from app.schemas.phases import (
+    ConfirmationCompleteRequest,
+    DepartureCompleteRequest,
+    InTransitCompleteRequest,
+    PhaseCompleteRequest,
+)
 
 _ADAPTER: TypeAdapter[PhaseCompleteRequest] = TypeAdapter(PhaseCompleteRequest)
 
@@ -54,6 +59,31 @@ def test_trip_creation_is_still_not_driver_addressable():
 def test_phase_type_enum_still_has_seven_members():
     """Guards against someone 'solving' this by adding an enum member."""
     assert len(list(PhaseType)) == 7
+
+
+def test_departure_rejects_one_artifact_used_for_two_evidence_roles():
+    artifact_id = uuid.uuid4()
+
+    with pytest.raises(ValidationError, match="different artifacts"):
+        DepartureCompleteRequest(
+            phase_type=PhaseType.DEPARTURE,
+            idempotency_key=str(uuid.uuid4()),
+            seal_number="AB-1234",
+            seal_photo_artifact_id=artifact_id,
+            waybill_photo_artifact_id=artifact_id,
+        )
+
+
+def test_confirmation_rejects_one_artifact_used_for_two_evidence_roles():
+    artifact_id = uuid.uuid4()
+
+    with pytest.raises(ValidationError, match="different artifacts"):
+        ConfirmationCompleteRequest(
+            phase_type=PhaseType.CONFIRMATION,
+            idempotency_key=str(uuid.uuid4()),
+            pod_photo_artifact_id=artifact_id,
+            pod_signature_artifact_id=artifact_id,
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -86,4 +86,5 @@ async def verify_endpoint(
         receipt=BlockchainReceiptRead.model_validate(outcome.receipt) if (outcome.receipt and is_admin) else None,
         expected_hash=outcome.expected_hash if is_admin else None,
         current_hash=outcome.current_hash if is_admin else None,
+        evidence_verified=outcome.evidence_verified,
     )
