@@ -28,6 +28,10 @@ class BlockchainReceipt(Base):
     __table_args__ = (
         Index(BLOCKCHAIN_RECEIPT_DATA_HASH_INDEX, "data_hash"),
         Index(BLOCKCHAIN_RECEIPT_HEDERA_TX_INDEX, "hedera_tx_id"),
+        # Declared so autogenerate stops proposing to drop indexes that already exist
+        # in the deployed database (created by an earlier migration, never modelled here).
+        Index("ix_blockchain_receipts_subject", "subject_type", "subject_id"),
+        Index("ix_blockchain_receipts_trip_type", "trip_id", "receipt_type"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

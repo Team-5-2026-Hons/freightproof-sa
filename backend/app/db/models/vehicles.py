@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Index, Boolean, Date, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -23,13 +23,11 @@ UQ_VEHICLES_ORG_REGISTRATION = "uq_vehicles_org_registration"
 VEHICLE_UNIQUE_FIELDS: dict[str, str] = {
     UQ_VEHICLES_ORG_PULSIT: "pulsit_device_id",
     UQ_VEHICLES_ORG_REGISTRATION: "registration",
-    # vin_number carries unique=True on the column, and the deployed database and the
-    # model metadata disagree about what that index is called: dev has
-    # ix_vehicles_vin_number (created by an earlier migration) while
-    # Base.metadata.create_all produces vehicles_vin_number_key. Both are listed
-    # deliberately — mapping only one would pass every test and return a 500 in
-    # production. That divergence is the model/DB drift flagged separately; this map
-    # tolerates it rather than pretending it is resolved.
+    # vin_number is now declared as an explicit unique Index on Vehicle, matching the
+    # deployed database, so metadata and dev no longer disagree about its name. Both keys
+    # are still mapped: any database built by an older create_all still carries
+    # vehicles_vin_number_key, and mapping only the current name would pass every test and
+    # return a 500 against one of those.
     "vehicles_vin_number_key": "vin_number",
     "ix_vehicles_vin_number": "vin_number",
 }
@@ -51,6 +49,13 @@ class Vehicle(Base):
         # registration existed — so duplicates were accepted outright, and the message
         # was in fact describing a clash on pulsit_device_id.
         UniqueConstraint("organization_id", "registration", name=UQ_VEHICLES_ORG_REGISTRATION),
+        # Declared as a unique INDEX, not as unique=True on the column, because that is
+        # what the deployed database has. A column-level unique=True makes create_all emit
+        # a constraint named vehicles_vin_number_key instead, and the mismatch made every
+        # autogenerate propose dropping the real index and adding a constraint in its
+        # place. Declaring it here is what makes the test schema and the deployed schema
+        # agree — see docs/design-notes/2026-09-15-alembic-autogenerate-drift.md.
+        Index("ix_vehicles_vin_number", "vin_number", unique=True),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -64,7 +69,7 @@ class Vehicle(Base):
     make: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     model: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    vin_number: Mapped[Optional[str]] = mapped_column(String(17), nullable=True, unique=True)
+    vin_number: Mapped[Optional[str]] = mapped_column(String(17), nullable=True)
     licence_disc_expiry: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     gross_vehicle_mass_kg: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     length_m: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
