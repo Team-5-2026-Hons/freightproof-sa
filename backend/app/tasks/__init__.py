@@ -50,3 +50,18 @@ celery.conf.beat_schedule = {
 # back from this module (E402 is a false positive on a required circular-import guard).
 from app.tasks.parcel_perfect import sync_active_consignments as sync_active_consignments  # noqa: E402
 from app.tasks.verification import sweep_abandoned as sweep_abandoned  # noqa: E402
+# Explicit imports register sibling task modules with the Celery registry.
+# autodiscover_tasks() only scans for a tasks.py in each listed package. These must
+# stay below `celery = Celery(...)` because both modules import `celery` back from here.
+from app.tasks.blockchain import (  # noqa: E402
+    PHASE_ANCHOR_RECOVERY_INTERVAL_SECONDS,
+    anchor_phase_event_task as anchor_phase_event_task,
+    recover_phase_anchors_task as recover_phase_anchors_task,
+)
+from app.tasks.parcel_perfect import sync_active_consignments as sync_active_consignments  # noqa: E402
+
+celery.conf.beat_schedule["recover-phase-anchors"] = {
+    "task": "tasks.blockchain.recover_phase_anchors",
+    "schedule": PHASE_ANCHOR_RECOVERY_INTERVAL_SECONDS,
+    "options": {"expires": PHASE_ANCHOR_RECOVERY_INTERVAL_SECONDS},
+}

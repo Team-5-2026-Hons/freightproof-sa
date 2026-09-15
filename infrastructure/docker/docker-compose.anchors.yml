@@ -1,0 +1,10 @@
+# Add the scheduler without changing the team's shared development stack.
+# Use with: docker compose -f infrastructure/docker/docker-compose.dev.yml
+#           -f infrastructure/docker/docker-compose.anchors.yml up -d --build worker beat
+services:
+  beat:
+    extends:
+      file: docker-compose.dev.yml
+      service: worker
+    container_name: freightproof-beat
+    command: celery -A app.tasks beat --loglevel=info --schedule=/tmp/freightproof-celerybeat

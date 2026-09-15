@@ -93,7 +93,13 @@ async def test_confirmation_preserves_arrival_or_its_absence(
     event.phase_type = PhaseType.CONFIRMATION
     arrival = datetime.now(UTC) - timedelta(hours=1) if has_arrival else None
     trip.actual_arrival_at = arrival
-    monkeypatch.setattr(phase_service, "_assert_artifacts_belong_to_trip", AsyncMock())
+    pod_photo_id = uuid.uuid4()
+    pod_signature_id = uuid.uuid4()
+    monkeypatch.setattr(
+        phase_service,
+        "_assert_artifacts_belong_to_trip",
+        AsyncMock(return_value={pod_photo_id: "a" * 64, pod_signature_id: "b" * 64}),
+    )
     monkeypatch.setattr(phase_service.scan_service, "load_consignments_at_stop", AsyncMock(return_value=[]))
     monkeypatch.setattr(phase_service, "_dispatch_anchor", MagicMock())
 
@@ -102,7 +108,7 @@ async def test_confirmation_preserves_arrival_or_its_absence(
         payload=ConfirmationCompleteRequest(
             phase_type=PhaseType.CONFIRMATION,
             idempotency_key=str(uuid.uuid4()), driver_visual_count=0,
-            pod_photo_artifact_id=uuid.uuid4(), pod_signature_artifact_id=uuid.uuid4(),
+            pod_photo_artifact_id=pod_photo_id, pod_signature_artifact_id=pod_signature_id,
         ),
     )
 
