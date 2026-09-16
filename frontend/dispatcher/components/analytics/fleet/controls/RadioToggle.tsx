@@ -16,7 +16,7 @@ export interface RadioOption<T extends string> {
 interface RadioToggleProps<T extends string> {
   /** The group's name. Shown as a caption only when showLabel is on; always the accessible name. */
   label: string
-  /** Off inside a card header, where a caption would crowd the title row (spec §7.7 item 5). */
+  /** Off inside a card header, where a caption would crowd the title row. */
   showLabel?: boolean
   value: T
   options: readonly RadioOption<T>[]
@@ -24,8 +24,8 @@ interface RadioToggleProps<T extends string> {
 }
 
 /** A small segmented radio group: View by, Departures | Arrivals. A radio group rather than
- *  Tabs, because it regroups the same charts instead of switching to another view (spec §7.2).
- *  Arrow keys move among the enabled options, so the group is one stop in the tab order. */
+ *  Tabs, because it regroups the same charts instead of switching to another view. Arrow keys
+ *  move among the enabled options, so the group is one stop in the tab order. */
 export function RadioToggle<T extends string>({ label, showLabel = true, value, options, onChange }: RadioToggleProps<T>) {
   const labelId = useId()
   const optionId = (option: T): string => `${labelId}-${option}`

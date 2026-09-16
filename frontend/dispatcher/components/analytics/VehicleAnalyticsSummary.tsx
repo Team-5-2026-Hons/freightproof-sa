@@ -24,8 +24,7 @@ const LABELS = {
   trips: 'Trips',
   drivingTime: 'Driving time',
   meanBetweenBreakdowns: 'Mean time between breakdowns',
-  // "Breakdown", not "exception": only a mechanical exception ends a streak, so a trip with
-  // any other exception (a seal mismatch, a late departure) still counts as clean.
+  // "Breakdown", not "exception": only a mechanical exception ends a streak.
   longestRun: 'Longest run with no breakdown',
   shortestRun: 'Shortest completed clean run',
   sinceLastBreakdown: 'Trips since the last breakdown',
@@ -35,20 +34,16 @@ const SUMMARY_COPY = {
   monthsHeading: 'Selected months',
   mechanicalHeading: 'Mechanical exceptions',
   historyHeading: 'Whole history',
-  // Beside the heading because streaks ignore the month range (the endpoint takes none,
-  // FP-153 §3a). "Closed" because, like every analytics figure, a trip in progress is not counted.
+  // Beside the heading because streaks ignore the month range entirely.
   historyDetail: 'every closed trip this vehicle has run, not the months above',
   noBreakdowns: 'No breakdowns recorded',
   tripOne: 'trip',
   tripMany: 'trips',
 } as const
 
-/** One vehicle's analytics, horse or trailer, on its own detail page: the Vehicle tab's
- *  figures from /analytics as stat tiles, since a one-row table reads as broken UI.
- *
- *  The endpoints take no vehicle filter, so this fetches the organisation's lists and
- *  picks this vehicle out client-side. A server-side filter is backend work, left out on
- *  purpose. */
+/** One vehicle's analytics, horse or trailer, on its own detail page, as stat tiles (a one-row
+ *  table would read as broken UI). Filters the org's full lists client-side — the endpoints
+ *  have no per-vehicle filter yet. */
 export function VehicleAnalyticsSummary({ vehicleId, vehicleType }: VehicleAnalyticsSummaryProps) {
   const [range, setRange] = useState<MonthRange>(() => defaultMonthRange())
   const vehicles = useVehicleAnalytics(range)
@@ -68,9 +63,8 @@ export function VehicleAnalyticsSummary({ vehicleId, vehicleType }: VehicleAnaly
       error={vehicles.error ?? streaks.error}
       onRetry={retry}
     >
-      {/* Looked up separately from the monthly row, not joined to it. Streaks cover the vehicle's
-          whole history, so they still have real figures when the selected months hold no
-          closed trips, and must not be blanked with the monthly row. */}
+      {/* Not joined to the monthly row: streaks cover the vehicle's whole history, so they must
+          not be blanked when the selected months hold no closed trips. */}
       <Figures
         rangeLabel={fmtMonthRange(range)}
         monthly={vehicles.rows.find((row) => row.vehicle_id === vehicleId)}
@@ -125,9 +119,8 @@ function Figures({ rangeLabel, monthly, streak }: FiguresProps) {
   )
 }
 
-/** The mean's empty value, by why it is empty. "No breakdowns recorded" only when that is
- *  true; after a single breakdown (the vehicle's first ever) there is simply no gap yet,
- *  which is the usual dash. The total is used only to decide this, never shown. */
+/** The mean's empty value, by why it is empty: "No breakdowns recorded" only when true, else
+ *  the usual dash (a vehicle's first-ever breakdown has simply no gap yet). */
 function meanBetweenBreakdowns(monthly: VehicleMetrics): string {
   if (monthly.mean_minutes_between_mechanical !== null) {
     return fmtMinutes(monthly.mean_minutes_between_mechanical)

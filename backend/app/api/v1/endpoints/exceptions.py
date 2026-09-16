@@ -1,10 +1,5 @@
-"""Trip exception endpoints, in two scopes.
-
-The driver raises an exception against a trip they are assigned to, so that route is
-trip-nested and authenticated as a driver. The dispatcher works a queue across every
-trip in their organisation, so the list and the review action are org-scoped and
-cannot hang off a /trips/{trip_id} prefix — hence two routers in one module. They share
-a service and a schema; splitting the file would separate code that changes together.
+"""Trip exception endpoints, in two scopes: driver-raised (trip-nested) and dispatcher
+review (org-scoped, since the queue spans every trip) — hence two routers in one module.
 
 Both dispatcher routes scope on the token's organisation as an authorisation boundary,
 not a filter: another operator's exception must be unreachable by guessing a UUID.
@@ -48,9 +43,7 @@ router = APIRouter(prefix="/trips/{trip_id}/exceptions", tags=["exceptions"])
 dispatcher_router = APIRouter(prefix="/exceptions", tags=["exceptions"])
 
 
-# Budgeted generously on purpose: a panic alert is the one request on this API that must
-# never be refused because the driver pressed the button more than once. EVIDENCE_WRITE is
-# high enough that only scripted abuse reaches it.
+# Budgeted generously: a panic alert must never be refused for a double-press.
 @router.post("", response_model=TripExceptionRead, status_code=http_status.HTTP_201_CREATED,
              dependencies=[Depends(rate_limit(EVIDENCE_WRITE))])
 async def raise_exception_endpoint(
@@ -59,10 +52,7 @@ async def raise_exception_endpoint(
     db: AsyncSession = Depends(get_db),
     current_driver: DriverRead = Depends(get_current_driver),
 ) -> TripExceptionRead:
-    # The request carries GPS as JSON floats, but the model column is Decimal
-    # (fixed precision). Convert via str() so the binary float's error tail
-    # doesn't leak into the stored value; convert at this boundary, not in the
-    # orchestration layer, which deliberately only accepts Decimal.
+    # Convert via str() so the binary float's error tail doesn't leak into the stored Decimal.
     gps_lat = Decimal(str(payload.gps_lat)) if payload.gps_lat is not None else None
     gps_lng = Decimal(str(payload.gps_lng)) if payload.gps_lng is not None else None
     try:
@@ -83,19 +73,14 @@ async def raise_exception_endpoint(
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
 
 
-# Declared BEFORE the /{exception_id} GET below: FastAPI matches path operations in
-# declaration order, and "review-queue"/"history" would otherwise be parsed as the
-# exception_id path parameter (a UUID), 422-ing on every call instead of routing here.
+# Declared BEFORE /{exception_id}: FastAPI matches routes in declaration order, or
+# "review-queue" would be parsed as the exception_id path parameter.
 @dispatcher_router.get("/review-queue", response_model=list[TripExceptionListItem])
 async def review_queue_endpoint(
     db: AsyncSession = Depends(get_db),
     current_user: UserRead = Depends(get_current_dispatcher),
 ) -> list[TripExceptionListItem]:
-    """Every needs_review exception in the dispatcher's organisation, newest first.
-
-    Deliberately unpaginated: this is a bounded human-work queue, not a full history —
-    hiding a large critical backlog behind pages would be unsafe.
-    """
+    """Every needs_review exception in the dispatcher's organisation, newest first — unpaginated."""
     return await list_review_queue(db, organization_id=current_user.organization_id)
 
 
@@ -111,12 +96,7 @@ async def exception_history_endpoint(
     db: AsyncSession = Depends(get_db),
     current_user: UserRead = Depends(get_current_dispatcher),
 ) -> CursorPage[TripExceptionListItem]:
-    """Recorded/reviewed exceptions only (never needs_review — that's the review
-    queue's own job), newest first, cursor-paginated.
-
-    `from_date`/`to_date` are inclusive South African calendar dates. `q` matches
-    against the trip's reference or the exception's own description.
-    """
+    """Recorded/reviewed exceptions only (never needs_review), newest first, cursor-paginated."""
     try:
         return await list_exception_history(
             db,
@@ -148,11 +128,8 @@ async def get_exception_detail_endpoint(
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
-# Rate-limited like the other dispatcher mutations. Not a cost control — this endpoint
-# spends no money and calls no partner. It is the same blast-radius cap PRECINCT_MUTATION
-# carries: a write that lands on an evidence record, where a client stuck in a retry loop
-# should be stopped long before it works through every exception in the organisation.
-# Reads on this router stay uncapped beyond the global per-IP net (core/limits.py).
+# Rate-limited like other dispatcher mutations, not for cost control — it's a
+# blast-radius cap on a write that lands on an evidence record.
 @dispatcher_router.patch("/{exception_id}/review", response_model=TripExceptionRead,
                          dependencies=[Depends(rate_limit(FLEET_MUTATION))])
 async def review_exception_endpoint(
@@ -161,11 +138,7 @@ async def review_exception_endpoint(
     db: AsyncSession = Depends(get_db),
     current_user: UserRead = Depends(get_current_dispatcher),
 ) -> TripExceptionRead:
-    """Record the dispatcher's immutable review of this exception.
-
-    The body carries the assessment, outcome and a required-but-nullable contact method.
-    The reviewer and timestamp come from the token and server clock — see review_exception.
-    """
+    """Record the dispatcher's immutable review of this exception."""
     try:
         return await review_exception(
             db,
@@ -177,13 +150,10 @@ async def review_exception_endpoint(
             contact_method=payload.contact_method,
         )
     except ResourceNotFoundError as exc:
-        # 404 rather than 403 on a wrong-organisation id: a 403 would confirm the row
-        # exists to a dispatcher with no right to know that.
+        # 404, not 403, on a wrong-organisation id — a 403 would confirm the row exists.
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ExceptionAlreadyReviewedError as exc:
-        # 409, not a 200 carrying the winner's row. This caller's note was discarded, and
-        # a success response would report an account as recorded that never was. The
-        # detail names no person — it says a colleague reviewed it, not who.
+        # 409, not a 200 carrying the winner's row; detail names no person.
         raise HTTPException(
             status_code=http_status.HTTP_409_CONFLICT,
             detail=(

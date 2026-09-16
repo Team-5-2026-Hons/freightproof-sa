@@ -1,12 +1,7 @@
-// Calendar-month arithmetic for the analytics month range (FP-156).
-//
-// The analytics views bucket trips by calendar month in SAST (FP-153 Q4), so "this month"
-// is read from the Africa/Johannesburg calendar by named zone — not the browser's local
-// calendar, which on a machine set to UTC still shows last month for the first two hours
-// of the 1st. Same approach as the history page's todayStr().
-//
-// Months are "YYYY-MM-01" strings throughout: zero-padded, so they also sort
-// chronologically as plain strings.
+// Calendar-month arithmetic for the analytics month range (FP-156). "This month" is read
+// from the Africa/Johannesburg calendar by named zone, not the browser's local calendar,
+// which on a UTC-set machine still shows last month for the first two hours of the 1st.
+// Months are "YYYY-MM-01" strings, zero-padded so they also sort as plain strings.
 
 import type { MonthRange } from '@/lib/types/month-range'
 
@@ -56,8 +51,7 @@ export function defaultMonthRange(now: Date = new Date()): MonthRange {
   return { start: addMonths(end, -(DEFAULT_RANGE_MONTHS - 1)), end }
 }
 
-// Fixed rather than Intl: some locales abbreviate September as "Sept", and the label should
-// read the same in every browser.
+// Fixed rather than Intl, so the label reads the same in every browser/locale.
 export const MONTH_ABBREVIATIONS = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
 ] as const

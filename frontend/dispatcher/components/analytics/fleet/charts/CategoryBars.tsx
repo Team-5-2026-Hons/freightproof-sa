@@ -31,7 +31,7 @@ export interface BarSeries<Row> {
   /** Per row, so one series can colour its bars by what they are (lateness bands, severity). */
   color: (row: Row) => string
   value: (row: Row) => number
-  /** Fades a bar that rests on too little to compare fairly (chart 2.4's short lanes). */
+  /** Fades a bar that rests on too little to compare fairly. */
   opacity?: (row: Row) => number
 }
 
@@ -42,19 +42,15 @@ interface CategoryBarsProps<Row> {
   /** Stacked in order; the last one gets the rounded data end. */
   series: readonly BarSeries<Row>[]
   renderTooltip: (row: Row) => ReactNode
-  /** The value-axis heading (spec §7.7). Named yLabel like every wrapper's; on horizontal bars
-   *  the value axis is the x-axis, so it is drawn there. */
+  /** The value-axis heading; on horizontal bars the value axis is the x-axis. */
   yLabel: string
-  /** 'columns' stand up from the baseline (2.2); 'bars' lie along it, for long category names
-   *  (3.3, 4.4, 5.4, 1.6). */
+  /** 'columns' stand up from the baseline; 'bars' lie along it, for long category names. */
   orientation: 'columns' | 'bars'
-  /** Stacked adds the series up (parts of one total); side by side compares them (chart 3.5).
-   *  Defaults to stacked. */
+  /** Stacked adds the series up (parts of one total); side by side compares them. Defaults
+   *  to stacked. */
   stacked?: boolean
   height?: number
-  /** Horizontal bars only: room for the category names, and each row's height. Long names
-   *  (chart 2.4's lanes) want a wider column and taller rows, so they wrap onto spaced lines
-   *  instead of piling onto the next row. */
+  /** Horizontal bars only: room for the category names, and each row's height. */
   categoryAxisWidth?: number
   rowHeight?: number
   /** Space between one category's bars and the next, as Recharts' barCategoryGap. */
@@ -74,8 +70,7 @@ interface CategoryTickProps {
 }
 
 /** Bars over fixed categories rather than time. Categories keep the order the rows come in:
- *  bands stay in lateness order, and a ranked list stays ranked. Same mark rules as the trend
- *  charts: at most 24 px, a 2 px surface gap, a rounded data end, a hairline grid. */
+ *  bands stay in lateness order, and a ranked list stays ranked. */
 export function CategoryBars<Row>({
   rows, rowKey, categoryLabel, series, renderTooltip, yLabel, orientation, stacked = true, height,
   categoryAxisWidth = CATEGORY_AXIS_WIDTH, rowHeight = BAR_ROW_HEIGHT, categoryGap,
@@ -96,8 +91,8 @@ export function CategoryBars<Row>({
   const barRowHeight = isZoomed ? Math.max(rowHeight, ZOOM_BAR_ROW_HEIGHT) : rowHeight
   const chartHeight = height ?? (isBars ? rows.length * barRowHeight + X_AXIS_WITH_HEADING_HEIGHT : columnsHeight)
   const tickLabel = (key: string): string => labels.get(key) ?? key
-  // Drawn with Recharts' own Text so a long name wraps within the column with line spacing,
-  // centred on its row. The axis's default tick wraps at 1em, so wrapped lines touch.
+  // Drawn with Recharts' own Text so a long name wraps within the column with line spacing;
+  // the axis's default tick wraps at 1em, so wrapped lines would touch.
   const categoryTick = ({ x, y, payload }: CategoryTickProps) => (
     <Text
       x={Number(x)} y={Number(y)} width={categoryAxisWidth - CATEGORY_TICK_PADDING}

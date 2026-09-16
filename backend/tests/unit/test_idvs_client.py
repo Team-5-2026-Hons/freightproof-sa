@@ -83,7 +83,23 @@ async def test_decision_defaults_to_approved_for_an_unstaged_session():
     assert decision.session_id == session.session_id
 
 
-async def test_staged_decline_is_returned_for_that_session_only():
+@pytest.fixture
+def mock_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin IDVS_USE_MOCK on for tests that stage a mock decision.
+
+    Without this these tests read the DEVELOPER'S .env: stage_decision() is guarded by
+    _require_mock_mode(), so anyone running with IDVS_USE_MOCK=false — which is what you
+    set to exercise live Didit locally — gets IdvsUnsupportedError and two red tests that
+    have nothing to do with their change.
+
+    It passed CI only by accident: CI checks out no .env at all, so the field fell back to
+    its default of true. A unit test whose result depends on an untracked file on one
+    machine is not testing what it claims to.
+    """
+    monkeypatch.setattr(settings, "IDVS_USE_MOCK", True)
+
+
+async def test_staged_decline_is_returned_for_that_session_only(mock_mode):
     store = FakeStore()
     client = MockIdvsClient(store=store)
     declined = await client.create_session(reference="handover-1", callback_url=_CALLBACK)
@@ -97,7 +113,7 @@ async def test_staged_decline_is_returned_for_that_session_only():
     assert (await client.get_decision(approved.session_id)).status is IdvsDecisionStatus.APPROVED
 
 
-async def test_staged_extracted_identity_is_returned():
+async def test_staged_extracted_identity_is_returned(mock_mode):
     client = MockIdvsClient(store=FakeStore())
     session = await client.create_session(reference="handover-1", callback_url=_CALLBACK)
 

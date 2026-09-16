@@ -28,22 +28,20 @@ class PhaseEvent(Base):
 
     __tablename__ = "phase_events"
     __table_args__ = (
-        # D3: only trip_creation has a NULL trip_stop_id, so this constraint is
-        # total for P1..P6. PostgreSQL treats NULLs as distinct in a unique
-        # constraint, which is exactly why in_transit is anchored to the stop it
-        # DEPARTS FROM rather than left NULL — otherwise duplicate NULL-stop rows
-        # would slip through this.
+        # D3: only trip_creation has a NULL trip_stop_id, so this constraint is total
+        # for P1..P6 — Postgres treats NULLs as distinct in a unique constraint, which
+        # is why in_transit anchors to its departure stop rather than being left NULL.
         UniqueConstraint("trip_id", "trip_stop_id", "phase_type", name="uq_phase_events_trip_stop_type"),
-        # The other half of D3: exactly one P0 per trip, which the constraint
-        # above cannot express because its trip_stop_id is NULL.
+        # The other half of D3: exactly one P0 per trip, which the constraint above
+        # can't express since its trip_stop_id is NULL.
         Index(
             "uq_phase_events_trip_creation",
             "trip_id",
             unique=True,
             postgresql_where=text("phase_type = 'trip_creation'"),
         ),
-        # Replay protection for the driver app's offline queue. Partial, because
-        # server-generated rows (the whole plan at creation) carry no key.
+        # Replay protection for the driver app's offline queue; partial since
+        # server-generated rows carry no key.
         Index(
             "uq_phase_events_idempotency_key",
             "idempotency_key",
@@ -64,15 +62,13 @@ class PhaseEvent(Base):
     phase_type: Mapped[PhaseType] = mapped_column(String(30), nullable=False)
     sequence_number: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     status: Mapped[PhaseStatus] = mapped_column(String(20), nullable=False, server_default="pending")
-    # D4. Decoupled from `status` on purpose: a completed phase whose anchor
-    # failed is a real state under the fail-open policy, and the system must be
-    # able to say a receipt is owed.
+    # D4. Decoupled from `status`: a completed phase with a failed anchor is a real
+    # state under the fail-open policy, and the system must still know a receipt is owed.
     anchor_status: Mapped[AnchorStatus] = mapped_column(
         String(20), nullable=False, server_default="not_required"
     )
-    # The driver app's offline-queue entry id, echoed back on replay. Drivers lose
-    # signal; a resubmitted completion must return the current state, never a
-    # duplicate row and never an error.
+    # Driver app's offline-queue entry id, echoed back on replay, so a resubmitted
+    # completion returns current state, never a duplicate or an error.
     idempotency_key: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     dispatcher_override_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
@@ -80,16 +76,9 @@ class PhaseEvent(Base):
     dispatcher_override_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     driver_phone_lat: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     driver_phone_lng: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
-    # Task 0A: the instant the DRIVER'S OWN PHONE submitted this completion — distinct
-    # from completed_at/created_at below, which are the server's clock stamped when the
-    # request was PROCESSED. An offline-queued completion can sit for hours between the
-    # two; without this column corroboration_service has no way to tell a live handshake
-    # from a stale replay, and a fresh Pulsit fix taken at PROCESS time gets compared
-    # against a driver claim from hours earlier as if both described the same moment.
-    # Nullable because it is optional on the wire (schemas/phases.py) for compatibility
-    # with an already-queued client that predates this field — never backfilled with
-    # completed_at or now(), which would be exactly the fabrication this column exists
-    # to prevent. Timezone-aware only; enforced at the schema layer, not here.
+    # Instant the driver's phone submitted this completion, not when the server
+    # processed it — needed so corroboration_service can tell a live handshake from a
+    # stale offline replay. Nullable for older clients; never backfilled with completed_at.
     driver_captured_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     horse_gps_lat: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     horse_gps_lng: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
@@ -111,9 +100,8 @@ class PhaseEvent(Base):
     )
     location_warning_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     seal_number: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    # Artifact FKs use use_alter=True to break the circular dependency in the
-    # migration: evidence_artifacts is created before trips, so these FKs are
-    # added via ALTER TABLE after all tables exist.
+    # Artifact FKs use use_alter=True to break the migration's circular dependency:
+    # evidence_artifacts is created before trips, so these FKs are added via ALTER TABLE.
     seal_photo_artifact_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("evidence_artifacts.id", use_alter=True, name="fk_phase_seal_photo"),
@@ -141,11 +129,9 @@ class PhaseEvent(Base):
         ForeignKey("evidence_artifacts.id", use_alter=True, name="fk_phase_pod_signature"),
         nullable=True,
     )
-    # The paper linehaul sheet the warehouse hands the driver at loading. Distinct from
-    # waybill_photo_artifact_id (departure): that is the legal waybill copy, this is the
-    # driver-safe summary. Third-party evidence of what the warehouse CLAIMED was loaded,
-    # independent of FreightProof's own record. Optional — a paperless warehouse hands the
-    # driver nothing to photograph, and this must never block his trip.
+    # Paper linehaul sheet from the warehouse at loading — third-party evidence of what
+    # was claimed loaded, distinct from the legal waybill copy. Optional: a paperless
+    # warehouse gives the driver nothing to photograph, and this must never block his trip.
     linehaul_photo_artifact_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("evidence_artifacts.id", use_alter=True, name="fk_phase_linehaul_photo"),

@@ -1,14 +1,7 @@
-"""Server-Sent Events endpoint — the dispatcher's live channel.
+"""Server-Sent Events endpoint — the dispatcher's live channel (app/core/realtime.py).
 
-A dispatcher opens one long-lived connection here and receives thin change
-notifications for their organisation (see app/core/realtime.py). The org is taken
-from the authenticated dispatcher, so a dispatcher can only ever receive their own
-organisation's events — that is the security boundary, and there is nothing to
-configure in the database for it.
-
-The stream is one-directional (server → browser): the dispatcher never sends
-anything back over it, which is exactly why SSE fits and a bidirectional WebSocket
-would be over-tooling.
+Org is taken from the authenticated dispatcher — that's the security boundary. One
+directional (server -> browser), which is why SSE fits over a WebSocket.
 """
 
 import asyncio
@@ -27,9 +20,8 @@ from app.schemas.people import UserRead
 router = APIRouter(prefix="/stream", tags=["stream"])
 logger = logging.getLogger(__name__)
 
-# How long the stream may sit idle before it emits a keep-alive comment. Proxies and
-# load balancers close idle connections; a periodic comment frame keeps the pipe open
-# without the client having to reconnect. Module-level so tests can shorten it.
+# Idle time before a keep-alive comment, so proxies don't close the connection.
+# Module-level so tests can shorten it.
 HEARTBEAT_SECONDS = 15.0
 
 # no-cache: SSE must never be cached. X-Accel-Buffering: no disables nginx response
@@ -45,10 +37,8 @@ async def _event_stream(org_id: UUID) -> AsyncIterator[str]:
     """Yield SSE frames for one connected dispatcher until they disconnect.
 
     A background task pumps events from the org's Redis subscription into a queue; the
-    main loop drains the queue, and any interval with no event produces a heartbeat
-    comment instead. Wrapping the queue read (rather than the Redis subscription itself)
-    in the timeout keeps cancellation clean — a cancelled ``queue.get()`` is harmless,
-    whereas cancelling a mid-flight Redis read could leave the pubsub in a bad state.
+    main loop drains it, timing out to a heartbeat when idle. Timeout wraps the queue
+    read, not the Redis subscription, so cancellation stays clean.
     """
     queue: asyncio.Queue[realtime.TripEvent] = asyncio.Queue()
 
@@ -58,9 +48,7 @@ async def _event_stream(org_id: UUID) -> AsyncIterator[str]:
 
     pump_task = asyncio.create_task(_pump())
     try:
-        # Open the stream immediately so the client (and any proxy) sees a live
-        # connection before the first real event arrives.
-        yield ": connected\n\n"
+        yield ": connected\n\n"  # open the stream immediately, before the first real event
         while True:
             try:
                 event = await asyncio.wait_for(queue.get(), timeout=HEARTBEAT_SECONDS)
@@ -69,8 +57,7 @@ async def _event_stream(org_id: UUID) -> AsyncIterator[str]:
                 continue
             yield f"data: {event.model_dump_json()}\n\n"
     finally:
-        # Client disconnected (the generator is closed) — stop the pump and let its
-        # Redis subscription tear down.
+        # Client disconnected — stop the pump and let its Redis subscription tear down.
         pump_task.cancel()
         with suppress(asyncio.CancelledError):
             await pump_task

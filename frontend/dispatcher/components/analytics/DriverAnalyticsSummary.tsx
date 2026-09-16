@@ -18,8 +18,7 @@ export interface DriverAnalyticsSummaryProps {
   driverId: DriverId
 }
 
-// The phase names carry no "Avg" prefix because the section heading already says "Average
-// time in each phase".
+// No "Avg" prefix on the phase names — the section heading already says "Average time in each phase".
 const LABELS = {
   trips: 'Trips',
   onTimeDepartures: 'On-time departures',
@@ -46,26 +45,20 @@ interface PhaseRow {
   note?: string
 }
 
-// In phase order. in_transit and trip_creation are never driver dwell (FP-153 §4).
+// In phase order; in_transit and trip_creation are never driver dwell.
 const PHASE_ROWS: readonly PhaseRow[] = [
   { label: 'Activation', key: 'activation_dwell_minutes_avg' },
   { label: 'Loading', key: 'loading_dwell_minutes_avg' },
   { label: 'Departure', key: 'departure_dwell_minutes_avg' },
   { label: 'Unloading', key: 'unloading_dwell_minutes_avg' },
-  // The caveat sits with this one figure, not in a footnote: a slow receiver lengthens it,
-  // so it is not purely the driver's (FP-156 §4.5).
+  // The caveat sits with this one figure, not a footnote: a slow receiver also lengthens it.
   { label: 'Confirmation', key: 'confirmation_dwell_minutes_avg', note: ANALYTICS_COPY.confirmationDwellCaveat },
 ]
 
-/** One driver's analytics on their own detail page: the Driver tab's figures from
- *  /analytics as stat tiles, since a one-row table reads as broken UI.
- *
- *  Trends only (decision 06): only the severity cells carry colour, because that is the
- *  exception's own severity. Rates and times stay neutral, since colouring them good or bad
- *  would be a judgement of the driver: the first step to a score.
- *
- *  The endpoint takes no driver filter, so this fetches the organisation's list and picks
- *  this driver out client-side. A server-side filter is backend work, left out on purpose. */
+/** One driver's analytics on their own detail page, as stat tiles (a one-row table would read
+ *  as broken UI). Only severity cells carry colour; rates and times stay neutral so they never
+ *  read as a judgement of the driver. Filters the org's full list client-side — the endpoint
+ *  has no per-driver filter yet. */
 export function DriverAnalyticsSummary({ driverId }: DriverAnalyticsSummaryProps) {
   const [range, setRange] = useState<MonthRange>(() => defaultMonthRange())
   const drivers = useDriverAnalytics(range)

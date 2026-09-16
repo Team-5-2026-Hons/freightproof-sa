@@ -15,7 +15,7 @@ interface GrainToggleProps {
 }
 
 /** View by Week / Month / Year. A grain with too many bars for the period stays visible,
- *  with a tooltip saying why it can't be chosen (spec §3). */
+ *  with a tooltip saying why it can't be chosen. */
 export function GrainToggle({ value, onChange, disabled }: GrainToggleProps) {
   const options = GRAINS.map((grain) => ({
     value: grain,

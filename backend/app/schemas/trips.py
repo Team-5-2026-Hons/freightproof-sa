@@ -51,9 +51,7 @@ class ConsignmentBase(BaseModel):
 
     trip_id: Optional[UUID] = None
     parcel_perfect_reference: str
-    # Resolved from the PP accnum at sync time; may be unknown (NULL in DB) when
-    # no org matches — a creation warning, not an error, so reads must accept it.
-    client_organization_id: Optional[UUID] = None
+    client_organization_id: Optional[UUID] = None  # resolved from the PP accnum; may be NULL
     origin_precinct_id: Optional[UUID] = None
     destination_precinct_id: Optional[UUID] = None
     declared_value: Optional[Decimal] = None
@@ -91,9 +89,8 @@ class ConsignmentRead(ConsignmentBase):
     id: UUID
     created_at: datetime
     updated_at: datetime
-    # Live scan progress from Parcel rows, recomputed per request. Distinct from the
-    # phase rows' parcel_count_origin / parcel_count_destination, which are stamped
-    # once at phase close and never revised — those are the evidence, this is progress.
+    # Live scan progress, recomputed per request. Distinct from the phase rows'
+    # parcel_count_origin/_destination, which are stamped once and never revised.
     scanned_out_count: int = 0
     scanned_in_count: int = 0
 
@@ -147,12 +144,8 @@ class TripBase(BaseModel):
 
 
 def stop_slot_times(stops: Optional[list["TripStopCreate"]]) -> list[datetime]:
-    """Every scheduled slot_time on the route, in sequence order.
-
-    Sequence is the route; list order is only how the client happened to serialise it.
-    Reading the list as sent would see a reversed payload as a negative duration and
-    reject a perfectly good trip.
-    """
+    """Every scheduled slot_time on the route, in sequence order (not list order, which
+    a reversed payload would misread as a negative duration)."""
     if not stops:
         return []
     return [
@@ -170,16 +163,10 @@ def validate_declared_schedule(
 ) -> None:
     """Reject a declared schedule that could not have happened.
 
-    Shared by both creation schemas rather than written twice: two copies of a rule
-    are two rules, and they drift. Silent when either end is missing — a trip with no
-    declared arrival has no duration to be implausible about, and planned_arrival_at
-    is legitimately optional.
-
-    schedule_source names where the two times came from, because on the multi-stop
-    route they are stop slot_times rather than the trip-level fields, and an error
-    naming fields the request never sent is an error nobody can act on.
-
-    Raises ValueError, which Pydantic surfaces as a 422 through the API.
+    Shared by both creation schemas so the rule can't drift between two copies. Silent
+    when either end is missing — planned_arrival_at is legitimately optional.
+    schedule_source names where the two times came from (trip-level fields, or stop
+    slot_times on a multi-stop route), since an error naming fields never sent helps no one.
     """
     if not (planned_departure_at and planned_arrival_at):
         return
@@ -192,8 +179,6 @@ def validate_declared_schedule(
     if declared < MINIMUM_TRIP_DURATION:
         minimum_minutes = int(MINIMUM_TRIP_DURATION.total_seconds() // 60)
         declared_minutes = declared.total_seconds() / 60
-        # Name the minimum and what was given: "too short" on its own leaves the
-        # dispatcher guessing at what would be accepted.
         raise ValueError(
             f"planned trip duration must be at least {minimum_minutes} minutes "
             f"(declared {declared_minutes:g}, from {schedule_source})"
@@ -236,13 +221,8 @@ class TripRead(TripBase):
 
 
 class TripListItemResponse(BaseModel):
-    """Lightweight trip shape returned by GET /api/v1/trips.
-
-    Excludes handshakes and receipts. needs_review_count is computed
-    by resource_service.list_trips() via a grouped COUNT query, counting only
-    review_status == NEEDS_REVIEW (Task 2, FP-146 follow-on) — a RECORDED row is on
-    the trip's exception list but is not queued for a dispatcher decision.
-    """
+    """Lightweight trip shape returned by GET /api/v1/trips. Excludes handshakes and
+    receipts; needs_review_count counts only review_status == NEEDS_REVIEW."""
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
@@ -260,10 +240,8 @@ class TripListItemResponse(BaseModel):
     planned_arrival_at: Optional[datetime] = None
     actual_arrival_at: Optional[datetime] = None
     needs_review_count: int
-    # The list view carries no phase plan, so it cannot derive position at all —
-    # these four are the only thing that lets a row read "Unloading · stop 2 · 6/11".
-    # phase_total is the plan's OWN length: 7 on a single-leg trip, 11 on a
-    # cross-dock one. Nothing may assume either number.
+    # Lets a row read "Unloading · stop 2 · 6/11" without the list view holding a phase
+    # plan. phase_total is the plan's own length (7 on single-leg, 11 on cross-dock).
     current_phase: Optional[str] = None
     current_stop: Optional[int] = None
     phase_total: int
@@ -313,18 +291,10 @@ class TripHistoryListItemResponse(BaseModel):
 class DriverTripListItemResponse(BaseModel):
     """One row of GET /api/v1/trips/me — the authenticated driver's own trip list.
 
-    Deliberately NOT TripListItemResponse: that shape is built for the dispatcher
-    board and carries driver/horse/trailers on every row, which a driver reading
-    their own list already knows. It also omits precinct NAMES, which is why the
-    PWA had to resolve precinct ids against mock fixtures and fell back to
-    printing eight characters of a UUID on the card. Names are resolved
-    server-side here so the trip card can render a real origin -> destination.
-
-    status is the coarse TripStatus and is the ONLY thing the PWA groups its
-    Active/Upcoming/Past tabs by: CREATED is an assignment the driver has not
-    activated yet (Upcoming), ACTIVE/EXCEPTION_HOLD is underway (Active), and
-    CLOSED/CANCELLED is history (Past). Nothing here sequences a trip — the phase
-    ledger does that (see TripStatus's own docstring).
+    Deliberately not TripListItemResponse: that carries driver/horse/trailers a driver
+    already knows, and omits precinct names, which are resolved server-side here.
+    status is the coarse TripStatus the PWA groups its Active/Upcoming/Past tabs by;
+    the phase ledger, not this field, sequences the trip.
     """
     model_config = ConfigDict(from_attributes=True)
 
@@ -333,20 +303,16 @@ class DriverTripListItemResponse(BaseModel):
     order_number: str
     status: TripStatus
     trip_type: TripType
-    # Optional to match the Trip model, where both precinct FKs are nullable.
     origin_precinct_id: Optional[UUID] = None
     destination_precinct_id: Optional[UUID] = None
-    # Null when the trip carries no precinct id, or when the referenced precinct row
-    # is gone; the PWA falls back to the id rather than rendering an empty arrow.
+    # Null when there's no precinct id or the row is gone; PWA falls back to the id.
     origin_precinct_name: Optional[str] = None
     destination_precinct_name: Optional[str] = None
     planned_departure_at: Optional[datetime] = None
     actual_departure_at: Optional[datetime] = None
     planned_arrival_at: Optional[datetime] = None
     actual_arrival_at: Optional[datetime] = None
-    # NEEDS_REVIEW only (Task 2) — the driver receives this for display parity with
-    # the dispatcher board, but gains no review workflow of their own.
-    needs_review_count: int
+    needs_review_count: int  # display parity with the dispatcher board; no review workflow here
     created_at: datetime
     updated_at: datetime
 
@@ -396,9 +362,7 @@ class TripStopBase(BaseModel):
     precinct_id: UUID
     sequence: int = Field(..., ge=0)
     slot_time: Optional[datetime] = None
-    # Bounded to the String(255) column it lands in — TripStopCreate is client input on
-    # the trip-creation path, so an unbounded value here is a 500 from Postgres.
-    notes: Optional[ShortNoteStr] = None
+    notes: Optional[ShortNoteStr] = None  # bounded to the String(255) column, client input
 
 
 class TripStopCreate(TripStopBase):
@@ -413,9 +377,8 @@ class TripStopRead(TripStopBase):
 
 
 class TripConsignmentInput(BaseModel):
-    """One waybill on the trip. pp_reference is the PP waybill number (string[24]
-    in the v28 spec); unit_count_expected is the dispatcher-entered consolidated
-    unit (pallet) count — PP has no pallet grain, so this cannot be derived."""
+    """One waybill on the trip. pp_reference is the PP waybill number (string[24], v28
+    spec); unit_count_expected is dispatcher-entered — PP has no pallet grain."""
 
     pp_reference: str = Field(..., min_length=1, max_length=24)
     unit_count_expected: int = Field(..., ge=1)
@@ -428,18 +391,15 @@ class TripCreateRequest(BaseModel):
     driver_id: UUID
     horse_id: UUID
     trailer_ids: list[UUID] = Field(default_factory=list)
-    # Required only when `stops` is omitted (single-leg back-compat path, FP-112 A.3).
-    origin_precinct_id: Optional[UUID] = None
+    origin_precinct_id: Optional[UUID] = None  # required only when `stops` is omitted (FP-112 A.3)
     destination_precinct_id: Optional[UUID] = None
-    # Explicit multi-stop route. When omitted, create_trip() synthesises two stops
-    # from origin_precinct_id/destination_precinct_id (FP-112 A.3).
+    # When omitted, create_trip() synthesises two stops from origin/destination_precinct_id.
     stops: Optional[list[TripStopCreate]] = Field(default=None, min_length=2)
     template_id: Optional[UUID] = None
     planned_departure_at: Optional[datetime] = None
     planned_arrival_at: Optional[datetime] = None
     trip_type: TripType = TripType.LOADED
-    # PP waybill references + dispatcher-entered unit counts. Client org is now
-    # derived per-consignment from the PP accnum, not carried on the trip itself.
+    # Client org is derived per-consignment from the PP accnum, not carried on the trip.
     consignments: list[TripConsignmentInput] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -455,16 +415,9 @@ class TripCreateRequest(BaseModel):
             sequences = [stop.sequence for stop in self.stops]
             if len(sequences) != len(set(sequences)):
                 raise ValueError("stop sequence numbers must be unique")
-        # A trip must carry a resolvable schedule at creation, mirroring
-        # phase_service._scheduled_departure's own two-source resolution exactly
-        # (trip-level planned_departure_at, else the earliest-sequence stop with a
-        # slot_time): _reject_if_not_due treats "no schedule at all" as PERMANENTLY
-        # not-due (see its docstring), not merely not-yet-due. Since stops omitted
-        # here means create_trip synthesises two stops with no slot_time of their
-        # own (FP-112 A.3), planned_departure_at is the only possible source on
-        # that path, so it is strictly required there. Without this check, a trip
-        # could be created that no schedule can ever satisfy — a permanent,
-        # silent 409 at every future activation attempt.
+        # A trip must carry a resolvable schedule at creation: _reject_if_not_due treats
+        # "no schedule at all" as PERMANENTLY not-due, not merely not-yet-due. Without
+        # this, a trip could be created that no schedule can ever satisfy.
         has_stop_schedule = self.stops is not None and any(
             stop.slot_time is not None for stop in self.stops
         )
@@ -475,18 +428,12 @@ class TripCreateRequest(BaseModel):
                 "(provide planned_departure_at, or set slot_time on at least "
                 "one of the provided stops)"
             )
-        # The route carries its own schedule, and on the explicit-stops path it may be
-        # the ONLY schedule — planned_departure_at is not required when a stop has a
-        # slot_time (see the check above). Falling back to the stop bounds is what
-        # stops that route bypassing the duration rule entirely; each half falls back
-        # independently so a trip-level departure and a stop-derived arrival still
-        # describe one duration between them.
+        # Falls back to stop bounds so the explicit-stops path can't bypass the
+        # duration rule entirely; each half falls back independently.
         slots = stop_slot_times(self.stops)
         effective_departure = self.planned_departure_at or (slots[0] if slots else None)
-        # The arrival is the latest scheduled point strictly after the departure. The
-        # "strictly after" is what stops a single scheduled stop being read as both
-        # ends of the same journey and rejected as a zero-length trip — one timed stop
-        # describes a moment, not a span.
+        # Strictly after departure, so one timed stop reads as a moment, not a
+        # zero-length span.
         later = [
             slot for slot in slots
             if effective_departure is None or slot > effective_departure
@@ -515,22 +462,16 @@ class TripCreateRequest(BaseModel):
 
 
 class CancelTripRequest(BaseModel):
-    """POST /trips/{trip_id}/cancel body (task 6.1, D6). note is required — a
-    dispatcher abandoning a trip mid-plan without stating why is the single most
-    audit-sensitive gap this action could leave, so a blank note is a 422 here
-    rather than an empty string landing on the TripException record.
-
-    RequiredFreeText rather than a bare min_length: it also rejects a note made only of
-    invisible characters, which would satisfy min_length while leaving exactly the
-    unexplained gap this field exists to prevent."""
+    """POST /trips/{trip_id}/cancel body. note is required — a dispatcher abandoning a
+    trip mid-plan without stating why is the single most audit-sensitive gap this action
+    could leave. RequiredFreeText, not a bare min_length, also rejects invisible-char-only notes."""
 
     note: RequiredFreeText
 
 
 class OverridePhaseRequest(BaseModel):
-    """POST /trips/{trip_id}/phases/{phase_event_id}/override body (task 6.1, D6).
-    Same required-note rationale as CancelTripRequest — a dispatcher bypassing
-    driver-attested evidence must state why."""
+    """POST /trips/{trip_id}/phases/{phase_event_id}/override body. Same required-note
+    rationale as CancelTripRequest — a dispatcher bypassing driver-attested evidence must state why."""
 
     note: RequiredFreeText
 

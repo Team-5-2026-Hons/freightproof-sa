@@ -3,7 +3,6 @@
 import { createContext, useState, useCallback, useRef } from 'react'
 import { ToastViewport, type ToastData } from '@/components/ui/Toast'
 
-// Re-export ToastData as Toast for backwards-compat with useToast consumers
 export type Toast = ToastData
 
 export interface ToastState {
@@ -20,23 +19,15 @@ const MAX_TOASTS = 3
 export const TOAST_AUTO_DISMISS_MS = 4_000
 
 /**
- * Drop toasts until the viewport can hold what is left, lowest priority first.
- *
- * This was `slice(-MAX_TOASTS)`, which discards the OLDEST whatever it says — so three
- * routine alerts landing behind a panic button pushed the hijacking off the dispatcher's
- * screen, and ranking.ts's severity split bought nothing at all. A component rendering
- * one toast cannot see what else arrived; this is the only place that can weigh them.
- *
- * Age still decides within a band: priority is a tiebreak on top of the existing rule,
- * not a replacement for it. A critical can still be displaced by a NEWER critical —
- * the list has to stay bounded, and between two live incidents the one nobody has read
- * yet is the one to show.
+ * Drop toasts until the viewport can hold what's left, lowest priority first. Priority
+ * is a tiebreak on top of age, not a replacement for it — a critical can still be
+ * displaced by a NEWER critical, since the list has to stay bounded.
  */
 function evictToCap(toasts: Toast[]): Toast[] {
   let kept = toasts
   while (kept.length > MAX_TOASTS) {
     const oldestOrdinary = kept.findIndex(t => t.priority !== 'critical')
-    // -1 means every toast on screen is critical, so age is all that is left to go on.
+    // -1 means every toast on screen is critical, so fall back to age.
     const drop = oldestOrdinary === -1 ? 0 : oldestOrdinary
     kept = [...kept.slice(0, drop), ...kept.slice(drop + 1)]
   }

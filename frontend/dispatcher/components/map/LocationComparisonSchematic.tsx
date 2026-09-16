@@ -1,15 +1,8 @@
 // Local SVG schematic comparing the driver's phone fix against the horse tracker's fix at
-// a recorded phase. Zero dependencies, zero network: this draws the two RECORDED points
-// and, when one is stored, the CURRENT precinct boundary as a labelled reference circle. It
-// never fetches a fresh tracker position and never reconstructs historical fence geometry
-// (see BOUNDARY_REFERENCE_LABEL in lib/phase/location-evidence.ts); coordinates identify
-// devices, not proof of the driver's presence, so the markers are distinguished by shape
-// and text as well as colour.
-//
-// Also the tile-failure fallback for LocationComparisonMap (components/map/LocationComparisonMap.tsx):
-// whatever this draws is what a dispatcher sees when the basemap cannot load, so its own
-// on-screen size and label placement have to be correct on their own, not just "good enough
-// for a disclosure panel".
+// a recorded phase. Zero dependencies, zero network: draws the two RECORDED points and,
+// when known, the CURRENT precinct boundary as a labelled reference circle (see
+// BOUNDARY_REFERENCE_LABEL in lib/phase/location-evidence.ts). Also the tile-failure
+// fallback for LocationComparisonMap, so its own sizing has to be correct standalone.
 
 import {
   BOUNDARY_REFERENCE_LABEL,
@@ -26,74 +19,47 @@ interface Props {
 }
 
 // ── Layout constants ────────────────────────────────────────────────────────────
-// A rectangular viewBox (rather than GeofenceSchematic's square) because this diagram has
-// to fit two independent points plus a boundary circle, not one circle centred on itself.
+// Rectangular, not square like GeofenceSchematic's, since this fits two points plus a boundary circle.
 const VIEWBOX_WIDTH = 320
 const VIEWBOX_HEIGHT = 220
-// Keeps every drawn element (markers, boundary circle, labels) off the viewBox edge.
+// Keeps every drawn element off the viewBox edge.
 const PADDING_PX = 34
 
-// Hard cap on the SVG's rendered width, applied via an inline `max-width` style rather
-// than a Tailwind arbitrary-value class (`max-w-[360px]`): Tailwind's content scanner
-// needs that exact literal string present in source text, and building it from this
-// constant via template interpolation would leave the class un-generated in the actual
-// CSS output while still looking correct in the diff. An inline style has no such
-// requirement and reads the constant directly. `mx-auto` (a plain, static class) keeps
-// it centred when the container is wider than the cap.
-//
-// An SVG's `viewBox` only fixes its INTERNAL coordinate system: the browser still scales
-// that coordinate system up to fill whatever CSS box the element is given, and every unit
-// inside (including font-size) scales with it. `LocationEvidencePanel` renders this at
-// `w-full h-auto` inside a `size="lg"` Modal, which stretched the SVG to that modal's full
-// width (500-600px+) and, with it, ~9px label text to ~16px; overlapping labels that read
-// fine at the viewBox's own 320px. Capping the rendered width keeps the scale factor (and
-// therefore the font sizes below) close to 1, whatever container this is dropped into.
+// Inline `max-width` style, not a Tailwind arbitrary-value class: Tailwind's content
+// scanner needs a literal class string, not one built via template interpolation.
+// An SVG's viewBox only fixes its internal coordinate system — the browser still scales
+// it to fill the CSS box, which stretched labels to ~16px inside a `size="lg"` Modal.
+// This caps the scale factor (and font sizes) close to 1 in any container.
 const MAX_RENDER_WIDTH_PX = 360
 
-// Metres per degree of latitude (and, scaled by cos(latitude), of longitude): a constant
-// for a local equirectangular projection, not a geodesic one. Good enough for a schematic
-// spanning at most a few hundred kilometres; explicitly NOT haversineMetres-consistent, as
-// the plan allows.
+// Local equirectangular projection, not geodesic — good enough for a schematic spanning
+// at most a few hundred kilometres.
 const M_PER_DEG = 111_320
 
-// Half-width of the frame drawn when there is nothing to fit an extent to (a single fix, no
-// boundary): coincident points, or one lone fix. Keeps the marker from filling the frame.
+// Half-width of the frame when there's nothing to fit an extent to (a lone or coincident fix).
 const DEFAULT_HALF_EXTENT_METRES = 100
 
-// Below this pixel gap, two markers are treated as coincident: no line is drawn (a
-// zero-length "separation" line is not a line), and the two text labels are pushed apart
-// vertically instead of overlapping each other.
+// Below this pixel gap, two markers are treated as coincident: no line drawn, labels pushed apart vertically.
 const COINCIDENT_EPSILON_PX = 0.5
 
 const MARKER_RADIUS_PX = 6
 const SQUARE_HALF_PX = 5.5
 const LABEL_GAP_PX = 9
-// Reduced from the diagram's very first cut (9px) now that MAX_RENDER_WIDTH_PX bounds the
-// on-screen scale factor to ~1.1x of the viewBox: 9px would render at ~10px, which is
-// legible but leaves less clearance before adjacent labels touch at tight separations.
 const LABEL_FONT_SIZE = 8
 const COINCIDENT_LABEL_OFFSET_PX = 11
 
-// A marker's away-vector is rarely EXACTLY horizontal or vertical, so anchoring on any
-// nonzero x-component would flip start/end on almost every render for a nearly-vertical
-// separation, a difference no one asked for and that would make snapshot-style
-// assertions flaky. Anchor flips only once the horizontal component is a clear majority
-// of the (unit) away-vector; otherwise the label stays centred under/over the marker.
+// Anchor flips (start/end) only once the horizontal component is a clear majority of the
+// away-vector, so a near-vertical separation doesn't flip on almost every render.
 const HORIZONTAL_ANCHOR_THRESHOLD = 0.3
 
-// Boundary caption: rough text width in px, used only to keep the caption inside the
-// viewBox; not a real font metric, which SVG has no synchronous way to measure without
-// a DOM round-trip this component (also used server-side in tests) shouldn't depend on.
-// 0.55 * fontSize per character is a standard estimate for a mixed-case sans-serif body.
+// Rough estimate (0.55 * fontSize per char), used only to keep the caption inside the
+// viewBox — SVG has no synchronous way to measure real text width.
 const BOUNDARY_LABEL_CHAR_WIDTH_FACTOR = 0.55
 const BOUNDARY_LABEL_FONT_SIZE = 8
-// A boundary circle this small on screen has no room for its own caption without the
-// text swallowing the circle (or spilling over neighbouring markers): draw the circle
-// alone rather than a label no one could read anyway.
+// A boundary circle this small has no room for a caption without the text swallowing it.
 const MIN_BOUNDARY_RADIUS_FOR_CAPTION_PX = 6
 
-// Nudges the separation-distance label off the dashed line itself rather than centred on
-// it, and gives it a solid halo so the dash pattern doesn't cut through the digits.
+// Nudges the separation-distance label off the dashed line, with a solid halo so the dash doesn't cut through it.
 const SEPARATION_LABEL_PERP_OFFSET_PX = 7
 const SEPARATION_LABEL_HALO_STROKE_WIDTH = 3
 
@@ -115,7 +81,7 @@ function toRadians(degrees: number): number {
   return (degrees * Math.PI) / 180
 }
 
-/** Metres east/north of (originLat, originLng): see the M_PER_DEG comment above. */
+/** Metres east/north of (originLat, originLng). */
 function project(coords: Coords, originLat: number, originLng: number): Point {
   return {
     x: (coords.lng - originLng) * Math.cos(toRadians(originLat)) * M_PER_DEG,
@@ -124,14 +90,9 @@ function project(coords: Coords, originLat: number, originLng: number): Point {
 }
 
 /**
- * Where to draw a marker's text label: offset away from `other` (the other recorded fix)
- * along the line joining them, so the label lands on the side that can never be crossed
- * by the separation line or sit under the other marker.
- *
- * `other === null` (a lone fix, nothing to steer away from) falls back to the diagram's
- * original layout (straight down from the marker, centred), which is also what a
- * zero-length away-vector (defensive; `coincident` is handled by the caller before this
- * is reached) collapses to.
+ * Where to draw a marker's text label: offset away from `other` along the line joining
+ * them, so it never sits on the separation line or the other marker. `other === null`
+ * (a lone fix) falls back to straight down from the marker, centred.
  */
 function labelPlacement(marker: Point, other: Point | null, offsetPx: number): LabelPlacement {
   let dirX = 0
@@ -161,8 +122,7 @@ function labelPlacement(marker: Point, other: Point | null, offsetPx: number): L
 function buildAriaLabel(evidence: LocationEvidence): string {
   const { driverFix, trackerFix, separationMetres } = evidence
   if (driverFix && trackerFix) {
-    // Never fabricate a distance: only append "N m apart" when a separation was actually
-    // measured (constraint 3, "No zero fallback"; see task-2-brief.md).
+    // Never fabricate a distance: only append "N m apart" when one was actually measured.
     const separationFragment = separationMetres !== null
       ? `, ${formatSeparation(separationMetres)} apart`
       : ''
@@ -177,22 +137,16 @@ function buildAriaLabel(evidence: LocationEvidence): string {
 /**
  * Pure SVG schematic (never a basemap) placing the driver phone fix, the horse tracker
  * fix, and (when known) the current precinct boundary on one locally-projected diagram.
- *
- * Fits whatever is actually drawn: two fixes and a boundary; one lone fix; two coincident
- * fixes; two fixes hundreds of kilometres apart. Degenerate extents (a single point, or no
- * boundary) fall back to a fixed default scale rather than dividing by zero.
+ * Fits whatever is actually drawn, and falls back to a fixed default scale for degenerate
+ * extents rather than dividing by zero.
  */
 export function LocationComparisonSchematic({ evidence, className }: Props) {
   const { driverFix, trackerFix, separationMetres } = evidence
-  // The same boundary the live map's default frame would show, and only that: a
-  // boundary far from every fix is left out here too, otherwise fitting it would shrink
-  // two fixes kilometres apart onto one pixel and this fallback would show LESS than the
-  // map it stands in for. See boundaryInDefaultFrame in lib/phase/location-evidence.ts.
+  // The same boundary the live map's default frame would show — a far boundary is left
+  // out here too, so this fallback doesn't show less than the map it stands in for.
   const boundary = boundaryInDefaultFrame(evidence)
 
-  // Origin for the local projection: the mean latitude/longitude across everything that
-  // will actually be drawn. cos(originLat) is what keeps a degree of longitude the right
-  // width relative to a degree of latitude at this latitude band.
+  // Origin for the local projection: the mean lat/lng across everything drawn.
   const extentCoords: Coords[] = [
     ...(driverFix ? [driverFix.coords] : []),
     ...(trackerFix ? [trackerFix.coords] : []),
@@ -205,8 +159,8 @@ export function LocationComparisonSchematic({ evidence, className }: Props) {
     ? extentCoords.reduce((sum, c) => sum + c.lng, 0) / extentCoords.length
     : 0
 
-  // Bounding box in metres (east/north of the origin) across every drawn item: fix points,
-  // and the boundary circle's full footprint (centre ± radius), not just its centre.
+  // Bounding box in metres across every drawn item: fix points, and the boundary
+  // circle's full footprint (centre +/- radius), not just its centre.
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
   function extend(x: number, y: number): void {
     minX = Math.min(minX, x); maxX = Math.max(maxX, x)
@@ -228,8 +182,7 @@ export function LocationComparisonSchematic({ evidence, className }: Props) {
   const bboxWidth = Number.isFinite(maxX - minX) ? maxX - minX : 0
   const bboxHeight = Number.isFinite(maxY - minY) ? maxY - minY : 0
 
-  // px-per-metre. A degenerate extent (nothing drawn, or everything coincident with no
-  // boundary) falls back to a fixed default "zoom" rather than dividing by zero.
+  // px-per-metre; a degenerate extent falls back to a fixed default "zoom".
   const defaultScale = drawableWidthPx / (DEFAULT_HALF_EXTENT_METRES * 2)
   let scale: number
   if (bboxWidth <= 0 && bboxHeight <= 0) {
@@ -264,10 +217,8 @@ export function LocationComparisonSchematic({ evidence, className }: Props) {
 
   const showLine = driverPx !== null && trackerPx !== null && !coincident
 
-  // Driver/tracker label placement: steer each label away from the OTHER marker so
-  // neither ever sits on top of the separation line or the other marker's own label.
-  // Coincident fixes keep the previous stacked-above/below layout instead (the "other"
-  // marker to steer away from is, by definition, right on top of this one).
+  // Coincident fixes keep a stacked above/below layout instead of steering away from
+  // the other marker, since it's right on top of this one.
   const driverLabel = driverPx
     ? (coincident
       ? { x: driverPx.x, y: driverPx.y - COINCIDENT_LABEL_OFFSET_PX, anchor: 'middle' as const }
@@ -282,13 +233,9 @@ export function LocationComparisonSchematic({ evidence, className }: Props) {
   const boundaryCentrePx = boundary ? toPx(project(boundary.coords, originLat, originLng)) : null
   const boundaryRadiusPx = boundary ? boundary.radiusMetres * scale : 0
   const showBoundary = boundaryCentrePx !== null && Number.isFinite(boundaryRadiusPx) && boundaryRadiusPx > 0
-  // A circle too small on screen has no room for its caption text without the label
-  // swallowing it: draw the circle alone rather than an illegible or overflowing label.
   const showBoundaryCaption = showBoundary && boundaryRadiusPx >= MIN_BOUNDARY_RADIUS_FOR_CAPTION_PX
 
-  // Clamp the caption's centre x so its estimated text box never runs off the viewBox:
-  // it was previously anchored straight over the circle's own (unclamped) centre, which
-  // clipped at the left edge for any boundary drawn near the frame's edge.
+  // Clamps the caption's centre x so its estimated text box never runs off the viewBox.
   const boundaryLabelHalfWidthPx =
     (BOUNDARY_REFERENCE_LABEL.length * BOUNDARY_LABEL_CHAR_WIDTH_FACTOR * BOUNDARY_LABEL_FONT_SIZE) / 2
   const boundaryLabelX = boundaryCentrePx
@@ -298,26 +245,20 @@ export function LocationComparisonSchematic({ evidence, className }: Props) {
     )
     : 0
 
-  // Scale bar: same niceScaleMetres rounding as GeofenceSchematic, sized off this
-  // diagram's own px-per-metre rather than importing its fraction-of-a-circle constant,
-  // which assumes a geometry this component doesn't have.
+  // Same niceScaleMetres rounding as GeofenceSchematic, sized off this diagram's own px-per-metre.
   const metresPerPixel = scale > 0 ? 1 / scale : 0
   const scaleMetres = niceScaleMetres(SCALE_BAR_TARGET_PX * metresPerPixel)
   const scaleWidthPx = scaleMetres * scale
 
-  // Separation label: offset perpendicular to the dashed line (not just up, which
-  // collided with the line whenever it ran more horizontally than vertically) and given
-  // a solid halo (paint-order: stroke) so the dash pattern behind it doesn't cut through
-  // the digits.
+  // Offset perpendicular to the dashed line, with a solid halo (paint-order: stroke) so
+  // the dash pattern doesn't cut through the digits.
   let separationLabelX = 0
   let separationLabelY = 0
   if (driverPx && trackerPx) {
     const dx = trackerPx.x - driverPx.x
     const dy = trackerPx.y - driverPx.y
     const length = Math.hypot(dx, dy)
-    // Rotate the line direction 90° for a perpendicular unit vector; a zero-length line
-    // (coincident fixes) never reaches this branch because showLine/the text below both
-    // require !coincident.
+    // Rotates the line direction 90 degrees for a perpendicular unit vector.
     const perpX = length > 0 ? -dy / length : 0
     const perpY = length > 0 ? dx / length : -1
     separationLabelX = (driverPx.x + trackerPx.x) / 2 + perpX * SEPARATION_LABEL_PERP_OFFSET_PX

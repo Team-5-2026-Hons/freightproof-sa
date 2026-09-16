@@ -1,12 +1,11 @@
 """SHA-256 hashing utilities for FreightProof evidence integrity.
 
 compute_journey_lock_hash() is the canonical hash of a trip's immutable
-parameters at creation time. It is stored on the Trip row and anchored to
-Hedera HCS. Any post-creation mismatch between the DB value and the Hedera
-record indicates tampering.
+parameters at creation, stored on the Trip row and anchored to Hedera HCS —
+a post-creation mismatch indicates tampering.
 
-compute_trip_canonical_payload() exposes the same dict for the verification
-flow, so verify_subject() can recompute the hash without duplicating logic.
+compute_trip_canonical_payload() exposes the same dict so verify_subject()
+can recompute the hash without duplicating logic.
 """
 
 import hashlib
@@ -30,18 +29,16 @@ def compute_journey_lock_hash(
 ) -> str:
     """Return a 64-char lowercase hex SHA-256 digest of the trip's fixed parameters.
 
-    The canonical string is a compact JSON object with keys in alphabetical order.
-    Trailers are sorted by their UUID string representation (lowercase RFC 4122 hex,
-    locale-independent) so insertion order does not affect the hash. An empty
-    trailer list is a valid canonical value — rigid trucks and integrated bodies
-    run without trailers.
+    Canonical string is compact JSON with alphabetically sorted keys.
+    Trailers are sorted by UUID string so insertion order doesn't affect the
+    hash; an empty list is valid (rigid trucks run without trailers).
 
-    Now includes created_by_user_id and created_at so the on-chain hash for a
-    BlockchainReceipt is identical to the journey_lock_hash — single source of truth.
+    Includes created_by_user_id and created_at so the on-chain hash matches
+    journey_lock_hash exactly.
 
-    trip_type is optional and versioned: only pass it for new trips. Old anchored
-    trips never had it in their payload, so verification must omit it when
-    reconstructing their hash (see verification_service._reconstruct_trip_payload).
+    trip_type is optional and versioned: old anchored trips never had it, so
+    verification must omit it when reconstructing their hash (see
+    verification_service._reconstruct_trip_payload).
     """
     payload = compute_trip_canonical_payload(
         trip_id=trip_id,
@@ -74,9 +71,8 @@ def compute_trip_canonical_payload(
 ) -> dict:
     """Return the canonical payload dict used for both the lock hash and on-chain anchor.
 
-    trip_type is omitted from the payload entirely when None, rather than set to
-    null, so pre-existing anchored trips (which never had this key) still hash
-    identically at verification time.
+    trip_type is omitted entirely when None (not set to null) so
+    pre-existing anchored trips still hash identically at verification time.
     """
     payload = {
         "trip_id": str(trip_id),

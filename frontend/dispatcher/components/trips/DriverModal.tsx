@@ -18,12 +18,9 @@ interface Props {
 }
 
 /**
- * Who is driving this trip, reachable without leaving it.
- *
- * Deliberately omits the driver's SA ID number. DriverRead carries it, but this is a
- * glanceable surface opened during a live trip and an identity number is not what a
- * dispatcher needs to make contact — under POPIA that is personal data we should not
- * surface without a reason. The fleet driver record remains the place for it.
+ * Who is driving this trip, reachable without leaving it. Deliberately omits the
+ * driver's SA ID number — POPIA personal data with no reason to surface here; the fleet
+ * driver record is the place for it.
  */
 export function DriverModal({ driver, open, onClose, returnTo }: Props) {
   return (

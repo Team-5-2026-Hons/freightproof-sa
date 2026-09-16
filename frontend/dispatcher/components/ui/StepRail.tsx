@@ -10,11 +10,8 @@ interface StepRailProps {
   onNavigate?: (step: number) => void
 }
 
-/**
- * Horizontal step-progress rail. Completed steps show a green check, the
- * active step shows a blue numbered circle with a halo, future steps are muted.
- * Place this in a band between the TopBar and the form content.
- */
+/** Horizontal step-progress rail: a green check for completed steps, a numbered circle with
+ *  a halo for the active step, muted for future steps. */
 export function StepRail({ steps, current, onNavigate }: StepRailProps) {
   return (
     <div className="flex items-start w-full">
@@ -26,7 +23,6 @@ export function StepRail({ steps, current, onNavigate }: StepRailProps) {
 
         return (
           <div key={label} className="flex items-start flex-1 last:flex-none">
-            {/* Step node */}
             <button
               type="button"
               disabled={!canNav}

@@ -1,131 +1,71 @@
-# FreightProof SA — centralised application settings.
-# All values are read from environment variables (or backend/.env in local dev).
-# Never import os.environ directly in the app — always go through `settings`.
+"""Application settings loaded from environment variables or backend/.env."""
 
 from typing import List
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+# Native driver app origins (iOS, Android); kept outside Settings so no .env can drop them.
+_NATIVE_APP_ORIGINS = ("capacitor://localhost", "https://localhost")
+
+
 class Settings(BaseSettings):
-    # -------------------------------------------------------------------------
-    # Database
-    # asyncpg driver is required for SQLAlchemy's async engine.
-    # Format: postgresql+asyncpg://user:password@host:port/dbname
-    # -------------------------------------------------------------------------
+    # Must use the asyncpg driver: postgresql+asyncpg://...
     DATABASE_URL: str
 
-    # Persistent connections this engine keeps open, and the extra connections it may
-    # open under burst before a checkout waits. Supabase's session-mode pooler caps the
-    # whole project at 15 concurrent clients regardless of how many backend instances are
-    # talking to it — four devs each running their own local server share that one
-    # ceiling. Defaults are deliberately small (2 + 1 = 3 per instance) so that all four
-    # devs running at once total 12, leaving headroom for Alembic, psql, and one-off
-    # scripts. Raise only with the team's awareness that it eats into a limit everyone
-    # shares.
+    # Supabase's pooler caps the project at 15 clients; kept small so four devs fit.
     DB_POOL_SIZE: int = 2
     DB_MAX_OVERFLOW: int = 1
 
-    # Separate async PostgreSQL URL for integration tests.
-    # Must point at a throwaway database — tests create and drop tables.
-    # Leave empty to skip integration tests automatically.
+    # Empty skips integration tests.
     TEST_DATABASE_URL: str = ""
 
-    # -------------------------------------------------------------------------
-    # Redis
-    # Used by Celery as both the broker and result backend, and directly
-    # for any ephemeral caching (e.g. rate-limit counters).
-    # -------------------------------------------------------------------------
     REDIS_URL: str
 
-    # -------------------------------------------------------------------------
-    # Supabase
-    # Used in development only for storage and Auth helpers. In production,
-    # DATABASE_URL points to the same Postgres instance Supabase manages.
-    # -------------------------------------------------------------------------
     SUPABASE_URL: str
     SUPABASE_ANON_KEY: str
 
-    # -------------------------------------------------------------------------
-    # Hedera Hashgraph
-    # HCS (Hedera Consensus Service) is used to anchor evidence hashes.
-    # HEDERA_NETWORK should be "testnet" in dev and "mainnet" in production.
-    # HEDERA_TOPIC_ID is created by the FP-001 spike; empty until that spike lands.
-    # -------------------------------------------------------------------------
     HEDERA_ACCOUNT_ID: str
     HEDERA_PRIVATE_KEY: str
     HEDERA_NETWORK: str = "testnet"
     HEDERA_TOPIC_ID: str = ""
 
-    # Hard ceiling on the submit_hash() SDK call (a real network round-trip with no
-    # built-in timeout). Typical latency is ~4-6s; this bounds the worst case so a
-    # stalled Hedera call fails fast instead of hanging the request indefinitely.
+    # The Hedera SDK has no built-in timeout.
     HEDERA_SUBMIT_TIMEOUT_SECONDS: float = 15.0
 
-    # -------------------------------------------------------------------------
-    # Twilio — NOT YET IMPLEMENTED (no client code). Optional until the SMS
-    # integration lands; required-ness should return with the feature.
-    # -------------------------------------------------------------------------
+    # Twilio and SendGrid are not implemented yet.
     TWILIO_ACCOUNT_SID: str = ""
     TWILIO_AUTH_TOKEN: str = ""
     TWILIO_FROM_NUMBER: str = ""
 
-    # -------------------------------------------------------------------------
-    # SendGrid — NOT YET IMPLEMENTED (no client code). Same deal.
-    # -------------------------------------------------------------------------
     SENDGRID_API_KEY: str = ""
     SENDGRID_FROM_EMAIL: str = ""
 
-    # -------------------------------------------------------------------------
-    # Supabase Auth
-    # SERVICE_ROLE_KEY: grants full DB + Auth admin access; used server-side
-    # only (e.g. creating auth users, setting app_metadata). Never sent to
-    # the browser.
-    # -------------------------------------------------------------------------
+    # Full admin access: server-side only, never sent to a browser.
     SUPABASE_SERVICE_ROLE_KEY: str
 
-    # Evidence images are fetched by the dispatcher's browser straight from Storage via a
-    # short-lived signed URL. Kept deliberately short: for its lifetime the URL is a bearer
-    # capability that carries no further auth check.
+    # Signed URLs are unauthenticated while valid, so keep them short-lived.
     EVIDENCE_SIGNED_URL_TTL_SECONDS: int = 300
 
-    # -------------------------------------------------------------------------
-    # Integration mock toggles
-    # True = use local mock, False = call real external API.
-    # Defaults to True so new dev environments work without partner credentials.
-    # -------------------------------------------------------------------------
+    # Mocks default on so a new dev environment works without partner credentials.
     IDVS_USE_MOCK: bool = True
     IDVS_API_KEY: str = ""
     IDVS_API_URL: str = ""
     PULSE_USE_MOCK: bool = True
     PULSE_API_KEY: str = ""
     PULSE_API_URL: str = ""
-    # Task 0A (FP-68 follow-up): the largest gap a Pulsit fix and the driver's OWN
-    # capture instant may sit apart and still corroborate each other. Wider than a
-    # single request round trip on purpose — a live handshake's fix and capture are
-    # taken within the same request, but Pulsit's OWN reporting interval (how often a
-    # parked tracker refreshes its position, not something this codebase controls) can
-    # be a few minutes on its own. 300s covers a normal tracker refresh cadence with
-    # margin while still rejecting an offline handshake replayed hours later — the
-    # exact gap this task exists to close (see corroboration_service.py).
+    # Covers tracker refresh cadence but rejects a replayed offline handshake.
     PULSIT_CORROBORATION_MAX_SKEW_SECONDS: int = 300
     PP_USE_MOCK: bool = True
-    PP_API_KEY: str = ""        # Parcel Perfect login email / username
-    PP_API_PASSWORD: str = ""   # Parcel Perfect login password (used in MD5 auth flow)
-    PP_API_TOKEN: str = ""      # Pre-issued token (skips salt/MD5 flow when set)
+    PP_API_KEY: str = ""  # login username
+    PP_API_PASSWORD: str = ""
+    PP_API_TOKEN: str = ""  # skips the salt/MD5 login when set
     PP_API_URL: str = ""
     PP_POLL_INTERVAL_SECONDS: int = 60
 
-    # Warehouse scan feed. True = MockScanFeed (Redis-backed, driven by the dev
-    # trigger panel), False = a real WMS/PP-depot feed. Mirrors PP_USE_MOCK.
-    # No real implementation exists yet: PP exposes no scan endpoint and we have
-    # no depot account, so this stays True until one lands.
+    # No real scan feed exists yet, so this stays True.
     SCAN_FEED_USE_MOCK: bool = True
 
-    # -------------------------------------------------------------------------
-    # Runtime config
-    # -------------------------------------------------------------------------
-    # Used by the (upcoming) H1/H4 gate geofence check — see feature/gps-warehouse-geofencing.
     GPS_TOLERANCE_METRES: int = 50
 
     # Driver-vs-truck proximity check (Task 4, trip-location-timeline story):
@@ -144,193 +84,80 @@ class Settings(BaseSettings):
 
     DEMO_MODE: bool = False
 
-    # Dev trigger panel. Registers a router that can fire scans, PP lifecycle changes and
-    # exceptions. Defaults to False so the panel is absent unless deliberately switched
-    # on. This is now the SOLE condition: it used to be paired with ENVIRONMENT !=
-    # "production", but the deployed demo runs as production (to keep /docs unpublished)
-    # and still needs the panel — see api/v1/endpoints/dev_triggers.dev_panel_enabled for
-    # the full reasoning. Setting this True on an internet-reachable host publishes
-    # endpoints that fabricate evidence events; they require a dispatcher token and refuse
-    # unless the integrations are mocked, but nothing else stands behind them now. Turn it
-    # off when the demo window closes.
+    # Sole gate for the dev panel: the demo deploy runs as production but still needs it.
     DEV_PANEL_ENABLED: bool = False
 
-    # The operating day boundary used to decide whether a driver is activating a trip
-    # before its scheduled date (orchestration/phase_service.py). "Same calendar day"
-    # is meaningless without a timezone: a 06:00 SAST departure is 04:00 UTC, and a
-    # 01:00 SAST departure is the PREVIOUS day in UTC, so comparing UTC dates would
-    # reject a driver starting a legitimately-scheduled early-morning trip.
-    #
-    # A fixed offset rather than a zoneinfo key on purpose: South African Standard Time
-    # is permanently UTC+2 and has never observed daylight saving, so an offset is exact
-    # for every date this system will see — and it keeps a tz database out of the
-    # container image. The moment FreightProof runs anywhere that DOES shift, this must
-    # become a real IANA zone name resolved through zoneinfo, with tzdata added to
-    # requirements.txt.
+    # SAST has no DST, so a fixed offset is exact for the operating-day boundary.
     OPERATIONS_UTC_OFFSET_HOURS: int = 2
 
-    # -------------------------------------------------------------------------
-    # Sessions
-    # -------------------------------------------------------------------------
-    # How long a session may sit idle before the API stops accepting it. Supabase
-    # issues the tokens and refreshes them indefinitely, so without this a signed-in
-    # handset or an unattended dispatcher laptop stays authenticated forever. Enforced
-    # server-side in auth/sessions.py against a last-seen timestamp, and mirrored by a
-    # client-side timer in both frontends so the user is actually signed out rather than
-    # discovering it on their next request.
+    # Enforced in auth/sessions.py; Supabase tokens otherwise refresh forever.
     SESSION_IDLE_TIMEOUT_MINUTES: int = 10
 
-    # -------------------------------------------------------------------------
-    # Receiver handover (FP-155)
-    # -------------------------------------------------------------------------
-    # How long a capability token stays redeemable after issue. The ticket's design
-    # band is 5-15 minutes; 10 sits in the middle. Not the QR's on-screen rotation
-    # interval (FP-237) — that is a display refresh, this is the server-side grant
-    # window the rotation lives inside.
+    # Token lifetime, separate from how often the QR on screen rotates.
     HANDOVER_TOKEN_EXPIRY_MINUTES: int = 10
 
-    # How often the driver's screen replaces the displayed QR with a freshly issued
-    # token. Not a security boundary on its own — HANDOVER_TOKEN_EXPIRY_MINUTES is —
-    # but it bounds how long a photograph of the driver's screen stays redeemable,
-    # which is the attack the rotation exists for. Short enough that a photo taken
-    # across a warehouse is dead before it is useful; long enough that a receiver
-    # fumbling their camera app does not watch the code change under them.
+    # Limits how long a photo of the QR stays usable.
     HANDOVER_ROTATION_SECONDS: int = 20
 
-    # Origin of the public receiver app (frontend/receiver), used to build the URL
-    # encoded into the QR. Must be reachable from a receiver's own mobile data — never
-    # localhost in a deployed environment, or every scan dead-ends on their phone. No
-    # trailing slash; build_scan_url strips one rather than emitting a double slash
-    # some QR readers mangle.
+    # Encoded in the QR, so it must be reachable from mobile data when deployed.
     HANDOVER_RECEIVER_BASE_URL: str = "http://localhost:3002"
 
-    # -------------------------------------------------------------------------
-    # Receiver identity verification (Didit)
-    # -------------------------------------------------------------------------
-    # The Didit workflow selecting the full KYC bundle — document + passive liveness +
-    # face match + IP. Server-side config rather than a per-request choice, so the
-    # verification a receiver gets cannot be downgraded by anything the client sends.
+    # Server-side so a client can't downgrade the verification workflow.
     IDVS_WORKFLOW_ID: str = ""
 
-    # HMAC secret for the vendor's webhook. The webhook is a public write-capable route,
-    # and this is the only thing separating a real decision from a forged one.
+    # The only protection against forged decisions on the public webhook.
     IDVS_WEBHOOK_SECRET: str = ""
 
-    # HARD stop, not a warning threshold. Didit's free tier is 500 sessions per calendar
-    # month and session 501 bills silently with no rate limit at the boundary, so the
-    # limit has to be enforced on our side or not at all. At the ceiling the handover
-    # degrades to a lower evidence tier; it never bills and it never blocks a delivery.
+    # Didit free-tier cap; past it handover drops to a lower evidence tier instead of billing.
     IDVS_MONTHLY_SESSION_LIMIT: int = 500
 
-    # Ceiling on the outbound session-creation call. Deliberately short: a receiver is
-    # standing in a warehouse with a driver waiting, and a slow vendor must degrade the
-    # tier rather than hold up the handover.
+    # Short so a slow vendor degrades the tier instead of holding up the handover.
     IDVS_SESSION_TIMEOUT_SECONDS: int = 10
 
-    # How long the receiver's browser waits for a decision after returning from the
-    # vendor before giving up and recording ABANDONED. Bounds the handover so a trip can
-    # never end with a verification still in flight.
     IDVS_DECISION_POLL_SECONDS: int = 90
 
-    # One-shot extension of the capability token's life when a verification starts.
-    # The token expires in HANDOVER_TOKEN_EXPIRY_MINUTES, which is shorter than a
-    # document-and-selfie round trip can take; without this a slow verification would
-    # burn the grant and leave the delivery unconfirmable behind a generic 404.
-    # Applied once, capped, and only to a token a human has demonstrably opened.
+    # ID and selfie checks can outlast the handover token, so it is extended once.
     IDVS_TOKEN_EXTENSION_MINUTES: int = 10
 
-    # How long a PENDING verification may sit before the sweeper calls it abandoned.
-    # Comfortably longer than IDVS_DECISION_POLL_SECONDS: the receiver's own page gives up
-    # first and records ABANDONED itself, so this only catches the ones where the page
-    # never got to run at all — a closed tab, a dead battery.
+    # Catches closed tabs and dead phones that the browser poll never reported.
     IDVS_ABANDON_AFTER_SECONDS: int = 1800
     IDVS_SWEEP_INTERVAL_SECONDS: int = 300
 
-    # -------------------------------------------------------------------------
-    # Rate limiting (core/rate_limit.py; budgets live in core/limits.py)
-    # -------------------------------------------------------------------------
-    # Off switch for local development and tests. Never set False in a deployed
-    # environment — it removes the only volume control on endpoints that spend Hedera
-    # and Parcel Perfect quota.
+    # Never disable when deployed: it is the only cap on Hedera and PP spend.
     RATE_LIMIT_ENABLED: bool = True
 
-    # Set True ONLY when the app sits behind a reverse proxy or load balancer that
-    # overwrites X-Forwarded-For. Left False, the socket peer address is used instead.
-    # Trusting the header without such a proxy in front lets any caller forge a fresh
-    # client IP per request and hand themselves an unlimited budget.
+    # Only enable behind a proxy that overwrites X-Forwarded-For, or IPs can be forged.
     RATE_LIMIT_TRUST_PROXY_HEADERS: bool = False
 
-    # -------------------------------------------------------------------------
-    # Application
-    # ALLOWED_ORIGINS: restrict CORS in production to real domains only.
-    # The defaults cover the local dev ports for dispatcher and driver-pwa.
-    # -------------------------------------------------------------------------
     ENVIRONMENT: str = "development"
 
-    # Build version, reported by GET /health and shown as the OpenAPI version. Lives
-    # here rather than as a literal in main.py so a deploy can stamp the running build
-    # (a tag or a commit sha) through the environment: a health endpoint reporting a
-    # version compiled into the source cannot tell you which build is actually serving.
-    #
-    # Named APP_VERSION, not VERSION. This model sets no env_prefix, so each field binds
-    # to a bare environment variable of the same name — and VERSION is generic enough
-    # that a build script, base image or CI job can set it for its own purposes. os.environ
-    # outranks the .env file in pydantic-settings, so that stray value would win silently,
-    # and the field whose entire job is naming the running build would name something
-    # else. The prefix costs nothing and makes the collision implausible.
+    # Not VERSION, which build tools often set.
     APP_VERSION: str = "0.1.0"
 
-    # Hard ceiling on each individual /health dependency probe. The probes exist to
-    # answer "is Postgres/Redis reachable", and an unreachable dependency usually fails
-    # by hanging rather than by refusing — without a bound the health check inherits
-    # that hang, and an orchestrator reads a stalled probe as a container that is merely
-    # slow rather than one that is degraded. Kept short deliberately: the probes run
-    # concurrently, so this is also roughly the endpoint's worst-case latency, and it
-    # has to stay well inside whatever poll interval the orchestrator uses.
+    # Probes run concurrently, so this is roughly /health's worst-case latency.
     HEALTH_PROBE_TIMEOUT_SECONDS: float = 2.0
+    # Native app origins are added separately in cors_allowed_origins.
     ALLOWED_ORIGINS: List[str] = [
         "http://localhost:3000",
         "http://localhost:3001",
-        # driver-pwa native shells (see frontend/driver-pwa/capacitor.config.ts):
-        # iOS keeps the capacitor:// scheme, Android is https:// — both required,
-        # neither can be collapsed into the other.
-        "capacitor://localhost",
-        "https://localhost",
     ]
 
     @property
     def cors_allowed_origins(self) -> List[str]:
-        """ALLOWED_ORIGINS, plus the receiver app's own origin — always.
+        """Return ALLOWED_ORIGINS plus the native app and receiver origins.
 
-        Derived rather than listed, because listing it does not work. ALLOWED_ORIGINS is
-        an env-overridable field: the moment a developer or a deployment sets it in .env,
-        the whole default list above is REPLACED, and any receiver origin written there is
-        silently gone. That is not hypothetical — it is what broke the first real
-        two-phone test of this feature.
-
-        The receiver app's origin is, by definition, an origin this API must accept: it is
-        the page we ourselves told the receiver to open, via a URL this API composed
-        (handover_service.build_scan_url). Requiring anyone to keep that fact in sync
-        across two settings is a drift waiting to happen, and the failure it produces is
-        near-undebuggable — a browser-side CORS refusal that surfaces as the handover's
-        deliberately generic 404.
-
-        Deployment note, unchanged by this: the binding cookie is SameSite=Strict, so the
-        receiver app and this API must still share a registrable domain
-        (receiver.example.co.za and api.example.co.za do; two unrelated domains do not).
-        CORS being correct does not rescue a cookie the browser declines to send.
+        Added here because an ALLOWED_ORIGINS env var replaces the whole default list.
         """
+        origins = list(self.ALLOWED_ORIGINS)
         receiver_origin = self.HANDOVER_RECEIVER_BASE_URL.rstrip("/")
-        if not receiver_origin or receiver_origin in self.ALLOWED_ORIGINS:
-            return self.ALLOWED_ORIGINS
-        return [*self.ALLOWED_ORIGINS, receiver_origin]
 
-    # model_config replaces the deprecated class Config syntax.
-    # In local dev, pydantic-settings reads from backend/.env automatically.
-    # In Docker / production, values come from the container's environment and
-    # env_file is effectively ignored (the file won't be present in the image).
-    # extra="ignore" prevents validation errors if .env contains keys that are
-    # no longer in this model (e.g. after a config field is removed or renamed).
+        for required in (*_NATIVE_APP_ORIGINS, receiver_origin):
+            if required and required not in origins:
+                origins.append(required)
+
+        return origins
+
+    # Ignore stale .env keys left behind by renamed fields.
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -338,5 +165,4 @@ class Settings(BaseSettings):
     )
 
 
-# Single shared instance — import this wherever config values are needed.
 settings = Settings()

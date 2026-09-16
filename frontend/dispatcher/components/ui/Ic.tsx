@@ -1,8 +1,6 @@
 /**
- * Custom 24×24 stroke icon set — DESIGN_SYSTEM.md §6.
- * All icons: viewBox 0 0 24 24, fill none, stroke-width 1.75,
- * stroke-linecap round, stroke-linejoin round.
- * Multi-path glyphs use " M " as a segment separator in the path string.
+ * Custom 24×24 stroke icon set (DESIGN_SYSTEM.md §6): viewBox 0 0 24 24, stroke-width 1.75,
+ * round caps/joins. Multi-path glyphs use " M " as a segment separator in the path string.
  */
 
 export type IconName =
@@ -51,11 +49,8 @@ interface IcProps {
   className?: string
 }
 
-/**
- * Renders a single icon from the FreightProof custom IP stroke set.
- * Multi-segment paths (separated by " M " in the source string) are split
- * into individual <path> elements so each segment is a proper SVG path.
- */
+/** Renders one icon from the custom stroke set; multi-segment paths (separated by " M ")
+ *  are split into individual <path> elements. */
 export function Ic({ n, s = 16, c = 'currentColor', sw = 1.75, className }: IcProps) {
   const d = IP[n]
   if (!d) return <span style={{ width: s, height: s, display: 'inline-block', flexShrink: 0 }} />

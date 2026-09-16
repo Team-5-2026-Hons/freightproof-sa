@@ -1,18 +1,8 @@
-"""Response models for the FP-156 dispatcher analytics endpoints.
+"""Dispatcher analytics response models (FP-156); subclass the frozen FP-153 result
+models from analytics.py and add display names.
 
-Each model subclasses a frozen FP-153 result model from app/schemas/analytics.py and adds
-only the display names the screen needs. Subclassing, rather than wrapping, has two
-effects:
-  - every computed rate is inherited, so it is still derived from the counts shipped
-    beside it and can never disagree with them;
-  - the JSON stays flat, so each table column is one top-level key.
-
-The fields and rates of app/schemas/analytics.py are never changed here — they are
-FP-153's contract.
-
-A name is None when no row is found for its id, for example a driver record belonging to
-another organisation. The metrics row is still returned: dropping it would silently
-change the totals a dispatcher is reading.
+A name is None when no matching row is found; the metrics row is still returned,
+since dropping it would silently change the totals a dispatcher is reading.
 """
 
 from app.db.models.enums import VehicleType
@@ -35,18 +25,11 @@ class VehicleMetricsResponse(VehicleMetrics):
     """One vehicle's closed-trip numbers, horse or trailer, with its registration and type."""
 
     registration: str | None
-    # Horses and trailers come back in one list, so each row says which it is. None when
-    # the vehicle row isn't found, the same as registration.
-    vehicle_type: VehicleType | None
+    vehicle_type: VehicleType | None  # horses and trailers share this list
 
 
 class VehicleStreakResponse(VehicleStreak):
-    """Whole-history streaks plus the live count of trips since the last incident.
-
-    Carries the count so the screen needs one request for the whole table, not one per
-    row. No registration: the screen shows streaks beside the monthly vehicle rows,
-    joined by vehicle_id, and those rows already carry it.
-    """
+    """Whole-history streaks plus the live count of trips since the last incident."""
 
     trips_since_last_incident: int
 

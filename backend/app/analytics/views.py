@@ -1,16 +1,6 @@
-"""Read-only ORM mappings for the FP-153 analytics views.
-
-Mapped on their own DeclarativeBase, deliberately NOT on app.db.models.Base: anything on
-Base.metadata is created as a real TABLE by the test suite's create_all(), and would be
-proposed as a new table by Alembic autogenerate. These relations are plain views, worked
-out from the evidence tables on every read (migration tom_live_analytics_views); this
-module only describes their columns so queries use typed attributes instead of raw SQL
-strings.
-
-The primary keys below are each view's grain, declared only because the ORM needs an
-identity: a plain view has no index or constraint behind them. Nothing is ever written
-through these classes.
-"""
+"""Read-only ORM mappings for the FP-153 analytics views, on their own
+DeclarativeBase (not app.db.models.Base) so create_all()/autogenerate never treat
+them as real tables. Nothing is ever written through these classes."""
 
 import uuid
 from datetime import date
@@ -21,10 +11,8 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from app.db.models.enums import PhaseStatus
 
-# Phase statuses that mean "the driver actually did this, at completed_at". OVERRIDDEN is
-# excluded: its completed_at is the dispatcher's click and it never ran corroboration.
-# The migration's SQL uses the same pair; this copy serves the live (non-view) query in
-# vehicle_metrics.trips_since_last_incident.
+# Phase statuses meaning "the driver actually did this, at completed_at". OVERRIDDEN
+# is excluded: its completed_at is the dispatcher's click, not a real attestation.
 ATTESTED_PHASE_STATUSES: tuple[PhaseStatus, ...] = (PhaseStatus.COMPLETED, PhaseStatus.EXCEPTION)
 
 

@@ -1,10 +1,6 @@
-"""Queries behind the Activity tab's trend charts (GET /analytics/fleet/activity, spec §5.1).
-
-Chart 1.1 counts closed trips by the SAST bucket of their first departure, the FP-153 rule,
-so the numbers match the detail pages (spec D8). Chart 1.7 counts trips by the day they ENDED
-instead: a cancelled trip may never have departed, and trip_service.cancel_trip stamps
-closed_at, so the end is the one date every cancelled trip has.
-"""
+"""Queries behind the Activity tab's trend charts (GET /analytics/fleet/activity,
+spec §5.1). Chart 1.1 buckets by first departure (spec D8); chart 1.7 buckets by
+closed_at instead, since a cancelled trip may never have departed."""
 
 import uuid
 

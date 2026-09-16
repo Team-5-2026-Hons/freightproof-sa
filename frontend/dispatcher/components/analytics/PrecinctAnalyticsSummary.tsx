@@ -18,8 +18,8 @@ export interface PrecinctAnalyticsSummaryProps {
   precinctId: PrecinctId
 }
 
-// "Confirmed ✓" / "Mismatch ✗" match PhaseLocationSection; unwitnessed deliberately avoids its live-trip "Awaiting Pulsit",
-// because on a closed trip the reading was never taken (FP-156 §0 #18).
+// "Confirmed ✓" / "Mismatch ✗" match PhaseLocationSection; unwitnessed avoids its live-trip
+// "Awaiting Pulsit" wording since on a closed trip the reading was never taken.
 const LABELS = {
   corroborationRate: 'Corroboration rate',
   confirmed: 'Confirmed ✓',
@@ -30,28 +30,24 @@ const LABELS = {
 const SUMMARY_COPY = {
   monthsHeading: 'Selected months',
   verdictsHeading: 'Pulsit verdicts',
-  // Facility figures are scoped to the signed-in operator (FP-153 Q1), but a shared
-  // precinct is visited by other operators' trucks too. Without this line the figures
-  // could read as the precinct's whole traffic.
+  // Facility figures are scoped to the signed-in operator, but a shared precinct is visited
+  // by other operators' trucks too — without this line the figures could read as its whole traffic.
   orgScopeNote: "Only your organisation's closed trips are counted, even at a shared precinct.",
 } as const
 
 type Verdict = 'confirmed' | 'mismatch' | 'unwitnessed'
 
-// Confirmed and mismatch take the chip colours for complete and critical. Unwitnessed is
-// a coverage gap, not a failure (FP-153 §8), so it is marked but never tinted.
+// Confirmed and mismatch take the chip colours for complete and critical. Unwitnessed is a
+// coverage gap, not a failure, so it is marked but never tinted.
 const VERDICT_STYLE: Record<Verdict, CountStyle> = {
   confirmed: { dot: 'bg-ok', tint: 'bg-ok-c/30', text: 'text-ok' },
   mismatch: { dot: 'bg-err', tint: 'bg-err-c/40', text: 'text-err' },
   unwitnessed: { dot: 'bg-outline-v' },
 }
 
-/** One precinct's Pulsit corroboration on its own detail page: the Facility tab's figures
- *  from /analytics as stat tiles, since a one-row table reads as broken UI.
- *
- *  The endpoint takes no precinct filter, so this fetches the organisation's list and
- *  picks this precinct out client-side. A server-side filter is backend work, left out on
- *  purpose. */
+/** One precinct's Pulsit corroboration on its own detail page, as stat tiles (a one-row table
+ *  would read as broken UI). Filters the org's full list client-side — the endpoint has no
+ *  per-precinct filter yet. */
 export function PrecinctAnalyticsSummary({ precinctId }: PrecinctAnalyticsSummaryProps) {
   const [range, setRange] = useState<MonthRange>(() => defaultMonthRange())
   const facilities = useFacilityAnalytics(range)
@@ -89,8 +85,8 @@ function Figures({ rangeLabel, metrics }: { rangeLabel: string; metrics: Facilit
         <StatTiles>
           <StatTile
             label={LABELS.corroborationRate}
-            // Same denominator as the fleet page's tracker agreement (chart 5.1): unwitnessed is left out, since
-            // "could not check" is not a failed check.
+            // Same denominator as the fleet page's tracker agreement: unwitnessed is left out
+            // since "could not check" is not a failed check.
             value={fmtRate(metrics.corroboration_rate, metrics.confirmed_count, metrics.confirmed_count + metrics.mismatch_count)}
             accent
           />

@@ -1,16 +1,14 @@
-// User-facing copy for the analytics summaries on the vehicle, driver and precinct detail
-// pages (FP-156), and the one note the fleet page reuses. Kept here rather than in
-// shared/lib/constants/copy.ts, which both apps import: these strings are dispatcher-only.
+// User-facing copy for the vehicle, driver and precinct analytics summaries, plus one note
+// the fleet page reuses. Dispatcher-only, so it lives here rather than shared/lib/constants/copy.ts.
 
 export const ANALYTICS_COPY = {
-  // Verbatim from the computed_field description of confirmation_dwell_minutes_avg in
-  // backend/app/schemas/analytics.py, the source of truth for this caveat. Keep in step.
+  // Must match the computed_field description of confirmation_dwell_minutes_avg in
+  // backend/app/schemas/analytics.py.
   confirmationDwellCaveat:
     'Not purely driver behaviour: a slow receiver at the destination also lengthens the gap between unloading and confirmation.',
 
-  // Trailer analytics, decision 3. A breakdown names its vehicle only since drivers were
-  // asked "truck or trailer", so a trailer's earlier trips have no breakdowns to count and
-  // read as clean. Dateless on purpose: no rollout date is hard-coded anywhere.
+  // Breakdowns are named to the vehicle only, so a trailer's trips before drivers named it
+  // read as clean.
   trailerNote:
     'Trailer breakdowns are only counted from when drivers began naming the vehicle, so earlier trips count as clean.',
 

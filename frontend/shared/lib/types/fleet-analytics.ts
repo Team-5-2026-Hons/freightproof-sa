@@ -1,9 +1,8 @@
 // Fleet-wide Analytics page (docs/design-notes/2026-09-15-fleet-analytics-page-spec.md).
-// Mirrors the backend response models in app/schemas/fleet_analytics.py; keep the two in step.
+// Mirrors backend response models in app/schemas/fleet_analytics.py.
 //
-// Every rate is `number | null`. null means its denominator was zero (no observations) and
-// must render as "—", never as 0%. Rates arrive already divided by the backend, once, from
-// the counts shipped beside them; never re-derive them here.
+// Every rate is `number | null`. null means its denominator was zero and must render as
+// "—", never 0%. Rates arrive already divided by the backend; never re-derive them here.
 
 import type { DurationStats } from './analytics'
 import type {
@@ -19,8 +18,6 @@ import type { VehicleId, VehicleType } from './vehicle'
 
 /** How a trend chart groups time. Weeks start on Monday, as the backend's do. */
 export type Grain = 'week' | 'month' | 'year'
-
-// ── GET /analytics/fleet/tiles ───────────────────────────────────────────────
 
 export interface CriticalWaiting {
   count: number
@@ -64,8 +61,6 @@ export interface FleetTiles {
   all_time_start: string
 }
 
-// ── Shared by the endpoints that take a period ───────────────────────────────
-
 /** The period an answer covers, as the server resolved it: "All time" comes back with its
  *  real first day. Dates are SAST "YYYY-MM-DD". */
 export interface PeriodEcho {
@@ -73,8 +68,6 @@ export interface PeriodEcho {
   end: string
   grain: Grain | null
 }
-
-// ── GET /analytics/fleet/activity ────────────────────────────────────────────
 
 /** Chart 1.1: closed trips that first departed in the bucket. */
 export interface TripsBucket {
@@ -110,8 +103,6 @@ export interface FleetActivity {
   cancelled_trips: CancelledTrip[]
 }
 
-// ── GET /analytics/fleet/patterns ────────────────────────────────────────────
-
 export interface PatternBar {
   key: number
   event_count: number
@@ -136,8 +127,6 @@ export interface FleetPatterns {
   departures: PatternSet
   arrivals: PatternSet
 }
-
-// ── GET /analytics/fleet/on-time ─────────────────────────────────────────────
 
 /** Chart 2.1. Strict: on or before the plan, no grace window. */
 export interface PunctualityBucket {
@@ -187,9 +176,8 @@ export interface FleetOnTime {
   plan_spread: PlanSpread
 }
 
-// ── GET /analytics/fleet/problems ────────────────────────────────────────────
 // Every count excludes dispatcher notes: every cancellation and override records one, so
-// counting them would make "problems" rise whenever a dispatcher does their job (spec D10).
+// counting them would make "problems" rise whenever a dispatcher does their job.
 
 /** Chart 3.1. Info is returned but not drawn (nothing raises it today). */
 export interface ProblemsPerTripBucket {
@@ -244,7 +232,6 @@ export interface FleetProblems {
   risky_times: RiskyTimeBlock[]
 }
 
-// ── GET /analytics/fleet/review ──────────────────────────────────────────────
 // Not limited to closed trips: reviewing is independent of trip status. Migration-only
 // legacy_review markers are never counted.
 
@@ -285,8 +272,6 @@ export interface FleetReview {
   time_to_review: TimeToReviewBucket[]
   outcomes: ReviewOutcomeCount[]
 }
-
-// ── GET /analytics/fleet/evidence ────────────────────────────────────────────
 
 /** Chart 5.1: tracker (Pulsit) checks at stops. agreement_rate leaves unwitnessed out of the
  *  denominator: "could not check" is not a failure. */
@@ -331,8 +316,6 @@ export interface FleetEvidence {
   signoff_flags: SignoffFlags
 }
 
-// ── GET /analytics/fleet/routes ──────────────────────────────────────────────
-
 /** Chart 1.6: attested pickups (loading) and deliveries (unloading on loaded trips) at a site. */
 export interface SiteActivity {
   precinct_id: PrecinctId
@@ -361,8 +344,6 @@ export interface FleetRoutes {
   sites: SiteActivity[]
   lanes: LaneRisk[]
 }
-
-// ── GET /analytics/fleet/incidents ───────────────────────────────────────────
 
 /** One located report. Deliberately nothing about the person: no driver name, phone or id
  *  (spec D14, POPIA). */

@@ -25,9 +25,8 @@ export interface Precinct {
   latitude: number
   longitude: number
   geofence_radius_metres: number
-  // Cross-org visibility opt-in (SEC-PRECINCT-1). False means only the principal
-  // organization's own dispatchers see this precinct in GET /precincts. Visibility is
-  // not permission — a shared precinct is still writable only by its owner.
+  // Cross-org visibility opt-in. Visibility is not permission — a shared precinct is
+  // still writable only by its owner.
   is_shared: boolean
   created_at: string
 }

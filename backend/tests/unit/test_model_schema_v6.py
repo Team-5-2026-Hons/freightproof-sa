@@ -12,17 +12,20 @@ Run: pytest tests/unit/test_model_schema_v6.py -v
 import uuid
 from datetime import datetime, timezone
 
+import pytest
+
+from app.db.models.organisations import Organization, Precinct
+from app.db.models.sla import SlaConfig
+from app.db.models.trips import TripTemplate
+from app.db.models.vehicles import Vehicle
+
 
 # ---------------------------------------------------------------------------
-# DriverSubstitution — model importable and has all required columns
+# DriverSubstitution — has all required columns
 # ---------------------------------------------------------------------------
 
 def _column_names(model_cls) -> set[str]:
     return {c.name for c in model_cls.__table__.columns}
-
-
-def test_driver_substitution_importable():
-    from app.db.models.trips import DriverSubstitution  # noqa: F401
 
 
 def test_driver_substitution_has_four_required_log_fields():
@@ -94,34 +97,9 @@ def test_driver_substitution_has_timestamps():
 # updated_at present on tables that previously lacked it (CLAUDE.md standard)
 # ---------------------------------------------------------------------------
 
-def test_organization_has_updated_at():
-    from app.db.models.organisations import Organization
-
-    assert "updated_at" in _column_names(Organization)
-
-
-def test_precinct_has_updated_at():
-    from app.db.models.organisations import Precinct
-
-    assert "updated_at" in _column_names(Precinct)
-
-
-def test_vehicle_has_updated_at():
-    from app.db.models.vehicles import Vehicle
-
-    assert "updated_at" in _column_names(Vehicle)
-
-
-def test_trip_template_has_updated_at():
-    from app.db.models.trips import TripTemplate
-
-    assert "updated_at" in _column_names(TripTemplate)
-
-
-def test_sla_config_has_updated_at():
-    from app.db.models.sla import SlaConfig
-
-    assert "updated_at" in _column_names(SlaConfig)
+@pytest.mark.parametrize("model_cls", [Organization, Precinct, Vehicle, TripTemplate, SlaConfig])
+def test_model_has_updated_at(model_cls) -> None:
+    assert "updated_at" in _column_names(model_cls)
 
 
 # ---------------------------------------------------------------------------

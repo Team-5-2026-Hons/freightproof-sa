@@ -3,17 +3,15 @@
 import type { TripChecklistItem } from '@shared/lib/types/trip'
 import { registerSessionCache } from '@/lib/cache/sessionCache'
 
-// A list row holds enough to name a trip and say who is driving it, which is most of the
-// detail header. Both list shapes extend TripChecklistItem; only the active-trips list
-// carries arrival times, so those stay optional and history simply has none.
+// A list row holds enough to name a trip and its driver. Only the active-trips list
+// carries arrival times, so those stay optional.
 export interface TripSeed extends TripChecklistItem {
   planned_departure_at?: string | null
   actual_departure_at?: string | null
   planned_arrival_at?: string | null
   actual_arrival_at?: string | null
-  // Absent means the list did not carry trailers, which is NOT the same as a trip having
-  // none — rigid trucks legitimately run without them. Callers must not read one as the
-  // other; an absent list stays silent rather than claiming "no trailers".
+  // Absent means the list didn't carry trailers — NOT the same as a trip having none
+  // (rigid trucks legitimately run without them).
   trailers?: readonly { registration: string }[]
 }
 
@@ -26,7 +24,7 @@ const seeds = new Map<string, TripSeed>()
 export function putTripSeeds(rows: readonly TripSeed[]): void {
   for (const row of rows) {
     // Delete first so a re-listed trip moves to the end: Map iterates in insertion order,
-    // which is what makes the eviction below oldest-first rather than arbitrary.
+    // making the eviction below oldest-first.
     seeds.delete(row.id)
     seeds.set(row.id, row)
   }
@@ -42,8 +40,8 @@ export function getTripSeed(id: string): TripSeed | null {
   return seeds.get(id) ?? null
 }
 
-/** Forget every seeded row. A seed names a trip and who is driving it, so it outliving a
- *  sign-out would let the header of a trip the new dispatcher cannot open still paint. */
+/** Forget every seeded row, so it can't outlive a sign-out and paint a trip the next
+ *  dispatcher cannot open. */
 export function clearTripSeeds(): void {
   seeds.clear()
 }

@@ -1,13 +1,9 @@
-// frontend/receiver/app/h/[token]/HandoverPageClient.tsx
+// The receiver's whole experience. Opened from a QR by someone with no account, no app
+// and no prior relationship with this system, usually one-handed on a warehouse floor.
 //
-// The receiver's whole experience (FP-155). Opened from a QR by someone with no account,
-// no app and no prior relationship with this system, usually one-handed, on a warehouse
-// floor. Four states and nothing else: loading, invalid, ready, done.
-//
-// The page is deliberately incurious about WHY a token is invalid. The API returns one
-// generic 404 for expired, unknown, retired, already-redeemed and wrong-browser alike, so
-// that it cannot be used as an oracle to probe for live tokens — and this client must not
-// undo that by inferring a reason from a status code and explaining it helpfully.
+// Deliberately incurious about WHY a token is invalid: the API returns one generic 404
+// for expired/unknown/retired/redeemed/wrong-browser alike so it can't be used as an
+// oracle to probe for live tokens, and this client must not undo that by explaining.
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
@@ -28,28 +24,21 @@ import { hasRecipientIdentity, looksLikeSaIdNumber } from '@shared/lib/utils/sa-
 import type { PositionFix } from '@shared/lib/types/position'
 
 // Ceiling on the browser geolocation prompt. A receiver who ignores the permission dialog
-// must not leave the delivery unconfirmable — the fix is valuable evidence, not a
-// precondition, so the swipe proceeds without one rather than hanging on it.
+// must not leave the delivery unconfirmable, so the swipe proceeds without a fix rather
+// than hanging on one.
 const GEO_TIMEOUT_MS = 8_000
 
-// The typed identity has to survive a full navigation to the vendor's domain and back.
-// React state does not — the page is destroyed and rebuilt — and without it
-// resolveVerification would cross-check the vendor's extracted document against two empty
-// strings. That reports "nothing to compare" rather than a mismatch, which silently
-// disables the substitution defence the cross-check exists for: a receiver could forward
-// the vendor link to a confederate who completes it with their own genuine ID, and nothing
-// would notice.
-//
-// sessionStorage, not localStorage: it dies with the tab, which is the right lifetime for
-// a stranger's ID number on a device we do not own. Every access is wrapped because
-// private-browsing modes throw on access rather than returning null.
+// The typed identity must survive a full navigation to the vendor's domain and back —
+// React state doesn't (the page is destroyed and rebuilt), and without it
+// resolveVerification would cross-check against two empty strings, silently disabling the
+// substitution defence. sessionStorage, not localStorage: it dies with the tab, the right
+// lifetime for a stranger's ID number on a device we don't own.
 const IDENTITY_STASH_KEY = 'fp_handover_identity'
 
 interface StashedIdentity {
   name: string
   idNumber: string
-  /** Where to come back to. The mock vendor page has only a session id in its URL and no
-      capability token, so the return path has to travel with the identity. */
+  /** The mock vendor page carries no capability token, so the return path travels with the identity. */
   token: string
 }
 
@@ -57,8 +46,7 @@ function stashIdentity(identity: StashedIdentity): void {
   try {
     sessionStorage.setItem(IDENTITY_STASH_KEY, JSON.stringify(identity))
   } catch {
-    // Storage unavailable. The cross-check degrades to "nothing to compare", which is
-    // recorded honestly as that rather than as a mismatch.
+    // Storage unavailable — the cross-check degrades to "nothing to compare".
   }
 }
 
@@ -85,13 +73,12 @@ function clearStashedIdentity(): void {
   try {
     sessionStorage.removeItem(IDENTITY_STASH_KEY)
   } catch {
-    // Nothing to clear, or storage is unavailable. Either way there is nothing to do.
+    // Nothing to clear, or storage is unavailable — either way nothing to do.
   }
 }
 
-// 'consent' / 'verifying' / 'selfie' sit between 'loading' and 'ready' — the identity check
-// FP-249 adds. None of them may become a dead end: every path out of them lands back on
-// 'ready' (or, for 'done'/'invalid', somewhere the existing flow already handles).
+// 'consent' / 'verifying' / 'selfie' sit between 'loading' and 'ready'. None may become a
+// dead end — every path out of them lands back on 'ready'.
 type Status = 'loading' | 'invalid' | 'consent' | 'verifying' | 'selfie' | 'ready' | 'signing' | 'done'
 
 /** Resolves to a fix, or to null on refusal, failure or timeout. Never rejects. */
@@ -104,8 +91,7 @@ function capturePosition(): Promise<PositionFix | null> {
         lng: pos.coords.longitude,
         accuracyM: Number.isFinite(pos.coords.accuracy) ? pos.coords.accuracy : null,
       }),
-      // A denied permission and a failed fix are the same outcome here: no position. The
-      // absence is recorded server-side as null, and is itself part of the record.
+      // A denied permission and a failed fix are the same outcome here: no position.
       () => resolve(null),
       { enableHighAccuracy: true, timeout: GEO_TIMEOUT_MS, maximumAge: 0 },
     )
@@ -118,13 +104,10 @@ export function HandoverPageClient({ token }: { token: string }) {
   const [name, setName] = useState('')
   const [idNumber, setIdNumber] = useState('')
   const [message, setMessage] = useState('')
-  // Busy flag for ConsentGate's own `busy` prop, distinct from `status`: the "no ID" and
-  // "decline" paths stay on the consent screen while their recordConsent call is in
-  // flight, so the screen needs its own in-progress indicator rather than a page swap.
+  // Busy flag for ConsentGate's `busy` prop: the consent-record call stays on this screen
+  // in flight rather than swapping pages.
   const [consentBusy, setConsentBusy] = useState(false)
-  // Tier-3 artifact only — held here so it isn't lost between capture and the confirm
-  // swipe. There is no upload endpoint for it yet; wiring it to the backend is a
-  // follow-up, not part of this stage.
+  // Tier-3 artifact — held here between capture and confirm; no upload endpoint yet.
   const [selfiePhoto, setSelfiePhoto] = useState<string | null>(null)
 
   useEffect(() => {
@@ -136,18 +119,13 @@ export function HandoverPageClient({ token }: { token: string }) {
       setScan(res)
 
       if (res.verification === null) {
-        // First load, never consented yet.
         setStatus('consent')
         return
       }
 
       if (res.verification.status === 'pending') {
-        // Returning from the vendor's redirect. The name/ID typed before departing are
-        // what the vendor's extracted identity gets cross-checked against — if this
-        // browser context lost them, resolveVerification below has nothing to compare
-        // and the check degrades rather than blocking the delivery, which is correct.
-        // Recovered from sessionStorage, not from React state: this is a fresh page load
-        // created by the vendor's redirect, so the state that held these is long gone.
+        // Returning from the vendor's redirect — a fresh page load, so recovered from
+        // sessionStorage rather than React state, which is gone.
         const stashed = readStashedIdentity()
         if (stashed !== null && !cancelled) {
           setName(stashed.name)
@@ -156,32 +134,31 @@ export function HandoverPageClient({ token }: { token: string }) {
         try {
           await resolveVerification(token, stashed?.name ?? name, stashed?.idNumber ?? idNumber)
         } catch (err: unknown) {
-          // A failed resolve must never strand the receiver mid-check — the delivery
-          // still happened and still has to be confirmable.
+          // A failed resolve must never strand the receiver mid-check.
           console.warn('[handover] verification resolve failed:', err)
         }
-        // Cleared whether or not the resolve succeeded: a retained ID number on someone
-        // else's phone is a liability, and it has already served its only purpose.
+        // Cleared regardless of outcome — a retained ID number on someone else's phone is
+        // a liability that has already served its only purpose.
         clearStashedIdentity()
         if (!cancelled) setStatus('ready')
         return
       }
 
-      // Verification already settled (verified / failed / unverified) — nothing left to do.
       setStatus('ready')
     }
 
     loadScan().catch((err: unknown) => {
       if (cancelled) return
-      // Every failure lands here identically, including a network error. Telling a
-      // receiver with no signal that their link is invalid is a small lie; telling a
-      // prober which of their guesses was live is a security hole. The lie is cheaper.
+      // Every failure, including a network error, lands here identically: telling a
+      // prober which guess was live is a security hole, so the generic message stays.
       console.warn('[handover] scan lookup failed:', err)
       setStatus('invalid')
     })
     return () => { cancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per token; name/
-    // idNumber are read only on the resume-from-vendor branch, not re-triggers.
+    // Deliberately depends only on `token` — name/idNumber are read only as the
+    // resume-from-vendor fallback and are still empty at mount. Listing them would re-run
+    // this effect on every keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token])
 
   const handleSign = useCallback(async () => {
@@ -189,26 +166,22 @@ export function HandoverPageClient({ token }: { token: string }) {
     setStatus('signing')
     setMessage('')
 
-    // Fix taken at the swipe, never on mount: a position captured when the page opened
-    // could be minutes and a building away from where the receiver actually signed, and
-    // the attestation claims the latter. Same reasoning as the driver-side original.
+    // Fix taken at the swipe, never on mount: a position captured on page-open could be
+    // minutes and a building away from where the receiver actually signed.
     const fix = await capturePosition()
     const signedAt = new Date().toISOString()
 
     const dataUrl = renderAttestation({
       signedAt,
       position: fix,
-      // The trip REFERENCE, not its uuid — it is what the receiver can read off the
-      // paperwork in their hand, and this app is never given the internal id.
+      // The trip REFERENCE, not its uuid — this app is never given the internal id.
       tripId: scan.trip_reference,
       recipientName: name.trim(),
       recipientIdNumber: idNumber.trim(),
     })
 
     if (dataUrl === null) {
-      // No 2D context, so there is no artifact. Failing here keeps the receiver on the
-      // page; confirming with nothing attached would leave a POD with an empty signature
-      // slot that nobody notices until a dispute.
+      // No 2D context — fail here rather than confirm with an empty signature slot.
       setMessage('The signature could not be generated on this device. Please try again.')
       setStatus('ready')
       return
@@ -225,42 +198,32 @@ export function HandoverPageClient({ token }: { token: string }) {
       })
       setStatus('done')
     } catch (err: unknown) {
-      // A failed confirm may have burned the token — redemption is the first thing the
-      // server does once the binding check passes — so the honest state is "this link is
-      // finished" rather than an encouraging retry that would 404 and confuse them more.
+      // A failed confirm may have burned the token (redemption happens before the error
+      // can surface), so the honest state is "this link is finished", not a retry.
       console.warn('[handover] confirm failed:', err)
       setStatus('invalid')
     }
   }, [scan, name, idNumber, token])
 
   const handleConsentProceed = useCallback(async (hasDocument: boolean) => {
-    // Identity must exist before either recordConsent or startVerification — the vendor
-    // cross-check compares against these values, and an empty string would compare
-    // against nothing and silently report no mismatch. ConsentGate is only rendered once
-    // this already holds (see the 'consent' screen below), so this is a defensive guard,
-    // not the primary gate.
+    // Defensive guard — ConsentGate is only rendered once identity already holds.
     if (!hasRecipientIdentity(name, idNumber)) return
 
     if (hasDocument) {
-      // Moves off the consent screen immediately — a vendor call can take a moment, and
-      // there is nothing left for ConsentGate's own busy state to do once we've left it.
       setStatus('verifying')
       try {
         await recordConsent(token, consentPayloadText(), true)
         const started = await startVerification(token)
         if (started.session_url !== null) {
-          // Stashed immediately before leaving: once window.location.assign fires, this
-          // component and all its state cease to exist.
+          // Stashed before leaving — window.location.assign destroys this component.
           stashIdentity({ name, idNumber, token })
           window.location.assign(started.session_url)
           return
         }
-        // Null session_url is a degraded tier (quota spent, vendor down, no document
-        // detected), never an error — the reason is recorded server-side, not shown here.
+        // Null session_url is a degraded tier (quota spent, vendor down), never an error.
         setStatus('ready')
       } catch (err: unknown) {
-        // A vendor outage or network blip must never leave a receiver unable to confirm a
-        // delivery that physically happened.
+        // A vendor outage must never leave a receiver unable to confirm a real delivery.
         console.warn('[handover] verification start failed:', err)
         setStatus('ready')
       }
@@ -284,7 +247,7 @@ export function HandoverPageClient({ token }: { token: string }) {
     try {
       await recordConsent(token, consentPayloadText(), false)
     } catch (err: unknown) {
-      // Declining consent must still leave the receiver able to confirm the delivery.
+      // Declining must still leave the receiver able to confirm the delivery.
       console.warn('[handover] consent decline record failed:', err)
     } finally {
       setConsentBusy(false)
@@ -301,8 +264,7 @@ export function HandoverPageClient({ token }: { token: string }) {
     setStatus('ready')
   }, [])
 
-  // Computed unconditionally: the consent screen and the ready screen both show this hint
-  // against the same shared name/idNumber state.
+  // Shared by both the consent screen and the ready screen.
   const showIdShapeHint = idNumber.trim().length > 0 && !looksLikeSaIdNumber(idNumber)
 
   if (status === 'loading') {
@@ -401,8 +363,6 @@ export function HandoverPageClient({ token }: { token: string }) {
             busy={consentBusy}
           />
         ) : (
-          // resolveVerification and recordConsent both cross-check or attribute against
-          // these fields — ConsentGate stays off-screen until there's something to check.
           <p className="text-sm text-neutral-500">
             Enter your name and ID number above to continue.
           </p>
@@ -452,10 +412,6 @@ export function HandoverPageClient({ token }: { token: string }) {
             disabled={isSigning}
             onChange={(e) => setIdNumber(e.target.value)}
           />
-          {/* Advisory, never a gate. A receiver may legitimately present a passport or a
-              company registration number, and a mistyped digit is itself evidence of what
-              was produced at the door — carried from the driver-side step this replaces,
-              where the reasoning was identical and remains correct on a different device. */}
           {showIdShapeHint && (
             <span className="text-xs text-neutral-500">
               This is not a 13 digit SA ID number. It will still be recorded as entered.

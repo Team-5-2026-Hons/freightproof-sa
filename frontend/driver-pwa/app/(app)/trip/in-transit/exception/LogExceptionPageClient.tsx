@@ -1,4 +1,3 @@
-// frontend/driver-pwa/app/(app)/trip/in-transit/exception/LogExceptionPageClient.tsx
 'use client'
 
 import { useCallback, useState, type ReactNode } from 'react'
@@ -21,10 +20,8 @@ import { DRIVER_EXCEPTION_TYPES } from '@shared/lib/constants/status-meta'
 import { useLocation } from '@/lib/hooks/useLocation'
 import { captureWithinBudget, REPORT_CAPTURE_BUDGET_MS } from '@/lib/utils/bounded-capture'
 
-// Labels for the driver-selectable exceptions. Options are DERIVED from the shared
-// DRIVER_EXCEPTION_TYPES so the picker can never drift to an invalid / non-driver type
-// (e.g. system-detected gps_mismatch or route_deviation). The backend remains the
-// authority on what each exception means and whether it is valid.
+// Options are derived from the shared DRIVER_EXCEPTION_TYPES so the picker can never
+// drift to an invalid / non-driver type (e.g. system-detected gps_mismatch).
 const EXCEPTION_LABELS: Partial<Record<ExceptionType, string>> = {
   delivery_refused:       'Delivery refused',
   cargo_damage:           'Cargo damage',
@@ -33,7 +30,7 @@ const EXCEPTION_LABELS: Partial<Record<ExceptionType, string>> = {
   document_review:        'Document issue',
 }
 
-// panic_button has its own dedicated flow (Task 13) — exclude it from this picker.
+// panic_button has its own dedicated flow — exclude it from this picker.
 const EXCEPTION_OPTIONS = DRIVER_EXCEPTION_TYPES
   .filter((value) => value !== 'panic_button')
   .map((value) => ({ value, label: EXCEPTION_LABELS[value] ?? value }))
@@ -41,8 +38,7 @@ const EXCEPTION_OPTIONS = DRIVER_EXCEPTION_TYPES
 // The one category that records WHICH vehicle it happened to (trailer analytics spec).
 const BREAKDOWN_TYPE: ExceptionType = 'mechanical'
 
-// Drivers call the horse "the truck", so the button says Truck while the code and the
-// API say horse (trailer analytics spec, decision 6).
+// Drivers call the horse "the truck", so the button says Truck while the code/API say horse.
 const VEHICLE_LABELS: Record<VehicleType, string> = {
   horse: 'Truck',
   trailer: 'Trailer',
@@ -55,17 +51,8 @@ interface BreakdownVehicleFields {
   trailer_id?: string
 }
 
-/**
- * Whether the "which vehicle" answer is complete, and what it sends (trailer analytics
- * spec §7.1). The driver only says truck or trailer, plus a plate when "trailer" alone is
- * ambiguous; the server works out the exact vehicle from the trip. One function, so the
- * submit gate and both request bodies can never disagree about the rules:
- *
- *   not a breakdown        → nothing to ask, nothing sent
- *   no trailers            → nothing to ask: it can only be the truck
- *   one trailer            → Truck or Trailer
- *   two or more trailers   → Truck or Trailer, and for Trailer, which plate
- */
+/** Whether the "which vehicle" answer is complete, and what it sends. One function so
+ * the submit gate and both request bodies can never disagree about the rules. */
 function breakdownVehicle(
   type: ExceptionType | null,
   trailers: readonly Vehicle[],
@@ -91,9 +78,7 @@ interface OptionButtonProps {
   children: ReactNode
 }
 
-// One style for every choice on this screen (the category, truck or trailer, and the
-// trailer plate), so the breakdown questions look and behave exactly like the picker
-// above them. aria-pressed tells a screen reader which option is chosen.
+// One style for every choice on this screen. aria-pressed tells a screen reader the state.
 function OptionButton({ selected, onClick, children }: OptionButtonProps) {
   return (
     <button
@@ -111,9 +96,7 @@ function OptionButton({ selected, onClick, children }: OptionButtonProps) {
   )
 }
 
-// What the submit button is currently doing. The photo upload gets its own label because
-// it is the slow step on a bad signal — a driver watching "Submitting…" for thirty
-// seconds has no way to tell a large upload from a hung one.
+// The photo upload gets its own label since it's the slow step on a bad signal.
 type SubmitStage = 'idle' | 'uploading-photo' | 'saving'
 
 export default function LogExceptionPageClient() {
@@ -125,28 +108,22 @@ export default function LogExceptionPageClient() {
   const [type, setType] = useState<ExceptionType | null>(null)
   const [description, setDescription] = useState('')
   const [photo, setPhoto] = useState<QueuedExceptionPhoto | null>(null)
-  // Set once the photo is safely uploaded, so a retried submit references the existing
-  // artifact instead of uploading the same image a second time.
+  // Set once uploaded, so a retried submit references the existing artifact instead of
+  // uploading the same image again.
   const [artifactId, setArtifactId] = useState<string | null>(null)
-  // The answer to "Which vehicle broke down?", and on an interlink, which trailer.
   const [vehicleType, setVehicleType] = useState<VehicleType | null>(null)
   const [trailerId, setTrailerId] = useState<VehicleId | null>(null)
 
   const [stage, setStage] = useState<SubmitStage>('idle')
-  // Two genuinely different failures that must not share one message: the server
-  // refused the report, versus the report never got saved anywhere at all.
+  // Two different failures that must not share one message: server refused the report,
+  // versus it never got saved anywhere at all.
   const [submitError, setSubmitError] = useState<null | 'rejected' | 'not-saved'>(null)
   const submitting = stage !== 'idle'
 
   const handlePhotoCaptured = useCallback((dataUrl: string) => {
-    // Task 0B: no eager upload here, unlike the phase steps' useArtifactUpload. This
-    // photo is for an OPTIONAL form the driver can retake or abandon freely — uploading
-    // at capture would create server-side evidence (and spend the driver's data) for a
-    // shot that never gets submitted. Upload begins only in handleSubmit's Step 1,
-    // below, once the driver has actually committed to the report.
-    //
-    // Stamped at capture, not at submit: this is when the driver stood in front of the
-    // problem, which is the time the evidence trail should carry.
+    // No eager upload, unlike the phase steps' useArtifactUpload: this photo is for an
+    // optional form the driver can abandon freely. Upload begins in handleSubmit's Step 1.
+    // Stamped at capture, not submit, since that's when the driver stood in front of it.
     const capturedAt = new Date().toISOString()
     setPhoto({ dataUrl, capturedAt })
     setArtifactId(null)
@@ -155,8 +132,7 @@ export default function LogExceptionPageClient() {
 
   function chooseType(next: ExceptionType) {
     setType(next)
-    // A new category starts the vehicle question afresh, so an answer given for a
-    // breakdown can never ride along on a report of another kind.
+    // A new category resets the vehicle question so an old answer can't ride along.
     setVehicleType(null)
     setTrailerId(null)
   }
@@ -175,9 +151,8 @@ export default function LogExceptionPageClient() {
 
     const tripId = String(trip.id)
     const clientReportId = crypto.randomUUID()
-    // Captured now, not at flush time — see PanicPageClient for the full reasoning.
-    // A breakdown or a seal found broken on the road belongs to the leg being
-    // driven, and by the time this entry sends the trip may have reached unloading.
+    // Captured now, not at flush time: the exception belongs to the leg being driven,
+    // and by the time this entry sends the trip may have reached unloading.
     const phaseEventId = contextPhaseEventId(trip.phases)
     // Optional enrichment, bounded: the report's own phone fix feeds the backend's
     // capture-time comparison, but a broken-seal report must not sit behind
@@ -193,9 +168,7 @@ export default function LogExceptionPageClient() {
           driverAccuracyMetres: location.accuracy,
         }
 
-    // The image still needing to travel with the queued entry. Cleared once the photo is
-    // uploaded (only its id needs to go) or once the server has terminally rejected it
-    // (re-queuing guarantees the same rejection at flush).
+    // Cleared once the photo is uploaded (only its id needs to go) or terminally rejected.
     let photoToQueue: QueuedExceptionPhoto | undefined = photo ?? undefined
 
     // The offline path, shared by a failed photo upload and a failed report submit.
@@ -206,7 +179,6 @@ export default function LogExceptionPageClient() {
           exception_type: type as ExceptionType,
           description,
           client_report_id: clientReportId,
-          // In the queued body too, so a report sent from a dead zone keeps its answer.
           ...vehicle.fields,
           ...(supportingArtifactId ? { supporting_artifact_id: supportingArtifactId } : {}),
           ...(phaseEventId ? { phase_event_id: String(phaseEventId) } : {}),
@@ -223,17 +195,13 @@ export default function LogExceptionPageClient() {
       )
 
       if (!result.persisted) {
-        // Storage refused it outright, so nothing will ever be sent. Showing the usual
-        // "Report saved" receipt here would be a lie about evidence.
+        // Storage refused it outright — showing "Report saved" here would be a lie.
         setSubmitError('not-saved')
         return
       }
 
-      // Receipt parity with CheckpointPageClient's identical queue path: without a
-      // toast the driver lands back on the hub with zero evidence the report
-      // registered anywhere — indistinguishable from a silent failure. The body states
-      // exactly what is and isn't saved, because "will sync later" otherwise reads as a
-      // promise covering the photo too.
+      // The body states exactly what is/isn't saved: "will sync later" alone would read
+      // as a promise covering the photo too.
       const photoDropped = photoToQueue !== undefined && !result.photoPersisted
       notify({
         kind: photoDropped ? 'error' : 'success',
@@ -251,10 +219,7 @@ export default function LogExceptionPageClient() {
 
     // ── Step 1: make sure the photo exists server-side before the report cites it ──
     let supportingArtifactId = artifactId
-    // Already uploaded — by Step 1 of an earlier submit attempt on this same photo
-    // (e.g. this upload succeeded but Step 2's raise then failed and the driver hit
-    // Submit again): the bytes are already on the server, so the queue only ever
-    // needs to carry the id.
+    // Already uploaded by an earlier attempt on this same photo: the queue only needs the id.
     if (supportingArtifactId) photoToQueue = undefined
     if (photo && !supportingArtifactId) {
       setStage('uploading-photo')
@@ -277,17 +242,14 @@ export default function LogExceptionPageClient() {
           && err.status !== 429
         )
         if (isTerminal) {
-          // This image will be rejected the same way every time (too large, unsupported
-          // format). Same policy as the queue's own sendException: the written report is
-          // the part that must reach the dispatcher, so continue without the photo and
-          // say so plainly rather than dead-ending the driver on an unfixable error.
+          // This image will be rejected the same way every time — continue without the
+          // photo so the written report still reaches the dispatcher.
           notify({
             kind: 'error',
             title: 'Photo could not be attached',
             body: 'The report will be sent without it. Retake the photo and log a second report if the image matters.',
           })
           supportingArtifactId = null
-          // Do not queue it either: the same bytes would be rejected the same way.
           photoToQueue = undefined
         } else {
           // Transient: queue the report with the image still attached.
@@ -309,9 +271,7 @@ export default function LogExceptionPageClient() {
         ...(vehicle.fields.trailer_id ? { trailerId: vehicle.fields.trailer_id } : {}),
         ...(supportingArtifactId ? { supporting_artifact_id: supportingArtifactId } : {}),
       })
-      // Receipt (UX Task 5b): name the chosen category so the driver has explicit proof
-      // the report registered before landing back on the hub, where it now also appears
-      // in the open-exceptions list (TripContext appends it on logException).
+      // Names the chosen category as explicit proof the report registered.
       notify({
         kind: 'success',
         title: 'Exception recorded',
@@ -320,9 +280,7 @@ export default function LogExceptionPageClient() {
       router.push(ROUTES.inTransit)
     } catch (err) {
       console.error('Failed to log exception', err)
-      // A 4xx (e.g. wrong driver, validation) will fail identically on retry — show the
-      // error and let the driver fix/retry manually. A network failure or 5xx is
-      // retryable, so queue it and let the driver move on; it syncs on reconnect.
+      // A 4xx fails identically on retry; a network failure or 5xx is retryable.
       const isRetryable = (
         !(err instanceof ApiError)
         || err.status === 0
@@ -353,10 +311,8 @@ export default function LogExceptionPageClient() {
         <Button
           type="button"
           variant="ghost"
-          // This state is reachable via cold load, deep link, or refresh —
-          // there may be no meaningful back-history, so router.back() could
-          // land anywhere (or nowhere). Use an explicit replace so the label's
-          // promise ("Return to in-transit") is actually guaranteed.
+          // Explicit replace, not router.back(): reachable via cold load/deep link, so
+          // there may be no meaningful back-history.
           onClick={() => router.replace(ROUTES.inTransit)}
         >
           Return to in-transit
@@ -367,17 +323,13 @@ export default function LogExceptionPageClient() {
 
   const trailers = trip.trailers
   const vehicleAnswer = breakdownVehicle(type, trailers, vehicleType, trailerId)
-  // Asked only when there is a choice: a rigid truck has no trailer that could have
-  // broken down.
+  // Asked only when there is a choice: a rigid truck has no trailer that could break down.
   const asksVehicle = type === BREAKDOWN_TYPE && trailers.length > 0
-  // On an interlink, "Trailer" alone can't say which one, so the plate is asked for.
-  // The driver can read it straight off the trailer.
+  // On an interlink, "Trailer" alone can't say which one.
   const asksPlate = asksVehicle && vehicleType === 'trailer' && trailers.length > 1
 
   return (
     <main className="flex min-h-dvh flex-col">
-      {/* Named destination (not router.back()): guarantees where the driver lands
-          regardless of history, matching the hub's own back-link pattern. */}
       <SubpageHeader
         title="Log Exception"
         backLabel="In-Transit Hub"
@@ -443,17 +395,13 @@ export default function LogExceptionPageClient() {
         </div>
 
         {submitError === 'rejected' && (
-          // A terminal 4xx — retrying with the same input cannot succeed, so "check your
-          // connection" would be actively misleading here (the connection worked; the
-          // server said no).
+          // Terminal 4xx: retrying with the same input cannot succeed.
           <p className="mb-3 text-base text-error">
             Could not submit — the report was not accepted. Review the details or contact your dispatcher.
           </p>
         )}
         {submitError === 'not-saved' && (
-          // The send failed AND the device refused to store it for later, so unlike every
-          // other failure on this screen there is nothing holding this report. Say so:
-          // the driver needs to know to radio it in rather than assume it is queued.
+          // Send failed AND storage refused it — nothing is holding this report.
           <p className="mb-3 text-base text-error">
             Could not send or save this report — your device is out of storage. Free up
             space and try again, or report this to your dispatcher directly.
@@ -464,9 +412,6 @@ export default function LogExceptionPageClient() {
           disabled={!type || !description.trim() || !vehicleAnswer.complete || submitting}
           onClick={handleSubmit}
         >
-          {/* Named stages, not one spinner: the upload is the slow step on a weak signal,
-              and the API client uses fetch, which cannot report real upload progress —
-              so this says which step is running rather than implying a percentage. */}
           {stage === 'uploading-photo'
             ? 'Uploading photo…'
             : stage === 'saving'

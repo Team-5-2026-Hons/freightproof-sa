@@ -41,12 +41,8 @@ class Driver(Base):
 
     __tablename__ = "drivers"
     __table_args__ = (
-        # One SA ID number, one driver record per organisation. create_driver has
-        # always caught a unique violation and reported it as a duplicate id_number,
-        # but no such constraint existed — the branch was unreachable and duplicates
-        # were accepted. Phone numbers are guarded upstream by Supabase Auth; the
-        # ID number, which is the identity this record is anchored to, was not
-        # guarded anywhere.
+        # One SA ID number, one driver record per organisation — the identity this
+        # record is anchored to. Phone numbers are already guarded upstream by Supabase Auth.
         UniqueConstraint("organization_id", "id_number", name=UQ_DRIVERS_ORG_ID_NUMBER),
     )
 

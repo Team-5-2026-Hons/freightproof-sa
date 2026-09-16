@@ -67,10 +67,9 @@ export type DriverEvent = {
   created_at: string;
 };
 
-// Mirrors PrecinctEventType in backend/app/db/models/enums.py exactly.
-// A relocation and a resize are separate types because they mean different things
-// evidentially: one changes where the facility is, the other changes how close a
-// handshake must be to count as inside it.
+// Mirrors PrecinctEventType in backend/app/db/models/enums.py. A relocation and a resize
+// are separate types: one changes where the facility is, the other changes how close a
+// phase event must be to count as inside it.
 export type PrecinctEventType =
   | 'created' | 'relocated' | 'geofence_resized'
   | 'sharing_changed' | 'cosmetic_update';

@@ -1,9 +1,6 @@
-// Getting back to the Analytics page from a detail page it links to (D25).
-//
-// Tom's rule: from an exception opened on the incident map, Back must land on the same tab with
-// the same View by and Period, not on the page's defaults. The return address carries those
-// choices, rather than the browser's storage, so the server and the browser draw the same first
-// frame and a refresh of the returned-to page keeps them too.
+// Getting back to the Analytics page from a detail page it links to: Back must land on the
+// same tab with the same View by and Period, not the page's defaults. The return address
+// carries those choices so a refresh of the returned-to page keeps them too.
 
 import { ROUTES } from '@/lib/constants/routes'
 import { GENERAL_PRESETS, GRAINS, PRESETS_BY_GRAIN, type PresetId } from '@/lib/format/period'

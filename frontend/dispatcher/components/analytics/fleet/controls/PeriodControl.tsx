@@ -17,18 +17,15 @@ interface PeriodControlProps {
   today: string
   /** Where All time starts (from the tiles); null until they load. */
   allTimeStart: string | null
-  /** The presets to offer, in order: the View by's own list (D25), or the general one for a
-   *  period with no View by. The custom range always comes last. */
+  /** The presets to offer, in order: the View by's own list, or the general one for a period
+   *  with no View by. The custom range always comes last. */
   presets?: readonly PresetId[]
   label?: string
 }
 
-/** The Period control (spec §3). Built new rather than reusing DateRangePicker, which works
- *  out "today" in UTC, fixes its presets when the module loads, and cannot say "All time"
- *  (spec D19).
- *
- *  A custom range is never inverted and never runs past today: the date the dispatcher just
- *  moved wins and the other follows it, as in MonthRangePicker. */
+/** The Period control. Built new rather than reusing DateRangePicker, which works out "today"
+ *  in UTC, fixes its presets when the module loads, and cannot say "All time". A custom range
+ *  is never inverted and never runs past today: the date the dispatcher just moved wins. */
 export function PeriodControl({
   value, onChange, today, allTimeStart, presets = GENERAL_PRESETS, label = COPY.period,
 }: PeriodControlProps) {

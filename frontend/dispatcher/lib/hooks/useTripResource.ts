@@ -7,27 +7,20 @@ import { registerSessionCache } from '@/lib/cache/sessionCache'
 
 const REQUEST_TIMEOUT_MS = 25_000
 const LIVE_REFRESH_DELAY_MS = 200
-// Entries with no mounted reader are evicted oldest-first past this many keys, so moving
-// through a long trip list cannot grow the cache without bound.
+// Entries with no mounted reader are evicted oldest-first past this many keys, so a long
+// trip list can't grow the cache unbounded.
 const MAX_IDLE_ENTRIES = 30
 
-// A refusal is not a failure to fetch, and the two must not be handled alike.
-//
-// Holding the last successful copy behind an error is right for a timeout or a 500: the
-// record is still this dispatcher's and still true, and blanking an evidence page over a
-// flaky network would be the worse outcome. It is wrong for these three. 401 and 403 mean
-// the server has said this record may not be shown to whoever is asking, and 404 is how
-// this backend answers for a trip belonging to another organisation — deliberately, so
-// the response does not leak that it exists. Answering any of them by leaving the record
-// on screen is the client overruling the server on access.
+// A refusal (401/403/404 — the backend uses 404 to avoid leaking another org's trip)
+// must blank the record, unlike a timeout/500 where holding the last good copy is right.
 const WITHDRAWN_STATUSES: readonly number[] = [401, 403, 404]
 
 export interface TripResourceState<T> {
   data: T
   /** No data yet and a request is running — the only state that may blank the view. */
   isLoading: boolean
-  /** A request is in flight, cached data or not. Drives refresh affordances, which would
-   *  otherwise look inert on a revalidation that has something to show behind it. */
+  /** A request is in flight, cached data or not — drives refresh affordances during a
+   *  revalidation that already has something to show. */
   isValidating: boolean
   error: string | null
   /** HTTP status; 0 means a network/timeout failure, null means no known status. */
@@ -43,8 +36,7 @@ type Snapshot<T> = Omit<TripResourceState<T>, 'refetch' | 'refetchSilent'>
 interface Entry<T> {
   /** Replaced wholesale on every change: useSyncExternalStore compares by identity. */
   snapshot: Snapshot<T>
-  /** The empty value for this key, kept so a withdrawn record can be reset to pristine
-   *  rather than merely blanked — `load` has no other way to reach it. */
+  /** The empty value for this key, so a withdrawn record can reset to pristine. */
   initial: T
   listeners: Set<() => void>
   inflight: Promise<void> | null
@@ -57,10 +49,9 @@ interface Entry<T> {
 // Module-level so every hook reading the same URL shares one record and one request.
 const cache = new Map<string, Entry<unknown>>()
 
-// Bumped every time the cache is emptied. A mounted hook holds a direct reference to the
-// entry it subscribed to, so dropping the Map alone would leave it bound to a record
-// nothing will ever publish to again — blank, and with no reason to refetch. Reading the
-// generation as a store makes every mounted hook re-subscribe and re-fetch instead.
+// Bumped every time the cache is emptied. A mounted hook holds a direct reference to its
+// entry, so dropping the Map alone would leave it bound to a record nothing will ever
+// publish to again. Reading generation as a store forces every hook to re-subscribe.
 let generation = 0
 const generationListeners = new Set<() => void>()
 
@@ -74,13 +65,8 @@ function getGeneration(): number {
 }
 
 /**
- * Forget every cached record.
- *
- * In-flight requests are left to finish into the entries they were issued against: those
- * entries are no longer in the Map and no longer subscribed to, so their responses land
- * on an object nothing can read and are collected. That is deliberately cheaper than
- * threading an abort signal through, and has the same effect — no response issued under
- * the old identity can reach the screen.
+ * Forget every cached record. In-flight requests finish into their now-orphaned entries
+ * (no longer in the Map or subscribed to) rather than being aborted — cheaper, same effect.
  */
 export function clearTripResourceCache(): void {
   cache.forEach(entry => { if (entry.debounce !== null) clearTimeout(entry.debounce) })
@@ -91,8 +77,7 @@ export function clearTripResourceCache(): void {
 
 registerSessionCache(clearTripResourceCache)
 
-/** Test-only alias. The cache outlives any component, so a suite must clear it between
- *  cases or one test's record answers the next one's first render. */
+/** Test-only alias — the cache outlives any component, so a suite must clear it between cases. */
 export const __resetTripResourceCache = clearTripResourceCache
 
 function getEntry<T>(key: string, initial: T): Entry<T> {
@@ -123,12 +108,9 @@ function publish<T>(entry: Entry<T>, patch: Partial<Snapshot<T>>): void {
 }
 
 /**
- * Fetch `key` into its cache entry.
- *
- * `force` is what keeps live updates live. A background revalidation may join a request
- * already in flight, but an SSE-driven refresh must not: that request may have been
- * issued BEFORE the event, so joining it would apply pre-event data and stamp it as
- * fresh. Forced calls always issue their own request.
+ * Fetch `key` into its cache entry. `force` keeps live updates live: an SSE-driven
+ * refresh must issue its own request rather than joining one in flight, since that
+ * request may predate the event and would apply stale data stamped as fresh.
  */
 function load<T>(key: string, entry: Entry<T>, force: boolean): Promise<void> {
   if (entry.inflight && !force) return entry.inflight
@@ -138,9 +120,8 @@ function load<T>(key: string, entry: Entry<T>, force: boolean): Promise<void> {
   publish(entry, { isValidating: true, isLoading: entry.snapshot.lastUpdated === null })
 
   let timer: ReturnType<typeof setTimeout> | null = null
-  // Guards the timeout-then-late-response race: once a request has settled — including by
-  // timing out — its own response must never be applied, or a request the reader was
-  // already told had failed silently repopulates the record afterwards.
+  // Guards the timeout-then-late-response race: once settled, a request's own response
+  // must never be applied again.
   let settled = false
   const request = new Promise<void>(resolve => {
     const settle = (patch: Partial<Snapshot<T>>): void => {
@@ -167,9 +148,8 @@ function load<T>(key: string, entry: Entry<T>, force: boolean): Promise<void> {
           isLoading: false,
           error: err instanceof Error ? err.message : 'An unexpected error occurred',
           errorStatus: status,
-          // Back to pristine, not merely blank: lastUpdated is what tells the next mount
-          // whether it has anything to show behind a revalidation, so leaving it set
-          // would suppress the loading state over a record that is no longer there.
+          // Back to pristine, not merely blank: lastUpdated tells the next mount whether
+          // it has anything to show, and must not stay set for a record that's gone.
           ...(withdrawn ? { data: entry.initial, lastUpdated: null } : {}),
         })
       },
@@ -185,14 +165,11 @@ function load<T>(key: string, entry: Entry<T>, force: boolean): Promise<void> {
 /** Trip-only loading policy: keep evidence visible and never apply obsolete responses. */
 export function useTripResource<T>(tripId: string, suffix: string, initial: T): TripResourceState<T> {
   const key = `/api/v1/trips/${tripId}${suffix}`
-  // Every callback below closes over an entry, so all of them have to be rebuilt when the
-  // cache is emptied — hence the generation in each dependency list, not just one.
+  // Every callback below closes over an entry, so all need rebuilding when the cache empties.
   const cacheGeneration = useSyncExternalStore(subscribeGeneration, getGeneration, getGeneration)
   const entry = getEntry<T>(key, initial)
 
-  // One accessor that every callback below depends on, so emptying the cache re-points
-  // all of them at the fresh entry in a single step. cacheGeneration is not read inside:
-  // it is an invalidation key, which is precisely what exhaustive-deps cannot see.
+  // cacheGeneration is an invalidation key, not read inside — exhaustive-deps can't see that.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const resolveEntry = useCallback(() => getEntry<T>(key, initial), [key, initial, cacheGeneration])
 
@@ -201,8 +178,7 @@ export function useTripResource<T>(tripId: string, suffix: string, initial: T): 
     current.listeners.add(listener)
     return () => {
       current.listeners.delete(listener)
-      // Nothing is reading this key any more, so a burst that arrived just before unmount
-      // must not still spend a request on a screen that has gone.
+      // A burst that arrived just before unmount must not spend a request on a gone screen.
       if (current.listeners.size === 0 && current.debounce !== null) {
         clearTimeout(current.debounce)
         current.debounce = null
@@ -212,8 +188,8 @@ export function useTripResource<T>(tripId: string, suffix: string, initial: T): 
   const getSnapshot = useCallback(() => resolveEntry().snapshot, [resolveEntry])
   const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 
-  // Revalidate on every mount even when the cache already answered, so what is on screen
-  // is never only a memory of the record — evidence has to be re-read, not remembered.
+  // Revalidate on every mount even when the cache already answered: evidence must be
+  // re-read, not remembered.
   useEffect(() => { void load(key, resolveEntry(), false) }, [key, resolveEntry])
 
   const refetch = useCallback(() => { void load(key, resolveEntry(), true) }, [key, resolveEntry])

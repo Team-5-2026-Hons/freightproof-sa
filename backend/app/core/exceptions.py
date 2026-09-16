@@ -36,18 +36,11 @@ class DuplicateResourceError(Exception):
 
 
 class ExceptionAlreadyReviewedError(Exception):
-    """Raised when a dispatcher reviews an exception a colleague already reviewed.
+    """Raised when a DIFFERENT dispatcher already reviewed this exception.
 
-    Not raised on a replay by the SAME dispatcher — a double-tap or a retried request
-    carries the same account, so nothing is lost by returning the stored row unchanged.
-    This fires only when a DIFFERENT user reviewed it first, because that is the case
-    where the caller's note and method would be silently discarded.
-
-    The first review stays the record: overwriting it would rewrite who established
-    what, and when. But the second dispatcher may have learned something the first did
-    not, so the loss has to be visible to them rather than reported as a success. A 200
-    carrying someone else's note would tell them their account was recorded when it was
-    not — on the one screen whose purpose is to prove otherwise.
+    Not raised on a replay by the same dispatcher (double-tap/retry, same
+    account, nothing lost). The first review stays the record; a 200 that
+    silently discarded a second dispatcher's note would misreport success.
     """
 
     def __init__(self, exception_id: str) -> None:
@@ -61,10 +54,8 @@ class ExceptionAlreadyReviewedError(Exception):
 class PhaseSequenceError(Exception):
     """Raised when a phase is completed out of order (gated on the phase plan, not trip.status).
 
-    `trip_status` is a reason clause, not necessarily a bare TripStatus value —
-    the two call sites in phase_service.py's _gate_and_load have different real
-    causes (trip closed/cancelled/held vs. an earlier phase still unresolved)
-    and each passes a clause describing its own cause accurately.
+    `trip_status` is a reason clause, not necessarily a bare TripStatus value
+    — each call site in phase_service.py's _gate_and_load describes its own cause.
     """
 
     def __init__(self, trip_status: str, attempted_handshake: str) -> None:
@@ -76,14 +67,11 @@ class PhaseSequenceError(Exception):
 class PhaseTooEarlyError(Exception):
     """Raised when a driver tries to activate a trip before its scheduled day.
 
-    Distinct from PhaseSequenceError even though both map to 409: that one means the
-    plan is out of order, this one means the plan is fine and the calendar is not.
-    Keeping them separate is what lets the driver app show the driver a date instead
-    of a generic "trip state changed" message.
+    Distinct from PhaseSequenceError (plan out of order) — here the plan is
+    fine, the calendar isn't, so the driver app can show a date.
 
-    `scheduled_for` is a pre-formatted, human-readable date (or None when the trip
-    carries no schedule at all) — the message it builds is surfaced verbatim to the
-    driver, so it has to read as something a person wrote.
+    `scheduled_for` is a pre-formatted, human-readable date (or None), since
+    the message is surfaced verbatim to the driver.
     """
 
     def __init__(self, scheduled_for: str | None, attempted_phase: str) -> None:
@@ -102,14 +90,12 @@ class PhaseTooEarlyError(Exception):
 class TripActivationBlockedError(Exception):
     """Raised when another of the driver's trips stands in the way of activating this one.
 
-    Distinct from PhaseTooEarlyError (the calendar says no) and PhaseSequenceError (this
-    trip's own plan says no): here both the plan and the calendar are fine, and the
-    obstacle is a DIFFERENT trip. Keeping it separate is what lets the driver app name
-    the trip they have to deal with first instead of showing a generic conflict.
+    Distinct from PhaseTooEarlyError/PhaseSequenceError: plan and calendar
+    are both fine here, the obstacle is a different trip, so the driver app
+    can name it.
 
-    `blocking_trip_reference` is a driver-facing trip reference, never an id — the message
-    is surfaced verbatim in the PWA, so it has to name something the driver can find on
-    their own trip list.
+    `blocking_trip_reference` is a driver-facing reference, never an id —
+    surfaced verbatim in the PWA.
     """
 
     def __init__(self, blocking_trip_reference: str, reason: str) -> None:
@@ -141,14 +127,10 @@ class PPSyncError(Exception):
 class ConsignmentAlreadyAssignedError(Exception):
     """Raised when a PP waybill is put on a second trip while still on its first.
 
-    A consignment is cargo, and cargo is on exactly one trip. Silently reusing the
-    reference does not merely duplicate a row - the second trip's creation restamps
-    the existing consignment's pickup/delivery stops onto its own route, rewriting
-    the FIRST trip's phase-plan basis after that trip was already anchored. That is
-    evidence changing under a closed record, so this fails closed.
-
-    Distinct from PPSyncError: Parcel Perfect answered correctly and the waybill is
-    real. The conflict is ours, and the caller maps it to 409, not 422.
+    A consignment belongs to exactly one trip; reassigning it would rewrite
+    the first trip's already-anchored phase-plan basis — evidence changing
+    under a closed record, so this fails closed. Distinct from PPSyncError
+    (PP answered correctly here); maps to 409, not 422.
     """
 
     def __init__(self, pp_reference: str, trip_reference: str) -> None:
@@ -173,14 +155,10 @@ class HederaTimeoutError(HederaServiceError):
 
 
 class TripStateError(Exception):
-    """Raised when a dispatcher lifecycle action is attempted against a trip whose
-    current status makes the action illegal — e.g. cancelling an already-closed or
-    already-cancelled trip.
-
-    Distinct from PhaseSequenceError: that means "out of order in the plan"; this
-    means "the trip itself is already in a terminal state", which is a different
-    fact and deserves its own message rather than being folded into the phase
-    gate's vocabulary.
+    """Raised when a dispatcher lifecycle action is attempted against a trip
+    whose current status makes it illegal (e.g. cancelling an already-closed
+    trip). Distinct from PhaseSequenceError: this is a terminal trip state,
+    not an out-of-order plan.
     """
 
     def __init__(self, current_status: str, attempted_action: str) -> None:
@@ -192,13 +170,10 @@ class TripStateError(Exception):
 
 
 class PhaseBlockedError(Exception):
-    """Raised when a phase is waiting on an external system it cannot proceed without.
-
-    Distinct from PhaseSequenceError and PhaseTooEarlyError even though all three map
-    to 409, for the same reason those two are distinct from each other: the plan is in
-    order and the calendar is fine, a third party simply has not finished. Keeping it
-    separate lets the driver app say "waiting for the warehouse" instead of a generic
-    "trip state changed".
+    """Raised when a phase is waiting on an external system it cannot proceed
+    without. Distinct from PhaseSequenceError/PhaseTooEarlyError: plan and
+    calendar are fine, a third party just hasn't finished — so the driver
+    app can say "waiting for the warehouse" instead of a generic message.
     """
 
     def __init__(self, attempted_phase: str) -> None:
@@ -213,14 +188,10 @@ class PhaseBlockedError(Exception):
 class PhaseTypeMismatchError(Exception):
     """Raised when a completion payload's phase_type does not match the addressed row's.
 
-    A client bug, not a sequencing problem: the driver app resolved a phase_event_id
-    and then sent the wrong shape for it (or addressed trip_creation, the one phase no
-    driver action completes — create_trip writes it before a driver is involved).
-    Distinct from PhaseSequenceError so the 409 body says which of the two happened.
-
-    in_transit used to be named here too. It stopped being an example on 2026-08-09:
-    arrival is now an explicit driver submission (advance_in_transit) with its own
-    PhaseCompleteRequest variant and its own dispatch-table entry.
+    A client bug, not a sequencing problem: the driver app resolved a
+    phase_event_id and sent the wrong shape for it (or addressed
+    trip_creation, the one phase no driver action completes). Distinct from
+    PhaseSequenceError so the 409 body says which of the two happened.
     """
 
     def __init__(self, expected: str, received: str) -> None:

@@ -10,11 +10,8 @@ export interface StatusMeta {
   iconName: string  // Lucide icon name
 }
 
-// ─── Trip status ───────────────────────────────────────────────────────────────
-
-// Coarse since Stage 2 — five values, not ten. `active` covers everything between
-// creation and closure; WHERE in the plan a trip is comes from the ledger, never
-// from here.
+// `active` covers everything between creation and closure — WHERE in the plan a trip is
+// comes from the ledger, never from here.
 export const TRIP_STATUS_META: Record<CoarseTripStatus, StatusMeta> = {
   created:         { label: 'Created',   chipType: 'pending',   iconName: 'Clock' },
   active:          { label: 'Active',    chipType: 'transit',   iconName: 'Truck' },
@@ -22,8 +19,6 @@ export const TRIP_STATUS_META: Record<CoarseTripStatus, StatusMeta> = {
   cancelled:       { label: 'Cancelled', chipType: 'critical',  iconName: 'XCircle' },
   exception_hold:  { label: 'Exception', chipType: 'exception', iconName: 'AlertTriangle' },
 }
-
-// ─── Phase status ─────────────────────────────────────────────────────────────
 
 export const PHASE_STATUS_META: Record<PhaseStatus, StatusMeta> = {
   pending:     { label: 'Pending',     chipType: 'pending',   iconName: 'Circle' },
@@ -33,23 +28,17 @@ export const PHASE_STATUS_META: Record<PhaseStatus, StatusMeta> = {
   overridden:  { label: 'Overridden',  chipType: 'exception', iconName: 'ShieldAlert' },
 }
 
-// ─── Exception severity ───────────────────────────────────────────────────────
-
 export const EXCEPTION_SEVERITY_META: Record<ExceptionSeverity, StatusMeta> = {
   info:     { label: 'Info',     chipType: 'pending',   iconName: 'Info' },
   warning:  { label: 'Warning',  chipType: 'exception', iconName: 'AlertTriangle' },
   critical: { label: 'Critical', chipType: 'critical',  iconName: 'AlertOctagon' },
 }
 
-// ─── Exception source ─────────────────────────────────────────────────────────
-
 export const EXCEPTION_SOURCE_META: Record<ExceptionSource, { label: string; iconName: string }> = {
   system:     { label: 'System',     iconName: 'Bot' },
   driver:     { label: 'Driver',     iconName: 'User' },
   dispatcher: { label: 'Dispatcher', iconName: 'Headphones' },
 }
-
-// ─── Exception type groupings ─────────────────────────────────────────────────
 
 export const DRIVER_EXCEPTION_TYPES: ExceptionType[] = [
   'delivery_refused',

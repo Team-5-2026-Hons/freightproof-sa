@@ -1,12 +1,11 @@
-"""Receiver QR handover (FP-155) — issuing and redeeming capability tokens.
+"""Receiver QR handover — issuing and redeeming capability tokens.
 
-FP-236 built the token primitive; FP-237/238/239/240 now sit on top of it in this same
-module rather than reimplementing the redemption gate anywhere else. The rotating series
-is rotate_capability_token, the scan-side claim is mark_token_opened, and the record of
-what the receiver did is record_handover_confirmation.
+The rotating series is rotate_capability_token, the scan-side claim is
+mark_token_opened, and the record of what the receiver did is
+record_handover_confirmation.
 
-Layering: orchestration -> db only, per CLAUDE.md. No caller-specific concerns
-(HTTP status codes, rate limiting, session comparison) belong here.
+Layering: orchestration -> db only. No caller-specific concerns (HTTP status
+codes, rate limiting, session comparison) belong here.
 """
 
 import hashlib
@@ -32,10 +31,9 @@ from app.db.models.handover import (
 
 logger = logging.getLogger(__name__)
 
-# 32 random bytes (256 bits) base64url-encoded — far beyond brute-force range for a
-# token that lives at most HANDOVER_TOKEN_EXPIRY_MINUTES. Never derived from trip,
-# stop, or timestamp data: the ticket is explicit that a sequential or derivable
-# value defeats the whole mechanism.
+# 256 bits: far beyond brute-force range for a token living at most
+# HANDOVER_TOKEN_EXPIRY_MINUTES. Never derived from trip/stop/timestamp data —
+# a derivable value would defeat the whole mechanism.
 _TOKEN_BYTES = 32
 
 
@@ -44,12 +42,9 @@ def _hash_token(raw_token: str) -> str:
 
 
 def hash_presented_token(raw_token: str) -> str:
-    """Public spelling of _hash_token, for callers that must look a token up by hash.
-
-    The scan route needs this to render a page without redeeming anything, and reaching
-    into a private name from an endpoint would make that dependency invisible. Hashing is
-    not the sensitive operation here — redemption is, and that stays behind
-    redeem_capability_token's conditional UPDATE where no caller can route around it.
+    """Public spelling of _hash_token, for the scan route to render a page without
+    redeeming anything. Hashing isn't the sensitive operation — redemption is,
+    and that stays behind redeem_capability_token's conditional UPDATE.
     """
     return _hash_token(raw_token)
 
@@ -58,11 +53,10 @@ def hash_presented_token(raw_token: str) -> str:
 class HandoverRedemptionResult:
     """Outcome of one redemption attempt.
 
-    `reason` is None exactly when `success` is True. Callers building a public-facing
-    response (FP-239) must not surface `reason` verbatim — the ticket requires
-    EXPIRED, UNKNOWN and ALREADY_REDEEMED to look identical to the caller so the scan
-    page cannot be used as an oracle; the true reason is what got written to
-    HandoverTokenAttempt, not what the receiver's browser is told.
+    `reason` is None exactly when `success` is True. A public-facing response must
+    not surface `reason` verbatim — EXPIRED, UNKNOWN and ALREADY_REDEEMED must look
+    identical to the caller so the scan page can't be used as an oracle; the true
+    reason is what got written to HandoverTokenAttempt.
     """
 
     success: bool
@@ -126,18 +120,14 @@ async def redeem_capability_token(
 ) -> HandoverRedemptionResult:
     """Redeem a presented token, atomically.
 
-    The raw token is never compared to a stored value character-by-character — it is
-    hashed once and matched via an indexed equality lookup, so there is no partial-
-    match timing channel for a guesser to exploit (the ticket's "constant time"
-    requirement, satisfied by never doing a byte-wise comparison in the first place
-    rather than by a compare_digest call this design has no use for).
+    The raw token is hashed once and matched via an indexed equality lookup, never
+    compared byte-wise — no partial-match timing channel for a guesser to exploit.
 
-    The actual redemption gate is the single conditional UPDATE below — `WHERE
-    redeemed_at IS NULL AND expires_at > now()` — not the SELECT that precedes it.
-    The SELECT only classifies wrong-trip/wrong-stop/unknown, none of which are racy
-    (a token's trip/stop binding never changes after creation); expiry and prior
-    redemption ARE racy, and those are decided by the UPDATE's WHERE clause and
-    nothing else, so two simultaneous callers race the database, not this function.
+    The actual redemption gate is the conditional UPDATE below (`WHERE redeemed_at
+    IS NULL AND expires_at > now()`), not the SELECT preceding it: the SELECT only
+    classifies wrong-trip/wrong-stop/unknown, which aren't racy; expiry and prior
+    redemption ARE racy, and the UPDATE's WHERE clause is what two simultaneous
+    callers actually race against.
     """
     token_hash = _hash_token(raw_token)
 
@@ -187,9 +177,9 @@ async def redeem_capability_token(
         )
         return HandoverRedemptionResult(success=True, reason=None, token_id=row.id)
 
-    # Lost the race, or expired between the SELECT above and the UPDATE. Re-read to
-    # classify which, for the attempt log — the caller-facing response must not
-    # distinguish the two (FP-239), but the record kept here must.
+    # Lost the race, or expired between the SELECT and the UPDATE. Re-read to
+    # classify which for the attempt log — the caller-facing response won't
+    # distinguish the two, but the record kept here must.
     current = (
         await db.execute(select(HandoverCapabilityToken).where(HandoverCapabilityToken.id == row.id))
     ).scalar_one()
@@ -209,10 +199,9 @@ async def redeem_capability_token(
 class RotationResult:
     """Outcome of asking for the next QR in a phase event's series.
 
-    `raw_token` is None exactly when `paused` is True. A paused series is not a failure
-    — it is the normal, desirable state between a receiver scanning the code and
-    finishing with it, and the caller should tell the driver so rather than treating it
-    as an error or retrying into it.
+    `raw_token` is None exactly when `paused` is True. A paused series is the
+    normal, desirable state between a receiver scanning the code and finishing
+    with it — the caller should tell the driver so, not treat it as an error.
     """
 
     raw_token: Optional[str]
@@ -225,8 +214,8 @@ async def find_open_token(
 ) -> Optional[HandoverCapabilityToken]:
     """The token a receiver currently has open for this phase event, if any.
 
-    Open means scanned-and-loaded but not yet confirmed, and not yet expired. At most
-    one token can be in this state at a time, because rotation stops issuing while one
+    Open means scanned-and-loaded but not yet confirmed, and not yet expired. At
+    most one token can be in this state, since rotation stops issuing while one
     exists — see rotate_capability_token.
     """
     now = datetime.now(UTC)
@@ -245,23 +234,15 @@ async def find_open_token(
 async def mark_token_opened(db: AsyncSession, *, token_id: uuid.UUID) -> Optional[str]:
     """Claim a token for the browser opening it, and mint that browser's secret.
 
-    Returns the raw session secret on the FIRST load and None on every load after it.
-    That asymmetry is the whole anti-forwarding mechanism, so it is worth being explicit
-    about: the conditional `WHERE opened_at IS NULL` means a second browser arriving with
-    the same URL — because the receiver screenshotted it and sent it on — updates no row,
-    gets no secret, receives no cookie, and cannot confirm. The first browser already
-    holds the only copy that will ever exist.
+    Returns the raw session secret on the FIRST load and None on every load after
+    it — the whole anti-forwarding mechanism. The conditional `WHERE opened_at IS
+    NULL` means a second browser arriving with a screenshotted URL updates no row,
+    gets no secret, and cannot confirm. It also means a receiver refreshing their
+    own page keeps their existing cookie rather than re-minting one.
 
-    Two other consequences of the same UPDATE, both wanted:
-
-      * A receiver refreshing their own page does not re-mint. They keep the cookie they
-        already have; a re-mint would hand a fresh credential to anyone who reloaded.
-      * A page left open on a bench cannot keep pushing its claim forward, because
-        opened_at is written once and never moved.
-
-    Deliberately NOT a redemption. It takes the token out of the rotation and binds it to
-    one browser, but grants nothing: an opened token that is never confirmed still dies at
-    its own expires_at, and only redeem_capability_token's conditional UPDATE can spend it.
+    Deliberately NOT a redemption: it binds the token to one browser but grants
+    nothing — an opened-but-unconfirmed token still dies at its own expires_at,
+    and only redeem_capability_token's conditional UPDATE can spend it.
     """
     raw_secret = secrets.token_urlsafe(_TOKEN_BYTES)
     claimed = (
@@ -285,22 +266,16 @@ async def extend_token_for_verification(
 ) -> bool:
     """Push a token's expiry out once, to cover an identity-verification round trip.
 
-    HANDOVER_TOKEN_EXPIRY_MINUTES is sized for a receiver who types a name and swipes. A
-    document scan plus a live face check on a stranger's phone can outlast it, and a token
-    that dies mid-verification strands the delivery behind a generic 404 the receiver has
-    no way to recover from.
+    HANDOVER_TOKEN_EXPIRY_MINUTES is sized for a receiver who types a name and
+    swipes; a document scan plus a live face check can outlast it and strand the
+    delivery behind a generic 404. ONE shot, enforced by the database: the
+    conditional `WHERE verification_extended_at IS NULL` makes a second request a
+    no-op, the same single-claim idiom mark_token_opened uses on opened_at.
+    Refuses a redeemed token, since extending a spent grant would resurrect a
+    credential that should be dead.
 
-    ONE shot, enforced by the database, not by the caller. The conditional
-    `WHERE verification_extended_at IS NULL` is what makes a second request a no-op, so a
-    client cannot walk a token forward indefinitely by asking again — the same
-    single-claim idiom mark_token_opened uses on opened_at, for the same reason.
-
-    Refuses a redeemed token: once a delivery is confirmed the grant is spent, and
-    extending it would resurrect a credential that should be dead.
-
-    Returns True if this call performed the extension, False otherwise (already extended,
-    redeemed, or unknown) — never raises, because the caller degrades the evidence tier
-    on False rather than failing the handover.
+    Returns True if this call performed the extension, never raises — the caller
+    degrades the evidence tier on False rather than failing the handover.
     """
     now = datetime.now(UTC)
     extended = (
@@ -332,13 +307,9 @@ def session_secret_matches(
 ) -> bool:
     """Whether a presented browser secret belongs to this token.
 
-    Hashed and compared on the digest, never byte-wise on the secret itself — the same
-    reasoning redeem_capability_token's docstring gives for the token: there is no
-    partial-match timing channel if no partial match ever happens.
-
-    A token with no session_secret_hash has never been opened, so nothing matches it.
-    That case is reachable only by posting a confirm to a token whose page was never
-    loaded, which is not a flow any real receiver performs.
+    Hashed and compared on the digest, never byte-wise, for the same no-partial-
+    match reasoning as redeem_capability_token. A token with no
+    session_secret_hash has never been opened, so nothing matches it.
     """
     if token.session_secret_hash is None or not presented_secret:
         return False
@@ -353,16 +324,11 @@ async def expire_sibling_tokens(
 ) -> None:
     """Retire every unredeemed token in a phase event's series except `keep_token_id`.
 
-    Expiry, not deletion. A retired token still has to be able to explain itself: a
-    receiver who scans a photographed older frame produces a redemption ATTEMPT, and
-    that attempt is evidence (the ticket's DoD). Deleting the row would leave that
-    attempt pointing at nothing, which is the UNKNOWN case and means something entirely
-    different — a token this system never issued.
-
-    Expiring rather than flagging is also what keeps the public response honest for
-    free: redeem_capability_token's existing UPDATE already refuses on
-    `expires_at > now()` and classifies the refusal as EXPIRED, which the public routes
-    render identically to every other failure.
+    Expiry, not deletion: a receiver who scans a photographed older frame produces
+    a redemption ATTEMPT that must point at a real row, not the UNKNOWN case (a
+    token never issued). Expiring also keeps the public response honest for free —
+    redeem_capability_token's UPDATE already refuses on `expires_at > now()` and
+    classifies it as EXPIRED, identical to every other failure.
     """
     now = datetime.now(UTC)
     conditions = [
@@ -387,26 +353,20 @@ async def rotate_capability_token(
 ) -> RotationResult:
     """Issue the next token in a phase event's series, retiring the one before it.
 
-    This is what makes the driver's rotating QR a SERIES sharing one grant rather than a
-    growing pile of live tokens: at most one token per confirmation is redeemable at any
-    instant. Without the retirement a ten-minute handover would leave thirty valid
-    tokens behind it, and photographing the screen once would defeat the rotation
-    entirely — which is the only thing the rotation exists to prevent.
+    Makes the driver's rotating QR a SERIES sharing one grant rather than a
+    growing pile of live tokens: at most one is redeemable at any instant, so
+    photographing the screen once can't defeat the rotation.
 
-    The pause is the other half of that, and without it the feature does not work at
-    all. A receiver scans at T and then spends the better part of a minute typing their
-    name and ID; two or three rotations happen while they do. If those rotations retired
-    the token they are holding, every real handover would fail at the final swipe. So a
-    token with opened_at set stops the series: nothing new is issued and nothing is
-    retired until it is confirmed or dies of its own expiry. A photograph still goes
-    stale within one interval, because a photograph never opens the page.
+    The pause is the other half: once a token's opened_at is set (a receiver is
+    mid-scan, typing name/ID), rotation stops issuing and retiring until it's
+    confirmed or dies of its own expiry — otherwise a real handover would fail at
+    the final swipe while rotations ran underneath it. A photograph still goes
+    stale within one interval, since a photograph never opens the page.
 
-    `force` is the escape hatch for the one way the pause can strand a real handover: the
-    receiver opens the link, then loses the browser session holding their binding cookie
-    (a private tab closed, a different browser used for the second load), and can now
-    neither confirm nor get a fresh code until the grant expires. The driver is standing
-    right there, so the honest fix is to let them say "show a new code" — which retires
-    the stranded token, binding and all, and starts the series again.
+    `force` is the escape hatch when the pause strands a real handover — the
+    receiver loses their binding-cookie session mid-verification and can neither
+    confirm nor get a fresh code. The driver can say "show a new code", which
+    retires the stranded token and restarts the series.
     """
     open_token = await find_open_token(db, phase_event_id=phase_event_id)
     if open_token is not None and not force:
@@ -446,10 +406,9 @@ async def record_handover_confirmation(
 ) -> HandoverConfirmation:
     """Write the confirmation row and retire the rest of the series.
 
-    Called only after redeem_capability_token has already returned success, so the
-    single-use gate has been passed at the database. The sibling retirement here closes
-    the window the rotation opens: the redeemed token is dead by its own redeemed_at,
-    and every other frame the driver's screen ever showed is dead by this call.
+    Called only after redeem_capability_token has already returned success. The
+    sibling retirement here closes the window rotation opens: the redeemed token
+    is dead by its own redeemed_at, every other frame dead by this call.
     """
     confirmation = HandoverConfirmation(
         id=uuid.uuid4(),
@@ -461,9 +420,8 @@ async def record_handover_confirmation(
         receiver_lng=receiver_lng,
         receiver_accuracy_m=receiver_accuracy_m,
         receiver_ip=receiver_ip,
-        # Truncated rather than rejected: a user agent longer than the column is a
-        # curiosity worth keeping the front of, not a reason to refuse a delivery
-        # confirmation the receiver has already performed.
+        # Truncated rather than rejected: an oversized user agent isn't a reason
+        # to refuse a delivery confirmation the receiver already performed.
         receiver_user_agent=(receiver_user_agent or "")[:512] or None,
         bearer_token_present=bearer_token_present,
     )
@@ -477,8 +435,7 @@ async def record_handover_confirmation(
 def build_scan_url(raw_token: str) -> str:
     """The URL encoded into the QR the driver's screen displays.
 
-    Built here rather than in the endpoint so the driver app never composes a URL out of
-    a base and a secret itself — the token is the whole secret, and the one place that
-    concatenation happens is the one place to audit it.
+    Built here, not in the endpoint, so the one place that concatenates a base
+    URL with the secret token is the one place to audit it.
     """
     return f"{settings.HANDOVER_RECEIVER_BASE_URL.rstrip('/')}/h/{raw_token}"

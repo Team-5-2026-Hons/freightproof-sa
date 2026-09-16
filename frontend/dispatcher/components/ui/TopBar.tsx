@@ -1,8 +1,7 @@
 'use client'
 
-// ForensicControls (mounted below) reads useForensicMode, a client hook —
-// coupling this primitive to app context is an accepted tradeoff for
-// guaranteeing the forensic toggle appears consistently on every TopBar.
+// ForensicControls reads a client hook; coupling this primitive to app context is an
+// accepted tradeoff so the forensic toggle appears on every TopBar.
 
 import type { ReactNode } from 'react'
 import { ForensicControls } from '@/components/blockchain/ForensicControls'

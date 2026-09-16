@@ -13,16 +13,12 @@ import {
 
 import { GeofenceSchematic, SCALE_BAR_TARGET_FRACTION, niceScaleMetres } from './GeofenceSchematic'
 
-// Width assumed until the element has actually been measured — server render, first
-// paint, and any environment without ResizeObserver. Sized to a typical precinct card
-// so the initially-chosen zoom is already close to the final one and the thumbnail does
-// not visibly re-frame on mount.
+// Assumed width until the element is actually measured (server render, first paint, or
+// no ResizeObserver). Sized to a typical precinct card so the thumbnail doesn't visibly re-frame on mount.
 export const DEFAULT_THUMBNAIL_WIDTH_PX = 280
 
-// Fixed so the map band never grows/shrinks as tiles load progressively (which would
-// otherwise shift every card below it on the list) — the thumbnail's job is a stable
-// slot, not a resized one. Only the WIDTH is fluid: it follows the card, which is sized
-// by a responsive grid and is therefore never a constant we could hardcode.
+// Fixed so the map band never grows/shrinks as tiles load progressively, shifting cards
+// below it. Only the width is fluid, following the card's responsive grid sizing.
 const THUMBNAIL_HEIGHT_PX = 150
 
 // Distance in pixels of the scale bar's origin corner from the thumbnail's edges.
@@ -38,18 +34,10 @@ interface StaticGeofenceThumbnailProps {
 
 /**
  * Static street-map thumbnail for a precinct list card: OSM raster tiles composited to
- * look like one continuous map, centred on the precinct, with the geofence drawn to
- * scale as an SVG overlay.
- *
- * Deliberately plain `<img>` tiles rather than `next/image` or Leaflet: these are
- * already-optimally-sized 256px CDN-cached tiles from an external host, so proxying
- * them through Next's image optimizer would add a pointless server hop, and pulling in
- * Leaflet for a non-interactive thumbnail would cost a real dependency for a feature
- * `GeofenceMap` already owns. `GeofenceMap.tsx` remains the only file permitted to
- * import Leaflet.
- *
- * Falls back to `GeofenceSchematic` the instant any one tile fails to load — no grey
- * broken-image void, ever.
+ * look like one continuous map, with the geofence drawn to scale as an SVG overlay.
+ * Plain `<img>` tiles, not `next/image` or Leaflet — these are already-optimal
+ * CDN-cached tiles, and Leaflet stays exclusive to `GeofenceMap.tsx`. Falls back to
+ * `GeofenceSchematic` the instant any tile fails to load.
  */
 export function StaticGeofenceThumbnail({
   latitude,
@@ -59,26 +47,20 @@ export function StaticGeofenceThumbnail({
   className,
 }: StaticGeofenceThumbnailProps) {
   // A single flag, not per-tile tracking: one broken tile already breaks the illusion
-  // of a continuous map, so there is no useful "partially working" state to render.
-  // Counted, not latched. A single tile 404 at the edge of a coverage area is normal
-  // and must not replace the map — only a RUN of failures with nothing loading between
-  // them means the tile server is unreachable. Reset by any successful tile, so a
-  // transient outage recovers on its own instead of stranding the card on the schematic
-  // for the rest of the session. Same policy and same constant as GeofenceMap.
+  // of a continuous map. Counted, not latched — only a RUN of failures with nothing
+  // loading between them means the server is unreachable; reset by any success. Same
+  // policy and constant as GeofenceMap.
   const [tileErrorStreak, setTileErrorStreak] = useState(0)
   const hasFailed = tileErrorStreak >= TILE_ERROR_FALLBACK_THRESHOLD
 
-  // The card is sized by a responsive grid (1/2/3 columns), so its width is a runtime
-  // fact, not a constant. It feeds both the tile range and `zoomForRadius`'s framing
-  // target, so measuring it is what keeps the fence at its intended fraction of the
-  // card at every breakpoint instead of only at one assumed width.
+  // The card's width is a runtime fact (responsive grid), so it's measured to keep the
+  // fence at its intended fraction of the card at every breakpoint.
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [widthPx, setWidthPx] = useState(DEFAULT_THUMBNAIL_WIDTH_PX)
 
   useEffect(() => {
     const element = containerRef.current
-    // Guarded rather than assumed: jsdom (and older Safari) has no ResizeObserver, and
-    // the component must still render a correct map at the default width without it.
+    // jsdom and older Safari have no ResizeObserver; must still render at the default width.
     if (element === null || typeof ResizeObserver === 'undefined') {
       return
     }
@@ -92,11 +74,8 @@ export function StaticGeofenceThumbnail({
     return () => observer.disconnect()
   }, [])
 
-  // Framed on the SMALLER dimension. The band's height is fixed while its width
-  // follows the card, so framing on width alone picks a zoom whose circle is taller
-  // than the box — at the default 280px width and default 200m radius the fence was
-  // drawn with a 93px radius into 75px of vertical room, clipped top and bottom on
-  // every card. tiles.test.ts pins the invariant across every realistic width/radius.
+  // Framed on the smaller dimension so the fence circle can't clip the fixed-height
+  // band. tiles.test.ts pins this invariant across realistic width/radius combos.
   const zoom = zoomForRadius(radiusMetres, latitude, Math.min(widthPx, THUMBNAIL_HEIGHT_PX))
   const tiles = tileGrid(latitude, longitude, zoom, widthPx, THUMBNAIL_HEIGHT_PX)
 
@@ -111,13 +90,8 @@ export function StaticGeofenceThumbnail({
   return (
     <div
       ref={containerRef}
-      // role/aria-label on the container, not on each tile: the tiles are fragments of
-      // one image, so labelling all of them makes a screen reader announce the same
-      // precinct once per tile. One label here, empty alts below.
-      //
-      // Dropped entirely in the failed state: there is no street map on screen then,
-      // and GeofenceSchematic already labels itself as the diagram it is. Keeping this
-      // label would both describe the wrong thing and nest one img role inside another.
+      // On the container, not each tile — the tiles are fragments of one image. Dropped
+      // in the failed state since GeofenceSchematic labels itself.
       role={hasFailed ? undefined : 'img'}
       aria-label={hasFailed ? undefined : `Street map showing ${name}`}
       className={`relative w-full overflow-hidden bg-surf-low ${className ?? ''}`}
@@ -128,10 +102,7 @@ export function StaticGeofenceThumbnail({
       ) : (
         <>
           {tiles.map((tile) => (
-            // These are already-optimally-sized 256px CDN-cached tiles from an external
-            // host (tile.openstreetmap.org) — routing them through next/image's
-            // optimizer would add a server hop for zero benefit, so a plain <img> is
-            // correct here, not an oversight.
+            // Plain <img>, not next/image: already-optimal CDN-cached tiles, see file doc.
             // eslint-disable-next-line @next/next/no-img-element
             <img
               key={`${tile.x}-${tile.y}`}

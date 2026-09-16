@@ -1,13 +1,7 @@
-// Pure, dependency-free validation rule primitives.
-//
-// Each rule is a factory that returns a `(value: string) => string | null`
-// checker: `null` means valid, a string is the error message to show.
-// Composable so form-specific validators (e.g. vehicle.ts) can chain them
-// per field without re-implementing the same checks.
-//
-// Framework-agnostic on purpose — consumed via @shared/* by both the
-// dispatcher and driver-pwa Next.js apps, neither of which should pull
-// React/Next into this layer.
+// Pure, dependency-free validation rule primitives. Each rule is a factory returning a
+// `(value: string) => string | null` checker (null = valid), composable so form-specific
+// validators (e.g. vehicle.ts) can chain them per field.
+// Framework-agnostic on purpose — consumed via @shared/* by both Next.js apps.
 
 export type Rule = (value: string) => string | null
 
@@ -23,10 +17,7 @@ export function required(message: string = DEFAULT_REQUIRED_MESSAGE): Rule {
   }
 }
 
-/**
- * Fails when value.length exceeds `n`. Empty values are skipped — pairing
- * with `required` separately is how callers decide if the field is mandatory.
- */
+/** Fails when value.length exceeds `n`. Empty values are skipped — compose with `required` separately. */
 export function maxLength(n: number, message?: string): Rule {
   const errorMessage = message ?? `Must be ${n} characters or fewer.`
   return (value: string): string | null => {
@@ -40,11 +31,7 @@ export function maxLength(n: number, message?: string): Rule {
   }
 }
 
-/**
- * Fails when a non-empty value's length isn't exactly `n`. For fields that
- * are optional overall but must be a fixed width when filled in (e.g. VIN) —
- * compose with `required` separately if the field is also mandatory.
- */
+/** Fails when a non-empty value's length isn't exactly `n` (e.g. VIN). Empty values are skipped. */
 export function exactLength(n: number, message?: string): Rule {
   const errorMessage = message ?? `Must be exactly ${n} characters.`
   return (value: string): string | null => {
@@ -58,11 +45,7 @@ export function exactLength(n: number, message?: string): Rule {
   }
 }
 
-/**
- * Fails when a non-empty value doesn't match `re`. No default message —
- * an arbitrary regex has no generic human-readable description, so the
- * caller must supply one.
- */
+/** Fails when a non-empty value doesn't match `re`. No default message — the caller must supply one. */
 export function pattern(re: RegExp, message: string): Rule {
   return (value: string): string | null => {
     if (value.length === 0) {
@@ -75,16 +58,11 @@ export function pattern(re: RegExp, message: string): Rule {
   }
 }
 
-// parseInt alone would accept "3.5" as 3 — guard against any non-integer
-// characters so a fractional or otherwise malformed string is rejected,
-// not silently truncated.
+// parseInt alone would accept "3.5" as 3 — guard against non-integer characters so a
+// fractional string is rejected, not silently truncated.
 const INTEGER_STRING_PATTERN = /^-?\d+$/
 
-/**
- * Fails when a non-empty value isn't a valid integer in [min, max].
- * Uses parseInt(value, 10) — callers pass raw string input from controlled
- * <input> elements, never pre-parsed numbers.
- */
+/** Fails when a non-empty value isn't a valid integer in [min, max]. */
 export function intInRange(min: number, max: number, message?: string): Rule {
   const errorMessage = message ?? `Must be a whole number between ${min} and ${max}.`
   return (value: string): string | null => {
@@ -104,11 +82,7 @@ export function intInRange(min: number, max: number, message?: string): Rule {
 
 const DECIMAL_STRING_PATTERN = /^-?\d+(\.\d+)?$/
 
-/**
- * Fails when a non-empty value isn't a decimal number within [min, max]. Empty values
- * are skipped — compose with `required` separately, exactly as `intInRange` does. Used
- * for GPS coordinates, where `intInRange` would reject every real value.
- */
+/** Fails when a non-empty value isn't a decimal number within [min, max] (e.g. GPS coordinates). */
 export function decimalInRange(min: number, max: number, message?: string): Rule {
   const errorMessage = message ?? `Must be a number between ${min} and ${max}.`
   return (value: string): string | null => {

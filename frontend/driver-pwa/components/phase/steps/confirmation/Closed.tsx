@@ -1,4 +1,3 @@
-// frontend/driver-pwa/components/phase/steps/confirmation/Closed.tsx
 'use client'
 
 import { CheckCircle2 } from 'lucide-react'
@@ -17,40 +16,22 @@ interface ClosedProps {
 }
 
 export function Closed({ tripId, phase, stepIndex, draft, onComplete }: ClosedProps) {
-  // Old H5Closed's isReady also checked waybillHandedOver/sealBrokenPhotoDataUrl — those
-  // are `unloading` phase fields, not on ConfirmationEvidence (see Reconciliation.tsx's
-  // header comment: separate phase_event_id, separate draft). By the time the driver
-  // reaches confirmation's last step, unloading is already a resolved phase server-side;
-  // this gate is limited to what THIS phase's own draft carries.
-  //
-  // driverVisualCount is deliberately NOT part of this gate (2026-08-08). The count is
-  // optional at unloading and at confirmation, so `null` is a legitimate value that
-  // carries all the way here — gating on it made a skipped count silently unclosable:
-  // the swipe stayed disabled forever with nothing on screen explaining why, and the
-  // driver's only escape was abandoning a delivered trip. What this phase genuinely
-  // cannot be completed without is the POD evidence, which is what remains below.
-  // The signature half is now the RECEIVER's confirmation (FP-155), so what this gates
-  // on is the artifact id the handover poll wrote into the draft — there is no local
-  // image to check for any more.
+  // Only THIS phase's draft: unloading fields (waybillHandedOver etc.) belong to a
+  // separate phase_event_id and are already resolved server-side by this point.
+  // driverVisualCount is deliberately excluded — it's optional, and gating on it made a
+  // skipped count silently unclosable. The signature half is the receiver's confirmation
+  // (FP-155), so this checks the artifact id the handover poll wrote into the draft.
   const isReady =
     draft.podPhotoDataUrl !== null &&
     Boolean(draft.podSignatureArtifactId)
 
-  // confirmation is gated on the destination warehouse's scan-IN session, exactly as
-  // loading is on scan-OUT and unloading on scan-IN (GATED_PHASES, phase_gate.py). Until
-  // this landed, this phase was gated server-side and silent here: the driver captured
-  // the POD photo, took the receiver's confirmation and did the reconciliation, then swiped
-  // and ate a bare 409 standing at the customer's gate with nothing on screen explaining
-  // it. Coalesced to null first for the same reason as loading/Linehaul.tsx — `blocked_on`
-  // is optional on the shared type, so `!== null` alone reads `undefined !== null` and is
-  // permanently true.
+  // Gated on the destination warehouse's scan-IN session (GATED_PHASES, phase_gate.py).
+  // Coalesced to null first: `blocked_on` is optional on the shared type, so a bare
+  // `!== null` reads `undefined !== null` and is permanently true.
   const isBlocked = (phase.blocked_on ?? null) !== null
 
-  // Navigation is owned by the caller: onComplete() triggers the real submission: awaits
-  // it, clears this phase's draft, and advances. Navigating here too would race that
-  // async submission and land on an unmounted/stale screen. Its promise is returned, not
-  // dropped — that promise is how SwipeToConfirm knows to hold the "Submitting…" lock
-  // for the whole trip-closing round trip instead of handing the track straight back.
+  // Navigation stays with the caller: onComplete() submits, clears the draft, and
+  // advances. Its promise is returned so SwipeToConfirm holds the "Submitting…" lock.
   function handleClose(): void | Promise<void> {
     return onComplete()
   }
@@ -59,10 +40,8 @@ export function Closed({ tripId, phase, stepIndex, draft, onComplete }: ClosedPr
     <main className="flex min-h-dvh flex-col">
       <StepHeader phase={phase} stepIndex={stepIndex} />
       {isBlocked ? (
-        // No success tick and no swipe while blocked. The trip is NOT complete yet, and
-        // showing "Trip Complete" over a control that will 409 tells the driver two
-        // false things at once. Same shape as unloading/VisualCount.tsx: hide the
-        // control entirely rather than leave it visible-but-disabled, and say why.
+        // No success tick and no swipe while blocked: hide the control entirely rather
+        // than leave it visible-but-disabled, and say why.
         <div className="flex flex-1 flex-col justify-center gap-2 p-4">
           <WarehouseWaitCard>
             The warehouse is still scanning the parcels in at this stop. The trip will
@@ -79,9 +58,6 @@ export function Closed({ tripId, phase, stepIndex, draft, onComplete }: ClosedPr
             <div>
               <p className="text-xl font-bold">Trip Complete</p>
               <p className="mt-1 text-base text-surface-on-variant">
-                {/* No longer "All five handshakes are done" — the plan's length is DATA
-                    (parent plan §2.2); a cross-dock trip has more phases than a single-leg
-                    one, and this screen must never imply a fixed count. */}
                 All phases are complete. Evidence has been recorded.
               </p>
             </div>

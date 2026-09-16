@@ -7,6 +7,7 @@ import hashlib
 import uuid
 from datetime import UTC, datetime
 
+import pytest
 import pytest_asyncio
 
 from app.core.config import settings
@@ -33,6 +34,24 @@ from app.orchestration.receiver_verification_service import (
 )
 
 _CONSENT = "I agree to my identity document and photograph being checked."
+
+
+@pytest.fixture(autouse=True)
+def _force_mock_idvs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin IDVS_USE_MOCK on for every test in this module.
+
+    These tests are entirely mock-backed — they construct MockIdvsClient directly, or
+    drive endpoints that reach it through get_idvs_client(). Without this they read the
+    DEVELOPER'S .env: anyone running with IDVS_USE_MOCK=false (what you set to exercise
+    live Didit locally) gets IdvsUnsupportedError from stage_decision, or an endpoint that
+    builds a real DiditIdvsClient and tries to reach the vendor over the network — which
+    surfaces as a verification stuck on 'pending'.
+
+    These passed CI only by accident: CI checks out no .env, so the field fell back to its
+    default of true. A test whose result depends on an untracked file on one machine is
+    not testing what it claims to.
+    """
+    monkeypatch.setattr(settings, "IDVS_USE_MOCK", True)
 
 
 @pytest_asyncio.fixture

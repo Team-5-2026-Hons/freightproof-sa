@@ -1,14 +1,7 @@
 """Queries behind the On time tab (GET /analytics/fleet/on-time, spec §5.2, D23, D24).
-
-One read over the closed-trip set (spec G4): each trip's times (first departure, plans, final
-arrival). Everything else is pure arithmetic over those rows, in the functions below, so "on
-time", "how late" and the plan spread follow the rules the unit tests and the consistency test
-with the driver pages check.
-
-On time is strict, on or before the plan, exactly as the driver view's on_time_departure_rate
-(spec D9). The plan spread uses the lane view's schedule delta: actual trip time minus planned
-trip time, from the first attested departure (never trips.actual_departure_at, spec G3).
-"""
+On time is strict, on or before the plan (spec D9); plan spread uses the lane view's
+schedule delta, from the first attested departure (never trips.actual_departure_at,
+spec G3)."""
 
 import uuid
 from collections import Counter

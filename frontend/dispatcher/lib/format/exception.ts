@@ -1,16 +1,10 @@
-// Exception display formatting.
-//
-// Module-scoped rather than page-local because two surfaces render the same exception:
-// the trip timeline's standalone cards and the in-transit leg's own mini-timeline. When
-// this transform lived in the page, the leg had no access to it and printed the raw
-// enum — so one exception read two different ways depending on which phase it landed on.
+// Exception display formatting, module-scoped so both the trip timeline's cards and the
+// in-transit leg's mini-timeline render the same exception the same way.
 
 import type { TripExceptionDetail } from '@shared/lib/types/exception'
 import { NO_DATA } from './analytics'
 import { VEHICLE_TYPE_LABELS } from './vehicle'
 
-// A breakdown's Vehicle row when no vehicle was recorded: every breakdown reported before
-// drivers were asked "truck or trailer". The analytics count those for the horse.
 export const VEHICLE_NOT_RECORDED = 'Not recorded'
 
 // Types whose generic title-casing below reads wrong. The en dash is deliberate: it is

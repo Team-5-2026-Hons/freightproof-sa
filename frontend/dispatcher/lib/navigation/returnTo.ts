@@ -1,54 +1,32 @@
 'use client'
 
 /**
- * Where a detail page should send the reader "back" to.
- *
- * A vehicle or precinct is reached from several places — its own list, a search, or a
- * trip that happens to use it. Hard-coding the list means the one route that matters most
- * (back to the trip you were reading) is the one it cannot do.
- *
- * Preferred over router.back() because history is not a reliable statement of intent: a
- * refresh, an in-page edit that pushes its own entry, or a link opened in a new tab all
- * leave back() pointing somewhere else or nowhere at all. A parameter survives all three.
+ * Where a detail page should send the reader "back" to, via a query param rather than
+ * router.back() — history isn't reliable across a refresh, an in-page pushState, or a new tab.
  */
 
 export const RETURN_TO_PARAM = 'returnTo'
 
-// Any fixed origin serves: what matters is only whether the value STAYS on it, never
-// which one it is. `.invalid` is reserved by RFC 2606, so it can never resolve anywhere.
+// Any fixed origin works; `.invalid` is RFC 2606-reserved so it never resolves for real.
 const PROBE_ORIGIN = 'https://freightproof.invalid'
 
 /**
- * Validate a return path before navigating to it.
- *
- * The value arrives in the address bar, so it is attacker-controllable: without this an
- * emailed link like ?returnTo=https://example.com turns the app's own Back button into an
- * open redirect.
- *
- * Resolved through the URL parser rather than matched as a prefix, because the parser is
- * what the router itself will ultimately apply — and it accepts forms no prefix check can
- * see. A leading-"//" test misses "/\evil.com", which the WHATWG parser normalises to
- * "//evil.com" and lands on another origin while still passing startsWith('/'); embedded
- * tabs and newlines ("/\t/evil.com") are stripped to the same effect.
+ * Validate a return path before navigating to it — an attacker-controlled value (e.g. an
+ * emailed ?returnTo=https://evil.com) would otherwise turn Back into an open redirect.
+ * Resolved through the URL parser, not a prefix match: the parser normalises forms
+ * (e.g. "/\evil.com" → "//evil.com") that a prefix check would miss.
  */
 export function safeReturnTo(value: string | null | undefined, fallback: string): string {
-  // Still required alongside the origin checks below: it is what rejects an absolute URL
-  // outright, so this only ever honours a path, never a rewritten same-origin href.
   if (!value || !value.startsWith('/')) return fallback
   try {
     const resolved = new URL(value, PROBE_ORIGIN)
     if (resolved.origin !== PROBE_ORIGIN) return fallback
 
-    // The parser's own normalisation, never the raw input — the router must be handed
-    // exactly the string that was validated, not one that can still be re-read
-    // differently.
+    // Use the parser's normalised path, not the raw input, so it matches what was validated.
     const path = `${resolved.pathname}${resolved.search}${resolved.hash}`
 
-    // Then validate what is RETURNED, because normalising can MANUFACTURE a
-    // protocol-relative value the input never contained: "/a/..//evil.com" climbs above
-    // root, leaving a pathname of "//evil.com". As input that resolved on-origin and
-    // passed the check above; as output it leaves the origin. Checking the input alone
-    // reopened exactly the "//host" case the prefix test this replaced used to reject.
+    // Re-check the normalised output: traversal (e.g. "/a/..//evil.com") can produce a
+    // protocol-relative path that passed the input check but leaves the origin.
     if (new URL(path, PROBE_ORIGIN).origin !== PROBE_ORIGIN) return fallback
     return path
   } catch {

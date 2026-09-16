@@ -3,9 +3,11 @@
 import io
 import uuid
 
+import pytest
 import pytest_asyncio
 from httpx import AsyncClient
 
+from app.api.v1.endpoints import artifacts as artifacts_endpoint
 from app.db.models.enums import IdvsStatus, OrganizationType, TripStatus, VehicleType
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
@@ -92,7 +94,9 @@ async def test_upload_artifact_returns_201_with_id(client: AsyncClient, seed_tri
     assert body["file_hash"] == "a" * 64
 
 
-async def test_upload_artifact_over_10mb_returns_413(client: AsyncClient, seed_trip):
+async def test_upload_artifact_over_10mb_returns_413(
+    client: AsyncClient, seed_trip, monkeypatch: pytest.MonkeyPatch,
+):
     """413, not 422, since the size is now rejected from the declared content length
     BEFORE the body is read — which is the point: an oversized upload no longer has to be
     spooled to disk in full just to be measured and thrown away.
@@ -104,9 +108,14 @@ async def test_upload_artifact_over_10mb_returns_413(client: AsyncClient, seed_t
     have been a second, inconsistent code for one condition.
     """
     trip, driver = seed_trip
+    # The 10 MB ceiling is pinned by value, then shrunk for the request: the size check
+    # compares against the constant whatever its value, and a real 10 MB multipart body
+    # took ~5s to build and parse — the slowest test in the suite.
+    assert artifacts_endpoint.MAX_FILE_SIZE_BYTES == 10 * 1024 * 1024
+    monkeypatch.setattr(artifacts_endpoint, "MAX_FILE_SIZE_BYTES", len(JPEG_BYTES))
 
     token = make_token(sub=str(driver.id), role="driver")
-    big = io.BytesIO(b"0" * (10 * 1024 * 1024 + 1))
+    big = io.BytesIO(JPEG_BYTES + b"\x00")
     resp = await client.post(
         "/api/v1/artifacts",
         data={

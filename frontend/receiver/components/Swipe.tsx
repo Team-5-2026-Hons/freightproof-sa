@@ -1,27 +1,18 @@
-// frontend/receiver/components/Swipe.tsx
-//
-// Slide-to-confirm for the receiver's single act (FP-155).
-//
-// NOT a port of driver-pwa's SwipeToConfirm. That component is three hundred lines of
-// design-system tokens, tap-to-confirm preferences, spinner variants and danger styling,
-// all of it earned by being the control every phase in the driver app submits through.
-// None of that applies here: this page has one button, seen once, by someone with no
-// account and no preferences. Copying it would have dragged the whole driver design
-// system into an app that deliberately does not have one.
-//
-// The safety property IS carried over, because it is the reason the pattern was chosen:
-// confirming a delivery writes an immutable ledger row and spends a single-use token, so
-// it must never be reachable by one accidental tap. A swipe demands deliberate intent.
+// Slide-to-confirm for the receiver's single act. NOT a port of driver-pwa's
+// SwipeToConfirm — that component's design-system tokens and preferences don't apply to
+// a one-button page seen once by someone with no account. The safety property IS carried
+// over: confirming spends a single-use token and writes an immutable ledger row, so it
+// must never be reachable by one accidental tap.
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-// Fraction of the track the thumb must cross to count. Short of 1.0 on purpose: a
-// receiver in gloves, or on a cracked screen, should not have to land the final pixel.
+// Fraction of the track the thumb must cross to count — short of 1.0 so a receiver in
+// gloves or on a cracked screen needn't land the final pixel.
 const COMPLETE_THRESHOLD = 0.9
 
-// Spring-back / snap-forward duration. One constant so the CSS transition and the
-// dispatch delay cannot drift apart.
+// Spring-back / snap-forward duration, one constant so the CSS transition and the
+// dispatch delay can't drift apart.
 const SETTLE_DURATION_MS = 180
 
 const THUMB_SIZE_PX = 56
@@ -38,15 +29,28 @@ export function Swipe({ label, disabled = false, onConfirm }: SwipeProps) {
   const [offset, setOffset] = useState(0)
   const [isDragging, setIsDragging] = useState(false)
   const [isSettling, setIsSettling] = useState(false)
+  // The track's pixel width, mirrored into state rather than read from trackRef at render
+  // time: a ref mutation triggers no re-render, so `progress` derived from a ref read
+  // would go stale. Refreshed by a ResizeObserver instead.
+  const [trackWidth, setTrackWidth] = useState(0)
 
-  // Guards against a second dispatch from a keyboard activation landing on top of a
-  // completed drag. The token is single-use and a double POST would burn the retry.
+  // Guards against a second dispatch from a keyboard activation landing on a completed
+  // drag — the token is single-use and a double POST would burn the retry.
   const hasFiredRef = useRef(false)
 
-  const maxOffset = useCallback(() => {
+  useEffect(() => {
     const track = trackRef.current
-    if (track === null) return 0
-    return track.clientWidth - THUMB_SIZE_PX - TRACK_PADDING_PX * 2
+    if (track === null) return
+    // observe() fires the callback once immediately, so this also serves as the initial measurement.
+    const observer = new ResizeObserver(() => {
+      setTrackWidth(track.clientWidth)
+    })
+    observer.observe(track)
+    return () => observer.disconnect()
+  }, [])
+
+  const maxOffset = useCallback((width: number) => {
+    return width - THUMB_SIZE_PX - TRACK_PADDING_PX * 2
   }, [])
 
   const fire = useCallback(async () => {
@@ -73,13 +77,13 @@ export function Swipe({ label, disabled = false, onConfirm }: SwipeProps) {
     if (track === null) return
     const rect = track.getBoundingClientRect()
     const raw = e.clientX - rect.left - TRACK_PADDING_PX - THUMB_SIZE_PX / 2
-    setOffset(Math.max(0, Math.min(raw, maxOffset())))
-  }, [isDragging, disabled, maxOffset])
+    setOffset(Math.max(0, Math.min(raw, maxOffset(trackWidth))))
+  }, [isDragging, disabled, maxOffset, trackWidth])
 
   const handlePointerUp = useCallback(() => {
     if (!isDragging) return
     setIsDragging(false)
-    const limit = maxOffset()
+    const limit = maxOffset(trackWidth)
     if (limit > 0 && offset / limit >= COMPLETE_THRESHOLD) {
       setIsSettling(true)
       setOffset(limit)
@@ -87,11 +91,10 @@ export function Swipe({ label, disabled = false, onConfirm }: SwipeProps) {
       return
     }
     settleBack()
-  }, [isDragging, offset, maxOffset, fire, settleBack])
+  }, [isDragging, offset, maxOffset, trackWidth, fire, settleBack])
 
-  // Keyboard path. A swipe is unreachable without a pointer, and a receiver on a device
-  // with assistive tech must still be able to confirm their own delivery — the whole
-  // point of the feature is that this act belongs to them.
+  // Keyboard path: a swipe is unreachable without a pointer, and assistive-tech users
+  // must still be able to confirm their own delivery.
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
     if (disabled) return
     if (e.key !== 'Enter' && e.key !== ' ') return
@@ -99,13 +102,17 @@ export function Swipe({ label, disabled = false, onConfirm }: SwipeProps) {
     void fire()
   }, [disabled, fire])
 
-  useEffect(() => {
-    // A disabled control must not stay parked at the far end of its track from a drag
-    // that completed just before the identity fields were cleared.
-    if (disabled) setOffset(0)
-  }, [disabled])
+  // A disabled control must not stay parked at the far end of its track. Written during
+  // render, not an effect — the standard "adjusting state when a prop changes" pattern
+  // (https://react.dev/learn/you-might-not-need-an-effect).
+  const [prevDisabled, setPrevDisabled] = useState(disabled)
+  if (disabled !== prevDisabled) {
+    setPrevDisabled(disabled)
+    if (disabled && offset !== 0) setOffset(0)
+  }
 
-  const progress = maxOffset() > 0 ? offset / maxOffset() : 0
+  const limit = maxOffset(trackWidth)
+  const progress = limit > 0 ? offset / limit : 0
 
   return (
     <div

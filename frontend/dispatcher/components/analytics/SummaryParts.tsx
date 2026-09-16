@@ -1,9 +1,8 @@
 'use client'
 
 // Building blocks for the one-entity analytics summaries on the vehicle and driver detail
-// pages (mockup 4A). One definition, so both pages look and behave alike and the display
-// rules they carry are written once: a dash is always drawn quietly, and severities are
-// always three separate figures.
+// pages: one definition, so both look alike — a dash is always drawn quietly, and severities
+// are always three separate figures.
 
 import type { ReactNode } from 'react'
 
@@ -23,8 +22,7 @@ const FRAME_COPY = {
   retry: 'Try again',
 } as const
 
-// The right panel is already bg-surf-lowest, so tiles take the next tone down, as
-// EventTimeline's entries do.
+// The right panel is already bg-surf-lowest, so tiles take the next tone down.
 const TILE_CLASS = 'bg-surf-low rounded-lg'
 const DOT_CLASS = 'h-1.5 w-1.5 shrink-0 rounded-full'
 
@@ -38,9 +36,8 @@ export interface CountStyle {
   text?: string
 }
 
-// Colours follow each severity's chip (EXCEPTION_SEVERITY_META → Chip), so a severity reads
-// the same here as on an exception chip. Info chips are neutral grey, so an info count is
-// marked but not tinted. Chip does not export its colour maps.
+// Colours follow each severity's chip, so a severity reads the same here as on an exception
+// chip. Info chips are neutral grey, so an info count is marked but not tinted.
 const SEVERITY_STYLE: Record<ExceptionSeverity, CountStyle> = {
   info: { dot: 'bg-outline-v' },
   warning: { dot: 'bg-warn', tint: 'bg-warn-c/25', text: 'text-warn' },
@@ -150,8 +147,7 @@ export function CountStrip({ cells }: { cells: readonly CountCell[] }) {
             key={label}
             label={label}
             value={String(count)}
-            // A zero recedes and anything else is coloured, so the eye lands on what
-            // actually happened.
+            // A zero recedes and anything else is coloured, so the eye lands on what happened.
             muted={!happened}
             toneClass={happened ? style.text : undefined}
             dotClass={happened ? style.dot : undefined}
@@ -163,7 +159,7 @@ export function CountStrip({ cells }: { cells: readonly CountCell[] }) {
   )
 }
 
-/** Info, warning and critical as three separate figures, never summed (FP-156 §2 rule 4). */
+/** Info, warning and critical as three separate figures, never summed. */
 export function SeverityStrip({ counts }: { counts: Readonly<Record<ExceptionSeverity, number>> }) {
   return (
     <CountStrip
@@ -255,8 +251,8 @@ interface StatProps {
 function Stat({ label, value, size = 'md', labelAbove = false, muted = false, toneClass, dotClass, className }: StatProps) {
   const quiet = muted || value === NO_DATA
   return (
-    // The label always comes first in the DOM, so a screen reader hears "Trips, 11";
-    // flex-col-reverse puts the figure on top where the layout wants it there.
+    // Label always comes first in the DOM (screen reader hears "Trips, 11"); flex-col-reverse
+    // puts the figure on top visually.
     <div className={cn('flex gap-2', labelAbove ? 'flex-col' : 'flex-col-reverse', className)}>
       <dt className={cn('text-[13px]', toneClass ?? 'text-on-surf-v')}>{label}</dt>
       <dd

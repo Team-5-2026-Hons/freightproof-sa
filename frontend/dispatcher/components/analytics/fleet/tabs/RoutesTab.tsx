@@ -25,14 +25,13 @@ import { sumOf } from '../format'
 import { INCIDENT_MAP_HEIGHT, IncidentMap, type PinSelection } from '../map/IncidentMap'
 
 const COPY = FLEET_COPY.routes
-// Enough to see the busiest places at a glance; "Show all" opens the rest (spec §5.6).
+// Enough to see the busiest places at a glance; "Show all" opens the rest.
 const TOP_SITES = 10
-// The incident table grows ten rows at a time (D25), so the map stays near the rows.
+// The incident table grows ten rows at a time, so the map stays near the rows.
 const INCIDENT_PAGE_SIZE = 10
 const RATIO_DECIMALS = 2
-// Chart 2.4's lane names are long ("Bloemfontein Depot (Hamilton) → Johannesburg Depot (Linbro)"):
-// a wider name column keeps most to two lines, and a taller row with a clear gap keeps each
-// lane's two bars and its name together, apart from the next lane (Tom, D25 follow-up).
+// Lane names are long ("Bloemfontein Depot (Hamilton) → Johannesburg Depot (Linbro)"): a wider
+// name column keeps most to two lines, and a taller row keeps each lane's bars and name together.
 const LANE_AXIS_WIDTH = 280
 const LANE_ROW_HEIGHT = 64
 const LANE_GAP = '30%'
@@ -138,9 +137,8 @@ interface LaneTimeRow {
 }
 
 /** Chart 2.4: typical (median) and bad-day (P90) driving time per lane, two steps of one blue.
- *  The only place lanes appear in the app once the old analytics page is gone, so keep it.
- *  Lanes on too few trips are faded and say so. Full width since D25, so long lane names and
- *  both bars have room. */
+ *  Lanes on too few trips are faded and say so. Full width so long lane names and both bars
+ *  have room. */
 function LaneTimesCard({ routes }: { routes: FleetQueryResult<FleetRoutes> }) {
   const lanes = (routes.data?.lanes ?? []).filter((lane) => lane.driving_minutes.sample_count > 0)
   const timed = sumOf(lanes, (lane) => lane.driving_minutes.sample_count)
@@ -215,10 +213,9 @@ interface LaneRiskRow {
   perTrip: string
 }
 
-/** Chart 6.3: one dot per lane, trips across and problems per trip up. Since D25 each dot is
- *  named, lines at the average lane split the chart into corners, and the top-right corner is
- *  labelled. The table is sorted riskiest first, so the question the chart asks is answered
- *  without hovering. */
+/** Chart 6.3: one dot per lane, trips across and problems per trip up. Each dot is named,
+ *  lines at the average lane split the chart into corners, and the top-right corner is
+ *  labelled. The table is sorted riskiest first. */
 function LaneRiskCard({ routes }: { routes: FleetQueryResult<FleetRoutes> }) {
   const lanes = routes.data?.lanes ?? []
   const tableRows: LaneRiskRow[] = [...lanes]
@@ -288,10 +285,9 @@ interface IncidentsCardProps {
 }
 
 /** Chart 3.6: the map, with its table twin always under it and the count of reports that had
- *  no location. Nothing about the driver anywhere: the pins don't carry it (spec D14). Since
- *  D25 the table shows ten rows at a time with "Load more", clicking a row finds its pin on the
- *  map, and every "Open" carries `returnTo`, so the report's Back button comes straight back
- *  here. Trip links don't: the trip page's Back button does not read a return address. */
+ *  no location. Nothing about the driver anywhere: the pins don't carry it. The table shows
+ *  ten rows at a time with "Load more"; clicking a row finds its pin on the map, and every
+ *  "Open" carries `returnTo` so the report's Back button comes straight back here. */
 function IncidentsCard({ incidents, returnTo }: IncidentsCardProps) {
   const [shownCount, setShownCount] = useState(INCIDENT_PAGE_SIZE)
   const [selection, setSelection] = useState<PinSelection | null>(null)
@@ -377,14 +373,14 @@ function IncidentsCard({ incidents, returnTo }: IncidentsCardProps) {
 }
 
 interface RoutesTabProps {
-  /** Only its start and end are used: this tab has no View by (spec D4). */
+  /** Only its start and end are used: this tab has no View by. */
   query: TabQuery
-  /** Where a report opened from the map should send Back: this tab, as it is now (D25). */
+  /** Where a report opened from the map should send Back: this tab, as it is now. */
   returnTo: string
 }
 
-/** Routes & sites tab (spec §5.6, D25): busiest sites and lane risk side by side, then driving
- *  time per lane and the map across the full width. Two requests, both for the period alone. */
+/** Routes & sites tab: busiest sites and lane risk side by side, then driving time per lane
+ *  and the map across the full width. Two requests, both for the period alone. */
 export function RoutesTab({ query, returnTo }: RoutesTabProps) {
   const period = { start: query.start, end: query.end }
   const routes = useFleetRoutes(period)

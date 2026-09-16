@@ -6,19 +6,13 @@ import { Ic } from '@/components/ui/Ic'
 import { fmtDateTime } from '@shared/lib/utils/datetime'
 import type { PhaseNodeType } from '@/lib/phase/derive'
 
-// The `id` this component renders its root `<div>` with is always `${PHASE_ANCHOR_PREFIX}${phase_event_id}`
-// (built by the caller: see TripTimeline.tsx). Exported as the one source of truth so
-// every place that builds or reads that anchor id (the trip page's own `jump()` and its
-// hash-scroll effect) uses the exact same prefix rather than re-typing a literal that
-// could drift. The hash target has no exception-detail link pointing at it yet; that
-// needs `phase_event_id` on `TripExceptionDetail` first (see the plan doc), but the
-// prefix is already shared so that future deep link costs nothing to wire up.
+// The `id` this component's root `<div>` renders with — built by the caller (see
+// TripTimeline.tsx) as `${PHASE_ANCHOR_PREFIX}${phase_event_id}`. Exported as the one
+// source of truth so the trip page's `jump()` and hash-scroll effect can't drift from it.
 export const PHASE_ANCHOR_PREFIX = 'phase-'
 
-// 'next' vs 'active': see PhaseNodeType's doc comment in lib/phase/derive.ts — 'next' is
-// the ledger's current gate with nothing yet done, 'active' is genuinely under way.
-// Carrying the distinction in the node itself, not only in the status chip, is what stops
-// a trip created a week ahead from reading as work already in progress.
+// See PhaseNodeType's doc comment in lib/phase/derive.ts — 'next' is the ledger's
+// current gate with nothing done yet, 'active' is genuinely under way.
 const NODE_STYLE: Record<PhaseNodeType, string> = {
   done:    'bg-ok text-white',
   active:  'bg-sec text-white animate-pulse',
@@ -27,9 +21,7 @@ const NODE_STYLE: Record<PhaseNodeType, string> = {
   pending: 'bg-surf-high text-on-surf-v border border-outline-v',
 }
 
-// The rail behind a completed phase is green; everything from the current gate onward is
-// neutral. The colour change is the only thing that shows how far the trip actually got
-// without reading a single label.
+// The rail behind a completed phase is green; everything from the current gate onward is neutral.
 const LINE_STYLE: Record<PhaseNodeType, string> = {
   done:    'bg-ok/40',
   active:  'bg-outline-v/30',
@@ -41,8 +33,7 @@ const LINE_STYLE: Record<PhaseNodeType, string> = {
 const CARD_STYLE: Record<PhaseNodeType, string> = {
   done:    'bg-surf-low',
   active:  'bg-sec-c border border-sec/20',
-  // A light outline says "this is what we're waiting on"; the solid sec-c fill used by
-  // `active` says "in progress", which nothing has done yet for a `next` phase.
+  // A light outline (vs. `active`'s solid fill) says "waiting on", not "in progress".
   next:    'bg-surf-low border border-sec/30',
   warn:    'bg-warn-c/40 border border-warn/20',
   pending: 'border border-dashed border-outline-v/40',
@@ -54,13 +45,9 @@ interface Props {
   overridden: boolean; children?: ReactNode; warning?: string; receipt?: ReactNode
   /** Suppresses the trailing rail so the timeline ends on a node, not a dangling line. */
   isLast: boolean
-  /** Render the evidence unconditionally and drop the toggle entirely. For a phase whose
-   *  content is the thing being watched — a drive in progress — a collapsed card hides
-   *  the only part of the page that is still changing. */
+  /** Renders the evidence unconditionally and drops the toggle — for a phase still in progress. */
   alwaysOpen?: boolean
-  /** Compact recorded-location verdict for this row: a chip plus separation, or nothing
-   *  when there is no fix and no evaluation yet. Must read without expanding the card, so
-   *  it lives in the summary area alongside `summary`, not inside `children`. */
+  /** Compact recorded-location verdict, shown in the summary area so it reads without expanding the card. */
   evidenceSummary?: ReactNode
   /** Content rendered OUTSIDE the toggle, always visible whether or not the card is
    *  open — for a fact (a transit leg's departure/arrival, task 9) that must survive
@@ -76,8 +63,7 @@ export function PhaseTimelineItem({
 }: Props) {
   const [open, setOpen] = useState(initialOpen)
   const contentId = useId()
-  // An always-open card is not expandable: there is nothing to toggle, so it gets no
-  // chevron either — the absence of one is how this timeline says "nothing hidden here".
+  // An always-open card has nothing to toggle, so it gets no chevron either.
   const expandable = !!children && !alwaysOpen
   const status = overridden ? 'Unable to complete' : cancelled && (nodeType === 'next' || nodeType === 'pending') ? 'Not reached'
     : nodeType === 'warn' ? 'Exception' : nodeType === 'active' ? 'In progress' : nodeType === 'next' ? 'Current phase' : nodeType === 'pending' ? 'Not started' : null
@@ -92,18 +78,13 @@ export function PhaseTimelineItem({
         {timestamp && <time dateTime={timestamp} className="flex items-center gap-[4px] text-[12px] font-[700] tabular-nums text-sec">
           <Ic n="clock" s={11} className="text-sec" />{fmtDateTime(timestamp)}
         </time>}
-        {/* The affordance. Its ABSENCE is equally load-bearing: a card with no chevron
-            holds nothing to open, which is what stops a dispatcher clicking every row to
-            find out. `chev` points right, so rotate it for the open state. */}
+        {/* Absence is load-bearing: no chevron means nothing to open. Rotated when open. */}
         {expandable && <Ic n="chev" s={14} aria-hidden className={`text-on-surf-v transition-transform duration-150 ${open ? 'rotate-90' : ''}`} />}
       </div>
     </div>
     {meta && <div className="mb-[6px] text-[11px] font-[500] text-on-surf-v">{meta}</div>}
     {summary && <div className="mt-1 text-[13px] text-on-surf-v">{summary}</div>}
-    {/* Chip + separation only, no interactive content, so this is safe to nest inside
-        the summary's own toggle <button> below. Must be visible without expanding the
-        card: this is the row's whole point, a verdict readable at a glance down the
-        timeline. */}
+    {/* Chip + separation only, no interactive content — safe to nest in the toggle <button> below. */}
     {evidenceSummary && <div className="mt-[6px]">{evidenceSummary}</div>}
   </>
 
@@ -114,13 +95,10 @@ export function PhaseTimelineItem({
       </div>
       {!isLast && <div className={`my-1 min-h-[20px] w-0.5 flex-1 ${LINE_STYLE[nodeType]}`} />}
     </div>
-    {/* Every row carries the same bottom gap, exception stacks included — the rail is
-        a sibling that stretches to the row's full height, so the gap never breaks it. */}
+    {/* Same bottom gap on every row; the rail is a sibling stretching the row's full height. */}
     <div className="mb-3 min-w-0 flex-1">
       <div className={`rounded-lg px-4 py-3 ${CARD_STYLE[nodeType]} ${expandable ? 'transition-shadow duration-150 hover:shadow-md' : ''}`}>
-        {/* The toggle wraps the SUMMARY only, never the evidence below it: interactive
-            content cannot legally nest inside a <button>, and a card-wide onClick sent
-            every Copy button and photo thumbnail click straight back into the toggle. */}
+        {/* Wraps the summary only — interactive content (Copy buttons, thumbnails) can't nest inside a <button>. */}
         {expandable ? <button type="button" aria-expanded={open} aria-controls={contentId} onClick={() => setOpen(!open)} className="block w-full select-none rounded-md text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-sec">{summaryContent}</button> : summaryContent}
         {persistentContent && <div>{persistentContent}</div>}
         {warning && <p className="mt-3 text-[13px] font-[600] text-warn">{warning}</p>}

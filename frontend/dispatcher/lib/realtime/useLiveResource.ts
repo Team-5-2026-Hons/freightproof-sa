@@ -8,15 +8,12 @@ export interface LiveResourceOptions {
   kinds?: readonly RealtimeKind[]
 }
 
-// Subscribe a screen to live changes for a resource. `onChange` fires when a matching
-// event arrives, and again after any reconnection (to catch pings missed while the
-// connection was down — D7). The typical `onChange` is a silent refetch.
+// Subscribe a screen to live changes for a resource. `onChange` fires on a matching
+// event, and again after any reconnection (to catch events missed while down). Typically
+// a silent refetch.
 //
 //   useLiveResource('trip', tripId, refetchSilent)   // this trip only
 //   useLiveResource('trip', 'any', refetchSilent)    // any trip (e.g. the list)
-//   useLiveResource('trip', 'any', refetchSilent, {
-//     kinds: ['exception_raised', 'exception_reviewed'],
-//   })                                                // exception changes only
 export function useLiveResource(
   resource: RealtimeEvent['resource'],
   id: string | 'any',

@@ -1,27 +1,16 @@
 """Receiver QR handover routes (FP-155).
 
-Two routers with deliberately different auth postures, in one module because they are two
-halves of one exchange and splitting them would hide that:
+Two routers, one module: `router` is driver-authenticated (issues the rotating QR,
+reports confirmation status); `public_router` has NO authentication — the capability
+token in the path IS the authorisation (db/models/handover.py).
 
-  * `router`        — driver-authenticated. Issues the rotating QR and reports whether the
-                      receiver has confirmed yet.
-  * `public_router` — NO authentication at all. The capability token in the path IS the
-                      authorisation, which is the entire design (db/models/handover.py):
-                      the secret moves optically, in person, and a receiver has no account
-                      to sign in to.
-
-The public half is the only unauthenticated write-capable surface in this API. Four rules
-govern it, and none are negotiable:
-
-  1. Every failure looks the same. A wrong, expired, retired, already-redeemed or
-     wrong-browser token all produce one 404 with one detail string. The true reason is
-     written to handover_token_attempts and read by nobody over HTTP.
+The public half is the only unauthenticated write-capable surface in this API. Rules:
+  1. Every failure looks the same — one 404, one detail string. True reason goes to
+     handover_token_attempts, never over HTTP.
   2. It reads back almost nothing — see HandoverScanResponse's docstring.
-  3. It is rate-limited per IP, because a receiver has no token to count against.
-  4. Confirming needs BOTH halves of the credential: the token from the URL and the
-     HttpOnly cookie minted when that URL was first opened. The URL alone is a bearer
-     credential and a screenshot of it is as good as the original; the cookie is what a
-     receiver cannot forward.
+  3. Rate-limited per IP, since a receiver has no token to count against.
+  4. Confirming needs both halves of the credential: the URL token and the HttpOnly
+     cookie minted when the URL was first opened — the cookie is what a receiver can't forward.
 """
 
 import base64
@@ -38,6 +27,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_driver
+from app.core.client_ip import resolve_client_ip
 from app.core.config import settings
 from app.core.limits import HANDOVER_ISSUE, HANDOVER_PUBLIC, IDVS_VERIFY, IDVS_WEBHOOK
 from app.core.rate_limit import rate_limit
@@ -95,18 +85,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/trips/{trip_id}/phases/{phase_event_id}/handover", tags=["handover"])
 public_router = APIRouter(prefix="/handover", tags=["handover"])
 
-# The single response every public failure produces. One constant, referenced everywhere,
-# so the routes cannot drift into distinguishable messages — which would hand a guesser
-# exactly the oracle rule 1 above exists to deny them.
+# One constant so the routes can't drift into distinguishable failure messages (rule 1).
 _GENERIC_NOT_FOUND = "This delivery confirmation link is not valid."
 
-# Name of the browser-binding cookie. Scoped to the handover path so it is never sent on
-# any other request, and never reaches the dispatcher or the driver API.
-HANDOVER_SESSION_COOKIE = "fp_handover_session"
+HANDOVER_SESSION_COOKIE = "fp_handover_session"  # scoped to the handover path only
 _COOKIE_PATH = "/api/v1/handover"
 
-# The driver-facing refusal for a confirmation phase that can't be handed over. Shared by
-# _load_confirmation_event and the token endpoint's stop check so the two can't drift apart.
+# Shared by _load_confirmation_event and the token endpoint's stop check.
 _CONFIRMATION_NOT_FOUND = "Confirmation phase not found."
 
 
@@ -114,29 +99,17 @@ def _not_found() -> HTTPException:
     return HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=_GENERIC_NOT_FOUND)
 
 
-# Headers the vendor signs with. Case-insensitive on the way in, so the spelling here is
-# cosmetic. Quarantined beside each other like the _DIDIT_* constants in
-# integrations/idvs.py.
-#
-# Didit sends three signature variants. This is the raw-body one, which is correct for us
-# specifically because `await request.body()` below reads the bytes before any parser
-# touches them — the documented failure mode for X-Signature is middleware that re-encodes
-# the JSON first, and we have none. X-Signature-V2 is the vendor's recommendation and
-# signs a canonicalised form instead; adopting it would mean guessing that canonicalisation
-# exactly, and replacing a verified assumption with an unverified one is a bad trade. Once
-# a real delivery has been captured, prefer V2 and keep this as the fallback.
+# Didit sends three signature variants; this is the raw-body one, correct here because
+# `await request.body()` reads bytes before any parser re-encodes them. X-Signature-V2
+# signs a canonicalised form we'd have to guess — prefer it once a real delivery is captured.
 _DIDIT_SIGNATURE_HEADER = "x-signature"
 _DIDIT_TIMESTAMP_HEADER = "x-timestamp"
 
 
 def _verification_state(v: ReceiverIdentityVerification) -> HandoverVerificationState:
-    # Coerced through the enum constructor, not read with `.value` directly: these
-    # columns are mapped_column(String(20)) per the enum-comparison trap this feature has
-    # already been bitten by once. `v` is only guaranteed to still be the exact Python
-    # object a service function set an enum onto when nothing else queried it since — any
-    # other load (a second request, a second query in the same request) hands back a
-    # bare `str`, which has no `.value` and would 500 this route. EnumClass(x) accepts
-    # either an existing member or its raw string value, so this is correct for both.
+    # Coerced through the enum constructor, not `.value` directly: these columns are
+    # mapped_column(String(20)), and a freshly-loaded row hands back a bare str with no
+    # .value. EnumClass(x) accepts either a member or its raw string, so this covers both.
     return HandoverVerificationState(
         status=ReceiverVerificationStatus(v.status).value,
         tier=ReceiverVerificationTier(v.tier).value,
@@ -153,12 +126,8 @@ async def _load_confirmation_event(
 ) -> PhaseEvent:
     """Resolve a confirmation phase event the given driver actually owns.
 
-    Ownership is checked in the same query, not after it, and a driver who does not own
-    the trip gets the same 404 as a trip that does not exist. This mirrors the fix
-    recorded as NEW-12 in the Stage 3 phase-refactor plan: complete_phase used to check
-    the phase type before the driver, so a foreign trip_id plus a deliberately wrong phase
-    type leaked the row's real type in the error body. Same threat model here — a trip id
-    read off dispatch chatter — and the same answer.
+    Ownership is checked in the same query, not after it: a driver who doesn't own the
+    trip gets the same 404 as a trip that doesn't exist, so no row detail leaks.
     """
     event = (
         await db.execute(
@@ -194,24 +163,20 @@ async def issue_handover_token_endpoint(
     db: AsyncSession = Depends(get_db),
     current_driver: DriverRead = Depends(get_current_driver),
 ) -> HandoverTokenResponse:
-    """Mint the next code. `force=true` is the driver's "show a new code" escape hatch —
-    see rotate_capability_token's docstring for the stranding case it exists for.
-    """
+    """Mint the next code. `force=true` is the driver's "show a new code" escape hatch."""
     event = await _load_confirmation_event(
         db, trip_id=trip_id, phase_event_id=phase_event_id, driver_id=current_driver.id,
     )
-    # _load_confirmation_event already refuses a confirmation with no stop, but the type
-    # checker can't see that through the call. Checking again narrows trip_stop_id to a
-    # UUID for rotate_capability_token, and keeps this call safe if that guard ever moves.
+    # Re-checked (not just relied on from _load_confirmation_event) so mypy can narrow
+    # trip_stop_id to a UUID for rotate_capability_token.
     trip_stop_id = event.trip_stop_id
     if trip_stop_id is None:
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND, detail=_CONFIRMATION_NOT_FOUND,
         )
 
-    # Refuse to re-open a handover that already happened. Without this the driver could
-    # keep minting tokens against a confirmed delivery, and every one would be a live
-    # grant to overwrite a confirmation the receiver has already given.
+    # Refuse to re-open a handover that already happened — else the driver could keep
+    # minting live grants to overwrite a confirmation the receiver already gave.
     if await load_handover_confirmation(db, phase_event_id=event.id) is not None:
         raise HTTPException(
             status_code=http_status.HTTP_409_CONFLICT,
@@ -236,8 +201,7 @@ async def issue_handover_token_endpoint(
         ) from None
 
     return HandoverTokenResponse(
-        # None while paused: the receiver holds a live code and issuing another would
-        # retire it. Not an error — the driver's step reads this as "they have it open".
+        # None while paused: the receiver holds a live code, not an error.
         scan_url=build_scan_url(rotation.raw_token) if rotation.raw_token else None,
         expires_at=rotation.token.expires_at,
         rotate_after_seconds=settings.HANDOVER_ROTATION_SECONDS,
@@ -270,13 +234,8 @@ async def handover_status_endpoint(
 
 
 async def _live_token(db: AsyncSession, raw_token: str) -> HandoverCapabilityToken:
-    """Look a presented token up for the READ path only — never for redemption.
-
-    Redemption goes through redeem_capability_token, whose conditional UPDATE is the only
-    thing allowed to decide that a token is spendable. This helper exists so the scan page
-    can render, and it raises the same generic 404 for every reason a token might not be
-    showable, so the two public routes are equally unhelpful to a guesser.
-    """
+    """Look a presented token up for the READ path only — never for redemption, which goes
+    through redeem_capability_token's conditional UPDATE. Same generic 404 for every reason."""
     token = (
         await db.execute(
             select(HandoverCapabilityToken).where(
@@ -305,16 +264,12 @@ async def scan_handover_endpoint(
 ) -> HandoverScanResponse:
     token = await _live_token(db, raw_token)
 
-    # The claim. Returns a secret on the FIRST load only — a forwarded URL opened in a
-    # second browser gets None here, receives no cookie, and will fail to confirm. The
-    # page still renders for them, deliberately: refusing to render would tell the holder
-    # of a forwarded link exactly what went wrong.
+    # Returns a secret on the FIRST load only; a forwarded URL opened in a second browser
+    # gets None, no cookie, and will fail to confirm — but the page still renders.
     session_secret = await mark_token_opened(db, token_id=token.id)
 
     trip = (await db.execute(select(Trip).where(Trip.id == token.trip_id))).scalar_one()
-    # Explicit join, not a relationship load: TripStop has no `precinct` relationship —
-    # only the FK column — and the destination NAME is the one thing the receiver needs to
-    # recognise where they are standing.
+    # Explicit join: TripStop has no `precinct` relationship, only the FK column.
     destination_name = (
         await db.execute(
             select(Precinct.name)
@@ -338,24 +293,13 @@ async def scan_handover_endpoint(
         response.set_cookie(
             key=HANDOVER_SESSION_COOKIE,
             value=session_secret,
-            # HttpOnly: no script on the page can read it, so an XSS in the receiver app
-            # cannot exfiltrate the half of the credential that is supposed to stay put.
-            httponly=True,
-            # Strict: the confirm POST is same-site from the page we just served, and
-            # nothing else should ever carry this cookie.
-            samesite="strict",
-            # Secure everywhere except local development over plain HTTP, where setting it
-            # would mean the cookie is silently never stored and every handover fails with
-            # no visible cause.
-            secure=settings.ENVIRONMENT != "development",
+            httponly=True,  # no script on the page can exfiltrate it (XSS)
+            samesite="strict",  # confirm POST is same-site from the page we just served
+            secure=settings.ENVIRONMENT != "development",  # plain HTTP locally would silently drop it
             path=_COOKIE_PATH,
-            # Must cover the token's LONGEST possible life, not its nominal one. A
-            # verification extends the token by IDVS_TOKEN_EXTENSION_MINUTES, so sizing
-            # this to HANDOVER_TOKEN_EXPIRY_MINUTES alone meant a receiver whose document
-            # check ran long came back to a live token and a dead cookie — and a dead
-            # cookie fails the binding check, which is reported as the same generic 404 as
-            # a forged link. The mock vendor returns in seconds and never exposed this;
-            # a real document-and-liveness round trip does.
+            # Covers the token's LONGEST possible life: a verification extends the token
+            # by IDVS_TOKEN_EXTENSION_MINUTES, and a dead cookie fails the binding check
+            # the same way a forged link does.
             max_age=(
                 settings.HANDOVER_TOKEN_EXPIRY_MINUTES + settings.IDVS_TOKEN_EXTENSION_MINUTES
             ) * 60,
@@ -386,25 +330,22 @@ async def confirm_handover_endpoint(
 ) -> HandoverConfirmResponse:
     token = await _live_token(db, raw_token)
 
-    # Both halves, or nothing. Checked BEFORE redemption so a wrong-browser attempt does
-    # not burn a token the real receiver is still holding — a forwarded link must fail
-    # without also destroying the legitimate handover it was copied from.
+    # Both halves, or nothing. Checked BEFORE redemption so a wrong-browser attempt
+    # doesn't burn a token the real receiver is still holding.
     if not session_secret_matches(token, fp_handover_session):
         logger.warning(
             "Handover confirm rejected: session secret mismatch for token=%s", token.id,
         )
         raise _not_found()
 
-    # The gate. Everything above was a read; this is the single conditional UPDATE that
-    # decides whether this delivery gets confirmed, and two simultaneous scans race the
-    # database here rather than racing each other in Python.
+    # The gate: the single conditional UPDATE deciding whether this delivery gets
+    # confirmed, so two simultaneous scans race the database, not each other in Python.
     result = await redeem_capability_token(
         db, trip_id=token.trip_id, trip_stop_id=token.trip_stop_id, raw_token=raw_token,
     )
     if not result.success:
-        # The attempt has already been logged by the service with its true reason. The
-        # caller gets the same 404 as every other failure. Committed, not rolled back —
-        # the attempt row IS the evidence and must survive the refusal.
+        # Already logged by the service with its true reason. Committed, not rolled
+        # back — the attempt row IS the evidence.
         await db.commit()
         raise _not_found()
 
@@ -418,8 +359,7 @@ async def confirm_handover_endpoint(
             file_bytes=signature_bytes,
             mime_type="image/png",
             artifact_type=ArtifactType.DOCUMENT,
-            # Server clock. The receiver's phone clock is not evidence of anything.
-            captured_at=datetime.now(UTC),
+            captured_at=datetime.now(UTC),  # server clock; receiver's phone clock isn't evidence
             captured_lat=payload.receiver_lat,
             captured_lng=payload.receiver_lng,
         )
@@ -430,16 +370,15 @@ async def confirm_handover_endpoint(
             receiver_lat=payload.receiver_lat,
             receiver_lng=payload.receiver_lng,
             receiver_accuracy_m=payload.receiver_accuracy_m,
-            receiver_ip=request.client.host if request.client else None,
+            # resolve_client_ip, not request.client.host: behind Railway's edge the socket
+            # peer is Railway, not the receiver.
+            receiver_ip=resolve_client_ip(request),
             receiver_user_agent=request.headers.get("user-agent"),
-            # FP-240. A camera scan opens a clean browser context with no Authorization
-            # header; anything that HAS one was already holding a session of ours.
+            # FP-240: a camera scan opens a clean context with no Authorization header.
             bearer_token_present=bool(request.headers.get("authorization")),
         )
-        # Link the verification the receiver completed before signing. Separate from the
-        # confirmation row because the two happen at different moments and a receiver may
-        # verify and then walk away — a verification with no confirmation is a real state,
-        # not an error.
+        # Separate from confirmation: a receiver may verify and then walk away, which is
+        # a real state, not an error.
         await attach_confirmation(
             db, token_id=token.id, handover_confirmation_id=confirmation.id,
         )
@@ -469,17 +408,12 @@ async def handover_consent_endpoint(
     payload: HandoverConsentRequest,
     db: AsyncSession = Depends(get_db),
 ) -> HandoverVerificationState:
-    """Create the verification row. Must precede any vendor session.
-
-    Consent first, always. POPIA s27(1)(a) is what makes the biometric check lawful at all,
-    and a check started before consent was recorded is one we cannot justify afterwards.
-    """
+    """Create the verification row; must precede any vendor session (POPIA s27(1)(a))."""
     token = await _live_token(db, raw_token)
 
     existing = await load_verification_for_token(db, token_id=token.id)
     if existing is not None:
-        # Idempotent: a receiver who reloads mid-flow must not create a second row, and the
-        # unique constraint on token_id would refuse it anyway.
+        # Idempotent: a reload mid-flow must not create a second row.
         return _verification_state(existing)
 
     verification = await record_consent(db, token=token, consent_text=payload.consent_text)
@@ -513,22 +447,18 @@ async def handover_verify_endpoint(
 ) -> HandoverVerifyResponse:
     """Claim quota, create the session, extend the token, hand back a URL.
 
-    `session_url` is None on every degradation path and that is NOT an error — the client
-    proceeds to signing at a lower tier. A delivery must stay confirmable when a vendor is
-    down, and this is where that promise is kept.
+    `session_url` is None on every degradation path, not an error — the client proceeds
+    to signing at a lower tier so a delivery stays confirmable when the vendor is down.
     """
     token = await _live_token(db, raw_token)
     verification = await load_verification_for_token(db, token_id=token.id)
     if verification is None:
-        # No consent recorded — refuse, identically to every other public failure.
         raise _not_found()
 
     session = await start_verification(
         db,
         token=token,
-        # The row stores only a hash; the vendor has to be told where to send the receiver
-        # back to, and that address is built from the presented token.
-        raw_token=raw_token,
+        raw_token=raw_token,  # row stores only a hash; vendor needs the presented token
         verification=verification,
         client=get_idvs_client(),
     )
@@ -536,10 +466,7 @@ async def handover_verify_endpoint(
 
     return HandoverVerifyResponse(
         session_url=session.session_url if session is not None else None,
-        # See _verification_state's comment: coerced through the enum, never read via a
-        # bare `.value`, because this `verification` came back from a fresh query and its
-        # String(20) columns carry no automatic enum coercion.
-        tier=ReceiverVerificationTier(verification.tier).value,
+        tier=ReceiverVerificationTier(verification.tier).value,  # see _verification_state
         unverified_reason=(
             ReceiverVerificationUnverifiedReason(verification.unverified_reason).value
             if verification.unverified_reason else None
@@ -559,15 +486,10 @@ async def handover_resolve_endpoint(
     receiver_id_number: str = "",
     db: AsyncSession = Depends(get_db),
 ) -> HandoverVerificationState:
-    """THE security boundary. Takes no session identifier from anyone.
-
-    The client can say "I am back" and nothing else. The session id comes from our own row,
-    written before the redirect. This is the exact failure Didit patched in their own
-    WordPress plugin, where a browser could post {status: "Approved"} and be believed — and
-    our exposure is worse, because this route has no authentication at all by design.
-
-    receiver_name / receiver_id_number are the typed identity to cross-check against the
-    document. They are what the receiver already gave us, not a claim about the session.
+    """The security boundary: takes no session identifier from the caller. The session id
+    comes from our own row, written before the redirect — the client can only say "I am
+    back", never claim a result directly (the exact failure Didit patched in their own
+    WordPress plugin).
     """
     token = await _live_token(db, raw_token)
     verification = await load_verification_for_token(db, token_id=token.id)
@@ -605,11 +527,9 @@ async def handover_webhook_endpoint(
 ) -> dict[str, str]:
     """Signed backstop for decisions the receiver's own return never delivered.
 
-    Returns 200 for everything it accepts, including an unknown session — the vendor
-    retries five times on a non-200, and making it retry into a wall for a session we
-    never created helps nobody.
-
-    A bad signature is the one exception: 401, logged, nothing written.
+    Returns 200 for everything it accepts, including an unknown session, so the vendor's
+    retries don't hammer a session we never created. A bad signature is the one
+    exception: 401, logged, nothing written.
     """
     raw_body = await request.body()
     signature = request.headers.get(_DIDIT_SIGNATURE_HEADER)
@@ -620,13 +540,9 @@ async def handover_webhook_endpoint(
             status_code=http_status.HTTP_401_UNAUTHORIZED, detail="Invalid signature.",
         )
 
-    # Checked AFTER the signature, deliberately. An unsigned caller learns nothing about
-    # our clock this way, and the freshness rule is about replay of GENUINE deliveries —
-    # a valid signature on a body captured last week is exactly the attack this stops,
-    # and HMAC alone cannot: it proves authorship, never recency.
-    #
-    # 401 rather than 200 so a delivery merely delayed past the window is retried by the
-    # vendor instead of being silently dropped.
+    # Checked AFTER the signature so an unsigned caller learns nothing about our clock.
+    # Stops replay of a genuine, validly-signed but stale delivery (HMAC alone can't).
+    # 401, not 200, so a merely-delayed delivery gets retried rather than dropped.
     if not webhook_timestamp_is_fresh(request.headers.get(_DIDIT_TIMESTAMP_HEADER)):
         logger.warning("Rejected an IDVS webhook with a stale or missing timestamp")
         raise HTTPException(
@@ -637,8 +553,7 @@ async def handover_webhook_endpoint(
         payload = json.loads(raw_body)
     except ValueError:
         logger.warning("IDVS webhook body was not valid JSON")
-        # 200, not 400: the signature was ours, so retrying will not help.
-        return {"status": "ignored"}
+        return {"status": "ignored"}  # 200, not 400: retrying won't help a signed-but-bad body
 
     await ingest_webhook_decision(db, payload=payload)
     await db.commit()

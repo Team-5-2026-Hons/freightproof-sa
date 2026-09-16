@@ -1,14 +1,7 @@
-"""Queries behind the busy-pattern charts (GET /analytics/fleet/patterns, spec §5.1, chart 1.3).
-
-Departures are attested departure steps. Arrivals are attested in_transit steps: in_transit
-completes when the driver taps "arrived" (phase_service.advance_in_transit). Every leg counts,
-and so does every trip status, since a cancelled trip that left still kept the yard busy.
-Overridden steps are left out: their time is a dispatcher's click, not when the truck moved.
-
-Averages are per occurrence (spec G13): events that fell at 07:xx, divided by the number of
-days in the period, and likewise for weekday, date and month. The counting happens in Python,
-on SAST wall-clock time, so it reuses the calendar rules periods.py already unit-tests.
-"""
+"""Queries behind the busy-pattern charts (GET /analytics/fleet/patterns, spec §5.1,
+chart 1.3). Departures are attested departure steps; arrivals are attested
+in_transit steps. Overridden steps are excluded, since their time is a dispatcher's
+click, not when the truck moved."""
 
 import uuid
 from collections import Counter

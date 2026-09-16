@@ -6,12 +6,8 @@ import { cn } from '@shared/lib/utils/cn'
 import { Ic } from '@/components/ui/Ic'
 
 /**
- * The single affordance for "this names another record you can open".
- *
- * Shared as a constant so a driver, vehicle or precinct name all read the same way even
- * though most of them open a preview modal via a plain <button> rather than this
- * component directly — RecordLink itself now only backs links that navigate immediately.
- * min-h-9 is the touch target, not decoration.
+ * The single affordance for "this names another record you can open" — shared so driver,
+ * vehicle and precinct links look the same. min-h-9 is the touch target, not decoration.
  */
 export const RECORD_AFFORDANCE =
   'inline-flex min-h-9 items-center gap-1 rounded-md text-left font-semibold text-sec ' +

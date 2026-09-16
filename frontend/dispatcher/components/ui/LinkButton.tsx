@@ -13,11 +13,8 @@ interface Props {
 }
 
 /**
- * Button's own element is a native <button> (see Button.tsx), so it cannot navigate.
- * This is the "View record" action preview modals hand off to a full page with — sized
- * and coloured identically to Button's secondary/md so it can sit in the same
- * flex-col button stack every other modal in the app uses, but a real link so returnTo
- * survives middle-click, cmd-click and "open in new tab".
+ * The "View record" action modals hand off to a full page — styled like Button's secondary/md
+ * but a real `<Link>` so returnTo survives middle-click, cmd-click and "open in new tab".
  */
 export function LinkButton({ href, onClick, full = false, className, children }: Props) {
   return (

@@ -26,10 +26,8 @@ interface ChecklistRowProps {
   colWidths: ColWidths
   precincts: Precinct[]
   className?: string
-  // History table hides the phase progress chain — trips there are already
-  // complete or cancelled, so only whether something needs a dispatcher's
-  // attention right now still matters, not whether any exception was ever
-  // recorded (a RECORDED-severity row stays quiet here; see needs_review_count).
+  // History table hides the phase progress chain — only whether something needs a
+  // dispatcher's attention now still matters (see needs_review_count).
   showProgress?: boolean
 }
 
@@ -37,13 +35,9 @@ function formatShortDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short' })
 }
 
-// Role (origin/destination) is derived, not stored (FP-112). This list payload
-// (TripSummary) carries current_stop but no total stop count, so only two cases
-// are provable without it: stop 0 is always the origin, and `confirmation` only
-// ever fires on the trip's LAST stop (backend/app/orchestration/phase_plan.py —
-// `build_phase_plan`, the else-branch reached solely when `i == last_index`).
-// Everything else might genuinely be a mid-route stop on a cross-dock plan, so it
-// falls back to a numbered "Stop N" rather than risk mislabelling it "Destination".
+// Role (origin/destination) is derived, not stored (FP-112). Without a total stop count
+// only two cases are provable: stop 0 is the origin, and `confirmation` only fires on the
+// last stop (see build_phase_plan). Everything else falls back to a numbered "Stop N".
 function stopRoleLabel(trip: TripChecklistItem): string {
   if (trip.current_stop === null) return ''
   if (trip.current_stop === 0) return 'Origin'
@@ -51,10 +45,8 @@ function stopRoleLabel(trip: TripChecklistItem): string {
   return `Stop ${trip.current_stop + 1}`
 }
 
-// What the row says the trip is doing. Exceptions win: a dispatcher must see them
-// before anything else. Otherwise the coarse status covers the terminal states and
-// current_phase covers everything in between — derived server-side from the ledger,
-// never inferred from trip.status the way the three deleted tables did.
+// What the row says the trip is doing. Exceptions win; otherwise the coarse status
+// covers terminal states and current_phase covers everything in between.
 function progressHint(trip: TripChecklistItem): string {
   if (trip.needs_review_count > 0) {
     return `⚠ ${trip.needs_review_count} exception${trip.needs_review_count > 1 ? 's' : ''}`
@@ -71,9 +63,8 @@ function progressHint(trip: TripChecklistItem): string {
 export function ChecklistRow({ trip, colWidths, precincts, className, showProgress = true }: ChecklistRowProps) {
   const router = useRouter()
 
-  // U13: the chip names the phase — `Unloading`, not `Active`; `⚠ Unloading` when
-  // held. The list reads the cache because it has no plan to derive from; that is
-  // U3's read-path exemption, and the ONLY place in the dispatcher allowed to do it.
+  // The chip names the phase (e.g. `Unloading`, `⚠ Unloading` when held), reading the
+  // cache since this list has no plan to derive from.
   const statusMeta = tripChipMeta(trip.status, trip.current_phase)
 
   const originPrecinct = precincts.find(p => p.id === trip.origin_precinct_id)
@@ -136,9 +127,7 @@ export function ChecklistRow({ trip, colWidths, precincts, className, showProgre
         <div className="text-[11px] text-on-surf-v truncate">↓ {destShort}</div>
       </div>
 
-      {/* Progress (active table) or Exceptions-only summary (history table).
-          A real width + resize handle, like every other column — not flex-1 — so
-          growing a neighbour can't silently steal its space and clip its content. */}
+      {/* Real width, not flex-1, like every other column, so a neighbour can't clip it. */}
       {showProgress ? (
         <div style={{ width: colWidths.progress }} className="shrink-0 flex items-center gap-2 min-w-0 overflow-hidden px-[6px]">
           <PhaseChain nodes={chainNodes} compact className="shrink-0" />
@@ -156,14 +145,8 @@ export function ChecklistRow({ trip, colWidths, precincts, className, showProgre
           {trip.needs_review_count > 0 ? (
             <span className="text-[11px] font-[600] text-warn truncate">{hint}</span>
           ) : (
-            // NOT "No exceptions". needs_review_count counts NEEDS_REVIEW rows only, so a
-            // trip whose exceptions have all been reviewed reaches zero here while its
-            // record still holds them — and the row was stating, of a trip with two
-            // recorded exceptions, that it had none. This payload carries no total
-            // (TripChecklistItem has needs_review_count and nothing else), so the honest
-            // claim is the one the count actually supports. Restoring the stronger
-            // "no exceptions at all" reading needs a total on the list row; see
-            // docs/known-issues.md issue 11.
+            // NOT "No exceptions" — needs_review_count is zero once reviewed exceptions
+            // are resolved, even though the record still holds them. See docs/known-issues.md issue 11.
             <span className="text-[11px] font-[600] text-ok">None need review</span>
           )}
         </div>

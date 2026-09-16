@@ -14,17 +14,15 @@ interface InfoPopoverProps {
   question: string
   /** What the chart rests on, e.g. "Closed trips, by the day they first departed · 16 trips". */
   basis?: string
-  /** How to read the chart, e.g. "Top-right = busy and risky". A description, so it lives
-   *  here; a warning belongs on the card face instead (spec §7.7). */
+  /** How to read the chart, e.g. "Top-right = busy and risky". A description; a warning
+   *  belongs on the card face instead. */
   note?: string
-  /** The popover's last line, e.g. what faded buckets mean (spec §7.7 item 6). */
+  /** The popover's last line, e.g. what faded buckets mean. */
   footnote?: string
 }
 
-/** The small "i" beside a chart title (spec §7.7, D22). It keeps the card face clean and holds
- *  the chart's question and basis. Non-modal: it opens on click, and closes on a second click,
- *  on Escape (focus goes back to the button) or on a click anywhere outside it. The open panel
- *  is a labelled region, as in the trip header's overview popover. */
+/** The small "i" beside a chart title. Keeps the card face clean and holds the chart's
+ *  question and basis. Non-modal: closes on a second click, Escape or an outside click. */
 export function InfoPopover({ title, question, basis, note, footnote }: InfoPopoverProps) {
   const [open, setOpen] = useState(false)
   const popoverId = useId()

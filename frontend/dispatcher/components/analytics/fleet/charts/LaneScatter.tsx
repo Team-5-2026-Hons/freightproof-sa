@@ -20,7 +20,7 @@ import {
 } from './chartStyle'
 
 // With this many dots or fewer every dot is named; past it, only the busy-and-risky ones, so
-// the names never pile into an unreadable heap (dataviz: label selectively).
+// the names never pile into an unreadable heap.
 const MAX_NAMED_DOTS = 6
 // A name sits this far from its dot, on the side with more room.
 const DOT_LABEL_OFFSET_PX = 12
@@ -36,9 +36,9 @@ interface LaneScatterProps<Row> {
   xLabel: string
   yLabel: string
   color: string
-  /** A dot's name, written beside it (D25). */
+  /** A dot's name, written beside it. */
   pointLabel: (row: Row) => string
-  /** Written in the top-right corner, e.g. "Busy and risky" (D25). */
+  /** Written in the top-right corner, e.g. "Busy and risky". */
   cornerLabel: string
   height?: number
 }
@@ -65,11 +65,9 @@ function mean(values: readonly number[]): number {
   return values.reduce((sum, value) => sum + value, 0) / values.length
 }
 
-/** One dot per lane, one series (chart 6.3). Made easier to read in D25: each dot is named, two
- *  faint lines at the average lane split the chart into four corners, and the top-right one is
- *  named for what it holds. Each dot sits on a transparent 24 px target, so hovering needs no
- *  precision, and carries the 2 px surface ring every marker has. Both axes are named (spec
- *  §7.7): trips across, problems per trip up. */
+/** One dot per lane, one series. Each dot is named, two faint lines at the average lane split
+ *  the chart into four corners, and the top-right one is named for what it holds. Each dot
+ *  sits on a transparent 24px target, so hovering needs no precision. */
 export function LaneScatter<Row>({
   rows, rowKey, x, y, renderTooltip, xLabel, yLabel, color, pointLabel, cornerLabel, height: normalHeight = CHART_HEIGHT,
 }: LaneScatterProps<Row>) {

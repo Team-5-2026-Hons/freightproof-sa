@@ -18,8 +18,7 @@ from app.db.models import Base
 
 class VehicleEvent(Base):
     __tablename__ = "vehicle_events"
-    # Declared so autogenerate stops proposing to drop an index that already exists
-    # in the deployed database (created by an earlier migration, never modelled here).
+    # Declared so autogenerate stops proposing to drop an index that already exists.
     __table_args__ = (
         Index("ix_vehicle_events_vehicle_id", "vehicle_id"),
     )
@@ -50,8 +49,7 @@ class VehicleEvent(Base):
 
 class DriverEvent(Base):
     __tablename__ = "driver_events"
-    # Declared so autogenerate stops proposing to drop an index that already exists
-    # in the deployed database (created by an earlier migration, never modelled here).
+    # Declared so autogenerate stops proposing to drop an index that already exists.
     __table_args__ = (
         Index("ix_driver_events_driver_id", "driver_id"),
     )
@@ -81,20 +79,12 @@ class DriverEvent(Base):
 
 
 class PrecinctEvent(Base):
-    """Append-only log of changes to a precinct.
-
-    Same shape as VehicleEvent by design — a precinct is reference data that FP-68's
-    geofence verdict depends on, so a change to its coordinates or radius is an
-    evidentiary event, not a settings tweak.
-
-    Unlike vehicle events there is nothing to hash before anchoring: a precinct holds
-    a business address and a business coordinate, no personal data. See
-    precinct_service.create_precinct for why the canonical payload is in the clear.
-    """
+    """Append-only log of changes to a precinct — same shape as VehicleEvent, since a
+    precinct is reference data FP-68's geofence verdict depends on. Nothing to hash
+    before anchoring: it holds no personal data (see precinct_service.create_precinct)."""
 
     __tablename__ = "precinct_events"
-    # Declared so autogenerate stops proposing to drop an index that already exists
-    # in the deployed database (created by an earlier migration, never modelled here).
+    # Declared so autogenerate stops proposing to drop an index that already exists.
     __table_args__ = (
         Index("ix_precinct_events_precinct_id", "precinct_id"),
     )

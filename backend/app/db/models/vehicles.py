@@ -12,22 +12,18 @@ from sqlalchemy.sql import func
 from app.db.models import Base
 from app.db.models.enums import VehicleType
 
-# Constraint names are read by orchestration when translating a unique violation into
-# a message naming the field that actually clashed, so they live beside the definitions
-# rather than as literals at the point that catches them.
+# Read by orchestration to name the clashing field in a 409; kept beside the
+# definitions rather than duplicated as literals.
 UQ_VEHICLES_ORG_PULSIT = "uq_vehicles_org_pulsit"
 UQ_VEHICLES_ORG_REGISTRATION = "uq_vehicles_org_registration"
 
-# Which user-facing field each constraint is about. A dispatcher can only fix the
-# thing they typed, so the 409 has to name it correctly.
+# Which user-facing field each constraint is about, so a 409 names what the
+# dispatcher typed.
 VEHICLE_UNIQUE_FIELDS: dict[str, str] = {
     UQ_VEHICLES_ORG_PULSIT: "pulsit_device_id",
     UQ_VEHICLES_ORG_REGISTRATION: "registration",
-    # vin_number is now declared as an explicit unique Index on Vehicle, matching the
-    # deployed database, so metadata and dev no longer disagree about its name. Both keys
-    # are still mapped: any database built by an older create_all still carries
-    # vehicles_vin_number_key, and mapping only the current name would pass every test and
-    # return a 500 against one of those.
+    # Both keys map to vin_number: an older create_all still produces
+    # vehicles_vin_number_key, while the current schema uses ix_vehicles_vin_number.
     "vehicles_vin_number_key": "vin_number",
     "ix_vehicles_vin_number": "vin_number",
 }
@@ -44,17 +40,10 @@ class Vehicle(Base):
     __tablename__ = "vehicles"
     __table_args__ = (
         UniqueConstraint("organization_id", "pulsit_device_id", name=UQ_VEHICLES_ORG_PULSIT),
-        # One registration per fleet. create_vehicle has always caught a unique
-        # violation and reported it as a duplicate registration, but no constraint on
-        # registration existed — so duplicates were accepted outright, and the message
-        # was in fact describing a clash on pulsit_device_id.
         UniqueConstraint("organization_id", "registration", name=UQ_VEHICLES_ORG_REGISTRATION),
-        # Declared as a unique INDEX, not as unique=True on the column, because that is
-        # what the deployed database has. A column-level unique=True makes create_all emit
-        # a constraint named vehicles_vin_number_key instead, and the mismatch made every
-        # autogenerate propose dropping the real index and adding a constraint in its
-        # place. Declaring it here is what makes the test schema and the deployed schema
-        # agree — see docs/design-notes/2026-09-15-alembic-autogenerate-drift.md.
+        # Declared as a unique Index, not column unique=True, to match the deployed DB
+        # and stop autogenerate proposing to swap them (see
+        # docs/design-notes/2026-09-15-alembic-autogenerate-drift.md).
         Index("ix_vehicles_vin_number", "vin_number", unique=True),
     )
 

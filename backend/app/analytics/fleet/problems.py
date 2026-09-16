@@ -1,13 +1,6 @@
-"""Queries behind the Problems tab (GET /analytics/fleet/problems, spec §5.3).
-
-Every figure is about exceptions on the closed-trip set (spec G4), bucketed by the trip's first
-departure like every other trend, and never counting dispatcher notes (spec D10): every
-cancellation and override writes one, so counting them would make "problems" rise whenever a
-dispatcher does their job.
-
-Three reads (the problems with their linked step, closed trips per bucket, and driving legs),
-then pure functions that shape each chart, so the rules are the ones the tests pin down.
-"""
+"""Queries behind the Problems tab (GET /analytics/fleet/problems, spec §5.3). Every
+figure is about exceptions on the closed-trip set (spec G4), bucketed by first
+departure, and never counts dispatcher notes (spec D10)."""
 
 import uuid
 from collections import Counter
@@ -43,8 +36,8 @@ from app.schemas.fleet_analytics import (
     TheftSignalsBucket,
 )
 
-# A problem with no linked phase event (phase_event_id IS NULL), e.g. a system check on the
-# whole trip. Its own bar on chart 3.4, so those problems are never silently dropped.
+# A problem with no linked phase event; its own bar on chart 3.4 so it's never
+# silently dropped.
 UNLINKED_STEP = "unlinked"
 # Plan order (PhaseType's own order), then "unlinked" last (spec §5.3, 3.4).
 STEP_ORDER: tuple[str, ...] = (*(phase.value for phase in PhaseType), UNLINKED_STEP)
@@ -81,8 +74,8 @@ def per_trip(
 
 
 def theft_signals(rows: Sequence[ProblemRow], bucket_list: Sequence[Bucket]) -> list[TheftSignalsBucket]:
-    """Only THEFT_SIGNAL_TYPES (spec D12). seal_unverified is not one: no departure seal
-    existed to compare against, a paperwork gap rather than evidence of tampering."""
+    """Only THEFT_SIGNAL_TYPES (spec D12); seal_unverified is excluded, since no
+    departure seal existed to compare against."""
     counts = Counter((row.bucket_start, row.exception_type) for row in rows if row.exception_type in THEFT_SIGNAL_TYPES)
     result: list[TheftSignalsBucket] = []
     for bucket in bucket_list:
@@ -117,13 +110,10 @@ def by_step(rows: Sequence[ProblemRow]) -> list[ProblemStepCount]:
 
 
 def risky_times(legs: Sequence[tuple[datetime, datetime]], rows: Sequence[ProblemRow]) -> list[RiskyTimeBlock]:
-    """Share of driving time against share of problems raised during the driving step, per
-    SAST quarter of the day (spec §5.3, D21). Any severity: critical-only would be almost
-    always empty. Driving step only: a seal mismatch found at unloading is not a road risk.
-
-    A problem counts in the block its created_at falls in, which is when the server received
-    it. The page says so beside the table: a report from a phone with no signal can arrive late.
-    """
+    """Share of driving time vs share of problems raised during the driving step, per
+    SAST quarter of the day (spec §5.3, D21). Driving step only, any severity. A
+    problem counts in the block its created_at (server receipt time) falls in, so a
+    report from a phone with no signal can arrive late."""
     minutes = {block: 0.0 for block, _, _ in DAY_BLOCKS}
     for departed_at, arrived_at in legs:
         for block, value in driving_minutes_by_block(departed_at, arrived_at).items():

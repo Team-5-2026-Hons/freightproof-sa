@@ -1,9 +1,5 @@
-// Display rules for the analytics screen (FP-156 spec §4.5).
-//
-// Module-scoped and pure so the rules that keep these numbers honest are proven once in
-// tests rather than re-implemented per column:
-//   - a rate is never shown without the counts it came from: "67% (2/3)";
-//   - no data (a null from the API, i.e. a zero denominator) reads "—", never "0%".
+// Display rules for the analytics screen (FP-156 spec §4.5). A rate is never shown
+// without the counts it came from ("67% (2/3)"), and no data reads "—", never "0%".
 
 import { fmtDelay } from './schedule'
 

@@ -3,11 +3,9 @@ import { CopyField, Field, Section } from './PhaseDetailFields'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 
 /**
- * Anchor state for the phases that carry a Hedera receipt.
- *
- * Departure and confirmation are both fail-open: the phase completes even when anchoring
- * fails, so `completed` and `failed` can be true at once. That pairing is what makes the
- * policy honest and it must never render as an unqualified success.
+ * Anchor state for the phases that carry a Hedera receipt. Departure and confirmation
+ * are fail-open, so `completed` and `failed` can be true at once — never render as an
+ * unqualified success.
  */
 export function PhaseAnchorSection({ phase }: { phase: PhaseDescriptor }) {
   return (
@@ -18,9 +16,7 @@ export function PhaseAnchorSection({ phase }: { phase: PhaseDescriptor }) {
           ⚠ Anchor failed — receipt still owed
         </div>
       )}
-      {/* The phase's own SHA-256 — the value that is actually anchored, and the one a
-          reviewer recomputes to check this row against the chain. The backend has always
-          sent it; forensic mode showed trip-level receipts and never this. */}
+      {/* The phase's own SHA-256, anchored value a reviewer recomputes against the chain. */}
       <ForensicOnly>
         <CopyField label="Event hash (SHA-256)" value={phase.event_hash} mono span />
       </ForensicOnly>

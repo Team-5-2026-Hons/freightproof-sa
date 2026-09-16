@@ -1,9 +1,5 @@
-// The phase plan generator and its canonical fixtures.
-//
-// Written at Stage 0.4 as the artifact that unblocked driver-pwa work against the frozen
-// contract before the live endpoints existed (parent plan §6.2, the Tim Gate). Stage 4 cut
-// ./trips.ts over to the phase model, and that file now builds its mocks with makePhasePlan
-// below — so this is the one generator, not a parallel one. If it and
+// The phase plan generator and its canonical fixtures. ./trips.ts builds its mocks with
+// makePhasePlan below, so this is the one generator, not a parallel one. If it and
 // orchestration/phase_plan.build_phase_plan ever disagree, the backend wins.
 
 import type { PhaseDescriptor, PhaseEventId, PhaseType } from '@shared/lib/types/phase'
@@ -66,19 +62,12 @@ function pendingPhase(
 }
 
 /**
- * Generate a trip's phase plan from its stops — parent plan §2.2.
- *
- * The rule, in words: emit `trip_creation` once with no stop; then for each stop in
- * sequence emit `activation` (first stop only) or `unloading` (if anything delivers
- * here); then `loading` (if anything collects here); then `departure` + `in_transit`
- * unless it is the final stop, where `confirmation` is emitted instead.
- *
- * `sequence_number` is simply the row's index in the emitted list — NOT an enum index.
- * A 2-stop trip yields 7 rows, a 3-stop cross-dock yields 11. The single-leg trip is the
- * degenerate case of the multi-stop plan: one code path, forever.
- *
- * This mirrors the generator Stage 2.1 implements in orchestration/trip_service.py. If
- * the two ever disagree, the backend wins and this is the bug.
+ * Generate a trip's phase plan from its stops. Emits `trip_creation` once with no stop;
+ * then per stop in sequence: `activation` (first stop) or `unloading` (if anything
+ * delivers here), then `loading` (if anything collects here), then `departure` +
+ * `in_transit`, unless it's the final stop where `confirmation` is emitted instead.
+ * `sequence_number` is the row's index in the emitted list, NOT an enum index.
+ * Mirrors orchestration/trip_service.py — if the two disagree, the backend wins.
  */
 export function makePhasePlan(
   tripId: string,
@@ -114,8 +103,6 @@ export function makePhasePlan(
   return plan
 }
 
-// ── Canonical fixtures ────────────────────────────────────────────────────────
-
 const AT = '2026-07-27T08:00:00Z'
 
 export const SINGLE_LEG_TRIP_ID = 'a1b2c3d4-0000-4000-8000-000000000001'
@@ -127,8 +114,7 @@ export const SINGLE_LEG_STOPS: readonly PlanStopInput[] = [
 ]
 
 // Three-stop cross-dock: consignment A runs 1->3, B runs 1->2, C runs 2->3.
-// Stop 2 therefore both drops off (B) and picks up (C) — the shape the old
-// UNIQUE(trip_id, handshake_type) constraint made unrepresentable.
+// Stop 2 therefore both drops off (B) and picks up (C).
 export const CROSS_DOCK_STOPS: readonly PlanStopInput[] = [
   { trip_stop_id: 'b2000000-0000-4000-8000-000000000001', sequence: 1, picks_up: true, drops_off: false },
   { trip_stop_id: 'b2000000-0000-4000-8000-000000000002', sequence: 2, picks_up: true, drops_off: true },

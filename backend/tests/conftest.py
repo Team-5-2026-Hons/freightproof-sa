@@ -16,6 +16,7 @@ import asyncio
 import base64
 import os
 import uuid
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, AsyncGenerator
@@ -170,6 +171,47 @@ def make_token(
         algorithm="ES256",
         headers={"kid": TEST_KID},
     )
+
+
+@contextmanager
+def production_settings(**overrides: Any):
+    """Run a block with settings that look like a VALID production deployment.
+
+    app.main calls enforce_production_config() at import time, so any test that flips
+    ENVIRONMENT to "production" and reloads it must also satisfy the production
+    preconditions — otherwise the reload raises ProductionConfigError and the test fails
+    for a reason that has nothing to do with what it is checking.
+
+    That coupling is deliberate, not an inconvenience to work around: a test simulating
+    production should simulate a production that is actually allowed to serve. The
+    defaults below are the minimum that passes; pass overrides for whatever the test is
+    actually about.
+
+    Every touched field is restored on exit, including __pydantic_fields_set__ — assigning
+    to a settings field mutates it, and leaving that changed would let one test silently
+    satisfy another's explicit-configuration rule.
+    """
+    defaults: dict[str, Any] = {
+        "ENVIRONMENT": "production",
+        "ALLOWED_ORIGINS": ["https://www.freightproof.co.za"],
+        "HANDOVER_RECEIVER_BASE_URL": "https://receiver.freightproof.co.za",
+        "IDVS_USE_MOCK": True,
+        "RATE_LIMIT_ENABLED": True,
+        "RATE_LIMIT_TRUST_PROXY_HEADERS": True,
+    }
+    values = {**defaults, **overrides}
+
+    originals = {name: getattr(settings, name) for name in values}
+    original_fields_set = set(settings.model_fields_set)
+
+    for name, value in values.items():
+        setattr(settings, name, value)
+    try:
+        yield settings
+    finally:
+        for name, value in originals.items():
+            setattr(settings, name, value)
+        settings.__pydantic_fields_set__ = original_fields_set
 
 
 def auth_header(token: str) -> dict[str, str]:

@@ -1,11 +1,6 @@
-"""Queries behind the Review desk tab (GET /analytics/fleet/review, spec §5.4).
-
-Not limited to closed trips: reviewing an exception is independent of the trip's status
-(exception_service.review_exception). Only critical exceptions enter the review queue on
-their own (exception_service.initial_review_status), so the queue charts read critical ones.
-Everywhere, rows marked legacy_review are left out: that outcome is a migration marker saying
-"reviewed before outcomes existed", not a finding.
-"""
+"""Queries behind the Review desk tab (GET /analytics/fleet/review, spec §5.4). Not
+limited to closed trips, since reviewing is independent of trip status. Rows marked
+legacy_review are excluded everywhere — that outcome is a migration marker, not a finding."""
 
 import uuid
 from collections import Counter

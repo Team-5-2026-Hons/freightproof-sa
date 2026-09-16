@@ -1,21 +1,15 @@
-// frontend/receiver/app/mock-idvs/[sessionId]/page.tsx
+// Stand-in for Didit's hosted verification flow, so the whole handover can be walked
+// without a vendor account. With IDVS_USE_MOCK=false this route is never reached.
 //
-// Stand-in for Didit's hosted verification flow, so the whole handover can be walked on a
-// laptop with no vendor account. MockIdvsClient.create_session points session_url here;
-// with IDVS_USE_MOCK=false this route is never reached.
+// Deliberately does NOT fake a document scan or face capture — the only thing this page
+// needs to reproduce is what our own code depends on: the receiver leaves and comes back.
 //
-// It deliberately does NOT fake a document scan or a face capture. Pretending to do
-// biometrics would make a demo look like it proves something it does not — the real flow
-// happens on the vendor's domain, and the only thing this page needs to reproduce is the
-// part our own code depends on: the receiver leaves, time passes, the receiver comes back.
-//
-// The return path comes from sessionStorage rather than the URL. The backend mock builds
-// session_url from a session id alone and has no capability token to put in it — see
-// integrations/idvs.py — so the handover page stashes where to come back to before it
-// leaves. Same store, same tab, same origin.
+// The return path comes from sessionStorage, not the URL: the backend mock builds
+// session_url from a session id alone with no capability token to put in it, so the
+// handover page stashes where to come back to before it leaves.
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useSyncExternalStore } from 'react'
 
 const IDENTITY_STASH_KEY = 'fp_handover_identity'
 
@@ -43,12 +37,21 @@ function readStash(): StashedIdentity | null {
   }
 }
 
-export default function MockIdvsPage() {
-  const [returnToken, setReturnToken] = useState<string | null>(null)
+// No-op: the stash never changes for the lifetime of this page, so there's nothing to
+// subscribe to — useSyncExternalStore is used purely for its snapshot semantics.
+function subscribeToNothing(): () => void {
+  return () => {}
+}
 
-  useEffect(() => {
-    setReturnToken(readStash()?.token ?? null)
-  }, [])
+export default function MockIdvsPage() {
+  // useSyncExternalStore avoids a hydration mismatch: a plain useState initializer would
+  // read sessionStorage during prerender (null, since it doesn't exist at build time) but
+  // the real value on the client's first render.
+  const returnToken = useSyncExternalStore(
+    subscribeToNothing,
+    () => readStash()?.token ?? null,
+    () => null,
+  )
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col gap-6 p-5">
@@ -86,10 +89,6 @@ export default function MockIdvsPage() {
             Finish and return to the delivery
           </a>
         )}
-        {/* A declined outcome needs the decision staged server-side via
-            MockIdvsClient.stage_decision, which has no dev endpoint yet — the same seam
-            FP-197 built for staging Pulsit positions. The decline path is covered by the
-            backend tests; it is not walkable here. */}
         <p className="text-center text-xs text-neutral-500">
           Only the approved path is walkable here. Declines are covered by the backend tests.
         </p>

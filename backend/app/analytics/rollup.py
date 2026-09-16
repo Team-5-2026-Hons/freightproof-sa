@@ -25,16 +25,10 @@ async def sum_over_months(
     end_month: date,
     key_ids: Sequence[uuid.UUID] | None,
 ) -> list[RowMapping]:
-    """One row per entity: `key_column` plus the SUM of every non-grain column.
-
-    Every non-grain column of these views is a raw count or sum by construction, so
-    summing them all is always correct — no column here is a pre-divided rate. The
-    month bounds are inclusive first-of-month dates.
-
-    Selects columns, never ORM entities: an entity would enter the session's identity
-    map, and a later read in the same session after a refresh would be served the
-    pre-refresh values.
-    """
+    """One row per entity: `key_column` plus the SUM of every non-grain column. Every
+    non-grain column is a raw count or sum by construction, so summing is always
+    correct. Selects columns, not ORM entities, so the session's identity map can't
+    serve stale pre-refresh values."""
     validate_month_range(start_month, end_month)
 
     columns = view.__table__.c

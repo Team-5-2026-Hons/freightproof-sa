@@ -12,9 +12,8 @@ interface ChartTooltipProps {
   note?: string
 }
 
-/** The hover card every fleet chart uses (dataviz interaction rules): value first and bold,
- *  series name second, a line key rather than a filled box. Everything it shows is also in the
- *  chart's table view, so the tooltip adds detail but never hides any. */
+/** The hover card every fleet chart uses: value first and bold, series name second, a line
+ *  key rather than a filled box. Everything shown is also in the chart's table view. */
 export function ChartTooltip({ title, lines, note }: ChartTooltipProps) {
   return (
     <div className="min-w-[140px] rounded-md bg-surf-lowest px-3 py-2 text-[12px] shadow-level-4">

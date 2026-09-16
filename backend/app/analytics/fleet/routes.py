@@ -1,11 +1,7 @@
-"""Queries behind the Routes & sites tab (spec §5.6): GET /analytics/fleet/routes and
-GET /analytics/fleet/incidents. Period only: sites, lanes and pins are totals over the whole
-period, never a time axis.
-
-Sites and lanes are over the closed-trip set (spec G4). The incident map is over every report
-in the period, any trip status, because a report's location is evidence the moment it arrives.
-Precinct names are attached by the service (by id only, spec G16); this module returns ids.
-"""
+"""Queries behind the Routes & sites tab (spec §5.6): GET /analytics/fleet/routes
+and GET /analytics/fleet/incidents. Period only, no time axis. Sites and lanes are
+over the closed-trip set (spec G4); the incident map is over every report, any trip
+status. Precinct names are attached by the service (spec G16); this module returns ids."""
 
 import uuid
 from dataclasses import dataclass, field
@@ -47,9 +43,8 @@ def _is_problem() -> ColumnElement[bool]:
 
 
 async def site_counts(db: AsyncSession, *, organization_id: uuid.UUID, period: Period) -> list[SiteCounts]:
-    """Chart 1.6: attested loading steps (pickups) and attested unloading steps on LOADED trips
-    (deliveries), per site. An empty run's plan still ends in an unloading step at its final
-    stop (phase_plan.build_phase_plan), but nothing is delivered there, so it doesn't count."""
+    """Chart 1.6: attested loading steps (pickups) and attested unloading steps on
+    LOADED trips (deliveries), per site. Empty-run unloadings don't count as deliveries."""
     steps = trip_steps(closed_trips(organization_id, instant_range(period.start, period.end)))
     is_pickup = steps.c.phase_type == PhaseType.LOADING
     is_delivery = (steps.c.phase_type == PhaseType.UNLOADING) & (steps.c.trip_type == TripType.LOADED)

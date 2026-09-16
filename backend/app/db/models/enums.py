@@ -18,17 +18,9 @@ class VehicleType(str, enum.Enum):
 
 
 class TripStatus(str, enum.Enum):
-    """Coarse trip lifecycle. The phase ledger (PhaseEvent) — not this field —
-    sequences a trip.
-
-    CREATED / ACTIVE / CLOSED (+ CANCELLED, EXCEPTION_HOLD) are the whole
-    model as of Stage 2.2, which replaced the old fine-grained per-handshake
-    values (ORIGIN_GATE_IN/LOADING/ORIGIN_GATE_OUT/IN_TRANSIT/DEST_GATE_IN/
-    UNLOADING) with advance_activation..advance_confirmation gating on
-    PhaseEvent.sequence_number instead. Nothing may branch on trip.status for
-    sequencing — only for the coarse created/active/closed/cancelled/held
-    description.
-    """
+    """Coarse trip lifecycle; the phase ledger (PhaseEvent), not this field, sequences
+    a trip. Nothing may branch on trip.status for sequencing — only for the coarse
+    created/active/closed/cancelled/held description."""
 
     CREATED          = "created"
     ACTIVE           = "active"
@@ -44,13 +36,9 @@ class TripType(str, enum.Enum):
 
 
 class PhaseType(str, enum.Enum):
-    """One entry in a trip's committed phase plan — parent plan D5.
-
-    The plan's LENGTH is data, generated at trip creation from the trip's stops
-    and consignments. A 2-stop trip is 7 rows, a 3-stop cross-dock is 11. Any
-    code that treats this enum's cardinality as the number of phases in a trip
-    is wrong: the same type appears more than once on a multi-stop route.
-    """
+    """One entry in a trip's committed phase plan (parent plan D5); plan LENGTH is
+    data generated per trip, so this enum's cardinality is not the phase count of
+    any one trip — a type can appear more than once on a multi-stop route."""
 
     TRIP_CREATION = "trip_creation"
     ACTIVATION    = "activation"
@@ -70,12 +58,10 @@ class PhaseStatus(str, enum.Enum):
 
 
 class AnchorStatus(str, enum.Enum):
-    """Hedera anchor state for one phase event — parent plan D4.
-
-    A phase may be `completed` while its anchor is `failed`: that combination is
-    what makes the fail-open policy (D7) honest, because the system still knows a
-    receipt is owed. Never render `failed` as success.
-    """
+    """Hedera anchor state for one phase event (parent plan D4). A phase may be
+    `completed` while its anchor is `failed` — that keeps the fail-open policy (D7)
+    honest, since the system still knows a receipt is owed. Never render `failed`
+    as success."""
 
     NOT_REQUIRED = "not_required"
     PENDING      = "pending"
@@ -85,13 +71,9 @@ class AnchorStatus(str, enum.Enum):
 
 class ExceptionType(str, enum.Enum):
     SEAL_MISMATCH          = "seal_mismatch"
-    # Distinct from SEAL_MISMATCH on purpose. MISMATCH asserts two seals were
-    # recorded and they differ — a theft indicator. UNVERIFIED means no departure
-    # seal exists to compare against — typically because the departure phase was
-    # overridden, which resolves it without ever capturing a seal — so this is a
-    # gap in the chain, not evidence of tampering.
-    # Conflating them puts false positives in front of a dispatcher triaging a
-    # real seal investigation.
+    # Distinct from SEAL_MISMATCH: MISMATCH means two recorded seals differ (a
+    # theft indicator); UNVERIFIED means no departure seal exists to compare (a
+    # gap in the chain, not evidence of tampering).
     SEAL_UNVERIFIED        = "seal_unverified"
     PARCEL_COUNT_MISMATCH  = "parcel_count_mismatch"
     GPS_MISMATCH           = "gps_mismatch"
@@ -107,11 +89,9 @@ class ExceptionType(str, enum.Enum):
     DRIVER_SUBSTITUTION    = "driver_substitution"
     CHECKPOINT_TIMEOUT     = "checkpoint_timeout"
     WAYBILL_COUNT_MISMATCH = "waybill_count_mismatch"
-    # Kept apart for the reason SEAL_UNVERIFIED and SEAL_MISMATCH are kept apart, a few
-    # lines above. MISMATCH asserts an identity was checked and disagreed — a fraud
-    # indicator. UNVERIFIED means no check completed, which is a gap in the chain and has
-    # several benign readings (no ID on them, no signal, quota spent). Conflating them
-    # puts false positives in front of a dispatcher triaging a real investigation.
+    # Same MISMATCH/UNVERIFIED distinction as SEAL_MISMATCH/SEAL_UNVERIFIED above:
+    # MISMATCH means identity was checked and disagreed (fraud signal); UNVERIFIED
+    # means no check completed (a gap, often benign).
     RECEIVER_ID_MISMATCH   = "receiver_id_mismatch"
     RECEIVER_ID_UNVERIFIED = "receiver_id_unverified"
     SEQUENCE_VIOLATION     = "sequence_violation"
@@ -187,9 +167,8 @@ class DriverEventType(str, enum.Enum):
 
 class PrecinctEventType(str, enum.Enum):
     CREATED          = "created"
-    # Coordinates moved. Named separately from a resize because the two have
-    # different evidentiary meanings: one changes WHERE the facility is, the
-    # other changes HOW CLOSE a handshake must be to count as inside it.
+    # Coordinates moved; separate from a resize since one changes WHERE the
+    # facility is, the other changes HOW CLOSE a handshake must be to count as inside it.
     RELOCATED        = "relocated"
     GEOFENCE_RESIZED = "geofence_resized"
     SHARING_CHANGED  = "sharing_changed"
@@ -218,12 +197,9 @@ class IdvsStatus(str, enum.Enum):
 
 
 class ReceiverVerificationStatus(str, enum.Enum):
-    """Where one receiver's identity check ended up.
-
-    PENDING exists only while a Didit session is in flight. The spec's invariant is that
-    no trip reaches a terminal state with a PENDING row still open — the sweeper and the
-    phase-completion hook in Stage 2 are what enforce that, not this enum.
-    """
+    """Where one receiver's identity check ended up. PENDING exists only while a
+    Didit session is in flight — no trip may reach a terminal state with one still
+    open."""
 
     PENDING    = "pending"
     VERIFIED   = "verified"
@@ -244,12 +220,8 @@ class ReceiverVerificationTier(str, enum.Enum):
 
 
 class ReceiverVerificationUnverifiedReason(str, enum.Enum):
-    """Why a check did not reach a verdict.
-
-    Never free text, for the reason HandoverTokenRejectionReason gives: the evidence has
-    to stay queryable, and a dispatcher triaging deliveries needs to separate "the
-    receiver had no ID on them" from "our vendor was down".
-    """
+    """Why a check did not reach a verdict. Never free text, so a dispatcher can
+    separate "no ID on them" from "vendor was down"."""
 
     NO_DOCUMENT        = "no_document"
     DECLINED_CONSENT   = "declined_consent"
@@ -267,16 +239,9 @@ class ParcelStatus(str, enum.Enum):
 
 
 class ExceptionReviewStatus(str, enum.Enum):
-    """Where an exception sits in the dispatcher's review workflow (FP-146 follow-on).
-
-    Replaces the old `resolved: bool` — a two-state flag could not distinguish
-    "nobody has looked at this yet" from "looked at, still needs a decision", which is
-    exactly the gap that let CRITICAL rows sit unactioned indefinitely with no way to
-    tell them apart from a WARNING nobody had reason to open. RECORDED is the default
-    for everything (migration ciaran_exc_review_semantics backfills historical rows by
-    severity); NEEDS_REVIEW and REVIEWED are set by the dispatcher-facing review flow
-    (Task 2/3), not by this migration.
-    """
+    """Where an exception sits in the dispatcher's review workflow. Replaces the old
+    `resolved: bool`, which couldn't distinguish "not looked at" from "looked at,
+    still needs a decision"."""
 
     RECORDED     = "recorded"
     NEEDS_REVIEW = "needs_review"
@@ -284,14 +249,9 @@ class ExceptionReviewStatus(str, enum.Enum):
 
 
 class ExceptionReviewOutcome(str, enum.Enum):
-    """What a dispatcher concluded when reviewing an exception.
-
-    LEGACY_REVIEW is not a real outcome a dispatcher can choose — see
-    DispatcherReviewOutcome, which is this enum minus that one member. It exists only
-    so migration ciaran_exc_review_semantics can mark a pre-existing `resolved=true`
-    row as "reviewed, but we don't know what was concluded" without inventing a specific
-    finding nobody actually recorded.
-    """
+    """What a dispatcher concluded when reviewing an exception. LEGACY_REVIEW is not
+    a real choice (see DispatcherReviewOutcome) — it only back-marks a pre-existing
+    `resolved=true` row as reviewed with no recorded finding."""
 
     NO_ACTION_REQUIRED     = "no_action_required"
     HANDLED_EXTERNALLY     = "handled_externally"
@@ -314,14 +274,9 @@ class DispatcherReviewOutcome(str, enum.Enum):
 
 
 class ExceptionContactMethod(str, enum.Enum):
-    """How a dispatcher reached someone while reviewing an exception.
-
-    NO_CONTACT_YET has no equivalent here: it recorded the ABSENCE of contact ("resolved
-    from evidence alone"), which belongs on ExceptionReviewOutcome (e.g.
-    EVIDENCE_VERIFIED) rather than on a field named for the method OF contact. Migration
-    ciaran_exc_review_semantics maps every historical NO_CONTACT_YET row to NULL rather
-    than inventing a member here for a non-contact.
-    """
+    """How a dispatcher reached someone while reviewing an exception. NO_CONTACT_YET
+    has no equivalent here — it recorded the absence of contact, which belongs on
+    ExceptionReviewOutcome, not a field named for the method of contact."""
 
     PHONE     = "phone"
     WHATSAPP  = "whatsapp"
@@ -329,15 +284,11 @@ class ExceptionContactMethod(str, enum.Enum):
 
 
 class HandoverTokenRejectionReason(str, enum.Enum):
-    """Why a receiver capability-token redemption (FP-155/FP-236) was refused.
-
-    Every value here is written to HandoverTokenAttempt on the rejecting path — the
-    rejected attempt is itself evidence, not just a 4xx response. UNKNOWN covers a
-    presented token whose hash matches no row at all, which is deliberately
-    indistinguishable from EXPIRED/ALREADY_REDEEMED to the caller (FP-239's public
-    page must not become an oracle) even though the true reason is still recorded
-    server-side.
-    """
+    """Why a receiver capability-token redemption was refused; every value is written
+    to HandoverTokenAttempt, since a rejected attempt is itself evidence. UNKNOWN (a
+    hash matching no row) is deliberately indistinguishable from
+    EXPIRED/ALREADY_REDEEMED to the caller, though the true reason is recorded
+    server-side."""
 
     EXPIRED          = "expired"
     ALREADY_REDEEMED = "already_redeemed"
