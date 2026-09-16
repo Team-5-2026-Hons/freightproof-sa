@@ -436,6 +436,7 @@ export const FLEET_COPY = {
     partialFootnote: 'Faded: a part week, month or year at either end of the period, or one still running.',
     showTable: 'Show table',
     showChart: 'Show chart',
+    zoomIn: (title: string): string => `Zoom in: ${title}`,
     retry: 'Retry',
     loadError: "Couldn't load this chart.",
     notEnoughTitle: 'Not enough data yet',

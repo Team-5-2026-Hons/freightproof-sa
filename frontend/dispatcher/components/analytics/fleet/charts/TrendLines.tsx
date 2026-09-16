@@ -14,6 +14,7 @@ import {
 } from 'recharts'
 
 import { AXIS_TEXT_COLOR, GRID_COLOR, SURFACE_COLOR, TICK_COLOR } from '@/lib/tokens'
+import { useChartHeight } from '../ChartZoom'
 import { labelWidthFor, renderTimeTick } from './axisTicks'
 import {
   ACTIVE_DOT_RADIUS,
@@ -63,9 +64,11 @@ type Datum = Record<string, string | number | boolean | null>
  *  dots with a 2 px surface ring, partial buckets' dots at half opacity (never a dashed
  *  line, which reads as a forecast), a crosshair that finds the x, gaps where there is no data. */
 export function TrendLines<Row>({
-  rows, rowKey, tickLabel, isPartial, series, renderTooltip, yLabel, height = CHART_HEIGHT,
+  rows, rowKey, tickLabel, isPartial, series, renderTooltip, yLabel, height: normalHeight = CHART_HEIGHT,
   yTickFormat, yDomain, allowDecimals = false,
 }: TrendLinesProps<Row>) {
+  // Taller inside the zoom modal (D27).
+  const height = useChartHeight(normalHeight)
   const byKey = new Map(rows.map((row) => [rowKey(row), row]))
   const labelWidth = labelWidthFor(rows.map((row) => tickLabel(rowKey(row))))
   const data: Datum[] = rows.map((row) => ({
