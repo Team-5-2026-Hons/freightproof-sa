@@ -18,8 +18,8 @@ export interface DriverAnalyticsSummaryProps {
   driverId: DriverId
 }
 
-// Same wording as DriverPanel's columns; the phase names drop its "Avg" prefix because the
-// section heading says "Average time in each phase".
+// The phase names carry no "Avg" prefix because the section heading already says "Average
+// time in each phase".
 const LABELS = {
   trips: 'Trips',
   onTimeDepartures: 'On-time departures',

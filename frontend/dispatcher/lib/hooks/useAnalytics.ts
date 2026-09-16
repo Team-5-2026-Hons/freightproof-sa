@@ -7,14 +7,14 @@ import type { MonthRange } from '@/lib/types/month-range'
 import type {
   DriverMetrics,
   FacilityMetrics,
-  LaneMetrics,
   VehicleMetrics,
   VehicleStreak,
 } from '@shared/lib/types/analytics'
 
 const ANALYTICS_PATH = '/api/v1/analytics'
 
-type MonthlyGrain = 'facilities' | 'vehicles' | 'lanes' | 'drivers'
+// Lanes are read by the fleet page's Routes & sites tab now (useFleetRoutes), not per month.
+type MonthlyGrain = 'facilities' | 'vehicles' | 'drivers'
 
 export interface AnalyticsResult<T> {
   rows: T[]
@@ -83,10 +83,6 @@ export function useVehicleAnalytics(range: MonthRange): AnalyticsResult<VehicleM
 /** Whole-history streaks take no range, so changing the range never refetches them. */
 export function useVehicleStreaks(): AnalyticsResult<VehicleStreak> {
   return useAnalyticsList<VehicleStreak>(`${ANALYTICS_PATH}/vehicles/streaks`)
-}
-
-export function useLaneAnalytics(range: MonthRange): AnalyticsResult<LaneMetrics> {
-  return useAnalyticsList<LaneMetrics>(monthlyPath('lanes', range))
 }
 
 export function useDriverAnalytics(range: MonthRange): AnalyticsResult<DriverMetrics> {

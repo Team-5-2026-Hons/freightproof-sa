@@ -21,6 +21,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.endpoints.fleet_analytics import router as fleet_router
 from app.auth.dependencies import get_current_dispatcher
 from app.db.session import get_db
 from app.orchestration.analytics_service import (
@@ -149,3 +150,8 @@ async def list_facility_analytics_endpoint(
         start_month=start_month,
         end_month=end_month,
     )
+
+
+# The fleet-wide page's routes (/analytics/fleet/*) live in their own module but mount here,
+# so the shared main.py needs no change.
+router.include_router(fleet_router)
