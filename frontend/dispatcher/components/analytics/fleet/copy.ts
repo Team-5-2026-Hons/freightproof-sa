@@ -48,7 +48,7 @@ export const FLEET_COPY = {
     retry: 'Retry',
     liveTrips: { label: 'Live trips', sub: 'Created, underway or on hold' },
     criticalWaiting: {
-      label: 'Critical waiting',
+      label: 'Critical Exceptions Waiting',
       none: 'Nothing waiting for review',
       oldest: (age: string): string => `Oldest waiting ${age}`,
     },

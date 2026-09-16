@@ -93,7 +93,7 @@ creates or switches branches.
 
 ```
 ┌ Analytics ─────────────────────────────────────────────────────────────────────────────────┐
-│ [Live trips 7] [Critical waiting 4 · oldest 2 d] [Parcels complete 96 %] [Receipts owed 12]  │
+│ [Live trips 7] [Critical Exceptions Waiting 4 · oldest 2 d] [Parcels complete 96 %] [Receipts owed 12]  │
 │ [Licences & discs: 0 expired · 2 ≤30 d · …] [Unused vehicles 2]            ← tiles, no filter │
 ├─────────────────────────────────────────────────────────────────────────────────────────────┤
 │  Activity | On time | Problems | Review desk | Evidence | Routes & sites        ← Tabs        │
@@ -170,7 +170,7 @@ low-sample behaviour (general rules in §7.6).
 | Tile | Shows | Data | Click |
 |---|---|---|---|
 | **Live trips** | "7" | Count of org trips with `status IN LIVE_TRIP_STATUSES` (`created`, `active`, `exception_hold` — constant in `app/db/models/trips.py`). | `/` (the dashboard's Active Trips list) |
-| **Critical waiting** | "4 · oldest 2 d" | Count of org exceptions with `severity = 'critical'` AND `review_status = 'needs_review'`; plus `MIN(created_at)` of those, shown as an age. Warn styling + icon when > 0. | `/exceptions` (opens on its Needs Review tab by default) |
+| **Critical Exceptions Waiting** | "4 · oldest 2 d" | Count of org exceptions with `severity = 'critical'` AND `review_status = 'needs_review'`; plus `MIN(created_at)` of those, shown as an age. Warn styling + icon when > 0. | `/exceptions` (opens on its Needs Review tab by default) |
 | **Parcels complete** | "96 %" + "last 30 days" | Loaded (`trip_type = 'loaded'`) closed trips whose departure is within the last `TILE_WINDOW_DAYS = 30` SAST days; complete = trip has **no** exception of type `parcel_count_mismatch` or `waybill_count_mismatch`. Rate = complete ÷ loaded. Label: *"Loaded trips with every parcel accounted for"*. | `?tab=problems` |
 | **Receipts owed** | "12" (+ "3 failed") | Org phase events with `phase_type IN ANCHORED_PHASES` (`trip_creation`, `departure`, `confirmation` — `app/orchestration/phase_plan.py`) AND attested AND `anchor_status IN ('pending','failed')`. Return pending and failed separately. Future plan steps are `pending` by design and overridden steps are never anchored — both are excluded by "attested". | `?tab=evidence` |
 | **Licences & discs** | 5 bands, drivers and discs | Active drivers' `license_expiry` and active vehicles' `licence_disc_expiry`, bands relative to today SAST: **expired** (< today) · **≤ 30 days** · **31–90 days** · **91–180 days** · **no date on file**. Bands are separate (never cumulative) and align with the drivers list colours (red ≤ 30, amber ≤ 90 — `app/(app)/fleet/drivers/page.tsx`). | `/fleet/drivers` and `/fleet/vehicles` (two links) |
