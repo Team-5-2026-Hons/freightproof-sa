@@ -41,13 +41,6 @@ REVIEW_AGE_EDGES_HOURS: tuple[int, int, int] = (1, 24, 72)
 # agrees with what that list shows. Further out than 180 days is not a concern yet.
 EXPIRY_BAND_EDGES_DAYS: tuple[int, int, int] = (30, 90, 180)
 
-# Exception types that each mean a parcel or waybill count did not add up. A loaded trip
-# with neither is one where every parcel was accounted for (the Parcels complete tile).
-PARCEL_SHORTFALL_TYPES: tuple[ExceptionType, ...] = (
-    ExceptionType.PARCEL_COUNT_MISMATCH,
-    ExceptionType.WAYBILL_COUNT_MISMATCH,
-)
-
 # Signs that cargo may have been tampered with (spec D12). SEAL_UNVERIFIED is deliberately
 # absent: it means no departure seal existed to compare against, a paperwork gap rather than
 # evidence of tampering (see its comment in app/db/models/enums.py). A tuple, not a set, so

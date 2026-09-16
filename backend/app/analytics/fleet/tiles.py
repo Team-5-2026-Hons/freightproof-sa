@@ -1,21 +1,22 @@
-"""Queries behind the six headline tiles (GET /analytics/fleet/tiles, spec §5.0).
+"""Queries behind the four headline tiles (GET /analytics/fleet/tiles, spec §5.0).
 
-Every tile describes the fleet right now, so none takes a period. The two that need recent
-history (parcels complete, unused vehicles) look back TILE_WINDOW_DAYS South African days,
-today included. The queries run one after another because an AsyncSession can only run one
-statement at a time.
+Every tile describes the fleet right now, so none takes a period. Unused vehicles needs recent
+history, so it looks back TILE_WINDOW_DAYS South African days, today included. The queries
+run one after another because an AsyncSession can only run one statement at a time.
+
+The Parcels complete and Receipts owed tiles were removed (D26).
 """
 
 import uuid
 from collections import Counter
-from collections.abc import Collection, Iterable
+from collections.abc import Iterable
 from datetime import date
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.analytics.fleet.base import closed_trips, earliest_trip_date, trip_departures
-from app.analytics.fleet.constants import PARCEL_SHORTFALL_TYPES, TILE_WINDOW_DAYS
+from app.analytics.fleet.base import earliest_trip_date, trip_departures
+from app.analytics.fleet.constants import TILE_WINDOW_DAYS
 from app.analytics.fleet.periods import (
     ExpiryBand,
     InstantRange,
@@ -24,16 +25,8 @@ from app.analytics.fleet.periods import (
     resolve_start,
     trailing_days,
 )
-from app.analytics.views import ATTESTED_PHASE_STATUSES
-from app.db.models.enums import (
-    AnchorStatus,
-    ExceptionReviewStatus,
-    ExceptionSeverity,
-    PhaseType,
-    TripType,
-)
+from app.db.models.enums import ExceptionReviewStatus, ExceptionSeverity
 from app.db.models.people import Driver
-from app.db.models.phases import PhaseEvent
 from app.db.models.transit import TripException
 from app.db.models.trips import LIVE_TRIP_STATUSES, Trip, TripTrailer
 from app.db.models.vehicles import Vehicle
@@ -42,8 +35,6 @@ from app.schemas.fleet_analytics import (
     ExpiryBands,
     FleetTilesResponse,
     LicenceExpiry,
-    ParcelsComplete,
-    ReceiptsOwed,
     UnusedVehicle,
     UnusedVehicles,
 )
@@ -88,64 +79,6 @@ async def critical_waiting(db: AsyncSession, *, organization_id: uuid.UUID) -> C
     )
     count, oldest = result.one()
     return CriticalWaiting(count=count, oldest_created_at=oldest)
-
-
-async def parcels_complete(
-    db: AsyncSession, *, organization_id: uuid.UUID, window: InstantRange,
-) -> ParcelsComplete:
-    """Loaded closed trips that departed in the window, and those with no count mismatch.
-
-    Empty runs are left out: they carry no parcels, so "every parcel accounted for" would
-    be true of them by default and flatter the rate.
-    """
-    trips = closed_trips(organization_id, window)
-    shortfall = (
-        select(TripException.id)
-        .where(
-            TripException.trip_id == trips.c.trip_id,
-            TripException.exception_type.in_(PARCEL_SHORTFALL_TYPES),
-        )
-        .exists()
-    )
-    per_trip = (
-        select(shortfall.label("has_shortfall"))
-        .select_from(trips)
-        .where(trips.c.trip_type == TripType.LOADED)
-        .subquery()
-    )
-    result = await db.execute(
-        select(func.count(), func.count().filter(per_trip.c.has_shortfall.is_(False)))
-        .select_from(per_trip)
-    )
-    loaded, complete = result.one()
-    return ParcelsComplete(
-        window_days=TILE_WINDOW_DAYS, loaded_trip_count=loaded, complete_trip_count=complete,
-    )
-
-
-async def receipts_owed(
-    db: AsyncSession, *, organization_id: uuid.UUID, anchored_phases: Collection[PhaseType],
-) -> ReceiptsOwed:
-    """Attested anchored steps whose receipt is pending or failed.
-
-    "Attested" excludes two things that are pending by design, not owed: plan steps the
-    driver hasn't reached yet, and overridden steps, which are never anchored at all.
-    """
-    result = await db.execute(
-        select(
-            func.count().filter(PhaseEvent.anchor_status == AnchorStatus.PENDING),
-            func.count().filter(PhaseEvent.anchor_status == AnchorStatus.FAILED),
-        )
-        .select_from(PhaseEvent)
-        .join(Trip, Trip.id == PhaseEvent.trip_id)
-        .where(
-            Trip.operator_organization_id == organization_id,
-            PhaseEvent.phase_type.in_(anchored_phases),
-            PhaseEvent.status.in_(ATTESTED_PHASE_STATUSES),
-        )
-    )
-    pending, failed = result.one()
-    return ReceiptsOwed(pending_count=pending, failed_count=failed)
 
 
 async def licence_expiry(
@@ -213,27 +146,17 @@ async def unused_vehicles(
 
 
 async def get_fleet_tiles(
-    db: AsyncSession,
-    *,
-    organization_id: uuid.UUID,
-    today: date,
-    anchored_phases: Collection[PhaseType],
+    db: AsyncSession, *, organization_id: uuid.UUID, today: date,
 ) -> FleetTilesResponse:
     window = instant_range(*trailing_days(today, TILE_WINDOW_DAYS))
     live = await count_live_trips(db, organization_id=organization_id)
     waiting = await critical_waiting(db, organization_id=organization_id)
-    parcels = await parcels_complete(db, organization_id=organization_id, window=window)
-    receipts = await receipts_owed(
-        db, organization_id=organization_id, anchored_phases=anchored_phases,
-    )
     expiry = await licence_expiry(db, organization_id=organization_id, today=today)
     unused = await unused_vehicles(db, organization_id=organization_id, window=window)
     earliest = await earliest_trip_date(db, organization_id=organization_id)
     return FleetTilesResponse(
         live_trips=live,
         critical_waiting=waiting,
-        parcels_complete=parcels,
-        receipts_owed=receipts,
         licence_expiry=expiry,
         unused_vehicles=unused,
         all_time_start=resolve_start(None, end=today, earliest_activity=earliest, today=today),

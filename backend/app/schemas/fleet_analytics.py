@@ -40,27 +40,6 @@ class CriticalWaiting(_Frozen):
     oldest_created_at: datetime | None
 
 
-class ParcelsComplete(_Frozen):
-    """Loaded closed trips over the tile window, and how many had every parcel accounted for."""
-
-    window_days: int
-    loaded_trip_count: int
-    complete_trip_count: int
-
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def complete_rate(self) -> float | None:
-        return safe_ratio(self.complete_trip_count, self.loaded_trip_count)
-
-
-class ReceiptsOwed(_Frozen):
-    """Attested steps whose blockchain receipt has not been confirmed yet. Kept as two
-    counts because they mean different things: pending is on its way, failed is stuck."""
-
-    pending_count: int
-    failed_count: int
-
-
 class ExpiryBands(_Frozen):
     """Separate bands, never cumulative. Further out than 180 days is in none of them."""
 
@@ -93,8 +72,6 @@ class UnusedVehicles(_Frozen):
 class FleetTilesResponse(_Frozen):
     live_trips: int
     critical_waiting: CriticalWaiting
-    parcels_complete: ParcelsComplete
-    receipts_owed: ReceiptsOwed
     licence_expiry: LicenceExpiry
     unused_vehicles: UnusedVehicles
     # The first day "All time" covers: the SAST day of the organisation's first trip, or

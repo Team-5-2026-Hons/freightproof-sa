@@ -51,8 +51,6 @@ function makeTiles(overrides: Partial<FleetTiles> = {}): FleetTiles {
   return {
     live_trips: 7,
     critical_waiting: { count: 0, oldest_created_at: null },
-    parcels_complete: { window_days: 30, loaded_trip_count: 0, complete_trip_count: 0, complete_rate: null },
-    receipts_owed: { pending_count: 0, failed_count: 0 },
     licence_expiry: { drivers: NO_BANDS, vehicle_discs: NO_BANDS },
     unused_vehicles: { window_days: 30, vehicles: [] },
     all_time_start: addDays(todaySast(), -60),
