@@ -58,13 +58,15 @@ function TripDetail({ tripId }: { tripId: string }) {
   // The URL parameter still drives it, and below the dock width doubles as "the reader
   // asked for this", which is what raises the overlay.
   const panel: TripPanel = selected ?? 'information'
-  const filter: ExceptionFilter = search.get('exceptions') === 'all' ? 'all' : 'needs_review'
   const phaseQuery = search.get('phase')
   // A phase id belongs to this trip only when it appears in this plan. Keep an invalid
   // URL visible as a recoverable state below rather than silently showing unrelated
   // records — a copied link must never look successful when it is not.
   const selectedPhaseId = trip && phaseQuery && trip.phases.some(phase => phase.phase_event_id === phaseQuery) ? phaseQuery : null
   const invalidPhaseId = trip && phaseQuery && !selectedPhaseId ? phaseQuery : null
+  // A phase link is an evidence view, not a review queue. It must retain every record
+  // for that phase when browser history restores an older narrow-filter URL.
+  const filter: ExceptionFilter = selectedPhaseId || search.get('exceptions') === 'all' ? 'all' : 'needs_review'
   const [revealRequest, setRevealRequest] = useState<{ phaseId: string; requestId: number } | null>(null)
   const [pendingOverlayReveal, setPendingOverlayReveal] = useState<string | null>(null)
   const returnTo = `${ROUTES.tripDetail(tripId)}${search.size ? `?${search.toString()}` : ''}`
@@ -151,7 +153,7 @@ function TripDetail({ tripId }: { tripId: string }) {
         {error && <ResourceWarning message={`Trip updates unavailable. Showing the last loaded record. ${error}`} onRetry={refetchSilent} />}
         {precinctsError && <ResourceWarning message={`Location names could not be refreshed. ${precinctsError}`} onRetry={retryPrecincts} />}
         {artifacts.error && <ResourceWarning message={`Evidence could not be refreshed. ${artifacts.error}`} onRetry={artifacts.refetch} />}
-        <div ref={timelineRef} className="min-h-0 flex-1 overflow-y-auto bg-surf-lowest">
+        <div ref={timelineRef} data-timeline-scroller className="min-h-0 flex-1 overflow-y-auto bg-surf-lowest">
           <TripTimeline trip={trip} precincts={precincts} artifactsById={artifacts.byId} artifactLoading={artifacts.isLoading} artifactError={artifacts.error} onRetryArtifacts={artifacts.refetch} onChanged={refetchSilent} returnTo={returnTo} lastUpdated={lastUpdated} onJump={jump}
             onOpenExceptions={phaseId => setPanel('exceptions', 'all', phaseId)} revealRequest={revealRequest}
             onRevealHandled={phaseId => scrollIntoTimeline(timelineRef, document.getElementById(`${PHASE_ANCHOR_PREFIX}${phaseId}`))} />

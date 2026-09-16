@@ -11,6 +11,7 @@
 import { haversineMetres, separationMetres, toCoords, type Coords } from './geo'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { Precinct } from '@shared/lib/types/precinct'
+import type { ActionLocationAssessment, ProximityVerdict } from '@shared/lib/types/action-location'
 
 export type FixSource = 'driver_phone' | 'horse_tracker'
 
@@ -38,10 +39,11 @@ export interface BoundaryReference {
   coords: Coords
   radiusMetres: number
   precinctName: string
-  // Only ever 'current_reference_only' in v1: historical geofence geometry is not
-  // stored, so the circle drawn is today's precinct boundary, not the boundary that
-  // was actually in force when the fix was captured. Must always be labelled as such.
-  provenance: 'current_reference_only'
+  // A persisted assessment owns its historical geometry. Older events did not record
+  // it, so their circle is today's boundary and must remain visibly reference-only.
+  provenance: 'recorded_snapshot' | 'current_reference_only'
+  policyVersion?: string
+  toleranceMetres?: number
 }
 
 export interface LocationEvidence {
@@ -51,6 +53,13 @@ export interface LocationEvidence {
   // fallback: zero is a real (coincident-fix) measurement, distinct from "no
   // comparison possible".
   separationMetres: number | null
+  /** Only an assessment can state proximity. Legacy coordinates are a measurement,
+   * not a retroactive pass/fail under today's policy. */
+  proximity?: ProximityVerdict | null
+  proximityReasons?: readonly string[]
+  /** Lets presentation distinguish an incomplete stored snapshot from a legacy event
+   * that never recorded historical geometry in the first place. */
+  assessmentRecorded?: boolean
   verdict: GeofenceVerdict
   boundary: BoundaryReference | null
 }
@@ -61,11 +70,17 @@ export const FIX_LABELS: Record<FixSource, string> = {
 }
 
 export const VERDICT_LABELS: Record<GeofenceVerdict, string> = {
-  within_tolerance: 'Within accepted tolerance',
-  outside_tolerance: 'Outside accepted tolerance',
-  not_verified: 'Not verified',
-  not_checked_yet: 'Not checked yet',
-  no_verdict_for_phase: 'No geofence verdict is recorded for transit legs',
+  within_tolerance: 'Truck within precinct tolerance',
+  outside_tolerance: 'Truck outside precinct tolerance',
+  not_verified: 'Truck precinct check unavailable',
+  not_checked_yet: 'Truck precinct check unavailable',
+  no_verdict_for_phase: 'Truck precinct check unavailable for transit legs',
+}
+
+export const PROXIMITY_LABELS: Record<ProximityVerdict, string> = {
+  within_limit: 'Within limit',
+  separated: 'Outside limit',
+  unverified: 'Unable to compare',
 }
 
 // The backend only ever persists a tracker fix that already passed its skew gate
@@ -98,27 +113,33 @@ function validCoords(lat: number | null, lng: number | null): Coords | null {
   return isValidCoords(lat, lng) ? toCoords(lat, lng) : null
 }
 
-function driverFixFor(phase: PhaseDescriptor): RecordedFix | null {
-  const coords = validCoords(phase.driver_phone_lat, phase.driver_phone_lng)
+function driverFixFor(phase: PhaseDescriptor | null, assessment: ActionLocationAssessment | null): RecordedFix | null {
+  // A partial stored snapshot stays partial. Falling back to a phase column here would
+  // splice two capture contexts together and create evidence the evaluator never saw.
+  const coords = assessment
+    ? validCoords(assessment.driver_lat, assessment.driver_lng)
+    : phase ? validCoords(phase.driver_phone_lat, phase.driver_phone_lng) : null
   if (coords === null) return null
   return {
     source: 'driver_phone',
     label: FIX_LABELS.driver_phone,
     coords,
-    capturedAt: phase.driver_captured_at ?? null,
+    capturedAt: assessment ? assessment.driver_captured_at : phase?.driver_captured_at ?? null,
     captureNote: null,
   }
 }
 
-function trackerFixFor(phase: PhaseDescriptor): RecordedFix | null {
-  const coords = validCoords(phase.horse_gps_lat, phase.horse_gps_lng)
+function trackerFixFor(phase: PhaseDescriptor | null, assessment: ActionLocationAssessment | null): RecordedFix | null {
+  const coords = assessment
+    ? validCoords(assessment.tracker_lat, assessment.tracker_lng)
+    : phase ? validCoords(phase.horse_gps_lat, phase.horse_gps_lng) : null
   if (coords === null) return null
   return {
     source: 'horse_tracker',
     label: FIX_LABELS.horse_tracker,
     coords,
-    capturedAt: null,
-    captureNote: TRACKER_CAPTURE_NOTE,
+    capturedAt: assessment?.tracker_captured_at ?? null,
+    captureNote: assessment?.tracker_captured_at ? null : TRACKER_CAPTURE_NOTE,
   }
 }
 
@@ -134,26 +155,63 @@ function verdictFor(phase: PhaseDescriptor): GeofenceVerdict {
   return 'not_verified'
 }
 
-function boundaryFor(precinct: Precinct | undefined): BoundaryReference | null {
-  if (precinct === undefined) return null
+function boundaryFor(precinct: Precinct | undefined, assessment: ActionLocationAssessment | null): BoundaryReference | null {
+  // A snapshot either carries its own geometry or it does not. Falling back to the
+  // current precinct here would recast today's boundary as historical evidence.
+  if (assessment === null) {
+    if (precinct === undefined) return null
+    return {
+      coords: { lat: precinct.latitude, lng: precinct.longitude },
+      radiusMetres: precinct.geofence_radius_metres,
+      precinctName: precinct.name,
+      provenance: 'current_reference_only',
+    }
+  }
+  const recordedCoords = validCoords(assessment?.precinct_lat ?? null, assessment?.precinct_lng ?? null)
+  if (recordedCoords && assessment.precinct_radius_metres !== null) {
+    return {
+      coords: recordedCoords,
+      radiusMetres: assessment.precinct_radius_metres,
+      precinctName: precinct?.name ?? 'Recorded precinct',
+      provenance: 'recorded_snapshot',
+      policyVersion: assessment.policy_version,
+      toleranceMetres: assessment.precinct_tolerance_metres ?? undefined,
+    }
+  }
+  return null
+}
+
+function buildEvidence(
+  phase: PhaseDescriptor | null,
+  assessment: ActionLocationAssessment | null,
+  precinct: Precinct | undefined,
+  verdict: GeofenceVerdict,
+): LocationEvidence {
+  const driverFix = driverFixFor(phase, assessment)
+  const trackerFix = trackerFixFor(phase, assessment)
   return {
-    coords: { lat: precinct.latitude, lng: precinct.longitude },
-    radiusMetres: precinct.geofence_radius_metres,
-    precinctName: precinct.name,
-    provenance: 'current_reference_only',
+    driverFix,
+    trackerFix,
+    separationMetres: assessment ? assessment.separation_metres : separationMetres(driverFix?.coords ?? null, trackerFix?.coords ?? null),
+    proximity: assessment?.proximity ?? null,
+    proximityReasons: assessment?.reasons ?? [],
+    assessmentRecorded: assessment !== null,
+    verdict,
+    boundary: boundaryFor(precinct, assessment),
   }
 }
 
 export function locationEvidenceForPhase(phase: PhaseDescriptor, precinct: Precinct | undefined): LocationEvidence {
-  const driverFix = driverFixFor(phase)
-  const trackerFix = trackerFixFor(phase)
-  return {
-    driverFix,
-    trackerFix,
-    separationMetres: separationMetres(driverFix?.coords ?? null, trackerFix?.coords ?? null),
-    verdict: verdictFor(phase),
-    boundary: boundaryFor(precinct),
-  }
+  return buildEvidence(phase, phase.action_location_assessment ?? null, precinct, verdictFor(phase))
+}
+
+/** Evidence for a snapshot that belongs to a record OTHER than a phase — a driver's
+ *  exception report or a checkpoint carries its own capture-time comparison. There is
+ *  no phase geofence verdict to honour for such a capture, so the verdict is the plain
+ *  "unavailable" one, never a transit-leg or not-yet-checked explanation that would
+ *  describe a phase this capture is not. */
+export function locationEvidenceForAssessment(assessment: ActionLocationAssessment, precinct: Precinct | undefined): LocationEvidence {
+  return buildEvidence(null, assessment, precinct, 'not_verified')
 }
 
 export function hasComparison(evidence: LocationEvidence): boolean {
@@ -166,7 +224,7 @@ export function hasAnyFix(evidence: LocationEvidence): boolean {
 
 /** Whether a phase recorded anything location-shaped worth a section: a fix, or a stored verdict. */
 export function hasLocationEvidence(evidence: LocationEvidence): boolean {
-  return hasAnyFix(evidence) || evidence.verdict === 'within_tolerance' || evidence.verdict === 'outside_tolerance'
+  return hasAnyFix(evidence) || evidence.proximity !== null || evidence.verdict === 'within_tolerance' || evidence.verdict === 'outside_tolerance'
 }
 
 // ── Boundary framing helpers ─────────────────────────────────────────────────────

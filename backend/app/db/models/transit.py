@@ -235,9 +235,8 @@ class TripException(Base):
     )
     # Task 5 (R13): a driver exception report IS itself the capture the assessment
     # describes, so it carries its own snapshot rather than pointing at another row's.
-    # Populated only where a caller chooses to build one (this story wires phase
-    # completions and checkpoints — see action_location_service.py's module docstring
-    # for why a driver-raised exception report is deliberately left unwired here).
+    # Populated where a caller builds a capture-time comparison, including phase
+    # completions, checkpoints, and driver-raised exception reports.
     action_location_assessment: Mapped[Optional[Any]] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(

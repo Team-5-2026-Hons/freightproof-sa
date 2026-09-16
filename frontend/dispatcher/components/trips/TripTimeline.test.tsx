@@ -1,6 +1,7 @@
-import { render, screen, within, fireEvent } from '@testing-library/react'
+import { act, render, screen, within, fireEvent } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { TripTimeline } from './TripTimeline'
+import { VIEW_ON_MAP_LABEL } from '@/components/domain/LocationEvidencePanel'
 import { makePhase } from '@/components/domain/__tests__/testFixtures'
 import { mockPrecincts, mockTrips, PRECINCT_FEDEX_JHB_ID, PRECINCT_FEDEX_DBN_ID, TRIP_0035_ID, TRIP_0041_ID, TRIP_0043_ID } from '@shared/lib/mocks'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
@@ -146,7 +147,7 @@ describe('TripTimeline: compact location verdict', () => {
     )
 
     // Asserted before any click: the chip must already be in the document as rendered.
-    expect(phaseRow('Activation').getByText('Within accepted tolerance')).toBeInTheDocument()
+    expect(phaseRow('Activation').getByText('Truck within precinct tolerance')).toBeInTheDocument()
   })
 
   it('shows no location chip on a completed loading row with no fix and no stored verdict (LoadingDetail gates its own section on the exact same hasLocationEvidence check, so the chip must never advertise a section the opened card does not have)', () => {
@@ -156,7 +157,7 @@ describe('TripTimeline: compact location verdict', () => {
       <TripTimeline trip={trip} precincts={mockPrecincts} returnTo="/trips" lastUpdated={null} onJump={vi.fn()} {...evidence} />,
     )
 
-    const verdictLabels = ['Within accepted tolerance', 'Outside accepted tolerance', 'Not verified', 'Not checked yet', 'No geofence verdict is recorded for transit legs']
+    const verdictLabels = ['Truck within precinct tolerance', 'Truck outside precinct tolerance', 'Truck precinct check unavailable', 'Truck precinct check unavailable for transit legs']
     for (const label of verdictLabels) {
       expect(phaseRow('Loading').queryByText(label)).not.toBeInTheDocument()
     }
@@ -173,7 +174,7 @@ describe('TripTimeline: compact location verdict', () => {
       <TripTimeline trip={trip} precincts={mockPrecincts} returnTo="/trips" lastUpdated={null} onJump={vi.fn()} {...evidence} />,
     )
 
-    expect(phaseRow('Loading').getByText('Outside accepted tolerance')).toBeInTheDocument()
+    expect(phaseRow('Loading').getByText('Truck outside precinct tolerance')).toBeInTheDocument()
   })
 
   it('shows no location chip on trip_creation or in_transit rows, even when they are done', () => {
@@ -184,7 +185,7 @@ describe('TripTimeline: compact location verdict', () => {
     )
 
     // Every verdict label this summary could ever render: none may appear in either row.
-    const verdictLabels = ['Within accepted tolerance', 'Outside accepted tolerance', 'Not verified', 'Not checked yet', 'No geofence verdict is recorded for transit legs']
+    const verdictLabels = ['Truck within precinct tolerance', 'Truck outside precinct tolerance', 'Truck precinct check unavailable', 'Truck precinct check unavailable for transit legs']
     for (const label of verdictLabels) {
       expect(phaseRow('Trip Created').queryByText(label)).not.toBeInTheDocument()
       expect(phaseRow('In Transit').queryByText(label)).not.toBeInTheDocument()
@@ -198,7 +199,7 @@ describe('TripTimeline: compact location verdict', () => {
       <TripTimeline trip={trip} precincts={mockPrecincts} returnTo="/trips" lastUpdated={null} onJump={vi.fn()} {...evidence} />,
     )
 
-    const verdictLabels = ['Within accepted tolerance', 'Outside accepted tolerance', 'Not verified', 'Not checked yet', 'No geofence verdict is recorded for transit legs']
+    const verdictLabels = ['Truck within precinct tolerance', 'Truck outside precinct tolerance', 'Truck precinct check unavailable', 'Truck precinct check unavailable for transit legs']
     for (const label of verdictLabels) {
       expect(phaseRow('Activation').queryByText(label)).not.toBeInTheDocument()
     }
@@ -243,8 +244,67 @@ describe('TripTimeline: gps_mismatch exception evidence', () => {
     // TripTimeline's own group label logic), so it is looked up by that full name here,
     // unlike the plain "Activation phase" rows in the describe block above.
     const activationRow = within(screen.getByRole('group', { name: 'Activation phase and exceptions' }))
-    fireEvent.click(activationRow.getByRole('button', { name: '1 exception · 0 need review' }))
+    fireEvent.click(activationRow.getByRole('button', { name: /1 exception · 0 need review/ }))
     expect(activationRow.getByTestId('gps-mismatch-trigger')).toHaveTextContent('Vehicle tracker outside the facility boundary')
+  })
+
+  it('shows exactly one "View on map" button, nested inside the exception card, for a system-raised gps_mismatch with recorded fixes', () => {
+    const base = tripFor(TRIP_0035_ID)
+    const activation = base.phases.find(p => p.phase_type === 'activation')
+    if (!activation) throw new Error('TRIP_0035 activation phase is missing')
+
+    // Gives ExceptionMapButton (assessment-less path) and the "Supporting evidence"
+    // panel's own PositionDisagreement the same phase-based fixes to compare, matching
+    // the browser-observed regression: both used to render their own "View on map".
+    const activationWithFixes: PhaseDescriptor = {
+      ...activation,
+      driver_phone_lat: -33.9249,
+      driver_phone_lng: 18.4241,
+      horse_gps_lat: -33.9351,
+      horse_gps_lng: 18.4241,
+    }
+    const gpsMismatch: TripException = {
+      id: 'gps-mismatch-activation-2' as TripException['id'],
+      trip_id: base.id,
+      exception_type: 'gps_mismatch',
+      source: 'system',
+      severity: 'warning',
+      description: 'Vehicle tracker placed the vehicle outside the activation geofence.',
+      phase_event_id: activation.phase_event_id,
+      checkpoint_id: null,
+      supporting_artifact_id: null,
+      review_status: 'recorded',
+      review_outcome: null,
+      reviewed_by_user_id: null,
+      reviewed_at: null,
+      review_note: null,
+      contact_method: null,
+      vehicle_id: null,
+      merkle_batch_id: null,
+      created_at: '2026-05-01T00:00:00Z',
+      updated_at: '2026-05-01T00:00:00Z',
+    }
+    const trip: Trip = {
+      ...base,
+      phases: base.phases.map(p => p.phase_event_id === activation.phase_event_id ? activationWithFixes : p),
+      exceptions: [...base.exceptions, gpsMismatch],
+    }
+
+    render(
+      <TripTimeline trip={trip} precincts={mockPrecincts} returnTo="/trips" lastUpdated={null} onJump={vi.fn()} {...evidence} />,
+    )
+
+    const activationRow = within(screen.getByRole('group', { name: 'Activation phase and exceptions' }))
+    fireEvent.click(activationRow.getByRole('button', { name: /1 exception · 0 need review/ }))
+    // Opens the "Supporting evidence" disclosure too, so a still-hidden duplicate inside
+    // it cannot pass this assertion by staying collapsed.
+    fireEvent.click(activationRow.getByText('Supporting evidence'))
+
+    const mapButtons = activationRow.getAllByRole('button', { name: VIEW_ON_MAP_LABEL })
+    expect(mapButtons).toHaveLength(1)
+    // Proves the button now lives inside the exception's own card, not as a sibling
+    // element floating below it.
+    expect(mapButtons[0]!.closest('article')).not.toBeNull()
   })
 })
 
@@ -278,6 +338,39 @@ describe('TripTimeline: transit journey summary stays outside disclosure', () =>
     // entirely in the persistent summary now (review round 1 caught this rendering
     // twice, once here and once in InTransitTimeline's own node).
     expect(within(row).getAllByText(/En route to FedEx DBN/)).toHaveLength(1)
+  })
+
+  it('offers a current-leg strip only after its active row leaves the timeline scroller', () => {
+    const observe = vi.fn()
+    const disconnect = vi.fn()
+    let notify: ((entries: IntersectionObserverEntry[]) => void) | undefined
+    let observerRoot: Element | Document | null | undefined
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(callback: (entries: IntersectionObserverEntry[]) => void, options?: IntersectionObserverInit) {
+        notify = callback
+        observerRoot = options?.root ?? null
+      }
+      observe = observe
+      disconnect = disconnect
+      unobserve = vi.fn()
+      takeRecords = () => []
+      root = null
+      rootMargin = ''
+      thresholds = []
+    })
+    const onJump = vi.fn()
+    const rendered = render(<div data-timeline-scroller><TripTimeline trip={tripFor(TRIP_0041_ID)} precincts={mockPrecincts} returnTo="/trips" lastUpdated={null} onJump={onJump} {...evidence} /></div>)
+
+    expect(screen.queryByRole('button', { name: 'Show current leg' })).not.toBeInTheDocument()
+    act(() => notify?.([{ isIntersecting: false } as IntersectionObserverEntry]))
+    expect(screen.getByRole('button', { name: 'Show current leg' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Show current leg' }))
+    expect(onJump).toHaveBeenCalledOnce()
+    expect(observe).toHaveBeenCalledOnce()
+    expect(observerRoot).toBe(rendered.container.querySelector('[data-timeline-scroller]'))
+    rendered.unmount()
+    expect(disconnect).toHaveBeenCalledOnce()
+    vi.unstubAllGlobals()
   })
 
   it('shows no journey summary or invented status on a cancelled trip\'s in-transit leg', () => {
@@ -314,8 +407,8 @@ describe('TripTimeline: transit journey summary stays outside disclosure', () =>
     )
 
     const row = phaseGroupElement('In Transit')
-    // "Arrived" only ever appears as part of TransitJourneySummary's own 'complete'
-    // wording (see the component) — its absence here, alongside the "En route"
+    // "Arrived" only ever appears as the journey mini-timeline's own completed-leg
+    // node (see InTransitTimeline) — its absence here, alongside the "En route"
     // wording below, proves the summary read this as a leg that departed but never
     // arrived, not as a completed leg dated by the override timestamp. (The row's own
     // unrelated header still prints phase.completed_at for every phase type — that is
@@ -338,12 +431,12 @@ describe('TripTimeline: transit journey summary stays outside disclosure', () =>
     )
 
     const row = phaseGroupElement('In Transit')
-    expect(within(row).getByText('1 critical exception')).toBeInTheDocument()
-    // The old full-card rendering must be gone for this phase type: the compact
-    // summary is now the only place this exception is represented on the timeline.
+    // One journey marker for the leg's own exception; the trip-level record is not
+    // this leg's and must not appear on it.
+    expect(within(row).getAllByTestId('transit-exception-marker')).toHaveLength(1)
+    expect(within(row).getByRole('button', { name: /1 exception · 0 need review/ })).toHaveTextContent('Critical')
+    // The full card is behind the branch toggle, never an unconditional stack below.
     expect(screen.queryAllByRole('group', { name: 'Exception linked to In Transit phase' })).toHaveLength(0)
-
-    fireEvent.click(within(row).getByRole('button', { name: /view exceptions/i }))
   })
 
   it('scopes each of two transit legs to its own exceptions by phase id, even when a later leg returns to the same precinct', () => {
@@ -359,14 +452,14 @@ describe('TripTimeline: transit journey summary stays outside disclosure', () =>
 
     // Leg 1 departs FedEx JHB and arrives FedEx DBN.
     expect(leg1Row.getByText(/FedEx DBN/)).toBeInTheDocument()
-    expect(leg1Row.getByText('1 critical exception')).toBeInTheDocument()
-    expect(leg1Row.queryByText(/warning exception/)).not.toBeInTheDocument()
+    expect(leg1Row.getByRole('button', { name: /1 exception/ })).toHaveTextContent('Critical')
+    expect(leg1Row.getByRole('button', { name: /1 exception/ })).not.toHaveTextContent('Warning')
 
     // Leg 2 departs FedEx DBN and arrives back at FedEx JHB — the repeated stop.
     // Its exception must not leak from, or into, leg 1's row.
     expect(leg2Row.getByText(/FedEx JHB/)).toBeInTheDocument()
-    expect(leg2Row.getByText('1 warning exception')).toBeInTheDocument()
-    expect(leg2Row.queryByText(/critical exception/)).not.toBeInTheDocument()
+    expect(leg2Row.getByRole('button', { name: /1 exception/ })).toHaveTextContent('Warning')
+    expect(leg2Row.getByRole('button', { name: /1 exception/ })).not.toHaveTextContent('Critical')
 
     expect(screen.queryAllByRole('group', { name: /^Exception linked to In Transit phase/ })).toHaveLength(0)
   })
@@ -432,13 +525,27 @@ describe('TripTimeline: transit journey summary stays outside disclosure', () =>
 
     const row = phaseGroupElement('In Transit')
     expect(within(row).getAllByTestId('transit-exception-marker')).toHaveLength(1)
-    fireEvent.click(within(row).getByRole('button', { name: '1 exception · 0 need review' }))
+    fireEvent.click(within(row).getByRole('button', { name: /1 exception · 0 need review/ }))
     expect(within(row).getByText('Vehicle deviated from the planned route.')).toBeInTheDocument()
     expect(within(row).getAllByTestId('transit-exception-marker')).toHaveLength(1)
   })
 })
 
 describe('TripTimeline: phase exception disclosure', () => {
+  it('deduplicates the full collection before phase and trip-level records are derived', () => {
+    const base = tripFor(TRIP_0035_ID)
+    const loading = base.phases.find(phase => phase.phase_type === 'loading')
+    if (!loading) throw new Error('TRIP_0035 loading phase is missing')
+    const tripRecord = makeTransitException({ id: 'conflicting-poll-record' as ExceptionId, phase_event_id: null, severity: 'warning' })
+    const conflictingPhaseCopy = { ...tripRecord, phase_event_id: loading.phase_event_id, description: 'Conflicting phase payload' }
+
+    render(<TripTimeline trip={{ ...base, exceptions: [...base.exceptions, tripRecord, conflictingPhaseCopy] }} precincts={mockPrecincts} returnTo="/trips" lastUpdated={null} onJump={vi.fn()} {...evidence} />)
+
+    expect(phaseGroupElement('Loading')).toHaveAccessibleName('Loading phase')
+    const tripEvents = screen.getByRole('region', { name: 'Trip-level events' })
+    expect(within(tripEvents).getAllByRole('heading', { name: 'Route Deviation' })).toHaveLength(1)
+  })
+
   it('keeps phase and exception disclosure independent, deduplicates cards, and opens the matching panel filter', () => {
     const base = tripFor(TRIP_0035_ID)
     const loading = base.phases.find(phase => phase.phase_type === 'loading')
@@ -453,7 +560,7 @@ describe('TripTimeline: phase exception disclosure', () => {
 
     const row = phaseGroupElement('Loading')
     const phaseToggle = within(row).getAllByRole('button', { expanded: false })[0]!
-    const exceptionToggle = within(row).getByRole('button', { name: '2 exceptions · 1 needs review' })
+    const exceptionToggle = within(row).getByRole('button', { name: /2 exceptions · 1 needs review/ })
     expect(exceptionToggle).toHaveAttribute('aria-expanded', 'false')
 
     fireEvent.click(exceptionToggle)
@@ -461,7 +568,11 @@ describe('TripTimeline: phase exception disclosure', () => {
     expect(phaseToggle).toHaveAttribute('aria-expanded', 'false')
     expect(within(row).getAllByText('Route Deviation')).toHaveLength(2)
 
-    fireEvent.click(within(row).getByRole('button', { name: 'View in panel' }))
+    // One trigger per card now, not one shared link below the group — both exceptions
+    // in this phase carry it, and either opens the same phase-scoped panel.
+    const panelButtons = within(row).getAllByRole('button', { name: 'Open in exceptions panel' })
+    expect(panelButtons).toHaveLength(2)
+    fireEvent.click(panelButtons[0]!)
     expect(onOpenExceptions).toHaveBeenCalledWith(loading.phase_event_id)
   })
 
@@ -473,10 +584,10 @@ describe('TripTimeline: phase exception disclosure', () => {
     const trip: Trip = { ...base, exceptions: [...base.exceptions, finding] }
 
     const { rerender } = render(<TripTimeline trip={trip} precincts={mockPrecincts} returnTo="/trips" lastUpdated={1} onJump={vi.fn()} onOpenExceptions={vi.fn()} {...evidence} />)
-    const toggle = within(phaseGroupElement('Loading')).getByRole('button', { name: '1 exception · 0 need review' })
+    const toggle = within(phaseGroupElement('Loading')).getByRole('button', { name: /1 exception · 0 need review/ })
     fireEvent.click(toggle)
 
     rerender(<TripTimeline trip={{ ...trip }} precincts={mockPrecincts} returnTo="/trips" lastUpdated={2} onJump={vi.fn()} onOpenExceptions={vi.fn()} {...evidence} />)
-    expect(within(phaseGroupElement('Loading')).getByRole('button', { name: '1 exception · 0 need review' })).toHaveAttribute('aria-expanded', 'true')
+    expect(within(phaseGroupElement('Loading')).getByRole('button', { name: /1 exception · 0 need review/ })).toHaveAttribute('aria-expanded', 'true')
   })
 })

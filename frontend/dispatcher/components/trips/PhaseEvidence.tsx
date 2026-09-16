@@ -10,7 +10,7 @@ import { LoadingDetail } from '@/components/domain/LoadingDetail'
 import { DepartureDetail } from '@/components/domain/DepartureDetail'
 import { UnloadingDetail } from '@/components/domain/UnloadingDetail'
 import { ConfirmationDetail } from '@/components/domain/ConfirmationDetail'
-import { InTransitTimeline } from '@/components/domain/InTransitTimeline'
+import { InTransitArrivalLocation } from '@/components/domain/InTransitTimeline'
 import { PhaseOverrideAction } from '@/components/domain/PhaseOverrideAction'
 import { countAtStop, precinctAtPhase } from '@/lib/phase/trip-detail'
 import { originScannedCount } from '@/lib/phase/derive'
@@ -42,13 +42,10 @@ export function PhaseEvidence({ trip, phase, precincts, onChanged, ...evidence }
       sealException={trip.exceptions.find(e => e.phase_event_id === phase.phase_event_id && (e.exception_type === 'seal_mismatch' || e.exception_type === 'seal_unverified'))} />; break
     case 'confirmation': content = <ConfirmationDetail {...shared} precinct={precinct} originScannedCount={originScannedCount(trip.phases)} />; break
     case 'in_transit':
-      // Departure/arrival facts and compact exception markers stay outside disclosure
-      // (TransitJourneySummary, task 9's persistentContent, built in TripTimeline using
-      // this module's own nextTripStop) — this body owns only full per-exception detail
-      // (currently dormant: PhaseEvidence has no full-card link to open into yet) and
-      // arrival-location evidence, so it needs neither origin/destination names nor the
-      // full phase list.
-      content = <InTransitTimeline phase={phase} exceptions={[]} artifactsById={evidence.artifactsById} />
+      // The journey mini-timeline sits OUTSIDE disclosure (TripTimeline renders it as
+      // the row's persistentContent, using this module's nextTripStop for the
+      // destination), so the only thing left behind the toggle is the arrival fix.
+      content = <InTransitArrivalLocation phase={phase} />
       break
   }
   return <>{content}{phase.phase_type !== 'trip_creation' && <PhaseOverrideAction phase={phase} tripId={trip.id} tripStatus={trip.status} onOverridden={onChanged} />}</>

@@ -2,151 +2,140 @@
 
 import { Ic } from '@/components/ui/Ic'
 import { Chip } from '@/components/ui/Chip'
-import { ExceptionEvidence } from './ExceptionEvidence'
 import { PhaseLocationSection } from './PhaseLocationSection'
+import { legDepartureAt } from '@/lib/phase/derive'
 import { hasAnyFix, locationEvidenceForPhase } from '@/lib/phase/location-evidence'
 import { fmtExceptionType } from '@/lib/format/exception'
 import { fmtDateTime } from '@shared/lib/utils/datetime'
-import { EXCEPTION_SEVERITY_META, EXCEPTION_SOURCE_META } from '@shared/lib/constants/status-meta'
-import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
+import { EXCEPTION_SEVERITY_META } from '@shared/lib/constants/status-meta'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { TripException } from '@shared/lib/types/exception'
 
 interface Props {
   phase: PhaseDescriptor
-  // Exceptions belonging to this leg. Placement is currently approximate — see the page.
-  exceptions: TripException[]
-  // This leg renders its exceptions in full rather than as bare labels, so it needs the
-  // artifact map for the same reason the standalone exception cards do.
-  artifactsById: Map<string, EvidenceArtifactWithUrl>
+  // Needed to date this leg from its OWN departure — see legDepartureAt. The in-transit
+  // row cannot date itself: its created_at is plan-generation time, not departure time.
+  allPhases: readonly PhaseDescriptor[]
+  // Exceptions belonging to this leg, already scoped to its phase_event_id and sorted
+  // chronologically by the caller. Rendered here as dated markers only: the full card
+  // (description, source, artifacts, review link) lives in the phase's exception branch
+  // below the row, so nothing is duplicated and nothing is dropped.
+  exceptions: readonly TripException[]
+  originName: string
+  destinationName: string
 }
 
 type MiniNode = {
   key: string
-  kind: 'exception'
+  kind: 'departed' | 'exception' | 'arrived' | 'awaiting'
   label: string
   timestamp: string | null
-  detail?: string
-  // Carried whole, not flattened to a label — the panic button is exactly the type
-  // most likely to carry a photo and a GPS fix.
-  exception: TripException
+  exception?: TripException
 }
 
 /**
- * The expanded detail body for one in-transit leg: full per-exception evidence
- * (severity, source, review status, artifacts) plus the arrival-location section.
+ * The journey between two stops, rendered outside the phase card's disclosure so a
+ * dispatcher never has to open a leg to see whether the truck has departed, what
+ * happened en route, and whether it has arrived.
  *
- * Departure and arrival facts — "Departed X", "En route to Y", "Arrived Y" — live
- * ENTIRELY in `TransitJourneySummary` (task 9's `persistentContent`), which is visible
- * whether or not this body is expanded. This component must never repeat them: a
- * review round on this task caught exactly that duplication (an expanded, or
- * always-open driving, leg showing the same departure/arrival line twice), so there is
- * no departure/arrival rendering here at all, deliberately.
- *
- * Exception markers are likewise compact and outside disclosure in
- * `TransitJourneySummary` (timestamp, label, severity, a link to the panel — no
- * description, no artifacts, no full cards, per the plan's binding spec text). What
- * remains here is the genuinely-expanded-only detail: the full evidence for an
- * exception a dispatcher has chosen to look into, and the leg's own recorded
- * coordinates. `PhaseEvidence` passes `exceptions={[]}` today (no full card exists
- * yet to open into), so this scaffold is presently dormant rather than dead — it is
- * where that full per-exception detail belongs once something links into it.
+ * Two provable movement nodes today: departure (the preceding departure phase's
+ * completion) and arrival (this leg's completion). Weighbridges, driver and vehicle
+ * substitutions and periodic checkpoints are all Pulsit- or checkpoint-sourced and are
+ * absent rather than faked. The node list is built to extend.
  */
-export function InTransitTimeline({
-  phase, exceptions, artifactsById,
-}: Props) {
-  // undefined, not the destination precinct: this leg's stop is the ORIGIN it departed
-  // from, so a boundary drawn from the destination would compare an arrival fix against
-  // the wrong fence (see the brief's binding rule on in-transit). The stored verdict is
-  // also never present here (verdictFor already reads in_transit as
-  // 'no_verdict_for_phase' unless the backend stored one), which is the explicit absence
-  // this section exists to show, not to fill in.
-  const arrivalEvidence = locationEvidenceForPhase(phase, undefined)
+export function InTransitTimeline({ phase, allPhases, exceptions, originName, destinationName }: Props) {
+  const departedAt = legDepartureAt(allPhases, phase)
 
-  const nodes: MiniNode[] = exceptions.map((exc): MiniNode => ({
+  // Built in three cases rather than two nested ternaries, because "not yet departed" is
+  // a real third state: the truck is still at origin, so it is neither departed NOR en
+  // route, and claiming either would be the same class of lie as dating the departure
+  // from plan-generation time.
+  const nodes: MiniNode[] = []
+
+  if (departedAt === null) {
+    nodes.push({ key: 'awaiting-departure', kind: 'awaiting', label: `Awaiting departure from ${originName}`, timestamp: null })
+  } else {
+    nodes.push({ key: 'departed', kind: 'departed', label: `Departed ${originName}`, timestamp: departedAt })
+  }
+
+  nodes.push(...exceptions.map((exc): MiniNode => ({
     key: exc.id,
     kind: 'exception',
     label: fmtExceptionType(exc.exception_type),
     timestamp: exc.created_at,
-    detail: exc.description,
     exception: exc,
-  }))
+  })))
+
+  // An overridden leg has completed_at stamped by the override, not by an arrival, so
+  // it must not read as "Arrived" — see legStateFor's precedent in the phase card.
+  if (phase.completed_at && phase.status !== 'overridden') {
+    nodes.push({ key: 'arrived', kind: 'arrived', label: `Arrived ${destinationName}`, timestamp: phase.completed_at })
+  } else if (departedAt !== null) {
+    nodes.push({ key: 'awaiting', kind: 'awaiting', label: `En route to ${destinationName}`, timestamp: null })
+  }
+
+  const dotStyle: Record<MiniNode['kind'], string> = {
+    departed:  'bg-ok',
+    exception: 'bg-warn',
+    arrived:   'bg-ok',
+    awaiting:  'bg-sec animate-pulse',
+  }
 
   return (
     <div className="mt-3 pt-3 border-t border-outline-v/20">
-      {nodes.length > 0 && <>
-        <div className="text-[10px] font-[700] tracking-[0.09em] uppercase text-on-surf-v mb-[8px]">
-          Journey
-        </div>
+      <div className="text-[10px] font-[700] tracking-[0.09em] uppercase text-on-surf-v mb-[8px]">
+        Journey
+      </div>
 
-        {nodes.map((node, i) => (
-          <div key={node.key} className="flex gap-[10px]">
-            <div className="flex flex-col items-center shrink-0">
-              <div className="w-[8px] h-[8px] rounded-full mt-[5px] bg-warn" />
-              {i < nodes.length - 1 && <div className="w-0.5 flex-1 min-h-[16px] my-[3px] bg-outline-v/30" />}
-            </div>
+      {nodes.map((node, i) => (
+        <div key={node.key} className="flex gap-[10px]" data-testid={node.kind === 'exception' ? 'transit-exception-marker' : undefined}>
+          <div className="flex flex-col items-center shrink-0">
+            <div className={`w-[8px] h-[8px] rounded-full mt-[5px] ${dotStyle[node.kind]}`} />
+            {i < nodes.length - 1 && <div className="w-0.5 flex-1 min-h-[16px] my-[3px] bg-outline-v/30" />}
+          </div>
 
-            <div className="flex-1 pb-[8px] min-w-0">
-              <div className="flex items-baseline justify-between gap-3">
-                <span className="text-[12px] font-[600] text-warn-onc">
-                  {node.label}
-                </span>
-                <span className="text-[11px] font-[600] text-sec tabular-nums shrink-0">
-                  {fmtDateTime(node.timestamp)}
-                </span>
-              </div>
-
-              {/* Parity with a standalone exception card. Without these, an exception
-                  that happened to fall on a transit leg silently lost its severity, its
-                  source and every artifact the driver captured — while the identical
-                  exception on any other phase kept all three. */}
-              <div className="flex items-center gap-[6px] mt-[3px]">
-                <Chip
+          <div className="flex-1 pb-[8px] min-w-0">
+            <div className="flex items-baseline justify-between gap-3">
+              <span className={`flex min-w-0 flex-wrap items-center gap-[6px] text-[12px] font-[600] ${
+                node.kind === 'exception' ? 'text-warn-onc' : 'text-on-surf'
+              }`}>
+                {node.label}
+                {node.exception && <Chip
                   type={EXCEPTION_SEVERITY_META[node.exception.severity].chipType}
                   label={EXCEPTION_SEVERITY_META[node.exception.severity].label}
-                />
-                <span className="text-[10px] font-[500] text-on-surf-v">
-                  {EXCEPTION_SOURCE_META[node.exception.source].label}
-                </span>
-              </div>
-
-              {node.detail && (
-                <div className="text-[11px] text-on-surf-v mt-[2px]">{node.detail}</div>
-              )}
-
-              {node.exception.review_status === 'reviewed' && (
-                <div className="text-[11px] text-ok mt-[3px] flex items-center gap-[4px]">
-                  <Ic n="check" s={11} className="text-ok" />
-                  {node.exception.review_note
-                    ? `Resolved · ${node.exception.review_note}`
-                    : 'Resolved'}
-                </div>
-              )}
-
-              <ExceptionEvidence exception={node.exception} artifactsById={artifactsById} />
+                />}
+              </span>
+              <span className="text-[11px] font-[600] text-sec tabular-nums shrink-0">
+                {fmtDateTime(node.timestamp)}
+              </span>
             </div>
           </div>
-        ))}
-      </>}
+        </div>
+      ))}
 
       {/* Named absence. Without this the card silently implies nothing happened en
-          route. Deliberately generic rather than naming a specific integration
-          (Pulsit, weighbridges, checkpoints): this line must never read as a promise
-          that a continuous live route exists, or that any particular future source is
-          about to fill the gap — only that nothing beyond what was actually recorded
-          is being claimed here. */}
+          route. Deliberately generic rather than naming a specific integration: this
+          line must never read as a promise that a continuous live route exists. */}
       <div className="flex items-center gap-[6px] text-[10px] text-on-surf-v mt-[2px]">
         <Ic n="clock" s={10} className="text-on-surf-v" />
         Only recorded journey events are shown.
       </div>
-
-      {/* precinct is deliberately undefined (see arrivalEvidence above): no boundary is
-          ever drawn for a transit leg. The verdict line reads "No geofence verdict is
-          recorded for transit legs", which is the required explicit absence: a fix may
-          exist, but nothing here is allowed to imply it was checked against a fence. */}
-      {hasAnyFix(arrivalEvidence) && (
-        <PhaseLocationSection phase={phase} precinct={undefined} title="Recorded location at arrival" />
-      )}
     </div>
   )
+}
+
+/**
+ * The leg's own recorded coordinates at arrival, kept inside the card's disclosure:
+ * full fixes are detail, not the at-a-glance journey above.
+ *
+ * precinct is deliberately undefined: this leg's stop is the ORIGIN it departed from,
+ * so a boundary drawn from the destination would compare an arrival fix against the
+ * wrong fence (see the brief's binding rule on in-transit). The verdict line reads
+ * "No geofence verdict is recorded for transit legs" — a fix may exist, but nothing
+ * here is allowed to imply it was checked against a fence.
+ */
+export function InTransitArrivalLocation({ phase }: { phase: PhaseDescriptor }) {
+  const arrivalEvidence = locationEvidenceForPhase(phase, undefined)
+  if (!hasAnyFix(arrivalEvidence)) return null
+  return <PhaseLocationSection phase={phase} precinct={undefined} title="Recorded location at arrival" />
 }

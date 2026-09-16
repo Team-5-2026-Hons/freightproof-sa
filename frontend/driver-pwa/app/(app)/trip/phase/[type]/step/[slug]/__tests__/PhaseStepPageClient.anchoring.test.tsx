@@ -89,6 +89,12 @@ function SubmitConfirmationStub({ onComplete }: { onComplete: () => void }) {
   return <button onClick={onComplete}>submit-confirmation</button>
 }
 
+async function continuePastUnavailableLocationCheck(): Promise<void> {
+  // Location comparison is best-effort. These tests exercise what happens after
+  // a driver deliberately continues when comparison data is unavailable.
+  fireEvent.click(await screen.findByRole('button', { name: 'Continue' }))
+}
+
 vi.mock('@/components/phase/steps/registry', () => ({
   stepComponentFor: (phaseType: string, slug: string) => {
     if (phaseType === 'departure' && slug === '4-departure') return SubmitDepartureStub
@@ -191,6 +197,7 @@ describe('PhaseStepPageClient anchoring receipt copy — real mode', () => {
 
     render(<PhaseStepPageClient />)
     fireEvent.click(screen.getByText('submit-departure'))
+    await continuePastUnavailableLocationCheck()
 
     await waitFor(() =>
       expect(mockNotify).toHaveBeenCalledWith(
@@ -218,6 +225,7 @@ describe('PhaseStepPageClient anchoring receipt copy — real mode', () => {
 
     render(<PhaseStepPageClient />)
     fireEvent.click(screen.getByText('submit-confirmation'))
+    await continuePastUnavailableLocationCheck()
 
     await waitFor(() =>
       expect(mockNotify).toHaveBeenCalledWith(
@@ -242,6 +250,7 @@ describe('PhaseStepPageClient anchoring receipt copy — real mode', () => {
 
     render(<PhaseStepPageClient />)
     fireEvent.click(screen.getByText('submit-departure'))
+    await continuePastUnavailableLocationCheck()
 
     await waitFor(() =>
       expect(mockNotify).toHaveBeenCalledWith(
@@ -265,6 +274,7 @@ describe('PhaseStepPageClient anchoring receipt copy — real mode', () => {
 
     render(<PhaseStepPageClient />)
     fireEvent.click(screen.getByText('submit-departure'))
+    await continuePastUnavailableLocationCheck()
 
     await waitFor(() => expect(mockEnqueuePhase).toHaveBeenCalled())
     expect(mockNotify).toHaveBeenCalledWith(
@@ -284,6 +294,7 @@ describe('PhaseStepPageClient anchoring receipt copy — real mode', () => {
 
     render(<PhaseStepPageClient />)
     fireEvent.click(screen.getByText('submit-departure'))
+    await continuePastUnavailableLocationCheck()
 
     await waitFor(() =>
       expect(mockNotify).toHaveBeenCalledWith(expect.objectContaining({ kind: 'error' })),

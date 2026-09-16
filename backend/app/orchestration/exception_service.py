@@ -614,6 +614,10 @@ def _to_list_item(
         trip_status=trip.status,
         phase_label=phase_type,
         stop_label=stop_sequence,
+        # This is the capture-time verdict stored with the driver report, not a
+        # present-day recomputation. Dispatcher list and detail responses share this
+        # projection so either surface can explain what evidence was available then.
+        action_location_assessment=exc.action_location_assessment,
     )
 
 

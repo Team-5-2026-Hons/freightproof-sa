@@ -12,6 +12,7 @@ import {
   hasComparison,
   hasLocationEvidence,
   isValidCoords,
+  locationEvidenceForAssessment,
   locationEvidenceForPhase,
 } from './location-evidence'
 
@@ -231,11 +232,72 @@ describe('locationEvidenceForPhase: verdict', () => {
   })
 
   it('exposes VERDICT_LABELS for every verdict value', () => {
-    expect(VERDICT_LABELS.within_tolerance).toBe('Within accepted tolerance')
-    expect(VERDICT_LABELS.outside_tolerance).toBe('Outside accepted tolerance')
-    expect(VERDICT_LABELS.not_verified).toBe('Not verified')
-    expect(VERDICT_LABELS.not_checked_yet).toBe('Not checked yet')
-    expect(VERDICT_LABELS.no_verdict_for_phase).toBe('No geofence verdict is recorded for transit legs')
+    expect(VERDICT_LABELS.within_tolerance).toBe('Truck within precinct tolerance')
+    expect(VERDICT_LABELS.outside_tolerance).toBe('Truck outside precinct tolerance')
+    expect(VERDICT_LABELS.not_verified).toBe('Truck precinct check unavailable')
+    expect(VERDICT_LABELS.not_checked_yet).toBe('Truck precinct check unavailable')
+    expect(VERDICT_LABELS.no_verdict_for_phase).toBe('Truck precinct check unavailable for transit legs')
+  })
+})
+
+describe('locationEvidenceForPhase: persisted assessment', () => {
+  it('uses recorded proximity, geometry and tracker time without recomputing a legacy verdict', () => {
+    const phase = makePhase('departure', {
+      pulsit_geofence_confirmed: true,
+      action_location_assessment: {
+        schema_version: 1, policy_version: 'proximity-v1', evaluated_at: '2026-03-01T08:01:00Z',
+        driver_lat: CAPE_TOWN.lat, driver_lng: CAPE_TOWN.lng, driver_captured_at: '2026-03-01T08:00:00Z', driver_accuracy_metres: 5,
+        tracker_lat: NORTH_1KM.lat, tracker_lng: NORTH_1KM.lng, tracker_captured_at: '2026-03-01T08:00:10Z',
+        separation_metres: 7_900, proximity: 'separated', reasons: [], max_separation_metres: 100, max_age_seconds: 60, max_skew_seconds: 30, max_phone_accuracy_metres: 50,
+        expected_trip_stop_id: null, precinct_id: 'precinct-1', precinct_lat: CAPE_TOWN.lat, precinct_lng: CAPE_TOWN.lng, precinct_radius_metres: 200, precinct_tolerance_metres: 50,
+        driver_in_precinct: true, truck_in_precinct: true,
+      },
+    })
+    const evidence = locationEvidenceForPhase(phase, PRECINCT)
+    expect(evidence.verdict).toBe('within_tolerance')
+    expect(evidence.proximity).toBe('separated')
+    expect(evidence.separationMetres).toBe(7_900)
+    expect(evidence.trackerFix?.capturedAt).toBe('2026-03-01T08:00:10Z')
+    expect(evidence.boundary?.provenance).toBe('recorded_snapshot')
+    expect(evidence.boundary?.policyVersion).toBe('proximity-v1')
+  })
+
+  it('does not mix a partial recorded assessment with older phase coordinates', () => {
+    const phase = makePhase('departure', {
+      driver_phone_lat: CAPE_TOWN.lat, driver_phone_lng: CAPE_TOWN.lng, driver_captured_at: '2026-02-01T08:00:00Z',
+      action_location_assessment: {
+        schema_version: 1, policy_version: 'proximity-v1', evaluated_at: '2026-03-01T08:01:00Z',
+        driver_lat: null, driver_lng: null, driver_captured_at: null, driver_accuracy_metres: null,
+        tracker_lat: NORTH_1KM.lat, tracker_lng: NORTH_1KM.lng, tracker_captured_at: null,
+        separation_metres: null, proximity: 'unverified', reasons: ['missing_phone'], max_separation_metres: 100, max_age_seconds: 60, max_skew_seconds: 30, max_phone_accuracy_metres: 50,
+        expected_trip_stop_id: null, precinct_id: null, precinct_lat: null, precinct_lng: null, precinct_radius_metres: null, precinct_tolerance_metres: null,
+        driver_in_precinct: null, truck_in_precinct: null,
+      },
+    })
+    const evidence = locationEvidenceForPhase(phase, PRECINCT)
+    expect(evidence.driverFix).toBeNull()
+    // The persisted snapshot owns timing too: an absent capture remains absent rather
+    // than silently acquiring a timestamp from an older phase column.
+    expect(evidence.trackerFix?.capturedAt).toBeNull()
+    // The current precinct is only a legacy reference. A partial snapshot must not
+    // make it appear to be the geometry evaluated at the historical action.
+    expect(evidence.boundary).toBeNull()
+    expect(evidence.assessmentRecorded).toBe(true)
+  })
+
+  it('keeps a persisted null driver capture time unavailable instead of borrowing phase time', () => {
+    const phase = makePhase('departure', {
+      driver_phone_lat: NORTH_1KM.lat, driver_phone_lng: NORTH_1KM.lng, driver_captured_at: '2026-02-01T08:00:00Z',
+      action_location_assessment: {
+        schema_version: 1, policy_version: 'proximity-v1', evaluated_at: '2026-03-01T08:01:00Z',
+        driver_lat: CAPE_TOWN.lat, driver_lng: CAPE_TOWN.lng, driver_captured_at: null, driver_accuracy_metres: null,
+        tracker_lat: null, tracker_lng: null, tracker_captured_at: null,
+        separation_metres: null, proximity: 'unverified', reasons: ['missing_time'], max_separation_metres: 100, max_age_seconds: 60, max_skew_seconds: 30, max_phone_accuracy_metres: 50,
+        expected_trip_stop_id: null, precinct_id: null, precinct_lat: null, precinct_lng: null, precinct_radius_metres: null, precinct_tolerance_metres: null,
+        driver_in_precinct: null, truck_in_precinct: null,
+      },
+    })
+    expect(locationEvidenceForPhase(phase, PRECINCT).driverFix?.capturedAt).toBeNull()
   })
 })
 
@@ -364,5 +426,32 @@ describe('boundaryInDefaultFrame', () => {
     )
 
     expect(boundaryInDefaultFrame(evidence)).toBeNull()
+  })
+})
+
+describe('locationEvidenceForAssessment: a snapshot that is not a phase', () => {
+  // A driver's exception report or a checkpoint finding carries its own capture-time
+  // comparison. There is no phase geofence verdict to honour for it, so the verdict is
+  // the plain "unavailable" one — never the transit-leg or not-checked-yet explanations,
+  // which describe a phase this capture is not.
+  it('draws both fixes and the recorded proximity from the snapshot alone, with the plain unavailable verdict', () => {
+    const evidence = locationEvidenceForAssessment({
+      schema_version: 1, policy_version: 'proximity-v1', evaluated_at: '2026-03-01T08:01:00Z',
+      driver_lat: CAPE_TOWN.lat, driver_lng: CAPE_TOWN.lng, driver_captured_at: '2026-03-01T08:00:00Z', driver_accuracy_metres: 5,
+      tracker_lat: NORTH_1KM.lat, tracker_lng: NORTH_1KM.lng, tracker_captured_at: '2026-03-01T08:00:10Z',
+      separation_metres: 1_000, proximity: 'separated', reasons: [], max_separation_metres: 100, max_age_seconds: 60, max_skew_seconds: 30, max_phone_accuracy_metres: 50,
+      expected_trip_stop_id: null, precinct_id: null, precinct_lat: null, precinct_lng: null, precinct_radius_metres: null, precinct_tolerance_metres: null,
+      driver_in_precinct: null, truck_in_precinct: null,
+    }, PRECINCT)
+
+    expect(evidence.driverFix?.coords).toEqual(CAPE_TOWN)
+    expect(evidence.trackerFix?.coords).toEqual(NORTH_1KM)
+    expect(evidence.separationMetres).toBe(1_000)
+    expect(evidence.proximity).toBe('separated')
+    expect(evidence.verdict).toBe('not_verified')
+    expect(evidence.assessmentRecorded).toBe(true)
+    // No recorded geometry means no boundary: the current precinct must not be
+    // recast as what was evaluated at capture time.
+    expect(evidence.boundary).toBeNull()
   })
 })

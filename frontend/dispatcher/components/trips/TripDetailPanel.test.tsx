@@ -73,6 +73,26 @@ describe('TripDetailPanel precinct preview placement', () => {
   })
 })
 
+describe('TripDetailPanel exception badge', () => {
+  it('does not inflate the exceptions tab badge when a polling merge repeats a record', () => {
+    const repeated = activeTrip.exceptions[0]
+    if (!repeated) throw new Error('active trip exception fixture is missing')
+    const originalMatchMedia = window.matchMedia
+    window.matchMedia = vi.fn().mockReturnValue({
+      matches: true, media: '(min-width: 1280px)', onchange: null,
+      addEventListener: () => {}, removeEventListener: () => {},
+      addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
+    })
+
+    try {
+      renderPanel(vi.fn(), { ...activeTrip, exceptions: [repeated, { ...repeated }] })
+      expect(screen.getByRole('tab', { name: 'Exceptions 1' })).toBeInTheDocument()
+    } finally {
+      window.matchMedia = originalMatchMedia
+    }
+  })
+})
+
 describe('TripDetailPanel cancellation dialog placement', () => {
   it('opens the cancellation dialog as a sibling of the overlay, not nested inside its dialog', async () => {
     // Same defect as the precinct preview above: below the dock width DetailPanel wraps

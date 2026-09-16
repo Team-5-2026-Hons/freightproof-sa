@@ -208,12 +208,9 @@ class DriverExceptionCreateBody(BaseModel):
     # capture failure must not block the alert itself from sending.
     gps_lat: Optional[float] = Field(default=None, ge=-90, le=90)
     gps_lng: Optional[float] = Field(default=None, ge=-180, le=180)
-    # R8 (Task 5): mirrors _PhaseCompleteBase.driver_accuracy_metres — the phone's own
-    # claimed accuracy at gps_lat/lng. NOT wired to build an assessment by this story
-    # (exception_service.py is outside Task 5's scope — see orchestration/
-    # action_location_service.py's module docstring); accepted and validated now so a
-    # later task can populate exceptions.action_location_assessment (R13) without a
-    # client-facing schema change.
+    # Mirrors _PhaseCompleteBase.driver_accuracy_metres — the phone's own claimed
+    # accuracy at gps_lat/lng, used by exception_service to build the report's
+    # capture-time assessment.
     driver_accuracy_metres: Optional[float] = Field(default=None, ge=0)
     # The device timestamp belongs to this report's capture, not to its later queue
     # flush. Optional for legacy reports, whose assessment remains unverified.
@@ -305,9 +302,8 @@ class TripExceptionListItem(BaseModel):
     # Trip.current_phase (str) / Trip.current_stop (int) pairing in schemas/trips.py.
     phase_label: Optional[str] = None
     stop_label: Optional[int] = None
-    # Task 5 (R13): a driver exception report's own capture assessment, when one was
-    # built for it (not wired by this story — see DriverExceptionCreateBody.
-    # driver_accuracy_metres's comment). Inherited by TripExceptionDetail below.
+    # A driver exception report's own capture assessment, when one was built. This is
+    # projected by exception_service._to_list_item, then inherited by detail below.
     # Validated through ActionLocationAssessment, never served as a raw dict.
     action_location_assessment: Optional[ActionLocationAssessment] = None
 

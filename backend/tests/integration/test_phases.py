@@ -564,7 +564,7 @@ async def test_next_phase_tracks_the_ledger_and_returns_null_when_closed(client:
             json={
                 "phase_type": "confirmation",
                 "pod_photo_artifact_id": pod_photo_id, "pod_signature_artifact_id": pod_signature_id,
-                "driver_visual_count": 42, "pp_scan_in_count": 42,
+                "driver_visual_count": 42,
                 "idempotency_key": str(uuid.uuid4()),
             },
             headers=auth_header(token),
@@ -1014,7 +1014,7 @@ async def test_full_single_leg_walk_over_http_closes_the_trip(client: AsyncClien
             json={
                 "phase_type": "confirmation",
                 "pod_photo_artifact_id": pod_photo_id, "pod_signature_artifact_id": pod_signature_id,
-                "driver_visual_count": 42, "pp_scan_in_count": 42,
+                "driver_visual_count": 42,
                 "idempotency_key": str(uuid.uuid4()),
             },
             headers=auth_header(token),
@@ -1180,7 +1180,7 @@ async def test_empty_leg_trip_walks_to_closed(
             json={
                 "phase_type": "confirmation",
                 "pod_photo_artifact_id": pod_photo_id, "pod_signature_artifact_id": pod_signature_id,
-                "driver_visual_count": 0, "pp_scan_in_count": 0,
+                "driver_visual_count": 0,
                 "idempotency_key": str(uuid.uuid4()),
             },
             headers=auth_header(driver_token),

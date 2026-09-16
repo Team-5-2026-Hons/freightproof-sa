@@ -197,7 +197,7 @@ describe('LoadingDetail: location section', () => {
     )
 
     expect(screen.getByText('Location at loading')).toBeInTheDocument()
-    expect(screen.getByText('Outside accepted tolerance')).toBeInTheDocument()
+    expect(screen.getByText('Truck outside precinct tolerance')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: VIEW_ON_MAP_LABEL })).not.toBeInTheDocument()
   })
 })

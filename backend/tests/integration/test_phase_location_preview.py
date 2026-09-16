@@ -14,11 +14,15 @@ from app.db.models.phases import PhaseEvent, TrailerGpsSnapshot
 from app.db.models.people import Driver
 from app.db.models.transit import TripException
 from tests.conftest import auth_header, make_token
+from tests.integration.test_phase_corroboration import (  # noqa: F401
+    _corroboration_trip_fixture,
+    _pulsit_store_fixture,
+    override_get_db,
+)
 
-# Reuse the real Pulsit mock boundary and a fully planned trip fixture.  The
-# preview must be measured against the same adapter completion uses, not a test-only
-# replacement that could hide an accidental persistence call.
-pytest_plugins = ("tests.integration.test_phase_corroboration",)
+# Import fixture functions directly, matching test_gps_mismatch. A per-module
+# pytest_plugins declaration works when this file is collected alone, but not after
+# test_phase_corroboration has already been collected by the full suite.
 
 
 async def _phase_id(client: AsyncClient, trip_id: uuid.UUID, token: str) -> str:
