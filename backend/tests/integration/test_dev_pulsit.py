@@ -46,7 +46,7 @@ from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
 from app.integrations import pulsit as pulsit_module
 
-from tests.conftest import FakeMockStateStore, auth_header, make_jwks, make_token
+from tests.conftest import FakeMockStateStore, auth_header, make_jwks, make_token, production_settings
 
 _MOVE_URL = "/api/v1/dev/pulsit/move-truck"
 _WAYPOINTS_URL = "/api/v1/dev/pulsit/waypoints"
@@ -82,16 +82,18 @@ def _reload_with(*, panel: bool, mock: bool, environment: str = "development") -
     Restores every flag and reloads again on the way out, so a failure here cannot
     leave a poisoned app object for the rest of the suite.
     """
-    original = (settings.DEV_PANEL_ENABLED, settings.PULSE_USE_MOCK, settings.ENVIRONMENT)
-    settings.DEV_PANEL_ENABLED = panel
-    settings.PULSE_USE_MOCK = mock
-    settings.ENVIRONMENT = environment
-    try:
-        importlib.reload(app_main)
-        return _routes_with_prefix("/api/v1/dev/pulsit")
-    finally:
-        (settings.DEV_PANEL_ENABLED, settings.PULSE_USE_MOCK, settings.ENVIRONMENT) = original
-        importlib.reload(app_main)
+    # production_settings, not a bare ENVIRONMENT flip: app.main enforces the production
+    # preconditions at import time, so a reload under ENVIRONMENT="production" must also
+    # present a configuration production would actually be allowed to serve. In
+    # development the extra values it sets are inert.
+    with production_settings(
+        ENVIRONMENT=environment, DEV_PANEL_ENABLED=panel, PULSE_USE_MOCK=mock,
+    ):
+        try:
+            importlib.reload(app_main)
+            return _routes_with_prefix("/api/v1/dev/pulsit")
+        finally:
+            importlib.reload(app_main)
 
 
 def test_routes_registered_when_both_guards_pass() -> None:

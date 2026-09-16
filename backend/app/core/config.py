@@ -7,6 +7,16 @@ from typing import List
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+# The driver app's native shells reach this API from these two origins, and the PLATFORMS
+# fix them — we do not choose them. iOS keeps the capacitor:// scheme because WKWebView
+# reserves the schemes it handles natively; Android's androidScheme is https. Neither can
+# be collapsed into the other (frontend/driver-pwa/capacitor.config.ts explains at length).
+#
+# They live here, outside the Settings model, precisely so no .env can drop them — see
+# Settings.cors_allowed_origins for the incident that motivated this.
+_NATIVE_APP_ORIGINS = ("capacitor://localhost", "https://localhost")
+
+
 class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     # Database
@@ -273,42 +283,53 @@ class Settings(BaseSettings):
     # concurrently, so this is also roughly the endpoint's worst-case latency, and it
     # has to stay well inside whatever poll interval the orchestrator uses.
     HEALTH_PROBE_TIMEOUT_SECONDS: float = 2.0
+    # Browser origins this deployment serves. Deliberately does NOT list the driver app's
+    # native origins: those are not a deployment choice and are folded in unconditionally
+    # by cors_allowed_origins below.
     ALLOWED_ORIGINS: List[str] = [
         "http://localhost:3000",
         "http://localhost:3001",
-        # driver-pwa native shells (see frontend/driver-pwa/capacitor.config.ts):
-        # iOS keeps the capacitor:// scheme, Android is https:// — both required,
-        # neither can be collapsed into the other.
-        "capacitor://localhost",
-        "https://localhost",
     ]
 
     @property
     def cors_allowed_origins(self) -> List[str]:
-        """ALLOWED_ORIGINS, plus the receiver app's own origin — always.
+        """ALLOWED_ORIGINS, plus every origin no deployment is permitted to omit.
 
-        Derived rather than listed, because listing it does not work. ALLOWED_ORIGINS is
-        an env-overridable field: the moment a developer or a deployment sets it in .env,
-        the whole default list above is REPLACED, and any receiver origin written there is
-        silently gone. That is not hypothetical — it is what broke the first real
-        two-phone test of this feature.
+        Derived rather than listed, because listing does not work. ALLOWED_ORIGINS is an
+        env-overridable field, and pydantic REPLACES the default list wholesale the moment
+        anything sets it — so any origin written into that default is one an .env can
+        silently delete. That is not hypothetical twice over:
 
-        The receiver app's origin is, by definition, an origin this API must accept: it is
-        the page we ourselves told the receiver to open, via a URL this API composed
-        (handover_service.build_scan_url). Requiring anyone to keep that fact in sync
-        across two settings is a drift waiting to happen, and the failure it produces is
-        near-undebuggable — a browser-side CORS refusal that surfaces as the handover's
-        deliberately generic 404.
+          * It is what broke the first real two-phone test of the handover feature, when a
+            .env override dropped the receiver app's origin.
+          * backend/.env.example itself shipped
+            ALLOWED_ORIGINS=["http://localhost:3000","http://localhost:3001"], which drops
+            the driver app's NATIVE origins. Copying .env.example to .env — the documented
+            way to configure this app — therefore broke the iOS driver app's every API
+            call, locally and in any deployment that followed the same shape.
+
+        Two classes of origin are folded in here because neither is a deployment choice:
+
+          * The native shells' origins, fixed by the platforms (see _NATIVE_APP_ORIGINS).
+          * The receiver app's own origin, because it is by definition an origin this API
+            must accept — it is the page we ourselves told the receiver to open, at a URL
+            this API composed (handover_service.build_scan_url).
 
         Deployment note, unchanged by this: the binding cookie is SameSite=Strict, so the
         receiver app and this API must still share a registrable domain
         (receiver.example.co.za and api.example.co.za do; two unrelated domains do not).
         CORS being correct does not rescue a cookie the browser declines to send.
         """
+        origins = list(self.ALLOWED_ORIGINS)
         receiver_origin = self.HANDOVER_RECEIVER_BASE_URL.rstrip("/")
-        if not receiver_origin or receiver_origin in self.ALLOWED_ORIGINS:
-            return self.ALLOWED_ORIGINS
-        return [*self.ALLOWED_ORIGINS, receiver_origin]
+
+        # Order preserved and duplicates skipped, so an explicit listing of one of these
+        # in ALLOWED_ORIGINS stays harmless rather than appearing twice.
+        for required in (*_NATIVE_APP_ORIGINS, receiver_origin):
+            if required and required not in origins:
+                origins.append(required)
+
+        return origins
 
     # model_config replaces the deprecated class Config syntax.
     # In local dev, pydantic-settings reads from backend/.env automatically.

@@ -35,6 +35,7 @@ from fastapi.responses import JSONResponse
 from redis.exceptions import RedisError
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from app.core.client_ip import resolve_client_ip
 from app.core.config import settings
 from app.core.limits import GLOBAL_PER_IP, RateLimit
 
@@ -52,10 +53,6 @@ RATE_LIMITED_DETAIL = "Too many requests. Please slow down and try again shortly
 # fixed interval and must never be throttled — a rate-limited health check reads as a dead
 # container and gets the service restarted. The docs routes are static and unauthenticated.
 _MIDDLEWARE_EXEMPT_PATHS = frozenset({"/health", "/docs", "/redoc", "/openapi.json"})
-
-# Header name for the proxy-supplied client IP. Only consulted when the deployment
-# declares a trusted proxy — see _client_identity.
-_FORWARDED_FOR_HEADER = "x-forwarded-for"
 
 
 _redis_client: redis_async.Redis | None = None
@@ -136,18 +133,14 @@ async def _count_and_check(limit: RateLimit, identity: str) -> bool:
 def _client_identity(request: Request) -> str:
     """Best available identifier for an unauthenticated caller.
 
-    X-Forwarded-For is honoured ONLY when the deployment declares it sits behind a proxy
-    it trusts. Reading that header unconditionally would make the limit worthless: any
-    caller could send a fresh value per request and get a fresh budget each time. When the
-    setting is off, the socket peer address is used, which cannot be forged over TCP.
-    """
-    if settings.RATE_LIMIT_TRUST_PROXY_HEADERS:
-        forwarded = request.headers.get(_FORWARDED_FOR_HEADER)
-        if forwarded:
-            # Left-most entry is the original client; the rest are proxy hops.
-            return forwarded.split(",")[0].strip()
+    The proxy-awareness lives in core/client_ip.py, shared with the handover endpoint's
+    receiver_ip — see that module for why the header is trusted conditionally.
 
-    return request.client.host if request.client else "unknown"
+    "unknown" rather than None because this value is a Redis key component: a caller whose
+    IP cannot be determined still has to land in SOME bucket, and one shared bucket for
+    all of them is the conservative choice.
+    """
+    return resolve_client_ip(request) or "unknown"
 
 
 def _too_many_requests(limit: RateLimit) -> HTTPException:

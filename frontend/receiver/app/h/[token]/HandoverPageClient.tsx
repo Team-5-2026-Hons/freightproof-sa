@@ -180,8 +180,13 @@ export function HandoverPageClient({ token }: { token: string }) {
       setStatus('invalid')
     })
     return () => { cancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per token; name/
-    // idNumber are read only on the resume-from-vendor branch, not re-triggers.
+    // Deliberately depends only on `token`. name/idNumber are read here solely as the
+    // resume-from-vendor fallback (readStashedIdentity above is the primary source), and at
+    // the point this mount effect fires they can only be their initial empty-string values
+    // — nothing has set them yet. Listing them as deps would make this effect re-run on
+    // every keystroke in the name/ID fields on the 'ready' screen, re-fetching the scan and
+    // re-invoking resolveVerification/clearStashedIdentity for no reason.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token])
 
   const handleSign = useCallback(async () => {

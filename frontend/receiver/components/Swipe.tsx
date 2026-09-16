@@ -38,15 +38,33 @@ export function Swipe({ label, disabled = false, onConfirm }: SwipeProps) {
   const [offset, setOffset] = useState(0)
   const [isDragging, setIsDragging] = useState(false)
   const [isSettling, setIsSettling] = useState(false)
+  // The track's pixel width, mirrored into state rather than read from trackRef at render
+  // time. A ref mutation (e.g. the viewport resizing with no state change of its own)
+  // triggers no re-render, so `progress` derived from a ref read would go stale until some
+  // unrelated state update happened to run — a real bug, not just a lint complaint. Keeping
+  // it in state, refreshed by a ResizeObserver, makes maxOffset/progress always current and
+  // keeps refs out of the render path entirely.
+  const [trackWidth, setTrackWidth] = useState(0)
 
   // Guards against a second dispatch from a keyboard activation landing on top of a
   // completed drag. The token is single-use and a double POST would burn the retry.
   const hasFiredRef = useRef(false)
 
-  const maxOffset = useCallback(() => {
+  useEffect(() => {
     const track = trackRef.current
-    if (track === null) return 0
-    return track.clientWidth - THUMB_SIZE_PX - TRACK_PADDING_PX * 2
+    if (track === null) return
+    // The observer's callback fires once as soon as observe() starts, with the track's
+    // current size, so this also serves as the initial measurement — no separate
+    // synchronous setState call in the effect body itself.
+    const observer = new ResizeObserver(() => {
+      setTrackWidth(track.clientWidth)
+    })
+    observer.observe(track)
+    return () => observer.disconnect()
+  }, [])
+
+  const maxOffset = useCallback((width: number) => {
+    return width - THUMB_SIZE_PX - TRACK_PADDING_PX * 2
   }, [])
 
   const fire = useCallback(async () => {
@@ -73,13 +91,13 @@ export function Swipe({ label, disabled = false, onConfirm }: SwipeProps) {
     if (track === null) return
     const rect = track.getBoundingClientRect()
     const raw = e.clientX - rect.left - TRACK_PADDING_PX - THUMB_SIZE_PX / 2
-    setOffset(Math.max(0, Math.min(raw, maxOffset())))
-  }, [isDragging, disabled, maxOffset])
+    setOffset(Math.max(0, Math.min(raw, maxOffset(trackWidth))))
+  }, [isDragging, disabled, maxOffset, trackWidth])
 
   const handlePointerUp = useCallback(() => {
     if (!isDragging) return
     setIsDragging(false)
-    const limit = maxOffset()
+    const limit = maxOffset(trackWidth)
     if (limit > 0 && offset / limit >= COMPLETE_THRESHOLD) {
       setIsSettling(true)
       setOffset(limit)
@@ -87,7 +105,7 @@ export function Swipe({ label, disabled = false, onConfirm }: SwipeProps) {
       return
     }
     settleBack()
-  }, [isDragging, offset, maxOffset, fire, settleBack])
+  }, [isDragging, offset, maxOffset, trackWidth, fire, settleBack])
 
   // Keyboard path. A swipe is unreachable without a pointer, and a receiver on a device
   // with assistive tech must still be able to confirm their own delivery — the whole
@@ -99,13 +117,21 @@ export function Swipe({ label, disabled = false, onConfirm }: SwipeProps) {
     void fire()
   }, [disabled, fire])
 
-  useEffect(() => {
-    // A disabled control must not stay parked at the far end of its track from a drag
-    // that completed just before the identity fields were cleared.
-    if (disabled) setOffset(0)
-  }, [disabled])
+  // A disabled control must not stay parked at the far end of its track from a drag that
+  // completed just before the identity fields were cleared. Written during render, not in
+  // an effect: `prevDisabled` mirrors `disabled` so the write only fires on the actual
+  // false→true transition (idempotent — every other render leaves offset untouched) and
+  // can never cascade, since React discards and re-runs this render synchronously rather
+  // than committing and scheduling another one. This is the standard "adjusting state when
+  // a prop changes" pattern; see https://react.dev/learn/you-might-not-need-an-effect.
+  const [prevDisabled, setPrevDisabled] = useState(disabled)
+  if (disabled !== prevDisabled) {
+    setPrevDisabled(disabled)
+    if (disabled && offset !== 0) setOffset(0)
+  }
 
-  const progress = maxOffset() > 0 ? offset / maxOffset() : 0
+  const limit = maxOffset(trackWidth)
+  const progress = limit > 0 ? offset / limit : 0
 
   return (
     <div

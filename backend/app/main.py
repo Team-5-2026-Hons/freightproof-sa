@@ -40,12 +40,19 @@ from app.api.v1.endpoints.trip_admin import router as trip_admin_router
 from app.api.v1.endpoints.trips import router as trips_router
 from app.api.v1.endpoints.vehicles import router as vehicles_router
 from app.auth.router import router as auth_router
+from app.core.config_validation import enforce_production_config
 from app.core.realtime import register_realtime_hook
 from app.db.session import get_read_only_db
 
 logger = logging.getLogger(__name__)
 
 _IS_PRODUCTION = settings.ENVIRONMENT == "production"
+
+# Before anything is built. Each rule catches a misconfiguration that would otherwise
+# fail SILENTLY in production — a QR pointing at localhost, a webhook rejecting every
+# genuine delivery, a rate limiter bucketing the whole internet as one caller. See
+# core/config_validation.py for why each one is there, and what is deliberately not.
+enforce_production_config(settings)
 
 # Interactive docs are a complete, self-updating map of the attack surface: every route,
 # every request shape, every field name. Useful in development, gratuitous in production
@@ -60,17 +67,6 @@ app = FastAPI(
     redoc_url=None if _IS_PRODUCTION else "/redoc",
     openapi_url=None if _IS_PRODUCTION else "/openapi.json",
 )
-
-# A wildcard origin combined with allow_credentials is the browser-side equivalent of no
-# CORS policy at all: any site a signed-in dispatcher visits could call this API with
-# their credentials attached. Browsers reject that exact combination, so it would fail
-# loudly rather than silently — but only at the moment a real user was already exposed to
-# the misconfiguration. Refusing to boot moves that discovery to deploy time.
-if _IS_PRODUCTION and "*" in settings.ALLOWED_ORIGINS:
-    raise RuntimeError(
-        "ALLOWED_ORIGINS may not contain '*' when ENVIRONMENT='production'. "
-        "List the dispatcher and driver origins explicitly."
-    )
 
 # Rate limiting, applied to every request before routing — so a flood aimed at paths that
 # do not exist is counted too, which a route dependency would never see.

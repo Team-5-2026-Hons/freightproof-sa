@@ -15,7 +15,7 @@
 // leaves. Same store, same tab, same origin.
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useSyncExternalStore } from 'react'
 
 const IDENTITY_STASH_KEY = 'fp_handover_identity'
 
@@ -43,12 +43,26 @@ function readStash(): StashedIdentity | null {
   }
 }
 
-export default function MockIdvsPage() {
-  const [returnToken, setReturnToken] = useState<string | null>(null)
+// No-op: the stash is read once and never changes for the lifetime of this page, so there
+// is nothing to subscribe to. useSyncExternalStore is used purely for its snapshot
+// semantics, not its reactivity.
+function subscribeToNothing(): () => void {
+  return () => {}
+}
 
-  useEffect(() => {
-    setReturnToken(readStash()?.token ?? null)
-  }, [])
+export default function MockIdvsPage() {
+  // Reading sessionStorage directly in an effect (the earlier version of this) is
+  // synchronous setState-in-effect, and a plain lazy useState initializer would read it
+  // during the server/build prerender pass too (returning null there) but then read the
+  // real value on the client's first hydration render, mismatching the prerendered HTML.
+  // useSyncExternalStore is the pattern this is for: a fixed server snapshot (null, since
+  // sessionStorage does not exist at build time) versus a real client-only snapshot,
+  // reconciled by React without a hydration mismatch.
+  const returnToken = useSyncExternalStore(
+    subscribeToNothing,
+    () => readStash()?.token ?? null,
+    () => null,
+  )
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col gap-6 p-5">

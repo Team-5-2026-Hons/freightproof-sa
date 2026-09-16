@@ -38,6 +38,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_driver
+from app.core.client_ip import resolve_client_ip
 from app.core.config import settings
 from app.core.limits import HANDOVER_ISSUE, HANDOVER_PUBLIC, IDVS_VERIFY, IDVS_WEBHOOK
 from app.core.rate_limit import rate_limit
@@ -430,7 +431,10 @@ async def confirm_handover_endpoint(
             receiver_lat=payload.receiver_lat,
             receiver_lng=payload.receiver_lng,
             receiver_accuracy_m=payload.receiver_accuracy_m,
-            receiver_ip=request.client.host if request.client else None,
+            # resolve_client_ip, not request.client.host: behind Railway's edge the socket
+            # peer is Railway, so reading it directly recorded the proxy's address as the
+            # receiver's on every confirmation — a silently wrong EVIDENCE field.
+            receiver_ip=resolve_client_ip(request),
             receiver_user_agent=request.headers.get("user-agent"),
             # FP-240. A camera scan opens a clean browser context with no Authorization
             # header; anything that HAS one was already holding a session of ours.
