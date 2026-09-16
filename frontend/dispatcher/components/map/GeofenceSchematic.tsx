@@ -1,30 +1,19 @@
 'use client'
 
 // The circle always occupies the same fraction of the box, whatever the radius — the
-// diagram's job is to make the radius legible against a scale bar, not to imply a
-// zoom level it does not have. Everything else is derived from these two numbers.
+// diagram makes the radius legible against a scale bar, not a claim about zoom level.
 const VIEWBOX = 200
 const CIRCLE_RADIUS_PX = 62
 
-// The scale bar targets roughly a third of the circle's diameter on screen — big enough
-// to read at a glance without a ruler, small enough that the circle stays the dominant
-// shape in the diagram.
-//
-// Exported because StaticGeofenceThumbnail must target the same fraction for the real
-// map and this schematic to read the same way when one falls back to the other. It kept
-// a private copy of this number with a comment saying the two had to agree, which is an
-// invariant nothing enforced; importing it is what actually keeps them in step.
+// Roughly a third of the circle's diameter: readable at a glance without dominating the
+// diagram. Exported so StaticGeofenceThumbnail targets the same fraction on the real map.
 export const SCALE_BAR_TARGET_FRACTION = 0.3
 
-// Fallback used only when the caller hands this zero-dependency component a radius it
-// cannot draw (<= 0, NaN, Infinity). Real precinct radii are floored at 50 m by
-// validation elsewhere (GPS_TOLERANCE_METRES) — this purely stops the SVG geometry
-// (division by the radius) from going to zero, negative or Infinity.
+// Fallback for a radius this zero-dependency component can't draw (<= 0, NaN, Infinity).
 const MIN_RENDERABLE_RADIUS_METRES = 1
 
-// Floor for `niceScaleMetres`'s own degenerate inputs (NaN, Infinity, <= 0) — kept
-// separate from MIN_RENDERABLE_RADIUS_METRES because the two guards protect different
-// call sites (the component's radius vs. the scale function's general contract).
+// Floor for `niceScaleMetres`'s own degenerate inputs — kept separate from
+// MIN_RENDERABLE_RADIUS_METRES since the two guards protect different call sites.
 const MIN_SCALE_METRES = 1
 
 interface GeofenceSchematicProps {
@@ -33,16 +22,9 @@ interface GeofenceSchematicProps {
 }
 
 /**
- * Rounds `metres` down to the nearest 1/2/5 × power of ten.
- *
- * A scale bar reading "63 m" is noise; one reading "50 m" is a ruler. Exported for
- * testing because the rounding is the only logic here worth getting wrong.
- *
- * Never returns more than `metres` for a valid positive-finite input — the previous
- * version clamped every result up to a minimum of 1, which was correct for the
- * `metres <= 0` fallback but silently broke "rounds down" for legitimate sub-1 inputs
- * (0.4 was rounding UP to 1). NaN and Infinity are guarded explicitly rather than
- * relying on `<= 0`, which neither of them satisfies.
+ * Rounds `metres` down to the nearest 1/2/5 × power of ten, so a scale bar reads "50 m"
+ * rather than "63 m". Exported for testing. Never exceeds `metres` for a valid
+ * positive-finite input; NaN and Infinity are guarded explicitly since neither satisfies `<= 0`.
  */
 export function niceScaleMetres(metres: number): number {
   if (!Number.isFinite(metres) || metres <= 0) return MIN_SCALE_METRES
@@ -54,23 +36,12 @@ export function niceScaleMetres(metres: number): number {
 
 /**
  * Zero-dependency geofence diagram: the fence circle drawn against a metre scale bar.
- *
- * Serves three roles — the list-card thumbnail, the fallback when map tiles cannot be
- * reached, and the always-correct answer to "how far is 200 m". It deliberately shows
- * no basemap: it makes no claim about what is on the ground, only about distance.
- *
- * Colour comes from the Tailwind design tokens (`sec`, `on-surf-v` in
- * tailwind.config.ts) via utility classes on the SVG elements, not CSS custom
- * properties — this codebase's `globals.css` has no `:root` variable block, only the
- * Tailwind colour map, so `fill`/`stroke` utilities are the correct way to reach it
- * from SVG (they compile to real hex values Tailwind already generates elsewhere).
+ * Used as the list-card thumbnail and as the fallback when map tiles can't be reached —
+ * shows no basemap, only distance. Colour comes from Tailwind utility classes since this
+ * codebase's `globals.css` has no `:root` variable block to target instead.
  */
 export function GeofenceSchematic({ radiusMetres, className }: GeofenceSchematicProps) {
-  // Guard first: a non-positive, NaN or Infinite radius would send metresPerPixel to
-  // zero/negative/NaN and scaleWidthPx to Infinity, producing broken SVG geometry. Not
-  // reachable through the create/edit form today (validation floors it at 50 m), but
-  // this component advertises itself as the always-renders fallback, so it has to
-  // survive being handed one directly.
+  // Guards against a non-positive/NaN/Infinite radius producing broken SVG geometry.
   const safeRadiusMetres =
     Number.isFinite(radiusMetres) && radiusMetres > 0 ? radiusMetres : MIN_RENDERABLE_RADIUS_METRES
 

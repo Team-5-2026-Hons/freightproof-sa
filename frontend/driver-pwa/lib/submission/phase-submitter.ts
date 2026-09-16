@@ -1,19 +1,10 @@
-// frontend/driver-pwa/lib/submission/phase-submitter.ts
+// A phase submission that OUTLIVES the screen that started it: module scope, in memory,
+// keyed by phase_event_id, unaffected by any component unmounting — so navigating away
+// mid-submit no longer strands the driver watching a "Submitting…" track.
 //
-// A phase submission that OUTLIVES the screen that started it.
-//
-// Before this module, `usePhaseStepController.submitAndAdvance` awaited the whole round
-// trip — GPS fix, photo uploads, the POST, and the server-side Hedera anchor — inside a
-// promise tied to the mounted step component. Navigating away mid-submit was impossible
-// by construction, so the driver stood at a loading bay watching a "Submitting…" track
-// for the entire journey of their evidence. The work lives here instead: module scope,
-// in memory, keyed by phase_event_id, unaffected by any component unmounting.
-//
-// WHY NOT the existing localStorage queue (lib/hooks/useOfflineQueue.ts). Photo evidence
-// travels as base64 data URLs. Routing every submit through that queue would write
-// megabytes into localStorage on every phase and exhaust the ~5MB quota inside a single
-// trip. The localStorage queue stays exactly what it has always been: the FAILURE path,
-// reached from here via `enqueuePhase` when a submission fails in a way a retry could fix.
+// Not routed through the localStorage queue (lib/hooks/useOfflineQueue.ts): photo
+// evidence as base64 would exhaust the ~5MB quota in a single trip. That queue stays the
+// FAILURE path, reached from here via `enqueuePhase` when a submission fails recoverably.
 'use client'
 
 import { useSyncExternalStore } from 'react'
@@ -25,22 +16,15 @@ import type { PhaseDescriptor, PhaseType } from '@shared/lib/types/phase'
 import type { PhaseEvidence } from '@/lib/types/evidence-draft'
 import type { DriverPosition } from '@/lib/types/location'
 
-// ─── Position budget ───────────────────────────────────────────────────────────
-
 // Longest this module waits on the driver's phone for a fix before submitting without
-// one. Deliberately one second past useLocation's own 10s geolocation ceiling, so a
-// normal GPS timeout gets to classify itself (and log its reason) rather than being cut
-// off here. Nobody is watching a screen while this runs — the driver is already on Home
-// — which is the whole reason a budget this generous is affordable.
+// one — one second past useLocation's own 10s ceiling, so a normal GPS timeout classifies
+// itself first. Nobody is watching a screen while this runs, so a generous budget is affordable.
 const POSITION_CAPTURE_BUDGET_MS = 12_000
 
 // How old the last known fix may be and still honestly describe where the driver is
-// standing NOW. A stale coordinate presented as the position at which a phase was
-// confirmed is fabricated evidence, which is the single worst defect this platform can
-// ship — so the fallback is deliberately tighter than any plausible driving interval.
-// Phases are confirmed stationary at gates and bays, where a minute-old fix is the same
-// fix; anything older is dropped and the submission simply carries no position, which
-// every phase except `activation` accepts (see lib/api/phases.ts).
+// standing now. A stale coordinate presented as a phase's confirmed position is
+// fabricated evidence — anything older is dropped, and the submission carries no
+// position, which every phase except `activation` accepts.
 const POSITION_FALLBACK_MAX_AGE_MS = 60_000
 
 interface TimestampedFix {
@@ -48,8 +32,8 @@ interface TimestampedFix {
   capturedAtMs: number
 }
 
-// The most recent fix any submission managed to take. Module scope for the same reason
-// everything else here is: it has to survive the screen that captured it.
+// The most recent fix any submission managed to take. Module scope so it survives the
+// screen that captured it.
 let lastKnownFix: TimestampedFix | null = null
 
 function rememberFix(position: DriverPosition): void {
@@ -70,8 +54,7 @@ async function resolvePosition(pending: Promise<DriverPosition | null>): Promise
     const timer = setTimeout(() => resolve(null), POSITION_CAPTURE_BUDGET_MS)
     void pending.then(
       (position) => { clearTimeout(timer); resolve(position) },
-      // Never surfaced to the driver: capturePosition already handles and classifies its
-      // own failures, so reaching here means an unexpected shape, not a GPS problem.
+      // Never surfaced to the driver: reaching here means an unexpected shape, not a GPS problem.
       (err: unknown) => {
         clearTimeout(timer)
         console.error('phase-submitter: position capture rejected', err)
@@ -84,18 +67,15 @@ async function resolvePosition(pending: Promise<DriverPosition | null>): Promise
     rememberFix(captured)
     return captured
   }
-  // A capture that lands AFTER the budget still tells the next submission where the
-  // driver is, so the cache is fed even when this submission could not wait for it.
+  // A late capture still feeds the cache for the next submission even though this one
+  // couldn't wait for it.
   void pending.then((late) => { if (late !== null) rememberFix(late) }, () => {})
   return recentFix()
 }
 
-// ─── Outcomes ──────────────────────────────────────────────────────────────────
-
 /**
  * What actually became of a submission. The caller turns these into draft clearing,
- * trip reconciliation, toasts and navigation — this module never renders anything and
- * never routes, so it stays testable without React.
+ * trip reconciliation, toasts and navigation — this module never renders or routes.
  */
 export type PhaseSubmissionOutcome =
   /** The backend has the evidence. `trip` is null only in demo mode (no call happened). */
@@ -138,25 +118,20 @@ export interface PhaseSubmissionRequest {
   phaseType: PhaseType
   evidence: PhaseEvidence
   /**
-   * One key per logical attempt, reused across retries of THAT attempt — the online
-   * counterpart to the offline queue's own per-entry key. Generated by the caller (the
-   * step controller) rather than here, so a retry of the same attempt can present the
-   * same key even though this module treats each start as a fresh run.
+   * One key per logical attempt, reused across retries of that attempt — the online
+   * counterpart to the offline queue's own per-entry key. Generated by the caller.
    */
   idempotencyKey: string
   /**
-   * The driver's fix, handed over as a PROMISE rather than a value. This is what keeps
-   * the swipe instant: the caller never awaits GPS before navigating, and the fix still
-   * travels WITH the evidence (including into the offline queue) because the submission
-   * itself waits for it. A position taken later would claim the driver was somewhere
-   * they weren't.
+   * The driver's fix as a PROMISE, not a value — keeps the swipe instant, since the
+   * caller never awaits GPS before navigating, while the fix still travels with the
+   * evidence because the submission itself waits for it.
    */
   position: Promise<DriverPosition | null>
   /**
-   * Task 0A: the instant the caller (the step controller) considers this attempt
-   * submitted — generated once per logical attempt, same as idempotencyKey, and reused
-   * across any retry of that attempt so a replay from the offline queue still reports the
-   * ORIGINAL swipe instant, never a retry's own clock.
+   * The instant the caller considers this attempt submitted — generated once per
+   * logical attempt and reused across retries, so a replay reports the original
+   * swipe instant, never a retry's own clock.
    */
   driverCapturedAt: string
   /** The localStorage failure path (lib/hooks/useOfflineQueue.ts). */
@@ -167,8 +142,6 @@ export interface PhaseSubmissionRequest {
   onOutcome: (outcome: PhaseSubmissionOutcome) => void
 }
 
-// ─── Store ─────────────────────────────────────────────────────────────────────
-
 type StoreListener = () => void
 
 const listeners = new Set<StoreListener>()
@@ -177,8 +150,7 @@ const EMPTY_STATE: PhaseSubmissionStoreState = { inFlight: [], failures: [] }
 
 let state: PhaseSubmissionStoreState = EMPTY_STATE
 
-// Frozen constant so useSyncExternalStore's server/hydration snapshot is referentially
-// stable — same trick useOfflineQueue uses for its own store.
+// Frozen so useSyncExternalStore's server/hydration snapshot stays referentially stable.
 const SERVER_SNAPSHOT: PhaseSubmissionStoreState = EMPTY_STATE
 
 function publish(next: PhaseSubmissionStoreState): void {
@@ -213,9 +185,8 @@ export function dismissPhaseSubmissionFailure(phaseEventId: string): void {
 }
 
 /**
- * Test-only reset. The store and the in-flight registry are module scope by design (that
- * is the entire point of this file), so vitest's per-test isolation cannot clear them —
- * mirrors `__resetOfflineQueueStoreForTests` for exactly the same reason.
+ * Test-only reset — the store and in-flight registry are module scope by design, so
+ * vitest's per-test isolation can't clear them (mirrors `__resetOfflineQueueStoreForTests`).
  */
 export function __resetPhaseSubmitterForTests(): void {
   running.clear()
@@ -223,17 +194,12 @@ export function __resetPhaseSubmitterForTests(): void {
   publish(EMPTY_STATE)
 }
 
-// ─── Submission ────────────────────────────────────────────────────────────────
-
-// phase_event_ids currently running. Belt-and-braces against a double submit: the
-// optimistic advance in TripContext already stops the driver re-entering a step whose
-// submission is in flight, but a stale tab or a deep link should not be able to fire a
-// second POST for the same ledger row either.
+// phase_event_ids currently running. Belt-and-braces against a double submit: a stale
+// tab or deep link should not be able to fire a second POST for the same ledger row.
 const running = new Set<string>()
 
-// Mirrors lib/phase/derive.ts's RESOLVED_STATUSES (private to that module): completed,
-// exception and overridden all mean the ledger is done with this row. Only pending and
-// in_progress leave room for a genuinely fresh attempt.
+// Mirrors lib/phase/derive.ts's RESOLVED_STATUSES: completed, exception and overridden
+// all mean the ledger is done with this row.
 function isResolvedPhase(phase: PhaseDescriptor | null): boolean {
   return phase !== null && phase.status !== 'pending' && phase.status !== 'in_progress'
 }
@@ -259,17 +225,15 @@ async function runSubmission(request: PhaseSubmissionRequest): Promise<PhaseSubm
     return { kind: 'recorded', trip: result.trip, addressedPhase: addressedPhaseOf(result.trip, phaseEventId) }
   } catch (err) {
     if (err instanceof ApiError && err.status === 409) {
-      // No ordinal TripStatus left to compare against — `active` covers the whole
-      // multi-stop middle. A duplicate submit of an already-resolved phase also 409s, so
-      // the only way to tell "this already succeeded" apart from a genuine conflict is to
-      // refetch and read the ADDRESSED PHASE'S OWN status off the returned plan.
+      // A duplicate submit of an already-resolved phase also 409s, so the only way to
+      // tell "this already succeeded" apart from a genuine conflict is to refetch and
+      // read the addressed phase's own status off the returned plan.
       let fetched: Trip | null = null
       try {
         fetched = await request.refetchTrip()
       } catch (refetchErr: unknown) {
-        // Offline right after a 409 — we cannot tell replay from conflict, and guessing
-        // "already recorded" would tell a driver their evidence landed when it may not
-        // have. Report the conflict so the notice stays up and the phase rolls back.
+        // Offline right after a 409 — can't tell replay from conflict, and guessing
+        // "already recorded" would falsely tell the driver their evidence landed.
         console.error('phase-submitter: could not refetch the trip to resolve a 409', refetchErr)
         return { kind: 'conflict', message: err.message || DEFAULT_CONFLICT_MESSAGE }
       }
@@ -281,23 +245,20 @@ async function runSubmission(request: PhaseSubmissionRequest): Promise<PhaseSubm
       if (isResolvedPhase(addressedPhase)) {
         return { kind: 'recorded', trip: fetched, addressedPhase }
       }
-      // The server's own 409 detail, not a hardcoded sentence: every 409 the backend
-      // raises describes its actual cause (an unresolved earlier phase, or a trip that
-      // isn't due until a stated date), and a fixed string discarded all of it.
+      // The server's own 409 detail, not a hardcoded sentence — it describes the actual
+      // cause (an unresolved earlier phase, a trip not yet due).
       return { kind: 'conflict', message: err.message || DEFAULT_CONFLICT_MESSAGE }
     }
 
     if (isQueueableFailure(err)) {
-      // Network error, 5xx, or a status-0 timeout — queue for retry once connectivity or
-      // the server recovers. The position and the capture instant go WITH the entry so a
-      // replay hours later still reports where — and when — the driver actually swiped.
+      // Queue for retry once connectivity/the server recovers. Position and capture
+      // instant travel with the entry so a replay hours later reports the truth.
       request.enqueuePhase(tripId, phaseEventId, phaseType, evidence, position, driverCapturedAt)
       return { kind: 'queued' }
     }
 
-    // Terminal: a client-side 4xx, or a local validation Error thrown by submitPhase
-    // before any network call. Neither can succeed on retry, so queuing it would hand
-    // the driver a "stored on this device" receipt for evidence that will never land.
+    // Terminal: a client-side 4xx or a local validation error. Neither can succeed on
+    // retry, so queuing it would hand the driver a receipt for evidence that never lands.
     return { kind: 'failed', message: err instanceof Error ? err.message : DEFAULT_TERMINAL_MESSAGE }
   }
 }
@@ -317,8 +278,8 @@ function settle(request: PhaseSubmissionRequest, outcome: PhaseSubmissionOutcome
 
   publish({ inFlight, failures })
 
-  // Runs last, and outside the store update, so a throwing subscriber can never leave a
-  // phase stuck in `inFlight` forever.
+  // Runs last, outside the store update, so a throwing subscriber can't leave a phase
+  // stuck in `inFlight` forever.
   request.onOutcome(outcome)
 }
 
@@ -330,8 +291,7 @@ function settle(request: PhaseSubmissionRequest, outcome: PhaseSubmissionOutcome
  * evidence is already on its way.
  */
 export function startPhaseSubmission(request: PhaseSubmissionRequest): boolean {
-  // Attached before the dedupe check so an ignored request can never leave an unhandled
-  // rejection behind.
+  // Attached before the dedupe check so an ignored request can't leave an unhandled rejection.
   const guardedRequest: PhaseSubmissionRequest = {
     ...request,
     position: request.position.catch((err: unknown) => {

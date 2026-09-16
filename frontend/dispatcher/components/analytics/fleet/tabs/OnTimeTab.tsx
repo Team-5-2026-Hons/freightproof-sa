@@ -30,15 +30,15 @@ const COPY = FLEET_COPY.onTime
 const PERCENT = 100
 const PERCENT_DOMAIN: [number, number] = [0, PERCENT]
 const [DEPARTURE_COLOR, ARRIVAL_COLOR] = SERIES_COLORS
-// Chart 2.5 (spec §5.2, D24): finished early in slot 1 (blue) left of the middle axis, ran over
-// in slot 2 (orange) right of it. The early bands run towards the axis (furthest first), the
-// over bands away from it (nearest first), so distance from the axis reads as distance off plan.
+// Chart 2.5: finished early (blue) left of the middle axis, ran over (orange) right of it. The
+// early bands run towards the axis (furthest first), over bands away from it (nearest first),
+// so distance from the axis reads as distance off plan.
 const [EARLY_COLOR, OVER_COLOR] = SERIES_COLORS
 const EARLY_BANDS: readonly PlanBand[] = ['early_over_180', 'early_60_180', 'early_15_60', 'early_0_15']
 const OVER_BANDS: readonly PlanBand[] = ['over_0_15', 'over_15_60', 'over_60_180', 'over_over_180']
 
 // Early and On time are not lateness, so they stay neutral grey; the four late bands take the
-// validated lateness ramp, light to dark, in order (spec §7.3).
+// validated lateness ramp, light to dark, in order.
 const BAND_COLORS: Record<LatenessBand, string> = {
   early: NEUTRAL_COLOR,
   on_time: NEUTRAL_COLOR,
@@ -145,7 +145,7 @@ interface LatenessRow {
 }
 
 /** Chart 2.2: a little late often, or very late sometimes? Fixed band order, over the whole
- *  period, with its Departures | Arrivals switch on the title row (spec §7.7 item 5). */
+ *  period, with its Departures | Arrivals switch on the title row. */
 function LatenessCard({ onTime }: { onTime: FleetQueryResult<FleetOnTime> }) {
   const [event, setEvent] = useState<PatternEvent>('departures')
   const bars = onTime.data?.lateness[event] ?? []
@@ -210,11 +210,10 @@ interface SpreadRow {
   trips: number
 }
 
-/** Chart 2.5 (spec §5.2, D24): a histogram split by a y-axis down the middle, where "on plan"
- *  is, over the whole period. Early bands grow up on its left, over bands on its right. Trips
- *  exactly on plan are named under the axis rather than drawn, because a column there would sit
- *  on the axis itself. No text on the card face (Tom): the summary lives in the table view. Not
- *  affected by View by. */
+/** Chart 2.5: a histogram split by a y-axis down the middle, where "on plan" is, over the
+ *  whole period. Trips exactly on plan are named under the axis rather than drawn, because a
+ *  column there would sit on the axis itself. No text on the card face: the summary lives in
+ *  the table view. */
 function PlanSpreadCard({ onTime }: { onTime: FleetQueryResult<FleetOnTime> }) {
   const spread = onTime.data?.plan_spread
   const bands = spread?.bands ?? []
@@ -294,9 +293,8 @@ interface OnTimeTabProps {
   today: string
 }
 
-/** On time tab (spec §5.2, D23, D24): punctuality and lateness side by side, then the plan
- *  spread across the full width, where its two halves have room. One request for everything,
- *  for the tab's own period and grain. */
+/** On time tab: punctuality and lateness side by side, then the plan spread across the full
+ *  width, where its two halves have room. One request for everything. */
 export function OnTimeTab({ query, allTimeStart, today }: OnTimeTabProps) {
   const onTime = useFleetOnTime(query, allTimeStart)
   // Label buckets by the grain the answer was built with, never one chosen after it was asked.

@@ -196,7 +196,7 @@ interface OutcomeRow {
 type Outcome = ReviewOutcomeCount['outcome']
 
 // Colour follows the outcome, never its size or rank: the five validated series slots, in the
-// outcomes' fixed order (spec §7.3), so "Data discrepancy" is the same colour every period.
+// outcomes' fixed order, so "Data discrepancy" is the same colour every period.
 const OUTCOME_COLORS: Record<Outcome, string> = {
   no_action_required: SERIES_COLORS[0],
   handled_externally: SERIES_COLORS[1],
@@ -205,9 +205,8 @@ const OUTCOME_COLORS: Record<Outcome, string> = {
   referred_for_follow_up: SERIES_COLORS[4],
 }
 
-/** Chart 4.4 (D25): what reviews concluded, as a donut. Every review ends in exactly one
- *  outcome, so the five are parts of one whole; the total sits in the middle, and each
- *  outcome's count and share are in the legend, so no value rests on the slice alone. */
+/** Chart 4.4: what reviews concluded, as a donut. Every review ends in exactly one outcome,
+ *  so no value rests on the slice alone — each outcome's count and share are in the legend. */
 function OutcomesCard({ review }: { review: FleetQueryResult<FleetReview> }) {
   const rows = review.data?.outcomes ?? []
   const total = sumOf(rows, (row) => row.count)
@@ -264,8 +263,8 @@ interface ReviewDeskTabProps {
   today: string
 }
 
-/** Review desk tab (spec §5.4): waiting now on top, then the queue's history, the speed of
- *  review and what reviews found. One request, for the tab's own period and grain. */
+/** Review desk tab: waiting now on top, then the queue's history, the speed of review and
+ *  what reviews found. One request, for the tab's own period and grain. */
 export function ReviewDeskTab({ query, allTimeStart, today }: ReviewDeskTabProps) {
   const review = useFleetReview(query, allTimeStart)
   const grain = review.data?.period.grain ?? query.grain

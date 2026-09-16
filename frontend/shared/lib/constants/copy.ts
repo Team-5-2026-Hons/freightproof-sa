@@ -62,13 +62,10 @@ export const COPY = {
     addNote:      'Add a note to this exception',
     // Recording a review is evidence capture, not an operational resolution.
     reviewNote:         'Describe your assessment of this exception',
-    // The outcome placeholder is disabled so it can never be
-    // submitted. Contrast with the contact-method field's own blank option (rendered
-    // inline in the page, not disabled): there, blank is a real, submittable answer.
+    // Disabled placeholder so it can never be submitted, unlike the contact-method
+    // field's own blank option, which is a real, submittable answer.
     reviewOutcomeUnset: 'Select an outcome',
-    // Exact wording from the design spec. Reviewing an exception is evidence handling,
-    // never trip lifecycle control — this sentence is what stops a dispatcher reviewing a
-    // closed or cancelled trip's exception from assuming their review reopens anything.
+    // Stops a dispatcher reviewing a closed/cancelled trip from assuming the review reopens it.
     reviewNotice:       'Reviewing records your assessment. It does not change or reopen the trip.',
   },
 } as const

@@ -15,28 +15,19 @@ interface Props {
   artifactError?: string | null
   onRetryArtifacts?: () => void
   phase: PhaseDescriptor
-  /** Manifest baseline from Parcel Perfect's tracks[]. Null when the trip carries no
-   *  PP reference — common, and not a failure. */
+  /** Manifest baseline from Parcel Perfect's tracks[]. Null when the trip has no PP reference. */
   expectedCount: number | null
-  /** Live, summed scanned_out_count over the consignments picked up at THIS stop —
-   *  recomputed per request from Parcel rows. Read only while loading is still open;
-   *  once the phase resolves, phase.parcel_count_origin (the stamped tally) takes over
-   *  and this is ignored even if still supplied. Null when nothing on the manifest is
-   *  booked to collect here — distinct from a real 0 scanned so far. */
+  /** Live, summed scanned_out_count for this stop; read only while loading is open —
+   *  once resolved, phase.parcel_count_origin (the stamped tally) takes over. */
   liveScannedOutCount: number | null
   artifactsById: Map<string, EvidenceArtifactWithUrl>
-  // The precinct this phase is anchored to, resolved by the page from the phase's stop.
   precinct: Precinct | undefined
 }
 
-// Loading is now system-observed: the warehouse's scan is what records what went on the
-// truck, and parcel_count_origin is the scanned tally stamped at close. The driver's own
-// count is gone — he never enters the warehouse and could not honestly produce one.
+// Loading is system-observed: the warehouse's scan records what went on the truck.
 export function LoadingDetail({ artifactLoading, artifactError, onRetryArtifacts, phase, expectedCount, liveScannedOutCount, artifactsById, precinct }: Props) {
-  // Governing distinction: parcel_count_origin is written ONCE at phase close and is the
-  // evidence; scanned_out_count is recomputed every request and still moving until then.
-  // Swapping a live figure in where the stamped one belongs (or vice versa) is the one
-  // thing this panel must not do — hence the resolved/unresolved branch, not a fallback.
+  // parcel_count_origin is written once at phase close (the evidence); scanned_out_count
+  // is recomputed every request until then — swapping one in for the other is not allowed.
   const resolved = isClosedPhaseStatus(phase.status)
   const scanned = resolved ? phase.parcel_count_origin : liveScannedOutCount
   const scannedLabel = resolved ? 'Scanned onto truck' : 'Scanned onto truck (in progress)'
@@ -56,16 +47,9 @@ export function LoadingDetail({ artifactLoading, artifactError, onRetryArtifacts
           {missing === 0 ? 'All parcels scanned ✓' : missing < 0 ? `${Math.abs(missing)} excess scanned` : `${missing} not scanned ✗`}
         </div>
       )}
-      {/* linehaul_photo_artifact_id, NOT waybill_photo_artifact_id: that field is only
-          ever set on the departure phase's own row (advance_departure), so reading it
-          here would silently and permanently read null. linehaul_photo_artifact_id is
-          the one genuinely captured during THIS phase (advance_loading) — the
-          warehouse's linehaul sheet, distinct from departure's waybill copy.
-          No wrapping <Section title="Linehaul document"> here: EvidencePhoto already
-          renders that string as its own label, and Section would duplicate it — every
-          other card in this family (Departure's "Seal"/"Seal photo", Confirmation's
-          "Proof of delivery"/"POD photo") keeps the section heading distinct from the
-          photo label for the same reason. This div only mirrors Section's own spacing. */}
+      {/* linehaul_photo_artifact_id, not waybill_photo_artifact_id — that one is only set
+          on the departure phase's row. No wrapping Section: EvidencePhoto already
+          renders its own label, matching Departure/Confirmation's pattern. */}
       <div className="py-3 first:pt-0 last:pb-0">
         <EvidencePhoto
           loading={artifactLoading} error={artifactError} onRetry={onRetryArtifacts}
@@ -74,11 +58,7 @@ export function LoadingDetail({ artifactLoading, artifactError, onRetryArtifacts
           artifact={phase.linehaul_photo_artifact_id ? artifactsById.get(phase.linehaul_photo_artifact_id) : undefined}
         />
       </div>
-      {/* hasLocationEvidence guards the section so a row with neither a fix nor a stored
-          verdict does not grow an empty "Location at loading" heading with four blank
-          fields underneath it. A null phone fix here is a legitimate outcome of capture
-          (indoor, permission denied, offline); the gate keys off what was actually
-          recorded for this row, not off what the request contract allows it to carry. */}
+      {/* Guards against an empty "Location at loading" heading when nothing was recorded. */}
       {hasLocationEvidence(locationEvidenceForPhase(phase, precinct)) && (
         <PhaseLocationSection phase={phase} precinct={precinct} title="Location at loading" />
       )}

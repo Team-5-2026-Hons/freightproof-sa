@@ -1,19 +1,16 @@
-"""Phase-plan generation — parent plan §2.2.
+"""Phase-plan generation.
 
-Pure and DB-free on purpose: the rule is the refactor's central claim ("length is
-data") and it is easier to defend, and to test, as a function of the route than as
-a side effect of trip creation. Stage 2.1 calls this from trip_service.create_trip.
-
-This is a port of makePhasePlan() in frontend/shared/lib/mocks/phase-trips.ts,
-which is the frozen contract's executable statement of the same rule. The two must
-emit identical plans; the backend is authoritative if they ever drift.
+Pure and DB-free, so plan length ("length is data") is a function of the route,
+easy to test independently of trip creation. Ports makePhasePlan() in
+frontend/shared/lib/mocks/phase-trips.ts; the two must emit identical plans, and
+the backend is authoritative if they ever drift.
 """
 
 from dataclasses import dataclass
 
 from app.db.models.enums import PhaseType
 
-# D7 — the phases that carry a Hedera receipt. P1/P2/P4/P5 are feeders.
+# The phases that carry a Hedera receipt; the rest are unanchored feeders.
 ANCHORED_PHASES: frozenset[PhaseType] = frozenset({
     PhaseType.TRIP_CREATION,
     PhaseType.DEPARTURE,
@@ -39,8 +36,7 @@ class PlanStop:
 class PlannedPhase:
     sequence_number: int
     phase_type: PhaseType
-    # None only for trip_creation (D3).
-    stop_sequence: int | None
+    stop_sequence: int | None  # None only for trip_creation
 
 
 def build_phase_plan(stops: list[PlanStop]) -> list[PlannedPhase]:
@@ -51,9 +47,8 @@ def build_phase_plan(stops: list[PlanStop]) -> list[PlannedPhase]:
     `loading` (if anything collects here); then `departure` + `in_transit` unless it
     is the final stop, where `confirmation` is emitted instead.
 
-    `in_transit` anchors to the stop it DEPARTS FROM, never the one it arrives at
-    (D3) — which is what keeps trip_creation the only NULL-stop row and lets one
-    partial unique index close the duplicate-P0 hole.
+    `in_transit` anchors to the stop it DEPARTS FROM, never the one it arrives at,
+    which keeps trip_creation the only NULL-stop row.
 
     2 stops -> 7 rows. 3-stop cross-dock -> 11 rows. The single-leg trip is the
     degenerate case of the multi-stop plan: one code path, forever.

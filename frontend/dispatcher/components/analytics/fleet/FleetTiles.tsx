@@ -22,7 +22,7 @@ const PERCENT = 100
 const MAX_LISTED_REGISTRATIONS = 3
 const TILE_COUNT = 6
 
-// Deep links into this page's own tabs (spec §3: tiles can open a tab).
+// Deep links into this page's own tabs.
 const PROBLEMS_TAB_HREF = '/analytics?tab=problems'
 const EVIDENCE_TAB_HREF = '/analytics?tab=evidence'
 
@@ -42,7 +42,7 @@ interface FleetTileProps {
   children?: ReactNode
 }
 
-/** One headline number (spec §7.5): label, value in proportional figures, one sub-line. */
+/** One headline number: label, value in proportional figures, one sub-line. */
 export function FleetTile({ label, value, sub, href, warn = false, className, children }: FleetTileProps) {
   const body = (
     <>
@@ -159,7 +159,7 @@ interface FleetTilesProps {
 
 const GRID = 'grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-7'
 
-/** The six headline tiles. No controls: they always describe the fleet right now (spec D4). */
+/** The six headline tiles. No controls: they always describe the fleet right now. */
 export function FleetTiles({ data, isLoading, error, onRetry, now }: FleetTilesProps) {
   if (error !== null) {
     return (

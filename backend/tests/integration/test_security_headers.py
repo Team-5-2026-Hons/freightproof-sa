@@ -7,7 +7,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app import main as main_module
-from app.db.session import get_db
+from app.db.session import get_read_only_db
 from app.main import app
 
 
@@ -36,12 +36,15 @@ def stub_health_dependencies(monkeypatch: pytest.MonkeyPatch) -> Any:
     async def _dependency() -> AsyncGenerator[Any, None]:
         yield _StubSession()
 
-    app.dependency_overrides[get_db] = _dependency
+    # get_read_only_db, not get_db: /health depends on the read-only session. Stubbing
+    # get_db left the real one in place, so the probe dialled DATABASE_URL and sat out
+    # its timeout.
+    app.dependency_overrides[get_read_only_db] = _dependency
     monkeypatch.setattr(main_module, "get_redis", lambda: _StubRedis())
 
     yield
 
-    app.dependency_overrides.pop(get_db, None)
+    app.dependency_overrides.pop(get_read_only_db, None)
 
 
 @pytest.mark.asyncio

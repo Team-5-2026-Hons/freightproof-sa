@@ -29,7 +29,7 @@ class _Frozen(BaseModel):
     model_config = ConfigDict(frozen=True)
 
 
-# ── GET /tiles ───────────────────────────────────────────────────────────────
+# GET /tiles
 
 
 class CriticalWaiting(_Frozen):
@@ -103,7 +103,7 @@ class FleetTilesResponse(_Frozen):
     all_time_start: date
 
 
-# ── Shared by the endpoints that take a period ──────────────────────────────
+# Shared by the endpoints that take a period
 
 
 class PeriodEcho(_Frozen):
@@ -115,7 +115,7 @@ class PeriodEcho(_Frozen):
     grain: Grain | None
 
 
-# ── GET /activity ───────────────────────────────────────────────────────────
+# GET /activity
 
 
 class TripsBucket(_Frozen):
@@ -160,7 +160,7 @@ class ActivityResponse(_Frozen):
     cancelled_trips: list[CancelledTrip]
 
 
-# ── GET /patterns ───────────────────────────────────────────────────────────
+# GET /patterns
 
 
 class PatternBar(_Frozen):
@@ -195,7 +195,7 @@ class PatternsResponse(_Frozen):
     arrivals: PatternSet
 
 
-# ── GET /on-time ────────────────────────────────────────────────────────────
+# GET /on-time
 
 
 class PunctualityBucket(_Frozen):
@@ -239,9 +239,8 @@ class PlanBandCount(_Frozen):
 
 
 class PlanSpread(_Frozen):
-    """Chart 2.5 over the whole period (not bucketed): how far each trip's actual time was
-    from its planned time. The bands add up to the trips with a full plan. Medians are positive
-    minutes on both sides: "typically 40 min early", never a negative number."""
+    """Chart 2.5, whole period: how far each trip's actual time was from planned. Medians
+    are positive minutes on both sides ("typically 40 min early"), never negative."""
 
     bands: list[PlanBandCount]
     early_count: int
@@ -258,7 +257,7 @@ class OnTimeResponse(_Frozen):
     plan_spread: PlanSpread
 
 
-# ── GET /problems ───────────────────────────────────────────────────────────
+# GET /problems
 # Every count excludes dispatcher notes (spec D10).
 
 _PER_100 = 100
@@ -330,7 +329,7 @@ class ProblemsResponse(_Frozen):
     risky_times: list[RiskyTimeBlock]
 
 
-# ── GET /review ─────────────────────────────────────────────────────────────
+# GET /review
 # Not limited to closed trips: reviewing is independent of trip status. The migration-only
 # legacy_review marker is left out everywhere (it records that a review happened, not what it found).
 
@@ -376,7 +375,7 @@ class ReviewResponse(_Frozen):
     outcomes: list[ReviewOutcomeCount]
 
 
-# ── GET /evidence ───────────────────────────────────────────────────────────
+# GET /evidence
 
 
 class TrackerBucket(_Frozen):
@@ -444,7 +443,7 @@ class EvidenceResponse(_Frozen):
     signoff_flags: SignoffFlags
 
 
-# ── GET /routes ─────────────────────────────────────────────────────────────
+# GET /routes
 
 
 class SiteActivity(_Frozen):
@@ -485,7 +484,7 @@ class RoutesResponse(_Frozen):
     lanes: list[LaneRisk]
 
 
-# ── GET /incidents ──────────────────────────────────────────────────────────
+# GET /incidents
 
 
 class IncidentPin(_Frozen):

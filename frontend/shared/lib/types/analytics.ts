@@ -1,10 +1,8 @@
-// Dispatcher analytics (FP-156): per-grain numbers over CLOSED trips only.
-// Mirrors the backend response models in schemas/analytics_api.py, which subclass the
-// FP-153 result models in schemas/analytics.py.
+// Dispatcher analytics: per-grain numbers over CLOSED trips only. Mirrors backend
+// response models in schemas/analytics_api.py.
 //
-// Every rate and average is `number | null`. null means its denominator was zero — no
-// observations — and must render as "—", never as 0%. Rates arrive already divided by the
-// backend, once, from the counts shipped beside them; never re-derive them here.
+// Every rate and average is `number | null`. null means its denominator was zero and must
+// render as "—", never 0%. Rates arrive already divided by the backend; never re-derive them.
 
 import type { DriverId } from './driver'
 import type { PrecinctId } from './precinct'
@@ -42,8 +40,7 @@ export interface DriverMetrics {
   loading_dwell_minutes_avg: number | null
   departure_dwell_minutes_avg: number | null
   unloading_dwell_minutes_avg: number | null
-  /** Not purely driver behaviour — a slow receiver also lengthens it. The screen must
-   *  show that caveat beside this number (FP-153 schema description). */
+  /** Not purely driver behaviour — a slow receiver also lengthens it; show that caveat beside this number. */
   confirmation_dwell_minutes_avg: number | null
 }
 

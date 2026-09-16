@@ -13,12 +13,8 @@ export interface PaginationProps {
   onNext: () => void
 }
 
-/**
- * Universal cursor-style pagination footer. Purely presentational: callers own
- * cursor/offset state and data fetching, this only renders range/page text and
- * fires the previous/next callbacks — kept generic so both cursor-paginated and
- * offset-paginated list views (exceptions, trips, etc.) can share it.
- */
+/** Universal cursor-style pagination footer. Purely presentational: callers own cursor/offset
+ *  state and data fetching, this only renders range/page text and the previous/next callbacks. */
 export function Pagination({
   page,
   pageSize,
@@ -30,8 +26,8 @@ export function Pagination({
   onPrevious,
   onNext,
 }: PaginationProps) {
-  // A zero-item page (e.g. an empty filtered result) has no "first" item to
-  // anchor a range on — render "0 of N" rather than a misleading "1–0 of N".
+  // A zero-item page has no "first" item to anchor a range on — render "0 of N" rather than
+  // a misleading "1–0 of N".
   const rangeStart = itemCount === 0 ? 0 : (page - 1) * pageSize + 1
   const rangeEnd = itemCount === 0 ? 0 : (page - 1) * pageSize + itemCount
 

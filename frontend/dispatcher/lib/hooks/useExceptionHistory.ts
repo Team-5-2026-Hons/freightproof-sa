@@ -10,18 +10,15 @@ import type {
 } from '@shared/lib/types/exception'
 import type { CursorPage } from '@shared/lib/types/pagination'
 
-// Matches the backend's own default (schemas/pagination.py) — the frontend does not
-// let a dispatcher change it, so it is a constant rather than a piece of state.
+// Matches the backend's own default (schemas/pagination.py); not dispatcher-adjustable.
 const PAGE_SIZE = 25
 
 const EMPTY: TripExceptionListItem[] = []
 
 export interface ExceptionHistoryFilters {
   q?: string
-  // Typed as the full ExceptionReviewStatus union rather than narrowed to
-  // 'recorded' | 'reviewed': the server already tolerates 'needs_review' by yielding
-  // zero rows for it, so duplicating that narrowing here would just be a second place
-  // for the two definitions to drift apart.
+  // Full ExceptionReviewStatus union, not narrowed: the server already tolerates
+  // 'needs_review' by yielding zero rows for it.
   reviewStatus?: ExceptionReviewStatus
   severity?: ExceptionSeverity
   fromDate?: string
@@ -32,9 +29,8 @@ export interface UseExceptionHistoryResult {
   items: TripExceptionListItem[]
   isLoading: boolean
   error: string | null
-  // True when the last refresh failed but `items` is still showing an earlier
-  // successful result rather than an empty/cleared list — the UI must say the data
-  // may be out of date rather than silently presenting stale rows as current.
+  // True when the last refresh failed but `items` still shows an earlier successful
+  // result — the UI must flag it as possibly out of date, not present it as current.
   isStale: boolean
   totalItems: number
   page: number
@@ -60,16 +56,12 @@ function buildQuery(filters: ExceptionHistoryFilters, cursor: string | undefined
 
 /**
  * The dispatcher's browsable exception archive — GET /api/v1/exceptions/history,
- * cursor-paginated. Deliberately does NOT use useAsyncData: that hook holds one fetch
- * function in a ref and refetches only when its identity changes, which cannot express
- * "changing a filter must jump back to page 1" without reaching into a hook every other
- * screen shares. Instead this owns its own fetch effect and guards it with a
- * request-generation counter so a slow, now-superseded request can never overwrite a
- * newer one's result — see the effect below.
+ * cursor-paginated. Doesn't use useAsyncData: that hook can't express "changing a filter
+ * jumps back to page 1", so this owns its own fetch effect guarded by a
+ * request-generation counter (a superseded request can never overwrite a newer result).
  *
- * No realtime subscription: unlike the review queue, this is a static archive a
- * dispatcher is actively paging through, and rows here are already the closed cases —
- * a live update mid-scroll would reorder or resize pages under someone's cursor.
+ * No realtime subscription: unlike the review queue this is a static archive a dispatcher
+ * is actively paging through, and a live update mid-scroll would reorder pages underfoot.
  */
 export function useExceptionHistory(filters: ExceptionHistoryFilters): UseExceptionHistoryResult {
   const [items, setItems] = useState<TripExceptionListItem[]>(EMPTY)
@@ -80,14 +72,12 @@ export function useExceptionHistory(filters: ExceptionHistoryFilters): UseExcept
   const [isStale, setIsStale] = useState(false)
 
   // cursorStack[0] is always undefined (page 1 needs no cursor); cursorStack[n] is the
-  // cursor that fetches page n + 1. Recorded once, on first visit, so paging backward
-  // never has to mint (or re-derive) a cursor the server already handed us.
+  // cursor that fetches page n + 1, recorded once on first visit.
   const [cursorStack, setCursorStack] = useState<(string | undefined)[]>([undefined])
   const [pageIndex, setPageIndex] = useState(0)
 
-  // Primitive dependency key, not the filters object itself — mirrors useTrips.ts's
-  // statusKey pattern, so a caller passing a fresh object literal every render doesn't
-  // trigger a refetch (and, here, an unwanted page-1 reset) on every render.
+  // Primitive dependency key, not the filters object, so a fresh object literal every
+  // render doesn't trigger a refetch (mirrors useTrips.ts's statusKey pattern).
   const q = filters.q ?? ''
   const reviewStatus = filters.reviewStatus ?? ''
   const severity = filters.severity ?? ''
@@ -95,12 +85,9 @@ export function useExceptionHistory(filters: ExceptionHistoryFilters): UseExcept
   const toDate = filters.toDate ?? ''
   const filterKey = `${q}|${reviewStatus}|${severity}|${fromDate}|${toDate}`
 
-  // Reset to page 1 the moment a filter changes, done DURING render (React's sanctioned
-  // "adjusting state when a prop changes" pattern) rather than in an effect. An
-  // effect-based reset would still leave the fetch effect below reading the OLD
-  // pageIndex/cursorStack for one pass — the wrong page's cursor going out under the
-  // NEW filters — before a second render corrected it. Resetting in-render means the
-  // fetch effect never observes that inconsistent combination.
+  // Reset to page 1 the moment a filter changes, DURING render (React's sanctioned
+  // pattern), not in an effect — an effect-based reset would let the fetch effect below
+  // read the OLD cursor against the NEW filters for one pass.
   const [prevFilterKey, setPrevFilterKey] = useState(filterKey)
   if (filterKey !== prevFilterKey) {
     setPrevFilterKey(filterKey)

@@ -7,8 +7,7 @@ export interface LegendItem {
   color: string
   /** The key mirrors the mark: a small square for bars, a short stroke for lines. */
   mark: 'bar' | 'line'
-  /** For status colours (warning, critical, confirmed, mismatch), which must never be told apart
-   *  by colour alone. A small (12 px) icon. */
+  /** For status colours that must never be told apart by colour alone; a small (12px) icon. */
   icon?: ReactNode
 }
 
@@ -18,9 +17,8 @@ interface ChartLegendProps {
   note?: string
 }
 
-/** HTML legend above a chart. Always present for two or more series, so identity never rests
- *  on colour alone. None for a single series: the title already names it. Text stays in
- *  text colours; only the key wears the series colour. */
+/** HTML legend above a chart. Always present for two or more series so identity never rests
+ *  on colour alone; omitted for a single series since the title already names it. */
 export function ChartLegend({ items, note }: ChartLegendProps) {
   if (items.length === 0 && note === undefined) return null
   return (

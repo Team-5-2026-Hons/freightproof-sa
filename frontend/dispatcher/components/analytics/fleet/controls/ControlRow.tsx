@@ -12,8 +12,8 @@ import { FLEET_COPY } from '../copy'
 import { GrainToggle } from './GrainToggle'
 import { PeriodControl } from './PeriodControl'
 
-/** What the dispatcher chose for one tab. Kept per tab for the visit (spec §3), so switching
- *  tabs and back does not reset it. */
+/** What the dispatcher chose for one tab; kept per tab for the visit so switching tabs and
+ *  back does not reset it. */
 export interface TabControls {
   grain: Grain
   period: PeriodSelection
@@ -24,17 +24,15 @@ interface ControlRowProps {
   /** resolveTabQuery(controls, …): worked out once by the page, which also fetches with it. */
   query: TabQuery
   onChange: (controls: TabControls) => void
-  /** Tabs with no chart over time (Routes & sites) have a Period but no View by (spec D4). */
+  /** Tabs with no chart over time (Routes & sites) have a Period but no View by. */
   showGrain: boolean
   today: string
   allTimeStart: string | null
 }
 
-/** One row of controls above a tab's charts (spec D4). The Period offers only the presets
- *  that suit the chosen View by (D25), and switching View by moves an unsuitable preset to
- *  that unit's default. When the period has too many bars for the chosen grain, the row shows
- *  the next coarser grain and says why; the choice itself is kept, so a shorter period brings
- *  it back. */
+/** One row of controls above a tab's charts. The Period only offers presets that suit the
+ *  View by; when a period has too many bars for the chosen grain, the row switches to a
+ *  coarser one and says why, keeping the original choice so a shorter period restores it. */
 export function ControlRow({ controls, query, onChange, showGrain, today, allTimeStart }: ControlRowProps) {
   const presets = showGrain ? PRESETS_BY_GRAIN[controls.grain] : GENERAL_PRESETS
 

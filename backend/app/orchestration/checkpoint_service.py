@@ -22,27 +22,18 @@ async def log_checkpoint(
     if trip.driver_id != driver_id:
         raise PermissionError("You are not the assigned driver on this trip.")
 
-    # horse_gps_lat/lng are deliberately NOT read from the payload any more.
-    #
-    # They used to be, and that made the column worthless as evidence: the driver's
-    # phone reported its own position AND asserted where the truck was, so a single
-    # source wore two hats and the "cross-reference" compared a claim against itself.
-    # The tracker reading taken below supersedes anything the client sends, which is
-    # the only thing that makes this an independent second source (FP-143).
-    #
-    # The fields stay on DriverCheckpointCreateBody rather than being deleted, for
-    # the same reason LoadingCompleteRequest.driver_visual_count does: an entry
-    # queued offline under the old schema replays from the driver app's localStorage
-    # with them populated, and a removed field would 422 that entry forever — the
-    # queue would never drain. They are accepted and ignored. Delete only once no
-    # client can still be holding one.
+    # horse_gps_lat/lng are deliberately NOT read from the payload: the tracker
+    # reading taken below supersedes anything the client sends, which is the only
+    # thing that makes this an independent second source (FP-143). The payload
+    # fields stay accepted-and-ignored so an offline-queued entry from an older
+    # client build doesn't 422 forever.
     checkpoint = Checkpoint(
         trip_id=trip_id,
         checkpoint_type=payload.checkpoint_type,
         driver_phone_lat=payload.driver_phone_lat,
         driver_phone_lng=payload.driver_phone_lng,
-        # Task 0A: the driver's own submit-instant, stored unconditionally — never
-        # gated by whether the horse position below ends up timely enough to keep.
+        # Stored unconditionally, never gated by whether the horse position below
+        # ends up timely enough to keep.
         driver_captured_at=payload.driver_captured_at,
         selfie_artifact_id=payload.selfie_artifact_id,
         cargo_photo_artifact_id=payload.cargo_photo_artifact_id,
@@ -50,16 +41,11 @@ async def log_checkpoint(
         is_deviation=payload.is_deviation,
     )
     db.add(checkpoint)
-    # Flushed before corroboration so the row has its id — the corroboration log
-    # lines identify the checkpoint they belong to, and a null id there would make
-    # a Pulsit outage untraceable to the checkpoint it affected.
+    # Flushed before corroboration so the row has an id for the corroboration log lines.
     await db.flush()
 
     # Never raises: a driver logging a roadside checkpoint must not be blocked by an
-    # unreachable tracker API. A failure leaves horse_gps null, which means "we could
-    # not check" — see corroboration_service's null-semantics contract. Task 0A:
-    # driver_captured_at travels through so a stale Pulsit fix cannot masquerade as a
-    # live one — see _within_corroboration_skew.
+    # unreachable tracker API. A failure leaves horse_gps null ("could not check").
     await record_checkpoint_corroboration(
         db, trip=trip, checkpoint=checkpoint, driver_captured_at=payload.driver_captured_at,
     )

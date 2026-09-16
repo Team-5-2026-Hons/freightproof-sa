@@ -1,10 +1,6 @@
-"""Queries behind the six headline tiles (GET /analytics/fleet/tiles, spec §5.0).
-
-Every tile describes the fleet right now, so none takes a period. The two that need recent
-history (parcels complete, unused vehicles) look back TILE_WINDOW_DAYS South African days,
-today included. The queries run one after another because an AsyncSession can only run one
-statement at a time.
-"""
+"""Queries behind the six headline tiles (GET /analytics/fleet/tiles, spec §5.0);
+none takes a period. The two needing recent history (parcels complete, unused
+vehicles) look back TILE_WINDOW_DAYS South African days, today included."""
 
 import uuid
 from collections import Counter
@@ -74,9 +70,8 @@ async def count_live_trips(db: AsyncSession, *, organization_id: uuid.UUID) -> i
 
 
 async def critical_waiting(db: AsyncSession, *, organization_id: uuid.UUID) -> CriticalWaiting:
-    """Critical exceptions still in the review queue. Only critical ones enter it on their
-    own (exception_service.initial_review_status), so the severity filter keeps a warning a
-    dispatcher chose to flag out of the "must act on" count."""
+    """Critical exceptions still in the review queue; only critical ones enter it on
+    their own (exception_service.initial_review_status)."""
     result = await db.execute(
         select(func.count(TripException.id), func.min(TripException.created_at))
         .join(Trip, Trip.id == TripException.trip_id)
@@ -93,11 +88,8 @@ async def critical_waiting(db: AsyncSession, *, organization_id: uuid.UUID) -> C
 async def parcels_complete(
     db: AsyncSession, *, organization_id: uuid.UUID, window: InstantRange,
 ) -> ParcelsComplete:
-    """Loaded closed trips that departed in the window, and those with no count mismatch.
-
-    Empty runs are left out: they carry no parcels, so "every parcel accounted for" would
-    be true of them by default and flatter the rate.
-    """
+    """Loaded closed trips that departed in the window, and those with no count
+    mismatch. Empty runs are excluded, since they'd flatter the rate by default."""
     trips = closed_trips(organization_id, window)
     shortfall = (
         select(TripException.id)
@@ -126,11 +118,8 @@ async def parcels_complete(
 async def receipts_owed(
     db: AsyncSession, *, organization_id: uuid.UUID, anchored_phases: Collection[PhaseType],
 ) -> ReceiptsOwed:
-    """Attested anchored steps whose receipt is pending or failed.
-
-    "Attested" excludes two things that are pending by design, not owed: plan steps the
-    driver hasn't reached yet, and overridden steps, which are never anchored at all.
-    """
+    """Attested anchored steps whose receipt is pending or failed; excludes plan
+    steps not yet reached and overridden steps, which are never anchored."""
     result = await db.execute(
         select(
             func.count().filter(PhaseEvent.anchor_status == AnchorStatus.PENDING),
@@ -151,11 +140,8 @@ async def receipts_owed(
 async def licence_expiry(
     db: AsyncSession, *, organization_id: uuid.UUID, today: date,
 ) -> LicenceExpiry:
-    """Expiry bands for active drivers' licences and active vehicles' licence discs.
-
-    Banded in Python rather than SQL so the band edges are the ones unit-tested in
-    periods.expiry_band. There are few enough drivers and vehicles to fetch all the dates.
-    """
+    """Expiry bands for active drivers' licences and active vehicles' licence
+    discs, banded in Python so the edges are the ones unit-tested in periods.expiry_band."""
     drivers = await db.execute(
         select(Driver.license_expiry).where(
             Driver.organization_id == organization_id, Driver.is_active.is_(True),
@@ -175,13 +161,9 @@ async def licence_expiry(
 async def unused_vehicles(
     db: AsyncSession, *, organization_id: uuid.UUID, window: InstantRange,
 ) -> UnusedVehicles:
-    """Active vehicles, horse or trailer, that neither departed in the window nor are on a
-    live trip now.
-
-    A trip of any status counts as use, cancelled included: a truck that left and was
-    called back was still on the road. A live trip that hasn't departed yet also counts,
-    because the vehicle is committed to it.
-    """
+    """Active vehicles that neither departed in the window nor are on a live trip
+    now. Any trip status counts as use — a cancelled or not-yet-departed trip still
+    commits the vehicle."""
     departures = trip_departures(organization_id)
     recently_departed = select(departures.c.trip_id).where(
         departures.c.departed_at >= window.start, departures.c.departed_at < window.end,

@@ -1,11 +1,6 @@
-// Server Component. Renders the shell and hands the token to the client half.
-//
-// Deliberately does NOT fetch the scan server-side. Two reasons, both load-bearing:
-// the GET is what mints the browser-binding cookie, so it has to be made BY the
-// receiver's browser rather than by this server on its behalf — a server-side fetch
-// would bind the token to our own container and lock the real receiver out. And a
-// server-rendered 404 would be cacheable, which is not a property a token's liveness
-// should ever have.
+// Deliberately does NOT fetch the scan server-side: the GET mints the browser-binding
+// cookie, so it must be made by the receiver's browser, not this server (which would
+// lock the real receiver out), and a server-rendered 404 would be wrongly cacheable.
 import { HandoverPageClient } from './HandoverPageClient'
 
 interface PageProps {

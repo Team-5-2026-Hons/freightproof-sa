@@ -31,10 +31,8 @@ interface DonutChartProps<Row> {
   height?: number
 }
 
-/** Parts of one whole (chart 4.4, D25): every review ends in exactly one outcome, so its five
- *  outcomes share a ring. The dataviz rule allows a pie only for part-to-whole at a glance with
- *  six parts or fewer, which this is. Zero parts are left out of the ring (they would draw
- *  nothing) but stay in the legend and the table. A 2 px surface gap separates the slices. */
+/** Parts of one whole, up to six of them. Zero parts are left out of the ring (they would
+ *  draw nothing) but stay in the legend and the table. */
 export function DonutChart<Row>({
   rows, rowKey, value, color, centre, renderTooltip, height = CHART_HEIGHT,
 }: DonutChartProps<Row>) {

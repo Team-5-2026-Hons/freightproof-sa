@@ -1,19 +1,11 @@
-// Extends Vitest's `expect` with jest-dom matchers (toBeInTheDocument, etc.).
-//
-// Mirrors frontend/dispatcher/vitest.setup.ts, minus its HTMLDialogElement and
-// matchMedia stubs: this app has no <dialog> element and no width-query docking
-// behaviour, so stubbing those platform APIs here would be dead code pointing at
-// nothing. In their place, this file stubs the platform APIs Swipe.tsx's drag
-// gesture depends on, none of which jsdom implements: ResizeObserver, the Pointer
-// Events capture methods, and a measurable clientWidth. Browser checks cover the
-// real gesture; these exist only so the drag math is exercisable under jsdom.
+// Extends Vitest's `expect` with jest-dom matchers (toBeInTheDocument, etc.), and stubs
+// the platform APIs Swipe.tsx's drag gesture depends on that jsdom doesn't implement:
+// ResizeObserver, Pointer Events capture methods, and a measurable clientWidth.
 import '@testing-library/jest-dom/vitest'
 
 let mockTrackClientWidthPx = 300
 
-/** Sets the width every element reports via `clientWidth`, since jsdom's layout engine
-    never computes real box sizes. Swipe.tsx measures its track this way — set this before
-    rendering it to control how far the thumb can travel in a test. */
+/** Sets the width every element reports via `clientWidth` — jsdom never computes real box sizes. */
 export function setMockTrackClientWidthPx(px: number): void {
   mockTrackClientWidthPx = px
 }
@@ -33,9 +25,7 @@ class MockResizeObserver {
   }
 
   observe(): void {
-    // The entry's shape is irrelevant: Swipe.tsx reads clientWidth from its own closure
-    // over the observed element rather than from the callback's entry parameter, so an
-    // empty placeholder is enough to satisfy the callback's signature.
+    // Entry shape is irrelevant: Swipe.tsx reads clientWidth from its own closure, not the entry.
     this.callback([] as unknown as ResizeObserverEntry[], this as unknown as ResizeObserver)
   }
 

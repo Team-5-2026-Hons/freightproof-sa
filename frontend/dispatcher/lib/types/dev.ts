@@ -1,32 +1,22 @@
 /**
- * Types for the dev trigger panel. Mirrors backend/app/schemas/dev.py.
- *
- * Dispatcher-local rather than in @shared: the driver surface never sees
- * parcel-grain scan data, so the request/response contracts here have exactly one
- * consumer — the dev panel. CLOSED_PHASE_STATUSES below is the exception; it is
- * phase-domain, not dev-panel, and LoadingDetail/UnloadingDetail import it. If a
- * third consumer appears, move it to @shared/lib/types/phase and re-export here.
+ * Types for the dev trigger panel. Mirrors backend/app/schemas/dev.py. Dispatcher-local,
+ * not @shared, since the driver surface never sees parcel-grain scan data.
+ * CLOSED_PHASE_STATUSES is the exception (phase-domain, imported by
+ * LoadingDetail/UnloadingDetail); move it to @shared/lib/types/phase if a third consumer appears.
  */
 
 export type ScanDirection = 'out' | 'in'
 
 /**
- * Phase statuses that mean a phase has already been decided and will not accept
- * a further scan-driven gate change. Mirrors CLOSED_PHASE_STATUSES in
- * backend/app/schemas/dev.py — keep the two lists in sync by hand, since this
- * file has no import path back to the backend.
- *
- * Also reused by LoadingDetail/UnloadingDetail (components/domain) as the
- * governing test for "has this phase's stamped figure been written yet" — the
- * same set of statuses that means a scan gate is decided also means a phase's
- * parcel_count_* has been stamped and stops being read live.
+ * Phase statuses that mean a phase has already been decided and won't accept a further
+ * scan-driven gate change. Mirrors CLOSED_PHASE_STATUSES in backend/app/schemas/dev.py —
+ * keep in sync by hand. Also governs LoadingDetail/UnloadingDetail's "has this phase's
+ * parcel_count_* been stamped" test.
  */
 export const CLOSED_PHASE_STATUSES = ['completed', 'exception', 'overridden'] as const
 
 export type ClosedPhaseStatus = (typeof CLOSED_PHASE_STATUSES)[number]
 
-// Narrow helper so callers don't re-implement the `includes` check (and the
-// null handling) at every call site.
 export function isClosedPhaseStatus(status: string | null): boolean {
   return status !== null && (CLOSED_PHASE_STATUSES as readonly string[]).includes(status)
 }
@@ -44,13 +34,12 @@ export interface DevTripStop {
   precinct_name: string
   pickup_consignments: DevConsignment[]
   delivery_consignments: DevConsignment[]
-  // Status of the phase event gating each scan direction AT THIS STOP. None = no
-  // such phase event yet. See CLOSED_PHASE_STATUSES for "already decided" values.
+  // Status of the phase event gating each scan direction AT THIS STOP. Null = no
+  // such phase event yet.
   loading_phase_status: string | null
   confirmation_phase_status: string | null
-  // Status of the DEPARTURE phase for the leg that ends at this stop — the truck
-  // physically leaving the origin is the precondition for any destination scan.
-  // Null when no departure precedes this stop (i.e. it is the origin).
+  // Status of the DEPARTURE phase for the leg ending at this stop; null when no
+  // departure precedes this stop (i.e. it is the origin).
   preceding_departure_status: string | null
 }
 
@@ -81,10 +70,8 @@ export interface ScanTriggerRequest {
   direction: ScanDirection
   parcel_count?: number
   barcodes?: string[]
-  // Per-waybill selection: parcel_perfect_reference -> the barcodes to stage for
-  // it. A waybill absent from the map stages an EMPTY scan, not a full one — see
-  // MockScanFeed.stage_scans's replace-not-append docstring. The panel always
-  // sends every waybill's full ticked set for this reason.
+  // parcel_perfect_reference -> barcodes to stage. A waybill absent from the map
+  // stages an EMPTY scan, not a full one (see MockScanFeed.stage_scans).
   barcodes_by_reference?: Record<string, string[]>
 }
 
@@ -146,11 +133,8 @@ export interface FlushMockStateResponse {
   keys_deleted: number
 }
 
-/**
- * Exception types the panel offers. A deliberate subset of the backend enum —
- * the ones with a demo narrative. Scan discrepancies are raised by the
- * reconciliation service itself and are not in this list.
- */
+/** Exception types the panel offers — a deliberate subset of the backend enum with a
+ *  demo narrative. Scan discrepancies are raised by the reconciliation service, not here. */
 export const DEMO_EXCEPTION_TYPES = [
   'seal_broken_in_transit',
   'panic_button',
@@ -162,13 +146,9 @@ export const DEMO_EXCEPTION_TYPES = [
 
 export type DemoExceptionType = (typeof DEMO_EXCEPTION_TYPES)[number]
 
-/**
- * One preset mock-tracker fix ("waypoint"). Mirrors WaypointRead in
- * backend/app/schemas/dev.py. Latitude/longitude are strings because the
- * backend serialises Decimal that way — never coerce them to number, since
- * float rounding on a coordinate is exactly the kind of drift this endpoint
- * exists to test.
- */
+/** One preset mock-tracker fix ("waypoint"). Mirrors WaypointRead in
+ *  backend/app/schemas/dev.py. Lat/lng are strings (backend serialises Decimal that
+ *  way) — never coerce to number, or float rounding drifts the coordinate. */
 export interface WaypointRead {
   waypoint_id: string
   label: string
@@ -199,16 +179,11 @@ export interface MoveTruckResponse {
   distance_metres: number | null
   geofence_radius_metres: number | null
   gps_tolerance_metres: number
-  // null (not false) on the no_signal waypoint — no fix means no verdict was ever
-  // computed, which is a different fact from a fix that failed the geofence.
+  // null (not false) on the no_signal waypoint: no fix means no verdict was computed.
   geofence_confirmed: boolean | null
   in_tolerance_band: boolean
   verdict_reason: string
 }
 
-/**
- * The waypoint_id that resets the mock tracker to sit at the precinct. Shared
- * between the panel's per-waypoint buttons and its "Reset to precinct" button
- * so the two never drift onto different literal strings.
- */
+/** The waypoint_id that resets the mock tracker to sit at the precinct. */
 export const PRECINCT_WAYPOINT_ID = 'precinct'

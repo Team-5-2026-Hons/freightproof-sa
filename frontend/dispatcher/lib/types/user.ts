@@ -1,9 +1,6 @@
-// User: authenticated session identity for the Dispatcher Portal.
-// DispatcherUser authenticates via Supabase Auth (email + password).
-// The frontend calls supabase.auth.signInWithPassword(), then passes the
-// session access_token as a Bearer header to FastAPI. GET /api/v1/auth/me
-// validates the token and returns the DispatcherUser shape below.
-// AuthState is the shape exposed by AuthContext to all consumers via useAuth().
+// Authenticated session identity for the Dispatcher Portal. DispatcherUser authenticates
+// via Supabase Auth; GET /api/v1/auth/me validates the resulting Bearer token and returns
+// this shape. AuthState is what AuthContext exposes via useAuth().
 
 import type { Driver } from '@shared/lib/types/driver'
 
@@ -18,7 +15,6 @@ export interface DispatcherUser {
   role: 'dispatcher' | 'admin_dispatcher'
 }
 
-// DriverUser wraps the full Driver record so cross-surface type imports stay consistent.
 export type DriverUser = Driver
 
 export interface AuthState {

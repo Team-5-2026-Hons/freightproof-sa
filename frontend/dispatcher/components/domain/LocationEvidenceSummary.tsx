@@ -8,10 +8,8 @@ interface Props {
   className?: string
 }
 
-// Chip colouring follows the stored verdict, not a browser-computed one: see
-// verdictFor() in lib/phase/location-evidence.ts. Every non-tolerance verdict (not
-// verified, not checked yet, no verdict for this phase) reads as 'pending': none of
-// them is a pass or a fail, they're all "nothing decisive is recorded".
+// Follows the stored verdict (see verdictFor() in lib/phase/location-evidence.ts). Every
+// non-tolerance verdict reads as 'pending' — none of them is a pass or a fail.
 const VERDICT_CHIP_TYPE: Record<LocationEvidence['verdict'], ChipType> = {
   within_tolerance: 'complete',
   outside_tolerance: 'exception',
@@ -22,11 +20,8 @@ const VERDICT_CHIP_TYPE: Record<LocationEvidence['verdict'], ChipType> = {
 
 /**
  * Compact one-line summary for a timeline row: the stored verdict as a chip, plus the
- * measured separation (or a plain "unavailable") when a fix exists at all.
- *
- * Renders nothing for a phase that has neither a fix nor an evaluation yet: a pending
- * phase has nothing to say about location, and an empty chip row would just be noise
- * repeated down every unstarted phase in the timeline.
+ * measured separation when a fix exists. Renders nothing for a phase with neither a fix
+ * nor an evaluation yet.
  */
 export function LocationEvidenceSummary({ evidence, className }: Props) {
   if (!hasAnyFix(evidence) && evidence.verdict === 'not_checked_yet') return null

@@ -1,9 +1,5 @@
-// Root shell for the receiver app (FP-155).
-//
-// A Server Component with no providers, no auth, no navigation and no theme switching —
-// there is exactly one page in this app and the person reading it has no account. Keeping
-// the shell this thin is the point: every provider added here would run on a stranger's
-// phone for a page they will see once.
+// Deliberately no providers, auth, navigation or theme switching — one page, no account,
+// seen once on a stranger's phone.
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
 

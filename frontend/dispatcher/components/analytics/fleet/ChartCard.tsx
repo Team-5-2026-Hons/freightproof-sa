@@ -15,8 +15,7 @@ import type { FleetQueryResult } from '@/lib/hooks/useFleetAnalytics'
 
 const COPY = FLEET_COPY.chart
 
-/** The four ChartCard props that come straight from a tab's query, so each card spreads
- *  them instead of repeating them. */
+/** The four ChartCard props that come straight from a tab's query. */
 export function queryState<T>(result: FleetQueryResult<T>) {
   return { isLoading: result.isLoading, isRefreshing: result.isRefreshing, error: result.error, onRetry: result.refetch }
 }
@@ -25,22 +24,19 @@ interface ChartCardProps {
   title: string
   /** The question the chart answers, in the dispatcher's words. Shown in the "i" popover. */
   question: string
-  /** The sample behind the chart, e.g. "Closed trips, by the day they first departed · 16
-   *  trips". Shown in the "i" popover, under the question. */
+  /** The sample behind the chart, e.g. "Closed trips, by day departed · 16 trips". Shown in
+   *  the "i" popover, under the question. */
   basis?: string
   /** Trips behind the chart. Under LOW_SAMPLE_TRIPS the chart still draws, with a warning. */
   sampleSize?: number
-  /** A caveat that changes how the chart should be read, e.g. "Needs a full year of history to
-   *  compare months fairly." Shown on the card face like the low-sample warning, never behind
-   *  the "i": the reader needs it before reading the bars, not after clicking (spec §7.7). */
+  /** A caveat that changes how the chart should be read. Shown on the card face, not behind
+   *  the "i" — the reader needs it before reading the bars. */
   caveat?: string
-  /** How to read the chart (the spec's captions). Shown in the "i" popover, under the basis. */
+  /** How to read the chart. Shown in the "i" popover, under the basis. */
   note?: string
-  /** The card draws buckets over time, so its popover ends with what a faded bucket means
-   *  (spec §7.7 item 6). The legend row no longer carries that line. */
+  /** The card draws buckets over time, so its popover ends with what a faded bucket means. */
   timeAxis?: boolean
-  /** Controls for this one chart, e.g. a Departures | Arrivals switch. In the header, visible in
-   *  every state, so an empty half can still be switched away from. */
+  /** Controls for this one chart, shown in the header in every state. */
   controls?: ReactNode
   legend?: ReactNode
   isLoading: boolean
@@ -51,21 +47,18 @@ interface ChartCardProps {
   isEmpty: boolean
   /** Specific to the chart, e.g. "No closed trips departed in this period." */
   emptyBody: string
-  /** The table twin: every value reachable without hovering (spec §7.4). */
+  /** The table twin: every value reachable without hovering. */
   table: ReactNode
   /** The chart itself. */
   children: ReactNode
-  /** Placeholder height on first load: the chart's own height, so nothing jumps. */
+  /** Placeholder height on first load, so nothing jumps. */
   chartHeight?: number
   className?: string
 }
 
-/** The frame every fleet chart sits in, owning the states of spec §7.6: first load, refetch,
- *  error, no observations and low sample, plus the Show table toggle.
- *
- *  Card face (spec §7.7, D22): the title with an "i" button beside it. The question and basis
- *  live in that popover, so the face stays clean. The low-sample warning stays on the face,
- *  because it is a warning, not a description, and must be seen without clicking. */
+/** The frame every fleet chart sits in: title with an "i" popover for the question and basis,
+ *  plus first load, refetch, error, empty and low-sample states, and the Show table toggle.
+ *  The low-sample warning stays on the card face since it must be seen without clicking. */
 export function ChartCard({
   title, question, basis, sampleSize, caveat, note, timeAxis = false, controls, legend, isLoading, isRefreshing = false, error, onRetry,
   isEmpty, emptyBody, table, children, chartHeight = CHART_HEIGHT, className,

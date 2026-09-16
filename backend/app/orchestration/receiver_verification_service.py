@@ -1,7 +1,5 @@
-"""Receiver identity verification — quota metering and the identity cross-check.
-
-Stage 1 scope: the two pieces of logic that are pure enough to test without HTTP. The
-session lifecycle, tier resolution and exception raising arrive in Stage 2.
+"""Receiver identity verification — quota metering, the identity cross-check, and
+the vendor session lifecycle.
 
 Layering: orchestration -> integrations, db. No HTTP concerns belong here.
 """
@@ -41,13 +39,9 @@ logger = logging.getLogger(__name__)
 
 PROVIDER_DIDIT = "didit"
 
-# How far out of step with our clock a webhook may be and still be acted on. The vendor's
-# own integration guidance names 300 seconds, and a valid signature alone cannot supply
-# this: HMAC proves a body was authored by the secret holder, not that it was authored
-# recently, so a delivery captured once can otherwise be replayed against this public
-# route indefinitely. A protocol constant rather than a config field on purpose — it is
-# fixed by the vendor's contract, not by which environment we are deployed in, and
-# core/config.py is a shared file that four developers' .env files have to track.
+# The vendor's integration guidance names 300s. A valid HMAC alone doesn't prove
+# recency, so without this a captured delivery could replay indefinitely. A
+# protocol constant, not a config field: fixed by the vendor's contract, not by env.
 WEBHOOK_MAX_CLOCK_SKEW_SECONDS = 300
 
 
@@ -59,9 +53,8 @@ def _strip_diacritics(value: str) -> str:
 def _normalise_name(value: str) -> str:
     """Casefold, strip accents, collapse whitespace, drop punctuation.
 
-    Punctuation goes because a document reads "NKOSI" where a receiver types "Nkosi," —
-    a comma is not a mismatch, and treating it as one would manufacture fraud signals out
-    of typing habits.
+    Punctuation goes because "NKOSI" vs "Nkosi," is not a mismatch, and treating it
+    as one would manufacture fraud signals out of typing habits.
     """
     cleaned = "".join(
         char if char.isalnum() or char.isspace() else " "
@@ -71,12 +64,7 @@ def _normalise_name(value: str) -> str:
 
 
 def _normalise_id_number(value: str) -> str:
-    """Keep alphanumerics only.
-
-    Passports and company registration numbers legitimately carry letters, and documents
-    print separators an ID book does not. Comparing the raw strings would fail on
-    formatting alone.
-    """
+    """Keep alphanumerics only, so formatting/separator differences don't fail the compare."""
     return "".join(char for char in value if char.isalnum()).casefold()
 
 
@@ -89,18 +77,13 @@ def identity_matches(
 ) -> Optional[bool]:
     """Whether the vendor's extracted identity agrees with what the receiver typed.
 
-    Returns None — not False — when there is nothing to compare. The distinction is the
-    whole point: "we could not check" and "we checked and it disagreed" are different
-    facts, and the exception types they feed are deliberately kept apart for exactly the
-    reason SEAL_UNVERIFIED and SEAL_MISMATCH are.
+    Returns None — not False — when there's nothing to compare: "could not check"
+    and "checked and disagreed" are different facts, same split as SEAL_UNVERIFIED
+    vs SEAL_MISMATCH.
 
-    Only the SURNAME is compared, and only for presence among the typed name's tokens.
-    Given-name ordering, initials and middle names vary far too much between a printed
-    document and a one-handed entry on a warehouse floor to carry a fraud signal; a
-    surname that is absent entirely does.
-
-    This never blocks anything. A False result is recorded as evidence and surfaced to a
-    dispatcher — the delivery still confirms.
+    Only the SURNAME is compared, for presence among the typed name's tokens.
+    Given-name ordering/initials vary too much to carry a fraud signal; an absent
+    surname does. Never blocks anything — a False result is evidence, not a gate.
     """
     if extracted_surname is None and extracted_id_number is None:
         return None
@@ -120,18 +103,15 @@ def identity_matches(
 async def consume_quota_slot(db: AsyncSession, *, provider: str = PROVIDER_DIDIT) -> bool:
     """Claim one free-tier session for this month. True if one was available.
 
-    The conditional UPDATE is the gate, not a read-then-write in Python: two handovers
-    starting at the same instant race the database, exactly as redeem_capability_token
-    makes two simultaneous scans do. A read-then-write here would let both pass the
-    ceiling and silently bill.
-
-    The period key is UTC because the vendor's quota resets at 00:00 UTC — 02:00 SAST.
-    Keying on local time would roll the counter two hours late and bill for the gap.
+    The conditional UPDATE is the gate, not a read-then-write in Python: two
+    handovers racing the database at the same instant could otherwise both pass
+    the ceiling. The period key is UTC because the vendor's quota resets at
+    00:00 UTC, not local time.
     """
     period = datetime.now(UTC).strftime("%Y-%m")
 
-    # Ensure the row exists without disturbing a concurrent creator. DO NOTHING rather
-    # than DO UPDATE: the increment below is the only thing allowed to move the counter.
+    # DO NOTHING, not DO UPDATE: the increment below is the only thing allowed to
+    # move the counter.
     await db.execute(
         pg_insert(IdvsQuotaLedger)
         .values(period=period, provider=provider, sessions_used=0)
@@ -165,9 +145,8 @@ async def consume_quota_slot(db: AsyncSession, *, provider: str = PROVIDER_DIDIT
 class Verdict:
     """What we concluded, derived from what the vendor said plus our own cross-check.
 
-    Separate from IdvsDecision on purpose: that is the vendor's vocabulary, this is ours,
-    and the mapping between them is a judgement this module owns rather than something a
-    parser should be making.
+    Separate from IdvsDecision on purpose: that is the vendor's vocabulary, this is
+    ours, and the mapping between them is a judgement this module owns.
     """
 
     status: ReceiverVerificationStatus
@@ -181,22 +160,14 @@ def resolve_verdict(
 ) -> Verdict:
     """Map a vendor status and cross-check result onto our verdict and its exception.
 
-    Two rules do all the work here, and both are the spec's:
+    Two rules: (1) a GAP is not a MISMATCH — ABANDONED/EXPIRED are benign (lost
+    signal, walked away) and raise RECEIVER_ID_UNVERIFIED, while DECLINED or a
+    failed cross-check raise RECEIVER_ID_MISMATCH. (2) identity_match=None means
+    nothing to compare, not disagreement — an APPROVED session with no extracted
+    document data is still VERIFIED.
 
-    1. A GAP is not a MISMATCH. ABANDONED and EXPIRED mean no check completed, which has
-       benign readings (lost signal, walked away) and raises RECEIVER_ID_UNVERIFIED.
-       DECLINED and a failed cross-check mean a check completed and disagreed, which does
-       not, and raises RECEIVER_ID_MISMATCH. Conflating them would put false positives in
-       front of a dispatcher triaging a real investigation — the reasoning enums.py
-       already records for SEAL_UNVERIFIED versus SEAL_MISMATCH.
-
-    2. identity_match None means there was nothing to compare, NOT that it disagreed.
-       An APPROVED session with no extracted document data is still VERIFIED; treating
-       absence of evidence as evidence of fraud would manufacture mismatches out of a
-       vendor's field coverage.
-
-    A non-terminal status yields PENDING and no exception. Nothing is raised for a check
-    still in flight — the sweeper terminalises it later, and only then is there a fact.
+    A non-terminal status yields PENDING and no exception; the sweeper terminalises
+    it later.
     """
     if not status.is_terminal:
         return Verdict(
@@ -223,14 +194,11 @@ def resolve_verdict(
             exception_type=ExceptionType.RECEIVER_ID_MISMATCH,
         )
 
-    # ABANDONED / EXPIRED — the gap case.
+    # ABANDONED / EXPIRED — the gap case. Both map to ABANDONED: "they walked away"
+    # and "the link aged out" are the same fact to the evidence record.
     return Verdict(
         status=ReceiverVerificationStatus.UNVERIFIED,
         tier=ReceiverVerificationTier.DOCUMENT_AND_FACE,
-        # Both ABANDONED and EXPIRED map here. The enum has no EXPIRED member on
-        # purpose: from the evidence record's point of view "they walked away" and "the
-        # link aged out" are the same fact — no check completed — and inventing two
-        # reasons would imply a distinction a dispatcher cannot act on differently.
         unverified_reason=ReceiverVerificationUnverifiedReason.ABANDONED,
         exception_type=ExceptionType.RECEIVER_ID_UNVERIFIED,
     )
@@ -246,19 +214,13 @@ async def raise_verification_exception(
 ) -> None:
     """Record a verification finding as a TripException, and tell the dispatcher.
 
-    Severity follows the gap/mismatch split rather than being uniform. A MISMATCH is a
-    fraud indicator with no benign reading and gets WARNING; an UNVERIFIED gap gets INFO,
-    because "the receiver had no ID on them" is an ordinary Tuesday on a warehouse floor
-    and does not belong in the same lane as a disagreeing document. Putting a class of
-    finding with real false-positive modes into the alarm lane is how a dispatcher learns
-    to ignore the alarm lane — the reasoning phase_service.py records for GPS_MISMATCH.
-
-    Never CRITICAL. This codebase reserves that for findings that stop a trip — a seal
-    mismatch, a panic button — and an identity check cannot, by the spec's own rule that
+    Severity follows the gap/mismatch split: MISMATCH is a fraud indicator with no
+    benign reading (WARNING); an UNVERIFIED gap ("no ID on them") is ordinary
+    (INFO). Never CRITICAL — reserved for findings that stop a trip, and
     verification never gates a delivery.
 
-    Broad except, logged with a traceback: the receiver has already confirmed, and a
-    failure to file paperwork about it must not unwind a delivery that happened.
+    Broad except: the receiver has already confirmed, and a paperwork failure
+    must not unwind a delivery that happened.
     """
     if verdict.exception_type is None:
         return
@@ -290,8 +252,6 @@ async def raise_verification_exception(
         ))
         await db.flush()
 
-        # FP-147's invariant: a system-detected exception that tells no one leaves the
-        # dispatcher's screen showing a trip that no longer matches the record.
         enqueue_event(
             db, trip.operator_organization_id,
             TripEvent(
@@ -311,10 +271,8 @@ async def raise_verification_exception(
 def hash_consent_text(consent_text: str) -> str:
     """SHA-256 of the exact wording shown to the receiver.
 
-    The hash, never the text. An s27(1)(a) consent basis is only as good as proof of WHAT
-    was agreed to, and hashing makes that provable without copying the paragraph into
-    every row — which also makes the wording versioned content rather than a UI string
-    somebody edits freely.
+    The hash, never the text: an s27(1)(a) consent basis needs proof of WHAT was
+    agreed to, without copying the paragraph into every row.
     """
     return hashlib.sha256(consent_text.encode("utf-8")).hexdigest()
 
@@ -324,9 +282,8 @@ async def record_consent(
 ) -> ReceiverIdentityVerification:
     """Create the verification row at the moment the receiver consents.
 
-    Before any vendor call and before any confirmation exists. The row starts PENDING with
-    a token_id and no handover_confirmation_id — see the model's docstring for why that
-    ordering is the design rather than an oversight.
+    Before any vendor call and before any confirmation exists — see the model's
+    docstring for why that ordering is the design.
     """
     verification = ReceiverIdentityVerification(
         id=uuid.uuid4(),
@@ -353,27 +310,19 @@ async def start_verification(
 ) -> Optional[IdvsSession]:
     """Claim quota, create a vendor session, and extend the token to cover it.
 
-    Quota is claimed BEFORE the vendor call, never after. The whole point of the hard stop
-    is that session 501 is never created — checking afterwards would mean paying for the
-    thing we decided not to buy.
+    Quota is claimed BEFORE the vendor call: checking afterwards would mean paying
+    for a session already created. Returns None on every degradation path — a
+    vendor outage, spent quota, or unreachable network all end with a confirmable
+    delivery carrying an honest reason, not a failure.
 
-    Returns None on every degradation path. The caller sends the receiver down the tier
-    ladder instead of failing: a vendor outage, a spent quota and an unreachable network
-    all end with a confirmable delivery carrying an honest reason.
+    `raw_token` is needed because the vendor's hosted flow must be told where to
+    send the receiver back to; the `token` ROW only stores an irreversible hash.
 
-    `raw_token` is the presented token, which the `token` ROW cannot supply — it stores
-    only a hash, deliberately and irreversibly. It is needed because the vendor's hosted
-    flow has to be told where to send the receiver back to, and that address is this
-    handover's own page.
-
-    Handing the vendor a live capability token is a considered trade, not an oversight.
-    The token alone confirms nothing: redemption also requires the HttpOnly binding cookie
-    minted when the receiver first opened the page and held only by their browser, which
-    is precisely what FP-240 built it for. So the worst a leaked callback URL yields is a
-    rendered scan page, never a confirmed delivery. The alternative — a return page that
-    recovers the token from sessionStorage — keeps it from the vendor but strands any
-    receiver whose browser refuses storage, and a stranded receiver cannot confirm at all.
-    Between a bounded exposure and an unbounded failure, this takes the bounded one.
+    Handing the vendor a live capability token is a considered trade: redemption
+    also requires the HttpOnly binding cookie held only by the receiver's browser
+    (FP-240), so a leaked callback URL yields at worst a rendered scan page, never
+    a confirmed delivery — the bounded exposure, versus a return-page alternative
+    that strands any receiver whose browser refuses storage.
     """
     if not await consume_quota_slot(db, provider=PROVIDER_DIDIT):
         verification.status = ReceiverVerificationStatus.UNVERIFIED
@@ -392,14 +341,12 @@ async def start_verification(
         await db.flush()
         return None
 
-    # Persisted BEFORE the receiver is redirected. This is the security rule in spec §7.1:
-    # the client never names a session, so it can never substitute somebody else's
-    # approved one — we only ever fetch a decision for the id we stored ourselves.
+    # Persisted BEFORE the receiver is redirected: the client never names a
+    # session, so it can never substitute somebody else's approved one.
     verification.provider_session_id = session.session_id
     await db.flush()
 
-    # Best-effort. A token that cannot be extended still works; it just gives the receiver
-    # less time, which degrades the tier rather than failing the handover.
+    # Best-effort: a token that can't be extended just degrades the tier.
     await extend_token_for_verification(db, token_id=token.id)
 
     return session
@@ -415,15 +362,12 @@ async def resolve_verification(
 ) -> Verdict:
     """Fetch the authoritative decision and write our verdict.
 
-    THE security boundary of this feature. The session id comes from our own row, never
-    from the caller — spec §7.1, and the exact failure Didit's own team patched in their
-    WordPress plugin, where a browser could post {status: "Approved"} and be believed.
-    Our receiver route is unauthenticated by design, so trusting a client-supplied status
-    would let anyone holding a live QR self-declare VERIFIED.
+    THE security boundary of this feature: the session id comes from our own row,
+    never the caller — our receiver route is unauthenticated by design, so trusting
+    a client-supplied status would let anyone holding a live QR self-declare VERIFIED.
 
-    A vendor that cannot be reached leaves the row PENDING rather than guessing. The
-    sweeper terminalises it later; inventing a verdict here would put a fact in the
-    evidence record that nobody established.
+    A vendor that cannot be reached leaves the row PENDING rather than guessing;
+    the sweeper terminalises it later.
     """
     if verification.provider_session_id is None:
         return Verdict(
@@ -465,10 +409,9 @@ async def attach_confirmation(
 ) -> None:
     """Link a verification to the confirmation the receiver went on to sign.
 
-    Separate from record_consent because the two happen at different moments and a
-    receiver may verify and then walk away. A verification with a NULL
-    handover_confirmation_id is not an error state — it is the honest record of someone
-    who proved who they were and then did not sign.
+    Separate from record_consent since a receiver may verify and then walk away.
+    A NULL handover_confirmation_id is not an error state — someone proved who
+    they were and then didn't sign.
     """
     await db.execute(
         update(ReceiverIdentityVerification)
@@ -481,13 +424,12 @@ async def attach_confirmation(
 def verify_webhook_signature(raw_body: bytes, presented_signature: Optional[str]) -> bool:
     """Whether a webhook body really came from the vendor.
 
-    FAILS CLOSED. An unset IDVS_WEBHOOK_SECRET refuses every delivery rather than accepting
-    every delivery — a misconfigured deployment must lose webhooks, not accept forged ones.
-    This is the only thing standing between a real decision and an attacker's, on a public
-    unauthenticated route.
+    FAILS CLOSED: an unset IDVS_WEBHOOK_SECRET refuses every delivery rather than
+    accepting every delivery — a misconfigured deployment must lose webhooks, not
+    accept forged ones.
 
-    compare_digest, never `==`: a byte-wise comparison leaks how much of a forged signature
-    was correct, which is enough to construct one a byte at a time.
+    compare_digest, never `==`: a byte-wise comparison leaks how much of a forged
+    signature was correct.
     """
     secret = settings.IDVS_WEBHOOK_SECRET
     if not secret or not presented_signature:
@@ -504,19 +446,9 @@ def webhook_timestamp_is_fresh(
 ) -> bool:
     """Whether a webhook was dispatched recently enough to act on.
 
-    FAILS CLOSED, like verify_webhook_signature and for the same reason: a missing or
-    unparseable timestamp is refused rather than waved through. The vendor sends one on
-    every delivery, so its absence means either a forgery or something we do not
-    understand, and neither deserves the benefit of the doubt on a route that writes to
-    the evidence record.
-
-    Absolute difference, not "older than": a timestamp far in the FUTURE is just as
-    suspicious as a stale one, and clamping only one side leaves the replay window open to
-    anyone who can pick their own clock.
-
-    The realistic failure mode is our own server drifting rather than an attack, which is
-    why the caller logs the delta — a webhook rejected for freshness and a webhook
-    rejected for a bad signature need to be distinguishable at 2am.
+    FAILS CLOSED, like verify_webhook_signature: a missing/unparseable timestamp
+    is refused rather than waved through. Absolute difference, not "older than" —
+    a timestamp far in the FUTURE is just as suspicious as a stale one.
     """
     if not presented_timestamp:
         return False
@@ -529,6 +461,8 @@ def webhook_timestamp_is_fresh(
 
     skew = abs(int(datetime.now(UTC).timestamp()) - dispatched_at)
     if skew > max_skew_seconds:
+        # Logged with the delta: a webhook rejected for freshness vs. a bad
+        # signature need to be distinguishable at 2am.
         logger.warning(
             "Rejected an IDVS webhook %ss out of date (limit %ss) — replay, or check this "
             "server's clock", skew, max_skew_seconds,
@@ -542,21 +476,14 @@ async def ingest_webhook_decision(
 ) -> None:
     """Apply a vendor-pushed decision to the verification it belongs to.
 
-    The BACKSTOP, not the primary path. The receiver's own return trip resolves most
-    verifications synchronously; this catches the ones where they closed the tab or lost
-    signal before the page could poll.
+    The BACKSTOP, not the primary path: the receiver's own return trip resolves
+    most verifications synchronously; this catches the ones where they closed the
+    tab or lost signal first.
 
-    Three rules, all from the spec:
-
-      * Unknown session — return quietly. The route 200s so the vendor stops retrying into
-        a wall, and a session we never created is not something we can act on.
-      * Already terminal — annotate, never overwrite. A late arrival must not rewrite a
-        trip that has closed; that would break the invariant the whole ordering exists to
-        protect. The finding is still kept, because this codebase records inconvenient
-        facts rather than discarding them.
-      * Idempotent — Didit retries up to five times. A second delivery of the same decision
-        must change nothing, which falls out of the two rules above rather than needing a
-        dedupe table.
+    Unknown session returns quietly (200s so the vendor stops retrying). Already-
+    terminal verifications are annotated, never overwritten — a late arrival must
+    not rewrite a closed trip, though the finding is still kept. This also makes
+    the handler idempotent against Didit's retries, with no dedupe table needed.
     """
     session_id = payload.get("session_id")
     if not session_id:
@@ -577,21 +504,16 @@ async def ingest_webhook_decision(
 
     decision = _parse_decision(payload, fallback_session_id=str(session_id))
 
-    # `!=`, never `is not`. These columns are mapped_column(String(20)), not a
-    # SQLAlchemy Enum, so a row loaded in a fresh session comes back as a bare str
-    # rather than the enum member. Identity comparison would therefore be True for
-    # EVERY webhook in production — where the request always has its own session —
-    # and the backstop would annotate every decision as late instead of resolving
-    # any. Value comparison works because these enums subclass str.
+    # `!=`, never `is not`: status is mapped_column(String(20)), so a freshly
+    # loaded row is a bare str, not the enum member. Value comparison works
+    # because these enums subclass str.
     if verification.status != ReceiverVerificationStatus.PENDING:
         verification.late_decision_status = decision.status.value
         verification.late_decision_at = datetime.now(UTC)
         await db.flush()
         logger.info(
             "Late IDVS decision for verification=%s recorded as annotation (status stands at %s)",
-            # Coerced, not `.value` directly: status is a String column, so a row
-            # loaded in a fresh session is a bare str and `.value` would raise
-            # AttributeError — turning this log line into a 500 on the webhook.
+            # Coerced, not `.value` directly: a bare str has no `.value`.
             verification.id, ReceiverVerificationStatus(verification.status).value,
         )
         return
@@ -619,13 +541,9 @@ async def load_verification_for_token(
 async def sweep_abandoned_verifications(db: AsyncSession, *, older_than_seconds: int) -> int:
     """Terminalise PENDING verifications that no decision ever arrived for.
 
-    The enforcement arm of the spec's invariant: no trip may end with a verification in
-    flight. A receiver who starts a check and closes the tab leaves a PENDING row that no
-    webhook will ever resolve, and an evidence record whose state is "we are still waiting"
-    a week later is not a record at all.
-
-    Returns how many rows were terminalised, so the task can log a number rather than a
-    shrug.
+    A receiver who starts a check and closes the tab leaves a PENDING row that no
+    webhook will ever resolve, and an evidence record can't stay "still waiting"
+    forever. Returns how many rows were terminalised.
     """
     cutoff = datetime.now(UTC) - timedelta(seconds=older_than_seconds)
     stale = (

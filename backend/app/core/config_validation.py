@@ -1,35 +1,19 @@
 """Production preconditions, checked once at import time so a bad deploy never serves.
 
-Every rule here exists because the failure it catches is SILENT. That is the entire
-selection criterion — a misconfiguration that throws, or that shows up in a log as an
-obvious error, does not need a rule, because it announces itself. These do not:
+Selection criterion: every rule here catches a SILENT failure — one that
+throws or logs an obvious error doesn't need a rule. E.g. a localhost
+HANDOVER_RECEIVER_BASE_URL resolves fine on the receiver's own phone and
+just reports "link no longer valid" (indistinguishable from a dead token);
+a missing IDVS_WEBHOOK_SECRET fails webhook verification closed, logged
+only as an invalid signature; a misconfigured RATE_LIMIT_TRUST_PROXY_HEADERS
+silently misattributes IPs and rate-limit buckets.
 
-  * HANDOVER_RECEIVER_BASE_URL left at localhost puts `http://localhost:3002` inside the
-    QR the driver's screen displays AND inside the callback handed to Didit. Nothing
-    errors. The receiver's phone simply resolves localhost to itself, and the page reports
-    "This link is no longer valid" — which is also what a genuinely dead token says, by
-    deliberate anti-oracle design. The one failure indistinguishable from normal operation.
+Deliberately NOT enforced: DEV_PANEL_ENABLED (the deployed demo genuinely
+runs as ENVIRONMENT=production and needs the panel), and a blanket ban on
+"localhost" in ALLOWED_ORIGINS (capacitor://localhost/https://localhost are
+real driver-app production origins).
 
-  * IDVS_USE_MOCK=false with no IDVS_WEBHOOK_SECRET makes verify_webhook_signature fail
-    CLOSED (receiver_verification_service.py). Every vendor delivery is rejected 401 and
-    logged as an invalid signature — indistinguishable in the logs from an attacker, and
-    invisible unless someone is reading them.
-
-  * RATE_LIMIT_TRUST_PROXY_HEADERS left at its default behind a proxy collapses every
-    unauthenticated caller into one rate-limit bucket and records the proxy's address as
-    the receiver's IP on every handover (core/client_ip.py). Both fail quietly: one as
-    mysterious 429s under load, the other as evidence that is merely wrong.
-
-Rules deliberately NOT here:
-
-  * DEV_PANEL_ENABLED. The deployed demo genuinely runs as ENVIRONMENT=production (to keep
-    /docs unpublished) and still needs the panel — see config.DEV_PANEL_ENABLED. Failing on
-    it would break the documented demo setup.
-  * A blanket ban on "localhost" in ALLOWED_ORIGINS. Two of the driver app's real,
-    permanent production origins are capacitor://localhost and https://localhost.
-
-Every failure is collected and reported together. A deploy that is wrong in three ways
-should learn all three at once, not discover them over three restarts.
+Every failure is collected and reported together, not one restart at a time.
 
 Layering: core -> config only.
 """
@@ -44,8 +28,8 @@ logger = logging.getLogger(__name__)
 
 _PRODUCTION = "production"
 
-# Hosts that mean "this machine", which is never the right answer for a URL handed to a
-# stranger's phone or to a third-party vendor's redirect.
+# Hosts meaning "this machine" — never right for a URL handed to a
+# stranger's phone or a vendor's redirect.
 _LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "0.0.0.0", "::1")
 
 
@@ -57,8 +41,7 @@ def _is_loopback(url: str) -> bool:
     """True when the URL's HOST is a loopback address.
 
     Parsed rather than substring-matched: "//localhost" appears inside
-    "https://localhost.example.co.za", which is an ordinary public hostname that would
-    otherwise be refused as loopback and block a legitimate deploy.
+    "https://localhost.example.co.za", an ordinary public hostname.
     """
     host = (urlparse(url.lower()).hostname or "").strip("[]")
     return host in _LOOPBACK_HOSTS
@@ -67,17 +50,15 @@ def _is_loopback(url: str) -> bool:
 def collect_production_config_errors(settings: Settings) -> List[str]:
     """Every production precondition this configuration violates.
 
-    Returns an empty list outside production, and for a correct production config. Split
-    from the raising wrapper so tests can assert on the rules without building an app.
+    Empty outside production and for a correct production config. Split
+    from the raising wrapper so tests can assert on the rules directly.
     """
     if settings.ENVIRONMENT != _PRODUCTION:
         return []
 
     errors: List[str] = []
 
-    # --- CORS -----------------------------------------------------------------------
-    # Pre-existing rule, moved here from main.py so every production precondition is in
-    # one place. '*' with allow_credentials=True is the combination browsers refuse — but
+    # '*' with allow_credentials=True is a combination browsers refuse, but
     # only once a real user is already exposed to it.
     if "*" in settings.ALLOWED_ORIGINS:
         errors.append(
@@ -86,7 +67,6 @@ def collect_production_config_errors(settings: Settings) -> List[str]:
             "automatically — see Settings.cors_allowed_origins)."
         )
 
-    # --- Receiver app ---------------------------------------------------------------
     receiver_url = settings.HANDOVER_RECEIVER_BASE_URL.strip()
     if not receiver_url:
         errors.append(
@@ -107,7 +87,6 @@ def collect_production_config_errors(settings: Settings) -> List[str]:
             "check with a generic 404."
         )
 
-    # --- Didit, when live -----------------------------------------------------------
     if not settings.IDVS_USE_MOCK:
         missing = [
             name
@@ -133,11 +112,9 @@ def collect_production_config_errors(settings: Settings) -> List[str]:
                 "decisions the receiver's own return never delivered is silently gone."
             )
 
-    # --- Proxy topology -------------------------------------------------------------
-    # Required to be an EXPLICIT decision rather than required to be true: a production
-    # deployment genuinely not behind a proxy must be able to say so. model_fields_set
-    # distinguishes "deliberately false" from "nobody thought about it", which a bare
-    # boolean cannot.
+    # Required to be an explicit decision, not required to be true — a
+    # deployment genuinely not behind a proxy must be able to say so.
+    # model_fields_set distinguishes "deliberately false" from "unset".
     if "RATE_LIMIT_TRUST_PROXY_HEADERS" not in settings.model_fields_set:
         errors.append(
             "RATE_LIMIT_TRUST_PROXY_HEADERS is not set explicitly. In production it must "
@@ -160,9 +137,8 @@ def collect_production_config_errors(settings: Settings) -> List[str]:
 def enforce_production_config(settings: Settings) -> None:
     """Raise if this configuration must not serve production traffic.
 
-    Called at import time from main.py, so the process refuses to start and the
-    orchestrator's health check fails immediately — rather than the deployment coming up
-    green and the breakage surfacing later as a handover nobody can explain.
+    Called at import time from main.py, so the process refuses to start
+    rather than coming up green and breaking later.
     """
     errors = collect_production_config_errors(settings)
     if not errors:
@@ -173,7 +149,6 @@ def enforce_production_config(settings: Settings) -> None:
         f"Refusing to start: {len(errors)} production configuration "
         f"{'error' if len(errors) == 1 else 'errors'}.\n{numbered}"
     )
-    # Logged as well as raised: depending on how the platform surfaces a failed start, a
-    # traceback can be truncated where a log line survives.
+    # Logged as well as raised — a truncated traceback can still leave a log line.
     logger.critical(message)
     raise ProductionConfigError(message)

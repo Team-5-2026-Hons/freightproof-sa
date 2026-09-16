@@ -61,8 +61,7 @@ function Half<Row>({ rows, rowKey, categoryLabel, value, color, ticks, showAxis,
           dataKey={KEY} tickFormatter={(key: string) => labels.get(key) ?? key} tick={AXIS_TICK}
           tickLine={false} axisLine={{ stroke: GRID_COLOR }} interval={0}
         />
-        {/* Both halves get the same domain and ticks; the left one hides its copy, so the grid
-            still follows it. */}
+        {/* Both halves get the same domain and ticks; the left one hides its copy. */}
         <YAxis
           hide={!showAxis} domain={[0, top]} ticks={ticks} allowDecimals={false} width={MIDDLE_AXIS_WIDTH}
           tick={AXIS_TICK} tickLine={false} axisLine={{ stroke: TICK_COLOR }}
@@ -93,7 +92,7 @@ interface SplitColumnsProps<Row> {
   value: (row: Row) => number
   leftColor: string
   rightColor: string
-  /** The count axis's heading (spec §7.7), written level above the middle axis (D24). */
+  /** The count axis's heading, written level above the middle axis. */
   yLabel: string
   /** Under the middle axis, e.g. "On plan". */
   centreLabel: string
@@ -103,10 +102,9 @@ interface SplitColumnsProps<Row> {
   height?: number
 }
 
-/** Columns either side of a y-axis drawn down the middle (chart 2.5, D24): two half charts on
- *  one shared count scale, both growing up from one baseline. Built from two ordinary bar
- *  charts rather than a custom axis, so every mark follows the same rules as the other charts:
- *  at most 24 px, a 2 px surface gap, a rounded data end, a hairline grid. */
+/** Columns either side of a y-axis drawn down the middle: two half charts on one shared count
+ *  scale, both growing up from one baseline. Built from two ordinary bar charts rather than a
+ *  custom axis, so every mark follows the same rules as the other charts. */
 export function SplitColumns<Row>({
   left, right, rowKey, categoryLabel, value, leftColor, rightColor, yLabel, centreLabel,
   leftCaption, rightCaption, renderTooltip, height = CHART_HEIGHT,

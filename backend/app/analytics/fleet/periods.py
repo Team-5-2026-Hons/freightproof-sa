@@ -1,14 +1,8 @@
 """Pure date arithmetic for the fleet analytics page. No database, no I/O.
 
-Every period, bucket and band the fleet queries use is worked out here, so the rules for
-which week a trip lands in, or which band a late arrival falls into, are proven once in
-unit tests (tests/unit/test_fleet_periods.py, test_fleet_calculations.py) and not re-derived
-inside each query.
-
-Calendar dates are South African (SAST, UTC+2, no daylight saving). The SQL side buckets with
-the named zone (constants.OPERATIONS_TIME_ZONE_NAME). This side uses the fixed offset from
-settings, as the rest of the backend does. The two agree because SAST never shifts.
-"""
+Calendar dates are South African (SAST, UTC+2, no daylight saving); the SQL side
+buckets by the named zone, this side by the fixed offset from settings — they agree
+because SAST never shifts."""
 
 import enum
 from collections import Counter
@@ -38,8 +32,8 @@ _JANUARY = 1
 
 
 class Grain(str, enum.Enum):
-    """How a trend chart groups time. Weeks start on Monday (ISO), as Postgres's
-    date_trunc('week', ...) does, so both sides put a Sunday in the same week."""
+    """How a trend chart groups time. Weeks start Monday (ISO), matching Postgres's
+    date_trunc('week', ...)."""
 
     WEEK = "week"
     MONTH = "month"
@@ -48,11 +42,8 @@ class Grain(str, enum.Enum):
 
 @dataclass(frozen=True)
 class Period:
-    """An inclusive range of SAST calendar dates, and the grain its trends are grouped by.
-
-    grain is None for the charts that show one distribution over the whole period and
-    have no time axis.
-    """
+    """An inclusive range of SAST calendar dates and the grain its trends are grouped
+    by; grain is None for charts with no time axis."""
 
     start: date
     end: date
@@ -64,8 +55,7 @@ class Bucket:
     """One bar or point on a trend chart, keyed by its first calendar day."""
 
     start: date
-    # The bucket is not a whole week/month/year inside the period, so its total is not
-    # comparable with its neighbours'. The chart draws it faded (spec G8).
+    # Not a whole week/month/year inside the period; the chart draws it faded (spec G8).
     is_partial: bool
 
 
@@ -75,9 +65,6 @@ class InstantRange:
 
     start: datetime
     end: datetime
-
-
-# ── Days and instants ────────────────────────────────────────────────────────
 
 
 def today_sast(now: datetime | None = None) -> date:
@@ -106,9 +93,6 @@ def trailing_days(today: date, days: int) -> tuple[date, date]:
     return today - timedelta(days=days - 1), today
 
 
-# ── Periods and buckets ──────────────────────────────────────────────────────
-
-
 def bucket_start(day: date, grain: Grain) -> date:
     """The first day of the bucket containing `day`."""
     if grain is Grain.WEEK:
@@ -128,11 +112,8 @@ def next_bucket_start(start: date, grain: Grain) -> date:
 
 
 def bucket_starts(start: date, end: date, grain: Grain) -> list[date]:
-    """From the bucket holding `start` to the bucket holding `end`, empty ones included.
-
-    Empty buckets are kept on purpose (spec G7): a chart that skipped a quiet week would
-    draw its neighbours side by side and hide the gap.
-    """
+    """From the bucket holding `start` to the bucket holding `end`, empty ones
+    included (spec G7): a chart that skipped a quiet week would hide the gap."""
     starts: list[date] = []
     current = bucket_start(start, grain)
     while current <= end:
@@ -146,11 +127,9 @@ def bucket_count(start: date, end: date, grain: Grain) -> int:
 
 
 def buckets(period: Period) -> list[Bucket]:
-    """Every bucket of the period, each marked partial when it isn't a whole one inside it.
-
-    "Not finished yet" (spec G8) needs no separate test: build_period never lets `end` pass
-    today, so a bucket still running past today necessarily runs past `end` too.
-    """
+    """Every bucket of the period, each marked partial when it isn't a whole one
+    inside it. build_period never lets `end` pass today, so "not finished yet"
+    (spec G8) needs no separate check."""
     if period.grain is None:
         raise ValueError("a period without a grain has no buckets")
     result: list[Bucket] = []
@@ -161,8 +140,8 @@ def buckets(period: Period) -> list[Bucket]:
 
 
 def require_grain(period: Period) -> Grain:
-    """The grain of a trend query's period. Reaching a trend query without one is a defect (a
-    500), never the caller's mistake: every trend endpoint makes grain a required parameter."""
+    """The grain of a trend query's period. Reaching one without a grain is a defect
+    (500), never the caller's mistake."""
     if period.grain is None:
         raise ValueError("a trend query needs a period with a grain")
     return period.grain
@@ -171,12 +150,8 @@ def require_grain(period: Period) -> Grain:
 def resolve_start(
     start: date | None, *, end: date, earliest_activity: date | None, today: date,
 ) -> date:
-    """The period's first day. An omitted start means "All time" (spec G11).
-
-    All time begins on the day of the organisation's first trip, or today if it has none.
-    It is never later than `end`, so asking for All time up to a date before the first trip
-    gives an empty period, not an error.
-    """
+    """The period's first day. An omitted start means "All time" (spec G11): the day
+    of the organisation's first trip, or today if it has none, never later than `end`."""
     if start is not None:
         return start
     first = earliest_activity if earliest_activity is not None else today
@@ -201,17 +176,11 @@ def build_period(*, start: date, end: date, grain: Grain | None, today: date) ->
     return Period(start=start, end=end, grain=grain)
 
 
-# ── Per-occurrence averages (spec G13) ───────────────────────────────────────
-
-
 @dataclass(frozen=True)
 class OccurrenceDays:
-    """How many calendar days of the period belong to each hour / weekday / date / month.
-
-    The denominators of the busy-pattern charts. Dividing by these rather than by the
-    number of weeks or months is what makes the 31st fair: it is only divided by the
-    months that have a 31st.
-    """
+    """How many calendar days of the period belong to each hour/weekday/date/month —
+    the denominators of the busy-pattern charts, so the 31st is divided only by
+    months that have one."""
 
     # Every day has each hour of the day exactly once.
     total_days: int
@@ -236,9 +205,6 @@ def occurrence_days(start: date, end: date) -> OccurrenceDays:
     )
 
 
-# ── Driving time by time of day (chart 3.5) ──────────────────────────────────
-
-
 def _block_at(moment: datetime) -> tuple[DayBlock, datetime]:
     """The block `moment` (SAST) falls in, and the instant that block ends."""
     for block, first_hour, end_hour in DAY_BLOCKS:
@@ -254,12 +220,9 @@ def day_block(instant: datetime) -> DayBlock:
 
 
 def driving_minutes_by_block(departed_at: datetime, arrived_at: datetime) -> dict[DayBlock, float]:
-    """Split one driving leg's minutes across the SAST day blocks it spans.
-
-    Walks block boundary to block boundary, so the split is exact to the second; the spec's
-    "minute by minute" describes the result, not the loop. A leg across midnight counts its
-    late minutes to evening and its early ones to night. A leg with no length counts nothing.
-    """
+    """Split one driving leg's minutes across the SAST day blocks it spans, exact to
+    the second. A leg across midnight counts late minutes to evening, early ones to
+    night; a leg with no length counts nothing."""
     totals = {block: 0.0 for block, _, _ in DAY_BLOCKS}
     cursor = departed_at.astimezone(OPERATIONS_TZ)
     finish = arrived_at.astimezone(OPERATIONS_TZ)
@@ -271,22 +234,14 @@ def driving_minutes_by_block(departed_at: datetime, arrived_at: datetime) -> dic
     return totals
 
 
-# ── Review queue history (chart 4.2) ─────────────────────────────────────────
-
-
 def waiting_at(items: Iterable[tuple[datetime, datetime | None]], at: datetime) -> int:
-    """How many (created_at, reviewed_at) items were waiting for review at instant `at`.
-
-    Waiting = raised before `at` and not yet reviewed by then. A review exactly at `at`
-    still counts as waiting, which keeps the rule half-open like every other range here.
-    """
+    """How many (created_at, reviewed_at) items were waiting for review at instant
+    `at`: raised before `at` and not yet reviewed by then (half-open, so a review
+    exactly at `at` still counts as waiting)."""
     return sum(
         1 for created_at, reviewed_at in items
         if created_at < at and (reviewed_at is None or reviewed_at >= at)
     )
-
-
-# ── Bands ────────────────────────────────────────────────────────────────────
 
 
 class LatenessBand(str, enum.Enum):

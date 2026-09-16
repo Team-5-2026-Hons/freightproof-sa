@@ -1,13 +1,9 @@
-// Driver-specific validation, built from the generic primitives in rules.ts
-// and the backend-mirrored constraints in constants.ts.
+// Driver-specific validation, built from the generic primitives in rules.ts and the
+// backend-mirrored constraints in constants.ts.
 //
-// Consumed by the dispatcher's Add Driver modal (fleet/drivers/page.tsx) and
-// the driver detail edit form (fleet/drivers/[id]/page.tsx).
-//
-// is_active is excluded from DriverField — it's a boolean toggle, never
-// invalid. id_number IS included because the create modal collects it; the
-// edit form passes the stored (immutable) id_number straight through, never
-// rendering it, so its error never surfaces there.
+// is_active is excluded from DriverField — a boolean toggle, never invalid. id_number IS
+// included because the create modal collects it; the edit form passes the stored
+// (immutable) id_number through unrendered, so its error never surfaces there.
 
 import { required, maxLength, exactLength, pattern, type Rule } from './rules'
 import {
@@ -28,11 +24,9 @@ export type DriverField =
   | 'license_number'
   | 'license_expiry'
 
-// Callers supply controlled <input> string values, hence all strings here.
 export type DriverFormValues = Record<DriverField, string>
 
-// Display order — shared by the create and edit forms to focus the first
-// invalid field on submit, so the two can't drift out of sync.
+// Display order — shared by create and edit forms to focus the first invalid field on submit.
 export const DRIVER_FIELD_ORDER: readonly DriverField[] = [
   'full_name',
   'id_number',
@@ -42,14 +36,8 @@ export const DRIVER_FIELD_ORDER: readonly DriverField[] = [
 ]
 
 /**
- * Validates a driver form's fields, returning the first error per field (or
- * null if valid). Mirrors the constraints enforced server-side in
- * backend/app/schemas/people.py and the column widths in
- * backend/app/db/models/people.py, so the client surfaces the same problems
- * before submit instead of round-tripping a 422.
- *
- * NOTE: license_expiry is required here as a product/UX decision — the backend
- * accepts null. See this document's design section for the rationale.
+ * Validates a driver form and returns the first error per field, or null if valid.
+ * license_expiry is required here as a product/UX decision — the backend accepts null.
  */
 export function validateDriverForm(values: DriverFormValues): Record<DriverField, string | null> {
   return {
@@ -89,12 +77,7 @@ function firstError(value: string, rules: ReadonlyArray<Rule>): string | null {
   return null
 }
 
-/**
- * SA phone rule: accepts local (0XXXXXXXXX) or international (+27XXXXXXXXX)
- * form, tolerating internal whitespace (stripped before matching). Empty is
- * skipped — pair with `required` for the mandatory check. normalisePhone
- * converts a passing value to the canonical +27 form at submit time.
- */
+/** SA phone rule: local (0XXXXXXXXX) or international (+27XXXXXXXXX), whitespace-tolerant. */
 function saPhone(): Rule {
   return (value: string): string | null => {
     if (value.length === 0) {
@@ -128,12 +111,7 @@ export function normalisePhone(phone: string): string {
   return digits
 }
 
-/**
- * Live-typing feedback for the phone field, mirroring vinFieldFeedback: a
- * neutral `hint` (running character count) while the value is still a valid
- * prefix mid-entry, a red `error` only once it can't become valid. Both null
- * when empty or fully valid. At most one is non-null.
- */
+/** Live-typing feedback for the phone field, mirroring vinFieldFeedback. */
 export function phoneFieldFeedback(value: string): { hint: string | null; error: string | null } {
   const digits = value.replace(/\s+/g, '')
   if (digits.length === 0) {

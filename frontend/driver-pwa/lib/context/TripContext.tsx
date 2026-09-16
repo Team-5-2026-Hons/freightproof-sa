@@ -18,21 +18,16 @@ import { useTripAutoRefresh } from '@/lib/hooks/useTripAutoRefresh'
 import { AuthContext } from './AuthContext'
 import { ToastContext } from './ToastContext'
 
-// A trip in one of these states is finished — it can no longer be the trip the driver is
-// working, so a pinned selection pointing at one is dropped. Mirrors the backend's
-// `inactive` set in trip_service.get_active_trip_for_driver.
+// A trip in one of these states is finished and can no longer be the driver's working
+// trip — mirrors the backend's `inactive` set in trip_service.get_active_trip_for_driver.
 const TERMINAL_STATUSES: readonly Trip['status'][] = ['closed', 'cancelled']
 
-// sessionStorage, not localStorage: a selection is a within-session intent ("I am
-// starting THIS assignment now"), and it must not outlive the app being closed — a stale
-// week-old selection resurfacing ahead of the server's own choice of current trip is
-// exactly the confusion this whole change set out to fix.
+// sessionStorage, not localStorage: a selection is a within-session intent and must not
+// outlive the app being closed.
 const SELECTED_TRIP_KEY = 'fp.selectedTripId'
 
-// Demo mode has no server to work out which vehicle a breakdown belongs to, so it
-// mirrors what exception_service.pick_breakdown_vehicle decides for a well-formed report:
-// the truck, the trailer the driver named, or the trip's only trailer. The server's rules
-// are the real ones; this only keeps the demo record shaped like a real one.
+// Demo mode mirrors what exception_service.pick_breakdown_vehicle decides server-side:
+// the truck, the named trailer, or the trip's only trailer.
 function demoBreakdownVehicleId(
   trip: Trip,
   type: ExceptionType,
@@ -53,22 +48,16 @@ function readSelectedTripId(): string | null {
   return window.sessionStorage.getItem(SELECTED_TRIP_KEY)
 }
 
-// Mirrors lib/phase/derive.ts's RESOLVED_STATUSES by inversion (that constant is private
-// to its module, and lib/phase/ is not this task's to change): only a row the ledger
-// still considers open may be optimistically advanced. A phase the server has already
-// called completed/exception/overridden is its own answer and must never be overwritten
-// by a local guess.
+// Mirrors lib/phase/derive.ts's RESOLVED_STATUSES by inversion: only a row the ledger
+// still considers open may be optimistically advanced.
 const UNRESOLVED_PHASE_STATUSES: readonly PhaseStatus[] = ['pending', 'in_progress']
 
 // What an optimistically advanced phase reads as until the server's real answer lands.
 const OPTIMISTIC_PHASE_STATUS: PhaseStatus = 'completed'
 
 /**
- * The trip as the driver's screens should see it while a phase submission is still in
- * flight: the addressed phase shown resolved, so Home does not re-offer the step the
- * driver has just finished swiping. Purely local and purely transient — it is never
- * persisted, never sent anywhere, and is replaced wholesale by `adoptTrip` the moment
- * the backend answers.
+ * The trip as the driver's screens should see it while a phase submission is in flight:
+ * the addressed phase shown resolved. Purely local — replaced wholesale by `adoptTrip`.
  */
 function withOptimisticResolution(trip: Trip | null, syncingPhaseIds: readonly string[]): Trip | null {
   if (trip === null || syncingPhaseIds.length === 0) return trip
@@ -83,8 +72,7 @@ function withOptimisticResolution(trip: Trip | null, syncingPhaseIds: readonly s
     return { ...phase, status: OPTIMISTIC_PHASE_STATUS }
   })
 
-  // Identity preserved when nothing was overridden, so consumers memoised on `trip`
-  // don't re-run for a marker that changed nothing.
+  // Identity preserved when nothing changed, so memoised consumers don't re-run.
   return changed ? { ...trip, phases } : trip
 }
 
@@ -96,35 +84,22 @@ export interface TripState {
   triggerPanic: () => void
   reset: () => void
   refetchTrip: () => Promise<Trip | null>
-  // Point the whole phase flow at one specific trip. Needed because the phase step pages
-  // resolve which phase_event_id to submit from THIS context (they cannot take the trip
-  // from the URL — output: 'export' can't enumerate trip UUIDs as path segments), so a
-  // driver activating a chosen Upcoming trip must be able to make it the context trip
-  // first. Without this, tapping "Activate" on the second of two assignments would
-  // silently submit against whichever trip the server picked as current.
+  // Points the phase flow at one specific trip — phase step pages can't take the trip
+  // from the URL (output: 'export' can't enumerate trip UUIDs as path segments).
   selectTrip: (tripId: string) => Promise<Trip | null>
-  // Adopt a trip the server just returned, without a second round trip to fetch it.
-  // POST /phases/{id}/complete already responds with the full updated plan; before this
-  // existed, every phase submit followed it with refetchTrip() purely because this
-  // context had no way to be told what the caller already held — a whole extra request
-  // on the slowest screen in the app, while the driver waited on the swipe.
+  // Adopts a trip the server just returned, without a second round trip — phase-complete
+  // responses already carry the full updated plan.
   adoptTrip: (fresh: Trip) => void
   // Drop the selection and fall back to the server's choice (GET /trips/me/active).
   clearSelectedTrip: () => Promise<Trip | null>
-  // phase_event_ids whose evidence is submitting in the background right now. `trip`
-  // already shows them resolved (see withOptimisticResolution); this list is what lets a
-  // screen say so honestly — "recording", not "recorded" — rather than silently
-  // presenting an optimistic guess as a confirmed ledger row.
+  // phase_event_ids whose evidence is submitting in the background. `trip` already shows
+  // them resolved — this is what lets a screen say "recording", not "recorded".
   syncingPhaseIds: readonly string[]
-  // Optimistic advance: the driver has swiped and been sent back Home, and the
-  // submission is running in lib/submission/phase-submitter.ts. Without this, Home would
-  // re-derive currentPhase() from an untouched plan and immediately re-offer the step
-  // they just finished.
+  // Optimistic advance while lib/submission/phase-submitter.ts's submission runs, so
+  // Home doesn't re-offer the step just swiped.
   markPhaseSyncing: (phaseEventId: string) => void
-  // Drop the marker. Called two ways, and the difference is what ran BEFORE it:
-  // after adoptTrip(fresh) it reconciles (the server now says resolved, so the phase
-  // stays resolved); on its own it ROLLS BACK (the phase returns to unresolved and the
-  // driver can re-enter the step with their draft intact).
+  // Drops the marker. After adoptTrip(fresh) it reconciles; called on its own it rolls
+  // back so the driver can re-enter the step with their draft intact.
   clearPhaseSyncing: (phaseEventId: string) => void
   /** Refetch the trip WITHOUT touching isLoading. Never throws. No-op in demo mode. */
   refreshQuietly: () => Promise<void>
@@ -149,9 +124,8 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     )
   }, [authCtx])
 
-  // The plan exactly as the backend last stated it. Every consumer reads `trip` below
-  // instead, which is this plus any in-flight optimistic advance — keeping the two apart
-  // means a local guess can never be mistaken for, or written back as, the ledger.
+  // The plan exactly as the backend last stated it. Consumers read `trip` below instead —
+  // this plus any in-flight optimistic advance — so a local guess is never mistaken for the ledger.
   const [serverTrip, setServerTrip] = useState<Trip | null>(null)
   const [syncingPhaseIds, setSyncingPhaseIds] = useState<readonly string[]>([])
   const trip = useMemo(
@@ -159,9 +133,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     [serverTrip, syncingPhaseIds],
   )
   const [isLoading, setIsLoading] = useState(!IS_DEMO_MODE)
-  // Lazily seeded from sessionStorage so a mid-flow reload still addresses the trip the
-  // driver chose. Returns null during static prerender (no window), which is harmless:
-  // the first paint is the spinner either way.
+  // Lazily seeded from sessionStorage so a mid-flow reload still addresses the chosen trip.
   const [selectedTripId, setSelectedTripId] = useState<string | null>(() => readSelectedTripId())
 
   const persistSelection = useCallback((tripId: string | null) => {
@@ -173,20 +145,18 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   // Which trip the flow is on: an explicit selection wins, otherwise the server's own
-  // pick (GET /trips/me/active). Single resolver so refetchTrip and the mount effect can
-  // never disagree about it.
+  // pick. Single resolver so refetchTrip and the mount effect never disagree.
   const loadTrip = useCallback(async (): Promise<Trip | null> => {
     if (selectedTripId !== null) {
       try {
         const selected = await fetchMyTrip(selectedTripId)
         if (!TERMINAL_STATUSES.includes(selected.status)) return selected
-        // A finished trip is no longer "the trip I'm on" — drop the pin so the driver
-        // isn't stranded on a closed trip, and let the server choose what's next.
+        // A finished trip is no longer "the trip I'm on" — drop the pin and let the
+        // server choose what's next.
         persistSelection(null)
       } catch (err) {
-        // 404 means the trip is no longer this driver's (reassigned, or never theirs) —
-        // the selection is genuinely dead, so clear it. Any other failure (offline, 5xx)
-        // is transient and must NOT silently strip a selection mid-journey.
+        // 404 means the trip is no longer this driver's — clear the selection. Any other
+        // failure (offline, 5xx) is transient and must not strip it mid-journey.
         if (err instanceof ApiError && err.status === 404) persistSelection(null)
         else throw err
       }
@@ -194,10 +164,9 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     return fetchMyActiveTrip()
   }, [selectedTripId, persistSelection])
 
-  // refetchTrip is exposed for manual re-fetching after a handshake submission. It's
-  // deliberately not called directly inside the useEffect below — calling a setState-
-  // containing callback synchronously from an effect causes cascading renders (same
-  // anti-pattern AuthContext.tsx avoids); the effect inlines its own fetch instead.
+  // Exposed for manual re-fetching. Not called directly inside the effect below — a
+  // setState-containing callback called synchronously from an effect causes cascading
+  // renders (same anti-pattern AuthContext.tsx avoids); the effect inlines its own fetch.
   const refetchTrip = useCallback(async () => {
     if (IS_DEMO_MODE) { setServerTrip(mockTrip); return mockTrip }
     if (!authCtx?.user) { setServerTrip(null); setIsLoading(false); return null }
@@ -211,8 +180,8 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     }
   }, [authCtx?.user, mockTrip, loadTrip])
 
-  // Pin the flow to one specific trip, then load it. Awaited by callers (the trip-detail
-  // Activate button) so they only navigate once the phase flow is actually pointed at it.
+  // Pins the flow to one trip, then loads it. Awaited by callers so they only navigate
+  // once the phase flow is pointed at it.
   const selectTrip = useCallback(async (tripId: string): Promise<Trip | null> => {
     if (IS_DEMO_MODE) { setServerTrip(mockTrip); return mockTrip }
     persistSelection(tripId)
@@ -226,10 +195,8 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     }
   }, [mockTrip, persistSelection])
 
-  // Deliberately not a setter for arbitrary state: it takes a server response only, so
-  // the context can never drift into a locally-invented trip. The phase flow's own
-  // sequencing guard reads trip.phases from here, and it must only ever reflect what the
-  // ledger actually says.
+  // Takes a server response only, never arbitrary state, so the context can't drift into
+  // a locally-invented trip — the phase flow's sequencing guard trusts trip.phases here.
   const adoptTrip = useCallback((fresh: Trip) => {
     setServerTrip(fresh)
     setIsLoading(false)
@@ -256,23 +223,17 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     }
   }, [mockTrip, persistSelection])
 
-  // Optional: TripContext.test.tsx / TripContext.real.test.tsx render TripProvider
-  // without a ToastProvider ancestor, and useToast() throws outside one. Reading the
-  // context directly (rather than that hook) keeps the unblock toast below a no-op in
-  // those harnesses instead of a hard crash, while still firing for real once mounted in
-  // the real app tree, which does put TripProvider inside the root ToastProvider.
+  // Optional: some test harnesses render TripProvider without a ToastProvider ancestor,
+  // where useToast() would throw. Reading the context directly keeps the toast a no-op there.
   const toastCtx = useContext(ToastContext)
 
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [lastRefreshedAt, setLastRefreshedAt] = useState<string | null>(null)
 
-  // Distinct from refetchTrip: this must never set isLoading (see useTripAutoRefresh.ts —
-  // six screens blank to a spinner on that flag, and a poll must never flash them). Writes
-  // serverTrip only, never `trip` directly, so withOptimisticResolution keeps re-layering
-  // syncingPhaseIds on top of whatever this fetch returns — a poll landing mid-submission
-  // must not un-complete a phase the driver just swiped.
+  // Distinct from refetchTrip: must never set isLoading (screens blank to a spinner on
+  // that flag). Writes serverTrip only, so withOptimisticResolution keeps re-layering
+  // syncingPhaseIds on top — a poll mid-submission must not un-complete a swiped phase.
   const refreshQuietly = useCallback(async (): Promise<void> => {
-    // No server to ask in demo mode — mirrors every other IS_DEMO_MODE branch above.
     if (IS_DEMO_MODE) return
     if (!authCtx?.user) return
 
@@ -281,25 +242,21 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       const fetched = await loadTrip()
       setServerTrip(fetched)
       setLastRefreshedAt(new Date().toISOString())
-      // The unblock toast is deliberately NOT raised here — see the gate-transition effect
-      // below for why it has to watch the rendered plan instead of this one fetch.
+      // Unblock toast deliberately not raised here — see the gate-transition effect below.
     } catch (err) {
-      // Never surfaced as a toast or rethrown — useTripAutoRefresh's interval and
-      // foreground listeners call this directly, and a rejection reaching them every poll
-      // tick while a blocked driver has no signal would be its own kind of harassment.
-      // Logged so the failure is still visible in devtools/telemetry.
+      // Never surfaced or rethrown: the polling interval calls this directly, and a
+      // rejection every tick would be its own kind of harassment. Logged for visibility.
       console.error('Quiet trip refresh failed', err)
     } finally {
       setIsRefreshing(false)
     }
   }, [authCtx?.user, loadTrip])
 
-  // Derived fresh every render from `trip` (never cached) — the whole point is that this
-  // must flip false the instant the server's own recomputation says so.
+  // Derived fresh every render from `trip`, never cached — must flip false the instant
+  // the server's recomputation says so.
   const actionable = trip !== null ? actionablePhase(trip.phases) : null
-  // `?? null` first is mandatory: `blocked_on` is optional on the shared PhaseDescriptor
-  // type, so `undefined !== null` would be permanently true and polling would never turn
-  // off. Mirrors the exact guard in Linehaul.tsx (`isBlocked`) — match its style.
+  // `?? null` first is mandatory: `blocked_on` is optional, so `undefined !== null` would
+  // be permanently true and polling would never turn off.
   const pollingEnabled =
     trip !== null &&
     ((actionable?.blocked_on ?? null) !== null || trip.status === 'exception_hold')
@@ -310,14 +267,10 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     onRefresh: refreshQuietly,
   })
 
-  // The unblock toast watches the RENDERED plan rather than living inside refreshQuietly,
-  // because a quiet poll is not the only thing that can close a gate: the 409 handler's
-  // refetchTrip, adoptTrip after a submit, and selectTrip when the driver switches
-  // assignment all replace the trip too. A refresh-local ref went stale on those paths and
-  // then fired "the warehouse has finished" at a driver who had merely opened their other
-  // trip. Keying the remembered value off the actionable phase's IDENTITY as well as its
-  // gate is what fixes that: a different phase (or a different trip) re-seeds instead of
-  // reading as this phase clearing.
+  // Watches the RENDERED plan rather than living inside refreshQuietly, since other paths
+  // (409 handler, adoptTrip, selectTrip) replace the trip too and a refresh-local ref
+  // would go stale on them. Keying off the actionable phase's identity as well as its
+  // gate means a different phase or trip re-seeds instead of reading as this one clearing.
   const actionablePhaseEventId = actionable !== null ? String(actionable.phase_event_id) : null
   const actionableBlockedOn = actionable?.blocked_on ?? null
   const previousGateRef = useRef<{ phaseEventId: string | null; blockedOn: string | null } | null>(null)
@@ -332,10 +285,8 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     if (previous.phaseEventId !== actionablePhaseEventId) return
     if (previous.blockedOn === null || actionableBlockedOn !== null) return
 
-    // notify() is an event sink, not derived state — this is deliberately not the
-    // setState-in-effect pattern the rest of this file avoids. Worth saying out loud
-    // because the card clears silently otherwise, and a driver who looked away for a
-    // minute has no way to tell the screen became actionable.
+    // notify() is an event sink, not derived state — a deliberate exception to the
+    // no-setState-in-effect pattern elsewhere in this file; the card clears silently otherwise.
     toastCtx?.notify({
       kind: 'info',
       title: 'You can continue',
@@ -344,9 +295,8 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   }, [actionablePhaseEventId, actionableBlockedOn, toastCtx])
 
   useEffect(() => {
-    // No synchronous setState here, even for the IS_DEMO_MODE/no-user branches —
-    // matches AuthContext.tsx's mount effect, which only ever calls setState from
-    // inside a .then() callback to avoid the cascading-render anti-pattern.
+    // No synchronous setState here, even for demo/no-user — matches AuthContext.tsx's
+    // mount effect, avoiding the cascading-render anti-pattern.
     if (IS_DEMO_MODE) {
       Promise.resolve().then(() => setServerTrip(mockTrip))
       return
@@ -359,9 +309,8 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     Promise.resolve().then(() => setIsLoading(true))
     loadTrip()
       .then(setServerTrip)
-      // Previously uncaught: a rejected fetch here (offline, 5xx) became an unhandled
-      // rejection and left isLoading stuck true, which reads as a frozen screen. Log and
-      // leave trip null so the "no active trip" state renders instead of a dead spinner.
+      // A rejected fetch here otherwise leaves isLoading stuck true (a frozen screen).
+      // Log and leave trip null so "no active trip" renders instead.
       .catch((err: unknown) => {
         console.error('Failed to load the driver\'s current trip', err)
         setServerTrip(null)
@@ -370,8 +319,8 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   }, [authCtx?.user, mockTrip, loadTrip])
 
   const [exceptions, setExceptions] = useState<TripException[]>([])
-  // Track which trip's initial state we've applied — avoids the useEffect + setState anti-pattern.
-  // When a new trip loads, reset derived state synchronously during render (React docs recommended).
+  // Tracks which trip's initial state has been applied — resets derived state
+  // synchronously during render instead of via a useEffect + setState.
   const [syncedTripId, setSyncedTripId] = useState<string | null>(null)
 
   if (trip !== null && (trip.id as string) !== syncedTripId) {
@@ -386,14 +335,11 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     const clientReportId = typeof payload.clientReportId === 'string'
       ? payload.clientReportId
       : crypto.randomUUID()
-    // The panic page captures a GPS fix and promises the driver it will be included —
-    // extract it here so it actually reaches the backend instead of being dropped.
-    // Both-or-neither: the backend's DriverExceptionCreateBody validator 422s a
-    // partial fix, so a lone axis (or a non-number) is treated as no fix at all.
+    // Both-or-neither: the backend's validator 422s a partial fix, so a lone axis (or a
+    // non-number) is treated as no fix at all.
     const gpsLat = typeof payload.gpsLat === 'number' ? payload.gpsLat : undefined
     const gpsLng = typeof payload.gpsLng === 'number' ? payload.gpsLng : undefined
     const hasGpsFix = gpsLat !== undefined && gpsLng !== undefined
-    // The driver's "truck or trailer" answer on a breakdown (LogExceptionPageClient).
     // Only the two real kinds pass; anything else goes as no answer, which the server
     // records as no vehicle rather than rejecting the report.
     const rawVehicleType = payload.vehicleType
@@ -401,10 +347,8 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       rawVehicleType === 'horse' || rawVehicleType === 'trailer' ? rawVehicleType : undefined
     const trailerId = typeof payload.trailerId === 'string' ? payload.trailerId : undefined
 
-    // WHERE this happened, stamped at the moment it happened. Read off `trip` — the
-    // OPTIMISTIC plan, not serverTrip — on purpose: a driver who swiped departure three
-    // seconds ago is on the road, and the exception belongs to that leg even though the
-    // submission is still in flight.
+    // WHERE this happened. Read off `trip` (the optimistic plan), not serverTrip: a
+    // driver who just swiped departure is on the road even while the submission is in flight.
     const phaseEventId = contextPhaseEventId(trip.phases)
 
     if (IS_DEMO_MODE) {
@@ -415,17 +359,12 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
         severity: criticalTypes.includes(type) ? 'critical' : 'warning',
         description,
         // Same tagging the real branch sends, so demo mode exercises the shape the
-        // dispatcher timeline reads rather than the untagged one it has to guess at.
+        // dispatcher timeline reads.
         phase_event_id: phaseEventId, checkpoint_id: null, supporting_artifact_id: null,
-        // Mirror the real branch so demo mode exercises the same shape the
-        // dispatcher UI will eventually read: a coordinate pair or null, never one axis.
         gps_lat: hasGpsFix ? gpsLat : null,
         gps_lng: hasGpsFix ? gpsLng : null,
         vehicle_id: demoBreakdownVehicleId(trip, type, vehicleType, trailerId),
-        // Mirrors backend initial_review_status (Task 2): CRITICAL starts
-        // needs_review, everything else starts recorded — so a demo-mode
-        // panic/seal-broken exception behaves like the real backend path instead of
-        // always displaying as recorded regardless of severity.
+        // Mirrors backend initial_review_status: CRITICAL starts needs_review, else recorded.
         review_status: criticalTypes.includes(type) ? 'needs_review' : 'recorded',
         review_outcome: null, reviewed_by_user_id: null,
         reviewed_at: null, review_note: null, contact_method: null,

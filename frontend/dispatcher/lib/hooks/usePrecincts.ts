@@ -11,14 +11,10 @@ const EMPTY: Precinct[] = []
 export interface UsePrecincts {
   precincts: Precinct[]
   isLoading: boolean
-  // MUST be surfaced by callers. Precinct names are looked up by id, and every
-  // call site falls back to an em-dash when the lookup misses — which renders a
-  // FAILED fetch identically to a trip that genuinely has no origin. A transient
-  // failure here once read as missing trip data for exactly that reason.
+  // MUST be surfaced: callers fall back to an em-dash on a lookup miss, which renders a
+  // failed fetch identically to a trip with genuinely no origin.
   error: string | null
-  // Exposed so a mutation on the precincts pages can refresh the list in place. The
-  // one-shot retry below is unaffected: it resets only on a completed success, so a
-  // manual refetch cannot re-arm it.
+  /** For manual refresh from the precincts pages; can't re-arm the one-shot retry below. */
   refetch: () => void
 }
 
@@ -28,15 +24,10 @@ export function usePrecincts(): UsePrecincts {
     EMPTY,
   )
 
-  // Exactly one automatic retry per failure, scoped to THIS hook rather than added to
-  // useAsyncData — that hook backs every list on the dispatcher, and a blanket retry
-  // would double the load of every screen on a backend that is already struggling
-  // whenever this fires. api.get retries only a DROPPED connection (client.ts send());
-  // a timeout or a 5xx gets no second attempt, and those are the shapes seen here.
-  //
-  // The flag resets on a completed SUCCESS, not merely on `error` clearing: refetch()
-  // nulls the error synchronously, so resetting on `error === null` alone would re-arm
-  // the retry on every failure and spin forever.
+  // One automatic retry per failure, scoped to this hook rather than useAsyncData (which
+  // backs every list — a blanket retry would double load on a struggling backend).
+  // Resets on a completed SUCCESS, not on `error` clearing, or refetch() would re-arm it
+  // on every failure and spin forever.
   const retriedRef = useRef(false)
   useEffect(() => {
     if (isLoading) return

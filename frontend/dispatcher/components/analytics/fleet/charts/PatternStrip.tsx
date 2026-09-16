@@ -43,7 +43,7 @@ interface DimensionSpec {
 
 const pad = (hour: number): string => String(hour).padStart(HOUR_DIGITS, '0')
 
-// Clock and calendar order, never sorted by size (spec §5.1).
+// Clock and calendar order, never sorted by size.
 const DIMENSIONS: readonly DimensionSpec[] = [
   { id: 'hour_of_day', ...COPY.dimensions.hour_of_day, tick: String, name: (key) => `${pad(key)}:00–${pad(key + 1)}:00` },
   {
@@ -137,12 +137,12 @@ interface PatternStripProps {
   onRetry: () => void
   /** Shown under the month chart when the period is under a year. */
   monthNote?: string
-  /** The y-axis heading of all four charts, e.g. "Avg per day" (spec §7.7). */
+  /** The y-axis heading of all four charts, e.g. "Avg per day". */
   yLabel: string
 }
 
-/** The row of four busy-pattern charts (chart 1.3): hour of day, weekday, day of month,
- *  month of year. Each has its own card, so each has its own table view. */
+/** The row of four busy-pattern charts: hour of day, weekday, day of month, month of year.
+ *  Each has its own card, so each has its own table view. */
 export function PatternStrip({ set, eventNoun, isLoading, isRefreshing, error, onRetry, monthNote, yLabel }: PatternStripProps) {
   const total = set === null ? 0 : set.hour_of_day.reduce((sum, bar) => sum + bar.event_count, 0)
 

@@ -28,13 +28,10 @@ const EARLIEST_YEAR = 2020
 
 type Bound = 'start' | 'end'
 
-/** Month-only range control for the analytics screen: free start and end months, no
- *  presets. Month and year selects rather than <input type="month">, whose desktop
- *  browser support is patchy.
- *
- *  Two guarantees the API relies on: every emitted bound is a first-of-month date, and
- *  the range is never inverted — the bound the dispatcher just moved wins and the other
- *  follows it. */
+/** Month-only range control: free start and end months, no presets. Month and year selects
+ *  rather than <input type="month">, whose desktop browser support is patchy. Two guarantees
+ *  the API relies on: every emitted bound is a first-of-month date, and the range is never
+ *  inverted — the bound the dispatcher just moved wins. */
 export function MonthRangePicker({ value, onChange, latestMonth, className }: MonthRangePickerProps) {
   const latest = latestMonth ?? operationsMonth()
   const latestYear = parseMonth(latest).year

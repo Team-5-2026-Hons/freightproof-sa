@@ -5,46 +5,18 @@ import { Ic } from '@/components/ui/Ic'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 import type { TripException } from '@shared/lib/types/exception'
 
-// Minimal shape both this component and its predicate actually read. Narrower than the
-// full TripException so the exception-detail page's TripExceptionDetail record — which
-// carries these same three fields, all non-optionally — satisfies this structurally with
-// no cast, and without that page having to fabricate an artifactsById Map it has no use
-// for (it already has the one relevant artifact in hand).
+// Narrower than TripException so exception-detail's own record satisfies it structurally, no cast needed.
 type ExceptionEvidenceSource = Pick<TripException, 'gps_lat' | 'gps_lng' | 'supporting_artifact_id'>
 
 interface Props {
   exception: ExceptionEvidenceSource
-  // Optional: the trip timeline and trip-detail page build this from useTripArtifacts
-  // (a trip-wide fetch); the exception-detail page has no such Map and passes `artifact`
-  // instead. Not required together — see the resolution order below.
+  // Built from useTripArtifacts by callers with a trip-wide fetch; use `artifact` instead if not available.
   artifactsById?: Map<string, EvidenceArtifactWithUrl>
-  // Optional: a caller that already holds the one artifact this exception could
-  // reference (the exception-detail page, from its own GET's nested `supporting_artifact`)
-  // passes it directly rather than standing up a one-entry Map.
+  // Passed directly by callers that already hold the one relevant artifact.
   artifact?: EvidenceArtifactWithUrl
 }
 
-/**
- * What the driver actually captured when they raised this exception.
- *
- * The backend has always sent `supporting_artifact_id` and the GPS fix, and the timeline
- * rendered the description text alone — so a `cargo_damage` raised with a photograph, or
- * a panic button carrying the coordinates it was pressed at, reached the dispatcher as a
- * sentence. Renders nothing when the exception carries neither.
- */
-/**
- * Whether this exception has anything for the panel below to render.
- *
- * Exported because a caller has to know BEFORE it decides to offer a chevron. The trip
- * timeline used to gate on `artifactsById` being present — but that is a Map from
- * useTripArtifacts and is never absent, so every exception got an expander that opened
- * onto nothing. Essentially every system-raised exception (seal mismatch, parcel count,
- * waybill count) carries no artifact and no fix, so that was most rows on the rail, and
- * it broke the timeline's own rule: a card with no chevron holds nothing to open.
- *
- * One predicate, used by the component and by anyone deciding whether to mount it, so
- * the two cannot drift into disagreeing about what "has evidence" means.
- */
+/** Whether this exception has anything for the panel below to render (a GPS fix or an artifact). */
 export function exceptionHasEvidence(exception: ExceptionEvidenceSource): boolean {
   const lat = exception.gps_lat
   const lng = exception.gps_lng
@@ -52,13 +24,10 @@ export function exceptionHasEvidence(exception: ExceptionEvidenceSource): boolea
   return exception.supporting_artifact_id !== null || hasFix
 }
 
+/** Renders what the driver captured when raising this exception (photo and/or GPS fix). */
 export function ExceptionEvidence({ exception, artifactsById, artifact: artifactProp }: Props) {
   const artifactId = exception.supporting_artifact_id
-  // An explicitly-passed artifact always wins. There is no case where a caller passes
-  // `artifact` AND needs the Map fallback: TripExceptionDetail's supporting_artifact and
-  // supporting_artifact_id are always in lockstep (both null, or both set), so when
-  // `artifact` is undefined here it is because there genuinely is none — falling through
-  // to the id/Map lookup is exactly what the two Map-based callers still need.
+  // An explicitly-passed artifact always wins; otherwise fall back to the id/Map lookup.
   const artifact = artifactProp ?? (artifactId ? artifactsById?.get(artifactId) : undefined)
 
   const lat = exception.gps_lat
@@ -69,9 +38,7 @@ export function ExceptionEvidence({ exception, artifactsById, artifact: artifact
 
   return (
     <div className="mt-[8px] pt-[8px] border-t border-warn/20 flex items-start gap-5">
-      {/* Three states, kept apart. An id with no artifact behind it is NOT "nothing was
-          captured" — the record says a photo exists and we could not retrieve it, which
-          is a retrieval failure the dispatcher has to be able to see. */}
+      {/* An id with no resolved artifact means retrieval failed, not that nothing was captured. */}
       {artifactId !== null && (
         artifact
           ? <EvidencePhoto label="Supporting photo" artifact={artifact} />

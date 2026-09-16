@@ -45,7 +45,7 @@ interface TrendLinesProps<Row> {
   isPartial: (row: Row) => boolean
   series: readonly LineSeries<Row>[]
   renderTooltip: (row: Row) => ReactNode
-  /** The y-axis heading, e.g. "Cancelled trips". Required: every chart names its value axis (spec §7.7). */
+  /** The y-axis heading, e.g. "Cancelled trips". Required: every chart names its value axis. */
   yLabel: string
   height?: number
   yTickFormat?: (value: number) => string
@@ -59,9 +59,8 @@ const PARTIAL = '__partial'
 
 type Datum = Record<string, string | number | boolean | null>
 
-/** Lines over time (charts 1.7, 2.1, 3.2, 4.2, 4.3, 5.2, 5.7). Spec §7.4: 2 px lines, 8 px
- *  dots with a 2 px surface ring, partial buckets' dots at half opacity (never a dashed
- *  line, which reads as a forecast), a crosshair that finds the x, gaps where there is no data. */
+/** Lines over time: 2px lines, 8px dots with a 2px surface ring, partial buckets' dots at half
+ *  opacity (never a dashed line, which reads as a forecast), gaps where there is no data. */
 export function TrendLines<Row>({
   rows, rowKey, tickLabel, isPartial, series, renderTooltip, yLabel, height = CHART_HEIGHT,
   yTickFormat, yDomain, allowDecimals = false,

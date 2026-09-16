@@ -126,7 +126,7 @@ interface CancelledTripRow {
 }
 
 /** Chart 1.7: how often are trips abandoned? One line; its table also lists every
- *  cancelled trip with a link to it, where the cancellation note is shown (spec D20). */
+ *  cancelled trip with a link to it, where the cancellation note is shown. */
 function CancellationsCard({ activity, grain, today }: TrendCardProps) {
   const rows = activity.data?.cancellations ?? []
   const cancelled = rows.reduce((sum, row) => sum + row.cancelled_count, 0)
@@ -209,13 +209,13 @@ interface ActivityTabProps {
   query: TabQuery
   allTimeStart: string | null
   today: string
-  /** The busy patterns' own period (spec D5), kept by the page so it survives tab switches. */
+  /** The busy patterns' own period, kept by the page so it survives tab switches. */
   patternPeriod: PeriodSelection
   onPatternPeriodChange: (period: PeriodSelection) => void
 }
 
-/** Activity tab (spec §5.1): trips and cancellations over time, then the busy patterns
- *  with their own period. Only this tab's two requests run while it is open. */
+/** Activity tab: trips and cancellations over time, then the busy patterns with their own
+ *  period. Only this tab's two requests run while it is open. */
 export function ActivityTab({ query, allTimeStart, today, patternPeriod, onPatternPeriodChange }: ActivityTabProps) {
   const activity = useFleetActivity(query, allTimeStart)
   const patterns = useFleetPatterns(resolvePeriod(patternPeriod, today))

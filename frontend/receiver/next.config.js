@@ -1,21 +1,15 @@
 const path = require('path')
 
-// The receiver app is opened by strangers, from a QR code, on a link they did not type
-// and cannot verify. Its headers are stricter than the dispatcher's in the two places
-// that matter, and looser in exactly one.
+// Opened by strangers from an unverifiable QR link, so headers are stricter than the
+// dispatcher's in most places, looser only for geolocation.
 const securityHeaders = [
-  // Never legitimately embedded anywhere.
   { key: 'X-Frame-Options', value: 'DENY' },
   { key: 'X-Content-Type-Options', value: 'nosniff' },
-  // no-referrer, not strict-origin-when-cross-origin as on the dispatcher: the PATH here
-  // contains a live capability token, and a Referer header would walk it out to any
-  // third-party origin this page ever touches. Nothing on this page is worth that.
+  // no-referrer: the path carries a live capability token that a Referer header would
+  // leak to any third-party origin this page touches.
   { key: 'Referrer-Policy', value: 'no-referrer' },
-  // Geolocation is ALLOWED here, unlike on the dispatcher, which denies it outright. The
-  // receiver's independent position fix is the single most valuable thing this page
-  // collects — a third source on the most disputed moment in the trip, from a party with
-  // no incentive to help the driver. Camera and microphone stay denied: this page renders
-  // a signature, it never captures media.
+  // Geolocation allowed (unlike dispatcher, which denies it): the receiver's independent
+  // position fix is a third, disinterested source on the most disputed trip moment.
   { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(self)' },
 ]
 

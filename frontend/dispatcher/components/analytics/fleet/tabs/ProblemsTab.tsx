@@ -35,7 +35,7 @@ const PERCENT = 100
 const PER_TRIP_DECIMALS = 1
 const SOURCES: readonly ExceptionSource[] = ['system', 'driver', 'dispatcher']
 // Trip creation and activation are rare places for a problem, so they only appear when
-// something actually happened there (spec §5.3, 3.4).
+// something actually happened there.
 const OPTIONAL_STEPS: ReadonlySet<string> = new Set(['trip_creation', 'activation'])
 
 interface TabCardProps {
@@ -59,11 +59,9 @@ interface PerTripRow {
   perTrip: string
 }
 
-/** Chart 3.1 (D25): are things getting better or worse? The number of problems in each
- *  period, warning under critical. A rate per 100 trips read "400 per 100" on two trips, so the
- *  rate per trip sits in the tooltip and the table, beside the trip count it rests on. The
- *  status colours carry icons in the legend and labels in the tooltip, never colour alone:
- *  the warning amber is only 1.7:1 against white (spec §7.3, D18). */
+/** Chart 3.1: are things getting better or worse? The number of problems in each period,
+ *  warning under critical. Rate per trip sits in the tooltip and table beside the trip count.
+ *  Status colours carry icons too, never colour alone: warning amber is only 1.7:1 against white. */
 function PerTripCard({ problems, grain, today }: TabCardProps) {
   const rows = problems.data?.per_trip ?? []
   const trips = sumOf(rows, (row) => row.trip_count)
@@ -212,7 +210,7 @@ function pivotByType(counts: FleetProblems['by_type']): TypeRow[] {
 }
 
 /** Chart 3.3: which problems happen most? Only types that actually happened, so a type
- *  nothing creates never sits at a reassuring zero (spec D11). */
+ *  nothing creates never sits at a reassuring zero. */
 function ByTypeCard({ problems }: { problems: FleetQueryResult<FleetProblems> }) {
   const rows = pivotByType(problems.data?.by_type ?? [])
   const total = sumOf(rows, (row) => row.total)
@@ -312,7 +310,7 @@ interface RiskyRow {
 }
 
 /** Chart 3.5: is any time of day riskier than its share of driving? Two columns per block,
- *  side by side: comparing the two shares is the whole point (spec §5.3, D21). */
+ *  side by side: comparing the two shares is the whole point. */
 function RiskyTimesCard({ problems }: { problems: FleetQueryResult<FleetProblems> }) {
   const blocks = problems.data?.risky_times ?? []
   const drivingMinutes = sumOf(blocks, (row) => row.driving_minutes)
@@ -388,8 +386,8 @@ interface ProblemsTabProps {
   today: string
 }
 
-/** Problems tab (spec §5.3). One request for all five charts, over the closed-trip set,
- *  dispatcher notes never counted (D10). */
+/** Problems tab. One request for all five charts, over the closed-trip set; dispatcher notes
+ *  never counted. */
 export function ProblemsTab({ query, allTimeStart, today }: ProblemsTabProps) {
   const problems = useFleetProblems(query, allTimeStart)
   const grain = problems.data?.period.grain ?? query.grain

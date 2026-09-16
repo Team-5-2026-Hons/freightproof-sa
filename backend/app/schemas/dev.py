@@ -14,15 +14,11 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.db.models.enums import ExceptionType, PhaseStatus
 from app.integrations.scan_feed import ScanDirection
 
-# A staged scan cannot exceed this many barcodes. Purely a guard against a typo in
-# the panel turning into thousands of rows; no real consignment approaches it.
+# Guard against a typo in the panel turning into thousands of rows.
 MAX_STAGED_BARCODES = 500
 
-# Mirrors phase_service._is_resolved's definition of "already decided" — stated
-# again here (not imported) because that predicate is private to phase_service,
-# which this slice is explicitly scoped to leave untouched. A phase in one of
-# these statuses is not going to change its mind about a scan; the panel uses
-# this to know when triggering a scan for that phase no longer makes sense.
+# Mirrors phase_service._is_resolved's "already decided" (restated, not imported, since
+# that predicate is private). A phase in one of these statuses won't change its mind.
 CLOSED_PHASE_STATUSES: frozenset[str] = frozenset({
     PhaseStatus.COMPLETED.value, PhaseStatus.EXCEPTION.value, PhaseStatus.OVERRIDDEN.value,
 })
@@ -48,14 +44,11 @@ class DevTripStop(BaseModel):
     precinct_name: str
     pickup_consignments: list[DevConsignment]
     delivery_consignments: list[DevConsignment]
-    # Status of the phase event gating each scan direction AT THIS STOP, so the panel
-    # can refuse a scan that no longer makes sense. None = no such phase event.
-    # See CLOSED_PHASE_STATUSES for which values mean "already decided".
+    # Status of the phase gating each scan direction at this stop; None = no such phase
+    # event. See CLOSED_PHASE_STATUSES for "already decided".
     loading_phase_status: Optional[str] = None
     confirmation_phase_status: Optional[str] = None
-    # Status of the DEPARTURE phase for the leg that ends at this stop — the truck
-    # physically leaving the origin is the precondition for any destination scan.
-    # None when no departure precedes this stop (i.e. it is the origin).
+    # Status of the DEPARTURE phase for the leg ending here; None if this is the origin.
     preceding_departure_status: Optional[str] = None
 
 
@@ -67,9 +60,7 @@ class DevTripSummary(BaseModel):
     status: str
     current_phase: Optional[str]
     stops: list[DevTripStop]
-    # Trip.driver_id/Driver.full_name are both non-nullable, but this stays Optional
-    # so a join miss degrades to a blank label in the panel rather than a 500 mid-demo.
-    driver_full_name: Optional[str] = None
+    driver_full_name: Optional[str] = None  # Optional so a join miss blanks, not 500s
     created_at: datetime
 
 
@@ -77,18 +68,11 @@ class ScanTriggerRequest(BaseModel):
     """Stage a warehouse scan, then ingest it through the real reconciliation path.
 
     Precedence, most specific first:
-      - `barcodes_by_reference`: scan exactly the listed barcodes for each named
-        waybill (parcel_perfect_reference -> barcodes). A waybill absent from the
-        map stages an EMPTY scan for it, not a full one — that is how a demo
-        expresses "this waybill was never scanned". MockScanFeed.stage_scans
-        REPLACES prior staging rather than appending (see its docstring), so a
-        caller wanting "everything plus one stranger barcode" must send the full
-        list for that waybill; there is no additive mode. Per-waybill selection is
-        what lets the panel build that list correctly across several waybills at
-        one stop in a single trigger.
-      - `barcodes`: scan this literal list for every consignment at the stop,
-        which may include barcodes that are not on the manifest at all.
-      - `parcel_count`: scan the first N expected barcodes (N < expected = partial).
+      - `barcodes_by_reference`: exact barcodes per named waybill. A waybill absent from
+        the map stages an EMPTY scan for it ("never scanned"), not a full one.
+      - `barcodes`: this literal list for every consignment at the stop, which may
+        include barcodes not on the manifest.
+      - `parcel_count`: first N expected barcodes (N < expected = partial).
       - none of the above: scan everything expected.
     """
 
@@ -116,9 +100,7 @@ class ScanTriggerRequest(BaseModel):
     def reject_oversized_map(
         cls, v: Optional[dict[str, list[str]]],
     ) -> Optional[dict[str, list[str]]]:
-        # max_length on the `barcodes` field only guards that flat list — this map
-        # has no single field-level cap, so the total across all its lists is
-        # enforced here instead.
+        # max_length on `barcodes` only guards that flat list; this map's total is enforced here.
         if v is not None and sum(len(barcodes) for barcodes in v.values()) > MAX_STAGED_BARCODES:
             raise ValueError(f"Total staged barcodes must not exceed {MAX_STAGED_BARCODES}")
         return v
@@ -145,11 +127,8 @@ class ScanTriggerResponse(BaseModel):
 
 
 class CloseScanSessionRequest(BaseModel):
-    """Simulate the warehouse operator finishing at one stop.
-
-    Scoped to a stop rather than a trip: a cross-dock trip has several stops, and
-    closing them all at once would make the per-stop gate untestable.
-    """
+    """Simulate the warehouse operator finishing at one stop (not the whole trip, so the
+    per-stop gate stays testable on a cross-dock trip)."""
 
     trip_id: uuid.UUID
     trip_stop_id: uuid.UUID
@@ -160,16 +139,13 @@ class CloseScanSessionResponse(BaseModel):
     trip_id: uuid.UUID
     trip_stop_id: uuid.UUID
     direction: ScanDirection
-    # One per consignment at this stop — a stop may serve several waybills.
-    sessions_closed: int
+    sessions_closed: int  # one per consignment at this stop
 
 
 class PpTriggerRequest(BaseModel):
     """Stage a change to a mock waybill, as if someone edited it in the PP portal.
 
-    Every field is optional; supplied fields are staged and the rest are untouched.
-    `parcel_count` reproduces the verified mid-trip edit (spec §B2c) that grew a
-    waybill's tracks[] from 2 to 27 barcodes.
+    Every field is optional; supplied fields are staged, the rest untouched.
     """
 
     trip_id: uuid.UUID
@@ -214,26 +190,18 @@ class FlushMockStateResponse(BaseModel):
     keys_deleted: int
 
 
-# ---------------------------------------------------------------------------
 # FP-116 "move the truck" — dev-only Pulsit mock position control
-# ---------------------------------------------------------------------------
 
 
 class WaypointRead(BaseModel):
-    """One waypoint the presenter can move the truck to.
-
-    Served by the panel rather than hardcoded in TypeScript, so the ordered route and
-    its distances have exactly one definition (core/demo_waypoints.py) and a coordinate
-    corrected in Python cannot leave a stale copy on screen.
-    """
+    """One waypoint the presenter can move the truck to; single source of truth is
+    core/demo_waypoints.py, not a TypeScript copy."""
 
     waypoint_id: str
     label: str
     sequence: int
     description: str
-    # None only for the "no signal" waypoint, which is the tracker going dark rather
-    # than a place — never defaulted to 0.0, which is a real coordinate.
-    latitude: Optional[Decimal]
+    latitude: Optional[Decimal]  # None only for the "no signal" waypoint, never 0.0
     longitude: Optional[Decimal]
     intended_distance_metres: Optional[int]
     expected_confirmed: Optional[bool]
@@ -249,38 +217,27 @@ class MoveTruckRequest(BaseModel):
 class MoveTruckResponse(BaseModel):
     """Where the truck now is, and what the geofence makes of it.
 
-    Carries the measured distance and the real verdict so the panel displays actual
-    state rather than restating what it just asked for. The verdict is computed by the
-    same `orchestration.geofence_service.evaluate_geofence` a handshake uses — read
-    only, nothing here is persisted.
+    Verdict computed by the same `evaluate_geofence` a handshake uses — read only,
+    nothing here is persisted.
     """
 
     trip_id: uuid.UUID
     waypoint_id: str
     waypoint_label: str
 
-    # Which tracker actually moved, echoed back so the panel can prove it addressed the
-    # trip's own horse rather than a device id someone typed.
-    device_id: str
+    device_id: str  # tracker that actually moved, echoed back to prove it's this trip's horse
     vehicle_registration: str
 
-    # The precinct the distance below is measured FROM — the trip's current stop. Named
-    # in the response because it is not always the origin, and a distance without its
-    # reference point is not a fact.
-    precinct_id: uuid.UUID
+    precinct_id: uuid.UUID  # what the distance below is measured FROM (not always the origin)
     precinct_name: str
 
     latitude: Optional[Decimal]
     longitude: Optional[Decimal]
     has_position: bool
 
-    # None when there is no fix to measure. Distinct from 0.0, which means the tracker
-    # is sitting exactly on the precinct centre.
-    distance_metres: Optional[float]
+    distance_metres: Optional[float]  # None when no fix; distinct from 0.0 (on centre)
     geofence_radius_metres: Optional[int]
     gps_tolerance_metres: int
-    # None on the no-signal waypoint: no fix means no verdict, deliberately not `false`.
-    # A tracker that cannot be reached has not accused anyone.
-    geofence_confirmed: Optional[bool]
+    geofence_confirmed: Optional[bool]  # None on no-signal, deliberately not False
     in_tolerance_band: bool
     verdict_reason: str

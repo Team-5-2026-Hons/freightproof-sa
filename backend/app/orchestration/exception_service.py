@@ -37,28 +37,21 @@ from app.schemas.transit import TripExceptionDetail, TripExceptionListItem, Trip
 
 logger = logging.getLogger(__name__)
 
-# Mirrors TripContext.tsx's criticalTypes set on the frontend — keep these two in sync.
+# Mirrors TripContext.tsx's criticalTypes set on the frontend — keep in sync.
 _CRITICAL_TYPES = {ExceptionType.PANIC_BUTTON, ExceptionType.SEAL_BROKEN_IN_TRANSIT, ExceptionType.SEAL_MISMATCH}
 
-# Name of the partial unique index on (trip_id, client_report_id) — migration
-# ciaran_exc_idempotency. Matched against violated_constraint() below so that some
-# unrelated unique-violation on this table is never misread as a replay.
+# Name of the partial unique index on (trip_id, client_report_id), matched against
+# violated_constraint() below so an unrelated unique-violation is never misread as a replay.
 _CLIENT_REPORT_ID_INDEX = "uq_exceptions_trip_client_report_id"
 
 def initial_review_status(severity: ExceptionSeverity) -> ExceptionReviewStatus:
-    """Where a freshly-created exception starts in the dispatcher review workflow
-    (Task 2, FP-146 follow-on).
+    """Where a freshly-created exception starts in the dispatcher review workflow.
 
-    CRITICAL findings — a panic button, a seal broken in transit, a destination seal
-    mismatch — need a dispatcher's decision now, so they start NEEDS_REVIEW. Everything
-    else (WARNING, INFO) starts RECORDED: visible on the trip's exception list, but not
-    queued for action until a dispatcher chooses to look.
-
-    Every TripException row constructed anywhere in this codebase must route its
-    review_status through this one function rather than hand-coding a value or relying
-    on the column's server_default (which happens to also be RECORDED today) — a site
-    that only works by matching the default is a site the next severity change breaks
-    silently, with no import error or test failure to catch it.
+    CRITICAL findings need a dispatcher's decision now, so they start
+    NEEDS_REVIEW; everything else starts RECORDED. Every TripException row must
+    route its review_status through this function rather than hand-coding a value
+    or relying on the column's server_default, so a future severity change can't
+    break a hardcoded site silently.
     """
     return (
         ExceptionReviewStatus.NEEDS_REVIEW if severity == ExceptionSeverity.CRITICAL
@@ -71,17 +64,15 @@ async def _resolve_phase_context(
 ) -> PhaseEvent | None:
     """The phase this exception happened ON, decided once at creation and then frozen.
 
-    A client-supplied id wins over server derivation deliberately. The driver app queues
-    exceptions offline and flushes them when signal returns (driver-pwa
-    lib/hooks/useOfflineQueue.ts), so a panic raised mid-transit can arrive here after
-    the trip has already reached unloading — deriving at request time would tag it with
-    the wrong phase, which is the exact drift this tagging exists to remove. The client
-    knows where the driver WAS; this process only knows where the trip IS now.
+    A client-supplied id wins over server derivation: the driver app queues
+    exceptions offline, so a panic raised mid-transit can arrive after the trip
+    has already reached unloading — deriving at request time would tag it wrong.
+    The client knows where the driver WAS; this process only knows where the
+    trip IS now.
 
-    A claimed id belonging to some other trip is dropped and logged rather than
-    rejected: the offline queue treats 4xx as terminal and discards the entry, so
-    422-ing a stale client would silently lose the alert. Recording a panic with
-    server-derived placement beats not recording it at all.
+    A claimed id belonging to some other trip is dropped and logged, not
+    rejected: the offline queue treats 4xx as terminal and discards the entry,
+    so 422-ing a stale client would silently lose the alert.
     """
     if claimed_phase_event_id is not None:
         result = await db.execute(
@@ -109,20 +100,14 @@ def pick_breakdown_vehicle(
 ) -> uuid.UUID | None:
     """The vehicle a driver-raised exception is recorded against, or None.
 
-    The driver only answers "Truck or Trailer?" (vehicle_type), plus a trailer's plate
-    (trailer_id) on a trip with two or more trailers. This works out the exact vehicle
-    from the trip itself: its horse, or the trailers in trip_trailers. Doing it on the
-    server is safe for a report flushed from the offline queue hours later, because
-    trip_trailers is written only at trip creation and never changes afterwards.
+    The driver only answers "Truck or Trailer?" (vehicle_type), plus a trailer's
+    plate on a multi-trailer trip. Resolving on the server is safe for a report
+    flushed hours later, since trip_trailers never changes after trip creation.
 
-    Never raises. A claim that doesn't fit the trip is dropped with a warning and the
-    result is None. The driver app's offline queue treats any 4xx as final and discards
-    the report, so rejecting it would lose a breakdown over its least important field
-    (the same reasoning as _resolve_phase_context above). None counts for the horse in
-    the analytics, so a warning here is the only trace of a trailer answer that couldn't
-    be resolved.
-
-    trip_id is used only to say which trip a warning is about.
+    Never raises: a claim that doesn't fit the trip is dropped with a warning and
+    the result is None, for the same reason as _resolve_phase_context — the
+    offline queue discards any 4xx, so rejecting would lose the whole breakdown
+    over its least important field.
     """
     if exception_type != ExceptionType.MECHANICAL:
         if vehicle_type is not None or trailer_id is not None:
@@ -186,9 +171,7 @@ async def _resolve_breakdown_vehicle(
     vehicle_type: VehicleType | None, trailer_id: uuid.UUID | None,
 ) -> uuid.UUID | None:
     """Load the trip's trailers and hand the decision to pick_breakdown_vehicle."""
-    # A report carrying neither field always resolves to None. Skipping the query is
-    # purely a saving, since that is every report from an older app and every
-    # non-breakdown report from a new one.
+    # A report carrying neither field always resolves to None; skip the query.
     if vehicle_type is None and trailer_id is None:
         return None
     result = await db.execute(
@@ -224,23 +207,16 @@ async def raise_exception(
     """Raises ResourceNotFoundError if the trip doesn't exist, PermissionError if
     driver_id isn't the trip's assigned driver (caller maps PermissionError to 403).
 
-    vehicle_type/trailer_id are the driver's "truck or trailer" answer on a breakdown.
-    The stored vehicle_id is worked out from the trip by pick_breakdown_vehicle, which
-    never raises: an answer that doesn't fit the trip is stored as no vehicle.
+    vehicle_type/trailer_id are the driver's "truck or trailer" answer on a
+    breakdown; pick_breakdown_vehicle resolves the actual vehicle_id and never
+    raises. phase_event_id is where the driver was, as the client observed it —
+    see _resolve_phase_context. gps_lat/gps_lng are both-or-neither, already
+    enforced by DriverExceptionCreateBody's validator.
 
-    phase_event_id is where the driver was when this happened, as the client observed
-    it — see _resolve_phase_context for why the claim is trusted and what happens when
-    it is absent or foreign.
-
-    gps_lat/gps_lng are the driver-phone fix captured by the panic page (spec: "Your
-    GPS location will be included") — both-or-neither is already enforced by
-    DriverExceptionCreateBody's validator before this is called, so no re-check here.
-
-    client_report_id is the driver app's own stable id for this exact report (its
-    offline queue's entry UUID) — see TripException.client_report_id. Replaying it on
-    this trip returns the existing row untouched: no second insert, no second realtime
-    event. Raises no error of its own; a foreign or malformed value simply behaves as
-    if none were sent."""
+    client_report_id is the driver app's offline-queue entry UUID. Replaying it
+    on this trip returns the existing row untouched — no second insert, no
+    second realtime event. A foreign or malformed value behaves as if none were sent.
+    """
     result = await db.execute(select(Trip).where(Trip.id == trip_id))
     trip = result.scalar_one_or_none()
     if trip is None:
@@ -248,13 +224,9 @@ async def raise_exception(
     if trip.driver_id != driver_id:
         raise PermissionError("You are not the assigned driver on this trip.")
 
-    # Evidence ownership, checked before anything is written: the FK alone only proves
-    # the artifact exists SOMEWHERE, not that it belongs to THIS trip. Without this, a
-    # driver (or a replayed/forged request) could cite another trip's photo — a seal
-    # shot from a different delivery — as if it were this trip's own evidence, and it
-    # would hash into this trip's record as though genuine. Raises before any
-    # TripException row is built or any realtime event is queued, so a rejected claim
-    # leaves no trace at all rather than a half-written exception.
+    # Evidence ownership, checked before anything is written: the FK alone only
+    # proves the artifact exists SOMEWHERE, not that it belongs to THIS trip.
+    # Raises before any TripException row is built, so a rejected claim leaves no trace.
     if supporting_artifact_id is not None:
         artifact_result = await db.execute(
             select(EvidenceArtifact.id).where(

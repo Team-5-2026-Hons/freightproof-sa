@@ -15,9 +15,9 @@ interface EventSwitchProps {
   onChange: (event: PatternEvent) => void
 }
 
-/** Departures | Arrivals above the busy-pattern charts. Both come back in one response, so
- *  switching only changes which half is drawn: it never asks the server again (spec §5.1). */
+/** Departures | Arrivals above the busy-pattern charts; both come back in one response, so
+ *  switching only changes which half is drawn. */
 export function EventSwitch({ value, onChange }: EventSwitchProps) {
-  // No caption: it sits on a card's title row or beside a labelled control (spec §7.7 item 5).
+  // No caption: it sits on a card's title row or beside a labelled control.
   return <RadioToggle label={FLEET_COPY.controls.eventsLabel} showLabel={false} value={value} options={OPTIONS} onChange={onChange} />
 }

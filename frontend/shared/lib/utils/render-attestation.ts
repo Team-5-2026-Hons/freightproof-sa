@@ -1,59 +1,38 @@
-// frontend/driver-pwa/lib/utils/render-attestation.ts
-//
-// Renders the receiver's digital signature as a PNG data URL.
-//
-// Why a PNG rather than a JSON blob: the POD signature has always travelled as an image
-// data URL (SignaturePad exported its canvas), the upload path takes a data URL, and the
-// dispatcher's evidence viewer renders the artifact as an image. Emitting the attestation
-// in that same shape keeps pod_signature_artifact_id pointing at something every existing
-// consumer can already display — which is what keeps this change inside the driver app:
-// no backend schema change, no Alembic migration, no dispatcher work.
-//
-// Moved to shared/ (2026-09-13, FP-155): the attestation is now rendered on the
-// RECEIVER's device, in frontend/receiver, and the driver app no longer renders one at
-// all. It lives here because two surfaces draw the same artifact, and a second copy
-// would let them drift into producing two different images for one evidence type.
-//
-// The image is the human-readable face of the attestation. Its evidential weight comes
-// from the artifact hash anchored downstream, not from the pixels.
+// Renders the receiver's digital signature as a PNG data URL — matches the shape the
+// upload path and dispatcher's evidence viewer already expect. Shared because both
+// driver-pwa and receiver draw the same artifact and must not drift into two different
+// images for one evidence type. Evidential weight comes from the artifact hash anchored
+// downstream, not the pixels.
 
 import { ATTESTATION_CANVAS_COLOURS } from '@shared/lib/constants/attestation-colours'
 import type { PositionFix } from '@shared/lib/types/position'
 
-// Canvas geometry. Sized for legibility when a dispute reviewer opens the artifact at
-// full width, not for the phone screen it is generated on.
-// HEIGHT_PX must clear the last row's value baseline plus bottom padding:
-// ROW_START_Y_PX + (rows - 1) * ROW_HEIGHT_PX + LABEL_TO_VALUE_PX + PADDING_PX.
-// With the six rows below that is 160 + 370 + 30 + 40 = 600.
+// Canvas geometry, sized for a full-width dispute review, not the phone screen it's
+// generated on. HEIGHT_PX must clear the last row: ROW_START_Y_PX + (rows - 1) *
+// ROW_HEIGHT_PX + LABEL_TO_VALUE_PX + PADDING_PX = 160 + 370 + 30 + 40 = 600.
 const WIDTH_PX = 720
 const HEIGHT_PX = 600
 const PADDING_PX = 40
 const RULE_Y_PX = 116
 
-// Widest a value may draw before it is ellipsized. A receiver's name is free text typed
-// on a phone; without this a long one runs off the canvas and the artifact silently loses
-// the end of the very identity it exists to record.
+// Widest a value may draw before ellipsizing, so a long free-typed name doesn't run off
+// the canvas and silently lose the end of the identity it exists to record.
 const MAX_VALUE_WIDTH_PX = WIDTH_PX - PADDING_PX * 2
 const ELLIPSIS = '…'
 
-// Type scale. Separate constants rather than inline strings so the block below reads as
-// layout rather than as a wall of font shorthand.
 const FONT_TITLE = '600 30px system-ui, sans-serif'
 const FONT_LABEL = '500 16px system-ui, sans-serif'
 const FONT_VALUE = '400 22px system-ui, sans-serif'
 const FONT_MONO = '400 18px ui-monospace, monospace'
 
-// Sourced from lib/tokens.ts rather than written inline — hex literals are banned
-// outside the token map (DESIGN_SYSTEM.md §2.3). Values and labels share a colour;
-// the label's smaller, lighter weight is what sets them apart.
+// Sourced from lib/tokens.ts — hex literals are banned outside the token map
+// (DESIGN_SYSTEM.md §2.3).
 const COLOUR_BACKGROUND = ATTESTATION_CANVAS_COLOURS.background
 const COLOUR_TITLE = ATTESTATION_CANVAS_COLOURS.title
 const COLOUR_LABEL = ATTESTATION_CANVAS_COLOURS.label
 const COLOUR_VALUE = ATTESTATION_CANVAS_COLOURS.title
 const COLOUR_RULE = ATTESTATION_CANVAS_COLOURS.rule
 
-// Vertical rhythm: where each label/value pair starts, and the gap between the label and
-// the value beneath it.
 const ROW_START_Y_PX = 160
 const ROW_HEIGHT_PX = 74
 const LABEL_TO_VALUE_PX = 30
@@ -62,8 +41,6 @@ const LABEL_TO_VALUE_PX = 30
 const COORD_DECIMALS = 6
 
 const TITLE = 'DIGITAL PROOF OF DELIVERY'
-// The framing that used to be the SIGNED BY value. It describes the whole document, not
-// one field, which is where it belongs now that SIGNED BY carries a real name.
 const SUBTITLE = 'Swipe attestation taken on the driver’s device'
 const LOCATION_UNAVAILABLE = 'Location unavailable'
 
@@ -74,28 +51,20 @@ export interface AttestationFields {
   position: PositionFix | null
   /** The trip this delivery closes — ties the image to a record if it is ever exported. */
   tripId: string
-  /**
-   * The receiver's own name, as they gave it. Non-empty by the time this runs — the
-   * signing swipe does not arm without it (components/phase/DigitalSignature.tsx).
-   */
+  /** Non-empty by the time this runs — the signing swipe won't arm without it. */
   recipientName: string
   /**
-   * The receiver's ID number, as presented. Not validated beyond a shape hint in the UI:
-   * a passport number or a mistyped digit is itself evidence (lib/utils/sa-id.ts).
-   *
-   * POPIA: personal data. It is drawn into this image and travels only as far as the
-   * artifact in Supabase Storage. It must never be added to a phase-completion request,
-   * a canonical payload, or anything anchored to Hedera.
+   * The receiver's ID number, as presented, unvalidated beyond a shape hint (lib/utils/sa-id.ts).
+   * POPIA: personal data. Stays in this image artifact only — must never reach a
+   * phase-completion request, canonical payload, or anything anchored to Hedera.
    */
   recipientIdNumber: string
 }
 
 /**
  * Ellipsize `value` to fit `maxWidthPx` under the font currently set on `ctx`.
- *
- * Trims one character at a time rather than estimating from an average glyph width: the
- * canvas is the only thing that knows how wide the device's system-ui actually renders,
- * and a name cut in the wrong place is a name that reads as someone else's.
+ * Trims one character at a time rather than estimating from an average glyph width, since
+ * only the canvas knows how wide the device's system-ui actually renders.
  */
 export function fitText(ctx: CanvasRenderingContext2D, value: string, maxWidthPx: number): string {
   if (ctx.measureText(value).width <= maxWidthPx) return value
@@ -109,29 +78,23 @@ export function fitText(ctx: CanvasRenderingContext2D, value: string, maxWidthPx
 
 /**
  * Format the fix for display, or explain its absence.
- *
- * A missing position is rendered as an explicit "Location unavailable" line rather than
- * being omitted: a reviewer must be able to tell "the phone had no fix" apart from "this
- * attestation predates location capture", and a blank row says neither.
+ * Renders "Location unavailable" explicitly rather than omitting the row, so a reviewer
+ * can tell "no fix" apart from "predates location capture".
  */
 export function formatPosition(position: PositionFix | null): string {
   if (position === null) return LOCATION_UNAVAILABLE
 
   const lat = position.lat.toFixed(COORD_DECIMALS)
   const lng = position.lng.toFixed(COORD_DECIMALS)
-  // accuracyM is null when the platform reports no uncertainty — show the coordinates
-  // without inventing a confidence figure for them.
+  // accuracyM is null when the platform reports no uncertainty.
   if (position.accuracyM === null) return `${lat}, ${lng}`
   return `${lat}, ${lng}  (±${Math.round(position.accuracyM)} m)`
 }
 
 /**
- * Render both a device-local rendering of the instant and the ISO 8601 form.
- *
- * Both, not either: the local string is what a human reading the artifact expects to see,
- * and the ISO string is the unambiguous one that survives being read in another timezone.
- * Deliberately no hardcoded SAST — the device's own zone is the honest answer to "where
- * was this signed", and the ISO line removes the ambiguity that creates.
+ * Render both a device-local rendering of the instant and the ISO 8601 form: the local
+ * string reads naturally, the ISO string survives being read in another timezone.
+ * Deliberately no hardcoded SAST — the device's own zone is the honest answer.
  */
 export function formatSignedAt(signedAt: string): { local: string; iso: string } {
   const date = new Date(signedAt)
@@ -140,11 +103,8 @@ export function formatSignedAt(signedAt: string): { local: string; iso: string }
 
 /**
  * Draw the attestation and return it as a PNG data URL.
- *
- * Returns null when the 2D context is unavailable (jsdom, or a browser that refuses the
- * context under memory pressure). Callers must treat null as "could not sign" and keep
- * the receiver on the step — silently returning a blank image would put an empty artifact
- * into the evidence chain, which is worse than failing loudly.
+ * Returns null when the 2D context is unavailable (jsdom, or memory pressure). Callers
+ * must treat null as "could not sign" — a blank image in the evidence chain is worse.
  */
 export function renderAttestation(fields: AttestationFields): string | null {
   const canvas = document.createElement('canvas')
@@ -172,8 +132,7 @@ export function renderAttestation(fields: AttestationFields): string | null {
   ctx.stroke()
 
   const { local, iso } = formatSignedAt(fields.signedAt)
-  // Identity first, because it is the question a disputed delivery actually asks: not
-  // "was something signed" but "who signed it".
+  // Identity first — the question a disputed delivery asks is "who signed it".
   const rows: { label: string; value: string; mono?: boolean }[] = [
     { label: 'SIGNED BY', value: fields.recipientName },
     { label: 'ID NUMBER', value: fields.recipientIdNumber, mono: true },

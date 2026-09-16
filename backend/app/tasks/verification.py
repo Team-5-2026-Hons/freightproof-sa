@@ -23,8 +23,8 @@ logger = logging.getLogger(__name__)
 async def _sweep() -> int:
     """Run one sweep on a short-lived engine.
 
-    A fresh engine per run, as in tasks/analytics.py: a connection pool created before the
-    Celery worker forks is unsafe to share with the forked child.
+    Fresh engine per run (as in tasks/analytics.py) — a pool created before
+    the Celery worker forks is unsafe to share with the forked child.
     """
     engine = create_async_engine(settings.DATABASE_URL, pool_pre_ping=True)
     try:
@@ -43,9 +43,8 @@ async def _sweep() -> int:
 def sweep_abandoned() -> int:
     """Beat-scheduled entry point.
 
-    Exceptions are logged and swallowed rather than retried: the next scheduled run does
-    exactly the same work, so a retry storm buys nothing and a failed sweep is not a lost
-    fact — the rows are still there to find.
+    Exceptions logged and swallowed, not retried — the next scheduled run
+    does the same work, and the rows are still there to find.
     """
     try:
         return asyncio.run(_sweep())

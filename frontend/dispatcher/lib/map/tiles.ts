@@ -1,30 +1,21 @@
-// Slippy-map tile arithmetic for the precinct static map thumbnail.
-//
-// Pure and unit-tested on purpose: this only computes which tile images to
-// request and where to position a geofence marker inside them. No React, no
-// DOM, no fetch — components layer on top of this.
+// Slippy-map tile arithmetic for the precinct static map thumbnail. Pure and
+// unit-tested: no React, no DOM, no fetch — components layer on top of this.
 
-/** Standard OSM/Google/MapBox slippy-map tile size; every tile provider this app uses is 256x256. */
+/** Standard OSM/Google/MapBox slippy-map tile size (256x256). */
 export const TILE_SIZE_PX = 256
 
-/** Ground resolution (metres/pixel) at the equator, zoom 0 — the constant baked into the Web Mercator tile spec. */
+/** Ground resolution (metres/pixel) at the equator, zoom 0 — the Web Mercator tile spec constant. */
 export const EQUATOR_METRES_PER_PIXEL_Z0 = 156543.03392
 
-/** Below this the thumbnail is too coarse to show a useful geofence context. */
+/** Below this the thumbnail is too coarse to show useful geofence context. */
 export const MIN_TILE_ZOOM = 10
 
 /** OSM's standard raster tile set stops serving useful detail beyond this. */
 export const MAX_TILE_ZOOM = 18
 
-/**
- * Target fraction of the framing box the geofence circle's DIAMETER should occupy when
- * auto-picking a zoom.
- *
- * "Framing box", not "card width". Callers must pass the SMALLER of the viewport's two
- * dimensions: a thumbnail is wider than it is tall, so framing on width alone picks a
- * zoom whose circle is taller than the band it is drawn into, and the fence is clipped
- * top and bottom at every real card width. See zoomForRadius.
- */
+/** Target fraction of the framing box the geofence circle's DIAMETER should occupy when
+ *  auto-picking a zoom. Callers must pass the SMALLER viewport dimension (see
+ *  zoomForRadius), or the circle clips along the other one. */
 export const FENCE_FRACTION_OF_FRAME = 0.55
 
 /** Mid-range fallback zoom for radius inputs that can't drive the log2 search (0, negative, NaN). */
@@ -51,13 +42,8 @@ function clampZoom(zoom: number): number {
   return Math.min(MAX_TILE_ZOOM, Math.max(MIN_TILE_ZOOM, zoom))
 }
 
-/**
- * Fractional slippy-map tile coordinates for a lat/lng at a given zoom.
- *
- * This is the standard Web Mercator projection formula that OSM, Google and
- * every other XYZ tile provider address their tiles by — not an approximation
- * we chose, it's the coordinate system the tile server expects.
- */
+/** Fractional slippy-map tile coordinates for a lat/lng at a given zoom (standard Web
+ *  Mercator projection — the coordinate system every XYZ tile server expects). */
 export function tileCoordinates(
   latitude: number,
   longitude: number,
@@ -81,21 +67,13 @@ export function metresPerPixel(latitude: number, zoom: number): number {
 }
 
 /**
- * Integer zoom level that renders a geofence circle at roughly
- * FENCE_FRACTION_OF_FRAME of `framePx`.
+ * Integer zoom level that renders a geofence circle at roughly FENCE_FRACTION_OF_FRAME
+ * of `framePx` (the SMALLER of the viewport's two dimensions).
  *
- * `framePx` must be the SMALLER of the viewport's two dimensions, or the circle is
- * clipped along the other one. A caller drawing into a fixed-height band passes
- * Math.min(widthPx, heightPx); a square viewport passes either.
- *
- * Solved in closed form rather than by iterating zoom levels: circle diameter
- * in pixels is monotonic in zoom (metresPerPixel halves each level), so
- * diameter(z) = target can be inverted directly via log2 instead of searching.
- *
- * The returned zoom is ROUNDED to an integer, so the drawn radius lands within a factor
- * of sqrt(2) of the target either way. tiles.test.ts asserts the resulting circle still
- * fits a 150px band across every realistic width, radius and SA latitude — that headroom
- * is what makes the rounding safe, and is why the fraction above is not simply raised.
+ * Solved in closed form via log2 rather than by iterating zoom levels, since circle
+ * diameter in pixels is monotonic in zoom. Rounded to an integer zoom, so the drawn
+ * radius lands within a factor of sqrt(2) of the target — tiles.test.ts asserts that's
+ * still safe across realistic widths/radii/SA latitudes.
  */
 export function zoomForRadius(radiusMetres: number, latitude: number, framePx: number): number {
   if (!Number.isFinite(radiusMetres) || radiusMetres <= 0) {
@@ -120,55 +98,28 @@ export function zoomForRadius(radiusMetres: number, latitude: number, framePx: n
 
 /**
  * Consecutive tile errors, with no successful load between them, that mean the tile
- * SERVER is unreachable rather than that one tile 404'd.
- *
- * A handful of individual failures (an edge-of-coverage 404, one dropped request) is
- * normal on a healthy map and must not trip a fallback; a run of them with nothing
- * succeeding is the "venue wifi" case the schematic fallback exists for. Chosen
- * empirically: low enough to catch a dead connection within the first screenful of
- * tiles, high enough that a merely spotty connection does not flicker.
- *
- * Lives here, next to the tile URL, because BOTH map surfaces need the same answer —
- * GeofenceMap had this tolerance and StaticGeofenceThumbnail did not, so a single 404
- * permanently replaced a thumbnail that the interactive map would have shrugged off.
+ * SERVER is unreachable rather than one tile 404'ing. Chosen empirically: low enough to
+ * catch a dead connection within the first screenful, high enough that a spotty
+ * connection doesn't flicker. Shared by both map surfaces so they fall back consistently.
  */
 export const TILE_ERROR_FALLBACK_THRESHOLD = 6
 
-/**
- * Fallback tile host: OpenStreetMap's public raster tiles, in the `{z}/{x}/{y}`
- * placeholder form Leaflet consumes directly. Single fixed host, not the deprecated
- * `{s}` subdomain form.
- *
- * OSM's tile usage policy does not cover production applications — this is a development
- * and demonstration default, not a deployment target.
- */
+/** Fallback tile host: OSM's public raster tiles. Development/demo default only — OSM's
+ *  usage policy doesn't cover production. */
 const OSM_PUBLIC_TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
 
-/**
- * The raster tile template both map surfaces use — the one place the provider is named,
- * so the static thumbnail and `GeofenceMap` cannot drift onto different hosts.
- *
- * Read from the environment so moving to a host with an actual usage agreement
- * (MapTiler, Stadia, Carto) is a deploy-time setting rather than a code change: set
- * NEXT_PUBLIC_TILE_URL to that provider's `{z}/{x}/{y}` template with its key embedded.
- * Inlined at build time by Next, as all NEXT_PUBLIC_* vars are, so it is fixed per build.
- */
-// `||`, not `??`: .env.example ships this key present but blank, so the value Next
-// inlines is an empty string rather than undefined. `??` only falls back on null or
-// undefined, which would leave every tile requesting an empty URL.
+/** The raster tile template both map surfaces use, so they can't drift onto different
+ *  hosts. Read from the environment so switching provider (MapTiler, Stadia, Carto) is
+ *  a deploy-time setting: set NEXT_PUBLIC_TILE_URL to that provider's `{z}/{x}/{y}`
+ *  template with its key embedded. */
+// `||`, not `??`: .env.example ships this key present but blank, so an unset value is
+// an empty string, not undefined/null, which `??` wouldn't catch.
 export const OSM_TILE_URL_TEMPLATE =
   process.env.NEXT_PUBLIC_TILE_URL || OSM_PUBLIC_TILE_URL
 
-// Tile sources. Both are keyless; attribution is required by each provider's terms and
-// is rendered by Leaflet's own attribution control, so do not strip it.
-//
-// Satellite is the default because the task is "put this pin on that building", and a
-// street map cannot answer it. Street is the toggle for reading road access and names.
-//
-// Lives here rather than in GeofenceMap.tsx (its original home) because
-// LocationComparisonMap needs the exact same two sources and the exact same toggle
-// behaviour: moving them next to the other tile constants is what keeps both map
-// surfaces on the same providers instead of each carrying its own copy that can drift.
+// Both keyless; attribution is required by each provider's terms and rendered by
+// Leaflet's own attribution control — do not strip it. Satellite is the default since
+// the task is "put this pin on that building"; street is the toggle for roads/names.
 export const TILE_SOURCES = {
   satellite: {
     label: 'Satellite',
@@ -177,9 +128,6 @@ export const TILE_SOURCES = {
     maxZoom: 19,
   },
   street: {
-    // Shared with the list thumbnail rather than spelled out again here, so the tile
-    // provider is named in exactly one place. Note this is the keyless single host;
-    // NOT the `{s}.tile.openstreetmap.org` subdomain form, which OSM has deprecated.
     label: 'Street',
     url: OSM_TILE_URL_TEMPLATE,
     attribution: '&copy; OpenStreetMap contributors',
@@ -212,16 +160,11 @@ export interface TilePlacement {
  * Every tile needed to fully cover a `widthPx` x `heightPx` viewport centred on a
  * lat/lng, with the pixel offset each one must be positioned at.
  *
- * Works in global pixel space (tile coordinate x TILE_SIZE_PX) rather than by
- * translating a fixed NxN block, because a fixed block is not sufficient: the block is
- * offset by the centre's fractional position within its own tile, so a viewport wider
- * than one tile can need either 2 or 3 columns depending on where in the tile the
- * precinct happens to fall. Deriving the range from the box's own edges is correct for
- * every offset instead of for the lucky ones, and costs at most two extra images.
- *
- * Columns wrap at the antimeridian (tile 0 follows tile 2^zoom - 1). Rows do not wrap —
- * there is no tile above the north pole — so out-of-range rows are omitted and the
- * caller's background shows through.
+ * Works in global pixel space rather than a fixed NxN block, since the centre's
+ * fractional offset within its own tile means a viewport can need 2 or 3 columns
+ * depending on where the precinct falls — deriving the range from the box's edges
+ * covers every offset. Columns wrap at the antimeridian; rows don't (no tile above
+ * the pole), so out-of-range rows are omitted.
  */
 export function tileGrid(
   latitude: number,
@@ -237,14 +180,8 @@ export function tileGrid(
   const tileCount = 2 ** zoom
   const { x, y } = tileCoordinates(latitude, longitude, zoom)
 
-  // Global pixel coordinates of the viewport's top-left corner at this zoom.
-  //
-  // Rounded to whole pixels so every tile lands on an integer offset. Adjacent tiles
-  // placed at fractional offsets render with hairline seams between them on many
-  // browsers — visible as a grid drawn over the map. Rounding the shared origin keeps
-  // the tiles aligned to each other and shifts the whole image by at most half a pixel,
-  // which is well under the precision any of this is read at. (Leaflet rounds its own
-  // tile positions for the same reason.)
+  // Global pixel coords of the viewport's top-left corner, rounded to whole pixels so
+  // adjacent tiles don't render with hairline seams (Leaflet does the same).
   const originXPx = Math.round(x * TILE_SIZE_PX - widthPx / 2)
   const originYPx = Math.round(y * TILE_SIZE_PX - heightPx / 2)
 

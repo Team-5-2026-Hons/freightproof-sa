@@ -1,13 +1,9 @@
-// Mirrors backend _validate_seal_format (backend/app/schemas/phases.py): the API
-// rejects any departure/unloading seal number not matching XX-#### with a 422.
-// Validating up front means the driver hears about a bad seal at the input step, not
-// via a raw 422 toast at the end-of-handshake submit after all photos are already taken.
+// Mirrors backend _validate_seal_format: the API 422s any seal not matching XX-####.
+// Validating up front surfaces a bad seal at the input step, not a raw 422 at submit.
 const SEAL_FORMAT = /^[A-Z]{2}-\d{4}$/
 
-// Callers must store this normalized value, not the raw keystrokes — isValidSealFormat
-// validates the normalized form, so a component that trims/uppercases only for the
-// check but submits the raw input can pass its own gate and still 422 on submit (a
-// leading/trailing space survives toUpperCase() but not the backend's untrimmed regex).
+// Callers must store this normalized value, not the raw keystrokes — a component that
+// trims/uppercases only for the check but submits raw input can still 422 on submit.
 export function normalizeSeal(value: string): string {
   return value.trim().toUpperCase()
 }

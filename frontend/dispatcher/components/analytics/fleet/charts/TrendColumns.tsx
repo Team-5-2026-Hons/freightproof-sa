@@ -35,7 +35,7 @@ interface TrendColumnsProps<Row> {
   /** Stacked bottom to top, in slot order. */
   series: readonly ColumnSeries<Row>[]
   renderTooltip: (row: Row) => ReactNode
-  /** The y-axis heading, e.g. "Trips". Required: every chart names its value axis (spec §7.7). */
+  /** The y-axis heading, e.g. "Trips". Required: every chart names its value axis. */
   yLabel: string
   height?: number
 }
@@ -46,9 +46,8 @@ const PARTIAL = '__partial'
 
 type Datum = Record<string, string | number | boolean>
 
-/** Stacked columns over time (charts 1.1, 2.3, 3.1, 5.1). Thin Recharts wrapper applying
- *  spec §7.4: bars at most 24 px, a 2 px surface gap between segments, only the top
- *  segment rounded, partial buckets faded, one y-axis, a hairline grid. */
+/** Stacked columns over time. Thin Recharts wrapper: bars at most 24px, a 2px surface gap
+ *  between segments, only the top segment rounded, partial buckets faded. */
 export function TrendColumns<Row>({
   rows, rowKey, tickLabel, isPartial, series, renderTooltip, yLabel, height = CHART_HEIGHT,
 }: TrendColumnsProps<Row>) {

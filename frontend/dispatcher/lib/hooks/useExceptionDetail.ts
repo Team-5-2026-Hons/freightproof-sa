@@ -19,14 +19,9 @@ export function useExceptionDetail(exceptionId: string): UseExceptionDetailResul
     null,
   )
 
-  // There is no 'exception' realtime resource (lib/realtime/types.ts) — the stream only
-  // carries trip-scoped events — so this subscribes to the TRIP the exception belongs
-  // to, filtered down to the two kinds this record can change under. Before the fetch
-  // resolves, `data` is null and the trip id is unknown; '' is a deliberate, harmless
-  // placeholder (useLiveResource's own `id !== 'any' && event.id !== id` guard means no
-  // real event will ever match it). Once `data.trip_id` arrives, this id argument
-  // changes and useLiveResource's subscribe effect — keyed on `id` — re-subscribes
-  // against the real trip automatically.
+  // No 'exception' realtime resource exists, so subscribe to the TRIP it belongs to.
+  // Before the fetch resolves, '' is a harmless placeholder (useLiveResource's own guard
+  // means no real event matches it); once data.trip_id arrives it re-subscribes for real.
   useLiveResource('trip', data?.trip_id ?? '', refetchSilent, {
     kinds: ['exception_raised', 'exception_reviewed'],
   })

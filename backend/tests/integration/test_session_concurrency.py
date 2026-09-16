@@ -101,8 +101,10 @@ async def test_parallel_first_requests_on_a_new_session_all_succeed(test_engine,
 
 # How long the "slow endpoint" holds its request open. Comfortably longer than a stamp
 # (~0.05s locally) so the assertion below can tell blocking from ordinary latency without
-# being a stopwatch race, and short enough not to drag the suite out.
-_SLOW_REQUEST_SECONDS = 3.0
+# being a stopwatch race, and short enough not to drag the suite out. 1.5s keeps the
+# blocked threshold below at 0.5s, ~10x a stamp; 3.0s cost 6s of suite time for no
+# extra discrimination.
+_SLOW_REQUEST_SECONDS = 1.5
 
 # The line between "made its own progress" and "waited for the slow request". Set at a
 # third of the slow request rather than at a stamp's real cost, so ordinary jitter or a

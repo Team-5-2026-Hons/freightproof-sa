@@ -29,11 +29,8 @@ const dotStyles: Record<ChipType, string> = {
   pending:   'bg-outline-v',
 }
 
-/**
- * Trip-status pill — 6 domain types matching DESIGN_SYSTEM.md §7.2.
- * Always renders a 6×6 dot on the left. Never uses icons.
- * Radius is r-md (6px), not rounded-full.
- */
+/** Trip-status pill — 6 domain types (DESIGN_SYSTEM.md §7.2). Always a 6×6 dot on the left,
+ *  never an icon; radius is r-md (6px), not rounded-full. */
 export function Chip({ type, label, children, className }: ChipProps) {
   return (
     <span

@@ -1,23 +1,11 @@
 """Derives which phases are waiting on the warehouse scan feed.
 
-Pure read path: no writes, no side effects, no exceptions raised for business
-outcomes. Two consumers — the read schema (so the driver app can render a waiting
-screen) and phase_service's completion guard (so a hand-crafted POST cannot slip
-past the UI). Both must agree, which is why the logic lives here once rather than
-twice.
-
-Gating is per (phase_type, trip_stop_id), never per trip: a cross-dock trip loads
-at several stops and each has its own warehouse and its own session.
-
-Three states, not two (design §3.1):
-  - no expected parcel set at this stop  -> None. NOT blocked.
-  - expected set exists, session open    -> BLOCKED_ON_SCAN
-  - session closed                       -> None
-
-The first is load-bearing. A trip created without a Parcel Perfect reference has
-no Consignment and no Parcel rows; lib/api/manifest.ts records this as "common"
-and "a normal state, not a failure". Without that state such trips would block at
-loading forever and move only by dispatcher override.
+Shared by the read schema and phase_service's completion guard so both agree.
+Gated per (phase_type, trip_stop_id), since a cross-dock trip has its own scan
+session at each stop. Three states (design §3.1): no expected parcel set -> not
+blocked; session open -> BLOCKED_ON_SCAN; session closed -> not blocked. A trip
+with no Parcel Perfect reference has no Consignment rows and must never block at
+loading forever.
 
 Layering: orchestration -> integrations, db. Never imports from api/.
 """
@@ -31,25 +19,17 @@ from app.db.models.enums import PhaseType
 from app.db.models.trips import Consignment
 from app.integrations.scan_feed import ScanDirection, ScanSessionQuery, get_scan_feed
 
-# The only value blocked_on takes today. A string rather than a bool so a second
-# gate (telemetry, customs) can be added later without changing the field's type
-# on the wire and breaking the shared TS contract.
+# String rather than bool so a second gate (telemetry, customs) can be added later
+# without changing the field's type on the wire.
 BLOCKED_ON_SCAN = "warehouse_scan"
 
-# Which phase reads which direction. Any phase absent from this map is never
-# blocked — that is the whole rule, stated once.
-#
-# Public (not `_`-prefixed): the dev trigger panel's read path (dev_triggers.py)
-# imports this directly so it can report which phase gates which stop's scan
-# without re-declaring the mapping and risking drift from the real gate.
+# Any phase absent from this map is never blocked. Public: dev_triggers.py imports
+# it directly to report which phase gates which stop's scan.
 GATED_PHASES: dict[PhaseType, ScanDirection] = {
     PhaseType.LOADING: ScanDirection.OUT,
     PhaseType.CONFIRMATION: ScanDirection.IN,
-    # The driver must not be able to complete unloading at a stop until the
-    # warehouse has scanned that stop's parcels off the truck — the same
-    # evidence discipline loading already enforces on the other end. IN is
-    # correct here (not OUT): blocked_on_by_stop keys IN off
-    # Consignment.delivery_stop_id, which is the right stop for a drop-off.
+    # IN, not OUT: blocked_on_by_stop keys IN off Consignment.delivery_stop_id,
+    # the right stop for a drop-off.
     PhaseType.UNLOADING: ScanDirection.IN,
 }
 
@@ -59,10 +39,9 @@ async def blocked_on_by_stop(
 ) -> dict[tuple[PhaseType, uuid.UUID], str | None]:
     """Map (phase_type, trip_stop_id) -> blocked_on, for this whole trip.
 
-    Built once per request and passed down, rather than derived per phase event:
-    PhaseEventRead.from_event is synchronous and pure by design, and deriving this
-    inside it would mean either a DB call from a sync method or an N+1 across every
-    phase of every trip-detail response.
+    Built once per request and passed down rather than derived per phase event,
+    since PhaseEventRead.from_event is sync and deriving it there would mean an
+    N+1 across every phase of every trip-detail response.
     """
     result = await db.execute(
         select(
@@ -75,10 +54,8 @@ async def blocked_on_by_stop(
 
     feed = get_scan_feed()
 
-    # Collect every question first, ask them in one batch, then decide. Resolving
-    # them inside the loop meant a feed round trip per consignment per gated phase
-    # on a path that runs for every trip-detail render — see RedisMockStateStore,
-    # which opens a connection per call by deliberate design.
+    # Batch all queries rather than resolving inside the loop, to avoid a feed
+    # round trip per consignment per gated phase on every trip-detail render.
     targets: list[tuple[PhaseType, uuid.UUID]] = []
     queries: list[ScanSessionQuery] = []
 
@@ -86,9 +63,7 @@ async def blocked_on_by_stop(
         for reference, pickup_stop_id, delivery_stop_id in consignments:
             stop_id = pickup_stop_id if direction is ScanDirection.OUT else delivery_stop_id
             if stop_id is None:
-                # FP-112 partitioning not populated on this consignment — there is no
-                # stop to attribute the scan to, so there is nothing to gate.
-                continue
+                continue  # FP-112 partitioning not populated — nothing to gate
 
             targets.append((phase_type, stop_id))
             queries.append(ScanSessionQuery(
@@ -102,9 +77,7 @@ async def blocked_on_by_stop(
     blocked: dict[tuple[PhaseType, uuid.UUID], str | None] = {}
     for key, closed in zip(targets, closed_flags, strict=True):
         if blocked.get(key) == BLOCKED_ON_SCAN:
-            # A stop serving two waybills is blocked while EITHER session is still
-            # open, so an open session already recorded here cannot be cleared by a
-            # closed one belonging to a different consignment.
+            # A stop serving two waybills stays blocked while EITHER session is open.
             continue
         blocked[key] = None if closed else BLOCKED_ON_SCAN
 

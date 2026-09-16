@@ -1,8 +1,6 @@
 'use client'
 
-// Global forensic-mode control — the single UI surface for toggling FP-115's
-// forensic view. Mounted once (TopBar, Task 3) rather than duplicated per
-// page, so every call site gets the same admin-gated control for free.
+// Global forensic-mode toggle, mounted once in TopBar rather than duplicated per page.
 
 import { Switch } from '@/components/ui/Switch'
 import { useForensicMode } from '@/lib/context/ForensicModeContext'
@@ -10,10 +8,7 @@ import { useForensicMode } from '@/lib/context/ForensicModeContext'
 export function ForensicControls() {
   const { canViewForensics, forensicOn, toggle } = useForensicMode()
 
-  // Self-hides for regular dispatchers rather than relying on every caller to
-  // check the role first — this is the single gate (mirrors ForensicOnly's
-  // pattern), so mounting it globally in TopBar can never leak the control
-  // to non-admins.
+  // Self-hides for non-admins so mounting it globally in TopBar can't leak the control.
   if (!canViewForensics) return null
 
   return (

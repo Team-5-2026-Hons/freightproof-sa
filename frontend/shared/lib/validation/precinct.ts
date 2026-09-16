@@ -1,11 +1,9 @@
 // Precinct-specific validation, built from the generic primitives in rules.ts and the
 // backend-mirrored constraints in constants.ts.
 //
-// `address` is validated for LENGTH only. Nothing computes on it and it is optional, so
-// it has no `required` rule — but it is not unbounded: the Text column has no ceiling of
-// its own, and the value is copied verbatim into the anchored PrecinctEvent payload, so
-// the server caps it and this mirrors that cap.
-// `is_shared` is a boolean Switch and cannot be invalid by construction.
+// `address` is validated for LENGTH only, and optional: the Text column has no ceiling
+// of its own, but the value is copied verbatim into the anchored PrecinctEvent payload,
+// so the server caps it and this mirrors that cap.
 
 import { required, maxLength, decimalInRange, intInRange } from './rules'
 import {
@@ -26,12 +24,10 @@ export type PrecinctField =
   | 'longitude'
   | 'geofence_radius_metres'
 
-// Callers supply only the string-valued fields being validated — all form inputs are
-// controlled <input> values, hence all strings.
 export type PrecinctFormValues = Record<PrecinctField, string>
 
-// Display order of the validated fields, shared by the create and edit forms to focus
-// the first invalid field on submit — kept next to PrecinctField so the two can't drift.
+// Display order, shared by create and edit forms to focus the first invalid field on
+// submit — kept next to PrecinctField so the two can't drift.
 export const PRECINCT_FIELD_ORDER: readonly PrecinctField[] = [
   'name',
   'address',
@@ -40,10 +36,7 @@ export const PRECINCT_FIELD_ORDER: readonly PrecinctField[] = [
   'geofence_radius_metres',
 ]
 
-// Defined locally rather than shared. That is the established pattern here, not an
-// oversight: driver.ts:82 and vehicle.ts:102 each carry their own private copy, and
-// matching two existing files beats hoisting a third variant into rules.ts as a
-// drive-by change to a file this story has no other reason to restructure.
+// Defined locally rather than shared — driver.ts and vehicle.ts each carry their own copy.
 /** Returns the first error from `rules` for `value`, or null when all pass. */
 function firstError(value: string, rules: ReadonlyArray<(v: string) => string | null>): string | null {
   for (const rule of rules) {
@@ -55,18 +48,13 @@ function firstError(value: string, rules: ReadonlyArray<(v: string) => string | 
   return null
 }
 
-/**
- * Validates a precinct form's string fields and returns the first error per field (or
- * null if valid). Mirrors backend/app/schemas/organisations.py so the client surfaces
- * the same problems before submit instead of round-tripping a 422.
- */
+/** Validates a precinct form and returns the first error per field, or null if valid. */
 export function validatePrecinctForm(
   values: PrecinctFormValues,
 ): Record<PrecinctField, string | null> {
   return {
     name: firstError(values.name, [required(), maxLength(PRECINCT_NAME_MAX)]),
-    // No `required`: an address is optional. maxLength skips empty values, so an omitted
-    // address produces no error while an over-long one is caught before the 422.
+    // No `required`: address is optional; maxLength skips empty values.
     address: firstError(values.address, [maxLength(PRECINCT_ADDRESS_MAX)]),
     latitude: firstError(values.latitude, [
       required(),
@@ -89,17 +77,14 @@ export function validatePrecinctForm(
 
 const COORDINATE_PAIR_PATTERN = /^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/
 
-// One "DD°MM'SS.s"H" token — the degrees/minutes/seconds format Google Maps shows in
-// some of its own UI (distinct from the decimal-degrees format its "Copy coordinates"
-// action puts on the clipboard, which COORDINATE_PAIR_PATTERN above handles). Accepts
-// both the plain ASCII apostrophe/quote and the proper prime/double-prime marks Maps
-// itself renders, since either can end up pasted depending on the source.
+// One "DD°MM'SS.s"H" token — the degrees/minutes/seconds format some Google Maps UI
+// shows (distinct from the decimal-degrees "Copy coordinates" format, handled above).
+// Accepts both plain ASCII and proper prime/double-prime marks.
 const DMS_TOKEN = String.raw`(\d{1,3})\s*°\s*(\d{1,2})\s*['′]\s*(\d{1,2}(?:\.\d+)?)\s*["″]?\s*([NSEWnsew])`
 const DMS_PAIR_PATTERN = new RegExp(`^\\s*${DMS_TOKEN}\\s*,?\\s*${DMS_TOKEN}\\s*$`)
 
 // Matches CLICK_COORDINATE_PRECISION in PrecinctForm.tsx / COORDINATE_PRECISION on the
-// detail page — this project's established "5dp is close enough" convention (~1m),
-// finer than any geofence decision and finer than a click or a DMS second is accurate.
+// detail page — ~1m, finer than any geofence decision.
 const DMS_TO_DECIMAL_PRECISION = 5
 
 function dmsToDecimal(degrees: number, minutes: number, seconds: number, hemisphere: string): number {
@@ -108,11 +93,7 @@ function dmsToDecimal(degrees: number, minutes: number, seconds: number, hemisph
   return isNegativeHemisphere ? -magnitude : magnitude
 }
 
-/**
- * Parses "26°09'53.9"S 28°14'00.1"E" into decimal-degree field values, or null if the
- * input is not a complete lat(N/S)-then-lng(E/W) DMS pair, or one whose computed
- * magnitude falls outside a valid coordinate range.
- */
+/** Parses "26°09'53.9"S 28°14'00.1"E" into decimal-degree field values, or null if invalid. */
 function parseDmsPair(raw: string): { lat: string; lng: string } | null {
   const match = DMS_PAIR_PATTERN.exec(raw)
   if (match === null) {
@@ -121,9 +102,7 @@ function parseDmsPair(raw: string): { lat: string; lng: string } | null {
   const [, latDeg, latMin, latSec, latHemi, lngDeg, lngMin, lngSec, lngHemi] = match
   const latHemiUpper = latHemi.toUpperCase()
   const lngHemiUpper = lngHemi.toUpperCase()
-  // Order matters: Google always shows latitude (N/S) before longitude (E/W). A pair
-  // in the other shape (or two of the same axis) is not a coordinate, not just an
-  // unusual one.
+  // Order matters: latitude (N/S) always precedes longitude (E/W).
   if (!(latHemiUpper === 'N' || latHemiUpper === 'S')) return null
   if (!(lngHemiUpper === 'E' || lngHemiUpper === 'W')) return null
 
@@ -136,20 +115,12 @@ function parseDmsPair(raw: string): { lat: string; lng: string } | null {
 }
 
 /**
- * Splits a pasted coordinate pair into two field values, or null if the input is not
- * one. Accepts two formats, both accepted at either coordinate field: decimal degrees
- * ("lat, lng" — what Google Maps' "Copy coordinates" action puts on the clipboard) and
- * degrees/minutes/seconds ("26°09'53.9"S 28°14'00.1"E" — what some of Maps' own UI
- * displays instead).
- *
- * This is the replacement for address geocoding (see the plan's D7). A geocoder returns
- * a street centroid, which for a warehouse estate can sit hundreds of metres from the
- * gate — the same order as the geofence radius itself. A pasted coordinate is the exact
- * point the dispatcher chose.
- *
- * Returns null rather than a partial result for anything that is not a complete, in-range
- * pair in either format, so a dispatcher typing a single latitude by hand is never
- * interfered with.
+ * Splits a pasted coordinate pair into two field values, or null if the input is not one.
+ * Accepts decimal degrees ("lat, lng") and DMS ("26°09'53.9"S 28°14'00.1"E") — both
+ * formats Google Maps can put on the clipboard. Replaces address geocoding: a geocoder's
+ * street centroid can sit hundreds of metres off for a warehouse estate, a pasted
+ * coordinate is exact. Returns null (not a partial result) for anything incomplete, so a
+ * dispatcher typing a single latitude by hand is never interfered with.
  */
 export function parseCoordinatePair(raw: string): { lat: string; lng: string } | null {
   const decimalMatch = COORDINATE_PAIR_PATTERN.exec(raw)

@@ -1,10 +1,6 @@
-"""Vehicle grain — horses and trailers.
-
-The trailer analytics spec (docs/design-notes/2026-09-12-trailer-analytics-spec.md)
-supersedes FP-153 §5's "horses only". A trip counts for its horse and for every trailer
-on it. A breakdown counts only for the vehicle it was recorded against, or for the trip's
-horse when no vehicle was recorded.
-"""
+"""Vehicle grain — horses and trailers. Supersedes FP-153 §5's "horses only": a trip
+counts for its horse and every trailer on it; a breakdown counts for the recorded
+vehicle, or the trip's horse when none was recorded."""
 
 import uuid
 from collections.abc import Sequence
@@ -76,24 +72,13 @@ async def trips_since_last_incident(
     organization_id: uuid.UUID,
     vehicle_id: uuid.UUID,
 ) -> int:
-    """Closed trips this vehicle, horse or trailer, has run since its most recent
-    mechanical incident.
-
-    Live, never stored (spec §5): it is a current-state fact, not a period activity
-    count, and has no meaning inside a month bucket. Reads the base tables with the SAME
-    definitions the vehicle_incident_streaks view uses, so this number always equals that
-    view's open segment:
-      - a closed trip is on the vehicle when the vehicle is its horse or one of its
-        trailers;
-      - trips are ordered by their ledger departure;
-      - an incident is a trip with at least one MECHANICAL exception belonging to this
-        vehicle: recorded against it, or recorded against no vehicle on a trip it was the
-        horse of (trailer analytics spec, decision 2).
-    A vehicle with no incident returns all its closed trips: the streak has run since its
-    first trip.
-    """
-    # Departure from the phase ledger, not trips.actual_departure_at: that cache is
-    # overwritten on every leg of a multi-stop trip and holds the LAST departure.
+    """Closed trips this vehicle has run since its most recent mechanical incident.
+    Live, never stored (spec §5) — a current-state fact, not a period count. Uses the
+    same attribution as the vehicle_incident_streaks view: incidents recorded against
+    this vehicle, or against no vehicle on a trip it was the horse of (trailer
+    analytics spec, decision 2). No incident returns all closed trips."""
+    # Departure from the phase ledger, not trips.actual_departure_at, which holds
+    # only the last leg's departure on a multi-stop trip.
     departures = (
         select(PhaseEvent.trip_id, func.min(PhaseEvent.completed_at).label("departed_at"))
         .where(
@@ -113,8 +98,7 @@ async def trips_since_last_incident(
         on_this_vehicle,
         Trip.status == TripStatus.CLOSED,
     )
-    # The views' attribution rule, exactly: a breakdown recorded against this vehicle, or
-    # one recorded against no vehicle on a trip this vehicle was the horse of.
+    # Same attribution rule as the views.
     is_incident = exists().where(
         TripException.trip_id == Trip.id,
         TripException.exception_type == ExceptionType.MECHANICAL,
@@ -141,8 +125,7 @@ async def trips_since_last_incident(
         .where(*closed_trips_of_vehicle)
     )
     if last_incident is not None:
-        # (departed_at, id) ordering, identical to the view's window, so two trips
-        # departing at the same instant still fall on a deterministic side of the incident.
+        # (departed_at, id) ordering matches the view's window, so ties resolve deterministically.
         count_stmt = count_stmt.where(
             tuple_(departures.c.departed_at, Trip.id)
             > tuple_(last_incident.departed_at, last_incident.trip_id)
