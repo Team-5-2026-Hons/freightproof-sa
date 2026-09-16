@@ -15,8 +15,6 @@ function makeTiles(overrides: Partial<FleetTilesData> = {}): FleetTilesData {
   return {
     live_trips: 7,
     critical_waiting: { count: 0, oldest_created_at: null },
-    parcels_complete: { window_days: 30, loaded_trip_count: 25, complete_trip_count: 24, complete_rate: 0.96 },
-    receipts_owed: { pending_count: 9, failed_count: 0 },
     licence_expiry: { drivers: { ...NO_BANDS, within_30_days: 2 }, vehicle_discs: { ...NO_BANDS, no_date: 1 } },
     unused_vehicles: { window_days: 30, vehicles: [] },
     all_time_start: '2026-06-20',
@@ -44,18 +42,21 @@ describe('FleetTiles', () => {
     renderTiles(makeTiles())
 
     expect(within(tileLink('Live trips')).getByText('7')).toBeInTheDocument()
-    expect(within(tileLink('Parcels complete')).getByText('96%')).toBeInTheDocument()
-    expect(screen.getByText(/24 of 25 loaded trips/)).toBeInTheDocument()
-    expect(within(tileLink('Receipts owed')).getByText('9')).toBeInTheDocument()
+  })
+
+  it('shows only the four tiles, with no Parcels complete or Receipts owed (D26)', () => {
+    renderTiles(makeTiles())
+
+    expect(screen.getAllByText(/^(Live trips|Critical Exceptions Waiting|Licences & discs|Unused vehicles)$/)).toHaveLength(4)
+    expect(screen.queryByText('Parcels complete')).toBeNull()
+    expect(screen.queryByText('Receipts owed')).toBeNull()
   })
 
   it('links every tile to where the dispatcher acts on it', () => {
     renderTiles(makeTiles())
 
     expect(tileLink('Live trips')).toHaveAttribute('href', '/')
-    expect(tileLink('Critical waiting')).toHaveAttribute('href', '/exceptions')
-    expect(tileLink('Parcels complete')).toHaveAttribute('href', '/analytics?tab=problems')
-    expect(tileLink('Receipts owed')).toHaveAttribute('href', '/analytics?tab=evidence')
+    expect(tileLink('Critical Exceptions Waiting')).toHaveAttribute('href', '/exceptions')
     expect(tileLink('Unused vehicles')).toHaveAttribute('href', '/fleet/vehicles')
     expect(screen.getByRole('link', { name: 'Drivers' })).toHaveAttribute('href', '/fleet/drivers')
     expect(screen.getByRole('link', { name: 'Discs' })).toHaveAttribute('href', '/fleet/vehicles')
@@ -64,7 +65,7 @@ describe('FleetTiles', () => {
   it('marks critical problems waiting with an icon and a label, not colour alone', () => {
     renderTiles(makeTiles({ critical_waiting: { count: 4, oldest_created_at: '2026-09-14T10:00:00Z' } }))
 
-    const tile = tileLink('Critical waiting')
+    const tile = tileLink('Critical Exceptions Waiting')
     expect(within(tile).getByText('4')).toBeInTheDocument()
     expect(within(tile).getByText('Needs attention')).toBeInTheDocument()
     expect(within(tile).getByText('Oldest waiting 2 d')).toBeInTheDocument()
@@ -73,25 +74,8 @@ describe('FleetTiles', () => {
   it('has no warning when nothing is waiting', () => {
     renderTiles(makeTiles())
 
-    expect(within(tileLink('Critical waiting')).queryByText('Needs attention')).toBeNull()
+    expect(within(tileLink('Critical Exceptions Waiting')).queryByText('Needs attention')).toBeNull()
     expect(screen.getByText('Nothing waiting for review')).toBeInTheDocument()
-  })
-
-  it('shows "—", not 0%, when no loaded trip closed in the window', () => {
-    renderTiles(makeTiles({
-      parcels_complete: { window_days: 30, loaded_trip_count: 0, complete_trip_count: 0, complete_rate: null },
-    }))
-
-    expect(within(tileLink('Parcels complete')).getByText('—')).toBeInTheDocument()
-  })
-
-  it('warns about failed receipts', () => {
-    renderTiles(makeTiles({ receipts_owed: { pending_count: 9, failed_count: 3 } }))
-
-    const tile = tileLink('Receipts owed')
-    expect(within(tile).getByText('12')).toBeInTheDocument()
-    expect(within(tile).getByText('3 failed')).toBeInTheDocument()
-    expect(within(tile).getByText('Needs attention')).toBeInTheDocument()
   })
 
   it('shows the expiry bands for drivers and discs separately', () => {

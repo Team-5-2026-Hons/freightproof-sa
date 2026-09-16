@@ -8,6 +8,7 @@
 import type { TripStatus } from './trip'
 import type { EvidenceArtifactWithUrl } from './evidence'
 import type { VehicleId, VehicleType } from './vehicle'
+import type { ActionLocationAssessment } from './action-location'
 
 export type ExceptionId = string & { readonly __brand: 'ExceptionId' }
 
@@ -21,6 +22,7 @@ export type ExceptionType =
   | 'seal_unverified'
   | 'parcel_count_mismatch'
   | 'gps_mismatch'
+  | 'driver_vehicle_separation'
   | 'route_deviation'
   | 'vehicle_substitution'
   | 'driver_substitution'
@@ -103,6 +105,7 @@ export interface TripException {
   // (evidence alone settled it) — never backfilled with an invented value.
   contact_method: ExceptionContactMethod | null
   merkle_batch_id: string | null
+  action_location_assessment?: ActionLocationAssessment | null
   created_at: string
   updated_at: string
 }
@@ -122,6 +125,7 @@ export interface TripExceptionListItem {
   trip_status: TripStatus
   phase_label: string | null
   stop_label: number | null
+  action_location_assessment?: ActionLocationAssessment | null
 }
 
 // GET /api/v1/exceptions/{id} — the list item plus the fields only a single-record

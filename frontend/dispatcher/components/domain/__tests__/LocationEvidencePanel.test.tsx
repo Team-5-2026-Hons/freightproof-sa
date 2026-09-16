@@ -68,13 +68,14 @@ describe('LocationEvidencePanel', () => {
     expect(screen.getByText('-33.926000, 18.424100')).toBeInTheDocument()
     // Formatted with the same function under test, so this assertion is TZ-portable.
     expect(screen.getByText(fmtDateTime('2026-01-05T09:30:00Z'))).toBeInTheDocument()
-    expect(screen.getByText('Captured within the corroboration window of the driver capture')).toBeInTheDocument()
+    expect(screen.getByText('Tracker reading time not recorded.')).toBeInTheDocument()
     expect(screen.getByText('122 m')).toBeInTheDocument()
-    expect(screen.getByText('Within accepted tolerance')).toBeInTheDocument()
+    expect(screen.getByText('Truck within precinct tolerance')).toBeInTheDocument()
+    expect(screen.getByText('Recorded source separation; proximity not evaluated.')).toBeInTheDocument()
     expect(screen.getByText(/Current precinct boundary \(reference only\).*Cape Town DC.*150 m radius/)).toBeInTheDocument()
   })
 
-  it('shows "Capture time not recorded" when driver_captured_at is null, while the tracker always shows its note', () => {
+  it('shows the exact unavailable tracker-time copy when no tracker time was persisted', () => {
     render(
       <LocationEvidencePanel
         evidence={makeEvidence({
@@ -91,7 +92,7 @@ describe('LocationEvidencePanel', () => {
     )
 
     expect(screen.getByText('Capture time not recorded')).toBeInTheDocument()
-    expect(screen.getByText('Captured within the corroboration window of the driver capture')).toBeInTheDocument()
+    expect(screen.getByText('Tracker reading time not recorded.')).toBeInTheDocument()
   })
 
   it('shows COMPARISON_UNAVAILABLE and the one recorded point when only one fix exists', () => {
@@ -125,11 +126,23 @@ describe('LocationEvidencePanel', () => {
     const { rerender } = render(
       <LocationEvidencePanel evidence={makeEvidence({ verdict: 'outside_tolerance' })} contextLabel="Activation" />,
     )
-    expect(screen.getByText('Outside accepted tolerance')).toBeInTheDocument()
+    expect(screen.getByText('Truck outside precinct tolerance')).toBeInTheDocument()
 
     rerender(<LocationEvidencePanel evidence={makeEvidence({ verdict: 'not_verified' })} contextLabel="Activation" />)
-    expect(screen.getByText('Not verified')).toBeInTheDocument()
-    expect(screen.queryByText('Outside accepted tolerance')).not.toBeInTheDocument()
+    expect(screen.getByText('Truck precinct check unavailable')).toBeInTheDocument()
+    expect(screen.queryByText('Truck outside precinct tolerance')).not.toBeInTheDocument()
+  })
+
+  it('keeps a 7.9 km driver separation distinct from a truck precinct pass', () => {
+    render(<LocationEvidencePanel evidence={makeEvidence({
+      separationMetres: 7_900,
+      verdict: 'within_tolerance',
+      proximity: 'separated',
+    })} contextLabel="Activation" />)
+
+    expect(screen.getByText('Truck within precinct tolerance')).toBeInTheDocument()
+    expect(screen.getByText('7.9 km')).toBeInTheDocument()
+    expect(screen.getByText('Outside limit')).toBeInTheDocument()
   })
 
   it('does not mount the map until "View on map" is clicked, then opens it with a legend and the separation/verdict rows, and returns focus on close', async () => {
@@ -149,7 +162,7 @@ describe('LocationEvidencePanel', () => {
       .toBeInTheDocument()
     // The map is never the only carrier of the fact: separation and verdict repeated as InfoRows.
     expect(within(dialog).getByText('122 m')).toBeInTheDocument()
-    expect(within(dialog).getByText('Within accepted tolerance')).toBeInTheDocument()
+    expect(within(dialog).getByText('Truck within precinct tolerance')).toBeInTheDocument()
 
     await user.click(within(dialog).getByRole('button', { name: 'Close' }))
     await waitFor(() => expect(viewOnMapButton).toHaveFocus())
@@ -203,6 +216,14 @@ describe('LocationEvidencePanel', () => {
     expect(within(dialog).queryByText('Distance to precinct centre')).not.toBeInTheDocument()
   })
 
+  it('renders no "View on map" button when hideMapButton is set, even with fixes recorded', () => {
+    render(<LocationEvidencePanel evidence={makeEvidence()} contextLabel="Activation at Cape Town DC" hideMapButton />)
+
+    expect(screen.queryByRole('button', { name: VIEW_ON_MAP_LABEL })).not.toBeInTheDocument()
+    // The comparison data itself is unaffected — only the button/modal this panel owns is suppressed.
+    expect(screen.getByText('-33.924900, 18.424100')).toBeInTheDocument()
+  })
+
   it('never touches the network across a full render and modal open', async () => {
     const fetchSpy = vi.fn()
     vi.stubGlobal('fetch', fetchSpy)
@@ -240,17 +261,18 @@ describe('LocationEvidenceSummary', () => {
       verdict: 'within_tolerance',
     })} />)
 
-    expect(screen.getByText('Within accepted tolerance')).toBeInTheDocument()
-    expect(screen.getByText('122 m apart')).toBeInTheDocument()
+    expect(screen.getByText('Truck within precinct tolerance')).toBeInTheDocument()
+    expect(screen.getByText('Driver–truck separation: 122 m')).toBeInTheDocument()
+    expect(screen.getByText('Recorded source separation; proximity not evaluated.')).toBeInTheDocument()
   })
 
-  it('shows an exception chip with "Comparison unavailable" when outside tolerance but only one fix exists', () => {
+  it('shows the outside-tolerance chip with "Comparison unavailable" when outside tolerance but only one fix exists', () => {
     render(<LocationEvidenceSummary evidence={evidence({
       driverFix: { source: 'driver_phone', label: 'Driver phone', coords: DRIVER_COORDS, capturedAt: null, captureNote: null },
       verdict: 'outside_tolerance',
     })} />)
 
-    expect(screen.getByText('Outside accepted tolerance')).toBeInTheDocument()
+    expect(screen.getByText('Truck outside precinct tolerance')).toBeInTheDocument()
     expect(screen.getByText('Comparison unavailable')).toBeInTheDocument()
   })
 
@@ -263,7 +285,7 @@ describe('LocationEvidenceSummary', () => {
   it('renders the chip alone (no trailing text) for a not_verified phase with no fix', () => {
     render(<LocationEvidenceSummary evidence={evidence({ verdict: 'not_verified' })} />)
 
-    expect(screen.getByText('Not verified')).toBeInTheDocument()
+    expect(screen.getByText('Truck precinct check unavailable')).toBeInTheDocument()
     expect(screen.queryByText('Comparison unavailable')).not.toBeInTheDocument()
   })
 })

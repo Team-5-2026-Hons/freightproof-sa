@@ -191,16 +191,20 @@ Size scale used in practice: `9` (inside evidence tag), `11` (inline meta tick),
 - Transition: `120ms`
 
 ### 7.2 `Chip` — Status pill
-6 types, all `11px / 700 / 0.03em letter-spacing / 3×10 padding / r-md radius`, with a `6×6 dot` on the left (3px gap):
+6 types, all `11px / 700 / 0.03em letter-spacing / 3×10 padding / r-md radius`, solid container fill, no dot, no icon (dot dropped 2026-09 — a second coloured shape beside the fill repeated a signal the fill already carried):
 
-| `type` | bg | text | dot |
-|---|---|---|---|
-| `transit` | `--sec-c` | `--on-sec-c` | `--sec` |
-| `loading` | `--sec-c` | `--on-sec-c` | `--sec` |
-| `complete` | `--ok-c` | `--on-ok-c` | `--ok` |
-| `exception` | `--warn-c` | `--on-warn-c` | `--warn` |
-| `critical` | `--err-c` | `--on-err-c` | `--err` |
-| `pending` | `--surf-high` | `--on-surf-v` | `--outline-v` |
+| `type` | bg | text |
+|---|---|---|
+| `transit` | `--sec-c` | `--on-sec-c` |
+| `loading` | `--sec-c` | `--on-sec-c` |
+| `complete` | `--ok-chip` | `--on-surf` |
+| `exception` | `--warn-c` | `--on-warn-c` |
+| `critical` | `--err-c` | `--on-err-c` |
+| `pending` | `--surf-high` | `--on-surf-v` |
+
+`complete` draws from `--ok-chip` (`#85d6be`), not the usual `--ok-c` (`#89f8c7`, still used elsewhere — banners, badges): at the standard container tone this chip read as a too-bright neon mint next to its siblings. `--ok-chip` shares `--ok`/`--ok-c`'s hue (162°) — the same relationship `c` tones have to their DEFAULT elsewhere in this file, hue held constant, saturation kept high, lightness moved — at HSL(162°, 50%, 68%) versus `--ok-c`'s (162°, 89%, 76%): saturation pulled back enough to read calmer than `c`, lightness pulled back enough to keep it visibly a colour rather than a wash. (Not a white-mix of `--ok`: that desaturates and lightens at once, the opposite of "more saturated, still light," and read as bland.) Text is `--on-surf` — the app's standard near-black body-text colour — rather than a green-tinted `onc`, so it reads as plain text on a coloured fill.
+
+`complete` draws from `--ok-chip` (`#6bc7ae`), not the usual `--ok-c` (`#89f8c7`, still used everywhere else `ok-c` appears — banners, badges): at the standard container tone this chip specifically read as a too-bright neon mint next to its siblings. `--on-ok-c` is unchanged and still provides its text colour.
 
 ### 7.3 `EvidenceTag` — Evidence weight (domain)
 The most important domain component. 4 levels, `10px / 700 / 0.06em / UPPERCASE / 2×8 padding / r-sm radius`:

@@ -26,8 +26,14 @@ from app.core.demo_waypoints import (
     WAYPOINT_PRECINCT,
     WAYPOINT_THREE_KM,
 )
+from app.core.exceptions import ResourceNotFoundError
 from app.integrations.pulsit import MockPulsitClient
-from app.schemas.dev import MoveTruckRequest
+from app.schemas.dev import (
+    SCENARIO_AT_STOP,
+    SCENARIO_NO_SIGNAL,
+    SCENARIO_THREE_KM,
+    MoveTruckRequest,
+)
 
 from tests.conftest import FakeMockStateStore
 
@@ -91,6 +97,15 @@ class _FakePrecinct:
         self.geofence_radius_metres = 200
 
 
+class _FakeTripStop:
+    """Stands in for the EXPECTED TripStop row `_load_trip_context` now returns
+    alongside its Precinct (FP-197 Task 3) — this suite stubs that function entirely,
+    so it only needs an `.id` for MoveTruckResponse.expected_trip_stop_id."""
+
+    def __init__(self) -> None:
+        self.id = uuid.uuid4()
+
+
 class _FakeUser:
     organization_id = _ORG_ID
 
@@ -106,7 +121,7 @@ def wired(monkeypatch: pytest.MonkeyPatch) -> FakeMockStateStore:
     monkeypatch.setattr(dev_pulsit, "get_pulsit_client", MockPulsitClient)
 
     async def _stub_context(_db: Any, **_kwargs: Any):
-        return _FakeTrip(), _FakeHorse(), _FakePrecinct()
+        return _FakeTrip(), _FakeHorse(), _FakeTripStop(), _FakePrecinct()
 
     monkeypatch.setattr(dev_pulsit, "_load_trip_context", _stub_context)
     return store
@@ -176,6 +191,141 @@ async def test_unknown_waypoint_raises_before_anything_is_staged(wired) -> None:
     """The id is resolved first, so a typo cannot half-move the truck."""
     with pytest.raises(Exception) as exc_info:
         await _call("nowhere-at-all")
+
+    assert getattr(exc_info.value, "status_code", None) == 404
+    assert wired.data == {}
+
+
+# ── FP-197 Task 3: scenario mode, still with no DB reachable ──────────────────
+#
+# `resolve_target_stop` is the endpoint's only real query for scenario mode, and it
+# is stubbed out here exactly like `_load_trip_context` is above — so this suite
+# proves the endpoint's OWN logic (mode branching, geometry validation, staging,
+# response shape) writes nothing and needs nothing beyond that one stubbed read,
+# independent of whether a database is reachable at all.
+
+
+class _FakeTargetStop:
+    def __init__(self) -> None:
+        self.id = uuid.uuid4()
+
+
+class _FakeTargetPrecinct:
+    def __init__(
+        self,
+        *,
+        name: str = "Johannesburg CBD",
+        lat: "Decimal | None" = Decimal("-26.2041"),
+        lng: "Decimal | None" = Decimal("28.0473"),
+        radius: "int | None" = 150,
+    ) -> None:
+        self.id = uuid.uuid4()
+        self.name = name
+        self.latitude = lat
+        self.longitude = lng
+        self.geofence_radius_metres = radius
+
+
+@pytest.fixture
+def wired_scenario(wired: FakeMockStateStore, monkeypatch: pytest.MonkeyPatch) -> dict:
+    """Builds on `wired` (mock Pulsit store + stubbed _load_trip_context) and additionally
+    stubs dev_truck_service.resolve_target_stop, so scenario mode never opens a query
+    either — the WriteForbiddenSession db object is never touched by either path."""
+    target_stop = _FakeTargetStop()
+    target_precinct = _FakeTargetPrecinct()
+
+    async def _stub_resolve(_db: Any, **_kwargs: Any):
+        return target_stop, target_precinct
+
+    monkeypatch.setattr(dev_pulsit.dev_truck_service, "resolve_target_stop", _stub_resolve)
+    return {"store": wired, "target_stop": target_stop, "target_precinct": target_precinct}
+
+
+async def _call_scenario(*, scenario: str, trip_stop_id: "uuid.UUID | None"):
+    return await dev_pulsit.move_truck(
+        MoveTruckRequest(trip_id=uuid.uuid4(), scenario=scenario, trip_stop_id=trip_stop_id),
+        db=WriteForbiddenSession(),  # type: ignore[arg-type]
+        current_user=_FakeUser(),  # type: ignore[arg-type]
+    )
+
+
+async def test_scenario_mode_never_writes_through_the_session(wired_scenario: dict) -> None:
+    result = await _call_scenario(
+        scenario=SCENARIO_AT_STOP, trip_stop_id=wired_scenario["target_stop"].id,
+    )
+
+    assert result.scenario == SCENARIO_AT_STOP
+    assert result.target_trip_stop_id == wired_scenario["target_stop"].id
+
+
+async def test_scenario_mode_stages_the_targets_own_coordinate(wired_scenario: dict) -> None:
+    """at_stop must land exactly on the target precinct's centre — a different
+    precinct from the EXPECTED one (_FakePrecinct's Cape Town depot), proving the
+    staged position follows the requested stop, not the trip's current stop."""
+    await _call_scenario(scenario=SCENARIO_AT_STOP, trip_stop_id=wired_scenario["target_stop"].id)
+
+    staged = wired_scenario["store"].data[f"freightproof:mock:pulsit:{_ORG_ID}:{_DEVICE_ID}"]
+    assert Decimal(staged["lat"]) == wired_scenario["target_precinct"].latitude
+    assert Decimal(staged["lng"]) == wired_scenario["target_precinct"].longitude
+
+
+async def test_scenario_mode_three_km_computes_the_target_distance(wired_scenario: dict) -> None:
+    result = await _call_scenario(
+        scenario=SCENARIO_THREE_KM, trip_stop_id=wired_scenario["target_stop"].id,
+    )
+
+    assert result.target_distance_metres == pytest.approx(3_000.0, abs=0.5)
+    # The EXPECTED-stop verdict (Cape Town depot, from _FakePrecinct) must not
+    # silently inherit the target's number — the tracker is nowhere near it now.
+    assert result.geofence_confirmed is False
+
+
+async def test_no_signal_without_a_stop_never_calls_resolve_target_stop(
+    wired: FakeMockStateStore, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """trip_stop_id is optional for no_signal — omitting it must skip stop resolution
+    entirely rather than resolving None and failing."""
+    def _fail_if_called(*_args: Any, **_kwargs: Any) -> Any:
+        raise AssertionError("resolve_target_stop must not be called with no stop named")
+
+    monkeypatch.setattr(dev_pulsit.dev_truck_service, "resolve_target_stop", _fail_if_called)
+
+    result = await _call_scenario(scenario=SCENARIO_NO_SIGNAL, trip_stop_id=None)
+
+    assert result.has_position is False
+    assert result.target_trip_stop_id is None
+    staged = wired.data[f"freightproof:mock:pulsit:{_ORG_ID}:{_DEVICE_ID}"]
+    assert staged["status"] == "no_fix"
+
+
+async def test_missing_target_geometry_raises_409_before_staging(
+    wired: FakeMockStateStore, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target_stop = _FakeTargetStop()
+    broken_precinct = _FakeTargetPrecinct(lat=None, lng=None, radius=None)
+
+    async def _stub_resolve(_db: Any, **_kwargs: Any):
+        return target_stop, broken_precinct
+
+    monkeypatch.setattr(dev_pulsit.dev_truck_service, "resolve_target_stop", _stub_resolve)
+
+    with pytest.raises(Exception) as exc_info:
+        await _call_scenario(scenario=SCENARIO_THREE_KM, trip_stop_id=target_stop.id)
+
+    assert getattr(exc_info.value, "status_code", None) == 409
+    assert wired.data == {}
+
+
+async def test_unknown_trip_stop_id_raises_404_before_staging(
+    wired: FakeMockStateStore, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _stub_resolve(_db: Any, **kwargs: Any):
+        raise ResourceNotFoundError("TripStop", str(kwargs["trip_stop_id"]))
+
+    monkeypatch.setattr(dev_pulsit.dev_truck_service, "resolve_target_stop", _stub_resolve)
+
+    with pytest.raises(Exception) as exc_info:
+        await _call_scenario(scenario=SCENARIO_AT_STOP, trip_stop_id=uuid.uuid4())
 
     assert getattr(exc_info.value, "status_code", None) == 404
     assert wired.data == {}

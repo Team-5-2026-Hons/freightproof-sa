@@ -1,12 +1,23 @@
+// frontend/driver-pwa/app/(app)/trip/in-transit/InTransitPageClient.tsx
 'use client'
 
-// The driving screen. A hub, not a step screen — in_transit has no step recipe — but not
-// submission-free: the bottom swipe is the driver attesting "I have arrived", which is
-// what closes the in_transit row (advance_in_transit).
+// The driving screen — the part of the trip where the driver is actually moving.
 //
-// Layout invariant: panic is never behind a scroll. The action stack is `shrink-0` inside
-// an `overflow-hidden` viewport-height column; only the open-exceptions list can grow,
-// and it's height-capped and scrolls inside itself.
+// It is a hub, not a step screen — `in_transit` has no step recipe and never will: a
+// recipe would perturb actionablePhase() and force a change to the shared STEP_SLUGS
+// contract. But it is NOT submission-free. The swipe at the bottom is the driver
+// attesting "I have arrived", and since 2026-08-09 that attestation is what closes the
+// in_transit row — previously the backend inferred arrival from whenever the unloading
+// paperwork happened to be submitted, which made every dispatcher-visible drive time
+// wrong by the length of an unloading.
+//
+// Navigation still tests isDriving() (lib/phase/derive.ts), which is now simply "the
+// current row is in_transit".
+//
+// Layout invariant: PANIC IS NEVER BEHIND A SCROLL. The action stack at the bottom is
+// `shrink-0` inside an `overflow-hidden` viewport-height column, and the only part of it
+// that can grow (the open-exceptions list) is height-capped and scrolls inside itself. The
+// map takes whatever is left, which on any phone is the largest element on screen.
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -14,9 +25,11 @@ import { ShieldAlert, ScanFace, TriangleAlert } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTrip } from '@/lib/hooks/useTrip'
 import { useLocationTrail } from '@/lib/hooks/useLocationTrail'
+import { useLocation } from '@/lib/hooks/useLocation'
 import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
 import { useToast } from '@/lib/hooks/useToast'
 import { startPhaseSubmission, type PhaseSubmissionOutcome } from '@/lib/submission/phase-submitter'
+import { previewPhaseLocation } from '@/lib/api/phases'
 import { ROUTES } from '@/lib/constants/routes'
 import { formatTime } from '@/lib/utils/format-time'
 import { currentPhase, currentStepRoute } from '@/lib/phase'
@@ -26,7 +39,10 @@ import { DriverMap } from '@/components/map/DriverMap'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { SubpageHeader } from '@/components/layout/SubpageHeader'
 import type { DriverPosition } from '@/lib/types/location'
+import type { LocationWarningAcknowledgement } from '@/lib/types/location'
+import type { ActionLocationAssessment } from '@shared/lib/types/action-location'
 import type { TripException } from '@shared/lib/types/exception'
+import { LocationCheckNotice } from '@/components/phase/LocationCheckNotice'
 
 // How often the map re-reads the phone's position while this screen is open. A truck at
 // 100 km/h covers ~400 m in this window, which at street zoom is about a screen height —
@@ -47,8 +63,10 @@ interface DriverFix {
   capturedAt: string
 }
 
-// A native <button>, not Card, so expand/collapse is keyboard-operable and announces
-// state via aria-expanded. Styling mirrors Card variant="exception".
+// A native <button> (not the Card component) so the expand/collapse toggle is
+// keyboard-operable and announces its state via aria-expanded — long exception and
+// dispatcher-note descriptions were previously clamped with no way to read the rest.
+// Styling mirrors Card variant="exception".
 function ExceptionCard({ exception }: ExceptionCardProps) {
   const [expanded, setExpanded] = useState(false)
   return (
@@ -73,23 +91,33 @@ export default function InTransitPageClient() {
   const router = useRouter()
   const { trip, isLoading, exceptions, refetchTrip, adoptTrip, markPhaseSyncing, clearPhaseSyncing } = useTrip()
   const { capturePosition } = useLocationTrail()
+  const { capture } = useLocation()
   const { enqueuePhase } = useOfflineQueue()
   const { notify } = useToast()
   const [fix, setFix] = useState<DriverFix | null>(null)
+  const [arrivalPreviewLoading, setArrivalPreviewLoading] = useState(false)
+  const [arrivalPreviewError, setArrivalPreviewError] = useState<string | null>(null)
+  const [arrivalAssessment, setArrivalAssessment] = useState<ActionLocationAssessment | null>(null)
+  const [arrivalPosition, setArrivalPosition] = useState<DriverPosition | null>(null)
+  const [arrivalCapturedAt, setArrivalCapturedAt] = useState<string | null>(null)
+  const [arrivalOffline, setArrivalOffline] = useState(false)
 
   const tripIsOpen = trip !== null
 
   const refreshFix = useCallback(async (): Promise<void> => {
     const position = await capturePosition()
-    // A failed fix must never erase the last good one; DriverMap labels a stale fix as
-    // last known rather than passing it off as current.
+    // A failed fix must never erase the last good one. A driver in a cutting or under a
+    // bridge still needs to see where they last were — and DriverMap labels an old fix
+    // as last known rather than passing it off as current.
     if (position === null) return
     setFix({ position, capturedAt: new Date().toISOString() })
   }, [capturePosition])
 
-  // POPIA: narrowest possible tracking window — only while the trip is open, this screen
-  // is mounted, and the app is foregrounded. No watchPosition, nothing transmitted; a
-  // display read for the driver's own map only.
+  // POPIA (see the constraints in lib/context/LocationContext.tsx's header): this is the
+  // narrowest possible tracking window. It runs only while a trip is OPEN, only while
+  // this screen is MOUNTED, and only while the app is in the FOREGROUND — no
+  // watchPosition subscription, no background-location permission, and nothing captured
+  // here is transmitted anywhere. It is a display read for the driver's own map.
   useEffect(() => {
     if (!tripIsOpen) return
 
@@ -114,25 +142,38 @@ export default function InTransitPageClient() {
     )
   }
 
-  // Reads the context exceptions list, not trip.exceptions, so a just-submitted exception
-  // shows up immediately (trip.exceptions is only a fetch-time snapshot).
+  // Read the CONTEXT exceptions list, not trip.exceptions: the context value is the
+  // trip's fetched/mock exceptions plus everything logged this session (TripContext
+  // appends on logException), so a just-submitted exception shows up here immediately.
+  // trip.exceptions is only a fetch-time snapshot and would silently drop it.
   //
-  // System-detected exceptions (source: 'system') are withheld from this screen: they're
-  // automated, unreviewed detections about the driver and several read as an accusation
-  // (e.g. gps_mismatch). The dispatcher still sees every exception regardless.
+  // System-detected exceptions (source: 'system' — gps_mismatch, route_deviation,
+  // checkpoint_timeout and the rest) are withheld from the driver's own screen. These are
+  // automated detections ABOUT the driver, raised without human review, and several of
+  // them read as an accusation: gps_mismatch says the phone and the truck disagree about
+  // where they are. Surfacing an unreviewed detection to the person it concerns invites
+  // them to react to it on the road, which is the opposite of what this hub is for. The
+  // dispatcher sees every exception regardless — nothing is hidden from the evidence
+  // trail, only from this one screen. Driver- and dispatcher-raised exceptions stay
+  // visible: those the driver either filed themselves or is meant to act on.
   const openExceptions = exceptions.filter((e) => e.review_status !== 'reviewed' && e.source !== 'system')
 
-  // Captured here rather than read off `trip` in the nested handlers below: TS's non-null
-  // narrowing from the guard above doesn't carry into a function declaration's body.
+  // Captured here, in component scope, rather than read off `trip` inside the nested
+  // handlers below — TS narrows `trip` to non-null in this scope (the guard above), but
+  // does not carry that narrowing into a function declaration's body.
   const tripId = String(trip.id)
   const phases = trip.phases
 
-  // currentPhase, not actionablePhase: actionablePhase skips stepless rows and would
-  // hand back `unloading`, which the driver hasn't reached yet.
+  // The in_transit row this hub is standing on. currentPhase, not actionablePhase:
+  // actionablePhase deliberately skips stepless rows and would hand back `unloading`,
+  // which is the row the driver has NOT reached yet.
   const arrivalPhase = currentPhase(phases)
 
-  // Takes phaseEventId as a parameter rather than closing over arrivalPhase directly, so
-  // the caller narrows it to non-null once, at the swipe guard.
+  // Runs from wherever the driver has since navigated to (background submitter model —
+  // see PhaseStepPageClient's identical handleOutcome for the reference implementation).
+  // Takes phaseEventId as a parameter (rather than closing over arrivalPhase directly) so
+  // the caller narrows arrivalPhase to non-null once, at the swipe guard, instead of this
+  // function asserting it.
   function handleArrivalOutcome(outcome: PhaseSubmissionOutcome, phaseEventId: string) {
     switch (outcome.kind) {
       case 'recorded': {
@@ -142,13 +183,31 @@ export default function InTransitPageClient() {
           // optimistic marker changes nothing the driver can see.
           clearPhaseSyncing(phaseEventId)
         }
+        const assessment = outcome.addressedPhase?.action_location_assessment
+        if (assessment !== null && assessment !== undefined && (
+          (assessment.proximity === 'separated' && assessment.separation_metres !== null)
+          || assessment.truck_in_precinct === false
+        )) {
+          notify({
+            kind: 'error',
+            title: 'Location warning recorded',
+            body: 'The final location check found a discrepancy. Your arrival was still recorded for review.',
+          })
+        }
         return
       }
       case 'hold': {
-        // The arrival is recorded, but the swipe already pushed the driver onto the
-        // unloading step, which a held trip can only 409 — route back to the trip screen
-        // where the hold reason is visible instead. Unreachable today: advance_in_transit
-        // never holds. Kept in step with PhaseStepPageClient's reference implementation.
+        // Split from 'recorded' rather than folded into it, mirroring
+        // PhaseStepPageClient.handleOutcome. The arrival itself is recorded, but the
+        // swipe has already pushed the driver onto the unloading step — and a held trip
+        // can only 409 there. Landing them on a capture screen they cannot submit, with
+        // no explanation, is the wrong failure direction; the trip screen is where the
+        // hold reason is visible.
+        //
+        // Unreachable today: advance_in_transit never holds, and nothing in backend app/
+        // writes TripStatus.EXCEPTION_HOLD at all (see _is_resolved's note). Kept in step
+        // with the reference implementation anyway, so a future manual dispatcher hold
+        // does not have to remember this one screen diverged.
         adoptTrip(outcome.trip)
         clearPhaseSyncing(phaseEventId)
         notify({
@@ -160,12 +219,15 @@ export default function InTransitPageClient() {
         return
       }
       case 'queued': {
-        // Optimistic advance kept: the queue holds and replays the attestation.
+        // Optimistic advance deliberately KEPT: the queue holds the attestation and will
+        // replay it, so re-offering the swipe would only invite a second copy.
         return
       }
       case 'conflict':
       case 'failed': {
-        // No draft to roll back to — an arrival carries only a timestamp and position.
+        // No draft to preserve or roll back to — an arrival carries no captured
+        // evidence, only a timestamp and a position. Rolling the marker back just makes
+        // the row unresolved again so the swipe can be offered a second time.
         clearPhaseSyncing(phaseEventId)
         notify({ kind: 'error', title: 'Could not record arrival', body: outcome.message })
         return
@@ -177,19 +239,25 @@ export default function InTransitPageClient() {
     }
   }
 
-  function handleArrivalSwipe() {
-    // Defensive against a stale tab whose ledger already moved on (arrival recorded
-    // elsewhere) — navigating is still right, there's just nothing left here to submit.
+  function submitArrival(
+    position: DriverPosition | null,
+    driverCapturedAt: string,
+    acknowledgement: LocationWarningAcknowledgement | null,
+  ): void {
+    // Defensive against a stale tab whose ledger has already moved on (e.g. arrival was
+    // recorded from another device/tab). Navigating is still right — the arrival is
+    // already recorded, there is simply nothing left here to submit.
     if (arrivalPhase === null || arrivalPhase.phase_type !== 'in_transit') {
       router.push(currentStepRoute(phases))
       return
     }
 
     const phaseEventId = arrivalPhase.phase_event_id
-    const driverCapturedAt = new Date().toISOString()
-
-    // Return value ignored: `false` just means a submission for this row is already
-    // running, and the right response is still to navigate.
+    // Task 0A: the same "swipe instant" evidence.capturedAt below already stamps — reused
+    // here rather than taken a second time, so both fields describe the identical moment.
+    // Return value deliberately ignored: `false` means a submission for this row is
+    // already running, and the right response is still to navigate — the attestation is
+    // already on its way.
     startPhaseSubmission({
       tripId,
       phaseEventId,
@@ -197,26 +265,95 @@ export default function InTransitPageClient() {
       evidence: { capturedAt: driverCapturedAt },
       idempotencyKey: crypto.randomUUID(),
       driverCapturedAt,
-      // Un-awaited: a cold GPS fix can take seconds and must never delay the transition.
-      // The submitter awaits it internally, so the fix still travels with the evidence.
+      // Un-awaited: a cold GPS fix can take ten seconds and must never sit between the
+      // swipe and the transition. The submitter awaits it internally, so the fix still
+      // travels WITH the evidence, including into the offline queue.
       //
-      // Known/accepted race: unloading can 409 if submitted before this POST lands, since
-      // the backend enforces ledger ordering. Recoverable — phase-submitter refetches and
-      // PhaseStepPageClient rolls back the draft — so the cost is one spurious toast.
-      position: capturePosition(),
+      // Known race, accepted: the submitter holds this POST for up to
+      // POSITION_CAPTURE_BUDGET_MS (12s) waiting on the fix, while the driver is already
+      // on the unloading step. Submitting unloading inside that window 409s, because the
+      // backend now enforces ledger ordering and the arrival has not landed yet. It is
+      // recoverable — phase-submitter refetches, sees unloading unresolved, returns
+      // `conflict`, and PhaseStepPageClient keeps the draft and rolls back — so the cost
+      // is one spurious error toast, not lost evidence. Left as-is rather than awaited:
+      // this screen has been refreshing position every POSITION_REFRESH_MS while open, so
+      // the fix is warm and the real window is sub-second, and unloading's first step
+      // needs a seal photograph before it can submit at all.
+      position: Promise.resolve(position),
+      acknowledgement,
       enqueuePhase,
       refetchTrip,
       onOutcome: (outcome) => handleArrivalOutcome(outcome, phaseEventId),
     })
 
-    // Mark before navigating, so Home's first render already sees this row resolved.
+    // Order matters: mark before navigating, so Home's very first render already sees
+    // this row resolved rather than still pending with isDriving() still true.
     markPhaseSyncing(phaseEventId)
     router.push(currentStepRoute(phases))
   }
 
+  async function handleArrivalSwipe(): Promise<void> {
+    if (arrivalPreviewLoading) return
+    const attemptStartedAt = new Date().toISOString()
+    setArrivalPreviewLoading(true)
+    setArrivalPreviewError(null)
+    setArrivalAssessment(null)
+    setArrivalPosition(null)
+    setArrivalCapturedAt(null)
+
+    const offline = typeof navigator !== 'undefined' && !navigator.onLine
+    setArrivalOffline(offline)
+    const coords = await capture()
+    if (coords === null) {
+      setArrivalCapturedAt(attemptStartedAt)
+      setArrivalPreviewLoading(false)
+      return
+    }
+    const position: DriverPosition = {
+      lat: coords.latitude, lng: coords.longitude, accuracyM: coords.accuracy, capturedAt: coords.capturedAt,
+    }
+    setArrivalPosition(position)
+    setArrivalCapturedAt(coords.capturedAt)
+    if (offline) {
+      // The preview is an online advisory check only. The exact offline capture still
+      // belongs to this arrival evidence and is queued with its original timestamp.
+      setArrivalPreviewLoading(false)
+      return
+    }
+    try {
+      const assessment = await previewPhaseLocation(tripId, arrivalPhase?.phase_event_id ?? '', {
+        lat: position.lat,
+        lng: position.lng,
+        accuracy_metres: position.accuracyM,
+        captured_at: coords.capturedAt,
+      })
+      const requiresAcknowledgement =
+        (assessment.proximity === 'separated' && assessment.separation_metres !== null)
+        || assessment.truck_in_precinct === false
+      if (requiresAcknowledgement || assessment.proximity === 'unverified') {
+        setArrivalAssessment(assessment)
+      } else {
+        submitArrival(position, coords.capturedAt, null)
+      }
+    } catch (err) {
+      console.error('InTransitPageClient: location preview failed', err)
+      setArrivalPreviewError('Location preview failed')
+    } finally {
+      setArrivalPreviewLoading(false)
+    }
+  }
+
+  function continueArrivalAfterLocationCheck(reason: string | null): void {
+    const acknowledgement = reason === null
+      ? null
+      : { acknowledgedAt: new Date().toISOString(), reason }
+    submitArrival(arrivalPosition, arrivalCapturedAt ?? new Date().toISOString(), acknowledgement)
+  }
+
   return (
-    // dvh, not vh: 100vh resolves to the address-bar-hidden height and would push the
-    // action stack off the bottom.
+    // h-dvh + overflow-hidden: this screen IS one viewport and nothing on it scrolls
+    // except the exceptions list. dvh, not vh — 100vh resolves to the address-bar-hidden
+    // height in a mobile browser and would push the action stack off the bottom.
     <main className="flex h-dvh flex-col overflow-hidden">
       <SubpageHeader
         title={trip.trip_reference}
@@ -232,8 +369,9 @@ export default function InTransitPageClient() {
         </p>
       </div>
 
-      {/* min-h-0 is load-bearing: without it a flex child won't shrink below its content
-          and pushes the action stack off the bottom. */}
+      {/* The map, and the largest element on the screen: it takes every pixel the header
+          and the action stack do not need. min-h-0 is load-bearing — without it a flex
+          child refuses to shrink below its content and pushes the stack off the bottom. */}
       <section className="min-h-0 flex-1 px-4 pb-3">
         <DriverMap
           position={fix?.position ?? null}
@@ -243,6 +381,7 @@ export default function InTransitPageClient() {
         />
       </section>
 
+      {/* Everything the driver can do, in a block that never scrolls away. */}
       <div className="shrink-0 border-t border-outline-variant/60 bg-surface-container-lowest px-4 pt-3 pb-safe">
         {openExceptions.length > 0 && (
           <section className="mb-3 flex flex-col gap-2">
@@ -250,7 +389,8 @@ export default function InTransitPageClient() {
               <TriangleAlert className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
               {openExceptions.length} open exception{openExceptions.length > 1 ? 's' : ''}
             </p>
-            {/* Height-capped and self-scrolling so a bad leg can't push panic below the fold. */}
+            {/* Height-capped and self-scrolling: a leg with eight exceptions must not be
+                able to push the panic button below the fold. */}
             <div className={cn('flex flex-col gap-2 overflow-y-auto overscroll-contain', EXCEPTION_LIST_MAX_HEIGHT)}>
               {openExceptions.map((exc) => (
                 <ExceptionCard key={exc.id} exception={exc} />
@@ -259,10 +399,29 @@ export default function InTransitPageClient() {
           </section>
         )}
 
-        {/* Swipe, not a tap: this gesture opens the truck and starts evidence capture, so
-            a single accidental tap must never be enough to trigger it. */}
+        {/* The way out of this screen, and — since 2026-08-09 — the record that the drive
+            ended. The driver already performs this gesture; the system used to discard
+            it and infer arrival later from whenever the unloading paperwork happened to
+            be submitted. currentStepRoute (lib/phase) is what skips the stepless
+            in_transit row the driver is standing on; a caller that stopped at the current
+            phase would loop straight back here.
+            Swipe, not a tap: this is the gesture that opens the truck and starts evidence
+            capture, and a single accidental tap must never be enough to trigger it. */}
         <div className="flex justify-center">
-          <SwipeToConfirm label="Arrive at destination" onConfirm={handleArrivalSwipe} />
+          {arrivalPreviewLoading || arrivalCapturedAt !== null ? (
+            <div className="w-full">
+              {arrivalOffline && <p className="mb-2 text-sm text-surface-on-variant">Location not verified while offline.</p>}
+              <LocationCheckNotice
+                assessment={arrivalAssessment}
+                loading={arrivalPreviewLoading}
+                error={arrivalPreviewError}
+                onRetry={() => { void handleArrivalSwipe() }}
+                onContinue={continueArrivalAfterLocationCheck}
+              />
+            </div>
+          ) : (
+            <SwipeToConfirm label="Arrive at destination" onConfirm={() => { void handleArrivalSwipe() }} />
+          )}
         </div>
 
         <div className="mt-3 grid grid-cols-2 gap-3">

@@ -38,7 +38,6 @@ from app.analytics.fleet.periods import (
 )
 from app.analytics.fleet.tiles import get_fleet_tiles
 from app.db.models.organisations import Precinct
-from app.orchestration.phase_plan import ANCHORED_PHASES
 from app.schemas.analytics import DurationStats
 from app.schemas.fleet_analytics import (
     ActivityResponse,
@@ -59,13 +58,8 @@ from app.schemas.fleet_analytics import (
 async def get_tiles(
     db: AsyncSession, *, organization_id: uuid.UUID, now: datetime | None = None,
 ) -> FleetTilesResponse:
-    """The six headline tiles as of `now` (default: this moment)."""
-    return await get_fleet_tiles(
-        db,
-        organization_id=organization_id,
-        today=today_sast(now),
-        anchored_phases=ANCHORED_PHASES,
-    )
+    """The four headline tiles as of `now` (default: this moment)."""
+    return await get_fleet_tiles(db, organization_id=organization_id, today=today_sast(now))
 
 
 async def resolve_period_start(

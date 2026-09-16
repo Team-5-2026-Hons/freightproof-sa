@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import TripDetailPage from './page'
@@ -9,6 +9,7 @@ import type { Trip } from '@shared/lib/types/trip'
 
 const push = vi.fn()
 const notify = vi.fn()
+const navigation = vi.hoisted(() => ({ search: new URLSearchParams() }))
 const forensicMode = vi.hoisted(() => ({
   canViewForensics: true,
   forensicOn: true,
@@ -18,7 +19,7 @@ const forensicMode = vi.hoisted(() => ({
 vi.mock('next/navigation', () => ({
   useParams: () => ({ id: TRIP_0040_ID }),
   useRouter: () => ({ push }),
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => navigation.search,
 }))
 
 vi.mock('@/lib/supabase/client', () => ({
@@ -129,6 +130,7 @@ function tripDriving(): Trip {
 beforeEach(() => {
   push.mockReset()
   notify.mockReset()
+  navigation.search = new URLSearchParams()
   forensicMode.canViewForensics = true
   forensicMode.forensicOn = true
   forensicMode.toggle.mockReset()
@@ -151,12 +153,15 @@ describe('Trip detail phase timeline', () => {
     const loadingGroup = screen.getByRole('group', {
       name: 'Loading phase and exceptions',
     })
+    fireEvent.click(within(loadingGroup).getByRole('button', { name: /2 exceptions · 0 need review/ }))
     const exceptionRows = within(loadingGroup).getAllByRole('group', {
       name: 'Exception linked to Loading phase',
     })
 
     expect(exceptionRows).toHaveLength(2)
-    expect(exceptionRows[0]).toHaveAttribute('data-timeline-kind', 'exception')
+    // The cards sit inside one branch off the rail, marked as the exception kind so
+    // the timeline never confuses it with a phase row.
+    expect(within(loadingGroup).getByRole('group', { name: 'Exceptions linked to Loading phase' })).toHaveAttribute('data-timeline-kind', 'exception')
     expect(exceptionRows[0]).toHaveTextContent('Loading · Exception')
     expect(exceptionRows[0]).toHaveTextContent('System')
     expect(exceptionRows[0]).toHaveTextContent('Info')
@@ -168,6 +173,7 @@ describe('Trip detail phase timeline', () => {
     const loadingGroup = screen.getByRole('group', {
       name: 'Loading phase and exceptions',
     })
+    fireEvent.click(within(loadingGroup).getByRole('button', { name: /2 exceptions · 0 need review/ }))
     const exceptionRows = within(loadingGroup).getAllByRole('group', {
       name: 'Exception linked to Loading phase',
     })
@@ -319,7 +325,7 @@ describe('Trip detail hash-anchored phase scroll', () => {
       // Landing on the row is not the same as opening it: PhaseTimelineItem's own
       // toggle state is untouched, same as the "Jump to current phase" button.
       const loadingRow = screen.getByRole('group', { name: 'Loading phase and exceptions' })
-      expect(within(loadingRow).getByRole('button', { expanded: false })).toBeInTheDocument()
+      expect(within(loadingRow).getAllByRole('button', { expanded: false })[0]).toBeInTheDocument()
     } finally {
       window.location.hash = ''
       rectSpy.mockRestore()
@@ -342,7 +348,7 @@ describe('Trip detail summary and panels', () => {
     render(<TripDetailPage />)
     expect(screen.getByRole('heading', { name: 'TRP-2026-0040' })).toBeInTheDocument()
     expect(screen.getByText('FedEx JHB → FedEx DBN')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /exceptions ·/i }))
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Trip sections' })).getByRole('button', { name: /exceptions ·/i }))
     expect(push).toHaveBeenCalledWith(expect.stringContaining('panel=exceptions'), { scroll: false })
   })
 
@@ -350,5 +356,90 @@ describe('Trip detail summary and panels', () => {
     render(<TripDetailPage />)
     fireEvent.click(screen.getByRole('button', { name: 'Trip information' }))
     expect(push).toHaveBeenCalledWith(expect.stringContaining('panel=information'), { scroll: false })
+  })
+
+  it('routes a phase group to the all-exceptions panel scope for that exact phase', () => {
+    const trip = tripWithLoadingExceptionsOutOfOrder()
+    const loading = trip.phases.find(phase => phase.phase_type === 'loading')
+    if (!loading) throw new Error('TRIP_0040 loading phase is missing')
+    render(<TripDetailPage />)
+
+    const loadingGroup = screen.getByRole('group', { name: 'Loading phase and exceptions' })
+    // The panel trigger lives inside each card, so the branch is opened first. Both
+    // exceptions in this group carry their own trigger; either routes to the same
+    // phase-scoped panel.
+    fireEvent.click(within(loadingGroup).getByRole('button', { name: /2 exceptions · 0 need review/ }))
+    fireEvent.click(within(loadingGroup).getAllByRole('button', { name: 'Open in exceptions panel' })[0]!)
+
+    expect(push).toHaveBeenCalledWith(
+      expect.stringContaining(`panel=exceptions&exceptions=all&phase=${loading.phase_event_id}`),
+      { scroll: false },
+    )
+  })
+
+  it('shows a recoverable invalid phase URL instead of another phase or trip record', () => {
+    navigation.search = new URLSearchParams('panel=exceptions&exceptions=all&phase=foreign-phase')
+    render(<TripDetailPage />)
+
+    expect(screen.getByText('This phase filter is not part of this trip.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Clear phase filter' }))
+    expect(push).toHaveBeenCalledWith(`/trips/${TRIP_0040_ID}?panel=exceptions&exceptions=all`, { scroll: false })
+  })
+
+  it('forces a valid phase URL to all recorded exceptions even after browser navigation restores a narrow filter', () => {
+    const trip = tripWithLoadingExceptionsOutOfOrder()
+    const loading = trip.phases.find(phase => phase.phase_type === 'loading')
+    if (!loading) throw new Error('TRIP_0040 loading phase is missing')
+    navigation.search = new URLSearchParams(`panel=exceptions&exceptions=all&phase=${loading.phase_event_id}`)
+
+    const rendered = render(<TripDetailPage />)
+
+    navigation.search = new URLSearchParams(`panel=exceptions&exceptions=needs_review&phase=${loading.phase_event_id}`)
+    rendered.rerender(<TripDetailPage />)
+
+    // This rerender models browser Back/Forward restoring an older query string.
+    const allRecorded = screen.getByRole('button', { name: 'All recorded · 2' })
+    expect(allRecorded).toHaveStyle({ background: 'linear-gradient(135deg,#1b1b1c 0%,#303031 100%)' })
+  })
+
+  it('closes the narrow overlay before revealing the phase group in the timeline', async () => {
+    const trip = tripWithLoadingExceptionsOutOfOrder()
+    const loading = trip.phases.find(phase => phase.phase_type === 'loading')
+    if (!loading) throw new Error('TRIP_0040 loading phase is missing')
+    navigation.search = new URLSearchParams(`panel=exceptions&exceptions=all&phase=${loading.phase_event_id}`)
+    const rendered = render(<TripDetailPage />)
+
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Trip exceptions' })).getAllByRole('button', { name: 'Show in timeline' })[0]!)
+    expect(push).toHaveBeenCalledWith(`/trips/${TRIP_0040_ID}?exceptions=all`, { scroll: false })
+
+    navigation.search = new URLSearchParams('exceptions=all')
+    rendered.rerender(<TripDetailPage />)
+
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Trip exceptions' })).not.toBeInTheDocument())
+    await waitFor(() => expect(within(screen.getByRole('group', { name: 'Loading phase and exceptions' })).getByRole('button', { name: /2 exceptions · 0 need review/ })).toHaveAttribute('aria-expanded', 'true'))
+  })
+
+  it('keeps the docked panel open while revealing a phase group in the timeline', async () => {
+    const originalMatchMedia = window.matchMedia
+    window.matchMedia = vi.fn().mockReturnValue({
+      matches: true, media: '(min-width: 1280px)', onchange: null,
+      addEventListener: () => {}, removeEventListener: () => {},
+      addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
+    })
+    const trip = tripWithLoadingExceptionsOutOfOrder()
+    const loading = trip.phases.find(phase => phase.phase_type === 'loading')
+    if (!loading) throw new Error('TRIP_0040 loading phase is missing')
+    navigation.search = new URLSearchParams(`panel=exceptions&exceptions=all&phase=${loading.phase_event_id}`)
+
+    try {
+      render(<TripDetailPage />)
+      const panel = screen.getByRole('complementary', { name: 'Trip detail' })
+      fireEvent.click(within(panel).getAllByRole('button', { name: 'Show in timeline' })[0]!)
+
+      expect(panel).toBeInTheDocument()
+      await waitFor(() => expect(within(screen.getByRole('group', { name: 'Loading phase and exceptions' })).getByRole('button', { name: /2 exceptions · 0 need review/ })).toHaveAttribute('aria-expanded', 'true'))
+    } finally {
+      window.matchMedia = originalMatchMedia
+    }
   })
 })

@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Text, Tooltip, XAxis, YAxis } from 'recharts'
 
 import { AXIS_TEXT_COLOR, GRID_COLOR, SURFACE_COLOR } from '@/lib/tokens'
+import { useChartHeight, useIsChartZoomed } from '../ChartZoom'
 import {
   AXIS_FONT_SIZE,
   AXIS_TICK,
@@ -57,6 +58,8 @@ interface CategoryBarsProps<Row> {
 }
 
 const KEY = '__key'
+// A horizontal bar row's height in the zoom modal: room to read each name at a glance.
+const ZOOM_BAR_ROW_HEIGHT = 56
 
 type Datum = Record<string, string | number>
 
@@ -80,7 +83,13 @@ export function CategoryBars<Row>({
   }))
   const isBars = orientation === 'bars'
   const lastIndex = series.length - 1
-  const chartHeight = height ?? (isBars ? rows.length * rowHeight + X_AXIS_WITH_HEADING_HEIGHT : CHART_HEIGHT)
+  // Inside the zoom modal (D27) columns take the zoomed height. Horizontal bars size by their
+  // rows, so each row gets more room instead: one tall box would leave a short list of bars
+  // floating in empty space.
+  const isZoomed = useIsChartZoomed()
+  const columnsHeight = useChartHeight(CHART_HEIGHT)
+  const barRowHeight = isZoomed ? Math.max(rowHeight, ZOOM_BAR_ROW_HEIGHT) : rowHeight
+  const chartHeight = height ?? (isBars ? rows.length * barRowHeight + X_AXIS_WITH_HEADING_HEIGHT : columnsHeight)
   const tickLabel = (key: string): string => labels.get(key) ?? key
   // Drawn with Recharts' own Text so a long name wraps within the column with line spacing;
   // the axis's default tick wraps at 1em, so wrapped lines would touch.

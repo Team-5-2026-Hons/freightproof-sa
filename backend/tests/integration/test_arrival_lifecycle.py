@@ -128,7 +128,7 @@ async def test_full_hub_to_hub_walk_with_arrival_closes_the_trip(
             json={
                 "phase_type": "confirmation",
                 "pod_photo_artifact_id": pod_photo_id, "pod_signature_artifact_id": pod_signature_id,
-                "driver_visual_count": 42, "pp_scan_in_count": 42,
+                "driver_visual_count": 42,
                 "idempotency_key": str(uuid.uuid4()),
             },
             headers=auth_header(driver_token),
@@ -203,7 +203,7 @@ async def test_overridden_unloading_closes_trip_without_manufacturing_arrival(
             json={
                 "phase_type": "confirmation",
                 "pod_photo_artifact_id": pod_photo_id, "pod_signature_artifact_id": pod_signature_id,
-                "driver_visual_count": 42, "pp_scan_in_count": 42,
+                "driver_visual_count": 42,
                 "idempotency_key": str(uuid.uuid4()),
             },
             headers=auth_header(driver_token),

@@ -7,10 +7,18 @@ import { VEHICLE_TYPE_LABELS } from './vehicle'
 
 export const VEHICLE_NOT_RECORDED = 'Not recorded'
 
+// Types whose generic title-casing below reads wrong. The en dash is deliberate: it is
+// a relation between two parties ("driver–vehicle"), not a hyphenated word.
+const EXCEPTION_TYPE_LABELS: Partial<Record<string, string>> = {
+  driver_vehicle_separation: 'Driver–vehicle separation',
+}
+
 /** "waybill_count_mismatch" -> "Waybill Count Mismatch"; "receiver_id_mismatch" ->
- *  "Receiver ID Mismatch" (an abbreviation reads wrong title-cased as "Id"). */
+ *  "Receiver ID Mismatch" (an abbreviation reads wrong title-cased as "Id"); an explicit
+ *  EXCEPTION_TYPE_LABELS entry wins over the generic rule. */
 export function fmtExceptionType(type: string): string {
-  return type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).replace(/\bId\b/g, 'ID')
+  return EXCEPTION_TYPE_LABELS[type]
+    ?? type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).replace(/\bId\b/g, 'ID')
 }
 
 /** A breakdown's Vehicle row: "Trailer · TRL 222 GP". "Not recorded" when no vehicle was

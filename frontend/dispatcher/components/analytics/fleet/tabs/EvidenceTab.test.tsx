@@ -86,7 +86,7 @@ describe('EvidenceTab', () => {
     expect(within(overrides).getByText(/the weakest evidence we hold/)).toBeInTheDocument()
   })
 
-  it('has no blockchain receipts chart; the Receipts owed tile covers what is still owed', async () => {
+  it('has no blockchain receipts chart (D25)', async () => {
     mockedGet.mockResolvedValue(makeEvidence(true))
     renderTab()
 

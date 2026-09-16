@@ -89,6 +89,25 @@ const IDEMPOTENCY_KEY = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
 const DRIVER_CAPTURED_AT = '2026-06-12T10:30:00Z'
 
 describe('submitPhase (real-backend branch)', () => {
+  it('sends a warning acknowledgement separately from the captured location and never sends an assessment', async () => {
+    mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
+    const { submitPhase } = await import('../phases')
+
+    await submitPhase(
+      'trip-1', 'phase-event-2', 'loading', LOADING_EVIDENCE, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT,
+      { acknowledgedAt: '2026-06-12T10:31:00Z', reason: 'Truck is waiting at the gate.' },
+    )
+
+    expect(mockPost).toHaveBeenCalledWith(
+      '/api/v1/trips/trip-1/phases/phase-event-2/complete',
+      expect.objectContaining({
+        location_warning_acknowledged_at: '2026-06-12T10:31:00Z',
+        location_warning_reason: 'Truck is waiting at the gate.',
+      }),
+      { timeoutMs: 30_000 },
+    )
+    expect(mockPost.mock.calls[0][1]).not.toHaveProperty('action_location_assessment')
+  })
   beforeEach(() => {
     vi.clearAllMocks()
   })
@@ -107,6 +126,7 @@ describe('submitPhase (real-backend branch)', () => {
         phase_type: 'activation',
         driver_phone_lat: -26.09,
         driver_phone_lng: 28.13,
+        driver_accuracy_metres: 8,
         idempotency_key: IDEMPOTENCY_KEY,
         driver_captured_at: DRIVER_CAPTURED_AT,
       },
@@ -130,6 +150,7 @@ describe('submitPhase (real-backend branch)', () => {
         // Every phase carries the silently-captured fix now, not just activation.
         driver_phone_lat: POSITION.lat,
         driver_phone_lng: POSITION.lng,
+        driver_accuracy_metres: POSITION.accuracyM,
         linehaul_photo_artifact_id: null,
         idempotency_key: IDEMPOTENCY_KEY,
         driver_captured_at: DRIVER_CAPTURED_AT,
@@ -160,6 +181,7 @@ describe('submitPhase (real-backend branch)', () => {
         // Every phase carries the silently-captured fix now, not just activation.
         driver_phone_lat: POSITION.lat,
         driver_phone_lng: POSITION.lng,
+        driver_accuracy_metres: POSITION.accuracyM,
         // Explicitly null, not omitted — mirrors loading's linehaul id and keeps the
         // wire shape stable for the backend's still-Optional field.
         waybill_photo_artifact_id: null,
@@ -205,6 +227,7 @@ describe('submitPhase (real-backend branch)', () => {
         // Every phase carries the silently-captured fix now, not just activation.
         driver_phone_lat: POSITION.lat,
         driver_phone_lng: POSITION.lng,
+        driver_accuracy_metres: POSITION.accuracyM,
         seal_number_at_destination: 'AB-1234',
         // Required by UnloadingCompleteRequest — the seal as found, intact.
         gate_photo_artifact_id: 'seal-intact-artifact',
@@ -282,6 +305,7 @@ describe('submitPhase (real-backend branch)', () => {
         // Every phase carries the silently-captured fix now, not just activation.
         driver_phone_lat: POSITION.lat,
         driver_phone_lng: POSITION.lng,
+        driver_accuracy_metres: POSITION.accuracyM,
         pod_photo_artifact_id: 'pod-photo-artifact',
         pod_signature_artifact_id: 'receiver-signature-artifact',
         driver_visual_count: 31,
@@ -621,6 +645,7 @@ describe('submitPhase — in_transit (arrival attestation)', () => {
         phase_type: 'in_transit',
         driver_phone_lat: -29.8587,
         driver_phone_lng: 31.0218,
+        driver_accuracy_metres: 8,
         idempotency_key: 'idem-arrival-1',
         driver_captured_at: DRIVER_CAPTURED_AT,
       },

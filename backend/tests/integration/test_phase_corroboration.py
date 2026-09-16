@@ -207,6 +207,9 @@ async def _complete_activation(
     client: AsyncClient, trip: Trip, driver: Driver, *,
     idempotency_key: str | None = None, token: str | None = None,
     driver_captured_at: str | None = None, omit_driver_captured_at: bool = False,
+    driver_phone_lat: float | None = None, driver_phone_lng: float | None = None,
+    driver_accuracy_metres: float | None = None,
+    location_warning_acknowledged_at: str | None = None, location_warning_reason: str | None = None,
 ) -> Any:
     # A caller replaying a submission MUST pass the same token: make_token mints a
     # fresh session_id each call, and the one-device-per-driver rule would reject the
@@ -215,8 +218,8 @@ async def _complete_activation(
     phase_event_id = await _phase_id(client, trip.id, token, "activation")
     body: dict[str, Any] = {
         "phase_type": "activation",
-        "driver_phone_lat": float(_ORIGIN_LAT),
-        "driver_phone_lng": float(_ORIGIN_LNG),
+        "driver_phone_lat": float(_ORIGIN_LAT) if driver_phone_lat is None else driver_phone_lat,
+        "driver_phone_lng": float(_ORIGIN_LNG) if driver_phone_lng is None else driver_phone_lng,
         "idempotency_key": idempotency_key or f"idem-{uuid.uuid4()}",
     }
     # Task 0A: defaults to "now", matching the Pulsit fixture's own default fixed_at
@@ -226,6 +229,12 @@ async def _complete_activation(
     # simulates a pre-task-0A client that never sends the field at all.
     if not omit_driver_captured_at:
         body["driver_captured_at"] = driver_captured_at or datetime.now(UTC).isoformat()
+    if driver_accuracy_metres is not None:
+        body["driver_accuracy_metres"] = driver_accuracy_metres
+    if location_warning_acknowledged_at is not None:
+        body["location_warning_acknowledged_at"] = location_warning_acknowledged_at
+    if location_warning_reason is not None:
+        body["location_warning_reason"] = location_warning_reason
     return await client.post(
         f"/api/v1/trips/{trip.id}/phases/{phase_event_id}/complete",
         headers=auth_header(token),
@@ -249,6 +258,50 @@ async def _load_snapshots(db_session, event: PhaseEvent) -> list[TrailerGpsSnaps
         .order_by(TrailerGpsSnapshot.trailer_id)
     )
     return list(result.scalars().all())
+
+
+async def test_phase_completion_rejects_client_supplied_location_assessment(
+    client: AsyncClient, corroboration_trip,
+) -> None:
+    """The server alone decides a proximity verdict; clients may only supply raw fixes."""
+    trip, driver, _org, _stop = corroboration_trip
+    token = make_token(sub=str(driver.id), role="driver")
+    phase_event_id = await _phase_id(client, trip.id, token, "activation")
+
+    response = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{phase_event_id}/complete",
+        headers=auth_header(token),
+        json={
+            "phase_type": "activation",
+            "idempotency_key": f"idem-{uuid.uuid4()}",
+            "driver_phone_lat": float(_ORIGIN_LAT),
+            "driver_phone_lng": float(_ORIGIN_LNG),
+            "action_location_assessment": {"proximity": "within_limit"},
+        },
+    )
+
+    assert response.status_code == 422
+
+
+async def test_phase_completion_persists_warning_acknowledgement_without_overriding_assessment(
+    client: AsyncClient, corroboration_trip, db_session,
+) -> None:
+    trip, driver, *_ = corroboration_trip
+    acknowledged_at = datetime.now(UTC).isoformat()
+
+    response = await _complete_activation(
+        client, trip, driver,
+        driver_accuracy_metres=5.0,
+        location_warning_acknowledged_at=acknowledged_at,
+        location_warning_reason="Truck is waiting at the gate.",
+    )
+
+    assert response.status_code == 200
+    event = await _load_event(db_session, trip, PhaseType.ACTIVATION)
+    assert event.location_warning_acknowledged_at is not None
+    assert event.location_warning_reason == "Truck is waiting at the gate."
+    # The final server evaluation remains a measurement, not the driver's text.
+    assert event.action_location_assessment is not None
 
 
 async def _make_artifact(db_session, trip_id: uuid.UUID) -> str:

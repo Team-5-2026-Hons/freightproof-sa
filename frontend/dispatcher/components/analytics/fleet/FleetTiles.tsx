@@ -6,7 +6,6 @@ import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Ic } from '@/components/ui/Ic'
 import { Skeleton } from '@/components/ui/Skeleton'
-import { NO_DATA } from '@/lib/format/analytics'
 import { fmtAge } from '@/lib/format/period'
 import type {
   ExpiryBands,
@@ -17,14 +16,10 @@ import { cn } from '@shared/lib/utils/cn'
 import { FLEET_COPY } from './copy'
 
 const COPY = FLEET_COPY.tiles
-const PERCENT = 100
 // Enough registrations to act on without the tile growing taller than its neighbours.
 const MAX_LISTED_REGISTRATIONS = 3
-const TILE_COUNT = 6
-
-// Deep links into this page's own tabs.
-const PROBLEMS_TAB_HREF = '/analytics?tab=problems'
-const EVIDENCE_TAB_HREF = '/analytics?tab=evidence'
+// Parcels complete and Receipts owed were removed (D26), leaving four.
+const TILE_COUNT = 4
 
 const EXPIRY_BAND_ORDER: readonly (keyof ExpiryBands)[] = [
   'expired', 'within_30_days', 'within_90_days', 'within_180_days', 'no_date',
@@ -42,7 +37,7 @@ interface FleetTileProps {
   children?: ReactNode
 }
 
-/** One headline number: label, value in proportional figures, one sub-line. */
+/** One headline number (spec §7.5): label, value in proportional figures, one sub-line. */
 export function FleetTile({ label, value, sub, href, warn = false, className, children }: FleetTileProps) {
   const body = (
     <>
@@ -78,10 +73,6 @@ export function FleetTile({ label, value, sub, href, warn = false, className, ch
       {body}
     </Link>
   )
-}
-
-function fmtPercent(rate: number | null): string {
-  return rate === null ? NO_DATA : `${Math.round(rate * PERCENT)}%`
 }
 
 function LicenceTile({ drivers, discs }: { drivers: ExpiryBands; discs: ExpiryBands }) {
@@ -157,9 +148,10 @@ interface FleetTilesProps {
   now?: Date
 }
 
-const GRID = 'grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-7'
+// Five columns at xl: three single tiles plus the two-wide licence table, all on one row.
+const GRID = 'grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5'
 
-/** The six headline tiles. No controls: they always describe the fleet right now. */
+/** The four headline tiles. No controls: they always describe the fleet right now (spec D4). */
 export function FleetTiles({ data, isLoading, error, onRetry, now }: FleetTilesProps) {
   if (error !== null) {
     return (
@@ -180,7 +172,7 @@ export function FleetTiles({ data, isLoading, error, onRetry, now }: FleetTilesP
     )
   }
 
-  const { critical_waiting: waiting, parcels_complete: parcels, receipts_owed: receipts } = data
+  const { critical_waiting: waiting } = data
   return (
     <section className={GRID} aria-label={COPY.ariaLabel}>
       <FleetTile label={COPY.liveTrips.label} value={String(data.live_trips)} sub={COPY.liveTrips.sub} href="/" />
@@ -194,19 +186,6 @@ export function FleetTiles({ data, isLoading, error, onRetry, now }: FleetTilesP
         }
         href="/exceptions"
         warn={waiting.count > 0}
-      />
-      <FleetTile
-        label={COPY.parcels.label}
-        value={fmtPercent(parcels.complete_rate)}
-        sub={COPY.parcels.sub(parcels.complete_trip_count, parcels.loaded_trip_count, parcels.window_days)}
-        href={PROBLEMS_TAB_HREF}
-      />
-      <FleetTile
-        label={COPY.receipts.label}
-        value={String(receipts.pending_count + receipts.failed_count)}
-        sub={receipts.failed_count > 0 ? COPY.receipts.failed(receipts.failed_count) : COPY.receipts.noneFailed}
-        href={EVIDENCE_TAB_HREF}
-        warn={receipts.failed_count > 0}
       />
       <LicenceTile drivers={data.licence_expiry.drivers} discs={data.licence_expiry.vehicle_discs} />
       <FleetTile

@@ -9,6 +9,7 @@ import { MONTH_ABBREVIATIONS } from '@/lib/format/month'
 import { weekdayName } from '@/lib/format/period'
 import { GRID_COLOR, NEUTRAL_COLOR, SERIES_COLORS, SURFACE_COLOR } from '@/lib/tokens'
 import type { PatternBar, PatternSet } from '@shared/lib/types/fleet-analytics'
+import { useChartHeight } from '../ChartZoom'
 import { ChartCard } from '../ChartCard'
 import { FLEET_COPY } from '../copy'
 import { ChartTooltip } from './ChartTooltip'
@@ -84,11 +85,13 @@ interface PatternColumnsProps {
 /** One small column chart. Emphasis form: the busiest bar in the accent, the rest in the
  *  neutral grey, so the eye goes to the peak without the bars being reordered. */
 function PatternColumns({ bars, spec, renderTooltip, yLabel }: PatternColumnsProps) {
+  // Taller inside the zoom modal (D27).
+  const height = useChartHeight(PATTERN_CHART_HEIGHT)
   const busiest = busiestKey(bars)
   const byKey = new Map(bars.map((bar) => [String(bar.key), bar]))
   const data = bars.map((bar) => ({ key: String(bar.key), value: bar.average_per_day ?? 0 }))
   return (
-    <ResponsiveContainer width="100%" height={PATTERN_CHART_HEIGHT}>
+    <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} margin={CHART_MARGIN}>
         <CartesianGrid vertical={false} stroke={GRID_COLOR} />
         <XAxis

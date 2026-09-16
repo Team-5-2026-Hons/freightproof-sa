@@ -100,7 +100,7 @@ function FleetAnalytics() {
   const pathname = usePathname()
   const search = useSearchParams()
   const requested = search.get(TAB_PARAM)
-  // The tab lives in the URL so a tile can deep-link to one (e.g. Receipts owed -> Evidence).
+  // The tab lives in the URL so a link can open one directly (e.g. Back from a report opened on the map).
   const active: TabId = isTabId(requested) ? requested : DEFAULT_TAB
 
   const tiles = useFleetTiles()

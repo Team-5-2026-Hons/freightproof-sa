@@ -90,6 +90,32 @@ describe('useOfflineQueue', () => {
     expect(result.current.queueLength).toBe(0)
   })
 
+  it('replays a legacy phase envelope that has no acknowledgement field', async () => {
+    const { submitPhase } = await import('@/lib/api/phases')
+    localStorage.setItem('fp_offline_queue', JSON.stringify([{
+      kind: 'phase',
+      id: 'legacy-phase-entry',
+      tripId: 'trip-1',
+      phaseEventId: 'phase-event-1',
+      phaseType: 'activation',
+      evidence: EVIDENCE,
+      idempotencyKey: 'legacy-phase-entry',
+      position: POSITION,
+      driverCapturedAt: DRIVER_CAPTURED_AT,
+      enqueuedAt: '2026-06-12T10:00:01Z',
+    }]))
+    __resetOfflineQueueStoreForTests()
+    const { result } = renderHook(() => useOfflineQueue())
+
+    await act(() => result.current.flush())
+
+    expect(submitPhase).toHaveBeenCalledWith(
+      'trip-1', 'phase-event-1', 'activation', EVIDENCE, 'legacy-phase-entry', POSITION,
+      DRIVER_CAPTURED_AT, null,
+    )
+    expect(result.current.queueLength).toBe(0)
+  })
+
   // Task 5.3: the same idempotency_key must reach the server on a retry as on the
   // first attempt — a queued entry is never rebuilt with a fresh key between flushes.
   it('sends the same idempotency_key on a retry as on the first attempt', async () => {

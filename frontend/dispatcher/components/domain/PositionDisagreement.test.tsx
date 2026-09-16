@@ -80,6 +80,26 @@ describe('PositionDisagreement', () => {
     expect(screen.getByRole('button', { name: VIEW_ON_MAP_LABEL })).toBeInTheDocument()
   })
 
+  it('forwards hideMapButton to suppress its own "View on map" button when a caller already shows one', () => {
+    render(
+      <PositionDisagreement
+        phase={makePhase('departure', {
+          driver_phone_lat: -33.9249,
+          driver_phone_lng: 18.4241,
+          horse_gps_lat: -33.9351,
+          horse_gps_lng: 18.4241,
+        })}
+        precinct={undefined}
+        source="system"
+        hideMapButton
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: VIEW_ON_MAP_LABEL })).not.toBeInTheDocument()
+    // Still shows the underlying comparison data — only the button is suppressed.
+    expect(screen.getByText('1.1 km')).toBeInTheDocument()
+  })
+
   it('shows the driver point and "Comparison unavailable" when the tracker fix is missing', () => {
     render(
       <PositionDisagreement
@@ -108,7 +128,7 @@ describe('PositionDisagreement', () => {
     )
 
     expect(screen.getByTestId('gps-mismatch-trigger')).toBeInTheDocument()
-    expect(screen.getByText('Outside accepted tolerance')).toBeInTheDocument()
+    expect(screen.getByText('Truck outside precinct tolerance')).toBeInTheDocument()
   })
 
   it('states there is no boundary recorded when the precinct cannot be resolved', () => {

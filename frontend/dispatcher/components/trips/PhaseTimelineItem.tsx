@@ -49,11 +49,17 @@ interface Props {
   alwaysOpen?: boolean
   /** Compact recorded-location verdict, shown in the summary area so it reads without expanding the card. */
   evidenceSummary?: ReactNode
+  /** Content rendered OUTSIDE the toggle, always visible whether or not the card is
+   *  open — for a fact (a transit leg's departure/arrival, task 9) that must survive
+   *  collapse the way `evidenceSummary` does, but is too substantial to squeeze into
+   *  the summary row itself. Sits between the summary and the disclosed `children`. */
+  persistentContent?: ReactNode
 }
 
 export function PhaseTimelineItem({
   id, label, meta, summary, timestamp, nodeType, number, initialOpen, cancelled,
   overridden, children, warning, receipt, isLast, alwaysOpen = false, evidenceSummary,
+  persistentContent,
 }: Props) {
   const [open, setOpen] = useState(initialOpen)
   const contentId = useId()
@@ -94,6 +100,7 @@ export function PhaseTimelineItem({
       <div className={`rounded-lg px-4 py-3 ${CARD_STYLE[nodeType]} ${expandable ? 'transition-shadow duration-150 hover:shadow-md' : ''}`}>
         {/* Wraps the summary only — interactive content (Copy buttons, thumbnails) can't nest inside a <button>. */}
         {expandable ? <button type="button" aria-expanded={open} aria-controls={contentId} onClick={() => setOpen(!open)} className="block w-full select-none rounded-md text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-sec">{summaryContent}</button> : summaryContent}
+        {persistentContent && <div>{persistentContent}</div>}
         {warning && <p className="mt-3 text-[13px] font-[600] text-warn">{warning}</p>}
         {receipt}
         {children && (alwaysOpen || open) && <div id={alwaysOpen ? undefined : contentId}>{children}</div>}

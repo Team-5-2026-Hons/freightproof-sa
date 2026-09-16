@@ -4,9 +4,27 @@ import { describe, expect, it, vi } from 'vitest'
 import { PrecinctModal } from './PrecinctModal'
 import { mockPrecincts } from '@shared/lib/mocks/precincts'
 
+// Leaflet touches `window` at import time and needs a real tile server; the map's own
+// suite covers it. Here only the props the modal hands it matter.
+interface GeofenceMapProps { latitude: number; longitude: number; radiusMetres: number; onPositionChange?: unknown }
+const geofenceMap = vi.fn((_props: GeofenceMapProps): null => null)
+vi.mock('@/components/map/GeofenceMap', () => ({
+  GeofenceMap: (props: GeofenceMapProps) => geofenceMap(props),
+}))
+
 const precinct = mockPrecincts[0]!
 
 describe('PrecinctModal', () => {
+  it('draws the precinct geofence read-only, from the same coordinates and radius the rows state', () => {
+    render(<PrecinctModal precinct={precinct} open onClose={vi.fn()} returnTo="/trips/x" />)
+
+    expect(geofenceMap).toHaveBeenCalledWith(expect.objectContaining({
+      latitude: precinct.latitude, longitude: precinct.longitude, radiusMetres: precinct.geofence_radius_metres,
+    }))
+    // No onPositionChange: a trip never moves a fence.
+    expect(geofenceMap.mock.calls.at(-1)?.[0]).not.toHaveProperty('onPositionChange')
+  })
+
   it('shows the address and geofence, labelled the same way the timeline does', () => {
     render(<PrecinctModal precinct={precinct} open onClose={vi.fn()} returnTo="/trips/x" />)
 

@@ -19,6 +19,29 @@ const mockClearPhaseSyncing = vi.fn()
 const mockEnqueuePhase = vi.fn()
 const mockNotify = vi.fn()
 const mockStartPhaseSubmission = vi.fn()
+const mockLocationCapture = vi.fn()
+const mockPreviewPhaseLocation = vi.fn()
+
+const ARRIVAL_CAPTURE = {
+  latitude: -26.09421,
+  longitude: 28.13422,
+  accuracy: 12,
+  capturedAt: '2026-09-15T10:00:00Z',
+}
+
+const ARRIVAL_PASS = {
+  schema_version: 1 as const,
+  policy_version: '2026-09-15.1',
+  evaluated_at: '2026-09-15T10:00:01Z',
+  driver_lat: ARRIVAL_CAPTURE.latitude, driver_lng: ARRIVAL_CAPTURE.longitude,
+  driver_captured_at: ARRIVAL_CAPTURE.capturedAt, driver_accuracy_metres: ARRIVAL_CAPTURE.accuracy,
+  tracker_lat: ARRIVAL_CAPTURE.latitude, tracker_lng: ARRIVAL_CAPTURE.longitude,
+  tracker_captured_at: '2026-09-15T10:00:01Z', separation_metres: 5,
+  proximity: 'within_limit' as const, reasons: [], max_separation_metres: 100,
+  max_age_seconds: 60, max_skew_seconds: 30, max_phone_accuracy_metres: 50,
+  expected_trip_stop_id: 'stop-1', precinct_id: 'precinct-1', precinct_lat: null, precinct_lng: null,
+  precinct_radius_metres: null, precinct_tolerance_metres: null, driver_in_precinct: true, truck_in_precinct: true,
+}
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockRouterPush, back: vi.fn(), replace: vi.fn() }),
@@ -30,6 +53,12 @@ vi.mock('@/lib/hooks/useTrip', () => ({
 
 vi.mock('@/lib/hooks/useLocationTrail', () => ({
   useLocationTrail: () => ({ capturePosition: mockCapturePosition, recordHere: vi.fn() }),
+}))
+vi.mock('@/lib/hooks/useLocation', () => ({
+  useLocation: () => ({ capture: () => mockLocationCapture() }),
+}))
+vi.mock('@/lib/api/phases', () => ({
+  previewPhaseLocation: (...args: unknown[]) => mockPreviewPhaseLocation(...args),
 }))
 
 vi.mock('@/lib/hooks/useOfflineQueue', () => ({
@@ -153,6 +182,7 @@ const tripStateFields = {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  Object.defineProperty(window.navigator, 'onLine', { value: true, configurable: true })
   // Default: no fix. Suites that are not about the map then perform no state update at
   // all after mount, which keeps them free of act() noise from a background capture.
   mockCapturePosition.mockResolvedValue(null)
@@ -160,11 +190,19 @@ beforeEach(() => {
   // true unless a submission for that row is already running.
   mockStartPhaseSubmission.mockReturnValue(true)
   mockRefetchTrip.mockResolvedValue(null)
+  mockLocationCapture.mockResolvedValue(ARRIVAL_CAPTURE)
+  mockPreviewPhaseLocation.mockResolvedValue(ARRIVAL_PASS)
 })
 
 afterEach(() => {
   vi.useRealTimers()
 })
+
+async function confirmArrival(): Promise<PhaseSubmissionRequest> {
+  fireEvent.click(screen.getByRole('button', { name: /arrive at destination/i }))
+  await waitFor(() => expect(mockStartPhaseSubmission).toHaveBeenCalledTimes(1))
+  return mockStartPhaseSubmission.mock.calls[0][0] as PhaseSubmissionRequest
+}
 
 describe('InTransitPageClient exceptions list (5b)', () => {
   it('renders the context exceptions list including session-logged ones, with the incremented count', () => {
@@ -265,7 +303,7 @@ describe('InTransitPageClient driving screen', () => {
     expect(screen.getByRole('button', { name: /arrive at destination/i })).toBeInTheDocument()
   })
 
-  it('walks "Arrive at destination" past the pending, stepless in_transit row to the arrival step', () => {
+  it('walks "Arrive at destination" past the pending, stepless in_transit row to the arrival step', async () => {
     // Guards the premise: in_transit is CURRENT here (not resolved), and carries no
     // recipe. Without both, this test cannot detect the dead-end it exists to catch.
     const current = DRIVING_PHASES.find((p) => p.status !== 'completed')!
@@ -274,7 +312,7 @@ describe('InTransitPageClient driving screen', () => {
 
     render(<InTransitPageClient />)
 
-    fireEvent.click(screen.getByRole('button', { name: /arrive at destination/i }))
+    await confirmArrival()
 
     // Unloading recipe (shared/lib/constants/phase-meta.ts) is ['2-seal-verify',
     // '4-visual-count'] as of 2026-08-05 — '1-hand-waybill' was deleted, so the first
@@ -282,12 +320,12 @@ describe('InTransitPageClient driving screen', () => {
     expect(mockRouterPush).toHaveBeenCalledWith('/trip/phase/unloading/step/2-seal-verify')
   })
 
-  it('never routes "Arrive at destination" back to a trip screen, which would loop', () => {
+  it('never routes "Arrive at destination" back to a trip screen, which would loop', async () => {
     // The regression itself: the old fallback returned ROUTES.activeTripDetail, whose
     // "Continue driving" CTA leads straight back here — a driver could not reach unloading.
     render(<InTransitPageClient />)
 
-    fireEvent.click(screen.getByRole('button', { name: /arrive at destination/i }))
+    await confirmArrival()
 
     expect(mockRouterPush).not.toHaveBeenCalledWith(ROUTES.activeTripDetail)
     expect(mockRouterPush).not.toHaveBeenCalledWith(ROUTES.trips)
@@ -367,10 +405,10 @@ describe('InTransitPageClient arrival attestation (Task 5)', () => {
     mockUseTrip.mockReturnValue({ trip: baseTrip, isLoading: false, exceptions: [], ...tripStateFields })
   })
 
-  it('hands the in_transit phase to the background submitter', () => {
+  it('hands the in_transit phase to the background submitter', async () => {
     render(<InTransitPageClient />)
 
-    fireEvent.click(screen.getByRole('button', { name: /arrive at destination/i }))
+    await confirmArrival()
 
     expect(mockStartPhaseSubmission).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -380,10 +418,10 @@ describe('InTransitPageClient arrival attestation (Task 5)', () => {
     )
   })
 
-  it('marks the row syncing before navigating', () => {
+  it('marks the row syncing before navigating', async () => {
     render(<InTransitPageClient />)
 
-    fireEvent.click(screen.getByRole('button', { name: /arrive at destination/i }))
+    await confirmArrival()
 
     expect(mockMarkPhaseSyncing).toHaveBeenCalledWith(IN_TRANSIT_PHASE.phase_event_id)
     expect(mockRouterPush).toHaveBeenCalledWith('/trip/phase/unloading/step/2-seal-verify')
@@ -394,33 +432,29 @@ describe('InTransitPageClient arrival attestation (Task 5)', () => {
     expect(markOrder).toBeLessThan(pushOrder)
   })
 
-  it('navigates even when a submission for this row is already running', () => {
+  it('navigates even when a submission for this row is already running', async () => {
     mockStartPhaseSubmission.mockReturnValue(false)
 
     render(<InTransitPageClient />)
-    fireEvent.click(screen.getByRole('button', { name: /arrive at destination/i }))
+    await confirmArrival()
 
     // Stranding the driver on the driving screen would only invite a third swipe — the
     // evidence is already on its way either way.
     expect(mockRouterPush).toHaveBeenCalledWith('/trip/phase/unloading/step/2-seal-verify')
   })
 
-  it('rolls the marker back when the ledger refuses the arrival', () => {
+  it('rolls the marker back when the ledger refuses the arrival', async () => {
     render(<InTransitPageClient />)
-    fireEvent.click(screen.getByRole('button', { name: /arrive at destination/i }))
-
-    const request = mockStartPhaseSubmission.mock.calls[0][0] as PhaseSubmissionRequest
+    const request = await confirmArrival()
     const outcome: PhaseSubmissionOutcome = { kind: 'conflict', message: 'an earlier phase is unresolved' }
     act(() => request.onOutcome(outcome))
 
     expect(mockClearPhaseSyncing).toHaveBeenCalledWith(IN_TRANSIT_PHASE.phase_event_id)
   })
 
-  it('keeps the marker when the arrival is queued offline', () => {
+  it('keeps the marker when the arrival is queued offline', async () => {
     render(<InTransitPageClient />)
-    fireEvent.click(screen.getByRole('button', { name: /arrive at destination/i }))
-
-    const request = mockStartPhaseSubmission.mock.calls[0][0] as PhaseSubmissionRequest
+    const request = await confirmArrival()
     const outcome: PhaseSubmissionOutcome = { kind: 'queued' }
     act(() => request.onOutcome(outcome))
 
@@ -429,7 +463,7 @@ describe('InTransitPageClient arrival attestation (Task 5)', () => {
     expect(mockClearPhaseSyncing).not.toHaveBeenCalled()
   })
 
-  it('sends the driver to the trip screen when the arrival lands on a held trip', () => {
+  it('sends the driver to the trip screen when the arrival lands on a held trip', async () => {
     // Why 'hold' is its own arm rather than folded into 'recorded': by the time this
     // outcome arrives the swipe has ALREADY pushed the driver onto the unloading step,
     // and a held trip can only 409 there. Landing them on a capture screen they cannot
@@ -446,9 +480,7 @@ describe('InTransitPageClient arrival attestation (Task 5)', () => {
     const heldTrip = { ...baseTrip, status: 'exception_hold' } as unknown as Trip
 
     render(<InTransitPageClient />)
-    fireEvent.click(screen.getByRole('button', { name: /arrive at destination/i }))
-
-    const request = mockStartPhaseSubmission.mock.calls[0][0] as PhaseSubmissionRequest
+    const request = await confirmArrival()
     const outcome: PhaseSubmissionOutcome = { kind: 'hold', trip: heldTrip }
     act(() => request.onOutcome(outcome))
 
@@ -460,6 +492,71 @@ describe('InTransitPageClient arrival attestation (Task 5)', () => {
     // Last, not only: the swipe's own push to the unloading step came first, and the
     // redirect is what pulls the driver back off it.
     expect(mockRouterPush).toHaveBeenLastCalledWith(ROUTES.activeTripDetail)
+  })
+
+  it('retries a reliable mismatch with a replacement capture and submits the driver reason', async () => {
+    const retryCapture = { ...ARRIVAL_CAPTURE, latitude: -26.095, capturedAt: '2026-09-15T10:01:00Z' }
+    const mismatch = { ...ARRIVAL_PASS, proximity: 'separated' as const, separation_metres: 320 }
+    mockLocationCapture.mockResolvedValueOnce(ARRIVAL_CAPTURE).mockResolvedValueOnce(retryCapture)
+    mockPreviewPhaseLocation.mockResolvedValue(mismatch)
+
+    render(<InTransitPageClient />)
+    fireEvent.click(screen.getByRole('button', { name: /arrive at destination/i }))
+
+    await screen.findByText('Driver and truck were recorded 320 m apart. Limit: 100 m.')
+    fireEvent.click(screen.getByRole('button', { name: 'Retry location' }))
+    await waitFor(() => expect(mockPreviewPhaseLocation).toHaveBeenLastCalledWith(
+      'trip-1', IN_TRANSIT_PHASE.phase_event_id,
+      expect.objectContaining({ lat: retryCapture.latitude, captured_at: retryCapture.capturedAt }),
+    ))
+    fireEvent.change(screen.getByLabelText('Reason for continuing'), { target: { value: 'Truck is at the gate.' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with exception' }))
+
+    await waitFor(() => expect(mockStartPhaseSubmission).toHaveBeenCalledWith(expect.objectContaining({
+      driverCapturedAt: retryCapture.capturedAt,
+      acknowledgement: expect.objectContaining({ reason: 'Truck is at the gate.' }),
+    })))
+  })
+
+  it('captures and preserves an offline arrival, then requires explicit non-accusatory continuation', async () => {
+    Object.defineProperty(window.navigator, 'onLine', { value: false, configurable: true })
+    try {
+      render(<InTransitPageClient />)
+      fireEvent.click(screen.getByRole('button', { name: /arrive at destination/i }))
+
+      await screen.findByText('Location not verified while offline.')
+      await screen.findByText('We could not compare your location with the truck. Your action can still be recorded.')
+      expect(mockPreviewPhaseLocation).not.toHaveBeenCalled()
+      expect(mockStartPhaseSubmission).not.toHaveBeenCalled()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+      await waitFor(() => expect(mockStartPhaseSubmission).toHaveBeenCalledTimes(1))
+      const request = mockStartPhaseSubmission.mock.calls[0][0] as PhaseSubmissionRequest
+
+      expect(await request.position).toEqual({
+        lat: ARRIVAL_CAPTURE.latitude,
+        lng: ARRIVAL_CAPTURE.longitude,
+        accuracyM: ARRIVAL_CAPTURE.accuracy,
+        capturedAt: ARRIVAL_CAPTURE.capturedAt,
+      })
+      expect(request.driverCapturedAt).toBe(ARRIVAL_CAPTURE.capturedAt)
+      expect(request.acknowledgement).toBeNull()
+    } finally {
+      Object.defineProperty(window.navigator, 'onLine', { value: true, configurable: true })
+    }
+  })
+
+  it('surfaces a final backend discrepancy even after the preview passed', async () => {
+    render(<InTransitPageClient />)
+    const request = await confirmArrival()
+    const finalPhase = {
+      ...IN_TRANSIT_PHASE,
+      action_location_assessment: { ...ARRIVAL_PASS, proximity: 'separated' as const, separation_metres: 130 },
+    }
+
+    act(() => request.onOutcome({ kind: 'recorded', trip: null, addressedPhase: finalPhase }))
+
+    expect(mockNotify).toHaveBeenCalledWith(expect.objectContaining({ title: 'Location warning recorded' }))
   })
 })
 

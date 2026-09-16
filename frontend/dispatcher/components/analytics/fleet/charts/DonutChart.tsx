@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 
 import { SURFACE_COLOR } from '@/lib/tokens'
+import { useChartHeight } from '../ChartZoom'
 import { CHART_HEIGHT, GAP_WIDTH } from './chartStyle'
 
 // A ring rather than a full pie, so the total can sit in the middle.
@@ -34,8 +35,10 @@ interface DonutChartProps<Row> {
 /** Parts of one whole, up to six of them. Zero parts are left out of the ring (they would
  *  draw nothing) but stay in the legend and the table. */
 export function DonutChart<Row>({
-  rows, rowKey, value, color, centre, renderTooltip, height = CHART_HEIGHT,
+  rows, rowKey, value, color, centre, renderTooltip, height: normalHeight = CHART_HEIGHT,
 }: DonutChartProps<Row>) {
+  // Taller inside the zoom modal (D27); the ring's radii are percentages, so it grows with it.
+  const height = useChartHeight(normalHeight)
   const byKey = new Map(rows.map((row) => [rowKey(row), row]))
   const data: DonutDatum[] = rows
     .filter((row) => value(row) > 0)

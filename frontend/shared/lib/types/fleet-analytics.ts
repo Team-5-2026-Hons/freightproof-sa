@@ -25,19 +25,6 @@ export interface CriticalWaiting {
   oldest_created_at: string | null
 }
 
-export interface ParcelsComplete {
-  window_days: number
-  loaded_trip_count: number
-  complete_trip_count: number
-  complete_rate: number | null
-}
-
-/** Pending is on its way; failed is stuck. Kept apart because they mean different things. */
-export interface ReceiptsOwed {
-  pending_count: number
-  failed_count: number
-}
-
 /** Separate bands, never cumulative. More than 180 days away is in none of them. */
 export interface ExpiryBands {
   expired: number
@@ -67,8 +54,6 @@ export interface UnusedVehicles {
 export interface FleetTiles {
   live_trips: number
   critical_waiting: CriticalWaiting
-  parcels_complete: ParcelsComplete
-  receipts_owed: ReceiptsOwed
   licence_expiry: LicenceExpiry
   unused_vehicles: UnusedVehicles
   /** "YYYY-MM-DD" (SAST): the first day "All time" covers, so the page knows which View-by

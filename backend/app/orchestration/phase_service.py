@@ -1,34 +1,58 @@
 """Phase completion engine — advance_activation through advance_confirmation.
 
-A trip's full phase plan (parent plan §2.2/D5) is written at trip creation: every
-PhaseEvent row a driver will ever complete already exists, `pending`, before any of
-these functions runs. No code path here may insert a PhaseEvent row.
+Replaces the old fixed-5-handshake model (advance_h1..advance_h5, gated on
+Trip.status). A trip's full phase plan (parent plan §2.2/D5) is written at
+trip creation (task 2.1) — every PhaseEvent row a driver will ever complete
+already exists, `pending`, before any of these functions ever runs. No code
+path in this module may insert a PhaseEvent row (T2's fence).
 
-Two shared core helpers do the generic work (_gate_and_load / _finish_phase); five
-thin wrappers write their own phase-specific evidence and status, then route through
-that shared core. _gate_and_load loads trip+event, verifies ownership, rejects a
-closed/cancelled/held trip, short-circuits an idempotent replay, and gates on every
-lower-sequence PhaseEvent being resolved — reading the plan, never trip.status.
-_finish_phase stamps idempotency_key/completed_at, recomputes trip.current_phase/
-current_stop from the ledger, closes the trip if nothing remains pending, and
-returns the updated TripDetailResponse.
+Two shared core helpers do steps 1-9 of parent §2.4 that are identical across
+every phase (_gate_and_load / _finish_phase); five thin wrappers keep today's
+per-phase payload shapes and evidence-writing logic and route through that
+shared core for everything generic:
+  1. _gate_and_load() loads the trip + phase event, verifies trip ownership,
+     rejects a closed/cancelled/held trip, short-circuits an idempotent replay
+     of an already-completed phase (task 2.4), and gates on every
+     lower-sequence PhaseEvent being resolved (PhaseSequenceError otherwise) —
+     the gate reads the plan (PhaseEvent.sequence_number), never trip.status.
+  2. The wrapper writes its own phase-specific evidence fields — unchanged
+     from the old advance_h1..h5 bodies; this task only re-routes them through
+     the shared core.
+  3. The wrapper sets event.status (COMPLETED or EXCEPTION) per its own
+     evidence-checking logic — _finish_phase never sets it.
+  4. _finish_phase() stamps idempotency_key/completed_at, recomputes
+     trip.current_phase/current_stop from the ledger, closes the trip if
+     nothing remains pending, and returns the updated TripDetailResponse.
 
-advance_departure (P3) and advance_confirmation (P6) anchor to Hedera HCS: a
-JSON-native canonical payload is built by versioned payload builders, hashed via
-compute_payload_hash(), then anchor_subject() submits it and persists a
-BlockchainReceipt. Both anchors are fail-open via _anchor_or_fail_open(): a Hedera
-failure sets anchor_status=FAILED (retry owed) instead of raising, since a seal/
-delivery event is evidence that already happened and must not be blocked by a
-Hedera outage.
+advance_departure (P3) and advance_confirmation (P6) anchor to Hedera HCS per
+api_contract_dispatcher_driver.md §3.4: a JSON-native canonical payload is
+built by explicit versioned departure/confirmation payload builders,
+hashed via the shared compute_payload_hash()
+(app/blockchain/anchor_service.py — the same hasher trips and vehicles use),
+then anchor_subject() submits it to Hedera and persists a BlockchainReceipt.
+As of task 2.6 (D7/T5), the seal — and with it the anchor — moved whole from
+loading to departure: the driver applies and photographs the seal at
+departure, not loading, so that is where the anchorable evidence now exists.
+Both anchors are fail-open via _anchor_or_fail_open() (task 2.5's D7): a
+Hedera failure is caught, event.anchor_status is set to FAILED (a retry is
+owed) instead of raising, and the phase still completes — a seal/delivery
+event is evidence that already happened and must not be blocked by a Hedera
+outage. event.anchor_status is set to ANCHORED on success.
 
-Neither anchor is awaited. _dispatch_anchor queues the Hedera submit on the Celery
-worker once this request's transaction commits, so the driver isn't held on the
-swipe for the ~4-6s round trip; the phase returns with anchor_status PENDING and
-the receipt lands moments later. If the broker is unreachable, an in-process async
-fallback starts immediately. A periodic worker recovers overdue receipts from the
-committed phase ledger. advance_activation, advance_loading, advance_unloading
-remain unanchored feeders by design — they record cross-checks that support the
-anchored phases but are not themselves committed to chain.
+Neither anchor is AWAITED any more (2026-08-05). _dispatch_anchor queues the
+Hedera submit on the Celery worker once this request's transaction commits,
+because a ~4-6s submit inside the request meant the driver stood holding the
+swipe control for the whole round trip. The phase completes and returns with
+anchor_status still PENDING; the receipt lands moments later and the driver
+app already renders that interval ("anchoring in progress", AnchorProgress).
+If the broker is unreachable an in-process async fallback starts immediately;
+the request does not wait for Hedera, and failures remain visible through
+anchor_status and logs. A periodic worker also recovers overdue receipts from
+the committed phase ledger, including dispatches lost during process failure.
+advance_activation, advance_loading, advance_unloading remain unanchored
+feeders by design — they record cross-checks (GPS, driver visual count, seal
+continuity at destination) that support the anchored departure/confirmation
+phases but are not themselves committed to chain.
 """
 
 import asyncio
@@ -59,8 +83,9 @@ from app.db.models.evidence import EvidenceArtifact
 from app.db.models.phases import PhaseEvent
 from app.db.models.transit import TripException
 from app.db.models.trips import Consignment, Trip, TripStop
+from app.integrations.pulsit import PulsitFix
 from app.integrations.scan_feed import ScanDirection
-from app.orchestration import corroboration_service, scan_service
+from app.orchestration import action_location_service, corroboration_service, scan_service
 from app.orchestration.phase_gate import blocked_on_by_stop
 from app.orchestration.resource_service import get_trip_detail
 from app.schemas.phases import (
@@ -84,11 +109,16 @@ _BACKGROUND_ANCHOR_TASKS: set[asyncio.Task[bool]] = set()
 
 
 def _initial_review_status(severity: ExceptionSeverity) -> ExceptionReviewStatus:
-    """Delegate to exception_service.initial_review_status so every TripException
-    this module writes uses the same severity->status rule as the driver-raised path.
+    """Delegates to exception_service.initial_review_status (Task 2) so every
+    TripException this module writes routes its review_status through the same
+    severity->status rule as the driver-raised path, instead of hand-coding a value or
+    relying on the column's server_default.
 
-    Imported lazily: exception_service imports phase_service.current_phase_event at
-    module load, so a top-level import here would deadlock on the partial import.
+    Imported lazily, not at module scope: exception_service imports
+    phase_service.current_phase_event at ITS module load, so a top-level import here
+    would try to read exception_service while it is still mid-import — deadlocking on
+    the partially-initialised module. This function only runs at request time, by
+    which point both modules have finished loading.
     """
     from app.orchestration.exception_service import initial_review_status
 
@@ -108,8 +138,10 @@ async def _load_trip_for_dispatcher(
 ) -> Trip:
     """Dispatcher-scoped trip lookup — the override counterpart to _load_trip_for_driver.
 
-    Filters by org, not driver. 404, never 403, on a trip belonging to another
-    org, matching the no-existence-disclosure rule used elsewhere in this module.
+    Filters by org, not driver: overriding a phase is a dispatcher action, and the
+    org boundary is the caller's real authorisation scope. 404, never 403, on a
+    trip belonging to another org — same no-existence-disclosure rule as everywhere
+    else in this module.
     """
     result = await db.execute(
         select(Trip).where(
@@ -125,15 +157,19 @@ async def _load_trip_for_dispatcher(
 async def _load_phase_event(
     db: AsyncSession, *, trip_id: uuid.UUID, phase_event_id: uuid.UUID,
 ) -> PhaseEvent:
-    """The single load point every completion path (the advance_* wrappers and
-    override_phase) shares, so the row lock below covers all of them.
+    """The single load point every completion path (complete_phase's five
+    advance_* wrappers, and task 6.1's override_phase) shares — which is why
+    the lock below covers all of them from one place.
 
-    Row-locked with FOR UPDATE: two concurrent completions of the SAME phase would
-    both pass _gate_and_load's sequence gate and dispatch to Hedera before the
-    idempotency_key unique index fires at flush — which is after the anchor is
-    already queued, and a DB rollback can't un-submit an on-chain message. The lock
-    blocks the second transaction until the first commits, then it re-reads the row
-    as resolved and returns the existing idempotent-replay 200.
+    D8: row-locked with FOR UPDATE. Two concurrent completions of the SAME
+    phase both pass _gate_and_load's sequence gate and would both dispatch to
+    Hedera before the partial unique index on idempotency_key ever fires —
+    that index only fires at flush, which is AFTER the anchor has already been
+    queued (_dispatch_anchor's after_commit hook), and a DB rollback cannot
+    un-submit an on-chain message. The lock, not the index, is what stops the
+    second submission from happening at all: the second transaction blocks
+    here until the first commits, then re-reads this row as resolved and
+    returns _gate_and_load's existing idempotent-replay 200 — no new code path.
     """
     result = await db.execute(
         select(PhaseEvent)
@@ -151,14 +187,22 @@ async def _assert_artifacts_belong_to_trip(
 ) -> dict[uuid.UUID, str]:
     """Every artifact a phase cites as its evidence must belong to THIS trip.
 
-    The FK alone doesn't prevent another trip's photo being cited as this trip's
-    evidence; an unowned artifact would hash into the journey record as if genuine.
-    Raises ResourceNotFoundError (404) without distinguishing "wrong trip" from "no
-    such artifact" — the same fact from this trip's perspective, and distinguishing
-    them would leak another trip's evidence to a caller who can't otherwise see it.
+    Without this, a caller could attach any artifact UUID in the system to a phase:
+    another trip's seal photo standing in as this trip's, or a POD from an entirely
+    different delivery. The FK alone does not prevent that — it only proves the row
+    exists somewhere. On a platform whose whole claim is "this photo is what happened
+    on this trip", an unowned artifact is a forged evidence chain, and it would still
+    hash into the journey record as if genuine.
 
-    None entries are skipped. Returns the owned artifacts' SHA-256 digests so an
-    anchoring caller doesn't need a second DB round trip.
+    Raises ResourceNotFoundError (404 at the endpoint) rather than a 4xx that
+    distinguishes "wrong trip" from "no such artifact": from this trip's perspective
+    both are the same fact — the artifact is not available here — and saying which
+    would confirm the existence of another trip's evidence to a caller who cannot
+    otherwise see it.
+
+    None entries are skipped so optional artifact fields can pass through unchanged.
+    Returns the owned artifacts' stored SHA-256 digests so an anchoring caller does
+    not need a second database round trip after this ownership check.
     """
     present = {aid for aid in artifact_ids if aid is not None}
     if not present:
@@ -174,18 +218,24 @@ async def _assert_artifacts_belong_to_trip(
 
     missing = present - owned.keys()
     if missing:
-        # Sorted for a deterministic message across runs (API error body, test assertions).
+        # Sorted so the message is deterministic across runs — this ends up in an
+        # API error body and in test assertions.
         raise ResourceNotFoundError(
             "EvidenceArtifact", ", ".join(sorted(str(m) for m in missing)),
         )
     return owned
 
 
-def _is_resolved(status: PhaseStatus) -> bool:
+def _is_resolved(status: PhaseStatus) -> bool:  # T3
     # A phase blocks the NEXT phase only while PENDING/IN_PROGRESS. EXCEPTION is
-    # resolved for gating purposes — it already happened and the anomaly is
-    # recorded on the row itself. No phase completion holds a trip any more;
-    # EXCEPTION_HOLD survives as a status only for a future manual dispatcher hold.
+    # resolved for gating purposes — it already happened, the trip already moved
+    # on, and the anomaly is recorded on the row itself.
+    #
+    # No phase completion holds a trip any more: the last writer of
+    # TripStatus.EXCEPTION_HOLD (advance_unloading's seal mismatch) was removed —
+    # see the rationale on that branch. EXCEPTION_HOLD survives as a status only
+    # for a future MANUAL dispatcher hold; nothing in app/ sets it today, so the
+    # _gate_and_load check that reads it is currently unreachable.
     return status in (PhaseStatus.COMPLETED, PhaseStatus.EXCEPTION, PhaseStatus.OVERRIDDEN)
 
 
@@ -199,27 +249,53 @@ async def _gate_and_load(
     event = await _load_phase_event(db, trip_id=trip_id, phase_event_id=phase_event_id)
 
     if _is_resolved(event.status):
-        # Idempotent replay: COMPLETED, EXCEPTION and OVERRIDDEN are all "already
-        # decided", so a resent offline-queue entry is caught here rather than
-        # re-executing the wrapper body and double-writing evidence/exceptions.
-        # Checked BEFORE the trip-status check below: a phase whose own completion
-        # closed the trip (e.g. confirmation's count-mismatch branch) must still
-        # replay as an idempotent 200, even though trip.status now reads CLOSED.
+        # Idempotent replay (task 2.4) — COMPLETED, EXCEPTION, and OVERRIDDEN
+        # are all "already decided" (T3's own predicate, matched here so a
+        # replayed completion that landed in EXCEPTION — e.g. a resent
+        # offline-queue entry for a seal mismatch — is caught here too,
+        # instead of falling through to re-execute the wrapper body and
+        # double-write evidence/exceptions on every resend). Checked BEFORE
+        # the trip-status check below on purpose: a phase whose own
+        # completion is what closed/held the trip (e.g. advance_confirmation's
+        # count-mismatch branch, which sets EXCEPTION and lets the trip close)
+        # must still replay as an idempotent 200 — not a 409 — even though
+        # trip.status now reads CLOSED as a result of that same completion.
+        # (CLOSED is the only status a completion can produce today; see
+        # _is_resolved on why EXCEPTION_HOLD no longer occurs here.)
+        # A genuinely new attempt at a still-PENDING phase on a
+        # dead/held trip falls through to the trip-status check unaffected,
+        # since _is_resolved(PENDING) is False.
         return await get_trip_detail(
             db, trip_id=trip_id, operator_organization_id=trip.operator_organization_id,
         )
 
-    # EXCEPTION_HOLD is listed but no production path sets it today; kept so a future
-    # manual dispatcher hold gates phase completion by construction.
+    # EXCEPTION_HOLD is listed but no production path sets it (see _is_resolved).
+    # Kept deliberately so a manual dispatcher hold, when it lands, gates phase
+    # completion by construction rather than needing this check re-derived — and
+    # the behaviour stays covered meanwhile by
+    # test_phases.py::test_activation_complete_wrong_state_returns_409, which sets
+    # the status directly. Do not read its presence here as evidence that some
+    # mismatch still holds a trip: none does.
     if trip.status in (TripStatus.CLOSED, TripStatus.CANCELLED, TripStatus.EXCEPTION_HOLD):
-        # Trip.status is a plain String(30) column, so a freshly loaded trip yields a
-        # raw str here, not the enum — TripStatus(...) normalises before reading .value.
+        # Trip.status is a plain String(30) column: a freshly DB-loaded trip
+        # (every real request — get_db() hands out a fresh session per call)
+        # yields a raw str here, not the TripStatus enum, so `.value` alone
+        # would crash on the single most common path to this branch.
+        # TripStatus(...) normalises either shape before reading .value.
         raise PhaseSequenceError(f"trip status is '{TripStatus(trip.status).value}'", phase_label)
 
-    # No phase-type exclusion here: in_transit is closed by the driver's own arrival
-    # submission (advance_in_transit) at its own sequence position, so the ordinary
-    # ordering rule correctly blocks unloading on a still-PENDING in_transit. A driver
-    # who cannot submit it is recovered via the dispatcher's in_transit override.
+    # No phase-type exclusion here. IN_TRANSIT used to be skipped, and had to be: since it
+    # stopped auto-completing on departure it stayed PENDING for the whole drive at a LOWER
+    # sequence than the arrival phase, so gating on it made advance_unloading unreachable —
+    # the call was rejected here, hundreds of lines before the branch that closed the row.
+    # The trip could never leave the driving leg.
+    #
+    # The exclusion went away with its cause (2026-08-09): in_transit is now closed by the
+    # driver's own arrival submission (advance_in_transit), at its own sequence position,
+    # so the ordinary ordering rule covers it and a PENDING in_transit correctly blocks an
+    # unloading — an arrival that was never attested to is exactly the gap this platform
+    # exists to surface. A driver who cannot submit it (dead phone) is recovered by the
+    # dispatcher's in_transit override, which resolves the row through the normal path.
     lower_result = await db.execute(
         select(PhaseEvent.status).where(
             PhaseEvent.trip_id == trip_id,
@@ -227,11 +303,15 @@ async def _gate_and_load(
         )
     )
     if any(not _is_resolved(PhaseStatus(status)) for (status,) in lower_result.all()):
-        # An unresolved earlier phase is the real blocker, not trip.status.
+        # trip.status is usually just ACTIVE/CREATED here — it isn't the real
+        # blocker, an unresolved earlier phase is, so the message says that
+        # instead of misleadingly implying trip.status caused the 409.
         raise PhaseSequenceError("an earlier phase in the plan is still unresolved", phase_label)
 
-    # AFTER the _is_resolved replay short-circuit above: a resent offline-queue entry
-    # for an already-successful completion must return current state, not 409.
+    # AFTER the _is_resolved replay short-circuit above, never before it. A resent
+    # offline-queue entry for an already-successful completion must return current
+    # state, not 409 — otherwise the driver app's queue never drains. This ordering
+    # is covered by test_an_idempotent_replay_of_a_completed_phase_does_not_409.
     if event.trip_stop_id is not None:
         gate = await blocked_on_by_stop(db, trip_id=trip_id)
         if gate.get((PhaseType(event.phase_type), event.trip_stop_id)) is not None:
@@ -241,11 +321,12 @@ async def _gate_and_load(
 
 
 async def recompute_position(db: AsyncSession, trip: Trip) -> None:
-    """Recompute trip.current_phase/current_stop from the ledger. Public because
-    create_trip must seed the cache the moment the plan exists.
+    """Steps 8-9 of parent §2.4. Public because create_trip must seed the cache the
+    moment the plan exists (U4) — before this, a freshly created trip reported
+    current_phase = NULL until its first advance.
 
-    trip_stop_id is a FK, not the sequence int the cache wants — hence the join to
-    TripStop.sequence rather than a plain PhaseEvent-only query.
+    trip_stop_id is a FK, not the sequence int D6 wants cached — the join to
+    TripStop.sequence is why this can't be a plain PhaseEvent-only query.
     """
     result = await db.execute(
         select(PhaseEvent.phase_type, PhaseEvent.status, TripStop.sequence)
@@ -265,14 +346,23 @@ async def recompute_position(db: AsyncSession, trip: Trip) -> None:
 
 
 async def current_phase_event(db: AsyncSession, trip_id: uuid.UUID) -> PhaseEvent | None:
-    """The phase row a trip is sitting on right now — same ledger walk as
-    recompute_position, but returns the row itself instead of caching it onto the trip.
+    """The phase row a trip is sitting on right now — the same ledger walk
+    recompute_position does, returning the row itself instead of caching its type and
+    stop onto the trip.
 
-    Exists so an event outside a phase completion (a panic hold, a breakdown) can
-    still be tagged with the phase it happened during; driver-raised exceptions have
-    no `event` in hand otherwise. Falls back to the highest-sequence row once every
-    phase is resolved. Resolved by sequence_number, never phase_type, since a
-    cross-dock plan carries one in_transit row per leg.
+    Exists so an event that happens OUTSIDE a phase completion — a panic hold, a
+    breakdown — can still be tagged with the phase it happened during. Every
+    TripException this module writes already carries phase_event_id because it has an
+    `event` in hand; the driver-raised ones (exception_service) have no such handle and
+    were landing untagged, which pushed placement onto the dispatcher's render-time
+    fallback and let an exception appear to move between phases as the trip advanced.
+
+    Falls back to the highest-sequence row once every phase is resolved: on a closed
+    trip nothing is unresolved, and confirmation is genuinely where the trip is — that
+    is placement, not a guess. Returns None only for a trip with no plan at all.
+
+    Resolved by sequence_number, never by matching on phase_type: a cross-dock plan
+    carries one in_transit row per leg and only the ordering identifies the right one.
     """
     result = await db.execute(
         select(PhaseEvent)
@@ -292,22 +382,25 @@ async def anchor_phase_event(
 ) -> bool:
     """Load a phase event by id and anchor it. Returns whether a receipt was written.
 
-    The entry point tasks/blockchain.py re-enters this module through, so the
-    anchoring contract stays defined here rather than duplicated in a worker.
+    The entry point tasks/blockchain.py re-enters this module through, so the anchoring
+    contract (canonical payload in, fail-open on Hedera trouble) stays defined here
+    rather than being duplicated in a worker.
     """
     result = await db.execute(
         select(PhaseEvent).where(PhaseEvent.id == phase_event_id).with_for_update()
     )
     event = result.scalar_one_or_none()
     if event is None:
-        # Should be impossible: dispatch only happens after the row's transaction commits.
+        # Nothing to anchor and nothing to retry — the row a receipt was owed against is
+        # gone. Loud, because it should be impossible: the dispatch only happens after
+        # the transaction that wrote this row has committed.
         logger.error("Anchor requested for unknown phase_event_id=%s", phase_event_id)
         return False
 
     event.updated_at = datetime.now(UTC)
 
-    # Celery delivery is at-least-once; never submit a second HCS message once the
-    # first worker linked its receipt.
+    # Celery delivery is at-least-once. Serialize duplicate workers on this row and
+    # never submit a second HCS message once the first worker linked its receipt.
     if event.blockchain_receipt_id is not None:
         event.anchor_status = AnchorStatus.ANCHORED
         return True
@@ -331,8 +424,9 @@ async def anchor_phase_event(
 async def recover_phase_anchor(db: AsyncSession, *, due_before: datetime) -> bool | None:
     """Attempt one overdue receipt; None means no eligible unlocked row remains.
 
-    SKIP LOCKED prevents two recovery workers waiting on the same phase; updated_at
-    rotates failures to the back of the queue instead of starving newer debts.
+    Each attempt gets its own transaction in the task. SKIP LOCKED prevents two
+    recovery workers from waiting on the same phase, and updated_at rotates failures
+    to the back of the queue instead of starving newer debts.
     """
     from app.orchestration.verification_service import reconstruct_pending_phase_payload
 
@@ -368,12 +462,23 @@ def _dispatch_anchor(
 ) -> None:
     """Queue this event's anchor for the worker, AFTER this request's transaction commits.
 
-    Fires on after_commit, never before: the worker opens its own session, so a task
-    dispatched mid-transaction could find the row not yet committed. If the broker is
-    unreachable, schedules an immediate in-process fallback instead.
+    Anchoring moved off the request path because a Hedera submit takes ~4-6s and the
+    driver was holding a swipe control for all of it. The phase is evidence the moment it
+    is written; the receipt is a separate fact that lands shortly after, which is exactly
+    what anchor_status (PENDING -> ANCHORED/FAILED) and the driver app's "anchoring in
+    progress" state already describe.
+
+    Two things make this safe rather than merely faster:
+
+    * It fires on after_commit, never before. The worker opens its OWN session, so a task
+      dispatched mid-transaction could look for a phase_event row that isn't committed yet
+      and find nothing.
+    * If the broker cannot be reached, it schedules an immediate in-process fallback.
+      This preserves the anchor attempt without turning the API event loop into a
+      blocking Hedera worker.
     """
     # Imported at call time: tasks/blockchain.py imports this module back, and Celery's
-    # own import is heavy enough to keep out of the request path's cold start.
+    # own import is heavy enough to be worth keeping out of the request path's cold start.
     from app.tasks.blockchain import anchor_phase_event_task
 
     event_id = event.id
@@ -398,8 +503,8 @@ def _dispatch_anchor(
     def _send(_session: Any) -> None:
         _retain_anchor_task(asyncio.get_running_loop().create_task(_publish()), event_id)
 
-    # sync_session: SQLAlchemy's event system is synchronous; after_commit is the
-    # only hook that fires once this request's write is durable.
+    # sync_session: SQLAlchemy's event system is synchronous, and after_commit is the
+    # only hook that fires once this request's write is actually durable.
     event_module.listens_for(db.sync_session, "after_commit", once=True)(_send)
 
 
@@ -409,8 +514,9 @@ def _schedule_anchor_after_dispatch_failure(
 ) -> None:
     """Start a last-resort in-process anchor when the broker is unreachable.
 
-    Runs on the existing server loop, using its own session, to avoid an illegal
-    nested asyncio.run() while still not blocking the request on Hedera.
+    The coroutine uses its own session because the request transaction has committed.
+    Scheduling it on the existing server loop avoids both illegal nested asyncio.run()
+    calls and blocking every request while Hedera responds.
     """
     from app.tasks.blockchain import _anchor
 
@@ -449,14 +555,23 @@ async def _anchor_or_fail_open(
     db: AsyncSession, *, event: PhaseEvent,
     canonical_payload: dict[str, Any], receipt_type: BlockchainReceiptType,
 ) -> None:
-    """Anchor a phase event to Hedera without ever blocking phase completion.
+    """Anchor a phase event to Hedera without ever blocking phase completion (D7).
 
-    subject_id/trip_id are derived from `event` rather than taken as separate
-    parameters, so a future caller can't anchor one subject while stamping the
-    receipt onto a mismatched event. Unlike create_trip's anchor, which stays
-    fail-closed with no committed trip to salvage, a phase event already represents
-    evidence that happened — a failed anchor is recorded as a retry-owed debt
-    (`anchor_status = FAILED`) rather than raised.
+    subject_id/trip_id are deliberately not separate parameters — both are always
+    event.id/event.trip_id at every call site, and taking them independently would
+    let a future caller anchor one subject while stamping the receipt onto a
+    different, mismatched event. Deriving them from `event` makes that impossible.
+
+    Unlike P0's (create_trip's) anchor, which must stay fail-closed because there
+    is no committed trip yet to salvage, a phase event already represents evidence
+    that genuinely happened — driver custody didn't pause because Hedera was slow.
+    A failed anchor is recorded as a retry-owed debt (`anchor_status = FAILED`)
+    rather than raised, so the caller can still flip the phase to COMPLETED.
+
+    Also the first place in this module that ever sets `anchor_status` post-creation
+    (task 2.1's plan generator only ever set it to PENDING) — ANCHORED on success,
+    FAILED on failure, matching D4's contract that `anchor_status` is the one place
+    to check whether a receipt is actually owed.
     """
     try:
         receipt = await anchor_subject(
@@ -474,7 +589,9 @@ async def _anchor_or_fail_open(
     event.anchor_status = AnchorStatus.ANCHORED
 
 
-# Below this, a "0.3 km" reading would understate a 300 m gap as rounding noise.
+# Where a rendered separation crosses from metres to kilometres. A gap under a
+# kilometre printed as "0.3 km" reads as rounding noise, when 300 m is the
+# difference between standing at the gate and standing across the yard.
 _SEPARATION_KM_THRESHOLD_METRES = 1000
 
 
@@ -486,9 +603,13 @@ def _format_separation(metres: float) -> str:
 
 
 def _phone_tracker_separation_metres(event: PhaseEvent) -> float | None:
-    """How far apart the two independent position sources were, or None if one
-    recorded no fix (never conflated with 0.0, a real "they agreed exactly" claim).
-    Mirrors separationMetres() in the dispatcher's lib/phase/geo.ts.
+    """How far apart the two independent position sources were, or None.
+
+    None means "not measurable" — one of the two sources recorded no fix — and is
+    never conflated with 0.0, which is a real and opposite claim: the phone and the
+    tracker agreed exactly. Mirrors separationMetres() in the dispatcher's
+    lib/phase/geo.ts, which computes the same number from the same two columns for
+    the same card.
     """
     if (
         event.driver_phone_lat is None or event.driver_phone_lng is None
@@ -506,21 +627,40 @@ async def _raise_position_disagreement_if_unrecorded(
 ) -> None:
     """Record GPS_MISMATCH when Pulsit measured the vehicle away from this stop (FP-145).
 
-    Consumes what corroboration_service wrote moments earlier in this same request;
-    computes nothing about geofences itself. `is False`, deliberately, and never
-    `not confirmed`: NULL means "could not check" (dark tracker, no coordinates),
-    and `not None` would flag every driver who drove through a coverage dead zone.
+    Consumes what FP-143's corroboration_service wrote moments earlier in this same
+    request; computes nothing about geofences itself.
 
-    Lives here rather than exception_service, which stamps ExceptionSource.DRIVER
-    and would misfile a system measurement as the driver's own report; every other
-    system-detected exception is written here for the same reason, and
-    exception_service imports this module, so the reverse import would be circular.
+    ── ONLY FALSE RAISES. NEVER NULL. ────────────────────────────────────────────
+    `is False`, deliberately, and never `not confirmed`. FP-143's three-state column
+    reads NULL for "we could not check" — an unreachable tracker, a dark unit, a
+    precinct with no coordinates — and `not None` is True, so the looser test would
+    put a position disagreement against the name of every driver who drove through a
+    coverage dead zone on the N3. FALSE is a measurement; NULL is an admission that
+    no measurement exists. This one line is what keeps them apart.
 
-    The existence check below is not redundant with _gate_and_load's replay
-    short-circuit — evidence writes shouldn't depend on another function's
-    invariant. Not filtered on `resolved`: an actioned finding must not reappear
-    when the driver app's queue flushes again. Never raises, matching
-    _anchor_or_fail_open's fail-open stance.
+    ── Why this lives here and not in exception_service ──────────────────────────
+    exception_service owns DRIVER-raised exceptions: its entry point asserts the
+    caller is the trip's assigned driver and stamps ExceptionSource.DRIVER on the
+    row. Routing a system measurement through it would file the finding as something
+    the driver reported about themselves, which is precisely backwards — the value of
+    this exception is that a source the driver cannot influence produced it. Every
+    other system-detected exception (parcel count, seal mismatch, seal unverified,
+    waybill count) is written here, in this module, with source=SYSTEM; this follows
+    that path rather than inventing a second one. exception_service also imports this
+    module, so the reverse import would be circular.
+
+    ── Idempotent against the phase event ────────────────────────────────────────
+    _gate_and_load already short-circuits a replayed completion before any wrapper
+    body runs, so a re-synced offline handshake should never reach here twice. The
+    existence check is kept anyway, for the same reason FP-143 re-checks a fix's
+    timestamp it has been promised: evidence writes should not depend on another
+    function's invariant holding. One exception per phase event, and the check is
+    NOT filtered on `resolved` — a dispatcher who has already actioned this finding
+    must not have a duplicate reappear when the driver app flushes its queue again.
+
+    Never raises. A handshake is evidence that already physically happened; a fault
+    while annotating it must not undo it. Same fail-open stance as
+    _anchor_or_fail_open and record_phase_corroboration.
     """
     if event.pulsit_geofence_confirmed is not False:
         return
@@ -552,18 +692,32 @@ async def _raise_position_disagreement_if_unrecorded(
         db.add(TripException(
             trip_id=trip.id,
             phase_event_id=event.id,
+            # Scoped to the stop the phase is anchored to, as every other
+            # system-detected exception in this module already does.
             trip_stop_id=event.trip_stop_id,
             exception_type=ExceptionType.GPS_MISMATCH,
             source=ExceptionSource.SYSTEM,
-            # WARNING, not CRITICAL: a geofence measurement has real false-positive
-            # modes (tracker drift, a stale fix, a legitimately parked vehicle), unlike
-            # CRITICAL's no-benign-reading findings. Matches PARCEL_COUNT_MISMATCH.
+            # WARNING, not CRITICAL, and the choice is the copy rule in code form.
+            # CRITICAL is this codebase's alarm tier: a seal mismatch, a panic button,
+            # a seal broken in transit — findings with no benign reading. A single
+            # geofence measurement has several: tracker drift, a stale cached fix, a
+            # vehicle legitimately parked outside the fence while the driver walks in
+            # to the gate office, or a precinct row whose coordinates or radius are
+            # wrong. Putting a class of finding with real false-positive modes into
+            # the alarm lane is how a dispatcher learns to ignore the alarm lane.
+            # WARNING is also what the comparable measurement disagreement
+            # (PARCEL_COUNT_MISMATCH) already uses. The separation is reported; the
+            # dispatcher decides what it means.
             severity=ExceptionSeverity.WARNING,
             review_status=_initial_review_status(ExceptionSeverity.WARNING),
             description=description,
-            # The tracker's fix has no column here: both positions already live on
-            # the phase_events row this exception points at, so copying them in
-            # would risk drift. Recomputed at render time instead.
+            # The driver's own fix, which is what this column means on every other
+            # writer. The tracker's fix has no column here and needs none: both
+            # positions live on the phase_events row this exception points at, and
+            # copying them into the exception would create a second version of the
+            # same coordinates that could drift out of step with the first. The
+            # separation is likewise recomputed at render time from those two
+            # columns, per FP-143's note — no derived value is persisted.
             gps_lat=event.driver_phone_lat,
             gps_lng=event.driver_phone_lng,
         ))
@@ -574,6 +728,10 @@ async def _raise_position_disagreement_if_unrecorded(
             "not measurable" if separation is None else f"{separation:.1f}m",
         )
 
+        # FP-147's invariant: a system-detected exception that tells no one leaves the
+        # dispatcher's screen showing a trip that no longer matches the record. WARNING
+        # to match the row written above — event_severity widens the same value rather
+        # than restating it, so the toast band cannot drift from the stored severity.
         # Inside the try: enqueue_event only appends to a session-local buffer, but if
         # it ever raises, a handshake the driver already completed must not 400.
         enqueue_event(
@@ -585,7 +743,9 @@ async def _raise_position_disagreement_if_unrecorded(
         )
 
     except Exception:
-        # Deliberate broad catch: the driver already did the thing being recorded.
+        # Deliberate broad catch, logged with a traceback per the project's error
+        # rules, not a silent swallow. The driver is standing at a gate and has
+        # already done the thing being recorded.
         logger.exception(
             "Could not record a position disagreement for phase_event_id=%s — the "
             "handshake stands and the corroboration columns still carry the finding",
@@ -595,12 +755,21 @@ async def _raise_position_disagreement_if_unrecorded(
 
 async def _finish_phase(
     db: AsyncSession, *, trip: Trip, event: PhaseEvent, idempotency_key: str,
+    horse_fix: PulsitFix | None = None, driver_accuracy_metres: float | None = None,
 ) -> TripDetailResponse:
+    """`horse_fix`/`driver_accuracy_metres` (Task 5): the SAME Pulsit fix each
+    wrapper's own call to corroboration_service.record_phase_corroboration already
+    obtained a few lines earlier, and the request's own driver-claimed phone
+    accuracy — both threaded through as keyword-only, defaulted, arguments rather
+    than positional ones, so every existing call site not yet touched by this task
+    keeps compiling unchanged. See action_location_service.build_phase_assessment's
+    own docstring for why this function does not re-fetch the fix itself (R12)."""
     event.idempotency_key = idempotency_key
     event.completed_at = event.completed_at or datetime.now(UTC)
 
     if event.phase_type == PhaseType.IN_TRANSIT and event.status == PhaseStatus.COMPLETED:
-        # Only the final driving leg's completion attests trip-wide arrival.
+        # The trip-wide arrival is the final driving leg's evidence timestamp.
+        # Intermediate stops and dispatcher overrides do not attest final arrival.
         later_leg = await db.execute(
             select(PhaseEvent.id).where(
                 PhaseEvent.trip_id == trip.id,
@@ -611,16 +780,50 @@ async def _finish_phase(
         if later_leg.scalar_one_or_none() is None:
             trip.actual_arrival_at = event.completed_at
 
-    # Runs after each wrapper's own record_phase_corroboration call, so the verdict
-    # read here is the one this handshake just produced; before the flush, so the
+    # FP-145. Placed on the one path every handshake converges on, and AFTER each
+    # wrapper's own call to record_phase_corroboration, so the verdict being read
+    # here is the one this handshake just produced. Before the flush below, so the
     # finding is already in the TripDetailResponse this request returns.
     await _raise_position_disagreement_if_unrecorded(db, trip=trip, event=event)
+
+    # Task 5. Independent of the GPS_MISMATCH check above — that asks "does the
+    # TRACKER agree with the PRECINCT?"; this asks "does the DRIVER'S OWN PHONE agree
+    # with the TRACKER?" — two different pairs of things that can each fail alone, or
+    # together, on the same handshake. evaluated_at is stamped fresh HERE, not reused
+    # from event.completed_at, because it is the instant the SERVER is judging the
+    # separation, not the instant the driver's phone claims to have submitted it (the
+    # skew between those two is exactly what the assessment's own reasons can surface).
+    #
+    # Fail-open, for exactly the reason record_phase_corroboration is: the driver has
+    # already physically performed this handshake, and the assessment is a derived
+    # comparison of telemetry, not the evidence itself. If assembling or recording it
+    # fails for any reason, the column stays NULL — which the schema defines as "not
+    # assessed" — the traceback is logged, and the completion still lands. A 500 here
+    # would roll back a swipe the offline queue could then only ever replay into the
+    # same failure. The separation finding uses its own SAVEPOINT for its insert, so
+    # a failure inside it leaves the outer transaction usable for the flush below.
+    evaluated_at = datetime.now(UTC)
+    try:
+        assessment = await action_location_service.build_phase_assessment(
+            db, trip=trip, event=event, horse_fix=horse_fix,
+            driver_accuracy_metres=driver_accuracy_metres, evaluated_at=evaluated_at,
+        )
+        event.action_location_assessment = assessment.model_dump(mode="json")
+        await action_location_service.record_separation_finding(
+            db, trip=trip, phase_event_id=event.id, checkpoint_id=None, assessment=assessment,
+        )
+    except Exception:
+        logger.exception(
+            "Action-location assessment failed for phase_event_id=%s — handshake continues, "
+            "assessment recorded as not assessed", event.id,
+        )
 
     await recompute_position(db, trip)
     await db.flush()
 
-    # The completion may also have CLOSED the trip — distinguish so the UI raises
-    # the right signal. Published on commit, never here; a thin ping, no trip data.
+    # Notify dispatchers watching this trip. The completion may also have CLOSED the trip
+    # (advance_confirmation, phase_service.py) — distinguish the two so the UI raises the
+    # right signal. Published on commit, never here (D9); a thin ping, no trip data.
     kind = RealtimeKind.TRIP_CLOSED if TripStatus(trip.status) == TripStatus.CLOSED else RealtimeKind.PHASE_COMPLETED
     enqueue_event(db, trip.operator_organization_id, TripEvent(id=trip.id, kind=kind))
 
@@ -632,26 +835,33 @@ async def override_phase(
     operator_organization_id: uuid.UUID, user_id: uuid.UUID, note: str,
 ) -> TripDetailResponse:
     """Dispatcher-only terminal exit for ONE phase the driver physically cannot
-    complete — lost phone, left the depot, device wiped. Without this, a single
-    unreachable phase blocked every later phase forever.
+    complete — lost phone, left the depot, device wiped, bound to a device that
+    is gone (task 6.1). Without this, a single unreachable phase blocked every
+    later phase forever (_gate_and_load's lower-sequence gate has no other exit).
 
-    Lives here, not in trip_admin.py: it writes a PhaseEvent and calls
-    recompute_position, both owned by this module.
+    Lives here, not in trip_admin.py: it writes a PhaseEvent and must call
+    recompute_position, both of which this module owns.
 
-    Raises ResourceNotFoundError (404) if the trip or phase_event doesn't exist/
-    belong here. Raises TripStateError (409) on a terminal trip, and
-    PhaseSequenceError (409) if the row is already COMPLETED.
+    Raises ResourceNotFoundError (404) if the trip doesn't exist/belongs to
+    another org, or the phase_event doesn't belong to this trip. Raises
+    TripStateError (409) on a trip that has already reached a terminal state, and
+    PhaseSequenceError (409) if the row is already COMPLETED — a resolved row
+    needs no override, and completed evidence must not be rewritable.
     """
     trip = await _load_trip_for_dispatcher(
         db, trip_id=trip_id, operator_organization_id=operator_organization_id,
     )
 
-    # Load-bearing, not defensive: cancel_trip leaves every phase row PENDING, so a
-    # CANCELLED trip's rows still look overridable, and recompute_position
-    # unconditionally sets CLOSED once nothing is unresolved — overriding the last
-    # pending row would silently overwrite the CANCELLED fact. override_phase
-    # doesn't go through _gate_and_load's driver-scoped status check, so it needs
-    # this one of its own.
+    # A terminal trip is not overridable, and this guard is load-bearing rather
+    # than defensive. cancel_trip deliberately leaves every phase row PENDING —
+    # that is the honest record of a plan abandoned partway through — so on a
+    # CANCELLED trip every row still looks overridable. recompute_position()
+    # below ends with an UNCONDITIONAL trip.status = CLOSED once nothing is
+    # unresolved, so overriding the last pending row of a cancelled trip would
+    # silently rewrite CANCELLED as CLOSED and destroy the terminal fact the
+    # cancellation recorded. complete_phase never hits this because it goes
+    # through _gate_and_load, which already checks trip status; override_phase
+    # deliberately does not use that driver-scoped gate, so it needs its own.
     if trip.status in (TripStatus.CLOSED, TripStatus.CANCELLED):
         raise TripStateError(
             current_status=TripStatus(trip.status).value,
@@ -661,21 +871,29 @@ async def override_phase(
     event = await _load_phase_event(db, trip_id=trip_id, phase_event_id=phase_event_id)
 
     if event.status not in (PhaseStatus.PENDING, PhaseStatus.IN_PROGRESS):
-        # Matches PhaseSequenceError's existing "cannot complete X: reason" vocabulary.
+        # Matches PhaseSequenceError's existing vocabulary ("cannot complete X:
+        # reason") rather than inventing a new exception type for one more state
+        # check — the reason clause just names the row's real status.
         raise PhaseSequenceError(f"phase status is '{PhaseStatus(event.status).value}'", "Override")
 
     event.status = PhaseStatus.OVERRIDDEN
     event.dispatcher_override_user_id = user_id
     event.dispatcher_override_note = note
-    # Dated even though not completed: an undated row in the dispatcher's
-    # chronological timeline is a worse lie than a dated one.
+    # D4: dated even though not completed. `status` already carries the "this
+    # didn't really happen" truth — an undated row in the dispatcher's
+    # chronological timeline (which reads completed_at for its card timestamp)
+    # is a worse lie than a dated one. Mirrors _finish_phase's own
+    # `event.completed_at = event.completed_at or now()` above.
     event.completed_at = event.completed_at or datetime.now(UTC)
 
-    # anchor_status is deliberately left UNTOUCHED: PENDING honestly reads "a
-    # receipt was owed and never landed". NOT_REQUIRED/FAILED would both claim
-    # something about the anchor attempt that isn't true.
+    # D3: anchor_status is deliberately left UNTOUCHED. If this is a departure,
+    # no seal evidence exists to anchor — leaving PENDING honestly reads "a
+    # receipt was owed here and never landed" (which the dispatcher's
+    # anchorTally surfaces as owed > anchored). Setting NOT_REQUIRED would
+    # launder a real gap in the evidence chain; setting FAILED would claim an
+    # anchor was attempted. Neither is true, so neither is written.
 
-    # The human intervention lands on the ledger, not just in an audit column.
+    # D5: the human intervention lands on the ledger, not just in an audit column.
     db.add(TripException(
         trip_id=trip_id, phase_event_id=event.id,
         exception_type=ExceptionType.DISPATCHER_NOTE, source=ExceptionSource.DISPATCHER,
@@ -684,7 +902,9 @@ async def override_phase(
         description=note,
     ))
 
-    # May legitimately CLOSE the trip if this was the last unresolved row.
+    # May legitimately CLOSE the trip if this was the last unresolved row — that
+    # is correct and must not be special-cased; _is_resolved already treats
+    # OVERRIDDEN as resolved for gating purposes.
     await recompute_position(db, trip)
     await db.flush()
 
@@ -696,22 +916,26 @@ async def override_phase(
         ),
     )
 
-    # Always PHASE_COMPLETED for an override, unlike _finish_phase's conditional kind.
+    # D9: always PHASE_COMPLETED for an override — the plan position moved, same
+    # refetch as any completion (unlike _finish_phase, this is not conditional on
+    # the trip closing; that distinction belongs to cancel_trip's TRIP_CLOSED).
     enqueue_event(db, trip.operator_organization_id, TripEvent(id=trip.id, kind=RealtimeKind.PHASE_COMPLETED))
 
     return await get_trip_detail(db, trip_id=trip.id, operator_organization_id=trip.operator_organization_id)
 
 
-# Day-month-year with a full month name: unambiguous, never confusable with US
-# month-first ordering.
+# Display format for the date a driver is told to come back on. Day-month-year with a
+# full month name: unambiguous to a South African reader, and never confusable with the
+# US month-first ordering the way a numeric date would be.
 _SCHEDULED_DATE_FORMAT = "%d %B %Y"
 
 
 def operating_day(moment: datetime) -> date:
     """The calendar date `moment` falls on in the operator's local timezone.
 
-    A naive datetime is read as UTC rather than left to .astimezone()'s default,
-    which would interpret it as the server's local time.
+    A naive datetime is read as UTC rather than left to .astimezone()'s default, which
+    would interpret it as the SERVER's local time — making the same trip activatable or
+    not depending on which machine happened to answer the request.
     """
     if moment.tzinfo is None:
         moment = moment.replace(tzinfo=UTC)
@@ -722,8 +946,10 @@ def operating_day(moment: datetime) -> date:
 def is_before_scheduled_day(now: datetime, scheduled: datetime) -> bool:
     """True when `now` falls on an EARLIER operating day than `scheduled`.
 
-    Strictly earlier, so any time on the scheduled day passes. Activating LATE is
-    never blocked either: a delayed trip still needs its evidence captured.
+    Strictly earlier, so any time on the scheduled day passes — a 04:00 start against an
+    08:00 slot is a driver ahead of schedule, not a driver on the wrong day. Activating
+    LATE is never blocked either: a delayed trip still needs its evidence captured, and
+    refusing it would only push the driver to work around the system entirely.
     """
     return operating_day(now) < operating_day(scheduled)
 
@@ -731,8 +957,10 @@ def is_before_scheduled_day(now: datetime, scheduled: datetime) -> bool:
 async def _scheduled_departure(db: AsyncSession, trip: Trip) -> datetime | None:
     """When the trip is due to start: the trip-level plan, else its first booked stop.
 
-    The fallback exists because planned_departure_at is nullable and a multi-stop
-    trip can carry its timing entirely on the stops.
+    The fallback exists because planned_departure_at is nullable and a multi-stop trip
+    can carry its timing entirely on the stops. Ordered by stop sequence — the earliest
+    stop that actually has a slot is the one activation is measured against, since
+    activation happens at the origin gate.
     """
     if trip.planned_departure_at is not None:
         return trip.planned_departure_at
@@ -749,15 +977,20 @@ async def _scheduled_departure(db: AsyncSession, trip: Trip) -> datetime | None:
 async def _reject_if_not_due(db: AsyncSession, trip: Trip) -> None:
     """Block activation of a trip before the day it is scheduled to run.
 
-    Enforced here and NOT in _gate_and_load, which runs for every phase: a trip
-    running overnight would otherwise have its later phases wrongly rejected the
-    following day. Called after _gate_and_load's idempotent-replay short-circuit,
-    so a resent offline activation never starts failing "too early".
+    Deliberately enforced here and NOT in _gate_and_load: that gate runs for every phase,
+    and a trip that legitimately runs overnight would have its departure/unloading phases
+    rejected the following day. Only the act of STARTING a trip is date-sensitive.
+
+    Also deliberately after _gate_and_load in the caller, so an idempotent replay of an
+    already-completed activation still short-circuits to 200 and never begins failing
+    "too early" — a queued offline submission resent days later must not be rejected for
+    the very schedule it already satisfied.
     """
     scheduled = await _scheduled_departure(db, trip)
     if scheduled is None:
-        # Treated as not-yet-due rather than always-allowed: an unscheduled trip
-        # is a dispatcher data gap, not a free pass.
+        # No schedule at all is treated as not-yet-due rather than always-allowed: an
+        # unscheduled trip is a dispatcher data gap, and letting it activate would mean
+        # the rule silently does nothing on exactly the records least under control.
         raise PhaseTooEarlyError(None, "Activation")
 
     if is_before_scheduled_day(datetime.now(UTC), scheduled):
@@ -770,7 +1003,8 @@ async def _other_trips_for_driver(db: AsyncSession, trip: Trip) -> list[Trip]:
     """Every other non-terminal trip assigned to this trip's driver.
 
     Terminal trips are excluded because they cannot obstruct anything — a closed or
-    cancelled trip is history.
+    cancelled trip is history, and counting it would mean a driver's very first completed
+    trip permanently blocked their second.
     """
     result = await db.execute(
         select(Trip).where(
@@ -785,9 +1019,11 @@ async def _other_trips_for_driver(db: AsyncSession, trip: Trip) -> list[Trip]:
 def _reject_if_another_trip_underway(others: list[Trip]) -> None:
     """One trip at a time: a trip already underway blocks starting any other.
 
-    Without this, two trips could claim the same driver, horse and trailers at the
-    same moment, making the custody chain of both unprovable. ACTIVE and
-    EXCEPTION_HOLD both count: a held trip is still the trip the driver is on.
+    Nothing at trip creation stops a dispatcher assigning a driver two overlapping trips,
+    and until now nothing stopped the driver activating both — leaving two trips claiming
+    the same driver, horse and trailers at the same moment, which makes the custody chain
+    of both unprovable. ACTIVE and EXCEPTION_HOLD both count: a held trip is still the
+    trip the driver is on, it is merely blocked from advancing.
     """
     for other in others:
         if other.status in (TripStatus.ACTIVE, TripStatus.EXCEPTION_HOLD):
@@ -801,9 +1037,13 @@ async def _reject_if_an_earlier_trip_is_due(
 ) -> None:
     """Within one operating day, trips must be started in departure order.
 
-    Scoped to the SAME operating day: widening this across days would let a trip
-    that was never run last week permanently block today's work. A trip with no
-    resolvable schedule is skipped, since _reject_if_not_due rejects it outright.
+    Scoped to the SAME operating day on purpose. Trips on other days are already governed
+    by _reject_if_not_due, and widening this rule across days would let a trip that was
+    never run last week permanently block today's work until a dispatcher cancelled it.
+
+    A trip with no resolvable schedule is skipped rather than assumed earliest: it cannot
+    be activated at all (_reject_if_not_due rejects it outright), so it has no business
+    blocking a properly scheduled trip on its way through.
     """
     scheduled = await _scheduled_departure(db, trip)
     if scheduled is None:
@@ -832,27 +1072,42 @@ async def _reject_if_an_earlier_trip_is_due(
 def _record_driver_position(event: PhaseEvent, payload: PhaseCompleteRequest) -> None:
     """Stamp the driver's phone fix and capture instant onto the phase event.
 
-    Called by every advance_*: the PWA takes a fix silently as the driver swipes to
-    confirm, so every phase event can say where it was completed.
+    Called by every advance_*, not just activation: the PWA no longer has manual
+    "Capture GPS Location" steps, it takes a fix silently as the driver swipes to
+    confirm, so every phase event can now say where it was completed.
 
-    Only writes when a value is present, so a replayed offline submission never
-    erases what an earlier attempt already stored. The GPS pair and
-    driver_captured_at are gated independently: a phase can carry a capture time
-    with no GPS fix (denied permission) or vice versa.
+    Only writes when a value is present. A None must never overwrite something already
+    stored by an earlier attempt — a replayed offline submission whose original capture
+    succeeded would otherwise erase it on retry. The GPS pair and driver_captured_at
+    (task 0A) are gated independently of each other: a phase can carry a capture time
+    with no GPS fix (a denied permission) or an older client's GPS fix with no capture
+    time at all, and neither absence should suppress the other.
 
     POPIA: these columns stay in Postgres. Every canonical payload builder in this
-    module is an explicit whitelist, so nothing written here reaches a Hedera hash.
+    module is an explicit whitelist, so nothing written here can reach a Hedera hash.
     """
     if payload.driver_phone_lat is not None and payload.driver_phone_lng is not None:
-        # str() before Decimal: a float straight into Numeric(10, 7) carries binary
-        # rounding error into fixed point (-26.0942 stores as -26.0941999...).
+        # str() before Decimal: handing a float straight to a Numeric(10, 7) column
+        # carries the float's binary rounding error into fixed point (-26.0942 stores
+        # as -26.0941999...). The string form is the coordinate the phone actually
+        # reported.
         event.driver_phone_lat = Decimal(str(payload.driver_phone_lat))
         event.driver_phone_lng = Decimal(str(payload.driver_phone_lng))
 
-    # Never substituted with now() when absent — an invented capture instant would
-    # defeat corroboration_service's skew check.
+    # Task 0A: never substituted with completed_at or datetime.now(UTC) when absent —
+    # an invented capture instant would defeat the entire point of corroboration_
+    # service's skew check, which exists specifically to distrust a value this code
+    # made up.
     if payload.driver_captured_at is not None:
         event.driver_captured_at = payload.driver_captured_at
+
+    # A preview is advisory and non-writing; completion always assembles its own
+    # ActionLocationAssessment afterwards. Keep the driver's acknowledgement in its
+    # own columns so it cannot be mistaken for, or suppress, the measured result.
+    if payload.location_warning_acknowledged_at is not None:
+        event.location_warning_acknowledged_at = payload.location_warning_acknowledged_at
+    if payload.location_warning_reason is not None:
+        event.location_warning_reason = payload.location_warning_reason
 
 
 async def advance_activation(
@@ -869,22 +1124,32 @@ async def advance_activation(
 
     await _reject_if_not_due(db, trip)
 
-    # Both gates sit AFTER _gate_and_load's idempotent-replay short-circuit: a queued
-    # offline activation resent later must not fail a rule it already satisfied.
+    # Both gates sit AFTER _gate_and_load's idempotent-replay short-circuit, for the same
+    # reason _reject_if_not_due does: a queued offline activation resent later must not
+    # start failing on a rule it already satisfied when it was captured.
     others = await _other_trips_for_driver(db, trip)
     _reject_if_another_trip_underway(others)
     await _reject_if_an_earlier_trip_is_due(db, trip, others)
 
+    # Two sources, recorded together: the driver's phone says where the phone is,
+    # then Pulsit says where the vehicle is. The second is what makes the first
+    # corroborated rather than merely asserted. A feeder check — P1 is unanchored,
+    # and a Pulsit outage leaves the columns null ("could not check") rather than
+    # failing the handshake. See orchestration/corroboration_service.py.
     _record_driver_position(event, payload)
-    await corroboration_service.record_phase_corroboration(
+    horse_fix = await corroboration_service.record_phase_corroboration(
         db, trip=trip, event=event, driver_captured_at=payload.driver_captured_at,
     )
     event.status = PhaseStatus.COMPLETED
 
-    # ACTIVE is the coarse "trip is underway" state until CLOSED.
+    # First phase off CREATED. LEGACY per-handshake TripStatus values are gone
+    # (T6) — ACTIVE is the coarse "trip is underway" state until CLOSED.
     trip.status = TripStatus.ACTIVE
 
-    return await _finish_phase(db, trip=trip, event=event, idempotency_key=payload.idempotency_key)
+    return await _finish_phase(
+        db, trip=trip, event=event, idempotency_key=payload.idempotency_key,
+        horse_fix=horse_fix, driver_accuracy_metres=payload.driver_accuracy_metres,
+    )
 
 
 def compute_departure_canonical_payload_v1(
@@ -892,9 +1157,14 @@ def compute_departure_canonical_payload_v1(
 ) -> dict[str, str]:
     """Reproduce the legacy departure payload for pre-FP-154 receipts.
 
-    JSON-native (UUIDs stringified) so compute_payload_hash's plain json.dumps
-    never has to guess how to serialize a value. Excludes GPS/PII (POPIA) and
-    completed_at (datetime round-trip fragility on reconstruction).
+    JSON-native (UUIDs stringified explicitly) so compute_payload_hash's plain
+    json.dumps (no default=str fallback) never has to guess how to serialize a
+    value. Deliberately excludes GPS, photos, and artifact IDs — only hashes of
+    evidence belong on-chain, never GPS/PII (POPIA); completed_at is excluded
+    too, to avoid datetime round-trip fragility when verification reconstructs
+    this payload later. driver_visual_count is gone (T5/task 2.6): the count
+    stays on loading, unanchored, and departure has no reason to fetch a value
+    from a different PhaseEvent row just to anchor it.
     """
     return {
         "phase_event_id": str(phase_event_id),
@@ -937,24 +1207,29 @@ async def advance_loading(
     trip, event = gated
 
     _record_driver_position(event, payload)
-    await corroboration_service.record_phase_corroboration(
+    horse_fix = await corroboration_service.record_phase_corroboration(
         db, trip=trip, event=event, driver_captured_at=payload.driver_captured_at,
     )
 
-    # Optional evidence: a paperless warehouse has no linehaul sheet to hand the
-    # driver, and this must never block completion.
+    # Optional evidence: a warehouse that has already gone paperless has no linehaul
+    # sheet to hand the driver, and this must never block completion (schema docstring).
     if payload.linehaul_photo_artifact_id is not None:
         await _assert_artifacts_belong_to_trip(
             db, trip_id=trip_id, artifact_ids=(payload.linehaul_photo_artifact_id,),
         )
         event.linehaul_photo_artifact_id = payload.linehaul_photo_artifact_id
 
-    # The observed set, not a driver-entered number: the gate in _gate_and_load has
-    # already established the warehouse closed its session at this stop.
+    # The observed set, not a driver-entered number. The gate in _gate_and_load has
+    # already established that the warehouse closed its session at this stop, so these
+    # counts are final for this loading — which is what makes stamping the aggregate
+    # here safe under the "anchored payload contains only data that existed at close"
+    # rule (design §2.1). driver_visual_count is accepted on the payload (schema) but
+    # deliberately never read here — see LoadingCompleteRequest's docstring.
     #
-    # trip_stop_id is Optional on PhaseEvent (only TRIP_CREATION is ever NULL), so a
-    # LOADING row always carries one — narrowed explicitly since
-    # scan_service.load_consignments_at_stop requires a UUID.
+    # trip_stop_id is Optional on PhaseEvent (only TRIP_CREATION is ever NULL, per
+    # its own uq_phase_events_trip_stop_type comment) — a LOADING row always carries
+    # one, so the None branch is unreachable in practice. Narrowed explicitly rather
+    # than asserted, since scan_service.load_consignments_at_stop requires a UUID.
     consignments = (
         await scan_service.load_consignments_at_stop(
             db, trip_id=trip_id, trip_stop_id=event.trip_stop_id,
@@ -975,18 +1250,27 @@ async def advance_loading(
         expected_total += counts.expected
 
         if counts.scanned_out != counts.expected:
-            # BACKSTOP ONLY: scan_service._reconcile_consignment is the primary
-            # writer and already fired at ingest, naming the missing barcodes. This
-            # covers the one case it can't — a session closed with NOTHING scanned
-            # raises no events there at all — hence the presence check, not an
-            # unconditional add that would duplicate scan_service's row.
+            # BACKSTOP ONLY — scan_service._reconcile_consignment is the primary
+            # writer of this exception and it already fired at ingest, naming the
+            # missing barcodes. Raising unconditionally here would put TWO rows on
+            # the dispatcher's list for one short count: scan_service's dedup
+            # compares descriptions verbatim, so a differently-worded second row
+            # sails straight past it.
+            #
+            # The one case scan_service genuinely cannot cover: it guards on
+            # `if events and (missing or unexpected)`, so a session closed with
+            # NOTHING scanned at all raises nothing there — no events, no row. That
+            # is the most serious short count there is and it must not go unrecorded.
+            # Hence a presence check rather than an unconditional add.
             shortfall_recorded |= await _raise_scan_shortfall_if_unrecorded(
                 db, trip_id=trip_id, event=event, consignment=consignment,
                 scanned_out=counts.scanned_out, expected=counts.expected,
             )
 
     if shortfall_recorded:
-        # Only for rows this call actually wrote — a suppressed duplicate is not news.
+        # After the loop, and only for rows this call actually wrote — the helper
+        # suppresses duplicates of what scan_service already raised at ingest, and a
+        # suppressed duplicate is not news to the dispatcher.
         enqueue_event(
             db, trip.operator_organization_id,
             TripEvent(
@@ -995,19 +1279,25 @@ async def advance_loading(
             ),
         )
 
-    # None, not 0, when this stop has no consignments: a trip with no Parcel
-    # Perfect reference has no manifest baseline, and 0 would read as "nothing was
-    # loaded" rather than "nothing was declared".
+    # None, not 0, when this stop has no consignments at all: a trip created without
+    # a Parcel Perfect reference has no manifest baseline, and 0 would read as
+    # "nothing was loaded" rather than "nothing was declared". Same None-is-not-zero
+    # principle as the old _expected_parcel_count (removed by this task — advance_loading
+    # was its only caller).
     event.parcel_count_origin = scanned_out_total if consignments else None
 
-    # A short scan is recorded, never blocking — FreightProof records, it doesn't dispatch.
+    # A short scan is recorded, never blocking — FreightProof records what happened,
+    # it does not dispatch. Matches departure's and unloading's seal-mismatch precedent.
     event.status = (
         PhaseStatus.EXCEPTION
         if consignments and scanned_out_total != expected_total
         else PhaseStatus.COMPLETED
     )
 
-    return await _finish_phase(db, trip=trip, event=event, idempotency_key=payload.idempotency_key)
+    return await _finish_phase(
+        db, trip=trip, event=event, idempotency_key=payload.idempotency_key,
+        horse_fix=horse_fix, driver_accuracy_metres=payload.driver_accuracy_metres,
+    )
 
 
 async def _raise_scan_shortfall_if_unrecorded(
@@ -1016,12 +1306,16 @@ async def _raise_scan_shortfall_if_unrecorded(
 ) -> bool:
     """Record a scan-out shortfall only if scan_service has not already recorded one.
 
-    Returns True when a row was written, so the caller (which holds the Trip/org id
-    this helper doesn't) knows whether to publish a realtime event.
+    Returns True when a row was written, False when an existing unresolved one made
+    this a no-op. The caller needs the distinction to decide whether to publish a
+    realtime event: it holds the Trip (and so the org id) that this helper does not,
+    and a suppressed duplicate must not wake the dispatcher a second time.
 
-    Keyed on (consignment, stop, type, unresolved) rather than scan_service's own
-    description-string dedup, since the two writers word the same finding
-    differently and a text comparison would let both through.
+    Deliberately keyed on (consignment, stop, type, unresolved) rather than on the
+    description string scan_service's own dedup compares: the two writers word the
+    same finding differently, so a text comparison would let both through. The
+    question being asked here is "is this discrepancy already on the dispatcher's
+    list", and the answer must not depend on who phrased it.
     """
     existing = (await db.execute(
         select(TripException.id).where(
@@ -1051,9 +1345,13 @@ async def _raise_scan_shortfall_if_unrecorded(
 
 
 def _normalized_seal(seal: str) -> str:
-    # Deliberately NOT Optional: None means different things at different call
-    # sites (seal unknown vs. no guard re-entry), so callers resolve their own
-    # None before calling rather than this function guessing.
+    # Deliberately NOT Optional. None is not a single concept here: for a stored
+    # phase_events.seal_number it means "seal unknown" (an anomaly), but for
+    # payload.seal_number_confirmed it means "no guard re-entry", which is the
+    # normal case and must never be flagged (see advance_departure). Swallowing
+    # None here would let that second, far more common case silently become a
+    # CRITICAL mismatch on every trip. Callers holding a nullable value resolve
+    # what their own None means before calling.
     return seal.strip().upper()
 
 
@@ -1061,13 +1359,15 @@ async def _find_departure_for_leg(
     db: AsyncSession, *, trip_id: uuid.UUID, before_sequence: int,
 ) -> PhaseEvent:
     """The departure that opened the leg ending at `before_sequence`. Well-defined
-    because the plan generator interleaves exactly one `in_transit` between any
-    departure and the unloading/confirmation that closes its leg.
+    because the plan generator (phase_plan.build_phase_plan) interleaves exactly
+    one `in_transit` between any departure and the unloading/confirmation that
+    closes its leg (§2.2's generation rule) — there is never a second departure
+    to be confused with the right one.
 
-    Caller contract: `before_sequence` must be the closing phase's OWN
-    sequence_number — passing the wrong one silently resolves the wrong leg's
-    departure instead of raising.
-    """
+    Caller contract: `before_sequence` must be the sequence_number of the
+    closing phase's OWN row (the event being validated) — never a hardcoded
+    or otherwise-derived reference. Passing the wrong row's sequence silently
+    resolves the wrong leg's departure instead of raising."""
     result = await db.execute(
         select(PhaseEvent)
         .where(
@@ -1097,31 +1397,38 @@ async def advance_departure(
     trip, event = gated
 
     _record_driver_position(event, payload)
-    await corroboration_service.record_phase_corroboration(
+    horse_fix = await corroboration_service.record_phase_corroboration(
         db, trip=trip, event=event, driver_captured_at=payload.driver_captured_at,
     )
 
     # Before any evidence is written: every photo cited must be this trip's own. The
-    # waybill id is normally None now; the helper skips None entries, so a replayed
-    # offline entry that still carries one is checked exactly as before.
+    # waybill id is normally None now (its step was removed 2026-08-10 — see
+    # DepartureCompleteRequest); the helper skips None entries, so a replayed offline
+    # entry that still carries one is checked exactly as before.
     artifact_hashes = await _assert_artifacts_belong_to_trip(
         db, trip_id=trip_id,
         artifact_ids=(payload.waybill_photo_artifact_id, payload.seal_photo_artifact_id),
     )
 
-    # The seal is applied HERE now, not at loading.
+    # T5: the seal is applied HERE now, not at loading.
     event.waybill_photo_artifact_id = payload.waybill_photo_artifact_id
     event.seal_number = payload.seal_number
     event.seal_photo_artifact_id = payload.seal_photo_artifact_id
 
-    # Intra-request seal continuity: compared against THIS SAME request's
-    # seal_number, not a fetched prior row.
+    # Intra-request seal continuity (T5) — compared against THIS SAME
+    # request's seal_number, not a fetched prior row: the driver applies and
+    # photographs the seal, the exit guard independently re-enters what they
+    # physically see, in one submission.
     #
-    # Three states, not two. `guard_verified_seal` is Optional[bool] because guards
-    # have no accounts and the app no longer collects a re-entry at all — absence of
-    # confirmation is the NORMAL case and must not be flagged, or every trip would
-    # get a false CRITICAL mismatch. Only an explicit False or a real re-entered
-    # seal that fails to match is evidence of anything.
+    # Three states, not two. `guard_verified_seal` is now Optional[bool] (see
+    # DepartureCompleteRequest) because the driver app no longer collects a guard's
+    # re-entry at all — guards have no accounts. The absence of an independent
+    # confirmation is the NORMAL case and must not be recorded as an anomaly: a
+    # falsy-check here would stamp a CRITICAL seal_mismatch exception on every
+    # single trip the current app submits, drowning the real mismatches this
+    # platform exists to surface. Only an explicit False (a guard who was asked and
+    # could not verify) or a real re-entered seal that fails to match is evidence of
+    # anything.
     seal_mismatch_description: str | None = None
     if payload.seal_number_confirmed is not None:
         confirmed = _normalized_seal(payload.seal_number_confirmed)
@@ -1134,8 +1441,10 @@ async def advance_departure(
         seal_mismatch_description = "Exit-gate guard could not verify the seal at origin gate-out."
 
     if seal_mismatch_description is not None:
-        # Recorded as evidence, but the trip still departs — a mismatch doesn't
-        # hold the trip, it's anchored regardless below (same for unloading's).
+        # Recorded as evidence, but the trip still departs — a departure
+        # mismatch doesn't hold the trip (T3), it's anchored regardless below.
+        # Unloading's seal mismatch (destination) matches this precedent too —
+        # neither ever holds the trip, only flags it (critical exception).
         event.status = PhaseStatus.EXCEPTION
         db.add(TripException(
             trip_id=trip_id, phase_event_id=event.id,
@@ -1144,9 +1453,12 @@ async def advance_departure(
             review_status=_initial_review_status(ExceptionSeverity.CRITICAL),
             description=seal_mismatch_description,
         ))
-        # Both entry paths above are dead from any current client — the fields
-        # survive only so a departure queued offline by an older build can still
-        # replay instead of 422-ing forever.
+        # Emitted for consistency with the other system sites, but deliberately
+        # untested: BOTH entry paths above are dead from any current client. The driver
+        # app sends neither seal_number_confirmed nor guard_verified_seal
+        # (driver-pwa/lib/api/phases.ts:50) — the guard re-entry step was removed
+        # 2026-08-05. The fields survive only so a departure queued offline by an older
+        # build can replay instead of 422-ing forever, which is also why this stays.
         enqueue_event(
             db, trip.operator_organization_id,
             TripEvent(
@@ -1157,8 +1469,9 @@ async def advance_departure(
     else:
         event.status = PhaseStatus.COMPLETED
 
-    # Runs unconditionally regardless of the mismatch outcome above — a mismatch is
-    # evidence in its own right, not a reason to withhold the anchor.
+    # D7: the anchor moves whole to departure. Runs unconditionally regardless
+    # of the mismatch outcome above — a mismatch is evidence in its own right,
+    # not a reason to withhold the anchor (matching confirmation's precedent).
     canonical_payload = compute_departure_canonical_payload_v2(
         phase_event_id=event.id,
         trip_id=trip_id,
@@ -1171,17 +1484,24 @@ async def advance_departure(
         ),
     )
     event.event_hash = compute_payload_hash(canonical_payload)
+    # Queued, not awaited: this used to hold the driver's swipe open for the whole
+    # Hedera submit. anchor_status stays PENDING until the worker lands the receipt —
+    # which is precisely what the driver app's "anchoring in progress" state reports.
     _dispatch_anchor(
         db, event=event, canonical_payload=canonical_payload,
         receipt_type=BlockchainReceiptType.PICKUP,
     )
 
     trip.actual_departure_at = datetime.now(UTC)
-    # IN_TRANSIT stays PENDING while driving; closed by the driver's own arrival
-    # submission (advance_in_transit), giving a drive time measured to actual
-    # arrival rather than to whenever unloading paperwork happened to land.
+    # IN_TRANSIT stays PENDING while the driver is moving. It is closed by the driver's own
+    # arrival submission (advance_in_transit), which is what gives the dispatcher a drive
+    # time measured from departure to actual arrival rather than to whenever the unloading
+    # paperwork happened to land.
 
-    return await _finish_phase(db, trip=trip, event=event, idempotency_key=payload.idempotency_key)
+    return await _finish_phase(
+        db, trip=trip, event=event, idempotency_key=payload.idempotency_key,
+        horse_fix=horse_fix, driver_accuracy_metres=payload.driver_accuracy_metres,
+    )
 
 
 async def advance_in_transit(
@@ -1190,18 +1510,24 @@ async def advance_in_transit(
 ) -> TripDetailResponse:
     """The driver attesting arrival — the act that closes the driving leg.
 
-    The thinnest wrapper in this module, deliberately: it writes no evidence beyond
-    the phone fix every phase stores, and anchors nothing. What it changes is WHO
-    owns the row — previously in_transit closed as a side effect of advance_unloading,
-    so completed_at recorded when unloading paperwork was submitted, not when the
-    truck actually arrived, and an overridden unloading stranded the trip ACTIVE.
+    The thinnest wrapper in this module, and that is the design. It writes no evidence of
+    its own beyond the phone fix _record_driver_position stores for every phase, and it
+    anchors nothing. What it changes is WHO owns the row: before 2026-08-09 in_transit was
+    opened by advance_departure and closed as a side effect of advance_unloading, which
+    meant its completed_at recorded when the unloading paperwork was submitted, not when
+    the truck actually arrived — the dispatcher's elapsed drive time silently swallowed
+    the entire unloading phase. It also meant an overridden unloading left the row PENDING
+    with no actor able to resolve it, stranding the trip ACTIVE forever.
 
     No _reject_if_not_due and no scan gate: IN_TRANSIT is absent from
-    phase_gate.GATED_PHASES since the destination warehouse hasn't scanned anything
-    yet when the driver pulls up — UNLOADING carries that gate instead.
+    phase_gate.GATED_PHASES on purpose. The destination warehouse has not scanned anything
+    when the driver pulls up at the boom — gating arrival on a scan that only happens
+    after arrival would deadlock the leg. UNLOADING carries that gate instead, which is
+    the correct place for it.
 
-    Submitted from the in-transit hub's "Arrive at destination" swipe, not a step
-    page: STEP_SLUGS[in_transit] stays empty so driver-pwa routing is unchanged.
+    The driver app submits this from the in-transit hub's existing "Arrive at destination"
+    swipe, NOT from a step page: STEP_SLUGS[in_transit] stays empty so actionablePhase()
+    keeps skipping the row and driver-pwa routing is unchanged.
     """
     gated = await _gate_and_load(
         db, trip_id=trip_id, driver_id=driver_id, phase_event_id=phase_event_id,
@@ -1212,12 +1538,15 @@ async def advance_in_transit(
     trip, event = gated
 
     _record_driver_position(event, payload)
-    await corroboration_service.record_phase_corroboration(
+    horse_fix = await corroboration_service.record_phase_corroboration(
         db, trip=trip, event=event, driver_captured_at=payload.driver_captured_at,
     )
     event.status = PhaseStatus.COMPLETED
 
-    return await _finish_phase(db, trip=trip, event=event, idempotency_key=payload.idempotency_key)
+    return await _finish_phase(
+        db, trip=trip, event=event, idempotency_key=payload.idempotency_key,
+        horse_fix=horse_fix, driver_accuracy_metres=payload.driver_accuracy_metres,
+    )
 
 
 async def advance_unloading(
@@ -1233,12 +1562,14 @@ async def advance_unloading(
     trip, event = gated
 
     _record_driver_position(event, payload)
-    await corroboration_service.record_phase_corroboration(
+    horse_fix = await corroboration_service.record_phase_corroboration(
         db, trip=trip, event=event, driver_captured_at=payload.driver_captured_at,
     )
 
-    # This LEG's departure, not "the trip's": a multi-stop trip can have several
-    # DEPARTURE rows, and a trip-wide lookup would raise MultipleResultsFound.
+    # T4: this LEG's departure (strictly before this row), not "the trip's" —
+    # a multi-stop trip can have several DEPARTURE rows, and a plain
+    # phase_type == LOADING (or DEPARTURE) trip-wide lookup would raise
+    # MultipleResultsFound on a real cross-dock trip.
     departure_event = await _find_departure_for_leg(
         db, trip_id=trip_id, before_sequence=event.sequence_number,
     )
@@ -1251,20 +1582,40 @@ async def advance_unloading(
     event.seal_number = seal_at_destination
     event.gate_photo_artifact_id = payload.gate_photo_artifact_id
 
-    # "" when the departure row carries no seal at all — reachable in normal
-    # operation, since override_phase can resolve a departure without ever writing
-    # one. Normalizing first collapses NULL/""/whitespace to one "not recorded" case.
+    # "" when the departure row carries no seal at all. Reachable in normal
+    # operation, not just from bad data: override_phase resolves a departure
+    # WITHOUT ever writing a seal (its own D3 comment says so — "if this is a
+    # departure, no seal evidence exists to anchor"), and _is_resolved treats
+    # OVERRIDDEN as resolved, so the trip runs on to unloading with a NULL seal.
+    # Normalizing first collapses NULL, "" and whitespace to one "not recorded"
+    # case rather than leaving " " to masquerade as a real seal.
     departure_seal = _normalized_seal(departure_event.seal_number or "")
 
     if not departure_seal:
-        # NOT a SEAL_MISMATCH: there's no second seal to differ from, so claiming a
-        # mismatch would be a false theft indicator for something the driver can't
-        # fix. Severity splits on whether the absence is EXPLAINED (an authorised
-        # override vs. a data-integrity anomaly on a departure that should have a
-        # seal); neither is INFO, since an unverifiable chain is what a real seal
-        # swap would hide behind.
+        # NOT a SEAL_MISMATCH. There is no second seal here to differ from, so
+        # claiming a mismatch would put a false theft indicator into the anchored
+        # record and fire the driver app's critical alert (it treats seal_mismatch
+        # as one of three alarm types) for something the driver did not cause and
+        # cannot fix. The honest fact is narrower: continuity for this leg cannot
+        # be checked. Severity splits on whether that absence is EXPLAINED, because
+        # severity is what the dispatcher actually triages on (its exception list
+        # keys the row's border accent and chip off severity; nothing anywhere reads
+        # this description text, so the distinction cannot live in wording alone):
+        #
+        #   OVERRIDDEN — a dispatcher resolved the departure without a seal being
+        #     captured. Authorised, and already on the ledger as its own
+        #     DISPATCHER_NOTE. WARNING: worth seeing, not an alarm.
+        #   anything else — the departure ran the seal-capture path (advance_departure
+        #     writes seal_number unconditionally from a required field) and STILL has
+        #     no seal. Nothing legitimate produces that, so it is a data-integrity
+        #     anomaly and must stay loud. CRITICAL.
+        #
+        # Neither is INFO: an unverifiable seal chain is exactly what a real seal swap
+        # would hide behind.
         absence_is_explained = departure_event.status == PhaseStatus.OVERRIDDEN
-        # Bound once so the realtime kind below can't drift from this row's severity.
+        # Bound once rather than inlined: the realtime kind below must derive from the
+        # exact severity this row is written with, and two copies of the same
+        # conditional could drift apart.
         seal_unverified_severity = (
             ExceptionSeverity.WARNING if absence_is_explained
             else ExceptionSeverity.CRITICAL
@@ -1290,10 +1641,26 @@ async def advance_unloading(
             ),
         )
     elif seal_at_destination != departure_seal:
-        # Recorded as evidence, but does NOT hold the trip (no release/override path
-        # exists for a held trip, and holding would destroy the trip's remaining
-        # evidence — the wrong failure direction on an evidence platform). The
-        # mismatch stays fully visible via the EXCEPTION status and CRITICAL row below.
+        # Recorded as evidence, but does NOT hold the trip. This branch used to set
+        # trip.status = EXCEPTION_HOLD; three reasons it must not:
+        #
+        # 1. There is no release or override path anywhere in this codebase. A held
+        #    trip could never reach confirmation, so it could never record POD or
+        #    anchor its delivery receipt — the hold DESTROYED the remaining evidence
+        #    of the very trip whose integrity it was reacting to. On an evidence
+        #    platform that is the wrong failure direction: record more, not less.
+        # 2. It contradicted T3. _is_resolved already treats EXCEPTION as resolved
+        #    for gating, precisely so an anomaly is recorded without stopping the
+        #    ledger. Holding here re-introduced the blocking behaviour by the back
+        #    door, at trip level instead of phase level.
+        # 3. Departure's own seal mismatch (above) has never held the trip. Two
+        #    seal mismatches on the same trip behaving differently was inconsistent
+        #    with nothing to justify it.
+        #
+        # The mismatch stays fully visible: the phase row is EXCEPTION and a CRITICAL
+        # TripException is written. A dispatcher acts on that, not on a stuck trip.
+        # If a hold is ever genuinely wanted it belongs as a manual dispatcher action
+        # with an explicit release path — not as an automatic dead end.
         event.status = PhaseStatus.EXCEPTION
         db.add(TripException(
             trip_id=trip_id, phase_event_id=event.id,
@@ -1314,9 +1681,14 @@ async def advance_unloading(
         )
     else:
         event.status = PhaseStatus.COMPLETED
-        # Trip simply stays ACTIVE; recompute_position derives the ledger position.
+        # No LEGACY trip.status assignment here (DEST_GATE_IN is deleted, T6) —
+        # the trip simply stays ACTIVE; recompute_position derives the ledger
+        # position generically.
 
-    return await _finish_phase(db, trip=trip, event=event, idempotency_key=payload.idempotency_key)
+    return await _finish_phase(
+        db, trip=trip, event=event, idempotency_key=payload.idempotency_key,
+        horse_fix=horse_fix, driver_accuracy_metres=payload.driver_accuracy_metres,
+    )
 
 
 def compute_confirmation_canonical_payload_v1(
@@ -1325,14 +1697,24 @@ def compute_confirmation_canonical_payload_v1(
 ) -> dict[str, str | int | None]:
     """Reproduce the legacy confirmation payload for pre-FP-154 receipts.
 
-    Anchored unconditionally, independent of whether the counts match — a mismatch
-    is evidence in its own right, not a reason to withhold the anchor. Same POPIA/
-    JSON-native rules as the departure payload: no GPS/photos/PII, no completed_at.
+    Anchored unconditionally, independent of whether the counts match — a
+    mismatch is evidence in its own right (recorded separately as a
+    TripException), not a reason to withhold the anchor. Same POPIA/JSON-native
+    rules as the departure payload: no GPS/photos/PII, no completed_at.
 
-    driver_visual_count is Optional: the key stays PRESENT with value None rather
-    than omitted, since verification_service rebuilds this exact dict from the
-    stored column on every verify, and an omitted key would change the payload's
-    shape, not just one value.
+    phase_type is "confirmation", not "unloading" — task 2.7 corrects a
+    pre-existing mislabel, not just a rename: this builder has only ever been
+    called from the confirmation phase, the old value was simply wrong from
+    day one. It does not change which phase anchors.
+
+    driver_visual_count is Optional (the driver may skip the count): the key
+    stays PRESENT with value None rather than being omitted when absent.
+    canonicalize_payload is a plain json.dumps(sort_keys=True), so None
+    serialises to `null` deterministically either way — but an omitted key
+    would change the payload's SHAPE, not just one value, and
+    verification_service._reconstruct_phase_event_payload rebuilds this exact
+    dict from the stored column on every verify, so the key's presence must be
+    unconditional for that rebuild to reproduce the original hash.
     """
     return {
         "phase_event_id": str(phase_event_id),
@@ -1374,7 +1756,7 @@ async def advance_confirmation(
     trip, event = gated
 
     _record_driver_position(event, payload)
-    await corroboration_service.record_phase_corroboration(
+    horse_fix = await corroboration_service.record_phase_corroboration(
         db, trip=trip, event=event, driver_captured_at=payload.driver_captured_at,
     )
 
@@ -1414,7 +1796,10 @@ async def advance_confirmation(
         scanned_in_total += counts.scanned_in
 
         if counts.scanned_out == 0 and counts.scanned_in == 0:
-            continue  # No baseline at either end — nothing to compare
+            # No baseline at either end — nothing to compare. Covers empty-leg trips
+            # and dispatcher-overridden loadings alike, without either needing its own
+            # branch keyed on a field that no longer exists.
+            continue
 
         if counts.scanned_out != counts.scanned_in:
             mismatched = True
@@ -1433,7 +1818,8 @@ async def advance_confirmation(
             ))
 
     if mismatched:
-        # Once, after the loop — a multi-waybill discrepancy is still one trip to refetch.
+        # Once, after the loop — a three-waybill discrepancy is still one trip to
+        # refetch, and three identical events would only make the client do it thrice.
         enqueue_event(
             db, trip.operator_organization_id,
             TripEvent(
@@ -1447,8 +1833,9 @@ async def advance_confirmation(
 
     canonical_payload = compute_confirmation_canonical_payload_v2(
         phase_event_id=event.id, trip_id=trip_id,
-        # Key name unchanged though its provenance is now the warehouse feed, not
-        # Parcel Perfect: verification_service rebuilds every historical anchor from it.
+        # Key name unchanged — see the schema comment. Its provenance is now the
+        # warehouse feed rather than Parcel Perfect; its name is a mild misnomer and
+        # stays, because verification_service rebuilds every historical anchor from it.
         pp_scan_in_count=scanned_in_total,
         driver_visual_count=payload.driver_visual_count,
         pod_photo_sha256=artifact_hashes[payload.pod_photo_artifact_id],
@@ -1456,8 +1843,10 @@ async def advance_confirmation(
     )
     event.event_hash = compute_payload_hash(canonical_payload)
 
-    # Anchors unconditionally, fail-open: a Hedera outage no longer blocks delivery
-    # confirmation, the debt is recorded on event.anchor_status instead of raising.
+    # Anchors unconditionally, fail-open (D7, task 2.5) — a Hedera outage no longer
+    # blocks delivery confirmation from completing; the anchor path records the debt on
+    # event.anchor_status instead of raising. Queued rather than awaited (see
+    # _dispatch_anchor) so the driver isn't held on the swipe for the Hedera round trip.
     _dispatch_anchor(
         db, event=event, canonical_payload=canonical_payload,
         receipt_type=BlockchainReceiptType.DELIVERY,
@@ -1465,14 +1854,22 @@ async def advance_confirmation(
 
     event.status = PhaseStatus.EXCEPTION if mismatched else PhaseStatus.COMPLETED
 
-    # No explicit trip.status = CLOSED here: recompute_position (inside _finish_phase)
-    # finds no unresolved rows left and closes the trip generically.
-    return await _finish_phase(db, trip=trip, event=event, idempotency_key=payload.idempotency_key)
+    # No explicit trip.status = CLOSED / closed_at here anymore — this is
+    # confirmation's real point: recompute_position (called inside
+    # _finish_phase) finds no unresolved rows left and closes the trip
+    # generically, instead of this wrapper hardcoding "I am always last."
+    return await _finish_phase(
+        db, trip=trip, event=event, idempotency_key=payload.idempotency_key,
+        horse_fix=horse_fix, driver_accuracy_metres=payload.driver_accuracy_metres,
+    )
 
 
-# The single entry point the API calls. The five wrappers stay, each writing
-# genuinely different evidence, but the phase-type dispatch and body/row
-# cross-check live exactly once, here.
+# Decision S6: the single entry point the API calls. The five wrappers stay —
+# each writes genuinely different evidence (Stage 2's T1) — but the phase-type
+# dispatch and the body/row cross-check live exactly once, here.
+# Per-wrapper payload types differ, so the table is typed by its shared contract
+# rather than per-member: complete_phase has already proven actual == payload.phase_type
+# before dispatching, which is the check a precise signature would have given us.
 _WrapperFn = Callable[..., Awaitable[TripDetailResponse]]
 _WRAPPER_BY_PHASE_TYPE: dict[PhaseType, _WrapperFn] = {
     PhaseType.ACTIVATION: advance_activation,
@@ -1491,11 +1888,17 @@ async def complete_phase(
     """Complete the addressed phase. Idempotent by payload.idempotency_key.
 
     Raises PhaseTypeMismatchError when the body's phase_type does not match the
-    addressed row's — including trip_creation, which no driver action completes.
+    addressed row's — including when the row is trip_creation, which no driver action
+    completes (create_trip writes it before a driver is involved). in_transit IS
+    driver-completable as of 2026-08-09 (advance_in_transit); it used to be listed here
+    alongside trip_creation.
     """
-    # Ownership BEFORE the type cross-check: PhaseTypeMismatchError's 409 body names
-    # the row's real phase_type, so without this a driver holding someone else's
-    # trip_id/phase_event_id could probe a foreign trip's plan via the error.
+    # Ownership BEFORE the type cross-check, not after. The wrappers below all
+    # gate on it too, but PhaseTypeMismatchError returns ahead of them, and its
+    # 409 body names the row's real phase_type — so without this line a driver
+    # holding someone else's trip_id/phase_event_id could probe a foreign trip's
+    # plan by sending a deliberately wrong phase_type and reading the error.
+    # A non-owner must get the same 404 as for a trip that does not exist.
     await _load_trip_for_driver(db, trip_id=trip_id, driver_id=driver_id)
     event = await _load_phase_event(db, trip_id=trip_id, phase_event_id=phase_event_id)
     actual = PhaseType(event.phase_type)
@@ -1504,8 +1907,8 @@ async def complete_phase(
 
     wrapper = _WRAPPER_BY_PHASE_TYPE.get(actual)
     if wrapper is None:
-        # Unreachable via the API, but a direct service caller needs the same
-        # clear error, not a KeyError.
+        # Unreachable via the API (the union has no member for these types), but
+        # a direct service caller must get the same clear error, not a KeyError.
         raise PhaseTypeMismatchError(expected=actual.value, received=payload.phase_type.value)
 
     return await wrapper(
@@ -1517,11 +1920,11 @@ async def complete_phase(
 async def next_phase(
     db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID,
 ) -> PhaseEvent | None:
-    """The lowest-sequence unresolved row.
+    """The lowest-sequence unresolved row — decision S7.
 
-    Re-derived from the ledger, never read off trip.current_phase: if the cache
-    ever diverges, this endpoint tells the truth instead of laundering it.
-    Returns None for a closed trip.
+    Re-derived from the ledger, never read off trip.current_phase: the cache is a
+    cache (parent §2.3), and if it ever diverges this endpoint tells the truth
+    instead of laundering the divergence. Returns None for a closed trip.
     """
     await _load_trip_for_driver(db, trip_id=trip_id, driver_id=driver_id)
     result = await db.execute(

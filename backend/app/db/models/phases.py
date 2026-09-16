@@ -83,6 +83,22 @@ class PhaseEvent(Base):
     horse_gps_lat: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     horse_gps_lng: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     pulsit_geofence_confirmed: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    # Task 5: the versioned ActionLocationAssessment snapshot (schemas/action_location.py)
+    # assembled by orchestration/action_location_service.build_phase_assessment at
+    # _finish_phase time — the driver-phone-vs-tracker proximity verdict plus the
+    # precinct-membership facts, frozen as they stood at evaluation. Nullable: every row
+    # completed before this column existed, and never backfilled — fabricating a
+    # historical assessment from columns that predate this contract would misrepresent
+    # what was actually evaluated at the time. Validated through ActionLocationAssessment
+    # on every read (schemas/phases.py's PhaseEventRead), never read as a raw dict.
+    action_location_assessment: Mapped[Optional[Any]] = mapped_column(JSONB, nullable=True)
+    # Task 7: the driver's acknowledgement of a preview warning. This never replaces
+    # the independently assembled action_location_assessment above; it records only
+    # what the driver saw and, for a reliable discrepancy, why they continued.
+    location_warning_acknowledged_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    location_warning_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     seal_number: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     # Artifact FKs use use_alter=True to break the migration's circular dependency:
     # evidence_artifacts is created before trips, so these FKs are added via ALTER TABLE.

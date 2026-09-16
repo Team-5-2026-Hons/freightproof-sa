@@ -17,6 +17,8 @@ import { SubpageHeader } from '@/components/layout/SubpageHeader'
 import type { ExceptionType } from '@shared/lib/types/exception'
 import type { Vehicle, VehicleId, VehicleType } from '@shared/lib/types/vehicle'
 import { DRIVER_EXCEPTION_TYPES } from '@shared/lib/constants/status-meta'
+import { useLocation } from '@/lib/hooks/useLocation'
+import { captureWithinBudget, REPORT_CAPTURE_BUDGET_MS } from '@/lib/utils/bounded-capture'
 
 // Options are derived from the shared DRIVER_EXCEPTION_TYPES so the picker can never
 // drift to an invalid / non-driver type (e.g. system-detected gps_mismatch).
@@ -102,6 +104,7 @@ export default function LogExceptionPageClient() {
   const { trip, logException } = useTrip()
   const { notify } = useToast()
   const { enqueueException } = useOfflineQueue()
+  const { capture } = useLocation()
   const [type, setType] = useState<ExceptionType | null>(null)
   const [description, setDescription] = useState('')
   const [photo, setPhoto] = useState<QueuedExceptionPhoto | null>(null)
@@ -151,6 +154,19 @@ export default function LogExceptionPageClient() {
     // Captured now, not at flush time: the exception belongs to the leg being driven,
     // and by the time this entry sends the trip may have reached unloading.
     const phaseEventId = contextPhaseEventId(trip.phases)
+    // Optional enrichment, bounded: the report's own phone fix feeds the backend's
+    // capture-time comparison, but a broken-seal report must not sit behind
+    // useLocation's full 10 s geolocation timeout. Past REPORT_CAPTURE_BUDGET_MS the
+    // report goes without a fix and its comparison simply reads "unverified".
+    const location = await captureWithinBudget(capture, REPORT_CAPTURE_BUDGET_MS)
+    const captureFields = location === null
+      ? {}
+      : {
+          gpsLat: location.latitude,
+          gpsLng: location.longitude,
+          driverCapturedAt: location.capturedAt,
+          driverAccuracyMetres: location.accuracy,
+        }
 
     // Cleared once the photo is uploaded (only its id needs to go) or terminally rejected.
     let photoToQueue: QueuedExceptionPhoto | undefined = photo ?? undefined
@@ -166,6 +182,14 @@ export default function LogExceptionPageClient() {
           ...vehicle.fields,
           ...(supportingArtifactId ? { supporting_artifact_id: supportingArtifactId } : {}),
           ...(phaseEventId ? { phase_event_id: String(phaseEventId) } : {}),
+          ...(location
+            ? {
+                gps_lat: location.latitude,
+                gps_lng: location.longitude,
+                driver_captured_at: location.capturedAt,
+                driver_accuracy_metres: location.accuracy,
+              }
+            : {}),
         },
         photoToQueue,
       )
@@ -242,6 +266,7 @@ export default function LogExceptionPageClient() {
       await logException(type, {
         description,
         clientReportId,
+        ...captureFields,
         ...(vehicle.fields.vehicle_type ? { vehicleType: vehicle.fields.vehicle_type } : {}),
         ...(vehicle.fields.trailer_id ? { trailerId: vehicle.fields.trailer_id } : {}),
         ...(supportingArtifactId ? { supporting_artifact_id: supportingArtifactId } : {}),

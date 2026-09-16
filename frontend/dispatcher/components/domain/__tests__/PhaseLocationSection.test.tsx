@@ -33,7 +33,7 @@ describe('PhaseLocationSection', () => {
 
     render(<PhaseLocationSection phase={phase} precinct={makePrecinct()} />)
 
-    expect(screen.getByText('Within accepted tolerance')).toBeInTheDocument()
+    expect(screen.getByText('Truck within precinct tolerance')).toBeInTheDocument()
     // Context label only surfaces inside the modal title, which mounts on open: the
     // "View on map" button being present is the externally observable proof it was built.
     expect(screen.getByRole('button', { name: VIEW_ON_MAP_LABEL })).toBeInTheDocument()

@@ -6,7 +6,7 @@ import { raiseException, type RaiseExceptionBody } from '@/lib/api/exceptions'
 import { uploadArtifact } from '@/lib/api/artifacts'
 import { submitCheckpoint, type CheckpointEvidence } from '@/lib/api/checkpoints'
 import { recordLocations, type LocationPingBody } from '@/lib/api/locations'
-import type { DriverPosition } from '@/lib/types/location'
+import type { DriverPosition, LocationWarningAcknowledgement } from '@/lib/types/location'
 import { ApiError } from '@/lib/api/client'
 import type { PhaseType } from '@shared/lib/types/phase'
 import type { PhaseEvidence } from '@/lib/types/evidence-draft'
@@ -29,6 +29,9 @@ interface PhaseQueueEntry {
   // Stamped at swipe time and stored with the entry — a replay hours later must report
   // the original instant, not the flush-time clock, or the backend's skew check misfires.
   driverCapturedAt: string
+  // Acknowledgement is evidence of the warning the driver saw at the original
+  // attempt. It must travel with the queued capture, never be requested on replay.
+  acknowledgement: LocationWarningAcknowledgement | null
   enqueuedAt: string
 }
 
@@ -115,7 +118,7 @@ async function sendEntry(entry: QueueEntry): Promise<void> {
     // short-circuits server-side to a 200 instead of duplicating evidence.
     await submitPhase(
       entry.tripId, entry.phaseEventId, entry.phaseType, entry.evidence,
-      entry.idempotencyKey, entry.position ?? null, entry.driverCapturedAt,
+      entry.idempotencyKey, entry.position ?? null, entry.driverCapturedAt, entry.acknowledgement ?? null,
     )
   } else if (entry.kind === 'checkpoint') {
     await submitCheckpoint(entry.tripId, entry.evidence)
@@ -334,13 +337,14 @@ export function useOfflineQueue() {
     (
       tripId: string, phaseEventId: string, phaseType: PhaseType, evidence: PhaseEvidence,
       position: DriverPosition | null, driverCapturedAt: string,
+      acknowledgement: LocationWarningAcknowledgement | null = null,
     ) => {
       // Generated once, reused as both the queue id and the wire idempotency_key, so a
       // resend of this entry is indistinguishable server-side from the original attempt.
       const id = crypto.randomUUID()
       const entry: PhaseQueueEntry = {
         kind: 'phase', id, tripId, phaseEventId, phaseType, evidence, idempotencyKey: id,
-        position, driverCapturedAt,
+        position, driverCapturedAt, acknowledgement: acknowledgement ?? null,
         enqueuedAt: new Date().toISOString(),
       }
       const q = [...loadQueue(), entry]

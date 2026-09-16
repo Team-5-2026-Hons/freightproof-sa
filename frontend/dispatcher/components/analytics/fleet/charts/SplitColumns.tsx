@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 
 import { GRID_COLOR, SURFACE_COLOR, TICK_COLOR } from '@/lib/tokens'
+import { useChartHeight } from '../ChartZoom'
 import { AXIS_TICK, BAR_MAX_SIZE, CHART_HEIGHT, CURSOR_OPACITY, GAP_WIDTH, ROUNDED_TOP } from './chartStyle'
 
 /** Room for the middle axis's tick numbers, between the left half's columns and the axis line. */
@@ -107,8 +108,10 @@ interface SplitColumnsProps<Row> {
  *  custom axis, so every mark follows the same rules as the other charts. */
 export function SplitColumns<Row>({
   left, right, rowKey, categoryLabel, value, leftColor, rightColor, yLabel, centreLabel,
-  leftCaption, rightCaption, renderTooltip, height = CHART_HEIGHT,
+  leftCaption, rightCaption, renderTooltip, height: normalHeight = CHART_HEIGHT,
 }: SplitColumnsProps<Row>) {
+  // Taller inside the zoom modal (D27); both halves share it, so they keep one baseline.
+  const height = useChartHeight(normalHeight)
   const ticks = countTicks(Math.max(0, ...left.map(value), ...right.map(value)))
   // The axis line is the right half's plot edge: half-way across, plus the tick numbers' width.
   const onAxis = { left: `calc(50% + ${MIDDLE_AXIS_WIDTH}px)` }

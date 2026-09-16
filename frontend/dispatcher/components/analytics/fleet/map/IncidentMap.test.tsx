@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import type { IncidentPin } from '@shared/lib/types/fleet-analytics'
 import { PIN_STYLE, buildPinPopup } from './IncidentMap'
@@ -17,6 +17,25 @@ function makePin(overrides: Partial<IncidentPin> = {}): IncidentPin {
   }
 }
 
+/** Clicks the popup's "Open" link and reports whether the popup's own handler took the click
+ *  over. Every click is cancelled at the document afterwards, so jsdom never tries to follow
+ *  the link itself. */
+function clickOpen(popup: HTMLElement, init: MouseEventInit = {}): boolean {
+  const link = popup.querySelector('a')
+  if (link === null) throw new Error('popup has no link')
+  let handled = false
+  const record = (event: Event): void => {
+    handled = event.defaultPrevented
+    event.preventDefault()
+  }
+  document.body.append(popup)
+  document.addEventListener('click', record)
+  link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, ...init }))
+  document.removeEventListener('click', record)
+  popup.remove()
+  return handled
+}
+
 describe('IncidentMap pins', () => {
   it('builds a popup with the type, severity, day, trip and a link to the report', () => {
     const popup = buildPinPopup(makePin())
@@ -31,6 +50,37 @@ describe('IncidentMap pins', () => {
 
     expect(popup.querySelector('a')?.getAttribute('href'))
       .toBe('/exceptions/exc-1?returnTo=%2Fanalytics%3Ftab%3Droutes%26period%3Dlast_4_weeks')
+  })
+
+  it('opens the report inside the app on a plain click, so the page never reloads', () => {
+    const onOpen = vi.fn()
+    const popup = buildPinPopup(makePin(), '/analytics?tab=routes', onOpen)
+
+    const handled = clickOpen(popup)
+
+    expect(handled).toBe(true)
+    expect(onOpen).toHaveBeenCalledWith('/exceptions/exc-1?returnTo=%2Fanalytics%3Ftab%3Droutes')
+  })
+
+  it.each([
+    ['Cmd', { metaKey: true }],
+    ['Ctrl', { ctrlKey: true }],
+    ['Shift', { shiftKey: true }],
+  ] as const)('leaves a %s-click to the browser, so a new tab or window still works', (_key, init) => {
+    const onOpen = vi.fn()
+    const popup = buildPinPopup(makePin(), undefined, onOpen)
+
+    const handled = clickOpen(popup, init)
+
+    expect(handled).toBe(false)
+    expect(onOpen).not.toHaveBeenCalled()
+  })
+
+  it('stays an ordinary link when no in-app handler is given', () => {
+    const popup = buildPinPopup(makePin())
+
+    expect(clickOpen(popup)).toBe(false)
+    expect(popup.querySelector('a')?.getAttribute('href')).toBe('/exceptions/exc-1')
   })
 
   it('sets popup text as text, never as markup', () => {

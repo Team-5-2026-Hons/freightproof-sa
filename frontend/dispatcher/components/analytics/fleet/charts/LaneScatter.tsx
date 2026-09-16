@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { CartesianGrid, ReferenceLine, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from 'recharts'
 
 import { AXIS_TEXT_COLOR, GRID_COLOR, SURFACE_COLOR, TICK_COLOR } from '@/lib/tokens'
+import { useChartHeight } from '../ChartZoom'
 import {
   AXIS_FONT_SIZE,
   AXIS_TICK,
@@ -68,8 +69,10 @@ function mean(values: readonly number[]): number {
  *  the chart into four corners, and the top-right one is named for what it holds. Each dot
  *  sits on a transparent 24px target, so hovering needs no precision. */
 export function LaneScatter<Row>({
-  rows, rowKey, x, y, renderTooltip, xLabel, yLabel, color, pointLabel, cornerLabel, height = CHART_HEIGHT,
+  rows, rowKey, x, y, renderTooltip, xLabel, yLabel, color, pointLabel, cornerLabel, height: normalHeight = CHART_HEIGHT,
 }: LaneScatterProps<Row>) {
+  // Taller inside the zoom modal (D27), which also spreads crowded dot names apart.
+  const height = useChartHeight(normalHeight)
   const byKey = new Map(rows.map((row) => [rowKey(row), row]))
   const points = rows.map((row) => ({ row, x: x(row), y: y(row) }))
   const hasAverages = points.length >= MIN_DOTS_FOR_AVERAGES

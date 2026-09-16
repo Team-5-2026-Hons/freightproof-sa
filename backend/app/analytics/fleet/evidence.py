@@ -2,7 +2,7 @@
 
 How strong the record is. Tracker agreement, overrides and receiver sign-off are over the
 closed-trip set (spec G4), each step bucketed by its trip's first departure. The blockchain
-receipts chart was removed (D25); what is still owed stays on the Receipts owed tile.
+receipts chart (D25) and the Receipts owed tile (D26) were both removed.
 """
 
 import uuid

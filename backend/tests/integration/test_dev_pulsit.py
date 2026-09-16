@@ -17,7 +17,8 @@ Two halves, deliberately separated by what they need:
 
 import importlib
 import uuid
-from typing import AsyncGenerator
+from decimal import Decimal
+from typing import AsyncGenerator, Optional
 
 import pytest
 import pytest_asyncio
@@ -36,6 +37,7 @@ from app.core.demo_waypoints import (
     WAYPOINT_PRECINCT,
     WAYPOINT_THREE_KM,
 )
+from app.core.geo import haversine_metres
 from app.db.models.enums import IdvsStatus, OrganizationType, TripStatus, VehicleType
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
@@ -45,6 +47,16 @@ from app.db.models.trips import Trip, TripStop
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
 from app.integrations import pulsit as pulsit_module
+from app.orchestration.dev_truck_service import TOLERANCE_BOUNDARY_MARGIN_METRES
+from app.orchestration.geofence_service import TrackerFix, evaluate_geofence
+from app.schemas.dev import (
+    SCENARIO_AT_STOP,
+    SCENARIO_FIFTY_KM,
+    SCENARIO_INSIDE_TOLERANCE,
+    SCENARIO_NO_SIGNAL,
+    SCENARIO_OUTSIDE_TOLERANCE,
+    SCENARIO_THREE_KM,
+)
 
 from tests.conftest import FakeMockStateStore, auth_header, make_jwks, make_token, production_settings
 
@@ -61,6 +73,20 @@ _SEEDED_RADIUS_METRES = 200
 # staged state by device id and only falls back to its fixture library when nothing
 # is staged, which is exactly the path these tests drive.
 _DEVICE_ID = "PLT-HORSE-001"
+
+# FP-197 Task 3: a real, non-Cape-Town precinct pair, so the scenario-mode tests below
+# do not accidentally pass just because everything in this codebase's fixtures
+# happens to sit near the seeded demo depot. Johannesburg CBD and Durban Point —
+# genuinely far apart, on real South African coordinates.
+_JHB_LAT = "-26.2041"
+_JHB_LNG = "28.0473"
+_JHB_RADIUS_METRES = 150
+
+_DBN_LAT = "-29.8587"
+_DBN_LNG = "31.0218"
+_DBN_RADIUS_METRES = 300
+
+_GPS_TOLERANCE_METRES = 50  # settings.GPS_TOLERANCE_METRES default — see core/config.py
 
 
 # ── Router registration: the guard matrix (no database required) ──────────────
@@ -440,3 +466,451 @@ async def test_move_truck_rejects_a_malformed_body(pulsit_client, seeded) -> Non
     )
 
     assert response.status_code == 422
+
+
+# ── FP-197 Task 3: trip-stop-relative scenario mode ────────────────────────────
+
+
+@pytest_asyncio.fixture
+async def multi_stop_seeded(db_session):
+    """A cross-dock trip with non-Cape-Town origin/destination stops, currently
+    sitting at its origin (current_stop=1) — so the EXPECTED stop (Johannesburg) and
+    a scenario-mode TARGET stop (Durban) are deliberately different places. That
+    separation is the whole point of this fixture: a test that only ever targets the
+    trip's current stop could not tell "scenario mode" apart from "the legacy code
+    happened to still work".
+    """
+    org = Organization(id=uuid.uuid4(), name="Op-multi", org_type=OrganizationType.OPERATOR)
+    db_session.add(org)
+    await db_session.flush()
+
+    user = User(id=uuid.uuid4(), organization_id=org.id, email="multi@test.co.za", full_name="Multi")
+    driver = Driver(
+        id=uuid.uuid4(), organization_id=org.id, full_name="Driver Multi",
+        id_number="8001015009095", phone_number="+27821234568", license_number="DRV-MULTI",
+    )
+    horse = Vehicle(
+        id=uuid.uuid4(), organization_id=org.id, vehicle_type=VehicleType.HORSE,
+        registration="GP 456-789", pulsit_device_id=f"PLT-{uuid.uuid4().hex[:8]}",
+    )
+    origin = Precinct(
+        id=uuid.uuid4(), name="Johannesburg CBD", principal_organization_id=org.id,
+        latitude=_JHB_LAT, longitude=_JHB_LNG, geofence_radius_metres=_JHB_RADIUS_METRES,
+    )
+    destination = Precinct(
+        id=uuid.uuid4(), name="Durban Point", principal_organization_id=org.id,
+        latitude=_DBN_LAT, longitude=_DBN_LNG, geofence_radius_metres=_DBN_RADIUS_METRES,
+    )
+    db_session.add_all([user, driver, horse, origin, destination])
+    await db_session.flush()
+
+    trip = Trip(
+        id=uuid.uuid4(), trip_reference=f"FP-{uuid.uuid4().hex[:6]}", order_number="ORD-MULTI",
+        operator_organization_id=org.id, driver_id=driver.id, horse_id=horse.id,
+        status=TripStatus.ACTIVE, idvs_check_status=IdvsStatus.VERIFIED,
+        created_by_user_id=user.id, current_stop=1,
+    )
+    db_session.add(trip)
+    await db_session.flush()
+
+    origin_stop = TripStop(id=uuid.uuid4(), trip_id=trip.id, precinct_id=origin.id, sequence=1)
+    destination_stop = TripStop(id=uuid.uuid4(), trip_id=trip.id, precinct_id=destination.id, sequence=2)
+    db_session.add_all([origin_stop, destination_stop])
+    await db_session.flush()
+
+    return {
+        "trip": trip, "origin_stop": origin_stop, "destination_stop": destination_stop,
+        "origin_precinct": origin, "destination_precinct": destination,
+        "org": org, "user": user, "horse": horse,
+    }
+
+
+@pytest_asyncio.fixture
+async def repeated_precinct_seeded(db_session):
+    """A trip that returns to its own origin precinct — two distinct TripStop rows
+    sharing one Precinct — so resolving a target must key off trip_stop_id, never
+    "a stop at this precinct". A resolver that joined only on precinct_id would pass
+    every other test in this file and still be wrong for exactly this shape of trip.
+    """
+    org = Organization(id=uuid.uuid4(), name="Op-repeat", org_type=OrganizationType.OPERATOR)
+    db_session.add(org)
+    await db_session.flush()
+
+    user = User(id=uuid.uuid4(), organization_id=org.id, email="repeat@test.co.za", full_name="Repeat")
+    driver = Driver(
+        id=uuid.uuid4(), organization_id=org.id, full_name="Driver Repeat",
+        id_number="8001015009109", phone_number="+27821234569", license_number="DRV-REPEAT",
+    )
+    horse = Vehicle(
+        id=uuid.uuid4(), organization_id=org.id, vehicle_type=VehicleType.HORSE,
+        registration="WC 111-222", pulsit_device_id=f"PLT-{uuid.uuid4().hex[:8]}",
+    )
+    precinct = Precinct(
+        id=uuid.uuid4(), name="Shared Depot", principal_organization_id=org.id,
+        latitude=_JHB_LAT, longitude=_JHB_LNG, geofence_radius_metres=_JHB_RADIUS_METRES,
+    )
+    db_session.add_all([user, driver, horse, precinct])
+    await db_session.flush()
+
+    trip = Trip(
+        id=uuid.uuid4(), trip_reference=f"FP-{uuid.uuid4().hex[:6]}", order_number="ORD-REPEAT",
+        operator_organization_id=org.id, driver_id=driver.id, horse_id=horse.id,
+        status=TripStatus.ACTIVE, idvs_check_status=IdvsStatus.VERIFIED,
+        created_by_user_id=user.id, current_stop=1,
+    )
+    db_session.add(trip)
+    await db_session.flush()
+
+    first_stop = TripStop(id=uuid.uuid4(), trip_id=trip.id, precinct_id=precinct.id, sequence=1)
+    second_stop = TripStop(id=uuid.uuid4(), trip_id=trip.id, precinct_id=precinct.id, sequence=2)
+    db_session.add_all([first_stop, second_stop])
+    await db_session.flush()
+
+    return {
+        "trip": trip, "first_stop": first_stop, "second_stop": second_stop,
+        "precinct": precinct, "org": org, "user": user, "horse": horse,
+    }
+
+
+async def _move_scenario(
+    client: AsyncClient,
+    fixture: dict,
+    *,
+    scenario: str,
+    trip_id: Optional[uuid.UUID] = None,
+    trip_stop_id: Optional[uuid.UUID] = None,
+):
+    body: dict = {
+        "trip_id": str(trip_id if trip_id is not None else fixture["trip"].id),
+        "scenario": scenario,
+    }
+    if trip_stop_id is not None:
+        body["trip_stop_id"] = str(trip_stop_id)
+    return await client.post(_MOVE_URL, json=body, headers=auth_header(_token(fixture)))
+
+
+async def test_scenario_at_stop_stages_the_requested_stops_coordinates_exactly(
+    pulsit_client, multi_stop_seeded,
+) -> None:
+    """Targets the DESTINATION stop (Durban) while the trip's current stop is the
+    ORIGIN (Johannesburg) — proves the staged position follows the requested stop,
+    not whichever stop the phase ledger currently sits at."""
+    response = await _move_scenario(
+        pulsit_client, multi_stop_seeded,
+        scenario=SCENARIO_AT_STOP, trip_stop_id=multi_stop_seeded["destination_stop"].id,
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["latitude"] == _DBN_LAT
+    assert body["longitude"] == _DBN_LNG
+    assert body["target_trip_stop_id"] == str(multi_stop_seeded["destination_stop"].id)
+    assert body["target_precinct_name"] == "Durban Point"
+    assert body["target_distance_metres"] == pytest.approx(0.0, abs=1.0)
+    assert body["scenario"] == SCENARIO_AT_STOP
+
+
+async def test_scenario_mode_still_evaluates_the_expected_phase_ledger_stop(
+    pulsit_client, multi_stop_seeded,
+) -> None:
+    """The legacy verdict fields must keep describing the trip's CURRENT stop (origin,
+    Johannesburg) even while scenario mode stages the tracker at a totally different
+    stop (destination, Durban) — the two must never be conflated."""
+    response = await _move_scenario(
+        pulsit_client, multi_stop_seeded,
+        scenario=SCENARIO_THREE_KM, trip_stop_id=multi_stop_seeded["destination_stop"].id,
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    # Expected fields describe Johannesburg (the ledger's current stop) ...
+    assert body["precinct_name"] == "Johannesburg CBD"
+    assert body["expected_precinct_name"] == "Johannesburg CBD"
+    assert body["expected_trip_stop_id"] == str(multi_stop_seeded["origin_stop"].id)
+    # ... while the target fields describe Durban (what was actually requested), and
+    # the expected-stop distance is NOT 3000 m (that number belongs to the target).
+    assert body["target_precinct_name"] == "Durban Point"
+    assert body["target_trip_stop_id"] == str(multi_stop_seeded["destination_stop"].id)
+    assert body["target_distance_metres"] == pytest.approx(3_000.0, abs=0.5)
+    # The tracker is nowhere near Johannesburg once staged 3 km from Durban, so the
+    # expected-stop verdict must fail — proving the two distances are not the same
+    # number wearing two field names.
+    assert body["geofence_confirmed"] is False
+    assert body["distance_metres"] != pytest.approx(3_000.0, abs=1.0)
+
+
+@pytest.mark.parametrize(
+    ("scenario", "expected_metres"),
+    [
+        (SCENARIO_INSIDE_TOLERANCE, _JHB_RADIUS_METRES + _GPS_TOLERANCE_METRES - TOLERANCE_BOUNDARY_MARGIN_METRES),
+        (SCENARIO_OUTSIDE_TOLERANCE, _JHB_RADIUS_METRES + _GPS_TOLERANCE_METRES + TOLERANCE_BOUNDARY_MARGIN_METRES),
+        (SCENARIO_THREE_KM, 3_000.0),
+        (SCENARIO_FIFTY_KM, 50_000.0),
+    ],
+)
+async def test_scenario_distances_are_computed_from_the_targets_own_precinct(
+    pulsit_client, multi_stop_seeded, scenario: str, expected_metres: float,
+) -> None:
+    """Distances are relative to the TARGET stop's own radius (Johannesburg's 150 m),
+    not the seeded demo depot's 200 m — proves the maths reads the real precinct row
+    rather than a hardcoded assumption left over from the legacy waypoints."""
+    response = await _move_scenario(
+        pulsit_client, multi_stop_seeded,
+        scenario=scenario, trip_stop_id=multi_stop_seeded["origin_stop"].id,
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["target_distance_metres"] == pytest.approx(expected_metres, abs=0.5)
+    measured = haversine_metres(
+        float(_JHB_LAT), float(_JHB_LNG), float(body["latitude"]), float(body["longitude"]),
+    )
+    assert measured == pytest.approx(expected_metres, abs=0.5)
+
+
+async def test_no_signal_scenario_without_a_stop_stages_no_fix_and_names_no_target(
+    pulsit_client, multi_stop_seeded,
+) -> None:
+    """trip_stop_id is optional for no_signal — omitting it must still succeed, with
+    no target stop to report since none was named."""
+    response = await _move_scenario(pulsit_client, multi_stop_seeded, scenario=SCENARIO_NO_SIGNAL)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["has_position"] is False
+    assert body["latitude"] is None and body["longitude"] is None
+    assert body["target_trip_stop_id"] is None
+    assert body["target_precinct_name"] is None
+    assert body["target_distance_metres"] is None
+    assert body["scenario"] == SCENARIO_NO_SIGNAL
+
+
+async def test_no_signal_scenario_with_a_stop_still_stages_no_fix(
+    pulsit_client, multi_stop_seeded,
+) -> None:
+    """trip_stop_id MAY be supplied with no_signal (naming which stop the tracker went
+    dark near) — it must not be treated as a coordinate request."""
+    response = await _move_scenario(
+        pulsit_client, multi_stop_seeded,
+        scenario=SCENARIO_NO_SIGNAL, trip_stop_id=multi_stop_seeded["destination_stop"].id,
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["has_position"] is False
+    assert body["latitude"] is None and body["longitude"] is None
+    assert body["target_trip_stop_id"] == str(multi_stop_seeded["destination_stop"].id)
+    assert body["target_precinct_name"] == "Durban Point"
+    assert body["target_distance_metres"] is None
+
+
+async def test_repeated_precinct_trip_resolves_the_exact_requested_stop(
+    pulsit_client, repeated_precinct_seeded,
+) -> None:
+    """Two TripStop rows share one Precinct. Requesting the SECOND stop specifically
+    must resolve to the second stop's own id, not silently match on the first stop
+    that happens to share its precinct."""
+    response = await _move_scenario(
+        pulsit_client, repeated_precinct_seeded,
+        scenario=SCENARIO_AT_STOP, trip_stop_id=repeated_precinct_seeded["second_stop"].id,
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["target_trip_stop_id"] == str(repeated_precinct_seeded["second_stop"].id)
+    assert body["target_trip_stop_id"] != str(repeated_precinct_seeded["first_stop"].id)
+
+
+async def test_waypoint_id_and_scenario_together_is_rejected(pulsit_client, seeded) -> None:
+    response = await pulsit_client.post(
+        _MOVE_URL,
+        json={
+            "trip_id": str(seeded["trip"].id),
+            "waypoint_id": WAYPOINT_THREE_KM,
+            "scenario": SCENARIO_AT_STOP,
+            "trip_stop_id": str(seeded["stop"].id),
+        },
+        headers=auth_header(_token(seeded)),
+    )
+
+    assert response.status_code == 422
+
+
+async def test_neither_waypoint_id_nor_scenario_is_rejected(pulsit_client, seeded) -> None:
+    response = await pulsit_client.post(
+        _MOVE_URL, json={"trip_id": str(seeded["trip"].id)}, headers=auth_header(_token(seeded)),
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    [SCENARIO_AT_STOP, SCENARIO_INSIDE_TOLERANCE, SCENARIO_OUTSIDE_TOLERANCE, SCENARIO_THREE_KM, SCENARIO_FIFTY_KM],
+)
+async def test_scenario_without_a_stop_is_rejected_unless_no_signal(
+    pulsit_client, seeded, scenario: str,
+) -> None:
+    response = await pulsit_client.post(
+        _MOVE_URL, json={"trip_id": str(seeded["trip"].id), "scenario": scenario},
+        headers=auth_header(_token(seeded)),
+    )
+
+    assert response.status_code == 422
+
+
+async def test_unknown_trip_stop_id_is_rejected(pulsit_client, seeded) -> None:
+    response = await _move_scenario(
+        pulsit_client, seeded, scenario=SCENARIO_AT_STOP, trip_stop_id=uuid.uuid4(),
+    )
+
+    assert response.status_code == 404
+
+
+async def test_trip_stop_belonging_to_a_different_trip_is_rejected(
+    pulsit_client, multi_stop_seeded, seeded,
+) -> None:
+    """A syntactically valid trip_stop_id that belongs to a DIFFERENT trip (even in
+    the same organisation) must 404 exactly like one that does not exist at all —
+    never confirm the id is real by answering differently."""
+    response = await _move_scenario(
+        pulsit_client, seeded, scenario=SCENARIO_AT_STOP,
+        trip_stop_id=multi_stop_seeded["origin_stop"].id,
+    )
+
+    assert response.status_code == 404
+
+
+# ── Fix round 1: "same horse shared by demo trips" — pinning DevTriggerPanel.tsx's own
+# copy ("any other trip whose horse shares this same Pulsit tracker will observe the
+# same staged position too") to actual behaviour, not just prose. ─────────────────
+
+
+@pytest_asyncio.fixture
+async def shared_horse_seeded(db_session):
+    """Two trips, same organisation, sharing the SAME horse Vehicle row (and therefore
+    the same pulsit_device_id). Each has its own single stop at its own precinct, so a
+    verdict computed against "trip B's expected stop" is numerically distinguishable
+    from one computed against trip A's — the only way to prove a test is reading the
+    right ledger rather than one that would pass by accident if both trips shared a
+    stop too.
+    """
+    org = Organization(id=uuid.uuid4(), name="Op-shared-horse", org_type=OrganizationType.OPERATOR)
+    db_session.add(org)
+    await db_session.flush()
+
+    user = User(id=uuid.uuid4(), organization_id=org.id, email="shared@test.co.za", full_name="Shared")
+    driver_a = Driver(
+        id=uuid.uuid4(), organization_id=org.id, full_name="Driver A",
+        id_number="8001015009117", phone_number="+27821234570", license_number="DRV-SHARED-A",
+    )
+    driver_b = Driver(
+        id=uuid.uuid4(), organization_id=org.id, full_name="Driver B",
+        id_number="8001015009125", phone_number="+27821234571", license_number="DRV-SHARED-B",
+    )
+    # ONE horse, shared by both trips below — the whole point of this fixture.
+    horse = Vehicle(
+        id=uuid.uuid4(), organization_id=org.id, vehicle_type=VehicleType.HORSE,
+        registration="EC 999-000", pulsit_device_id=f"PLT-SHARED-{uuid.uuid4().hex[:8]}",
+    )
+    precinct_a = Precinct(
+        id=uuid.uuid4(), name="Johannesburg CBD", principal_organization_id=org.id,
+        latitude=_JHB_LAT, longitude=_JHB_LNG, geofence_radius_metres=_JHB_RADIUS_METRES,
+    )
+    precinct_b = Precinct(
+        id=uuid.uuid4(), name="Durban Point", principal_organization_id=org.id,
+        latitude=_DBN_LAT, longitude=_DBN_LNG, geofence_radius_metres=_DBN_RADIUS_METRES,
+    )
+    db_session.add_all([user, driver_a, driver_b, horse, precinct_a, precinct_b])
+    await db_session.flush()
+
+    trip_a = Trip(
+        id=uuid.uuid4(), trip_reference=f"FP-{uuid.uuid4().hex[:6]}", order_number="ORD-SHARED-A",
+        operator_organization_id=org.id, driver_id=driver_a.id, horse_id=horse.id,
+        status=TripStatus.ACTIVE, idvs_check_status=IdvsStatus.VERIFIED,
+        created_by_user_id=user.id, current_stop=1,
+    )
+    trip_b = Trip(
+        id=uuid.uuid4(), trip_reference=f"FP-{uuid.uuid4().hex[:6]}", order_number="ORD-SHARED-B",
+        operator_organization_id=org.id, driver_id=driver_b.id, horse_id=horse.id,
+        status=TripStatus.ACTIVE, idvs_check_status=IdvsStatus.VERIFIED,
+        created_by_user_id=user.id, current_stop=1,
+    )
+    db_session.add_all([trip_a, trip_b])
+    await db_session.flush()
+
+    stop_a = TripStop(id=uuid.uuid4(), trip_id=trip_a.id, precinct_id=precinct_a.id, sequence=1)
+    stop_b = TripStop(id=uuid.uuid4(), trip_id=trip_b.id, precinct_id=precinct_b.id, sequence=1)
+    db_session.add_all([stop_a, stop_b])
+    await db_session.flush()
+
+    return {
+        "org": org, "user": user, "horse": horse,
+        "trip_a": trip_a, "trip_b": trip_b,
+        "stop_a": stop_a, "stop_b": stop_b,
+        "precinct_a": precinct_a, "precinct_b": precinct_b,
+    }
+
+
+async def test_two_trips_sharing_one_horse_observe_the_same_device_state(
+    pulsit_client, shared_horse_seeded,
+) -> None:
+    """Pins the panel's own claim to behaviour: staging via trip A's scenario mode
+    writes `freightproof:mock:pulsit:{org_id}:{device_id}` — a key that names the
+    DEVICE, not either trip — so trip B's read of that same device must see exactly
+    what trip A staged, and trip B's own EXPECTED-stop verdict must still be computed
+    against trip B's OWN ledger stop (Durban), never trip A's (Johannesburg).
+
+    WHY THE "READ-BACK PATH", NOT A SECOND move-truck CALL, PROVES THE FIRST HALF:
+    move-truck's only job is to WRITE a new position (see this module's own docstring
+    — "THIS ENDPOINT WRITES PULSIT MOCK STATE AND NOTHING ELSE"); there is no read-only
+    variant. Calling it a second time for trip B would necessarily re-stage the shared
+    device before we could observe what trip A left behind, which would prove nothing
+    about sharing — it would just be trip B staging its own position, coincidentally
+    through the same device. So the "trip B observes it" half reads the shared mock
+    state directly through `MockPulsitClient.get_position()` — the exact same call
+    `move_truck()` itself makes internally — scoped to the shared organisation, BEFORE
+    trip B's own move-truck call (further down) has a chance to overwrite it.
+    """
+    # Trip A stages a KNOWN, distinctive position: 3 km from ITS OWN stop.
+    stage_response = await _move_scenario(
+        pulsit_client, shared_horse_seeded, trip_id=shared_horse_seeded["trip_a"].id,
+        scenario=SCENARIO_THREE_KM, trip_stop_id=shared_horse_seeded["stop_a"].id,
+    )
+    assert stage_response.status_code == 200
+    staged_lat = Decimal(stage_response.json()["latitude"])
+    staged_lng = Decimal(stage_response.json()["longitude"])
+
+    # Read the SAME device back — scoped to the shared organisation — through the
+    # identical client call move_truck() uses internally. If this were keyed by trip
+    # rather than by device, trip B's read would come back with no position at all.
+    client = pulsit_module.get_pulsit_client(organization_id=shared_horse_seeded["org"].id)
+    fix = await client.get_position(shared_horse_seeded["horse"].pulsit_device_id)
+    assert fix.has_position
+    assert fix.lat == staged_lat
+    assert fix.lng == staged_lng
+
+    # That SAME shared fix, judged against trip B's OWN expected precinct (Durban),
+    # must NOT reduce to the number it would have produced against trip A's stop
+    # (Johannesburg) — proving the ledger, not the shared device, decides "expected".
+    verdict_for_b = evaluate_geofence(
+        TrackerFix(lat=fix.lat, lng=fix.lng), shared_horse_seeded["precinct_b"],
+    )
+    distance_from_trip_as_stop = haversine_metres(
+        float(staged_lat), float(staged_lng),
+        float(shared_horse_seeded["precinct_a"].latitude), float(shared_horse_seeded["precinct_a"].longitude),
+    )
+    assert verdict_for_b.distance_metres != pytest.approx(distance_from_trip_as_stop, abs=1.0)
+
+    # End to end: trip B's OWN move-truck call reports its OWN expected stop (Durban),
+    # never trip A's (Johannesburg) — even though both trips' requests reach the same
+    # underlying device.
+    trip_b_response = await _move_scenario(
+        pulsit_client, shared_horse_seeded, trip_id=shared_horse_seeded["trip_b"].id,
+        scenario=SCENARIO_AT_STOP, trip_stop_id=shared_horse_seeded["stop_b"].id,
+    )
+    assert trip_b_response.status_code == 200
+    body_b = trip_b_response.json()
+    assert body_b["expected_trip_stop_id"] == str(shared_horse_seeded["stop_b"].id)
+    assert body_b["expected_precinct_name"] == shared_horse_seeded["precinct_b"].name
+    assert body_b["expected_precinct_name"] != shared_horse_seeded["precinct_a"].name

@@ -48,19 +48,9 @@ export const FLEET_COPY = {
     retry: 'Retry',
     liveTrips: { label: 'Live trips', sub: 'Created, underway or on hold' },
     criticalWaiting: {
-      label: 'Critical waiting',
+      label: 'Critical Exceptions Waiting',
       none: 'Nothing waiting for review',
       oldest: (age: string): string => `Oldest waiting ${age}`,
-    },
-    parcels: {
-      label: 'Parcels complete',
-      sub: (complete: number, loaded: number, days: number): string =>
-        `${complete} of ${loaded} loaded trips with every parcel accounted for · last ${days} days`,
-    },
-    receipts: {
-      label: 'Receipts owed',
-      failed: (count: number): string => `${count} failed`,
-      noneFailed: 'None failed',
     },
     licences: {
       label: 'Licences & discs',
@@ -446,6 +436,7 @@ export const FLEET_COPY = {
     partialFootnote: 'Faded: a part week, month or year at either end of the period, or one still running.',
     showTable: 'Show table',
     showChart: 'Show chart',
+    zoomIn: (title: string): string => `Zoom in: ${title}`,
     retry: 'Retry',
     loadError: "Couldn't load this chart.",
     notEnoughTitle: 'Not enough data yet',

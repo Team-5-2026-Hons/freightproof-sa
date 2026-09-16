@@ -1,6 +1,6 @@
 'use client'
 
-import type { Trip } from '@shared/lib/types/trip'
+import type { Trip, TripStop } from '@shared/lib/types/trip'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { Precinct } from '@shared/lib/types/precinct'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
@@ -10,10 +10,19 @@ import { LoadingDetail } from '@/components/domain/LoadingDetail'
 import { DepartureDetail } from '@/components/domain/DepartureDetail'
 import { UnloadingDetail } from '@/components/domain/UnloadingDetail'
 import { ConfirmationDetail } from '@/components/domain/ConfirmationDetail'
-import { InTransitTimeline } from '@/components/domain/InTransitTimeline'
+import { InTransitArrivalLocation } from '@/components/domain/InTransitTimeline'
 import { PhaseOverrideAction } from '@/components/domain/PhaseOverrideAction'
-import { countAtStop, precinctAtPhase, precinctLabel } from '@/lib/phase/trip-detail'
+import { countAtStop, precinctAtPhase } from '@/lib/phase/trip-detail'
 import { originScannedCount } from '@/lib/phase/derive'
+
+/** The stop this in-transit leg is travelling TO — the trip's next stop after the one
+ *  this phase departs from. Exported so TripTimeline can resolve the identical
+ *  destination for the always-visible journey summary (task 9) without re-deriving
+ *  stop order a second, potentially divergent, way. */
+export function nextTripStop(trip: Trip, phase: PhaseDescriptor): TripStop | undefined {
+  const stops = [...trip.stops].sort((a, b) => a.sequence - b.sequence)
+  return stops[stops.findIndex(s => s.id === phase.trip_stop_id) + 1]
+}
 
 interface Props {
   trip: Trip; phase: PhaseDescriptor; precincts: Precinct[]
@@ -32,13 +41,12 @@ export function PhaseEvidence({ trip, phase, precincts, onChanged, ...evidence }
     case 'unloading': content = <UnloadingDetail {...shared} allPhases={trip.phases} scannedInCount={countAtStop(trip, phase, 'in', 'scanned')} expectedAtStopCount={countAtStop(trip, phase, 'in', 'expected')} precinct={precinct}
       sealException={trip.exceptions.find(e => e.phase_event_id === phase.phase_event_id && (e.exception_type === 'seal_mismatch' || e.exception_type === 'seal_unverified'))} />; break
     case 'confirmation': content = <ConfirmationDetail {...shared} precinct={precinct} originScannedCount={originScannedCount(trip.phases)} />; break
-    case 'in_transit': {
-      const stops = [...trip.stops].sort((a, b) => a.sequence - b.sequence)
-      const nextStop = stops[stops.findIndex(s => s.id === phase.trip_stop_id) + 1]
-      // Exception summaries stay outside disclosure; the journey only owns movement.
-      content = <InTransitTimeline phase={phase} allPhases={trip.phases} exceptions={[]} artifactsById={evidence.artifactsById} originName={precinctLabel(precinct)} destinationName={precinctLabel(precincts.find(p => p.id === nextStop?.precinct_id))} />
+    case 'in_transit':
+      // The journey mini-timeline sits OUTSIDE disclosure (TripTimeline renders it as
+      // the row's persistentContent, using this module's nextTripStop for the
+      // destination), so the only thing left behind the toggle is the arrival fix.
+      content = <InTransitArrivalLocation phase={phase} />
       break
-    }
   }
   return <>{content}{phase.phase_type !== 'trip_creation' && <PhaseOverrideAction phase={phase} tripId={trip.id} tripStatus={trip.status} onOverridden={onChanged} />}</>
 }

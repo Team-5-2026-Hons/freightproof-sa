@@ -8,6 +8,7 @@ import { Ic } from '@/components/ui/Ic'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { LOW_SAMPLE_TRIPS } from '@/lib/format/period'
 import { cn } from '@shared/lib/utils/cn'
+import { ChartZoom } from './ChartZoom'
 import { CHART_HEIGHT } from './charts/chartStyle'
 import { FLEET_COPY } from './copy'
 import { InfoPopover } from './InfoPopover'
@@ -70,6 +71,16 @@ export function ChartCard({
   const isReady = error === null && !isLoading && !isEmpty
   const isLowSample = sampleSize !== undefined && sampleSize > 0 && sampleSize < LOW_SAMPLE_TRIPS
 
+  // The ready view, shared by the card and its zoom modal so the two can never show different
+  // things: the warnings, then the chart or its table, whichever the card is showing.
+  const view = (
+    <>
+      {isLowSample && <p className="mb-2 text-[12px] font-[600] text-warn">{COPY.lowSample(sampleSize)}</p>}
+      {caveat !== undefined && <p className="mb-2 text-[12px] text-on-surf-v">{caveat}</p>}
+      {showTable ? table : children}
+    </>
+  )
+
   let content: ReactNode
   if (error !== null) {
     // Checked first: a failed refetch clears the data, so there is nothing stale to show.
@@ -85,13 +96,7 @@ export function ChartCard({
   } else if (isEmpty) {
     content = <EmptyState icon={<Ic n="bars" s={48} />} title={COPY.notEnoughTitle} body={emptyBody} className="py-8" />
   } else {
-    content = (
-      <>
-        {isLowSample && <p className="mb-2 text-[12px] font-[600] text-warn">{COPY.lowSample(sampleSize)}</p>}
-        {caveat !== undefined && <p className="mb-2 text-[12px] text-on-surf-v">{caveat}</p>}
-        {showTable ? table : children}
-      </>
-    )
+    content = view
   }
 
   return (
@@ -113,6 +118,16 @@ export function ChartCard({
             >
               {showTable ? COPY.showChart : COPY.showTable}
             </Button>
+          )}
+          {/* Only with something to enlarge: zooming a placeholder, an error or an empty state
+              would show the same message bigger. */}
+          {isReady && (
+            <ChartZoom title={title}>
+              <div className="flex flex-col gap-3">
+                {!showTable && legend}
+                <div>{view}</div>
+              </div>
+            </ChartZoom>
           )}
         </div>
       </header>
