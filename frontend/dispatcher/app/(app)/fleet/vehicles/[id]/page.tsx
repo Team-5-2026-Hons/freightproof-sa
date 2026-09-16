@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { TopBar }    from '@/components/ui/TopBar'
+import { BackButton } from '@/components/ui/BackButton'
 import { Chip }      from '@/components/ui/Chip'
 import { Spinner }   from '@/components/ui/Spinner'
 import { Button }    from '@/components/ui/Button'
@@ -75,16 +76,7 @@ export default function VehicleDetailPage() {
     { min: DETAIL_PANEL_MIN_W, max: DETAIL_PANEL_MAX_W },
   )
 
-  const backButton = (
-    <Button
-      variant="secondary"
-      size="sm"
-      onClick={() => router.push(backTo)}
-      iconLeft={<Ic n="back" s={14} className="text-on-surf" />}
-    >
-      Back
-    </Button>
-  )
+  const backButton = <BackButton onClick={() => router.push(backTo)} />
 
   if (isLoading) {
     return (

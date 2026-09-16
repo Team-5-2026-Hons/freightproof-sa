@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useRef, useState, type RefObject } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/Button'
+import { BackButton } from '@/components/ui/BackButton'
 import { Spinner } from '@/components/ui/Spinner'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Ic } from '@/components/ui/Ic'
@@ -138,7 +139,7 @@ function TripDetail({ tripId }: { tripId: string }) {
     if (isLoading) return <TripDetailSkeleton onBack={back}
       header={facts ? <TripSummary facts={facts} precincts={precincts} driver={null} returnTo={returnTo} onBack={back} onPanel={setPanel} /> : undefined} />
     return <div className="flex flex-1 flex-col gap-5 p-6">
-      <div><Button variant="secondary" onClick={back}>Back</Button></div>
+      <div><BackButton onClick={back} /></div>
       <EmptyState icon={<Ic n="warn" s={32} />} title={errorStatus === 404 ? 'Trip not found' : 'Could not load trip'} body={error ?? 'No trip record is available.'} cta={<Button onClick={refetchSilent}>Retry</Button>} />
     </div>
   }
