@@ -1,6 +1,7 @@
 'use client'
 
 import { Input } from '@/components/ui/Input'
+import { normalizeSeal } from '@/lib/utils/seal-format'
 import { CameraCapture } from './CameraCapture'
 
 interface SealInputProps {
@@ -24,7 +25,7 @@ export function SealInput({
         label="Seal number"
         placeholder="e.g. FP-1234"
         value={sealNumber ?? ''}
-        onChange={(e) => onSealNumberChange(e.target.value.toUpperCase())}
+        onChange={(e) => onSealNumberChange(normalizeSeal(e.target.value))}
       />
       {requirePhoto && (
         <CameraCapture

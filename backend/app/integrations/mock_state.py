@@ -1,20 +1,16 @@
 """Shared store for simulated external-world state, backed by Redis.
 
-Why Redis and not a module-level dict: the FastAPI app and the Celery worker are
-separate processes on the hosted deployment, and a hosted API typically runs
-several worker processes. A staged waybill edit written into one process's memory
-is invisible to the 60-second PP poll in app/tasks/parcel_perfect.py, which is a
-different process entirely — so the "PP changed the manifest mid-trip" scenario
-could never work in memory. Redis is already a hard dependency (it is the Celery
-broker), so this costs no new package and no migration.
+Redis, not a module-level dict: the FastAPI app and Celery worker are
+separate processes, so a staged edit must be visible across both (e.g. the
+60s PP poll in app/tasks/parcel_perfect.py). Redis is already a hard
+dependency (the Celery broker), so this costs nothing extra.
 
-What lives here is the *outside world we are pretending to have*: what the
-warehouse is about to report, and what the PP portal currently says. It is not
-evidence. Every permanent effect of a trigger is written to PostgreSQL by
-orchestration, and flushing this store leaves that evidence untouched — see
-tests/integration/test_dev_triggers.py::test_flushing_mock_state_leaves_evidence_intact.
+What lives here is the *outside world we are pretending to have*, not
+evidence — every permanent effect is written to PostgreSQL by orchestration,
+and flushing this store leaves that evidence untouched (see
+tests/integration/test_dev_triggers.py::test_flushing_mock_state_leaves_evidence_intact).
 
-Layering: integrations → config only. Never imports from api/ or orchestration/.
+Layering: integrations → config only.
 """
 
 import json
@@ -27,12 +23,12 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Every key this module writes is namespaced, so a flush can be scoped precisely
-# and can never touch Celery's own broker keys in the same Redis instance.
+# Namespaced so a flush is scoped precisely and never touches Celery's own
+# broker keys in the same Redis instance.
 MOCK_STATE_PREFIX = "freightproof:mock:"
 
-# Staged state is demo scaffolding, not evidence. A day is far longer than any
-# demo and short enough that abandoned state expires on its own.
+# Demo scaffolding, not evidence — long enough for any demo, short enough
+# that abandoned state expires on its own.
 MOCK_STATE_TTL_SECONDS = 60 * 60 * 24
 
 
@@ -44,8 +40,7 @@ def build_key(kind: str, *parts: str) -> str:
 class MockStateStore(Protocol):
     """The storage contract MockScanFeed and the PP override layer depend on.
 
-    A Protocol rather than a base class so tests can inject a dict-backed fake
-    without pulling in a Redis test dependency.
+    A Protocol so tests can inject a dict-backed fake without a Redis test dependency.
     """
 
     async def get_json(self, key: str) -> dict[str, Any] | None: ...
@@ -53,9 +48,9 @@ class MockStateStore(Protocol):
     async def get_many_json(self, keys: list[str]) -> list[dict[str, Any] | None]:
         """Read many keys at once, returning one result per key, in order.
 
-        On the contract rather than a Redis-only convenience because the phase gate
-        reads a key per consignment per gated phase on every trip-detail request;
-        expressed as a loop of get_json that is a connection per consignment.
+        On the contract, not a Redis-only convenience: the phase gate reads
+        a key per consignment per gated phase on every trip-detail request,
+        which as a loop of get_json would cost a connection per consignment.
         """
         ...
 
@@ -67,15 +62,11 @@ class MockStateStore(Protocol):
 class RedisMockStateStore:
     """MockStateStore over redis.asyncio, one short-lived connection per call.
 
-    A connection per call rather than a pooled client: a module-level pool would
-    bind to whichever event loop first touched it, which breaks under Celery's
-    asyncio.run() per task and under pytest's function-scoped loops.
-
-    That makes the *number of calls* the thing to watch. Writes are still rare —
-    only the dev panel stages state. Reads are not: the warehouse-scan phase gate
-    (orchestration/phase_gate.py) resolves session state on every trip-detail
-    request, so anything on that path must batch through get_many_json rather than
-    loop over get_json, or a trip pays a connection per consignment per gated phase.
+    A connection per call, not a pooled client: a module-level pool would
+    bind to whichever event loop first touched it, breaking under Celery's
+    asyncio.run() per task and pytest's function-scoped loops. So anything on
+    the phase-gate read path must batch through get_many_json, not loop over
+    get_json, or a trip pays a connection per consignment per gated phase.
     """
 
     def __init__(self, redis_url: str) -> None:
@@ -89,8 +80,7 @@ class RedisMockStateStore:
         try:
             parsed: dict[str, Any] = json.loads(raw)
         except json.JSONDecodeError:
-            # Corrupt staged state is a bug in a writer, not a reason to fail a
-            # demo. Log loudly and treat it as absent so the trigger still runs.
+            # A writer bug, not a reason to fail a demo — log loudly, treat as absent.
             logger.error("Corrupt mock state at key %s — treating as unset", key)
             return None
         return parsed
@@ -105,16 +95,14 @@ class RedisMockStateStore:
 
     async def get_many_json(self, keys: list[str]) -> list[dict[str, Any] | None]:
         if not keys:
-            # MGET with no arguments is an error, and a trip with nothing to gate
-            # is the common case — it must not open a connection to ask nothing.
+            # MGET with no arguments errors, and "nothing to gate" is common.
             return []
         client = redis.from_url(self._redis_url, decode_responses=True)
         try:
             raws = await client.mget(keys)
         finally:
             await client.aclose()
-        # strict=True: MGET returns one slot per requested key, so a length
-        # mismatch is a broken client rather than something to paper over.
+        # strict=True: a length mismatch means a broken client, not something to paper over.
         return [self._decode(key, raw) for key, raw in zip(keys, raws, strict=True)]
 
     async def set_json(self, key: str, value: dict[str, Any]) -> None:
@@ -127,8 +115,8 @@ class RedisMockStateStore:
     async def flush(self) -> int:
         """Delete every namespaced mock key. Returns how many were removed.
 
-        scan_iter, not keys(): keys() blocks Redis for the whole scan, and this
-        shares an instance with the Celery broker.
+        scan_iter, not keys(): keys() blocks Redis for the whole scan on an
+        instance shared with the Celery broker.
         """
         client = redis.from_url(self._redis_url, decode_responses=True)
         deleted = 0

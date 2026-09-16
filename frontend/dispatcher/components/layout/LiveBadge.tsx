@@ -11,14 +11,19 @@ const STATUS_META: Record<RealtimeStatus, { label: string; dot: string; pulse: b
   reconnecting: { label: 'Reconnecting…',   dot: 'bg-warn',      pulse: false },
 }
 
-export function LiveBadge() {
+interface LiveBadgeProps {
+  /** Hides the text label visually (kept for screen readers) — used in the collapsed sidebar rail. */
+  compact?: boolean
+}
+
+export function LiveBadge({ compact = false }: LiveBadgeProps) {
   const status = useRealtimeStatus()
   const meta = STATUS_META[status]
 
   return (
-    <div className="flex items-center gap-[6px]" role="status" aria-live="polite">
+    <div className="flex items-center gap-[6px]" role="status" aria-live="polite" title={meta.label}>
       <span className={cn('w-[7px] h-[7px] rounded-full shrink-0', meta.dot, meta.pulse && 'animate-pulse')} />
-      <span className="text-[10px] font-[600] tracking-[0.04em] text-white/50">
+      <span className={cn('text-[10px] font-[600] tracking-[0.04em] text-white/50', compact && 'sr-only')}>
         {meta.label}
       </span>
     </div>

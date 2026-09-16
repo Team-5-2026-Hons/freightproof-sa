@@ -1,0 +1,32 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dispatcher",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "frontend/dispatcher"],
+      "port": 3000
+    },
+    {
+      "name": "dispatcher-preview",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "cd frontend/dispatcher && exec npx next dev --port 3100"
+      ],
+      "port": 3100
+    },
+    {
+      "name": "driver-pwa",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "frontend/driver-pwa"],
+      "port": 3001
+    },
+    {
+      "name": "receiver",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "frontend/receiver"],
+      "port": 3002
+    }
+  ]
+}

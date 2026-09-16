@@ -520,7 +520,7 @@ The following were considered and deliberately excluded from the initial build. 
 | Return load scheduling | FreightProof records and evidences the return trip; it does not source or schedule return cargo. |
 | Parcel Perfect live API integration (iteration 2) | Iteration 2 uses mock data shaped like the real PP API. Live integration begins after the three-party negotiation (FreightProof + FedEx + Parcel Perfect) is concluded. |
 | Vehicle onboard camera integration (Phase 2) | Bruce raised integrating the vehicle camera system so dispatchers can pull a live or recorded feed within an exception event view. Agreed as a Phase 2 enhancement. Bruce has also committed to raising with Pulsit the ability to save a 5-minute clip before and after an exception event. Currently Pulsit does not support this, but it is a planned feature request. |
-| HandlingUnit / pallet entity | Whether LFG scans/identifies each consolidated pallet (giving it a tracked entity) or only counts units + seals the truck is an open question targeted for resolution at the July site visit. Until confirmed, the custody record stays a unit count + seal at the handshake level. |
+| HandlingUnit / pallet entity | **Closed 1 September 2026 — not built.** Team decision: the parcel is the smallest grain, and a waybill contains parcels with no entity between them. The custody record stays a unit count + seal at the handshake level (`Consignment.unit_count_expected`). Additive later if the operation proves it necessary. See `docs/iteration3_plan.md` §8 decision 12. |
 
 Design principle — monitoring within legal constraints: Driver monitoring features (GPS tracking, selfie capture, checkpoint photos) are designed within the boundaries set by the National Transport Act, applicable transport industry contracts, and POPIA. The company-issued device model (Section 3.1) is the primary mechanism for staying within these constraints.
 
@@ -614,7 +614,7 @@ This section records the current build state as of June 2026 (iteration 2 in pro
 ## 14.3 Not yet modelled
 
 - **`TripStop`** — the database entity (FP-112). Currently `Trip` has `origin_precinct_id` / `destination_precinct_id` directly; multi-stop requires the stop model.
-- **`HandlingUnit` / pallet** — the consolidated unit entity between `Consignment` and `Parcel`. Open question resolved at the July site visit: does LFG scan each pallet individually, or only count units and seal the truck? Answer determines whether this becomes a tracked entity or stays a count on the handshake.
+- ~~**`HandlingUnit` / pallet**~~ — **will not be built (decided 1 September 2026).** The parcel is the smallest grain; a pallet stays a *count* on the consignment (`unit_count_expected`), never a tracked entity. Consequence: a loss is bounded to the waybill's sealed window rather than a pallet's.
 - **`ParcelScanEvent`** — per-parcel observation history with location/facility, planned post FP-121.
 - **Loading order / priority fields** on consignments — confirmed as a required attribute (Bruce, 24 Jun) but not yet on the data model.
 - **Return leg link** — a nullable FK on `Trip` back to the originating outbound trip, for management reporting. Not yet added.
@@ -636,7 +636,7 @@ This section records the current build state as of June 2026 (iteration 2 in pro
 | Section 6.1 (Active trip view) | **Update** | Dispatcher sees all client consignments, loading order and priority, per-consignment unit counts, and per-consignment scoped exceptions. |
 | Section 9 (Load Configuration) | **New section** | Full domain knowledge section on load trimming, maximum weight, weigh bridges, responsibility model (client bears cost of non-compliance). |
 | Section 10 (Return Legs) | **New section** | Return leg = new trip. Empty-leg visibility for management. Rotation planning feed. Design decision on trip linking noted as open. |
-| Section 12 (Out of Scope) | **Add** | Camera integration (Phase 2): live/recorded vehicle camera feed on exceptions; 5-minute pre/post clip saving (Bruce to raise with Pulsit). Parcel Perfect live API integration noted as post-iteration-2. HandlingUnit entity noted as open (July visit). |
+| Section 12 (Out of Scope) | **Add** | Camera integration (Phase 2): live/recorded vehicle camera feed on exceptions; 5-minute pre/post clip saving (Bruce to raise with Pulsit). Parcel Perfect live API integration noted as post-iteration-2. HandlingUnit entity noted as open at the time — **closed 1 September 2026: not built**, the parcel is the smallest grain. |
 | Section 14 (Codebase state) | **New section** | Documents what is built (iteration 1 complete), what is in progress (iteration 2), and what is not yet modelled. Derived from the codebase graph. |
 
 ## 15.2 v5 → v6 changes (Bruce van Wyk meeting, 5 May 2026)

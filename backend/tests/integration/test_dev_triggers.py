@@ -31,7 +31,13 @@ from app.integrations import parcel_perfect as pp_module
 from app.integrations import scan_feed as scan_feed_module
 from app.schemas.dev import CLOSED_PHASE_STATUSES, MAX_STAGED_BARCODES
 
-from tests.conftest import FakeMockStateStore, auth_header, make_jwks, make_token
+from tests.conftest import (
+    FakeMockStateStore,
+    auth_header,
+    make_jwks,
+    make_token,
+    production_settings,
+)
 
 
 @pytest.fixture(scope="module")
@@ -181,55 +187,40 @@ def test_dev_router_present_in_production_when_flag_is_on():
     and still needs the panel to drive the scan and Parcel Perfect flows. See
     dev_triggers.dev_panel_enabled for what carries the risk now that this gate is gone.
     """
-    original_environment = settings.ENVIRONMENT
-    original_flag = settings.DEV_PANEL_ENABLED
-    settings.ENVIRONMENT = "production"
-    settings.DEV_PANEL_ENABLED = True
-    try:
-        importlib.reload(app_main)
+    with production_settings(DEV_PANEL_ENABLED=True):
+        try:
+            importlib.reload(app_main)
 
-        assert [r.path for r in app_main.app.routes if "/dev" in r.path] != []
-    finally:
-        settings.ENVIRONMENT = original_environment
-        settings.DEV_PANEL_ENABLED = original_flag
-        importlib.reload(app_main)
+            assert [r.path for r in app_main.app.routes if "/dev" in r.path] != []
+        finally:
+            importlib.reload(app_main)
 
 
 def test_dev_router_absent_in_production_when_flag_is_off():
     """The flag is now the ONLY thing standing between these endpoints and the internet,
     so the off case matters more than it did — assert it explicitly in production, not
     just in development."""
-    original_environment = settings.ENVIRONMENT
-    original_flag = settings.DEV_PANEL_ENABLED
-    settings.ENVIRONMENT = "production"
-    settings.DEV_PANEL_ENABLED = False
-    try:
-        importlib.reload(app_main)
+    with production_settings(DEV_PANEL_ENABLED=False):
+        try:
+            importlib.reload(app_main)
 
-        assert [r.path for r in app_main.app.routes if "/dev" in r.path] == []
-    finally:
-        settings.ENVIRONMENT = original_environment
-        settings.DEV_PANEL_ENABLED = original_flag
-        importlib.reload(app_main)
+            assert [r.path for r in app_main.app.routes if "/dev" in r.path] == []
+        finally:
+            importlib.reload(app_main)
 
 
 def test_docs_stay_disabled_in_production_with_the_panel_on():
     """The two gates are now independent, and this is the pairing that has to hold:
     turning the panel on must not drag the OpenAPI surface map back into production."""
-    original_environment = settings.ENVIRONMENT
-    original_flag = settings.DEV_PANEL_ENABLED
-    settings.ENVIRONMENT = "production"
-    settings.DEV_PANEL_ENABLED = True
-    try:
-        importlib.reload(app_main)
+    with production_settings(DEV_PANEL_ENABLED=True):
+        try:
+            importlib.reload(app_main)
 
-        assert app_main.app.docs_url is None
-        assert app_main.app.redoc_url is None
-        assert app_main.app.openapi_url is None
-    finally:
-        settings.ENVIRONMENT = original_environment
-        settings.DEV_PANEL_ENABLED = original_flag
-        importlib.reload(app_main)
+            assert app_main.app.docs_url is None
+            assert app_main.app.redoc_url is None
+            assert app_main.app.openapi_url is None
+        finally:
+            importlib.reload(app_main)
 
 
 def test_dev_router_absent_when_flag_is_off():

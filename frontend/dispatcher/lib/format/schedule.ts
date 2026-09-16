@@ -1,8 +1,5 @@
-// Planned-versus-actual arithmetic for the trip schedule.
-//
-// Pure and module-scoped rather than page-local so the sign convention is provable: a
-// positive delay is LATE, and getting that backwards would report a truck that arrived
-// two hours early as two hours late on the one screen a dispatcher checks it on.
+// Planned-versus-actual arithmetic for the trip schedule. Pure and module-scoped so the
+// sign convention (positive delay = LATE) is provable, not re-implemented per caller.
 
 const MS_PER_MINUTE = 60_000
 const MINUTES_PER_HOUR = 60

@@ -12,18 +12,14 @@ import {
 } from '@shared/lib/session/idle'
 
 /**
- * Signs the user out once the machine has been idle past the timeout.
- *
- * Mounted once, inside the auth provider, and only while a user is signed in. All the
- * decision logic lives in @shared/lib/session/idle so it can be tested without a DOM;
- * this hook is just the wiring — listeners, a timer, and the cross-tab channel.
+ * Signs the user out once the machine has been idle past the timeout. Decision logic
+ * lives in @shared/lib/session/idle (testable without a DOM); this hook is the wiring.
  *
  * @param enabled  false while signed out, so a login page carries no timer
  * @param onExpire called exactly once when the window elapses
  */
 export function useIdleTimeout(enabled: boolean, onExpire: () => void): void {
-  // Held in a ref so a caller passing an inline arrow doesn't tear down and rebuild every
-  // listener on each render.
+  // Ref so a caller passing an inline arrow doesn't rebuild every listener on each render.
   const onExpireRef = useRef(onExpire)
   useEffect(() => {
     onExpireRef.current = onExpire
@@ -34,9 +30,8 @@ export function useIdleTimeout(enabled: boolean, onExpire: () => void): void {
 
     const store = window.localStorage
     let timer: ReturnType<typeof setTimeout> | undefined
-    // Guards against a double fire: the timer and a storage event from another tab can
-    // both conclude "expired" within the same tick, and signing out twice would race the
-    // auth provider's own teardown.
+    // Guards a double fire: the timer and a storage event from another tab can both
+    // conclude "expired" in the same tick.
     let expired = false
 
     const expire = (): void => {
@@ -46,9 +41,8 @@ export function useIdleTimeout(enabled: boolean, onExpire: () => void): void {
       onExpireRef.current()
     }
 
-    // Re-arms the timer against the CURRENT stored timestamp rather than a fixed delay.
-    // This is what makes the countdown shared across tabs: whichever tab last saw
-    // activity wrote the timestamp, and every tab schedules from that same value.
+    // Re-arms against the CURRENT stored timestamp, not a fixed delay — this is what
+    // shares the countdown across tabs.
     const rearm = (): void => {
       if (expired) return
       if (timer !== undefined) clearTimeout(timer)
@@ -62,24 +56,20 @@ export function useIdleTimeout(enabled: boolean, onExpire: () => void): void {
     }
 
     const onActivity = (): void => {
-      // A visibilitychange firing as the tab is HIDDEN is not a person being present —
-      // it is usually the tab being backgrounded. Only the return counts.
+      // A visibilitychange firing as the tab goes HIDDEN isn't presence; only the return counts.
       if (document.visibilityState !== 'visible') return
       recordActivity(store)
       rearm()
     }
 
-    // Another tab wrote the timestamp (or cleared it on sign-out). Re-arm from the new
-    // value instead of keeping this tab's now-stale countdown.
+    // Another tab wrote (or cleared) the timestamp; re-arm from the new value.
     const onStorage = (event: StorageEvent): void => {
       if (event.key !== LAST_ACTIVITY_KEY) return
       rearm()
     }
 
-    // Seed on mount. A session restored from a page reload has a timestamp from before
-    // the reload, and that is exactly the case this has to catch: an expired session must
-    // not be revived by refreshing the page. rearm() checks before it schedules, so an
-    // already-expired session signs out here rather than waiting a full window.
+    // Seed on mount: a session restored from a page reload must not be revived just by
+    // refreshing — rearm() checks before scheduling, so an already-expired one signs out here.
     if (readLastActivity(store) === null) recordActivity(store)
     rearm()
 

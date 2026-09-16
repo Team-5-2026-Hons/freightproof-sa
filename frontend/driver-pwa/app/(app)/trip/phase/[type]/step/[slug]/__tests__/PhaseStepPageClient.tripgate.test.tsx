@@ -275,6 +275,9 @@ describe('submit keeps the step UI on screen (Fix 2)', () => {
 
     const { rerender } = render(<PhaseStepPageClient />)
     fireEvent.click(screen.getByText('submit-confirmation'))
+    // Location comparison is best-effort in this browser test; acknowledge the
+    // unavailable check before exercising the confirmation submission flow.
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue' }))
     await waitFor(() => expect(mockRouterPush).toHaveBeenCalledWith('/'))
 
     // Once confirmation submits the trip is CLOSED — /trips/me/active legitimately has

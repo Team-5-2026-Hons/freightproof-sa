@@ -16,9 +16,11 @@ import asyncio
 import base64
 import os
 import uuid
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, AsyncGenerator
+from unittest.mock import Mock
 
 import pytest
 import pytest_asyncio
@@ -71,6 +73,23 @@ from app.main import app  # noqa: E402
 # and substitute a fake Redis, so the behaviour is still covered — just not by accident,
 # from every other test in the suite.
 settings.RATE_LIMIT_ENABLED = False
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def isolate_anchor_dispatch(monkeypatch: pytest.MonkeyPatch) -> AsyncGenerator[None, None]:
+    """Never publish test phase IDs to the development broker; drain per-loop work.
+
+    Module-specific capture/failure fixtures replace this stub when they test the
+    queue boundary. Draining before pytest closes the loop keeps tasks from leaking
+    into the next test without changing the application's async dispatch behavior.
+    """
+    from app.orchestration.phase_service import _BACKGROUND_ANCHOR_TASKS
+    from app.tasks.blockchain import anchor_phase_event_task
+
+    monkeypatch.setattr(anchor_phase_event_task, "delay", Mock(return_value=None))
+    yield
+    while _BACKGROUND_ANCHOR_TASKS:
+        await asyncio.gather(*tuple(_BACKGROUND_ANCHOR_TASKS))
 
 # ── Test EC key pair (generated once per process) ─────────────────────────────
 # Used to sign test JWTs with ES256, mirroring how Supabase signs real tokens.
@@ -152,6 +171,47 @@ def make_token(
         algorithm="ES256",
         headers={"kid": TEST_KID},
     )
+
+
+@contextmanager
+def production_settings(**overrides: Any):
+    """Run a block with settings that look like a VALID production deployment.
+
+    app.main calls enforce_production_config() at import time, so any test that flips
+    ENVIRONMENT to "production" and reloads it must also satisfy the production
+    preconditions — otherwise the reload raises ProductionConfigError and the test fails
+    for a reason that has nothing to do with what it is checking.
+
+    That coupling is deliberate, not an inconvenience to work around: a test simulating
+    production should simulate a production that is actually allowed to serve. The
+    defaults below are the minimum that passes; pass overrides for whatever the test is
+    actually about.
+
+    Every touched field is restored on exit, including __pydantic_fields_set__ — assigning
+    to a settings field mutates it, and leaving that changed would let one test silently
+    satisfy another's explicit-configuration rule.
+    """
+    defaults: dict[str, Any] = {
+        "ENVIRONMENT": "production",
+        "ALLOWED_ORIGINS": ["https://www.freightproof.co.za"],
+        "HANDOVER_RECEIVER_BASE_URL": "https://receiver.freightproof.co.za",
+        "IDVS_USE_MOCK": True,
+        "RATE_LIMIT_ENABLED": True,
+        "RATE_LIMIT_TRUST_PROXY_HEADERS": True,
+    }
+    values = {**defaults, **overrides}
+
+    originals = {name: getattr(settings, name) for name in values}
+    original_fields_set = set(settings.model_fields_set)
+
+    for name, value in values.items():
+        setattr(settings, name, value)
+    try:
+        yield settings
+    finally:
+        for name, value in originals.items():
+            setattr(settings, name, value)
+        settings.__pydantic_fields_set__ = original_fields_set
 
 
 def auth_header(token: str) -> dict[str, str]:

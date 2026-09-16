@@ -5,7 +5,7 @@ import { Chip } from '@/components/ui/Chip'
 import { TripIdStamp } from './TripIdStamp'
 import { PhaseChain } from './PhaseChain'
 import { ROUTES } from '@/lib/constants/routes'
-import type { TripSummary } from '@shared/lib/types/trip'
+import type { TripChecklistItem } from '@shared/lib/types/trip'
 import { PHASE_NAMES } from '@shared/lib/constants/phase-meta'
 import { chainNodesFromCounts, tripChipMeta } from '@/lib/phase/derive'
 import type { Precinct } from '@shared/lib/types/precinct'
@@ -22,12 +22,12 @@ export interface ColWidths {
 }
 
 interface ChecklistRowProps {
-  trip: TripSummary
+  trip: TripChecklistItem
   colWidths: ColWidths
   precincts: Precinct[]
   className?: string
-  // History table hides the phase progress chain — trips there are already
-  // complete or cancelled, so only whether exceptions occurred still matters.
+  // History table hides the phase progress chain — only whether something needs a
+  // dispatcher's attention now still matters (see needs_review_count).
   showProgress?: boolean
 }
 
@@ -35,27 +35,21 @@ function formatShortDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short' })
 }
 
-// Role (origin/destination) is derived, not stored (FP-112). This list payload
-// (TripSummary) carries current_stop but no total stop count, so only two cases
-// are provable without it: stop 0 is always the origin, and `confirmation` only
-// ever fires on the trip's LAST stop (backend/app/orchestration/phase_plan.py —
-// `build_phase_plan`, the else-branch reached solely when `i == last_index`).
-// Everything else might genuinely be a mid-route stop on a cross-dock plan, so it
-// falls back to a numbered "Stop N" rather than risk mislabelling it "Destination".
-function stopRoleLabel(trip: TripSummary): string {
+// Role (origin/destination) is derived, not stored (FP-112). Without a total stop count
+// only two cases are provable: stop 0 is the origin, and `confirmation` only fires on the
+// last stop (see build_phase_plan). Everything else falls back to a numbered "Stop N".
+function stopRoleLabel(trip: TripChecklistItem): string {
   if (trip.current_stop === null) return ''
   if (trip.current_stop === 0) return 'Origin'
   if (trip.current_phase === 'confirmation') return 'Destination'
   return `Stop ${trip.current_stop + 1}`
 }
 
-// What the row says the trip is doing. Exceptions win: a dispatcher must see them
-// before anything else. Otherwise the coarse status covers the terminal states and
-// current_phase covers everything in between — derived server-side from the ledger,
-// never inferred from trip.status the way the three deleted tables did.
-function progressHint(trip: TripSummary): string {
-  if (trip.open_exception_count > 0) {
-    return `⚠ ${trip.open_exception_count} exception${trip.open_exception_count > 1 ? 's' : ''}`
+// What the row says the trip is doing. Exceptions win; otherwise the coarse status
+// covers terminal states and current_phase covers everything in between.
+function progressHint(trip: TripChecklistItem): string {
+  if (trip.needs_review_count > 0) {
+    return `⚠ ${trip.needs_review_count} exception${trip.needs_review_count > 1 ? 's' : ''}`
   }
   if (trip.status === 'closed')    return '✓ Closed'
   if (trip.status === 'cancelled') return 'Cancelled'
@@ -69,9 +63,8 @@ function progressHint(trip: TripSummary): string {
 export function ChecklistRow({ trip, colWidths, precincts, className, showProgress = true }: ChecklistRowProps) {
   const router = useRouter()
 
-  // U13: the chip names the phase — `Unloading`, not `Active`; `⚠ Unloading` when
-  // held. The list reads the cache because it has no plan to derive from; that is
-  // U3's read-path exemption, and the ONLY place in the dispatcher allowed to do it.
+  // The chip names the phase (e.g. `Unloading`, `⚠ Unloading` when held), reading the
+  // cache since this list has no plan to derive from.
   const statusMeta = tripChipMeta(trip.status, trip.current_phase)
 
   const originPrecinct = precincts.find(p => p.id === trip.origin_precinct_id)
@@ -101,7 +94,7 @@ export function ChecklistRow({ trip, colWidths, precincts, className, showProgre
         'bg-surf-lowest cursor-pointer transition-colors duration-[120ms]',
         'hover:bg-surf-low divide-x divide-outline/30',
         // Left border accent draws the eye when a trip needs attention
-        trip.open_exception_count > 0 && 'border-l-4 border-err',
+        trip.needs_review_count > 0 && 'border-l-4 border-err',
         className,
       )}
     >
@@ -134,15 +127,13 @@ export function ChecklistRow({ trip, colWidths, precincts, className, showProgre
         <div className="text-[11px] text-on-surf-v truncate">↓ {destShort}</div>
       </div>
 
-      {/* Progress (active table) or Exceptions-only summary (history table).
-          A real width + resize handle, like every other column — not flex-1 — so
-          growing a neighbour can't silently steal its space and clip its content. */}
+      {/* Real width, not flex-1, like every other column, so a neighbour can't clip it. */}
       {showProgress ? (
         <div style={{ width: colWidths.progress }} className="shrink-0 flex items-center gap-2 min-w-0 overflow-hidden px-[6px]">
           <PhaseChain nodes={chainNodes} compact className="shrink-0" />
           <span className={cn(
             'text-[11px] truncate',
-            trip.open_exception_count > 0 ? 'text-warn' :
+            trip.needs_review_count > 0 ? 'text-warn' :
             trip.status === 'closed'       ? 'text-ok'   :
                                              'text-on-surf-v',
           )}>
@@ -151,10 +142,12 @@ export function ChecklistRow({ trip, colWidths, precincts, className, showProgre
         </div>
       ) : (
         <div style={{ width: colWidths.progress }} className="shrink-0 flex items-center min-w-0 px-[6px]">
-          {trip.open_exception_count > 0 ? (
+          {trip.needs_review_count > 0 ? (
             <span className="text-[11px] font-[600] text-warn truncate">{hint}</span>
           ) : (
-            <span className="text-[11px] font-[600] text-ok">No exceptions</span>
+            // NOT "No exceptions" — needs_review_count is zero once reviewed exceptions
+            // are resolved, even though the record still holds them. See docs/known-issues.md issue 11.
+            <span className="text-[11px] font-[600] text-ok">None need review</span>
           )}
         </div>
       )}

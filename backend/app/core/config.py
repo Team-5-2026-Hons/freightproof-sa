@@ -1,181 +1,163 @@
-# FreightProof SA — centralised application settings.
-# All values are read from environment variables (or backend/.env in local dev).
-# Never import os.environ directly in the app — always go through `settings`.
+"""Application settings loaded from environment variables or backend/.env."""
 
 from typing import List
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+# Native driver app origins (iOS, Android); kept outside Settings so no .env can drop them.
+_NATIVE_APP_ORIGINS = ("capacitor://localhost", "https://localhost")
+
+
 class Settings(BaseSettings):
-    # -------------------------------------------------------------------------
-    # Database
-    # asyncpg driver is required for SQLAlchemy's async engine.
-    # Format: postgresql+asyncpg://user:password@host:port/dbname
-    # -------------------------------------------------------------------------
+    # Must use the asyncpg driver: postgresql+asyncpg://...
     DATABASE_URL: str
 
-    # Separate async PostgreSQL URL for integration tests.
-    # Must point at a throwaway database — tests create and drop tables.
-    # Leave empty to skip integration tests automatically.
+    # Supabase's pooler caps the project at 15 clients; kept small so four devs fit.
+    DB_POOL_SIZE: int = 2
+    DB_MAX_OVERFLOW: int = 1
+
+    # Empty skips integration tests.
     TEST_DATABASE_URL: str = ""
 
-    # -------------------------------------------------------------------------
-    # Redis
-    # Used by Celery as both the broker and result backend, and directly
-    # for any ephemeral caching (e.g. rate-limit counters).
-    # -------------------------------------------------------------------------
     REDIS_URL: str
 
-    # -------------------------------------------------------------------------
-    # Supabase
-    # Used in development only for storage and Auth helpers. In production,
-    # DATABASE_URL points to the same Postgres instance Supabase manages.
-    # -------------------------------------------------------------------------
     SUPABASE_URL: str
     SUPABASE_ANON_KEY: str
 
-    # -------------------------------------------------------------------------
-    # Hedera Hashgraph
-    # HCS (Hedera Consensus Service) is used to anchor evidence hashes.
-    # HEDERA_NETWORK should be "testnet" in dev and "mainnet" in production.
-    # HEDERA_TOPIC_ID is created by the FP-001 spike; empty until that spike lands.
-    # -------------------------------------------------------------------------
     HEDERA_ACCOUNT_ID: str
     HEDERA_PRIVATE_KEY: str
     HEDERA_NETWORK: str = "testnet"
     HEDERA_TOPIC_ID: str = ""
 
-    # Hard ceiling on the submit_hash() SDK call (a real network round-trip with no
-    # built-in timeout). Typical latency is ~4-6s; this bounds the worst case so a
-    # stalled Hedera call fails fast instead of hanging the request indefinitely.
+    # The Hedera SDK has no built-in timeout.
     HEDERA_SUBMIT_TIMEOUT_SECONDS: float = 15.0
 
-    # -------------------------------------------------------------------------
-    # Twilio — NOT YET IMPLEMENTED (no client code). Optional until the SMS
-    # integration lands; required-ness should return with the feature.
-    # -------------------------------------------------------------------------
+    # Twilio and SendGrid are not implemented yet.
     TWILIO_ACCOUNT_SID: str = ""
     TWILIO_AUTH_TOKEN: str = ""
     TWILIO_FROM_NUMBER: str = ""
 
-    # -------------------------------------------------------------------------
-    # SendGrid — NOT YET IMPLEMENTED (no client code). Same deal.
-    # -------------------------------------------------------------------------
     SENDGRID_API_KEY: str = ""
     SENDGRID_FROM_EMAIL: str = ""
 
-    # -------------------------------------------------------------------------
-    # Supabase Auth
-    # SERVICE_ROLE_KEY: grants full DB + Auth admin access; used server-side
-    # only (e.g. creating auth users, setting app_metadata). Never sent to
-    # the browser.
-    # -------------------------------------------------------------------------
+    # Full admin access: server-side only, never sent to a browser.
     SUPABASE_SERVICE_ROLE_KEY: str
 
-    # Evidence images are fetched by the dispatcher's browser straight from Storage via a
-    # short-lived signed URL. Kept deliberately short: for its lifetime the URL is a bearer
-    # capability that carries no further auth check.
+    # Signed URLs are unauthenticated while valid, so keep them short-lived.
     EVIDENCE_SIGNED_URL_TTL_SECONDS: int = 300
 
-    # -------------------------------------------------------------------------
-    # Integration mock toggles
-    # True = use local mock, False = call real external API.
-    # Defaults to True so new dev environments work without partner credentials.
-    # -------------------------------------------------------------------------
+    # Mocks default on so a new dev environment works without partner credentials.
     IDVS_USE_MOCK: bool = True
     IDVS_API_KEY: str = ""
     IDVS_API_URL: str = ""
     PULSE_USE_MOCK: bool = True
     PULSE_API_KEY: str = ""
     PULSE_API_URL: str = ""
+    # Covers tracker refresh cadence but rejects a replayed offline handshake.
+    PULSIT_CORROBORATION_MAX_SKEW_SECONDS: int = 300
     PP_USE_MOCK: bool = True
-    PP_API_KEY: str = ""        # Parcel Perfect login email / username
-    PP_API_PASSWORD: str = ""   # Parcel Perfect login password (used in MD5 auth flow)
-    PP_API_TOKEN: str = ""      # Pre-issued token (skips salt/MD5 flow when set)
+    PP_API_KEY: str = ""  # login username
+    PP_API_PASSWORD: str = ""
+    PP_API_TOKEN: str = ""  # skips the salt/MD5 login when set
     PP_API_URL: str = ""
     PP_POLL_INTERVAL_SECONDS: int = 60
 
-    # Warehouse scan feed. True = MockScanFeed (Redis-backed, driven by the dev
-    # trigger panel), False = a real WMS/PP-depot feed. Mirrors PP_USE_MOCK.
-    # No real implementation exists yet: PP exposes no scan endpoint and we have
-    # no depot account, so this stays True until one lands.
+    # No real scan feed exists yet, so this stays True.
     SCAN_FEED_USE_MOCK: bool = True
 
-    # -------------------------------------------------------------------------
-    # Runtime config
-    # -------------------------------------------------------------------------
-    # Used by the (upcoming) H1/H4 gate geofence check — see feature/gps-warehouse-geofencing.
     GPS_TOLERANCE_METRES: int = 50
+
+    # Driver-vs-truck proximity check (Task 4, trip-location-timeline story):
+    # independent corroboration that the driver's OWN PHONE fix and the vehicle's
+    # Pulsit tracker fix describe the same place at roughly the same time. This is
+    # a different question from GPS_TOLERANCE_METRES above (is the TRUCK inside its
+    # precinct?) — a truck can be correctly inside its geofence while the driver's
+    # phone sits genuinely metres away. See orchestration/proximity_service.py.
+    # Four independent settings rather than reusing GPS_TOLERANCE_METRES /
+    # PULSIT_CORROBORATION_MAX_SKEW_SECONDS, so a future change to either of those
+    # never silently drags this unrelated policy along with it.
+    DRIVER_TRUCK_MAX_SEPARATION_METRES: float = 100.0
+    DRIVER_TRUCK_MAX_FIX_AGE_SECONDS: int = 60
+    DRIVER_TRUCK_MAX_SKEW_SECONDS: int = 30
+    DRIVER_TRUCK_MAX_PHONE_ACCURACY_METRES: float = 50.0
+
     DEMO_MODE: bool = False
 
-    # Dev trigger panel. Registers a router that can fire scans, PP lifecycle changes and
-    # exceptions. Defaults to False so the panel is absent unless deliberately switched
-    # on. This is now the SOLE condition: it used to be paired with ENVIRONMENT !=
-    # "production", but the deployed demo runs as production (to keep /docs unpublished)
-    # and still needs the panel — see api/v1/endpoints/dev_triggers.dev_panel_enabled for
-    # the full reasoning. Setting this True on an internet-reachable host publishes
-    # endpoints that fabricate evidence events; they require a dispatcher token and refuse
-    # unless the integrations are mocked, but nothing else stands behind them now. Turn it
-    # off when the demo window closes.
+    # Sole gate for the dev panel: the demo deploy runs as production but still needs it.
     DEV_PANEL_ENABLED: bool = False
 
-    # The operating day boundary used to decide whether a driver is activating a trip
-    # before its scheduled date (orchestration/phase_service.py). "Same calendar day"
-    # is meaningless without a timezone: a 06:00 SAST departure is 04:00 UTC, and a
-    # 01:00 SAST departure is the PREVIOUS day in UTC, so comparing UTC dates would
-    # reject a driver starting a legitimately-scheduled early-morning trip.
-    #
-    # A fixed offset rather than a zoneinfo key on purpose: South African Standard Time
-    # is permanently UTC+2 and has never observed daylight saving, so an offset is exact
-    # for every date this system will see — and it keeps a tz database out of the
-    # container image. The moment FreightProof runs anywhere that DOES shift, this must
-    # become a real IANA zone name resolved through zoneinfo, with tzdata added to
-    # requirements.txt.
+    # SAST has no DST, so a fixed offset is exact for the operating-day boundary.
     OPERATIONS_UTC_OFFSET_HOURS: int = 2
 
-    # -------------------------------------------------------------------------
-    # Sessions
-    # -------------------------------------------------------------------------
-    # How long a session may sit idle before the API stops accepting it. Supabase
-    # issues the tokens and refreshes them indefinitely, so without this a signed-in
-    # handset or an unattended dispatcher laptop stays authenticated forever. Enforced
-    # server-side in auth/sessions.py against a last-seen timestamp, and mirrored by a
-    # client-side timer in both frontends so the user is actually signed out rather than
-    # discovering it on their next request.
+    # Enforced in auth/sessions.py; Supabase tokens otherwise refresh forever.
     SESSION_IDLE_TIMEOUT_MINUTES: int = 10
 
-    # -------------------------------------------------------------------------
-    # Rate limiting (core/rate_limit.py; budgets live in core/limits.py)
-    # -------------------------------------------------------------------------
-    # Off switch for local development and tests. Never set False in a deployed
-    # environment — it removes the only volume control on endpoints that spend Hedera
-    # and Parcel Perfect quota.
+    # Token lifetime, separate from how often the QR on screen rotates.
+    HANDOVER_TOKEN_EXPIRY_MINUTES: int = 10
+
+    # Limits how long a photo of the QR stays usable.
+    HANDOVER_ROTATION_SECONDS: int = 20
+
+    # Encoded in the QR, so it must be reachable from mobile data when deployed.
+    HANDOVER_RECEIVER_BASE_URL: str = "http://localhost:3002"
+
+    # Server-side so a client can't downgrade the verification workflow.
+    IDVS_WORKFLOW_ID: str = ""
+
+    # The only protection against forged decisions on the public webhook.
+    IDVS_WEBHOOK_SECRET: str = ""
+
+    # Didit free-tier cap; past it handover drops to a lower evidence tier instead of billing.
+    IDVS_MONTHLY_SESSION_LIMIT: int = 500
+
+    # Short so a slow vendor degrades the tier instead of holding up the handover.
+    IDVS_SESSION_TIMEOUT_SECONDS: int = 10
+
+    IDVS_DECISION_POLL_SECONDS: int = 90
+
+    # ID and selfie checks can outlast the handover token, so it is extended once.
+    IDVS_TOKEN_EXTENSION_MINUTES: int = 10
+
+    # Catches closed tabs and dead phones that the browser poll never reported.
+    IDVS_ABANDON_AFTER_SECONDS: int = 1800
+    IDVS_SWEEP_INTERVAL_SECONDS: int = 300
+
+    # Never disable when deployed: it is the only cap on Hedera and PP spend.
     RATE_LIMIT_ENABLED: bool = True
 
-    # Set True ONLY when the app sits behind a reverse proxy or load balancer that
-    # overwrites X-Forwarded-For. Left False, the socket peer address is used instead.
-    # Trusting the header without such a proxy in front lets any caller forge a fresh
-    # client IP per request and hand themselves an unlimited budget.
+    # Only enable behind a proxy that overwrites X-Forwarded-For, or IPs can be forged.
     RATE_LIMIT_TRUST_PROXY_HEADERS: bool = False
 
-    # -------------------------------------------------------------------------
-    # Application
-    # ALLOWED_ORIGINS: restrict CORS in production to real domains only.
-    # The defaults cover the local dev ports for dispatcher and driver-pwa.
-    # -------------------------------------------------------------------------
     ENVIRONMENT: str = "development"
+
+    # Not VERSION, which build tools often set.
+    APP_VERSION: str = "0.1.0"
+
+    # Probes run concurrently, so this is roughly /health's worst-case latency.
+    HEALTH_PROBE_TIMEOUT_SECONDS: float = 2.0
+    # Native app origins are added separately in cors_allowed_origins.
     ALLOWED_ORIGINS: List[str] = [
         "http://localhost:3000",
         "http://localhost:3001",
     ]
 
-    # model_config replaces the deprecated class Config syntax.
-    # In local dev, pydantic-settings reads from backend/.env automatically.
-    # In Docker / production, values come from the container's environment and
-    # env_file is effectively ignored (the file won't be present in the image).
-    # extra="ignore" prevents validation errors if .env contains keys that are
-    # no longer in this model (e.g. after a config field is removed or renamed).
+    @property
+    def cors_allowed_origins(self) -> List[str]:
+        """Return ALLOWED_ORIGINS plus the native app and receiver origins.
+
+        Added here because an ALLOWED_ORIGINS env var replaces the whole default list.
+        """
+        origins = list(self.ALLOWED_ORIGINS)
+        receiver_origin = self.HANDOVER_RECEIVER_BASE_URL.rstrip("/")
+
+        for required in (*_NATIVE_APP_ORIGINS, receiver_origin):
+            if required and required not in origins:
+                origins.append(required)
+
+        return origins
+
+    # Ignore stale .env keys left behind by renamed fields.
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -183,5 +165,4 @@ class Settings(BaseSettings):
     )
 
 
-# Single shared instance — import this wherever config values are needed.
 settings = Settings()

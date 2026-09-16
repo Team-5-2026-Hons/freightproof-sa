@@ -15,12 +15,9 @@ from app.db.models.enums import ArtifactType
 
 
 class EvidenceArtifact(Base):
-    """Photo or document uploaded during a phase or checkpoint.
-
-    trip_id uses use_alter=True: evidence_artifacts is created before trips in
-    the migration to allow phase_events to reference both tables. The FK
-    is added via ALTER TABLE after trips exists.
-    """
+    """Photo or document uploaded during a phase or checkpoint. trip_id uses
+    use_alter=True: evidence_artifacts is created before trips in the migration,
+    so the FK is added via ALTER TABLE after trips exists."""
 
     __tablename__ = "evidence_artifacts"
 

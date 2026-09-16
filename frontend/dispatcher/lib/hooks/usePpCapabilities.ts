@@ -9,9 +9,8 @@ import { useAsyncData } from './useAsyncData'
 const DEFAULT_CAPS: PPCapabilities = { manifest_lookup: false }
 
 export function usePpCapabilities(): PPCapabilities {
-  // useAsyncData leaves `data` at its last good value (the initial default here)
-  // when the fetch fails, which is exactly the degraded behaviour we want:
-  // hide the manifest field rather than surface an error banner.
+  // On fetch failure, useAsyncData leaves `data` at the default, hiding the manifest
+  // field rather than surfacing an error banner.
   const { data } = useAsyncData<PPCapabilities>(
     () => api.get<PPCapabilities>('/api/v1/pp/capabilities'),
     DEFAULT_CAPS,

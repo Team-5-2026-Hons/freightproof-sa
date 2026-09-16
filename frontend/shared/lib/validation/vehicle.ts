@@ -1,10 +1,7 @@
-// Vehicle-specific validation, built from the generic primitives in
-// rules.ts and the backend-mirrored constraints in constants.ts.
-//
-// Consumed by the dispatcher's vehicle create/edit forms (separate task).
-// length_m and is_active are deliberately excluded from VehicleField:
-// length_m is a constrained <select> of 6/12/18 in the UI (can't be
-// invalid by construction), and is_active is a boolean toggle.
+// Vehicle-specific validation, built from the generic primitives in rules.ts and the
+// backend-mirrored constraints in constants.ts. length_m and is_active are excluded from
+// VehicleField: length_m is a constrained <select>, is_active a boolean toggle — neither
+// can be invalid by construction.
 
 import { required, maxLength, exactLength, pattern, intInRange } from './rules'
 import {
@@ -26,13 +23,10 @@ export type VehicleField =
   | 'year'
   | 'gross_vehicle_mass_kg'
 
-// Callers only need to supply the string-valued fields being validated —
-// all form inputs are controlled <input> values, hence all strings here.
 export type VehicleFormValues = Record<VehicleField, string>
 
-// Display order of the validated fields. Shared by the create and edit forms
-// to focus the first invalid field on submit — kept here, next to VehicleField,
-// so the two pages can't drift out of sync.
+// Display order, shared by create and edit forms to focus the first invalid field on
+// submit — kept next to VehicleField so the two can't drift.
 export const VEHICLE_FIELD_ORDER: readonly VehicleField[] = [
   'registration',
   'pulsit_device_id',
@@ -44,8 +38,7 @@ export const VEHICLE_FIELD_ORDER: readonly VehicleField[] = [
   'gross_vehicle_mass_kg',
 ]
 
-// gross_vehicle_mass_kg has no natural upper bound, so the range rule's
-// ceiling is just the largest integer JS can represent exactly.
+// gross_vehicle_mass_kg has no natural upper bound, so use the largest safe integer.
 const POSITIVE_INT_MAX = Number.MAX_SAFE_INTEGER
 
 /** Returns true if `value` is a syntactically valid date string (e.g. from <input type="date">). */
@@ -53,12 +46,7 @@ function isValidDateString(value: string): boolean {
   return !isNaN(new Date(value).getTime())
 }
 
-/**
- * Validates a vehicle form's string fields and returns the first error per
- * field (or null if that field is valid). Mirrors the constraints enforced
- * server-side in backend/app/schemas/vehicles.py so the client surfaces the
- * same problems before submit instead of round-tripping a 422.
- */
+/** Validates a vehicle form and returns the first error per field, or null if valid. */
 export function validateVehicleForm(values: VehicleFormValues): Record<VehicleField, string | null> {
   const currentYearCeiling = new Date().getFullYear() + 1
 
@@ -73,8 +61,7 @@ export function validateVehicleForm(values: VehicleFormValues): Record<VehicleFi
       maxLength(PULSIT_MAX),
     ]),
 
-    // Optional overall — empty is valid. If filled in, must be exactly 17
-    // alphanumeric characters (no ISO 3779 I/O/Q exclusion, per product decision).
+    // Optional; if filled in, exactly 17 alphanumeric characters (no ISO 3779 I/O/Q exclusion).
     vin_number: firstError(values.vin_number, [
       exactLength(VIN_LENGTH, `VIN must be exactly ${VIN_LENGTH} characters`),
       pattern(VIN_PATTERN, 'VIN must contain only letters and numbers'),
@@ -86,8 +73,7 @@ export function validateVehicleForm(values: VehicleFormValues): Record<VehicleFi
 
     model: firstError(values.model, [maxLength(MAKE_MODEL_MAX)]),
 
-    // Ceiling computed live (current year + 1), not a stored constant —
-    // mirrors the backend's _validate_year, which does the same.
+    // Ceiling computed live (current year + 1), mirrors backend's _validate_year.
     year: firstError(values.year, [
       intInRange(YEAR_MIN, currentYearCeiling, `Year must be between ${YEAR_MIN} and ${currentYearCeiling}`),
     ]),
@@ -120,25 +106,19 @@ function validateOptionalDate(value: string): string | null {
 }
 
 /**
- * Live-typing feedback for the VIN field, split so the UI can style each part
- * correctly: `hint` is neutral guidance shown while the user is still mid-entry
- * (a running character count), `error` is a genuine problem to flag in red.
- * Both are null when the field is empty or fully valid. At most one is non-null.
+ * Live-typing feedback for the VIN field: `hint` is neutral guidance mid-entry, `error`
+ * is a genuine problem. At most one is non-null.
  */
 export function vinFieldFeedback(value: string): { hint: string | null; error: string | null } {
   if (value.length === 0) {
     return { hint: null, error: null }
   }
 
-  // Still typing toward 17 — guide, don't alarm. (Save stays gated by
-  // validateVehicleForm's exactLength rule until the field is complete.)
+  // Still typing toward 17 — guide, don't alarm.
   if (value.length < VIN_LENGTH) {
     return { hint: `${value.length} of ${VIN_LENGTH} characters`, error: null }
   }
 
-  // value.length >= VIN_LENGTH. The UI enforces maxLength={17} so >17 shouldn't
-  // occur, but if it does, treat it the same as a pattern mismatch rather than
-  // silently passing it through.
   if (!VIN_PATTERN.test(value)) {
     return { hint: null, error: 'VIN must be letters and numbers only' }
   }

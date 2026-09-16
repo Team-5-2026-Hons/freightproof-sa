@@ -8,6 +8,15 @@ export interface LogCheckpointBody {
   checkpoint_type: string
   driver_phone_lat?: number
   driver_phone_lng?: number
+  // Task 0A. The instant this app stamped the submission (CheckpointEvidence.capturedAt,
+  // already taken at submit time and already persisted into the offline queue via the
+  // queued evidence object — see CheckpointPageClient.tsx). Optional on the wire for the
+  // same backend-compatibility reason as phases.ts's driver_captured_at, but this build
+  // always sends it.
+  driver_captured_at?: string
+  driver_accuracy_metres?: number
+  client_report_id?: string
+  phase_event_id?: string
   horse_gps_lat?: number
   horse_gps_lng?: number
   selfie_artifact_id?: string
@@ -31,6 +40,11 @@ export interface CheckpointEvidence {
   note: string
   isDeviation: boolean
   capturedAt: string
+  // Generated at the driver action boundary and retained by the offline queue so a
+  // retried checkpoint is the same evidence record, not a second checkpoint.
+  clientReportId?: string
+  accuracyM?: number | null
+  phaseEventId?: string
 }
 
 // Raw endpoint call — only ever invoked from submitCheckpoint's real-backend branch
@@ -79,6 +93,13 @@ export async function submitCheckpoint(tripId: string, evidence: CheckpointEvide
     ...(evidence.gpsLat !== null && evidence.gpsLng !== null
       ? { driver_phone_lat: evidence.gpsLat, driver_phone_lng: evidence.gpsLng }
       : {}),
+    // Task 0A: already stamped at submit time onto the evidence object (see
+    // CheckpointPageClient.tsx), so replaying this from the offline queue sends the
+    // ORIGINAL submit instant, never the flush-time clock.
+    driver_captured_at: evidence.capturedAt,
+    ...(typeof evidence.accuracyM === 'number' ? { driver_accuracy_metres: evidence.accuracyM } : {}),
+    ...(evidence.clientReportId ? { client_report_id: evidence.clientReportId } : {}),
+    ...(evidence.phaseEventId ? { phase_event_id: evidence.phaseEventId } : {}),
     selfie_artifact_id: selfie.id,
     cargo_photo_artifact_id: cargoPhoto.id,
     note: evidence.note || undefined,

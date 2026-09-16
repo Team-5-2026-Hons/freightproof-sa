@@ -87,3 +87,9 @@ describe('ConfirmationDetail', () => {
     expect(screen.queryByText('Anchor')).not.toBeInTheDocument()
   })
 })
+
+it('labels excess destination scans without claiming negative missing parcels', () => {
+  render(<ConfirmationDetail phase={makePhase('confirmation', { parcel_count_destination: 5 })} originScannedCount={3} />)
+  expect(screen.getByText('2 excess parcels scanned at destination')).toBeInTheDocument()
+  expect(screen.queryByText(/-2 parcel/)).not.toBeInTheDocument()
+})

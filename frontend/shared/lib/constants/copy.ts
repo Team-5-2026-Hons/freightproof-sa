@@ -28,6 +28,8 @@ export const COPY = {
     retakePhoto:        'Retake',
     viewTrip:           'View trip',
     resolve:            'Resolve',
+    addReview:          'Add review',
+    submitReview:       'Submit review',
     override:           'Override',
     escalate:           'Escalate',
     addNote:            'Add note',
@@ -47,7 +49,7 @@ export const COPY = {
     panicSent:         'Panic alert sent · Dispatcher and security notified',
     exceptionLogged:   'Exception logged',
     overrideApplied:   'Override applied · Trip may continue',
-    exceptionResolved: 'Exception resolved',
+    exceptionReviewed: 'Exception reviewed.',
     exportStarted:     'Export started — your PDF will download shortly',
     pickupAnchored:    (ref: string) => `Pickup anchored · Receipt #${ref}`,
     deliveryAnchored:  (ref: string) => `Delivery anchored · Receipt #${ref}`,
@@ -57,7 +59,13 @@ export const COPY = {
     panicHold:    'Swipe to send panic alert',
     panicSent:    'Panic alert sent · Dispatcher and reaction company notified',
     overrideNote: 'Describe why you are overriding this exception',
-    resolveNote:  'Describe how this exception was resolved',
     addNote:      'Add a note to this exception',
+    // Recording a review is evidence capture, not an operational resolution.
+    reviewNote:         'Describe your assessment of this exception',
+    // Disabled placeholder so it can never be submitted, unlike the contact-method
+    // field's own blank option, which is a real, submittable answer.
+    reviewOutcomeUnset: 'Select an outcome',
+    // Stops a dispatcher reviewing a closed/cancelled trip from assuming the review reopens it.
+    reviewNotice:       'Reviewing records your assessment. It does not change or reopen the trip.',
   },
 } as const

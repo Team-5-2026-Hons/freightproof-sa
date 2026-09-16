@@ -29,6 +29,10 @@ def test_trip_event_defaults_resource_to_trip():
     assert event.resource == "trip"
 
 
+def test_realtime_kind_includes_exception_reviewed() -> None:
+    assert RealtimeKind.EXCEPTION_REVIEWED.value == "exception_reviewed"
+
+
 def test_channel_key_uses_org_prefix():
     org_id = uuid4()
 

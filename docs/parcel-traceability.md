@@ -301,12 +301,15 @@ Implications for tracing once consolidation opens (Option B / FP-112):
 1. Does the Parcel Perfect API expose **intermediate** scan events with a **location/facility**,
    or only out/in timestamps? (Determines how much of §4 we can fill from PP vs. must capture
    ourselves.)
-2. **(Decisive for the model — Bruce, 24 Jun)** Does LFG **scan/identify each consolidated
-   pallet** (giving it an LFG reference + its own scan/last-seen), or does LFG only **count units
-   + seal the truck** ("N units in, sealed, N units out")? If the former, we add a `HandlingUnit`
-   entity between `Consignment` and `Parcel`; if the latter, the custody record stays a **unit
-   count + seal** at the handshake level (largely already modelled) and no new entity is needed.
-   *Target this on the 13–18 July site visit by watching the FedEx consolidation + LFG handover.*
+2. ~~**(Decisive for the model — Bruce, 24 Jun)** Does LFG scan/identify each consolidated pallet,
+   or only count units + seal the truck?~~ **CLOSED — team decision, 1 September 2026.**
+   **The parcel is the smallest grain: a waybill contains parcels, and no `HandlingUnit` entity sits
+   between them.** Taken on simplicity grounds rather than on new evidence. The custody record stays
+   a **unit count + seal** at the handshake level (`Consignment.unit_count_expected`, already
+   modelled), and a pallet entity — if the operation later proves it needs one — is an *additive*
+   migration between `Consignment` and `Parcel`, not a rework. **Consequence for §4:** a parcel's
+   sealed window is bounded by its **waybill's** journey rather than a pallet's — a looser bound than
+   the pallet grain would have given, and one to state plainly rather than imply away.
 3. What granularity does FedEx actually want — **envelope vs parcel vs pallet**?
 3. Anchoring policy: **every** parcel scan event, or **Merkle-batched** (FP-63)?
 4. Is `delivery_stop` meant to be a real precinct, and can PP give us a structured value?

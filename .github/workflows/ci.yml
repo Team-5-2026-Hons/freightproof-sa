@@ -15,6 +15,23 @@ on:
 
 jobs:
 
+  agent-config:
+    name: Agent setup — config and hook checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Claude settings JSON
+        run: python3 -m json.tool .claude/settings.json > /dev/null
+
+      - name: Validate agent shell scripts
+        run: bash -n .claude/hooks/*.sh scripts/update-graph.sh
+
+      - name: Test edit-time lint hook
+        run: .claude/hooks/test-lint-changed.sh
+
   backend:
     name: Backend — lint, type-check, test
     runs-on: ubuntu-latest
@@ -89,6 +106,60 @@ jobs:
           REDIS_URL: redis://localhost:6379/0
         run: pytest -m "not slow"
 
+      # ---------------------------------------------------------------------
+      # Alembic. CI has never run it, which is exactly why it is being added: a
+      # forked revision chain passes every other check in this file and then breaks
+      # the next real `alembic upgrade` for whoever runs it first. The test suite
+      # cannot catch it — tests build their schema with Base.metadata.create_all,
+      # never through migrations, so the chain could be broken for weeks unnoticed.
+      # ---------------------------------------------------------------------
+      - name: Migrations — exactly one head
+        working-directory: backend
+        env:
+          # Any reachable URL satisfies env.py; this step reads the versions
+          # directory, it does not connect.
+          DATABASE_URL: postgresql+asyncpg://postgres:test@localhost:5432/freightproof_test
+        run: |
+          heads=$(alembic heads --verbose | grep -c "^Rev:" || true)
+          echo "Revision heads found: $heads"
+          alembic heads --verbose
+          if [ "$heads" -ne 1 ]; then
+            echo "::error::Expected exactly 1 migration head, found $heads. Two devs" \
+                 "branched migrations from the same parent — do not fix the revision" \
+                 "chain unilaterally, coordinate with the other author (see CLAUDE.md)."
+            exit 1
+          fi
+
+      # Proves the chain actually applies to an empty database. This is the check that
+      # catches a migration using syntax the target Postgres does not support, or one
+      # that depends on state only the author's database happens to have.
+      #
+      # THROWAWAY DATABASE ONLY — note the dedicated name below. Never point this at
+      # the shared Supabase dev database: CLAUDE.md forbids applying migrations from a
+      # feature branch precisely because that records an alembic_version only this
+      # branch knows, breaking alembic for the other three devs until it merges.
+      - name: Migrations — apply the whole chain to a fresh database
+        working-directory: backend
+        env:
+          PGPASSWORD: test
+          DATABASE_URL: postgresql+asyncpg://postgres:test@localhost:5432/freightproof_migrations
+        run: |
+          psql -h localhost -U postgres -d postgres \
+            -c "DROP DATABASE IF EXISTS freightproof_migrations;" \
+            -c "CREATE DATABASE freightproof_migrations;"
+          alembic upgrade head
+          echo "Migration chain applied cleanly from empty."
+
+      # Report-only for now: the dependency tree already has known findings that need
+      # a coordinated, tested version bump (some are coupled to FastAPI's pinned
+      # Starlette range). continue-on-error keeps this from blocking every unrelated PR
+      # until that cleanup lands — surfaced here so it can't be missed, not silently
+      # skipped. Flip continue-on-error to false once the tree is clean.
+      - name: Dependency vulnerability scan — pip-audit (report only)
+        working-directory: backend
+        continue-on-error: true
+        run: pip-audit -r requirements.txt
+
   frontend:
     name: Dispatcher — lint, type-check, test
     runs-on: ubuntu-latest
@@ -119,6 +190,20 @@ jobs:
       - name: Test — vitest
         working-directory: frontend/dispatcher
         run: npm test
+
+      - name: Build — Next.js production bundle
+        working-directory: frontend/dispatcher
+        env:
+          NEXT_PUBLIC_API_URL: https://api.example.invalid
+          NEXT_PUBLIC_SUPABASE_URL: https://test.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon-key
+        run: npm run build
+
+      # Report-only for now — see the matching pip-audit step in the backend job for why.
+      - name: Dependency vulnerability scan — npm audit (report only)
+        working-directory: frontend/dispatcher
+        continue-on-error: true
+        run: npm audit --audit-level=high
 
   # ---------------------------------------------------------------------------
   # Driver PWA checks run as their own job: it is a separate npm project with its
@@ -155,3 +240,90 @@ jobs:
       - name: Test — vitest
         working-directory: frontend/driver-pwa
         run: npm test
+
+      - name: Build — Next.js static export
+        working-directory: frontend/driver-pwa
+        env:
+          NEXT_PUBLIC_API_URL: https://api.example.invalid
+          NEXT_PUBLIC_SUPABASE_URL: https://test.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon-key
+        run: npm run build
+
+      # Report-only for now — see the matching pip-audit step in the backend job for why.
+      - name: Dependency vulnerability scan — npm audit (report only)
+        working-directory: frontend/driver-pwa
+        continue-on-error: true
+        run: npm audit --audit-level=high
+
+  # ---------------------------------------------------------------------------
+  # Receiver app. Added because it had NO CI coverage at all — no lint, no tests,
+  # no build — despite being the one surface a stranger opens, on their own phone,
+  # from a link they did not type and cannot verify. It is also the app that holds
+  # the handover capability token, so "nothing checks it" was the wrong default.
+  # ---------------------------------------------------------------------------
+  receiver:
+    name: Receiver — lint, type-check, test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/receiver/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend/receiver
+        run: npm ci
+
+      - name: Lint — ESLint
+        working-directory: frontend/receiver
+        run: npm run lint
+
+      - name: Type-check — tsc
+        working-directory: frontend/receiver
+        run: npm run type-check
+
+      - name: Test — vitest
+        working-directory: frontend/receiver
+        run: npm test
+
+      # A deliberately unreachable API origin: this build must not depend on a real
+      # backend, and a value that silently worked would hide a missing env var.
+      - name: Build — Next.js production bundle
+        working-directory: frontend/receiver
+        env:
+          NEXT_PUBLIC_API_URL: https://api.example.invalid
+        run: npm run build
+
+      # Report-only for now — see the matching pip-audit step in the backend job for why.
+      - name: Dependency vulnerability scan — npm audit (report only)
+        working-directory: frontend/receiver
+        continue-on-error: true
+        run: npm audit --audit-level=high
+
+  # Scans the PR diff (or the pushed commits on dev) for accidentally committed secrets.
+  # .env is gitignored and has never been tracked, but that is one `git add -A` away from
+  # changing — this catches it before a key ever needs rotating. Report-only until a first
+  # clean run confirms no false positives against this repo's fixtures/mocks, same as the
+  # dependency scans above. gitleaks-action is free for public repos (this one is); a
+  # private repo would need GITLEAKS_LICENSE.
+  secret-scan:
+    name: Secret scan — gitleaks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks (report only)
+        uses: gitleaks/gitleaks-action@v2
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

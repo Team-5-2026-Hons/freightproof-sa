@@ -4,7 +4,6 @@ import { useState, useMemo, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { AlertCircle } from 'lucide-react'
 import { TopBar }         from '@/components/ui/TopBar'
-import { StatCard }       from '@/components/ui/StatCard'
 import { SecHead }        from '@/components/ui/SecHead'
 import { Button }         from '@/components/ui/Button'
 import { Spinner }        from '@/components/ui/Spinner'
@@ -13,6 +12,7 @@ import { EmptyState }     from '@/components/ui/EmptyState'
 import { ChecklistRow }   from '@/components/domain/ChecklistRow'
 import type { ColWidths } from '@/components/domain/ChecklistRow'
 import { useTrips }       from '@/lib/hooks/useTrips'
+import { putTripSeeds }   from '@/lib/trips/tripSeed'
 import { useAuth }        from '@/lib/hooks/useAuth'
 import { usePrecincts }   from '@/lib/hooks/usePrecincts'
 import { useToast }       from '@/lib/hooks/useToast'
@@ -96,6 +96,9 @@ export default function ActiveTripsPage() {
 
   // Single fetch for all trips — active and closed are derived client-side
   const { trips: allFetchedTrips, isLoading: tripsLoading, error: tripsError, refetch: refetchTrips } = useTrips()
+  // Hand what this list already knows to the detail page, so opening a row paints its
+  // header immediately instead of waiting on the full record.
+  useEffect(() => { putTripSeeds(allFetchedTrips) }, [allFetchedTrips])
   const { precincts, error: precinctsError } = usePrecincts()
 
   useEffect(() => {
@@ -120,26 +123,6 @@ export default function ActiveTripsPage() {
     () => allFetchedTrips.filter(t => ACTIVE_STATUSES.includes(t.status)),
     [allFetchedTrips],
   )
-
-  const closedTrips = useMemo(
-    () => allFetchedTrips.filter(t => t.status === 'closed'),
-    [allFetchedTrips],
-  )
-
-  const todayStr = new Date().toDateString()
-  const completedCount = useMemo(
-    () => closedTrips.filter(t => new Date(t.updated_at).toDateString() === todayStr).length,
-    [closedTrips, todayStr],
-  )
-
-  const onTimePercent = useMemo(() => {
-    const withArrival = allTrips.filter(t => t.actual_arrival_at && t.planned_arrival_at)
-    if (withArrival.length === 0) return 100
-    const onTime = withArrival.filter(
-      t => new Date(t.actual_arrival_at!) <= new Date(t.planned_arrival_at!),
-    )
-    return Math.round((onTime.length / withArrival.length) * 100)
-  }, [allTrips])
 
   const filteredTrips = useMemo(() => {
     if (!search.trim()) return allTrips
@@ -195,12 +178,7 @@ export default function ActiveTripsPage() {
         </Button>
       </TopBar>
 
-      {/* Stat strip — shows placeholders while trips are loading */}
-      <div className="flex gap-3 px-6 py-4 bg-surf-low shrink-0">
-        <StatCard value={String(allTrips.length)}       label="Active trips"      loading={tripsLoading} />
-        <StatCard value={String(completedCount)}         label="Completed today"   loading={tripsLoading} />
-        <StatCard value={`${onTimePercent}%`}            label="On-time rate (30d)" success={onTimePercent >= 90} warn={onTimePercent < 70} loading={tripsLoading} />
-      </div>
+      {/* No stat strip: fleet figures live on the Analytics page (fleet analytics spec D15). */}
 
       {/* Search */}
       <div className="px-6 py-3 shrink-0">

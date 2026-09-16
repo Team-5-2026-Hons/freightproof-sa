@@ -308,11 +308,12 @@ async def test_get_current_driver_returns_driver_read_for_valid_token(
     token = make_token(sub=str(driver_row.id), role="driver")
     credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
 
-    # Three queries now: the driver row, then TWO reads of the session row — the idle
-    # check (app/auth/sessions.enforce_driver_idle_timeout) followed by the single-device
-    # check. They are separate deliberately: the idle check has to read last_seen_at
-    # BEFORE the single-device check stamps it forward, or the timeout could never fire.
-    # No session row on either read means a freshly signed-in handset claiming the device.
+    # Four statements, in order: the driver row, then TWO reads of the session row — the
+    # idle check (app/auth/sessions.enforce_driver_idle_timeout) followed by the
+    # single-device check — and finally the upsert that claims the device. The two reads
+    # are separate deliberately: the idle check has to read last_seen_at BEFORE the
+    # single-device check stamps it forward, or the timeout could never fire. No session
+    # row on either read means a freshly signed-in handset claiming the device.
     db = AsyncMock()
     driver_result = MagicMock()
     driver_result.scalar_one_or_none.return_value = driver_row
@@ -320,7 +321,13 @@ async def test_get_current_driver_returns_driver_read_for_valid_token(
     idle_result.scalar_one_or_none.return_value = None
     session_result = MagicMock()
     session_result.scalar_one_or_none.return_value = None
-    db.execute.side_effect = [driver_result, idle_result, session_result]
+    # The claim's RETURNING. A driver_id back means the row is ours; None would mean a
+    # newer handset holds it and the request is refused (covered against a real database
+    # in tests/integration/test_session_concurrency.py, which is where the concurrency
+    # that makes that branch reachable can actually be produced).
+    claim_result = MagicMock()
+    claim_result.scalar_one_or_none.return_value = driver_row.id
+    db.execute.side_effect = [driver_result, idle_result, session_result, claim_result]
 
     result = await get_current_driver(credentials=credentials, db=db)
 

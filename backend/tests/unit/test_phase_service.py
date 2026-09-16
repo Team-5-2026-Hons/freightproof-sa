@@ -1,5 +1,6 @@
 """Unit tests for the phase completion engine (advance_activation..advance_confirmation)."""
 
+import asyncio
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -20,9 +21,9 @@ from app.core.exceptions import (
 )
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import (
-    AnchorStatus, ArtifactType, BlockchainReceiptType, ExceptionSeverity, ExceptionType,
-    IdvsStatus, OrganizationType, ParcelStatus, PhaseStatus, PhaseType, TripStatus, TripType,
-    VehicleType,
+    AnchorStatus, ArtifactType, BlockchainReceiptType, ExceptionReviewStatus, ExceptionSeverity,
+    ExceptionType, IdvsStatus, OrganizationType, ParcelStatus, PhaseStatus, PhaseType, TripStatus,
+    TripType, VehicleType,
 )
 from app.db.models.evidence import EvidenceArtifact
 from app.db.models.phases import PhaseEvent
@@ -36,7 +37,7 @@ from app.integrations.scan_feed import MockScanFeed, ScanDirection
 from app.orchestration import phase_service, scan_service
 from app.orchestration.phase_plan import PlanStop, build_phase_plan
 from app.orchestration.phase_service import (
-    _load_phase_event,
+    _BACKGROUND_ANCHOR_TASKS, _load_phase_event, _schedule_anchor_after_dispatch_failure,
     advance_activation, advance_confirmation, advance_departure, advance_in_transit, advance_loading,
     advance_unloading,
     anchor_phase_event,
@@ -582,6 +583,57 @@ async def test_advance_loading_short_scan_out_flags_but_does_not_hold(db_session
     assert result.status == TripStatus.ACTIVE
 
 
+async def test_scan_shortfall_backstop_records_again_after_review(db_session, trip_fixture):
+    """The backstop's own dedup predicate is `review_status != REVIEWED`, not
+    `!= NEEDS_REVIEW`. The test above only proves a RECORDED row still suppresses a
+    repeat — RECORDED != REVIEWED and RECORDED != NEEDS_REVIEW are both True, so it
+    cannot tell the two predicates apart. They only diverge once a row is actually
+    REVIEWED, which this test forces.
+
+    Called directly against _raise_scan_shortfall_if_unrecorded rather than through
+    advance_loading twice: _gate_and_load treats a phase already COMPLETED/EXCEPTION
+    as an idempotent replay (see _gate_and_load's own comment) and short-circuits
+    before the backstop ever runs a second time, so the public endpoint cannot
+    exercise this predicate twice on the same phase event. Calling the private
+    function directly is the only way to prove what its own dedup query does once a
+    row it would otherwise find has been reviewed — same precedent as this file's
+    existing direct import of _load_phase_event.
+    """
+    trip, driver, phases = trip_fixture
+    event = phases["loading"]
+    consignment = Consignment(
+        trip_id=trip.id, parcel_perfect_reference="PP-BACKSTOP",
+        parcel_count_expected=3, pickup_stop_id=event.trip_stop_id,
+    )
+    db_session.add(consignment)
+    await db_session.flush()
+
+    wrote_first = await phase_service._raise_scan_shortfall_if_unrecorded(
+        db_session, trip_id=trip.id, event=event, consignment=consignment,
+        scanned_out=0, expected=3,
+    )
+    assert wrote_first is True
+
+    first = (await db_session.execute(
+        select(TripException).where(TripException.trip_id == trip.id)
+    )).scalar_one()
+    first.review_status = ExceptionReviewStatus.REVIEWED
+    await db_session.flush()
+
+    # Same call, same arguments — proves the recurrence is recorded because the
+    # prior row was reviewed, not because anything about the shortfall changed.
+    wrote_second = await phase_service._raise_scan_shortfall_if_unrecorded(
+        db_session, trip_id=trip.id, event=event, consignment=consignment,
+        scanned_out=0, expected=3,
+    )
+    assert wrote_second is True
+
+    rows = (await db_session.execute(
+        select(TripException).where(TripException.trip_id == trip.id)
+    )).scalars().all()
+    assert len(rows) == 2
+
+
 @pytest.mark.asyncio
 async def test_replayed_completion_is_idempotent_returns_200_no_duplicate(db_session, trip_fixture, stub_hedera_service):
     """Anchor moved to departure (task 2.6) — the idempotent-replay-doesn't-
@@ -670,6 +722,7 @@ async def test_advance_departure_happy_path_completes(
     # The anchor is queued on commit, not awaited in-request.
     assert captured_anchor_dispatches == []
     await db_session.commit()
+    await asyncio.gather(*_BACKGROUND_ANCHOR_TASKS)
     assert len(captured_anchor_dispatches) == 1
     dispatched_event_id, dispatched_payload, dispatched_type = captured_anchor_dispatches[0]
     assert dispatched_event_id == str(phases["departure"].id)
@@ -698,6 +751,7 @@ async def test_advance_departure_guard_refused_creates_exception_but_departs(
     # D7: the anchor is queued regardless of the mismatch outcome — a mismatch is
     # evidence in its own right, not a reason to withhold the receipt.
     await db_session.commit()
+    await asyncio.gather(*_BACKGROUND_ANCHOR_TASKS)
     assert len(captured_anchor_dispatches) == 1
 
 
@@ -733,6 +787,7 @@ async def test_advance_departure_guard_verified_seal_none_records_no_exception(
     assert departure.status == PhaseStatus.COMPLETED
     # The anchor still goes out — nothing about "not collected" withholds the receipt.
     await db_session.commit()
+    await asyncio.gather(*_BACKGROUND_ANCHOR_TASKS)
     assert len(captured_anchor_dispatches) == 1
 
 
@@ -944,6 +999,9 @@ async def test_advance_in_transit_closes_the_leg_and_records_arrival_position(
     await db_session.refresh(phases["in_transit"])
     assert phases["in_transit"].status == PhaseStatus.COMPLETED
     assert phases["in_transit"].completed_at is not None
+    await db_session.refresh(trip)
+    assert trip.actual_arrival_at == phases["in_transit"].completed_at
+    assert result.actual_arrival_at == phases["in_transit"].completed_at
     assert float(phases["in_transit"].driver_phone_lat) == pytest.approx(-29.8587)
     assert float(phases["in_transit"].driver_phone_lng) == pytest.approx(31.0218)
 
@@ -1006,6 +1064,8 @@ async def test_advance_in_transit_replay_is_idempotent(db_session, trip_fixture)
 
     await db_session.refresh(phases["in_transit"])
     assert phases["in_transit"].completed_at == first_completed_at
+    await db_session.refresh(trip)
+    assert trip.actual_arrival_at == first_completed_at
 
 
 @pytest.mark.asyncio
@@ -1250,6 +1310,8 @@ async def test_advance_departure_leaves_all_in_transit_rows_pending_until_each_a
     assert phases["in_transit_1"].status == PhaseStatus.COMPLETED
     assert phases["in_transit_2"].status == PhaseStatus.PENDING  # not reached back into
     leg_1_arrival_at = phases["in_transit_1"].completed_at
+    await db_session.refresh(trip)
+    assert trip.actual_arrival_at is None
 
     # Leg 2's departure leaves IN_TRANSIT_2 PENDING. Does not affect leg 1.
     await advance_departure(
@@ -1270,6 +1332,8 @@ async def test_advance_departure_leaves_all_in_transit_rows_pending_until_each_a
     await db_session.refresh(phases["in_transit_2"])
     assert phases["in_transit_2"].status == PhaseStatus.COMPLETED
     assert phases["in_transit_1"].completed_at == leg_1_arrival_at
+    await db_session.refresh(trip)
+    assert trip.actual_arrival_at == phases["in_transit_2"].completed_at
 
 
 # ── advance_unloading ────────────────────────────────────────────────────────
@@ -1282,6 +1346,136 @@ async def test_advance_unloading_matching_seal_completes(db_session, trip_fixtur
     assert result.exceptions == []
     unloading = next(h for h in result.phases if h.phase_type == PhaseType.UNLOADING)
     assert unloading.status == PhaseStatus.COMPLETED
+
+
+@pytest.mark.asyncio
+async def test_advance_unloading_normalizes_against_a_non_canonical_stored_seal(db_session, trip_fixture):
+    """seal_number_at_destination is normalized (stripped/uppercased) by
+    UnloadingCompleteRequest.validate_seal_number before this code ever runs — see
+    _validate_seal_format in app/schemas/phases.py — so the API itself can no longer
+    hand this comparison a mismatched-casing or padded value on the incoming side.
+    But the phase_events.seal_number DB column has no matching CHECK constraint, so a
+    departure row written out of band (a backfill, a legacy row predating the
+    validator, a future integration that writes it directly) could still carry a
+    non-canonical value. This proves the comparison survives that, the same way it
+    already has to for the free-form seal_number_confirmed (see
+    test_advance_departure_seal_number_confirmed_still_supersedes_a_none_flag
+    above)."""
+    trip, driver, phases = trip_fixture
+    await _advance_to_arrival(db_session, trip, driver, phases)
+    phases["departure"].seal_number = " ab-1234 "
+    await db_session.flush()
+
+    result = await advance_unloading(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading"].id,
+        payload=UnloadingCompleteRequest(
+            phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-1234",
+            gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    assert result.status == TripStatus.ACTIVE
+    assert result.exceptions == []
+    unloading = next(h for h in result.phases if h.phase_type == PhaseType.UNLOADING)
+    assert unloading.status == PhaseStatus.COMPLETED
+
+
+@pytest.mark.parametrize("stored_seal", [None, "", "   "])
+@pytest.mark.asyncio
+async def test_advance_unloading_no_departure_seal_is_unverified_not_a_mismatch(
+    db_session, trip_fixture, stored_seal,
+):
+    """A missing departure seal must NOT be reported as SEAL_MISMATCH. There is no
+    second seal to differ from, so a mismatch would be a false theft indicator in the
+    anchored record — and CRITICAL would fire the driver app's alarm for something the
+    driver did not cause. The narrower truth is SEAL_UNVERIFIED at WARNING.
+
+    This departure is COMPLETED, so the missing seal is UNEXPLAINED — advance_departure
+    writes seal_number unconditionally from a required field, so nothing legitimate
+    produces this row. That stays CRITICAL: the type is corrected (it is not a
+    mismatch) without losing the loud signal a data-integrity anomaly needs. The
+    overridden case, where the absence IS explained, is the WARNING one — see the test
+    below.
+
+    Parametrized because NULL, "" and whitespace all mean "not recorded" and must not
+    diverge — in particular "   " must not survive normalization as a real seal that
+    then mismatches."""
+    trip, driver, phases = trip_fixture
+    await _advance_to_arrival(db_session, trip, driver, phases)
+    phases["departure"].seal_number = stored_seal
+    await db_session.flush()
+
+    result = await advance_unloading(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading"].id,
+        payload=UnloadingCompleteRequest(
+            phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-1234",
+            gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    assert result.status == TripStatus.ACTIVE  # flagged, not held
+    assert len(result.exceptions) == 1
+    assert result.exceptions[0].exception_type == ExceptionType.SEAL_UNVERIFIED
+    assert result.exceptions[0].severity == ExceptionSeverity.CRITICAL  # unexplained
+    # The description must not imply a seal changed — that wording is what made the
+    # old SEAL_MISMATCH reuse misleading to whoever reads the record later.
+    assert "does not match" not in result.exceptions[0].description
+    unloading = next(h for h in result.phases if h.phase_type == PhaseType.UNLOADING)
+    assert unloading.status == PhaseStatus.EXCEPTION
+
+
+@pytest.mark.asyncio
+async def test_overridden_departure_then_unloading_records_unverified_not_mismatch(
+    db_session, trip_fixture,
+):
+    """The production path this distinction exists for, driven through the real
+    override_phase rather than a hand-set status. A dispatcher overrides a departure
+    the driver cannot complete; override_phase deliberately writes no seal (its own D3
+    comment), _is_resolved treats OVERRIDDEN as resolved, so the trip runs on and
+    unloading finds no seal to compare. Before SEAL_UNVERIFIED existed this produced a
+    CRITICAL seal_mismatch on a trip whose seal was simply never captured."""
+    trip, driver, phases = trip_fixture
+    # scalar_one, not first(): the fixture creates exactly one user for the operator
+    # org, and if that ever changes this should fail saying so rather than handing
+    # None to override_phase and surfacing as an unrelated AttributeError.
+    user = (await db_session.execute(
+        select(User).where(User.organization_id == trip.operator_organization_id)
+    )).scalar_one()
+    await _advance_to_loading(db_session, trip, driver, phases)
+
+    await phase_service.override_phase(
+        db_session, trip_id=trip.id, phase_event_id=phases["departure"].id,
+        operator_organization_id=trip.operator_organization_id, user_id=user.id,
+        note="Driver phone wiped at the depot; departure captured on paper.",
+    )
+    assert phases["departure"].seal_number is None  # the override wrote no seal
+
+    await advance_in_transit(
+        db_session, trip_id=trip.id, driver_id=driver.id,
+        phase_event_id=phases["in_transit"].id, payload=_arrival_payload(),
+    )
+    result = await advance_unloading(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading"].id,
+        payload=UnloadingCompleteRequest(
+            phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-1234",
+            gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    seal_exceptions = [
+        e for e in result.exceptions
+        if e.exception_type in (ExceptionType.SEAL_UNVERIFIED, ExceptionType.SEAL_MISMATCH)
+    ]
+    assert len(seal_exceptions) == 1
+    assert seal_exceptions[0].exception_type == ExceptionType.SEAL_UNVERIFIED
+    # WARNING, not CRITICAL: unlike a completed-but-sealless departure, an override
+    # EXPLAINS the absence and is already on the ledger as its own DISPATCHER_NOTE.
+    assert seal_exceptions[0].severity == ExceptionSeverity.WARNING
+    # Names the cause, so the record explains itself without a second query.
+    assert PhaseStatus.OVERRIDDEN.value in seal_exceptions[0].description
 
 
 @pytest.mark.asyncio
@@ -1486,6 +1680,9 @@ async def test_advance_confirmation_matching_counts_closes_trip(
     assert result.status == TripStatus.CLOSED
     assert result.closed_at is not None
     assert result.exceptions == []
+    await db_session.refresh(trip)
+    assert trip.actual_arrival_at == phases["in_transit"].completed_at
+    assert result.actual_arrival_at == phases["in_transit"].completed_at
 
     h5 = next(h for h in result.phases if h.phase_type == PhaseType.CONFIRMATION)
     # The hash is computed in-request; the receipt is not. Closing the trip no longer
@@ -1497,6 +1694,7 @@ async def test_advance_confirmation_matching_counts_closes_trip(
     # Departure (walked above) queued its own PICKUP anchor, so assert on this phase's
     # dispatch rather than the total.
     await db_session.commit()
+    await asyncio.gather(*_BACKGROUND_ANCHOR_TASKS)
     confirmation_dispatches = [d for d in captured_anchor_dispatches if d[0] == str(phases["confirmation"].id)]
     assert len(confirmation_dispatches) == 1
     assert confirmation_dispatches[0][2] == BlockchainReceiptType.DELIVERY.value
@@ -2587,10 +2785,12 @@ async def test_anchor_phase_event_fails_open_on_hedera_trouble(
         "app.orchestration.phase_service.anchor_subject",
         AsyncMock(side_effect=hedera_exception),
     )
+    payload = {"phase_event_id": str(phases["departure"].id)}
+    phases["departure"].event_hash = compute_payload_hash(payload)
 
     anchored = await anchor_phase_event(
         db_session, phase_event_id=phases["departure"].id,
-        canonical_payload={"phase_event_id": str(phases["departure"].id)},
+        canonical_payload=payload,
         receipt_type=BlockchainReceiptType.PICKUP,
     )
 
@@ -2604,10 +2804,12 @@ async def test_anchor_phase_event_writes_the_receipt(db_session, trip_fixture):
     """The other half of the split: the worker turns a PENDING phase into an ANCHORED one
     with a real receipt, which is what the driver app's anchor badge waits for."""
     trip, driver, phases = trip_fixture
+    payload = {"phase_event_id": str(phases["departure"].id), "seal_number": "AB-1234"}
+    phases["departure"].event_hash = compute_payload_hash(payload)
 
     anchored = await anchor_phase_event(
         db_session, phase_event_id=phases["departure"].id,
-        canonical_payload={"phase_event_id": str(phases["departure"].id), "seal_number": "AB-1234"},
+        canonical_payload=payload,
         receipt_type=BlockchainReceiptType.PICKUP,
     )
 
@@ -2618,6 +2820,58 @@ async def test_anchor_phase_event_writes_the_receipt(db_session, trip_fixture):
         select(BlockchainReceipt).where(BlockchainReceipt.id == phases["departure"].blockchain_receipt_id)
     )).scalar_one()
     assert receipt.receipt_type == BlockchainReceiptType.PICKUP
+
+
+@pytest.mark.asyncio
+async def test_anchor_phase_event_does_not_resubmit_an_anchored_event(
+    db_session, trip_fixture, stub_hedera_service,
+):
+    _trip, _driver, phases = trip_fixture
+    departure = phases["departure"]
+    payload = {"phase_event_id": str(departure.id), "seal_number": "AB-1234"}
+    departure.event_hash = compute_payload_hash(payload)
+
+    first = await anchor_phase_event(
+        db_session, phase_event_id=departure.id,
+        canonical_payload=payload, receipt_type=BlockchainReceiptType.PICKUP,
+    )
+    second = await anchor_phase_event(
+        db_session, phase_event_id=departure.id,
+        canonical_payload=payload, receipt_type=BlockchainReceiptType.PICKUP,
+    )
+
+    assert first is True
+    assert second is True
+    stub_hedera_service.return_value.submit_hash.assert_called_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "payload_changed,receipt_type",
+    [
+        (True, BlockchainReceiptType.PICKUP),
+        (False, BlockchainReceiptType.DELIVERY),
+    ],
+    ids=["payload", "receipt_type"],
+)
+async def test_anchor_phase_event_rejects_task_arguments_not_bound_to_the_event(
+    db_session, trip_fixture, stub_hedera_service, payload_changed, receipt_type,
+):
+    _trip, _driver, phases = trip_fixture
+    departure = phases["departure"]
+    expected_payload = {"phase_event_id": str(departure.id), "seal_number": "AB-1234"}
+    departure.event_hash = compute_payload_hash(expected_payload)
+    queued_payload = {**expected_payload, "seal_number": "ZZ-9999"} if payload_changed else expected_payload
+
+    anchored = await anchor_phase_event(
+        db_session, phase_event_id=departure.id,
+        canonical_payload=queued_payload, receipt_type=receipt_type,
+    )
+
+    assert anchored is False
+    assert departure.anchor_status == AnchorStatus.FAILED
+    assert departure.blockchain_receipt_id is None
+    stub_hedera_service.return_value.submit_hash.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -2633,15 +2887,14 @@ async def test_anchor_phase_event_ignores_an_unknown_event(db_session, trip_fixt
 
 
 @pytest.mark.asyncio
-async def test_a_broker_failure_falls_back_to_anchoring_inline(
+async def test_a_broker_failure_schedules_a_local_anchor_fallback(
     db_session, trip_fixture, monkeypatch,
 ):
     """The safety net for moving anchoring off the request path.
 
-    Nothing in this codebase retries an anchor_status = FAILED debt, so a dispatch that
-    vanishes into an unreachable broker would mean permanently unanchored evidence. When
-    the queue can't be reached the anchor runs inline instead — slow, which is a far
-    better failure than silent.
+    A dispatch that vanishes into an unreachable broker would mean permanently
+    unanchored evidence. The request therefore starts a local attempt without waiting
+    for Hedera on the API event loop.
     """
     trip, driver, phases = trip_fixture
     await _advance_to_loading(db_session, trip, driver, phases)
@@ -2654,7 +2907,7 @@ async def test_a_broker_failure_falls_back_to_anchoring_inline(
     monkeypatch.setattr("app.tasks.blockchain.anchor_phase_event_task", _BrokenBroker)
     inline_calls: list[uuid.UUID] = []
     monkeypatch.setattr(
-        "app.orchestration.phase_service._anchor_inline_after_dispatch_failure",
+        "app.orchestration.phase_service._schedule_anchor_after_dispatch_failure",
         lambda **kwargs: inline_calls.append(kwargs["phase_event_id"]),
     )
 
@@ -2664,7 +2917,29 @@ async def test_a_broker_failure_falls_back_to_anchoring_inline(
     )
     await db_session.commit()
 
+    await asyncio.gather(*_BACKGROUND_ANCHOR_TASKS)
     assert inline_calls == [phases["departure"].id]
+
+
+@pytest.mark.asyncio
+async def test_local_anchor_fallback_runs_on_the_request_event_loop(monkeypatch):
+    phase_event_id = uuid.uuid4()
+    calls: list[uuid.UUID] = []
+
+    async def _anchor(**kwargs: Any) -> bool:
+        calls.append(kwargs["phase_event_id"])
+        return True
+
+    monkeypatch.setattr("app.tasks.blockchain._anchor", _anchor)
+
+    _schedule_anchor_after_dispatch_failure(
+        phase_event_id=phase_event_id,
+        canonical_payload={"phase_event_id": str(phase_event_id)},
+        receipt_type=BlockchainReceiptType.PICKUP,
+    )
+    await asyncio.sleep(0)
+
+    assert calls == [phase_event_id]
 
 
 # ── D8: row locking on _load_phase_event ────────────────────────────────────
@@ -3589,10 +3864,14 @@ async def test_confirmation_with_no_driver_visual_count_completes_and_stores_nul
     # Reproducible: hashing the canonical payload again from the stored fields
     # (exactly what verification_service._reconstruct_phase_event_payload does)
     # must land on the SAME hash — the None key stayed present, not omitted.
-    expected_payload = phase_service.compute_confirmation_canonical_payload(
+    pod_photo = await db_session.get(EvidenceArtifact, ready_to_confirm["pod_photo_id"])
+    pod_signature = await db_session.get(EvidenceArtifact, ready_to_confirm["pod_signature_id"])
+    expected_payload = phase_service.compute_confirmation_canonical_payload_v2(
         phase_event_id=event.id, trip_id=ready_to_confirm["trip"].id,
         pp_scan_in_count=event.parcel_count_destination,
         driver_visual_count=event.driver_visual_count,
+        pod_photo_sha256=pod_photo.file_hash,
+        pod_signature_sha256=pod_signature.file_hash,
     )
     assert expected_payload["driver_visual_count"] is None
     assert "driver_visual_count" in expected_payload  # present, never omitted

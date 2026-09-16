@@ -104,6 +104,18 @@ describe('CaptureSeal — capturing the seal number and photo', () => {
     }))
   })
 
+  it('trims stray whitespace so the stored value matches what the format gate validated', () => {
+    // isValidSealFormat trims to validate; before SealInput used normalizeSeal it only
+    // uppercased, so a leading/trailing space (near-guaranteed on a phone keyboard) could
+    // pass the on-screen gate while still 422ing at the backend's untrimmed regex.
+    const onUpdate = vi.fn()
+    renderStep({ onUpdate })
+
+    typeSealNumber(' ab-1234 ')
+
+    expect(onUpdate).toHaveBeenCalledWith({ sealNumber: 'AB-1234' })
+  })
+
   it('shows the format hint once an invalid seal number has been typed, not before', () => {
     renderStep({ draft: makeDraft() })
     expect(screen.queryByText(/must look like AB-1234/)).not.toBeInTheDocument()

@@ -1,1441 +1,3582 @@
-# Graph Report - .  (2026-08-10)
+# Graph Report - freightproof-sa-4  (2026-09-16)
 
 ## Corpus Check
-- Large corpus: 863 files · ~814,728 words. Semantic extraction will be expensive (many Claude tokens). Consider running on a subfolder.
+- 1141 files · ~1,303,042 words
+- Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 5855 nodes · 12916 edges · 449 communities (311 shown, 138 thin omitted)
-- Extraction: 81% EXTRACTED · 19% INFERRED · 0% AMBIGUOUS · INFERRED: 2461 edges (avg confidence: 0.72)
-- Token cost: 32,500 input · 8,200 output
+- 15114 nodes · 35511 edges · 1405 communities (603 shown, 802 thin omitted)
+- Extraction: 91% EXTRACTED · 9% INFERRED · 0% AMBIGUOUS · INFERRED: 3070 edges (avg confidence: 0.69)
+- Token cost: 0 input · 0 output
+
+## Graph Freshness
+- Built from commit: `265d1d2a`
+- Run `git rev-parse HEAD` and compare to check if the graph is stale.
+- Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
-- [[_COMMUNITY_Backend API & Services|Backend API & Services]]
-- [[_COMMUNITY_Frontend Components & Hooks|Frontend Components & Hooks]]
-- [[_COMMUNITY_Database Models & Schema|Database Models & Schema]]
-- [[_COMMUNITY_Testing & Fixtures|Testing & Fixtures]]
-- [[_COMMUNITY_Phase Model & Orchestration|Phase Model & Orchestration]]
-- [[_COMMUNITY_Crypto & Blockchain|Crypto & Blockchain]]
-- [[_COMMUNITY_Integration Services|Integration Services]]
-- [[_COMMUNITY_Type Definitions & Schemas|Type Definitions & Schemas]]
-- [[_COMMUNITY_UI Components|UI Components]]
-- [[_COMMUNITY_Authentication & Security|Authentication & Security]]
-- [[_COMMUNITY_Data Validation|Data Validation]]
-- [[_COMMUNITY_Community 11|Community 11]]
-- [[_COMMUNITY_Community 12|Community 12]]
-- [[_COMMUNITY_Community 13|Community 13]]
-- [[_COMMUNITY_Community 14|Community 14]]
-- [[_COMMUNITY_Community 15|Community 15]]
-- [[_COMMUNITY_Community 16|Community 16]]
-- [[_COMMUNITY_Community 17|Community 17]]
-- [[_COMMUNITY_Community 18|Community 18]]
-- [[_COMMUNITY_Community 19|Community 19]]
-- [[_COMMUNITY_Community 20|Community 20]]
-- [[_COMMUNITY_Community 21|Community 21]]
-- [[_COMMUNITY_Community 22|Community 22]]
-- [[_COMMUNITY_Community 23|Community 23]]
-- [[_COMMUNITY_Community 24|Community 24]]
-- [[_COMMUNITY_Community 25|Community 25]]
-- [[_COMMUNITY_Community 26|Community 26]]
-- [[_COMMUNITY_Community 27|Community 27]]
-- [[_COMMUNITY_Community 28|Community 28]]
-- [[_COMMUNITY_Community 29|Community 29]]
-- [[_COMMUNITY_Community 30|Community 30]]
-- [[_COMMUNITY_Community 31|Community 31]]
-- [[_COMMUNITY_Community 32|Community 32]]
-- [[_COMMUNITY_Community 33|Community 33]]
-- [[_COMMUNITY_Community 34|Community 34]]
-- [[_COMMUNITY_Community 35|Community 35]]
-- [[_COMMUNITY_Community 36|Community 36]]
-- [[_COMMUNITY_Community 37|Community 37]]
-- [[_COMMUNITY_Community 38|Community 38]]
-- [[_COMMUNITY_Community 39|Community 39]]
-- [[_COMMUNITY_Community 40|Community 40]]
-- [[_COMMUNITY_Community 41|Community 41]]
-- [[_COMMUNITY_Community 42|Community 42]]
-- [[_COMMUNITY_Community 43|Community 43]]
-- [[_COMMUNITY_Community 44|Community 44]]
-- [[_COMMUNITY_Community 45|Community 45]]
-- [[_COMMUNITY_Community 46|Community 46]]
-- [[_COMMUNITY_Community 47|Community 47]]
-- [[_COMMUNITY_Community 48|Community 48]]
-- [[_COMMUNITY_Community 49|Community 49]]
-- [[_COMMUNITY_Community 50|Community 50]]
-- [[_COMMUNITY_Community 51|Community 51]]
-- [[_COMMUNITY_Community 52|Community 52]]
-- [[_COMMUNITY_Community 53|Community 53]]
-- [[_COMMUNITY_Community 54|Community 54]]
-- [[_COMMUNITY_Community 55|Community 55]]
-- [[_COMMUNITY_Community 56|Community 56]]
-- [[_COMMUNITY_Community 57|Community 57]]
-- [[_COMMUNITY_Community 58|Community 58]]
-- [[_COMMUNITY_Community 59|Community 59]]
-- [[_COMMUNITY_Community 60|Community 60]]
-- [[_COMMUNITY_Community 61|Community 61]]
-- [[_COMMUNITY_Community 62|Community 62]]
-- [[_COMMUNITY_Community 63|Community 63]]
-- [[_COMMUNITY_Community 64|Community 64]]
-- [[_COMMUNITY_Community 65|Community 65]]
-- [[_COMMUNITY_Community 66|Community 66]]
-- [[_COMMUNITY_Community 67|Community 67]]
-- [[_COMMUNITY_Community 68|Community 68]]
-- [[_COMMUNITY_Community 69|Community 69]]
-- [[_COMMUNITY_Community 70|Community 70]]
-- [[_COMMUNITY_Community 71|Community 71]]
-- [[_COMMUNITY_Community 72|Community 72]]
-- [[_COMMUNITY_Community 73|Community 73]]
-- [[_COMMUNITY_Community 74|Community 74]]
-- [[_COMMUNITY_Community 75|Community 75]]
-- [[_COMMUNITY_Community 76|Community 76]]
-- [[_COMMUNITY_Community 77|Community 77]]
-- [[_COMMUNITY_Community 78|Community 78]]
-- [[_COMMUNITY_Community 79|Community 79]]
-- [[_COMMUNITY_Community 80|Community 80]]
-- [[_COMMUNITY_Community 81|Community 81]]
-- [[_COMMUNITY_Community 82|Community 82]]
-- [[_COMMUNITY_Community 83|Community 83]]
-- [[_COMMUNITY_Community 84|Community 84]]
-- [[_COMMUNITY_Community 85|Community 85]]
-- [[_COMMUNITY_Community 86|Community 86]]
-- [[_COMMUNITY_Community 87|Community 87]]
-- [[_COMMUNITY_Community 88|Community 88]]
-- [[_COMMUNITY_Community 89|Community 89]]
-- [[_COMMUNITY_Community 90|Community 90]]
-- [[_COMMUNITY_Community 91|Community 91]]
-- [[_COMMUNITY_Community 92|Community 92]]
-- [[_COMMUNITY_Community 93|Community 93]]
-- [[_COMMUNITY_Community 94|Community 94]]
-- [[_COMMUNITY_Community 95|Community 95]]
-- [[_COMMUNITY_Community 96|Community 96]]
-- [[_COMMUNITY_Community 97|Community 97]]
-- [[_COMMUNITY_Community 98|Community 98]]
-- [[_COMMUNITY_Community 99|Community 99]]
-- [[_COMMUNITY_Community 100|Community 100]]
-- [[_COMMUNITY_Community 101|Community 101]]
-- [[_COMMUNITY_Community 102|Community 102]]
-- [[_COMMUNITY_Community 103|Community 103]]
-- [[_COMMUNITY_Community 104|Community 104]]
-- [[_COMMUNITY_Community 105|Community 105]]
-- [[_COMMUNITY_Community 106|Community 106]]
-- [[_COMMUNITY_Community 107|Community 107]]
-- [[_COMMUNITY_Community 108|Community 108]]
-- [[_COMMUNITY_Community 109|Community 109]]
-- [[_COMMUNITY_Community 110|Community 110]]
-- [[_COMMUNITY_Community 111|Community 111]]
-- [[_COMMUNITY_Community 112|Community 112]]
-- [[_COMMUNITY_Community 113|Community 113]]
-- [[_COMMUNITY_Community 114|Community 114]]
-- [[_COMMUNITY_Community 115|Community 115]]
-- [[_COMMUNITY_Community 116|Community 116]]
-- [[_COMMUNITY_Community 117|Community 117]]
-- [[_COMMUNITY_Community 118|Community 118]]
-- [[_COMMUNITY_Community 119|Community 119]]
-- [[_COMMUNITY_Community 120|Community 120]]
-- [[_COMMUNITY_Community 121|Community 121]]
-- [[_COMMUNITY_Community 122|Community 122]]
-- [[_COMMUNITY_Community 123|Community 123]]
-- [[_COMMUNITY_Community 124|Community 124]]
-- [[_COMMUNITY_Community 125|Community 125]]
-- [[_COMMUNITY_Community 126|Community 126]]
-- [[_COMMUNITY_Community 127|Community 127]]
-- [[_COMMUNITY_Community 128|Community 128]]
-- [[_COMMUNITY_Community 129|Community 129]]
-- [[_COMMUNITY_Community 130|Community 130]]
-- [[_COMMUNITY_Community 131|Community 131]]
-- [[_COMMUNITY_Community 132|Community 132]]
-- [[_COMMUNITY_Community 133|Community 133]]
-- [[_COMMUNITY_Community 134|Community 134]]
-- [[_COMMUNITY_Community 135|Community 135]]
-- [[_COMMUNITY_Community 136|Community 136]]
-- [[_COMMUNITY_Community 137|Community 137]]
-- [[_COMMUNITY_Community 138|Community 138]]
-- [[_COMMUNITY_Community 139|Community 139]]
-- [[_COMMUNITY_Community 140|Community 140]]
-- [[_COMMUNITY_Community 141|Community 141]]
-- [[_COMMUNITY_Community 142|Community 142]]
-- [[_COMMUNITY_Community 143|Community 143]]
-- [[_COMMUNITY_Community 144|Community 144]]
-- [[_COMMUNITY_Community 145|Community 145]]
-- [[_COMMUNITY_Community 146|Community 146]]
-- [[_COMMUNITY_Community 147|Community 147]]
-- [[_COMMUNITY_Community 148|Community 148]]
-- [[_COMMUNITY_Community 149|Community 149]]
-- [[_COMMUNITY_Community 150|Community 150]]
-- [[_COMMUNITY_Community 151|Community 151]]
-- [[_COMMUNITY_Community 152|Community 152]]
-- [[_COMMUNITY_Community 153|Community 153]]
-- [[_COMMUNITY_Community 154|Community 154]]
-- [[_COMMUNITY_Community 155|Community 155]]
-- [[_COMMUNITY_Community 156|Community 156]]
-- [[_COMMUNITY_Community 157|Community 157]]
-- [[_COMMUNITY_Community 158|Community 158]]
-- [[_COMMUNITY_Community 159|Community 159]]
-- [[_COMMUNITY_Community 160|Community 160]]
-- [[_COMMUNITY_Community 161|Community 161]]
-- [[_COMMUNITY_Community 162|Community 162]]
-- [[_COMMUNITY_Community 163|Community 163]]
-- [[_COMMUNITY_Community 164|Community 164]]
-- [[_COMMUNITY_Community 165|Community 165]]
-- [[_COMMUNITY_Community 166|Community 166]]
-- [[_COMMUNITY_Community 167|Community 167]]
-- [[_COMMUNITY_Community 168|Community 168]]
-- [[_COMMUNITY_Community 169|Community 169]]
-- [[_COMMUNITY_Community 170|Community 170]]
-- [[_COMMUNITY_Community 171|Community 171]]
-- [[_COMMUNITY_Community 172|Community 172]]
-- [[_COMMUNITY_Community 173|Community 173]]
-- [[_COMMUNITY_Community 174|Community 174]]
-- [[_COMMUNITY_Community 175|Community 175]]
-- [[_COMMUNITY_Community 176|Community 176]]
-- [[_COMMUNITY_Community 177|Community 177]]
-- [[_COMMUNITY_Community 178|Community 178]]
-- [[_COMMUNITY_Community 179|Community 179]]
-- [[_COMMUNITY_Community 180|Community 180]]
-- [[_COMMUNITY_Community 181|Community 181]]
-- [[_COMMUNITY_Community 182|Community 182]]
-- [[_COMMUNITY_Community 183|Community 183]]
-- [[_COMMUNITY_Community 184|Community 184]]
-- [[_COMMUNITY_Community 185|Community 185]]
-- [[_COMMUNITY_Community 186|Community 186]]
-- [[_COMMUNITY_Community 187|Community 187]]
-- [[_COMMUNITY_Community 188|Community 188]]
-- [[_COMMUNITY_Community 189|Community 189]]
-- [[_COMMUNITY_Community 190|Community 190]]
-- [[_COMMUNITY_Community 191|Community 191]]
-- [[_COMMUNITY_Community 192|Community 192]]
-- [[_COMMUNITY_Community 193|Community 193]]
-- [[_COMMUNITY_Community 194|Community 194]]
-- [[_COMMUNITY_Community 195|Community 195]]
-- [[_COMMUNITY_Community 196|Community 196]]
-- [[_COMMUNITY_Community 197|Community 197]]
-- [[_COMMUNITY_Community 198|Community 198]]
-- [[_COMMUNITY_Community 199|Community 199]]
-- [[_COMMUNITY_Community 200|Community 200]]
-- [[_COMMUNITY_Community 201|Community 201]]
-- [[_COMMUNITY_Community 202|Community 202]]
-- [[_COMMUNITY_Community 203|Community 203]]
-- [[_COMMUNITY_Community 204|Community 204]]
-- [[_COMMUNITY_Community 205|Community 205]]
-- [[_COMMUNITY_Community 206|Community 206]]
-- [[_COMMUNITY_Community 207|Community 207]]
-- [[_COMMUNITY_Community 208|Community 208]]
-- [[_COMMUNITY_Community 209|Community 209]]
-- [[_COMMUNITY_Community 210|Community 210]]
-- [[_COMMUNITY_Community 211|Community 211]]
-- [[_COMMUNITY_Community 212|Community 212]]
-- [[_COMMUNITY_Community 213|Community 213]]
-- [[_COMMUNITY_Community 214|Community 214]]
-- [[_COMMUNITY_Community 215|Community 215]]
-- [[_COMMUNITY_Community 216|Community 216]]
-- [[_COMMUNITY_Community 217|Community 217]]
-- [[_COMMUNITY_Community 218|Community 218]]
-- [[_COMMUNITY_Community 219|Community 219]]
-- [[_COMMUNITY_Community 220|Community 220]]
-- [[_COMMUNITY_Community 221|Community 221]]
-- [[_COMMUNITY_Community 222|Community 222]]
-- [[_COMMUNITY_Community 223|Community 223]]
-- [[_COMMUNITY_Community 224|Community 224]]
-- [[_COMMUNITY_Community 225|Community 225]]
-- [[_COMMUNITY_Community 226|Community 226]]
-- [[_COMMUNITY_Community 227|Community 227]]
-- [[_COMMUNITY_Community 228|Community 228]]
-- [[_COMMUNITY_Community 229|Community 229]]
-- [[_COMMUNITY_Community 230|Community 230]]
-- [[_COMMUNITY_Community 231|Community 231]]
-- [[_COMMUNITY_Community 232|Community 232]]
-- [[_COMMUNITY_Community 233|Community 233]]
-- [[_COMMUNITY_Community 234|Community 234]]
-- [[_COMMUNITY_Community 235|Community 235]]
-- [[_COMMUNITY_Community 236|Community 236]]
-- [[_COMMUNITY_Community 237|Community 237]]
-- [[_COMMUNITY_Community 238|Community 238]]
-- [[_COMMUNITY_Community 239|Community 239]]
-- [[_COMMUNITY_Community 240|Community 240]]
-- [[_COMMUNITY_Community 241|Community 241]]
-- [[_COMMUNITY_Community 242|Community 242]]
-- [[_COMMUNITY_Community 243|Community 243]]
-- [[_COMMUNITY_Community 244|Community 244]]
-- [[_COMMUNITY_Community 266|Community 266]]
-- [[_COMMUNITY_Community 267|Community 267]]
-- [[_COMMUNITY_Community 269|Community 269]]
-- [[_COMMUNITY_Community 270|Community 270]]
-- [[_COMMUNITY_Community 271|Community 271]]
-- [[_COMMUNITY_Community 272|Community 272]]
-- [[_COMMUNITY_Community 273|Community 273]]
-- [[_COMMUNITY_Community 274|Community 274]]
-- [[_COMMUNITY_Community 275|Community 275]]
-- [[_COMMUNITY_Community 276|Community 276]]
-- [[_COMMUNITY_Community 277|Community 277]]
-- [[_COMMUNITY_Community 278|Community 278]]
-- [[_COMMUNITY_Community 279|Community 279]]
-- [[_COMMUNITY_Community 280|Community 280]]
-- [[_COMMUNITY_Community 281|Community 281]]
-- [[_COMMUNITY_Community 282|Community 282]]
-- [[_COMMUNITY_Community 283|Community 283]]
-- [[_COMMUNITY_Community 285|Community 285]]
-- [[_COMMUNITY_Community 286|Community 286]]
-- [[_COMMUNITY_Community 287|Community 287]]
-- [[_COMMUNITY_Community 288|Community 288]]
-- [[_COMMUNITY_Community 289|Community 289]]
-- [[_COMMUNITY_Community 290|Community 290]]
-- [[_COMMUNITY_Community 291|Community 291]]
-- [[_COMMUNITY_Community 292|Community 292]]
-- [[_COMMUNITY_Community 293|Community 293]]
-- [[_COMMUNITY_Community 294|Community 294]]
-- [[_COMMUNITY_Community 295|Community 295]]
-- [[_COMMUNITY_Community 297|Community 297]]
-- [[_COMMUNITY_Community 298|Community 298]]
-- [[_COMMUNITY_Community 299|Community 299]]
-- [[_COMMUNITY_Community 300|Community 300]]
-- [[_COMMUNITY_Community 301|Community 301]]
-- [[_COMMUNITY_Community 302|Community 302]]
-- [[_COMMUNITY_Community 303|Community 303]]
-- [[_COMMUNITY_Community 304|Community 304]]
-- [[_COMMUNITY_Community 305|Community 305]]
-- [[_COMMUNITY_Community 306|Community 306]]
-- [[_COMMUNITY_Community 307|Community 307]]
-- [[_COMMUNITY_Community 308|Community 308]]
-- [[_COMMUNITY_Community 309|Community 309]]
-- [[_COMMUNITY_Community 310|Community 310]]
-- [[_COMMUNITY_Community 311|Community 311]]
-- [[_COMMUNITY_Community 312|Community 312]]
-- [[_COMMUNITY_Community 313|Community 313]]
-- [[_COMMUNITY_Community 314|Community 314]]
-- [[_COMMUNITY_Community 315|Community 315]]
-- [[_COMMUNITY_Community 316|Community 316]]
-- [[_COMMUNITY_Community 317|Community 317]]
-- [[_COMMUNITY_Community 318|Community 318]]
-- [[_COMMUNITY_Community 319|Community 319]]
-- [[_COMMUNITY_Community 320|Community 320]]
-- [[_COMMUNITY_Community 321|Community 321]]
-- [[_COMMUNITY_Community 322|Community 322]]
-- [[_COMMUNITY_Community 323|Community 323]]
-- [[_COMMUNITY_Community 324|Community 324]]
-- [[_COMMUNITY_Community 325|Community 325]]
-- [[_COMMUNITY_Community 326|Community 326]]
-- [[_COMMUNITY_Community 327|Community 327]]
-- [[_COMMUNITY_Community 328|Community 328]]
-- [[_COMMUNITY_Community 329|Community 329]]
-- [[_COMMUNITY_Community 330|Community 330]]
-- [[_COMMUNITY_Community 331|Community 331]]
-- [[_COMMUNITY_Community 332|Community 332]]
-- [[_COMMUNITY_Community 348|Community 348]]
-- [[_COMMUNITY_Community 349|Community 349]]
-- [[_COMMUNITY_Community 350|Community 350]]
-- [[_COMMUNITY_Community 351|Community 351]]
-- [[_COMMUNITY_Community 352|Community 352]]
-- [[_COMMUNITY_Community 353|Community 353]]
-- [[_COMMUNITY_Community 354|Community 354]]
-- [[_COMMUNITY_Community 355|Community 355]]
-- [[_COMMUNITY_Community 356|Community 356]]
-- [[_COMMUNITY_Community 357|Community 357]]
-- [[_COMMUNITY_Community 358|Community 358]]
-- [[_COMMUNITY_Community 359|Community 359]]
-- [[_COMMUNITY_Community 360|Community 360]]
-- [[_COMMUNITY_Community 361|Community 361]]
-- [[_COMMUNITY_Community 362|Community 362]]
-- [[_COMMUNITY_Community 363|Community 363]]
-- [[_COMMUNITY_Community 364|Community 364]]
-- [[_COMMUNITY_Community 365|Community 365]]
-- [[_COMMUNITY_Community 366|Community 366]]
-- [[_COMMUNITY_Community 367|Community 367]]
-- [[_COMMUNITY_Community 368|Community 368]]
-- [[_COMMUNITY_Community 369|Community 369]]
-- [[_COMMUNITY_Community 370|Community 370]]
-- [[_COMMUNITY_Community 371|Community 371]]
-- [[_COMMUNITY_Community 372|Community 372]]
-- [[_COMMUNITY_Community 373|Community 373]]
-- [[_COMMUNITY_Community 374|Community 374]]
-- [[_COMMUNITY_Community 375|Community 375]]
-- [[_COMMUNITY_Community 376|Community 376]]
-- [[_COMMUNITY_Community 377|Community 377]]
-- [[_COMMUNITY_Community 378|Community 378]]
-- [[_COMMUNITY_Community 379|Community 379]]
-- [[_COMMUNITY_Community 380|Community 380]]
-- [[_COMMUNITY_Community 381|Community 381]]
-- [[_COMMUNITY_Community 382|Community 382]]
-- [[_COMMUNITY_Community 383|Community 383]]
-- [[_COMMUNITY_Community 384|Community 384]]
-- [[_COMMUNITY_Community 385|Community 385]]
-- [[_COMMUNITY_Community 386|Community 386]]
-- [[_COMMUNITY_Community 387|Community 387]]
-- [[_COMMUNITY_Community 388|Community 388]]
-- [[_COMMUNITY_Community 389|Community 389]]
-- [[_COMMUNITY_Community 390|Community 390]]
-- [[_COMMUNITY_Community 391|Community 391]]
-- [[_COMMUNITY_Community 392|Community 392]]
-- [[_COMMUNITY_Community 393|Community 393]]
-- [[_COMMUNITY_Community 394|Community 394]]
-- [[_COMMUNITY_Community 395|Community 395]]
-- [[_COMMUNITY_Community 396|Community 396]]
-- [[_COMMUNITY_Community 420|Community 420]]
-- [[_COMMUNITY_Community 421|Community 421]]
-- [[_COMMUNITY_Community 422|Community 422]]
-- [[_COMMUNITY_Community 423|Community 423]]
-- [[_COMMUNITY_Community 424|Community 424]]
-- [[_COMMUNITY_Community 425|Community 425]]
-- [[_COMMUNITY_Community 426|Community 426]]
-- [[_COMMUNITY_Community 427|Community 427]]
-- [[_COMMUNITY_Community 428|Community 428]]
-- [[_COMMUNITY_Community 429|Community 429]]
-- [[_COMMUNITY_Community 430|Community 430]]
-- [[_COMMUNITY_Community 432|Community 432]]
-- [[_COMMUNITY_Community 433|Community 433]]
-- [[_COMMUNITY_Community 434|Community 434]]
-- [[_COMMUNITY_Community 435|Community 435]]
-- [[_COMMUNITY_Community 436|Community 436]]
-- [[_COMMUNITY_Community 437|Community 437]]
-- [[_COMMUNITY_Community 438|Community 438]]
-- [[_COMMUNITY_Community 439|Community 439]]
-- [[_COMMUNITY_Community 440|Community 440]]
-- [[_COMMUNITY_Community 441|Community 441]]
-- [[_COMMUNITY_Community 442|Community 442]]
-- [[_COMMUNITY_Community 443|Community 443]]
-- [[_COMMUNITY_Community 444|Community 444]]
-- [[_COMMUNITY_Community 445|Community 445]]
-- [[_COMMUNITY_Community 446|Community 446]]
-- [[_COMMUNITY_Community 447|Community 447]]
-- [[_COMMUNITY_Community 448|Community 448]]
+- enums.py
+- auth_header
+- Trip
+- cn
+- TripDetailView.tsx
+- PhaseDescriptor
+- test_consignment_service.py
+- trip_service.py
+- dispatcher/app/(app)/trips/[id]/page.tsx
+- phase.ts
+- vehicles/[id]/page.tsx
+- test_phase_corroboration.py
+- PhaseStepPageClient.tsx
+- test_phase_service.py
+- TripContext.tsx
+- VehicleType
+- _fixture
+- dispatcher/lib/api/client.ts
+- InTransitPageClient.tsx
+- trip.ts
+- useOfflineQueue.ts
+- phase_service.py
+- cn
+- schemas/__init__.py
+- DriverRead
+- test_idle_timeout.py
+- exceptions/page.tsx
+- TripSummary.tsx
+- test_analytics.py
+- test_detail_receipts_gating.py
+- TripEvent
+- test_schema_validators.py
+- test_input_limits.py
+- test_trips.py
+- test_trip_service.py
+- DevTriggerPanel.tsx
+- analytics_service.py
+- integration/test_exceptions.py
+- exceptions/[id]/page.test.tsx
+- render-attestation.ts
+- ValueError
+- test_precinct_service.py
+- fleet-analytics.ts
+- captured_anchor_dispatches
+- test_auth_dependencies.py
+- periods.py
+- test_exception_service.py
+- test_realtime_emit.py
+- review_exception
+- VehicleAnalyticsSummary.tsx
+- test_exception_reads.py
+- test_dev_pulsit.py
+- API Endpoint Registry
+- SubjectType
+- Sidebar.tsx
+- PatternStrip.tsx
+- TripNewPage
+- get_driver_metrics
+- safe_ratio
+- Precinct Integration Tests
+- hedera.py
+- verification_service.py
+- endpoints/handover.py
+- FakeMockStateStore
+- test_analytics_stats.py
+- MockPulsitClient
+- test_corroboration_service.py
+- test_idvs_client.py
+- Base
+- location_service.py
+- PulsitFix
+- TripCreateRequest
+- receiver_verification_service.py
+- dependencies
+- test_rate_limit.py
+- test_pulsit_client.py
+- build_key
+- period.ts
+- scan_service.py
+- dev_triggers.py
+- problems.py
+- fleet_analytics_service.py
+- test_gps_mismatch.py
+- test_exceptions_dispatcher.py
+- test_health.py
+- types/analytics.ts
+- useSortedRows.ts
+- test_subject_visibility.py
+- advance_confirmation
+- tiles.ts
+- mocks/trips.ts
+- Driver Action Registry
+- move_truck
+- UserRead
+- test_pagination.py
+- MIME Type Validation
+- test_precinct_event_model.py
+- ScanFeed
+- MockParcelPerfectClient
+- test_parcel_perfect_client.py
+- test_analytics_endpoints.py
+- trigger_scan
+- FreightProof_Meeting_Bruce_Minutes_24June2026.md
+- test_demo_waypoints.py
+- test_health_probes.py
+- evaluate_geofence
+- test_blockchain.py
+- test_blockchain_receipt_lookup.py
+- PlanStop
+- test_dev_truck_service.py
+- devDependencies
+- Dispatcher API Endpoints
+- artifact_service.py
+- test_dev_triggers.py
+- devDependencies
+- FreightProof SA — Database Models Reference
+- Part 9 — Findings ledger
+- driver-pwa/lib/context/AuthContext.tsx
+- Forensic Evidence Details
+- Create vehicle_events and driver_events tables
+- Phase Step Tests
+- test_dev_pulsit_writes_nothing.py
+- test_trips_driver_list.py
+- tiles.py
+- test_receiver_verification_webhook.py
+- PhaseStepPageClient.test.tsx
+- Geospatial Math Utilities
+- Phase Event Constants
+- Phase model: rename handshake_events to phase_events, add per-stop ledger
+- Trip Seeding Logic
+- test_model_schema_v6.py
+- _fleet_seed.py
+- get_pp_client
+- iOS App Delegate
+- Design System Tokens
+- Meeting with Bruce - 03/03/2026
+- Driver PWA Scripts
+- Fleet Management API
+- Consignment Sync Logic
+- Real-time Event Stream
+- Delivery sequence and file ownership
+- Exception Formatting Utilities
+- Data Integrity Hashing
+- test_proximity_service.py
+- dependencies
+- Supabase Configuration Check
+- test_trip_detail_lists_departure_receipt_for_dispatcher
+- FreightProof_Full_Picture_v6.md
+- Fleet Entity Tests
+- Fleet Analytics Page — build spec and executable plan
+- Trip Phase UI
+- API Request Schemas
+- Audit Fix Implementation Plan (2026-07-19)
+- _probe_redis
+- test_handover_endpoints.py
+- endpoints/phases.py
+- FreightProof SA — Technical Full Picture v1.1
+- FP-155 Receiver QR Handover — Implementation Plan
+- Signature Capture Component
+- seed_dispatcher.py
+- integrations/parcel_perfect.py
+- 6. Findings (what is currently — sometimes subtly — wrong)
+- geofence_service.py
+- test_verify_returns_verified_for_anchored_trip
+- Project Roadmap Plans
+- Trailer Analytics — Per-Vehicle Breakdown Attribution — Build Spec
+- scripts
+- compilerOptions
+- compilerOptions
+- Phase Refactor — Stage 6: Lifecycle Hardening, Integration & Demo (6.0 – 6.7)
+- compilerOptions
+- Trip Status UI
+- API Response Models
+- Parcel Perfect Mocks
+- Design System Refresh Implementation Plan
+- test_fleet_mutations_gating.py
+- Parcel Perfect API Tests
+- Phase Refactor — Stage 2: The Phase Engine
+- Auth Token Validation
+- Database Reset Tool
+- Phase Refactor — Stage 3: Endpoints & Schemas (3.1 / 3.2 + NEW-9)
+- HandoverPageClient.tsx
+- Scan-Driven Loading & Unloading — Design
+- Phase Override UI
+- Driver PWA UX Fixes Implementation Plan
+- action_location_service.py
+- record_checkpoint_corroboration
+- Parcel Perfect Monitor
+- HederaReceipt
+- Phase Model Schema
+- FP-156 — Dispatcher Analytics Screen — Build Spec
+- devDependencies
+- FreightProof SA — DB Schema Implementation Plan (FP-20, FP-21, FP-22)
+- Phase Refactor Roadmap
+- System Documentation
+- Frontend Design Roadmap
+- Database Seeding Service
+- anchor_phase_event
+- Findings ledger
+- Phase Refactor — Stage 1: Data Model, Migration, Seeder
+- Concurrent Session Management
+- headers
+- test_fleet_on_time.py
+- test_fleet_problems.py
+- FreightProof SA — Work-Package Spec & Production-Readiness Guide
+- review.py
+- env.py
+- Concurrent Consignment Claims
+- TripDetailPage
+- test_analytics_service.py
+- test_trip_history.py
+- FreightProof SA — Hardening & Iteration 2 Foundations Plan
+- Phase Model Documentation
+- Environment Configuration Checks
+- health_check
+- Patch Schema Validation
+- Evidence Capture Components
+- Android Unit Tests
+- anchor_subject
+- get_read_only_db
+- Phase Model — Replacing "Handshakes" with "Phases" (Assessment + Redesign Spec)
+- Analytics Read Models
+- Receiver Identity Verification — Design
+- compilerOptions
+- .delete
+- Operator
+- on_time.py
+- STAGE A — Backend foundations
+- Part A — Verification
+- Precinct Create, Edit & Anchor Implementation Plan
+- Exception Review API
+- Phase Model Migration
+- manifest_service.py
+- Phase Step Validation
+- Trip Detail UI/UX Implementation Plan
+- In-Transit Page UI
+- Phase Submission Schemas
+- Anchor Service Testing
+- Evidence Artifact Schemas
+- Token Management Utilities
+- Waybill Search-and-Add UX (Design Spec)
+- Panic Response UI
+- App Theme Providers
+- Data Table Components
+- Driver Form Validation
+- Implementation Plan
+- Client Auth Testing
+- UX Design Specifications
+- Health and Security Integration
+- Scan Session Management
+- Trip Event Processing
+- Mock Scan Feed
+- Departure Anchor Logic
+- Precinct Management API
+- Vehicle Rate Limiting
+- App Settings and Auth
+- Trip Schedule Validation
+- Dispatcher User Management
+- Database Health Monitoring
+- Evidence File Uploads
+- Consignment Seeding Fixtures
+- Auth and Logging Tests
+- Critical Field Diffing
+- 8. Driver PWA — page catalogue
+- Dispatcher Live Updates — Server-Sent Events over an org-wide event bus
+- Unique Waybill Migration
+- Active Order Migration
+- Exception Idempotency Migration
+- Exception Review Migration
+- Trailer Analytics Migration
+- test_confirmation_preserves_arrival_or_its_absence
+- DB Connection Pooling
+- Integration Architecture Design
+- PWA Navigation Components
+- Precinct Card Components
+- Realtime SSE Handling
+- API Request Utilities
+- Location State Hook
+- Phase Submission Workflow
+- API Client Modules
+- Next.js Security Config
+- Gradle Wrapper Scripts
+- Dispatcher UI Redesign — Spec
+- Domain Data Mapping
+- Project Documentation Plans
+- Waybill Lookup Integration
+- Precinct API Integration
+- Trip Artifacts API
+- History Pagination UI
+- Subject Verification Helpers
+- Phase Plan Seeding
+- Consignment Sync Service
+- Auth Token Validation
+- Hedera Service Testing
+- Backend Step Constants
+- Blockchain Event Anchoring
+- Vehicle Event Persistence
+- Driver Session Validation
+- Consignment Data Persistence
+- Parcel Perfect Mocking
+- Database Health Probes
+- Consignment Reuse Validation
+- Vehicle Detail API
+- Phase Planning Tests
+- Phase Completion Requests
+- Authentication Dependencies
+- Session Management Rules
+- Phase Planning Logic
+- MIME Type Handling
+- Target State Management
+- Migration Loading Utility
+- Migration Module Loader
+- Android Capacitor Bridge
+- Phase Model Documentation
+- Parcel Perfect Client
+- Login and Auth Context
+- Trip Table UI
+- Button UI Components
+- Drawer and Modal UI
+- Input UI Components
+- Driver Detail Management
+- Fleet Drivers Table
+- Precinct Form Management
+- Exception Management Pages
+- HTTP Client Configuration
+- Backoff Strategy Logic
+- Trip Auto Refresh
+- Phase Resolution Logic
+- Project Configuration Files
+- Driver Data Models
+- Trip Exception Models
+- Element Width Hook
+- test_fleet_patterns.py
+- FreightProof — Iteration 2 Kickoff Meeting
+- Global Error Handling
+- Service Worker Configuration
+- PWA Linting Rules
+- Google Geocoding Service
+- Seal Verification Logic
+- Trip History Hook
+- Project Iteration Plans
+- App Layout Shell
+- Active Trips Management
+- Integration Design Plans
+- UI Redesign Plans
+- Vehicle Detail Management
+- Fleet Vehicle Management
+- SSE Stream Endpoint
+- App Client Entry
+- Create Driver Endpoint
+- Driver Detail Endpoint
+- Update Driver Endpoint
+- Create Precinct Endpoint
+- Precinct Detail Endpoint
+- Update Precinct Endpoint
+- Dispatcher Role Authorization
+- Current Driver Auth
+- Session Concurrency Proofs
+- Idle Timeout Enforcement
+- Single Device Enforcement
+- Critical Field Validation
+- Hedera Integration Errors
+- Resource Exception Handling
+- Rate Limit Budgeting
+- Journey Lock Hashing
+- Precinct Event Registration
+- Location Ping Tracking
+- Phase Event Idempotency
+- Driver Substitution Logic
+- Cache Key Namespacing
+- Waybill Mock Data
+- Waybill Integration Tests
+- Driver Service Tests
+- Location Tracking Service
+- Payload Confirmation Logic
+- Parcel Scan Ingestion
+- Precinct Schema Validation
+- MIME Type Detection
+- File Format Validation
+- Consignment Sync Service
+- Evidence Anchoring Service
+- Subject Receipt Visibility
+- Hedera Hash Submission
+- Hedera Hash Verification
+- Multi-tenant Access Control
+- Hedera Error Handling
+- Rate Limiting Middleware
+- Realtime Redis Messaging
+- Realtime Event Hooks
+- Trip Integrity Hashing
+- Redis Mock Store
+- Precinct Data Models
+- GPS Checkpoint Validation
+- Consignment Data Models
+- Phase Event Anchoring
+- Cross-Org Security Tests
+- Organization Seeding Tests
+- Device ID Hashing
+- POPIA PII Compliance
+- Device Session Management
+- Deterministic Hash Integrity
+- Session Timeout Security
+- Input Text Sanitization
+- Analytics Query Layer
+- Stage 5 — Driver-app plan-driven engine
+- Driver-owned arrival (`in_transit` becomes a submitted phase) — Implementation Plan
+- Driver Pages → Vehicle-Detail Parity
+- Driver PWA — Full Handshake Flow Implementation Plan
+- Linting Shell Scripts
+- Lint Test Scripts
+- Test Summary Scripts
+- Codex Lint Hooks
+- Codex Lint Tests
+- Codex Summary Hooks
+- Corroboration Iteration Planning
+- Parcel Traceability Model
+- Audit and Chain Rework
+- Developer Auth Tokens
+- Developer Trigger Pages
+- Scan Feed Events
+- Fleet Analytics
+- Resource Audit Policy
+- Mobile App Configuration
+- Navigation Header Components
+- Warehouse Card Component
+- Theme Selection UI
+- Chip UI Component
+- Loading State UI
+- Tabs UI Component
+- Toast Notification UI
+- Truck Loader UI
+- Artifacts API Testing
+- Precinct Management Pages
+- Alert and Banner UI
+- Phase Factory Testing
+- Dispatcher Layout Shell
+- Geofence Mapping Components
+- Map Tile Configuration
+- Precinct Data Hooks
+- Trip Detail Hooks
+- Realtime SSE Provider
+- Security and Package Config
+- Android Build Setup
+- Capacitor Android Dependencies
+- Session Supersession Handling
+- Phase Queue Management
+- Phase Submission State
+- Trip Status Summary
+- Checkpoint Identification
+- Dispatcher ESLint Config
+- Dispatcher Environment Types
+- Dispatcher Tailwind Config
+- Dispatcher Vitest Config
+- Capacitor Global Config
+- PWA Environment Types
+- PWA Tailwind Config
+- TripStop Feature Planning
+- Graph Update Scripts
+- On-Chain Auth Design
+- Fleet Admin Design
+- Privacy and Validation Design
+- Driver Creation Validation
+- Trip Duration Rules
+- Executor Documentation
+- Linting Git Hook
+- Test Summary Hook
+- Bug Hunter Tool
+- Build Planner Tool
+- Frontend Design Tool
+- Honest Advisor Tool
+- Project Setup Tool
+- Card UI Component
+- Application Routes
+- Node Chain Logic
+- Trip Chip Metadata
+- Supabase Client Integration
+- UI Component Types
+- Trip Phase Constants
+- API Route Constants
+- Trip Exception Model
+- Consignment Manifest Model
+- Parcel Entity
+- Precinct Entity
+- Trip Entity
+- CSS Utility Functions
+- Date Formatting Utilities
+- Git Workflow Policies
+- Exception Retrieval API
+- Exception Review Queue
+- Authentication Utilities
+- Application Configuration
+- Consignment Assignment Errors
+- Resource Conflict Errors
+- Hedera Service Errors
+- Hedera Timeout Errors
+- Parcel Perfect Sync Errors
+- Phase Blocking Errors
+- Phase Sequence Errors
+- Phase Timing Errors
+- Phase Type Errors
+- Resource Not Found Errors
+- Subject Visibility Errors
+- Trip Activation Errors
+- Trip Conflict Errors
+- Trip State Errors
+- Artifact Upload Rate Limits
+- Blockchain Verification Rate Limits
+- Evidence Write Rate Limits
+- Trip Creation Rate Limits
+- Rate Limit Configuration
+- Trip Event Logging
+- Artifact Type Enums
+- Dispatcher Role Enums
+- Subject Type Enums
+- Trip Status Enums
+- Vehicle Type Enums
+- Database Session Management
+- Parcel Perfect Mock Client
+- Parcel Perfect Integration Errors
+- Waybill Not Found Errors
+- Scan Feed Simulation
+- Scan Direction Enums
+- Gated Phase Constants
+- System Capability Discovery
+- Verification Request Schema
+- Verification Response Schema
+- Scan Session Termination Request
+- Scan Session Termination Response
+- Consignment Scan Results
+- Trip Development Summary
+- Exception Trigger Request
+- Exception Trigger Response
+- Mock State Management
+- Parcel Perfect Trigger Request
+- Parcel Perfect Trigger Response
+- Scan Trigger Request
+- Scan Trigger Response
+- Evidence Artifact Read Schema
+- Evidence Artifact URL Schema
+- Location Ping Batching
+- Location Ping Results
+- Precinct Creation Schema
+- Precinct Detail Response
+- Precinct Read Schema
+- Precinct Update Schema
+- Driver Creation Schema
+- Driver Detail Response
+- Driver Read Schema
+- Driver Update Schema
+- User Data Schema
+- Phase Completion Request
+- Phase Event Read Schema
+- Parcel Perfect Capabilities
+- Waybill Summary Schema
+- Checkpoint Read Schema
+- Driver Checkpoint Creation
+- Driver Exception Creation
+- Trip Exception Read Schema
+- Trip Cancellation Request
+- Driver Trip List Response
+- Linehaul Data Response
+- Manifest Data Response
+- Phase Override Request
+- Trip Creation Request
+- Trip Detail Response
+- Trip List Item Response
+- Payload Hashing Utilities
+- Precinct Validation Constants
+- Hedera Receipt Data
+- Duplicate Resource Errors
+- Rate Limit Model
+- Realtime Event Types
+- Event Queueing Logic
+- Blockchain Transaction Types
+- Parcel Status Enums
+- Exception Severity Levels
+- Exception Source Types
+- Exception Category Types
+- ID Verification Status
+- Organization Type Definitions
+- Phase Status States
+- Phase Type Definitions
+- Trip Status States
+- Vehicle Type Definitions
+- Driver Event Model
+- User Session Management
+- Parcel Data Model
+- Trip Stop Model
+- Vehicle Data Model
+- Database Session Dependency
+- Redis Mock Store
+- Scan Direction Enum
+- Scan Feed Retrieval
+- Driver User Creation
+- Exception Handling Utility
+- Planned Phase Model
+- Phase Activation Logic
+- Precinct Update Logic
+- Trip Cancellation Logic
+- Vehicle Service Logic
+- Artifacts API Router
+- Trip Artifacts Router
+- Blockchain API Router
+- Checkpoints API Router
+- Barcode Resolution Logic
+- Developer Panel Configuration
+- Developer Triggers Router
+- Driver Profile Retrieval
+- Drivers API Router
+- Exceptions API Router
+- Locations API Router
+- Manifest API Router
+- Stop Sequence Mapping
+- Phases API Router
+- Capabilities Discovery Endpoint
+- Parcel Perfect Integration
+- Precincts API Router
+- Event Stream Logic
+- Stream API Router
+- Trip Administration Router
+- Trips API Router
+- Demo Mode Configuration
+- Authentication API Router
+- Critical Field Definitions
+- Driver Critical Fields
+- Precinct Critical Fields
+- Vehicle Critical Fields
+- Field Difference Utility
+- Hedera Configuration Errors
+- Hedera Dependency Errors
+- Hedera Service Errors
+- Hedera Submission Errors
+- Application Settings
+- Settings Configuration Class
+- System Constants
+- System Exceptions
+- Duplicate Resource Errors
+- Parcel Perfect Sync Errors
+- Permission Denied Errors
+- Phase Blocked Errors
+- Phase Sequence Errors
+- Phase Timing Errors
+- Phase Type Errors
+- Resource Not Found
+- Subject Visibility Errors
+- Trip Activation Errors
+- Trip Conflict Errors
+- Trip State Errors
+- Rate Limit Definitions
+- Artifact Upload Limits
+- Blockchain Verification Limits
+- Evidence Write Limits
+- Parcel Lookup Limits
+- Precinct Mutation Limits
+- Trip Creation Limits
+- Phase Metadata Configuration
+- Rate Limiting Middleware
+- Request Counting Logic
+- Redis Connection Dependency
+- Client Reset Utility
+- Realtime Event Types
+- Security Header Configuration
+- Security Headers Middleware
+- Hashing Utility Functions
+- Driver Event Types
+- Precinct Event Types
+- Vehicle Event Types
+- Verification Status Enum
+- Driver Unique Constraints
+- Order Number Index
+- Live Trip Statuses
+- Vehicle Pulsit Constraints
+- Vehicle Registration Constraints
+- Vehicle Unique Fields
+- Async Database Session
+- Database Connection Provider
+- Mock State Configuration
+- Mock State Expiration
+- Cache Key Generation
+- Mock Waybill Data
+- Mock Waybill Responses
+- Unsupported Operation Error
+- Waybill Not Found Error
+- Seeded Waybill Data
+- Unassigned Waybill Management
+- Scan Session Queries
+- Trip Reference Retrieval
+- Waybill Data Serialization
+- Driver Detail Retrieval
+- Driver List Management
+- Unique Constraint Validation
+- Database Constraint Violations
+- Process Blocking Logic
+- Dispatcher Trip Loading
+- System Capabilities Retrieval
+- Manifest Summary Retrieval
+- Waybill Summary Retrieval
+- Precinct List Management
+- Consignment Scan Results
+- Scan Ingestion Results
+- Scanned Item Counts
+- Consignment Scanned Totals
+- Trip Reference Generation
+- Vehicle List Management
+- Vehicle Update Operations
+- Blockchain Receipt Reading
+- Merkle Batch Base
+- Merkle Batch Reading
+- Verification Request Handling
+- Verification Response Handling
+- Scan Session Closure
+- Scan Session Responses
+- Development Consignment Models
+- Development Trip Stops
+- Development Trip Summaries
+- Scan Trigger Requests
+- Scan Trigger Responses
+- Driver Event Reading
+- Precinct Event Reading
+- Vehicle Event Reading
+- Evidence Artifact Updates
+- Location Ping Batching
+- Location Ping Results
+- Location Ping Creation
+- Location Ping Reading
+- Maximum Context Length
+- Request Ping Limits
+- Organization Update Operations
+- Precinct Data Models
+- Precinct Creation Body
+- Precinct Update Body
+- Driver Base Models
+- Driver Creation Models
+- Driver Update Models
+- Driver Update Body
+- User Creation Models
+- User Update Models
+- Activation Completion Requests
+- Confirmation Completion Requests
+- Departure Completion Requests
+- In-Transit Completion Requests
+- Loading Completion Requests
+- Phase Completion Requests
+- Seal Format Validation
+- Waybill Capability Models
+- Waybill Summary Models
+- SLA Configuration Base
+- SLA Configuration Creation
+- SLA Configuration Reading
+- SLA Configuration Updates
+- Checkpoint Creation Models
+- Checkpoint Reading Models
+- Checkpoint Update Models
+- Trip Exception Updates
+- Trip Cancellation Requests
+- Consignment Creation Models
+- Consignment Manifest Models
+- Consignment Update Models
+- Delivery Stop Manifests
+- Driver Substitution Base
+- Driver Substitution Creation
+- Driver Substitution Reading
+- Linehaul Response Models
+- Manifest Response Models
+- Phase Override Requests
+- Parcel Creation Models
+- Parcel Reading Models
+- Parcel Update Models
+- Trip Creation Operations
+- Trip Stop Base
+- Trip Stop Creation
+- Trip Stop Reading
+- Trip Template Base
+- Trip Template Reading
+- Trip Template Updates
+- Trip Trailer Schema
+- Create Trip Trailer
+- Read Trip Trailer
+- Update Trip Data
+- Create Vehicle
+- Update Vehicle
+- Vehicle Update Payload
+- Binary Magic Bytes
+- Async Database Migrations
+- Offline Migration Runner
+- Online Migration Runner
+- Initial Database Schema
+- Driver Substitution Migration
+- Supabase Auth Migration
+- RLS Policy Migration
+- Database Downgrade Logic
+- Supabase Connection Check
+- Data Masking Utility
+- Reporting Utility
+- Process Watcher
+- Password Resolution
+- Demo Data Seeding
+- Argument Parsing
+- Password Resolution Utility
+- Main Entry Point
+- Dispatcher Data Seeding
+- Consignment Leg Model
+- Trip Specification Model
+- Reference Data Model
+- Sequence Resolution
+- Trip Data Seeding
+- Mock State Store
+- Test Configuration
+- Database Session Fixture
+- Empty Trip Fixture
+- JWKS Generation Utility
+- Seeded State Fixture
+- Database Engine Test
+- Waybill Stop Fixture
+- Cross-Dock Trip Fixture
+- Integration Test Config
+- Phase Row Helper
+- Arrival Lifecycle Tests
+- Arrival Timestamp Validation
+- Hub Trip Completion
+- Database Mock Override
+- Trip Seeding Helper
+- Test Artifact Management
+- Artifact Size Validation
+- Artifact Upload Test
+- User Creation Helper
+- Database Mocking Utility
+- Database Client Fixture
+- Auth Router Tests
+- User Mock Helper
+- Blockchain Integration Tests
+- Admin Role Authorization
+- Dispatcher Access Control
+- Database Dependency Override
+- Organization Seeding
+- Trip Data Seeding
+- Blockchain Verification Tests
+- Database Session Override
+- Trip Seeding Utility
+- Checkpoint Validation Tests
+- Driver Access Control
+- Database Mock Provider
+- Data Seeding Utility
+- Multi-Stop Trip Tests
+- Concurrency Creation Tests
+- Fake Driver Data
+- Fake Receipt Data
+- Fake Vehicle Data
+- User Mock Factory
+- Receipt Access Gating
+- Development App Instance
+- Development API Client
+- Seeded Test Environment
+- Data Store Mock
+- Development Trigger Tests
+- Trip Creation Helper
+- Data Seed Helper
+- Organization Data Isolation
+- Vehicle Seeding Utility
+- Vehicle Creation Test
+- Vehicle Anchor Tests
+- Org Seeding Helper
+- Vehicle Seeding Helper
+- Critical Field Patching
+- Organization Seed Utility
+- Vehicle Seed Utility
+- VIN Validation Tests
+- Vehicle Update Tests
+- Unit Test Initialization
+- Deterministic Sorting Tests
+- JWKS Cache Tests
+- Cache TTL Validation
+- Database Mock Factory
+- Client Patch Utility
+- Account Number Resolution
+- Mocking Stubs
+- Database Mocks
+- Trip Conflict Tests
+- Database Probe Tests
+- Adapter Mocks
+- Hash Normalization Tests
+- Input Limit Tests
+- Trip Ping Tests
+- Phase Service Tests
+- Recorded location comparison maps
+- Trip detail page — UI/UX redesign (design spec)
+- test_receiver_verification_endpoints.py
+- Driver PWA Redesign Implementation Plan
+- FP-112 Alignment — multi-consignment manifest/linehaul, exception scoping, dispatcher stops UI
+- ResourceNotFoundError
+- test_fleet_review.py
+- Corroboration UI, Parcel Timeline, and Per-Client Views
+- Input Validation & Error Feedback — Design + Implementation Plan
+- H1 Origin Gate-In — Geofence Verdict + Hedera Anchor (Design Spec)
+- test_fleet_evidence.py
+- FreightProof SA — Claude Code Instructions
+- Step-Event Payload Audit — What Each Event Can Honestly Carry
+- FreightProof SA — Frontend Spec v1
+- Ciaran branch review and iteration 3 priorities
+- Backend ↔ Frontend Integration Plan
+- Driver Performance Metrics
+- Facility Analytics
+- Facility Performance Metrics
+- Lane Analytics
+- Lane Performance Metrics
+- Vehicle Incident Tracking
+- Vehicle Performance Metrics
+- Vehicle Streak Tracking
+- Domain Glossary
+- Technical Debt Documentation
+- Unknown Step Handling
+- Trip Detail Page
+- Trip ID Page
+- Trips Overview Page
+- Component Error Boundary
+- Global Error Boundary
+- Metadata Export
+- Viewport Metadata
+- OTP Page Component
+- Service Worker Logic
+- Anchor Badge Component
+- Anchor Progress Component
+- Home Content Component
+- Evidence Review Component
+- Visual Count Tests
+- Hold Notice Component
+- Country Selection UI
+- Empty State UI
+- Loading Screen UI
+- Skeleton Loader UI
+- Switch Toggle UI
+- Text Area UI
+- ESLint Configuration
+- iOS App Icons
+- iOS Asset Manifest
+- iOS Splash Screens
+- Theme Utility Tests
+- Checkpoints API Tests
+- API Client Tests
+- Geocode API Tests
+- Manifest API Tests
+- Phase API Tests
+- Phase Draft Hook
+- Exception Handling Logic
+- ScanFeed Interface + Dev Trigger Panel Implementation Plan
+- Public Layout Component
+- Tokens Management Page
+- Checklist Row Props
+- Column Width Constants
+- Date Formatting Utilities
+- Stop Role Labels
+- Evidence Packet Model
+- Evidence Packet Props
+- Exception Banner Props
+- Mini Node Component
+- Phase Chain Props
+- Phase Builder Utility
+- Action Rendering Logic
+- Timestamp Icon Component
+- Trip ID Stamp
+- Phase Descriptor Types
+- Precinct Type Definitions
+- Date Range Picker
+- Drawer UI Component
+- Form Field Component
+- Ic (Icon) Component
+- InfoRow Component
+- Modal Component
+- SearchSelect Component
+- Select Component
+- StatCard Component
+- StepRail Component
+- Switch Component
+- Tabs Component
+- TextArea Component
+- Toast Component
+- TopBar Component
+- InfoRow
+- SecHead
+- Spinner
+- VehicleCard Component
+- Routes Constants
+- Status Meta Constants
+- ProfileUnavailableError Class
+- SidebarCollapse Context
+- describeChange Function
+- useAsyncData Hook
+- useBlockchainReceipts Hook
+- useDevTriggers Hook
+- useDriverDetail Hook
+- useDrivers Hook
+- useElementWidth Hook
+- useExceptions Hook
+- useIdleTimeout Hook
+- useManifest Hook
+- usePpCapabilities Hook
+- usePrecinctDetail Hook
+- useResizablePanel Hook
+- useSLAMetrics Hook
+- useToast Hook
+- useTripArtifacts Hook
+- useTrips Hook
+- useVehicleDetail Hook
+- useVehicles Hook
+- useVerify Hook
+- Tiles Map Utilities
+- Phase Derivation Logic
+- Phase Geolocation Logic
+- Supabase Client
+- Date Range Type
+- Dev Type Definitions
+- User Type Definitions
+- Precinct Validation Tests
+- Exception formatting
+- Schedule formatting
+- Phase derivation utilities
+- Next.js Environment Types
+- PostCSS Configuration
+- Tailwind Configuration
+- TypeScript Configuration
+- Vitest Configuration
+- Android Main Activity
+- Android Root Build Configuration
+- Capacitor Settings Gradle
+- Android Variables Gradle
+- Driver PWA App Layout
+- Driver PWA Home Page
+- Driver PWA Settings Page
+- Checkpoint Page Client
+- Checkpoint Page
+- Log Exception Page Client
+- Panic Page Client
+- RequestOptions
+- SIGNED_OUT_REASON_KEY
+- readErrorMessage
+- APP_VERSION
+- SUPPORT_EMAIL
+- SUPPORT_PHONE
+- TRIP_POLL_INTERVAL_MS
+- TripProvider
+- CheckpointQueueEntry
+- RESOLVED_STATUSES
+- TimestampedFix
+- dismissPhaseSubmissionFailure
+- next-env.d.ts
+- vitest.config.ts
+- BlockchainBadge
+- EventTimeline
+- copy.ts
+- PHASE_NAMES
+- status-meta.ts
+- checkpoints.ts
+- index.ts
+- manifests.ts
+- phase-trips.ts
+- principals.ts
+- idle.ts
+- TOKENS
+- blockchain.ts
+- manifest.ts
+- pp.ts
+- precinct.ts
+- seal.ts
+- trip.ts
+- vehicle.ts
+- cn
+- datetime.ts
+- constants.ts
+- precinct.ts
+- vehicle.ts
+- z-index.ts
+- tsconfig.json
+- ResizeObserverStub
+- CI Workflow
+- useRouter
+- Old Model Failures
+- Trip Creation Redesign — Minimal Wizard, PP-Sourced Cargo, Mocked PP API (Design Spec)
+- test_fleet_incidents.py
+- useEffect
+- useState
+- Scale Readiness Assessment
+- update-graph.sh
+- Sprint 6 Remaining Plan
+- test_create_driver_returns_201_with_pending_status
+- test_list_drivers_empty_returns_200
+- test_list_drivers_returns_active_drivers
+- test_create_driver_does_not_anchor_pii
+- test_create_driver_hedera_service_error_returns_502
+- test_create_driver_hedera_timeout_returns_504
+- test_get_my_driver_profile_returns_driver
+- test_get_trip_detail_returns_exception_scoping_fields
+- test_driver_raises_panic_exception
+- test_offline_panic_flushed_after_arrival_keeps_its_in_transit_phase
+- test_panic_stores_the_phase_the_driver_reported_it_from
+- test_create_driver_non_admin_forbidden
+- test_update_driver_non_admin_forbidden
+- test_health_reports_degraded_when_database_is_unreachable
+- test_health_reports_degraded_when_redis_is_unreachable
+- test_health_reports_ok_when_both_dependencies_answer
+- test_record_locations_persists_the_batch
+- test_recorded_coordinates_survive_the_float_round_trip
+- test_dispatcher_gets_full_manifest_with_parcels
+- test_driver_gets_linehaul_without_parcel_detail
+- test_departure_complete_anchors_and_returns_event_hash
+- test_departure_complete_hedera_failure_still_returns_200_fail_open
+- test_get_waybill_marks_reference_unassigned_when_no_consignment_exists
+- test_list_precincts_empty_returns_200
+- test_list_precincts_returns_shared
+- test_duplicate_registration_in_same_org_is_refused
+- DriverExceptionCreateBody
+- MerkleBatchLeafCreate
+- PrecinctCreateBody
+- VehicleRead
+- test_health_response_carries_hardening_headers
+- test_parallel_first_requests_on_a_new_session_all_succeed
+- test_stream_without_credentials_returns_403
+- SubjectNotVisibleError
+- assert_subject_visible
+- DispatcherRole
+- create_dispatcher_auth_user
+- create_signed_url
+- upload_evidence_file
+- test_list_artifacts_returns_signed_urls_in_capture_order
+- ConsignmentRead
+- TripCreateRequest
+- create_trip
+- get_active_trip_for_driver
+- TripStop
+- test_active_trip_returns_null_when_no_active_trip
+- VehicleEventType
+- create_vehicle
+- update_vehicle
+- PrecinctCreateBody
+- _hash_payload
+- verify_subject
+- Step-Event Ledger — Implementation Plan and the Sequencing Call
+- Iteration 2 Feedback — Verification Against the Codebase
+- Parcel Traceability & Granularity — Findings and Target Design
+- File Structure
+- Jira Board Reconciliation — Dry Run (v2)
+- FP-115 — Forensic View + Admin-Dispatcher Role
+- Driver PWA Improvements — Design
+- FreightProof SA — Design System v2
+- 7. Components
+- 3 · Order of work
+- meeting_minutes_bruce_26-03-2026_Detailed.md
+- FreightProof SA
+- PPWaybillResponse
+- test_phase_location_preview.py
+- Client vs Server Computation — Audit
+- Dispatcher UI Redesign Implementation Plan
+- Phase H — Handshake step UI (replace placeholder)
+- Trip Creation Redesign Implementation Plan
+- Implementation Plan
+- Driver PWA — trip auto-refresh while waiting on the warehouse
+- Alembic autogenerate drift — what it was, how it was fixed, what is still open
+- 2. Demonstration feedback — "controls, validation and security"
+- meeting_minutes_bruce_16-04-2026_Detailed.md
+- Prioritized security findings
+- FreightProof SA — Frontend Phase 0 Implementation Plan
+- Dispatcher — Forensic-View UX Completion (FP-115)
+- Phase A — Driver Auth (backend)
+- Parcel Perfect Integration — Implementation Plan
+- POPIA Driver Erasure
+- POST /trips Endpoint Implementation Plan
+- add_exception
+- FreightProof SA — Claude Onboarding Prompt
+- 7. Dispatcher Portal — page catalogue
+- FreightProof SA — Iteration 2 Master Plan
+- Meeting_Minutes_Bruce_05May2026.md
+- Receiver Identity Verification — Stage 1 (Foundation) Implementation Plan
+- The Bug Hunter
+- The Build Planner
+- The Method
+- PPContents
+- The Bug Hunter
+- The Build Planner
+- The Method
+- Audit — docs/ relevance + backend simplicity & API efficiency
+- Design notes — Multi-stop handshakes (pickups + dropoffs)
+- Dispatcher Portal — Handoff: Driver PWA changes, 2026-08-06
+- Facility Visit Findings — Distribution Hub (RTT / Load Factor client)
+- Admin-Only Fleet Mutations Implementation Plan
+- Findings ledger
+- Decisions taken while writing this plan
+- Precinct List Card Redesign — Implementation Plan
+- Receiver Identity Verification — Stage 2B (HTTP Surface) Implementation Plan
+- EventSwitch.tsx
+- Trip Creation — Code Walkthrough
+- The Honest Advisor
+- identity_matches
+- TripCreate
+- test_update_driver_hedera_timeout_returns_504
+- The Honest Advisor
+- Seal Chain Rework — Making the Seal a Multi-Party Control
+- Exception queue — scaling the list, the subscription, and the archive
+- Live sub-phase timeline — session handoff
+- Vehicle Detail — Immutable History / Analytics Toggle — Build Spec
+- Phase C — Handshake state machine
+- A. Design
+- Receiver Identity Verification — Stage 2A (Service Layer) Implementation Plan
+- Driver PWA Redesign — Spec
+- Admin-Only Fleet Mutations
+- Stage 5 breakage inventory — driver-pwa vs. the phase-model cut
+- The Security Sweep
+- _seed
+- The Security Sweep
+- 2026-09-02-seal-chain-rework.md
+- Create Driver & Vehicle Implementation Plan
+- Driver Phone Auth (Supabase OTP) Implementation Plan
+- Receiver Identity Verification — Stage 3 (Receiver UI) Implementation Plan
+- 3. Endpoint Catalogue
+- FP-154: Evidence Artifact Payload Versioning
+- Hedera On-Chain Recording — Implementation Plan
+- Hedera On-Chain Recording — Spec
+- Driver PWA — show only the current handshake (design)
+- Getting started
+- FreightProof SA — Demo Script & Walkthrough
+- FreightProof_Full_Picture_v7.md
+- 1. What was done
+- Scale Readiness — Iteration 2 Review Response
+- Build order
+- 1. Locked decisions (2026-07-27)
+- Trip Mutations — Demo Reference
+- views.py
+- 2026-08-24-corroboration-parcel-client-views.md
+- Live analytics views — decision record
+- 4.1 Two service models
+- Phase Refactor — Stage 4: Dispatcher Re-wire (4.1 / 4.2 / 4.3 / 4.4 / 4.5)
+- 8. Frontend — Dispatcher pages
+- Driver Phone Auth (Supabase OTP) — Design
+- QrCode.tsx
+- FreightProof SA — API Contract: Dispatcher & Driver Endpoints
+- 3. Mock data and state architecture
+- Meeting Minutes — Parcel Tracking System: Parcel Perfect & Pulse Integration
+- Final verification (run once at the end)
+- Driver PWA — Show Only the Current Handshake Implementation Plan
+- 7. Stages
+- Tasks
+- trips_since_last_incident
+- extend_token_for_verification
+- 3.4 Handshake Advancement (Driver)
+- test_create_trip_hedera_service_error_returns_502_and_no_trip
+- _seed
+- Coordination note — Driver app (linehaul) design input for Tim
+- 6. The ledger — six stages, iteration 4
+- P1 · activation
+- P6 · confirmation
+- P5 · unloading
+- 5 · Traps — read this before deleting anything
+- 6. Code reusability — compulsory rules
+- 8.7 In-Transit (1 hub page + 5 utility pages)
+- **Meeting Minutes: Meeting with Bruce**
+- Parcel Perfect Ecommerce Service v28
+- FreightProof SA — Scope Boundaries (Defence Document)
+- Phase Model Refactor — Parent Plan (Scope B)
+- 2. How the phase model actually works
+- 5. Data strategy — rename + additive DDL + reseed
+- Prerequisites
+- 4. Backend — Service-layer integration
+- 2. Colour Tokens
+- _validate_gps_pair
+- 3.6 Exceptions
+- 4. New Schema Types Required
+- 2026_09_13_tom_live_analytics_views.py
+- test_create_trip_response_populates_derived_phase_fields
+- 8.5 Handshake 2 — Loading (5 pages)
+- 15. Appendix: Key Changes by Version
+- 3.1 Users of the system (three roles)
+- 11. Iteration 2 Jira backlog — live snapshot (3 Jun 2026)
+- 3. Ammar's points reconciled against Bruce's guidance
+- 3. Code review marksheet
+- Instead, the driver is issued a Linehaul document by the truck owner \(LFG or equivalent\)\. This document contains:
+- The driver app must show only limited, consolidated information — a digital version of the linehaul document:
+- 14. Files at a glance
+- dispatcher/package.json
+- 1. Architecture Constraints
+- 3.2 Trips
+- 3.8 Reference data (dropdowns)
+- Frontend production dependency audit — 2026-09-08
+- 10. Parcel search — the capability Bruce called the market gap
+- P4 · in_transit
+- 13. The Two PODs: What's in Scope and What Isn't
+- 6. What the Dispatcher Sees in FreightProof
+- 8. What Data FreightProof Pulls from Each System
+- Files at a glance
+- Phase 10 — Frontend shared types and components
+- Phase 11 — Frontend hooks
+- Phase 12 — Frontend pages (modify existing)
+- Phase 7 — Service-layer integration
+- Phase 9 — API endpoints
+- Phase E — Manifest → Linehaul rename
+- 10. Open items
+- 7. Frontend — Shared components
+- sa-id.ts
+- driver-pwa
+- _HederaAdapter
+- Settings
+- sync_active_consignments
+- 0. Three Design Decisions — Questions Answered
+- 2026_09_13_tim_add_handover_confirmations.py
+- 2026_09_15_ciaran_action_location_assessment.py
+- executor.md
+- 14. Where the Codebase Stands
+- 5. Exceptions
+- South African roads have weigh bridges that enforce limits\. Non\-compliance can result in:
+- Phase 15 — STRETCH (C): Vehicle / Driver mutation flows
+- Phase 2 — Migrations
+- Phase 3 — Models
+- Phase 8 — Pydantic schemas
+- 0. Preconditions & verified baseline
+- 3. The frozen contract (Stage 0.4 deliverable)
+- 6. Ownership & sequencing
+- Verification
+- 10. Testing
+- 3. Backend — Schema changes
+- receiver/app/layout.tsx
+- [sessionId]/page.tsx
+- receiver/next.config.js
+- .agents/skills/frontend-design/SKILL.md
+- .claude/skills/frontend-design/SKILL.md
+- Planned exposure includes:
+- Phase 13 — Frontend pages (new)
+- Phase 1 — Enums and constants
+- 11. POPIA compliance (design property, not feature)
+- 9. Configuration
+- StatCard.tsx
+- fleet/__init__.py
+- scripts/README.md
+- INF4027W Coding Presentation Iteration 2 Marksheet 2026.md
+- client-portal/README.md
+- autoprefixer
+- jsdom
+- postcss
+- @types/node
+- @types/react
+- typescript
+- @vitejs/plugin-react
+- vitest
+- receiver/next-env.d.ts
+- receiver/tailwind.config.ts
+- spikes/README.md
 
 ## God Nodes (most connected - your core abstractions)
-1. `auth_header()` - 200 edges
-2. `make_token()` - 173 edges
-3. `Organization` - 86 edges
-4. `Trip` - 84 edges
-5. `PhaseDescriptor` - 79 edges
-6. `Driver` - 76 edges
-7. `PhaseEvent` - 72 edges
-8. `cn()` - 71 edges
-9. `User` - 70 edges
-10. `Vehicle` - 70 edges
+1. `auth_header()` - 327 edges
+2. `make_token()` - 289 edges
+3. `_fixture()` - 208 edges
+4. `Trip` - 188 edges
+5. `Organization` - 180 edges
+6. `Precinct` - 180 edges
+7. `User` - 172 edges
+8. `Driver` - 171 edges
+9. `TripStatus` - 162 edges
+10. `Vehicle` - 161 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `Dispatcher Portal Surface` ----> `POST /api/v1/trips Endpoint`  [INFERRED]
-  README.md → backend/docs/api_contract_dispatcher_driver.md
-- `Architecture Layering` ----> `POST /api/v1/trips Endpoint`  [INFERRED]
-  CLAUDE.md → backend/docs/api_contract_dispatcher_driver.md
-- `Integration Tests` ----> `POST /api/v1/trips Endpoint`  [INFERRED]
-  CLAUDE.md → backend/docs/api_contract_dispatcher_driver.md
-- `Driver PWA Surface` ----> `POST /trips/{id}/handshakes/h1/complete Endpoint`  [INFERRED]
-  README.md → backend/docs/api_contract_dispatcher_driver.md
-- `PostgreSQL Database` ----> `Trip Model`  [INFERRED]
-  README.md → TRIP_CREATION_WALKTHROUGH.md
+- `categorizeTrips()` --indirect_call--> `trip()`  [INFERRED]
+  frontend/driver-pwa/lib/utils/trip-filters.ts → frontend/driver-pwa/lib/utils/__tests__/activation-gate.test.ts
+- `Bucket` --uses--> `DayBlock`  [INFERRED]
+  backend/app/analytics/fleet/periods.py → backend/app/analytics/fleet/constants.py
+- `ExpiryBand` --uses--> `DayBlock`  [INFERRED]
+  backend/app/analytics/fleet/periods.py → backend/app/analytics/fleet/constants.py
+- `InstantRange` --uses--> `DayBlock`  [INFERRED]
+  backend/app/analytics/fleet/periods.py → backend/app/analytics/fleet/constants.py
+- `OccurrenceDays` --uses--> `DayBlock`  [INFERRED]
+  backend/app/analytics/fleet/periods.py → backend/app/analytics/fleet/constants.py
 
 ## Import Cycles
-- None detected.
+- 3-file cycle: `frontend/shared/lib/types/exception.ts -> frontend/shared/lib/types/trip.ts -> frontend/shared/lib/types/phase.ts -> frontend/shared/lib/types/exception.ts`
 
-## Communities (449 total, 138 thin omitted)
+## Hyperedges (group relationships)
+- **Analytics Read Models** — docs_design_notes_2026_09_10_fp153_analytics_read_models_spec_driver_analytics, docs_design_notes_2026_09_10_fp153_analytics_read_models_spec_vehicle_analytics, docs_design_notes_2026_09_10_fp153_analytics_read_models_spec_lane_analytics, docs_design_notes_2026_09_10_fp153_analytics_read_models_spec_facility_analytics, docs_design_notes_2026_09_10_fp153_analytics_read_models_spec_vehicle_incident_streaks [EXTRACTED 1.00]
+- **SOLID Refactor Patterns** — docs_solid_refactor_audit_2026_09_02_subject_policy, docs_solid_refactor_audit_2026_09_02_audited_resource, docs_parcel_perfect_integration_spec_scan_feed [EXTRACTED 0.95]
+- **Exception Review Flow** — api_v1_exceptions_review_queue, api_v1_exceptions_detail, api_v1_exceptions_review_mutation, exception_reviewed_event [EXTRACTED 1.00]
+- **Cursor Pagination Pattern** — api_v1_exceptions_history, api_v1_trips_history, frontend_dispatcher_pagination_component [EXTRACTED 1.00]
+- **Integration test suite for vehicle endpoints** — backend/tests/integration/test_vehicles.py:module, backend/tests/integration/test_vehicles_anchor.py:module, backend/tests/integration/test_vehicles_cosmetic_diff.py:module, backend/tests/integration/test_vehicles_validation.py:module [INFERRED]
+- **Unit test suite for authentication** — backend/tests/unit/test_auth_dependencies.py:module, backend/tests/unit/test_auth_jwks_cache.py:module, backend/tests/unit/test_driver_sessions.py:module, backend/tests/unit/test_idle_timeout.py:module [INFERRED]
+- **Blockchain anchoring and verification** — backend/tests/unit/test_anchor_service.py:module, backend/tests/unit/test_anchor_service_timeout.py:module, backend/tests/unit/test_hedera_service.py:module, backend/tests/integration/test_vehicles_anchor.py:module, backend/tests/unit/test_driver_service.py:module [INFERRED]
+- **Security and compliance (SEC, POPIA)** — backend/tests/integration/test_vehicle_cross_org.py:module, backend/tests/integration/test_vehicles_anchor.py:module, backend/tests/unit/test_driver_service.py:module, backend/tests/unit/test_input_limits.py:module [INFERRED]
+- **Driver and user session management** — backend/tests/unit/test_driver_sessions.py:module, backend/tests/unit/test_idle_timeout.py:module [INFERRED]
 
-### Community 0 - "Backend API & Services"
-Cohesion: 0.04
-Nodes (85): CameraCapture(), CameraCaptureProps, CameraFailure, classifyCameraFailure(), DecodedPhoto, decodePhoto(), fileToCompressedJpegDataUrl(), EvidenceItem (+77 more)
+## Communities (1405 total, 802 thin omitted)
 
-### Community 1 - "Frontend Components & Hooks"
-Cohesion: 0.05
-Nodes (107): advance_departure(), advance_in_transit(), advance_unloading(), DepartureCompleteRequest, InTransitCompleteRequest, The driver attesting arrival — the act that closes the driving leg.      The thi, ConfirmationCompleteRequest, UnloadingCompleteRequest (+99 more)
-
-### Community 2 - "Database Models & Schema"
-Cohesion: 0.06
-Nodes (99): list_dev_trips(), Trips with their stops, per-stop waybills (with real barcodes), and the     ware, Organization, Precinct, SQLAlchemy models for organizations and precincts., Legal entity — transport operator, principal client, or both., Physical depot or warehouse governed by a principal organization., Driver (+91 more)
-
-### Community 3 - "Testing & Fixtures"
-Cohesion: 0.04
-Nodes (78): CONFIRMATION_PE, DEPARTURE_PE, mockAdoptTrip, mockCapturePosition, mockClearPhaseSyncing, mockEnqueuePhase, mockMarkPhaseSyncing, mockNotify (+70 more)
-
-### Community 4 - "Phase Model & Orchestration"
+### Community 0 - "enums.py"
 Cohesion: 0.03
-Nodes (70): ExceptionCard(), demoTripsFor(), EMPTY_STATE_COPY, TabId, TripsPage(), AnchorProgress(), AnchorProgressProps, truncateHash() (+62 more)
+Nodes (223): Vehicle grain — horses and trailers. The trailer analytics spec (docs/design-…, Whole-history streaks — one row per vehicle, not month-bucketed (spec §3a)., VehicleAnalyticsView, VehicleIncidentStreaksView, Organisation-scoped visibility check for blockchain subjects. Raises…, Static per-phase-type driver step recipes — the `step_recipe` half of the…, AnchorStatus, IdvsStatus (+215 more)
 
-### Community 5 - "Crypto & Blockchain"
-Cohesion: 0.05
-Nodes (76): log_checkpoint_endpoint(), AsyncSession, UUID, Driver checkpoint logging endpoint., ExceptionSeverity, ExceptionSource, ExceptionType, PhaseStatus (+68 more)
+### Community 1 - "auth_header"
+Cohesion: 0.02
+Nodes (252): auth_header(), make_token(), datetime, Return an ES256-signed JWT matching the Supabase Auth payload shape. role and…, _phase_row(), AsyncClient, parametrize, PhaseType (+244 more)
 
-### Community 6 - "Integration Services"
-Cohesion: 0.05
-Nodes (83): compute_payload_hash(), SHA-256 hex over the canonical JSON encoding of payload., PhaseSequenceError, Raised when a phase is completed out of order (gated on the phase plan, not trip, PhaseEvent, One row per phase per trip — the ledger the trip's position is DERIVED from., advance_confirmation(), _anchor_inline_after_dispatch_failure() (+75 more)
-
-### Community 7 - "Type Definitions & Schemas"
-Cohesion: 0.06
-Nodes (40): CheckpointPageClient(), EXCEPTION_LABELS, EXCEPTION_OPTIONS, LogExceptionPageClient(), mockEnqueueException, mockNotify, mockRouterBack, mockRouterPush (+32 more)
-
-### Community 8 - "UI Components"
-Cohesion: 0.05
-Nodes (81): _complete_activation(), _complete_in_transit(), completed_activation_trip(), completed_unloading_trip(), _fake_hedera_receipt(), _make_artifact(), _phase_id(), Any (+73 more)
-
-### Community 9 - "Authentication & Security"
-Cohesion: 0.05
-Nodes (53): PhaseStepContent(), firstStepRoute(), TripDetailPageClient(), firstStepRoute(), HomeContent(), mockRouterPush, mockUseTrip, PHASE_TYPES (+45 more)
-
-### Community 10 - "Data Validation"
-Cohesion: 0.05
-Nodes (54): DevTokensPage(), ExceptionDetailPage(), fmtTs(), fmtType(), LoginPage(), EvidencePacket(), EvidencePacketProps, ExceptionBanner() (+46 more)
-
-### Community 11 - "Community 11"
-Cohesion: 0.06
-Nodes (50): EMPTY_FORM, FleetVehiclesPage(), LengthFilter, SORT_OPTIONS, SortOption, sortVehicles(), StatusFilter, TypeFilter (+42 more)
-
-### Community 12 - "Community 12"
-Cohesion: 0.06
-Nodes (60): get_capabilities_endpoint(), get_manifest_endpoint(), get_waybill_endpoint(), PPCapabilities, PPWaybillSummary, Dispatcher-facing Parcel Perfect lookup endpoints (wizard-time validation)., create_vehicle_endpoint(), get_vehicle_detail_endpoint() (+52 more)
-
-### Community 13 - "Community 13"
-Cohesion: 0.06
-Nodes (57): build_phase_plan(), PlannedPhase, PlanStop, Phase-plan generation — parent plan §2.2.  Pure and DB-free on purpose: the rule, One stop's routing role — all the generator needs to decide what happens there., Emit a trip's committed phase plan, in order, from its stops.      The rule: `tr, _auth_headers(), _mock_hedera() (+49 more)
-
-### Community 14 - "Community 14"
-Cohesion: 0.07
-Nodes (52): DriverDetailPage(), EditState, columns, daysUntil(), EMPTY_FORM, ExpiryCell(), FleetDriversPage(), SORT_OPTIONS (+44 more)
-
-### Community 15 - "Community 15"
-Cohesion: 0.07
-Nodes (46): ChainReceiptTag(), NodeType, RECEIPT_LABELS, ScheduleRows(), TimelineEvent(), TimelineEventProps, TripDetailPage(), ExceptionEvidence() (+38 more)
-
-### Community 16 - "Community 16"
-Cohesion: 0.08
-Nodes (63): _assert_derived_phase_fields_populated(), _assert_no_trip_persisted(), _auth_headers(), _make_payload(), override_get_db(), _post_trip_with_hedera_failure(), AsyncClient, AsyncSession (+55 more)
-
-### Community 17 - "Community 17"
-Cohesion: 0.06
-Nodes (44): inter, metadata, CancelTripAction(), Props, TERMINAL_STATUSES, mockedCancelTrip, OVERRIDABLE_STATUSES, PhaseOverrideAction() (+36 more)
-
-### Community 18 - "Community 18"
-Cohesion: 0.05
-Nodes (49): CheckpointEvidence, logCheckpoint(), LogCheckpointBody, submitCheckpoint(), api, RaiseExceptionBody, LocationBatchResult, LocationPingBody (+41 more)
-
-### Community 19 - "Community 19"
-Cohesion: 0.12
-Nodes (57): IdvsStatus, ParcelStatus, Coarse trip lifecycle. The phase ledger (PhaseEvent) — not this field —     sequ, Loaded = normal cargo run; empty_leg = repositioning, no consignments., TripStatus, TripType, DriverSubstitution, SQLAlchemy models for trip lifecycle: template, consignment, parcel, trip, trip- (+49 more)
-
-### Community 20 - "Community 20"
+### Community 2 - "Trip"
 Cohesion: 0.04
-Nodes (53): get_db(), AsyncSession, Async database session factory for FreightProof SA.  The engine connects to Supa, FastAPI dependency that yields a database session per request.      Usage:, health_check(), HealthResponse, Exception, Last-resort net for anything that reaches this far uncaught — a DB fault an (+45 more)
+Nodes (73): fullPrecinctLabel(), OverviewRowProps, shortPrecinctLabel(), TripHeaderSummary(), TripHeaderSummaryProps, ChainReceiptTag(), RECEIPT_LABELS, IntegritySummary() (+65 more)
 
-### Community 21 - "Community 21"
+### Community 3 - "cn"
+Cohesion: 0.02
+Nodes (158): DevTokensPage(), CONTACT_METHOD_LABELS, ExceptionDetailPage(), fmtTs(), fmtType(), NO_CONTACT_CHOSEN, NO_OUTCOME_CHOSEN, phaseStopLabel() (+150 more)
+
+### Community 4 - "TripDetailView.tsx"
+Cohesion: 0.04
+Nodes (68): PhaseStepContent(), ActiveTripPageClient(), firstStepRoute(), firstStepRoute(), TripDetailPageClient(), firstStepRoute(), HomeContent(), mockRouterPush (+60 more)
+
+### Community 5 - "PhaseDescriptor"
+Cohesion: 0.03
+Nodes (95): EvidenceItem, EvidenceReview(), EvidenceReviewProps, SealInput(), SealInputProps, StepHeader(), StepHeaderProps, Verification() (+87 more)
+
+### Community 6 - "test_consignment_service.py"
 Cohesion: 0.07
-Nodes (59): ActivationCompleteRequest, Raised when another of the driver's trips stands in the way of activating this o, TripActivationBlockedError, advance_activation(), advance_loading(), One trip at a time: a trip already underway blocks starting any other.      Noth, _reject_if_another_trip_underway(), ActivationCompleteRequest (+51 more)
+Nodes (63): ConsignmentAlreadyAssignedError, Raised when a PP waybill is put on a second trip while still on its first. A…, ConsignmentSyncResult, fetch_and_sync_consignment(), get_assigned_trip_reference(), AsyncSession, UUID, Consignment sync service — maps a PPWaybillResponse onto Consignment + Parcel… (+55 more)
 
-### Community 22 - "Community 22"
-Cohesion: 0.07
-Nodes (53): ConsignmentAlreadyAssignedError, Raised when a PP waybill is put on a second trip while still on its first., Consignment, Parcel, Cargo consignment pulled from Parcel Perfect — linked to a trip at creation., Individual parcel within a consignment — tracked via Parcel Perfect barcode., ConsignmentSyncResult, fetch_and_sync_consignment() (+45 more)
-
-### Community 23 - "Community 23"
-Cohesion: 0.07
-Nodes (40): AppLayout(), SettingsPage(), AdminOnly(), AdminOnlyProps, DispatcherShell(), DispatcherShellProps, LiveBadge(), STATUS_META (+32 more)
-
-### Community 24 - "Community 24"
-Cohesion: 0.07
-Nodes (47): cancel_trip_endpoint(), override_phase_endpoint(), AsyncSession, UUID, Dispatcher-only trip lifecycle exits — the two dead-end closers (task 6.1):  POS, A trip abandoned mid-plan (cargo pulled, vehicle broken down) has no other     e, A phase the driver physically cannot complete (lost phone, left the depot,     d, create_trip_endpoint() (+39 more)
-
-### Community 25 - "Community 25"
-Cohesion: 0.07
-Nodes (40): Props, ExceptionCardProps, baseTrip, DRIVING_PHASES, JHB_FIX, mockAdoptTrip, mockCapturePosition, mockClearPhaseSyncing (+32 more)
-
-### Community 26 - "Community 26"
-Cohesion: 0.11
-Nodes (43): list_receipts(), AsyncSession, SubjectType, UUID, FastAPI router for blockchain receipt and verification endpoints., verify_endpoint(), What changed. Deliberately coarse — the browser refetches for the detail, so, RealtimeKind (+35 more)
-
-### Community 27 - "Community 27"
+### Community 7 - "trip_service.py"
 Cohesion: 0.08
-Nodes (43): auth_header(), dev_app(), dev_client(), AsyncClient, MonkeyPatch, Integration tests for the dev trigger panel.  The router registers at import tim, A trigger-exception endpoint reachable in production is a catastrophe., The discrepancy path, end to end through the endpoint. (+35 more)
+Nodes (48): create_trip_endpoint(), get_my_active_trip_endpoint(), get_my_trip_detail_endpoint(), get_trip_detail_endpoint(), list_my_trips_endpoint(), list_trip_history_endpoint(), AsyncSession, CursorPage (+40 more)
 
-### Community 28 - "Community 28"
-Cohesion: 0.08
-Nodes (36): ExceptionsPage(), fmtTs(), fmtType(), SEVERITY_BORDER, CLOSED_STATUS, COL_HEADERS, ColId, HistoryPage() (+28 more)
+### Community 8 - "dispatcher/app/(app)/trips/[id]/page.tsx"
+Cohesion: 0.07
+Nodes (31): PANELS, scrollIntoTimeline(), TripDetail(), TripDetailSkeleton(), ClearFn, registered, registerSessionCache(), EMPTY_ARTIFACTS (+23 more)
 
-### Community 29 - "Community 29"
-Cohesion: 0.09
-Nodes (42): create_driver_endpoint(), get_driver_detail_endpoint(), get_my_driver_profile(), list_drivers_endpoint(), AsyncSession, UUID, FastAPI router for driver endpoints., Return the authenticated driver's own profile.      The driver-pwa frontend call (+34 more)
+### Community 9 - "phase.ts"
+Cohesion: 0.02
+Nodes (195): EventTimeline, describeChange, ForensicOnly(), ForensicOnlyProps, notify, post, VerifyButton(), ActivationDetail() (+187 more)
 
-### Community 30 - "Community 30"
+### Community 10 - "vehicles/[id]/page.tsx"
+Cohesion: 0.03
+Nodes (114): DriverDetailPage(), EditState, RightPanelTabId, mockedUseDriverDetail, columns, daysUntil(), EMPTY_FORM, ExpiryCell() (+106 more)
+
+### Community 11 - "test_phase_corroboration.py"
 Cohesion: 0.06
-Nodes (33): get_manifest_endpoint(), AsyncSession, _bearer, HTTPAuthorizationCredentials, UUID, GET /trips/{trip_id}/manifest — role-aware. See manifest_service docstring., Auth is 'Dispatcher JWT OR Driver JWT' — tried explicitly in that order     rath, PhaseBlockedError (+25 more)
+Nodes (67): _attach_trailer(), _corroboration_trip_fixture(), _fake_hedera_receipt(), _load_checkpoint(), _load_snapshots(), _log_checkpoint(), _make_artifact(), _phase_id() (+59 more)
 
-### Community 31 - "Community 31"
-Cohesion: 0.07
-Nodes (39): complete_phase_endpoint(), list_phases_endpoint(), next_phase_endpoint(), AsyncSession, UUID, Phase plan endpoints — the frozen contract's HTTP surface (parent plan §3.2).  R, Always 200 on a successful completion, including when the phase records a     mi, PhaseEventRead.stop_sequence is a join, not a column — see its docstring. (+31 more)
+### Community 12 - "PhaseStepPageClient.tsx"
+Cohesion: 0.04
+Nodes (50): ACTIVATION_INITIAL, ActivationStep(), CONFIRMATION_INITIAL_BASE, ConfirmationStep(), DEPARTURE_INITIAL, DepartureStep(), LOADING_INITIAL, LoadingStep() (+42 more)
 
-### Community 32 - "Community 32"
-Cohesion: 0.05
-Nodes (37): EXCEPTIONS_0035, EXCEPTIONS_0039, EXCEPTIONS_0040, EXCEPTIONS_0041, EXCEPTIONS_0042, PLAN_0035, PLAN_0038, PLAN_0039 (+29 more)
+### Community 13 - "test_phase_service.py"
+Cohesion: 0.04
+Nodes (159): ActivationCompleteRequest, Corroborate one phase handshake against Pulsit. NEVER raises. Returns the raw…, record_phase_corroboration(), advance_activation(), advance_departure(), advance_in_transit(), advance_loading(), DepartureCompleteRequest (+151 more)
 
-### Community 33 - "Community 33"
-Cohesion: 0.07
-Nodes (26): AppKit, DeveloperToolsSupport, Foundation, NSObject, PodsDummy_Capacitor, NSObject, PodsDummy_CapacitorCamera, NSObject (+18 more)
+### Community 14 - "TripContext.tsx"
+Cohesion: 0.03
+Nodes (71): TypeRow, authValue, buildTrip(), LOADING_PE, mockFetchLinehaul, mockFetchMyActiveTrip, firstStepRoute(), TripDetailByIdPageClient() (+63 more)
 
-### Community 34 - "Community 34"
-Cohesion: 0.11
-Nodes (40): make_token(), Return an ES256-signed JWT matching the Supabase Auth payload shape.      role a, AsyncClient, Integration tests for GET /trips/{id}/manifest — role-aware (Linehaul vs full ma, test_dispatcher_from_other_org_gets_404(), test_dispatcher_gets_full_manifest_with_parcels(), test_dispatcher_manifest_empty_leg_returns_empty_list_not_404(), test_dispatcher_manifest_multi_consignment_returns_all() (+32 more)
-
-### Community 35 - "Community 35"
-Cohesion: 0.08
-Nodes (40): get_active_trip_for_driver(), Return the trip the driver is currently working, or None. Excludes closed/cancel, _driver_trip(), _make_db(), make_empty_leg_payload(), make_loaded_payload(), make_user(), datetime (+32 more)
-
-### Community 36 - "Community 36"
-Cohesion: 0.07
-Nodes (35): list_trip_artifacts_endpoint(), ArtifactType, AsyncSession, datetime, Decimal, EvidenceArtifactWithUrl, UUID, Evidence artifact endpoints: driver PWA upload, plus dispatcher trip-scoped list (+27 more)
-
-### Community 37 - "Community 37"
-Cohesion: 0.08
-Nodes (24): OtpPage(), mockPush, mockReplace, mockRequestOtp, mockSignIn, AuthContext, AuthProvider(), mockApiGet (+16 more)
-
-### Community 38 - "Community 38"
-Cohesion: 0.09
-Nodes (33): DuplicateResourceError, Raised when a unique constraint would be violated (e.g. duplicate id_number)., DispatcherRole, create_dispatcher_auth_user(), create_driver_auth_user(), UUID, Supabase Auth Admin API client.  Server-side only — requires SUPABASE_SERVICE_RO, Create a Supabase Auth phone account for a new driver.      Returns the Supabase (+25 more)
-
-### Community 39 - "Community 39"
-Cohesion: 0.08
-Nodes (33): FakeMockStateStore, Any, Dict-backed MockStateStore, so tests never need a real Redis.      One definitio, MonkeyPatch, store(), MonkeyPatch, store(), MonkeyPatch (+25 more)
-
-### Community 40 - "Community 40"
-Cohesion: 0.08
-Nodes (27): AddedWaybill, emptyPullState(), findCreatedTrip(), fmtDateTime(), fmtDateTimeParts(), MiniField(), PullState, PullStatus (+19 more)
-
-### Community 41 - "Community 41"
-Cohesion: 0.09
-Nodes (27): DriverFix, CoordinatesCardProps, DigitalSignature(), DigitalSignatureProps, DigitalSignatureResult, capturePosition, FIX, notify (+19 more)
-
-### Community 42 - "Community 42"
+### Community 15 - "VehicleType"
 Cohesion: 0.10
-Nodes (24): ACTIVATION_INITIAL, ActivationStep(), CONFIRMATION_INITIAL_BASE, ConfirmationStep(), DEPARTURE_INITIAL, DepartureStep(), LOADING_INITIAL, LoadingStep() (+16 more)
+Nodes (121): DayBlock, str, A quarter of the South African day, for chart 3.5 (risky times of day)., Grain, LatenessBand, PlanBand, str, Chart 2.2. Early and on time are separate so the strict on-time rule doesn't… (+113 more)
 
-### Community 43 - "Community 43"
+### Community 16 - "_fixture"
+Cohesion: 0.02
+Nodes (124): get_db(), FastAPI dependency that yields a database session per request. Usage: async def…, _fixture(), Return the PP fixture for a reference, failing loudly rather than half-seeding., client(), db_session(), isolate_anchor_dispatch(), make_jwks() (+116 more)
+
+### Community 17 - "dispatcher/lib/api/client.ts"
+Cohesion: 0.02
+Nodes (100): mockedUsePrecincts, mockedUseTripHistory, push, Props, UIState, mockedCancelTrip, LiveBadge(), LiveBadgeProps (+92 more)
+
+### Community 18 - "InTransitPageClient.tsx"
+Cohesion: 0.02
+Nodes (104): CheckpointPageClient(), mockCapturePosition, mockEnqueueCheckpoint, mockNotify, mockRouterBack, mockRouterPush, mockRouterReplace, mockSubmitCheckpoint (+96 more)
+
+### Community 19 - "trip.ts"
+Cohesion: 0.04
+Nodes (66): IncidentMapProps, ChecklistRowProps, TripsFilter, UseTripsResult, demoTripsFor(), EMPTY_STATE_COPY, TabId, TripsPage() (+58 more)
+
+### Community 20 - "useOfflineQueue.ts"
+Cohesion: 0.02
+Nodes (151): PhaseChainProps, buildPhase(), mockedOverridePhase, renderAction(), PhaseChainNode, AppLayout(), DriverFix, ARRIVAL_CAPTURE (+143 more)
+
+### Community 21 - "phase_service.py"
 Cohesion: 0.05
-Nodes (37): CapacitorBridge, -dismissVCWithAnimatedcompletion, -evalWithJs, -evalWithPluginjs, -getLocalUrlSWIFT_WARN_UNUSED_RESULT, -getSavedCallSWIFT_WARN_UNUSED_RESULT, -getStatusBarStyleSWIFT_WARN_UNUSED_RESULT, -getStatusBarVisibleSWIFT_WARN_UNUSED_RESULT (+29 more)
+Nodes (83): event_severity(), ExceptionSeverity, Wire severity for an exception being written. Derived, never chosen per site.…, advance_unloading(), _assert_artifacts_belong_to_trip(), complete_phase(), compute_departure_canonical_payload_v2(), current_phase_event() (+75 more)
 
-### Community 44 - "Community 44"
-Cohesion: 0.05
-Nodes (37): CapacitorBridge, -dismissVCWithAnimatedcompletion, -evalWithJs, -evalWithPluginjs, -getLocalUrlSWIFT_WARN_UNUSED_RESULT, -getSavedCallSWIFT_WARN_UNUSED_RESULT, -getStatusBarStyleSWIFT_WARN_UNUSED_RESULT, -getStatusBarVisibleSWIFT_WARN_UNUSED_RESULT (+29 more)
+### Community 22 - "cn"
+Cohesion: 0.03
+Nodes (75): SettingsPage(), useTapToConfirm(), ExceptionCard(), AnchorProgress(), AnchorProgressProps, truncateHash(), applyMapsOptions(), CoordinatesCard() (+67 more)
 
-### Community 45 - "Community 45"
+### Community 23 - "schemas/__init__.py"
 Cohesion: 0.12
-Nodes (32): compute_journey_lock_hash(), compute_trip_canonical_payload(), datetime, UUID, SHA-256 hashing utilities for FreightProof evidence integrity.  compute_journey_, Return a 64-char lowercase hex SHA-256 digest of the trip's fixed parameters., Return the canonical payload dict used for both the lock hash and on-chain ancho, _hash_payload() (+24 more)
+Nodes (47): Domain constants — values the rules depend on, in one readable place. A…, ParcelStatus, Loaded = normal cargo run; empty_leg = repositioning, no consignments., TripType, Public re-exports for all FreightProof SA Pydantic schemas., BaseModel, Pydantic v2 schemas for SlaConfig., SlaConfigBase (+39 more)
 
-### Community 46 - "Community 46"
+### Community 24 - "DriverRead"
 Cohesion: 0.06
-Nodes (35): JWT Authentication, get_current_dispatcher Auth Dependency, GET /api/v1/trips/{id} Endpoint, POST /trips/{id}/handshakes/h1/complete Endpoint, POST /trips/{id}/handshakes/h2/complete Endpoint, POST /trips/{id}/handshakes/h3/complete Endpoint, POST /trips/{id}/handshakes/h4/complete Endpoint, POST /trips/{id}/handshakes/h5/complete Endpoint (+27 more)
+Nodes (65): create_driver_endpoint(), get_driver_detail_endpoint(), get_my_driver_profile(), list_drivers_endpoint(), AsyncSession, get, patch, UUID (+57 more)
 
-### Community 47 - "Community 47"
+### Community 25 - "test_idle_timeout.py"
 Cohesion: 0.07
-Nodes (21): CAPPluginCall, CAPPluginCallErrorHandler, CAPPluginCallSuccessHandler, CAPPluginMethodArgumentNullability, CAPPluginReturnType, <CAPBridgedPlugin>, NSObject, CAPPluginCall (+13 more)
+Nodes (74): _as_utc(), _claimed_session(), enforce_driver_idle_timeout(), enforce_single_device(), enforce_user_idle_timeout(), _idle_cutoff(), _idle_expired(), AsyncSession (+66 more)
 
-### Community 48 - "Community 48"
+### Community 26 - "exceptions/page.tsx"
+Cohesion: 0.04
+Nodes (57): ExceptionRow(), ExceptionRowProps, ExceptionsPage(), fmtTs(), fmtType(), HistoryTab(), HistoryTabProps, phaseStopLabel() (+49 more)
+
+### Community 27 - "TripSummary.tsx"
+Cohesion: 0.04
+Nodes (59): RFC-2606, IncidentsCard(), isTripTerminal(), attachTileFailureTracking(), GeofenceMap(), GeofenceMapProps, PrecinctCard(), DriverModal() (+51 more)
+
+### Community 28 - "test_analytics.py"
+Cohesion: 0.12
+Nodes (73): get_vehicle_metrics(), date, VehicleMetrics, Every vehicle, horse or trailer, with at least one closed trip departing in…, _add_months(), _cross_dock(), _exception(), _geofenced() (+65 more)
+
+### Community 29 - "test_detail_receipts_gating.py"
+Cohesion: 0.07
+Nodes (67): create_vehicle_endpoint(), get_vehicle_detail_endpoint(), list_vehicles_endpoint(), AsyncSession, get, patch, UUID, FastAPI router for vehicle endpoints. (+59 more)
+
+### Community 30 - "TripEvent"
 Cohesion: 0.06
-Nodes (34): dependencies, lucide-react, next, react, react-dom, recharts, @supabase/supabase-js, devDependencies (+26 more)
+Nodes (52): _channel(), _drain_outbox(), enqueue_event(), EventSeverity, _get_redis(), _on_commit(), _on_rollback(), publish_event() (+44 more)
 
-### Community 49 - "Community 49"
-Cohesion: 0.09
-Nodes (22): build_key(), MockStateStore, Any, Shared store for simulated external-world state, backed by Redis.  Why Redis and, Delete every namespaced mock key. Returns how many were removed.          scan_i, Build a namespaced Redis key. `kind` separates scan state from PP state., The storage contract MockScanFeed and the PP override layer depend on.      A Pr, Read many keys at once, returning one result per key, in order.          On the (+14 more)
+### Community 31 - "test_schema_validators.py"
+Cohesion: 0.05
+Nodes (61): DriverCreate, DriverExceptionCreateBody, Slim exception-creation body for the driver endpoint — trip_id comes from the…, _departure_request(), parametrize, Unit tests for the four Pydantic v2 schema validators defined in the spec. Run:…, GPS capture can fail client-side — an exception must still be raisable with no…, The one deliberate exception: a mistyped guard confirmation must survive… (+53 more)
 
-### Community 50 - "Community 50"
-Cohesion: 0.12
-Nodes (25): Dispatcher-facing trip creation payload — excludes auto-generated and JWT-derive, TripCreateRequest, _payload(), Unit tests for TripCreateRequest validation (trip creation redesign)., Moved from test_schema_validators.py (CQ-4/CQ-5) — still valid after the     red, Regression: client_organization_id is nullable in the DB (unresolved PP     accn, test_consignment_read_allows_null_client_org(), test_duplicate_pp_references_rejected() (+17 more)
+### Community 32 - "test_input_limits.py"
+Cohesion: 0.06
+Nodes (38): clean_text(), Shared constraints and cleaning for user-supplied text. Two problems this…, Reject a value that is empty once cleaned. Guards the gap min_length cannot:…, Strip disallowed characters and surrounding whitespace. Runs AFTER the length…, _require_content(), CancelTripRequest, POST /trips/{trip_id}/cancel body (task 6.1, D6). note is required — a…, parametrize (+30 more)
 
-### Community 51 - "Community 51"
-Cohesion: 0.09
-Nodes (28): client(), db_session(), make_jwks(), AsyncClient, AsyncSession, datetime, MonkeyPatch, Shared fixtures for unit and integration tests.  Two fixture families live here: (+20 more)
-
-### Community 52 - "Community 52"
+### Community 33 - "test_trips.py"
 Cohesion: 0.11
-Nodes (24): describeEvent(), Event, EventTimeline(), Props, ForensicControls(), ForensicOnly(), ForensicOnlyProps, Switch() (+16 more)
+Nodes (50): _auth_headers(), _make_payload(), AsyncClient, Integration tests for POST /api/v1/trips. These tests use a real PostgreSQL…, create_trip now writes the full committed phase plan (Stage 2.1), not just H0 —…, A trip with no trailers is valid — rigid trucks and integrated bodies run…, A trip with neither planned_departure_at nor any stop slot_time can never be…, A multi-stop trip may carry its timing entirely on a stop's slot_time, with no… (+42 more)
 
-### Community 53 - "Community 53"
+### Community 34 - "test_trip_service.py"
 Cohesion: 0.09
-Nodes (25): AsyncSession, UUID, raise_exception_endpoint(), Driver-raised exception endpoint. Dispatcher list/resolve/override (spec §3.6) a, DriverExceptionCreateBody, A GPS fix is one atomic reading — accepting only one axis would silently persist, Slim exception-creation body for the driver endpoint — trip_id comes from the UR, _validate_gps_pair() (+17 more)
+Nodes (39): _driver_trip(), _make_db(), make_empty_leg_payload(), make_loaded_payload(), make_user(), asyncio, datetime, Unit tests for create_trip() consignment-loop wiring and phase-plan generation.… (+31 more)
 
-### Community 54 - "Community 54"
-Cohesion: 0.12
-Nodes (19): ChecklistRowProps, EMPTY, TripsFilter, UseTripsResult, ACTIVE, CLOSED, mockFetchMyTrips, mockPush (+11 more)
+### Community 35 - "DevTriggerPanel.tsx"
+Cohesion: 0.06
+Nodes (55): RootLayout, ForensicControls, ForensicOnly, DevTriggerPanel tests, Switch, ApiError Class, Auth Provider Component, AuthContext (+47 more)
 
-### Community 55 - "Community 55"
-Cohesion: 0.10
-Nodes (26): MockScanFeed, Redis-backed stub — no warehouse. SCAN_FEED_USE_MOCK=True selects it.      stage, MonkeyPatch, Unit tests for scan reconciliation.  Uses the db_session fixture (skips without, The discrepancy path — 2 of 3 parcels scanned., A barcode not on the manifest is not this consignment's parcel — we record     t, A real feed is polled repeatedly; an unchanged feed must not manufacture rows., The first scan is the evidence — a replay must not rewrite when it happened. (+18 more)
+### Community 36 - "analytics_service.py"
+Cohesion: 0.08
+Nodes (64): list_driver_analytics_endpoint(), list_facility_analytics_endpoint(), list_lane_analytics_endpoint(), list_vehicle_analytics_endpoint(), list_vehicle_streaks_endpoint(), AsyncSession, date, get (+56 more)
 
-### Community 56 - "Community 56"
-Cohesion: 0.14
-Nodes (17): mockedUseDevTriggers, UseDevTriggersResult, CLOSED_PHASE_STATUSES, ClosedPhaseStatus, CloseScanSessionRequest, CloseScanSessionResponse, ConsignmentScanResult, DemoExceptionType (+9 more)
+### Community 37 - "integration/test_exceptions.py"
+Cohesion: 0.08
+Nodes (56): _attach_trailers(), _make_artifact(), _outbox(), _post_exception(), AsyncClient, Driver, Trip, UUID (+48 more)
 
-### Community 57 - "Community 57"
-Cohesion: 0.18
-Nodes (17): ConfirmationDetail(), DepartureDetail(), LoadingDetail(), Props, PhaseAnchorSection(), CopyField(), Field(), PhaseDetailCard() (+9 more)
-
-### Community 58 - "Community 58"
-Cohesion: 0.13
-Nodes (26): _apply_walk_evidence(), _fixture(), AsyncSession, datetime, Driver, Trip, TripStop, Vehicle (+18 more)
-
-### Community 59 - "Community 59"
-Cohesion: 0.23
-Nodes (26): _dispatcher_token(), _exceptions_for(), _make_trip(), _phase_id(), AsyncClient, Trip, Integration tests for the dispatcher-only trip lifecycle exits (task 6.1):    PO, D3 — an override must not fabricate an anchor state.      Deliberately overrides (+18 more)
-
-### Community 60 - "Community 60"
-Cohesion: 0.13
-Nodes (26): _advance_to_arrival(), _advance_to_departure(), _advance_to_unloading(), _arrival_payload(), captured_anchor_dispatches(), _drain_anchors(), _make_artifact(), InTransitCompleteRequest (+18 more)
-
-### Community 61 - "Community 61"
-Cohesion: 0.14
-Nodes (21): ActivationDetail(), IDVS_LABELS, Props, Props, Props, EvidenceDocument(), Props, ArtifactProvenance() (+13 more)
-
-### Community 62 - "Community 62"
+### Community 38 - "exceptions/[id]/page.test.tsx"
 Cohesion: 0.07
-Nodes (27): CAPPlugin, -addEventListenerlistener, -addListener, -checkPermissions, -getBoolfielddefaultValue, -getConfig, -getConfigValue, -getId (+19 more)
+Nodes (24): ReceiptLookupPage(), pageMock, ARTIFACT_NO_URL, ARTIFACT_WITH_URL, back, fillValidForm(), mockedReviewException, mockedUseExceptionDetail (+16 more)
 
-### Community 63 - "Community 63"
-Cohesion: 0.13
-Nodes (23): AsyncSession, UUID, Driver location-trail endpoint.  The PWA posts here whenever the driver interact, record_locations_endpoint(), AsyncSession, UUID, The driver's per-trip location trail — writes behind POST /trips/{id}/locations., Append fixes to one trip's trail; returns how many were stored.      Raises Reso (+15 more)
+### Community 39 - "render-attestation.ts"
+Cohesion: 0.40
+Nodes (6): PositionFix, AttestationFields, fitText(), formatPosition(), formatSignedAt(), renderAttestation()
 
-### Community 64 - "Community 64"
-Cohesion: 0.10
-Nodes (19): ArtifactType, Append-only event-log models for vehicles and drivers.  Each row records a chang, SQLAlchemy model for the driver's per-trip location trail.  Distinct from every, SQLAlchemy models for in-transit checkpoints and exceptions., DriverEventRead, Pydantic v2 schemas for VehicleEvent and DriverEvent read shapes., VehicleEventRead, EvidenceArtifactBase (+11 more)
+### Community 40 - "ValueError"
+Cohesion: 0.04
+Nodes (47): ActionLocationAssessment, DriverLocationCapture, BaseModel, datetime, field_validator, model_validator, One evaluated snapshot: a driver/truck proximity verdict plus the precinct-…, The raw phone reading a driver submits for a non-persistent comparison. This… (+39 more)
 
-### Community 65 - "Community 65"
-Cohesion: 0.14
-Nodes (24): Any, Task, Celery task: poll Parcel Perfect for consignment sync updates.  Runs on the beat, Celery beat task: refresh all active-trip consignments from Parcel Perfect., Fetch and sync all consignments linked to active trips.      Isolated as a priva, sync_active_consignments(), _sync_all_active(), _make_consignment() (+16 more)
+### Community 41 - "test_precinct_service.py"
+Cohesion: 0.07
+Nodes (85): create_precinct_endpoint(), get_precinct_detail_endpoint(), list_precincts_endpoint(), AsyncSession, get, patch, UUID, update_precinct_endpoint() (+77 more)
 
-### Community 66 - "Community 66"
-Cohesion: 0.18
-Nodes (25): _fixture_world(), _make_driver(), _make_trip(), override_get_db(), AsyncClient, Integration tests for GET /trips/me and GET /trips/me/{trip_id} (driver PWA trip, Names are resolved server-side so the trip card can render a real     origin ->, driver_id from the verified token is the whole authorisation boundary. (+17 more)
+### Community 42 - "fleet-analytics.ts"
+Cohesion: 0.02
+Nodes (208): emptyEvidence(), emptyIncidents(), emptyOnTime(), emptyProblems(), emptyReview(), emptyRoutes(), mockedGet, NO_BANDS (+200 more)
 
-### Community 67 - "Community 67"
-Cohesion: 0.10
-Nodes (21): SQLAlchemy model for SLA configuration between operator and client., SLA thresholds for a given operator-client-route combination.      Rows with nul, SlaConfig, _column_names(), Unit tests for v6 model changes.  Covers:   1. DriverSubstitution model — all fo, Spec §5+H3: original_driver_id, substituting_driver_id, exchange_location,     a, Planned substitutions are normal events; unplanned are exceptions.     is_planne, exception_id is only populated for unplanned substitutions. (+13 more)
+### Community 44 - "test_auth_dependencies.py"
+Cohesion: 0.08
+Nodes (47): _decode_token(), get_current_driver(), AsyncSession, _bearer, HTTPAuthorizationCredentials, Verify the Supabase JWT and return its payload. Supabase uses ES256 (ECDSA) —…, Return the DispatcherRole from the JWT, or raise HTTP 403. Role lives in…, Raise HTTP 403 unless the JWT's app_metadata.role is "driver". Mirrors… (+39 more)
 
-### Community 68 - "Community 68"
-Cohesion: 0.13
-Nodes (16): AnchorBadge(), AnchorBadgeProps, truncateHash(), formatDeparture(), precinctLabel(), TripRow(), TripTableProps, Chip() (+8 more)
+### Community 45 - "periods.py"
+Cohesion: 0.04
+Nodes (115): Named constants for the fleet analytics page. Spec: docs/design-…, attested_instants(), build_pattern_set(), build_patterns(), AsyncSession, datetime, PhaseType, UUID (+107 more)
 
-### Community 69 - "Community 69"
-Cohesion: 0.14
-Nodes (22): Return the DispatcherRole from the JWT, or raise HTTP 403.      Role lives in ap, _require_dispatcher_role(), _DriverRowLike, _make_driver_row(), patch_jwks(), MonkeyPatch, Unit tests for auth/dependencies.py — pure logic, no DB, no HTTP.  Tests cover _, Attribute shape get_current_driver reads off a Driver ORM row. (+14 more)
+### Community 46 - "test_exception_service.py"
+Cohesion: 0.05
+Nodes (70): _driver_report_assessment(), _find_by_client_report_id(), pick_breakdown_vehicle(), datetime, Decimal, ExceptionType, Trip, TripException (+62 more)
 
-### Community 70 - "Community 70"
-Cohesion: 0.13
-Nodes (21): _Depot, _mock_waybill(), PPContents, PPTrack, PPWaybillDetails, PPWaybillRef, Any, Parcel Perfect ecomService v28 API client.  PP uses a three-step auth flow befor (+13 more)
+### Community 47 - "test_realtime_emit.py"
+Cohesion: 0.07
+Nodes (57): _close_session(), _kinds(), _make_artifact(), _outbox(), AsyncSession, Driver, MonkeyPatch, parametrize (+49 more)
 
-### Community 71 - "Community 71"
-Cohesion: 0.17
-Nodes (22): _build_discrepancy_description(), ingest_scans(), load_consignments_at_stop(), AsyncSession, datetime, Parcel, ScanDirection, UUID (+14 more)
+### Community 48 - "review_exception"
+Cohesion: 0.07
+Nodes (40): exception_history_endpoint(), get_exception_detail_endpoint(), AsyncSession, CursorPage, date, ExceptionReviewStatus, ExceptionSeverity, get (+32 more)
 
-### Community 72 - "Community 72"
-Cohesion: 0.10
-Nodes (18): ACTIVATION_PE, LOADING_PE, makePhase(), makeTrip(), mockAdoptTrip, mockCapturePosition, mockClearPhaseSyncing, mockEnqueuePhase (+10 more)
+### Community 49 - "VehicleAnalyticsSummary.tsx"
+Cohesion: 0.04
+Nodes (109): ANALYTICS_COPY, DriverAnalyticsSummary(), DriverAnalyticsSummaryProps, DwellAverageKey, Figures(), LABELS, PHASE_ROWS, PhaseRow (+101 more)
 
-### Community 73 - "Community 73"
-Cohesion: 0.15
-Nodes (10): CDVPlugin, -pluginImageResource, -pluginLocalizedString, <CDVScreenOrientationDelegate>, -shouldAutorotate, -shouldAutorotateToInterfaceOrientation, -supportedInterfaceOrientations, NSObject (+2 more)
-
-### Community 74 - "Community 74"
-Cohesion: 0.09
-Nodes (23): dependencies, @capacitor/android, @capacitor/camera, @capacitor/core, @capacitor/geolocation, @capacitor/ios, @capacitor/push-notifications, class-variance-authority (+15 more)
-
-### Community 75 - "Community 75"
-Cohesion: 0.11
-Nodes (21): dev_panel_enabled(), flush_mock_state(), AsyncSession, Dev-only trigger endpoints — simulate the parts of the world we cannot yet reach, Stage barcodes into the mock feed, then run the real reconciliation.      Two ca, Work out which barcodes the simulated warehouse reports for one consignment., Stage a waybill override, then run the real consignment sync.      The sync is f, Raise through exception_service — the same function the driver's panic page call (+13 more)
-
-### Community 76 - "Community 76"
-Cohesion: 0.18
-Nodes (20): enforce_single_device(), AsyncSession, Bind this driver to the token's session, or refuse an older device's token., DriverSession, SQLAlchemy model for the one device a driver may be signed in on.  FreightProof', The single session a driver's account is currently bound to., _driver(), datetime (+12 more)
-
-### Community 77 - "Community 77"
-Cohesion: 0.21
-Nodes (21): One driver-phone position fix, recorded while the driver used the app., TripLocationPing, _ping(), AsyncClient, Driver, Trip, Integration tests for POST /trips/{trip_id}/locations — the driver's location tr, A replayed offline ping is hours older than its request. The trail is ordered by (+13 more)
-
-### Community 78 - "Community 78"
-Cohesion: 0.14
-Nodes (18): MockParcelPerfectClient, Fixture-backed stub — no network. PP_USE_MOCK=True selects it via get_pp_client(, Stage a change to a fixture waybill, as if edited in the PP portal.          Onl, Apply any staged override to a fixture copy. No-op when none is staged., dev_panel_on(), MonkeyPatch, Unit tests for the dev-panel override layer on the PP mock.  Overrides exist so, Reproduces the verified 2026-08-04 finding: a portal edit grew tracks[]     from (+10 more)
-
-### Community 79 - "Community 79"
-Cohesion: 0.09
-Nodes (15): ACTIVATION_PE, CONFIRMATION_PE, mockAdoptTrip, mockCapturePosition, mockClearPhaseSyncing, mockEnqueuePhase, mockMarkPhaseSyncing, mockNotify (+7 more)
-
-### Community 80 - "Community 80"
-Cohesion: 0.10
-Nodes (20): AppDelegate, NSObject, CDVPlugin, -appDelegate, -dispose, -handleOpenURL, -initWithWebViewEngine, -onAppTerminate (+12 more)
-
-### Community 81 - "Community 81"
-Cohesion: 0.12
-Nodes (14): precinctName(), mockExceptions, mockPrecincts, PRECINCT_CGY_CT_ID, PRECINCT_CGY_JHB_ID, PRECINCT_FEDEX_DBN_ID, PRECINCT_FEDEX_JHB_ID, CGY_ORG_ID (+6 more)
-
-### Community 82 - "Community 82"
+### Community 50 - "test_exception_reads.py"
 Cohesion: 0.16
-Nodes (18): list_precincts_endpoint(), AsyncSession, FastAPI router for precinct list endpoint.  GET /precincts — precincts owned by, OrganizationType, list_precincts(), AsyncSession, UUID, Service functions for resource endpoints (precincts and trips).  Layering: impor (+10 more)
+Nodes (53): _detail_url(), _headers(), _make_exception(), _make_trip(), AsyncClient, parametrize, Trip, TripException (+45 more)
 
-### Community 83 - "Community 83"
+### Community 51 - "test_dev_pulsit.py"
+Cohesion: 0.05
+Nodes (62): _move(), _move_scenario(), pulsit_app(), AsyncClient, parametrize, UUID, FP-116/FP-198: the "move the truck" control is guarded, and it writes nothing…, Reload app.main under one flag combination and report the move-truck routes.… (+54 more)
+
+### Community 52 - "API Endpoint Registry"
+Cohesion: 0.05
+Nodes (49): GET /api/v1/drivers endpoint, GET /api/v1/drivers/me endpoint, GET /api/v1/trips/{id} endpoint, GET /api/v1/trips/{id}/manifest endpoint, GET /api/v1/trips/{id}/phases endpoint, GET /api/v1/trips/me/active endpoint, PATCH /api/v1/drivers/{id} endpoint, PATCH /api/v1/vehicles/{id} endpoint (+41 more)
+
+### Community 53 - "SubjectType"
+Cohesion: 0.06
+Nodes (88): list_receipts(), lookup_receipts_endpoint(), AsyncSession, get, Query, SubjectType, UUID, FastAPI router for blockchain receipt and verification endpoints. (+80 more)
+
+### Community 54 - "Sidebar.tsx"
+Cohesion: 0.10
+Nodes (25): AppLayout(), DispatcherShell(), DispatcherShellProps, isActive(), NAV_GROUPS, NavGroup, NavItem, NavLink() (+17 more)
+
+### Community 55 - "PatternStrip.tsx"
+Cohesion: 0.05
+Nodes (83): isLabelled(), labelStep(), labelWidthFor(), renderTimeTick(), BarSeries, CategoryBars(), CategoryBarsProps, CategoryTickProps (+75 more)
+
+### Community 56 - "TripNewPage"
+Cohesion: 0.10
+Nodes (33): BlockchainReceipt type, Precinct type, VerifyResult type, cn utility, PrecinctDetailPage, PrecinctsPage, SettingsPage, SLAPage (+25 more)
+
+### Community 57 - "get_driver_metrics"
+Cohesion: 0.10
+Nodes (25): get_driver_metrics(), AsyncSession, date, DriverMetrics, UUID, Driver grain — per-driver exceptions, on-time departure, phase dwell and…, Every driver with at least one closed trip departing in [start_month,…, get_facility_metrics() (+17 more)
+
+### Community 58 - "safe_ratio"
+Cohesion: 0.11
+Nodes (11): numerator / denominator, or None when there is nothing to divide by. None…, safe_ratio(), DriverMetrics, computed_field, Mean time between breakdowns, for breakdowns that fell in the range., Confirmed over CHECKED events. Unwitnessed is deliberately outside the…, One driver's closed trips over a month range., Share of trips that carried at least one exception. (+3 more)
+
+### Community 59 - "Precinct Integration Tests"
+Cohesion: 0.11
+Nodes (46): _admin_headers(), _auth_headers(), _fake_anchor(), override_get_db(), AsyncClient, AsyncSession, parametrize, Integration tests for /api/v1/precincts. (+38 more)
+
+### Community 60 - "hedera.py"
+Cohesion: 0.10
+Nodes (30): _default_mirror_url(), HederaConfigError, HederaDependencyError, HederaService, HederaSubmitError, HederaVerifyError, _normalize_sha256_hex(), Client (+22 more)
+
+### Community 61 - "verification_service.py"
+Cohesion: 0.08
+Nodes (62): DriverEvent, PrecinctEvent, Append-only event-log models for vehicles, drivers and precincts. Each row…, Append-only log of changes to a precinct. Same shape as VehicleEvent by design…, VehicleEvent, _ArtifactCommitment, _hash_payload(), _latest_receipt() (+54 more)
+
+### Community 62 - "endpoints/handover.py"
+Cohesion: 0.04
+Nodes (117): confirm_handover_endpoint(), handover_consent_endpoint(), handover_resolve_endpoint(), handover_status_endpoint(), handover_verify_endpoint(), handover_webhook_endpoint(), issue_handover_token_endpoint(), _live_token() (+109 more)
+
+### Community 63 - "FakeMockStateStore"
+Cohesion: 0.05
+Nodes (69): get_scan_feed(), MockScanFeed, Warehouse scan feed — the inbound interface for what was physically scanned.…, Redis-backed stub — no warehouse. SCAN_FEED_USE_MOCK=True selects it.…, Return the configured scan feed. Mirrors get_pp_client(). Callers depend on…, One "is this session closed?" question, so many can be asked at once. Frozen…, ScanSessionQuery, blocked_on_by_stop() (+61 more)
+
+### Community 64 - "test_analytics_stats.py"
+Cohesion: 0.08
+Nodes (33): get_lane_metrics(), AsyncSession, date, LaneMetrics, UUID, Every lane with at least one closed trip departing in [start_month, end_month].…, percentile(), date (+25 more)
+
+### Community 65 - "MockPulsitClient"
+Cohesion: 0.08
+Nodes (35): MockPulsitClient, PulsitUnsupportedError, datetime, Exception, Redis-backed stub — no network. PULSE_USE_MOCK=True selects it. Redis rather…, Guard every staging call. Mirrors stage_waybill_override's check., Move a tracker. Replaces any previously staged state for this device. Replace…, Take a tracker dark — it stops reporting a position but stays known. The other… (+27 more)
+
+### Community 66 - "test_corroboration_service.py"
+Cohesion: 0.12
+Nodes (37): _geofence_verdict_to_column(), Turn a fix and a precinct into the nullable boolean the column stores. The one…, Whether a Pulsit fix and the driver's own capture instant are close enough in…, Build one trailer snapshot row, or None when the fix cannot honestly fill it.…, _snapshot_for_trailer(), _within_corroboration_skew(), _make_fix(), _make_precinct() (+29 more)
+
+### Community 67 - "test_idvs_client.py"
+Cohesion: 0.04
+Nodes (70): DiditIdvsClient, _extracted_identity(), IdvsClient, IdvsDecision, IdvsDecisionStatus, IdvsError, IdvsSession, IdvsUnsupportedError (+62 more)
+
+### Community 68 - "Base"
+Cohesion: 0.09
+Nodes (39): Base, MerkleBatch, MerkleBatchLeaf, MerkleBatchType, OrganizationType, DriverEvent, PrecinctEvent, VehicleEvent (+31 more)
+
+### Community 69 - "location_service.py"
+Cohesion: 0.15
+Nodes (17): AsyncSession, UUID, record_locations_endpoint(), AsyncSession, UUID, The driver's per-trip location trail — writes behind POST…, Append fixes to one trip's trail; returns how many were stored. Raises…, record_location_pings() (+9 more)
+
+### Community 70 - "PulsitFix"
+Cohesion: 0.08
+Nodes (27): _absent_fix(), _is_usable_coordinate(), _parse_position(), PulsitClient, PulsitFix, PulsitFixSource, PulsitFixStatus, Any (+19 more)
+
+### Community 71 - "TripCreateRequest"
+Cohesion: 0.11
+Nodes (30): One waybill on the trip. pp_reference is the PP waybill number (string[24] in…, Dispatcher-facing trip creation payload — excludes auto-generated and JWT-…, TripConsignmentInput, TripCreateRequest, TripStopCreate, Stops arrive in whatever order the client sent them; sequence is the route.…, test_stop_schedule_span_is_measured_by_sequence_not_list_order(), _payload() (+22 more)
+
+### Community 72 - "receiver_verification_service.py"
+Cohesion: 0.05
+Nodes (79): Where one receiver's identity check ended up. PENDING exists only while a Didit…, How much evidence the check actually produced. SELFIE_ONLY is presence…, Why a check did not reach a verdict. Never free text, for the reason…, ReceiverVerificationStatus, ReceiverVerificationTier, ReceiverVerificationUnverifiedReason, Base, DeclarativeBase (+71 more)
+
+### Community 73 - "dependencies"
+Cohesion: 0.04
+Nodes (45): @capacitor/android, @capacitor/camera, @capacitor/core, @capacitor/geolocation, @capacitor/ios, @capacitor/push-notifications, class-variance-authority, clsx (+37 more)
+
+### Community 74 - "test_rate_limit.py"
+Cohesion: 0.05
+Nodes (52): RateLimit, One budget: `max_requests` allowed per `window_seconds`, counted per identity., _client_identity(), _count_and_check(), _get_redis(), BaseHTTPMiddleware, HTTPException, Redis (+44 more)
+
+### Community 75 - "test_pulsit_client.py"
+Cohesion: 0.16
+Nodes (36): get_pulsit_client(), LivePulsitClient, Async client for the Pulsit position API, built to the assumed shape. Cannot be…, Return the configured Pulsit client. Mirrors get_pp_client() and…, pulsit_settings(), asyncio, mock, MonkeyPatch (+28 more)
+
+### Community 76 - "build_key"
+Cohesion: 0.10
+Nodes (20): build_key(), Any, Shared store for simulated external-world state, backed by Redis. Why Redis and…, Delete every namespaced mock key. Returns how many were removed. scan_iter, not…, Build a namespaced Redis key. `kind` separates scan state from PP state., Read many keys at once, returning one result per key, in order. On the contract…, MockStateStore over redis.asyncio, one short-lived connection per call. A…, Parse one stored value. Absent and corrupt both read as unset. (+12 more)
+
+### Community 77 - "period.ts"
+Cohesion: 0.05
+Nodes (72): AnalyticsPage(), DEFAULT_CONTROLS, DEFAULT_PATTERN_PERIOD, FleetAnalytics(), INITIAL_CONTROLS, initialControls(), isTabId(), TabId (+64 more)
+
+### Community 78 - "scan_service.py"
+Cohesion: 0.06
+Nodes (61): One barcode scanned at one stop, in one direction. Frozen because an observed…, ScanEvent, _build_discrepancy_description(), ConsignmentScanResult, ingest_scans(), _initial_review_status(), load_consignments_at_stop(), AsyncSession (+53 more)
+
+### Community 79 - "dev_triggers.py"
+Cohesion: 0.07
+Nodes (43): dev_panel_enabled(), flush_mock_state(), Dev-only trigger endpoints — simulate the parts of the world we cannot yet…, Delete every staged mock key. Evidence in PostgreSQL is untouched. A POST…, Whether the dev trigger router should be registered at all. ONE condition,…, get_mock_state_store(), Return the mock-state store. Mirrors get_pp_client()'s factory shape., str (+35 more)
+
+### Community 80 - "problems.py"
+Cohesion: 0.06
+Nodes (75): build_activity(), cancellations_by_bucket(), cancelled_trips(), _ended_in(), AsyncSession, ColumnElement, UUID, Queries behind the Activity tab's trend charts (GET /analytics/fleet/activity,… (+67 more)
+
+### Community 81 - "fleet_analytics_service.py"
+Cohesion: 0.09
+Nodes (62): Period, An inclusive range of SAST calendar dates, and the grain its trends are grouped…, The South African calendar date at `now` (default: the current moment)., today_sast(), incident_pins(), _is_problem(), lane_trips(), LaneTrips (+54 more)
+
+### Community 82 - "test_gps_mismatch.py"
+Cohesion: 0.10
+Nodes (58): _load_mismatches(), _load_separations(), AsyncClient, TripException, Integration tests for FP-145 — a position disagreement raises GPS_MISMATCH.…, Phone/truck disagreement is evidence even when the truck passes its geofence., A precinct miss must not be relabelled as driver/vehicle disagreement., The two independent facts retain their distinct exception types on one event. (+50 more)
+
+### Community 83 - "test_exceptions_dispatcher.py"
+Cohesion: 0.12
+Nodes (38): _body(), _headers(), AsyncClient, parametrize, UUID, FP-146 — the dispatcher's org-scoped exception list and immutable review…, A missing state assignment would leave an apparently successful review…, Review records an assessment; it never reopens, closes, or cancels a trip. (+30 more)
+
+### Community 84 - "test_health.py"
+Cohesion: 0.14
+Nodes (29): _db_error(), _get_health(), isolated_dependencies(), _override_db(), Any, Exception, MonkeyPatch, OperationalError (+21 more)
+
+### Community 85 - "types/analytics.ts"
 Cohesion: 0.18
-Nodes (17): HederaService, HederaSubmitError, HederaVerifyError, _normalize_sha256_hex(), FreightProof-facing API for Hedera HCS evidence anchoring., Submit a SHA-256 hash to HCS and return the resulting receipt., Verify a sequence message matches the expected SHA-256 hash., Raised when submitting a hash to HCS fails. (+9 more)
+Nodes (14): FiguresProps, VehicleAnalyticsSummaryProps, makePrecinct(), orgId(), precinctId(), VEHICLE_TYPE_LABELS, BreakdownVehicleFields, LaneMetrics (+6 more)
 
-### Community 84 - "Community 84"
+### Community 86 - "useSortedRows.ts"
+Cohesion: 0.24
+Nodes (10): compare(), readSortValue(), SortDir, SortedRows, sortRows(), SortState, SortValue, Row (+2 more)
+
+### Community 87 - "test_subject_visibility.py"
+Cohesion: 0.14
+Nodes (27): assert_subject_visible(), AsyncSession, SubjectType, UUID, Share the same tenant rules between single-subject checks and receipt queries., Raise SubjectNotVisibleError if subject is outside the caller's organisation., subject_visibility_query(), Raised when a dispatcher queries a blockchain subject outside their… (+19 more)
+
+### Community 88 - "advance_confirmation"
+Cohesion: 0.05
+Nodes (77): compute_payload_hash(), SHA-256 hex over the canonical JSON encoding of payload., advance_confirmation(), compute_confirmation_canonical_payload_v1(), compute_confirmation_canonical_payload_v2(), compute_departure_canonical_payload_v1(), Reproduce the legacy departure payload for pre-FP-154 receipts. JSON-native…, Reproduce the legacy confirmation payload for pre-FP-154 receipts. Anchored… (+69 more)
+
+### Community 89 - "tiles.ts"
+Cohesion: 0.11
+Nodes (28): GeofenceSchematic(), GeofenceSchematicProps, niceScaleMetres(), SCALE_BAR_TARGET_FRACTION, DEFAULT_THUMBNAIL_WIDTH_PX, StaticGeofenceThumbnail(), StaticGeofenceThumbnailProps, EXPECTED_FRAME_PX (+20 more)
+
+### Community 90 - "mocks/trips.ts"
+Cohesion: 0.02
+Nodes (98): forensicMode, mockedUseTripDetail, navigation, notify, push, TripDetailPage(), ManifestContent(), ManifestContentProps (+90 more)
+
+### Community 91 - "Driver Action Registry"
+Cohesion: 0.07
+Nodes (29): get_current_driver, create_artifact orchestration, log_checkpoint, raise_exception, record_location_pings, get_linehaul_for_driver, get_manifest_for_dispatcher, blocked_on_by_stop (+21 more)
+
+### Community 92 - "move_truck"
+Cohesion: 0.18
+Nodes (12): _load_trip_context(), move_truck(), AsyncSession, Precinct, Trip, TripStop, UUID, Vehicle (+4 more)
+
+### Community 93 - "UserRead"
+Cohesion: 0.05
+Nodes (64): Driver checkpoint logging endpoint., list_waypoints(), move_truck_enabled(), get, FP-116 "move the truck" — the dev-only control that moves a Pulsit tracker.…, Map a waypoint fixture onto its wire shape. One place, so the two cannot drift., Serve the route so the panel renders one definition of it. Static data behind a…, Whether the move-truck router should be registered at all. TWO independent… (+56 more)
+
+### Community 94 - "test_pagination.py"
+Cohesion: 0.11
+Nodes (33): CursorPosition, decode_cursor(), encode_cursor(), _encode_json_payload(), Any, Opaque cursor primitives for keyset (cursor-based) pagination. A cursor…, The `(created_at, id)` pair a keyset page resumes from., Serialise a CursorPosition to an opaque, URL-safe string. (+25 more)
+
+### Community 95 - "MIME Type Validation"
+Cohesion: 0.10
+Nodes (22): detect_mime_type(), What an evidence upload is allowed to be, decided from the file's own bytes.…, The allowlisted type these bytes actually are, or None if they are not any of…, Return the type to store, or raise ValueError if the upload is not allowed. The…, resolve_mime_type(), parametrize, Unit tests for evidence upload type checking (app/storage/mime_allowlist.py).…, The attack this module exists for: a driver's handset uploads a page, labels it… (+14 more)
+
+### Community 96 - "test_precinct_event_model.py"
+Cohesion: 0.10
+Nodes (19): diff_critical_fields(), Any, Critical-fields lists for vehicle/driver mutations. A field is 'critical' if a…, Return {field: {"from": old, "to": new}} for changed critical fields, or None., test_diff_handles_missing_keys_as_none(), test_diff_multiple_critical_fields(), test_diff_returns_diff_when_critical_changed(), test_diff_returns_none_when_no_critical_change() (+11 more)
+
+### Community 97 - "ScanFeed"
 Cohesion: 0.22
-Nodes (20): captured_anchor_dispatches(), _complete_h1(), _complete_h2(), _drain_anchors(), _fake_hedera_receipt(), _h2_payload(), _h3_payload(), _make_artifact() (+12 more)
+Nodes (6): Protocol, Return every scan the warehouse has recorded for this consignment at this stop., Whether the warehouse has finished scanning this consignment at this stop.…, Batched is_scan_session_closed: one answer per query, in order. The phase gate…, The contract orchestration depends on. Implementations are swapped by config., ScanFeed
 
-### Community 85 - "Community 85"
+### Community 98 - "MockParcelPerfectClient"
+Cohesion: 0.13
+Nodes (19): MockParcelPerfectClient, Fixture-backed stub — no network. PP_USE_MOCK=True selects it via…, Stage a change to a fixture waybill, as if edited in the PP portal. Only…, Apply any staged override to a fixture copy. No-op when none is staged., Look up the waybill in the fixture library; raise if unregistered., dev_panel_on(), MonkeyPatch, Unit tests for the dev-panel override layer on the PP mock. Overrides exist so… (+11 more)
+
+### Community 99 - "test_parcel_perfect_client.py"
+Cohesion: 0.13
+Nodes (21): pp_settings(), asyncio, mock, Unit tests: Parcel Perfect ecomService v28 API client. respx mocks httpx at the…, Patch settings so PP calls use a known test URL without reading .env.…, getSingleWaybill performs auth (getSalt + getSecureToken) then returns a fully-…, A second call reuses the cached token without repeating getSalt/getSecureToken.…, Non-zero errorcode with a 'not found' message raises PPWaybillNotFoundError.… (+13 more)
+
+### Community 100 - "test_analytics_endpoints.py"
+Cohesion: 0.13
+Nodes (57): _add_months(), closed_trip(), _headers(), lane(), month(), _new_horse(), _new_trailer(), _Operator (+49 more)
+
+### Community 101 - "trigger_scan"
 Cohesion: 0.10
-Nodes (19): MonkeyPatch, Unit tests for the warehouse-scan phase gate.  Uses db_session (skips without TE, UNLOADING gates on ScanDirection.IN — the warehouse scanning parcels off the, One round trip per gate call, regardless of how many consignments there are., The whole point of session semantics — a missing parcel is a finding, not a bloc, Trips created without a PP reference have no Parcel rows at all. manifest.ts, A cross-dock trip loads at more than one stop., DEPARTURE is absent from GATED_PHASES entirely — never gated regardless of     c (+11 more)
+Nodes (23): close_scan_session(), list_dev_trips(), AsyncSession, get, Stage barcodes into the mock feed, then run the real reconciliation. Two calls,…, Work out which barcodes the simulated warehouse reports for one consignment.…, Close the scan session for every consignment at this stop. Drives the mock…, Stage a waybill override, then run the real consignment sync. The sync is… (+15 more)
 
-### Community 86 - "Community 86"
-Cohesion: 0.10
-Nodes (20): compilerOptions, allowJs, esModuleInterop, incremental, isolatedModules, jsx, lib, module (+12 more)
+### Community 102 - "FreightProof_Meeting_Bruce_Minutes_24June2026.md"
+Cohesion: 0.03
+Nodes (57): Ad Hoc Collection Service: The truck travels to individual client sites to collect loads \(e\.g\. collect 3 tonnes from FedEx, then continue to Courier Guy for 4 tonnes\)\. This is a secondary, on\-request service\., All fines and recovery costs arising from incorrect loading are passed back to the loading client \(e\.g\. FedEx\), as they are responsible for adhering to LFG’s load configuration blueprint\., An important output of Iteration 2 is identifying the exact data fields needed from Parcel Perfect, so the team knows precisely what to request when the API negotiation begins\., Bruce confirmed he is happy to host the FreightProof team at LFG and partner facilities between 13–18 July 2026\., Bruce confirmed that integration is achievable but requires a three\-party discussion: FreightProof \(UCT team\) \+ FedEx \(Parcel Perfect’s paying customer\) \+ Parcel Perfect \(API owner\)\., Bruce confirmed the timeline\-based trip view is consistent with industry documentation formats he uses in air freight incident reporting\., Bruce highlighted that FreightProof’s ability to drill into any event on the timeline \(e\.g\. loading, transit exceptions, delivery\) is a differentiator over existing market systems, which cannot perform event\-level manifest investigation\., Bruce suggested a future enhancement: integrating the vehicle’s onboard camera system so that when an exception is flagged, the dispatcher \(and client\) can pull a live or recorded camera feed directly within the exception event view\. (+49 more)
 
-### Community 87 - "Community 87"
-Cohesion: 0.21
-Nodes (15): THEME_OPTIONS, ThemeOption, ThemeSelect(), useThemePref(), ThemeManager(), applyTheme(), getThemePref(), isThemePreference() (+7 more)
+### Community 103 - "test_demo_waypoints.py"
+Cohesion: 0.08
+Nodes (33): DemoWaypoint, get_waypoint(), Fixed waypoints for the FP-116 "move the truck" demo control. Deliberately…, Resolve a waypoint id, or None if it is not one of ours., One stop the presenter can move the truck to. Frozen, because a waypoint is a…, Whether this waypoint takes the tracker dark instead of moving it., _anchor_precinct(), _FakePrecinct (+25 more)
 
-### Community 88 - "Community 88"
-Cohesion: 0.10
-Nodes (20): authors, Ionic Team, dependencies, CapacitorCordova, homepage, license, module_map, name (+12 more)
+### Community 104 - "test_health_probes.py"
+Cohesion: 0.16
+Nodes (22): _probe_database(), Round-trip the smallest possible query against Postgres. Uses the request's…, _as_session(), _db_error(), _FakeSession, Any, AsyncSession, OperationalError (+14 more)
 
-### Community 89 - "Community 89"
-Cohesion: 0.10
-Nodes (20): compilerOptions, allowJs, esModuleInterop, incremental, isolatedModules, jsx, lib, module (+12 more)
-
-### Community 90 - "Community 90"
-Cohesion: 0.15
-Nodes (18): anchor_subject(), canonicalize_payload(), list_receipts_for_subject(), _parse_consensus_timestamp(), Any, AsyncSession, BlockchainReceipt, BlockchainReceiptType (+10 more)
-
-### Community 91 - "Community 91"
-Cohesion: 0.14
-Nodes (16): assert_subject_visible(), AsyncSession, SubjectType, UUID, Organisation-scoped visibility check for blockchain subjects.  Raises SubjectNot, Raise SubjectNotVisibleError if subject is outside the caller's organisation., Domain exceptions raised by the orchestration layer.  Endpoints catch these and, Raised when a dispatcher queries a blockchain subject outside their organisation (+8 more)
-
-### Community 92 - "Community 92"
-Cohesion: 0.17
-Nodes (19): HederaTimeoutError, Raised when the submit_hash() call exceeds HEDERA_SUBMIT_TIMEOUT_SECONDS.      D, override_get_db(), AsyncClient, AsyncSession, Driver, Integration test: POST /api/v1/drivers anchors to Hedera (POPIA-safe payload)., is_active is a critical field — toggling it forces update_driver to anchor. (+11 more)
-
-### Community 93 - "Community 93"
-Cohesion: 0.15
-Nodes (19): AsyncClient, Integration tests for POST /trips/{id}/exceptions (driver-raised exceptions)., Both-or-neither is enforced at the schema layer — a partial fix must never     r, The driver app resolves its own phase context and sends it; the row must store, THE regression. A panic pressed at 15:17 in transit sits in the driver app's, Both are raised from the in-transit hub and are IN_TRANSIT events by definition, An older installed client sends no phase context. The server derives placement, A phase id that isn't on this trip is dropped and re-derived, NOT rejected. The (+11 more)
-
-### Community 94 - "Community 94"
-Cohesion: 0.10
-Nodes (20): CAPWebViewDelegationHandler, -initOBJC_DESIGNATED_INITIALIZER, -scrollViewWillBeginZoomingwithView, -userContentControllerdidReceiveScriptMessage, -webViewcreateWebViewWithConfigurationforNavigationActionwindowFeaturesSWIFT_WARN_UNUSED_RESULT, -webViewdecidePolicyForNavigationActiondecisionHandler, -webViewdidFailNavigationwithError, -webViewdidFailProvisionalNavigationwithError (+12 more)
-
-### Community 95 - "Community 95"
-Cohesion: 0.10
-Nodes (20): CAPWebViewDelegationHandler, -initOBJC_DESIGNATED_INITIALIZER, -scrollViewWillBeginZoomingwithView, -userContentControllerdidReceiveScriptMessage, -webViewcreateWebViewWithConfigurationforNavigationActionwindowFeaturesSWIFT_WARN_UNUSED_RESULT, -webViewdecidePolicyForNavigationActiondecisionHandler, -webViewdidFailNavigationwithError, -webViewdidFailProvisionalNavigationwithError (+12 more)
-
-### Community 96 - "Community 96"
-Cohesion: 0.10
-Nodes (20): CDVPluginResult, -argumentsAsJSON, -init, +isVerbose, +resultWithStatus, +resultWithStatusmessageAsArray, +resultWithStatusmessageAsArrayBuffer, +resultWithStatusmessageAsBool (+12 more)
-
-### Community 97 - "Community 97"
-Cohesion: 0.14
-Nodes (17): UseManifestResult, CONSIGNMENT_MANIFEST_0040, CONSIGNMENT_MANIFEST_0041, CONSIGNMENT_MANIFEST_0042, mockManifest0040, mockManifest0041, mockManifest0042, mockManifests (+9 more)
-
-### Community 98 - "Community 98"
-Cohesion: 0.11
-Nodes (17): pp_settings(), Unit tests: Parcel Perfect ecomService v28 API client.  respx mocks httpx at the, Patch settings so PP calls use a known test URL without reading .env.      PP_AP, getSingleWaybill performs auth (getSalt + getSecureToken) then returns     a ful, A second call reuses the cached token without repeating getSalt/getSecureToken., Non-zero errorcode raises ValueError with the PP message — no retry for domain e, MockParcelPerfectClient.get_single_waybill returns MOCK_WAYBILL_RESPONSE     for, get_pp_client() returns MockParcelPerfectClient when PP_USE_MOCK=True.      Plai (+9 more)
-
-### Community 99 - "Community 99"
-Cohesion: 0.11
-Nodes (18): devDependencies, autoprefixer, @capacitor/cli, eslint, eslint-config-next, @eslint/eslintrc, jsdom, postcss (+10 more)
-
-### Community 100 - "Community 100"
+### Community 105 - "evaluate_geofence"
 Cohesion: 0.19
-Nodes (13): _default_mirror_url(), _HederaAdapter, HederaConfigError, HederaDependencyError, Client, Hedera HCS service wrapper for FreightProof evidence anchoring.  This module exp, Raised when required Hedera configuration is missing or invalid., Raised when the Hedera SDK dependency is unavailable. (+5 more)
+Nodes (26): evaluate_geofence(), A single Pulsit tracker position, reduced to only what this module needs. FP-87…, Compare a tracker fix against a precinct's geofence and return a verdict. A…, TrackerFix, Pins the panel's own claim to behaviour: staging via trip A's scenario mode…, test_two_trips_sharing_one_horse_observe_the_same_device_state(), _make_precinct(), Decimal (+18 more)
 
-### Community 101 - "Community 101"
+### Community 106 - "test_blockchain.py"
+Cohesion: 0.15
+Nodes (20): clear_dep_overrides(), _fake_outcome_with_hashes(), asyncio, parametrize, Integration tests: blockchain endpoint role gating (FP-115). Tests that: - GET…, Normal dispatcher receives status but expected_hash and current_hash are None., Admin dispatcher receives the full payload including expected_hash and…, Ensure dependency overrides are torn down after each test. (+12 more)
+
+### Community 107 - "test_blockchain_receipt_lookup.py"
+Cohesion: 0.24
+Nodes (24): _headers(), lookup_seed(), _LookupSeed, override_get_db(), AsyncClient, asyncio, AsyncSession, BlockchainReceipt (+16 more)
+
+### Community 108 - "PlanStop"
+Cohesion: 0.06
+Nodes (54): build_phase_plan(), PlannedPhase, PlanStop, Phase-plan generation — parent plan §2.2. Pure and DB-free on purpose: the rule…, One stop's routing role — all the generator needs to decide what happens there.…, Emit a trip's committed phase plan, in order, from its stops. The rule:…, _as_tuples(), PhaseType (+46 more)
+
+### Community 109 - "test_dev_truck_service.py"
+Cohesion: 0.07
+Nodes (46): build_scenario_target(), destination_point(), AsyncSession, Decimal, Exception, Precinct, TripStop, UUID (+38 more)
+
+### Community 110 - "devDependencies"
+Cohesion: 0.12
+Nodes (17): devDependencies, eslint, eslint-config-next, tailwindcss, @testing-library/jest-dom, @testing-library/react, @testing-library/user-event, @types/leaflet (+9 more)
+
+### Community 111 - "Dispatcher API Endpoints"
+Cohesion: 0.08
+Nodes (25): get_current_dispatcher, list_receipts_for_subject, subscribe realtime, list_artifacts_for_trip, list_drivers, get_manifest_summaries, get_waybill_summary, list_precincts (+17 more)
+
+### Community 112 - "artifact_service.py"
+Cohesion: 0.10
+Nodes (39): list_trip_artifacts_endpoint(), ArtifactType, AsyncSession, datetime, Decimal, EvidenceArtifactWithUrl, get, UUID (+31 more)
+
+### Community 113 - "test_dev_triggers.py"
+Cohesion: 0.06
+Nodes (44): dev_app(), Integration tests for the dev trigger panel. The router registers at import…, A second consignment (WAY002) picked up at `seeded`'s stop. Gives the…, ENVIRONMENT no longer gates the panel — DEV_PANEL_ENABLED is the only switch.…, The flag is now the ONLY thing standing between these endpoints and the…, The two gates are now independent, and this is the pairing that has to hold:…, The discrepancy path, end to end through the endpoint., Reload app.main with the dev panel switched on, then restore. (+36 more)
+
+### Community 114 - "devDependencies"
+Cohesion: 0.05
+Nodes (37): @capacitor/cli, @eslint/eslintrc, devDependencies, autoprefixer, @capacitor/cli, eslint, eslint-config-next, @eslint/eslintrc (+29 more)
+
+### Community 115 - "FreightProof SA — Database Models Reference"
+Cohesion: 0.04
+Nodes (47): 10. Handshake Events, 11. In-Transit Monitoring, 12. Exceptions, 13. Driver Substitutions, 14. Blockchain & Merkle Trees, 15. SLA Configuration, 16. Cross-Cutting Design Decisions, 17. Relationship Map (+39 more)
+
+### Community 116 - "Part 9 — Findings ledger"
+Cohesion: 0.04
+Nodes (47): ⚠️ Expected vs. actual — do NOT claim this shows what was scanned, 🔴 F0 — The driver PWA is broken against this backend — **deliberately, and it's documented**, 🔴 F10 — `EXCEPTION_HOLD` is a permanent dead-end, 🟠 F11 — No concurrency control anywhere, 🟡 F12 — Inconsistent error mapping, 🔴 F1 — An empty-leg trip can never be closed — **not in any ledger; this one is new**, 🟠 F2 — The dispatcher UI cannot create a multi-stop trip, 🔴 F2b — `NEW-17`: reconciliation gives a **false mismatch** on a multi-pickup → multi-drop trip (+39 more)
+
+### Community 117 - "driver-pwa/lib/context/AuthContext.tsx"
+Cohesion: 0.06
+Nodes (52): clearSessionCaches(), AuthContext, AuthProvider(), ProfileUnavailableError, AuthListener, mockedClearCaches, mockedGet, mockedSignIn (+44 more)
+
+### Community 118 - "Forensic Evidence Details"
+Cohesion: 0.17
+Nodes (24): ForensicOnly, departureSealForLeg, geofenceOffsetMetres, separationMetres, toCoords, isClosedPhaseStatus, ConsignmentRead, ConfirmationDetail (+16 more)
+
+### Community 119 - "Create vehicle_events and driver_events tables"
+Cohesion: 0.08
+Nodes (38): SubjectType, VerifyOutcome, Add vehicles.updated_at, Add updated_at to organizations, trip_templates, sla_configs, Add precincts.updated_at, Add vehicle attributes: make, model, year, vin_number, licence_disc_expiry, gross_vehicle_mass_kg, Add drivers.license_expiry, Create vehicle_events and driver_events tables (+30 more)
+
+### Community 120 - "Phase Step Tests"
+Cohesion: 0.09
+Nodes (24): Linehaul step tests, Registry tests, Verification step (activation phase), Closed step (confirmation phase), PodPhoto step (confirmation phase), PodSignature step (confirmation phase), Reconciliation step (confirmation phase), Closed step tests (+16 more)
+
+### Community 121 - "test_dev_pulsit_writes_nothing.py"
+Cohesion: 0.06
+Nodes (42): MoveTruckRequest, model_validator, Move one trip's horse tracker. Writes Pulsit mock state only. Exactly one input…, _call(), _call_scenario(), _FakeHorse, _FakePrecinct, _FakeTargetPrecinct (+34 more)
+
+### Community 122 - "test_trips_driver_list.py"
+Cohesion: 0.19
+Nodes (24): _fixture_world(), _make_driver(), _make_trip(), AsyncClient, Integration tests for GET /trips/me and GET /trips/me/{trip_id} (driver PWA…, Names are resolved server-side so the trip card can render a real origin ->…, driver_id from the verified token is the whole authorisation boundary., A dispatcher has GET /trips for their whole org; this endpoint is driver-only. (+16 more)
+
+### Community 123 - "tiles.py"
+Cohesion: 0.08
+Nodes (44): closed_trips(), earliest_trip_date(), Any, AsyncSession, date, Grain, UUID, Shared SQLAlchemy Core builders for the fleet queries. These are FP-153's own… (+36 more)
+
+### Community 124 - "test_receiver_verification_webhook.py"
+Cohesion: 0.07
+Nodes (43): ingest_webhook_decision(), Any, Whether a webhook body really came from the vendor. FAILS CLOSED. An unset…, Whether a webhook was dispatched recently enough to act on. FAILS CLOSED, like…, Apply a vendor-pushed decision to the verification it belongs to. The BACKSTOP,…, Terminalise PENDING verifications that no decision ever arrived for. The…, sweep_abandoned_verifications(), verify_webhook_signature() (+35 more)
+
+### Community 125 - "PhaseStepPageClient.test.tsx"
+Cohesion: 0.08
+Nodes (22): ACTIVATION_PE, FRESH_LOCATION, LOADING_PE, makePhase(), makeTrip(), mockAdoptTrip, mockCapturePosition, mockClearPhaseSyncing (+14 more)
+
+### Community 126 - "Geospatial Math Utilities"
+Cohesion: 0.16
+Nodes (20): haversine_metres(), Decimal, Great-circle distance for comparing a captured GPS fix against a precinct…, Coerce a coordinate to float and enforce it is a finite value within [low,…, Great-circle distance in metres between two lat/lng points. Accepts float or…, _to_validated_float(), Unit tests for app.core.geo — pure math, no DB, no HTTP. Coordinates are real…, test_antimeridian_crossing_stays_small() (+12 more)
+
+### Community 127 - "Phase Event Constants"
+Cohesion: 0.12
+Nodes (21): STEP_SLUGS, TripEvent, enqueue_event, publish_event, subscribe, AnchorStatus, ExceptionSeverity, ExceptionSource (+13 more)
+
+### Community 128 - "Phase model: rename handshake_events to phase_events, add per-stop ledger"
+Cohesion: 0.14
+Nodes (18): record_location_pings, Add exception GPS coordinates: gps_lat, gps_lng, Phase model: rename handshake_events to phase_events, add per-stop ledger, Add phase_events.linehaul_photo_artifact_id, Add driver_sessions table for device session tracking, Add trip_location_pings table for GPS trail, Add user_sessions table for dispatcher idle timeout, POPIA Compliance (+10 more)
+
+### Community 129 - "Trip Seeding Logic"
+Cohesion: 0.12
+Nodes (21): _apply_walk_evidence(), AsyncSession, datetime, Driver, Organization, Precinct, Trip, TripStop (+13 more)
+
+### Community 130 - "test_model_schema_v6.py"
+Cohesion: 0.13
+Nodes (19): DriverSubstitutionCreate, _column_names(), Unit tests for v6 model changes. Covers: 1. DriverSubstitution model — all four…, Spec §5+H3: original_driver_id, substituting_driver_id, exchange_location,…, Planned substitutions are normal events; unplanned are exceptions. is_planned…, exception_id is only populated for unplanned substitutions., Both original and substituting driver must FK to the drivers table., test_driver_substitution_driver_fks_present() (+11 more)
+
+### Community 131 - "_fleet_seed.py"
+Cohesion: 0.14
+Nodes (42): at_sast(), days_ago(), new_driver(), new_vehicle(), not_started(), date, datetime, Driver (+34 more)
+
+### Community 132 - "get_pp_client"
+Cohesion: 0.19
+Nodes (16): get_pp_client(), Return the appropriate PP client based on settings.PP_USE_MOCK. Callers should…, get_capabilities(), get_manifest_summaries(), get_waybill_summary(), PPCapabilities, PPWaybillSummary, Wizard-time PP lookups. Layering: orchestration → integrations only. (+8 more)
+
+### Community 133 - "iOS App Delegate"
+Cohesion: 0.13
+Nodes (13): Bool, Capacitor, AppDelegate, Any, NSUserActivity, UIApplication, UIApplicationDelegate, UIKit (+5 more)
+
+### Community 134 - "Design System Tokens"
+Cohesion: 0.14
+Nodes (15): COLOR_GROUPS, RADII, SHADOWS, TYPE_SCALE, TypeRole, COLOR_GROUPS, RADII, SHADOWS (+7 more)
+
+### Community 135 - "Meeting with Bruce - 03/03/2026"
+Cohesion: 0.05
+Nodes (43): Advanced Parcel Tagging Technologies Idea, Bruce van Wyk: a, Bruce van Wyk: along, Bruce van Wyk: because, Bruce van Wyk: because, Bruce van Wyk: but if, Bruce van Wyk: can, Bruce van Wyk: day, (+35 more)
+
+### Community 136 - "Driver PWA Scripts"
+Cohesion: 0.10
+Nodes (19): engines, node, name, private, scripts, build, cap:open, cap:open:ios (+11 more)
+
+### Community 137 - "Fleet Management API"
+Cohesion: 0.11
+Nodes (19): create_vehicle_endpoint, get_vehicle_detail_endpoint, list_vehicles_endpoint, update_vehicle_endpoint, _decode_token, _fetch_jwks, _get_jwks, _get_signing_key (+11 more)
+
+### Community 138 - "Consignment Sync Logic"
+Cohesion: 0.13
+Nodes (19): ConsignmentAlreadyAssignedError, ParcelStatus, TripStatus, Consignment, Parcel, TripStop, ScanDirection, ConsignmentSyncResult (+11 more)
+
+### Community 139 - "Real-time Event Stream"
+Cohesion: 0.16
+Nodes (14): _event_stream(), get, UUID, Server-Sent Events endpoint — the dispatcher's live channel. A dispatcher opens…, Yield SSE frames for one connected dispatcher until they disconnect. A…, stream_endpoint(), _dispatcher(), UUID (+6 more)
+
+### Community 140 - "Delivery sequence and file ownership"
+Cohesion: 0.05
+Nodes (42): 1. Tasks, 2. Decisions and plan deviations (controller rulings; user has not separately approved these — review and revert any you disagree with), 3. Files changed and contracts, 4. Commands run and results (this session, 2026-09-15), 5. Migrations, 6. Remaining defects, deferred minors and limitations, 7. Next session, Confirmed observations and causes (+34 more)
+
+### Community 141 - "Exception Formatting Utilities"
+Cohesion: 0.12
+Nodes (18): Ic, Spinner, fmtExceptionType, useManifest, legDepartureAt, EXCEPTION_SEVERITY_META, EXCEPTION_SOURCE_META, EvidenceArtifactWithUrl (+10 more)
+
+### Community 142 - "Data Integrity Hashing"
+Cohesion: 0.27
+Nodes (16): compute_journey_lock_hash(), compute_trip_canonical_payload(), datetime, UUID, SHA-256 hashing utilities for FreightProof evidence integrity.…, Return a 64-char lowercase hex SHA-256 digest of the trip's fixed parameters.…, Return the canonical payload dict used for both the lock hash and on-chain…, _fixed_args() (+8 more)
+
+### Community 143 - "test_proximity_service.py"
+Cohesion: 0.10
+Nodes (41): evaluate_proximity(), _fix_age_seconds(), datetime, Pure driver-vs-truck proximity evaluation (Task 4 of the trip-location-timeline…, Seconds between a source fix's own timestamp and the evaluation instant.…, Compare the driver's phone fix against the truck's tracker fix. Returns…, _make_precinct(), _offset_east() (+33 more)
+
+### Community 144 - "dependencies"
+Cohesion: 0.13
+Nodes (15): dependencies, leaflet, lucide-react, next, react, react-dom, recharts, @supabase/supabase-js (+7 more)
+
+### Community 145 - "Supabase Configuration Check"
 Cohesion: 0.21
 Nodes (16): check_database_url(), check_db_connection(), check_frontend_env(), check_supabase_api(), key_identity(), main(), mask(), project_ref_from_database_url() (+8 more)
 
-### Community 102 - "Community 102"
-Cohesion: 0.15
-Nodes (11): Bool, AppDelegate, Any, UIWindow, NSUserActivity, UIApplication, UIApplicationDelegate, UIResponder (+3 more)
+### Community 146 - "test_trip_detail_lists_departure_receipt_for_dispatcher"
+Cohesion: 0.19
+Nodes (21): _complete_activation(), _complete_loading(), _departure_payload(), _drain_anchors(), _fake_hedera_receipt(), _loading_payload(), _make_artifact(), _phase_event_id() (+13 more)
 
-### Community 103 - "Community 103"
-Cohesion: 0.12
-Nodes (17): Dispatcher, Driver substitution, Location (precinct under principal), Multi-client trip, Principal entity, Ad-hoc collection, Scheduled break-bulk, Custody ledger (+9 more)
+### Community 147 - "FreightProof_Full_Picture_v6.md"
+Cohesion: 0.05
+Nodes (42): 10. What Is Deliberately Out of Scope for MVP, 11.1 The two PODs, 11.2 The trunk haul manifest boundary, 11.3 Why FreightProof only produces the depot-to-depot POD, 11.4 How the evidence output fits into FedEx’s door-to-door workflow, 11. The Two PODs: What’s in Scope and What Isn’t, 12.1 v5 v6 changes (Bruce van Wyk meeting, 5 May 2026), 12.2 v4 → v5 changes (Bruce van Wyk Q&A, April 2026) (+34 more)
 
-### Community 104 - "Community 104"
-Cohesion: 0.17
-Nodes (8): LoginPage(), mockPush, mockRequestOtp, CountryCodeSelect(), CountryCodeSelectProps, COUNTRY_CODES, COUNTRY_DATA, CountryCode
-
-### Community 105 - "Community 105"
-Cohesion: 0.12
-Nodes (16): authors, dependencies, Capacitor, homepage, license, name, platforms, ios (+8 more)
-
-### Community 106 - "Community 106"
-Cohesion: 0.12
-Nodes (16): authors, dependencies, Capacitor, homepage, license, name, platforms, ios (+8 more)
-
-### Community 107 - "Community 107"
-Cohesion: 0.12
-Nodes (16): authors, dependencies, Capacitor, homepage, license, name, platforms, ios (+8 more)
-
-### Community 108 - "Community 108"
-Cohesion: 0.12
-Nodes (17): CapacitorWKCookieObserver, -cookiesDidChangeInCookieStore, -initOBJC_DESIGNATED_INITIALIZER, CAPBridge, -initOBJC_DESIGNATED_INITIALIZER, +statusBarTappedNotificationSWIFT_WARN_UNUSED_RESULT, CAPFileManager, -initOBJC_DESIGNATED_INITIALIZER (+9 more)
-
-### Community 109 - "Community 109"
-Cohesion: 0.12
-Nodes (17): CapacitorUrlRequest, -initSWIFT_UNAVAILABLE, +newSWIFT_UNAVAILABLE_MSGinitisunavailable, -URLSessiontaskwillPerformHTTPRedirectionnewRequestcompletionHandler, CAPBridge, -initOBJC_DESIGNATED_INITIALIZER, +statusBarTappedNotificationSWIFT_WARN_UNUSED_RESULT, CAPFileManager (+9 more)
-
-### Community 110 - "Community 110"
-Cohesion: 0.12
-Nodes (16): compilerOptions, allowJs, esModuleInterop, isolatedModules, lib, module, moduleResolution, noEmit (+8 more)
-
-### Community 111 - "Community 111"
-Cohesion: 0.18
-Nodes (15): _fetch_jwks(), get_current_dispatcher(), get_current_driver(), _get_jwks(), _get_signing_key(), AsyncSession, _bearer, HTTPAuthorizationCredentials (+7 more)
-
-### Community 112 - "Community 112"
-Cohesion: 0.17
-Nodes (12): enqueue_event(), AsyncSession, Queue an event to publish once the current transaction commits.      The only en, A thin change notification. Carries no trip data by design (see module docstring, TripEvent, Unit tests for the realtime event bus (app/core/realtime.py).  Pure logic only —, test_drain_outbox_emits_each_event_and_pops_the_outbox(), test_enqueue_event_appends_to_session_outbox() (+4 more)
-
-### Community 113 - "Community 113"
-Cohesion: 0.12
-Nodes (15): CapacitorWKCookieObserver, -cookiesDidChangeInCookieStore, -initOBJC_DESIGNATED_INITIALIZER, <CAPNotificationHandlerProtocol>, -didReceiveWithResponse, -willPresentWithNotificationSWIFT_WARN_UNUSED_RESULT, -getStatusBarStyleSWIFT_WARN_UNUSED_RESULTSWIFT_DEPRECATED_MSGstatusBarStyle, -getStatusBarVisibleSWIFT_WARN_UNUSED_RESULTSWIFT_DEPRECATED_MSGstatusBarVisible (+7 more)
-
-### Community 114 - "Community 114"
-Cohesion: 0.20
-Nodes (14): client_with_db(), _make_driver(), _mock_db(), AsyncClient, Driver, MonkeyPatch, Integration tests for GET /api/v1/drivers/me.  Mirrors tests/integration/test_au, Return a Driver ORM instance that does not touch the database. (+6 more)
-
-### Community 115 - "Community 115"
-Cohesion: 0.24
-Nodes (14): _auth_headers(), override_get_db(), AsyncClient, AsyncSession, Integration tests for GET /api/v1/precincts., A precinct owned by another org with is_shared=False must not be visible., A precinct owned by the caller's own org is always visible, shared or not., Two shared precincts owned by a different org than the dispatcher.      is_share (+6 more)
-
-### Community 116 - "Community 116"
+### Community 148 - "Fleet Entity Tests"
 Cohesion: 0.13
-Nodes (15): Per-stop handshake model (Iter-3+), PP integration read-only, Driver, Evidence, not operations, Five handshakes, FreightProof, IDVS (National identity verification), Parcel Perfect (+7 more)
+Nodes (16): Organization, Precinct, Driver, User, Trip, Vehicle, _fixture_world, _make_driver (+8 more)
 
-### Community 117 - "Community 117"
-Cohesion: 0.22
-Nodes (14): buildScanOptions(), buildWaybillBreakdown(), DevTriggerPanel(), DevTriggerPanelProps, directionPhrase(), optionKey(), PendingAction, PendingScanWaybill (+6 more)
+### Community 149 - "Fleet Analytics Page — build spec and executable plan"
+Cohesion: 0.05
+Nodes (41): 0. Handoff — paste this first in a new session, 10. Risks and tripwires, 11. Out of scope, 12. Open dependencies (not blockers), 13. Research notes (why these KPIs), 14. Progress, 1. Rules for whoever executes this, 2. Decisions (with reasons) — do not relitigate (+33 more)
 
-### Community 118 - "Community 118"
+### Community 150 - "Trip Phase UI"
+Cohesion: 0.14
+Nodes (15): PhaseDescriptor, PhaseType (type), PhaseStepPageClient, renderStep, ActiveTripPageClient, firstStepRoute, StepHeader component, SwipeToConfirm component (+7 more)
+
+### Community 151 - "API Request Schemas"
+Cohesion: 0.16
+Nodes (15): DriverCreateBody, AddressStr, CheckpointTypeStr, EmailStr, FreeText, LicenseStr, NameStr, OrderNumberStr (+7 more)
+
+### Community 152 - "Audit Fix Implementation Plan (2026-07-19)"
+Cohesion: 0.05
+Nodes (41): Audit Fix Implementation Plan (2026-07-19), Execution rules (read before any task), Section A — iOS release blocker (do first), Section B — Quick UI/a11y wins (driver-pwa), Section C — Backend correctness, Section D — Frontend dead code & refactors, Section E — Backend cleanup, Section F — UI polish (+33 more)
+
+### Community 153 - "_probe_redis"
+Cohesion: 0.18
+Nodes (12): _probe_redis(), PING the Redis instance the rate limiter and the realtime bus already share., _FakeRedis, Exception, MonkeyPatch, Redis misconfiguration fails before ping() — at from_url, not on the wire., Shrink the probe ceiling so the hang cases finish in milliseconds., short_probe_timeout() (+4 more)
+
+### Community 154 - "test_handover_endpoints.py"
+Cohesion: 0.08
+Nodes (57): create_signed_url(), EvidenceObjectNotFoundError, _get_client(), hash_stored_evidence_file(), Client, Supabase Storage I/O for evidence artifacts (photos, documents). Bucket name is…, Stream and hash the current private object without trusting a CDN-cached copy., An evidence row points at an object that no longer exists. (+49 more)
+
+### Community 155 - "endpoints/phases.py"
+Cohesion: 0.08
+Nodes (28): complete_phase_endpoint(), list_phases_endpoint(), next_phase_endpoint(), preview_phase_location_endpoint(), ActionLocationAssessment, AsyncSession, DriverLocationCapture, get (+20 more)
+
+### Community 156 - "FreightProof SA — Technical Full Picture v1.1"
+Cohesion: 0.05
+Nodes (40): 0.1 The five decisions that matter most, 0.2 The three biggest risks to production, 0.3 What the PP visit must answer (see §5.4 for the full agenda), 0.4 Decisions that belong to Bruce / the team (framed, with recommendations), 0. Executive summary (one page), 1.1 Component map, 1.2 The five-handshake state machine as implemented, 1.3 Journey lock and verification (+32 more)
+
+### Community 157 - "FP-155 Receiver QR Handover — Implementation Plan"
+Cohesion: 0.05
+Nodes (40): 1. `opened_at` — the rotation had to be able to stop, 2. `session_secret_hash` — browser binding against a forwarded link, 3. `force` — an escape hatch the pause made necessary, Addendum — what changed during implementation (2026-09-13), Backend — create, Backend — modify, Driver PWA, File Structure (+32 more)
+
+### Community 158 - "Signature Capture Component"
 Cohesion: 0.14
 Nodes (7): NormalizedPoint, SignaturePad(), SignaturePadProps, box, MockResizeObserver, roInstances, stubCtx
 
-### Community 119 - "Community 119"
-Cohesion: 0.13
-Nodes (13): CDVConfigParser, NSMutableArray, NSObject, NSString, CDVPluginManager, -getCommandInstance, -initWithParserviewControllerwebView, NSObject (+5 more)
-
-### Community 120 - "Community 120"
-Cohesion: 0.14
-Nodes (11): HederaReceipt, Minimal receipt fields needed by orchestration and persistence layers., Submit a string message to the specified HCS topic., Unit test: a stalled Hedera submit_hash() call must fail fast with HederaTimeout, Sanity check: a normal, fast call still works once wrapped in to_thread/wait_for, test_anchor_subject_raises_timeout_error_when_hedera_call_stalls(), test_anchor_subject_succeeds_within_timeout(), Stub the Hedera SDK wrapper so advance_departure/advance_confirmation anchor (+3 more)
-
-### Community 121 - "Community 121"
-Cohesion: 0.26
-Nodes (13): _channel(), _get_redis(), publish_event(), UUID, Org-wide realtime event bus for dispatcher live updates.  The dispatcher portal, Yield events published to an org's channel until the caller stops iterating., Publish, swallowing any Redis failure. Fail-open: the commit already succeeded a, Schedule an async publish from the synchronous commit-event handler. The commit (+5 more)
-
-### Community 122 - "Community 122"
-Cohesion: 0.22
-Nodes (12): _call(), _flatten(), _get_token(), main(), AsyncClient, DEVELOPER TOOL — observe which Parcel Perfect fields move as a waybill progresse, Flatten one getSingleWaybill result into comparable scalar keys.      Covers eve, One PP JSON GET. token is omitted only for the Auth methods. (+4 more)
-
-### Community 123 - "Community 123"
-Cohesion: 0.16
-Nodes (13): clear_dep_overrides(), _fake_outcome_with_hashes(), _make_user(), Integration tests: blockchain endpoint role gating (FP-115).  Tests that:   - GE, Normal dispatcher receives status but expected_hash and current_hash are None., Admin dispatcher receives the full payload including expected_hash and current_h, Ensure dependency overrides are torn down after each test., Normal dispatcher is blocked at require_admin_dispatcher — no DB query needed. (+5 more)
-
-### Community 124 - "Community 124"
-Cohesion: 0.24
-Nodes (12): _fake_driver_detail(), _fake_receipt(), _fake_trip_detail(), _fake_vehicle_detail(), _make_user(), Integration tests: receipts stripping on detail endpoints for non-admin dispatch, test_driver_detail_exposes_receipts_for_admin(), test_driver_detail_strips_receipts_for_dispatcher() (+4 more)
-
-### Community 125 - "Community 125"
-Cohesion: 0.14
-Nodes (11): Capacitor, -checkPermissions, -locationManagerdidChangeAuthorizationStatus, -locationManagerdidFailWithError, -locationManagerdidUpdateLocations, -requestPermissions, -checkPermissions, -locationManagerdidChangeAuthorizationStatus (+3 more)
-
-### Community 126 - "Community 126"
-Cohesion: 0.25
-Nodes (10): SLAPage(), thirtyDaysAgo(), todayStr(), DateRangePicker(), DateRangePickerProps, DEFAULT_PRESETS, Preset, SLAMetrics (+2 more)
-
-### Community 127 - "Community 127"
-Cohesion: 0.29
-Nodes (11): CoordFix(), PhaseLocationSection(), Coords, Geofence, geofenceOffsetMetres(), haversineMetres(), separationMetres(), CAPE_TOWN (+3 more)
-
-### Community 128 - "Community 128"
-Cohesion: 0.16
-Nodes (11): circleCtor, FakeCircle, FakeCircleOptions, FakeMap, GOOGLE_MAPS_API_KEY(), JHB_FIX, mapCtor, mockImportLibrary (+3 more)
-
-### Community 129 - "Community 129"
-Cohesion: 0.14
-Nodes (13): AppDelegate, -applicationcontinueUserActivityrestorationHandlerSWIFT_WARN_UNUSED_RESULT, -applicationDidBecomeActive, -applicationDidEnterBackground, -applicationdidFinishLaunchingWithOptionsSWIFT_WARN_UNUSED_RESULT, -applicationopenURLoptionsSWIFT_WARN_UNUSED_RESULT, -applicationWillEnterForeground, -applicationWillResignActive (+5 more)
-
-### Community 130 - "Community 130"
-Cohesion: 0.14
-Nodes (13): AppDelegate, -applicationcontinueUserActivityrestorationHandlerSWIFT_WARN_UNUSED_RESULT, -applicationDidBecomeActive, -applicationDidEnterBackground, -applicationdidFinishLaunchingWithOptionsSWIFT_WARN_UNUSED_RESULT, -applicationopenURLoptionsSWIFT_WARN_UNUSED_RESULT, -applicationWillEnterForeground, -applicationWillResignActive (+5 more)
-
-### Community 131 - "Community 131"
-Cohesion: 0.14
-Nodes (12): <CAPNotificationHandlerProtocol>, -didReceiveWithResponse, -willPresentWithNotificationSWIFT_WARN_UNUSED_RESULT, -getStatusBarStyleSWIFT_WARN_UNUSED_RESULTSWIFT_DEPRECATED_MSGstatusBarStyle, -getStatusBarVisibleSWIFT_WARN_UNUSED_RESULTSWIFT_DEPRECATED_MSGstatusBarVisible, -getUserInterfaceStyleSWIFT_WARN_UNUSED_RESULTSWIFT_DEPRECATED_MSGuserInterfaceStyle, -getWebViewSWIFT_WARN_UNUSED_RESULTSWIFT_DEPRECATED_MSGwebView, -isDevModeSWIFT_WARN_UNUSED_RESULTSWIFT_DEPRECATED_MSGisDevEnvironment (+4 more)
-
-### Community 132 - "Community 132"
-Cohesion: 0.14
-Nodes (14): CAPBridgeViewController, -canPerformUnwindSegueActionfromViewControllerwithSenderSWIFT_WARN_UNUSED_RESULT, -getServerBasePathSWIFT_WARN_UNUSED_RESULT, -initWithCoderOBJC_DESIGNATED_INITIALIZER, -initWithNibNamebundleOBJC_DESIGNATED_INITIALIZER, -loadView, -setServerBasePathWithPath, -viewDidLoad (+6 more)
-
-### Community 133 - "Community 133"
-Cohesion: 0.14
-Nodes (14): CAPBridgeViewController, -canPerformUnwindSegueActionfromViewControllerwithSenderSWIFT_WARN_UNUSED_RESULT, -getServerBasePathSWIFT_WARN_UNUSED_RESULT, -initWithCoderOBJC_DESIGNATED_INITIALIZER, -initWithNibNamebundleOBJC_DESIGNATED_INITIALIZER, -loadView, -setServerBasePathWithPath, -viewDidLoad (+6 more)
-
-### Community 134 - "Community 134"
+### Community 159 - "seed_dispatcher.py"
 Cohesion: 0.15
-Nodes (14): CAPPluginCallError, -initcodeerrordataOBJC_DESIGNATED_INITIALIZER, -initSWIFT_UNAVAILABLE, +newSWIFT_UNAVAILABLE_MSGinitisunavailable, CAPPluginCallResult, -initOBJC_DESIGNATED_INITIALIZER, -initSWIFT_UNAVAILABLE, +newSWIFT_UNAVAILABLE_MSGinitisunavailable (+6 more)
+Nodes (20): create_dispatcher_auth_user(), create_driver_auth_user(), UUID, Supabase Auth Admin API client. Server-side only — requires…, Create a Supabase Auth phone account for a new driver. Returns the Supabase…, Create a Supabase Auth email/password account for a dispatcher. `role` is…, main(), _parse_args() (+12 more)
 
-### Community 135 - "Community 135"
-Cohesion: 0.14
-Nodes (14): scripts, build, cap:open, cap:open:ios, cap:run, cap:run:ios, cap:sync, cap:sync:ios (+6 more)
+### Community 160 - "integrations/parcel_perfect.py"
+Cohesion: 0.08
+Nodes (23): _Depot, ParcelPerfectClient, PPUnsupportedError, PPWaybillNotFoundError, PPWaybillRef, Any, Exception, Parcel Perfect ecomService v28 API client. PP uses a three-step auth flow… (+15 more)
 
-### Community 136 - "Community 136"
-Cohesion: 0.23
-Nodes (12): _auth_headers(), _make_trip_payload(), override_get_db(), AsyncClient, AsyncSession, Integration tests: POST /api/v1/blockchain/verify covers all four VerifyStatus p, Build a valid POST /trips request body from seeded IDs., Verify against a subject UUID that has never been anchored → no_receipt. (+4 more)
+### Community 161 - "6. Findings (what is currently — sometimes subtly — wrong)"
+Cohesion: 0.05
+Nodes (39): 0. TL;DR — the findings that change what we do next, 1.1 What this means, 1.2 Value we're not yet extracting from the API we *do* have, 1. What the ecomService v28 actually offers vs what v7 assumes, 2. Trip creation direction & read-only policy, 3. Per-stop cargo tracking — polling logic, 4.1 Already known (confirming our own docs), 4.2 Not yet on anyone's list (+31 more)
 
-### Community 137 - "Community 137"
-Cohesion: 0.18
-Nodes (6): _fake_driver_read(), _fake_vehicle_read(), _make_user(), Integration tests: fleet mutation endpoints (POST/PATCH drivers & vehicles) are, test_create_driver_admin_succeeds(), test_update_vehicle_admin_succeeds()
+### Community 162 - "geofence_service.py"
+Cohesion: 0.29
+Nodes (7): GeofenceVerdict, GeofenceVerdictReason, Enum, str, Geofence corroboration verdict for FP-68: does a Pulsit tracker fix agree with…, Why the verdict came out the way it did. Local to this module — nothing here is…, The outcome of comparing one fix against one precinct's geofence.…
 
-### Community 138 - "Community 138"
+### Community 163 - "test_verify_returns_verified_for_anchored_trip"
 Cohesion: 0.21
-Nodes (12): override_get_db(), AsyncClient, Integration tests for GET /api/v1/trips/{trip_id}/artifacts (dispatcher evidence, Another operator's trip must be indistinguishable from a nonexistent one., Drivers must never enumerate a trip's evidence., Storage is out of scope for endpoint tests — Task 1 covers signing itself., stub_signed_urls(), test_list_artifacts_404s_across_organisations() (+4 more)
+Nodes (13): _make_trip_payload(), override_get_db(), AsyncClient, asyncio, AsyncSession, Build a valid POST /trips request body from seeded IDs., A trip the caller can see, that has never been anchored → 200 no_receipt.…, Both are 404, and they are the SAME 404 — that indistinguishability is the… (+5 more)
 
-### Community 139 - "Community 139"
-Cohesion: 0.22
-Nodes (9): kindConfig, ToastData, ToastItem(), ToastItemProps, ToastKind, ToastViewport(), ToastViewportProps, ToastContext (+1 more)
+### Community 164 - "Project Roadmap Plans"
+Cohesion: 0.14
+Nodes (14): Client Portal Application, Dispatcher Frontend Application, Driver PWA Application, Guard Page Application, Dispatcher Live Updates SSE Plan, Scan-Driven Loading/Unloading Plan, In-Transit Driver Owned Arrival Plan, Lifecycle Audit Verification Plan (+6 more)
 
-### Community 140 - "Community 140"
+### Community 165 - "Trailer Analytics — Per-Vehicle Breakdown Attribution — Build Spec"
+Cohesion: 0.05
+Nodes (38): 0. Decisions confirmed with Tom (2026-09-12), 10. Options considered and rejected (for the record and for examination), 11. Known limitations carried forward, 12. Out of scope, 13. Build record, 1. The problem in one paragraph, 2. What is and isn't affected, 3. Confirmed current repo state (2026-09-12) (+30 more)
+
+### Community 166 - "scripts"
+Cohesion: 0.25
+Nodes (8): scripts, build, dev, lint, start, test, test:watch, type-check
+
+### Community 167 - "compilerOptions"
+Cohesion: 0.07
+Nodes (29): compilerOptions, allowJs, esModuleInterop, incremental, isolatedModules, jsx, lib, module (+21 more)
+
+### Community 168 - "compilerOptions"
+Cohesion: 0.06
+Nodes (30): compilerOptions, allowJs, esModuleInterop, incremental, isolatedModules, jsx, lib, module (+22 more)
+
+### Community 169 - "Phase Refactor — Stage 6: Lifecycle Hardening, Integration & Demo (6.0 – 6.7)"
+Cohesion: 0.05
+Nodes (38): 6.2a — Empty-leg trips can reach `closed` *(F1)*, 6.2b — 🆕 Scope the loading count to its own stop *(F13 — fires on the demo trip)*, Also new, and relevant to the demo, Baselines — measured 2026-08-05 on `Phase-refactor` @ `c4205d6`, D10 — 🆕 A trip must carry a schedule at creation, D1 — `cancel` and `override` are two different actions. `release` is not built., D2 — Two endpoints, on their own dispatcher-scoped router, D3 — An override does not touch `anchor_status` (+30 more)
+
+### Community 170 - "compilerOptions"
+Cohesion: 0.08
+Nodes (23): compilerOptions, allowJs, esModuleInterop, isolatedModules, lib, module, moduleResolution, noEmit (+15 more)
+
+### Community 171 - "Trip Status UI"
 Cohesion: 0.15
-Nodes (13): <CDVCommandDelegate>, -evalJs, -evalJsHelper2, -evalJsscheduledOnRunLoop, -getCommandInstance, -pathForResource, -runInBackground, -sendPluginResultcallbackId (+5 more)
+Nodes (13): Chip, PHASE_NAMES, PhaseStatus, TripSummary, ChecklistRow, progressHint, PhaseChain, TripIdStamp (+5 more)
 
-### Community 141 - "Community 141"
+### Community 172 - "API Response Models"
 Cohesion: 0.15
-Nodes (13): AnchorStatus enum, PhaseEvent model, PhaseStatus enum, PhaseType enum, build_phase_plan function, _find_departure_for_leg helper, PhaseCompleteRequest union, PhaseEventRead schema (+5 more)
+Nodes (13): IdvsStatus, TripType, VehicleType, DriverDetailResponse, DriverRead, TripBase, TripConsignmentInput, TripListItemResponse (+5 more)
 
-### Community 142 - "Community 142"
+### Community 173 - "Parcel Perfect Mocks"
+Cohesion: 0.15
+Nodes (13): get_mock_state_store, MockParcelPerfectClient, PPContents, PPTrack, PPWaybillDetails, PPWaybillRef, PPWaybillResponse, ParcelPerfectClient (+5 more)
+
+### Community 174 - "Design System Refresh Implementation Plan"
+Cohesion: 0.05
+Nodes (37): 4a — dispatcher/app/globals.css, 4b — driver-pwa/app/globals.css, 4c — dispatcher/app/layout.tsx, 4d — driver-pwa/app/layout.tsx, Button, Card, DataTable, DateRangePicker (+29 more)
+
+### Community 175 - "test_fleet_mutations_gating.py"
+Cohesion: 0.20
+Nodes (6): clear_dep_overrides(), _fake_driver_read(), _fake_vehicle_read(), Integration tests: fleet mutation endpoints (POST/PATCH drivers & vehicles) are…, test_create_driver_admin_succeeds(), test_update_vehicle_admin_succeeds()
+
+### Community 176 - "Parcel Perfect API Tests"
 Cohesion: 0.23
-Nodes (12): JWT + Supabase Auth, Backend API Architecture (FastAPI), Shared Files Requiring Coordination, TypeScript / Python Type Enforcement, Design System Token Map, Design System Typography (Inter), Company Device Policy (Android Standardisation), Driver PWA Page Structure (Handshake-Based) (+4 more)
+Nodes (12): force_pp_mock(), AsyncClient, Integration tests for the dispatcher-facing /pp lookup endpoints. Mirrors the…, These endpoints are documented as mock-mode assertions — pin PP_USE_MOCK=True…, seed_dispatcher(), test_capabilities_no_auth_returns_403(), test_capabilities_returns_manifest_lookup_true(), test_get_manifest_returns_all_waybills_on_manifest() (+4 more)
 
-### Community 143 - "Community 143"
-Cohesion: 0.18
-Nodes (12): Cross-Dock Hub Operations, Handshake Event (Custody Checkpoint), Exception Types (17 categories), Load Configuration & Weight Compliance, Proof of Delivery (Two-Tier Model), Return Leg Tracking (Empty vs Backload), In-Scope Capabilities, Three-Layer Seal Security Stack (+4 more)
+### Community 177 - "Phase Refactor — Stage 2: The Phase Engine"
+Cohesion: 0.05
+Nodes (37): 2.1 — Plan generation at trip creation, 2.2 — The engine: shared core + five renamed wrappers, 2.3 — `next-phase` + `current_phase`/`current_stop` maintenance, 2.4 — Idempotent completion, 2.5 — Fail-open anchors at departure and confirmation, 2.6 — 🔴 Re-point seal continuity from loading to departure, 2.7 — Canonical payload re-pointing, 2.x — Suite numbers after Stage 2 (+29 more)
 
-### Community 144 - "Community 144"
-Cohesion: 0.26
-Nodes (11): get_pp_client(), Return the appropriate PP client based on settings.PP_USE_MOCK.      Callers sho, get_capabilities(), get_manifest_summaries(), get_waybill_summary(), PPCapabilities, PPWaybillSummary, Wizard-time PP lookups. Layering: orchestration → integrations only. (+3 more)
+### Community 178 - "Auth Token Validation"
+Cohesion: 0.24
+Nodes (11): _fetch_jwks(), _get_jwks(), _get_signing_key(), Return the JWK for kid. Forces one refresh on cache miss to handle key rotation., Network request to Supabase JWKS. Called only by _get_jwks., Return Supabase JWKS, re-fetching if the TTL has expired., MonkeyPatch, Unit tests for JWKS TTL cache and key-rotation refresh. (+3 more)
 
-### Community 145 - "Community 145"
+### Community 179 - "Database Reset Tool"
 Cohesion: 0.23
-Nodes (8): ParcelPerfectClient, PPUnsupportedError, Raised when a capability doesn't exist on the real PP v28 API., Async client for the Parcel Perfect ecomService v28 JSON API.      Auth is perfo, Execute a single PP JSON GET request and return the `results` list.          `to, Return a valid PP token_id, running the auth flow if not yet cached.          If, Fetch a waybill from Parcel Perfect and return a typed PPWaybillResponse., test_real_client_manifest_lookup_unsupported()
+Nodes (11): _assert_target(), _counts(), _deleted(), main(), Any, AsyncSession, DEVELOPER TOOL — delete every lifecycle row from the refactor database. A trip…, Refuse to run unless DATABASE_URL names the expected Supabase project. Checks… (+3 more)
 
-### Community 146 - "Community 146"
-Cohesion: 0.23
-Nodes (11): _assert_target(), _counts(), _deleted(), main(), Any, AsyncSession, DEVELOPER TOOL — delete every lifecycle row from the refactor database.  A trip, Refuse to run unless DATABASE_URL names the expected Supabase project.      Chec (+3 more)
+### Community 180 - "Phase Refactor — Stage 3: Endpoints & Schemas (3.1 / 3.2 + NEW-9)"
+Cohesion: 0.05
+Nodes (37): 3.x — Suite numbers after Stage 3, Carried from Stage 2's Findings ledger — restated because they bind this stage directly, Carried into Stage 4 / later, Decisions S1–S8 — outcome, Decisions taken while writing this plan, Defects found in this plan's own literal code (fixed during execution), Deferred to their own plan, post-Go/No-Go — recorded here in full so they are not lost, Done when (+29 more)
 
-### Community 147 - "Community 147"
-Cohesion: 0.26
-Nodes (11): override_get_db(), AsyncClient, AsyncSession, Integration tests for GET /api/v1/drivers., seed_driver(), test_create_driver_appears_in_subsequent_list(), test_create_driver_invalid_id_number_returns_422(), test_create_driver_returns_201_with_pending_status() (+3 more)
+### Community 181 - "HandoverPageClient.tsx"
+Cohesion: 0.09
+Nodes (27): capturePosition(), HandoverPageClient(), StashedIdentity, stashIdentity(), Status, PageProps, ConsentGate(), ConsentGateProps (+19 more)
 
-### Community 148 - "Community 148"
-Cohesion: 0.26
-Nodes (11): override_get_db(), AsyncClient, AsyncSession, Integration tests for GET /api/v1/vehicles., seed_vehicles(), test_create_vehicle_appears_in_subsequent_list(), test_create_vehicle_invalid_type_returns_422(), test_create_vehicle_returns_201() (+3 more)
+### Community 182 - "Scan-Driven Loading & Unloading — Design"
+Cohesion: 0.06
+Nodes (35): 0.1 Hard dependency: the scan feed does not exist yet, 0.2 Three amendments to the Stage 4 plan, 0.3 Isolation breach — coordinate before starting, 0. Prerequisites and amendments — read before planning, 10. Open question — `departure/3-waybill`, 1. Why, 2.1 The storage rule — read this before implementing, 2. Evidence model (+27 more)
 
-### Community 149 - "Community 149"
-Cohesion: 0.29
-Nodes (11): _outbox(), Driver, Trip, Stage 3 emit tests — the three orchestration write paths enqueue the right realt, Task 6.1 / D9: neither of the two lifecycle exits may leave a dispatcher's     s, Seed one single-leg trip + its full pending phase plan (trip_creation completed), _seed_trip(), test_cancel_and_override_enqueue_a_realtime_event() (+3 more)
+### Community 183 - "Phase Override UI"
+Cohesion: 0.18
+Nodes (11): Button, TextArea, ApiError, overridePhase, ToastProvider, useToast, @testing-library/react, override_phase_endpoint (+3 more)
 
-### Community 150 - "Community 150"
+### Community 184 - "Driver PWA UX Fixes Implementation Plan"
+Cohesion: 0.06
+Nodes (34): 1a. Early-release hint (the walkthrough's worst finding), 1b. Label overflow, 1c. Tap-to-confirm accessibility mode, 1d. Real support contact keys, 2a. Null reference seal must not auto-flag the driver, 2b. Raw GPS coordinates, 2c. Photo preview framing, 3a. Precinct name helper (read-only use of shared mocks) (+26 more)
+
+### Community 185 - "action_location_service.py"
+Cohesion: 0.11
+Nodes (31): build_capture_assessment(), build_checkpoint_assessment(), build_phase_assessment(), _find_existing_separation(), _format_metres(), _load_horse_device_id_for_preview(), _load_precinct_for_stop(), preview_phase_location() (+23 more)
+
+### Community 186 - "record_checkpoint_corroboration"
+Cohesion: 0.16
+Nodes (14): _load_horse_device_id(), _load_precinct_for_phase(), _load_trailer_devices(), AsyncSession, Checkpoint, datetime, Precinct, Trip (+6 more)
+
+### Community 187 - "Parcel Perfect Monitor"
+Cohesion: 0.31
+Nodes (10): _call(), _flatten(), _get_token(), main(), AsyncClient, DEVELOPER TOOL — observe which Parcel Perfect fields move as a waybill…, Flatten one getSingleWaybill result into comparable scalar keys. Covers every…, One PP JSON GET. token is omitted only for the Auth methods. (+2 more)
+
+### Community 188 - "HederaReceipt"
+Cohesion: 0.06
+Nodes (54): HederaReceipt, Minimal receipt fields needed by orchestration and persistence layers., _auth_headers(), _mock_hedera(), _multi_stop_payload(), AsyncClient, Integration tests for FP-112 multi-stop trip creation (POST /api/v1/trips).…, A multi-stop trip has no single client_organization_id (FP-112 A.2). (+46 more)
+
+### Community 189 - "Phase Model Schema"
+Cohesion: 0.18
+Nodes (9): Unit tests for the phase-refactor's data-model changes (parent plan D3/D4/D6).…, D3/D4: trip_stop_id (nullable), anchor_status (non-nullable), idempotency_key…, uq_phase_events_trip_stop_type replaces the old (trip_id, phase_type)…, D6: current_phase and current_stop exist on Trip and are both nullable., TripException.phase_event_id and TrailerGpsSnapshot.phase_event_id both FK to…, test_exception_and_gps_snapshot_point_at_phase_events(), test_phase_event_has_trip_stop_anchor_status_idempotency_key(), test_phase_event_uniqueness_is_per_stop() (+1 more)
+
+### Community 190 - "FP-156 — Dispatcher Analytics Screen — Build Spec"
+Cohesion: 0.06
+Nodes (33): 0.1 PLAN decisions — confirmed by Tom, 2026-09-11, 0. Review corrections (2026-09-11), 1. Confirmed current repo state (verified 2026-09-11), 2. Cross-cutting rules inherited from FP-153 — not re-decided, just carried forward, 3.1 New files, 3.2 Auth and org scoping — confirmed pattern, not invented, 3.3 Endpoints, 3.4 No Alembic, anywhere, in this ticket (+25 more)
+
+### Community 191 - "devDependencies"
+Cohesion: 0.06
+Nodes (33): dependencies, next, react, react-dom, devDependencies, autoprefixer, postcss, tailwindcss (+25 more)
+
+### Community 192 - "FreightProof SA — DB Schema Implementation Plan (FP-20, FP-21, FP-22)"
+Cohesion: 0.06
+Nodes (32): Files, FreightProof SA — DB Schema Implementation Plan (FP-20, FP-21, FP-22), ⚠️ Path corrections from spec, Self-review checklist (run before marking this branch ready for review), ⚠️ Shared file, Task 10: Transit models, Task 11: SLA model, Task 12: Update models `__init__.py` ⚠️ SHARED FILE (+24 more)
+
+### Community 193 - "Phase Refactor Roadmap"
+Cohesion: 0.18
+Nodes (11): Dispatcher Forensic View UX Plan, Audit Fix Plan, Phase Model Refactor Parent Plan, Phase Refactor Stage 0 - Test Infra, Phase Refactor Stage 1 - Data Model, Phase Refactor Stage 2 - Phase Engine, Phase Refactor Stage 3 - Endpoints, Phase Refactor Stage 4 - Dispatcher (+3 more)
+
+### Community 194 - "System Documentation"
 Cohesion: 0.20
-Nodes (4): _FakePubSub, _FakeRedis, test_publish_event_publishes_json_to_the_org_channel(), test_subscribe_yields_parsed_events_and_cleans_up()
+Nodes (10): Backend Architecture Layers, Domain Knowledge - Phase Model, Prime Directive - Do exactly what asked, FreightProof SA Project, Technology Standards, Workflow Read-Plan-Execute-Report, System Architecture Overview, South African Cargo Theft Problem (+2 more)
 
-### Community 151 - "Community 151"
+### Community 195 - "Frontend Design Roadmap"
+Cohesion: 0.20
+Nodes (10): Frontend Design System, Driver PWA Redesign Plan, Driver Phone Authentication Plan, Driver PWA Functional Part 2, Driver PWA Functional Part 3, Driver PWA Functional Part 4, Driver PWA Functional Part 1, Dispatcher UI Redesign Spec (+2 more)
+
+### Community 196 - "Database Seeding Service"
+Cohesion: 0.33
+Nodes (10): Organization, Precinct, Driver, User, Vehicle, create_dispatcher_auth_user, create_driver_auth_user, seed (+2 more)
+
+### Community 197 - "anchor_phase_event"
+Cohesion: 0.08
+Nodes (34): _anchor_or_fail_open(), anchor_phase_event(), _dispatch_anchor(), Any, BlockchainReceiptType, Load a phase event by id and anchor it. Returns whether a receipt was written.…, Attempt one overdue receipt; None means no eligible unlocked row remains. Each…, Queue this event's anchor for the worker, AFTER this request's transaction… (+26 more)
+
+### Community 198 - "Findings ledger"
+Cohesion: 0.06
+Nodes (31): 0.1 — Decisions taken during execution (2026-07-27, Ciaran), 0.1 — 🔴 Finding F1: the suite contains two incompatible auth conventions, 0.1 — Finding F2: 12 genuine, auth-independent failures, 0.1 — 🔴 Finding F3: unmocked Hedera network calls in the test suite, 0.1 — Finding F4: minor, 0.1 — Skip floor · **executed 2026-07-27**, 0.1 — Turn on the 133 skipped tests · 🔴 gates everything · **timebox: 1 day**, 0.2 — Add a driver-pwa CI job (+23 more)
+
+### Community 199 - "Phase Refactor — Stage 1: Data Model, Migration, Seeder"
+Cohesion: 0.06
+Nodes (31): 1.1 — `enums.py`: `PhaseType`, `PhaseStatus`, `AnchorStatus`, coarse `TripStatus`, `SubjectType.PHASE_EVENT`, 1.2 — Models: `PhaseEvent`, `Trip` denorm columns, re-pointed FKs, and the identifier ripple, 1.3 — Alembic migration, RLS work enumerated, 1.3 — RLS after-numbers, 1.4 — Delete `validate_sequence_number`, 1.5 — Seeders: real-auth reference data, lifecycle reset, phase-shaped trips, test-auth conversion, 1.5e — What the auth conversion did and did not fix, 1.x — Suite numbers after Stage 1 (+23 more)
+
+### Community 200 - "Concurrent Session Management"
+Cohesion: 0.20
+Nodes (10): asyncio, One slow endpoint must not hold the session row hostage. Every request from one…, The driver-side twin of the dispatcher race: driver_sessions is keyed on…, Newest login wins, even when the two devices race for an unclaimed account. The…, The driver-side twin of the stall above — a photo upload or an anchor is…, test_a_slow_driver_request_does_not_stall_its_siblings(), test_a_slow_request_does_not_stall_its_siblings(), test_parallel_first_requests_from_one_handset_all_succeed() (+2 more)
+
+### Community 201 - "headers"
+Cohesion: 0.19
+Nodes (30): headers(), _bucket(), _day(), operator(), override_get_db(), _params(), _period_params(), Any (+22 more)
+
+### Community 202 - "test_fleet_on_time.py"
 Cohesion: 0.17
-Nodes (12): CAPInstanceLoggingBehavior, CAPInstanceType, CAPInstanceWarning, CAPInstanceDescriptor, -initAsDefault, -initAtLocationconfigurationcordovaConfiguration, NSArray, NSObject (+4 more)
+Nodes (30): _day(), _load_migration(), _month_back(), operator(), override_get_db(), _params(), Any, AsyncClient (+22 more)
 
-### Community 152 - "Community 152"
+### Community 203 - "test_fleet_problems.py"
+Cohesion: 0.18
+Nodes (30): _day(), operator(), override_get_db(), _params(), _problem(), Any, AsyncClient, AsyncSession (+22 more)
+
+### Community 204 - "FreightProof SA — Work-Package Spec & Production-Readiness Guide"
+Cohesion: 0.06
+Nodes (30): 0. How to read this document, 1. The dependency graph (do them in this order), 2. The work packages, 3.1 Already in the stack, but not wired up / not running work, 3.2 Integrations that don't exist yet (no code at all), 3.3 CI / CD / packaging (none of this exists), 3.4 Dead config to remove or wire (hygiene), 3. Technologies still to be set up for production (+22 more)
+
+### Community 205 - "review.py"
+Cohesion: 0.14
+Nodes (29): build_review(), critical_pairs(), _hours(), _in_organisation(), _not_legacy(), outcomes(), AsyncSession, ColumnElement (+21 more)
+
+### Community 206 - "env.py"
+Cohesion: 0.25
+Nodes (10): do_run_migrations(), include_object(), Entry point for online (live connection) migrations., Filter what autogenerate is allowed to consider. Deliberately narrow. This is a…, Run migrations without a live DB connection (outputs SQL to stdout)., Create an async engine and run migrations inside a sync wrapper. asyncpg cannot…, run_async_migrations(), run_migrations_offline() (+2 more)
+
+### Community 207 - "Concurrent Consignment Claims"
+Cohesion: 0.25
+Nodes (9): _claim(), _consignments_for(), UUID, One dispatcher's attempt: its own session, its own transaction, real commit., Read the committed truth from a third, uninvolved session., INSERT/INSERT: two dispatchers claim an unseen waybill at the same instant.…, UPDATE/UPDATE: the row already exists, unassigned, and both callers claim it.…, test_concurrent_claims_on_new_waybill_yield_one_consignment() (+1 more)
+
+### Community 208 - "TripDetailPage"
+Cohesion: 0.15
+Nodes (14): PhaseDescriptor type, Trip type, TripDetailPage, ActivationDetail, ConfirmationDetail, DepartureDetail, ExceptionEvidence, InTransitTimeline (+6 more)
+
+### Community 209 - "test_analytics_service.py"
+Cohesion: 0.11
+Nodes (29): attach_driver_names(), attach_facility_names(), attach_lane_names(), _extend(), BaseModel, DriverMetrics, FacilityMetrics, LaneMetrics (+21 more)
+
+### Community 210 - "test_trip_history.py"
+Cohesion: 0.25
+Nodes (29): _headers(), HistorySeed, _make_trip(), override_get_db(), AsyncClient, AsyncSession, MonkeyPatch, parametrize (+21 more)
+
+### Community 211 - "FreightProof SA — Hardening & Iteration 2 Foundations Plan"
+Cohesion: 0.07
+Nodes (29): Deferred — Needs Team Design Session Before Any Code, Final Verification (run once after all four phases), FreightProof SA — Hardening & Iteration 2 Foundations Plan, ITER2-2 — Celery async blockchain anchoring, ITER2-3 — Handshake transition service, ITER2-5 — TripStop / multi-leg model (FP-112), Phase 1 — End-of-Phase Tests, Phase 1 — Quick Wins (+21 more)
+
+### Community 212 - "Phase Model Documentation"
+Cohesion: 0.25
+Nodes (8): Phase Model Overview, Evidence Captured per Phase, Phase Model Findings and Gaps, Phase Model One-Sentence Core, Phase Completion Logic, Phase Plan Generator Function, Phase Model Three Core Ideas, Trip Creation Process Steps
+
+### Community 213 - "Environment Configuration Checks"
+Cohesion: 0.25
+Nodes (8): check_database_url, check_db_connection, check_frontend_env, check_supabase_api, key_identity, main, project_ref_from_database_url, project_ref_from_supabase_url
+
+### Community 214 - "health_check"
+Cohesion: 0.13
+Nodes (14): BaseHTTPMiddleware, Response, Security-relevant response headers, applied to every response. Not one of these…, Adds standard hardening headers to every response, including error responses.…, SecurityHeadersMiddleware, DependencyHealth, health_check(), HealthResponse (+6 more)
+
+### Community 215 - "Patch Schema Validation"
+Cohesion: 0.32
+Nodes (8): _accepts_null(), BaseModel, parametrize, True if `body` validates an explicit null for `field`., The fix must not have made any field required — PATCH is partial by definition., test_every_patch_field_is_still_omissible(), test_patch_schema_nullability_matches_the_model(), test_precinct_patch_rejects_an_explicit_null_on_a_not_null_column()
+
+### Community 216 - "Evidence Capture Components"
+Cohesion: 0.25
+Nodes (8): CameraCapture component, DigitalSignature component, SignaturePad component, CameraCapture tests, DigitalSignature tests, SignaturePad tests, Phase test fixtures, Evidence draft types
+
+### Community 217 - "Android Unit Tests"
+Cohesion: 0.36
+Nodes (4): ExampleInstrumentedTest, ExampleUnitTest, org.junit.runner.RunWith, org.junit.Test
+
+### Community 218 - "anchor_subject"
+Cohesion: 0.25
+Nodes (8): anchor_subject, canonicalize_payload, compute_payload_hash, hedera service, _SdkHederaAdapter, create_precinct, Hedera HCS, POPIA compliance
+
+### Community 219 - "get_read_only_db"
+Cohesion: 0.67
+Nodes (3): get_read_only_db(), AsyncSession, FastAPI dependency for handlers that only read, and must stay bounded.…
+
+### Community 220 - "Phase Model — Replacing "Handshakes" with "Phases" (Assessment + Redesign Spec)"
+Cohesion: 0.07
+Nodes (29): 10. Architecture recommendation (how to implement without paying twice), 11. Refactor feasibility & sizing, 12. Is it worth it? (honest cost/benefit), 13. Risks & cross-dev impact, 14. What maps to what (quick reference for the team), 15. Open questions, 16. Recommendation & next steps, 1. TL;DR — the verdict up front (+21 more)
+
+### Community 221 - "Analytics Read Models"
 Cohesion: 0.29
-Nodes (8): SettingsPage(), useTapToConfirm(), Switch(), SwitchProps, getTapToConfirmPref(), listeners, setTapToConfirmPref(), subscribeTapToConfirmPref()
+Nodes (3): _dwell_columns(), FP-153 analytics read models: five materialized views over the evidence ledger…, One sum/count pair per measured phase — generated because the five are…
 
-### Community 153 - "Community 153"
+### Community 222 - "Receiver Identity Verification — Design"
+Cohesion: 0.07
+Nodes (29): 10. Components, 11. API surface, 12. POPIA, 13. Error handling and degradation, 14. Configuration, 15. Testing, 16. Staging, 17. Open actions (not code) (+21 more)
+
+### Community 223 - "compilerOptions"
+Cohesion: 0.07
+Nodes (29): compilerOptions, allowJs, esModuleInterop, incremental, isolatedModules, jsx, lib, module (+21 more)
+
+### Community 224 - ".delete"
+Cohesion: 0.08
+Nodes (31): _delete_committed_checkpoint_race_world(), AsyncSession, UUID, Two sessions cross the real replay lookup together and recover the unique race.…, test_concurrent_checkpoint_replay_keeps_one_checkpoint_and_one_separation_finding(), AsyncSession, Two attempts (the driver app's own retry racing an earlier one still in flight,…, Delete this module's committed rows, children before parents. (+23 more)
+
+### Community 225 - "Operator"
 Cohesion: 0.17
-Nodes (11): CAPNotificationHandlerProtocol, -checkPermissions, -didFailToRegisterForRemoteNotificationsWithErrorWithNotification, -didRegisterForRemoteNotificationsWithDeviceTokenWithNotification, -load, NSObject, -requestPermissions, PushNotificationsHandler (+3 more)
+Nodes (28): Operator, operator_from_seed(), other_operator(), Any, The same plan with the first step of `phase_type` changed., A second operator, to prove one organisation never sees another's numbers., replace_step(), _day() (+20 more)
 
-### Community 154 - "Community 154"
-Cohesion: 0.17
-Nodes (11): CAPNotificationHandlerProtocol, -checkPermissions, -didFailToRegisterForRemoteNotificationsWithErrorWithNotification, -didRegisterForRemoteNotificationsWithDeviceTokenWithNotification, -load, NSObject, -requestPermissions, PushNotificationsHandler (+3 more)
+### Community 226 - "on_time.py"
+Cohesion: 0.14
+Nodes (27): arrival_delay(), _bands(), build_on_time(), departure_delay(), lateness(), _median(), _minutes(), plan_delta() (+19 more)
 
-### Community 155 - "Community 155"
-Cohesion: 0.17
-Nodes (9): additionalPrecacheEntries, MOCK_TRIP_IDS, nextConfig, PHASE_ROUTES, PRECACHED_ROUTES, STATIC_ROUTES, TRIP_DETAIL_ROUTES, { version: packageJsonVersion } (+1 more)
+### Community 227 - "STAGE A — Backend foundations"
+Cohesion: 0.07
+Nodes (27): File map, Final verification, Migrations, New .env keys, Ordering rationale — read before resequencing, Out of scope — do not build, Prerequisite — SATISFIED 2026-08-06, Scan-Driven Loading & Unloading — Implementation Plan (+19 more)
 
-### Community 156 - "Community 156"
-Cohesion: 0.20
-Nodes (11): close_scan_session(), Close the scan session for every consignment at this stop.      Drives the mock, get_scan_feed(), Return the configured scan feed. Mirrors get_pp_client().      Callers depend on, MonkeyPatch, No live warehouse feed exists yet — failing loudly beats silently mocking., store(), test_factory_raises_when_no_real_feed_exists() (+3 more)
+### Community 228 - "Part A — Verification"
+Cohesion: 0.07
+Nodes (27): A dirty test DB manufactures fake failures, Environment — read this first, it will otherwise cost you an afternoon, Implementation constraints — all four are load-bearing, Integration tests skip silently, Part A — Verification, Part B — Scope fences, Part C — Shared files, Part D — Dev data (+19 more)
 
-### Community 157 - "Community 157"
-Cohesion: 0.22
-Nodes (6): get_mock_state_store(), Return the mock-state store. Mirrors get_pp_client()'s factory shape., Batched is_scan_session_closed: one answer per query, in order.          The pha, Simulate the warehouse operator closing the scan session. Dev panel only., One "is this session closed?" question, so many can be asked at once.      Froze, ScanSessionQuery
+### Community 229 - "Precinct Create, Edit & Anchor Implementation Plan"
+Cohesion: 0.07
+Nodes (27): Anchoring design, Backend, Context an engineer joining this task needs, Cross-dev risk, Decisions taken, File Structure, Final verification, Findings that change the work (+19 more)
 
-### Community 158 - "Community 158"
-Cohesion: 0.20
-Nodes (11): is_before_scheduled_day(), operating_day(), date, datetime, The calendar date `moment` falls on in the operator's local timezone.      A nai, True when `now` falls on an EARLIER operating day than `scheduled`.      Strictl, test_is_before_scheduled_day_allows_a_late_start(), test_is_before_scheduled_day_allows_any_time_on_the_scheduled_day() (+3 more)
-
-### Community 159 - "Community 159"
-Cohesion: 0.25
-Nodes (10): _phase_row(), AsyncClient, PhaseType, Hub-to-hub checkpoint for the driver-submitted arrival attestation (Task 7 of do, The V3 strand from the lifecycle audit, now structurally closed.      The strand, The reason this change exists.      Before this change, in_transit was auto-comp, activation -> loading -> departure -> arrival -> unloading -> confirmation,, test_arrival_timestamp_precedes_the_unloading_submission() (+2 more)
-
-### Community 160 - "Community 160"
-Cohesion: 0.25
-Nodes (10): force_pp_mock(), override_get_db(), AsyncClient, Integration tests for the dispatcher-facing /pp lookup endpoints.  Mirrors the a, These endpoints are documented as mock-mode assertions — pin PP_USE_MOCK=True, test_capabilities_no_auth_returns_403(), test_capabilities_returns_manifest_lookup_true(), test_get_manifest_returns_all_waybills_on_manifest() (+2 more)
-
-### Community 161 - "Community 161"
-Cohesion: 0.18
-Nodes (9): Unit tests for the phase-refactor's data-model changes (parent plan D3/D4/D6)., D3/D4: trip_stop_id (nullable), anchor_status (non-nullable), idempotency_key ex, uq_phase_events_trip_stop_type replaces the old (trip_id, phase_type) constraint, D6: current_phase and current_stop exist on Trip and are both nullable., TripException.phase_event_id and TrailerGpsSnapshot.phase_event_id both FK to ph, test_exception_and_gps_snapshot_point_at_phase_events(), test_phase_event_has_trip_stop_anchor_status_idempotency_key(), test_phase_event_uniqueness_is_per_stop() (+1 more)
-
-### Community 162 - "Community 162"
-Cohesion: 0.18
-Nodes (11): Any, The scan-out session staged in FULL (3/3) and closed, with     scan_service.inge, Only 2 of 3 barcodes staged, with ingest_scans already run — so     scan_service, Session closed with NOTHING staged. ingest_scans is run against the     empty fe, All 3 parcels scanned OUT at origin and all 3 scanned IN at destination —     th, Only 2 of 3 barcodes scanned IN at destination — the theft case., ready_to_confirm(), ready_to_confirm_short() (+3 more)
-
-### Community 163 - "Community 163"
-Cohesion: 0.22
-Nodes (7): mockPush, mockUseTrip, mockCheckpoints, TRIP_0041_ID, TRIP_0042_ID, Checkpoint, CheckpointId
-
-### Community 164 - "Community 164"
-Cohesion: 0.18
-Nodes (9): createdTrip, mockFetchMyTrip, mockFetchMyTrips, mockNotify, mockPush, mockSearchParams, mockUseTrip, NOW (+1 more)
-
-### Community 165 - "Community 165"
-Cohesion: 0.18
-Nodes (10): CAPCameraPlugin, -imagePickerControllerDidCancel, -imagePickerControllerdidFinishPickingMediaWithInfo, -popoverPresentationControllerDidDismissPopover, -presentationControllerDidDismiss, -checkPermissions, -requestPermissions, UIImagePickerControllerDelegate (+2 more)
-
-### Community 166 - "Community 166"
-Cohesion: 0.18
-Nodes (10): CAPCameraPlugin, -imagePickerControllerDidCancel, -imagePickerControllerdidFinishPickingMediaWithInfo, -popoverPresentationControllerDidDismissPopover, -presentationControllerDidDismiss, -checkPermissions, -requestPermissions, UIImagePickerControllerDelegate (+2 more)
-
-### Community 167 - "Community 167"
-Cohesion: 0.27
-Nodes (8): diff_critical_fields(), Any, Critical-fields lists for vehicle/driver mutations.  A field is 'critical' if a, Return {field: {"from": old, "to": new}} for changed critical fields, or None., test_diff_handles_missing_keys_as_none(), test_diff_multiple_critical_fields(), test_diff_returns_diff_when_critical_changed(), test_diff_returns_none_when_no_critical_change()
-
-### Community 168 - "Community 168"
-Cohesion: 0.22
-Nodes (10): _drain_outbox(), _on_commit(), _on_rollback(), Any, Pop the outbox off a session's info dict and hand each queued event to ``emit``., SQLAlchemy after_commit handler — publishes everything the request queued., SQLAlchemy after_rollback handler — a rolled-back request publishes nothing., Attach the commit/rollback listeners once, at app startup. Idempotent so repeate (+2 more)
-
-### Community 169 - "Community 169"
-Cohesion: 0.20
-Nodes (10): Anomaly recorded at any point in a trip — system-detected, driver-raised, or dis, TripException, scan_service already raised this at ingest. advance_loading must not raise a, The backstop's whole reason for existing. scan_service guards on     `if events, The three-way mismatch verdict is unchanged when driver_visual_count is     abse, test_a_parcel_lost_in_transit_raises_a_scoped_mismatch_with_no_visual_count(), test_a_session_closed_with_nothing_scanned_still_raises(), test_a_short_scan_produces_exactly_one_exception() (+2 more)
-
-### Community 170 - "Community 170"
-Cohesion: 0.31
-Nodes (9): AsyncSession, Decimal, UUID, raise_exception(), Driver-raised exceptions — panic button and ad-hoc 'report exception'., The phase this exception happened ON, decided once at creation and then frozen., Raises ResourceNotFoundError if the trip doesn't exist, PermissionError if     d, _resolve_phase_context() (+1 more)
-
-### Community 171 - "Community 171"
-Cohesion: 0.31
-Nodes (9): _anchor(), anchor_phase_event_task(), Any, BlockchainReceiptType, Task, UUID, Celery task: anchor a completed phase event to Hedera HCS.  Why this exists: anc, Anchor one phase event in its own session. Returns whether a receipt was written (+1 more)
-
-### Community 172 - "Community 172"
-Cohesion: 0.22
-Nodes (7): COLOR_GROUPS, RADII, SHADOWS, TYPE_SCALE, TypeRole, Z, ZLevel
-
-### Community 173 - "Community 173"
-Cohesion: 0.31
-Nodes (6): AppLayout(), AppShell(), AppShellProps, ROUTE_TITLES, FULL_BLEED_ROUTE_PREFIXES, isFullBleedRoute()
-
-### Community 174 - "Community 174"
-Cohesion: 0.20
-Nodes (8): mockCapturePosition, mockEnqueueCheckpoint, mockNotify, mockRouterBack, mockRouterPush, mockRouterReplace, mockSubmitCheckpoint, mockUseTrip
-
-### Community 175 - "Community 175"
-Cohesion: 0.22
-Nodes (6): PanicPage(), mockCapture, mockEnqueueException, mockRouterBack, mockRouterReplace, mockUseTrip
-
-### Community 176 - "Community 176"
-Cohesion: 0.22
-Nodes (8): COLOR_GROUPS, RADII, SHADOWS, TokensPage(), TYPE_SCALE, TypeRole, mockPush, usePushNotifications()
-
-### Community 177 - "Community 177"
-Cohesion: 0.20
-Nodes (10): CAPPluginCallError, -initcodeerrordataOBJC_DESIGNATED_INITIALIZER, -initSWIFT_UNAVAILABLE, +newSWIFT_UNAVAILABLE_MSGinitisunavailable, CAPPluginCallResult, -initOBJC_DESIGNATED_INITIALIZER, -initSWIFT_UNAVAILABLE, +newSWIFT_UNAVAILABLE_MSGinitisunavailable (+2 more)
-
-### Community 178 - "Community 178"
-Cohesion: 0.20
-Nodes (9): CAPInstanceConfiguration, -initWithDescriptorisDebug, -updatingAppLocation, NSArray, NSObject, NSString, NSURL, UIColor (+1 more)
-
-### Community 179 - "Community 179"
-Cohesion: 0.20
-Nodes (10): CDVInvokedUrlCommand, -argumentAtIndex, -argumentAtIndexwithDefault, -argumentAtIndexwithDefaultandClass, +commandFromJson, -initFromJson, -initWithArgumentscallbackIdclassNamemethodName, NSArray (+2 more)
-
-### Community 180 - "Community 180"
-Cohesion: 0.20
-Nodes (10): CameraCapture Component, GpsCapture Component, Handshakes H1 through H5, HoldButton Component, SealInput Component, StepHeader Component, nextHandshakeRoute Function, submitHandshake Function (+2 more)
-
-### Community 181 - "Community 181"
-Cohesion: 0.22
-Nodes (9): _decode_token(), Verify the Supabase JWT and return its payload.      Supabase uses ES256 (ECDSA), _b64url(), Encode an integer as a base64url string (used for EC coordinate encoding)., test_decode_token_expired_raises_401(), test_decode_token_malformed_raises_401(), test_decode_token_valid_returns_payload(), test_decode_token_wrong_audience_raises_401() (+1 more)
-
-### Community 182 - "Community 182"
-Cohesion: 0.31
-Nodes (8): blocked_on_by_stop(), blocked_on_for(), AsyncSession, PhaseType, UUID, Derives which phases are waiting on the warehouse scan feed.  Pure read path: no, Look one phase up in the map. Absent means not gated, which is not blocked., Map (phase_type, trip_stop_id) -> blocked_on, for this whole trip.      Built on
-
-### Community 183 - "Community 183"
-Cohesion: 0.28
-Nodes (8): do_run_migrations(), Run migrations without a live DB connection (outputs SQL to stdout)., Create an async engine and run migrations inside a sync wrapper.      asyncpg ca, Entry point for online (live connection) migrations., run_async_migrations(), run_migrations_offline(), run_migrations_online(), Connection
-
-### Community 184 - "Community 184"
-Cohesion: 0.28
-Nodes (5): _dispatcher(), UUID, Integration tests for the SSE stream endpoint (GET /api/v1/stream).  No live Red, test_event_stream_delivers_event_as_a_data_frame(), test_stream_endpoint_returns_event_stream_response()
-
-### Community 185 - "Community 185"
-Cohesion: 0.31
-Nodes (8): override_get_db(), AsyncClient, AsyncSession, Integration tests: PATCH /api/v1/vehicles/{id} records a real before/after diff, Changing a critical field (vin_number) and a cosmetic field (make) together:, Changing only `make` must produce a real {from, to} diff and no BlockchainReceip, test_cosmetic_only_patch_records_from_to_diff_and_skips_anchor(), test_mixed_patch_anchors_only_critical_field()
-
-### Community 186 - "Community 186"
-Cohesion: 0.22
-Nodes (9): Capacitor Plugins, driver-pwa, CaptureSeal Refactor, anchor_subject_fail_open, Geofence Verdict, haversine_metres, PhaseDescriptor, Phase Event Ledger (+1 more)
-
-### Community 187 - "Community 187"
-Cohesion: 0.25
-Nodes (8): <BridgedJSValueContainerImplementation>, -getBooldefaultValue, -getDatedefaultValue, -getNumberdefaultValue, -getObjectdefaultValue, -getStringdefaultValue, CAPPluginCall, NSObject
-
-### Community 188 - "Community 188"
-Cohesion: 0.25
-Nodes (8): Consignment (Shipper Unit), Driver (Hands-On Hands-Off User), IDVS Driver Verification, Manifest (Consolidated Load Record), Linehaul Waybill (Driver Document), NFC/RFID Parcel Auto-Scanning Technology, Parcel Traceability & Granularity, Driver Time and Duty Regulation
-
-### Community 189 - "Community 189"
-Cohesion: 0.25
-Nodes (6): PPWaybillNotFoundError, Raised when PP has no waybill for the given reference., Look up the waybill in the fixture library; raise if unregistered., PP returning errorcode=0 with an empty results list is PP's "no matching     way, test_get_single_waybill_empty_results_raises(), test_unknown_reference_raises_not_found()
-
-### Community 190 - "Community 190"
-Cohesion: 0.25
-Nodes (5): PPWaybillResponse, Parsed top-level getSingleWaybill result (one entry from `results`)., True when PP has recorded a POD date — delivery is confirmed., True when PP has recorded a delivery failure reason., ASPIRATIONAL — PP v28 has no such endpoint (ask #1, July visit).         Mock-on
-
-### Community 191 - "Community 191"
-Cohesion: 0.43
-Nodes (7): AsyncSession, UUID, SEC-1: vehicle/driver detail must not return trip IDs from other organisations., Return (horse_id, driver_id, org_a_id, trip_b_id)., _seed(), test_driver_detail_excludes_other_org_trips(), test_vehicle_detail_excludes_other_org_trips()
-
-### Community 192 - "Community 192"
-Cohesion: 0.25
-Nodes (4): Unit tests for the PP mock fixture library and manifest lookup., test_known_reference_returns_fixture(), test_manifest_lookup_groups_fixtures(), test_manifest_lookup_unknown_number_returns_empty()
-
-### Community 193 - "Community 193"
-Cohesion: 0.43
-Nodes (6): code_sign_if_enabled(), install_bcsymbolmap(), install_dsym(), install_framework(), Pods-App-frameworks.sh script, strip_invalid_archs()
-
-### Community 194 - "Community 194"
-Cohesion: 0.57
-Nodes (8): App Build Target, Capacitor, CapacitorCamera, CapacitorCordova, CapacitorGeolocation, CapacitorPushNotifications, Pods-App Build Target, VFS Pods Headers Configuration
-
-### Community 195 - "Community 195"
+### Community 230 - "Exception Review API"
 Cohesion: 0.33
-Nodes (7): Ad-Hoc Collection Service Model, Scheduled Break-Bulk Service Model, FedEx (Principal Client), Core Project Objectives, FreightProof SA, Load Factor Hub-to-Hub Linehaul, Load Factor Group (LFG)
+Nodes (6): PATCH /api/v1/exceptions/{exception_id}/review, ExceptionContactMethod, ExceptionReviewOutcome, ExceptionReviewStatus, exception_reviewed, LivePulsitClient
 
-### Community 196 - "Community 196"
-Cohesion: 0.33
-Nodes (7): Project Iteration Timeline, Geofence Route Deviation Handling, Hardware Panic Button Implementation, Parcel Perfect Integration, Pulsit Vehicle Tracking, Out-Of-Scope Operations, Vehicle Configuration Models
-
-### Community 197 - "Community 197"
-Cohesion: 0.38
-Nodes (6): _event_stream(), UUID, Server-Sent Events endpoint — the dispatcher's live channel.  A dispatcher opens, Yield SSE frames for one connected dispatcher until they disconnect.      A back, stream_endpoint(), StreamingResponse
-
-### Community 198 - "Community 198"
-Cohesion: 0.29
-Nodes (5): EvidenceArtifact, SQLAlchemy model for evidence artifacts stored in S3., Photo or document uploaded during a phase or checkpoint.      trip_id uses use_a, Base, DeclarativeBase
-
-### Community 199 - "Community 199"
-Cohesion: 0.29
-Nodes (7): Seal segments in multi-stop, Evidence integrity gap, F1: Driver types PP scan-in count, WP1: Canonical event hashes, WP2: Server-side reconciliation, WP5: Anchor H2/H5 receipts, WP6: Per-trip Merkle batching
-
-### Community 200 - "Community 200"
-Cohesion: 0.33
-Nodes (3): getTrack(), PointerEventPolyfill, swipeTo()
-
-### Community 201 - "Community 201"
-Cohesion: 0.29
-Nodes (7): PluginConfig, -getBooleanSWIFT_WARN_UNUSED_RESULT, -getIntSWIFT_WARN_UNUSED_RESULT, -getStringSWIFT_WARN_UNUSED_RESULT, -initSWIFT_UNAVAILABLE, -isEmptySWIFT_WARN_UNUSED_RESULT, +newSWIFT_UNAVAILABLE_MSGinitisunavailable
-
-### Community 202 - "Community 202"
-Cohesion: 0.29
-Nodes (7): PluginConfig, -getBooleanSWIFT_WARN_UNUSED_RESULT, -getIntSWIFT_WARN_UNUSED_RESULT, -getStringSWIFT_WARN_UNUSED_RESULT, -initSWIFT_UNAVAILABLE, -isEmptySWIFT_WARN_UNUSED_RESULT, +newSWIFT_UNAVAILABLE_MSGinitisunavailable
-
-### Community 203 - "Community 203"
-Cohesion: 0.29
-Nodes (5): DRIVER_DLAMINI_ID, DRIVER_FORMBY_ID, DRIVER_GULTIG_ID, DRIVER_KASONGO_ID, OPERATOR_ORG_ID
-
-### Community 204 - "Community 204"
-Cohesion: 0.29
-Nodes (7): Layering invariant, Phase Refactor Stage 1: Data Model, Migration, Seeder, Phase Refactor Stage 2: The Phase Engine, Phase Refactor Stage 3: Endpoints & Schemas, Phase Refactor Stage 4: Dispatcher Re-wire, Phase Refactor Stage 5: Driver-app plan-driven engine, Phase Refactor Stage 6: Lifecycle Hardening, Integration & Demo
-
-### Community 205 - "Community 205"
-Cohesion: 0.33
-Nodes (6): Blockchain Receipt (Anchor Event), POPIA Personal Data Protection, Hedera Hashgraph Consensus Service, Hijacking Evidence & Insurance, SLA Metrics & Reporting, Journey Lock Hash
-
-### Community 206 - "Community 206"
-Cohesion: 0.33
-Nodes (6): 19 SQLAlchemy 2.0 Models, Organizations & Precincts Schema, People Schema (Users & Drivers), Vehicles Schema (Horses & Trailers), Alembic Database Migrations, Conventional Commits Convention
-
-### Community 207 - "Community 207"
-Cohesion: 0.33
-Nodes (6): Raise HTTP 403 unless the JWT's app_metadata.role is "driver".      Mirrors _req, _require_driver_role(), test_require_driver_role_passes_for_driver(), test_require_driver_role_raises_403_for_dispatcher(), test_require_driver_role_raises_403_when_metadata_missing(), test_require_driver_role_raises_403_when_role_missing()
-
-### Community 208 - "Community 208"
-Cohesion: 0.40
-Nodes (5): _claimed_session(), datetime, UUID, One active device per driver.  Supabase issues and signs driver tokens, so this, The (session_id, issued_at) this token claims, or None if it carries neither.
-
-### Community 209 - "Community 209"
+### Community 231 - "Phase Model Migration"
 Cohesion: 0.60
-Nodes (5): downgrade(), Phase model: handshake_events -> phase_events, per-stop ledger, anchor state.  R, _rename_constraints(), _rename_policies(), upgrade()
+Nodes (5): downgrade(), Phase model: handshake_events -> phase_events, per-stop ledger, anchor state.…, _rename_constraints(), _rename_policies(), upgrade()
 
-### Community 210 - "Community 210"
-Cohesion: 0.47
-Nodes (5): MonkeyPatch, Unit tests for JWKS TTL cache and key-rotation refresh., test_get_signing_key_refreshes_on_unknown_kid(), test_jwks_cache_refetches_after_ttl_expires(), test_jwks_cache_serves_from_cache_within_ttl()
+### Community 232 - "manifest_service.py"
+Cohesion: 0.13
+Nodes (25): get_manifest_endpoint(), AsyncSession, _bearer, get, HTTPAuthorizationCredentials, UUID, GET /trips/{trip_id}/manifest — role-aware. See manifest_service docstring., Auth is 'Dispatcher JWT OR Driver JWT' — tried explicitly in that order rather… (+17 more)
 
-### Community 211 - "Community 211"
+### Community 233 - "Phase Step Validation"
 Cohesion: 0.40
-Nodes (5): _parse_ts_step_slugs(), Decision S2: the backend owns STEP_SLUGS and the frontend mirrors it. This test, A new PhaseType with no entry would KeyError at serialization time, in     produ, test_backend_step_slugs_match_shared_typescript_constant(), test_every_phase_type_has_a_recipe_entry()
+Nodes (5): _parse_ts_step_slugs(), Decision S2: the backend owns STEP_SLUGS and the frontend mirrors it. This test…, A new PhaseType with no entry would KeyError at serialization time, in…, test_backend_step_slugs_match_shared_typescript_constant(), test_every_phase_type_has_a_recipe_entry()
 
-### Community 212 - "Community 212"
+### Community 234 - "Trip Detail UI/UX Implementation Plan"
+Cohesion: 0.07
+Nodes (26): Comment the why, never the what, Deferred, with reasons, Design tokens: shorthand only, Do not reuse these, Domain rules that must survive every task, File map, Read before writing, Reuse and simplicity rules (+18 more)
+
+### Community 235 - "In-Transit Page UI"
 Cohesion: 0.33
-Nodes (4): inter, metadata, viewport, ToastProvider()
+Nodes (6): DriverFix Type, Exception List Max Height, Exception Card Component, InTransit Page Client Component, Position Refresh Interval, In-Transit Page
 
-### Community 213 - "Community 213"
+### Community 236 - "Phase Submission Schemas"
 Cohesion: 0.33
-Nodes (3): CapacitorException, TODO: export as Cap function, TODO: export as Cap function
+Nodes (6): PhaseSubmissionRequest, AnchorStatus, PhaseDescriptor, PhaseEventId, PhaseStatus, PhaseType
 
-### Community 214 - "Community 214"
-Cohesion: 0.33
-Nodes (6): CAPWebViewAssetHandler, -initSWIFT_UNAVAILABLE, +newSWIFT_UNAVAILABLE_MSGinitisunavailable, -webViewstartURLSchemeTask, -webViewstopURLSchemeTask, WKURLSchemeHandler
-
-### Community 215 - "Community 215"
-Cohesion: 0.33
-Nodes (3): CapacitorException, TODO: export as Cap function, TODO: export as Cap function
-
-### Community 216 - "Community 216"
-Cohesion: 0.60
-Nodes (6): Phase C - Handshake State Machine, advance_h1 Function, advance_h2 Function, advance_h3 Function, advance_h4 Function, advance_h5 Function
-
-### Community 217 - "Community 217"
-Cohesion: 0.33
-Nodes (6): TripConsignmentInput, TripCreateRequest, TripType, AddedWaybill, PullState, pullWaybill
-
-### Community 218 - "Community 218"
+### Community 237 - "Anchor Service Testing"
 Cohesion: 0.40
-Nodes (5): API Integration Strategy, Parcel Perfect Field Mapping & Coverage, Parcel Perfect Waybill Mutability Risk, ScanFeed Interface (Warehouse Capture), Parcel Perfect ecomService API
+Nodes (5): anchor_subject, canonicalize_payload, test_anchor_service, test_anchor_subject_persists_receipt, test_anchor_service_timeout
 
-### Community 219 - "Community 219"
+### Community 238 - "Evidence Artifact Schemas"
 Cohesion: 0.40
-Nodes (5): JWKS TTL-Bounded Cache, DispatcherRole Enum, ForensicModeContext Provider, ForensicOnly Guard Component, VerifyButton Component
+Nodes (5): ArtifactType, list_artifacts_for_trip, EvidenceArtifactBase, EvidenceArtifactCreate, EvidenceArtifactWithUrl
 
-### Community 220 - "Community 220"
-Cohesion: 0.50
-Nodes (5): Raise HTTP 403 unless the authenticated dispatcher has the admin_dispatcher role, require_admin_dispatcher(), _make_user(), test_require_admin_dispatcher_passes_for_admin(), test_require_admin_dispatcher_raises_403_for_dispatcher()
-
-### Community 221 - "Community 221"
+### Community 239 - "Token Management Utilities"
 Cohesion: 0.40
-Nodes (5): client-portal, create_signed_url, list_artifacts_for_trip, EvidenceArtifactWithUrl, Trip Detail Timeline Cards
+Nodes (5): _call, _flatten, _get_token, _run, main
 
-### Community 222 - "Community 222"
-Cohesion: 0.60
-Nodes (3): ExampleInstrumentedTest, Test, RunWith
+### Community 240 - "Waybill Search-and-Add UX (Design Spec)"
+Cohesion: 0.07
+Nodes (26): Component 1 — Search bar, Component 2 — Pull result, Component 3 — Added list, Component 4 — Manifest bulk-fetch (unchanged mechanism, new destination), Coordination flags, Data flow, Design, Error handling (+18 more)
 
-### Community 223 - "Community 223"
+### Community 241 - "Panic Response UI"
 Cohesion: 0.40
-Nodes (5): CapacitorUrlRequest, -initSWIFT_UNAVAILABLE, +newSWIFT_UNAVAILABLE_MSGinitisunavailable, -URLSessiontaskwillPerformHTTPRedirectionnewRequestcompletionHandler, NSURLSessionTaskDelegate
+Nodes (5): PanicPage, PanicSubmittedPageClient, Button UI component, ROUTES constants, Button Props Type
 
-### Community 224 - "Community 224"
+### Community 242 - "App Theme Providers"
 Cohesion: 0.40
-Nodes (5): CAPApplicationDelegateProxy, -applicationcontinueUserActivityrestorationHandlerSWIFT_WARN_UNUSED_RESULT, -applicationopenURLoptionsSWIFT_WARN_UNUSED_RESULT, -initOBJC_DESIGNATED_INITIALIZER, UIApplicationDelegate
+Nodes (5): RootLayout, ThemeManager component, AuthProvider, ToastProvider, THEME_INIT_SCRIPT
 
-### Community 225 - "Community 225"
+### Community 243 - "Data Table Components"
 Cohesion: 0.40
-Nodes (5): CAPNotificationRouter, -initOBJC_DESIGNATED_INITIALIZER, -userNotificationCenterdidReceiveNotificationResponsewithCompletionHandler, -userNotificationCenterwillPresentNotificationwithCompletionHandler, UNUserNotificationCenterDelegate
+Nodes (5): Column Generic Type, DataTable Generic Component, DataTable Props Type, EmptyState Component, Spinner Component
 
-### Community 226 - "Community 226"
+### Community 244 - "Driver Form Validation"
 Cohesion: 0.40
-Nodes (5): CAPApplicationDelegateProxy, -applicationcontinueUserActivityrestorationHandlerSWIFT_WARN_UNUSED_RESULT, -applicationopenURLoptionsSWIFT_WARN_UNUSED_RESULT, -initOBJC_DESIGNATED_INITIALIZER, UIApplicationDelegate
+Nodes (5): DriverField, normalisePhone, phoneFieldFeedback, validateDriverForm, rules.ts
 
-### Community 227 - "Community 227"
-Cohesion: 0.40
-Nodes (5): CDVWebViewProcessPoolFactory, +sharedFactory, -sharedProcessPool, NSObject, WKProcessPool
+### Community 245 - "Implementation Plan"
+Cohesion: 0.07
+Nodes (26): Context, Cross-dev / shared-file flags, Decisions (from brainstorming), Design, Dispatcher Portal Demo Polish, Goal, Implementation Plan, Item 1 — Signature relabel + anchor removal (+18 more)
 
-### Community 228 - "Community 228"
+### Community 246 - "Client Auth Testing"
 Cohesion: 0.40
 Nodes (4): mockGetAccessToken, mockGetSession, mockRefreshSession, mockSignOut
 
-### Community 229 - "Community 229"
-Cohesion: 0.50
-Nodes (5): H1 EntryPhotoStep Component, H1 GateArrivalStep Component, HandshakeStepShell Component, useCamera Hook, useSeal Hook
-
-### Community 230 - "Community 230"
+### Community 247 - "UX Design Specifications"
 Cohesion: 0.40
-Nodes (5): Phase F - Frontend API Client, apiRequest Function, AuthContext with Real OTP, DriverRead Schema, get_current_driver Dependency
+Nodes (5): Driver PWA UX Fixes Plan, Trip Creation Redesign Plan, Driver PWA Current Handshake Design, H1 Geofence Verdict Design, Waybill Search UX Design
 
-### Community 231 - "Community 231"
-Cohesion: 0.40
-Nodes (5): RealtimeKind enum, RealtimeProvider component, TripEvent model, after_commit hook pattern, enqueue_event function
-
-### Community 232 - "Community 232"
+### Community 248 - "Health and Security Integration"
 Cohesion: 0.50
-Nodes (4): PhaseTypeMismatchError, Raised when a completion payload's phase_type does not match the addressed row's, complete_phase raises PhaseTypeMismatchError rather than writing     activation', test_complete_phase_rejects_payload_for_a_different_phase_type()
+Nodes (4): GET /health endpoint, SecurityHeadersMiddleware, Integration tests for GET /health (FP-141), Integration tests for app.core.security_headers.SecurityHeadersMiddleware
 
-### Community 233 - "Community 233"
+### Community 249 - "Scan Session Management"
 Cohesion: 0.50
-Nodes (4): Seal mismatch exception, H2: Loading Handshake, H4: Destination Gate-In, Seal
+Nodes (4): get_scan_feed, ingest_scans, close_scan_session, trigger_scan
 
-### Community 234 - "Community 234"
+### Community 250 - "Trip Event Processing"
+Cohesion: 0.50
+Nodes (4): TripEvent, _finish_phase, test_trip_event_json_roundtrip_preserves_all_fields, test_finishing_a_non_final_phase_enqueues_phase_completed
+
+### Community 251 - "Mock Scan Feed"
+Cohesion: 0.50
+Nodes (4): MockScanFeed, blocked_on_by_stop, test_loading_is_blocked_before_the_session_closes, test_poll_returns_empty_when_nothing_staged
+
+### Community 252 - "Departure Anchor Logic"
+Cohesion: 0.50
+Nodes (4): advance_departure, compute_departure_canonical_payload, test_advance_departure_anchors_with_pickup_receipt_type, test_departure_canonical_payload_excludes_gps_artifacts_and_pii
+
+### Community 253 - "Precinct Management API"
+Cohesion: 0.50
+Nodes (4): create_precinct, list_precincts, test_create_precinct_saves_against_the_callers_org, create_precinct
+
+### Community 254 - "Vehicle Rate Limiting"
+Cohesion: 0.50
+Nodes (4): vehicles API endpoints, FLEET_MUTATION, RateLimit, rate_limit
+
+### Community 255 - "App Settings and Auth"
+Cohesion: 0.50
+Nodes (4): settings, engine, create_driver_auth_user, app
+
+### Community 256 - "Trip Schedule Validation"
+Cohesion: 0.50
+Nodes (4): MINIMUM_TRIP_DURATION, TripCreateRequest, stop_slot_times, validate_declared_schedule
+
+### Community 257 - "Dispatcher User Management"
+Cohesion: 0.50
+Nodes (4): DispatcherRole, create_dispatcher_auth_user, UserBase, UserRead
+
+### Community 258 - "Database Health Monitoring"
+Cohesion: 0.50
+Nodes (4): get_read_only_db, DependencyHealth, HealthResponse, health_check
+
+### Community 259 - "Evidence File Uploads"
+Cohesion: 0.50
+Nodes (4): UploadResult, _get_client, create_signed_url, upload_evidence_file
+
+### Community 260 - "Consignment Seeding Fixtures"
+Cohesion: 0.50
+Nodes (4): _apply_walk_evidence, _fixture, _seed_consignments, _seed_trip
+
+### Community 261 - "Auth and Logging Tests"
 Cohesion: 0.67
-Nodes (4): ChainTag, Design Tokens, EvidenceTag, Timeline
+Nodes (4): auth_header, make_token, test_get_me_returns_user_for_valid_dispatcher, test_driver_logs_checkpoint
 
-### Community 236 - "Community 236"
+### Community 262 - "Critical Field Diffing"
+Cohesion: 0.50
+Nodes (4): test_cosmetic_only_patch_records_from_to_diff_and_skips_anchor, test_diff_returns_none_when_no_critical_change, test_update_driver_critical_anchors_only_the_diff, Critical vs Cosmetic Fields
+
+### Community 263 - "8. Driver PWA — page catalogue"
+Cohesion: 0.08
+Nodes (26): 8.0 Conventions, 8.10 Not-found and error, 8.11 Token preview (dev only), 8.1 Login, 8.2 Driver Home, 8.3 Settings, 8.4 Handshake 1 — Origin Gate-In (3 pages), 8.6 Handshake 3 — Origin Gate-Out (3 pages) (+18 more)
+
+### Community 264 - "Dispatcher Live Updates — Server-Sent Events over an org-wide event bus"
+Cohesion: 0.08
+Nodes (25): 10. Invariants — must not break, 11. Suggested commits (you run git; not me), 1. Goal, 2. Decisions (locked during brainstorming, 2026-08-05), 3. Why this works with the current setup (no schema change, no new dependency), 4.1 The event bus (`backend/app/core/realtime.py`, new), 4.2 The SSE endpoint (`backend/app/api/v1/endpoints/stream.py`, new), 4.3 Emitting events (additive edits in `orchestration/`) (+17 more)
+
+### Community 270 - "test_confirmation_preserves_arrival_or_its_absence"
+Cohesion: 0.33
+Nodes (7): arrival_context(), MonkeyPatch, parametrize, Trip, Keep timestamp orchestration real while isolating DB and external corroboration., test_confirmation_preserves_arrival_or_its_absence(), test_overridden_arrival_does_not_claim_actual_arrival()
+
+### Community 272 - "Integration Architecture Design"
+Cohesion: 0.50
+Nodes (4): Linehaul Document Design, Multi-Stop Handshake Architecture, Parcel Perfect API Handshake, Parcel Perfect Integration Specification
+
+### Community 273 - "PWA Navigation Components"
+Cohesion: 0.50
+Nodes (4): AppShell layout component, BottomNav component, OfflineBanner component, ProfilePanel component
+
+### Community 274 - "Precinct Card Components"
+Cohesion: 0.50
+Nodes (4): StaticGeofenceThumbnail Component, PrecinctCard Component, Card Component, Chip Component
+
+### Community 275 - "Realtime SSE Handling"
+Cohesion: 0.50
+Nodes (4): SSE Frame Separator, SSE Frame Parser, Realtime Event Types, useLiveResource Hook
+
+### Community 276 - "API Request Utilities"
+Cohesion: 0.67
+Nodes (4): ApiError, request, resolveToken, withTimeout
+
+### Community 277 - "Location State Hook"
+Cohesion: 0.50
+Nodes (4): LocationCoords, LocationErrorReason, LocationState, useLocation
+
+### Community 278 - "Phase Submission Workflow"
+Cohesion: 0.50
+Nodes (4): PhaseSubmissionFailure, PhaseSubmissionOutcome, runSubmission, startPhaseSubmission
+
+### Community 279 - "API Client Modules"
+Cohesion: 0.50
+Nodes (4): drivers.ts, precincts.ts, trips.ts, vehicles.ts
+
+### Community 280 - "Next.js Security Config"
+Cohesion: 0.50
+Nodes (3): nextConfig, path, securityHeaders
+
+### Community 281 - "Gradle Wrapper Scripts"
 Cohesion: 0.83
 Nodes (3): gradlew script, die(), warn()
 
-### Community 237 - "Community 237"
-Cohesion: 0.50
-Nodes (3): mockId, mockPush, TRIP_0035_ID
+### Community 282 - "Dispatcher UI Redesign — Spec"
+Cohesion: 0.08
+Nodes (25): 1. Shell & Layout (`DispatcherShell`), 2. Sidebar, 3. New UI Primitives, 4.1 Dashboard (`app/(app)/page.tsx`), 4.1a `ChecklistRow` update, 4.2 Trip Detail (`app/(app)/trips/[id]/page.tsx`), 4.3 Create Trip (`app/(app)/trips/new/page.tsx`), 4.4 Trip History (`app/(app)/history/page.tsx`) (+17 more)
 
-### Community 238 - "Community 238"
+### Community 283 - "Domain Data Mapping"
 Cohesion: 0.50
-Nodes (3): name, private, version
+Nodes (4): Data Hierarchy Trip-Consignment-Unit, Scheduled vs Ad-hoc Service Models, Stop Origin/Destination as Roles, Real Ops to System Entity Mapping
 
-### Community 239 - "Community 239"
-Cohesion: 0.50
-Nodes (4): Backend CI Job, Driver PWA CI Job, Frontend CI Job, GitHub Actions CI Pipeline
-
-### Community 240 - "Community 240"
-Cohesion: 0.50
-Nodes (4): Phase 1 - Quick Wins, Phase 2 - Security Patches, Phase 3 - Architectural Refactors, Phase 4 - Driver PWA Foundations
-
-### Community 241 - "Community 241"
-Cohesion: 0.50
-Nodes (4): FormField, ThreeLayerValidation, ValidationRule, VehicleFormValidation
-
-### Community 242 - "Community 242"
-Cohesion: 0.50
-Nodes (4): AppShell Component, NavDrawer Component, ProfilePanel Component, Trip Filtering Utilities
-
-### Community 243 - "Community 243"
-Cohesion: 0.50
-Nodes (4): _is_resolved predicate, _recompute_position function, complete_phase core function, lib/phase/derive.ts module
-
-### Community 267 - "Community 267"
+### Community 285 - "Waybill Lookup Integration"
 Cohesion: 0.67
-Nodes (3): DriverMap, isDriving, phase-submitter.ts
+Nodes (3): GET /api/v1/pp/waybills/{ref} endpoint, PP_USE_MOCK configuration flag, Integration tests for the dispatcher-facing /pp lookup endpoints
 
-### Community 274 - "Community 274"
+### Community 286 - "Precinct API Integration"
 Cohesion: 0.67
-Nodes (3): LinehaulResponse Schema, get_linehaul_for_driver, get_manifest_for_dispatcher
+Nodes (3): GET /api/v1/precincts endpoint, Precinct ORM model, Integration tests for /api/v1/precincts
 
-### Community 275 - "Community 275"
+### Community 287 - "Trip Artifacts API"
 Cohesion: 0.67
-Nodes (3): TRIP_CREATION phase, Anchor policy, Ledger is the truth principle
+Nodes (3): GET /api/v1/trips/{id}/artifacts endpoint, EvidenceArtifact ORM model, Integration tests for GET /api/v1/trips/{trip_id}/artifacts
 
-### Community 276 - "Community 276"
+### Community 288 - "History Pagination UI"
 Cohesion: 0.67
-Nodes (3): blocked_on, Parcel Scan Evidence, ScanFeed
+Nodes (3): GET /api/v1/exceptions/history, GET /api/v1/trips/history, Pagination Component
 
-### Community 277 - "Community 277"
+### Community 289 - "Subject Verification Helpers"
 Cohesion: 0.67
-Nodes (3): PhaseChain component, Coarse TripStatus, cancel_trip action
+Nodes (3): assert_subject_visible, verify_subject, verify_endpoint
+
+### Community 290 - "Phase Plan Seeding"
+Cohesion: 0.67
+Nodes (3): MOCK_WAYBILLS, build_phase_plan, seed
+
+### Community 291 - "Consignment Sync Service"
+Cohesion: 0.67
+Nodes (3): get_pp_client, fetch_and_sync_consignment, trigger_pp_change
+
+### Community 292 - "Auth Token Validation"
+Cohesion: 0.67
+Nodes (3): _decode_token, test_auth_dependencies, test_decode_token_valid_returns_payload
+
+### Community 293 - "Hedera Service Testing"
+Cohesion: 0.67
+Nodes (3): HederaReceipt, HederaService, test_hedera_service
+
+### Community 294 - "Backend Step Constants"
+Cohesion: 0.67
+Nodes (3): STEP_SLUGS, test_backend_step_slugs_match_shared_typescript_constant, STEP_SLUGS
+
+### Community 295 - "Blockchain Event Anchoring"
+Cohesion: 0.67
+Nodes (3): BlockchainReceipt, test_create_vehicle_writes_event_and_anchor, BlockchainReceipt
+
+### Community 296 - "Vehicle Event Persistence"
+Cohesion: 0.67
+Nodes (3): VehicleEvent, test_create_trailer_persists_length_and_gvm, test_vehicles_cosmetic_diff
+
+### Community 297 - "Driver Session Validation"
+Cohesion: 0.67
+Nodes (3): DriverSession, test_first_request_claims_the_device, test_an_active_driver_session_is_accepted
+
+### Community 298 - "Consignment Data Persistence"
+Cohesion: 0.67
+Nodes (3): Consignment, test_new_consignment_is_inserted, Consignment
+
+### Community 299 - "Parcel Perfect Mocking"
+Cohesion: 0.67
+Nodes (3): MockParcelPerfectClient, test_known_reference_returns_fixture, test_waybill_is_unchanged_when_nothing_staged
+
+### Community 300 - "Database Health Probes"
+Cohesion: 0.67
+Nodes (3): _probe_database, _FakeSession, test_health_probes
+
+### Community 301 - "Consignment Reuse Validation"
+Cohesion: 0.67
+Nodes (3): fetch_and_sync_consignment, test_consignment_service, test_reuse_on_a_different_trip_is_rejected
+
+### Community 302 - "Vehicle Detail API"
+Cohesion: 0.67
+Nodes (3): get_driver_detail, get_vehicle_detail, test_vehicle_cross_org
+
+### Community 303 - "Phase Planning Tests"
+Cohesion: 0.67
+Nodes (3): build_phase_plan, test_single_leg_plan_has_seven_rows_in_order, build_phase_plan
+
+### Community 304 - "Phase Completion Requests"
+Cohesion: 0.67
+Nodes (3): InTransitCompleteRequest, PhaseCompleteRequest, test_in_transit_payload_resolves_to_its_own_union_member
+
+### Community 305 - "Authentication Dependencies"
+Cohesion: 0.67
+Nodes (3): auth dependencies, JWT verification, Supabase Auth
+
+### Community 306 - "Session Management Rules"
+Cohesion: 0.67
+Nodes (3): session rules, Idle timeout, Single device enforcement
+
+### Community 307 - "Phase Planning Logic"
+Cohesion: 0.67
+Nodes (3): PlanStop, PlannedPhase, build_phase_plan
+
+### Community 308 - "MIME Type Handling"
+Cohesion: 0.67
+Nodes (3): ALLOWED_MIME_TYPES, detect_mime_type, resolve_mime_type
+
+### Community 309 - "Target State Management"
+Cohesion: 0.67
+Nodes (3): _assert_target, main, reset
+
+### Community 340 - "Migration Loading Utility"
+Cohesion: 0.67
+Nodes (3): _load_migration(), ModuleType, Path
+
+### Community 341 - "Migration Module Loader"
+Cohesion: 0.67
+Nodes (3): _load_migration(), ModuleType, Path
+
+### Community 343 - "Phase Model Documentation"
+Cohesion: 0.67
+Nodes (3): Phase-Step-Event Ledger Timeline, Known Issues Document, Phase Model Explained Reference
+
+### Community 344 - "Parcel Perfect Client"
+Cohesion: 0.67
+Nodes (3): get_pp_client(), ParcelPerfectClient, PPWaybillResponse
+
+### Community 345 - "Login and Auth Context"
+Cohesion: 0.67
+Nodes (3): LoginPage, Country codes constants, AuthContext
+
+### Community 346 - "Trip Table UI"
+Cohesion: 0.67
+Nodes (3): TripTable component, TripTable tests, Card UI component
+
+### Community 347 - "Button UI Components"
+Cohesion: 0.67
+Nodes (3): Button UI component, IconButton UI component, Button tests
+
+### Community 348 - "Drawer and Modal UI"
+Cohesion: 0.67
+Nodes (3): Drawer UI component, Modal UI component, Drawer tests
+
+### Community 349 - "Input UI Components"
+Cohesion: 0.67
+Nodes (3): Input UI component, OtpInput UI component, OtpInput tests
+
+### Community 350 - "Driver Detail Management"
+Cohesion: 0.67
+Nodes (3): DriverDetailPage, useDriverDetail, validateDriverForm
+
+### Community 351 - "Fleet Drivers Table"
+Cohesion: 0.67
+Nodes (3): DataTable, FleetDriversPage, useDrivers
+
+### Community 352 - "Precinct Form Management"
+Cohesion: 0.67
+Nodes (3): EditPrecinctPage, PrecinctForm, usePrecinctDetail
+
+### Community 353 - "Exception Management Pages"
+Cohesion: 0.67
+Nodes (3): ExceptionDetailPage, useExceptions, ExceptionsPage
+
+### Community 354 - "HTTP Client Configuration"
+Cohesion: 0.67
+Nodes (3): Backend Base URL, Token Resolution Function, HTTP Send Function
+
+### Community 355 - "Backoff Strategy Logic"
+Cohesion: 0.67
+Nodes (3): Backoff Base Milliseconds, Backoff Max Milliseconds, Backoff Calculation
+
+### Community 356 - "Trip Auto Refresh"
+Cohesion: 0.67
+Nodes (3): TripState, TripAutoRefreshOptions, useTripAutoRefresh
+
+### Community 357 - "Phase Resolution Logic"
+Cohesion: 0.67
+Nodes (3): actionablePhase, currentPhase, isResolved
+
+### Community 358 - "Project Configuration Files"
+Cohesion: 0.67
+Nodes (3): next.config.ts, package.json, tsconfig.json
+
+### Community 359 - "Driver Data Models"
+Cohesion: 0.67
+Nodes (3): Driver, DriverDetail, DriverId
+
+### Community 360 - "Trip Exception Models"
+Cohesion: 0.67
+Nodes (3): ExceptionId, ExceptionType, TripException
+
+### Community 362 - "test_fleet_patterns.py"
+Cohesion: 0.20
+Nodes (24): _day(), _events(), operator(), override_get_db(), _period_params(), Any, AsyncClient, AsyncSession (+16 more)
+
+### Community 363 - "FreightProof — Iteration 2 Kickoff Meeting"
+Cohesion: 0.08
+Nodes (25): 10. References, 1.1 What we actually shipped in iteration 1, 1.2 What we **didn't** ship — and why Ammar noticed, 1.3 Ammar's iter-1 feedback in one paragraph, 1.4 Bruce's accumulated guidance across four meetings, 1.5 The core tension we have to resolve, 1. Context the team needs to walk in with, 2. Agenda (+17 more)
+
+### Community 369 - "Trip History Hook"
+Cohesion: 0.67
+Nodes (3): ChecklistRow, HistoryPage, useTrips
+
+### Community 370 - "Project Iteration Plans"
+Cohesion: 1.00
+Nodes (3): Iteration 2 Master Plan, Iteration 3 Plan, Meeting Minutes with Bruce
+
+### Community 371 - "App Layout Shell"
+Cohesion: 0.67
+Nodes (3): AppLayout, DispatcherShell, useAuth
+
+### Community 372 - "Active Trips Management"
+Cohesion: 0.67
+Nodes (3): ActiveTripsPage, ChecklistRow, useTrips
+
+### Community 373 - "Integration Design Plans"
+Cohesion: 0.67
+Nodes (3): Admin-Only Fleet Mutations Plan, Driver PWA Current Handshake Plan, Parcel Perfect Integration Plan
+
+### Community 374 - "UI Redesign Plans"
+Cohesion: 0.67
+Nodes (3): Trip Detail UI Plan, Precinct Create Edit Plan, Precinct Card Redesign Plan
+
+### Community 375 - "Vehicle Detail Management"
+Cohesion: 0.67
+Nodes (3): VehicleDetailPage, useVehicleDetail, validateVehicleForm
+
+### Community 376 - "Fleet Vehicle Management"
+Cohesion: 0.67
+Nodes (3): FleetVehiclesPage, VehicleCard, useVehicles
+
+### Community 434 - "Stage 5 — Driver-app plan-driven engine"
+Cohesion: 0.08
+Nodes (24): 5.0 — Shared contract corrections *(D9 shared files — flag every one)*, 5.1 — Pure phase-derivation module, 5.2 — API layer and offline queue rewire, 5.3 — Step components renamed and re-parented *(D12)*, 5.4 — Route cutover, 5.5 — Trip views off the plan, 5.6 — Test sweep, D10 — The URL keys on `phase_type`, never on `phase_event_id` (+16 more)
+
+### Community 435 - "Driver-owned arrival (`in_transit` becomes a submitted phase) — Implementation Plan"
+Cohesion: 0.08
+Nodes (24): Backend — modified, Baseline: 8 failed / 651 passed / 4 skipped (167s), Decisions locked before starting (Part E.1 of the audit brief), Driver-owned arrival (`in_transit` becomes a submitted phase) — Implementation Plan, Driver-pwa — modified, Environment facts every task depends on, Environment — read before running anything, File structure (+16 more)
+
+### Community 436 - "Driver Pages → Vehicle-Detail Parity"
+Cohesion: 0.08
+Nodes (24): 1. `frontend/shared/lib/validation/driver.ts` (new), 2. `frontend/dispatcher/lib/hooks/useResizablePanel.ts` (new), 3. `frontend/dispatcher/app/(app)/fleet/drivers/[id]/page.tsx` (rewrite), 4. `frontend/dispatcher/app/(app)/fleet/drivers/page.tsx` (edit), Components, Context, Data flow, Decisions (from brainstorming) (+16 more)
+
+### Community 437 - "Driver PWA — Full Handshake Flow Implementation Plan"
+Cohesion: 0.08
+Nodes (23): Design contract (read before ANY UI task — non-negotiable), Driver PWA — Full Handshake Flow Implementation Plan, Engineering principles (read before any task), File Map, Final verification (run once, after all tasks are complete), Forward-compatibility (do NOT build now — just don't block it), New .env keys required, Scope (+15 more)
+
+### Community 916 - "Recorded location comparison maps"
+Cohesion: 0.08
+Nodes (23): 2026-09-12 contract review (Stage 1 findings), 2026-09-12 Stage 2 to 4 implementation record, Corrections to "What exists and what is missing", Decision and scope, Environment limitations, Evidence and display rules, Files created/modified, Handoff (+15 more)
+
+### Community 917 - "Trip detail page — UI/UX redesign (design spec)"
+Cohesion: 0.08
+Nodes (23): Activation — dropdown, Backend, Component 1 — artifact read path, Component 2 — per-phase cards, Component 3 — status pill, Confirmation — dropdown, Corrections to the original brief, Cross-branch dependencies (+15 more)
+
+### Community 918 - "test_receiver_verification_endpoints.py"
+Cohesion: 0.15
+Nodes (21): _issue(), AsyncClient, The four public receiver-verification routes (Stage 2B, Task 4). The one thing…, Read the verification row back by token hash, for assertions the HTTP surface…, Scan -> consent -> verify -> resolve -> confirm, the way a real handover runs., No document on them. The delivery must still complete, at a lower evidence tier., Quota exhausted stands in for any vendor-side failure. No session is created,…, Issue a real capability token through the driver route, exactly as a driver… (+13 more)
+
+### Community 921 - "Driver PWA Redesign Implementation Plan"
+Cohesion: 0.09
+Nodes (22): Driver PWA Redesign Implementation Plan, File map, Out of scope reminders (do not implement, even if tempted), Task 10 — NavDrawer component, Task 11 — ProfilePanel component, Task 12 — AppShell component, Task 13 — Wire AppShell into the app layout, Task 14 — Settings page (+14 more)
+
+### Community 924 - "FP-112 Alignment — multi-consignment manifest/linehaul, exception scoping, dispatcher stops UI"
+Cohesion: 0.09
+Nodes (22): Files, Final verification (run once, at the end), FP-112 Alignment — multi-consignment manifest/linehaul, exception scoping, dispatcher stops UI, Goal, Hard scope boundaries, On completion — report, Phase 1 — Backend: multi-consignment manifest + unit-grain linehaul (F3 + F2), Phase 2 — Backend: exception scoping FKs (§4.2 item 1) (+14 more)
+
+### Community 925 - "ResourceNotFoundError"
+Cohesion: 0.14
+Nodes (19): log_checkpoint_endpoint(), AsyncSession, UUID, Raised when a required DB record does not exist or is not accessible., Raised when a trip with the given order_number is already active., ResourceNotFoundError, TripConflictError, _find_by_client_report_id() (+11 more)
+
+### Community 926 - "test_fleet_review.py"
+Cohesion: 0.27
+Nodes (21): _day(), operator(), _params(), Any, AsyncClient, AsyncSession, date, Precinct (+13 more)
+
+### Community 927 - "Corroboration UI, Parcel Timeline, and Per-Client Views"
+Cohesion: 0.09
+Nodes (22): 11. Per-client views — a lens, not a portal, 12. Analytics the panel asked for, 13. Quantifying what we solve, 14. Copy — system language → human language, 15. Progressive disclosure, 16. Build order, 17. Decisions needed, 1. Panel feedback (iteration 2 review, transcript) (+14 more)
+
+### Community 928 - "Input Validation & Error Feedback — Design + Implementation Plan"
+Cohesion: 0.09
+Nodes (21): 10. Follow-ups (separate specs), 1. Context & Problem, 2. Goals, 3. Non-Goals (explicit out of scope), 4.1 Three layers, one source of truth, 4.2 Shared validation foundation — `frontend/shared/lib/validation/`, 4.3 Vehicle field rules, 4.4 Error UX behaviour (+13 more)
+
+### Community 929 - "H1 Origin Gate-In — Geofence Verdict + Hedera Anchor (Design Spec)"
+Cohesion: 0.09
+Nodes (21): Component 1 — Geofence math (`backend/app/core/geo.py`, new), Component 2 — Handshake model (`db/models/handshakes.py`), Component 3 — Migration, Component 4 — Read schema (`schemas/handshakes.py`), Component 5 — Receipt type (`db/models/enums.py`), Component 6 — Fail-open anchor wrapper (`blockchain/anchor_service.py`), Component 7 — Orchestration (`orchestration/handshake_service.py::advance_h1`), Component 8 — Dispatcher (`dispatcher/app/(app)/trips/[id]/page.tsx`) (+13 more)
+
+### Community 930 - "test_fleet_evidence.py"
+Cohesion: 0.27
+Nodes (20): _day(), operator(), _params(), Any, AsyncClient, AsyncSession, date, Precinct (+12 more)
+
+### Community 931 - "FreightProof SA — Claude Code Instructions"
+Cohesion: 0.10
+Nodes (21): 1. Read first, 2. Plan, 3. Execute, 4. Report with TASK COMPLETE (see bottom), Architecture, Codebase Status, Domain knowledge, Efficient Fable (+13 more)
+
+### Community 932 - "Step-Event Payload Audit — What Each Event Can Honestly Carry"
+Cohesion: 0.10
+Nodes (21): `consignment-attached` — dispatcher, `departure-attested` — driver, `door-closed / geofence-lock-armed` — pulsit, `linehaul-photographed` — driver, `loading-confirmed` — driver, P0 · trip_creation, P2 · loading, P3 · departure (+13 more)
+
+### Community 938 - "FreightProof SA — Frontend Spec v1"
+Cohesion: 0.10
+Nodes (21): 10. Build sequence (recommended), 11. Out of scope for v1, 12. References, 13. Changelog, 1. Stack and ground rules, 2.1 Per-surface structure, 2.2 Naming conventions, 2. Repository layout (+13 more)
+
+### Community 939 - "Ciaran branch review and iteration 3 priorities"
+Cohesion: 0.10
+Nodes (20): 1. P1 — a blocked phase is silently discarded from the offline queue, 2. P1 — phase/checkpoint queueing can report success after storage fails, 3. P1 — the branch fails its configured backend type-check gate, 4. P2 — normal integration tests depend on real Hedera configuration, 5. P2 — persisted tracker evidence loses its mock/live provenance, 6. P2 — “Awaiting Pulsit” promises work that is not scheduled, Assessment, Ciaran branch review and iteration 3 priorities (+12 more)
+
+### Community 940 - "Backend ↔ Frontend Integration Plan"
+Cohesion: 0.10
+Nodes (20): Backend ↔ Frontend Integration Plan, File Map, Final verification, Shared files touched, Task 10: Frontend API client, Task 11: Replace `useDrivers`, Task 12: Replace `useVehicles`, Task 13: Replace `usePrecincts` (+12 more)
+
+### Community 985 - "ScanFeed Interface + Dev Trigger Panel Implementation Plan"
+Cohesion: 0.10
+Nodes (20): Context you must read before starting, Domain facts that shape the design, File structure, Isolation from other developers, Notes for the executing engineer, Out of scope — do not build these, ScanFeed Interface + Dev Trigger Panel Implementation Plan, Task 10: Dispatcher types and hook (+12 more)
+
+### Community 1133 - "Trip Creation Redesign — Minimal Wizard, PP-Sourced Cargo, Mocked PP API (Design Spec)"
+Cohesion: 0.10
+Nodes (20): Component 1 — Backend schema (`schemas/trips.py`), Component 1a — Empty legs (`trip_type`), Component 2 — Organization mapping (`db/models/organisations.py` + migration), Component 3 — Trip service (`orchestration/trip_service.py`), Component 4 — Error mapping (`api/v1/endpoints/trips.py`), Component 5 — Dispatcher wizard (`dispatcher/app/(app)/trips/new/page.tsx`), Component 6 — PP mock: fixture library (`integrations/parcel_perfect.py`), Component 7 — Aspirational manifest lookup (mock-only, honestly flagged) (+12 more)
+
+### Community 1134 - "test_fleet_incidents.py"
+Cohesion: 0.27
+Nodes (19): _day(), operator(), _params(), Any, AsyncClient, AsyncSession, date, Precinct (+11 more)
+
+### Community 1192 - "Step-Event Ledger — Implementation Plan and the Sequencing Call"
+Cohesion: 0.10
+Nodes (20): 0. The three answers, up front, 10. The order, 1.1 `phase_service.py` has one completion funnel, but anchoring happens before it, 1.2 Derive from the phase row, not from the request payload, 1.3 The derived rows must not claim a timestamp they do not have, 1.4 The exception surface was mock-backed — resolved, 1. What the codebase says that the notes did not, 2. The ranking, with the numbers (+12 more)
+
+### Community 1193 - "Iteration 2 Feedback — Verification Against the Codebase"
+Cohesion: 0.10
+Nodes (20): 0. Why this document exists, 1. Summary, 4.1 Live alerting — and it is ~90% already built, 4.2 The attack, stated concretely, 4.3 Insurers are the evidence consumer, 4.4 Pulsit has cameras, 4.5 Also raised, already covered by the plan, 4. What the transcript adds that the marksheets missed (+12 more)
+
+### Community 1194 - "Parcel Traceability & Granularity — Findings and Target Design"
+Cohesion: 0.10
+Nodes (19): 0. Why this matters, 1.1 Per-parcel identity — `Parcel` (`backend/app/db/models/trips.py:76`), 1.2 Grouping — `Consignment` → `Trip`, 1.3 Where the real positioning evidence lives (trip level), 1. What the data model supports today, 2. What we can and cannot answer today, 3. The gap, precisely, 4.1 New: `ParcelScanEvent` (+11 more)
+
+### Community 1195 - "File Structure"
+Cohesion: 0.10
+Nodes (19): Exception Review and Pagination Implementation Plan, File Structure, Global Constraints, Task 0A: Make merged Pulsit corroboration temporally honest, Task 0B: Make driver exception photographs and retries durable, Task 10: Redesign exception detail and review form, Task 11: Exception-stage completion gate, Task 12: Add the dedicated cursor-paginated Trip History API (+11 more)
+
+### Community 1196 - "Jira Board Reconciliation — Dry Run (v2)"
+Cohesion: 0.11
+Nodes (18): 1. Why this document exists, 2. Sprint state — read this first, 3. Current board state (corrected), 4.1 Complete — recommend transition to Done, add to Sprint 5, 4.2 Partially complete — split, close the delivered half, 4.3 Not started — carry to next sprint, 4. Open issues → codebase verdict, 5. Work still absent from the board (+10 more)
+
+### Community 1197 - "FP-115 — Forensic View + Admin-Dispatcher Role"
+Cohesion: 0.11
+Nodes (18): 1. Goal, 2. Decisions (locked during brainstorming, 2026-06-13), 3. Why this works with the current Supabase setup (no schema change), 4.1 Role model & backend auth, 4.2 Backend endpoint gating (hybrid), 4.3 Frontend role propagation + forensic toggle, 4.4 Visibility matrix, 4.5 Out of scope (+10 more)
+
+### Community 1198 - "Driver PWA Improvements — Design"
+Cohesion: 0.11
+Nodes (18): 3a. Departure: delete the guard-confirms-seal step, 3b. Departure: linehaul document, not waybill, 3c. Unloading: remove the broken-seal step, 3d. Unloading: blind the seal verification, 3e. Unloading: home, not next step, Decisions taken before work started, Driver PWA Improvements — Design, Explicitly deferred (+10 more)
+
+### Community 1199 - "FreightProof SA — Design System v2"
+Cohesion: 0.11
+Nodes (19): 10. Usage Rules, 11. Reference HTMLs, 12. Appendix — CSS variable block (paste-ready), 1.1 Origin, 1.2 Principles, 1. Foundations, 3. Shape & Radius, 4. Elevation (+11 more)
+
+### Community 1200 - "7. Components"
+Cohesion: 0.11
+Nodes (19): 7.10 `StatCard`, 7.11 `Stepper` (driver), 7.12 `HBanner` (driver Handshake banner), 7.13 `Sidebar` (dispatcher), 7.14 `TopBar`, 7.15 `MobHead` (driver), 7.16 `SecHead` (table section header), 7.17 `CTA` (driver bottom bar) (+11 more)
+
+### Community 1201 - "3 · Order of work"
+Cohesion: 0.11
+Nodes (17): 0 · What this ticket actually is, 1 · The correction: `main.py` **is** in scope, 2 · Route shape, 3 · Order of work, 4 · Shared files — flag every one, 5 · Out of scope, 6 · Working agreement, FP-146 — Dispatcher exception list, resolve, and the act row (+9 more)
+
+### Community 1202 - "meeting_minutes_bruce_26-03-2026_Detailed.md"
+Cohesion: 0.11
+Nodes (17): **10\. Additional Notes**, **1\.1 Full Truckload \(FTL\) / Dedicated Load**, **1\.2 Break Bulk \(Consolidated Load\)**, **1\.3 Multi\-Pickup / Multi\-Delivery \(Hub & Spoke\)**, **1\. Load Types: Full Truckload vs Break Bulk**, **2\. Waybills — Digital vs Manual**, **3\. Vehicle Configurations & Tracking Requirements**, **4\.1 Panic Button & Hijacking Protocol** (+9 more)
+
+### Community 1203 - "FreightProof SA"
+Cohesion: 0.11
+Nodes (18): Adding a database model, Adding a new config value, Architecture overview, Branch structure, Development workflow, Environment variables reference, FreightProof SA, Licence (+10 more)
+
+### Community 1204 - "PPWaybillResponse"
+Cohesion: 0.12
+Nodes (14): PPWaybillResponse, Parsed top-level getSingleWaybill result (one entry from `results`)., True when PP has recorded a POD date — delivery is confirmed., True when PP has recorded a delivery failure reason., ASPIRATIONAL — PP v28 has no such endpoint (ask #1, July visit). Mock-only so…, Any, Convert a PPWaybillResponse to a JSON-safe dict for storage in pp_raw_json.…, serialise_waybill() (+6 more)
+
+### Community 1205 - "test_phase_location_preview.py"
+Cohesion: 0.32
+Nodes (16): _capture(), _phase_id(), _preview(), AsyncClient, parametrize, UUID, Integration coverage for the read-only phase location preview boundary., A preview's result is advisory; completion must take and persist its own… (+8 more)
+
+### Community 1206 - "Client vs Server Computation — Audit"
+Cohesion: 0.12
+Nodes (16): 1. The taxonomy, 2. Every instance found, 3.1 `phase_event_id` on a driver-raised exception — client-supplied, server-stored, 3.2 `guard_verified_seal` — a client-computed verdict the server acts on, 3.3 `idempotency_key` uniqueness is global, not per-trip, 3. Category C findings, 4.1 The phase plan generator (highest value), 4.2 `STEP_SLUGS` — already solved; cite it as the template (+8 more)
+
+### Community 1207 - "Dispatcher UI Redesign Implementation Plan"
+Cohesion: 0.12
+Nodes (16): Dispatcher UI Redesign Implementation Plan, File map, Task 10 — Rewrite Create Trip page, Task 11 — Rewrite Trip History page, Task 12 — Rewrite SLA Reports page, Task 13 — Apply `TopBar` to ref-less pages, Task 14 — Final build verification, Task 1 — Add `canvas` colour token to Tailwind config (+8 more)
+
+### Community 1208 - "Phase H — Handshake step UI (replace placeholder)"
+Cohesion: 0.12
+Nodes (16): Driver PWA Fully Functional — Part 4 (Phases F, G, H, I), Phase F — Frontend API client + auth/trip wiring, Phase G — Capture hooks, Phase H — Handshake step UI (replace placeholder), Phase I — Offline queue (FP-70), Self-review notes (per writing-plans skill), Task 21: Typed fetch client + real OTP auth, Task 22: Trip/manifest/artifact/exception/checkpoint API modules + `TripContext` wiring (+8 more)
+
+### Community 1209 - "Trip Creation Redesign Implementation Plan"
+Cohesion: 0.12
+Nodes (16): Phase 1 — Data model, migration, hashing, schemas, Phase 2 — PP integration layer (mock fixtures + manifest lookup), Phase 3 — Services and endpoints, Phase 4 — Dispatcher wizard, Phase 5 — Final verification (single gate), Task 10: Wizard rebuild — Step 1, payload, review, Task 1: `TripType` enum + three DB changes + migration, Task 2: Hashing — optional trailers + versioned `trip_type` (+8 more)
+
+### Community 1210 - "Implementation Plan"
+Cohesion: 0.12
+Nodes (16): 1. Layout swap, 2. Always-visible event detail, 3. Backend: real diffs for cosmetic fields, 4. Forensic badge: plain language + visible hash, Design, Files to create, Files to modify, Goals (+8 more)
+
+### Community 1211 - "Driver PWA — trip auto-refresh while waiting on the warehouse"
+Cohesion: 0.12
+Nodes (16): API contract (pinned — implement exactly), Architecture, Data flow, Decisions taken, Driver PWA — trip auto-refresh while waiting on the warehouse, Execution, iOS behaviour, Out of scope — flagged, not silently done (+8 more)
+
+### Community 1212 - "Alembic autogenerate drift — what it was, how it was fixed, what is still open"
+Cohesion: 0.13
+Nodes (12): Alembic autogenerate drift — what it was, how it was fixed, what is still open, 🟡 Five constraint churn operations, For anyone using Claude Code on this repo, How to see it for yourself, Status: fixed, Still open, The procedure — follow it every time, 🟠 Twenty-one indexes (+4 more)
+
+### Community 1213 - "2. Demonstration feedback — "controls, validation and security""
+Cohesion: 0.12
+Nodes (16): 2.10 "Identification should accommodate passports", 2.11 "Exception logging should support photographs and resolution status", 2.12 "…with relevant warnings visible on the driver's mobile interface", 2.13 "Ensure that records stored on the blockchain remain searchable and useful after entry", 2.14 "Reporting and analytics are an important gap", 2.15 "Clarify the multi-tenant model, cross-company driver relationships…", 2.1 "The system should validate driver and vehicle availability", 2.2 "…scheduling…" (+8 more)
+
+### Community 1214 - "meeting_minutes_bruce_16-04-2026_Detailed.md"
+Cohesion: 0.12
+Nodes (15): **10\. Action Items**, **11\. Next Steps & Notes**, **1\. Systems Overview — Parcel Perfect vs Pulseit**, **2\.1 Order Creation**, **2\.2 Loading & Departure**, **2\.3 Driver Role at Pickup**, **2\.4 Delivery & Proof of Delivery \(POD\)**, **2\. Trip Lifecycle & Order Flow** (+7 more)
+
+### Community 1215 - "Prioritized security findings"
+Cohesion: 0.12
+Nodes (15): Dependency audit and verification results, Other hardening and follow-up work, Prioritized security findings, Recommended order, S1 — Urgent deployment check: newer tables lack migration-enforced Data API protection, S2 — High: driver can bypass receiver confirmation, S3 — High: upload parsing is exposed before authentication and has vulnerable dependencies, S4 — High: unverified JWT prefixes share and exhaust other users' rate limits (+7 more)
+
+### Community 1216 - "FreightProof SA — Frontend Phase 0 Implementation Plan"
+Cohesion: 0.12
+Nodes (15): FreightProof SA — Frontend Phase 0 Implementation Plan, Phase 0 done — verification checklist, Phase 1 — what comes next (reference, not tasks), Phase 2 — driver continued (reference), Phase 3 — polish (reference), Task 10: Capacitor android scaffold (driver-pwa only), Task 1: Pre-flight — fix stale docs, Task 2: Scaffold driver-pwa/ as a Next.js 15 app (+7 more)
+
+### Community 1217 - "Dispatcher — Forensic-View UX Completion (FP-115)"
+Cohesion: 0.12
+Nodes (15): Background — what's broken today, Design decisions (resolved), Design language, Dispatcher — Forensic-View UX Completion (FP-115), Files, Final verification (run once, after all tasks), Notes for the implementer, Out of scope (+7 more)
+
+### Community 1218 - "Phase A — Driver Auth (backend)"
+Cohesion: 0.12
+Nodes (15): Driver PWA Fully Functional Implementation Plan, File Structure, Phase A — Driver Auth (backend), Phase B — Trip lookup + evidence artifacts (prerequisites for handshakes), Phase boundary note, Shared-file impact (flag per CLAUDE.md), Task 1: OTP storage migration + config keys, Task 2: Twilio integration (SMS OTP) (+7 more)
+
+### Community 1219 - "Parcel Perfect Integration — Implementation Plan"
+Cohesion: 0.12
+Nodes (15): Auth flow (from the v28 spec), File map, getSingleWaybill response shape (from spec), New .env keys required, Parcel Perfect Integration — Implementation Plan, Scope boundary, Self-review checklist, Shared files changed (+7 more)
+
+### Community 1220 - "POPIA Driver Erasure"
+Cohesion: 0.12
+Nodes (15): Context, Cross-dev / shared-file flags, Data model — two audit columns on `drivers`, Decisions (from brainstorming), Design, Endpoint — `POST /drivers/{driver_id}/erase`, Error handling, Frontend (+7 more)
+
+### Community 1221 - "POST /trips Endpoint Implementation Plan"
+Cohesion: 0.13
+Nodes (14): File Map, New `.env` keys required, POST /trips Endpoint Implementation Plan, Self-Review Checklist, Task 10: Write integration tests for `POST /trips`, Task 1: Add `TripCreateRequest` and `TripDetailResponse` schemas, Task 2: Create domain exception classes, Task 3: Create journey lock hash function (+6 more)
+
+### Community 1222 - "add_exception"
+Cohesion: 0.14
+Nodes (14): add_exception(), add_receiver_confirmation(), add_token_attempt(), AsyncSession, ExceptionReviewStatus, ExceptionSeverity, ExceptionSource, ExceptionType (+6 more)
+
+### Community 1223 - "FreightProof SA — Claude Onboarding Prompt"
+Cohesion: 0.13
+Nodes (14): Architecture quick-reference (for Claude's context), FreightProof SA — Claude Onboarding Prompt, Instructions for Claude, Prerequisites check, Step 10 — Final summary, Step 1 — Clone check, Step 2 — Backend Python environment, Step 3 — Backend environment file (+6 more)
+
+### Community 1224 - "7. Dispatcher Portal — page catalogue"
+Cohesion: 0.13
+Nodes (15): 7.0 Conventions, 7.10 Fleet: Vehicles, 7.11 Fleet: Drivers, 7.12 Not-found and error, 7.13 Token preview (dev only), 7.1 Login, 7.2 Active Trips (default landing), 7.3 Trip Detail (+7 more)
+
+### Community 1225 - "FreightProof SA — Iteration 2 Master Plan"
+Cohesion: 0.13
+Nodes (13): 0. The frame, 1. Decisions locked (these supersede the written brief), 2. The work, by phase (mapped to live Jira tickets), 3. Ticket changes already applied (kickoff §11.2), 4. Blocked — do NOT start (pending Bruce), 5. Non-code actions / investigations, 6. Definition of done for iteration 2, Documentation / research (run in parallel) (+5 more)
+
+### Community 1226 - "Meeting_Minutes_Bruce_05May2026.md"
+Cohesion: 0.13
+Nodes (14): **10\. Action Items**, **11\. Next Steps**, **1\. Purpose of Meeting**, **2\. Iteration 1 Demo Approach**, **3\. Gate Entry and Guard Notification Process**, **4\.1 The Manifest**, **4\.2 Load Factor Waybill \(Master Waybill\)**, **4\.3 Linking Documents to a Trip** (+6 more)
+
+### Community 1227 - "Receiver Identity Verification — Stage 1 (Foundation) Implementation Plan"
+Cohesion: 0.13
+Nodes (14): Before you start, File Structure, Not in this stage, Receiver Identity Verification — Stage 1 (Foundation) Implementation Plan, Stage 1 done when, Task 1: Enums, Task 2: Models, Task 3: Migration (+6 more)
+
+### Community 1228 - "The Bug Hunter"
+Cohesion: 0.14
+Nodes (13): 1. Reproduce it, on demand, 2. Read what it actually says, 3. Hypotheses, tested one at a time, 4. Fix the cause, not the symptom, 5. Prove it, then check for siblings, 6. Leave a trace, The Bug Hunter, The Honest Limits (+5 more)
+
+### Community 1229 - "The Build Planner"
+Cohesion: 0.14
+Nodes (13): 1. Ask the questions that change the build (one at a time, six at most), 2. Offer real options, then commit, 3. Slice into stages that each end with something you can SEE, 4. Write the steps so they execute cold, 5. Name the risks with tripwires, 6. Write the handoff block, The Build Planner, The Honest Limits (+5 more)
+
+### Community 1230 - "The Method"
+Cohesion: 0.14
+Nodes (13): 1. Three questions before any files (one at a time, stop when the picture is clear), 2. Foundations, in this exact order, 3. Write the AGENTS.md at birth, 4. Deploy the walking skeleton, 5. Decide how you'll know things work, 6. Only now, the first feature, The Honest Limits, The Method (+5 more)
+
+### Community 1231 - "PPContents"
+Cohesion: 0.18
+Nodes (12): _mock_waybill(), PPContents, PPTrack, PPWaybillDetails, Core waybill header fields returned by getSingleWaybill. Extended fields…, Fixture factory - field shapes strictly follow the v28 getSingleWaybill spec.…, A fixture that states a real leg between two demo depots. Defaults to the demo…, A single parcel tracking barcode within a waybill. (+4 more)
+
+### Community 1232 - "The Bug Hunter"
+Cohesion: 0.14
+Nodes (13): 1. Reproduce it, on demand, 2. Read what it actually says, 3. Hypotheses, tested one at a time, 4. Fix the cause, not the symptom, 5. Prove it, then check for siblings, 6. Leave a trace, The Bug Hunter, The Honest Limits (+5 more)
+
+### Community 1233 - "The Build Planner"
+Cohesion: 0.14
+Nodes (13): 1. Ask the questions that change the build (one at a time, six at most), 2. Offer real options, then commit, 3. Slice into stages that each end with something you can SEE, 4. Write the steps so they execute cold, 5. Name the risks with tripwires, 6. Write the handoff block, The Build Planner, The Honest Limits (+5 more)
+
+### Community 1234 - "The Method"
+Cohesion: 0.14
+Nodes (13): 1. Three questions before any files (one at a time, stop when the picture is clear), 2. Foundations, in this exact order, 3. Write the CLAUDE.md at birth, 4. Deploy the walking skeleton, 5. Decide how you'll know things work, 6. Only now, the first feature, The Honest Limits, The Method (+5 more)
+
+### Community 1235 - "Audit — docs/ relevance + backend simplicity & API efficiency"
+Cohesion: 0.14
+Nodes (13): Already good, Already good on the wire, Archive (move to `docs/archive/`, don't delete), Audit — docs/ relevance + backend simplicity & API efficiency, Delete candidates (highest confidence first), Explicit non-finding (leave alone), Findings (ranked), Findings (ranked) (+5 more)
+
+### Community 1236 - "Design notes — Multi-stop handshakes (pickups + dropoffs)"
+Cohesion: 0.14
+Nodes (13): 1. The core physical insight, 2. Guiding principle — generalise, don't bolt on, 3.1 Handshakes attach to a stop, 3.2 Cargo verification is per-consignment, linked to the stop, 3.3 Seal segments (the tamper-evidence win), 3.4 Dual-role stop (origin for one consignment, destination for another), 3.5 Journey-lock (FP-113), 3. Proposed shape (recommended: Option A) (+5 more)
+
+### Community 1237 - "Dispatcher Portal — Handoff: Driver PWA changes, 2026-08-06"
+Cohesion: 0.14
+Nodes (13): 1. Contract changes already merged (awareness only, no action), 2. Behavioural change you WILL see — read this one, 3. Dispatcher frontend — recommended edits, 3a. `components/domain/ConfirmationDetail.tsx` — POD signature now carries identity, 3b. `components/domain/UnloadingDetail.tsx` — seal photo label, 3c. `components/domain/ActivationDetail.tsx:47-50` — a photo that can never exist, 3d. `components/domain/PhaseAnchorSection.tsx` — `pending` needs its own copy, 4. Optional backend follow-up — structured `recipient_id_number` (+5 more)
+
+### Community 1238 - "Facility Visit Findings — Distribution Hub (RTT / Load Factor client)"
+Cohesion: 0.14
+Nodes (14): 0. How to read this doc, 1. The operation in plain English, 2. Entities and hierarchy, 3. The trip lifecycle and where evidence is captured, 4.1 Confirmed — no change needed (the redesign holds), 4.2 Should change / decide — real tensions, 4.3 Documentation drift to fix, 4. What the visit CONFIRMS vs what we should CHANGE (+6 more)
+
+### Community 1239 - "Admin-Only Fleet Mutations Implementation Plan"
+Cohesion: 0.14
+Nodes (13): Admin-Only Fleet Mutations Implementation Plan, File Map, Self-Review, ⚠️ Shared-file note, Task 1: Write failing integration tests, Task 2: Swap backend dependencies on mutating routes, Task 3: Fix `_DEMO_USER` role so existing mutation tests keep passing, Task 4: Create the `AdminOnly` frontend component (+5 more)
+
+### Community 1240 - "Findings ledger"
+Cohesion: 0.14
+Nodes (14): 4.1 — seeded state, verified against the database, 4.2 — outcome, 4.3 — the plan-length guard was proven to bite, not merely proven green, 4.4 — outcome, 4.5 — outcome, verified independently by the orchestrator, 4.6 — outcome, 4.x — Suite numbers after Stage 4, Browser walk — result (+6 more)
+
+### Community 1241 - "Decisions taken while writing this plan"
+Cohesion: 0.14
+Nodes (14): Decisions taken while writing this plan, U10 — The dispatcher's `tsc` gate is red from task 4.2 until task 4.6, by construction, U11 — `dispatcher/lib/hooks/useStepIndicator.ts` is deleted, not ported, U12 — `useSLAMetrics` stays a stub; only the field name and one label change, U13 — An active trip's status chip carries its **phase name**, not the flat word "Active" — *decided by Ciaran, 2026-07-30*, U1 — The clean cut is **full**: four shared modules go phase-only in one commit — *decided by Ciaran, 2026-07-30*, U2 — `TripStatus` keeps its name and becomes an alias of `CoarseTripStatus`; `TripWithPhases` is deleted, U3 — Four read-path fields go on the API: `current_phase`, `current_stop`, `phase_total`, `phase_completed` (+6 more)
+
+### Community 1242 - "Precinct List Card Redesign — Implementation Plan"
+Cohesion: 0.14
+Nodes (13): Card anatomy, Decisions, Files, Hosting, How the thumbnail works, Out of scope, Precinct List Card Redesign — Implementation Plan, Risks (+5 more)
+
+### Community 1243 - "Receiver Identity Verification — Stage 2B (HTTP Surface) Implementation Plan"
+Cohesion: 0.14
+Nodes (13): ⚠ Enum comparison trap (bit us once already), File Structure, Known environment facts (tell every implementer), Receiver Identity Verification — Stage 2B (HTTP Surface) Implementation Plan, Security rules this stage must enforce (spec §7), Stage 2B done when, Task 1: Wire shapes, Task 2: Rate limit for the webhook (+5 more)
+
+### Community 1244 - "EventSwitch.tsx"
+Cohesion: 0.18
+Nodes (7): Props, EventSwitch(), EventSwitchProps, PatternEvent, RadioOption, RadioToggle(), RadioToggleProps
+
+### Community 1245 - "Trip Creation — Code Walkthrough"
+Cohesion: 0.14
+Nodes (13): 3a. Insert `Trip` row, 3b. Insert `TripTrailer` rows (one per trailer), 3c. Insert `HandshakeEvent` H0, Full Call Chain (one line each), Key Fields to Point to in the Demo, Step 1 — HTTP Layer, Step 2 — Orchestration: Validation, Step 3 — Orchestration: DB Writes (+5 more)
+
+### Community 1246 - "The Honest Advisor"
+Cohesion: 0.15
+Nodes (12): 1. Say the idea back in one sentence, 2. Steelman it first, 3. Attack, in this order, 4. Design the cheapest kill test, 5. Verdict, straight, The Honest Advisor, The Honest Limits, The Method (+4 more)
+
+### Community 1247 - "identity_matches"
+Cohesion: 0.23
+Nodes (12): identity_matches(), _normalise_id_number(), Keep alphanumerics only. Passports and company registration numbers…, Whether the vendor's extracted identity agrees with what the receiver typed.…, The substitution defence: does the vendor's extracted identity agree with what…, Given-name ordering and initials vary too much between a document and self-…, test_a_different_id_number_does_not_match(), test_a_different_surname_does_not_match() (+4 more)
+
+### Community 1248 - "TripCreate"
+Cohesion: 0.18
+Nodes (11): datetime, model_validator, Every scheduled slot_time on the route, in sequence order. Sequence is the…, Reject a declared schedule that could not have happened. Shared by both…, stop_slot_times(), TripCreate, validate_declared_schedule(), Validator must not fire when only one of the two fields is provided. (+3 more)
+
+### Community 1249 - "test_update_driver_hedera_timeout_returns_504"
+Cohesion: 0.28
+Nodes (13): AsyncClient, asyncio, AsyncSession, Driver, Critical POPIA test: no PII appears in the anchored payload_json., is_active is a critical field — toggling it forces update_driver to anchor., Insert a driver directly (bypassing the anchored create-endpoint) for PATCH…, seed_driver() (+5 more)
+
+### Community 1250 - "The Honest Advisor"
+Cohesion: 0.15
+Nodes (12): 1. Say the idea back in one sentence, 2. Steelman it first, 3. Attack, in this order, 4. Design the cheapest kill test, 5. Verdict, straight, The Honest Advisor, The Honest Limits, The Method (+4 more)
+
+### Community 1251 - "Seal Chain Rework — Making the Seal a Multi-Party Control"
+Cohesion: 0.15
+Nodes (13): 1. What exists today, 2. What Bruce's description changes, 3.1 The format will reject a real seal · **live demo risk**, 3.2 Nobody in the real process types a seal — they scan it, 3.3 The expected seal has no independent origin, 3.4 We already hold the inter-branch alert — we just never show it, 3.5 The moment custody transfers is not recorded, 3. Five gaps, in the order I would fix them (+5 more)
+
+### Community 1252 - "Exception queue — scaling the list, the subscription, and the archive"
+Cohesion: 0.15
+Nodes (13): 0 · TL;DR, 1 · What actually happens today, 2.1 · Why the "double emit" makes this safe, 2.2 · The gap that must close first, 2 · The channel already carries the answer, 3 · `GET /exceptions/{id}`, 4.1 · What this buys, 4 · Split the resource by state, not by page (+5 more)
+
+### Community 1253 - "Live sub-phase timeline — session handoff"
+Cohesion: 0.15
+Nodes (13): 0 · What is being built, 1 · Read first, in order, 2 · Where the code stood at handoff, 3 · The recorded call: bounded rail first, full ledger second, 4 · Suggested order, 6 · Baseline — establish before changing anything, 7 · Open decisions, 8 · Shared files — coordinate before changing (+5 more)
+
+### Community 1254 - "Vehicle Detail — Immutable History / Analytics Toggle — Build Spec"
+Cohesion: 0.15
+Nodes (12): 1. What this task is, 2. Confirmed current repo state (verified 2026-09-12), 3. Decisions confirmed with Tom (2026-09-12), 4.1 Modify `frontend/dispatcher/app/(app)/fleet/vehicles/[id]/page.tsx`, 4.2 New file: `frontend/dispatcher/components/analytics/VehicleAnalyticsSummary.tsx`, 4.3 Files explicitly NOT touched, 4. Implementation, 5. Tests (+4 more)
+
+### Community 1255 - "Phase C — Handshake state machine"
+Cohesion: 0.15
+Nodes (12): Driver PWA Fully Functional — Part 2 (Phases C & D), Phase C — Handshake state machine, Phase D — Exceptions & checkpoints (driver-raised), Task 10: Handshake request schemas + domain exception, Task 11: `advance_h1` — Origin Gate-In, Task 12: `advance_h2` — Loading (seal capture, no Hedera call), Task 13: `advance_h3` — Origin Gate-Out, Task 14: `advance_h4` — Destination Gate-In (seal mismatch → exception) (+4 more)
+
+### Community 1256 - "A. Design"
+Cohesion: 0.15
+Nodes (12): A.1 The key realisation, A.2 Target shape, A.3 Backward compatibility (demo stays single-client/single-leg), A.4 Decisions to confirm before running (Questions), A.5 Out of scope (this ticket), A.6 Trip "types" — one model, two wizard flows (informs FP-114), A. Design, Final verification (run once, at the end) (+4 more)
+
+### Community 1257 - "Receiver Identity Verification — Stage 2A (Service Layer) Implementation Plan"
+Cohesion: 0.15
+Nodes (12): File Structure, Not in this stage, ⚠ Read this first: why Task 1 exists, Receiver Identity Verification — Stage 2A (Service Layer) Implementation Plan, Stage 2A done when, Task 1: Re-key the verification model onto the capability token, Task 2: Bounded one-shot token extension, Task 3: Tier and exception mapping (pure) (+4 more)
+
+### Community 1258 - "Driver PWA Redesign — Spec"
+Cohesion: 0.15
+Nodes (12): 1. Token migration, 2. Shared primitives rebuild, 3. Page rewrites against references, 4. Navigation shell (new), 5. Trips list — Active / Upcoming / Past tabs + filters, 6. Motion & feedback pass, 7. Panic & in-transit restyle, Driver PWA Redesign — Spec (+4 more)
+
+### Community 1259 - "Admin-Only Fleet Mutations"
+Cohesion: 0.15
+Nodes (12): Admin-Only Fleet Mutations, Backend — swap the dependency on mutating routes, Context, Cross-dev / shared-file flags, Decisions (from brainstorming), Defence in depth, Design, Error handling (+4 more)
+
+### Community 1260 - "Stage 5 breakage inventory — driver-pwa vs. the phase-model cut"
+Cohesion: 0.15
+Nodes (12): Actual file count vs. the plan's prediction, Consuming `@shared/lib/mocks/trips` (shape now phase-based, still exports the same `TRIP_00xx_ID`s and `mockTrips`), Dead symbol → replacement map, Files grouped by which shared module they lost, Fixture source for Stage 5, Lost `@shared/lib/constants/handshake-meta` (module deleted), Lost `@shared/lib/types/handshake` (module deleted), Not broken by this cut, but stale and yours to hit — `TripException.handshake_event_id` (+4 more)
+
+### Community 1261 - "The Security Sweep"
+Cohesion: 0.17
+Nodes (11): 1. Map the attack surface (10 minutes, no judgments yet), 2. Hunt the classic holes, in order of how often they kill, 3. Verify before reporting, 4. Report, then offer to fix, The Honest Limits, The Method, The one rule: every finding is an attack story, not a code smell, The Output (+3 more)
+
+### Community 1262 - "_seed"
+Cohesion: 0.29
+Nodes (12): _ping(), asyncio, Driver, Trip, Not every platform estimates accuracy. A fix without one is still worth keeping…, The offline queue can surface a fix captured before the trip closed. Rejecting…, _seed(), test_drops_pings_for_a_closed_trip_without_failing() (+4 more)
+
+### Community 1263 - "The Security Sweep"
+Cohesion: 0.17
+Nodes (11): 1. Map the attack surface (10 minutes, no judgments yet), 2. Hunt the classic holes, in order of how often they kill, 3. Verify before reporting, 4. Report, then offer to fix, The Honest Limits, The Method, The one rule: every finding is an attack story, not a code smell, The Output (+3 more)
+
+### Community 1264 - "2026-09-02-seal-chain-rework.md"
+Cohesion: 0.21
+Nodes (3): Decisions incorporated, Review provenance, Step-Event Ledger — Correction Decision Record
+
+### Community 1265 - "Create Driver & Vehicle Implementation Plan"
+Cohesion: 0.17
+Nodes (11): Auth note, Create Driver & Vehicle Implementation Plan, File map, Final verification, Task 1: Add `DriverCreateBody` schema and `create_driver` service function, Task 2: Add POST /api/v1/drivers endpoint with integration tests (TDD), Task 3: Add `VehicleCreateBody` schema and `create_vehicle` service function, Task 4: Add POST /api/v1/vehicles endpoint with integration tests (TDD) (+3 more)
+
+### Community 1266 - "Driver Phone Auth (Supabase OTP) Implementation Plan"
+Cohesion: 0.17
+Nodes (11): Driver Phone Auth (Supabase OTP) Implementation Plan, File Structure, Self-Review, Task 1: Backend — `_require_driver_role` unit tests + implementation, Task 2: Backend — `get_current_driver` dependency, Task 3: Backend — `GET /api/v1/drivers/me` endpoint, Task 4: Frontend — typed API client for driver-pwa, Task 5: Frontend — real-mode `AuthContext` tests (written first, failing) (+3 more)
+
+### Community 1267 - "Receiver Identity Verification — Stage 3 (Receiver UI) Implementation Plan"
+Cohesion: 0.17
+Nodes (11): File Structure, Known environment facts (tell every implementer), Receiver Identity Verification — Stage 3 (Receiver UI) Implementation Plan, Stage 3 done when, Task 0: Expose verification state on the scan response, Task 1: Consent wording, versioned, Task 2: API client, Task 3: Consent gate component (+3 more)
+
+### Community 1268 - "3. Endpoint Catalogue"
+Cohesion: 0.18
+Nodes (11): 3.1 Auth, 3.3 Trip Manifest, 3.5 Checkpoints, 3.7 Evidence Artifacts (uploads), 3. Endpoint Catalogue, `GET /api/v1/trips/{trip_id}/checkpoints`, `GET /api/v1/trips/{trip_id}/manifest`, `POST /api/v1/artifacts` (+3 more)
+
+### Community 1269 - "FP-154: Evidence Artifact Payload Versioning"
+Cohesion: 0.18
+Nodes (10): Canonical Contracts, Demonstration, FP-154: Evidence Artifact Payload Versioning, Purpose, Recovery, Running It, Security Boundary, Validation (+2 more)
+
+### Community 1270 - "Hedera On-Chain Recording — Implementation Plan"
+Cohesion: 0.18
+Nodes (10): Hedera On-Chain Recording — Implementation Plan, Phase 14 — Configuration, Phase 4 — Hashing extension, Phase 5 — Anchor service, Phase 6 — Verification service, Task 10: Create `anchor_service.py`, Task 11: Create `verification_service.py`, Task 37: Verify backend `.env` and `core/config.py` (+2 more)
+
+### Community 1271 - "Hedera On-Chain Recording — Spec"
+Cohesion: 0.18
+Nodes (10): 12. Out of scope for Tuesday, 13. Demo script — Tuesday 2026-05-19 (~3 minutes), 1. Backend — Anchor Service, 2. Backend — `compute_journey_lock_hash` extension, 5. Backend — API surface, 6. Backend — Schemas, Demo scope, Goal (+2 more)
+
+### Community 1272 - "Driver PWA — show only the current handshake (design)"
+Cohesion: 0.18
+Nodes (10): Background, Consumers, `CurrentHandshakeCard`, `currentHandshakeNumber(progress): 1 | 2 | 3 | 4 | 5 | null`, Decisions (resolved during brainstorming), Design, Driver PWA — show only the current handshake (design), Out of scope reminder (+2 more)
+
+### Community 1273 - "Getting started"
+Cohesion: 0.18
+Nodes (11): 1. Clone the repo, 2. Set up environment variables, 3. Start Docker services, 4. Install backend dependencies, 5. Run database migrations, 6. Start the backend, 7. Start the dispatcher frontend, 8. Start the driver PWA (separate terminal) (+3 more)
+
+### Community 1274 - "FreightProof SA — Demo Script & Walkthrough"
+Cohesion: 0.20
+Nodes (9): 1. Before you start — the traps that bite on the day, 2. The walk (6.5), 3. What you must say plainly — the honesty list, 4. Prepared answers, 5. What changed since the last time this was demoed, 6. If something breaks on stage, 7. What the single-leg-only decision costs, 8. Open decisions this document does not make (+1 more)
+
+### Community 1275 - "FreightProof_Full_Picture_v7.md"
+Cohesion: 0.20
+Nodes (9): 10. Return Legs, 11. Why the Design Works: Corruption Resistance, 12. What Is Deliberately Out of Scope for MVP, 1.1 What FreightProof does not replace, 1. What FreightProof Is, and What It Isn't, 2. The Problem FreightProof Solves, 7. What FreightProof Owns vs What Stays in Other Systems, 9. Load Configuration and Weight Management (+1 more)
+
+### Community 1276 - "1. What was done"
+Cohesion: 0.20
+Nodes (9): 1.1 The original ask vs. what actually got built, 1.2 What's actually in the branch, 1.3 The GPS feature itself (Task 7 — the actual headline), 1.4 Real bugs found and fixed during review (worth knowing about), 1. What was done, 2. What is NOT real — important before any demo, 3. Flagged items — not fixed, need a decision from you or the team, 4. Your next steps (+1 more)
+
+### Community 1277 - "Scale Readiness — Iteration 2 Review Response"
+Cohesion: 0.20
+Nodes (9): 1. Findings ledger, 2. The two to defend, not fix, 3. The open bug — one waybill, two trips, 4. Analytics — the substrate already exists, 5. File length, 6. Verification status, Pub/sub is a transactional outbox, Scale Readiness — Iteration 2 Review Response (+1 more)
+
+### Community 1278 - "Build order"
+Cohesion: 0.20
+Nodes (9): Build order, Core trip loop (demo-critical), Done checklist, Fleet management, FreightProof SA — Dispatcher Portal Phase 1 Build Plan, Polish, Secondary pages, Shell & Auth (+1 more)
+
+### Community 1279 - "1. Locked decisions (2026-07-27)"
+Cohesion: 0.20
+Nodes (10): 1. Locked decisions (2026-07-27), D1 — Rename the table, don't create a new one, D2 — P4 (In Transit) gets a real ledger row, D3 — P4 anchors to the stop it departs from, D4 — Anchor state is an enum column on `phase_events`, D5 — `PhaseType` values, D6 — Denormalization shape, D7 — Anchors move with the evidence: one at origin, one at delivery (+2 more)
+
+### Community 1280 - "Trip Mutations — Demo Reference"
+Cohesion: 0.20
+Nodes (9): 1. The Two Types of "Mutation", 2. Trip Creation — Full Call Chain, 3. Key Files & Classes, 4. Journey Lock Hash (Supabase → Tamper Detection), 5. Hedera HCS Anchoring, 6. Trip Status Lifecycle, 7. Supabase's Role, 8. What to Say in the Demo (+1 more)
+
+### Community 1281 - "views.py"
+Cohesion: 0.28
+Nodes (6): _LanePool, Lane grain — origin -> destination precinct pairs. The one grain where road…, Running totals for one lane while its months are folded together., Pure arithmetic for the analytics read layer — no database, no I/O. Kept apart…, LaneAnalyticsView, Read-only ORM mappings for the FP-153 analytics views. Mapped on their own…
+
+### Community 1282 - "2026-08-24-corroboration-parcel-client-views.md"
+Cohesion: 0.25
+Nodes (4): Documents, FreightProof SA — Design Documents, Iteration 3 (current), Usage
+
+### Community 1283 - "Live analytics views — decision record"
+Cohesion: 0.22
+Nodes (8): 1. The problem, 2. Options considered, 3. Decision: A, 4. What changed, 5. When to revisit, 6. Superseded, 7. Applying to the shared database, Live analytics views — decision record
+
+### Community 1284 - "4.1 Two service models"
+Cohesion: 0.22
+Nodes (9): 4.1 Two service models, 4. The Journey: Five Handshakes, Start to Finish, Handshake 0 — Trip Creation, Handshake 1 — Origin Gate-In, Handshake 2 — Loading Handshake, Handshake 3 — Origin Gate-Out, Handshake 4 — Destination Gate-In, Handshake 5 — Unloading Handshake (+1 more)
+
+### Community 1285 - "Phase Refactor — Stage 4: Dispatcher Re-wire (4.1 / 4.2 / 4.3 / 4.4 / 4.5)"
+Cohesion: 0.22
+Nodes (8): Done when, File structure, Invariants — must not break, Its own follow-on stage — live exceptions, Not this stage's work, Out of scope, Phase Refactor — Stage 4: Dispatcher Re-wire (4.1 / 4.2 / 4.3 / 4.4 / 4.5), Why now
+
+### Community 1286 - "8. Frontend — Dispatcher pages"
+Cohesion: 0.22
+Nodes (9): 8.1 Modify `frontend/dispatcher/app/(app)/trips/[id]/page.tsx`, 8.2 Modify `frontend/dispatcher/app/(app)/trips/new/page.tsx`, 8.3 Modify `frontend/dispatcher/app/(app)/fleet/vehicles/page.tsx`, 8.4 Modify `frontend/dispatcher/app/(app)/fleet/drivers/page.tsx`, 8.5 New `frontend/dispatcher/app/(app)/fleet/vehicles/[id]/page.tsx`, 8.6 New `frontend/dispatcher/app/(app)/fleet/drivers/[id]/page.tsx`, 8.7 New hooks in `frontend/dispatcher/lib/hooks/`, 8.8 Extend `useTripDetail.ts` (+1 more)
+
+### Community 1287 - "Driver Phone Auth (Supabase OTP) — Design"
+Cohesion: 0.22
+Nodes (8): Architecture, Backend, Driver Phone Auth (Supabase OTP) — Design, Enforcing "unregistered phone = no access", Frontend (`frontend/driver-pwa/`), Out of scope, Problem, Testing
+
+### Community 1288 - "QrCode.tsx"
+Cohesion: 0.28
+Nodes (6): QrCode(), QrCodeProps, QR_CANVAS_COLOURS, qrcode, ATTESTATION_CANVAS_COLOURS, qrcode
+
+### Community 1289 - "FreightProof SA — API Contract: Dispatcher & Driver Endpoints"
+Cohesion: 0.25
+Nodes (7): 2. Router File Layout, 5. Orchestration Layer Functions Required, 6. File Creation Order, 7. Shared-File Impact, 8. Tests Required, 9. Frontend Transition Checklist, FreightProof SA — API Contract: Dispatcher & Driver Endpoints
+
+### Community 1290 - "3. Mock data and state architecture"
+Cohesion: 0.25
+Nodes (8): 3.1 Type definitions, 3.2 Fixture data, 3.3 State (React Context only), 3.4 Path to the real API, 3. Mock data and state architecture, `AuthContext` (both surfaces — different shapes per surface), `ToastContext` (both surfaces), `TripContext` (driver only)
+
+### Community 1291 - "Meeting Minutes — Parcel Tracking System: Parcel Perfect & Pulse Integration"
+Cohesion: 0.25
+Nodes (8): 1. Parcel Perfect Access, 2. Pulse (Pulsit) Access, 3. Truck & Driver Location Tracking, 4. Delivery Confirmation / Multi-Party Verification (Chain of Custody), 5. Analytics Requirements, 6. Other Action Items, Meeting Minutes — Parcel Tracking System: Parcel Perfect & Pulse Integration, Summary of Bruce's Next Steps (by Monday)
+
+### Community 1292 - "Final verification (run once at the end)"
+Cohesion: 0.25
+Nodes (8): Final verification (run once at the end), V1. Apply migrations, V2. Run the full backend test suite, V3. Type-check the frontend, V4. Build the frontend, V5. Live integration smoke test (against Hedera testnet), V6. Coordination check, V7. Manual demo rehearsal
+
+### Community 1293 - "Driver PWA — Show Only the Current Handshake Implementation Plan"
+Cohesion: 0.25
+Nodes (7): Driver PWA — Show Only the Current Handshake Implementation Plan, Self-Review Notes, Task 1: Rename `visibleHandshakeNumbers` to `currentHandshakeNumber`, Task 2: Add the `CurrentHandshakeCard` component, Task 3: Wire `CurrentHandshakeCard` into the Home screen, Task 4: Wire `CurrentHandshakeCard` into the Trips → Active screen, Task 5: Full verification pass
+
+### Community 1294 - "7. Stages"
+Cohesion: 0.25
+Nodes (8): 7. Stages, Stage 0 — Make the tests real, freeze the contract  *(Ciaran; gate for everything)*, Stage 1 — Data model, migration, seeder  *(Ciaran)*, Stage 2 — The phase engine  *(Ciaran; the core of the refactor)*, Stage 3 — Endpoints, schemas, reconciliation, fatter anchors  *(Ciaran)*, Stage 4 — Dispatcher re-wire  *(Ciaran; this is the demo)*, Stage 5 — Driver-app plan-driven engine  *(Tim; starts at the Tim Gate)*, Stage 6 — Integration, multi-stop proof, demo  *(joint)*
+
+### Community 1295 - "Tasks"
+Cohesion: 0.25
+Nodes (8): Task 4.0 — Expose the position cache and the plan counts on the API, Task 4.1 — Seed a partially-walked trip, Task 4.2 — The shared contract clean cut, Task 4.3 — `lib/phase/derive.ts`: the one derivation, with tests, Task 4.4 — `PhaseChain` and `ChecklistRow`: the trip list goes plan-driven, Task 4.5 — The trip-detail timeline goes plan-driven, Task 4.6 — The ripple sweep, and the browser proof, Tasks
+
+### Community 1296 - "trips_since_last_incident"
+Cohesion: 0.33
+Nodes (7): get_vehicle_streaks(), AsyncSession, UUID, VehicleStreak, Whole-history streaks. Takes no month range: a streak filtered to "last 3…, Closed trips this vehicle, horse or trailer, has run since its most recent…, trips_since_last_incident()
+
+### Community 1297 - "extend_token_for_verification"
+Cohesion: 0.38
+Nodes (7): extend_token_for_verification(), Push a token's expiry out once, to cover an identity-verification round trip.…, test_an_already_redeemed_token_is_not_extended(), test_an_unknown_token_is_not_extended(), test_extension_is_refused_the_second_time(), test_extension_pushes_expiry_out_by_the_configured_cap(), _token()
+
+### Community 1298 - "3.4 Handshake Advancement (Driver)"
+Cohesion: 0.29
+Nodes (7): 3.4 Handshake Advancement (Driver), `GET /api/v1/trips/{trip_id}/handshakes/{handshake_type}`, `POST /api/v1/trips/{trip_id}/handshakes/h1/complete`, `POST /api/v1/trips/{trip_id}/handshakes/h2/complete`, `POST /api/v1/trips/{trip_id}/handshakes/h3/complete`, `POST /api/v1/trips/{trip_id}/handshakes/h4/complete`, `POST /api/v1/trips/{trip_id}/handshakes/h5/complete`
+
+### Community 1299 - "test_create_trip_hedera_service_error_returns_502_and_no_trip"
+Cohesion: 0.33
+Nodes (7): _assert_no_trip_persisted(), _post_trip_with_hedera_failure(), Exception, POST /trips with HederaService patched so submit_hash raises side_effect. Patch…, Assert fail-closed H0: nothing survives a failed anchoring attempt. The autouse…, test_create_trip_hedera_service_error_returns_502_and_no_trip(), test_create_trip_hedera_timeout_returns_504_and_no_trip()
+
+### Community 1300 - "_seed"
+Cohesion: 0.43
+Nodes (7): asyncio, AsyncSession, UUID, Return (horse_id, driver_id, org_a_id, trip_b_id)., _seed(), test_driver_detail_excludes_other_org_trips(), test_vehicle_detail_excludes_other_org_trips()
+
+### Community 1301 - "Coordination note — Driver app (linehaul) design input for Tim"
+Cohesion: 0.29
+Nodes (6): 1. What the 24 Jun meeting changes (the deltas), 2. Design philosophy — "capture, don't decide", 3. Iter-2 flow (single-O/D), 4. Forward-compatibility (don't paint into a corner), 5. Action for Tim, Coordination note — Driver app (linehaul) design input for Tim
+
+### Community 1302 - "6. The ledger — six stages, iteration 4"
+Cohesion: 0.29
+Nodes (7): 6. The ledger — six stages, iteration 4, Stage 1 · The table, and a read path that returns nothing, Stage 2 · Derivation, one phase type at a time, Stage 3 · Fix anchor sequencing, then add the Merkle root (FP-63), Stage 4 · Extend the dispatcher rail to the complete ledger, Stage 5 · Live emission from the driver app, Stage 6 · Non-driver actors — the point of the whole thing
+
+### Community 1303 - "P1 · activation"
+Cohesion: 0.29
+Nodes (7): `activation-attested` — driver, `gate-arrival-position` — driver, `geofence-verdict` — server, P1 · activation, `pulsit-position` — pulsit, `schedule-gate-passed` · `concurrency-gate-passed` — server, `trip-adopted` — driver
+
+### Community 1304 - "P6 · confirmation"
+Cohesion: 0.29
+Nodes (7): `count-mismatch-raised` · `anchored` · `trip-closed` — server, `handover-token-issued` · `handover-qr-displayed` — server / driver, P6 · confirmation, `pod-photographed` · `pod-signed` — driver, `receiver-position-recorded` — receiver, `receiver-signed-off` — **receiver** · the final act, `reconciliation-shown` — server
+
+### Community 1305 - "P5 · unloading"
+Cohesion: 0.29
+Nodes (7): P5 · unloading, `pulsit-door-open` — pulsit, `scan-in-complete` — warehouse, `seal-broken` — **receiver** · the event this whole note exists for, `seal-continuity-verdict` — server, `seal-inspected-intact` — driver, `visual-count-recorded` — driver
+
+### Community 1306 - "5 · Traps — read this before deleting anything"
+Cohesion: 0.29
+Nodes (7): 5.1 · Code that looks dead and is deliberately kept, 5.2 · `alembic --autogenerate` will propose dropping 17 indexes and both auth FKs, 5.3 · A bare `pytest` reports false green, 5.4 · The frozen test contract (Path B only), 5.5 · Prove a TS file is unreferenced with the compiler, not with grep, 5.6 · Upload attribution alone does not protect phase completion, 5 · Traps — read this before deleting anything
+
+### Community 1307 - "6. Code reusability — compulsory rules"
+Cohesion: 0.29
+Nodes (7): 6.1 The "two-uses" rule, 6.2 The "three values" rule, 6.3 The "one composer" rule, 6.4 The "shared shell" rule, 6.5 Hooks over duplication, 6.6 Forbidden duplication patterns, 6. Code reusability — compulsory rules
+
+### Community 1308 - "8.7 In-Transit (1 hub page + 5 utility pages)"
+Cohesion: 0.29
+Nodes (7): 8.7 In-Transit (1 hub page + 5 utility pages), In-Transit Home, Log Checkpoint, Panic Confirmation, Panic Submitted, Report Exception, Upload Document
+
+### Community 1309 - "**Meeting Minutes: Meeting with Bruce**"
+Cohesion: 0.29
+Nodes (6): **1\. Core Project Objectives**, **2\. Key Industry Pain Points \(The "Real World" Perspective\)**, **3\. Technical Requirements & Observations**, **4\. Strategic Advice from Bruce**, **Action Items**, **Meeting Minutes: Meeting with Bruce**
+
+### Community 1310 - "Parcel Perfect Ecommerce Service v28"
+Cohesion: 0.29
+Nodes (6): Authentication, Environment, Getting a quote from ecomService, Overview, Parcel Perfect Ecommerce Service v28, Testing environment
+
+### Community 1311 - "FreightProof SA — Scope Boundaries (Defence Document)"
+Cohesion: 0.29
+Nodes (7): 0. The scope spine (the one sentence everything defends to), 1. In scope, 2. Out of scope (defended), 3. Liability boundaries that shape the model, 4. Future enhancements (raised, not in MVP), 5. Open boundary questions, FreightProof SA — Scope Boundaries (Defence Document)
+
+### Community 1312 - "Phase Model Refactor — Parent Plan (Scope B)"
+Cohesion: 0.29
+Nodes (6): 11. Stage-plan template, 4. Chosen approach & rejected alternatives, 8. Files in scope (measured against `dev @ 802215a`), 9. Risks & tripwires, HANDOFF BLOCK — paste this first in any fresh session, Phase Model Refactor — Parent Plan (Scope B)
+
+### Community 1313 - "2. How the phase model actually works"
+Cohesion: 0.29
+Nodes (7): 2.1 The problem being solved, 2.2 The plan is generated at P0, 2.3 Position is derived, never stored, 2.4 `advance_phase()` replaces five functions, 2.5 What each phase captures, 2.6 What stays exactly as it is, 2. How the phase model actually works
+
+### Community 1314 - "5. Data strategy — rename + additive DDL + reseed"
+Cohesion: 0.29
+Nodes (7): 5.1 Schema (Alembic, chained after `tim_add_exception_gps`, name-tagged), 5.2 🔴 RLS — silent-failure territory, 5.3 Data — regenerate, don't migrate, 5.4 🔴 Database isolation — required before Stage 1, 5.5 New Supabase project — setup checklist, 5.6 Promotion path — refactor DB → the shared dev DB, 5. Data strategy — rename + additive DDL + reseed
+
+### Community 1315 - "Prerequisites"
+Cohesion: 0.29
+Nodes (7): Already live from Stage 3 — do not rebuild, do not re-spell, Carried from Stage 3's Findings ledger — restated because it binds this stage directly, Environment, Must be true before the first edit, Prerequisites, Read while writing this plan — current, verified shape of every file this stage touches, The four live defects — this is task 4.2 and 4.5's real content
+
+### Community 1316 - "4. Backend — Service-layer integration"
+Cohesion: 0.29
+Nodes (7): 4.1 Trip creation, 4.2 Vehicle creation, 4.3 Driver creation, 4.4 Verification service, 4.5 Vehicle/driver detail (with events), 4.6 Stretch: mutation endpoints, 4. Backend — Service-layer integration
+
+### Community 1317 - "2. Colour Tokens"
+Cohesion: 0.29
+Nodes (7): 2.1 Surface tiers (light → dark), 2.2 Primary (ink), 2.3 Secondary (action / link / focus), 2.4 Status / semantic roles, 2.5 Chain (blockchain attestation — domain role), 2.6 Text & outline, 2. Colour Tokens
+
+### Community 1318 - "_validate_gps_pair"
+Cohesion: 0.47
+Nodes (3): model_validator, A GPS fix is one atomic reading — accepting only one axis would silently…, _validate_gps_pair()
+
+### Community 1319 - "3.6 Exceptions"
+Cohesion: 0.33
+Nodes (6): 3.6 Exceptions, `GET /api/v1/exceptions`, `GET /api/v1/exceptions/{exception_id}`, `POST /api/v1/exceptions/{exception_id}/override`, `POST /api/v1/exceptions/{exception_id}/resolve`, `POST /api/v1/trips/{trip_id}/exceptions`
+
+### Community 1320 - "4. New Schema Types Required"
+Cohesion: 0.33
+Nodes (6): 4.1 `TripListResponse`, 4.2 `TripDetailResponse`, 4.3 `ManifestResponse`, 4.4 Handshake request bodies, 4.5 `TripExceptionCreate`, 4. New Schema Types Required
+
+### Community 1322 - "test_create_trip_response_populates_derived_phase_fields"
+Cohesion: 0.33
+Nodes (6): _assert_derived_phase_fields_populated(), stop_sequence and step_recipe are PhaseEventRead.from_event()'s two derived…, Guards trip_service.create_trip's own from_event() call site (POST /trips) —…, Guards resource_service.get_trip_detail's from_event() call site (GET…, test_create_trip_response_populates_derived_phase_fields(), test_get_trip_detail_phases_agree_with_creation_response()
+
+### Community 1323 - "8.5 Handshake 2 — Loading (5 pages)"
+Cohesion: 0.33
+Nodes (6): 8.5 Handshake 2 — Loading (5 pages), H2 · Step 1 of 5 — Arrive at loading bay, H2 · Step 2 of 5 — Confirm manifest, H2 · Step 3 of 5 — Photograph signed waybill, H2 · Step 4 of 5 — Capture seal, H2 · Step 5 of 5 — Review and submit
+
+### Community 1324 - "15. Appendix: Key Changes by Version"
+Cohesion: 0.33
+Nodes (6): 15.1 v6 → v7 changes (Bruce van Wyk meeting, 24 June 2026), 15.2 v5 → v6 changes (Bruce van Wyk meeting, 5 May 2026), 15.3 v4 → v5 changes (Bruce van Wyk Q&A, April 2026), 15.4 v3 → v4 changes (summarised), 15.5 v2 → v3 changes (summarised), 15. Appendix: Key Changes by Version
+
+### Community 1325 - "3.1 Users of the system (three roles)"
+Cohesion: 0.33
+Nodes (6): 3.1 Users of the system (three roles), 3.2 Operational touchpoints (not system users), 3. Who Uses FreightProof, Client / Consignee, Dispatcher, Driver
+
+### Community 1326 - "11. Iteration 2 Jira backlog — live snapshot (3 Jun 2026)"
+Cohesion: 0.33
+Nodes (6): 11.1 The 5-handshake circle — existing tickets to finish, 11.2 Tickets to **alter** before working them, 11.3 Tickets to **add** (none of these exist on the board yet), 11.4 Tickets **held** pending Bruce's reply (do not start), 11.5 Definition of done for iteration 2, 11. Iteration 2 Jira backlog — live snapshot (3 Jun 2026)
+
+### Community 1327 - "3. Ammar's points reconciled against Bruce's guidance"
+Cohesion: 0.33
+Nodes (6): 3.1 Already decided — no further discussion, 3.2 Probably out of scope — confirm in meeting, then defend in writing, 3.3 Decisions the team **must** take in this meeting, 3.4 Decisions blocked on Bruce, 3.5 Decision blocked on Ammar, 3. Ammar's points reconciled against Bruce's guidance
+
+### Community 1328 - "3. Code review marksheet"
+Cohesion: 0.33
+Nodes (6): 3.1 "In some areas, comments outweigh the actual code", 3.2 "Health checks could be strengthened", 3.3 "No clear evidence of batch processing", 3.4 "Backend security needs to extend beyond user authentication", 3.5 The "General Comments" paragraph, 3. Code review marksheet
+
+### Community 1329 - "Instead, the driver is issued a Linehaul document by the truck owner \(LFG or equivalent\)\. This document contains:"
+Cohesion: 0.33
+Nodes (6): A consolidated unit count \(e\.g\. “1 x 8\-tonne load”\) but not the specific contents, Driver details, Instead, the driver is issued a Linehaul document by the truck owner \(LFG or equivalent\)\. This document contains:, Seal numbers, Type and configuration of the vehicle, Vehicle registration number
+
+### Community 1330 - "The driver app must show only limited, consolidated information — a digital version of the linehaul document:"
+Cohesion: 0.33
+Nodes (6): Driver details, Registration number, Seal numbers, The driver app must show only limited, consolidated information — a digital version of the linehaul document:, Unit count \(total consolidated units\) — not the itemised cargo contents, Vehicle type and configuration
+
+### Community 1331 - "14. Files at a glance"
+Cohesion: 0.33
+Nodes (6): 14. Files at a glance, Backend — modified, Backend — new, Frontend — modified, Frontend — new, Shared-file changes flagged
+
+### Community 1332 - "dispatcher/package.json"
+Cohesion: 0.33
+Nodes (5): engines, node, name, private, version
+
+### Community 1333 - "1. Architecture Constraints"
+Cohesion: 0.40
+Nodes (5): 1.1 Layering (from `CLAUDE.md`), 1.2 Auth model, 1.3 Response format, 1.4 Status enum mismatch — CRITICAL coordination point, 1. Architecture Constraints
+
+### Community 1334 - "3.2 Trips"
+Cohesion: 0.40
+Nodes (5): 3.2 Trips, `GET /api/v1/trips`, `GET /api/v1/trips/{trip_id}`, `PATCH /api/v1/trips/{trip_id}`, `POST /api/v1/trips`
+
+### Community 1335 - "3.8 Reference data (dropdowns)"
+Cohesion: 0.40
+Nodes (5): 3.8 Reference data (dropdowns), `GET /api/v1/drivers`, `GET /api/v1/precincts`, `GET /api/v1/templates`, `GET /api/v1/vehicles`
+
+### Community 1336 - "Frontend production dependency audit — 2026-09-08"
+Cohesion: 0.40
+Nodes (4): Frontend production dependency audit — 2026-09-08, Remaining audit report, Remediation applied, Scope
+
+### Community 1337 - "10. Parcel search — the capability Bruce called the market gap"
+Cohesion: 0.40
+Nodes (5): 10. Parcel search — the capability Bruce called the market gap, Answer "where is it" before "where has it been", ~~⚠ Blocking question~~ — the pallet grain · **CLOSED 1 September 2026**, The payoff: bounded loss, The spine
+
+### Community 1338 - "P4 · in_transit"
+Cohesion: 0.40
+Nodes (5): `checkpoint-recorded` — driver, `departed` · `arrival-attested` — driver, `exception-raised` — driver, `location-ping` · `route-deviation-detected`, P4 · in_transit
+
+### Community 1339 - "13. The Two PODs: What's in Scope and What Isn't"
+Cohesion: 0.40
+Nodes (5): 13.1 The two PODs, 13.2 The trunk haul manifest boundary, 13.3 Why FreightProof only produces the depot-to-depot POD, 13.4 How the evidence output fits into FedEx's door-to-door workflow, 13. The Two PODs: What's in Scope and What Isn't
+
+### Community 1340 - "6. What the Dispatcher Sees in FreightProof"
+Cohesion: 0.40
+Nodes (5): 6.1 Active trip view, 6.2 Trip history and search, 6.3 SLA reporting, 6.4 Example trip timeline, 6. What the Dispatcher Sees in FreightProof
+
+### Community 1341 - "8. What Data FreightProof Pulls from Each System"
+Cohesion: 0.40
+Nodes (5): 8.1 From Parcel Perfect, 8.2 From Pulsit Tracking, 8.3 From IDVS, 8.4 From gate security systems — principal SLA model, 8. What Data FreightProof Pulls from Each System
+
+### Community 1342 - "Files at a glance"
+Cohesion: 0.40
+Nodes (5): Backend — modified, Backend — new, Files at a glance, Frontend — modified, Frontend — new
+
+### Community 1343 - "Phase 10 — Frontend shared types and components"
+Cohesion: 0.40
+Nodes (5): Phase 10 — Frontend shared types and components, Task 23: Shared types, Task 24: `BlockchainBadge` component, Task 25: `VerifyButton` component, Task 26: `EventTimeline` component
+
+### Community 1344 - "Phase 11 — Frontend hooks"
+Cohesion: 0.40
+Nodes (5): Phase 11 — Frontend hooks, Task 27: `useBlockchainReceipts` hook, Task 28: `useVerify` hook, Task 29: `useVehicleDetail` and `useDriverDetail` hooks, Task 30: Extend `useTripDetail`
+
+### Community 1345 - "Phase 12 — Frontend pages (modify existing)"
+Cohesion: 0.40
+Nodes (5): Phase 12 — Frontend pages (modify existing), Task 31: Modify `trips/[id]/page.tsx`, Task 32: Modify `trips/new/page.tsx`, Task 33: Modify `fleet/vehicles/page.tsx`, Task 34: Modify `fleet/drivers/page.tsx`
+
+### Community 1346 - "Phase 7 — Service-layer integration"
+Cohesion: 0.40
+Nodes (5): Phase 7 — Service-layer integration, Task 12: Modify `trip_service.create_trip` to anchor, Task 13: Modify `resource_service.create_vehicle` to anchor, Task 14: Modify `resource_service.create_driver` to anchor (POPIA-safe), Task 15: Add `get_vehicle_detail` and `get_driver_detail` to `resource_service`
+
+### Community 1347 - "Phase 9 — API endpoints"
+Cohesion: 0.40
+Nodes (5): Phase 9 — API endpoints, Task 19: Modify `vehicles.py` endpoint, Task 20: Modify `drivers.py` endpoint, Task 21: Create `blockchain.py` endpoint, Task 22: Integration tests for trip / vehicle / driver anchoring
+
+### Community 1348 - "Phase E — Manifest → Linehaul rename"
+Cohesion: 0.40
+Nodes (4): Driver PWA Fully Functional — Part 3 (Phase E & start of Phase F), Phase E — Manifest → Linehaul rename, Task 19: Backend — `LinehaulResponse` + role-aware manifest service, Task 20: Frontend shared — Linehaul type + H2 step rename
+
+### Community 1349 - "10. Open items"
+Cohesion: 0.40
+Nodes (5): 10. Open items, Closed, Still open — code gaps found after Stage 4, scheduled into Stage 6 *(added 2026-08-01)*, Still open — external, bounds what may be claimed, Still open — needs Tim or the team, not blocking Ciaran's Stage 0/1
+
+### Community 1350 - "7. Frontend — Shared components"
+Cohesion: 0.40
+Nodes (5): 7.1 `BlockchainBadge.tsx`, 7.2 `VerifyButton.tsx`, 7.3 `EventTimeline.tsx`, 7.4 Shared types, 7. Frontend — Shared components
+
+### Community 1351 - "sa-id.ts"
+Cohesion: 0.60
+Nodes (3): hasRecipientIdentity(), looksLikeSaIdNumber(), SA_ID_PATTERN
+
+### Community 1352 - "driver-pwa"
+Cohesion: 0.40
+Nodes (4): Android build, Auth, Dev, driver-pwa
+
+### Community 1353 - "_HederaAdapter"
+Cohesion: 0.50
+Nodes (3): _HederaAdapter, Protocol, Submit a string message to the specified HCS topic.
+
+### Community 1354 - "Settings"
+Cohesion: 0.50
+Nodes (3): ALLOWED_ORIGINS, plus the receiver app's own origin — always. Derived rather…, Settings, BaseSettings
+
+### Community 1355 - "sync_active_consignments"
+Cohesion: 0.50
+Nodes (4): Any, task, Celery beat task: refresh all active-trip consignments from Parcel Perfect.…, sync_active_consignments()
+
+### Community 1356 - "0. Three Design Decisions — Questions Answered"
+Cohesion: 0.50
+Nodes (4): 0.1 Does `GET /trips/{id}` nest driver, horse, trailers as full objects or just IDs?, 0.2 Is the list envelope key `items` or `results`? What are the pagination field names?, 0.3 Does `/trips/{id}/manifest` exist as its own endpoint, or is it folded into the trip detail?, 0. Three Design Decisions — Questions Answered
+
+### Community 1359 - "executor.md"
+Cohesion: 0.50
+Nodes (3): How to report back (keep it cheap), Operating rules, What the orchestrator should hand you (packet shape)
+
+### Community 1360 - "14. Where the Codebase Stands"
+Cohesion: 0.50
+Nodes (4): 14.1 Built and operational (iteration 1), 14.2 In progress (iteration 2), 14.3 Not yet modelled, 14. Where the Codebase Stands
+
+### Community 1361 - "5. Exceptions"
+Cohesion: 0.50
+Nodes (4): 5.1 System-detected exceptions, 5.2 Driver-raised exceptions, 5.3 Dispatcher-raised exceptions, 5. Exceptions
+
+### Community 1362 - "South African roads have weigh bridges that enforce limits\. Non\-compliance can result in:"
+Cohesion: 0.50
+Nodes (4): Confiscation of the vehicle at the weigh bridge, Emergency recovery involving forklifts and support vehicles to offload and reload on the side of the road, Fines for the operator, South African roads have weigh bridges that enforce limits\. Non\-compliance can result in:
+
+### Community 1363 - "Phase 15 — STRETCH (C): Vehicle / Driver mutation flows"
+Cohesion: 0.50
+Nodes (4): Phase 15 — STRETCH (C): Vehicle / Driver mutation flows, Task 39 (stretch): `update_vehicle` service + PATCH endpoint, Task 40 (stretch): `update_driver` service + PATCH endpoint, Task 41 (stretch): Edit forms in dispatcher UI
+
+### Community 1364 - "Phase 2 — Migrations"
+Cohesion: 0.50
+Nodes (4): Phase 2 — Migrations, Task 3: Migration — extend `blockchain_receipts`, Task 4: Migration — add `license_expiry` to `drivers`, Task 5: Migration — `vehicle_events` and `driver_events` tables
+
+### Community 1365 - "Phase 3 — Models"
+Cohesion: 0.50
+Nodes (4): Phase 3 — Models, Task 6: Update `BlockchainReceipt` model, Task 7: Add `license_expiry` to `Driver` model, Task 8: Create `VehicleEvent` and `DriverEvent` models
+
+### Community 1366 - "Phase 8 — Pydantic schemas"
+Cohesion: 0.50
+Nodes (4): Phase 8 — Pydantic schemas, Task 16: Extend `schemas/blockchain.py`, Task 17: Create `schemas/events.py`, Task 18: Extend `schemas/trips.py`, `schemas/vehicles.py`, `schemas/people.py`
+
+### Community 1367 - "0. Preconditions & verified baseline"
+Cohesion: 0.50
+Nodes (4): 0.1 Branch state (verified 2026-07-26, unchanged 2026-07-27), 0.2 ⚠️ `main` does not contain Tim's GPS work — `dev` does, 0.3 The real gate: the test suite does not exercise the refactor surface, 0. Preconditions & verified baseline
+
+### Community 1368 - "3. The frozen contract (Stage 0.4 deliverable)"
+Cohesion: 0.50
+Nodes (4): 3.1 Phase descriptor (served to the UI), 3.2 Endpoints, 3.3 Shared TS types (Ciaran writes — D9), 3. The frozen contract (Stage 0.4 deliverable)
+
+### Community 1369 - "6. Ownership & sequencing"
+Cohesion: 0.50
+Nodes (4): 6.1 The split, 6.2 Staggered start — Ciaran clears blockers, then Tim begins, 6.3 Proposed schedule — tight, stated honestly, 6. Ownership & sequencing
+
+### Community 1370 - "Verification"
+Cohesion: 0.50
+Nodes (4): Browser walk — the part the static gates cannot do, Specific to this stage, The standard gate, Verification
+
+### Community 1371 - "10. Testing"
+Cohesion: 0.50
+Nodes (4): 10. Testing, Integration tests, Manual demo rehearsal, Unit tests
+
+### Community 1372 - "3. Backend — Schema changes"
+Cohesion: 0.50
+Nodes (4): 3.1 Extend `blockchain_receipts`, 3.2 New event tables, 3.3 Critical fields constants, 3. Backend — Schema changes
+
+### Community 1374 - "[sessionId]/page.tsx"
+Cohesion: 0.67
+Nodes (3): MockIdvsPage(), readStash(), StashedIdentity
+
+### Community 1375 - "receiver/next.config.js"
+Cohesion: 0.50
+Nodes (3): nextConfig, path, securityHeaders
+
+### Community 1381 - "Planned exposure includes:"
+Cohesion: 0.67
+Nodes (3): FedEx facility: see how parcels are consolidated onto pallets, observe the interface between FedEx and LFG at dispatch, and understand what data flows between the two at the point of handover\., Planned exposure includes:, RTT facility: observe a different client environment for comparison\.
+
+### Community 1382 - "Phase 13 — Frontend pages (new)"
+Cohesion: 0.67
+Nodes (3): Phase 13 — Frontend pages (new), Task 35: `fleet/vehicles/[id]/page.tsx`, Task 36: `fleet/drivers/[id]/page.tsx`
+
+### Community 1383 - "Phase 1 — Enums and constants"
+Cohesion: 0.67
+Nodes (3): Phase 1 — Enums and constants, Task 1: Extend `BlockchainReceiptType` enum, Task 2: Critical-fields constants and diff helper
+
+### Community 1384 - "11. POPIA compliance (design property, not feature)"
+Cohesion: 0.67
+Nodes (3): 11. POPIA compliance (design property, not feature), Erasure model, On-chain payload is PII-safe by construction
+
+### Community 1385 - "9. Configuration"
+Cohesion: 0.67
+Nodes (3): 9. Configuration, Backend `.env`, Frontend `.env`
 
 ## Knowledge Gaps
-- **1304 isolated node(s):** `lint-changed.sh script`, `test-summary.sh script`, `SEVERITY_BORDER`, `EditState`, `columns` (+1299 more)
+- **3788 isolated node(s):** `lint-changed.sh script`, `test-lint-changed.sh script`, `test-summary.sh script`, `lint-changed.sh script`, `test-lint-changed.sh script` (+3783 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **138 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **802 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `PhaseDescriptor` connect `Backend API & Services` to `Community 32`, `Testing & Fixtures`, `Type Definitions & Schemas`, `Community 72`, `Authentication & Security`, `Community 42`, `Community 15`, `Community 175`, `Community 17`, `Community 79`, `Community 54`, `Community 57`, `Community 61`, `Community 25`, `Community 127`?**
-  _High betweenness centrality (0.033) - this node is a cross-community bridge._
-- **Why does `Trip` connect `Database Models & Schema` to `Crypto & Blockchain`, `Integration Services`, `UI Components`, `Community 12`, `Community 16`, `Community 19`, `Community 21`, `Community 22`, `Community 24`, `Community 26`, `Community 29`, `Community 30`, `Community 159`, `Community 35`, `Community 36`, `Community 39`, `Community 170`, `Community 45`, `Community 58`, `Community 63`, `Community 191`, `Community 65`, `Community 66`, `Community 198`, `Community 71`, `Community 75`, `Community 91`?**
-  _High betweenness centrality (0.029) - this node is a cross-community bridge._
-- **Why does `auth_header()` connect `Community 27` to `Database Models & Schema`, `Community 136`, `UI Components`, `Community 138`, `Community 13`, `Community 16`, `Community 147`, `Community 20`, `Community 148`, `Community 159`, `Community 160`, `Community 34`, `Community 51`, `Community 185`, `Community 59`, `Community 66`, `Community 77`, `Community 84`, `Community 92`, `Community 93`, `Community 114`, `Community 115`?**
-  _High betweenness centrality (0.029) - this node is a cross-community bridge._
-- **Are the 199 inferred relationships involving `auth_header()` (e.g. with `test_arrival_timestamp_precedes_the_unloading_submission()` and `test_full_hub_to_hub_walk_with_arrival_closes_the_trip()`) actually correct?**
-  _`auth_header()` has 199 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 170 inferred relationships involving `make_token()` (e.g. with `test_arrival_timestamp_precedes_the_unloading_submission()` and `test_full_hub_to_hub_walk_with_arrival_closes_the_trip()`) actually correct?**
-  _`make_token()` has 170 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 83 inferred relationships involving `Organization` (e.g. with `OrganizationType` and `ConsignmentSyncResult`) actually correct?**
-  _`Organization` has 83 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 81 inferred relationships involving `Trip` (e.g. with `list_dev_trips()` and `trigger_exception()`) actually correct?**
-  _`Trip` has 81 INFERRED edges - model-reasoned connections that need verification._
+- **Why does `Precinct` connect `enums.py` to `auth_header`, `test_model_schema_v6.py`, `_fleet_seed.py`, `trip_service.py`, `test_phase_corroboration.py`, `test_phase_service.py`, `test_proximity_service.py`, `_seed`, `test_analytics.py`, `ResourceNotFoundError`, `test_fleet_review.py`, `test_trips.py`, `geofence_service.py`, `test_fleet_evidence.py`, `analytics_service.py`, `integration/test_exceptions.py`, `test_trip_service.py`, `test_precinct_service.py`, `test_exception_service.py`, `test_realtime_emit.py`, `test_exception_reads.py`, `test_dev_pulsit.py`, `SubjectType`, `action_location_service.py`, `Precinct Integration Tests`, `HederaReceipt`, `verification_service.py`, `endpoints/handover.py`, `FakeMockStateStore`, `test_corroboration_service.py`, `receiver_verification_service.py`, `headers`, `test_fleet_on_time.py`, `test_fleet_problems.py`, `dev_triggers.py`, `fleet_analytics_service.py`, `test_gps_mismatch.py`, `test_exceptions_dispatcher.py`, `test_trip_history.py`, `test_subject_visibility.py`, `UserRead`, `.delete`, `Operator`, `test_analytics_endpoints.py`, `test_demo_waypoints.py`, `evaluate_geofence`, `test_fleet_patterns.py`, `test_blockchain_receipt_lookup.py`, `test_dev_truck_service.py`, `test_fleet_incidents.py`, `_seed`, `test_dev_triggers.py`, `test_trips_driver_list.py`?**
+  _High betweenness centrality (0.011) - this node is a cross-community bridge._
+- **Why does `_fixture()` connect `_fixture` to `enums.py`, `Trip Seeding Logic`, `auth_header`, `_fleet_seed.py`, `test_phase_corroboration.py`, `test_confirmation_preserves_arrival_or_its_absence`, `_probe_redis`, `test_handover_endpoints.py`, `test_analytics.py`, `test_detail_receipts_gating.py`, `test_fleet_review.py`, `test_fleet_evidence.py`, `test_verify_returns_verified_for_anchored_trip`, `integration/test_exceptions.py`, `captured_anchor_dispatches`, `test_fleet_mutations_gating.py`, `Parcel Perfect API Tests`, `test_realtime_emit.py`, `test_exception_reads.py`, `test_dev_pulsit.py`, `PPWaybillResponse`, `Precinct Integration Tests`, `HederaReceipt`, `FakeMockStateStore`, `MockPulsitClient`, `test_idvs_client.py`, `headers`, `test_fleet_on_time.py`, `test_fleet_problems.py`, `test_pulsit_client.py`, `test_rate_limit.py`, `scan_service.py`, `test_trip_history.py`, `test_exceptions_dispatcher.py`, `test_health.py`, `.delete`, `test_update_driver_hedera_timeout_returns_504`, `Operator`, `test_parcel_perfect_client.py`, `test_analytics_endpoints.py`, `MockParcelPerfectClient`, `test_blockchain.py`, `test_blockchain_receipt_lookup.py`, `test_fleet_patterns.py`, `PlanStop`, `test_fleet_incidents.py`, `test_dev_triggers.py`, `test_dev_pulsit_writes_nothing.py`, `test_receiver_verification_webhook.py`?**
+  _High betweenness centrality (0.008) - this node is a cross-community bridge._
+- **Why does `auth_header()` connect `auth_header` to `enums.py`, `_fleet_seed.py`, `test_phase_corroboration.py`, `Real-time Event Stream`, `_fixture`, `test_trip_detail_lists_departure_receipt_for_dispatcher`, `test_receiver_verification_endpoints.py`, `test_handover_endpoints.py`, `test_fleet_review.py`, `test_trips.py`, `test_fleet_evidence.py`, `integration/test_exceptions.py`, `Parcel Perfect API Tests`, `test_exception_reads.py`, `test_dev_pulsit.py`, `test_phase_location_preview.py`, `Precinct Integration Tests`, `HederaReceipt`, `headers`, `test_fleet_on_time.py`, `test_fleet_problems.py`, `test_gps_mismatch.py`, `test_exceptions_dispatcher.py`, `test_trip_history.py`, `test_update_driver_hedera_timeout_returns_504`, `Operator`, `test_analytics_endpoints.py`, `test_fleet_patterns.py`, `test_blockchain_receipt_lookup.py`, `test_fleet_incidents.py`, `test_dev_triggers.py`, `test_trips_driver_list.py`?**
+  _High betweenness centrality (0.007) - this node is a cross-community bridge._
+- **Are the 33 inferred relationships involving `Trip` (e.g. with `ReviewPair` and `LaneTrips`) actually correct?**
+  _`Trip` has 33 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 17 inferred relationships involving `Organization` (e.g. with `OrganizationType` and `ConsignmentSyncResult`) actually correct?**
+  _`Organization` has 17 INFERRED edges - model-reasoned connections that need verification._
+- **What connects `lint-changed.sh script`, `test-lint-changed.sh script`, `test-summary.sh script` to the rest of the system?**
+  _3788 weakly-connected nodes found - possible documentation gaps or missing edges._
+- **Should `enums.py` be split into smaller, more focused modules?**
+  _Cohesion score 0.034512698068157155 - nodes in this community are weakly interconnected._

@@ -110,9 +110,11 @@ Phases map to the vac timeline. Each phase ends with a working demo against trun
 | ~~Horse-substitution working assumption (swap event)~~ | ~~BQ1~~ **Reconfirmed 24 Jun — swap event on same trip.** |
 | ~~Return-leg working assumption (new one-way trip)~~ | ~~BQ5~~ **Reconfirmed 24 Jun — recording matters; new one-way trip. Initiation mechanism still TBD in system design.** |
 
-> **Sub-consignment granularity (still open, → July site visit):** does LFG scan each pallet, or
-> only count units + seal the truck? Blocks only the **leaf** (`HandlingUnit` vs unit-count under
-> `Consignment`), **not** the Trip/TripStop/multi-client restructure. See `docs/parcel-traceability.md` §8.
+> ~~**Sub-consignment granularity (still open, → July site visit):**~~ **CLOSED — team decision,
+> 1 September 2026.** The **parcel is the smallest grain**: a waybill contains parcels, with no
+> `HandlingUnit` between them. A pallet stays a unit-count under `Consignment`. Never blocked the
+> Trip/TripStop/multi-client restructure, and does not now. See `docs/parcel-traceability.md` §8 and
+> `docs/iteration3_plan.md` §8 decision 12.
 
 ---
 

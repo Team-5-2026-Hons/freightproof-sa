@@ -1,12 +1,13 @@
 """FastAPI router for blockchain receipt and verification endpoints."""
 
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_dispatcher, require_admin_dispatcher
-from app.blockchain.anchor_service import list_receipts_for_subject
+from app.blockchain.anchor_service import list_receipts_for_subject, lookup_receipts
 from app.blockchain.subject_visibility import assert_subject_visible
 from app.core.exceptions import SubjectNotVisibleError
 from app.core.limits import BLOCKCHAIN_VERIFY
@@ -14,10 +15,31 @@ from app.core.rate_limit import rate_limit
 from app.db.models.enums import DispatcherRole, SubjectType
 from app.db.session import get_db
 from app.orchestration.verification_service import verify_subject
-from app.schemas.blockchain import BlockchainReceiptRead, VerifyRequest, VerifyResponse
+from app.schemas.blockchain import (
+    BlockchainReceiptLookupQuery,
+    BlockchainReceiptRead,
+    VerifyRequest,
+    VerifyResponse,
+)
 from app.schemas.people import UserRead
 
 router = APIRouter(prefix="/blockchain", tags=["blockchain"])
+
+
+@router.get("/receipts/lookup", response_model=list[BlockchainReceiptRead])
+async def lookup_receipts_endpoint(
+    query: Annotated[BlockchainReceiptLookupQuery, Query()],
+    db: AsyncSession = Depends(get_db),
+    current_user: UserRead = Depends(require_admin_dispatcher),
+) -> list[BlockchainReceiptRead]:
+    receipts = await lookup_receipts(
+        db,
+        organization_id=current_user.organization_id,
+        data_hash=query.data_hash,
+        hedera_tx_id=query.hedera_tx_id,
+        subject_id=query.subject_id,
+    )
+    return [BlockchainReceiptRead.model_validate(receipt) for receipt in receipts]
 
 
 @router.get("/receipts", response_model=list[BlockchainReceiptRead])
@@ -64,4 +86,5 @@ async def verify_endpoint(
         receipt=BlockchainReceiptRead.model_validate(outcome.receipt) if (outcome.receipt and is_admin) else None,
         expected_hash=outcome.expected_hash if is_admin else None,
         current_hash=outcome.current_hash if is_admin else None,
+        evidence_verified=outcome.evidence_verified,
     )

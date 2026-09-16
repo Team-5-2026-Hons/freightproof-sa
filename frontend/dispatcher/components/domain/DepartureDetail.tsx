@@ -9,12 +9,15 @@ import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { Precinct } from '@shared/lib/types/precinct'
 
 interface Props {
+  artifactLoading?: boolean
+  artifactError?: string | null
+  onRetryArtifacts?: () => void
   phase: PhaseDescriptor
   precinct: Precinct | undefined
   artifactsById: Map<string, EvidenceArtifactWithUrl>
 }
 
-export function DepartureDetail({ phase, precinct, artifactsById }: Props) {
+export function DepartureDetail({ artifactLoading, artifactError, onRetryArtifacts, phase, precinct, artifactsById }: Props) {
   return (
     <PhaseDetailCard>
 
@@ -35,7 +38,9 @@ export function DepartureDetail({ phase, precinct, artifactsById }: Props) {
           )}
         </div>
         <EvidencePhoto
+          loading={artifactLoading} error={artifactError} onRetry={onRetryArtifacts}
           label="Seal photo"
+          artifactId={phase.seal_photo_artifact_id}
           artifact={phase.seal_photo_artifact_id ? artifactsById.get(phase.seal_photo_artifact_id) : undefined}
         />
       </Section>

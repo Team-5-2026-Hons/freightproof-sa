@@ -1,7 +1,8 @@
 """Integration tests: POST /api/v1/blockchain/verify covers all four VerifyStatus paths.
 
 Covers:
-  no_receipt  — subject UUID with no anchored receipt in the DB
+  no_receipt  — a subject the caller CAN see that has never been anchored
+  404         — a subject the caller cannot see, whether or not it exists at all
   verified    — anchored trip whose DB hash matches and whose Hedera hash confirms
 
 Uses a real signed JWT via the shared `client` fixture (see tests/conftest.py).
@@ -19,9 +20,10 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.blockchain.hedera import HederaReceipt
-from app.db.models.enums import IdvsStatus, OrganizationType, VehicleType
+from app.db.models.enums import IdvsStatus, OrganizationType, TripStatus, VehicleType
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
+from app.db.models.trips import Trip
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
 from app.main import app
@@ -161,18 +163,88 @@ def _auth_headers(seed: dict) -> dict:
 # ── Tests ──────────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_verify_returns_no_receipt_for_unknown_subject(
-    client: AsyncClient, db_session: AsyncSession, seed_org: dict
+async def test_verify_returns_no_receipt_for_a_visible_unanchored_subject(
+    client: AsyncClient, db_session: AsyncSession, seed_trip_data: dict
 ) -> None:
-    """Verify against a subject UUID that has never been anchored → no_receipt."""
+    """A trip the caller can see, that has never been anchored → 200 no_receipt.
+
+    Inserted straight into the DB rather than created over HTTP, because POST /trips
+    anchors as part of creation — and "never anchored" is the entire premise here.
+
+    This test used to pass a random UUID and expect 200. It could not have worked: a
+    subject that does not exist is refused at the visibility gate long before any receipt
+    lookup, and deliberately so. The state it was reaching for is this one — visible,
+    but with nothing on chain yet — which is the ordinary condition of a trip between
+    creation and its first anchor, and what VerifyButton renders as "no receipt".
+    """
+    trip = Trip(
+        id=uuid.uuid4(),
+        trip_reference=f"FP-{uuid.uuid4().hex[:6]}",
+        order_number="ORD-VFY-UNANCHORED",
+        operator_organization_id=seed_trip_data["org"].id,
+        driver_id=seed_trip_data["driver_id"],
+        horse_id=seed_trip_data["horse_id"],
+        status=TripStatus.ACTIVE,
+        idvs_check_status=IdvsStatus.VERIFIED,
+        created_by_user_id=seed_trip_data["user"].id,
+    )
+    db_session.add(trip)
+    await db_session.flush()
+
     resp = await client.post(
         "/api/v1/blockchain/verify",
-        json={"subject_type": "trip", "subject_id": str(uuid.uuid4())},
-        headers=_auth_headers(seed_org),
+        json={"subject_type": "trip", "subject_id": str(trip.id)},
+        headers=_auth_headers(seed_trip_data),
     )
 
-    assert resp.status_code == 200
+    assert resp.status_code == 200, resp.text
     assert resp.json()["status"] == "no_receipt"
+
+
+@pytest.mark.asyncio
+async def test_verify_answers_identically_for_another_orgs_trip_and_for_nothing_at_all(
+    client: AsyncClient, db_session: AsyncSession, seed_trip_data: dict
+) -> None:
+    """Both are 404, and they are the SAME 404 — that indistinguishability is the point.
+
+    app/blockchain/subject_visibility.py exists so a dispatcher cannot learn anything
+    about another operator's trips. If a non-existent id answered differently from a real
+    id belonging to someone else, the endpoint would be an existence oracle: feed it UUIDs
+    and the responses would sort the real ones from the invented ones. Asserting the two
+    responses match is therefore the security property itself, not a detail of it.
+    """
+    other_org = Organization(
+        id=uuid.uuid4(), name="Rival Operator", org_type=OrganizationType.OPERATOR,
+    )
+    db_session.add(other_org)
+    await db_session.flush()
+    someone_elses = Trip(
+        id=uuid.uuid4(),
+        trip_reference=f"FP-{uuid.uuid4().hex[:6]}",
+        order_number="ORD-VFY-RIVAL",
+        operator_organization_id=other_org.id,
+        driver_id=seed_trip_data["driver_id"],
+        horse_id=seed_trip_data["horse_id"],
+        status=TripStatus.ACTIVE,
+        idvs_check_status=IdvsStatus.VERIFIED,
+        created_by_user_id=seed_trip_data["user"].id,
+    )
+    db_session.add(someone_elses)
+    await db_session.flush()
+
+    async def _verify(subject_id: uuid.UUID):
+        return await client.post(
+            "/api/v1/blockchain/verify",
+            json={"subject_type": "trip", "subject_id": str(subject_id)},
+            headers=_auth_headers(seed_trip_data),
+        )
+
+    real_but_hidden = await _verify(someone_elses.id)
+    pure_fiction = await _verify(uuid.uuid4())
+
+    assert real_but_hidden.status_code == 404
+    assert pure_fiction.status_code == 404
+    assert real_but_hidden.json() == pure_fiction.json()
 
 
 @pytest.mark.asyncio

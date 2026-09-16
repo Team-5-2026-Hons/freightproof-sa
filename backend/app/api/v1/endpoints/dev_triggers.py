@@ -1,18 +1,13 @@
 """Dev-only trigger endpoints — simulate the parts of the world we cannot yet reach.
 
-Registered by main.py ONLY when dev_panel_enabled() is true. On an evidence
-platform, an endpoint that can fabricate an exception must be unreachable in
-production, so two independent conditions gate it and both default to closed.
+Registered by main.py only when dev_panel_enabled() is true. Every trigger drives a
+mock's state and then calls the SAME orchestration function the real flow calls; no
+endpoint here writes to the database directly.
 
-THE PRINCIPLE THIS FILE EXISTS TO UPHOLD: every trigger drives a MOCK's state and
-then calls the SAME orchestration function the real flow calls. No endpoint here
-writes to the database directly. A button that INSERTs a row proves only that the
-button works; a button that drives the real path proves the product works.
-
-  scan triggers      → MockScanFeed.stage_scans  → scan_service.ingest_scans
-  PP triggers        → MockParcelPerfectClient.stage_waybill_override
-                                                 → consignment_service.fetch_and_sync_consignment
-  exception triggers → exception_service.raise_exception
+  scan triggers      -> MockScanFeed.stage_scans  -> scan_service.ingest_scans
+  PP triggers        -> MockParcelPerfectClient.stage_waybill_override
+                                                   -> consignment_service.fetch_and_sync_consignment
+  exception triggers -> exception_service.raise_exception
 """
 
 import logging
@@ -52,9 +47,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/dev", tags=["dev-triggers"])
 
-# Returned when a trigger is fired against a non-mock feed. Staging state into a
-# mock that is not the live implementation would do nothing at all, and a trigger
-# that silently does nothing is worse in a demo than one that fails loudly.
+# A trigger that silently does nothing against a non-mock feed is worse than failing loudly.
 _MOCK_REQUIRED_DETAIL = (
     "This trigger requires the mock implementation — check PP_USE_MOCK and SCAN_FEED_USE_MOCK."
 )
@@ -62,30 +55,15 @@ _MOCK_REQUIRED_DETAIL = (
 def dev_panel_enabled() -> bool:
     """Whether the dev trigger router should be registered at all.
 
-    ONE condition, defaulting to closed. This used to be two — DEV_PANEL_ENABLED *and*
-    ENVIRONMENT != "production" — on the reasoning that a single switch is not enough on
-    an internet-reachable host. The second gate was removed deliberately, not by
-    accident: the deployed demo environment runs with ENVIRONMENT="production" (which is
-    also what removes /docs, /redoc and /openapi.json), and the panel is how the
-    scan-driven and Parcel-Perfect flows are demonstrated without a real depot feed.
-    The alternative was downgrading ENVIRONMENT, which would have re-published the whole
-    OpenAPI surface map to get one router back — strictly worse.
+    One condition, defaulting closed (DEV_PANEL_ENABLED). A second gate,
+    ENVIRONMENT != "production", was deliberately removed: the deployed demo host runs
+    with ENVIRONMENT="production" (that's what hides /docs et al.), and this panel is
+    how the scan/PP flows are demonstrated without a real depot feed.
 
-    What still stands between these endpoints and the internet, given the gate that went:
-
-      * This flag defaults to False and is a deliberate opt-in, absent from .env.example
-        values. An unconfigured deployment has no panel.
-      * When it is False the router is not registered AT ALL — the paths 404 rather than
-        403, so nothing is merely guarded.
-      * Every route in this module carries Depends(get_current_dispatcher). There is no
-        anonymous path to any of them.
-      * Each trigger additionally refuses unless the relevant integration is the mock
-        (_MOCK_REQUIRED_DETAIL), so none of them can touch a real partner system.
-
-    What was genuinely lost: a deployment that sets this flag by mistake in production no
-    longer has a second, independent condition to save it. These endpoints fabricate
-    scans and exceptions on an evidence platform, so treat the flag as production config
-    of the same weight as a credential. Turn it off when the demo window closes.
+    What still stands: the router isn't registered at all when False (404, not 403);
+    every route requires Depends(get_current_dispatcher); and each trigger additionally
+    refuses unless the relevant integration is the mock. Treat this flag as production
+    config of the same weight as a credential — turn it off when the demo window closes.
     """
     return settings.DEV_PANEL_ENABLED
 
@@ -96,13 +74,7 @@ async def list_dev_trips(
     current_user: UserRead = Depends(get_current_dispatcher),
 ) -> list[DevTripSummary]:
     """Trips with their stops, per-stop waybills (with real barcodes), and the
-    warehouse-scan gate status at each stop.
-
-    The panel runs on a second device with no trip context of its own, so it needs
-    to populate its own pickers. Outer-joined to Driver rather than a separate
-    lookup: Trip.driver_id is a required FK, but a degraded label beats a 500 if
-    the join ever misses.
-    """
+    warehouse-scan gate status at each stop, for the panel's own pickers."""
     trips_with_driver = list((await db.execute(
         select(Trip, Driver.full_name)
         .outerjoin(Driver, Driver.id == Trip.driver_id)
@@ -128,8 +100,8 @@ async def list_dev_trips(
         select(Consignment).where(Consignment.trip_id.in_(trip_ids))
     )).scalars().all())
 
-    # Real barcodes per consignment, sorted — same ordering _resolve_barcodes uses,
-    # so a partial scan's "first N" here matches what the panel would actually stage.
+    # Sorted the same way _resolve_barcodes orders them, so "first N" matches what
+    # the panel would actually stage.
     consignment_ids = [c.id for c in consignments]
     parcels = list((await db.execute(
         select(Parcel.consignment_id, Parcel.barcode)
@@ -140,14 +112,9 @@ async def list_dev_trips(
     for consignment_id, barcode in parcels:
         barcodes_by_consignment.setdefault(consignment_id, []).append(barcode)
 
-    # Every phase type the scan gate actually reads (imported, not re-declared, so this
-    # can never drift from the real gate in phase_gate.py — it was two types, and became
-    # three when UNLOADING joined the gate), plus DEPARTURE, which is not gated but is
-    # needed below to derive preceding_departure_status. UNLOADING is now in both halves
-    # of that union; the repeat is harmless because this list only ever feeds a SQL IN
-    # clause, where a duplicate value is a no-op. Extending
-    # this one query rather than adding a second round trip keeps this endpoint's
-    # batched-query discipline (it already runs once per dispatcher panel load).
+    # Imported, not re-declared, so this can never drift from phase_gate.py. Plus
+    # DEPARTURE (not gated) to derive preceding_departure_status below; extending this
+    # one query rather than adding a second keeps this endpoint's batched-query discipline.
     gated_phase_types = list(GATED_PHASES.keys())
     phase_event_types = [*gated_phase_types, PhaseType.UNLOADING, PhaseType.DEPARTURE]
     phase_events = list((await db.execute(
@@ -160,32 +127,25 @@ async def list_dev_trips(
             PhaseEvent.phase_type.in_(phase_event_types),
         )
     )).all())
-    # trip_stop_id is unique per row (only trip_creation has NULL, and it's excluded
-    # by the phase_type filter above), so trip_stop_id alone is enough of a key.
+    # trip_stop_id alone is a safe key: only trip_creation is NULL, excluded by the filter above.
     phase_status_by_stop: dict[tuple[uuid.UUID, PhaseType], str] = {
         (trip_stop_id, phase_type): str(status)
         for _, trip_stop_id, phase_type, status, _ in phase_events
         if trip_stop_id is not None
     }
 
-    # DEPARTURE events per trip, for resolving preceding_departure_status without a
-    # second query. Mirrors phase_service._find_departure_for_leg's rule: the
-    # highest-sequence_number DEPARTURE strictly before the stop's own closing event.
+    # DEPARTURE events per trip, mirroring phase_service._find_departure_for_leg's rule:
+    # the highest-sequence_number DEPARTURE strictly before the stop's own closing event.
     departures_by_trip: dict[uuid.UUID, list[tuple[int, str]]] = {}
     for trip_id_col, _, phase_type, status, sequence_number in phase_events:
-        # phase_type is a plain string here (PhaseEvent.phase_type is a String(30)
-        # column, not a SQLAlchemy Enum), so this must be `==`, not `is` — the
-        # value equals PhaseType.DEPARTURE's str-Enum value but is never the same
-        # object as it.
+        # `==`, not `is`: phase_type is a plain string column, never the same object as the enum.
         if phase_type == PhaseType.DEPARTURE:
             departures_by_trip.setdefault(trip_id_col, []).append(
                 (sequence_number, str(status))
             )
 
-    # This stop's own closing event (UNLOADING, or CONFIRMATION on the final stop —
-    # phase_plan.build_phase_plan emits both back-to-back on a final stop that also
-    # drops off, with no DEPARTURE between them, so either sequence number resolves
-    # to the same preceding departure). The lower of the two when both exist.
+    # This stop's own closing event (UNLOADING, or CONFIRMATION on a final stop that
+    # also drops off); the lower sequence number when both exist.
     closing_sequence_by_stop: dict[tuple[uuid.UUID, uuid.UUID], int] = {}
     for trip_id_col, trip_stop_id, phase_type, _, sequence_number in phase_events:
         if trip_stop_id is None or phase_type not in (PhaseType.UNLOADING, PhaseType.CONFIRMATION):
@@ -197,8 +157,7 @@ async def list_dev_trips(
     def _preceding_departure_status(trip_id_: uuid.UUID, trip_stop_id: uuid.UUID) -> Optional[str]:
         closing_sequence = closing_sequence_by_stop.get((trip_id_, trip_stop_id))
         if closing_sequence is None:
-            # No unloading/confirmation event at this stop at all — it is the origin.
-            return None
+            return None  # no unloading/confirmation at this stop — it's the origin
         preceding = [
             (sequence, status) for sequence, status in departures_by_trip.get(trip_id_, [])
             if sequence < closing_sequence
@@ -254,11 +213,7 @@ async def trigger_scan(
     db: AsyncSession = Depends(get_db),
     current_user: UserRead = Depends(get_current_dispatcher),
 ) -> ScanTriggerResponse:
-    """Stage barcodes into the mock feed, then run the real reconciliation.
-
-    Two calls, deliberately: the first is the simulated warehouse doing its job,
-    the second is production code that a real WMS poll would call identically.
-    """
+    """Stage barcodes into the mock feed, then run the real reconciliation."""
     feed = get_scan_feed()
     if not isinstance(feed, MockScanFeed):
         raise HTTPException(
@@ -322,12 +277,9 @@ async def _resolve_barcodes(
 ) -> list[str]:
     """Work out which barcodes the simulated warehouse reports for one consignment.
 
-    Precedence: `barcodes_by_reference` (per-waybill selection — a waybill absent
-    from the map stages nothing for it, deliberately not falling through to a full
-    scan) beats `barcodes` (one literal list for every consignment at the stop,
-    which is how an unexpected barcode is injected) beats `parcel_count` (the
-    first N expected barcodes, the partial-scan path); omitting all three scans
-    everything.
+    Precedence: `barcodes_by_reference` (per-waybill, absent = nothing staged) beats
+    `barcodes` (literal list, can inject an unexpected barcode) beats `parcel_count`
+    (first N, partial scan); omitting all three scans everything.
     """
     expected = [row[0] for row in (await db.execute(
         select(Parcel.barcode)
@@ -354,12 +306,7 @@ async def close_scan_session(
     db: AsyncSession = Depends(get_db),
     current_user: UserRead = Depends(get_current_dispatcher),
 ) -> CloseScanSessionResponse:
-    """Close the scan session for every consignment at this stop.
-
-    Drives the mock only. The phase gate reads this state through the same
-    ScanFeed a real WMS integration would implement, so nothing downstream knows
-    a trigger was involved.
-    """
+    """Close the scan session for every consignment at this stop (drives the mock only)."""
     feed = get_scan_feed()
     if not isinstance(feed, MockScanFeed):
         raise HTTPException(
@@ -397,13 +344,7 @@ async def trigger_pp_change(
     db: AsyncSession = Depends(get_db),
     current_user: UserRead = Depends(get_current_dispatcher),
 ) -> PpTriggerResponse:
-    """Stage a waybill override, then run the real consignment sync.
-
-    The sync is fetch_and_sync_consignment — unchanged production code. Note that
-    it currently overwrites the reconciliation baseline without raising anything
-    (spec §B2c); detecting that drift is Stage 5 and deliberately not built here,
-    so this trigger demonstrates the gap rather than a fix.
-    """
+    """Stage a waybill override, then run the real consignment sync (fetch_and_sync_consignment)."""
     pp_client = get_pp_client()
     if not isinstance(pp_client, MockParcelPerfectClient):
         raise HTTPException(
@@ -437,6 +378,8 @@ async def trigger_pp_change(
             status_code=http_status.HTTP_409_CONFLICT, detail=_MOCK_REQUIRED_DETAIL,
         ) from exc
 
+    # Overwrites the reconciliation baseline without raising (spec §B2c); detecting that
+    # drift is Stage 5, deliberately not built here.
     sync_result = await consignment_service.fetch_and_sync_consignment(
         db, body.parcel_perfect_reference, trip_id=body.trip_id,
     )
@@ -460,11 +403,7 @@ async def trigger_exception(
     db: AsyncSession = Depends(get_db),
     current_user: UserRead = Depends(get_current_dispatcher),
 ) -> ExceptionTriggerResponse:
-    """Raise through exception_service — the same function the driver's panic page calls.
-
-    The driver id is read from the trip rather than supplied, so the service's own
-    "are you the assigned driver" check runs for real instead of being bypassed.
-    """
+    """Raise through exception_service, the same function the driver's panic page calls."""
     trip = (await db.execute(select(Trip).where(Trip.id == body.trip_id))).scalar_one_or_none()
     if trip is None:
         raise HTTPException(
@@ -472,6 +411,8 @@ async def trigger_exception(
         )
 
     try:
+        # driver_id read from the trip, not the body, so the service's own
+        # assigned-driver check runs for real instead of being bypassed.
         raised = await exception_service.raise_exception(
             db, trip_id=body.trip_id, driver_id=trip.driver_id,
             exception_type=body.exception_type, description=body.description,
@@ -495,12 +436,7 @@ async def trigger_exception(
 async def flush_mock_state(
     current_user: UserRead = Depends(get_current_dispatcher),
 ) -> FlushMockStateResponse:
-    """Delete every staged mock key. Evidence in PostgreSQL is untouched.
-
-    A POST rather than a DELETE because the dispatcher's typed fetch wrapper has no
-    delete verb, and adding one to a shared, separately-tested client for a dev-only
-    endpoint is not a trade worth making.
-    """
+    """Delete every staged mock key. Evidence in PostgreSQL is untouched."""
     deleted = await get_mock_state_store().flush()
     logger.info("Dev panel flushed %d mock-state key(s)", deleted)
     return FlushMockStateResponse(keys_deleted=deleted)

@@ -17,9 +17,11 @@ from unittest.mock import AsyncMock, patch
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.blockchain.hedera import HederaReceipt
+from app.db.models.blockchain import BlockchainReceipt
 from app.core.exceptions import HederaServiceError, HederaTimeoutError
 from app.db.models.enums import IdvsStatus, OrganizationType
 from app.db.models.organisations import Organization
@@ -28,6 +30,10 @@ from app.db.session import get_db
 from app.main import app
 
 from tests.conftest import auth_header, make_token
+
+# A SHA-256 rendered as hex. Named so the assertion below reads as "this is a digest and
+# nothing else" rather than as an unexplained 64.
+_SHA256_HEX_LENGTH = 64
 
 
 # ── DB override ───────────────────────────────────────────────────────────────
@@ -136,32 +142,44 @@ async def test_create_driver_does_not_anchor_pii(
 
     assert detail_resp.status_code == 200
     body = detail_resp.json()
+    assert body["receipts"], "driver creation recorded no blockchain receipt at all"
 
-    # Serialise every receipt field to a single string for a broad PII scan.
-    receipts_str = str(body["receipts"])
+    # The anchored payload is read from the DB, not from the API response.
+    #
+    # This test used to scan str(body["receipts"]) for PII, which could not fail: the API
+    # shape (BlockchainReceiptRead) carries receipt metadata and data_hash and has no
+    # payload_json field at all, so the payload it was policing was never in the string
+    # being searched. Every PII assertion passed vacuously, and the one honest assertion —
+    # that the licence hash IS recorded — failed for the same reason, because that hash
+    # only ever lived in the payload. Reading the row is what makes both halves mean
+    # something.
+    receipt = (
+        await db_session.execute(
+            select(BlockchainReceipt).where(BlockchainReceipt.id == uuid.UUID(body["receipts"][0]["id"]))
+        )
+    ).scalar_one()
+    anchored = str(receipt.payload_json)
 
-    # PII must NOT appear anywhere in the anchored receipt payload.
-    assert driver_payload["full_name"] not in receipts_str, (
-        "full_name found in blockchain receipt — POPIA violation"
-    )
-    assert driver_payload["id_number"] not in receipts_str, (
-        "id_number found in blockchain receipt — POPIA violation"
-    )
-    assert driver_payload["phone_number"] not in receipts_str, (
-        "phone_number found in blockchain receipt — POPIA violation"
-    )
-    assert driver_payload["license_number"] not in receipts_str, (
-        "license_number found in blockchain receipt — POPIA violation"
-    )
+    for field in ("full_name", "id_number", "phone_number", "license_number"):
+        assert driver_payload[field] not in anchored, (
+            f"{field} found in the anchored payload — POPIA violation"
+        )
 
-    # The SHA-256 hash of the license_number IS permitted and must be present —
-    # this confirms that the anchor did record a meaningful, verifiable field.
-    expected_hash = hashlib.sha256(
-        driver_payload["license_number"].encode()
-    ).hexdigest()
-    assert expected_hash in receipts_str, (
-        "license_number SHA-256 hash not found in blockchain receipt"
-    )
+    # The SHA-256 of the licence number IS permitted, and must be there: a payload that
+    # contained no PII because it contained nothing useful would pass the checks above
+    # while anchoring evidence of nothing.
+    expected_hash = hashlib.sha256(driver_payload["license_number"].encode()).hexdigest()
+    assert expected_hash in anchored, "licence-number SHA-256 not found in the anchored payload"
+
+    # The boundary that POPIA actually turns on: what crossed to Hedera. Only the digest
+    # of the payload is ever submitted — the payload itself stays in Postgres, in
+    # af-south-1. Asserting the argument is exactly one 64-character hex digest is the
+    # strongest form of that guarantee available here, and no amount of PII appearing in
+    # payload_json could sneak past it.
+    MockService.return_value.submit_hash.assert_called_once()
+    (submitted,) = MockService.return_value.submit_hash.call_args.args
+    assert submitted == receipt.data_hash
+    assert len(submitted) == _SHA256_HEX_LENGTH and set(submitted) <= set("0123456789abcdef")
 
 
 # ── C1: Hedera failures map to 504/502, not a bare 500 ─────────────────────────

@@ -6,26 +6,26 @@ so no information about other orgs is leaked.
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import SQLColumnExpression, Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import SubjectNotVisibleError
 from app.db.models.enums import SubjectType
-from app.db.models.events import DriverEvent, VehicleEvent
+from app.db.models.events import DriverEvent, PrecinctEvent, VehicleEvent
+from app.db.models.organisations import Precinct
 from app.db.models.phases import PhaseEvent
 from app.db.models.people import Driver
 from app.db.models.trips import Trip
 from app.db.models.vehicles import Vehicle
 
 
-async def assert_subject_visible(
-    db: AsyncSession,
+def subject_visibility_query(
     *,
     subject_type: SubjectType,
-    subject_id: uuid.UUID,
+    subject_id: uuid.UUID | SQLColumnExpression[uuid.UUID],
     organization_id: uuid.UUID,
-) -> None:
-    """Raise SubjectNotVisibleError if subject is outside the caller's organisation."""
+) -> Select[tuple[uuid.UUID]]:
+    """Share the same tenant rules between single-subject checks and receipt queries."""
     if subject_type == SubjectType.TRIP:
         query = select(Trip.id).where(
             Trip.id == subject_id,
@@ -70,9 +70,36 @@ async def assert_subject_visible(
                 Trip.operator_organization_id == organization_id,
             )
         )
+    elif subject_type == SubjectType.PRECINCT_EVENT:
+        # Scoped to the precinct's OWNER, not to who can see it. is_shared governs the
+        # precinct list; it never opens the audit trail to another organisation.
+        query = (
+            select(PrecinctEvent.id)
+            .join(Precinct, Precinct.id == PrecinctEvent.precinct_id)
+            .where(
+                PrecinctEvent.id == subject_id,
+                Precinct.principal_organization_id == organization_id,
+            )
+        )
     else:
         raise SubjectNotVisibleError(str(subject_type), str(subject_id))
 
+    return query
+
+
+async def assert_subject_visible(
+    db: AsyncSession,
+    *,
+    subject_type: SubjectType,
+    subject_id: uuid.UUID,
+    organization_id: uuid.UUID,
+) -> None:
+    """Raise SubjectNotVisibleError if subject is outside the caller's organisation."""
+    query = subject_visibility_query(
+        subject_type=subject_type,
+        subject_id=subject_id,
+        organization_id=organization_id,
+    )
     result = await db.execute(query.limit(1))
     if result.scalar_one_or_none() is None:
         raise SubjectNotVisibleError(str(subject_type), str(subject_id))

@@ -14,9 +14,10 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.auth.sessions import (
+    SESSION_ACTIVITY_WRITE_INTERVAL_SECONDS,
     SESSION_IDLE_DETAIL,
     SESSION_RECORD_RETENTION_DAYS,
     enforce_driver_idle_timeout,
@@ -280,3 +281,109 @@ async def test_the_retention_sweep_leaves_recently_idle_rows_alone(db_session) -
     )).scalars())
     assert "ancient" not in remaining
     assert "idle-but-recent" in remaining
+
+
+# ── Activity-write throttle ──────────────────────────────────────────────────
+#
+# Every request from one signed-in user writes the same row. Refreshing a stamp that is
+# already seconds old costs a write and a commit and moves the idle deadline by nothing
+# anyone can perceive, so it is skipped — but only when skipping is genuinely free. These
+# hold both halves of that: that it skips, and that it stops skipping when the skip would
+# actually change an outcome.
+
+
+async def _stamped_at(db_session, session_id: str) -> datetime:
+    """Read last_seen_at straight from the column, not off the identity-mapped object,
+    which would hand back whatever this process last assigned rather than what landed."""
+    result = await db_session.execute(
+        select(UserSession.last_seen_at).where(UserSession.session_id == session_id)
+    )
+    return result.scalar_one()
+
+
+@pytest.mark.asyncio
+async def test_a_second_dispatcher_request_moments_later_does_not_rewrite_the_stamp(db_session) -> None:
+    user = await _user(db_session)
+    token = _token("session-throttle", datetime.now(UTC))
+    await enforce_user_idle_timeout(db_session, user_id=user.id, payload=token)
+    first = await _stamped_at(db_session, "session-throttle")
+
+    await enforce_user_idle_timeout(db_session, user_id=user.id, payload=token)
+
+    assert await _stamped_at(db_session, "session-throttle") == first
+
+
+@pytest.mark.asyncio
+async def test_a_dispatcher_request_past_the_interval_does_rewrite_the_stamp(db_session) -> None:
+    user = await _user(db_session)
+    token = _token("session-stale", datetime.now(UTC))
+    await enforce_user_idle_timeout(db_session, user_id=user.id, payload=token)
+    # Wind the stamp back past the throttle but nowhere near the idle cutoff, so the only
+    # thing under test is whether the write happens.
+    stale = datetime.now(UTC) - timedelta(seconds=SESSION_ACTIVITY_WRITE_INTERVAL_SECONDS + 5)
+    await db_session.execute(
+        update(UserSession).where(UserSession.session_id == "session-stale").values(last_seen_at=stale)
+    )
+
+    await enforce_user_idle_timeout(db_session, user_id=user.id, payload=token)
+
+    assert await _stamped_at(db_session, "session-stale") > stale
+
+
+@pytest.mark.asyncio
+async def test_the_throttle_never_swallows_an_idle_refusal(db_session) -> None:
+    """The idle check runs before the throttle, so a long-idle session is still refused
+    rather than skipped over as 'recently stamped'."""
+    user = await _user(db_session)
+    db_session.add(UserSession(
+        session_id="session-idle-throttle", user_id=user.id,
+        issued_at=_long_ago(), last_seen_at=_long_ago(),
+    ))
+    await db_session.flush()
+
+    with pytest.raises(HTTPException) as exc:
+        await enforce_user_idle_timeout(
+            db_session, user_id=user.id, payload=_token("session-idle-throttle", _long_ago()),
+        )
+
+    assert exc.value.detail == SESSION_IDLE_DETAIL
+
+
+@pytest.mark.asyncio
+async def test_a_second_driver_request_moments_later_does_not_rewrite_the_stamp(db_session) -> None:
+    driver = await _driver(db_session)
+    token = _token("handset-throttle", datetime.now(UTC))
+    await enforce_single_device(db_session, driver_id=driver.id, payload=token)
+    result = await db_session.execute(
+        select(DriverSession.last_seen_at).where(DriverSession.driver_id == driver.id)
+    )
+    first = result.scalar_one()
+
+    await enforce_single_device(db_session, driver_id=driver.id, payload=token)
+
+    result = await db_session.execute(
+        select(DriverSession.last_seen_at).where(DriverSession.driver_id == driver.id)
+    )
+    assert result.scalar_one() == first
+
+
+@pytest.mark.asyncio
+async def test_a_newer_handset_takes_over_even_though_the_row_was_just_stamped(db_session) -> None:
+    """The throttle must never suppress a write that changes something.
+
+    A takeover arriving seconds after the previous handset's last request is the ordinary
+    case — the driver signs in on the new phone while the old one is still polling — so
+    skipping on freshness alone would leave the account bound to the wrong device.
+    """
+    driver = await _driver(db_session)
+    now = datetime.now(UTC)
+    await enforce_single_device(db_session, driver_id=driver.id, payload=_token("old-handset", now))
+
+    await enforce_single_device(
+        db_session, driver_id=driver.id, payload=_token("new-handset", now + timedelta(seconds=1)),
+    )
+
+    result = await db_session.execute(
+        select(DriverSession).where(DriverSession.driver_id == driver.id)
+    )
+    assert result.scalar_one().session_id == "new-handset"

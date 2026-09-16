@@ -25,8 +25,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ResourceNotFoundError
+from app.core.realtime import RealtimeKind, TripEvent, enqueue_event, event_severity
 from app.db.models.enums import (
-    ExceptionSeverity, ExceptionSource, ExceptionType, ParcelStatus,
+    ExceptionReviewStatus, ExceptionSeverity, ExceptionSource, ExceptionType, ParcelStatus,
 )
 from app.db.models.phases import PhaseEvent
 from app.db.models.transit import TripException
@@ -43,6 +44,22 @@ _DISCREPANCY_SEVERITY = ExceptionSeverity.WARNING
 
 # The warehouse scanned it, not a human in our system, so the source is the system.
 _DISCREPANCY_SOURCE = ExceptionSource.SYSTEM
+
+
+def _initial_review_status(severity: ExceptionSeverity) -> ExceptionReviewStatus:
+    """Delegates to exception_service.initial_review_status (Task 2) so this module's
+    TripException write routes through the same severity->status rule as every other
+    site, instead of hand-coding a value or relying on the column's server_default.
+
+    Imported lazily, not at module scope: phase_service imports this module at ITS
+    module load, and exception_service imports phase_service — a top-level import of
+    exception_service here would close that loop while exception_service is still
+    mid-import. This function only runs at request time, once every module involved
+    has already finished loading.
+    """
+    from app.orchestration.exception_service import initial_review_status
+
+    return initial_review_status(severity)
 
 
 @dataclass(frozen=True)
@@ -220,6 +237,16 @@ async def ingest_scans(
         )
 
     await db.flush()
+    if any(r.exception_ids for r in results):
+        # Enqueued here rather than inside _raise_discrepancy: this is the only frame
+        # holding the Trip, and one refetch covers every discrepancy in the batch.
+        enqueue_event(
+            db, trip.operator_organization_id,
+            TripEvent(
+                id=trip_id, kind=RealtimeKind.EXCEPTION_RAISED,
+                severity=event_severity(_DISCREPANCY_SEVERITY),
+            ),
+        )
     logger.info(
         "ingest_scans trip=%s stop=%s direction=%s consignments=%d",
         trip_id, trip_stop_id, direction.value, len(results),
@@ -331,7 +358,7 @@ async def _raise_discrepancy(
             TripException.trip_stop_id == trip_stop_id,
             TripException.exception_type == ExceptionType.PARCEL_COUNT_MISMATCH,
             TripException.description == description,
-            TripException.resolved.is_(False),
+            TripException.review_status != ExceptionReviewStatus.REVIEWED,
         )
     )).scalar_one_or_none()
     if existing is not None:
@@ -350,6 +377,7 @@ async def _raise_discrepancy(
         exception_type=ExceptionType.PARCEL_COUNT_MISMATCH,
         source=_DISCREPANCY_SOURCE,
         severity=_DISCREPANCY_SEVERITY,
+        review_status=_initial_review_status(_DISCREPANCY_SEVERITY),
         description=description,
     )
     db.add(exception)

@@ -58,6 +58,7 @@ function phaseSubmission(overrides: Partial<PhaseSubmissionRequest> = {}): Phase
     evidence: { capturedAt: '2026-06-12T10:00:00Z' },
     idempotencyKey: 'idem-1',
     position: Promise.resolve(null),
+    driverCapturedAt: '2026-06-12T10:00:00Z',
     enqueuePhase: vi.fn(),
     refetchTrip: vi.fn().mockResolvedValue(null),
     onOutcome: vi.fn(),

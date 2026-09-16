@@ -1,23 +1,46 @@
-"use client"
+'use client'
 
-import { useMemo } from 'react'
-import type { TripException } from '@shared/lib/types/exception'
-import { mockExceptions } from '@shared/lib/mocks/exceptions'
+import { useCallback } from 'react'
 
-export interface ExceptionsFilter {
-  resolved?: boolean
-  tripId?: string
+import { api } from '@/lib/api/client'
+import { useLiveResource } from '@/lib/realtime/useLiveResource'
+import type { TripExceptionListItem } from '@shared/lib/types/exception'
+import { useAsyncData } from './useAsyncData'
+
+const EMPTY: TripExceptionListItem[] = []
+
+export interface UseExceptionQueueResult {
+  items: TripExceptionListItem[]
+  isLoading: boolean
+  // MUST be surfaced: a failed load renders identically to a genuinely empty queue.
+  error: string | null
+  refetch: () => void
+  refetchSilent: () => void
 }
 
-export function useExceptions(filter?: ExceptionsFilter): TripException[] {
-  const resolved = filter?.resolved
-  const tripId   = filter?.tripId
+/**
+ * Every `needs_review` exception in the caller's organisation, newest first —
+ * GET /api/v1/exceptions/review-queue. Unpaginated: a work queue to clear, not a
+ * browsable archive (that's useExceptionHistory). Takes no arguments; the endpoint
+ * itself has no filters.
+ */
+export function useExceptionQueue(): UseExceptionQueueResult {
+  // Stable identity, or a new closure per render would refetch every render.
+  const fetchQueue = useCallback(
+    () => api.get<TripExceptionListItem[]>('/api/v1/exceptions/review-queue'),
+    [],
+  )
 
-  return useMemo(() => {
-    return mockExceptions.filter(e => {
-      if (resolved !== undefined && e.resolved !== resolved) return false
-      if (tripId !== undefined && e.trip_id !== tripId) return false
-      return true
-    })
-  }, [resolved, tripId])
+  const { data, isLoading, error, refetch, refetchSilent } = useAsyncData<TripExceptionListItem[]>(
+    fetchQueue,
+    EMPTY,
+  )
+
+  // 'any' trip: this queue spans the whole org. Silent so it updates in place, not with
+  // a spinner. Filtered to exception kinds so unrelated phase/close events don't re-poll it.
+  useLiveResource('trip', 'any', refetchSilent, {
+    kinds: ['exception_raised', 'exception_reviewed'],
+  })
+
+  return { items: data, isLoading, error, refetch, refetchSilent }
 }

@@ -7,7 +7,7 @@ import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import {
   activePhase, anchorTally, chainNodesFromCounts, completionPct,
   currentSealNumber, departureSealForLeg, isResolved, legDepartureAt, nodeTypeFor, originScannedCount,
-  recordedExceptionLabel, sortedPlan, tripChipMeta,
+  recordedExceptionLabel, sortedPlan, tripChipMeta, destinationScannedCount,
 } from './derive'
 import type { TripException } from '@shared/lib/types/exception'
 
@@ -219,6 +219,34 @@ describe('originScannedCount', () => {
   })
 })
 
+describe('destinationScannedCount', () => {
+  it('reads the confirmation row — the only phase the backend ever writes the count on', () => {
+    // The unloading row carries a decoy. parcel_count_destination exists on every phase
+    // in the shared type, but advance_confirmation (orchestration/phase_service.py) writes
+    // it onto CONFIRMATION alone, so a reader pointed at unloading finds a permanent NULL
+    // and reports a delivered trip as having no destination count at all.
+    const plan = SINGLE_LEG_PHASE_PLAN.map(p => {
+      if (p.phase_type === 'unloading') return { ...p, parcel_count_destination: 99 }
+      if (p.phase_type === 'confirmation') return { ...p, parcel_count_destination: 38 }
+      return p
+    })
+
+    expect(destinationScannedCount(plan)).toBe(38)
+  })
+
+  it('ignores both unloading rows of a cross-dock', () => {
+    const plan = CROSS_DOCK_PHASE_PLAN.map(p => (
+      p.phase_type === 'unloading' ? { ...p, parcel_count_destination: 99 } : p
+    ))
+
+    expect(destinationScannedCount(plan)).toBeNull()
+  })
+
+  it('is null until delivery is confirmed — an unrecorded count is not a count of zero', () => {
+    expect(destinationScannedCount(SINGLE_LEG_PHASE_PLAN)).toBeNull()
+  })
+})
+
 describe('anchorTally', () => {
   it('counts receipts owed from anchor_status, never from plan length', () => {
     // A single-leg plan owes three: trip_creation, departure, confirmation.
@@ -350,7 +378,7 @@ describe('legDepartureAt', () => {
 
 describe('recordedExceptionLabel', () => {
   const exception = (id: string): TripException =>
-    ({ id, resolved: false } as unknown as TripException)
+    ({ id } as unknown as TripException)
 
   it('is null on a clean trip', () => {
     expect(recordedExceptionLabel([], SINGLE_LEG_PHASE_PLAN)).toBeNull()
@@ -361,10 +389,10 @@ describe('recordedExceptionLabel', () => {
     expect(recordedExceptionLabel([exception('a'), exception('b')], SINGLE_LEG_PHASE_PLAN)).toBe('2 exceptions')
   })
 
-  it('counts a record regardless of resolved state — there is no resolve workflow yet', () => {
-    const resolved = { ...exception('a'), resolved: true }
+  it('counts a reviewed record as an exception fact', () => {
+    const reviewed = { ...exception('a'), review_status: 'reviewed' as const }
 
-    expect(recordedExceptionLabel([resolved], SINGLE_LEG_PHASE_PLAN)).toBe('1 exception')
+    expect(recordedExceptionLabel([reviewed], SINGLE_LEG_PHASE_PLAN)).toBe('1 exception')
   })
 
   it('reports a held phase carrying no record rather than reading as clean', () => {

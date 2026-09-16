@@ -1,15 +1,11 @@
-// Step-to-step navigation over a trip's phase plan — the driver-pwa analogue of the
-// old lib/navigation/handshake-flow.ts, rebuilt for a plan whose length and phase-type
-// repetition are DATA rather than a fixed handshake enum.
+// Step-to-step navigation over a trip's phase plan, for a plan whose length and
+// phase-type repetition are DATA rather than a fixed enum.
 //
-// The URL keys on phase_type, not phase_event_id: output: 'export' (required for the
-// Capacitor APK build) needs every dynamic route segment enumerable at build time, and
-// a server-generated phase_event_id never is — see lib/constants/routes.ts's own note
-// on the same constraint for trip IDs. Because a phase_type can recur on a cross-dock
-// plan (more than one `unloading`), this route shape alone can't tell two occurrences
-// apart; that disambiguation is the caller's job (TripContext / the active phase from
-// derive.ts), not this module's — this module only ever answers "what's the URL for
-// this type+slug", never "which occurrence am I looking at".
+// The URL keys on phase_type, not phase_event_id: output: 'export' needs every dynamic
+// route segment enumerable at build time, and a server-generated phase_event_id never
+// is. Because a phase_type can recur on a cross-dock plan, this route shape alone can't
+// tell two occurrences apart — that disambiguation is the caller's job (TripContext),
+// not this module's.
 
 import type { PhaseDescriptor, PhaseType } from '@shared/lib/types/phase'
 import { STEP_SLUGS } from '@shared/lib/constants/phase-meta'
@@ -21,13 +17,10 @@ export function phaseStepRoute(phaseType: PhaseType, slug: string): string {
   return `/trip/phase/${phaseType}/step/${slug}`
 }
 
-// Empty-recipe phases (currently only trip_creation) have no step to land on, so the
-// search keeps walking past them. Reuses currentPhase's own resolved-status walk on
-// the remainder of the plan (everything strictly after `afterSequence`) so this file
-// carries no second copy of what "resolved" means, and so a repeated phase_type is
-// handled exactly the way currentPhase already proves it handles one: by
-// sequence_number, never by type. Terminates because each iteration strictly advances
-// `afterSequence` to a real row's sequence_number, and the plan is finite.
+// Empty-recipe phases (e.g. trip_creation) have no step to land on, so the search keeps
+// walking past them. Reuses currentPhase's own resolved-status walk so this file carries
+// no second copy of what "resolved" means. Terminates because each iteration strictly
+// advances `afterSequence`, and the plan is finite.
 function firstStepAfter(phases: readonly PhaseDescriptor[], afterSequence: number): string {
   let cursor = afterSequence
   for (;;) {
@@ -45,16 +38,8 @@ function firstStepAfter(phases: readonly PhaseDescriptor[], afterSequence: numbe
 /**
  * The step the driver should be on right now: the first slug of the current phase's own
  * recipe, or — when that phase has no recipe — the first step of the next phase that
- * does, otherwise the terminal route.
- *
- * The empty-recipe branch is not defensive, it is the normal mid-leg case. `in_transit`
- * carries no driver STEPS — it is submitted from the in-transit hub's swipe, not a step
- * page (orchestration/phase_service.py closes it in `advance_in_transit`) — and the
- * backend keeps it PENDING for the whole drive, so it IS `currentPhase()` from the moment
- * the truck pulls out until the driver attests arrival.
- * A caller that treated "current phase has no steps" as "there is nowhere to go" would
- * strand the driver on the driving screen for the rest of the trip — the arrival phase is
- * always one skip further on.
+ * does, otherwise the terminal route. The empty-recipe branch is the normal mid-leg
+ * case: `in_transit` has no steps of its own and stays PENDING for the whole drive.
  */
 export function currentStepRoute(phases: readonly PhaseDescriptor[]): string {
   const phase = actionablePhase(phases)
@@ -68,9 +53,8 @@ export function currentStepRoute(phases: readonly PhaseDescriptor[]): string {
  * phase's own recipe if there is one, otherwise the first step of the next unresolved
  * phase in the plan (skipping any with an empty recipe), otherwise the terminal route.
  *
- * @throws {Error} if `slug` is not in `phase.phase_type`'s recipe — a stale deep
- * link, bookmark, or typo'd URL. Failing loud here prevents silently routing the
- * driver past an entire phase (mirrors handshake-flow.ts's own reasoning).
+ * @throws {Error} if `slug` is not in `phase.phase_type`'s recipe — a stale deep link,
+ * bookmark, or typo'd URL. Failing loud here prevents silently routing past a phase.
  */
 export function nextStepRoute(
   phases: readonly PhaseDescriptor[],
@@ -90,9 +74,7 @@ export function nextStepRoute(
   }
 
   // End of this phase's recipe: walk forward from its position in the plan. Deliberately
-  // no branch on phase.phase_type here — e.g. no `if (phase.phase_type === 'in_transit')
-  // skip` — because a submitted arrival already shows up as "resolved" by the time the walk
-  // reaches it, and the generic rule handles that for free. A type-specific branch here
-  // would be a fixed-plan-shape assumption in disguise.
+  // no branch on phase.phase_type here — a type-specific branch would be a
+  // fixed-plan-shape assumption in disguise.
   return firstStepAfter(phases, phase.sequence_number)
 }

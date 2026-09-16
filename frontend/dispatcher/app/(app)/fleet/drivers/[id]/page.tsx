@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { TopBar }    from '@/components/ui/TopBar'
+import { BackButton } from '@/components/ui/BackButton'
 import { Chip }      from '@/components/ui/Chip'
 import { Spinner }   from '@/components/ui/Spinner'
 import { Button }    from '@/components/ui/Button'
@@ -10,6 +11,8 @@ import { Ic }        from '@/components/ui/Ic'
 import { InfoRow }   from '@/components/ui/InfoRow'
 import { FormField } from '@/components/ui/FormField'
 import { Switch }    from '@/components/ui/Switch'
+import { Tabs, type Tab } from '@/components/ui/Tabs'
+import { DriverAnalyticsSummary } from '@/components/analytics/DriverAnalyticsSummary'
 import { BlockchainBadge } from '@/components/blockchain/BlockchainBadge'
 import { EventTimeline }   from '@/components/blockchain/EventTimeline'
 import { ForensicOnly }    from '@/components/blockchain/ForensicOnly'
@@ -40,6 +43,17 @@ type EditState = {
   is_active: boolean
 }
 
+// Unlike the vehicle page, every driver gets both views: there is no driver equivalent of
+// a trailer, which has no analytics at all.
+const RIGHT_PANEL_TABS = [
+  { id: 'history', label: 'Immutable History' },
+  { id: 'analytics', label: 'Analytics' },
+] as const satisfies readonly Tab[]
+
+type RightPanelTabId = (typeof RIGHT_PANEL_TABS)[number]['id']
+
+const RIGHT_PANEL_ID = 'driver-right-panel'
+
 export default function DriverDetailPage() {
   const router = useRouter()
   const params = useParams<{ id: string }>()
@@ -50,21 +64,13 @@ export default function DriverDetailPage() {
   const [touched, setTouched] = useState<Set<DriverField>>(new Set())
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [rightTab, setRightTab] = useState<RightPanelTabId>('history')
   const { width: panelWidth, startResize } = useResizablePanel(
     DETAIL_PANEL_DEFAULT_W,
     { min: DETAIL_PANEL_MIN_W, max: DETAIL_PANEL_MAX_W },
   )
 
-  const backButton = (
-    <Button
-      variant="secondary"
-      size="sm"
-      onClick={() => router.push(ROUTES.fleetDrivers)}
-      iconLeft={<Ic n="back" s={14} className="text-on-surf" />}
-    >
-      Back
-    </Button>
-  )
+  const backButton = <BackButton onClick={() => router.push(ROUTES.fleetDrivers)} />
 
   if (isLoading) {
     return (
@@ -307,12 +313,22 @@ export default function DriverDetailPage() {
 
         </div>
 
-        {/* RIGHT — scrollable immutable history, takes remaining space */}
+        {/* RIGHT — scrollable immutable history, takes remaining space. Switchable to the
+            driver's analytics. */}
         <div className="flex-1 overflow-y-auto p-6 bg-surf-lowest">
-          <div className="text-[11px] font-[700] tracking-[0.1em] uppercase text-on-surf-v mb-3">
-            Immutable History
+          <Tabs
+            tabs={RIGHT_PANEL_TABS}
+            active={rightTab}
+            onChange={(id) => setRightTab(id === 'analytics' ? 'analytics' : 'history')}
+            panelId={RIGHT_PANEL_ID}
+            ariaLabel="Driver history or analytics"
+            className="mb-4"
+          />
+          <div id={RIGHT_PANEL_ID} role="tabpanel" aria-labelledby={`tab-${rightTab}`} tabIndex={0}>
+            {rightTab === 'history'
+              ? <EventTimeline events={driver.events} receipts={driver.receipts} />
+              : <DriverAnalyticsSummary driverId={driver.id} />}
           </div>
-          <EventTimeline events={driver.events} receipts={driver.receipts} />
         </div>
       </div>
     </div>

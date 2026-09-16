@@ -8,9 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_vali
 
 from app.db.models.enums import VehicleType
 
-# Mirrors the DB column widths in app/db/models/vehicles.py — kept here so
-# Pydantic rejects over-length input with a 422 before it ever reaches Postgres
-# (asyncpg raises a raw StringDataRightTruncationError, surfaced as a 500, otherwise).
+# Mirrors DB column widths (app/db/models/vehicles.py) so over-length input is a 422, not a 500.
 _REGISTRATION_MAX_LENGTH = 50
 _PULSIT_DEVICE_ID_MAX_LENGTH = 100
 _MAKE_MODEL_MAX_LENGTH = 100
@@ -32,11 +30,8 @@ MakeModelStr = Annotated[str, StringConstraints(max_length=_MAKE_MODEL_MAX_LENGT
 
 
 def _validate_year(value: Optional[int]) -> Optional[int]:
-    """Year must be plausible: not before motor vehicles existed, not absurdly in the future.
-
-    Ceiling is computed at validation time (not a static constant) so the schema
-    doesn't need updating every calendar year.
-    """
+    """Year must be plausible; ceiling computed at validation time, not a static constant,
+    so the schema doesn't need a yearly update."""
     if value is None:
         return value
     max_year = datetime.now().year + 1
@@ -46,11 +41,8 @@ def _validate_year(value: Optional[int]) -> Optional[int]:
 
 
 class VehicleBase(BaseModel):
-    # Base shape shared by the read schemas (VehicleRead / VehicleDetailResponse).
-    # Deliberately uses plain, UNCONSTRAINED types: a read model must faithfully echo
-    # whatever is already stored, including legacy rows that predate the input rules
-    # (e.g. a sub-17-char VIN). Length/format/year validation lives only on the input
-    # bodies (VehicleCreateBody / VehicleUpdateBody) so it can't reject existing data on read.
+    # Shared by the read schemas; deliberately unconstrained types so legacy rows
+    # (e.g. a sub-17-char VIN) don't get rejected on read.
     model_config = ConfigDict(from_attributes=True)
 
     organization_id: UUID
@@ -104,15 +96,18 @@ class VehicleUpdate(BaseModel):
 
 
 class VehicleUpdateBody(BaseModel):
-    """Fields the dispatcher may change via PATCH /vehicles/{id}.
+    """Fields the dispatcher may change via PATCH /vehicles/{id}; only supplied fields
+    apply. vehicle_type is excluded: changing horse<->trailer would silently break trip logic.
 
-    All fields are optional — only supplied fields are applied.
-    vehicle_type is excluded: changing horse↔trailer would silently break trip logic.
+    Omissible is not the same as nullable, same convention as PrecinctUpdateBody
+    (schemas/organisations.py): `Optional[X]` accepts an explicit null, a bare
+    `X = Field(default=None)` is omissible but NOT NULL and must not be nulled.
+    test_patch_schema_nullability_matches_the_model pins this against the SQLAlchemy model.
     """
     model_config = ConfigDict(from_attributes=True)
 
-    registration: Optional[RegistrationStr] = None
-    pulsit_device_id: Optional[PulsitDeviceIdStr] = None
+    registration: RegistrationStr = Field(default=None)  # type: ignore[assignment]
+    pulsit_device_id: PulsitDeviceIdStr = Field(default=None)  # type: ignore[assignment]
     vin_number: Optional[VinNumberStr] = None
     licence_disc_expiry: Optional[date] = None
     make: Optional[MakeModelStr] = None
@@ -120,7 +115,7 @@ class VehicleUpdateBody(BaseModel):
     year: Optional[int] = None
     gross_vehicle_mass_kg: Optional[int] = Field(default=None, gt=0)
     length_m: Optional[int] = None
-    is_active: Optional[bool] = None
+    is_active: bool = Field(default=None)  # type: ignore[assignment]
 
     @field_validator("year")
     @classmethod
@@ -133,20 +128,14 @@ class VehicleRead(VehicleBase):
     created_at: datetime
 
 
-# Imported here (not at the top of the module) to avoid a circular import:
-# vehicles.py → blockchain.py → enums.py is fine, but resource_service.py
-# imports both VehicleRead and BlockchainReceiptRead from their respective
-# schema modules, so the dependency graph stays acyclic.
+# Imported here, not at module top, to keep the schema dependency graph acyclic.
 from app.schemas.blockchain import BlockchainReceiptRead  # noqa: E402
 from app.schemas.events import VehicleEventRead  # noqa: E402
 
 
 class VehicleDetailResponse(VehicleRead):
-    """Extended vehicle shape returned by GET /vehicles/{id}.
-
-    Includes the full event log, linked blockchain receipts, and the IDs of
-    trips that used this vehicle (as horse or trailer).
-    """
+    """Extended vehicle shape returned by GET /vehicles/{id}: event log, receipts, and
+    the IDs of trips that used this vehicle (as horse or trailer)."""
 
     events: list[VehicleEventRead] = []
     receipts: list[BlockchainReceiptRead] = []

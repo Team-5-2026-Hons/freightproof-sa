@@ -151,6 +151,10 @@ venv.bak/
 
 # Frontend — ignore build artefacts and installed packages across all workspaces
 frontend/**/node_modules/
+# The repo root has its own node_modules (vitest workspace state). Two files from it were
+# committed before this rule existed — see docs/deployment-runbook.md and the untrack
+# command in the merge-prep report.
+/node_modules/
 frontend/**/.next/
 *.tsbuildinfo
 

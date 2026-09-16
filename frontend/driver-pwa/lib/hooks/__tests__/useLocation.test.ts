@@ -64,8 +64,9 @@ describe('useLocation', () => {
       captured = await result.current.capture()
     })
 
-    expect(captured).toEqual({ latitude: -25.75, longitude: 28.19, accuracy: 12 })
+    expect(captured).toMatchObject({ latitude: -25.75, longitude: 28.19, accuracy: 12 })
     await waitFor(() => expect(result.current.status).toBe('captured'))
+    expect(result.current.coords?.capturedAt).toEqual(expect.any(String))
     expect(getCurrentPosition).toHaveBeenCalledWith(
       expect.any(Function),
       expect.any(Function),
@@ -110,7 +111,7 @@ describe('useLocation', () => {
       captured = await result.current.capture()
     })
 
-    expect(captured).toEqual({ latitude: -26.0942, longitude: 28.1342, accuracy: 5 })
+    expect(captured).toMatchObject({ latitude: -26.0942, longitude: 28.1342, accuracy: 5 })
     await waitFor(() => expect(result.current.status).toBe('captured'))
   })
 
@@ -125,7 +126,7 @@ describe('useLocation', () => {
       captured = await result.current.capture()
     })
 
-    expect(captured).toEqual({ latitude: -26.0942, longitude: 28.1342, accuracy: 5 })
+    expect(captured).toMatchObject({ latitude: -26.0942, longitude: 28.1342, accuracy: 5 })
   })
 
   it('browser path with no navigator.geolocation at all in production surfaces as an unknown-reason error', async () => {

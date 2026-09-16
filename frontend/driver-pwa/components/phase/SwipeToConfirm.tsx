@@ -6,40 +6,30 @@ import { getTapToConfirmPref } from '@/lib/constants/preferences'
 import { cn } from '@/lib/utils'
 import { Spinner } from '@/components/ui/Spinner'
 
-// Replaces HoldButton's press-and-hold gesture with a slide-to-confirm track, the
-// pattern drivers already know from ride-hailing and delivery apps. The safety property
-// is unchanged and is the whole point of both designs: confirming a phase writes an
-// immutable ledger row and can anchor to Hedera, so it must never be reachable by a
-// single accidental tap. A hold and a swipe are two ways of demanding deliberate intent;
-// the swipe just costs less patience at a loading bay in the rain.
+// Confirming a phase writes an immutable ledger row and can anchor to Hedera, so it must
+// never be reachable by a single accidental tap. Slide-to-confirm demands deliberate intent.
 
-// The thumb must cross this fraction of the track to count as a confirm. Deliberately
-// short of 1.0: a driver in gloves or on a cracked screen should not have to land the
-// final pixel. Below the threshold the thumb springs back and nothing fires.
+// The thumb must cross this fraction of the track to count as a confirm — short of 1.0
+// so a driver in gloves doesn't have to land the final pixel.
 const COMPLETE_THRESHOLD = 0.9
 
-// Spring-back and snap-forward duration, and the confirmed flourish before onConfirm is
-// called. One constant so the CSS transition and the dispatch delay cannot drift apart.
+// Spring-back/snap-forward duration and the confirmed flourish before onConfirm is
+// called, in one constant so the CSS transition and dispatch delay can't drift apart.
 const SETTLE_DURATION_MS = 180
 
 // How long the "swipe all the way across" hint stays up after a short swipe.
 const HINT_DURATION_MS = 1500
 
-// How long the tap-to-confirm fallback stays armed, so a stray first tap can't leave the
-// control primed to fire on an unrelated later one.
+// How long the tap-to-confirm fallback stays armed, so a stray tap can't fire it later.
 const ARM_TIMEOUT_MS = 3000
 
-// Track is h-16 (64px); the thumb insets by TRACK_PADDING_PX on every side, so
-// 56 + 4 + 4 = 64. Grown from h-14/48px along with the rest of the phase-flow type scale:
-// this is the control every phase submits through, operated one-handed at a loading bay,
-// often in gloves. If the track height changes, THUMB_SIZE_PX must change with it or the
-// thumb stops being vertically centred.
+// Track is h-16 (64px); thumb insets by TRACK_PADDING_PX on every side (56 + 4 + 4 = 64).
+// If the track height changes, THUMB_SIZE_PX must change with it to stay centred.
 const THUMB_SIZE_PX = 56
 const TRACK_PADDING_PX = 4
 
-// onConfirm may be fire-and-forget or async (submitAndAdvance uploads photos and calls the
-// backend — seconds, not milliseconds). Narrower than `unknown` so a returned promise is
-// detectable without an `any` cast at the call site.
+// onConfirm may be fire-and-forget or async. Narrower than `unknown` so a returned
+// promise is detectable without an `any` cast.
 function isPromiseLike(value: void | Promise<void>): value is Promise<void> {
   return typeof value === 'object' && value !== null && typeof (value as Promise<void>).then === 'function'
 }
@@ -57,10 +47,8 @@ interface SwipeVariantClasses {
   thumb: string
 }
 
-// Paired tokens, never a literal white. `primary` and `error` both invert between themes
-// (app/globals.css), so the hard-coded `text-white` / `bg-white` these replaced would have
-// left the label and the thumb invisible on a light track in dark mode — on the one
-// control that submits every handshake in the app.
+// Paired tokens, never a literal white: `primary`/`error` invert between themes, so a
+// hard-coded `text-white` would leave the label invisible on a light track in dark mode.
 const VARIANT_CLASSES: Record<SwipeVariant, SwipeVariantClasses> = {
   primary: {
     track:   'bg-primary',
@@ -93,17 +81,13 @@ export function SwipeToConfirm({
   const [isDragging, setIsDragging] = useState(false)
   const [isDispatching, setIsDispatching] = useState(false)
   // True while an async onConfirm is still pending — distinct from isDispatching (the
-  // brief flourish before onConfirm is even called). Stops the driver staring at a dead
-  // control through a multi-second upload, and stops a second submit.
+  // brief flourish before onConfirm is even called).
   const [isBusy, setIsBusy] = useState(false)
   const [showHint, setShowHint] = useState(false)
   const [isArmed, setIsArmed] = useState(false)
   const variantClasses = VARIANT_CLASSES[variant]
 
-  // Read the accessibility pref once on mount, matching the "applies next time" note in
-  // settings. This matters MORE for a swipe than it did for a hold: dragging is a
-  // fine-motor gesture, and a driver in thick gloves or with limited dexterity needs a
-  // path that isn't a drag at all.
+  // Read once on mount, matching the "applies next time" note in settings.
   const [tapToConfirm] = useState(() => getTapToConfirmPref())
 
   const trackRef = useRef<HTMLDivElement | null>(null)
@@ -118,8 +102,7 @@ export function SwipeToConfirm({
     isMountedRef.current = true
     return () => {
       isMountedRef.current = false
-      // Cancel pending timeouts so onConfirm/setState can never fire post-unmount — a
-      // route change mid-gesture must not submit a phase.
+      // Cancel pending timeouts so onConfirm/setState can never fire post-unmount.
       for (const ref of [settleTimeoutRef, hintTimeoutRef, armTimeoutRef]) {
         if (ref.current) {
           clearTimeout(ref.current)
@@ -129,8 +112,7 @@ export function SwipeToConfirm({
     }
   }, [])
 
-  // Returns the control to its resting state so the driver can swipe again. Only ever
-  // called when an ASYNC onConfirm settles — see runConfirm.
+  // Returns the control to resting state. Only called when an async onConfirm settles.
   const rearm = useCallback(() => {
     setIsBusy(false)
     setIsDispatching(false)
@@ -153,28 +135,22 @@ export function SwipeToConfirm({
         setIsBusy(true)
         result.then(
           // Re-arming on success costs a brief flash of a live track before the caller's
-          // navigation unmounts this component, and that is the right trade: the failure
-          // path (submitAndAdvance catches its own errors, toasts, and leaves the driver
-          // on this screen with their draft intact) resolves identically, and a control
-          // that stayed dead there would strand them with no way to retry.
+          // navigation unmounts this component — the right trade, since the failure path
+          // resolves identically and a dead control would strand the driver with no retry.
           () => {
             if (isMountedRef.current) rearm()
           },
           (err: unknown) => {
             if (isMountedRef.current) rearm()
-            // Never swallow the rejection. submitAndAdvance handles its own errors and
-            // does not reject by design, so reaching here means some other onConfirm
-            // broke that contract — surface it rather than losing it.
+            // submitAndAdvance does not reject by design; reaching here means some other
+            // onConfirm broke that contract — surface it rather than losing it.
             console.error('SwipeToConfirm: onConfirm rejected', err)
           },
         )
       }
-      // Sync onConfirm: stay latched, deliberately. Every synchronous caller navigates
-      // (router.push to the next step), and the component lives on until that route
-      // change actually commits. Clearing isDispatching here — which is what this used to
-      // do — handed the driver back a fully live track whose thumb was still parked at the
-      // far end and whose label had faded to nothing: a blank strip they could, and did,
-      // swipe a second time, firing a duplicate confirm into an in-flight navigation.
+      // Sync onConfirm: stay latched deliberately. Every sync caller navigates, and
+      // clearing isDispatching here would hand back a live-looking blank track the
+      // driver could swipe a second time, firing a duplicate confirm mid-navigation.
     }, SETTLE_DURATION_MS)
   }, [onConfirm, rearm])
 
@@ -193,9 +169,7 @@ export function SwipeToConfirm({
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
-      // Re-entry guard. The `disabled` styling stops real pointers, but jsdom's
-      // fireEvent and some assistive tech can still dispatch at a non-button element,
-      // and a duplicate confirm here would mean a duplicate ledger write.
+      // Re-entry guard: a duplicate confirm here would mean a duplicate ledger write.
       if (isLocked) return
 
       const track = trackRef.current
@@ -205,8 +179,7 @@ export function SwipeToConfirm({
       startXRef.current = e.clientX
       setIsDragging(true)
       setShowHint(false)
-      // Capture so the gesture survives the pointer leaving the track — a driver's thumb
-      // drifting off a 56px strip mid-swipe should not silently cancel the confirm.
+      // Capture so the gesture survives the pointer leaving the track.
       e.currentTarget.setPointerCapture(e.pointerId)
     },
     [isLocked],
@@ -250,9 +223,8 @@ export function SwipeToConfirm({
     setIsArmed(false)
   }, [])
 
-  // Two-step confirm used by BOTH the tap-to-confirm preference and the keyboard path.
-  // Keyboard users cannot perform a drag at all, so Enter/Space must reach the same
-  // action — and it stays two-step so a single stray keypress still can't submit.
+  // Shared by the tap-to-confirm preference and the keyboard path; stays two-step so a
+  // single stray keypress still can't submit.
   const handleTwoStep = useCallback(() => {
     if (isLocked) return
     if (isArmed) {
@@ -273,8 +245,7 @@ export function SwipeToConfirm({
     (e: React.KeyboardEvent<HTMLElement>) => {
       if (e.key !== 'Enter' && e.key !== ' ') return
       e.preventDefault() // Space would otherwise scroll the step page underneath
-      // Measure here too: a keyboard user may never have fired a pointer event, so
-      // maxTravelRef would still be 0 and the thumb would not visibly travel.
+      // Measure here too: a keyboard user may never have fired a pointer event.
       const track = trackRef.current
       if (track) {
         maxTravelRef.current = Math.max(track.offsetWidth - THUMB_SIZE_PX - TRACK_PADDING_PX * 2, 0)
@@ -294,14 +265,12 @@ export function SwipeToConfirm({
 
   const hintVisible = showHint && !isDragging && !isDispatching && !isBusy
 
-  // The label fades out as the thumb covers it, but ONLY while the driver is still
-  // swiping. Once the confirm is dispatched the thumb is parked at the far end, so this
-  // fraction is 0 — which rendered "Confirmed"/"Submitting…" completely invisible and
-  // left an apparently empty track sitting there through the whole submit.
+  // Full opacity once dispatched: with the thumb parked at the far end, progress-based
+  // fading would otherwise render "Confirmed"/"Submitting…" invisible.
   const labelOpacity = isDispatching || isBusy ? 1 : 1 - progress
 
-  // Tap-to-confirm renders a plain button, not a track: someone who enabled that pref
-  // has told us a drag is the problem, so presenting a drag affordance at all is wrong.
+  // Tap-to-confirm renders a plain button: a drag affordance is wrong once the driver
+  // has told us a drag is the problem.
   if (tapToConfirm) {
     return (
       <div className="relative flex w-full max-w-sm flex-col items-center">
@@ -311,8 +280,6 @@ export function SwipeToConfirm({
           disabled={isLocked}
           className={cn(
             'flex h-16 w-full items-center justify-center gap-2 rounded-full px-6',
-            // Same split as the track below: still click-blocked while working, but only
-            // greyed out when the caller says the action isn't valid yet.
             'select-none transition-opacity',
             disabled && 'opacity-40',
             variantClasses.track,
@@ -331,8 +298,7 @@ export function SwipeToConfirm({
     <div className="relative flex w-full max-w-sm flex-col items-center">
       <div
         ref={trackRef}
-        // role="slider" is the honest ARIA mapping for a draggable track with a range,
-        // and it gives assistive tech a value to announce as the thumb travels.
+        // Honest ARIA mapping for a draggable track with a range.
         role="slider"
         tabIndex={isLocked ? -1 : 0}
         aria-label={label}
@@ -348,23 +314,17 @@ export function SwipeToConfirm({
         onKeyDown={handleKeyDown}
         className={cn(
           'relative h-16 w-full overflow-hidden rounded-full',
-          // touch-none stops the browser claiming the horizontal drag for a scroll/swipe
-          // gesture — without it the thumb stutters and the confirm becomes unreliable.
+          // touch-none stops the browser claiming the drag for a scroll gesture.
           'select-none touch-none outline-none',
           'focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary',
           'transition-opacity',
-          // Input-blocking and dimming are deliberately separate. A control that is
-          // WORKING (dispatching/busy) must still be legible — dimming it to 40% while it
-          // reads "Submitting…" hides the one piece of feedback the driver needs, on a
-          // phone screen in daylight. Only the `disabled` prop, which means "not yet
-          // valid to confirm", greys the track out.
+          // Input-blocking and dimming are deliberately separate: a working control
+          // (dispatching/busy) must stay legible. Only `disabled` greys the track out.
           isLocked && 'pointer-events-none',
           disabled && 'opacity-40',
           variantClasses.track,
         )}
       >
-        {/* Label sits under the thumb and fades as the thumb covers it, so the track
-            never shows the thumb and its instruction fighting for the same space. */}
         <span
           className={cn(
             'pointer-events-none absolute inset-0 flex items-center justify-center gap-2',
@@ -381,8 +341,7 @@ export function SwipeToConfirm({
           className={cn(
             'absolute top-1 flex items-center justify-center rounded-full shadow-ambient-header',
             variantClasses.thumb,
-            // Follow the finger exactly while dragging; animate only when settling, so
-            // the spring-back reads as physics rather than lag.
+            // Follow the finger exactly while dragging; animate only when settling.
             !isDragging && 'transition-transform motion-reduce:transition-none',
           )}
           style={{

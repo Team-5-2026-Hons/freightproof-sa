@@ -21,6 +21,7 @@ now that arrival gives the dispatcher override path something to close against.
 import uuid
 from unittest.mock import patch
 
+import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
@@ -89,6 +90,8 @@ async def test_arrival_timestamp_precedes_the_unloading_submission(
     assert unloading.completed_at is not None
     assert departure.completed_at <= in_transit.completed_at
     assert in_transit.completed_at < unloading.completed_at
+    fresh_trip = (await db_session.execute(select(Trip).where(Trip.id == trip_id))).scalar_one()
+    assert fresh_trip.actual_arrival_at == in_transit.completed_at
 
 
 async def test_full_hub_to_hub_walk_with_arrival_closes_the_trip(
@@ -125,7 +128,7 @@ async def test_full_hub_to_hub_walk_with_arrival_closes_the_trip(
             json={
                 "phase_type": "confirmation",
                 "pod_photo_artifact_id": pod_photo_id, "pod_signature_artifact_id": pod_signature_id,
-                "driver_visual_count": 42, "pp_scan_in_count": 42,
+                "driver_visual_count": 42,
                 "idempotency_key": str(uuid.uuid4()),
             },
             headers=auth_header(driver_token),
@@ -142,10 +145,12 @@ async def test_full_hub_to_hub_walk_with_arrival_closes_the_trip(
     assert PhaseStatus(in_transit.status) == PhaseStatus.COMPLETED
     assert TripStatus(fresh_trip.status) == TripStatus.CLOSED
     assert fresh_trip.current_phase is None
+    assert fresh_trip.actual_arrival_at == in_transit.completed_at
 
 
-async def test_overridden_unloading_still_closes_the_trip_when_arrival_was_submitted(
-    client: AsyncClient, db_session, seed,
+@pytest.mark.parametrize("arrival_submitted", [True, False])
+async def test_overridden_unloading_closes_trip_without_manufacturing_arrival(
+    client: AsyncClient, db_session, seed, arrival_submitted: bool,
 ):
     """The V3 strand from the lifecycle audit, now structurally closed.
 
@@ -168,7 +173,17 @@ async def test_overridden_unloading_still_closes_the_trip_when_arrival_was_submi
     driver_token = make_token(sub=str(seed["driver"].id), role="driver")
     dispatcher_token = _dispatcher_token(seed)
     await _walk_to_in_transit(client, db_session, trip, driver_token)
-    await _complete_in_transit(client, trip, driver_token)
+    if arrival_submitted:
+        await _complete_in_transit(client, trip, driver_token)
+    else:
+        arrival_id = await _phase_id(client, trip_id, driver_token, "in_transit")
+        resp = await client.post(
+            f"/api/v1/trips/{trip_id}/phases/{arrival_id}/override",
+            json={"note": "driver phone unavailable; arrival could not be attested"},
+            headers=auth_header(dispatcher_token),
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["actual_arrival_at"] is None
 
     unloading_id = await _phase_id(client, trip_id, driver_token, "unloading")
     resp = await client.post(
@@ -188,7 +203,7 @@ async def test_overridden_unloading_still_closes_the_trip_when_arrival_was_submi
             json={
                 "phase_type": "confirmation",
                 "pod_photo_artifact_id": pod_photo_id, "pod_signature_artifact_id": pod_signature_id,
-                "driver_visual_count": 42, "pp_scan_in_count": 42,
+                "driver_visual_count": 42,
                 "idempotency_key": str(uuid.uuid4()),
             },
             headers=auth_header(driver_token),
@@ -199,3 +214,10 @@ async def test_overridden_unloading_still_closes_the_trip_when_arrival_was_submi
     db_session.expire_all()
     fresh_trip = (await db_session.execute(select(Trip).where(Trip.id == trip_id))).scalar_one()
     assert TripStatus(fresh_trip.status) == TripStatus.CLOSED
+    in_transit = await _phase_row(db_session, trip_id, PhaseType.IN_TRANSIT)
+    if arrival_submitted:
+        assert fresh_trip.actual_arrival_at == in_transit.completed_at
+    else:
+        assert PhaseStatus(in_transit.status) == PhaseStatus.OVERRIDDEN
+        assert fresh_trip.actual_arrival_at is None
+        assert resp.json()["actual_arrival_at"] is None

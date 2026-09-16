@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 
 import { usePrecincts } from './usePrecincts'
@@ -20,6 +20,7 @@ function makePrecinct(): Precinct {
     latitude: -29.1,
     longitude: 26.2,
     geofence_radius_metres: 200,
+    is_shared: false,
     created_at: '2026-08-01T00:00:00Z',
   }
 }
@@ -78,5 +79,20 @@ describe('usePrecincts', () => {
     await new Promise(resolve => setTimeout(resolve, 50))
     expect(mockedGet.mock.calls.length).toBe(callsAfterRetry)
     expect(result.current.error).not.toBeNull()
+  })
+
+  it('exposes a refetch that re-requests the precinct list', async () => {
+    mockedGet.mockResolvedValue([makePrecinct()])
+
+    const { result } = renderHook(() => usePrecincts())
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    const callsAfterMount = mockedGet.mock.calls.length
+
+    act(() => {
+      result.current.refetch()
+    })
+
+    await waitFor(() => expect(mockedGet.mock.calls.length).toBe(callsAfterMount + 1))
   })
 })

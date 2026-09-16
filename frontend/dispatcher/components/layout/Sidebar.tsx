@@ -6,6 +6,7 @@ import { X, Shield } from 'lucide-react'
 import { Ic } from '@/components/ui/Ic'
 import { LiveBadge } from '@/components/layout/LiveBadge'
 import { useAuth } from '@/lib/hooks/useAuth'
+import { useSidebarCollapse } from '@/lib/context/SidebarCollapseContext'
 import { cn } from '@shared/lib/utils/cn'
 import { ROUTES } from '@/lib/constants/routes'
 import type { IconName } from '@/components/ui/Ic'
@@ -16,6 +17,7 @@ interface NavItem {
   href: string
   icon: IconName
   activePatterns: string[]
+  adminOnly?: boolean
 }
 
 interface NavGroup {
@@ -28,6 +30,9 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'OVERVIEW',
     items: [
       { label: 'Dashboard', href: ROUTES.home, icon: 'home', activePatterns: ['/'] },
+      // Every dispatcher, not admins only: the analytics endpoints are read-only and
+      // org-scoped (get_current_dispatcher), unlike the receipt lookup below.
+      { label: 'Analytics', href: ROUTES.analytics, icon: 'bars', activePatterns: [ROUTES.analytics] },
     ],
   },
   {
@@ -35,6 +40,10 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'Create Trip',  href: ROUTES.tripNew, icon: 'plus',  activePatterns: ['/trips/new'] },
       { label: 'Trip History', href: ROUTES.history,  icon: 'clock', activePatterns: ['/history'] },
+      // Hidden in 6071ab2 as "not yet live", back now that FP-146 gave the queue a real
+      // org-scoped list, detail page and resolve flow. `activePatterns` covers the detail
+      // route too, so the entry stays lit while a dispatcher works one exception.
+      { label: 'Exceptions',   href: ROUTES.exceptions, icon: 'warn', activePatterns: ['/exceptions'] },
     ],
   },
   {
@@ -42,6 +51,26 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'Vehicles', href: ROUTES.fleetVehicles, icon: 'truck', activePatterns: ['/fleet/vehicles'] },
       { label: 'Drivers',  href: ROUTES.fleetDrivers,  icon: 'user',  activePatterns: ['/fleet/drivers'] },
+    ],
+  },
+  {
+    // Deliberately unlabelled. A precinct belongs under neither TRIPS nor FLEET, and
+    // inventing a group name before there is a second resident would be guessing at a
+    // taxonomy. When organisations or partners arrive, give this group a label.
+    items: [
+      { label: 'Precincts', href: ROUTES.precincts, icon: 'map', activePatterns: ['/precincts'] },
+    ],
+  },
+  {
+    label: 'BLOCKCHAIN',
+    items: [
+      {
+        label: 'Receipt Lookup',
+        href: ROUTES.blockchainReceipts,
+        icon: 'hex',
+        activePatterns: [ROUTES.blockchainReceipts],
+        adminOnly: true,
+      },
     ],
   },
 ]
@@ -66,14 +95,22 @@ function isActive(pathname: string, patterns: string[]): boolean {
   })
 }
 
-function NavLink({ item, pathname, onClose }: { item: NavItem; pathname: string; onClose?: () => void }) {
+function NavLink({ item, pathname, onClose, collapsed }: {
+  item: NavItem
+  pathname: string
+  onClose?: () => void
+  collapsed?: boolean
+}) {
   const active = isActive(pathname, item.activePatterns)
   return (
     <Link
       href={item.href}
       onClick={onClose}
+      aria-label={item.label}
+      title={item.label}
       className={cn(
         'flex items-center gap-[9px] mx-2 px-[14px] py-[9px] rounded-md transition-all duration-[120ms]',
+        collapsed && 'justify-center px-0',
         active
           ? 'bg-white/[0.13]'
           : 'hover:bg-white/[0.06]',
@@ -84,40 +121,62 @@ function NavLink({ item, pathname, onClose }: { item: NavItem; pathname: string;
         s={15}
         className={active ? 'text-sec' : 'text-white/45'}
       />
-      <span className={cn(
-        'text-[14px]',
-        active ? 'font-[600] text-white' : 'font-[400] text-white/55',
-      )}>
-        {item.label}
-      </span>
+      {!collapsed && (
+        <span className={cn(
+          'text-[14px]',
+          active ? 'font-[600] text-white' : 'font-[400] text-white/55',
+        )}>
+          {item.label}
+        </span>
+      )}
     </Link>
   )
 }
 
 interface SidebarContentProps {
   onClose?: () => void
+  /** Icon-only rail. Desktop-only — the mobile drawer never collapses. */
+  collapsed?: boolean
+  /** Renders the collapse/expand control when provided (desktop instance only). */
+  onToggleCollapse?: () => void
 }
 
-function SidebarContent({ onClose }: SidebarContentProps) {
+function SidebarContent({ onClose, collapsed = false, onToggleCollapse }: SidebarContentProps) {
   const pathname = usePathname()
   const { user } = useAuth()
+  const visibleGroups = NAV_GROUPS
+    .map(group => ({
+      ...group,
+      items: group.items.filter(item => !item.adminOnly || user?.role === 'admin_dispatcher'),
+    }))
+    .filter(group => group.items.length > 0)
 
   return (
-    <div className="flex flex-col h-full bg-primary w-[220px] shrink-0">
+    <div
+      className={cn(
+        'flex flex-col h-full bg-primary shrink-0 transition-[width] duration-200 motion-reduce:transition-none',
+        collapsed ? 'w-16' : 'w-[220px]',
+      )}
+    >
       {/* Header — logo mark + wordmark + eyebrow */}
-      <div className="flex items-center gap-[10px] px-[18px] h-[60px] border-b border-white/[0.08]">
+      <div className={cn(
+        'flex items-center gap-[10px] h-[60px] border-b border-white/[0.08]',
+        collapsed ? 'justify-center px-0' : 'px-[18px]',
+      )}>
         {/* Hex logo mark — bg-sec container, white polygon, sec-coloured circle */}
         <div className="w-8 h-8 bg-primary rounded-md flex items-center justify-center shrink-0">
           <Shield className="w-4 h-4 text-white" />
         </div>
-        <div className="flex-1 min-w-0">
-          <div className="text-[16px] font-[800] text-white leading-none tracking-[-0.02em]">
-            FreightProof
+        {!collapsed && (
+          <div className="flex-1 min-w-0">
+            <div className="text-[16px] font-[800] text-white leading-none tracking-[-0.02em]">
+              FreightProof
+            </div>
+            <div className="text-[10px] text-white/35 mt-[2px] tracking-[0.06em] uppercase">
+              Evidence Platform
+            </div>
           </div>
-          <div className="text-[10px] text-white/35 mt-[2px] tracking-[0.06em] uppercase">
-            Evidence Platform
-          </div>
-        </div>
+        )}
         {onClose && (
           <button
             onClick={onClose}
@@ -129,11 +188,38 @@ function SidebarContent({ onClose }: SidebarContentProps) {
         )}
       </div>
 
+      {/* Collapse toggle — own row so it has room regardless of rail width */}
+      {onToggleCollapse && (
+        <button
+          type="button"
+          onClick={onToggleCollapse}
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          className={cn(
+            'flex items-center gap-[9px] h-[38px] border-b border-white/[0.08] text-white/45 hover:text-white hover:bg-white/[0.06] transition-colors',
+            collapsed ? 'justify-center px-0' : 'px-[18px]',
+          )}
+        >
+          <Ic
+            n="chev"
+            s={13}
+            className={cn(
+              'transition-transform duration-200 motion-reduce:transition-none',
+              !collapsed && 'rotate-180',
+            )}
+          />
+          {!collapsed && <span className="text-[12px] font-[500]">Collapse</span>}
+        </button>
+      )}
+
       {/* Nav groups */}
       <div className="flex-1 py-2 overflow-y-auto">
-        {NAV_GROUPS.map(group => (
-          <div key={group.label}>
-            {group.label && (
+        {visibleGroups.map(group => (
+          // Keyed on the first item's href, not the label: groups may be unlabelled,
+          // and two unlabelled groups would otherwise collide on an `undefined` key.
+          <div key={group.label ?? group.items[0].href}>
+            {group.label && !collapsed && (
               <div className="text-[10px] font-[700] tracking-[0.12em] uppercase text-white/30 px-[18px] pt-3 pb-1">
                 {group.label}
               </div>
@@ -144,6 +230,7 @@ function SidebarContent({ onClose }: SidebarContentProps) {
                 item={item}
                 pathname={pathname}
                 onClose={onClose}
+                collapsed={collapsed}
               />
             ))}
           </div>
@@ -153,28 +240,35 @@ function SidebarContent({ onClose }: SidebarContentProps) {
 
       {/* Settings — pinned above the profile footer */}
       <div className="border-t border-white/[0.08]">
-        <NavLink item={SETTINGS_ITEM} pathname={pathname} onClose={onClose} />
+        <NavLink item={SETTINGS_ITEM} pathname={pathname} onClose={onClose} collapsed={collapsed} />
       </div>
 
       {/* Footer — user avatar + name + role */}
-      <div className="flex items-center gap-2 px-[18px] py-3 border-t border-white/[0.08]">
+      <div className={cn(
+        'flex items-center gap-2 border-t border-white/[0.08]',
+        collapsed ? 'flex-col py-3 px-0' : 'px-[18px] py-3',
+      )}>
         <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center shrink-0">
           <Ic n="user" s={13} className="text-white/60" />
         </div>
-        <div>
-          <div className="flex items-center gap-[6px] text-[12px] font-[600] text-white/85 leading-tight">
-            <span>{user?.full_name ?? 'Dispatcher'}</span>
-            {user?.role === 'admin_dispatcher' && (
-              <span className="bg-white/15 text-white/85 text-[9px] font-[700] tracking-[0.04em] rounded-[var(--r-sm)] px-[5px] py-[1px]">
-                ADMIN
-              </span>
-            )}
+        {!collapsed && (
+          <div>
+            <div className="flex items-center gap-[6px] text-[12px] font-[600] text-white/85 leading-tight">
+              <span>{user?.full_name ?? 'Dispatcher'}</span>
+              {user?.role === 'admin_dispatcher' && (
+                <span className="bg-white/15 text-white/85 text-[9px] font-[700] tracking-[0.04em] rounded-[var(--r-sm)] px-[5px] py-[1px]">
+                  ADMIN
+                </span>
+              )}
+            </div>
+            <div className="text-[10px] text-white/40">{roleLabel(user?.role)}</div>
           </div>
-          <div className="text-[10px] text-white/40">{roleLabel(user?.role)}</div>
-        </div>
-        {/* Live-connection indicator for the dispatcher's real-time stream. */}
-        <div className="ml-auto shrink-0">
-          <LiveBadge />
+        )}
+        {/* Live-connection indicator for the dispatcher's real-time stream — stays
+            visible (dot-only) when collapsed so a dispatcher can still see the SSE
+            stream is alive without expanding the rail. */}
+        <div className={collapsed ? 'shrink-0' : 'ml-auto shrink-0'}>
+          <LiveBadge compact={collapsed} />
         </div>
       </div>
     </div>
@@ -187,14 +281,16 @@ interface SidebarProps {
 }
 
 export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
+  const { collapsed, toggle } = useSidebarCollapse()
+
   return (
     <>
-      {/* Desktop sidebar — always visible at md+ */}
+      {/* Desktop sidebar — always visible at md+, collapsible to an icon rail */}
       <div className="hidden md:block">
-        <SidebarContent />
+        <SidebarContent collapsed={collapsed} onToggleCollapse={toggle} />
       </div>
 
-      {/* Mobile drawer overlay */}
+      {/* Mobile drawer overlay — always full width, never collapses */}
       {mobileOpen && (
         <div className="fixed inset-0 z-overlay md:hidden">
           <div

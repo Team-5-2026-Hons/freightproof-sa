@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -10,12 +10,64 @@ import { Select } from '@/components/ui/Select'
 import { useDevTriggers } from '@/lib/hooks/useDevTriggers'
 import {
   DEMO_EXCEPTION_TYPES,
+  DEV_TRUCK_SCENARIOS,
   isClosedPhaseStatus,
+  NO_STOP_REQUIRED_SCENARIO,
+  PRECINCT_WAYPOINT_ID,
+  SCENARIO_LABELS,
   type DevConsignment,
   type DevTripStop,
   type DevTripSummary,
+  type DevTruckScenario,
+  type MoveTruckResponse,
   type ScanDirection,
 } from '@/lib/types/dev'
+
+// Metres-to-kilometres switchover for the distance readouts below — "3200 m" is
+// harder to eyeball at a glance (and on a projector) than "3.2 km".
+const METRES_PER_KILOMETRE = 1000
+
+// Formats a distance for display with an explicit "from WHAT" phrase, or names the
+// reason there is nothing to show. FP-197 Task 3 made this a parameter rather than a
+// hardcoded "from the precinct": once a response can carry two distances (the
+// EXPECTED phase-ledger stop and, in scenario mode, the simulated TARGET stop),
+// leaving either unlabelled would be exactly the ambiguity the panel copy must avoid.
+function formatDistance(distanceMetres: number | null, fromLabel: string): string {
+  if (distanceMetres === null) return `distance ${fromLabel} unknown`
+  return distanceMetres >= METRES_PER_KILOMETRE
+    ? `${(distanceMetres / METRES_PER_KILOMETRE).toFixed(1)} km ${fromLabel}`
+    : `${Math.round(distanceMetres)} m ${fromLabel}`
+}
+
+// Identity for a trip stop picker option is the stop's id (or sequence), never its
+// precinct name — a repeated-precinct multi-stop trip can have two stops that share
+// a name, and matching on name would silently target the wrong one.
+function tripStopLabel(stop: DevTripStop, index: number, total: number): string {
+  if (index === 0) return `At origin — ${stop.precinct_name}`
+  if (index === total - 1) return `At destination — ${stop.precinct_name}`
+  return `Stop ${stop.sequence} — ${stop.precinct_name}`
+}
+
+// Composite identity for "which scenario+stop combination is currently staged",
+// mirroring activeWaypointId's role for the legacy mode. Stop id (not name) is part
+// of the key for the same repeated-precinct reason as tripStopLabel above.
+function scenarioActiveKey(scenario: DevTruckScenario, tripStopId: string): string {
+  return `${scenario}::${tripStopId}`
+}
+
+// geofence_confirmed is a tri-state, not a boolean: null on the no_signal waypoint
+// means no verdict was ever reached, which is a materially different fact from a
+// verdict that was reached and failed — collapsing it to falsy would tell the
+// operator a fix existed and failed the geofence when actually there was no fix.
+function verdictLabel(confirmed: boolean | null): string {
+  if (confirmed === null) return 'No verdict — tracker dark'
+  return confirmed ? 'Geofence confirmed' : 'Geofence failed'
+}
+
+function verdictClassName(confirmed: boolean | null): string {
+  if (confirmed === null) return 'text-amber-700'
+  return confirmed ? 'text-emerald-700' : 'text-red-600'
+}
 
 interface DevTriggerPanelProps {
   /** Shown at the top so nobody mistakes this for a product surface. */
@@ -160,12 +212,40 @@ function buildWaybillBreakdown(
 
 export function DevTriggerPanel({ heading }: DevTriggerPanelProps): React.ReactElement {
   const {
-    trips, isLoading, error, lastResult,
+    trips, waypoints, isLoading, error, lastResult,
     loadTrips, triggerScan, closeScanSession, triggerPpChange, triggerException, flushMockState,
+    loadWaypoints, moveTruck,
   } = useDevTriggers()
 
   const [tripId, setTripId] = useState<string>('')
   const [selectedOptionKey, setSelectedOptionKey] = useState<string>('')
+
+  // The last waypoint (legacy mode) or scenario+stop (FP-197 Task 3 mode) that was
+  // successfully moved to, and the full response it produced. Kept separately from
+  // `lastResult` (the panel-wide one-line status) because this needs to stay on
+  // screen — precinct, distance, verdict — for as long as the truck sits there, not
+  // just until the next unrelated action. The two "active" ids are mutually
+  // exclusive: firing one mode clears the other's active marker.
+  const [activeWaypointId, setActiveWaypointId] = useState<string | null>(null)
+  const [activeScenarioKey, setActiveScenarioKey] = useState<string | null>(null)
+  const [moveTruckResult, setMoveTruckResult] = useState<MoveTruckResponse | null>(null)
+
+  // FP-197 Task 3: which of the selected trip's own stops the scenario mode targets.
+  // '' means "no stop chosen" — valid only for the no_signal scenario.
+  const [selectedTripStopId, setSelectedTripStopId] = useState<string>('')
+
+  // Guards against a stale move-truck response overwriting a NEWER selection's
+  // result. Mirrors {tripId, selectedTripStopId} outside React's render cycle (kept
+  // current by the effect below) so an in-flight request can compare "what I was
+  // called with" against "what is selected NOW" after its await resolves — refs may
+  // only be read/written outside render, which rules out doing this comparison with
+  // the state values directly inside the render-time reset blocks above.
+  const latestSelectionRef = useRef<{ tripId: string; selectedTripStopId: string }>({
+    tripId, selectedTripStopId,
+  })
+  useEffect(() => {
+    latestSelectionRef.current = { tripId, selectedTripStopId }
+  }, [tripId, selectedTripStopId])
 
   // Manifest barcodes ticked per waybill reference, and not-on-manifest barcodes
   // added per waybill reference. Both reset whenever the stop+direction selection
@@ -190,7 +270,50 @@ export function DevTriggerPanel({ heading }: DevTriggerPanelProps): React.ReactE
     void loadTrips()
   }, [loadTrips])
 
+  useEffect(() => {
+    void loadWaypoints()
+  }, [loadWaypoints])
+
+  // A moved-to waypoint and its position readout belong to whichever trip's device
+  // was moved. Carrying it over to a newly selected trip would show one trip's
+  // mock position while narrating a different one.
+  //
+  // Adjusted during render rather than in a useEffect, for the same reason and by the
+  // same pattern as resetForKey below: this is state derived from the selection, not a
+  // sync with an external system, and the effect form costs an extra render pass and
+  // trips react-hooks/set-state-in-effect.
+  const [resetForTripId, setResetForTripId] = useState<string>(tripId)
+  if (resetForTripId !== tripId) {
+    setResetForTripId(tripId)
+    setActiveWaypointId(null)
+    setActiveScenarioKey(null)
+    setMoveTruckResult(null)
+    setSelectedTripStopId('')
+    // Any move-truck request still in flight for the PREVIOUS trip is invalidated by
+    // the effect syncing latestSelectionRef above — its response, whenever it lands,
+    // will find tripId no longer matches what it was called with.
+  }
+
+  // Changing the targeted stop is the other half of "changing trip or stop clears
+  // results" (FP-197 Task 3): a result on screen that named a different stop as its
+  // target would misdescribe where the tracker actually is relative to the NEWLY
+  // selected stop.
+  const [resetForTripStopId, setResetForTripStopId] = useState<string>(selectedTripStopId)
+  if (resetForTripStopId !== selectedTripStopId) {
+    setResetForTripStopId(selectedTripStopId)
+    setActiveScenarioKey(null)
+    setMoveTruckResult(null)
+    // Same invalidation-by-effect as the trip reset above.
+  }
+
   const selectedTrip = trips.find((t) => t.trip_id === tripId) ?? null
+
+  // FP-197 Task 3: the ordered stops a scenario can target, built from the trip
+  // summary the panel already loads — no separate endpoint needed. Labels use
+  // position (origin/destination/Stop N), and option VALUES are trip_stop_id: a
+  // repeated-precinct multi-stop trip can have two stops sharing one precinct name,
+  // and matching on name would silently resolve to the wrong one.
+  const stopOptions = useMemo<DevTripStop[]>(() => selectedTrip?.stops ?? [], [selectedTrip])
 
   const scanOptions = useMemo<ScanOption[]>(
     () => buildScanOptions(selectedTrip?.stops ?? []),
@@ -351,6 +474,56 @@ export function DevTriggerPanel({ heading }: DevTriggerPanelProps): React.ReactE
     })
   }
 
+  // Deliberately bypasses the Modal/PendingAction confirmation flow every other
+  // write action in this panel goes through. FP-199: this control is narrated
+  // live off a projector during a demo, and its whole point is "one press, one
+  // move" — a confirm-then-click round trip would turn an instant demo beat into
+  // a fumbled two-step one for no safety benefit (it only ever writes mock
+  // tracker state, never anything evidentiary).
+  const onMoveTruck = async (waypointId: string): Promise<void> => {
+    if (tripId === '') return
+    const requestedTripId = tripId
+    const requestedStopId = selectedTripStopId
+    const result = await moveTruck({ trip_id: tripId, waypoint_id: waypointId })
+    // Discard a response that arrives after the operator has already moved on to a
+    // different trip or stop selection — see latestSelectionRef's own comment.
+    if (
+      latestSelectionRef.current.tripId !== requestedTripId
+      || latestSelectionRef.current.selectedTripStopId !== requestedStopId
+    ) return
+    if (result !== null) {
+      setActiveWaypointId(waypointId)
+      setActiveScenarioKey(null)
+      setMoveTruckResult(result)
+    }
+  }
+
+  // FP-197 Task 3: the trip-stop-relative counterpart to onMoveTruck above. Also
+  // bypasses the confirmation modal for the same reason — it only ever writes mock
+  // tracker state.
+  const onMoveTruckScenario = async (scenario: DevTruckScenario): Promise<void> => {
+    if (tripId === '') return
+    const requiresStop = scenario !== NO_STOP_REQUIRED_SCENARIO
+    if (requiresStop && selectedTripStopId === '') return
+
+    const requestedTripId = tripId
+    const requestedStopId = selectedTripStopId
+    const result = await moveTruck({
+      trip_id: tripId,
+      scenario,
+      trip_stop_id: selectedTripStopId === '' ? undefined : selectedTripStopId,
+    })
+    if (
+      latestSelectionRef.current.tripId !== requestedTripId
+      || latestSelectionRef.current.selectedTripStopId !== requestedStopId
+    ) return
+    if (result !== null) {
+      setActiveWaypointId(null)
+      setActiveScenarioKey(scenarioActiveKey(scenario, requestedStopId))
+      setMoveTruckResult(result)
+    }
+  }
+
   const onConfirmPendingAction = async (): Promise<void> => {
     if (pendingAction === null) return
     switch (pendingAction.kind) {
@@ -457,6 +630,177 @@ export function DevTriggerPanel({ heading }: DevTriggerPanelProps): React.ReactE
 
           <Button onClick={() => void loadTrips()} disabled={isLoading}>
             Refresh trips
+          </Button>
+        </div>
+      </Card>
+
+      <Card>
+        <div className="space-y-3 p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="font-medium">Move the truck (dev-mode simulation)</h3>
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-amber-700">
+              Dev only — simulated tracker
+            </span>
+          </div>
+          <p className="text-xs text-slate-500">
+            Writes a fake Pulsit position for the selected trip&apos;s device only.
+            Everything downstream — the geofence check, the corroboration verdict,
+            the phase handshake — is the real orchestration running against that
+            fake position, exactly as it would against a genuine tracker fix.
+          </p>
+          <p className="text-xs text-slate-500">
+            This stages mock state for the DEVICE itself, not just this trip — any
+            other trip whose horse shares this same Pulsit tracker will observe the
+            same staged position too.
+          </p>
+
+          {moveTruckResult !== null && (
+            <div className="space-y-1 rounded-lg border border-outline-v/20 p-3">
+              <p className="text-sm font-semibold">
+                {moveTruckResult.vehicle_registration} · {moveTruckResult.waypoint_label}
+              </p>
+              <p className="text-xs text-slate-500">
+                {/* Separate spans (not one interpolated string) so "No fix" stays an
+                    independently-matchable text node rather than being fused with the
+                    distance readout next to it. */}
+                <span>
+                  {moveTruckResult.has_position && moveTruckResult.latitude !== null && moveTruckResult.longitude !== null
+                    ? `${moveTruckResult.latitude}, ${moveTruckResult.longitude}`
+                    : 'No fix'}
+                </span>
+              </p>
+              {/* FP-197 Task 3: the two distances a scenario-mode response can carry
+                  are never both labelled "from the precinct" — one names the
+                  EXPECTED phase-ledger stop, the other (only present in scenario
+                  mode) names the simulated TARGET stop actually requested. */}
+              {moveTruckResult.target_precinct_name !== null && (
+                <p className="text-xs text-slate-500">
+                  Simulated target — {moveTruckResult.target_precinct_name}:{' '}
+                  {formatDistance(moveTruckResult.target_distance_metres, 'from the simulated target')}
+                </p>
+              )}
+              <p className="text-xs text-slate-500">
+                Expected stop — {moveTruckResult.expected_precinct_name ?? moveTruckResult.precinct_name}:{' '}
+                {formatDistance(moveTruckResult.distance_metres, 'from the expected stop')}
+              </p>
+              <p className={`text-xs font-medium ${verdictClassName(moveTruckResult.geofence_confirmed)}`}>
+                {verdictLabel(moveTruckResult.geofence_confirmed)} — {moveTruckResult.verdict_reason}
+              </p>
+            </div>
+          )}
+        </div>
+      </Card>
+
+      {tripId !== '' && (
+        <Card>
+          <div className="space-y-3 p-4">
+            <h3 className="font-medium">Move relative to a trip stop</h3>
+            <p className="text-xs text-slate-500">
+              Computes a position relative to one of THIS trip&apos;s own stops,
+              instead of a fixed Cape Town location — use this when the trip&apos;s
+              real stops are somewhere else entirely.
+            </p>
+
+            {stopOptions.length === 0 ? (
+              <p className="text-xs text-slate-500">This trip has no stops.</p>
+            ) : (
+              <Select
+                label="Trip stop"
+                value={selectedTripStopId}
+                onChange={(e) => setSelectedTripStopId(e.target.value)}
+              >
+                <option value="">
+                  Select a stop… (required for every scenario except &quot;No signal&quot;)
+                </option>
+                {stopOptions.map((stop, index) => (
+                  <option key={stop.trip_stop_id} value={stop.trip_stop_id}>
+                    {tripStopLabel(stop, index, stopOptions.length)}
+                  </option>
+                ))}
+              </Select>
+            )}
+
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {DEV_TRUCK_SCENARIOS.map((scenario) => {
+                const isActive = activeScenarioKey === scenarioActiveKey(scenario, selectedTripStopId)
+                const requiresStop = scenario !== NO_STOP_REQUIRED_SCENARIO
+                const disabled = isLoading || (requiresStop && selectedTripStopId === '')
+                return (
+                  <Button
+                    key={scenario}
+                    variant={isActive ? 'success' : 'secondary'}
+                    size="lg"
+                    full
+                    disabled={disabled}
+                    onClick={() => void onMoveTruckScenario(scenario)}
+                  >
+                    <span className="flex items-center gap-2 text-base font-semibold">
+                      {SCENARIO_LABELS[scenario]}
+                      {isActive && (
+                        <span className="rounded-full bg-white/25 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
+                          Active
+                        </span>
+                      )}
+                    </span>
+                  </Button>
+                )
+              })}
+            </div>
+          </div>
+        </Card>
+      )}
+
+      <Card>
+        <div className="space-y-3 p-4">
+          <h3 className="font-medium">Fixed demo locations</h3>
+          <p className="text-xs text-slate-500">
+            Legacy mode: fixed Cape Town coordinates, independent of this trip&apos;s
+            actual stops. Prefer &quot;Move relative to a trip stop&quot; above for a
+            trip whose real stops are somewhere else.
+          </p>
+
+          {tripId === '' ? (
+            <p className="text-xs text-slate-500">Select a trip above to move its truck.</p>
+          ) : waypoints.length === 0 ? (
+            <p className="text-xs text-slate-500">
+              No waypoints available (is DEV_PANEL_ENABLED and PULSE_USE_MOCK set on the backend?)
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {[...waypoints].sort((a, b) => a.sequence - b.sequence).map((wp) => {
+                const isActive = activeWaypointId === wp.waypoint_id
+                return (
+                  <Button
+                    key={wp.waypoint_id}
+                    variant={isActive ? 'success' : 'secondary'}
+                    size="lg"
+                    full
+                    disabled={isLoading}
+                    onClick={() => void onMoveTruck(wp.waypoint_id)}
+                  >
+                    <span className="flex w-full flex-col items-start gap-0.5 text-left">
+                      <span className="flex items-center gap-2 text-base font-semibold">
+                        {wp.label}
+                        {isActive && (
+                          <span className="rounded-full bg-white/25 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
+                            Active
+                          </span>
+                        )}
+                      </span>
+                      <span className="text-xs font-normal opacity-80">{wp.description}</span>
+                    </span>
+                  </Button>
+                )
+              })}
+            </div>
+          )}
+
+          <Button
+            variant="ghost"
+            onClick={() => void onMoveTruck(PRECINCT_WAYPOINT_ID)}
+            disabled={tripId === '' || isLoading}
+          >
+            Reset to precinct
           </Button>
         </div>
       </Card>

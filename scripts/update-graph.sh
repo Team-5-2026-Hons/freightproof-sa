@@ -25,9 +25,12 @@ if [ -z "${GEMINI_API_KEY:-}" ] && [ -z "${GOOGLE_API_KEY:-}" ]; then
     exit 1
 fi
 
-GRAPHIFY_BIN="$REPO_ROOT/backend/.venv/bin/graphify"
+GRAPHIFY_BIN="${GRAPHIFY_BIN:-$REPO_ROOT/backend/.venv/bin/graphify}"
+if [ ! -x "$GRAPHIFY_BIN" ] && command -v graphify >/dev/null 2>&1; then
+    GRAPHIFY_BIN="$(command -v graphify)"
+fi
 if [ ! -x "$GRAPHIFY_BIN" ]; then
-    echo "graphify CLI not found at $GRAPHIFY_BIN — install backend deps first (cd backend && pip install -r requirements.txt)." >&2
+    echo "graphify CLI not found — install graphifyy or set GRAPHIFY_BIN to its executable." >&2
     exit 1
 fi
 

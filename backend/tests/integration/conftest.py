@@ -9,13 +9,40 @@ by pytest automatically, so no import is needed at all.
 """
 
 import uuid
+from datetime import UTC, datetime
 
+import pytest
 import pytest_asyncio
 
+from app.blockchain.hedera import HederaReceipt
+from app.core.config import settings
 from app.db.models.enums import OrganizationType, VehicleType
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.vehicles import Vehicle
+
+
+@pytest.fixture(autouse=True)
+def no_live_hedera_submissions(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Integration tests exercise real hashing/SQL, never spend HCS funds or load Java.
+
+    Override only the external SDK adapter. Individual failure-path tests can still
+    patch HederaService/anchor_subject and verify rollback or recovery behavior.
+    """
+    class TestAdapter:
+        def __init__(self, **_kwargs: str) -> None:
+            self.sequence = 0
+
+        def submit_message(self, topic_id: str, message: str) -> HederaReceipt:
+            self.sequence += 1
+            return HederaReceipt(
+                topic_id=topic_id, sequence_number=self.sequence,
+                consensus_timestamp=datetime.now(UTC).isoformat(),
+                transaction_id=f"test-{uuid.uuid4()}",
+            )
+
+    monkeypatch.setattr("app.blockchain.hedera._SdkHederaAdapter", TestAdapter)
+    monkeypatch.setattr(settings, "HEDERA_TOPIC_ID", "0.0.2002")
 
 
 @pytest_asyncio.fixture

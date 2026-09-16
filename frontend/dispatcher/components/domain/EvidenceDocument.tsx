@@ -7,14 +7,19 @@ import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 interface Props {
   label: string
   artifact: EvidenceArtifactWithUrl | undefined
+  artifactId?: string | null
+  loading?: boolean
+  error?: string | null
+  onRetry?: () => void
 }
 
-export function EvidenceDocument({ label, artifact }: Props) {
+export function EvidenceDocument({ label, artifact, artifactId, loading = false, error, onRetry }: Props) {
   if (!artifact) {
     return (
       <div>
         <div className="text-[10px] text-on-surf-v mb-[1px]">{label}</div>
-        <div className="text-[12px] text-on-surf-v">Not captured</div>
+        <div className="text-[12px] text-on-surf-v">{loading ? 'Loading evidence…' : error ? 'Evidence lookup failed' : artifactId ? 'Recorded artifact unavailable' : 'Not captured'}</div>
+        {onRetry && !loading && (artifactId || error) && <button onClick={onRetry}>Retry {label}</button>}
       </div>
     )
   }
@@ -38,7 +43,7 @@ export function EvidenceDocument({ label, artifact }: Props) {
             Open ↗
           </a>
         ) : (
-          <span className="shrink-0 text-[10px] text-warn">Unavailable</span>
+          <span className="shrink-0 text-[10px] text-warn">Recorded, document unavailable {onRetry && <button disabled={loading} onClick={onRetry}>Retry {label}</button>}</span>
         )}
       </div>
     </div>

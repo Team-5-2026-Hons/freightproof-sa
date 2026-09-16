@@ -1,7 +1,7 @@
 // frontend/driver-pwa/app/(app)/trip/in-transit/checkpoint/CheckpointPageClient.tsx
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { TriangleAlert } from 'lucide-react'
 import { useTrip } from '@/lib/hooks/useTrip'
@@ -16,6 +16,7 @@ import { SubpageHeader } from '@/components/layout/SubpageHeader'
 import { ROUTES } from '@/lib/constants/routes'
 import { ApiError } from '@/lib/api/client'
 import { submitCheckpoint, type CheckpointEvidence } from '@/lib/api/checkpoints'
+import { contextPhaseEventId } from '@/lib/phase/derive'
 
 // Driver-initiated periodic in-transit capture (selfie + cargo photo), independent
 // of the five handshakes — proves the driver and cargo are where they should be
@@ -34,6 +35,7 @@ export default function CheckpointPageClient() {
   const [isDeviation, setIsDeviation] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState(false)
+  const clientReportIdRef = useRef<string | null>(null)
 
   // GPS is no longer a gate: it is captured silently at submit, and a checkpoint with
   // photos but no fix is still evidence worth recording. The two photos ARE the
@@ -46,6 +48,8 @@ export default function CheckpointPageClient() {
     setSubmitError(false)
 
     const position = await capturePosition()
+    const clientReportId = clientReportIdRef.current ?? crypto.randomUUID()
+    clientReportIdRef.current = clientReportId
     const evidence: CheckpointEvidence = {
       gpsLat: position?.lat ?? null,
       gpsLng: position?.lng ?? null,
@@ -54,6 +58,9 @@ export default function CheckpointPageClient() {
       note: note.trim(),
       isDeviation,
       capturedAt: new Date().toISOString(),
+      clientReportId,
+      accuracyM: position?.accuracyM ?? null,
+      phaseEventId: contextPhaseEventId(trip.phases) ?? undefined,
     }
 
     try {

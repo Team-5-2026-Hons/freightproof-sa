@@ -17,6 +17,11 @@ vi.mock('@/lib/api/exceptions', () => ({
 vi.mock('@/lib/api/checkpoints', () => ({
   submitCheckpoint: vi.fn().mockResolvedValue({ id: 'cp-1' }),
 }))
+// FP-150: an exception queued with a photo has to upload the image at flush time before
+// it can raise the exception that cites it.
+vi.mock('@/lib/api/artifacts', () => ({
+  uploadArtifact: vi.fn().mockResolvedValue({ id: 'artifact-1', file_hash: 'abc' }),
+}))
 
 // Clear mock call history too — flush() now also runs on every mount, so call counts
 // would otherwise accumulate across tests and break the toHaveBeenCalledTimes asserts.
@@ -38,6 +43,10 @@ const EVIDENCE: ActivationEvidence = {
 // when they swiped, not where they were when signal came back.
 const POSITION: DriverPosition = { lat: -26.09, lng: 28.13, accuracyM: 8 }
 
+// Task 0A: the instant the caller stamped the submission — stored WITH the queue entry
+// for the same reason POSITION above is.
+const DRIVER_CAPTURED_AT = '2026-06-12T10:00:00Z'
+
 const CHECKPOINT_EVIDENCE: CheckpointEvidence = {
   gpsLat: -29.85, gpsLng: 31.02,
   selfieDataUrl: 'data:img/selfie', cargoPhotoDataUrl: 'data:img/cargo',
@@ -52,7 +61,7 @@ describe('useOfflineQueue', () => {
 
   it('enqueuePhase increments queueLength and persists to localStorage', () => {
     const { result } = renderHook(() => useOfflineQueue())
-    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
     expect(result.current.queueLength).toBe(1)
     const stored = JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')
     expect(stored).toHaveLength(1)
@@ -65,7 +74,7 @@ describe('useOfflineQueue', () => {
   // key sent to the server — proving that wiring here, at the point the entry is built.
   it('enqueuePhase stamps the entry id as its own idempotencyKey', () => {
     const { result } = renderHook(() => useOfflineQueue())
-    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
     const stored = JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')
     expect(stored[0].idempotencyKey).toBe(stored[0].id)
     expect(typeof stored[0].idempotencyKey).toBe('string')
@@ -75,9 +84,35 @@ describe('useOfflineQueue', () => {
   it('flush calls submitPhase for each entry and clears the queue', async () => {
     const { submitPhase } = await import('@/lib/api/phases')
     const { result } = renderHook(() => useOfflineQueue())
-    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
     await act(() => result.current.flush())
     expect(submitPhase).toHaveBeenCalledTimes(1)
+    expect(result.current.queueLength).toBe(0)
+  })
+
+  it('replays a legacy phase envelope that has no acknowledgement field', async () => {
+    const { submitPhase } = await import('@/lib/api/phases')
+    localStorage.setItem('fp_offline_queue', JSON.stringify([{
+      kind: 'phase',
+      id: 'legacy-phase-entry',
+      tripId: 'trip-1',
+      phaseEventId: 'phase-event-1',
+      phaseType: 'activation',
+      evidence: EVIDENCE,
+      idempotencyKey: 'legacy-phase-entry',
+      position: POSITION,
+      driverCapturedAt: DRIVER_CAPTURED_AT,
+      enqueuedAt: '2026-06-12T10:00:01Z',
+    }]))
+    __resetOfflineQueueStoreForTests()
+    const { result } = renderHook(() => useOfflineQueue())
+
+    await act(() => result.current.flush())
+
+    expect(submitPhase).toHaveBeenCalledWith(
+      'trip-1', 'phase-event-1', 'activation', EVIDENCE, 'legacy-phase-entry', POSITION,
+      DRIVER_CAPTURED_AT, null,
+    )
     expect(result.current.queueLength).toBe(0)
   })
 
@@ -87,7 +122,7 @@ describe('useOfflineQueue', () => {
     const { submitPhase } = await import('@/lib/api/phases')
     vi.mocked(submitPhase).mockRejectedValueOnce(new ApiError(0, 'timed out'))
     const { result } = renderHook(() => useOfflineQueue())
-    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
 
     await act(() => result.current.flush())
     expect(result.current.queueLength).toBe(1) // transient failure — still queued
@@ -111,7 +146,7 @@ describe('useOfflineQueue', () => {
     const { submitPhase } = await import('@/lib/api/phases')
     vi.mocked(submitPhase).mockResolvedValueOnce({ ok: true, trip: null, phaseStatus: 'completed' })
     const { result } = renderHook(() => useOfflineQueue())
-    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
 
     await act(() => result.current.flush())
 
@@ -134,20 +169,73 @@ describe('useOfflineQueue', () => {
     expect(stored[0].tripId).toBe('trip-1')
   })
 
+  // Task 0B: the entry's own id (generated once, at enqueue time) IS the
+  // client_report_id sent to the server — the exception counterpart to
+  // enqueuePhase's idempotencyKey test above.
+  it('enqueueException stamps the entry id as its own client_report_id', () => {
+    const { result } = renderHook(() => useOfflineQueue())
+    act(() => result.current.enqueueException('trip-1', { exception_type: 'panic_button', description: 'x' }))
+    const stored = JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')
+    expect(stored[0].body.client_report_id).toBe(stored[0].id)
+    expect(typeof stored[0].body.client_report_id).toBe('string')
+  })
+
   it('flush calls raiseException for a queued exception and clears the queue', async () => {
     const { raiseException } = await import('@/lib/api/exceptions')
     const { result } = renderHook(() => useOfflineQueue())
     act(() => result.current.enqueueException('trip-1', { exception_type: 'panic_button', description: 'x' }))
     await act(() => result.current.flush())
-    expect(raiseException).toHaveBeenCalledWith('trip-1', { exception_type: 'panic_button', description: 'x' })
+    expect(raiseException).toHaveBeenCalledWith('trip-1', {
+      exception_type: 'panic_button', description: 'x', client_report_id: expect.any(String),
+    })
     expect(result.current.queueLength).toBe(0)
+  })
+
+  // Trailer analytics: the driver's "truck or trailer" answer rides in the body, so a
+  // breakdown queued in a dead zone reaches the server with it, unchanged.
+  it('keeps a breakdown\'s vehicle answer through the queue unchanged', async () => {
+    const { raiseException } = await import('@/lib/api/exceptions')
+    const { result } = renderHook(() => useOfflineQueue())
+    act(() => result.current.enqueueException('trip-1', {
+      exception_type: 'mechanical', description: 'x', vehicle_type: 'trailer', trailer_id: 'trailer-2',
+    }))
+    const stored = JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')
+
+    await act(() => result.current.flush())
+
+    expect(stored[0].body).toMatchObject({ vehicle_type: 'trailer', trailer_id: 'trailer-2' })
+    expect(raiseException).toHaveBeenCalledWith('trip-1', {
+      exception_type: 'mechanical', description: 'x', client_report_id: expect.any(String),
+      vehicle_type: 'trailer', trailer_id: 'trailer-2',
+    })
+  })
+
+  // Task 0B: a lost response (or a retry the driver's app fires while an earlier
+  // attempt is still in flight) must resend the SAME client_report_id, exactly like
+  // enqueuePhase's idempotencyKey — proving the exception path was wired the same way.
+  it('resends the same client_report_id on a retry after a lost response', async () => {
+    const { raiseException } = await import('@/lib/api/exceptions')
+    vi.mocked(raiseException).mockRejectedValueOnce(new ApiError(0, 'timed out'))
+    const { result } = renderHook(() => useOfflineQueue())
+    act(() => result.current.enqueueException('trip-1', { exception_type: 'panic_button', description: 'x' }))
+
+    await act(() => result.current.flush())
+    expect(result.current.queueLength).toBe(1) // transient — still queued
+
+    await act(() => result.current.flush())
+    expect(result.current.queueLength).toBe(0) // second attempt succeeds
+
+    expect(raiseException).toHaveBeenCalledTimes(2)
+    const firstBody = vi.mocked(raiseException).mock.calls[0][1]
+    const secondBody = vi.mocked(raiseException).mock.calls[1][1]
+    expect(firstBody.client_report_id).toBe(secondBody.client_report_id)
   })
 
   it('flush retains a failed entry in the queue and keeps unrelated entries', async () => {
     const { submitPhase } = await import('@/lib/api/phases')
     vi.mocked(submitPhase).mockRejectedValueOnce(new Error('network down'))
     const { result } = renderHook(() => useOfflineQueue())
-    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
     await act(() => result.current.flush())
     expect(result.current.queueLength).toBe(1)
   })
@@ -156,7 +244,7 @@ describe('useOfflineQueue', () => {
     const { submitPhase } = await import('@/lib/api/phases')
     vi.mocked(submitPhase).mockRejectedValueOnce(new ApiError(422, 'invalid evidence'))
     const { result } = renderHook(() => useOfflineQueue())
-    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
     await act(() => result.current.flush())
     expect(result.current.queueLength).toBe(0)
   })
@@ -165,9 +253,36 @@ describe('useOfflineQueue', () => {
     const { submitPhase } = await import('@/lib/api/phases')
     vi.mocked(submitPhase).mockRejectedValueOnce(new ApiError(503, 'service unavailable'))
     const { result } = renderHook(() => useOfflineQueue())
-    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
     await act(() => result.current.flush())
     expect(result.current.queueLength).toBe(1)
+  })
+
+  it('keeps a rate-limited report and retries it after Retry-After elapses', async () => {
+    vi.useFakeTimers()
+    try {
+      const { raiseException } = await import('@/lib/api/exceptions')
+      vi.mocked(raiseException).mockRejectedValueOnce(new ApiError(429, 'slow down', 1_000))
+      const { result } = renderHook(() => useOfflineQueue())
+      await act(() => Promise.resolve())
+      act(() => result.current.enqueueException(
+        'trip-1', { exception_type: 'panic_button', description: 'Driver panic' },
+      ))
+
+      await act(() => result.current.flush())
+
+      expect(result.current.queueLength).toBe(1)
+      expect(raiseException).toHaveBeenCalledTimes(1)
+
+      await act(() => vi.advanceTimersByTimeAsync(999))
+      expect(raiseException).toHaveBeenCalledTimes(1)
+
+      await act(() => vi.advanceTimersByTimeAsync(1))
+      expect(raiseException).toHaveBeenCalledTimes(2)
+      expect(result.current.queueLength).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   // Fix 3: checkpoints now enqueue and replay through the same offline-queue contract
@@ -229,7 +344,7 @@ describe('useOfflineQueue', () => {
       // Let the mount-time flush (empty queue, no-op) settle before seeding the queue.
       await act(() => Promise.resolve())
 
-      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
+      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
       expect(result.current.queueLength).toBe(1)
 
       setVisibility('visible')
@@ -247,7 +362,7 @@ describe('useOfflineQueue', () => {
       const { result } = renderHook(() => useOfflineQueue())
       await act(() => Promise.resolve())
 
-      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
+      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
       vi.mocked(submitPhase).mockClear()
 
       setVisibility('hidden')
@@ -270,7 +385,7 @@ describe('useOfflineQueue', () => {
       const { result } = renderHook(() => useOfflineQueue())
       await act(() => Promise.resolve())
 
-      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
+      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
       await act(() => result.current.flush())
 
       expect(result.current.queueLength).toBe(1)
@@ -295,7 +410,7 @@ describe('useOfflineQueue', () => {
       const { result } = renderHook(() => useOfflineQueue())
       await act(() => Promise.resolve())
 
-      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
+      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
 
       // Start a flush that hangs on the phase send, then enqueue a second entry
       // mid-flight — exactly what happens when a driver logs an exception while a
@@ -332,7 +447,7 @@ describe('useOfflineQueue', () => {
       const { result } = renderHook(() => useOfflineQueue())
       await act(() => Promise.resolve())
 
-      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
+      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
 
       // Kick off a flush that will hang on the in-flight submitPhase call, then fire a
       // second flush before the first resolves — the guard should make the second call a
@@ -371,7 +486,7 @@ describe('useOfflineQueue', () => {
       const second = renderHook(() => useOfflineQueue())
       await act(() => Promise.resolve())
 
-      act(() => first.result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
+      act(() => first.result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
 
       // Instance A's flush hangs on the in-flight send; instance B's flush must be a
       // pure no-op against the shared module-scope mutex, not a concurrent re-send.
@@ -397,7 +512,7 @@ describe('useOfflineQueue', () => {
       const second = renderHook(() => useOfflineQueue())
       await act(() => Promise.resolve())
 
-      act(() => first.result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
+      act(() => first.result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
 
       expect(second.result.current.queueLength).toBe(1)
     })
@@ -412,7 +527,7 @@ describe('useOfflineQueue', () => {
       const { result } = renderHook(() => useOfflineQueue())
       await act(() => Promise.resolve())
 
-      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
+      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
       await act(() => result.current.flush())
 
       expect(result.current.queueLength).toBe(0)
@@ -429,7 +544,7 @@ describe('useOfflineQueue', () => {
       const { result } = renderHook(() => useOfflineQueue())
       await act(() => Promise.resolve())
 
-      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION))
+      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
       await act(() => result.current.flush())
 
       // Dropped from the queue (correct — the evidence landed on a prior attempt),
@@ -454,8 +569,8 @@ describe('useOfflineQueue', () => {
       await act(() => Promise.resolve())
 
       act(() => {
-        result.current.enqueuePhase('trip-1', 'phase-event-in-transit', 'in_transit', EVIDENCE, POSITION)
-        result.current.enqueuePhase('trip-1', 'phase-event-unloading', 'unloading', EVIDENCE, POSITION)
+        result.current.enqueuePhase('trip-1', 'phase-event-in-transit', 'in_transit', EVIDENCE, POSITION, DRIVER_CAPTURED_AT)
+        result.current.enqueuePhase('trip-1', 'phase-event-unloading', 'unloading', EVIDENCE, POSITION, DRIVER_CAPTURED_AT)
       })
 
       await act(() => result.current.flush())
@@ -476,8 +591,8 @@ describe('useOfflineQueue', () => {
       await act(() => Promise.resolve())
 
       act(() => {
-        result.current.enqueuePhase('trip-1', 'phase-event-in-transit', 'in_transit', EVIDENCE, POSITION)
-        result.current.enqueuePhase('trip-2', 'phase-event-unloading', 'unloading', EVIDENCE, POSITION)
+        result.current.enqueuePhase('trip-1', 'phase-event-in-transit', 'in_transit', EVIDENCE, POSITION, DRIVER_CAPTURED_AT)
+        result.current.enqueuePhase('trip-2', 'phase-event-unloading', 'unloading', EVIDENCE, POSITION, DRIVER_CAPTURED_AT)
       })
 
       await act(() => result.current.flush())
@@ -498,7 +613,7 @@ describe('useOfflineQueue', () => {
       await act(() => Promise.resolve())
 
       act(() => {
-        result.current.enqueuePhase('trip-1', 'phase-event-in-transit', 'in_transit', EVIDENCE, POSITION)
+        result.current.enqueuePhase('trip-1', 'phase-event-in-transit', 'in_transit', EVIDENCE, POSITION, DRIVER_CAPTURED_AT)
         result.current.enqueueException('trip-1', { exception_type: 'panic_button', description: 'x' })
       })
 
@@ -511,5 +626,167 @@ describe('useOfflineQueue', () => {
       expect(stored).toHaveLength(1)
       expect(stored[0].kind).toBe('phase')
     })
+  })
+})
+
+// FP-150. A photo taken in a dead zone must not vanish. The queue persists through
+// JSON.stringify into localStorage, so the image travels as a compressed data URL
+// string — a Blob would serialise to {} and disappear silently.
+
+describe('queued exception photos (FP-150)', () => {
+  const PHOTO = { dataUrl: 'data:image/jpeg;base64,/9j/4AAQ==', capturedAt: '2026-09-05T09:00:00Z' }
+  const BODY = { exception_type: 'cargo_damage' as const, description: 'Pallet crushed' }
+
+  it('persists the photo with the entry and reports that it was stored', () => {
+    const { result } = renderHook(() => useOfflineQueue())
+
+    let outcome!: { persisted: boolean; photoPersisted: boolean }
+    act(() => { outcome = result.current.enqueueException('trip-1', BODY, PHOTO) })
+
+    expect(outcome).toEqual({ persisted: true, photoPersisted: true })
+    const stored = JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')
+    expect(stored[0].photoDataUrl).toBe(PHOTO.dataUrl)
+    expect(stored[0].photoCapturedAt).toBe(PHOTO.capturedAt)
+  })
+
+  it('keeps the written report when the photo will not fit in storage, and says so', () => {
+    // localStorage refuses the entry carrying the image (the ~5MB quota is shared with
+    // phase drafts) but accepts the text-only retry.
+    const setItem = vi.spyOn(Storage.prototype, 'setItem')
+      .mockImplementationOnce(() => { throw new Error('QuotaExceededError') })
+    const { result } = renderHook(() => useOfflineQueue())
+
+    let outcome!: { persisted: boolean; photoPersisted: boolean }
+    act(() => { outcome = result.current.enqueueException('trip-1', BODY, PHOTO) })
+
+    // The report survives; the photo does not, and the caller is told which.
+    expect(outcome).toEqual({ persisted: true, photoPersisted: false })
+    const stored = JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')
+    expect(stored).toHaveLength(1)
+    expect(stored[0].body.description).toBe('Pallet crushed')
+    expect(stored[0].photoDataUrl).toBeUndefined()
+    setItem.mockRestore()
+  })
+
+  it('reports that nothing was saved when storage refuses the report outright', () => {
+    const setItem = vi.spyOn(Storage.prototype, 'setItem')
+      .mockImplementation(() => { throw new Error('QuotaExceededError') })
+    const { result } = renderHook(() => useOfflineQueue())
+
+    let outcome!: { persisted: boolean; photoPersisted: boolean }
+    act(() => { outcome = result.current.enqueueException('trip-1', BODY, PHOTO) })
+
+    // flushQueue reads from localStorage, so an unpersisted entry will never be sent.
+    // The caller has to be able to tell the driver that.
+    expect(outcome).toEqual({ persisted: false, photoPersisted: false })
+    setItem.mockRestore()
+  })
+
+  it('uploads the photo at flush, then raises the exception citing the artifact', async () => {
+    const { uploadArtifact } = await import('@/lib/api/artifacts')
+    const { raiseException } = await import('@/lib/api/exceptions')
+    const { result } = renderHook(() => useOfflineQueue())
+    act(() => { result.current.enqueueException('trip-1', BODY, PHOTO) })
+
+    await act(() => result.current.flush())
+
+    expect(uploadArtifact).toHaveBeenCalledWith({
+      tripId: 'trip-1',
+      artifactType: 'photo',
+      dataUrl: PHOTO.dataUrl,
+      // Timestamped when the driver stood in front of the problem, not when signal returned.
+      capturedAt: PHOTO.capturedAt,
+    })
+    expect(raiseException).toHaveBeenCalledWith('trip-1', {
+      ...BODY,
+      client_report_id: expect.any(String),
+      supporting_artifact_id: 'artifact-1',
+    })
+    expect(result.current.queueLength).toBe(0)
+  })
+
+  it('sends the report without the photo when the server terminally rejects the image', async () => {
+    const { uploadArtifact } = await import('@/lib/api/artifacts')
+    const { raiseException } = await import('@/lib/api/exceptions')
+    vi.mocked(uploadArtifact).mockRejectedValueOnce(new ApiError(422, 'Unsupported file type'))
+    const { result } = renderHook(() => useOfflineQueue())
+    act(() => { result.current.enqueueException('trip-1', BODY, PHOTO) })
+
+    await act(() => result.current.flush())
+
+    // The photo will be refused identically on every replay. Losing the driver's written
+    // account along with it would be the worse failure, so the report goes unillustrated.
+    expect(raiseException).toHaveBeenCalledWith('trip-1', {
+      ...BODY, client_report_id: expect.any(String),
+    })
+    expect(result.current.queueLength).toBe(0)
+  })
+
+  it('keeps both report and photo when the upload is rate limited', async () => {
+    const { uploadArtifact } = await import('@/lib/api/artifacts')
+    const { raiseException } = await import('@/lib/api/exceptions')
+    vi.mocked(uploadArtifact).mockRejectedValueOnce(new ApiError(429, 'slow down', 60_000))
+    const { result } = renderHook(() => useOfflineQueue())
+    act(() => { result.current.enqueueException('trip-1', BODY, PHOTO) })
+
+    await act(() => result.current.flush())
+
+    expect(raiseException).not.toHaveBeenCalled()
+    expect(result.current.queueLength).toBe(1)
+    const stored = JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')
+    expect(stored[0].photoDataUrl).toBe(PHOTO.dataUrl)
+
+    await act(() => result.current.flush())
+    expect(uploadArtifact).toHaveBeenCalledTimes(2)
+    expect(raiseException).toHaveBeenCalledTimes(1)
+    expect(result.current.queueLength).toBe(0)
+  })
+
+  it('keeps the entry and its photo queued when the upload fails transiently', async () => {
+    const { uploadArtifact } = await import('@/lib/api/artifacts')
+    const { raiseException } = await import('@/lib/api/exceptions')
+    vi.mocked(uploadArtifact).mockRejectedValueOnce(new TypeError('network unreachable'))
+    const { result } = renderHook(() => useOfflineQueue())
+    act(() => { result.current.enqueueException('trip-1', BODY, PHOTO) })
+
+    await act(() => result.current.flush())
+
+    // Still offline: nothing was raised, and the image is intact for the next attempt.
+    expect(raiseException).not.toHaveBeenCalled()
+    await waitFor(() => expect(result.current.queueLength).toBe(1))
+    const stored = JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')
+    expect(stored[0].photoDataUrl).toBe(PHOTO.dataUrl)
+  })
+
+  // Task 0B: the queue's own two-step send (upload, then raise) made resumable across
+  // flushes — a lost/failed response after the photo already landed must not re-upload
+  // it, and must still reuse the same client_report_id so the backend's own idempotency
+  // recognises the retry as the same report.
+  it('does not re-upload the photo on a retry after the exception POST fails transiently post-upload', async () => {
+    const { uploadArtifact } = await import('@/lib/api/artifacts')
+    const { raiseException } = await import('@/lib/api/exceptions')
+    vi.mocked(raiseException).mockRejectedValueOnce(new ApiError(0, 'timed out'))
+    const { result } = renderHook(() => useOfflineQueue())
+    act(() => { result.current.enqueueException('trip-1', BODY, PHOTO) })
+
+    await act(() => result.current.flush())
+
+    expect(result.current.queueLength).toBe(1) // the POST failed transiently — still queued
+    expect(uploadArtifact).toHaveBeenCalledTimes(1)
+    // The upload's result must already be durably persisted: the next flush must not
+    // see a data URL any more, or it would upload the same image a second time.
+    const midway = JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')
+    expect(midway[0].photoDataUrl).toBeUndefined()
+    expect(midway[0].body.supporting_artifact_id).toBe('artifact-1')
+
+    await act(() => result.current.flush())
+
+    expect(result.current.queueLength).toBe(0)
+    expect(uploadArtifact).toHaveBeenCalledTimes(1) // never re-uploaded
+    expect(raiseException).toHaveBeenCalledTimes(2)
+    const firstCall = vi.mocked(raiseException).mock.calls[0][1]
+    const secondCall = vi.mocked(raiseException).mock.calls[1][1]
+    expect(firstCall.client_report_id).toBe(secondCall.client_report_id)
+    expect(secondCall.supporting_artifact_id).toBe('artifact-1')
   })
 })

@@ -2,13 +2,22 @@
 
 import { EvidencePhoto } from './EvidencePhoto'
 import { Field, PhaseDetailCard, Section } from './PhaseDetailFields'
+import { PhaseLocationSection } from './PhaseLocationSection'
 import { PhaseOverrideSection } from './PhaseOverrideSection'
 import { departureSealForLeg } from '@/lib/phase/derive'
+import { locationEvidenceForPhase, hasLocationEvidence } from '@/lib/phase/location-evidence'
 import { isClosedPhaseStatus } from '@/lib/types/dev'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
+import type { Precinct } from '@shared/lib/types/precinct'
+
+import type { TripException } from '@shared/lib/types/exception'
 
 interface Props {
+  artifactLoading?: boolean
+  artifactError?: string | null
+  onRetryArtifacts?: () => void
+  sealException?: Pick<TripException, 'exception_type' | 'severity'>
   phase: PhaseDescriptor
   // Needed to find THIS leg's own departure — see departureSealForLeg. A cross-dock
   // trip has one departure per leg, so a plain "the trip's departure" lookup would
@@ -26,10 +35,12 @@ interface Props {
   /** Manifest baseline for this stop — summed parcel_count_expected over the same
    *  consignments. Same null-is-not-zero rule as scannedInCount. */
   expectedAtStopCount: number | null
+  // The precinct this phase is anchored to, resolved by the page from the phase's stop.
+  precinct: Precinct | undefined
 }
 
-export function UnloadingDetail({
-  phase, allPhases, artifactsById, scannedInCount, expectedAtStopCount,
+export function UnloadingDetail({ artifactLoading, artifactError, onRetryArtifacts,
+  phase, allPhases, artifactsById, scannedInCount, expectedAtStopCount, sealException, precinct,
 }: Props) {
   const departureSeal = departureSealForLeg(allPhases, phase)
 
@@ -42,17 +53,14 @@ export function UnloadingDetail({
   const hasBoth = expectedAtStopCount !== null && scannedInCount !== null
   const missing = hasBoth ? expectedAtStopCount - scannedInCount : 0
 
-  // Read, never re-derived. advance_unloading sets this row to EXCEPTION on exactly
-  // one condition — the destination seal not matching this leg's departure seal — so
-  // the phase status IS the recorded verdict. Recomputing it here from the two seal
-  // strings would let the dispatcher show "integrity confirmed" next to an exception
-  // the backend actually raised, which on an evidence platform is the one thing this
-  // panel must never do. The seals stay on screen so the verdict can be checked by eye.
-  const verdict = phase.status === 'exception'
+  // An exceptional phase alone does not identify which seal finding was recorded.
+  const verdict = sealException?.exception_type === 'seal_mismatch'
     ? 'mismatch'
-    : phase.status === 'completed'
-      ? 'match'
-      : null
+    : sealException?.exception_type === 'seal_unverified' || !departureSeal || !phase.seal_number
+      ? 'unverified'
+      : phase.status === 'completed' && departureSeal === phase.seal_number
+        ? 'match'
+        : 'unverified'
 
   return (
     <PhaseDetailCard>
@@ -68,7 +76,7 @@ export function UnloadingDetail({
       </Section>
       {hasBoth && (
         <div className={`text-[11px] font-[600] px-3 pb-3 ${missing === 0 ? 'text-ok' : 'text-warn'}`}>
-          {missing === 0 ? 'All parcels scanned ✓' : `${missing} not scanned ✗`}
+          {missing === 0 ? 'All parcels scanned ✓' : missing < 0 ? `${Math.abs(missing)} excess scanned` : `${missing} not scanned ✗`}
         </div>
       )}
       {!resolved && (
@@ -77,9 +85,6 @@ export function UnloadingDetail({
         </p>
       )}
 
-      {/* No location section here — unlike activation, neither this phase's request
-          schema nor the backend's advance_unloading captures driver_phone_lat/lng or
-          horse_gps_lat/lng. Showing it would just be four permanently-blank rows. */}
       <Section title="Seal">
         <div className="col-span-2">
           <div className="text-[10px] text-on-surf-v mb-[3px]">Seal at destination</div>
@@ -93,17 +98,33 @@ export function UnloadingDetail({
         </div>
         <Field label="Seal at departure (this leg)" value={departureSeal} mono />
         {verdict !== null && (
-          <div className={`col-span-2 text-[12px] font-[600] ${verdict === 'match' ? 'text-ok' : 'text-err'}`}>
+          <div className={`col-span-2 text-[12px] font-[600] ${verdict === 'match' ? 'text-ok' : sealException?.severity === 'critical' ? 'text-err' : 'text-warn'}`}>
             {verdict === 'match'
-              ? 'Seal matches — integrity confirmed ✓'
-              : 'Mismatch — recorded as a critical exception ✗'}
+              ? 'Recorded seals match ✓'
+              : verdict === 'mismatch'
+                ? `Mismatch — recorded as a ${sealException?.severity ?? 'recorded'} exception ✗`
+                : 'Seal continuity unverified'}
           </div>
         )}
         <EvidencePhoto
+          loading={artifactLoading} error={artifactError} onRetry={onRetryArtifacts}
           label="Seal photo at destination"
+          artifactId={phase.gate_photo_artifact_id}
           artifact={phase.gate_photo_artifact_id ? artifactsById.get(phase.gate_photo_artifact_id) : undefined}
         />
       </Section>
+
+      {/* hasLocationEvidence guards the section so a row with neither a fix nor a stored
+          verdict does not grow an empty "Location at unloading" heading. This is NOT
+          because the backend fails to capture a fix here: UnloadingCompleteRequest
+          extends _PhaseCompleteBase, advance_unloading records the driver's position and
+          runs corroboration against it, and the driver app sends its position for
+          unloading. A null phone fix is a legitimate outcome of that capture (indoor,
+          permission denied, offline), not evidence the contract omits the field; the gate
+          keys off what was actually recorded, not off what the contract allows. */}
+      {hasLocationEvidence(locationEvidenceForPhase(phase, precinct)) && (
+        <PhaseLocationSection phase={phase} precinct={precinct} title="Location at unloading" />
+      )}
 
       <PhaseOverrideSection phase={phase} />
 

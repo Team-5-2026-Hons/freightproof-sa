@@ -2,11 +2,15 @@
 
 import { useEffect, useRef } from 'react'
 import { useRealtimeChannel } from './RealtimeProvider'
-import type { RealtimeEvent } from './types'
+import type { RealtimeEvent, RealtimeKind } from './types'
 
-// Subscribe a screen to live changes for a resource. `onChange` fires when a matching
-// event arrives, and again after any reconnection (to catch pings missed while the
-// connection was down — D7). The typical `onChange` is a silent refetch.
+export interface LiveResourceOptions {
+  kinds?: readonly RealtimeKind[]
+}
+
+// Subscribe a screen to live changes for a resource. `onChange` fires on a matching
+// event, and again after any reconnection (to catch events missed while down). Typically
+// a silent refetch.
 //
 //   useLiveResource('trip', tripId, refetchSilent)   // this trip only
 //   useLiveResource('trip', 'any', refetchSilent)    // any trip (e.g. the list)
@@ -14,6 +18,7 @@ export function useLiveResource(
   resource: RealtimeEvent['resource'],
   id: string | 'any',
   onChange: () => void,
+  options: LiveResourceOptions = {},
 ): void {
   const { subscribe, reconnectNonce } = useRealtimeChannel()
 
@@ -23,10 +28,18 @@ export function useLiveResource(
     onChangeRef.current = onChange
   }, [onChange])
 
+  // Keep the latest selection without reconnecting the listener when a caller passes
+  // an inline array from render.
+  const kindsRef = useRef(options.kinds)
+  useEffect(() => {
+    kindsRef.current = options.kinds
+  }, [options.kinds])
+
   useEffect(() => {
     return subscribe(event => {
       if (event.resource !== resource) return
       if (id !== 'any' && event.id !== id) return
+      if (kindsRef.current && !kindsRef.current.includes(event.kind)) return
       onChangeRef.current()
     })
   }, [subscribe, resource, id])

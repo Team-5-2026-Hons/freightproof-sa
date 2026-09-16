@@ -7,6 +7,7 @@ idempotency_key). Serves the frozen contract's PhaseDescriptor — parent plan
 rather than as columns.
 """
 
+import math
 import re
 from datetime import datetime
 from typing import Annotated, Any, Literal, Optional, Union
@@ -16,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from app.core.phase_meta import STEP_SLUGS
 from app.db.models.enums import AnchorStatus, PhaseStatus, PhaseType
+from app.schemas.action_location import ActionLocationAssessment
 
 _SEAL_PATTERN = re.compile(r"^[A-Z]{2}-\d{4}$")
 
@@ -26,9 +28,16 @@ _SEAL_NUMBER_MAX_LENGTH = 100
 
 
 def _validate_seal_format(v: str) -> str:
-    if not _SEAL_PATTERN.match(v):
+    # Normalize before matching, not after: a driver/clerk retyping a seal on a phone
+    # keyboard is guaranteed to introduce stray case or whitespace, and rejecting THAT
+    # with a 422 penalizes the caller for something that was never evidence of a bad
+    # seal. Canonicalizing here means every caller — driver-pwa, a future integration,
+    # a Postman request during a demo — gets the same tolerant behaviour for free,
+    # rather than each one having to normalize before it sends the request.
+    normalized = v.strip().upper()
+    if not _SEAL_PATTERN.match(normalized):
         raise ValueError("seal number must be in format XX-#### (e.g. AB-1234)")
-    return v
+    return normalized
 
 
 class PhaseEventRead(BaseModel):
@@ -79,9 +88,22 @@ class PhaseEventRead(BaseModel):
     dispatcher_override_note: Optional[str] = None
     driver_phone_lat: Optional[float] = None
     driver_phone_lng: Optional[float] = None
+    # Task 0A. The instant the driver's phone submitted, independent of completed_at
+    # (the server's clock). Optional here purely because the underlying column is
+    # nullable for a row a pre-0A client completed.
+    driver_captured_at: Optional[datetime] = None
     horse_gps_lat: Optional[float] = None
     horse_gps_lng: Optional[float] = None
     pulsit_geofence_confirmed: Optional[bool] = None
+    # Task 5: the versioned driver-phone-vs-tracker proximity snapshot (plus precinct
+    # membership facts) assembled at completion time by orchestration/action_location_
+    # service.build_phase_assessment. Validated through ActionLocationAssessment on
+    # every read (from_attributes maps the stored JSONB dict straight through
+    # model_validate) — never served as a raw dict. None for every row completed
+    # before this column existed, and never backfilled.
+    action_location_assessment: Optional[ActionLocationAssessment] = None
+    location_warning_acknowledged_at: Optional[datetime] = None
+    location_warning_reason: Optional[str] = None
     seal_number: Optional[str] = None
     seal_photo_artifact_id: Optional[UUID] = None
     waybill_photo_artifact_id: Optional[UUID] = None
@@ -151,6 +173,11 @@ class TrailerGpsSnapshotRead(TrailerGpsSnapshotBase):
 
 
 class _PhaseCompleteBase(BaseModel):
+    # Completion requests may carry raw driver evidence only. In particular, clients
+    # must not smuggle a server-evaluated ActionLocationAssessment verdict into the
+    # ledger; that snapshot is assembled after corroboration and is read-only.
+    model_config = ConfigDict(extra="forbid")
+
     # The driver app's offline-queue entry id. Stored on the row unconditionally;
     # a resubmitted completion with the same key returns current state instead of
     # erroring or duplicating — drivers lose signal, replay is normal.
@@ -172,6 +199,78 @@ class _PhaseCompleteBase(BaseModel):
     # field added here cannot reach a hash by accident.
     driver_phone_lat: Optional[float] = Field(default=None, ge=-90, le=90)
     driver_phone_lng: Optional[float] = Field(default=None, ge=-180, le=180)
+
+    # Task 0A: the instant the driver's OWN PHONE submitted this completion — captured
+    # client-side at swipe time (frontend/driver-pwa/lib/submission/phase-submitter.ts),
+    # not when this request happens to reach the server. This is what lets
+    # corroboration_service tell a live handshake from an offline replay flushed hours
+    # later: comparing a fresh Pulsit fix against a stale driver claim, with no capture
+    # time on the wire, was the exact gap this field exists to close (see
+    # corroboration_service.py's module docstring).
+    #
+    # Optional so a client built before this field existed — an entry already sitting in
+    # a driver's offline queue — still 200s on replay instead of 422ing forever; a
+    # missing value reads as "cannot verify timing" and corroboration accordingly stores
+    # no position/verdict for that handshake, never a fabricated one. New builds always
+    # send it (frontend/driver-pwa/lib/submission/phase-submitter.ts).
+    driver_captured_at: Optional[datetime] = None
+
+    # R8 (Task 5, trip-location-timeline-improvements): the phone's own claimed
+    # accuracy at the moment of driver_phone_lat/lng, feeding proximity_service.
+    # evaluate_proximity's `poor_accuracy`/`missing_accuracy` gates via orchestration/
+    # action_location_service.build_phase_assessment. NOT a phase_events column —
+    # it lives only inside the action_location_assessment JSONB snapshot (schemas/
+    # action_location.py). Optional so a client built before this field existed
+    # still 200s on replay: an omitted value reads as `missing_accuracy`, which
+    # forces the proximity verdict to 'unverified' rather than a fabricated pass.
+    driver_accuracy_metres: Optional[float] = Field(default=None, ge=0)
+
+    # Task 7: acknowledgement of the warning the driver saw during the optional
+    # preview. This is deliberately separate from action_location_assessment: the
+    # latter is only assembled from independent measurements by the backend after the
+    # final completion request, while these fields describe the driver's own context.
+    location_warning_acknowledged_at: Optional[datetime] = None
+    location_warning_reason: Optional[str] = Field(default=None, max_length=1_000)
+
+    @field_validator("driver_captured_at")
+    @classmethod
+    def validate_driver_captured_at_is_timezone_aware(cls, v: Optional[datetime]) -> Optional[datetime]:
+        # A naive value would silently compare as if it were UTC in corroboration_service,
+        # manufacturing a skew verdict from a timestamp that was never actually anchored
+        # to a real instant. Rejected outright rather than assumed.
+        if v is not None and v.tzinfo is None:
+            raise ValueError("driver_captured_at must be timezone-aware")
+        return v
+
+    @field_validator("driver_accuracy_metres")
+    @classmethod
+    def validate_driver_accuracy_metres_is_finite(cls, v: Optional[float]) -> Optional[float]:
+        # ge=0 above already rejects a negative value; this additionally rejects
+        # inf/nan, which `ge` alone would let through (float('inf') >= 0 is True) and
+        # which ActionLocationAssessment's own validator would then reject at
+        # persistence time — better as a 422 here than a 500 building the assessment.
+        if v is not None and not math.isfinite(v):
+            raise ValueError("driver_accuracy_metres must be a finite number")
+        return v
+
+    @field_validator("location_warning_acknowledged_at")
+    @classmethod
+    def validate_location_warning_acknowledged_at_is_timezone_aware(
+        cls, v: Optional[datetime],
+    ) -> Optional[datetime]:
+        if v is not None and v.tzinfo is None:
+            raise ValueError("location_warning_acknowledged_at must be timezone-aware")
+        return v
+
+    @field_validator("location_warning_reason")
+    @classmethod
+    def validate_location_warning_reason_is_nonblank(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        normalized = v.strip()
+        if not normalized:
+            raise ValueError("location_warning_reason must not be blank")
+        return normalized
 
     @model_validator(mode="after")
     def validate_driver_position_pair(self) -> "_PhaseCompleteBase":
@@ -250,6 +349,12 @@ class DepartureCompleteRequest(_PhaseCompleteBase):
     @classmethod
     def validate_seal_number(cls, v: str) -> str:
         return _validate_seal_format(v)
+
+    @model_validator(mode="after")
+    def validate_distinct_evidence_roles(self) -> "DepartureCompleteRequest":
+        if self.waybill_photo_artifact_id == self.seal_photo_artifact_id:
+            raise ValueError("waybill and seal evidence must use different artifacts")
+        return self
 
 
 class InTransitCompleteRequest(_PhaseCompleteBase):
@@ -331,10 +436,16 @@ class ConfirmationCompleteRequest(_PhaseCompleteBase):
     # Optional (not required) as of the scan-driven
     # redesign: the driver may now skip the count at unloading and at
     # confirmation, matching LoadingCompleteRequest's own Optional field above.
-    # A skipped count still anchors — compute_confirmation_canonical_payload
-    # keeps the key present with value None rather than omitting it, which is
+    # A skipped count still anchors — the versioned confirmation payload builders
+    # keep the key present with value None rather than omitting it, which is
     # what keeps verification_service's rebuild reproducible.
     driver_visual_count: Optional[int] = None
+
+    @model_validator(mode="after")
+    def validate_distinct_evidence_roles(self) -> "ConfirmationCompleteRequest":
+        if self.pod_photo_artifact_id == self.pod_signature_artifact_id:
+            raise ValueError("POD photo and signature must use different artifacts")
+        return self
 
 
 # Decision S5. One endpoint, six real shapes: Pydantic picks the member from
