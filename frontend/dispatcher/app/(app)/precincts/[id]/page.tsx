@@ -5,12 +5,12 @@ import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { MapPinOff } from 'lucide-react'
 
 import { TopBar } from '@/components/ui/TopBar'
+import { BackButton } from '@/components/ui/BackButton'
 import { Button } from '@/components/ui/Button'
 import { Spinner } from '@/components/ui/Spinner'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Tabs, type Tab } from '@/components/ui/Tabs'
 import { InfoRow } from '@/components/ui/InfoRow'
-import { Ic } from '@/components/ui/Ic'
 import { AdminOnly } from '@/components/auth/AdminOnly'
 import { GeofenceMap } from '@/components/map/GeofenceMap'
 import { EventTimeline } from '@/components/blockchain/EventTimeline'
@@ -48,16 +48,7 @@ export default function PrecinctDetailPage(): React.JSX.Element {
   // Present in every state (loading/error/success), same as the vehicle detail page —
   // a header that only appears once data resolves reads as broken chrome, and without
   // it there is no way back to the list except the browser's own back button.
-  const backButton = (
-    <Button
-      variant="secondary"
-      size="sm"
-      onClick={() => router.push(backTo)}
-      iconLeft={<Ic n="back" s={14} className="text-on-surf" />}
-    >
-      Back
-    </Button>
-  )
+  const backButton = <BackButton onClick={() => router.push(backTo)} />
 
   if (isLoading) {
     return (

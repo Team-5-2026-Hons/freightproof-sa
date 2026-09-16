@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { CartesianGrid, ReferenceLine, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from 'recharts'
 
 import { AXIS_TEXT_COLOR, GRID_COLOR, SURFACE_COLOR, TICK_COLOR } from '@/lib/tokens'
+import { useChartHeight } from '../ChartZoom'
 import {
   AXIS_FONT_SIZE,
   AXIS_TICK,
@@ -70,8 +71,10 @@ function mean(values: readonly number[]): number {
  *  precision, and carries the 2 px surface ring every marker has. Both axes are named (spec
  *  §7.7): trips across, problems per trip up. */
 export function LaneScatter<Row>({
-  rows, rowKey, x, y, renderTooltip, xLabel, yLabel, color, pointLabel, cornerLabel, height = CHART_HEIGHT,
+  rows, rowKey, x, y, renderTooltip, xLabel, yLabel, color, pointLabel, cornerLabel, height: normalHeight = CHART_HEIGHT,
 }: LaneScatterProps<Row>) {
+  // Taller inside the zoom modal (D27), which also spreads crowded dot names apart.
+  const height = useChartHeight(normalHeight)
   const byKey = new Map(rows.map((row) => [rowKey(row), row]))
   const points = rows.map((row) => ({ row, x: x(row), y: y(row) }))
   const hasAverages = points.length >= MIN_DOTS_FOR_AVERAGES

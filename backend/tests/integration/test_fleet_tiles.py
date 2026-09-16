@@ -16,14 +16,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.analytics.fleet.constants import TILE_WINDOW_DAYS
 from app.db.models.enums import (
-    AnchorStatus,
     ExceptionReviewStatus,
     ExceptionSeverity,
     ExceptionType,
-    PhaseStatus,
-    PhaseType,
     TripStatus,
-    TripType,
     VehicleType,
 )
 from app.db.models.organisations import Precinct
@@ -32,10 +28,8 @@ from app.main import app
 
 from tests.conftest import auth_header, make_token
 from tests.integration._fleet_seed import (
-    SINGLE_LEG,
     Operator,
     add_exception,
-    at_sast,
     days_ago,
     headers,
     new_driver,
@@ -43,7 +37,6 @@ from tests.integration._fleet_seed import (
     not_started,
     operator_from_seed,
     other_operator,
-    replace_step,
     seed_trip,
     start_for_departure,
     today_sast,
@@ -129,11 +122,9 @@ async def test_fleet_tiles_for_an_org_without_trips_returns_zeros(
     body = response.json()
     assert body["live_trips"] == 0
     assert body["critical_waiting"] == {"count": 0, "oldest_created_at": None}
-    assert body["parcels_complete"] == {
-        "window_days": TILE_WINDOW_DAYS, "loaded_trip_count": 0, "complete_trip_count": 0,
-        "complete_rate": None,
-    }
-    assert body["receipts_owed"] == {"pending_count": 0, "failed_count": 0}
+    # Removed tiles (D26) are gone from the response, not just hidden on the page.
+    assert "parcels_complete" not in body
+    assert "receipts_owed" not in body
     # The seeded driver and horse have no expiry date on file.
     assert body["licence_expiry"] == {"drivers": _bands(no_date=1), "vehicle_discs": _bands(no_date=1)}
     # An active horse that has never had a trip is unused.
@@ -177,67 +168,6 @@ async def test_fleet_tiles_critical_waiting_counts_only_critical_needs_review(
     waiting = response.json()["critical_waiting"]
     assert waiting["count"] == 2
     assert datetime.fromisoformat(waiting["oldest_created_at"]) == oldest
-
-
-async def test_fleet_tiles_parcels_complete_counts_loaded_closed_trips_in_the_window(
-    client: AsyncClient, db_session: AsyncSession, operator: Operator, stops: list[Precinct],
-) -> None:
-    today = today_sast()
-    first_window_day = today - timedelta(days=TILE_WINDOW_DAYS - 1)
-    # (departure, trip type, status, exception raised on it)
-    cases = (
-        (days_ago(5), TripType.LOADED, TripStatus.CLOSED, ExceptionType.SEAL_MISMATCH),  # complete
-        (days_ago(3), TripType.LOADED, TripStatus.CLOSED, ExceptionType.WAYBILL_COUNT_MISMATCH),
-        (days_ago(2), TripType.LOADED, TripStatus.CLOSED, ExceptionType.PARCEL_COUNT_MISMATCH),
-        (at_sast(first_window_day, 0, 30), TripType.LOADED, TripStatus.CLOSED, None),  # complete
-        (at_sast(first_window_day - timedelta(days=1), 23, 30), TripType.LOADED, TripStatus.CLOSED, None),
-        (days_ago(4), TripType.EMPTY_LEG, TripStatus.CLOSED, None),
-        (days_ago(1), TripType.LOADED, TripStatus.ACTIVE, None),
-    )
-    for departed_at, trip_type, status, exception_type in cases:
-        seeded = await seed_trip(
-            db_session, operator, stops=stops, start=start_for_departure(departed_at),
-            trip_type=trip_type, status=status,
-        )
-        if exception_type is not None:
-            await add_exception(
-                db_session, seeded.trip, exception_type=exception_type,
-                severity=ExceptionSeverity.WARNING, created_at=departed_at,
-            )
-
-    response = await client.get(_TILES, headers=headers(operator))
-
-    assert response.status_code == 200
-    parcels = response.json()["parcels_complete"]
-    assert (parcels["loaded_trip_count"], parcels["complete_trip_count"]) == (4, 2)
-    assert parcels["complete_rate"] == pytest.approx(0.5)
-
-
-async def test_fleet_tiles_receipts_owed_counts_only_attested_anchored_steps(
-    client: AsyncClient, db_session: AsyncSession, operator: Operator, stops: list[Precinct],
-) -> None:
-    owed = replace_step(SINGLE_LEG, PhaseType.DEPARTURE, anchor_status=AnchorStatus.PENDING)
-    owed = replace_step(owed, PhaseType.CONFIRMATION, anchor_status=AnchorStatus.FAILED)
-    await seed_trip(db_session, operator, stops=stops, start=days_ago(4), steps=owed)
-    # Future plan steps: receipts pending by design, not owed.
-    await seed_trip(
-        db_session, operator, stops=stops, start=days_ago(1), status=TripStatus.CREATED,
-        steps=not_started(),
-    )
-    # An overridden departure is never anchored, so its pending receipt is not owed either.
-    overridden = replace_step(
-        not_started(), PhaseType.DEPARTURE,
-        status=PhaseStatus.OVERRIDDEN, anchor_status=AnchorStatus.PENDING,
-    )
-    await seed_trip(
-        db_session, operator, stops=stops, start=days_ago(1), status=TripStatus.ACTIVE,
-        steps=overridden,
-    )
-
-    response = await client.get(_TILES, headers=headers(operator))
-
-    assert response.status_code == 200
-    assert response.json()["receipts_owed"] == {"pending_count": 1, "failed_count": 1}
 
 
 async def test_fleet_tiles_licence_expiry_bands_are_separate_and_active_only(
@@ -319,10 +249,7 @@ async def test_fleet_tiles_never_count_another_operators_data(
     client: AsyncClient, db_session: AsyncSession, operator: Operator, stops: list[Precinct],
 ) -> None:
     other = await other_operator(db_session)
-    owed = replace_step(SINGLE_LEG, PhaseType.DEPARTURE, anchor_status=AnchorStatus.FAILED)
-    closed = await seed_trip(
-        db_session, other, stops=stops, start=start_for_departure(days_ago(2)), steps=owed,
-    )
+    closed = await seed_trip(db_session, other, stops=stops, start=start_for_departure(days_ago(2)))
     await add_exception(
         db_session, closed.trip, exception_type=ExceptionType.PANIC_BUTTON,
         severity=ExceptionSeverity.CRITICAL, review_status=ExceptionReviewStatus.NEEDS_REVIEW,
@@ -340,8 +267,6 @@ async def test_fleet_tiles_never_count_another_operators_data(
     body = response.json()
     assert body["live_trips"] == 0
     assert body["critical_waiting"]["count"] == 0
-    assert body["parcels_complete"]["loaded_trip_count"] == 0
-    assert body["receipts_owed"] == {"pending_count": 0, "failed_count": 0}
     assert body["licence_expiry"]["drivers"] == _bands(no_date=1)
     assert [row["vehicle_id"] for row in body["unused_vehicles"]["vehicles"]] == [str(operator.horse.id)]
     assert body["all_time_start"] == today_sast().isoformat()

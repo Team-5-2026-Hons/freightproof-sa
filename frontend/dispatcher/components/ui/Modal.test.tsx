@@ -23,6 +23,23 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+it('keeps the fitted width and a plain dim backdrop by default', () => {
+  render(<Modal open onClose={vi.fn()} title="Default"><p>body</p></Modal>)
+
+  const dialog = screen.getByRole('dialog', { name: 'Default' })
+  expect(dialog).toHaveClass('w-[calc(100%_-_2rem)]', 'backdrop:bg-black/40')
+  expect(dialog).not.toHaveClass('w-[80vw]')
+  expect(dialog).not.toHaveClass('backdrop:backdrop-blur-sm')
+})
+
+it('fills 80% of the viewport over a blurred page when zoomed', () => {
+  render(<Modal open onClose={vi.fn()} title="Zoomed" size="zoom" backdrop="blur"><p>body</p></Modal>)
+
+  const dialog = screen.getByRole('dialog', { name: 'Zoomed' })
+  expect(dialog).toHaveClass('w-[80vw]', 'h-[80dvh]', 'backdrop:backdrop-blur-sm')
+  expect(dialog).not.toHaveClass('w-[calc(100%_-_2rem)]')
+})
+
 // jsdom's layout engine never runs, so a real element's getBoundingClientRect() always
 // returns an all-zero rect — every "inside" vs "outside" pointer test below has to stub
 // the dialog's own rect to give outsideDialog() something meaningful to compare against.

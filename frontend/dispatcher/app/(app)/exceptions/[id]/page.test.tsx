@@ -190,6 +190,27 @@ describe('Exception detail — loading and error states', () => {
     expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
   })
 
+  it('offers Back while loading, so a slow record never strands the dispatcher', () => {
+    mockDetail(null, { isLoading: true })
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }))
+
+    expect(push).toHaveBeenCalledWith('/exceptions')
+  })
+
+  it('places Back top-left, before the page title', () => {
+    mockDetail(baseException())
+    renderPage()
+
+    const backButton = screen.getByRole('button', { name: 'Back' })
+    const title = screen.getByText('Seal Mismatch')
+
+    // DOCUMENT_POSITION_FOLLOWING: the title comes after Back in the header row, which is
+    // what puts Back on the left rather than in TopBar's right-hand action slot.
+    expect(backButton.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
   it('shows one honest error state when the record could not be loaded, with a way back', () => {
     mockDetail(null, { error: 'Session expired. Please sign in again.' })
     renderPage()

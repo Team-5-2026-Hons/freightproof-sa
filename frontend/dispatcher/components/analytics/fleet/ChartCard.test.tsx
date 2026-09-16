@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import type { ComponentProps } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -96,6 +96,43 @@ describe('ChartCard', () => {
 
     expect(screen.getByText('Not enough data yet')).toBeInTheDocument()
     expect(screen.getByText('No closed trips departed in this period.')).toBeInTheDocument()
+  })
+
+  it('zooms the chart and its legend into a dialog, and closes it again (D27)', () => {
+    renderCard({ legend: <p>the legend</p>, sampleSize: 3 })
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in: Trips over time' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'Trips over time' })
+    expect(within(dialog).getByText('the chart')).toBeInTheDocument()
+    expect(within(dialog).getByText('the legend')).toBeInTheDocument()
+    expect(within(dialog).getByText('Based on only 3 trips — read with care')).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Close modal' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getByText('the chart')).toBeInTheDocument()
+  })
+
+  it('zooms the table when the card is showing its table', () => {
+    renderCard({ legend: <p>the legend</p> })
+    fireEvent.click(screen.getByRole('button', { name: 'Show table' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in: Trips over time' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'Trips over time' })
+    expect(within(dialog).getByText('41 trips')).toBeInTheDocument()
+    expect(within(dialog).queryByText('the chart')).toBeNull()
+    expect(within(dialog).queryByText('the legend')).toBeNull()
+  })
+
+  it.each([
+    ['loading', { isLoading: true }],
+    ['empty', { isEmpty: true }],
+    ['failed', { error: 'Server unavailable' }],
+  ] as const)('offers no zoom while %s', (_state, overrides) => {
+    renderCard(overrides)
+
+    expect(screen.queryByRole('button', { name: /^Zoom in/ })).toBeNull()
   })
 
   it('does not warn once there are enough trips', () => {

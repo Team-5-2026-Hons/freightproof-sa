@@ -252,8 +252,8 @@ interface EvidenceTabProps {
 
 /** Evidence tab (spec §5.5, D25): how strong the record is. Tracker agreement and overrides
  *  side by side, then receiver sign-off across the full width. The blockchain receipts chart
- *  was removed; what is still owed stays on the Receipts owed tile, which deep-links here. One
- *  request, for the tab's own period and grain. */
+ *  (D25) and the Receipts owed tile (D26) were both removed. One request, for the tab's own
+ *  period and grain. */
 export function EvidenceTab({ query, allTimeStart, today }: EvidenceTabProps) {
   const evidence = useFleetEvidence(query, allTimeStart)
   const grain = evidence.data?.period.grain ?? query.grain

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { TopBar }     from '@/components/ui/TopBar'
+import { BackButton } from '@/components/ui/BackButton'
 import { SecHead }    from '@/components/ui/SecHead'
 import { Chip }       from '@/components/ui/Chip'
 import { Button }     from '@/components/ui/Button'
@@ -138,11 +139,16 @@ export default function ExceptionDetailPage() {
     useState<ExceptionContactMethod | typeof NO_CONTACT_CHOSEN>(NO_CONTACT_CHOSEN)
   const [reviewing, setReviewing]           = useState(false)
 
+  // Built once and passed to TopBar's `left` slot in every state (loading, error,
+  // success), matching the precinct/driver/vehicle detail pages: back navigation always
+  // sits top-left, and a header that only gains Back once data resolves reads as broken.
+  const backButton = <BackButton onClick={() => router.push(backTo)} />
+
   // ── Loading ──────────────────────────────────────────────────────────────────
   if (isLoading) {
     return (
       <div className="flex flex-col flex-1 min-h-0">
-        <TopBar title="Exception Detail" />
+        <TopBar title="Exception Detail" left={backButton} />
         <div className="flex-1 flex items-center justify-center">
           <Spinner size="lg" />
         </div>
@@ -163,16 +169,7 @@ export default function ExceptionDetailPage() {
   if (!exception) {
     return (
       <div className="flex flex-col flex-1 min-h-0">
-        <TopBar title="Exception Detail">
-          <Button
-            variant="secondary"
-            size="sm"
-            iconLeft={<Ic n="back" s={14} className="text-on-surf" />}
-            onClick={() => router.push(backTo)}
-          >
-            Back
-          </Button>
-        </TopBar>
+        <TopBar title="Exception Detail" left={backButton} />
         <div className="flex-1 overflow-auto p-6">
           <EmptyState
             icon={<Ic n="warn" s={32} className="text-err" />}
@@ -242,16 +239,8 @@ export default function ExceptionDetailPage() {
       <TopBar
         title={fmtType(exception.exception_type)}
         sub={`${sevMeta.label} · ${statusMeta.label}`}
-      >
-        <Button
-          variant="secondary"
-          size="sm"
-          iconLeft={<Ic n="back" s={14} className="text-on-surf" />}
-          onClick={() => router.push(backTo)}
-        >
-          Back
-        </Button>
-      </TopBar>
+        left={backButton}
+      />
 
       <div className="flex-1 overflow-auto">
         <div className="max-w-3xl mx-auto px-6 py-6 flex flex-col gap-4">

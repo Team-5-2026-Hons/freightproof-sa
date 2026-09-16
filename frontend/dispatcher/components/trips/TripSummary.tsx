@@ -5,6 +5,7 @@ import type { Precinct } from '@shared/lib/types/precinct'
 import type { Driver } from '@shared/lib/types/driver'
 import { Chip } from '@/components/ui/Chip'
 import { Button } from '@/components/ui/Button'
+import { BackButton } from '@/components/ui/BackButton'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { Ic } from '@/components/ui/Ic'
 import { ForensicControls } from '@/components/blockchain/ForensicControls'
@@ -37,7 +38,7 @@ export function TripSummary({ facts, precincts, driver, returnTo, onBack, onPane
   return (
     <header className="shrink-0 border-b border-outline-v/30 bg-surf-lowest px-4 py-4 md:px-6">
       <div className="flex flex-wrap items-start gap-3">
-        <Button variant="secondary" size="sm" onClick={onBack}>Back</Button>
+        <BackButton onClick={onBack} />
         <div className="min-w-0 flex-1 basis-48">
           <h1 className="break-words text-lg font-extrabold leading-tight text-on-surf">{facts.reference}</h1>
           <p className="mt-1 text-xs text-on-surf-v">Order {facts.orderNumber}</p>
