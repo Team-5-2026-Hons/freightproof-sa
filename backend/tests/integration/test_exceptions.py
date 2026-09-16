@@ -208,6 +208,39 @@ async def test_driver_report_survives_a_bounded_tracker_timeout(
     assert "missing_tracker" in row.action_location_assessment["reasons"]
 
 
+async def test_driver_report_survives_a_failure_building_its_assessment(
+    client: AsyncClient, db_session, monkeypatch, seed_trip,
+):
+    """The comparison is enrichment, never a gate: if assembling it fails for any
+    reason — not just a slow tracker — the panic row still commits with the
+    assessment column NULL, rather than a 500 that rolls the emergency report back."""
+    from app.orchestration import action_location_service
+
+    def explode(**_kwargs):
+        raise RuntimeError("assessment maths blew up")
+
+    monkeypatch.setattr(action_location_service, "build_capture_assessment", explode)
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+
+    response = await client.post(
+        f"/api/v1/trips/{trip.id}/exceptions",
+        json={
+            "exception_type": "panic_button", "description": "Immediate emergency report.",
+            "gps_lat": -26.0942, "gps_lng": 28.1342,
+            "driver_captured_at": "2026-09-15T10:00:00Z", "driver_accuracy_metres": 5,
+        },
+        headers=auth_header(token),
+    )
+
+    assert response.status_code == 201
+    row = await db_session.get(TripException, uuid.UUID(response.json()["id"]))
+    assert row is not None
+    assert row.severity == "critical"
+    assert float(row.gps_lat) == -26.0942
+    assert row.action_location_assessment is None
+
+
 async def test_driver_raises_exception_with_lat_only_returns_422(client: AsyncClient, seed_trip):
     """Both-or-neither is enforced at the schema layer — a partial fix must never
     reach the DB as a nonsense (lat, no lng) coordinate."""

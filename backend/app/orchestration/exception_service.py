@@ -58,43 +58,55 @@ async def _driver_report_assessment(
     driver_captured_at: datetime | None,
     driver_accuracy_metres: float | None,
 ) -> None:
-    """Attach one optional comparison after the primary report row is flushed."""
-    device_result = await db.execute(
-        select(Vehicle.pulsit_device_id).where(Vehicle.id == trip.horse_id)
-    )
-    device_id = device_result.scalar_one_or_none()
-    source = PulsitFixSource.MOCK if settings.PULSE_USE_MOCK else PulsitFixSource.LIVE
-    horse_fix = PulsitFix(
-        device_id=device_id or "unavailable", status=PulsitFixStatus.UNAVAILABLE,
-        source=source, lat=None, lng=None, fixed_at=None,
-    )
-    if device_id is not None:
-        try:
-            horse_fix = await asyncio.wait_for(
-                get_pulsit_client(organization_id=trip.operator_organization_id).get_position(device_id),
-                timeout=_DRIVER_REPORT_TRACKER_TIMEOUT_SECONDS,
-            )
-        except Exception as telemetry_error:
-            logger.warning(
-                "Driver-report tracker comparison unavailable for trip=%s exception=%s: %s",
-                trip.id, exc.id, telemetry_error,
-            )
+    """Attach one optional capture-time comparison to an already-flushed driver report.
 
-    # This is deliberately transient. It reuses the road-event assessment builder but
-    # is never stored as a checkpoint or turned into a separation exception.
-    from app.db.models.transit import Checkpoint
+    NEVER raises. The report row is the evidence and is already in the session; this
+    is enrichment, bounded to one tracker read of at most
+    _DRIVER_REPORT_TRACKER_TIMEOUT_SECONDS, and ANY failure — Pulsit, the vehicle
+    lookup, assessment validation — is logged and leaves `action_location_assessment`
+    NULL ("not assessed"). A panic report must never be rolled back because the
+    comparison bolted onto it could not be built.
+    """
+    try:
+        device_result = await db.execute(
+            select(Vehicle.pulsit_device_id).where(Vehicle.id == trip.horse_id)
+        )
+        device_id = device_result.scalar_one_or_none()
+        source = PulsitFixSource.MOCK if settings.PULSE_USE_MOCK else PulsitFixSource.LIVE
+        horse_fix = PulsitFix(
+            device_id=device_id or "unavailable", status=PulsitFixStatus.UNAVAILABLE,
+            source=source, lat=None, lng=None, fixed_at=None,
+        )
+        if device_id is not None:
+            try:
+                horse_fix = await asyncio.wait_for(
+                    get_pulsit_client(organization_id=trip.operator_organization_id).get_position(device_id),
+                    timeout=_DRIVER_REPORT_TRACKER_TIMEOUT_SECONDS,
+                )
+            except Exception as telemetry_error:
+                logger.warning(
+                    "Driver-report tracker comparison unavailable for trip=%s exception=%s: %s",
+                    trip.id, exc.id, telemetry_error,
+                )
 
-    capture = Checkpoint(
-        trip_id=trip.id, checkpoint_type="driver_exception_capture",
-        driver_phone_lat=exc.gps_lat, driver_phone_lng=exc.gps_lng,
-        driver_captured_at=driver_captured_at,
-    )
-    assessment = action_location_service.build_checkpoint_assessment(
-        checkpoint=capture, horse_fix=horse_fix,
-        driver_accuracy_metres=driver_accuracy_metres, evaluated_at=datetime.now(UTC),
-    )
-    exc.action_location_assessment = assessment.model_dump(mode="json")
-    await db.flush()
+        # The report row IS the capture: its own gps_lat/gps_lng and the device
+        # timestamp the client sent, compared once against the tracker. Never stored
+        # as a checkpoint and never turned into a second, system-generated exception.
+        assessment = action_location_service.build_capture_assessment(
+            driver_lat=float(exc.gps_lat) if exc.gps_lat is not None else None,
+            driver_lng=float(exc.gps_lng) if exc.gps_lng is not None else None,
+            driver_captured_at=driver_captured_at,
+            driver_accuracy_metres=driver_accuracy_metres,
+            horse_fix=horse_fix,
+            evaluated_at=datetime.now(UTC),
+        )
+        exc.action_location_assessment = assessment.model_dump(mode="json")
+        await db.flush()
+    except Exception:
+        logger.exception(
+            "Driver-report location assessment failed for trip=%s exception=%s — report "
+            "persists without it", trip.id, exc.id,
+        )
 
 def initial_review_status(severity: ExceptionSeverity) -> ExceptionReviewStatus:
     """Where a freshly-created exception starts in the dispatcher review workflow

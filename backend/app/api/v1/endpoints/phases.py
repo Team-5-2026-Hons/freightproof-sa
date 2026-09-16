@@ -98,6 +98,10 @@ async def next_phase_endpoint(
     "/{phase_event_id}/location-preview",
     response_model=ActionLocationAssessment,
     summary="Compare a fresh phone capture with the vehicle tracker without recording evidence",
+    # Same budget as /complete: the preview writes nothing, but every call is one
+    # outbound Pulsit read on the operator's account, which is exactly the kind of
+    # per-driver fan-out EVIDENCE_WRITE exists to bound.
+    dependencies=[Depends(rate_limit(EVIDENCE_WRITE))],
 )
 async def preview_phase_location_endpoint(
     trip_id: UUID,

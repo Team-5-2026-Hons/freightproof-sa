@@ -19,6 +19,7 @@ import type { ExceptionType } from '@shared/lib/types/exception'
 import type { Vehicle, VehicleId, VehicleType } from '@shared/lib/types/vehicle'
 import { DRIVER_EXCEPTION_TYPES } from '@shared/lib/constants/status-meta'
 import { useLocation } from '@/lib/hooks/useLocation'
+import { captureWithinBudget, REPORT_CAPTURE_BUDGET_MS } from '@/lib/utils/bounded-capture'
 
 // Labels for the driver-selectable exceptions. Options are DERIVED from the shared
 // DRIVER_EXCEPTION_TYPES so the picker can never drift to an invalid / non-driver type
@@ -178,9 +179,11 @@ export default function LogExceptionPageClient() {
     // A breakdown or a seal found broken on the road belongs to the leg being
     // driven, and by the time this entry sends the trip may have reached unloading.
     const phaseEventId = contextPhaseEventId(trip.phases)
-    // This is optional enrichment. Unlike panic, the normal report form already has a
-    // submit flow; a failed phone capture simply leaves its comparison unverified.
-    const location = await capture()
+    // Optional enrichment, bounded: the report's own phone fix feeds the backend's
+    // capture-time comparison, but a broken-seal report must not sit behind
+    // useLocation's full 10 s geolocation timeout. Past REPORT_CAPTURE_BUDGET_MS the
+    // report goes without a fix and its comparison simply reads "unverified".
+    const location = await captureWithinBudget(capture, REPORT_CAPTURE_BUDGET_MS)
     const captureFields = location === null
       ? {}
       : {

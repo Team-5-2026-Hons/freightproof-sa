@@ -793,15 +793,30 @@ async def _finish_phase(
     # from event.completed_at, because it is the instant the SERVER is judging the
     # separation, not the instant the driver's phone claims to have submitted it (the
     # skew between those two is exactly what the assessment's own reasons can surface).
+    #
+    # Fail-open, for exactly the reason record_phase_corroboration is: the driver has
+    # already physically performed this handshake, and the assessment is a derived
+    # comparison of telemetry, not the evidence itself. If assembling or recording it
+    # fails for any reason, the column stays NULL — which the schema defines as "not
+    # assessed" — the traceback is logged, and the completion still lands. A 500 here
+    # would roll back a swipe the offline queue could then only ever replay into the
+    # same failure. The separation finding uses its own SAVEPOINT for its insert, so
+    # a failure inside it leaves the outer transaction usable for the flush below.
     evaluated_at = datetime.now(UTC)
-    assessment = await action_location_service.build_phase_assessment(
-        db, trip=trip, event=event, horse_fix=horse_fix,
-        driver_accuracy_metres=driver_accuracy_metres, evaluated_at=evaluated_at,
-    )
-    event.action_location_assessment = assessment.model_dump(mode="json")
-    await action_location_service.record_separation_finding(
-        db, trip=trip, phase_event_id=event.id, checkpoint_id=None, assessment=assessment,
-    )
+    try:
+        assessment = await action_location_service.build_phase_assessment(
+            db, trip=trip, event=event, horse_fix=horse_fix,
+            driver_accuracy_metres=driver_accuracy_metres, evaluated_at=evaluated_at,
+        )
+        event.action_location_assessment = assessment.model_dump(mode="json")
+        await action_location_service.record_separation_finding(
+            db, trip=trip, phase_event_id=event.id, checkpoint_id=None, assessment=assessment,
+        )
+    except Exception:
+        logger.exception(
+            "Action-location assessment failed for phase_event_id=%s — handshake continues, "
+            "assessment recorded as not assessed", event.id,
+        )
 
     await recompute_position(db, trip)
     await db.flush()

@@ -1,6 +1,7 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import LogExceptionPageClient from '../LogExceptionPageClient'
+import { REPORT_CAPTURE_BUDGET_MS } from '@/lib/utils/bounded-capture'
 import { ROUTES } from '@/lib/constants/routes'
 import { ApiError } from '@/lib/api/client'
 import { SINGLE_LEG_PHASE_PLAN } from '@shared/lib/mocks/phase-trips'
@@ -345,6 +346,33 @@ describe('LogExceptionPageClient location capture', () => {
       gps_lat: -26.0942, gps_lng: 28.1342,
       driver_captured_at: '2026-09-15T10:00:00Z', driver_accuracy_metres: 5,
     }), undefined)
+  })
+
+  it('sends the report without a fix once the capture budget elapses, never waiting on a stalled GPS', async () => {
+    // A broken seal on the road is CRITICAL; it must not sit behind useLocation's full
+    // 10 s geolocation timeout. captureWithinBudget caps the wait at
+    // REPORT_CAPTURE_BUDGET_MS and the report goes with its location simply absent.
+    vi.useFakeTimers()
+    try {
+      const logException = vi.fn().mockResolvedValue(undefined)
+      mockUseTrip.mockReturnValue({ trip: RIGID_TRIP, logException })
+      mockCaptureLocation.mockReturnValue(new Promise(() => {}))
+
+      render(<LogExceptionPageClient />)
+      fireEvent.click(screen.getByText('Cargo damage'))
+      enterRequiredDescription()
+      fireEvent.click(screen.getByText('Submit exception'))
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(REPORT_CAPTURE_BUDGET_MS - 1) })
+      expect(logException).not.toHaveBeenCalled()
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+
+      expect(logException).toHaveBeenCalledWith('cargo_damage', expect.not.objectContaining({ gpsLat: expect.anything() }))
+      expect(logException).toHaveBeenCalledWith('cargo_damage', expect.objectContaining({ description: expect.any(String) }))
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

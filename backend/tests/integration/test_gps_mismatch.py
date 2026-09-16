@@ -770,3 +770,27 @@ async def test_a_failure_recording_the_finding_leaves_the_handshake_successful(
     event = await _load_event(db_session, trip, PhaseType.ACTIVATION)
     assert event.pulsit_geofence_confirmed is False
     assert await _load_mismatches(db_session, trip) == []
+
+
+async def test_a_failure_building_the_assessment_leaves_the_handshake_successful(
+    client: AsyncClient, db_session, corroboration_trip, pulsit_store,
+):
+    """Task 5's assessment is a derived comparison, not the evidence: same fail-open
+    stance as the GPS_MISMATCH finding and the corroboration itself. If assembling it
+    blows up, the completion still lands, the column reads NULL ("not assessed"), and
+    no separation finding is invented from a snapshot that was never built.
+    """
+    trip, driver, _org, _stop = corroboration_trip
+    await _stage(_HORSE_DEVICE, _ORIGIN_LAT, _ORIGIN_LNG)
+
+    with patch.object(
+        action_location_service, "build_phase_assessment",
+        side_effect=RuntimeError("assessment maths blew up"),
+    ):
+        resp = await _complete_activation(client, trip, driver)
+
+    assert resp.status_code == 200
+    event = await _load_event(db_session, trip, PhaseType.ACTIVATION)
+    assert event.status == PhaseStatus.COMPLETED
+    assert event.action_location_assessment is None
+    assert await _load_separations(db_session, trip) == []

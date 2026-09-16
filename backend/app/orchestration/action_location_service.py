@@ -45,9 +45,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.exceptions import ResourceNotFoundError
 from app.core.realtime import RealtimeKind, TripEvent, enqueue_event, event_severity
 from app.db.models.enums import (
     ExceptionReviewStatus, ExceptionSeverity, ExceptionSource, ExceptionType, PhaseStatus, PhaseType,
+    TripStatus,
 )
 from app.db.models.organisations import Precinct
 from app.db.models.phases import PhaseEvent
@@ -78,6 +80,12 @@ _CHECKPOINT_SEPARATION_INDEX = "uq_exceptions_checkpoint_separation"
 # with a shared module for one function.
 _SEPARATION_KM_THRESHOLD_METRES = 1000
 _LOCATION_PREVIEW_TRACKER_TIMEOUT_SECONDS = 2.0
+
+# Trip states in which a preview is pointless: nothing can be completed on a trip that
+# is over, cancelled, or frozen on a hold, so there is no Pulsit read worth paying for.
+_PREVIEW_INELIGIBLE_TRIP_STATUSES = frozenset(
+    {TripStatus.CLOSED, TripStatus.CANCELLED, TripStatus.EXCEPTION_HOLD}
+)
 
 
 class PhaseLocationPreviewConflictError(Exception):
@@ -242,7 +250,6 @@ async def preview_phase_location(
     )
     trip = trip_result.scalar_one_or_none()
     if trip is None:
-        from app.core.exceptions import ResourceNotFoundError
         raise ResourceNotFoundError("Trip", str(trip_id))
 
     event_result = await db.execute(
@@ -250,9 +257,8 @@ async def preview_phase_location(
     )
     event = event_result.scalar_one_or_none()
     if event is None:
-        from app.core.exceptions import ResourceNotFoundError
         raise ResourceNotFoundError("PhaseEvent", str(phase_event_id))
-    if trip.status in ("closed", "cancelled", "exception_hold"):
+    if TripStatus(trip.status) in _PREVIEW_INELIGIBLE_TRIP_STATUSES:
         raise PhaseLocationPreviewConflictError("This trip is no longer active for a location preview.")
     if PhaseStatus(event.status) not in (PhaseStatus.PENDING, PhaseStatus.IN_PROGRESS):
         raise PhaseLocationPreviewConflictError("This phase is already resolved and cannot be previewed.")
@@ -300,12 +306,35 @@ def build_checkpoint_assessment(
     No precinct membership at all, and no DB access (unlike build_phase_assessment):
     a checkpoint happens on the road between precincts, so there is no fence for
     either party to be inside of, and `expected_trip_stop_id` is always None —
-    Checkpoint carries no trip_stop_id to report.
+    Checkpoint carries no trip_stop_id to report. Thin adapter over
+    build_capture_assessment: it only reads the checkpoint's own phone fix off the row.
     """
-    driver_lat = float(checkpoint.driver_phone_lat) if checkpoint.driver_phone_lat is not None else None
-    driver_lng = float(checkpoint.driver_phone_lng) if checkpoint.driver_phone_lng is not None else None
-    driver_captured_at = checkpoint.driver_captured_at
+    return build_capture_assessment(
+        driver_lat=float(checkpoint.driver_phone_lat) if checkpoint.driver_phone_lat is not None else None,
+        driver_lng=float(checkpoint.driver_phone_lng) if checkpoint.driver_phone_lng is not None else None,
+        driver_captured_at=checkpoint.driver_captured_at,
+        driver_accuracy_metres=driver_accuracy_metres,
+        horse_fix=horse_fix,
+        evaluated_at=evaluated_at,
+    )
 
+
+def build_capture_assessment(
+    *,
+    driver_lat: Optional[float],
+    driver_lng: Optional[float],
+    driver_captured_at: Optional[datetime],
+    driver_accuracy_metres: Optional[float],
+    horse_fix: Optional[PulsitFix],
+    evaluated_at: datetime,
+) -> ActionLocationAssessment:
+    """Assemble one ActionLocationAssessment for a bare phone capture with no phase
+    or precinct context — the shape a checkpoint and a driver exception report share.
+
+    Takes the capture as plain values rather than an ORM row so a caller that holds
+    the fix on some other record (exception_service: the report row itself) never has
+    to fabricate a Checkpoint instance just to satisfy a parameter type. Pure: no DB.
+    """
     tracker_lat: Optional[float] = None
     tracker_lng: Optional[float] = None
     tracker_captured_at: Optional[datetime] = None
@@ -490,6 +519,7 @@ async def record_separation_finding(
 
 
 __all__ = [
+    "build_capture_assessment",
     "build_checkpoint_assessment",
     "build_phase_assessment",
     "PhaseLocationPreviewConflictError",
