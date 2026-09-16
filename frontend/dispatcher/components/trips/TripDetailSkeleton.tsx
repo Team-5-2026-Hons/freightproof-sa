@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react'
 import { Skeleton } from '@/components/ui/Skeleton'
-import { Button } from '@/components/ui/Button'
+import { BackButton } from '@/components/ui/BackButton'
 
 const TIMELINE_ROWS = 6
 
@@ -26,7 +26,7 @@ export function TripDetailSkeleton({ onBack, header }: Props) {
       <div className="flex min-w-0 flex-1 flex-col">
         {header ?? <header className="shrink-0 border-b border-outline-v/30 bg-surf-lowest px-4 py-4 md:px-6">
           <div className="flex flex-wrap items-start gap-3">
-            <Button variant="secondary" size="sm" onClick={onBack}>Back</Button>
+            <BackButton onClick={onBack} />
             <div className="min-w-0 flex-1 basis-48 space-y-2">
               <Skeleton className="h-6 w-56 max-w-full rounded-md" />
               <Skeleton className="h-3 w-32 max-w-full rounded-md" />

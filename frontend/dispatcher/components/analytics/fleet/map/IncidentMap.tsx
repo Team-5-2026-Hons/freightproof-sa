@@ -14,6 +14,7 @@ import { fmtExceptionType } from '@/lib/format/exception'
 import { fmtSastDay } from '@/lib/format/period'
 import { TILE_SOURCES } from '@/lib/map/tiles'
 import { withReturnTo } from '@/lib/navigation/returnTo'
+import { useChartHeight } from '../ChartZoom'
 import type { ExceptionSeverity } from '@shared/lib/types/exception'
 import type { IncidentPin } from '@shared/lib/types/fleet-analytics'
 import { FLEET_COPY } from '../copy'
@@ -113,6 +114,8 @@ interface IncidentMapProps {
  *  the map (in the card) lists every pin, for keyboard and screen-reader users. */
 export function IncidentMap({ pins, selection = null, returnTo }: IncidentMapProps) {
   const router = useRouter()
+  // Taller inside the zoom modal (D27). The zoomed map is its own Leaflet instance.
+  const height = useChartHeight(INCIDENT_MAP_HEIGHT)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<LeafletMap | null>(null)
   const layerRef = useRef<LayerGroup | null>(null)
@@ -223,7 +226,7 @@ export function IncidentMap({ pins, selection = null, returnTo }: IncidentMapPro
   // never cover the chart cards' "i" popovers.
   return (
     <div className="relative isolate">
-      <div ref={containerRef} style={{ height: INCIDENT_MAP_HEIGHT }} className="w-full overflow-hidden rounded-lg" />
+      <div ref={containerRef} style={{ height }} className="w-full overflow-hidden rounded-lg" />
       {failed && (
         <div role="status" className="absolute inset-0 z-[500] flex items-center justify-center rounded-lg bg-surf-low px-6 text-center text-[12px] text-on-surf-v">
           {COPY.mapUnavailable}

@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis, type XAxisTickContentProps } from 'recharts'
 
 import { GRID_COLOR, SURFACE_COLOR, TICK_COLOR } from '@/lib/tokens'
+import { useChartHeight } from '../ChartZoom'
 import { labelWidthFor, renderTimeTick } from './axisTicks'
 import {
   AXIS_TICK,
@@ -50,8 +51,10 @@ type Datum = Record<string, string | number | boolean>
  *  spec §7.4: bars at most 24 px, a 2 px surface gap between segments, only the top
  *  segment rounded, partial buckets faded, one y-axis, a hairline grid. */
 export function TrendColumns<Row>({
-  rows, rowKey, tickLabel, isPartial, series, renderTooltip, yLabel, height = CHART_HEIGHT,
+  rows, rowKey, tickLabel, isPartial, series, renderTooltip, yLabel, height: normalHeight = CHART_HEIGHT,
 }: TrendColumnsProps<Row>) {
+  // Taller inside the zoom modal (D27).
+  const height = useChartHeight(normalHeight)
   const byKey = new Map(rows.map((row) => [rowKey(row), row]))
   const labelWidth = labelWidthFor(rows.map((row) => tickLabel(rowKey(row))))
   const data: Datum[] = rows.map((row) => ({
