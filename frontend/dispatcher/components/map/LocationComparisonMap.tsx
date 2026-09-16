@@ -81,6 +81,23 @@ export type ComparisonExtent = BoundsExtent | CenterExtent | null
 
 export type FrameTarget = 'fixes' | 'precinct'
 
+// Leaflet interaction options passed into `L.map(...)`. Unlike GeofenceMap (embedded
+// directly on the page, where a stray scroll-wheel zoom while the dispatcher scrolls
+// PAST the map is pure annoyance), this map only ever renders inside a Modal
+// (components/domain/LocationEvidencePanel.tsx) that the dispatcher opened specifically
+// to inspect it — scrolling the wheel over it is a deliberate zoom gesture, not an
+// accident, so it should behave like any other map. Leaflet's own wheel handler calls
+// `preventDefault()` on the underlying wheel event, so the dialog's own scroll never
+// fires alongside it; no extra wheel-propagation handling has been added here on top of
+// that, per the brief's own "only if a concrete need is demonstrated" instruction.
+//
+// Exported as a named constant (rather than inlined into the `L.map` call below) because
+// it is the only part of this behaviour a jsdom test can observe: Leaflet is never
+// mounted in this component's unit tests (see __tests__/LocationComparisonMap.test.tsx),
+// so there is no live map instance whose real scroll-wheel behaviour a DOM test could
+// assert on.
+export const COMPARISON_MAP_INTERACTION = { scrollWheelZoom: true } as const
+
 // The pure framing helpers (BOUNDARY_NEARBY_METRES, boundaryDistanceMetres,
 // boundaryIsNearby) live in lib/phase/location-evidence.ts so the schematic fallback can
 // share them without a circular import through this file. Re-exported here so this
@@ -363,10 +380,7 @@ export function LocationComparisonMap({ evidence, className }: Props) {
         const map = L.map(containerRef.current, {
           center: [centre.lat, centre.lng],
           zoom: DEFAULT_SINGLE_FIX_ZOOM,
-          // Sits inside a scrollable modal (task R2): a scroll-wheel zoom firing while
-          // the dispatcher scrolls the page past the map is pure annoyance, same as
-          // GeofenceMap.
-          scrollWheelZoom: false,
+          ...COMPARISON_MAP_INTERACTION,
         })
 
         const chosen = TILE_SOURCES.satellite

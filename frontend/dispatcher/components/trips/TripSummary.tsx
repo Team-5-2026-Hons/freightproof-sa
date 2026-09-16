@@ -48,6 +48,7 @@ export function TripSummary({ facts, precincts, driver, returnTo, onBack, onPane
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Chip type={status.chipType} label={status.label} />
+          {facts.needsReviewCount > 0 && <Chip type="exception" label={`${facts.needsReviewCount} exception${facts.needsReviewCount === 1 ? '' : 's'} need review`} />}
           <ForensicControls />
         </div>
       </div>
@@ -72,19 +73,19 @@ export function TripSummary({ facts, precincts, driver, returnTo, onBack, onPane
         <SummaryFact fact={facts.schedule} pendingLabel="Schedule" />
         <SummaryFact fact={facts.cargo} pendingLabel="Cargo" />
       </div>
-      <nav aria-label="Trip sections" className="mt-4 flex flex-wrap gap-2">
-        {/* Panel triggers only exist below the dock width. Once the panel is permanent it
-            owns its own switcher, and duplicating it here would give the same three views
-            two competing controls. */}
-        <span className="contents xl:hidden">
-          <Button variant="secondary" size="sm" onClick={() => onPanel('information')}>Trip information</Button>
-          <Button variant="secondary" size="sm" onClick={() => onPanel('manifest')}>Manifest</Button>
-          <Button variant={facts.needsReviewCount ? 'primary' : 'secondary'} size="sm" onClick={() => onPanel('exceptions')}>
-            {facts.exceptionsTotal === null
-              ? `${facts.needsReviewCount} need review`
-              : `${facts.exceptionsTotal} exceptions · ${facts.needsReviewCount} need review`}
-          </Button>
-        </span>
+      {/* Panel triggers only exist below the dock width. Once the panel is permanent it
+          owns its own switcher, and duplicating it here would give the same three views
+          two competing controls. `xl:hidden` sits on the nav itself, not just its
+          buttons, so the docked header does not keep this row's own `mt-4` as dead
+          space above the panel column once the buttons it was spacing are gone. */}
+      <nav aria-label="Trip sections" className="mt-4 flex flex-wrap gap-2 xl:hidden">
+        <Button variant="secondary" size="sm" onClick={() => onPanel('information')}>Trip information</Button>
+        <Button variant="secondary" size="sm" onClick={() => onPanel('manifest')}>Manifest</Button>
+        <Button variant={facts.needsReviewCount ? 'primary' : 'secondary'} size="sm" onClick={() => onPanel('exceptions')}>
+          {facts.exceptionsTotal === null
+            ? `${facts.needsReviewCount} need review`
+            : `${facts.exceptionsTotal} exceptions · ${facts.needsReviewCount} need review`}
+        </Button>
       </nav>
       {driver && <DriverModal driver={driver} open={driverOpen} onClose={() => setDriverOpen(false)} returnTo={returnTo} />}
       {openVehicle && (

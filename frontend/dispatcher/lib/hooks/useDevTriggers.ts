@@ -168,13 +168,22 @@ export function useDevTriggers(): UseDevTriggersResult {
       run(
         () => api.post<MoveTruckResponse>(`${DEV_BASE}/pulsit/move-truck`, body),
         (result) => {
-          // geofence_confirmed is null (not false) on the no_signal waypoint — a
-          // missing fix never reached a verdict at all, which reads very differently
-          // from a fix that reached one and failed it.
+          // geofence_confirmed is null (not false) on the no_signal waypoint/scenario
+          // — a missing fix never reached a verdict at all, which reads very
+          // differently from a fix that reached one and failed it.
           const verdict = result.geofence_confirmed === null
             ? 'no verdict (tracker dark)'
             : result.geofence_confirmed ? 'geofence confirmed' : 'geofence failed'
-          return `Moved truck to "${result.waypoint_label}": ${verdict}.`
+          // FP-197 Task 3: scenario mode names a real target stop; legacy waypoints
+          // don't, so target_precinct_name is null for them and this suffix is empty.
+          // The verdict itself always describes the EXPECTED (phase-ledger) stop —
+          // named explicitly here so the toast can never read as if it graded the
+          // scenario-mode target instead.
+          const targetSuffix = result.target_precinct_name !== null
+            ? ` (targeted ${result.target_precinct_name})`
+            : ''
+          const expectedName = result.expected_precinct_name ?? result.precinct_name
+          return `Moved truck to "${result.waypoint_label}"${targetSuffix}: ${verdict} at expected stop ${expectedName}.`
         },
       ),
     [run],

@@ -183,6 +183,55 @@ async def test_review_queue_rows_carry_trip_status_and_reference(client: AsyncCl
     assert row["trip_reference"] == trip.trip_reference
 
 
+async def test_exception_reads_return_the_persisted_location_assessment(
+    client: AsyncClient, db_session,
+):
+    """Dispatcher reads carry the capture-time assessment, never a rebuilt verdict."""
+    seed = await _seed_org(db_session, tag="assessment-read")
+    trip = await _make_trip(db_session, seed, tag="assessment-read")
+    assessment = {
+        "schema_version": 1,
+        "policy_version": "test-policy",
+        "evaluated_at": "2026-09-15T10:00:00Z",
+        "driver_lat": -26.0942,
+        "driver_lng": 28.1342,
+        "driver_captured_at": "2026-09-15T09:59:00Z",
+        "driver_accuracy_metres": 5.0,
+        "tracker_lat": None,
+        "tracker_lng": None,
+        "tracker_captured_at": None,
+        "separation_metres": None,
+        "proximity": "unverified",
+        "reasons": ["missing_tracker"],
+        "max_separation_metres": 100.0,
+        "max_age_seconds": 60,
+        "max_skew_seconds": 30,
+        "max_phone_accuracy_metres": 50.0,
+        "expected_trip_stop_id": None,
+        "precinct_id": None,
+        "precinct_lat": None,
+        "precinct_lng": None,
+        "precinct_radius_metres": None,
+        "precinct_tolerance_metres": None,
+        "driver_in_precinct": None,
+        "truck_in_precinct": None,
+    }
+    exc = await _make_exception(
+        db_session, trip, tag="assessment-read",
+        review_status=ExceptionReviewStatus.NEEDS_REVIEW,
+        action_location_assessment=assessment,
+    )
+
+    queue = await client.get(_REVIEW_QUEUE, headers=_headers(seed))
+    detail = await client.get(_detail_url(exc.id), headers=_headers(seed))
+
+    assert queue.status_code == 200
+    assert detail.status_code == 200
+    queue_row = next(row for row in queue.json() if row["id"] == str(exc.id))
+    assert queue_row["action_location_assessment"] == assessment
+    assert detail.json()["action_location_assessment"] == assessment
+
+
 # ── history ───────────────────────────────────────────────────────────────────
 
 

@@ -83,8 +83,9 @@ from app.db.models.evidence import EvidenceArtifact
 from app.db.models.phases import PhaseEvent
 from app.db.models.transit import TripException
 from app.db.models.trips import Consignment, Trip, TripStop
+from app.integrations.pulsit import PulsitFix
 from app.integrations.scan_feed import ScanDirection
-from app.orchestration import corroboration_service, scan_service
+from app.orchestration import action_location_service, corroboration_service, scan_service
 from app.orchestration.phase_gate import blocked_on_by_stop
 from app.orchestration.resource_service import get_trip_detail
 from app.schemas.phases import (
@@ -754,7 +755,15 @@ async def _raise_position_disagreement_if_unrecorded(
 
 async def _finish_phase(
     db: AsyncSession, *, trip: Trip, event: PhaseEvent, idempotency_key: str,
+    horse_fix: PulsitFix | None = None, driver_accuracy_metres: float | None = None,
 ) -> TripDetailResponse:
+    """`horse_fix`/`driver_accuracy_metres` (Task 5): the SAME Pulsit fix each
+    wrapper's own call to corroboration_service.record_phase_corroboration already
+    obtained a few lines earlier, and the request's own driver-claimed phone
+    accuracy — both threaded through as keyword-only, defaulted, arguments rather
+    than positional ones, so every existing call site not yet touched by this task
+    keeps compiling unchanged. See action_location_service.build_phase_assessment's
+    own docstring for why this function does not re-fetch the fix itself (R12)."""
     event.idempotency_key = idempotency_key
     event.completed_at = event.completed_at or datetime.now(UTC)
 
@@ -776,6 +785,38 @@ async def _finish_phase(
     # here is the one this handshake just produced. Before the flush below, so the
     # finding is already in the TripDetailResponse this request returns.
     await _raise_position_disagreement_if_unrecorded(db, trip=trip, event=event)
+
+    # Task 5. Independent of the GPS_MISMATCH check above — that asks "does the
+    # TRACKER agree with the PRECINCT?"; this asks "does the DRIVER'S OWN PHONE agree
+    # with the TRACKER?" — two different pairs of things that can each fail alone, or
+    # together, on the same handshake. evaluated_at is stamped fresh HERE, not reused
+    # from event.completed_at, because it is the instant the SERVER is judging the
+    # separation, not the instant the driver's phone claims to have submitted it (the
+    # skew between those two is exactly what the assessment's own reasons can surface).
+    #
+    # Fail-open, for exactly the reason record_phase_corroboration is: the driver has
+    # already physically performed this handshake, and the assessment is a derived
+    # comparison of telemetry, not the evidence itself. If assembling or recording it
+    # fails for any reason, the column stays NULL — which the schema defines as "not
+    # assessed" — the traceback is logged, and the completion still lands. A 500 here
+    # would roll back a swipe the offline queue could then only ever replay into the
+    # same failure. The separation finding uses its own SAVEPOINT for its insert, so
+    # a failure inside it leaves the outer transaction usable for the flush below.
+    evaluated_at = datetime.now(UTC)
+    try:
+        assessment = await action_location_service.build_phase_assessment(
+            db, trip=trip, event=event, horse_fix=horse_fix,
+            driver_accuracy_metres=driver_accuracy_metres, evaluated_at=evaluated_at,
+        )
+        event.action_location_assessment = assessment.model_dump(mode="json")
+        await action_location_service.record_separation_finding(
+            db, trip=trip, phase_event_id=event.id, checkpoint_id=None, assessment=assessment,
+        )
+    except Exception:
+        logger.exception(
+            "Action-location assessment failed for phase_event_id=%s — handshake continues, "
+            "assessment recorded as not assessed", event.id,
+        )
 
     await recompute_position(db, trip)
     await db.flush()
@@ -1060,6 +1101,14 @@ def _record_driver_position(event: PhaseEvent, payload: PhaseCompleteRequest) ->
     if payload.driver_captured_at is not None:
         event.driver_captured_at = payload.driver_captured_at
 
+    # A preview is advisory and non-writing; completion always assembles its own
+    # ActionLocationAssessment afterwards. Keep the driver's acknowledgement in its
+    # own columns so it cannot be mistaken for, or suppress, the measured result.
+    if payload.location_warning_acknowledged_at is not None:
+        event.location_warning_acknowledged_at = payload.location_warning_acknowledged_at
+    if payload.location_warning_reason is not None:
+        event.location_warning_reason = payload.location_warning_reason
+
 
 async def advance_activation(
     db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID, phase_event_id: uuid.UUID,
@@ -1088,7 +1137,7 @@ async def advance_activation(
     # and a Pulsit outage leaves the columns null ("could not check") rather than
     # failing the handshake. See orchestration/corroboration_service.py.
     _record_driver_position(event, payload)
-    await corroboration_service.record_phase_corroboration(
+    horse_fix = await corroboration_service.record_phase_corroboration(
         db, trip=trip, event=event, driver_captured_at=payload.driver_captured_at,
     )
     event.status = PhaseStatus.COMPLETED
@@ -1097,7 +1146,10 @@ async def advance_activation(
     # (T6) — ACTIVE is the coarse "trip is underway" state until CLOSED.
     trip.status = TripStatus.ACTIVE
 
-    return await _finish_phase(db, trip=trip, event=event, idempotency_key=payload.idempotency_key)
+    return await _finish_phase(
+        db, trip=trip, event=event, idempotency_key=payload.idempotency_key,
+        horse_fix=horse_fix, driver_accuracy_metres=payload.driver_accuracy_metres,
+    )
 
 
 def compute_departure_canonical_payload_v1(
@@ -1155,7 +1207,7 @@ async def advance_loading(
     trip, event = gated
 
     _record_driver_position(event, payload)
-    await corroboration_service.record_phase_corroboration(
+    horse_fix = await corroboration_service.record_phase_corroboration(
         db, trip=trip, event=event, driver_captured_at=payload.driver_captured_at,
     )
 
@@ -1242,7 +1294,10 @@ async def advance_loading(
         else PhaseStatus.COMPLETED
     )
 
-    return await _finish_phase(db, trip=trip, event=event, idempotency_key=payload.idempotency_key)
+    return await _finish_phase(
+        db, trip=trip, event=event, idempotency_key=payload.idempotency_key,
+        horse_fix=horse_fix, driver_accuracy_metres=payload.driver_accuracy_metres,
+    )
 
 
 async def _raise_scan_shortfall_if_unrecorded(
@@ -1342,7 +1397,7 @@ async def advance_departure(
     trip, event = gated
 
     _record_driver_position(event, payload)
-    await corroboration_service.record_phase_corroboration(
+    horse_fix = await corroboration_service.record_phase_corroboration(
         db, trip=trip, event=event, driver_captured_at=payload.driver_captured_at,
     )
 
@@ -1443,7 +1498,10 @@ async def advance_departure(
     # time measured from departure to actual arrival rather than to whenever the unloading
     # paperwork happened to land.
 
-    return await _finish_phase(db, trip=trip, event=event, idempotency_key=payload.idempotency_key)
+    return await _finish_phase(
+        db, trip=trip, event=event, idempotency_key=payload.idempotency_key,
+        horse_fix=horse_fix, driver_accuracy_metres=payload.driver_accuracy_metres,
+    )
 
 
 async def advance_in_transit(
@@ -1480,12 +1538,15 @@ async def advance_in_transit(
     trip, event = gated
 
     _record_driver_position(event, payload)
-    await corroboration_service.record_phase_corroboration(
+    horse_fix = await corroboration_service.record_phase_corroboration(
         db, trip=trip, event=event, driver_captured_at=payload.driver_captured_at,
     )
     event.status = PhaseStatus.COMPLETED
 
-    return await _finish_phase(db, trip=trip, event=event, idempotency_key=payload.idempotency_key)
+    return await _finish_phase(
+        db, trip=trip, event=event, idempotency_key=payload.idempotency_key,
+        horse_fix=horse_fix, driver_accuracy_metres=payload.driver_accuracy_metres,
+    )
 
 
 async def advance_unloading(
@@ -1501,7 +1562,7 @@ async def advance_unloading(
     trip, event = gated
 
     _record_driver_position(event, payload)
-    await corroboration_service.record_phase_corroboration(
+    horse_fix = await corroboration_service.record_phase_corroboration(
         db, trip=trip, event=event, driver_captured_at=payload.driver_captured_at,
     )
 
@@ -1624,7 +1685,10 @@ async def advance_unloading(
         # the trip simply stays ACTIVE; recompute_position derives the ledger
         # position generically.
 
-    return await _finish_phase(db, trip=trip, event=event, idempotency_key=payload.idempotency_key)
+    return await _finish_phase(
+        db, trip=trip, event=event, idempotency_key=payload.idempotency_key,
+        horse_fix=horse_fix, driver_accuracy_metres=payload.driver_accuracy_metres,
+    )
 
 
 def compute_confirmation_canonical_payload_v1(
@@ -1692,7 +1756,7 @@ async def advance_confirmation(
     trip, event = gated
 
     _record_driver_position(event, payload)
-    await corroboration_service.record_phase_corroboration(
+    horse_fix = await corroboration_service.record_phase_corroboration(
         db, trip=trip, event=event, driver_captured_at=payload.driver_captured_at,
     )
 
@@ -1794,7 +1858,10 @@ async def advance_confirmation(
     # confirmation's real point: recompute_position (called inside
     # _finish_phase) finds no unresolved rows left and closes the trip
     # generically, instead of this wrapper hardcoding "I am always last."
-    return await _finish_phase(db, trip=trip, event=event, idempotency_key=payload.idempotency_key)
+    return await _finish_phase(
+        db, trip=trip, event=event, idempotency_key=payload.idempotency_key,
+        horse_fix=horse_fix, driver_accuracy_metres=payload.driver_accuracy_metres,
+    )
 
 
 # Decision S6: the single entry point the API calls. The five wrappers stay —

@@ -95,6 +95,13 @@ class ExceptionType(str, enum.Enum):
     SEAL_UNVERIFIED        = "seal_unverified"
     PARCEL_COUNT_MISMATCH  = "parcel_count_mismatch"
     GPS_MISMATCH           = "gps_mismatch"
+    # Task 5 (trip-location-timeline-improvements): a DISTINCT finding from
+    # GPS_MISMATCH. GPS_MISMATCH is "the vehicle tracker disagrees with the
+    # PRECINCT" (FP-145, geofence_service); this is "the driver's OWN PHONE
+    # disagrees with the vehicle tracker" (proximity_service.evaluate_proximity) —
+    # independent questions that can both fire, or either alone, on the same
+    # handshake. See orchestration/action_location_service.record_separation_finding.
+    DRIVER_VEHICLE_SEPARATION = "driver_vehicle_separation"
     ROUTE_DEVIATION        = "route_deviation"
     VEHICLE_SUBSTITUTION   = "vehicle_substitution"
     DRIVER_SUBSTITUTION    = "driver_substitution"

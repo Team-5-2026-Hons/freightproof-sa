@@ -20,7 +20,18 @@ const config: Config = {
         'on-surf-v':  '#46464f',
 
         sec:   { DEFAULT: '#0051d5', c: '#d8e2ff', on: '#ffffff', onc: '#001551' },
-        ok:    { DEFAULT: '#006c4c', c: '#89f8c7', on: '#ffffff', onc: '#002114' },
+        // `chip` is a second, opaque container tone for `ok` — used only by the Chip
+        // component's 'complete' pill, which read as a too-bright neon mint at the
+        // standard `c` tone. Same hue as `--ok`/`--ok-c` (162°, matching how `c` tones
+        // relate to their DEFAULT elsewhere in this file — same hue, high saturation,
+        // only lightness moved), at HSL(162°, 50%, 68%) rather than `c`'s (162°, 89%,
+        // 76%): saturation pulled back enough to read as calmer than `c`, lightness
+        // pulled back enough to keep it visibly a colour rather than a wash. (An
+        // earlier attempt mixed `--ok` toward white instead, which desaturates and
+        // lightens at once — the opposite of "more saturated, still light" — and read
+        // as bland.) `c`/`onc` are unchanged and still back every other "success"
+        // surface (banners, badges) that uses them.
+        ok:    { DEFAULT: '#006c4c', c: '#89f8c7', chip: '#85d6be', on: '#ffffff', onc: '#002114' },
         err:   { DEFAULT: '#ba1a1a', c: '#ffdad6', on: '#ffffff', onc: '#410002' },
         warn:  { DEFAULT: '#805600', c: '#ffb95f', on: '#ffffff', onc: '#2b1700' },
         chain: { DEFAULT: '#006874', c: '#97f0ff', on: '#ffffff', onc: '#001f24' },

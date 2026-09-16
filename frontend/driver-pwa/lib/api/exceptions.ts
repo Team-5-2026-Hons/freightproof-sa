@@ -19,6 +19,8 @@ export interface RaiseExceptionBody {
   // -180..180) on DriverExceptionCreateBody, so never send one axis without the other.
   gps_lat?: number
   gps_lng?: number
+  driver_captured_at?: string
+  driver_accuracy_metres?: number
   // Stable id for this exact report, not echoed back on the response. The offline
   // queue stamps its own entry UUID here at enqueue time and resends it unchanged on
   // every retry of that entry (lib/hooks/useOfflineQueue.ts enqueueException/

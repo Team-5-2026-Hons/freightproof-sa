@@ -39,6 +39,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import get_current_dispatcher
 from app.core.config import settings
 from app.core.demo_waypoints import DEMO_WAYPOINTS, DemoWaypoint, get_waypoint
+from app.core.exceptions import ResourceNotFoundError
 from app.db.models.organisations import Precinct
 from app.db.models.trips import Trip, TripStop
 from app.db.models.vehicles import Vehicle
@@ -48,6 +49,8 @@ from app.integrations.pulsit import (
     PulsitUnsupportedError,
     get_pulsit_client,
 )
+from app.orchestration import dev_truck_service
+from app.orchestration.dev_truck_service import ScenarioTarget, TargetGeometryUnavailableError
 from app.orchestration.geofence_service import TrackerFix, evaluate_geofence
 from app.schemas.dev import MoveTruckRequest, MoveTruckResponse, WaypointRead
 from app.schemas.people import UserRead
@@ -127,8 +130,9 @@ async def list_waypoints(
 
 async def _load_trip_context(
     db: AsyncSession, *, trip_id: uuid.UUID, organization_id: uuid.UUID
-) -> tuple[Trip, Vehicle, Precinct]:
-    """Resolve the trip, the horse whose tracker moves, and the precinct to measure from.
+) -> tuple[Trip, Vehicle, TripStop, Precinct]:
+    """Resolve the trip, the horse whose tracker moves, and the EXPECTED stop/precinct
+    to measure the phase-ledger verdict from.
 
     Scoped to the caller's organisation, so the panel cannot address another operator's
     fleet even with a valid dispatcher token.
@@ -138,6 +142,10 @@ async def _load_trip_context(
     `Trip.current_stop` is a cache rebuilt from the phase-event ledger, and it is read
     here only to choose which distance to *display* — no verdict is stored from it, so a
     stale cache degrades the panel's readout and nothing else.
+
+    Returns the TripStop row alongside its Precinct (not just the Precinct, as before
+    FP-197 Task 3) so the endpoint can echo `expected_trip_stop_id` in the response —
+    the id previously had no reason to leave this function.
     """
     trip = (await db.execute(
         select(Trip).where(
@@ -173,17 +181,17 @@ async def _load_trip_context(
             detail=f"Trip {trip_id} has no stops to measure a distance from.",
         )
 
-    precinct = next(
-        (p for stop, p in stops if stop.sequence == trip.current_stop),
-        stops[0][1],
+    expected_stop, expected_precinct = next(
+        ((stop, p) for stop, p in stops if stop.sequence == trip.current_stop),
+        stops[0],
     )
-    return trip, horse, precinct
+    return trip, horse, expected_stop, expected_precinct
 
 
 @router.post(
     "/move-truck",
     response_model=MoveTruckResponse,
-    summary="Move the trip's tracker to a waypoint (Pulsit mock state only)",
+    summary="Move the trip's tracker to a waypoint or a trip-stop-relative scenario (Pulsit mock state only)",
 )
 async def move_truck(
     body: MoveTruckRequest,
@@ -193,18 +201,28 @@ async def move_truck(
     """Stage a tracker position, then report where the truck is and what the fence says.
 
     Idempotent by construction: `stage_position` REPLACES the staged state for a device
-    rather than merging into it, so pressing the same waypoint twice leaves Redis in the
+    rather than merging into it, so pressing the same button twice leaves Redis in the
     identical state and returns the identical response. Re-pressing is how a presenter
     recovers from a mis-click, so it must be boring.
 
-    Nothing is committed. The session is used for three reads and never written to.
+    Nothing is committed. The session is used only for reads and never written to.
+
+    TWO INPUT MODES (FP-197 Task 3), mutually exclusive by MoveTruckRequest's own
+    validator: `waypoint_id` (legacy, fixed Cape Town demo locations — unchanged
+    below) or `scenario` (+ `trip_stop_id`), which computes a position relative to
+    THIS trip's own stop via orchestration/dev_truck_service.py. Whichever mode ran,
+    the EXPECTED-stop verdict fields (`precinct_id`, `distance_metres`,
+    `geofence_confirmed`, ...) always describe the trip's current phase stop, exactly
+    as before this task — only the TARGET fields differ by mode.
     """
-    waypoint = get_waypoint(body.waypoint_id)
-    if waypoint is None:
-        raise HTTPException(
-            status_code=http_status.HTTP_404_NOT_FOUND,
-            detail=f"Unknown waypoint {body.waypoint_id!r}.",
-        )
+    waypoint: Optional[DemoWaypoint] = None
+    if body.waypoint_id is not None:
+        waypoint = get_waypoint(body.waypoint_id)
+        if waypoint is None:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail=f"Unknown waypoint {body.waypoint_id!r}.",
+            )
 
     client = get_pulsit_client(organization_id=current_user.organization_id)
     if not isinstance(client, MockPulsitClient):
@@ -216,16 +234,62 @@ async def move_truck(
             status_code=http_status.HTTP_409_CONFLICT, detail=_MOCK_REQUIRED_DETAIL,
         )
 
-    trip, horse, precinct = await _load_trip_context(
+    trip, horse, expected_stop, expected_precinct = await _load_trip_context(
         db, trip_id=body.trip_id, organization_id=current_user.organization_id,
     )
 
+    # ---- Resolve WHAT to stage: the legacy fixed waypoint, or a scenario computed
+    # relative to one of this trip's own stops. MoveTruckRequest's model validator
+    # guarantees exactly one of waypoint_id/scenario was supplied, so exactly one of
+    # these two branches runs. ----
+    scenario_target: Optional[ScenarioTarget] = None
+    if waypoint is not None:
+        # Unpacked into locals and tested for None directly rather than through
+        # `waypoint.is_no_signal`: the property says the same thing, but mypy cannot
+        # narrow Optional[Decimal] through a property call, and silencing that with a
+        # cast would discard the one check that stops a None coordinate reaching
+        # stage_position.
+        latitude, longitude = waypoint.latitude, waypoint.longitude
+        waypoint_id = waypoint.waypoint_id
+        waypoint_label = waypoint.label
+    else:
+        # The validator guarantees `scenario` is set whenever `waypoint_id` is not.
+        assert body.scenario is not None
+        scenario = body.scenario
+
+        if body.trip_stop_id is not None:
+            try:
+                target_stop, target_precinct = await dev_truck_service.resolve_target_stop(
+                    db, trip_id=body.trip_id, trip_stop_id=body.trip_stop_id,
+                )
+            except ResourceNotFoundError as exc:
+                raise HTTPException(
+                    status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc),
+                ) from exc
+            try:
+                scenario_target = dev_truck_service.build_scenario_target(
+                    trip_stop_id=target_stop.id,
+                    precinct=target_precinct,
+                    scenario=scenario,
+                    tolerance_metres=settings.GPS_TOLERANCE_METRES,
+                )
+            except TargetGeometryUnavailableError as exc:
+                raise HTTPException(
+                    status_code=http_status.HTTP_409_CONFLICT, detail=str(exc),
+                ) from exc
+        # else: scenario=no_signal naming no stop — scenario_target stays None, and
+        # the tracker simply goes dark with no target stop to report.
+
+        latitude = scenario_target.latitude if scenario_target is not None else None
+        longitude = scenario_target.longitude if scenario_target is not None else None
+        waypoint_id = scenario
+        waypoint_label = (
+            f"{dev_truck_service.SCENARIO_LABELS[scenario]} — {scenario_target.precinct_name}"
+            if scenario_target is not None
+            else dev_truck_service.SCENARIO_LABELS[scenario]
+        )
+
     # ---- The only write this endpoint performs, and it is to the mock. ----
-    # Unpacked into locals and tested for None directly rather than through
-    # `waypoint.is_no_signal`: the property says the same thing, but mypy cannot narrow
-    # Optional[Decimal] through a property call, and silencing that with a cast would
-    # discard the one check that stops a None coordinate reaching stage_position.
-    latitude, longitude = waypoint.latitude, waypoint.longitude
     try:
         if latitude is None or longitude is None:
             await client.stage_no_fix(horse.pulsit_device_id)
@@ -239,7 +303,7 @@ async def move_truck(
         ) from exc
 
     # ---- Everything below is a read, so the panel shows real state. ----
-    # Read the position back through get_positions rather than echoing the waypoint:
+    # Read the position back through get_positions rather than echoing the request:
     # that exercises the same path a handshake uses, so a staging bug shows up on the
     # panel instead of being masked by the panel restating its own request.
     fix = await client.get_position(horse.pulsit_device_id)
@@ -253,21 +317,27 @@ async def move_truck(
         if fix.has_position and fix.lat is not None and fix.lng is not None
         else None
     )
-    verdict = evaluate_geofence(tracker_fix, precinct)
+    # Always evaluated against the EXPECTED stop (the phase ledger's current stop),
+    # never the scenario-mode TARGET — see MoveTruckResponse's EXPECTED vs TARGET
+    # docstring. This is unchanged from before FP-197 Task 3.
+    verdict = evaluate_geofence(tracker_fix, expected_precinct)
 
     logger.info(
-        "Dev panel moved trip=%s device=%s to waypoint=%s (confirmed=%s)",
-        body.trip_id, horse.pulsit_device_id, waypoint.waypoint_id, verdict.confirmed,
+        "Dev panel moved trip=%s device=%s to waypoint_id=%s scenario=%s target_stop=%s "
+        "(confirmed=%s)",
+        body.trip_id, horse.pulsit_device_id, waypoint_id, body.scenario,
+        scenario_target.trip_stop_id if scenario_target is not None else None,
+        verdict.confirmed,
     )
 
     return MoveTruckResponse(
         trip_id=trip.id,
-        waypoint_id=waypoint.waypoint_id,
-        waypoint_label=waypoint.label,
+        waypoint_id=waypoint_id,
+        waypoint_label=waypoint_label,
         device_id=horse.pulsit_device_id,
         vehicle_registration=horse.registration,
-        precinct_id=precinct.id,
-        precinct_name=precinct.name,
+        precinct_id=expected_precinct.id,
+        precinct_name=expected_precinct.name,
         latitude=fix.lat,
         longitude=fix.lng,
         has_position=fix.has_position,
@@ -280,4 +350,10 @@ async def move_truck(
         geofence_confirmed=verdict.confirmed if fix.has_position else None,
         in_tolerance_band=verdict.in_tolerance_band,
         verdict_reason=verdict.reason.value,
+        target_trip_stop_id=scenario_target.trip_stop_id if scenario_target is not None else None,
+        target_precinct_name=scenario_target.precinct_name if scenario_target is not None else None,
+        target_distance_metres=scenario_target.distance_metres if scenario_target is not None else None,
+        scenario=body.scenario,
+        expected_trip_stop_id=expected_stop.id,
+        expected_precinct_name=expected_precinct.name,
     )

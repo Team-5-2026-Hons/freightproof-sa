@@ -15,6 +15,10 @@ export interface PositionDisagreementProps {
   // tracker verdict. Required, not defaulted, so a caller can't forget to pass it and
   // silently render an unearned trigger line.
   source: ExceptionSource
+  /** Forwarded to the inner LocationEvidencePanel: suppresses its "View on map" button
+   *  for a caller that already shows an equivalent button elsewhere on the same card.
+   *  Defaults to false. */
+  hideMapButton?: boolean
 }
 
 // The backend raises `gps_mismatch` ONLY when the vehicle tracker's own fix fell outside
@@ -42,7 +46,7 @@ const LINKED_PHASE_LOCATIONS_NOTE =
  * "reason" would misrepresent what was actually checked. The trigger line above states
  * the stored tracker verdict explicitly so the two can never be confused.
  */
-export function PositionDisagreement({ phase, precinct, source }: PositionDisagreementProps) {
+export function PositionDisagreement({ phase, precinct, source, hideMapButton = false }: PositionDisagreementProps) {
   const evidence = locationEvidenceForPhase(phase, precinct)
   const contextLabel = `${LINKED_PHASE_LOCATIONS_LABEL}: ${PHASE_NAMES[phase.phase_type]}${precinct ? ` at ${precinct.name}` : ''}`
 
@@ -64,7 +68,7 @@ export function PositionDisagreement({ phase, precinct, source }: PositionDisagr
         <p className="mt-[2px] text-[11px] text-on-surf-v">{LINKED_PHASE_LOCATIONS_NOTE}</p>
       </div>
       <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-[5px]">
-        <LocationEvidencePanel evidence={evidence} contextLabel={contextLabel} />
+        <LocationEvidencePanel evidence={evidence} contextLabel={contextLabel} hideMapButton={hideMapButton} />
       </div>
     </div>
   )

@@ -23,7 +23,7 @@ import { isQueueableFailure } from '@/lib/utils/is-queueable-failure'
 import type { Trip } from '@shared/lib/types/trip'
 import type { PhaseDescriptor, PhaseType } from '@shared/lib/types/phase'
 import type { PhaseEvidence } from '@/lib/types/evidence-draft'
-import type { DriverPosition } from '@/lib/types/location'
+import type { DriverPosition, LocationWarningAcknowledgement } from '@/lib/types/location'
 
 // ─── Position budget ───────────────────────────────────────────────────────────
 
@@ -130,6 +130,7 @@ type EnqueuePhase = (
   evidence: PhaseEvidence,
   position: DriverPosition | null,
   driverCapturedAt: string,
+  acknowledgement?: LocationWarningAcknowledgement | null,
 ) => void
 
 export interface PhaseSubmissionRequest {
@@ -159,6 +160,8 @@ export interface PhaseSubmissionRequest {
    * ORIGINAL swipe instant, never a retry's own clock.
    */
   driverCapturedAt: string
+  /** Driver context from a reliable preview warning; never an assessment verdict. */
+  acknowledgement?: LocationWarningAcknowledgement | null
   /** The localStorage failure path (lib/hooks/useOfflineQueue.ts). */
   enqueuePhase: EnqueuePhase
   /** Used ONLY to resolve a 409 — did an earlier attempt of this phase already land? */
@@ -246,12 +249,12 @@ const DEFAULT_CONFLICT_MESSAGE = 'Trip state changed unexpectedly. Please retry 
 const DEFAULT_TERMINAL_MESSAGE = 'Could not submit. Please try again.'
 
 async function runSubmission(request: PhaseSubmissionRequest): Promise<PhaseSubmissionOutcome> {
-  const { tripId, phaseEventId, phaseType, evidence, idempotencyKey, driverCapturedAt } = request
+  const { tripId, phaseEventId, phaseType, evidence, idempotencyKey, driverCapturedAt, acknowledgement = null } = request
   const position = await resolvePosition(request.position)
 
   try {
     const result = await submitPhase(
-      tripId, phaseEventId, phaseType, evidence, idempotencyKey, position, driverCapturedAt,
+      tripId, phaseEventId, phaseType, evidence, idempotencyKey, position, driverCapturedAt, acknowledgement,
     )
     if (result.trip !== null && result.trip.status === 'exception_hold') {
       return { kind: 'hold', trip: result.trip }
@@ -291,7 +294,7 @@ async function runSubmission(request: PhaseSubmissionRequest): Promise<PhaseSubm
       // Network error, 5xx, or a status-0 timeout — queue for retry once connectivity or
       // the server recovers. The position and the capture instant go WITH the entry so a
       // replay hours later still reports where — and when — the driver actually swiped.
-      request.enqueuePhase(tripId, phaseEventId, phaseType, evidence, position, driverCapturedAt)
+      request.enqueuePhase(tripId, phaseEventId, phaseType, evidence, position, driverCapturedAt, acknowledgement)
       return { kind: 'queued' }
     }
 

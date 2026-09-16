@@ -72,6 +72,8 @@ async def raise_exception_endpoint(
             supporting_artifact_id=payload.supporting_artifact_id,
             phase_event_id=payload.phase_event_id,
             gps_lat=gps_lat, gps_lng=gps_lng,
+            driver_captured_at=payload.driver_captured_at,
+            driver_accuracy_metres=payload.driver_accuracy_metres,
             client_report_id=payload.client_report_id,
             vehicle_type=payload.vehicle_type, trailer_id=payload.trailer_id,
         )

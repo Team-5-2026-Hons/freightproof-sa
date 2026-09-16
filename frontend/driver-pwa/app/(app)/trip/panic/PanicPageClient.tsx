@@ -12,6 +12,7 @@ import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
 import { Button } from '@/components/ui/Button'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { ROUTES } from '@/lib/constants/routes'
+import { captureWithinBudget, REPORT_CAPTURE_BUDGET_MS } from '@/lib/utils/bounded-capture'
 
 export default function PanicPageClient() {
   const router = useRouter()
@@ -24,15 +25,14 @@ export default function PanicPageClient() {
   async function handlePanic() {
     setSending(true)
     setSaveFailed(false)
-    // This is an emergency action gated behind a 3s hold, so the driver has
-    // already committed several seconds to triggering it. GPS capture here
-    // resolves quickly (~300ms dev fallback; real native lock typically
-    // well under 2s) — awaiting it before logException means the alert
-    // record actually carries coordinates instead of racing to send one
-    // without location data. We accept the brief additional wait in
-    // exchange for a complete, defensible payload; `sending` drives a
-    // lightweight loading state below so the UI doesn't appear frozen.
-    const result = await capture()
+    // The alert must carry the driver's own position when the phone can give one —
+    // it is the primary evidence of where the driver was when they pressed panic — but
+    // emergency delivery is never held behind a slow GPS. captureWithinBudget races the
+    // fix against REPORT_CAPTURE_BUDGET_MS: a fix inside that window travels with the
+    // alert (live send and offline queue alike), a slower one is dropped and the alert
+    // goes without location rather than waiting. No preview and no acknowledgement
+    // flow here, ever (P6): panic is sent, not checked.
+    const fix = await captureWithinBudget(capture, REPORT_CAPTURE_BUDGET_MS)
     const description = 'Driver activated panic button.'
     const clientReportId = crypto.randomUUID()
     // Tracks whether the alert actually reached the backend vs. was only queued
@@ -43,8 +43,9 @@ export default function PanicPageClient() {
       await logException('panic_button', {
         description,
         triggeredAt: new Date().toISOString(),
-        gpsLat: result?.latitude ?? null,
-        gpsLng: result?.longitude ?? null,
+        gpsLat: fix?.latitude ?? null,
+        gpsLng: fix?.longitude ?? null,
+        ...(fix ? { driverCapturedAt: fix.capturedAt, driverAccuracyMetres: fix.accuracy } : {}),
         clientReportId,
       })
     } catch (err) {
@@ -72,7 +73,14 @@ export default function PanicPageClient() {
         ...(phaseEventId ? { phase_event_id: String(phaseEventId) } : {}),
         // Both-or-neither: the backend 422s a partial fix, which would make the
         // queue drop this entry as a terminal failure — send the pair or nothing.
-        ...(result ? { gps_lat: result.latitude, gps_lng: result.longitude } : {}),
+        ...(fix
+          ? {
+              gps_lat: fix.latitude,
+              gps_lng: fix.longitude,
+              driver_captured_at: fix.capturedAt,
+              driver_accuracy_metres: fix.accuracy,
+            }
+          : {}),
       })
       if (!enqueueResult.persisted) {
         setSaveFailed(true)
@@ -127,11 +135,11 @@ export default function PanicPageClient() {
         <h1 className="mb-2 text-2xl font-bold">Panic Alert</h1>
         <p className="text-lg leading-relaxed opacity-90">
           Swipe the button below to send an emergency alert to your dispatcher.
-          Your GPS location will be included.
+          Your alert is sent immediately. Your GPS location is included when your phone can provide one in time.
         </p>
         {sending && (
           <p className="mt-2 text-sm opacity-75" role="status">
-            Capturing location and sending alert…
+            Sending alert…
           </p>
         )}
         {saveFailed && (

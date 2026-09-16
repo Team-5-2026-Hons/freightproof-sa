@@ -1,12 +1,12 @@
 """SQLAlchemy models for in-transit checkpoints and exceptions."""
 
 import uuid
-from typing import Optional
+from typing import Any, Optional
 from decimal import Decimal
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Numeric, String, Text, column
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Numeric, String, Text, column, text
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -25,9 +25,22 @@ class Checkpoint(Base):
     """Driver-logged or Pulsit-pulled in-transit event between phases."""
 
     __tablename__ = "checkpoints"
-    # Declared so autogenerate stops proposing to drop an index that already exists
-    # in the deployed database (created by an earlier migration, never modelled here).
+    # Task 8 (not wired by this story — column/index only, see the migration's own
+    # docstring): mirrors uq_exceptions_trip_client_report_id exactly. Declared here,
+    # not just in the migration, so Base.metadata.create_all() (every test's schema)
+    # carries the same constraint the real database will.
+    #
+    # ix_checkpoints_trip_created declared so autogenerate stops proposing to drop an
+    # index that already exists in the deployed database (created by an earlier
+    # migration, never modelled here).
     __table_args__ = (
+        Index(
+            "uq_checkpoints_trip_client_report_id",
+            "trip_id",
+            "client_report_id",
+            unique=True,
+            postgresql_where=column("client_report_id").isnot(None),
+        ),
         Index("ix_checkpoints_trip_created", "trip_id", "created_at"),
     )
 
@@ -57,6 +70,19 @@ class Checkpoint(Base):
     merkle_batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("merkle_batches.id"), nullable=True
     )
+    # Task 5: the versioned ActionLocationAssessment snapshot for this checkpoint's own
+    # handshake (orchestration/action_location_service.build_checkpoint_assessment,
+    # called from checkpoint_service.log_checkpoint). No precinct-membership facts —
+    # unlike a phase event, a checkpoint happens on the road between precincts, so
+    # those fields are always None here. See schemas/action_location.py.
+    action_location_assessment: Mapped[Optional[Any]] = mapped_column(JSONB, nullable=True)
+    # Task 8 columns (not wired by this story): mirrors exceptions.client_report_id /
+    # phase_event_id-style scoping — see the migration's own docstring for why they
+    # exist now with no caller yet.
+    client_report_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    phase_event_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("phase_events.id"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
@@ -82,6 +108,31 @@ class TripException(Base):
             "client_report_id",
             unique=True,
             postgresql_where=column("client_report_id").isnot(None),
+        ),
+        # Task 5 (R13): one DRIVER_VEHICLE_SEPARATION finding per source event — the
+        # idempotency key orchestration/action_location_service.record_separation_finding
+        # relies on, alongside its own pre-insert existence check, to survive a replayed
+        # completion or two concurrent requests racing for the same handshake. Scoped
+        # to this exception_type only (postgresql_where), so it adds no constraint at
+        # all to GPS_MISMATCH or any other type already sharing a phase_event_id/
+        # checkpoint_id — those may still have as many rows as they always could.
+        Index(
+            "uq_exceptions_phase_separation",
+            "phase_event_id",
+            "exception_type",
+            unique=True,
+            postgresql_where=text(
+                "exception_type = 'driver_vehicle_separation' AND phase_event_id IS NOT NULL"
+            ),
+        ),
+        Index(
+            "uq_exceptions_checkpoint_separation",
+            "checkpoint_id",
+            "exception_type",
+            unique=True,
+            postgresql_where=text(
+                "exception_type = 'driver_vehicle_separation' AND checkpoint_id IS NOT NULL"
+            ),
         ),
         # Declared so autogenerate stops proposing to drop indexes that already exist
         # in the deployed database (created by an earlier migration, never modelled here).
@@ -182,6 +233,11 @@ class TripException(Base):
     merkle_batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("merkle_batches.id"), nullable=True
     )
+    # Task 5 (R13): a driver exception report IS itself the capture the assessment
+    # describes, so it carries its own snapshot rather than pointing at another row's.
+    # Populated where a caller builds a capture-time comparison, including phase
+    # completions, checkpoints, and driver-raised exception reports.
+    action_location_assessment: Mapped[Optional[Any]] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False

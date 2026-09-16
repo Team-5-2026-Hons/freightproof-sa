@@ -393,6 +393,14 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     const gpsLat = typeof payload.gpsLat === 'number' ? payload.gpsLat : undefined
     const gpsLng = typeof payload.gpsLng === 'number' ? payload.gpsLng : undefined
     const hasGpsFix = gpsLat !== undefined && gpsLng !== undefined
+    // The page owns this timestamp: forwarding it unchanged keeps an offline report's
+    // comparison tied to the original phone capture rather than its later API flush.
+    const driverCapturedAt = typeof payload.driverCapturedAt === 'string'
+      ? payload.driverCapturedAt
+      : undefined
+    const driverAccuracyMetres = typeof payload.driverAccuracyMetres === 'number'
+      ? payload.driverAccuracyMetres
+      : undefined
     // The driver's "truck or trailer" answer on a breakdown (LogExceptionPageClient).
     // Only the two real kinds pass; anything else goes as no answer, which the server
     // records as no vehicle rather than rejecting the report.
@@ -444,6 +452,8 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       ...(trailerId ? { trailer_id: trailerId } : {}),
       gps_lat: hasGpsFix ? gpsLat : undefined,
       gps_lng: hasGpsFix ? gpsLng : undefined,
+      driver_captured_at: driverCapturedAt,
+      driver_accuracy_metres: driverAccuracyMetres,
     })
     setExceptions(prev => [...prev, created])
   }, [trip])

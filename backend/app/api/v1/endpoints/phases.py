@@ -29,7 +29,11 @@ from app.core.rate_limit import rate_limit
 from app.db.models.trips import TripStop
 from app.db.session import get_db
 from app.orchestration.phase_gate import blocked_on_by_stop
+from app.orchestration.action_location_service import (
+    PhaseLocationPreviewConflictError, preview_phase_location,
+)
 from app.orchestration.phase_service import complete_phase, list_phases, next_phase
+from app.schemas.action_location import ActionLocationAssessment, DriverLocationCapture
 from app.schemas.people import DriverRead
 from app.schemas.phases import PhaseCompleteRequest, PhaseEventRead
 from app.schemas.trips import TripDetailResponse
@@ -88,6 +92,33 @@ async def next_phase_endpoint(
     return PhaseEventRead.from_event(
         event, stop_sequence_by_id=stop_sequences, blocked_on_by_stop=gate,
     )
+
+
+@router.post(
+    "/{phase_event_id}/location-preview",
+    response_model=ActionLocationAssessment,
+    summary="Compare a fresh phone capture with the vehicle tracker without recording evidence",
+    # Same budget as /complete: the preview writes nothing, but every call is one
+    # outbound Pulsit read on the operator's account, which is exactly the kind of
+    # per-driver fan-out EVIDENCE_WRITE exists to bound.
+    dependencies=[Depends(rate_limit(EVIDENCE_WRITE))],
+)
+async def preview_phase_location_endpoint(
+    trip_id: UUID,
+    phase_event_id: UUID,
+    payload: DriverLocationCapture,
+    db: AsyncSession = Depends(get_db),
+    current_driver: DriverRead = Depends(get_current_driver),
+) -> ActionLocationAssessment:
+    try:
+        return await preview_phase_location(
+            db, trip_id=trip_id, driver_id=current_driver.id,
+            phase_event_id=phase_event_id, capture=payload,
+        )
+    except ResourceNotFoundError as exc:
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except PhaseLocationPreviewConflictError as exc:
+        raise HTTPException(status_code=http_status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
 @router.post(

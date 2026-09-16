@@ -15,6 +15,7 @@ import type { Vehicle } from './vehicle'
 import type { TripException } from './exception'
 import type { BlockchainReceipt } from './blockchain'
 import type { ConsignmentRead, TripId, TripStop, TripType } from './trip'
+import type { ActionLocationAssessment } from './action-location'
 
 export type PhaseEventId = string & { readonly __brand: 'PhaseEventId' }
 
@@ -93,6 +94,9 @@ export interface PhaseDescriptor {
   horse_gps_lat: number | null
   horse_gps_lng: number | null
   pulsit_geofence_confirmed: boolean | null
+  // Optional while older fixtures catch up; the API always returns null or a
+  // server-built snapshot and clients must never submit this back as evidence.
+  action_location_assessment?: ActionLocationAssessment | null
   // When the driver's device captured the phone fix (mirrors PhaseEventRead.driver_captured_at).
   // Optional ONLY until the driver-pwa fixtures are updated; same convention as blocked_on above.
   driver_captured_at?: string | null

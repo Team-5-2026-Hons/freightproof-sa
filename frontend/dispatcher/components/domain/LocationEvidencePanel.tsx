@@ -17,6 +17,7 @@ import {
   BOUNDARY_REFERENCE_LABEL,
   COMPARISON_UNAVAILABLE,
   FIX_LABELS,
+  PROXIMITY_LABELS,
   VERDICT_LABELS,
   boundaryDistanceMetres,
   boundaryIsNearby,
@@ -29,11 +30,18 @@ interface Props {
   evidence: LocationEvidence
   /** Names the record the comparison belongs to, e.g. "Activation at Cape Town DC". Used in the modal title. */
   contextLabel: string
+  /** Suppresses this panel's own "View on map" button (and the modal it owns) for a
+   *  caller that already shows an equivalent button elsewhere on the same card — e.g.
+   *  the trip timeline's exception footer, which renders `ExceptionMapButton` once per
+   *  exception already. Defaults to false: every other consumer keeps its button. */
+  hideMapButton?: boolean
 }
 
 const NO_FIX_RECORDED = 'No fix recorded'
 const CAPTURE_TIME_NOT_RECORDED = 'Capture time not recorded'
+const TRACKER_TIME_NOT_RECORDED = 'Tracker reading time not recorded.'
 const NO_BOUNDARY_RECORDED = 'No boundary recorded for this phase'
+const RECORDED_BOUNDARY_UNAVAILABLE = 'Recorded boundary unavailable'
 
 // Shown only when the boundary is too far from every recorded fix to appear in the
 // map's default frame (see boundaryIsNearby/BOUNDARY_NEARBY_METRES in
@@ -85,27 +93,30 @@ function coordsValue(fix: RecordedFix): string {
  *  constraint 2's ordering exactly. Never `completed_at`: that dates the phase, not the fix. */
 function captureValue(fix: RecordedFix): string {
   if (fix.capturedAt) return fmtDateTime(fix.capturedAt)
+  if (fix.source === 'horse_tracker') return TRACKER_TIME_NOT_RECORDED
   if (fix.captureNote) return fix.captureNote
   return CAPTURE_TIME_NOT_RECORDED
 }
 
 /** Legend line under the map. The boundary marker is included only when a boundary was
  *  actually drawn, so the legend never promises a layer the map didn't render. */
-function legendText(hasBoundary: boolean): string {
+function legendText(boundary: LocationEvidence['boundary']): string {
   const parts = [
     `${DRIVER_MARKER_SYMBOL} ${FIX_LABELS.driver_phone}`,
     `${TRACKER_MARKER_SYMBOL} ${FIX_LABELS.horse_tracker}`,
   ]
-  if (hasBoundary) parts.push(`${BOUNDARY_MARKER_SYMBOL} ${MODAL_LEGEND_BOUNDARY_LABEL}`)
+  if (boundary) parts.push(`${BOUNDARY_MARKER_SYMBOL} ${boundary.provenance === 'recorded_snapshot' ? 'Recorded precinct boundary' : MODAL_LEGEND_BOUNDARY_LABEL}`)
   return parts.join(INLINE_SEPARATOR)
 }
 
 /** The Boundary field/row text, shared by the panel and the modal so both surfaces state
  *  the same fact the same way. */
-function boundaryValue(boundary: LocationEvidence['boundary']): string {
+function boundaryValue(boundary: LocationEvidence['boundary'], assessmentRecorded: boolean | undefined): string {
   return boundary
-    ? `${BOUNDARY_REFERENCE_LABEL}: ${boundary.precinctName}, ${Math.round(boundary.radiusMetres)} m radius`
-    : NO_BOUNDARY_RECORDED
+    ? boundary.provenance === 'recorded_snapshot'
+      ? `Recorded boundary and policy${boundary.policyVersion ? ` (${boundary.policyVersion})` : ''}: ${boundary.precinctName}, ${Math.round(boundary.radiusMetres)} m radius${boundary.toleranceMetres !== undefined ? `, ${Math.round(boundary.toleranceMetres)} m tolerance` : ''}`
+      : `${BOUNDARY_REFERENCE_LABEL}: ${boundary.precinctName}, ${Math.round(boundary.radiusMetres)} m radius`
+    : assessmentRecorded ? RECORDED_BOUNDARY_UNAVAILABLE : NO_BOUNDARY_RECORDED
 }
 
 /** The Distance to precinct centre row's value: explicitly "from the nearest recorded
@@ -117,22 +128,78 @@ function distanceToPrecinctValue(distanceMetres: number): string {
 
 /** Modal Boundary row: precinct and radius only, the "reference only" caveat lives in the label. */
 function modalBoundaryValue(boundary: NonNullable<LocationEvidence['boundary']>): string {
-  return `${boundary.precinctName}, ${Math.round(boundary.radiusMetres)} m radius`
+  const policy = boundary.provenance === 'recorded_snapshot' && boundary.policyVersion
+    ? ` · policy ${boundary.policyVersion}`
+    : ''
+  return `${boundary.precinctName}, ${Math.round(boundary.radiusMetres)} m radius${policy}`
 }
 
-export function LocationEvidencePanel({ evidence, contextLabel }: Props) {
-  const [modalOpen, setModalOpen] = useState(false)
-  const closeModal = () => setModalOpen(false)
+interface ModalProps {
+  open: boolean
+  onClose: () => void
+  evidence: LocationEvidence
+  /** Names the record the comparison belongs to, used in the modal title. */
+  contextLabel: string
+}
+
+/** The map modal on its own, so a surface that has no room for the field grid (the
+ *  exceptions panel) can still open the same comparison a phase card opens. Exported
+ *  rather than duplicated: one modal, one legend, one set of rows. */
+export function LocationComparisonModal({ open, onClose, evidence, contextLabel }: ModalProps) {
   const { driverFix, trackerFix, separationMetres, verdict, boundary } = evidence
-  // Computed once and reused by both the panel's own Field and the modal's InfoRow,
-  // so the two surfaces can never show a different reading of the same evidence.
   const separationText = separationMetres === null ? COMPARISON_UNAVAILABLE : formatSeparation(separationMetres)
   // Null whenever there is no boundary or no fix to measure from (see
   // boundaryDistanceMetres); the row below only renders once this is known AND the
   // boundary is far enough that the map's default frame would otherwise hide it.
   const boundaryDistance = boundaryDistanceMetres(evidence)
   const showBoundaryDistance = boundaryDistance !== null && !boundaryIsNearby(evidence)
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={`Recorded locations: ${contextLabel}`}
+      size="xl"
+    >
+      <div className={MODAL_GRID_COLUMNS_CLASS}>
+        {/* Modal (and therefore this map) never mounts until `open` flips true:
+            Modal returns null while closed, so LocationComparisonMap's Leaflet-loading
+            effect never runs for a card the user hasn't opened. */}
+        <LocationComparisonMap evidence={evidence} className={MAP_MODAL_HEIGHT_CLASS} />
+        {/* `flex flex-col` plus `mt-auto` on the Close button below lets Close sit at
+            the bottom of this column on desktop, where the grid stretches this column
+            to the map's own height by default; below `md` (see MODAL_GRID_COLUMNS_CLASS)
+            this column's height is just its own content, so `mt-auto` collapses to no
+            extra space and Close simply follows the rows in source order. */}
+        <div className="flex flex-col">
+          {/* The map is never the only carrier of the fact: the same reading shown
+              above as Fields is repeated here as InfoRows, in the house
+              trip-detail-modal pattern (see PrecinctModal.tsx / VehicleModal.tsx). */}
+          <InfoRow label="Legend" value={legendText(boundary)} />
+          <InfoRow label={FIX_LABELS.driver_phone} value={driverFix ? coordsValue(driverFix) : NO_FIX_RECORDED} mono />
+          <InfoRow label={FIX_LABELS.horse_tracker} value={trackerFix ? coordsValue(trackerFix) : NO_FIX_RECORDED} mono />
+          <InfoRow label="Driver–truck separation" value={separationText} />
+          <InfoRow label="Truck precinct check" value={VERDICT_LABELS[verdict]} />
+          <InfoRow label="Driver proximity" value={evidence.proximity ? PROXIMITY_LABELS[evidence.proximity] : separationMetres !== null ? 'Recorded source separation; proximity not evaluated.' : 'Unable to compare'} />
+          {boundary && <InfoRow label={boundary.provenance === 'recorded_snapshot' ? 'Recorded boundary and policy' : MODAL_BOUNDARY_ROW_LABEL} value={modalBoundaryValue(boundary)} />}
+          {showBoundaryDistance && boundaryDistance !== null && (
+            <InfoRow label={MODAL_DISTANCE_ROW_LABEL} value={distanceToPrecinctValue(boundaryDistance)} />
+          )}
+          <div className="mt-auto pt-4">
+            <Button variant="secondary" full onClick={onClose}>Close</Button>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  )
+}
 
+export function LocationEvidencePanel({ evidence, contextLabel, hideMapButton = false }: Props) {
+  const [modalOpen, setModalOpen] = useState(false)
+  const closeModal = () => setModalOpen(false)
+  const { driverFix, trackerFix, separationMetres, verdict, boundary } = evidence
+  // Computed once and reused by both the panel's own Field and the modal's InfoRow,
+  // so the two surfaces can never show a different reading of the same evidence.
+  const separationText = separationMetres === null ? COMPARISON_UNAVAILABLE : formatSeparation(separationMetres)
   return (
     <>
       <Field label={FIX_LABELS.driver_phone} value={driverFix ? coordsValue(driverFix) : NO_FIX_RECORDED} mono />
@@ -140,12 +207,17 @@ export function LocationEvidencePanel({ evidence, contextLabel }: Props) {
       {driverFix && <Field label={`${FIX_LABELS.driver_phone} capture time`} value={captureValue(driverFix)} />}
       {trackerFix && <Field label={`${FIX_LABELS.horse_tracker} capture time`} value={captureValue(trackerFix)} />}
 
-      <Field label="Driver / vehicle separation" value={separationText} />
-      <Field label="Geofence verdict" value={VERDICT_LABELS[verdict]} />
+      <Field label="Driver–truck separation" value={separationText} />
+      <Field label="Truck precinct check" value={VERDICT_LABELS[verdict]} />
+      {evidence.proximity
+        ? <Field label="Driver proximity" value={PROXIMITY_LABELS[evidence.proximity]} />
+        : separationMetres !== null
+          ? <Field label="Driver proximity" value="Recorded source separation; proximity not evaluated." />
+          : <Field label="Driver proximity" value="Unable to compare" />}
 
-      <Field label="Boundary" value={boundaryValue(boundary)} span />
+      <Field label="Boundary" value={boundaryValue(boundary, evidence.assessmentRecorded)} span />
 
-      {hasAnyFix(evidence) && (
+      {!hideMapButton && hasAnyFix(evidence) && (
         <div className="col-span-2 mt-1">
           <Button variant="secondary" size="sm" onClick={() => setModalOpen(true)}>
             {VIEW_ON_MAP_LABEL}
@@ -153,41 +225,9 @@ export function LocationEvidencePanel({ evidence, contextLabel }: Props) {
         </div>
       )}
 
-      <Modal
-        open={modalOpen}
-        onClose={closeModal}
-        title={`Recorded locations: ${contextLabel}`}
-        size="xl"
-      >
-        <div className={MODAL_GRID_COLUMNS_CLASS}>
-          {/* Modal (and therefore this map) never mounts until modalOpen flips true:
-              Modal returns null while closed, so LocationComparisonMap's Leaflet-loading
-              effect never runs for a card the user hasn't opened. */}
-          <LocationComparisonMap evidence={evidence} className={MAP_MODAL_HEIGHT_CLASS} />
-          {/* `flex flex-col` plus `mt-auto` on the Close button below lets Close sit at
-              the bottom of this column on desktop, where the grid stretches this column
-              to the map's own height by default; below `md` (see MODAL_GRID_COLUMNS_CLASS)
-              this column's height is just its own content, so `mt-auto` collapses to no
-              extra space and Close simply follows the rows in source order. */}
-          <div className="flex flex-col">
-            {/* The map is never the only carrier of the fact: the same reading shown
-                above as Fields is repeated here as InfoRows, in the house
-                trip-detail-modal pattern (see PrecinctModal.tsx / VehicleModal.tsx). */}
-            <InfoRow label="Legend" value={legendText(boundary !== null)} />
-            <InfoRow label={FIX_LABELS.driver_phone} value={driverFix ? coordsValue(driverFix) : NO_FIX_RECORDED} mono />
-            <InfoRow label={FIX_LABELS.horse_tracker} value={trackerFix ? coordsValue(trackerFix) : NO_FIX_RECORDED} mono />
-            <InfoRow label="Driver / vehicle separation" value={separationText} />
-            <InfoRow label="Geofence verdict" value={VERDICT_LABELS[verdict]} />
-            {boundary && <InfoRow label={MODAL_BOUNDARY_ROW_LABEL} value={modalBoundaryValue(boundary)} />}
-            {showBoundaryDistance && boundaryDistance !== null && (
-              <InfoRow label={MODAL_DISTANCE_ROW_LABEL} value={distanceToPrecinctValue(boundaryDistance)} />
-            )}
-            <div className="mt-auto pt-4">
-              <Button variant="secondary" full onClick={closeModal}>Close</Button>
-            </div>
-          </div>
-        </div>
-      </Modal>
+      {!hideMapButton && (
+        <LocationComparisonModal open={modalOpen} onClose={closeModal} evidence={evidence} contextLabel={contextLabel} />
+      )}
     </>
   )
 }

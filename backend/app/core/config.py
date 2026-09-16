@@ -127,6 +127,21 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     # Used by the (upcoming) H1/H4 gate geofence check — see feature/gps-warehouse-geofencing.
     GPS_TOLERANCE_METRES: int = 50
+
+    # Driver-vs-truck proximity check (Task 4, trip-location-timeline story):
+    # independent corroboration that the driver's OWN PHONE fix and the vehicle's
+    # Pulsit tracker fix describe the same place at roughly the same time. This is
+    # a different question from GPS_TOLERANCE_METRES above (is the TRUCK inside its
+    # precinct?) — a truck can be correctly inside its geofence while the driver's
+    # phone sits genuinely metres away. See orchestration/proximity_service.py.
+    # Four independent settings rather than reusing GPS_TOLERANCE_METRES /
+    # PULSIT_CORROBORATION_MAX_SKEW_SECONDS, so a future change to either of those
+    # never silently drags this unrelated policy along with it.
+    DRIVER_TRUCK_MAX_SEPARATION_METRES: float = 100.0
+    DRIVER_TRUCK_MAX_FIX_AGE_SECONDS: int = 60
+    DRIVER_TRUCK_MAX_SKEW_SECONDS: int = 30
+    DRIVER_TRUCK_MAX_PHONE_ACCURACY_METRES: float = 50.0
+
     DEMO_MODE: bool = False
 
     # Dev trigger panel. Registers a router that can fire scans, PP lifecycle changes and

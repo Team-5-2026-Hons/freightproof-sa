@@ -10,7 +10,10 @@ import type { TripException } from '@shared/lib/types/exception'
 // carries these same three fields, all non-optionally — satisfies this structurally with
 // no cast, and without that page having to fabricate an artifactsById Map it has no use
 // for (it already has the one relevant artifact in hand).
-type ExceptionEvidenceSource = Pick<TripException, 'gps_lat' | 'gps_lng' | 'supporting_artifact_id'>
+type ExceptionEvidenceSource = Pick<
+  TripException,
+  'gps_lat' | 'gps_lng' | 'supporting_artifact_id' | 'action_location_assessment'
+>
 
 interface Props {
   exception: ExceptionEvidenceSource
@@ -49,7 +52,7 @@ export function exceptionHasEvidence(exception: ExceptionEvidenceSource): boolea
   const lat = exception.gps_lat
   const lng = exception.gps_lng
   const hasFix = lat !== null && lat !== undefined && lng !== null && lng !== undefined
-  return exception.supporting_artifact_id !== null || hasFix
+  return exception.supporting_artifact_id !== null || hasFix || exception.action_location_assessment != null
 }
 
 export function ExceptionEvidence({ exception, artifactsById, artifact: artifactProp }: Props) {
@@ -64,6 +67,7 @@ export function ExceptionEvidence({ exception, artifactsById, artifact: artifact
   const lat = exception.gps_lat
   const lng = exception.gps_lng
   const hasFix = lat !== null && lat !== undefined && lng !== null && lng !== undefined
+  const assessment = exception.action_location_assessment
 
   if (!exceptionHasEvidence(exception)) return null
 
@@ -91,6 +95,19 @@ export function ExceptionEvidence({ exception, artifactsById, artifact: artifact
           <div className="text-[10px] text-on-surf-v mb-[1px]">Raised at</div>
           <div className="font-mono text-[12px] tracking-[0.04em] text-on-surf tabular-nums">
             {lat.toFixed(5)}, {lng.toFixed(5)}
+          </div>
+        </div>
+      )}
+
+      {assessment && (
+        <div>
+          <div className="text-[10px] text-on-surf-v mb-[1px]">System comparison</div>
+          <div className="text-[12px] text-on-surf">
+            {assessment.proximity === 'separated'
+              ? 'Driver and vehicle locations were separated'
+              : assessment.proximity === 'within_limit'
+                ? 'Driver and vehicle locations were within the comparison limit'
+                : `Location comparison unverified (${assessment.reasons.join(', ')})`}
           </div>
         </div>
       )}
