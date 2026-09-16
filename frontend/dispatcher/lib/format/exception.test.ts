@@ -15,6 +15,11 @@ describe('fmtExceptionType', () => {
     expect(fmtExceptionType('panic_button')).toBe('Panic Button')
     expect(fmtExceptionType('seal_broken_in_transit')).toBe('Seal Broken In Transit')
   })
+
+  it('writes the ID abbreviation in capitals', () => {
+    expect(fmtExceptionType('receiver_id_mismatch')).toBe('Receiver ID Mismatch')
+    expect(fmtExceptionType('receiver_id_unverified')).toBe('Receiver ID Unverified')
+  })
 })
 
 describe('fmtBreakdownVehicle', () => {

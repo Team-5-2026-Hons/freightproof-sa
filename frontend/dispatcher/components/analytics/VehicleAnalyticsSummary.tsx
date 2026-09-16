@@ -35,8 +35,8 @@ const SUMMARY_COPY = {
   monthsHeading: 'Selected months',
   mechanicalHeading: 'Mechanical exceptions',
   historyHeading: 'Whole history',
-  // Does the job of ANALYTICS_COPY.streaksNote beside the heading: streaks ignore the month
-  // range. "Closed" because, like every analytics figure, a trip in progress is not counted.
+  // Beside the heading because streaks ignore the month range (the endpoint takes none,
+  // FP-153 §3a). "Closed" because, like every analytics figure, a trip in progress is not counted.
   historyDetail: 'every closed trip this vehicle has run, not the months above',
   noBreakdowns: 'No breakdowns recorded',
   tripOne: 'trip',
@@ -68,7 +68,7 @@ export function VehicleAnalyticsSummary({ vehicleId, vehicleType }: VehicleAnaly
       error={vehicles.error ?? streaks.error}
       onRetry={retry}
     >
-      {/* Looked up separately rather than through joinStreaks. Streaks cover the vehicle's
+      {/* Looked up separately from the monthly row, not joined to it. Streaks cover the vehicle's
           whole history, so they still have real figures when the selected months hold no
           closed trips, and must not be blanked with the monthly row. */}
       <Figures

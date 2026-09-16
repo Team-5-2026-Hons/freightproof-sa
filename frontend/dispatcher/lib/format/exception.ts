@@ -13,9 +13,10 @@ import { VEHICLE_TYPE_LABELS } from './vehicle'
 // drivers were asked "truck or trailer". The analytics count those for the horse.
 export const VEHICLE_NOT_RECORDED = 'Not recorded'
 
-/** "waybill_count_mismatch" -> "Waybill Count Mismatch". */
+/** "waybill_count_mismatch" -> "Waybill Count Mismatch"; "receiver_id_mismatch" ->
+ *  "Receiver ID Mismatch" (an abbreviation reads wrong title-cased as "Id"). */
 export function fmtExceptionType(type: string): string {
-  return type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+  return type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).replace(/\bId\b/g, 'ID')
 }
 
 /** A breakdown's Vehicle row: "Trailer · TRL 222 GP". "Not recorded" when no vehicle was
