@@ -53,7 +53,7 @@ describe('FleetTiles', () => {
     renderTiles(makeTiles())
 
     expect(tileLink('Live trips')).toHaveAttribute('href', '/')
-    expect(tileLink('Critical waiting')).toHaveAttribute('href', '/exceptions')
+    expect(tileLink('Critical Exceptions Waiting')).toHaveAttribute('href', '/exceptions')
     expect(tileLink('Parcels complete')).toHaveAttribute('href', '/analytics?tab=problems')
     expect(tileLink('Receipts owed')).toHaveAttribute('href', '/analytics?tab=evidence')
     expect(tileLink('Unused vehicles')).toHaveAttribute('href', '/fleet/vehicles')
@@ -64,7 +64,7 @@ describe('FleetTiles', () => {
   it('marks critical problems waiting with an icon and a label, not colour alone', () => {
     renderTiles(makeTiles({ critical_waiting: { count: 4, oldest_created_at: '2026-09-14T10:00:00Z' } }))
 
-    const tile = tileLink('Critical waiting')
+    const tile = tileLink('Critical Exceptions Waiting')
     expect(within(tile).getByText('4')).toBeInTheDocument()
     expect(within(tile).getByText('Needs attention')).toBeInTheDocument()
     expect(within(tile).getByText('Oldest waiting 2 d')).toBeInTheDocument()
@@ -73,7 +73,7 @@ describe('FleetTiles', () => {
   it('has no warning when nothing is waiting', () => {
     renderTiles(makeTiles())
 
-    expect(within(tileLink('Critical waiting')).queryByText('Needs attention')).toBeNull()
+    expect(within(tileLink('Critical Exceptions Waiting')).queryByText('Needs attention')).toBeNull()
     expect(screen.getByText('Nothing waiting for review')).toBeInTheDocument()
   })
 
