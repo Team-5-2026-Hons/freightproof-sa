@@ -1,139 +1,164 @@
 'use client'
 
-import { useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 
-import { DriverPanel } from '@/components/analytics/DriverPanel'
-import { FacilityPanel } from '@/components/analytics/FacilityPanel'
-import { LanePanel } from '@/components/analytics/LanePanel'
-import { VehiclePanel } from '@/components/analytics/VehiclePanel'
-import { ANALYTICS_COPY } from '@/components/analytics/copy'
-import { MonthRangePicker } from '@/components/ui/MonthRangePicker'
-import { SecHead } from '@/components/ui/SecHead'
+import { FleetTiles } from '@/components/analytics/fleet/FleetTiles'
+import { ControlRow, type TabControls } from '@/components/analytics/fleet/controls/ControlRow'
+import { FLEET_COPY } from '@/components/analytics/fleet/copy'
+import {
+  TAB_PARAM,
+  analyticsReturnHref,
+  controlsFromSearch,
+  hasReturnedControls,
+} from '@/components/analytics/fleet/navigation'
+import { ActivityTab } from '@/components/analytics/fleet/tabs/ActivityTab'
+import { EvidenceTab } from '@/components/analytics/fleet/tabs/EvidenceTab'
+import { OnTimeTab } from '@/components/analytics/fleet/tabs/OnTimeTab'
+import { ProblemsTab } from '@/components/analytics/fleet/tabs/ProblemsTab'
+import { ReviewDeskTab } from '@/components/analytics/fleet/tabs/ReviewDeskTab'
+import { RoutesTab } from '@/components/analytics/fleet/tabs/RoutesTab'
+import { Spinner } from '@/components/ui/Spinner'
 import { Tabs, type Tab } from '@/components/ui/Tabs'
 import { TopBar } from '@/components/ui/TopBar'
-import { defaultMonthRange } from '@/lib/format/month'
 import {
-  useDriverAnalytics,
-  useFacilityAnalytics,
-  useLaneAnalytics,
-  useVehicleAnalytics,
-  useVehicleStreaks,
-} from '@/lib/hooks/useAnalytics'
-import type { MonthRange } from '@/lib/types/month-range'
+  GENERAL_PRESETS,
+  periodForGrain,
+  resolveTabQuery,
+  todaySast,
+  type PeriodSelection,
+} from '@/lib/format/period'
+import { useFleetTiles } from '@/lib/hooks/useFleetAnalytics'
 
-// FP-156 sequencing (Ciaran's comment on the ticket): facility first — non-personal, and
-// the control that stops driver numbers being read naively — and driver last.
+// Fleet-wide patterns and trends (fleet analytics spec). Per-entity numbers live on each
+// vehicle, driver and precinct detail page, so this page answers "how is the whole
+// operation doing": headline tiles, then one tab per section (layout b, spec D2).
 const TABS = [
-  { id: 'facility', label: 'Facility' },
-  { id: 'vehicle', label: 'Vehicle' },
-  { id: 'lane', label: 'Lane' },
-  { id: 'driver', label: 'Driver' },
+  { id: 'activity', label: 'Activity' },
+  { id: 'on-time', label: 'On time' },
+  { id: 'problems', label: 'Problems' },
+  { id: 'review', label: 'Review desk' },
+  { id: 'evidence', label: 'Evidence' },
+  { id: 'routes', label: 'Routes & sites' },
 ] as const satisfies readonly Tab[]
 
 type TabId = (typeof TABS)[number]['id']
 
-const SECTION_TITLES: Record<TabId, string> = {
-  facility: 'Pulsit corroboration by precinct',
-  vehicle: 'Vehicles',
-  lane: 'Lanes',
-  driver: 'Driver trends',
+const DEFAULT_TAB: TabId = 'activity'
+const PANEL_ID = 'fleet-analytics-panel'
+
+// Routes & sites shows distributions over the whole period, never a time axis (spec D4).
+const TABS_WITHOUT_GRAIN: readonly TabId[] = ['routes']
+
+const DEFAULT_CONTROLS: TabControls = { grain: 'week', period: { preset: 'last_12_weeks' } }
+
+const INITIAL_CONTROLS: Record<TabId, TabControls> = {
+  activity: DEFAULT_CONTROLS,
+  'on-time': DEFAULT_CONTROLS,
+  problems: DEFAULT_CONTROLS,
+  review: DEFAULT_CONTROLS,
+  evidence: DEFAULT_CONTROLS,
+  routes: DEFAULT_CONTROLS,
 }
 
-const PANEL_ID = 'analytics-panel'
+// Busy patterns need lots of history to mean anything, so they default to All time (spec D5).
+const DEFAULT_PATTERN_PERIOD: PeriodSelection = { preset: 'all_time' }
 
-function isTabId(id: string): id is TabId {
+function isTabId(id: string | null): id is TabId {
   return TABS.some((tab) => tab.id === id)
 }
 
-interface GrainTabProps {
-  range: MonthRange
-}
-
-// One small connector per tab: the panels stay presentational (data as props), and only
-// the tab on screen fetches, rather than all five requests on every visit.
-function FacilityTab({ range }: GrainTabProps) {
-  const facilities = useFacilityAnalytics(range)
-  return (
-    <FacilityPanel
-      rows={facilities.rows} isLoading={facilities.isLoading}
-      error={facilities.error} onRetry={facilities.refetch}
-    />
-  )
-}
-
-function VehicleTab({ range }: GrainTabProps) {
-  const vehicles = useVehicleAnalytics(range)
-  const streaks = useVehicleStreaks()
-
-  // Retry only what failed, so a good response is not thrown away and re-requested.
-  function retry(): void {
-    if (vehicles.error) vehicles.refetch()
-    if (streaks.error) streaks.refetch()
+/** Every tab's controls, with the tab the dispatcher came back to set as they left it (D25).
+ *  A period the tab can't offer (a View by preset on Routes & sites, or one that doesn't suit
+ *  the View by) falls back to what the tab would have chosen itself. */
+function initialControls(tab: TabId, search: URLSearchParams): Record<TabId, TabControls> {
+  const returned = controlsFromSearch(search)
+  if (returned === null) return INITIAL_CONTROLS
+  const { period } = returned
+  let fitted: TabControls
+  if (!TABS_WITHOUT_GRAIN.includes(tab)) {
+    fitted = { ...returned, period: periodForGrain(period, returned.grain) }
+  } else if (period.preset === 'custom' || GENERAL_PRESETS.includes(period.preset)) {
+    fitted = returned
+  } else {
+    fitted = DEFAULT_CONTROLS
   }
-
-  return (
-    <VehiclePanel
-      vehicles={vehicles.rows} streaks={streaks.rows}
-      isLoading={vehicles.isLoading || streaks.isLoading}
-      error={vehicles.error ?? streaks.error} onRetry={retry}
-    />
-  )
-}
-
-function LaneTab({ range }: GrainTabProps) {
-  const lanes = useLaneAnalytics(range)
-  return (
-    <LanePanel
-      rows={lanes.rows} isLoading={lanes.isLoading} error={lanes.error} onRetry={lanes.refetch}
-    />
-  )
-}
-
-function DriverTab({ range }: GrainTabProps) {
-  const drivers = useDriverAnalytics(range)
-  return (
-    <DriverPanel
-      rows={drivers.rows} isLoading={drivers.isLoading} error={drivers.error} onRetry={drivers.refetch}
-    />
-  )
+  return { ...INITIAL_CONTROLS, [tab]: fitted }
 }
 
 export default function AnalyticsPage() {
-  const [range, setRange] = useState<MonthRange>(() => defaultMonthRange())
-  const [active, setActive] = useState<TabId>('facility')
+  // useSearchParams needs a Suspense boundary, or `next build` refuses to prerender the route.
+  return (
+    <Suspense fallback={<div className="flex flex-1 items-center justify-center"><Spinner size="lg" /></div>}>
+      <FleetAnalytics />
+    </Suspense>
+  )
+}
+
+function FleetAnalytics() {
+  const router = useRouter()
+  const pathname = usePathname()
+  const search = useSearchParams()
+  const requested = search.get(TAB_PARAM)
+  // The tab lives in the URL so a tile can deep-link to one (e.g. Receipts owed -> Evidence).
+  const active: TabId = isTabId(requested) ? requested : DEFAULT_TAB
+
+  const tiles = useFleetTiles()
+  const [controls, setControls] = useState<Record<TabId, TabControls>>(() => initialControls(active, search))
+  const [patternPeriod, setPatternPeriod] = useState<PeriodSelection>(DEFAULT_PATTERN_PERIOD)
+  const today = todaySast()
+  const allTimeStart = tiles.data?.all_time_start ?? null
+  const activeControls = controls[active]
+  const query = resolveTabQuery(activeControls.period, activeControls.grain, today, allTimeStart)
+
+  // Once the returned-to choices are in state, tidy the address back to just the tab, so a
+  // later refresh follows what's on screen rather than what the dispatcher came back with.
+  useEffect(() => {
+    if (hasReturnedControls(search)) router.replace(`${pathname}?${TAB_PARAM}=${active}`, { scroll: false })
+  }, [search, router, pathname, active])
+
+  function selectTab(id: string): void {
+    if (!isTabId(id)) return
+    // replace, not push: flicking between tabs shouldn't fill the Back button's history.
+    router.replace(`${pathname}?${TAB_PARAM}=${id}`, { scroll: false })
+  }
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <TopBar title="Analytics" />
 
-      <div className="flex flex-wrap items-end justify-between gap-4 px-6 py-3 shrink-0">
-        <MonthRangePicker value={range} onChange={setRange} />
-        <p className="max-w-md text-[12px] text-on-surf-v">{ANALYTICS_COPY.scopeNote}</p>
-      </div>
+      <div className="flex-1 min-h-0 overflow-auto">
+        <div className="flex flex-col gap-4 px-6 py-4">
+          <FleetTiles data={tiles.data} isLoading={tiles.isLoading} error={tiles.error} onRetry={tiles.refetch} />
 
-      <div className="px-6 pb-3 shrink-0">
-        <Tabs
-          tabs={TABS}
-          active={active}
-          onChange={(id) => { if (isTabId(id)) setActive(id) }}
-          panelId={PANEL_ID}
-          ariaLabel="Analytics view"
-        />
-      </div>
+          <Tabs tabs={TABS} active={active} onChange={selectTab} panelId={PANEL_ID} ariaLabel="Analytics sections" />
 
-      <div
-        id={PANEL_ID}
-        role="tabpanel"
-        aria-labelledby={`tab-${active}`}
-        tabIndex={0}
-        className="flex-1 min-h-0 overflow-auto mx-6 mb-6 bg-surf-lowest rounded-lg shadow-level-3 flex flex-col"
-      >
-        <SecHead title={SECTION_TITLES[active]} />
-        <div className="p-4">
-          {active === 'facility' && <FacilityTab range={range} />}
-          {active === 'vehicle' && <VehicleTab range={range} />}
-          {active === 'lane' && <LaneTab range={range} />}
-          {active === 'driver' && <DriverTab range={range} />}
+          <div id={PANEL_ID} role="tabpanel" aria-labelledby={`tab-${active}`} tabIndex={0} className="flex flex-col gap-4 focus-visible:outline-none">
+            <ControlRow
+              controls={activeControls}
+              query={query}
+              onChange={(next) => setControls((current) => ({ ...current, [active]: next }))}
+              showGrain={!TABS_WITHOUT_GRAIN.includes(active)}
+              today={today}
+              allTimeStart={allTimeStart}
+            />
+            <p className="text-[12px] text-on-surf-v">{FLEET_COPY.scopeNote}</p>
+            {/* Only the open tab is mounted, so only its requests run (spec D2). */}
+            {active === 'activity' && (
+              <ActivityTab
+                query={query}
+                allTimeStart={allTimeStart}
+                today={today}
+                patternPeriod={patternPeriod}
+                onPatternPeriodChange={setPatternPeriod}
+              />
+            )}
+            {active === 'on-time' && <OnTimeTab query={query} allTimeStart={allTimeStart} today={today} />}
+            {active === 'problems' && <ProblemsTab query={query} allTimeStart={allTimeStart} today={today} />}
+            {active === 'review' && <ReviewDeskTab query={query} allTimeStart={allTimeStart} today={today} />}
+            {active === 'evidence' && <EvidenceTab query={query} allTimeStart={allTimeStart} today={today} />}
+            {active === 'routes' && <RoutesTab query={query} returnTo={analyticsReturnHref(active, activeControls)} />}
+          </div>
         </div>
       </div>
     </div>

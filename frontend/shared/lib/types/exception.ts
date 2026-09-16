@@ -43,6 +43,10 @@ export type ExceptionType =
   | 'dispatcher_note'
   | 'escalation'
   | 'trip_hold'
+  // Receiver identity check at delivery: the ID was checked and didn't match (a theft sign),
+  // or no check completed (a gap, like seal_unverified). Mirrors the backend enum.
+  | 'receiver_id_mismatch'
+  | 'receiver_id_unverified'
 
 export type ExceptionSource = 'system' | 'driver' | 'dispatcher'
 

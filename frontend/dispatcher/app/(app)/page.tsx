@@ -4,7 +4,6 @@ import { useState, useMemo, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { AlertCircle } from 'lucide-react'
 import { TopBar }         from '@/components/ui/TopBar'
-import { StatCard }       from '@/components/ui/StatCard'
 import { SecHead }        from '@/components/ui/SecHead'
 import { Button }         from '@/components/ui/Button'
 import { Spinner }        from '@/components/ui/Spinner'
@@ -125,26 +124,6 @@ export default function ActiveTripsPage() {
     [allFetchedTrips],
   )
 
-  const closedTrips = useMemo(
-    () => allFetchedTrips.filter(t => t.status === 'closed'),
-    [allFetchedTrips],
-  )
-
-  const todayStr = new Date().toDateString()
-  const completedCount = useMemo(
-    () => closedTrips.filter(t => new Date(t.updated_at).toDateString() === todayStr).length,
-    [closedTrips, todayStr],
-  )
-
-  const onTimePercent = useMemo(() => {
-    const withArrival = allTrips.filter(t => t.actual_arrival_at && t.planned_arrival_at)
-    if (withArrival.length === 0) return 100
-    const onTime = withArrival.filter(
-      t => new Date(t.actual_arrival_at!) <= new Date(t.planned_arrival_at!),
-    )
-    return Math.round((onTime.length / withArrival.length) * 100)
-  }, [allTrips])
-
   const filteredTrips = useMemo(() => {
     if (!search.trim()) return allTrips
     const term = search.toLowerCase()
@@ -199,12 +178,7 @@ export default function ActiveTripsPage() {
         </Button>
       </TopBar>
 
-      {/* Stat strip — shows placeholders while trips are loading */}
-      <div className="flex gap-3 px-6 py-4 bg-surf-low shrink-0">
-        <StatCard value={String(allTrips.length)}       label="Active trips"      loading={tripsLoading} />
-        <StatCard value={String(completedCount)}         label="Completed today"   loading={tripsLoading} />
-        <StatCard value={`${onTimePercent}%`}            label="On-time rate (30d)" success={onTimePercent >= 90} warn={onTimePercent < 70} loading={tripsLoading} />
-      </div>
+      {/* No stat strip: fleet figures live on the Analytics page (fleet analytics spec D15). */}
 
       {/* Search */}
       <div className="px-6 py-3 shrink-0">
