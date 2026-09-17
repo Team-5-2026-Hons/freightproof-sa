@@ -42,7 +42,7 @@ import type { DriverPosition } from '@/lib/types/location'
 import type { LocationWarningAcknowledgement } from '@/lib/types/location'
 import type { ActionLocationAssessment } from '@shared/lib/types/action-location'
 import type { TripException } from '@shared/lib/types/exception'
-import { LocationCheckNotice } from '@/components/phase/LocationCheckNotice'
+import { LocationCheckModal } from '@/components/phase/LocationCheckModal'
 
 // How often the map re-reads the phone's position while this screen is open. A truck at
 // 100 km/h covers ~400 m in this window, which at street zoom is about a screen height —
@@ -187,6 +187,7 @@ export default function InTransitPageClient() {
         if (assessment !== null && assessment !== undefined && (
           (assessment.proximity === 'separated' && assessment.separation_metres !== null)
           || assessment.truck_in_precinct === false
+          || assessment.driver_in_precinct === false
         )) {
           notify({
             kind: 'error',
@@ -330,9 +331,16 @@ export default function InTransitPageClient() {
       const requiresAcknowledgement =
         (assessment.proximity === 'separated' && assessment.separation_metres !== null)
         || assessment.truck_in_precinct === false
+        || assessment.driver_in_precinct === false
       if (requiresAcknowledgement || assessment.proximity === 'unverified') {
         setArrivalAssessment(assessment)
       } else {
+        // Cleared before hand-off, not left for the next handleArrivalSwipe() call —
+        // see PhaseStepPageClient's identical reset for why a stale arrivalCapturedAt
+        // would otherwise reopen LocationCheckModal against a `null` assessment one
+        // render after a clean pass.
+        setArrivalCapturedAt(null)
+        setArrivalPosition(null)
         submitArrival(position, coords.capturedAt, null)
       }
     } catch (err) {
@@ -408,20 +416,22 @@ export default function InTransitPageClient() {
             Swipe, not a tap: this is the gesture that opens the truck and starts evidence
             capture, and a single accidental tap must never be enough to trigger it. */}
         <div className="flex justify-center">
-          {arrivalPreviewLoading || arrivalCapturedAt !== null ? (
-            <div className="w-full">
-              {arrivalOffline && <p className="mb-2 text-sm text-surface-on-variant">Location not verified while offline.</p>}
-              <LocationCheckNotice
-                assessment={arrivalAssessment}
-                loading={arrivalPreviewLoading}
-                error={arrivalPreviewError}
-                onRetry={() => { void handleArrivalSwipe() }}
-                onContinue={continueArrivalAfterLocationCheck}
-              />
-            </div>
-          ) : (
+          {/* Swiped away entirely (not merely covered by the modal overlay) while a check
+              is in flight or awaiting a decision — a focus-trapped Dialog keeps keyboard
+              focus off it either way, but an unmounted control cannot be reached at all,
+              which is the stronger guarantee against a second swipe mid-check. */}
+          {!(arrivalPreviewLoading || arrivalCapturedAt !== null) && (
             <SwipeToConfirm label="Arrive at destination" onConfirm={() => { void handleArrivalSwipe() }} />
           )}
+          <LocationCheckModal
+            open={arrivalPreviewLoading || arrivalCapturedAt !== null}
+            assessment={arrivalAssessment}
+            loading={arrivalPreviewLoading}
+            error={arrivalPreviewError}
+            offline={arrivalOffline}
+            onRetry={() => { void handleArrivalSwipe() }}
+            onContinue={continueArrivalAfterLocationCheck}
+          />
         </div>
 
         <div className="mt-3 grid grid-cols-2 gap-3">

@@ -180,8 +180,21 @@ async def log_checkpoint(
     checkpoint.action_location_assessment = assessment.model_dump(mode="json")
     await action_location_service.record_separation_finding(
         db, trip=trip, phase_event_id=None, checkpoint_id=checkpoint.id,
-        assessment=assessment,
+        assessment=assessment, driver_reason=None,
     )
+    # DRIVER_LOCATION_MISMATCH is phase-scoped only (see its own docstring): a bare
+    # checkpoint capture never sets driver_in_precinct, so this only ever fires when
+    # the checkpoint carries a real phase_event_id — and even then only if that
+    # phase happens to be stop-anchored and not IN_TRANSIT, which no current
+    # checkpoint path produces. Called anyway for symmetry with the finding above
+    # and so it starts working the day that changes, with no second wiring pass.
+    # No location_warning_reason on DriverCheckpointCreateBody, so driver_reason
+    # is always None here.
+    if phase_event is not None:
+        await action_location_service.record_driver_location_finding(
+            db, trip=trip, phase_event_id=phase_event.id, assessment=assessment,
+            driver_reason=None,
+        )
 
     await db.flush()
     await db.refresh(checkpoint)

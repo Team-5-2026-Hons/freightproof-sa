@@ -20,6 +20,10 @@ describe('fmtExceptionType', () => {
     expect(fmtExceptionType('driver_vehicle_separation')).toBe('Driver–vehicle separation')
   })
 
+  it('uses the explicit label for driver location mismatch instead of generic title-casing', () => {
+    expect(fmtExceptionType('driver_location_mismatch')).toBe('Driver outside precinct')
+  })
+
   it('writes the ID abbreviation in capitals', () => {
     expect(fmtExceptionType('receiver_id_mismatch')).toBe('Receiver ID Mismatch')
     expect(fmtExceptionType('receiver_id_unverified')).toBe('Receiver ID Unverified')

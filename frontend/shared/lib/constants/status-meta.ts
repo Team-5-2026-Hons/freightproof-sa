@@ -55,6 +55,7 @@ export const SYSTEM_EXCEPTION_TYPES: ExceptionType[] = [
   'parcel_count_mismatch',
   'gps_mismatch',
   'driver_vehicle_separation',
+  'driver_location_mismatch',
   'route_deviation',
   'vehicle_substitution',
   'driver_substitution',

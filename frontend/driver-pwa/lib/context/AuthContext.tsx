@@ -8,12 +8,27 @@ import { api, ApiError } from '@/lib/api/client'
 import { IS_DEMO_MODE } from '@/lib/constants/env'
 import { useIdleTimeout } from '@/lib/hooks/useIdleTimeout'
 import { clearActivity, recordActivity } from '@shared/lib/session/idle'
+import { clearReturnPath, saveReturnPath } from '@shared/lib/session/return-path'
+import { ROUTES } from '@/lib/constants/routes'
 
 // Demo mode (default) drives auth from a mock OTP flow with a fixture driver.
 // Real mode exchanges a Supabase phone OTP for a session, then fetches the
 // driver's own profile from the backend — the Driver row whose id equals the
 // Supabase auth user's UUID.
 const MOCK_DRIVER: DriverUser = mockDrivers[0]
+
+// Routes a saved return path must never point back into. '/otp' isn't in ROUTES (see
+// app/login/page.tsx, which hardcodes it the same way) — there is nowhere useful to
+// return a driver to mid-OTP-exchange.
+const AUTH_ROUTE_PREFIXES = [ROUTES.login, '/otp']
+
+// One-shot marker consumed by the guarded layout's own redirect effect (see
+// app/(app)/layout.tsx). A manual sign-out below already decided to clear the return
+// path; without this, the layout's effect reacting to the same user -> null transition
+// moments later would immediately re-save the page the driver just deliberately left.
+// sessionStorage, not localStorage: it only needs to outlive this tab's own redirect, not
+// a fresh session. Exported for the layout only.
+export const SUPPRESS_RETURN_SAVE_KEY = 'fp:suppress-return-save'
 
 // Marks an active demo session so a page refresh doesn't log the demo user out
 // mid-walkthrough. sessionStorage (not localStorage) on purpose: closing the
@@ -161,7 +176,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(false)
   }, [fetchProfile])
 
-  const signOut = useCallback(async () => {
+  // The actual exit mechanics, shared by both ways a session ends below. Deliberately
+  // silent on the return path — callers decide that, since a manual sign-out and an idle
+  // expiry want opposite outcomes for it.
+  const performSignOut = useCallback(async () => {
     if (IS_DEMO_MODE) {
       // End the persisted demo session so the next load lands on /login.
       sessionStorage.removeItem(DEMO_SESSION_KEY)
@@ -172,9 +190,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null)
   }, [])
 
+  // Manual sign-out (the profile panel's "Log out"): clears any saved return path — a
+  // driver who deliberately leaves a screen should not be dropped back onto it next time
+  // they sign in.
+  const signOut = useCallback(async () => {
+    await performSignOut()
+    clearReturnPath(window.localStorage)
+    try {
+      sessionStorage.setItem(SUPPRESS_RETURN_SAVE_KEY, '1')
+    } catch {
+      // Worst case the layout's guard saves a path anyway — degraded, not broken.
+    }
+  }, [performSignOut])
+
+  // Idle expiry: the one sign-out path that SHOULD resurrect the driver's screen, since
+  // unlike signOut() above they never chose to leave it. Save first, then run the same
+  // exit mechanics via performSignOut — NOT the public signOut, which would immediately
+  // clear what was just saved.
+  const handleIdleExpiry = useCallback(() => {
+    saveReturnPath(
+      window.localStorage,
+      window.location.pathname + window.location.search,
+      AUTH_ROUTE_PREFIXES,
+    )
+    void performSignOut()
+  }, [performSignOut])
+
   // The inactivity timeout, armed only while signed in. Applies in demo mode too: the
-  // walkthrough should behave like the real app, and signOut already handles both.
-  useIdleTimeout(user !== null, signOut)
+  // walkthrough should behave like the real app, and performSignOut already handles both.
+  useIdleTimeout(user !== null, handleIdleExpiry)
 
   return (
     <AuthContext.Provider value={{ user, isLoading, requestOtp, signIn, signOut }}>

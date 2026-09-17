@@ -1,6 +1,8 @@
 """Assembles ActionLocationAssessment snapshots and raises the distinct
-DRIVER_VEHICLE_SEPARATION finding they can imply (Task 5 of the
-trip-location-timeline-improvements story).
+DRIVER_VEHICLE_SEPARATION and DRIVER_LOCATION_MISMATCH findings they can imply
+(Task 5 of the trip-location-timeline-improvements story; DRIVER_LOCATION_MISMATCH
+added to close a gap DRIVER_VEHICLE_SEPARATION alone leaves open — see
+record_driver_location_finding's own docstring).
 
 Two independent modules each answer one narrow question, deliberately kept apart
 (see their own docstrings): `proximity_service.evaluate_proximity` answers "how far
@@ -19,6 +21,16 @@ SEPARATION, both, or neither — they measure different pairs of things and neit
 implies the other. A truck sitting correctly in its precinct while the driver's
 phone is genuinely elsewhere (left in the cab, handed to a co-driver) is exactly
 the case DRIVER_VEHICLE_SEPARATION exists to catch and GPS_MISMATCH cannot.
+
+A FOURTH, equally independent question — "does the DRIVER'S OWN PHONE agree with
+the PRECINCT?" — is DRIVER_LOCATION_MISMATCH (record_driver_location_finding). It
+exists because DRIVER_VEHICLE_SEPARATION only ever fires once a real phone-to-
+tracker DISTANCE was measured (`assessment.proximity == "separated"`); when the
+truck's tracker fix is stale or simply unavailable, that comparison never runs at
+all, and a driver whose phone is measurably 50km outside the stop's precinct
+produces no finding whatsoever. DRIVER_LOCATION_MISMATCH reads `assessment.
+driver_in_precinct` directly instead, so it fires independently of whether a
+tracker fix existed to compare against.
 
 Scope fence for reviewers: driver-raised exception reports (exception_service.py,
 DriverExceptionCreateBody) are NOT wired to this module by this story, even though
@@ -73,6 +85,18 @@ logger = logging.getLogger(__name__)
 _PHASE_SEPARATION_INDEX = "uq_exceptions_phase_separation"
 _CHECKPOINT_SEPARATION_INDEX = "uq_exceptions_checkpoint_separation"
 
+# Name of the DRIVER_LOCATION_MISMATCH partial unique index (migration
+# tim_driver_location_mismatch). Phase-scoped only — driver_in_precinct is never
+# set for a checkpoint's own assessment (build_checkpoint_assessment/build_capture_
+# assessment always leave it None), so there is no checkpoint-scoped twin to name.
+_PHASE_DRIVER_LOCATION_INDEX = "uq_exceptions_phase_driver_location"
+
+# A dispatcher-facing description must stay a short, scannable fact, not a wall of
+# driver-submitted text — the payload already caps location_warning_reason at 1000
+# chars (schemas/phases.py) before it ever reaches this module; this is a second,
+# tighter guard on what actually renders inline in the exception feed.
+_MAX_DRIVER_REASON_CHARS_IN_DESCRIPTION = 300
+
 # Mirrors phase_service._format_separation exactly, duplicated rather than imported:
 # phase_service imports THIS module (to call build_phase_assessment/
 # record_separation_finding from _finish_phase), so importing back from it would be
@@ -96,6 +120,22 @@ def _format_metres(metres: float) -> str:
     if metres < _SEPARATION_KM_THRESHOLD_METRES:
         return f"{round(metres)} m"
     return f"{metres / _SEPARATION_KM_THRESHOLD_METRES:.1f} km"
+
+
+def _describe_driver_reason(driver_reason: Optional[str]) -> str:
+    """A trailing description clause attributing the driver's own words, or "" when
+    none was given. Clearly attributed ("Driver's reason: ...") so a dispatcher
+    reading the exception can never mistake the driver's own explanation for a
+    second measured fact. Truncated to _MAX_DRIVER_REASON_CHARS_IN_DESCRIPTION —
+    see that constant's own comment for why."""
+    if driver_reason is None:
+        return ""
+    reason = driver_reason.strip()
+    if not reason:
+        return ""
+    if len(reason) > _MAX_DRIVER_REASON_CHARS_IN_DESCRIPTION:
+        reason = reason[:_MAX_DRIVER_REASON_CHARS_IN_DESCRIPTION].rstrip() + "…"
+    return f' Driver\'s reason: "{reason}".'
 
 
 async def _load_precinct_for_stop(db: AsyncSession, *, trip_stop_id: uuid.UUID) -> Optional[Precinct]:
@@ -402,9 +442,16 @@ async def record_separation_finding(
     phase_event_id: Optional[uuid.UUID],
     checkpoint_id: Optional[uuid.UUID],
     assessment: ActionLocationAssessment,
+    driver_reason: Optional[str] = None,
 ) -> None:
     """Raise ExceptionType.DRIVER_VEHICLE_SEPARATION when `assessment` says the
     driver's own phone and the vehicle tracker disagreed beyond policy.
+
+    `driver_reason` (Task: driver-location-timeline-gap) is the driver's own typed
+    explanation for this handshake (PhaseEvent.location_warning_reason on a phase;
+    always None from a checkpoint, which has no such field) — appended to the
+    description, clearly attributed, so a dispatcher reading the finding sees it
+    alongside the measured fact rather than having to cross-reference the phase row.
 
     Exactly one of `phase_event_id`/`checkpoint_id` is the source event this finding
     is scoped to — enforced with ValueError, a caller contract violation rather than
@@ -462,6 +509,7 @@ async def record_separation_finding(
         description = (
             f"Driver phone and vehicle tracker were recorded {_format_metres(assessment.separation_metres)} "
             f"apart at this handshake; limit {_format_metres(assessment.max_separation_metres)}."
+            f"{_describe_driver_reason(driver_reason)}"
         )
 
         finding = TripException(
@@ -503,6 +551,135 @@ async def record_separation_finding(
         # codebase: a finding that tells no one leaves the dispatcher's screen out of
         # step with the record. Inside the try: a failure here must not undo a
         # handshake the driver already physically completed.
+        enqueue_event(
+            db, trip.operator_organization_id,
+            TripEvent(
+                id=trip.id, kind=RealtimeKind.EXCEPTION_RAISED,
+                severity=event_severity(ExceptionSeverity.WARNING),
+            ),
+        )
+
+    except Exception:
+        # Only the named partial-index race is an expected recovery path (handled by
+        # the savepoint above). Any other DB or queue failure must remain observable to
+        # the caller; logging it and returning would falsely report persisted evidence.
+        raise
+
+
+async def _find_existing_driver_location_mismatch(
+    db: AsyncSession, *, phase_event_id: uuid.UUID,
+) -> Optional[uuid.UUID]:
+    result = await db.execute(
+        select(TripException.id).where(
+            TripException.exception_type == ExceptionType.DRIVER_LOCATION_MISMATCH,
+            TripException.phase_event_id == phase_event_id,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def record_driver_location_finding(
+    db: AsyncSession,
+    *,
+    trip: Trip,
+    phase_event_id: uuid.UUID,
+    assessment: ActionLocationAssessment,
+    driver_reason: Optional[str] = None,
+) -> None:
+    """Raise ExceptionType.DRIVER_LOCATION_MISMATCH when `assessment` says the
+    driver's own phone was measurably OUTSIDE the stop's precinct.
+
+    This is the third question build_phase_assessment answers
+    (`driver_in_precinct`), independent of both DRIVER_VEHICLE_SEPARATION (phone vs
+    tracker distance) and GPS_MISMATCH (tracker vs precinct) — see this module's own
+    docstring for why none of the other two can catch what this one does. A single
+    handshake can trip any combination of the three, or none.
+
+    Phase-scoped only, deliberately with no checkpoint_id parameter to mirror:
+    driver_in_precinct is only ever set to True/False for a phase handshake anchored
+    to a stop (build_phase_assessment; never IN_TRANSIT, never a bare checkpoint
+    capture — build_checkpoint_assessment/build_capture_assessment always leave it
+    None). Still safe, and intentionally called, from checkpoint_service.log_
+    checkpoint when a checkpoint carries a real phase_event_id: that call simply
+    no-ops there today via the guard below, and stays ready for the day a checkpoint
+    resolves to a stop-anchored, non-IN_TRANSIT phase.
+
+    A no-op unless `assessment.driver_in_precinct is False`. `None` (not
+    assessable — no resolvable precinct, no driver phone fix, or a phase with no
+    fence to check at all) must never raise: the absence of a check is not evidence
+    of a violation. `True` is a clean pass and is likewise silent.
+
+    `driver_reason` mirrors record_separation_finding's own parameter exactly — see
+    its docstring.
+
+    Same controller decision as record_separation_finding (SYSTEM source, WARNING
+    severity, review_status forced to NEEDS_REVIEW rather than left to exception_
+    service.initial_review_status), and the identical two-layer idempotency:
+    an existence check up front for the common replay, and a SAVEPOINT insert
+    around the partial unique index uq_exceptions_phase_driver_location (migration
+    tim_driver_location_mismatch) to recover the loser of a genuine race. Only that
+    named index violation is recovered; any other database failure propagates.
+    """
+    if assessment.driver_in_precinct is not False:
+        return
+
+    context = f"phase_event_id={phase_event_id}"
+
+    try:
+        existing = await _find_existing_driver_location_mismatch(db, phase_event_id=phase_event_id)
+        if existing is not None:
+            logger.info(
+                "DRIVER_LOCATION_MISMATCH already recorded for %s — no duplicate written", context,
+            )
+            return
+
+        # radius/tolerance are never None here: driver_in_precinct is only ever set
+        # to True/False (never left None) once build_phase_assessment resolved a
+        # precinct with usable coordinates and called evaluate_geofence — the same
+        # branch that populates these two fields.
+        radius_metres = assessment.precinct_radius_metres or 0.0
+        tolerance_metres = assessment.precinct_tolerance_metres or 0.0
+        description = (
+            "Driver's phone was recorded outside the expected precinct for this stop "
+            f"(geofence radius {_format_metres(radius_metres)}, tolerance {_format_metres(tolerance_metres)})."
+            f"{_describe_driver_reason(driver_reason)}"
+        )
+
+        finding = TripException(
+            trip_id=trip.id,
+            phase_event_id=phase_event_id,
+            checkpoint_id=None,
+            trip_stop_id=assessment.expected_trip_stop_id,
+            exception_type=ExceptionType.DRIVER_LOCATION_MISMATCH,
+            source=ExceptionSource.SYSTEM,
+            severity=ExceptionSeverity.WARNING,
+            review_status=ExceptionReviewStatus.NEEDS_REVIEW,
+            description=description,
+        )
+
+        try:
+            async with db.begin_nested():
+                db.add(finding)
+                await db.flush()
+        except IntegrityError as integrity_exc:
+            if (
+                not is_unique_violation(integrity_exc)
+                or violated_constraint(integrity_exc) != _PHASE_DRIVER_LOCATION_INDEX
+            ):
+                # Not the race this savepoint exists to tolerate — a real integrity
+                # fault must be visible, not folded into "someone else already wrote
+                # it".
+                raise
+            logger.info(
+                "DRIVER_LOCATION_MISMATCH insert race for %s — another request already wrote it", context,
+            )
+            return
+
+        logger.info("Recorded DRIVER_LOCATION_MISMATCH for %s", context)
+
+        # Same FP-147 invariant as record_separation_finding: inside the try, so a
+        # queue failure here must not undo a handshake the driver already physically
+        # completed.
         enqueue_event(
             db, trip.operator_organization_id,
             TripEvent(

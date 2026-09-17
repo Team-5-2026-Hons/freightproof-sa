@@ -11,8 +11,10 @@ import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { Precinct } from '@shared/lib/types/precinct'
 
 // The only exception types whose evidence IS a pair of positions. Every other type has
-// nothing a map could truthfully draw.
-const MAPPABLE_TYPES: readonly ExceptionType[] = ['gps_mismatch', 'driver_vehicle_separation']
+// nothing a map could truthfully draw. driver_location_mismatch carries the same
+// action_location_assessment shape (driver fix + precinct boundary) as the other two,
+// so the same evidence lookup below renders it just as truthfully.
+const MAPPABLE_TYPES: readonly ExceptionType[] = ['gps_mismatch', 'driver_vehicle_separation', 'driver_location_mismatch']
 
 interface Props {
   exception: TripException

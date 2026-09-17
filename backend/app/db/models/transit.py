@@ -134,6 +134,22 @@ class TripException(Base):
                 "exception_type = 'driver_vehicle_separation' AND checkpoint_id IS NOT NULL"
             ),
         ),
+        # driver-location-timeline-gap: one DRIVER_LOCATION_MISMATCH finding per
+        # source phase event — the idempotency key orchestration/action_location_
+        # service.record_driver_location_finding relies on, same pattern as the two
+        # DRIVER_VEHICLE_SEPARATION indexes above. Phase-scoped only, with no
+        # checkpoint-scoped twin: driver_in_precinct is never set for a bare
+        # checkpoint capture (see that function's own docstring), so no checkpoint
+        # index is needed.
+        Index(
+            "uq_exceptions_phase_driver_location",
+            "phase_event_id",
+            "exception_type",
+            unique=True,
+            postgresql_where=text(
+                "exception_type = 'driver_location_mismatch' AND phase_event_id IS NOT NULL"
+            ),
+        ),
         # Declared so autogenerate stops proposing to drop indexes that already exist
         # in the deployed database (created by an earlier migration, never modelled here).
         Index("ix_exceptions_severity", "severity"),
