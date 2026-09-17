@@ -43,7 +43,7 @@ from app.db.models.evidence import EvidenceArtifact
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.phases import PhaseEvent, TrailerGpsSnapshot
-from app.db.models.transit import Checkpoint
+from app.db.models.transit import Checkpoint, TripException
 from app.db.models.trips import Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
@@ -965,3 +965,98 @@ async def test_a_pulsit_outage_leaves_the_checkpoint_successful(
     checkpoint = await _load_checkpoint(db_session, trip)
     assert checkpoint.horse_gps_lat is None
     assert checkpoint.horse_gps_lng is None
+
+
+# ── driver-location-timeline-gap: DRIVER_LOCATION_MISMATCH ──────────────────────
+#
+# The gap DRIVER_VEHICLE_SEPARATION alone leaves open: with no tracker fix to
+# compare against, evaluate_proximity can only return "unverified" (missing_
+# tracker), so DRIVER_VEHICLE_SEPARATION never fires — yet the driver's own phone
+# is measurably outside the stop's precinct the whole time. These tests drive a
+# real completion request and assert the DB state after the mutation, not a mock
+# call, per the story's own contract for FP-143/FP-145's sibling tests above.
+
+
+async def _mismatch_rows(db_session, trip: Trip) -> list:
+    result = await db_session.execute(
+        select(TripException).where(
+            TripException.trip_id == trip.id,
+            TripException.exception_type == "driver_location_mismatch",
+        )
+    )
+    return list(result.scalars().all())
+
+
+async def test_driver_outside_precinct_with_no_tracker_fix_raises_driver_location_mismatch(
+    client: AsyncClient, db_session, corroboration_trip, pulsit_store,
+):
+    """The exact hole this story closes: the truck's tracker fix is stale/unavailable
+    (nothing staged for the horse device), so DRIVER_VEHICLE_SEPARATION has no
+    distance to measure and stays silent — but the driver's own phone is recorded
+    ~1270 km from the origin precinct, and that alone must still be caught."""
+    trip, driver, _org, _stop = corroboration_trip
+
+    resp = await _complete_activation(
+        client, trip, driver,
+        driver_phone_lat=float(_FAR_AWAY_LAT), driver_phone_lng=float(_FAR_AWAY_LNG),
+        driver_accuracy_metres=5.0,
+        location_warning_reason="Dispatcher told me to wait at the far gate.",
+    )
+
+    assert resp.status_code == 200
+    event = await _load_event(db_session, trip, PhaseType.ACTIVATION)
+    assert event.horse_gps_lat is None  # tracker genuinely had nothing to report
+
+    rows = await _mismatch_rows(db_session, trip)
+    assert len(rows) == 1
+    assert rows[0].source == "system"
+    assert rows[0].severity == "warning"
+    assert rows[0].review_status == "needs_review"
+    assert rows[0].phase_event_id == event.id
+    assert "Driver's reason:" in rows[0].description
+    assert "far gate" in rows[0].description
+
+    # The gap this story closes, proven negatively: no distance was ever measured
+    # (no tracker fix), so DRIVER_VEHICLE_SEPARATION correctly raised nothing.
+    separation_rows = await db_session.execute(
+        select(TripException).where(
+            TripException.trip_id == trip.id,
+            TripException.exception_type == "driver_vehicle_separation",
+        )
+    )
+    assert separation_rows.scalars().all() == []
+
+
+async def test_driver_inside_precinct_raises_no_location_mismatch(
+    client: AsyncClient, db_session, corroboration_trip, pulsit_store,
+):
+    """A clean measured pass must stay silent — the counterpart to the failing case
+    above, proving this isn't firing unconditionally on a missing tracker fix."""
+    trip, driver, _org, _stop = corroboration_trip
+
+    resp = await _complete_activation(client, trip, driver, driver_accuracy_metres=5.0)
+
+    assert resp.status_code == 200
+    assert await _mismatch_rows(db_session, trip) == []
+
+
+async def test_a_replayed_driver_location_mismatch_handshake_does_not_duplicate(
+    client: AsyncClient, db_session, corroboration_trip, pulsit_store,
+):
+    """Same idempotency contract as DRIVER_VEHICLE_SEPARATION's own replay test."""
+    trip, driver, _org, _stop = corroboration_trip
+    replayed_key = f"idem-{uuid.uuid4()}"
+    token = make_token(sub=str(driver.id), role="driver")
+
+    first = await _complete_activation(
+        client, trip, driver, idempotency_key=replayed_key, token=token,
+        driver_phone_lat=float(_FAR_AWAY_LAT), driver_phone_lng=float(_FAR_AWAY_LNG),
+    )
+    second = await _complete_activation(
+        client, trip, driver, idempotency_key=replayed_key, token=token,
+        driver_phone_lat=float(_FAR_AWAY_LAT), driver_phone_lng=float(_FAR_AWAY_LNG),
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert len(await _mismatch_rows(db_session, trip)) == 1

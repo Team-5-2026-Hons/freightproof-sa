@@ -811,6 +811,16 @@ async def _finish_phase(
         event.action_location_assessment = assessment.model_dump(mode="json")
         await action_location_service.record_separation_finding(
             db, trip=trip, phase_event_id=event.id, checkpoint_id=None, assessment=assessment,
+            driver_reason=event.location_warning_reason,
+        )
+        # Closes the gap DRIVER_VEHICLE_SEPARATION alone leaves open (see that
+        # function's own docstring and action_location_service's module docstring):
+        # a phone measurably outside the precinct with a stale/unavailable tracker
+        # fix would otherwise raise nothing at all. Same fail-open block, same
+        # driver-typed reason, same event.
+        await action_location_service.record_driver_location_finding(
+            db, trip=trip, phase_event_id=event.id, assessment=assessment,
+            driver_reason=event.location_warning_reason,
         )
     except Exception:
         logger.exception(

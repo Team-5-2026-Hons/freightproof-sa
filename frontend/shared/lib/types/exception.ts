@@ -12,7 +12,7 @@ import type { ActionLocationAssessment } from './action-location'
 
 export type ExceptionId = string & { readonly __brand: 'ExceptionId' }
 
-// All 19 backend ExceptionType values — see DRIVER_EXCEPTION_TYPES and
+// All 20 backend ExceptionType values — see DRIVER_EXCEPTION_TYPES and
 // SYSTEM_EXCEPTION_TYPES in lib/constants/status-meta.ts for the UI split.
 export type ExceptionType =
   // System-detected (raised automatically by backend validation logic)
@@ -23,6 +23,10 @@ export type ExceptionType =
   | 'parcel_count_mismatch'
   | 'gps_mismatch'
   | 'driver_vehicle_separation'
+  // The driver's own phone recorded outside the precinct expected for this stop —
+  // distinct from gps_mismatch (the vehicle TRACKER disagrees with the precinct) and
+  // driver_vehicle_separation (the phone disagrees with the TRACKER, not the precinct).
+  | 'driver_location_mismatch'
   | 'route_deviation'
   | 'vehicle_substitution'
   | 'driver_substitution'

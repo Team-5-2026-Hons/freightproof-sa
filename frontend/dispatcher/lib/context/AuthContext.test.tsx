@@ -14,6 +14,8 @@ import { api } from '@/lib/api/client'
 import { supabase } from '@/lib/supabase/client'
 import type { DispatcherUser } from '@/lib/types/user'
 import { clearSessionCaches } from '@/lib/cache/sessionCache'
+import { useIdleTimeout } from '@/lib/hooks/useIdleTimeout'
+import { RETURN_PATH_KEY } from '@shared/lib/session/return-path'
 
 vi.mock('@/lib/api/client', () => ({ api: { get: vi.fn() } }))
 vi.mock('@/lib/supabase/client', () => ({
@@ -34,12 +36,18 @@ vi.mock('@/lib/supabase/client', () => ({
 vi.mock('@/lib/hooks/useIdleTimeout', () => ({ useIdleTimeout: vi.fn() }))
 vi.mock('@/lib/cache/sessionCache', () => ({ clearSessionCaches: vi.fn(), registerSessionCache: vi.fn(() => () => {}) }))
 
-const { AuthProvider, ProfileUnavailableError } = await import('./AuthContext')
+const { AuthProvider, ProfileUnavailableError, SUPPRESS_RETURN_SAVE_KEY } = await import('./AuthContext')
 const { useAuth } = await import('@/lib/hooks/useAuth')
 
 const mockedClearCaches = vi.mocked(clearSessionCaches)
 const mockedGet = vi.mocked(api.get)
 const mockedSignIn = vi.mocked(supabase.auth.signInWithPassword)
+const mockedUseIdleTimeout = vi.mocked(useIdleTimeout)
+
+/** The onExpire handler AuthProvider most recently armed the (mocked) idle timer with. */
+function latestIdleExpiryHandler(): (() => void) | undefined {
+  return mockedUseIdleTimeout.mock.calls.at(-1)?.[1]
+}
 
 const PROFILE: DispatcherUser = {
   id: '2c5b8c1e-6f2a-4f4a-9a1b-1f0d0a7c3e11' as DispatcherUser['id'],
@@ -79,6 +87,8 @@ beforeEach(() => {
   )) as unknown as typeof supabase.auth.onAuthStateChange)
   mockedSignIn.mockResolvedValue({ data: { user: null, session: null }, error: null } as never)
   vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: null } } as never)
+  localStorage.clear()
+  sessionStorage.clear()
 })
 
 describe('AuthContext.signIn', () => {
@@ -257,5 +267,49 @@ describe('AuthContext cache scoping', () => {
     await flushDeferrals()
 
     expect(mockedClearCaches).not.toHaveBeenCalled()
+  })
+})
+
+describe('return path around idle expiry vs manual sign-out', () => {
+  beforeEach(() => {
+    // A page a dispatcher could plausibly be idle on — the id itself is irrelevant here.
+    window.history.pushState({}, '', '/trips/detail/9f1c8b2a')
+  })
+
+  it('idle expiry saves the current path, then signs out', async () => {
+    mockedGet.mockResolvedValue(PROFILE)
+    const { result } = renderAuth()
+    await act(async () => { await result.current.signIn({ email: PROFILE.email, password: 'pw' }) })
+
+    const onExpire = latestIdleExpiryHandler()
+    expect(onExpire).toBeInstanceOf(Function)
+
+    act(() => { onExpire?.() })
+    await flushDeferrals()
+
+    expect(localStorage.getItem(RETURN_PATH_KEY)).toBe('/trips/detail/9f1c8b2a')
+    expect(result.current.user).toBeNull()
+  })
+
+  it('manual sign-out clears a previously saved return path instead of setting one', async () => {
+    mockedGet.mockResolvedValue(PROFILE)
+    const { result } = renderAuth()
+    await act(async () => { await result.current.signIn({ email: PROFILE.email, password: 'pw' }) })
+    // Simulate a path left over from an earlier idle expiry this same browser saw.
+    localStorage.setItem(RETURN_PATH_KEY, '/trips/detail/9f1c8b2a')
+
+    await act(async () => { await result.current.signOut() })
+
+    expect(localStorage.getItem(RETURN_PATH_KEY)).toBeNull()
+  })
+
+  it('manual sign-out marks the suppress key so the guarded layout will not re-save it', async () => {
+    mockedGet.mockResolvedValue(PROFILE)
+    const { result } = renderAuth()
+    await act(async () => { await result.current.signIn({ email: PROFILE.email, password: 'pw' }) })
+
+    await act(async () => { await result.current.signOut() })
+
+    expect(sessionStorage.getItem(SUPPRESS_RETURN_SAVE_KEY)).toBe('1')
   })
 })

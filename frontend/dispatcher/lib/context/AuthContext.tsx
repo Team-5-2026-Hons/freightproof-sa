@@ -6,9 +6,22 @@ import { supabase } from '@/lib/supabase/client'
 import { api } from '@/lib/api/client'
 import { useIdleTimeout } from '@/lib/hooks/useIdleTimeout'
 import { clearActivity, recordActivity } from '@shared/lib/session/idle'
+import { clearReturnPath, saveReturnPath } from '@shared/lib/session/return-path'
 import { clearSessionCaches } from '@/lib/cache/sessionCache'
+import { ROUTES } from '@/lib/constants/routes'
 
 export const AuthContext = createContext<AuthState | null>(null)
+
+// Routes a saved return path must never point back into.
+const AUTH_ROUTE_PREFIXES = [ROUTES.login]
+
+// One-shot marker consumed by the guarded layout's own redirect effect (see
+// app/(app)/layout.tsx). A manual sign-out below already decided to clear the return
+// path; without this, the layout's effect reacting to the same user -> null transition
+// moments later would immediately re-save the page the dispatcher just deliberately
+// left. sessionStorage, not localStorage: it only needs to outlive this tab's own
+// redirect, not a fresh session. Exported for the layout only.
+export const SUPPRESS_RETURN_SAVE_KEY = 'fp:suppress-return-save'
 
 // Runs before paint, unlike useEffect: an identity change must not leave the previous
 // dispatcher's records on screen for even one frame. Falls back to useEffect on the
@@ -117,13 +130,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [fetchProfile])
 
-  const signOut = useCallback(async () => {
+  // The actual exit mechanics, shared by both ways a session ends below. Deliberately
+  // silent on the return path — callers decide that, since a manual sign-out and an idle
+  // expiry want opposite outcomes for it.
+  const performSignOut = useCallback(async () => {
     await supabase.auth.signOut()
     // Clear before the state update so another tab's storage listener sees a signed-out
     // machine, not a live timestamp with no session behind it.
     clearActivity(window.localStorage)
     setUser(null)
   }, [])
+
+  // Manual sign-out (Settings > Sign out): clears any saved return path — a dispatcher
+  // who deliberately leaves a screen should not be dropped back onto it next time they
+  // sign in.
+  const signOut = useCallback(async () => {
+    await performSignOut()
+    clearReturnPath(window.localStorage)
+    try {
+      sessionStorage.setItem(SUPPRESS_RETURN_SAVE_KEY, '1')
+    } catch {
+      // Worst case the layout's guard saves a path anyway — degraded, not broken.
+    }
+  }, [performSignOut])
+
+  // Idle expiry: the one sign-out path that SHOULD resurrect the dispatcher's screen,
+  // since unlike signOut() above they never chose to leave it. Save first, then run the
+  // same exit mechanics via performSignOut — NOT the public signOut, which would
+  // immediately clear what was just saved.
+  const handleIdleExpiry = useCallback(() => {
+    saveReturnPath(
+      window.localStorage,
+      window.location.pathname + window.location.search,
+      AUTH_ROUTE_PREFIXES,
+    )
+    void performSignOut()
+  }, [performSignOut])
 
   // Module-scope caches survive a sign-out (no page reload), so clear them on any
   // identity change — not just sign-out, since another tab signing in also replaces the
@@ -136,7 +178,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user?.id])
 
   // Armed only while signed in, so the login page carries no timer.
-  useIdleTimeout(user !== null, signOut)
+  useIdleTimeout(user !== null, handleIdleExpiry)
 
   return (
     <AuthContext.Provider value={{ user, isLoading, signIn, signOut }}>

@@ -416,6 +416,9 @@ describe('InTransitPageClient arrival attestation (Task 5)', () => {
         phaseEventId: IN_TRANSIT_PHASE.phase_event_id,
       }),
     )
+    // A clean pass (the default ARRIVAL_PASS mock) must never add a tap to the happy
+    // path — the location-check popup (LocationCheckModal) is never shown for it.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('marks the row syncing before navigating', async () => {

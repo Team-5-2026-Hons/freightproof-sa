@@ -84,6 +84,18 @@ class ExceptionType(str, enum.Enum):
     # independent questions that can both fire, or either alone, on the same
     # handshake. See orchestration/action_location_service.record_separation_finding.
     DRIVER_VEHICLE_SEPARATION = "driver_vehicle_separation"
+    # A THIRD independent question, distinct from both of the above: "does the
+    # DRIVER'S OWN PHONE agree with the STOP'S PRECINCT?" (ActionLocationAssessment.
+    # driver_in_precinct, geofence_service). Closes a gap neither existing type can
+    # catch: DRIVER_VEHICLE_SEPARATION only fires once a real phone-to-tracker
+    # distance was measured (proximity == "separated"), so a driver's phone that is
+    # measurably outside the fence produces NOTHING today if the truck's tracker fix
+    # is stale or unavailable — the driver could be 50km away and the record shows
+    # nothing. GPS_MISMATCH cannot catch it either: it only ever judges the TRACKER's
+    # position, never the phone's. Only ever evaluated for a phase anchored to a stop
+    # (never IN_TRANSIT, never a checkpoint — see build_phase_assessment). See
+    # orchestration/action_location_service.record_driver_location_finding.
+    DRIVER_LOCATION_MISMATCH = "driver_location_mismatch"
     ROUTE_DEVIATION        = "route_deviation"
     VEHICLE_SUBSTITUTION   = "vehicle_substitution"
     DRIVER_SUBSTITUTION    = "driver_substitution"

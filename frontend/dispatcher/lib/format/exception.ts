@@ -11,6 +11,10 @@ export const VEHICLE_NOT_RECORDED = 'Not recorded'
 // a relation between two parties ("driver–vehicle"), not a hyphenated word.
 const EXCEPTION_TYPE_LABELS: Partial<Record<string, string>> = {
   driver_vehicle_separation: 'Driver–vehicle separation',
+  // The driver's phone, not the tracker, was outside the expected precinct — kept
+  // distinct in wording from driver_vehicle_separation (a tracker disagreement) so a
+  // dispatcher scanning the queue can't mistake one for the other.
+  driver_location_mismatch: 'Driver outside precinct',
 }
 
 /** "waybill_count_mismatch" -> "Waybill Count Mismatch"; "receiver_id_mismatch" ->

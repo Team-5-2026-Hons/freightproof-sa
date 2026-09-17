@@ -326,6 +326,10 @@ describe('final step — hands the submission off and returns the driver Home', 
     // ...and the phase is optimistically advanced first, so Home's first render does not
     // re-offer the step the driver just finished.
     expect(mockMarkPhaseSyncing).toHaveBeenCalledWith(LOADING_PE)
+    // A clean pass must never add a tap to the happy path — the location-check popup
+    // (LocationCheckModal) is never shown for it, not even for an instant the driver
+    // could catch on a slow render.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('shows a non-accusatory notice and requires an explicit continue when a fresh phone fix is unavailable', async () => {

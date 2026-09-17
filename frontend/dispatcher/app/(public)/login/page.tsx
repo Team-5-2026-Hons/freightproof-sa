@@ -10,6 +10,10 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { ProfileUnavailableError } from '@/lib/context/AuthContext'
 import { ROUTES } from '@/lib/constants/routes'
 import { cn } from '@shared/lib/utils/cn'
+import { takeReturnPath } from '@shared/lib/session/return-path'
+
+// Kept in step with AuthContext's own list.
+const AUTH_ROUTE_PREFIXES = [ROUTES.login]
 
 // Shown for a rejected email/password and for a submit with a field left blank — from
 // the form's point of view both are "these details are not usable", and naming which
@@ -42,7 +46,10 @@ export default function LoginPage() {
       // signIn resolves only once the profile is loaded, so the guard on the route we are
       // pushing to will already see an authenticated user — see AuthContext.signIn.
       await signIn({ email, password })
-      router.push(ROUTES.home)
+      // Send the dispatcher back to whatever guarded screen they were bounced from (idle
+      // expiry or a silently-expired token) when there is one; otherwise the default.
+      const returnTo = takeReturnPath(window.localStorage, AUTH_ROUTE_PREFIXES)
+      router.push(returnTo ?? ROUTES.home)
     } catch (err) {
       setError(err instanceof ProfileUnavailableError ? err.message : INVALID_CREDENTIALS)
       triggerShake()
