@@ -5860,8 +5860,33 @@
     "semantic_hash": ""
   },
   "docs/iteration4_plan.md": {
-    "mtime": 1789740341.350652,
-    "ast_hash": "e726c0eadad7dda4405f3d3d7cd75d30",
+    "mtime": 1790098045.3788552,
+    "ast_hash": "a9eba2d250458bbb547d9aadae89e9fd",
+    "semantic_hash": ""
+  },
+  "docs/design-notes/2026-09-22-possible-shared-custody-ledger-pivot.md": {
+    "mtime": 1790104709.8423736,
+    "ast_hash": "76c739187e92789828b90bef602975b0",
+    "semantic_hash": ""
+  },
+  "docs/design-notes/2026-09-22-research-informed-iteration4-recommendations.md": {
+    "mtime": 1790162930.419073,
+    "ast_hash": "cfd15b0db5e96c26f2b34a1a2e6671ee",
+    "semantic_hash": ""
+  },
+  "docs/design-notes/2026-09-23-arrival-phase-and-live-journey.md": {
+    "mtime": 1790155213.496078,
+    "ast_hash": "aeb9571b38dc4cd7ae258f585d2a1628",
+    "semantic_hash": ""
+  },
+  "docs/design-notes/2026-09-23-interview-research-summary.md": {
+    "mtime": 1790162930.3331673,
+    "ast_hash": "d13d6d5b61592aabeab1ab429ace4c64",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-09-23-exception-workflow-design.md": {
+    "mtime": 1790162367.335694,
+    "ast_hash": "04200906fa69d565196a342b87a520dd",
     "semantic_hash": ""
   }
 }
