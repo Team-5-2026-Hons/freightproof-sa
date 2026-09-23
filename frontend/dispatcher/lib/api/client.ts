@@ -125,7 +125,7 @@ async function send(
 async function request<T>(
   path: string,
   init: RequestInit = {},
-  opts: { retry?: boolean; timeoutMs?: number } = {},
+  opts: { retry?: boolean; timeoutMs?: number; as?: 'json' | 'blob' } = {},
 ): Promise<T> {
   const url = `${BASE_URL}${path}`
   const retry = opts.retry ?? false
@@ -177,7 +177,9 @@ async function request<T>(
     }
 
     try {
-      return (await res.json()) as T
+      // Blob for authenticated file downloads (audit-pack PDFs), which a plain link
+      // cannot fetch because it would carry no bearer token.
+      return (opts.as === 'blob' ? await res.blob() : await res.json()) as T
     } catch (err) {
       // A body that stalls rejects HERE when the window expires (fetch already resolved
       // at the headers) — the only point this can still be named a timeout, not a bare AbortError.
@@ -196,6 +198,8 @@ async function request<T>(
 export const api = {
   // GETs are idempotent → retry once on a dropped connection.
   get: <T>(path: string): Promise<T> => request<T>(path, {}, { retry: true }),
+  getBlob: (path: string, opts?: { timeoutMs?: number }): Promise<Blob> =>
+    request<Blob>(path, {}, { retry: true, as: 'blob', timeoutMs: opts?.timeoutMs }),
   // Not retried by default (may have already mutated state); pass { idempotent: true }
   // for read-only POSTs. timeoutMs overrides REQUEST_TIMEOUT_MS for slower backend calls
   // (e.g. trip creation waiting on the Hedera anchor).

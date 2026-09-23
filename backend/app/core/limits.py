@@ -49,3 +49,11 @@ IDVS_VERIFY = RateLimit(max_requests=5, window_seconds=_ONE_MINUTE, name="idvs_v
 
 # Higher than IDVS_VERIFY: Didit retries failed webhook deliveries up to 5x with backoff.
 IDVS_WEBHOOK = RateLimit(max_requests=60, window_seconds=_ONE_MINUTE, name="idvs_webhook")
+
+# Assembling an audit pack loads a trip's whole evidence graph (thousands of pings on a
+# long run); a person issues these one at a time, so a low ceiling costs nobody anything.
+AUDIT_PACK_BUILD = RateLimit(max_requests=20, window_seconds=_ONE_MINUTE, name="audit_pack_build")
+
+# Counted per IP: share-link reads carry no account. Generous enough for one adjuster
+# paging through photos, low enough that guessing tokens is pointless on top of 256 bits.
+AUDIT_PACK_PUBLIC = RateLimit(max_requests=120, window_seconds=_ONE_MINUTE, name="audit_pack_public")

@@ -21,7 +21,7 @@ import { currentTripPhase, isTerminalTrip, tripHeaderFacts } from '@/lib/phase/t
 import { getTripSeed } from '@/lib/trips/tripSeed'
 import { ROUTES } from '@/lib/constants/routes'
 
-const PANELS: readonly string[] = ['information', 'manifest', 'exceptions']
+const PANELS: readonly string[] = ['information', 'manifest', 'exceptions', 'audit']
 const DOCKED_PANEL_QUERY = '(min-width: 1280px)'
 
 /** Scrolls `item` to the top of `timelineRef`'s own scroll container: the exact

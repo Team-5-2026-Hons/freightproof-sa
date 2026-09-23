@@ -148,6 +148,8 @@ class BlockchainReceiptType(str, enum.Enum):
     DRIVER_UPDATED      = "driver_updated"
     PRECINCT_CREATED    = "precinct_created"
     PRECINCT_UPDATED    = "precinct_updated"
+    # The seal on an issued audit pack: hash of its manifest and PDF hashes.
+    AUDIT_PACK_ISSUED   = "audit_pack_issued"
 
 
 class SubjectType(str, enum.Enum):
@@ -158,6 +160,7 @@ class SubjectType(str, enum.Enum):
     DRIVER_EVENT    = "driver_event"
     PHASE_EVENT     = "phase_event"
     PRECINCT_EVENT  = "precinct_event"
+    AUDIT_PACK      = "audit_pack"
 
 
 class VehicleEventType(str, enum.Enum):
@@ -307,3 +310,23 @@ class HandoverTokenRejectionReason(str, enum.Enum):
     WRONG_TRIP       = "wrong_trip"
     WRONG_STOP       = "wrong_stop"
     UNKNOWN          = "unknown"
+
+
+class AuditPackAccessEventType(str, enum.Enum):
+    """What someone holding an audit-pack link did — the issuing dispatcher sees these,
+    so a leaked link shows up as views nobody expected. DENIED_* rows record attempts on
+    a link that no longer works, which is exactly when a leak would show itself."""
+
+    VIEWED          = "viewed"
+    PDF_DOWNLOADED  = "pdf_downloaded"
+    PHOTO_VIEWED    = "photo_viewed"
+    VERIFY_RUN      = "verify_run"
+    DENIED_EXPIRED  = "denied_expired"
+    DENIED_REVOKED  = "denied_revoked"
+
+
+def enum_text(value: enum.Enum | str) -> str:
+    """The text an enum column stores. str() on a (str, Enum) member gives
+    'PhaseType.DEPARTURE', not 'departure' — and a row still in the session holds the
+    member while a freshly loaded one holds the plain string, so both must map the same."""
+    return str(value.value) if isinstance(value, enum.Enum) else value

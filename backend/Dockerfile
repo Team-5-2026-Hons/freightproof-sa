@@ -6,11 +6,16 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
-# Install system dependencies including JDK required by hedera-sdk-py (jnius bridge)
+# Install system dependencies including JDK required by hedera-sdk-py (jnius bridge),
+# and Pango/HarfBuzz for WeasyPrint's audit-pack PDF rendering.
 RUN apt-get update && apt-get install -y \
     gcc \
     libpq-dev \
     default-jdk \
+    libpango-1.0-0 \
+    libpangoft2-1.0-0 \
+    libharfbuzz-subset0 \
+    fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies

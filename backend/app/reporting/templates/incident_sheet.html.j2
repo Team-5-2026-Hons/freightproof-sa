@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+{#- Incident Fact Sheet: the first page a SAPS detective, tracking company or TAPA report
+    needs. Everything comes from the audit-pack manifest; free text is autoescaped. -#}
+{% macro tier(t) %}<span class="tier tier-{{ t }}">{{ tiers[t][0] }}</span>{% endmacro %}
+{% macro fix(f) %}{% if f %}{{ '%.5f'|format(f.lat) }}, {{ '%.5f'|format(f.lng) }}{% else %}—{% endif %}{% endmacro %}
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Incident fact sheet — {{ m.trip.trip_reference }}</title>
+<style>{{ css|safe }}
+  html { font-size: 8.8pt; }
+  h1 { font-size: 16pt; }
+  h2 { margin-top: 4mm; font-size: 11pt; }
+  table { margin-bottom: 1.5mm; }
+  th, td { padding: 0.9mm 1.4mm; }
+</style>
+</head>
+<body>
+<div class="running running-pack">Incident fact sheet</div>
+<div class="running running-trip">Trip {{ m.trip.trip_reference }}</div>
+<div class="running running-issued">FreightProof · generated {{ m.generated_at|sast }}</div>
+
+<h1>Incident fact sheet</h1>
+<p class="muted">Trip {{ m.trip.trip_reference }} · order {{ m.trip.order_number }} · operator {{ m.trip.operator_name }} ·
+  generated {{ m.generated_at|sast }}. Times are SAST.</p>
+
+<h2>What happened, where and when</h2>
+<table class="kv">
+  <tr><th>First critical event</th><td><strong>{{ inc.first_exception_type|humanise }}</strong> at {{ inc.first_raised_at|sast }} {{ tier('recorded') }}</td></tr>
+  <tr><th>Where it was raised</th><td>{{ fix(inc.position) }}</td></tr>
+  <tr><th>Last known position</th><td>{{ fix(inc.last_known_position) }}{% if inc.last_known_position %} · {{ inc.last_known_position.source|humanise }} · {{ inc.last_known_position.recorded_at|sast }}{% endif %}</td></tr>
+  <tr><th>Operator first reviewed</th><td>{% if inc.first_reviewed_at %}{{ inc.first_reviewed_at|sast }} ({{ inc.minutes_to_first_review }} min after){% else %}No review recorded{% endif %}</td></tr>
+  <tr><th>Trip status now</th><td>{{ m.trip.status|humanise }}</td></tr>
+  {% if tapa %}<tr><th>Suggested TAPA category</th><td>{{ tapa }} <span class="small muted">— a suggestion; confirm before reporting</span></td></tr>{% endif %}
+</table>
+
+<h2>Vehicles and tracking</h2>
+<table>
+  <tr><th>Role</th><th>Registration</th><th>Make / model / year</th><th>VIN</th><th>Tracker</th></tr>
+  {% for v in m.vehicles %}
+  <tr><td>{{ v.role|humanise }}</td><td><strong>{{ v.registration }}</strong></td><td>{{ v.make or '—' }} {{ v.model or '' }} {{ v.year or '' }}</td><td class="mono">{{ v.vin_number or '—' }}</td><td>{{ v.tracker_device_id }}</td></tr>
+  {% endfor %}
+</table>
+
+<h2>Driver</h2>
+<table class="kv">
+  <tr><th>Name</th><td>{{ m.driver.full_name }}</td></tr>
+  <tr><th>Identity number</th><td>{{ m.driver.id_number }}{% if m.driver.id_number_masked %} <span class="small muted">(masked)</span>{% endif %}</td></tr>
+  <tr><th>Licence</th><td>{{ m.driver.license_number }}</td></tr>
+  <tr><th>Identity check for this trip</th><td>{{ m.driver.trip_idvs_status|humanise }}</td></tr>
+</table>
+
+<h2>Cargo and route</h2>
+<table class="kv">
+  <tr><th>Consignments</th><td>{% for c in m.consignments %}{{ c.parcel_perfect_reference }}{% if c.parcel_count_expected is not none %} ({{ c.parcel_count_expected }} parcel{{ '' if c.parcel_count_expected == 1 else 's' }}){% endif %}{% if not loop.last %}; {% endif %}{% else %}—{% endfor %}</td></tr>
+  <tr><th>Declared value</th><td>{% if total_declared_value %}R {{ '{:,.2f}'.format(total_declared_value) }}{% else %}not declared{% endif %}</td></tr>
+  <tr><th>Route</th><td>{% for s in m.stops %}{{ s.precinct_name }}{% if not loop.last %} → {% endif %}{% else %}—{% endfor %}</td></tr>
+</table>
+
+<h2>Police report and notifications {{ tier('declared') }}</h2>
+<table class="kv">
+  <tr><th>SAPS station</th><td>{{ facts.get('saps_station') or 'not declared' }}</td></tr>
+  <tr><th>Case (CAS) number</th><td><strong>{{ facts.get('saps_cas_number') or 'not declared' }}</strong></td></tr>
+  <tr><th>Investigating officer</th><td>{{ facts.get('saps_officer') or 'not declared' }}</td></tr>
+  <tr><th>Reported to SAPS</th><td>{{ facts.get('reported_to_saps_at')|sast }}</td></tr>
+  <tr><th>Tracking company notified</th><td>{{ facts.get('tracking_company_notified_at')|sast }}</td></tr>
+  <tr><th>Client notified</th><td>{{ facts.get('client_notified_at')|sast }}</td></tr>
+  <tr><th>Insurer notified / claim ref</th><td>{{ facts.get('insurer_notified_at')|sast }}{% if facts.get('insurer_claim_reference') %} · {{ facts.get('insurer_claim_reference') }}{% endif %}</td></tr>
+</table>
+<p class="small muted">Declared facts were entered by the operator after the event; FreightProof did not capture them.</p>
+
+<h2>Full evidence</h2>
+<p>The complete audit trail — custody chain, photos, GPS trail and Hedera verification — is in the audit pack for this
+  trip.{% if verify_url %} Its seal can be checked at <span class="mono">{{ verify_url }}</span>.{% endif %}</p>
+</body>
+</html>

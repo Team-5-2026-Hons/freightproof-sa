@@ -197,3 +197,37 @@ of the thesis. If a reviewer asks "does this actually do multi-stop?", that tab 
   "handshake" three times. Delete it, or keep it dormant against a future *manual* hold? **Tim's call.**
 - **The vocabulary sweep touches `CLAUDE.md`**, which by its own rule needs a PR reviewed by all four
   team members. Raise it now, not on the last day.
+
+---
+
+## 9. Audit pack — the insurer's view (added 2026-09-23)
+
+The answer to the panel's *"we need to look into what the insurers would need"*. Needs the
+`tim_add_audit_packs` migration applied and the client portal running (`frontend/client-portal`,
+port 3003 locally). Use a trip that has a critical exception (raise a panic on the driver app).
+
+1. **Trip detail → Audit packs tab.** *"When something goes wrong, the operator hands the
+   insurer this — not a spreadsheet."* Click **Record police details**, enter a SAPS station,
+   CAS number and times. Point out the **Declared** label: FreightProof did not capture it.
+2. **Incident fact sheet.** One page: what happened, vehicle and trailer registrations,
+   tracker IDs, last known position, the CAS number — what a detective asks for first.
+3. **Issue audit pack** (purpose: insurance claim). The share link appears once — copy it.
+   Mention: driver ID masked by default, GPS trail optional, the link expires and is revocable.
+4. **Open the link in a private window** (you are now the insurer). The banner turns green
+   record by record: *"your browser hashed each record and checked it against the public
+   Hedera ledger — our servers were not involved."* Click a timeline event; open the seal
+   photo; press **Verify this file's bytes**.
+5. **Tamper demo.** In the DB, change the departure phase's `seal_number`. Back on the page,
+   press **Check live records have not changed since issue** → the departure record shows
+   *CHANGED since issue*, while the pack still shows the anchored seal and the Hedera check
+   stays green. *"Editing our database cannot rewrite what was sealed."*
+6. **PDF check.** Download the PDF, then drop it into **Check a PDF copy** → unaltered. Edit
+   one byte (any hex editor) and drop it again → rejected against the fingerprint sealed on
+   Hedera.
+7. **Back in the dispatcher**, open the pack's **Access log** — the insurer's views are there.
+   Revoke the link and reload the insurer tab → *link revoked*, and the refusal is logged too.
+
+**Say plainly:** exceptions, checkpoints and the GPS trail are **Recorded**, not anchored —
+only trip creation, departure and delivery (with their photos) are on Hedera today. The pack
+labels every fact with its tier precisely so it never claims more than that. The ECT Act
+s15(4) certificate page is a template that has not been legally reviewed.
