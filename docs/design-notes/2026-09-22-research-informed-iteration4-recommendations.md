@@ -7,6 +7,11 @@ Status: recommendations for team discussion, not approved sprint scope. Read alo
 this note records the evidence, reasoning and proposed acceptance criteria behind changes.
 No implementation or architecture change is authorised by this note alone.
 
+For a plain-language summary of the interview findings across product areas, including
+exceptions, handovers, preservation, blockchain, adoption and counter-evidence, read the
+[interview research summary](2026-09-23-interview-research-summary.md). It provides reusable
+research context without requiring the transcripts in this repository.
+
 ## Purpose and proposed outcome
 
 The thesis interviews support improving the collection, preservation and assembly of cargo
