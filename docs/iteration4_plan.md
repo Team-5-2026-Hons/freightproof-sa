@@ -5,6 +5,11 @@
 > sitting in our own docs and Jira, and a verification pass over the claims we made on stage —
 > then proposes a shape. The four decisions in §5 have to be taken before sprint 8 is sized.
 >
+> **Research addendum, 22 September:** see [§11](#11-research-informed-recommendations--22-september)
+> and the linked decision note before final sizing. These recommendations are pending team
+> agreement; the original scope, estimates and September 18 status inventory below have not
+> been silently revised or revalidated.
+>
 > **Sources:** [iteration-3-presentation-minutes.md](Iteration_3_Documentation/iteration-3-presentation-minutes.md)
 > · [step-event ledger implementation plan](design-notes/2026-09-02-step-event-ledger-implementation-plan.md)
 > · [known-issues.md §10](known-issues.md#10-deferred--dedicated-arrival-custody-check-phase-iteration-4-candidate)
@@ -528,3 +533,67 @@ job done.
 26. **A roadside fix that becomes a workshop job** — who records that link today, if anyone?
 27. **What does a Johannesburg–Durban trip cost** (you said ~R20 000 on 1 Sep) — is that a number
     a controller sees, or only finance?
+
+---
+
+## 11. Research-informed recommendations — 22 September
+
+**Status: proposed, not approved sprint commitments.** The supporting evidence, limitations,
+source codes and acceptance criteria are recorded in
+[Research-informed recommendations for iteration 4](design-notes/2026-09-22-research-informed-iteration4-recommendations.md).
+Keep this plan as the scheduling authority; record accepted changes in §9 and revise the relevant
+track estimates after the team decides. Refresh the September 18 implementation inventory first.
+
+### Recommendations from the research
+
+- **P1 — R2/R5/R6/R7:** retain security, receiver-bypass prevention and offline evidence retention
+  as first priorities. These are evidence-quality requirements, not just demo hardening.
+- **P2 — R3/R4/R6:** expand §5.1 to decide what the receiver and driver actually acknowledge,
+  separately from identity assurance. Distinguish sealed custody, observed condition, counted
+  contents, inspection pending and later discrepancy; validate the partner's workflow.
+- **P3 — R2/R4/R6:** include missing-evidence and preservation status in §5.3. A stored hash or
+  external link does not preserve an original file. Start with attributed preservation notes,
+  external evidence references and known expiry; no new case-management workflow is required.
+- **P4 — R4/R6/R7:** retain the collision scenario and add a bounded disputed-handover example
+  showing a later inspection report without rewriting the original receipt. Size its actor-specific
+  path separately; it can initially be a documented walkthrough, not a claimed live feature.
+- **P7 — R1/R3/R7:** validate the evidence pack against an existing investigation process. Measure
+  preparation time, missing records, follow-up requests and capture burden; assess independent
+  verification separately. No premium reduction or claims-success guarantee follows from these interviews.
+
+### Technical and analytical proposals informed by the research
+
+These are proposed responses to the findings, not designs requested or validated by participants.
+
+- **P5a:** export exact committed payloads, authorised files and receipt references with a small
+  standalone integrity verifier. Size this independently of the larger evidence workflow.
+- **P5b:** separately scope retained counterparty receipts and linked record versions. P5a checks
+  a supplied package against a supplied commitment; it does not alone identify the original expected
+  receipt or defeat substitution of both the record and receipt reference.
+- **P6:** prioritise designing direct anchors for selected critical exceptions and their file hashes,
+  cancellation and handover acknowledgements. In the inspected code, the collision and cancellation
+  are not anchored: earlier trip/departure receipts do not protect them. This work need not depend
+  on `phase_steps`, but needs versioned payloads, visibility, verification, retries and tests.
+  Preserve incident evidence even if anchoring fails. General ledger Stage 3 can be deferred; its
+  departure/confirmation child roots do not close whole-trip coverage.
+- **P8:** present recurrence analytics as patterns requiring investigation, with exposure and
+  review outcomes. A repeated exception pattern does not establish collusion.
+- **Capacity:** retain basic multi-trip operation, necessary alerts and a bounded movement demo.
+  Keep polyline playback if its remaining effort and assessment value justify it. Treat recurrence
+  as optional after sizing its complete workflow. Defer polygons and the optional fleet map first.
+  Optional items only release capacity if they were actually in the committed baseline. Reserve
+  submission capacity and obtain team estimates; the review's point figures are not adopted.
+- **Track C disposition:** retain required FP-167 work, bounded FP-149 and trip-setup correctness
+  fixes. Size P5a and selected P6 anchors as explicit deliverables. Stages 1/2/4 survive only where
+  an accepted feature needs them; creating a table solely to say the ledger exists is not a reason.
+  Defer general Stage 3 unless justified. Size P5b and post-delivery reporting separately.
+- **Claim boundary:** current verification checks against a receipt selected from FreightProof's
+  database. Database edits alone cannot rewrite the external commitment, but selection of the
+  original expected receipt is not independently established by that check. Say that portable
+  verification exists only after P5a is demonstrated, and state its remaining trust dependencies.
+
+The research describes a permissioned, jointly acknowledged handover network, while FreightProof
+uses Hedera anchoring. Consortium-adoption objections do not transfer unchanged to the current
+application, and positive reactions to jointly acknowledged records do not validate unilateral
+capture. Test the narrow value of independently verifiable record versions without expanding into
+a consortium, smart contracts or automated insurance payouts.
