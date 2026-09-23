@@ -106,8 +106,8 @@ describe('TripDetailView', () => {
     expect(screen.getByText('ORD-99')).toBeInTheDocument()
   })
 
-  it('showAllPhases=true renders exactly N rows for an N-phase (11-row cross-dock) plan, only the current one tappable', () => {
-    expect(CROSS_DOCK_PHASE_PLAN).toHaveLength(11)
+  it('showAllPhases=true renders exactly N rows for an N-phase (13-row cross-dock) plan, only the current one tappable', () => {
+    expect(CROSS_DOCK_PHASE_PLAN).toHaveLength(13)
     const onSelectPhase = vi.fn()
     const plan = walk(CROSS_DOCK_PHASE_PLAN, 4) // through the first in_transit leg
     const current = currentPhase(plan)!
@@ -264,13 +264,14 @@ describe('TripDetailView', () => {
     expect(screen.getByRole('button', { name: /continue driving/i })).toBeInTheDocument()
   })
 
-  it('shows the unloading capture card, not the driving screen, once arrival is recorded', () => {
-    // in_transit resolved (arrival submitted), unloading current — the driver is standing
-    // at the destination doing seal-verify. This is the state the old case-2 fossil (V7)
-    // mistook for "still driving"; it must now show the arrival capture card instead.
+  it('shows the arrival capture card, not the driving screen, once in_transit resolves', () => {
+    // in_transit resolved (the "Arrive at destination" swipe done), arrival current — the
+    // driver is standing at the destination doing seal-verify. This is the state the old
+    // case-2 fossil (V7) mistook for "still driving"; it must now show the arrival
+    // capture card instead.
     const onSelectPhase = vi.fn()
-    const plan = walk(SINGLE_LEG_PHASE_PLAN, 4) // through in_transit — arrival submitted
-    expect(currentPhase(plan)?.phase_type).toBe('unloading')
+    const plan = walk(SINGLE_LEG_PHASE_PLAN, 4) // through in_transit — arrival swipe done
+    expect(currentPhase(plan)?.phase_type).toBe('arrival')
 
     render(
       <TripDetailView
@@ -283,8 +284,8 @@ describe('TripDetailView', () => {
     )
 
     expect(screen.queryByRole('button', { name: /continue driving/i })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /unloading/i }))
-    expect(onSelectPhase).toHaveBeenCalledWith(expect.objectContaining({ phase_type: 'unloading' }))
+    fireEvent.click(screen.getByRole('button', { name: /arrival/i }))
+    expect(onSelectPhase).toHaveBeenCalledWith(expect.objectContaining({ phase_type: 'arrival' }))
   })
 
   it('does not show the driving entry when the trip is not on the road', () => {

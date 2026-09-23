@@ -150,6 +150,17 @@ class TripException(Base):
                 "exception_type = 'driver_location_mismatch' AND phase_event_id IS NOT NULL"
             ),
         ),
+        # One TRAILER_LOCATION_MISMATCH per phase event, however many trailers decoupled
+        # (the description names each one). Same idempotency pattern as the indexes above.
+        Index(
+            "uq_exceptions_phase_trailer_location",
+            "phase_event_id",
+            "exception_type",
+            unique=True,
+            postgresql_where=text(
+                "exception_type = 'trailer_location_mismatch' AND phase_event_id IS NOT NULL"
+            ),
+        ),
         # Declared so autogenerate stops proposing to drop indexes that already exist
         # in the deployed database (created by an earlier migration, never modelled here).
         Index("ix_exceptions_severity", "severity"),

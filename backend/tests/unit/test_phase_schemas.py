@@ -56,9 +56,9 @@ def test_trip_creation_is_still_not_driver_addressable():
         )
 
 
-def test_phase_type_enum_still_has_seven_members():
+def test_phase_type_enum_still_has_eight_members():
     """Guards against someone 'solving' this by adding an enum member."""
-    assert len(list(PhaseType)) == 7
+    assert len(list(PhaseType)) == 8
 
 
 def test_departure_rejects_one_artifact_used_for_two_evidence_roles():

@@ -416,7 +416,19 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     const phaseEventId = contextPhaseEventId(trip.phases)
 
     if (IS_DEMO_MODE) {
-      const criticalTypes: ExceptionType[] = ['panic_button', 'seal_broken_in_transit', 'seal_mismatch']
+      // seal_mismatch and seal_compromised are both system-raised (advance_arrival's own
+      // comparison), never passed here by a driver action — this app only ever calls
+      // logException with 'panic_button' or a DRIVER_EXCEPTION_TYPES pick, and neither
+      // seal type is offered on that picker (status-meta.ts). Both stay listed anyway,
+      // for the same reason: CRITICAL is this codebase's alarm tier (phase_service.py's
+      // own comment) — "the number differs" (seal_mismatch) and "the seal is broken or
+      // missing" (seal_compromised) are both findings with no benign reading, exactly
+      // like seal_broken_in_transit and panic_button. Keeping them paired here means a
+      // future caller that DOES reach this branch with either type gets the right
+      // severity by construction, rather than by remembering to update this list twice.
+      const criticalTypes: ExceptionType[] = [
+        'panic_button', 'seal_broken_in_transit', 'seal_mismatch', 'seal_compromised',
+      ]
       const newExc: TripException = {
         id: crypto.randomUUID() as unknown as TripException['id'],
         trip_id: trip.id, exception_type: type, source: 'driver',

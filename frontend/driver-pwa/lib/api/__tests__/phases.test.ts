@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import type { DriverPosition } from '@/lib/types/location'
 import type {
-  ActivationEvidence, ConfirmationEvidence, DepartureEvidence, LoadingEvidence, UnloadingEvidence,
+  ActivationEvidence, ArrivalEvidence, ConfirmationEvidence, DepartureEvidence, LoadingEvidence, UnloadingEvidence,
 } from '@/lib/types/evidence-draft'
 
 // submitPhase reads NEXT_PUBLIC_DEMO_MODE at module load time (IS_DEMO_MODE
@@ -59,12 +59,21 @@ const LEGACY_QUEUED_DEPARTURE_EVIDENCE = {
   waybillPhotoArtifactId: null,
 } satisfies DepartureEvidence & { waybillPhotoDataUrl: string; waybillPhotoArtifactId: string | null }
 
+// Slimmed (design note 2026-09-23 §4.3): the seal check moved to its own arrival phase,
+// so unloading's draft — and its wire payload — carries no seal fields any more.
 const UNLOADING_EVIDENCE: UnloadingEvidence = {
   waybillHandedOver: true,
-  sealNumberAtDestination: 'AB-1234',
-  sealIntactPhotoDataUrl: 'data:image/jpeg;base64,CCCC',
-  sealIntactPhotoArtifactId: null,
   driverVisualCount: 31,
+  capturedAt: '2026-06-12T10:20:00Z',
+}
+
+// The seal as found at the destination gate, before anything is opened — now arrival's
+// evidence, not unloading's. See lib/types/evidence-draft.ts's ArrivalEvidence comment.
+const ARRIVAL_EVIDENCE: ArrivalEvidence = {
+  sealCondition: 'intact',
+  sealNumberAtArrival: 'AB-1234',
+  sealPhotoDataUrl: 'data:image/jpeg;base64,CCCC',
+  sealPhotoArtifactId: null,
   capturedAt: '2026-06-12T10:20:00Z',
 }
 
@@ -213,13 +222,16 @@ describe('submitPhase (real-backend branch)', () => {
     expect(mockPost).not.toHaveBeenCalled()
   })
 
-  it('uploads the intact seal photo and completes unloading with the confirmed seal for server-side comparison', async () => {
-    mockUploadArtifact.mockResolvedValueOnce({ id: 'seal-intact-artifact', file_hash: 'c'.repeat(64) })
+  // Slimmed (design note 2026-09-23 §4.3): the seal check moved to its own arrival
+  // phase, which the plan guarantees completes first — unloading now uploads nothing
+  // and sends base fields only.
+  it('completes unloading with base fields only — no seal, no upload', async () => {
     mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
 
     const { submitPhase } = await import('../phases')
     await submitPhase('trip-1', 'phase-event-4', 'unloading', UNLOADING_EVIDENCE, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT)
 
+    expect(mockUploadArtifact).not.toHaveBeenCalled()
     expect(mockPost).toHaveBeenCalledWith(
       '/api/v1/trips/trip-1/phases/phase-event-4/complete',
       {
@@ -228,61 +240,13 @@ describe('submitPhase (real-backend branch)', () => {
         driver_phone_lat: POSITION.lat,
         driver_phone_lng: POSITION.lng,
         driver_accuracy_metres: POSITION.accuracyM,
-        seal_number_at_destination: 'AB-1234',
-        // Required by UnloadingCompleteRequest — the seal as found, intact.
-        gate_photo_artifact_id: 'seal-intact-artifact',
+        // No seal_number_at_destination, no gate_photo_artifact_id — toHaveBeenCalledWith
+        // is an EXACT object match, so this assertion also fences their removal.
         idempotency_key: IDEMPOTENCY_KEY,
         driver_captured_at: DRIVER_CAPTURED_AT,
       },
       { timeoutMs: 30_000 },
     )
-  })
-
-  it('sends the intact seal artifact id from the early upload without re-uploading', async () => {
-    mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
-
-    const { submitPhase } = await import('../phases')
-    await submitPhase('trip-1', 'phase-event-4', 'unloading', {
-      ...UNLOADING_EVIDENCE,
-      sealIntactPhotoArtifactId: 'artifact-seal-intact',
-    }, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT)
-
-    expect(mockUploadArtifact).not.toHaveBeenCalled()
-    expect(mockPost).toHaveBeenCalledWith(
-      '/api/v1/trips/trip-1/phases/phase-event-4/complete',
-      expect.objectContaining({ gate_photo_artifact_id: 'artifact-seal-intact' }),
-      { timeoutMs: 30_000 },
-    )
-  })
-
-  // The photo cannot be retaken once the seal is broken, so submitting without it must
-  // fail loudly on the client rather than reaching the backend and 422-ing.
-  it('rejects unloading with no intact seal photo before calling the backend', async () => {
-    const { submitPhase } = await import('../phases')
-
-    await expect(
-      submitPhase('trip-1', 'phase-event-4', 'unloading', {
-        ...UNLOADING_EVIDENCE, sealIntactPhotoDataUrl: null, sealIntactPhotoArtifactId: null,
-      }, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT),
-    ).rejects.toThrow(/Unloading evidence incomplete/)
-    expect(mockUploadArtifact).not.toHaveBeenCalled()
-    expect(mockPost).not.toHaveBeenCalled()
-  })
-
-  // An unloading queued offline before the intact-photo field existed replays from
-  // localStorage with the property missing altogether, not set to null. It must fail the
-  // same way rather than posting `gate_photo_artifact_id: undefined` for the backend to
-  // 422 — the driver keeps a queue entry that can never drain and no idea why.
-  it('rejects a stale queued unloading whose intact photo field is absent entirely', async () => {
-    const { submitPhase } = await import('../phases')
-    const staleEntry = { ...UNLOADING_EVIDENCE }
-    delete (staleEntry as Partial<UnloadingEvidence>).sealIntactPhotoDataUrl
-    delete (staleEntry as Partial<UnloadingEvidence>).sealIntactPhotoArtifactId
-
-    await expect(
-      submitPhase('trip-1', 'phase-event-4', 'unloading', staleEntry, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT),
-    ).rejects.toThrow(/Unloading evidence incomplete/)
-    expect(mockPost).not.toHaveBeenCalled()
   })
 
   it('uploads only the POD photo and completes confirmation with the carried-forward visual count', async () => {
@@ -680,6 +644,124 @@ describe('submitPhase — in_transit (arrival attestation)', () => {
     )
 
     expect(mockUploadArtifact).not.toHaveBeenCalled()
+  })
+})
+
+// The ARRIVAL phase (design note 2026-09-23) — not to be confused with the block above,
+// whose "arrival attestation" name predates this phase and refers to the in_transit
+// swipe. This is the seal-at-the-gate step the swipe hands off to: phase_type 'arrival',
+// STEP_SLUGS.arrival = ['2-seal-verify'].
+describe('submitPhase — arrival', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('uploads the seal photo and completes arrival with the seal as found for server-side comparison', async () => {
+    mockUploadArtifact.mockResolvedValueOnce({ id: 'seal-arrival-artifact', file_hash: 'c'.repeat(64) })
+    mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
+
+    const { submitPhase } = await import('../phases')
+    await submitPhase('trip-1', 'phase-event-arrival-1', 'arrival', ARRIVAL_EVIDENCE, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT)
+
+    expect(mockPost).toHaveBeenCalledWith(
+      '/api/v1/trips/trip-1/phases/phase-event-arrival-1/complete',
+      {
+        phase_type: 'arrival',
+        driver_phone_lat: POSITION.lat,
+        driver_phone_lng: POSITION.lng,
+        driver_accuracy_metres: POSITION.accuracyM,
+        seal_condition: 'intact',
+        seal_number_at_arrival: 'AB-1234',
+        seal_photo_artifact_id: 'seal-arrival-artifact',
+        idempotency_key: IDEMPOTENCY_KEY,
+        driver_captured_at: DRIVER_CAPTURED_AT,
+      },
+      { timeoutMs: 30_000 },
+    )
+  })
+
+  it('sends the seal artifact id from the early upload without re-uploading', async () => {
+    mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
+
+    const { submitPhase } = await import('../phases')
+    await submitPhase('trip-1', 'phase-event-arrival-1', 'arrival', {
+      ...ARRIVAL_EVIDENCE,
+      sealPhotoArtifactId: 'artifact-seal-arrival',
+    }, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT)
+
+    expect(mockUploadArtifact).not.toHaveBeenCalled()
+    expect(mockPost).toHaveBeenCalledWith(
+      '/api/v1/trips/trip-1/phases/phase-event-arrival-1/complete',
+      expect.objectContaining({ seal_photo_artifact_id: 'artifact-seal-arrival' }),
+      { timeoutMs: 30_000 },
+    )
+  })
+
+  // A missing seal has nothing to read a number off — omitted, not sent as an empty
+  // string or null, mirroring the backend's own rule (evidence-draft.ts's comment).
+  it('omits seal_number_at_arrival entirely when the seal is missing', async () => {
+    mockUploadArtifact.mockResolvedValueOnce({ id: 'seal-arrival-artifact', file_hash: 'c'.repeat(64) })
+    mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
+
+    const { submitPhase } = await import('../phases')
+    await submitPhase('trip-1', 'phase-event-arrival-1', 'arrival', {
+      ...ARRIVAL_EVIDENCE, sealCondition: 'missing', sealNumberAtArrival: null,
+    }, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT)
+
+    const [, body] = mockPost.mock.calls[0] as [string, Record<string, unknown>]
+    expect(body).not.toHaveProperty('seal_number_at_arrival')
+    expect(body.seal_condition).toBe('missing')
+  })
+
+  // A missing seal is still photographed — where the seal should be — so the photo
+  // requirement is never relaxed for this condition.
+  it('still requires the photo when the seal is missing', async () => {
+    const { submitPhase } = await import('../phases')
+
+    await expect(
+      submitPhase('trip-1', 'phase-event-arrival-1', 'arrival', {
+        ...ARRIVAL_EVIDENCE, sealCondition: 'missing', sealNumberAtArrival: null,
+        sealPhotoDataUrl: null, sealPhotoArtifactId: null,
+      }, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT),
+    ).rejects.toThrow(/Arrival evidence incomplete/)
+    expect(mockPost).not.toHaveBeenCalled()
+  })
+
+  it('rejects a damaged/intact seal with no number before calling the backend', async () => {
+    const { submitPhase } = await import('../phases')
+
+    await expect(
+      submitPhase('trip-1', 'phase-event-arrival-1', 'arrival', {
+        ...ARRIVAL_EVIDENCE, sealNumberAtArrival: null,
+      }, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT),
+    ).rejects.toThrow(/Arrival evidence incomplete/)
+    expect(mockUploadArtifact).not.toHaveBeenCalled()
+    expect(mockPost).not.toHaveBeenCalled()
+  })
+
+  // The photo cannot be retaken once the driver moves on, so submitting without it must
+  // fail loudly on the client rather than reaching the backend and 422-ing.
+  it('rejects arrival with no seal photo before calling the backend', async () => {
+    const { submitPhase } = await import('../phases')
+
+    await expect(
+      submitPhase('trip-1', 'phase-event-arrival-1', 'arrival', {
+        ...ARRIVAL_EVIDENCE, sealPhotoDataUrl: null, sealPhotoArtifactId: null,
+      }, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT),
+    ).rejects.toThrow(/Arrival evidence incomplete/)
+    expect(mockUploadArtifact).not.toHaveBeenCalled()
+    expect(mockPost).not.toHaveBeenCalled()
+  })
+
+  it('rejects arrival with no seal condition chosen before calling the backend', async () => {
+    const { submitPhase } = await import('../phases')
+
+    await expect(
+      submitPhase('trip-1', 'phase-event-arrival-1', 'arrival', {
+        ...ARRIVAL_EVIDENCE, sealCondition: null,
+      }, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT),
+    ).rejects.toThrow(/Arrival evidence incomplete/)
+    expect(mockPost).not.toHaveBeenCalled()
   })
 })
 

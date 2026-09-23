@@ -249,6 +249,7 @@ export const FLEET_COPY = {
         loading: 'Loading',
         departure: 'Waiting to leave',
         in_transit: 'Driving',
+        arrival: 'Arrival seal check',
         unloading: 'Unloading',
         confirmation: 'Sign-off',
         unlinked: 'Not linked to a step',

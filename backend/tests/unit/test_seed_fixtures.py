@@ -18,8 +18,11 @@ from app.integrations.parcel_perfect import (
     UNASSIGNED_WAYBILLS,
     MockParcelPerfectClient,
 )
+from app.db.models.enums import PhaseType, SealCondition
+from app.db.models.phases import PhaseEvent
 from app.orchestration.phase_plan import PlanStop, build_phase_plan
 from scripts.seed_trips import (
+    _apply_walk_evidence,
     SEEDED_WAYBILL_REFERENCES,
     TRIP_CREATION_SEQUENCE,
     TRIP_SPECS,
@@ -28,12 +31,12 @@ from scripts.seed_trips import (
 
 # Expected plan length per seeded trip, keyed by trip_reference. Stated here rather
 # than computed so a change to build_phase_plan that silently reshapes the demo
-# trips has to be acknowledged: 2 stops -> 7 rows, 3-stop cross-dock -> 11.
+# trips has to be acknowledged: 2 stops -> 8 rows, 3-stop cross-dock -> 13.
 _EXPECTED_PLAN_LENGTHS = {
-    "FP-DEMO-SINGLE-0001": 7,
-    "FP-DEMO-XDOCK-0001": 11,
-    "FP-DEMO-ACTIVE-0001": 11,
-    "FP-DEMO-CLOSED-0001": 7,
+    "FP-DEMO-SINGLE-0001": 8,
+    "FP-DEMO-XDOCK-0001": 13,
+    "FP-DEMO-ACTIVE-0001": 13,
+    "FP-DEMO-CLOSED-0001": 8,
 }
 
 
@@ -161,3 +164,32 @@ def test_advance_through_still_resolves_its_whole_prefix(spec):
     expected_last = plan_length - 1 if spec.advance_through == "all" else spec.advance_through
 
     assert resolved_sequences(spec, plan_length) == set(range(expected_last + 1))
+
+
+def _walked_event(phase_type: PhaseType, spec) -> PhaseEvent:
+    event = PhaseEvent(phase_type=phase_type.value)
+    _apply_walk_evidence(
+        event, spec=spec, stop_sequence=2, precinct=None, loaded_at={}, delivered_at={},
+    )
+    return event
+
+
+@pytest.mark.parametrize("spec", TRIP_SPECS, ids=lambda s: s.trip_reference)
+def test_seeded_unloading_row_carries_no_seal_fields(spec):
+    """The seal moved to arrival. A seeded unloading row holding one would show the
+    dispatcher a second, unexplained seal reading that no live completion writes."""
+    event = _walked_event(PhaseType.UNLOADING, spec)
+
+    assert event.seal_number is None
+    assert event.seal_condition is None
+    assert event.seal_photo_artifact_id is None
+    assert event.gate_photo_artifact_id is None
+
+
+@pytest.mark.parametrize("spec", TRIP_SPECS, ids=lambda s: s.trip_reference)
+def test_seeded_arrival_row_finds_the_departure_seal_intact(spec):
+    arrival = _walked_event(PhaseType.ARRIVAL, spec)
+    departure = _walked_event(PhaseType.DEPARTURE, spec)
+
+    assert arrival.seal_number == departure.seal_number == spec.seal_number
+    assert arrival.seal_condition == SealCondition.INTACT.value

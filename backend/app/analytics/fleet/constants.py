@@ -47,7 +47,11 @@ EXPIRY_BAND_EDGES_DAYS: tuple[int, int, int] = (30, 90, 180)
 # the per-type columns of chart 3.2 keep one stable order.
 THEFT_SIGNAL_TYPES: tuple[ExceptionType, ...] = (
     ExceptionType.SEAL_MISMATCH,
+    # The seal was found damaged or missing at arrival: the load may have been opened.
+    ExceptionType.SEAL_COMPROMISED,
     ExceptionType.SEAL_BROKEN_IN_TRANSIT,
+    # A trailer measured away from its own horse at a stop: it may have been uncoupled.
+    ExceptionType.TRAILER_LOCATION_MISMATCH,
     ExceptionType.PARCEL_COUNT_MISMATCH,
     ExceptionType.WAYBILL_COUNT_MISMATCH,
     ExceptionType.PANIC_BUTTON,

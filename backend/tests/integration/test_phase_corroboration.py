@@ -174,8 +174,9 @@ async def _corroboration_trip_fixture(db_session):
         PhaseEvent(trip_id=trip.id, phase_type=PhaseType.LOADING, trip_stop_id=stop0.id, sequence_number=2, status=PhaseStatus.PENDING),
         PhaseEvent(trip_id=trip.id, phase_type=PhaseType.DEPARTURE, trip_stop_id=stop0.id, sequence_number=3, status=PhaseStatus.PENDING),
         PhaseEvent(trip_id=trip.id, phase_type=PhaseType.IN_TRANSIT, trip_stop_id=stop0.id, sequence_number=4, status=PhaseStatus.PENDING),
-        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.UNLOADING, trip_stop_id=stop1.id, sequence_number=5, status=PhaseStatus.PENDING),
-        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.CONFIRMATION, trip_stop_id=stop1.id, sequence_number=6, status=PhaseStatus.PENDING),
+        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.ARRIVAL, trip_stop_id=stop1.id, sequence_number=5, status=PhaseStatus.PENDING),
+        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.UNLOADING, trip_stop_id=stop1.id, sequence_number=6, status=PhaseStatus.PENDING),
+        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.CONFIRMATION, trip_stop_id=stop1.id, sequence_number=7, status=PhaseStatus.PENDING),
     ])
     await db_session.flush()
 
@@ -394,8 +395,9 @@ async def test_corroboration_is_written_at_every_phase_not_only_the_first(
         {"phase_type": "departure",
          "seal_number": "AB-1234", "seal_photo_artifact_id": seal_photo_id},
         {"phase_type": "in_transit"},
-        {"phase_type": "unloading",
-         "seal_number_at_destination": "AB-1234", "gate_photo_artifact_id": gate_photo_id},
+        {"phase_type": "arrival", "seal_condition": "intact",
+         "seal_number_at_arrival": "AB-1234", "seal_photo_artifact_id": gate_photo_id},
+        {"phase_type": "unloading"},
         {"phase_type": "confirmation",
          "pod_photo_artifact_id": pod_photo_id, "pod_signature_artifact_id": pod_signature_id},
     ]
@@ -420,7 +422,7 @@ async def test_corroboration_is_written_at_every_phase_not_only_the_first(
 
     for phase_type in (
         PhaseType.ACTIVATION, PhaseType.LOADING, PhaseType.DEPARTURE,
-        PhaseType.IN_TRANSIT, PhaseType.UNLOADING, PhaseType.CONFIRMATION,
+        PhaseType.IN_TRANSIT, PhaseType.ARRIVAL, PhaseType.UNLOADING, PhaseType.CONFIRMATION,
     ):
         event = await _load_event(db_session, trip, phase_type)
         assert event.horse_gps_lat == _ORIGIN_LAT, phase_type
@@ -433,7 +435,7 @@ async def test_corroboration_is_written_at_every_phase_not_only_the_first(
     # is the proof the precinct is resolved per row rather than once per trip.
     for phase_type in (PhaseType.ACTIVATION, PhaseType.LOADING, PhaseType.DEPARTURE):
         assert (await _load_event(db_session, trip, phase_type)).pulsit_geofence_confirmed is True
-    for phase_type in (PhaseType.UNLOADING, PhaseType.CONFIRMATION):
+    for phase_type in (PhaseType.ARRIVAL, PhaseType.UNLOADING, PhaseType.CONFIRMATION):
         assert (await _load_event(db_session, trip, phase_type)).pulsit_geofence_confirmed is False
     # in_transit alone carries no verdict — see its own test below.
     assert (await _load_event(db_session, trip, PhaseType.IN_TRANSIT)).pulsit_geofence_confirmed is None

@@ -104,8 +104,9 @@ async def seed_trip(db_session):
         PhaseEvent(trip_id=trip.id, phase_type=PhaseType.LOADING, trip_stop_id=stop0.id, sequence_number=2, status=PhaseStatus.PENDING),
         PhaseEvent(trip_id=trip.id, phase_type=PhaseType.DEPARTURE, trip_stop_id=stop0.id, sequence_number=3, status=PhaseStatus.PENDING),
         PhaseEvent(trip_id=trip.id, phase_type=PhaseType.IN_TRANSIT, trip_stop_id=stop0.id, sequence_number=4, status=PhaseStatus.PENDING),
-        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.UNLOADING, trip_stop_id=stop1.id, sequence_number=5, status=PhaseStatus.PENDING),
-        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.CONFIRMATION, trip_stop_id=stop1.id, sequence_number=6, status=PhaseStatus.PENDING),
+        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.ARRIVAL, trip_stop_id=stop1.id, sequence_number=5, status=PhaseStatus.PENDING),
+        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.UNLOADING, trip_stop_id=stop1.id, sequence_number=6, status=PhaseStatus.PENDING),
+        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.CONFIRMATION, trip_stop_id=stop1.id, sequence_number=7, status=PhaseStatus.PENDING),
     ])
     await db_session.flush()
 
@@ -542,15 +543,12 @@ async def test_next_phase_tracks_the_ledger_and_returns_null_when_closed(client:
     assert resp.json()["phase_type"] == "in_transit"
 
     await _complete_in_transit(client, trip, token)
+    await _complete_arrival(client, db_session, trip, token)
 
-    gate_photo_id = await _make_artifact(db_session, trip.id)
     unloading_id = await _phase_id(client, trip.id, token, "unloading")
     await client.post(
         f"/api/v1/trips/{trip.id}/phases/{unloading_id}/complete",
-        json={
-            "phase_type": "unloading", "seal_number_at_destination": "AB-1234",
-            "gate_photo_artifact_id": gate_photo_id, "idempotency_key": str(uuid.uuid4()),
-        },
+        json={"phase_type": "unloading", "idempotency_key": str(uuid.uuid4())},
         headers=auth_header(token),
     )
 
@@ -991,15 +989,12 @@ async def test_full_single_leg_walk_over_http_closes_the_trip(client: AsyncClien
     assert resp.status_code == 200
 
     await _complete_in_transit(client, trip, token)
+    await _complete_arrival(client, db_session, trip, token)
 
-    gate_photo_id = await _make_artifact(db_session, trip.id)
     unloading_id = await _phase_id(client, trip.id, token, "unloading")
     resp = await client.post(
         f"/api/v1/trips/{trip.id}/phases/{unloading_id}/complete",
-        json={
-            "phase_type": "unloading", "seal_number_at_destination": "AB-1234",
-            "gate_photo_artifact_id": gate_photo_id, "idempotency_key": str(uuid.uuid4()),
-        },
+        json={"phase_type": "unloading", "idempotency_key": str(uuid.uuid4())},
         headers=auth_header(token),
     )
     assert resp.status_code == 200
@@ -1112,7 +1107,7 @@ async def test_empty_leg_trip_walks_to_closed(
     # all on an empty leg (build_phase_plan never emits one when nothing is
     # picked up).
     assert phase_types == [
-        "trip_creation", "activation", "departure", "in_transit", "unloading", "confirmation",
+        "trip_creation", "activation", "departure", "in_transit", "arrival", "unloading", "confirmation",
     ]
 
     activation_id = await _phase_id(client, trip_id, driver_token, "activation")
@@ -1158,14 +1153,25 @@ async def test_empty_leg_trip_walks_to_closed(
     )
     assert resp.status_code == 200, resp.text
 
-    gate_photo_id = await _make_artifact(db_session, trip_id)
+    # The seal is inspected at the gate before anything is opened — even on an
+    # empty leg, which still has a real seal applied at departure.
+    seal_photo_id = await _make_artifact(db_session, trip_id)
+    arrival_id = await _phase_id(client, trip_id, driver_token, "arrival")
+    resp = await client.post(
+        f"/api/v1/trips/{trip_id}/phases/{arrival_id}/complete",
+        json={
+            "phase_type": "arrival", "seal_condition": "intact",
+            "seal_number_at_arrival": "AB-1234",
+            "seal_photo_artifact_id": seal_photo_id, "idempotency_key": str(uuid.uuid4()),
+        },
+        headers=auth_header(driver_token),
+    )
+    assert resp.status_code == 200, resp.text
+
     unloading_id = await _phase_id(client, trip_id, driver_token, "unloading")
     resp = await client.post(
         f"/api/v1/trips/{trip_id}/phases/{unloading_id}/complete",
-        json={
-            "phase_type": "unloading", "seal_number_at_destination": "AB-1234",
-            "gate_photo_artifact_id": gate_photo_id, "idempotency_key": str(uuid.uuid4()),
-        },
+        json={"phase_type": "unloading", "idempotency_key": str(uuid.uuid4())},
         headers=auth_header(driver_token),
     )
     assert resp.status_code == 200
@@ -1438,8 +1444,9 @@ async def completed_unloading_trip(
         PhaseEvent(trip_id=trip.id, phase_type=PhaseType.LOADING, trip_stop_id=stop0.id, sequence_number=2, status=PhaseStatus.PENDING),
         PhaseEvent(trip_id=trip.id, phase_type=PhaseType.DEPARTURE, trip_stop_id=stop0.id, sequence_number=3, status=PhaseStatus.PENDING),
         PhaseEvent(trip_id=trip.id, phase_type=PhaseType.IN_TRANSIT, trip_stop_id=stop0.id, sequence_number=4, status=PhaseStatus.PENDING),
-        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.UNLOADING, trip_stop_id=stop1.id, sequence_number=5, status=PhaseStatus.PENDING),
-        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.CONFIRMATION, trip_stop_id=stop1.id, sequence_number=6, status=PhaseStatus.PENDING),
+        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.ARRIVAL, trip_stop_id=stop1.id, sequence_number=5, status=PhaseStatus.PENDING),
+        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.UNLOADING, trip_stop_id=stop1.id, sequence_number=6, status=PhaseStatus.PENDING),
+        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.CONFIRMATION, trip_stop_id=stop1.id, sequence_number=7, status=PhaseStatus.PENDING),
     ])
     await db_session.flush()
 
@@ -1498,6 +1505,7 @@ async def completed_unloading_trip(
     assert resp.status_code == 200
 
     await _complete_in_transit(client, trip, token)
+    await _complete_arrival(client, db_session, trip, token)
 
     # Close (not stage) the destination IN-direction session: satisfies unloading's
     # new gate without giving it any barcode data — see the fixture docstring above.
@@ -1505,14 +1513,10 @@ async def completed_unloading_trip(
         consignment_reference=pp_reference, stop_reference=str(stop1.id), direction=ScanDirection.IN,
     )
 
-    gate_photo_id = await _make_artifact(db_session, trip.id)
     unloading_id = await _phase_id(client, trip.id, token, "unloading")
     resp = await client.post(
         f"/api/v1/trips/{trip.id}/phases/{unloading_id}/complete",
-        json={
-            "phase_type": "unloading", "seal_number_at_destination": "AB-1234",
-            "gate_photo_artifact_id": gate_photo_id, "idempotency_key": str(uuid.uuid4()),
-        },
+        json={"phase_type": "unloading", "idempotency_key": str(uuid.uuid4())},
         headers=auth_header(token),
     )
     assert resp.status_code == 200
@@ -1634,6 +1638,27 @@ async def _complete_in_transit(client: AsyncClient, trip, token: str) -> None:
         json={
             "phase_type": "in_transit",
             "driver_phone_lat": -29.8587, "driver_phone_lng": 31.0218,
+            "idempotency_key": str(uuid.uuid4()),
+        },
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 200, resp.text
+
+
+async def _complete_arrival(
+    client: AsyncClient, db_session, trip, token: str, *, seal_number_at_arrival: str = "AB-1234",
+) -> None:
+    """The seal inspection at the destination gate. Every walk that reaches unloading
+    needs this too: ARRIVAL sits at a lower sequence than UNLOADING and must be
+    resolved before the driver can open the trailer."""
+    seal_photo_id = await _make_artifact(db_session, trip.id)
+    arrival_id = await _phase_id(client, trip.id, token, "arrival")
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{arrival_id}/complete",
+        json={
+            "phase_type": "arrival", "seal_condition": "intact",
+            "seal_number_at_arrival": seal_number_at_arrival,
+            "seal_photo_artifact_id": seal_photo_id,
             "idempotency_key": str(uuid.uuid4()),
         },
         headers=auth_header(token),

@@ -29,7 +29,7 @@ function twoStops(trip: TripId, originPrecinct: string, destPrecinct: string, at
 }
 
 // A trip's stops in the shape the plan generator needs. Every mock trip here is a
-// two-stop run (see twoStops above), so every plan is the 7-row single-leg shape —
+// two-stop run (see twoStops above), so every plan is the 8-row single-leg shape —
 // the degenerate case of the multi-stop plan, not a special one.
 function planStops(stops: TripStop[]): PlanStopInput[] {
   return stops.map((s, i) => ({
@@ -91,7 +91,7 @@ const STOPS_0035 = twoStops(TRIP_0035_ID, PRECINCT_FEDEX_JHB_ID, PRECINCT_FEDEX_
 
 const PLAN_0035 = walkPlan(
   makePhasePlan(TRIP_0035_ID, planStops(STOPS_0035), '2026-05-03T06:00:00Z', 'aa003500-0000-4000-8001'),
-  6,
+  7,
   '2026-05-03T19:45:00Z',
   { seal: 'FP-1234', count: 18 },
 )

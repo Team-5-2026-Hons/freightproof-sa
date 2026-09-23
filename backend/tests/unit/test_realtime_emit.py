@@ -37,6 +37,7 @@ from app.db.models.enums import (
     ParcelStatus,
     PhaseStatus,
     PhaseType,
+    SealCondition,
     TripStatus,
     VehicleType,
 )
@@ -53,16 +54,16 @@ from app.orchestration import scan_service
 from app.orchestration.exception_service import raise_exception, review_exception
 from app.orchestration.phase_service import (
     _finish_phase,
+    advance_arrival,
     advance_confirmation,
     advance_loading,
-    advance_unloading,
     override_phase,
 )
 from app.orchestration.trip_service import cancel_trip
 from app.schemas.phases import (
+    ArrivalCompleteRequest,
     ConfirmationCompleteRequest,
     LoadingCompleteRequest,
-    UnloadingCompleteRequest,
 )
 from tests.conftest import FakeMockStateStore
 
@@ -75,8 +76,9 @@ _PLAN = [
     ("loading", PhaseType.LOADING, 2, 0),
     ("departure", PhaseType.DEPARTURE, 3, 0),
     ("in_transit", PhaseType.IN_TRANSIT, 4, 0),
-    ("unloading", PhaseType.UNLOADING, 5, 1),
-    ("confirmation", PhaseType.CONFIRMATION, 6, 1),
+    ("arrival", PhaseType.ARRIVAL, 5, 1),
+    ("unloading", PhaseType.UNLOADING, 6, 1),
+    ("confirmation", PhaseType.CONFIRMATION, 7, 1),
 ]
 
 
@@ -355,8 +357,8 @@ async def test_first_exception_review_enqueues_exception_reviewed_at_info(
 # assigns before adding, so a "db.add(TripException(" grep misses it):
 #
 #   phase_service  advance_departure     departure seal mismatch    CRITICAL
-#   phase_service  advance_unloading     seal continuity            WARNING|CRITICAL
-#   phase_service  advance_unloading     destination seal mismatch  CRITICAL
+#   phase_service  advance_arrival       seal continuity            WARNING|CRITICAL
+#   phase_service  advance_arrival       destination seal mismatch  CRITICAL
 #   phase_service  advance_confirmation  waybill count mismatch     WARNING
 #   phase_service  advance_loading       scan shortfall backstop    WARNING
 #   scan_service   ingest_scans          scan discrepancy           WARNING
@@ -383,11 +385,12 @@ async def _make_artifact(db_session, trip_id) -> uuid.UUID:
     return artifact.id
 
 
-async def _ready_for_unloading(
+async def _ready_for_arrival(
     db_session, phases: dict[str, PhaseEvent], *,
     departure_seal: str | None, departure_status: PhaseStatus = PhaseStatus.COMPLETED,
 ) -> None:
-    """Resolve everything up to unloading and set the seal the departure recorded.
+    """Resolve everything up to the seal-inspection (arrival) phase and set the
+    seal the departure recorded.
 
     Statuses are set directly rather than driven through advance_activation..
     advance_in_transit: this module tests what reaches the outbox, and a five-call
@@ -395,7 +398,7 @@ async def _ready_for_unloading(
     assertion that matters. _seed_trip already fabricates the plan the same way.
 
     `departure_seal=None` with a COMPLETED departure is the data-integrity anomaly
-    advance_unloading treats as CRITICAL; with OVERRIDDEN it is the authorised
+    advance_arrival treats as CRITICAL; with OVERRIDDEN it is the authorised
     absence it treats as a WARNING.
     """
     for name in ("activation", "loading", "in_transit"):
@@ -405,14 +408,15 @@ async def _ready_for_unloading(
     await db_session.flush()
 
 
-async def _unload(db_session, trip, driver, phases, *, seal_at_destination: str):
-    return await advance_unloading(
+async def _inspect_seal(db_session, trip, driver, phases, *, seal_at_arrival: str):
+    return await advance_arrival(
         db_session, trip_id=trip.id, driver_id=driver.id,
-        phase_event_id=phases["unloading"].id,
-        payload=UnloadingCompleteRequest(
-            phase_type=PhaseType.UNLOADING,
-            seal_number_at_destination=seal_at_destination,
-            gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
+        phase_event_id=phases["arrival"].id,
+        payload=ArrivalCompleteRequest(
+            phase_type=PhaseType.ARRIVAL,
+            seal_condition=SealCondition.INTACT,
+            seal_number_at_arrival=seal_at_arrival,
+            seal_photo_artifact_id=await _make_artifact(db_session, trip.id),
             idempotency_key=str(uuid.uuid4()),
         ),
     )
@@ -458,11 +462,11 @@ async def test_destination_seal_mismatch_enqueues_critical_severity(db_session):
     """The demo site. A seal that changed between departure and destination is the
     platform's core claim, and it must reach the dispatcher without a reload."""
     trip, driver, phases = await _seed_trip(db_session, suffix="dest-mismatch")
-    await _ready_for_unloading(db_session, phases, departure_seal="AB-1234")
+    await _ready_for_arrival(db_session, phases, departure_seal="AB-1234")
 
-    await _unload(db_session, trip, driver, phases, seal_at_destination="ZZ-9999")
+    await _inspect_seal(db_session, trip, driver, phases, seal_at_arrival="ZZ-9999")
 
-    assert phases["unloading"].status == PhaseStatus.EXCEPTION  # the branch really ran
+    assert phases["arrival"].status == PhaseStatus.EXCEPTION  # the branch really ran
     outbox = _outbox(db_session)
     org_id, event = outbox[0]
     assert org_id == trip.operator_organization_id
@@ -479,9 +483,9 @@ async def test_unverifiable_seal_chain_enqueues_critical_severity(db_session):
     """A COMPLETED departure that recorded no seal is unexplained: nothing legitimate
     produces it, so it is CRITICAL and must be as loud as an outright mismatch."""
     trip, driver, phases = await _seed_trip(db_session, suffix="seal-unverified")
-    await _ready_for_unloading(db_session, phases, departure_seal=None)
+    await _ready_for_arrival(db_session, phases, departure_seal=None)
 
-    await _unload(db_session, trip, driver, phases, seal_at_destination="AB-1234")
+    await _inspect_seal(db_session, trip, driver, phases, seal_at_arrival="AB-1234")
 
     raised = (await db_session.execute(
         select(TripException).where(TripException.trip_id == trip.id)
@@ -500,11 +504,11 @@ async def test_overridden_departure_downgrades_the_same_site_to_exception_raised
     and the dispatcher would learn to dismiss the alert that matters.
     """
     trip, driver, phases = await _seed_trip(db_session, suffix="seal-overridden")
-    await _ready_for_unloading(
+    await _ready_for_arrival(
         db_session, phases, departure_seal=None, departure_status=PhaseStatus.OVERRIDDEN,
     )
 
-    await _unload(db_session, trip, driver, phases, seal_at_destination="AB-1234")
+    await _inspect_seal(db_session, trip, driver, phases, seal_at_arrival="AB-1234")
 
     raised = (await db_session.execute(
         select(TripException).where(TripException.trip_id == trip.id)
@@ -515,14 +519,14 @@ async def test_overridden_departure_downgrades_the_same_site_to_exception_raised
 
 
 async def test_matching_seals_enqueue_no_exception_event(db_session):
-    """The control. Without it these tests would still pass if every unloading emitted
+    """The control. Without it these tests would still pass if every arrival emitted
     a tamper signal regardless of the seals."""
     trip, driver, phases = await _seed_trip(db_session, suffix="seal-match")
-    await _ready_for_unloading(db_session, phases, departure_seal="AB-1234")
+    await _ready_for_arrival(db_session, phases, departure_seal="AB-1234")
 
-    await _unload(db_session, trip, driver, phases, seal_at_destination="ab-1234")  # case-normalised
+    await _inspect_seal(db_session, trip, driver, phases, seal_at_arrival="ab-1234")  # case-normalised
 
-    assert phases["unloading"].status == PhaseStatus.COMPLETED
+    assert phases["arrival"].status == PhaseStatus.COMPLETED
     assert _kinds(db_session) == [RealtimeKind.PHASE_COMPLETED]
 
 
@@ -707,7 +711,7 @@ async def test_waybill_count_change_in_transit_enqueues_exception_raised(db_sess
         parcel.pp_scan_out_at = now
     for parcel in parcels[:2]:
         parcel.pp_scan_in_at = now
-    for name in ("activation", "loading", "departure", "in_transit", "unloading"):
+    for name in ("activation", "loading", "departure", "in_transit", "arrival", "unloading"):
         phases[name].status = PhaseStatus.COMPLETED
     await db_session.flush()
 
@@ -759,7 +763,9 @@ def test_every_trip_exception_write_site_is_accounted_for():
         # The seventh is FP-145's GPS_MISMATCH in _raise_position_disagreement_if_unrecorded,
         # merged from feature/fp-68-geofence-service. It arrived silent — this test caught
         # it — and now enqueues EXCEPTION_RAISED like every other system-detected site.
-        "app/orchestration/phase_service.py": 7,
+        # The eighth is TRAILER_LOCATION_MISMATCH in _raise_trailer_decoupling_if_unrecorded,
+        # which enqueues a CRITICAL EXCEPTION_RAISED.
+        "app/orchestration/phase_service.py": 8,
         "app/orchestration/trip_service.py": 1,
         "app/orchestration/scan_service.py": 1,
         "app/orchestration/exception_service.py": 1,

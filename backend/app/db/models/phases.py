@@ -100,6 +100,10 @@ class PhaseEvent(Base):
     )
     location_warning_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     seal_number: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    # Arrival only: the seal's condition as found (SealCondition). Plain String like
+    # every enum column here, so new values need no migration. NULL on every other
+    # phase type, where "condition" has no meaning.
+    seal_condition: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     # Artifact FKs use use_alter=True to break the migration's circular dependency:
     # evidence_artifacts is created before trips, so these FKs are added via ALTER TABLE.
     seal_photo_artifact_id: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -170,4 +174,9 @@ class TrailerGpsSnapshot(Base):
     lat: Mapped[Decimal] = mapped_column(Numeric(10, 7), nullable=False)
     lng: Mapped[Decimal] = mapped_column(Numeric(10, 7), nullable=False)
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # This trailer's own verdict against the phase's precinct, with the same three-state
+    # meaning as PhaseEvent.pulsit_geofence_confirmed: TRUE inside, FALSE measured
+    # outside, NULL could not check (fix too far in time from the driver's action, no
+    # precinct coordinates, or a phase with no verdict such as in_transit).
+    geofence_confirmed: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

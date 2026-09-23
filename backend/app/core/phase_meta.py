@@ -12,8 +12,11 @@ STEP_SLUGS: dict[PhaseType, tuple[str, ...]] = {
     PhaseType.LOADING: ("1-linehaul",),
     PhaseType.DEPARTURE: ("2-capture-seal", "4-departure"),
     PhaseType.IN_TRANSIT: (),
-    # Seal photo first: the only evidence that expires once the truck is opened.
-    PhaseType.UNLOADING: ("2-seal-verify", "4-visual-count"),
+    # The seal inspection moved here from unloading, slug unchanged: it is the only
+    # evidence that expires once the truck is opened, so it gets its own phase that
+    # must complete before unloading can start.
+    PhaseType.ARRIVAL: ("2-seal-verify",),
+    PhaseType.UNLOADING: ("4-visual-count",),
     # receiver-handover signature is captured on the receiver's own device (handover.py), not the driver's.
     PhaseType.CONFIRMATION: ("1-pod-photo", "2-receiver-handover", "3-reconciliation", "4-closed"),
 }

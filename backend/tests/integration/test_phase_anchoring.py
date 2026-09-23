@@ -106,8 +106,9 @@ async def seed_trip(db_session):
         PhaseEvent(trip_id=trip.id, phase_type=PhaseType.LOADING, trip_stop_id=stop0.id, sequence_number=2, status=PhaseStatus.PENDING),
         PhaseEvent(trip_id=trip.id, phase_type=PhaseType.DEPARTURE, trip_stop_id=stop0.id, sequence_number=3, status=PhaseStatus.PENDING),
         PhaseEvent(trip_id=trip.id, phase_type=PhaseType.IN_TRANSIT, trip_stop_id=stop0.id, sequence_number=4, status=PhaseStatus.PENDING),
-        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.UNLOADING, trip_stop_id=stop1.id, sequence_number=5, status=PhaseStatus.PENDING),
-        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.CONFIRMATION, trip_stop_id=stop1.id, sequence_number=6, status=PhaseStatus.PENDING),
+        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.ARRIVAL, trip_stop_id=stop1.id, sequence_number=5, status=PhaseStatus.PENDING),
+        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.UNLOADING, trip_stop_id=stop1.id, sequence_number=6, status=PhaseStatus.PENDING),
+        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.CONFIRMATION, trip_stop_id=stop1.id, sequence_number=7, status=PhaseStatus.PENDING),
     ])
     await db_session.flush()
 
@@ -233,9 +234,10 @@ async def test_departure_complete_anchors_and_returns_event_hash(client: AsyncCl
     The receipt is not: since 2026-08-05 the Hedera submit is queued for the worker rather
     than awaited (a ~4-6s round trip was holding the driver's swipe open), so the response
     carries blockchain_receipt_id = null and the driver app renders "anchoring in
-    progress" until the worker lands it. D7/T5 (task 2.6): the anchor moved whole from
-    loading to departure, so the loading row in the same response must stay entirely
-    unanchored — regression guard that the anchor really moved, not just got duplicated."""
+    progress" until the worker lands it. Every phase anchors on completion now (design note
+    2026-09-23 §4.4), so the loading row completed earlier in this same trip must ALSO carry
+    its own event_hash with no receipt yet — it is no longer the departure-only anchor task
+    2.6 left behind."""
     trip, driver = seed_trip
     token = make_token(sub=str(driver.id), role="driver")
     await _complete_activation(client, db_session, trip, token)
@@ -260,7 +262,7 @@ async def test_departure_complete_anchors_and_returns_event_hash(client: AsyncCl
     assert departure["blockchain_receipt_id"] is None
 
     loading_phase = next(h for h in body["phases"] if h["phase_type"] == "loading")
-    assert loading_phase["event_hash"] is None
+    assert loading_phase["event_hash"] is not None
     assert loading_phase["blockchain_receipt_id"] is None
 
 
@@ -313,6 +315,9 @@ async def test_trip_detail_lists_departure_receipt_for_dispatcher(
     PHASE_EVENT receipt in blockchain_receipts. resource_service.get_trip_detail
     used to filter subject_type == TRIP only, silently hiding every
     driver-anchored receipt from the dispatcher's per-trip evidence view."""
+    # Every phase anchors now (design note 2026-09-23 §4.4), so activation and loading
+    # (completed via the two helpers below) queue their own receipts alongside
+    # departure's — this test isolates departure's own receipt among them.
     trip, driver = seed_trip
     driver_token = make_token(sub=str(driver.id), role="driver")
     await _complete_activation(client, db_session, trip, driver_token)
@@ -354,8 +359,11 @@ async def test_trip_detail_lists_departure_receipt_for_dispatcher(
     assert detail_resp.status_code == 200
     receipts = detail_resp.json()["blockchain_receipts"]
     phase_receipts = [r for r in receipts if r["subject_type"] == "phase_event"]
-    assert len(phase_receipts) == 1
-    assert phase_receipts[0]["subject_id"] == departure_id_str
+    # Activation and loading anchored too — three phase receipts total — but only one
+    # of them is departure's own.
+    assert len(phase_receipts) == 3
+    departure_receipts = [r for r in phase_receipts if r["subject_id"] == departure_id_str]
+    assert len(departure_receipts) == 1
 
 
 @pytest.mark.parametrize("phase_type", ["departure", "confirmation", "receiver_confirmation"])
@@ -400,7 +408,11 @@ async def test_upload_complete_anchor_verify_and_detect_replacement_end_to_end(
     event_id = await complete("departure", {"seal_number": "AB-1234", "seal_photo_artifact_id": selected_artifact_id})
     if phase_type != "departure":
         await complete("in_transit", {})
-        await complete("unloading", {"seal_number_at_destination": "AB-1234", "gate_photo_artifact_id": await upload("arrival")})
+        await complete("arrival", {
+            "seal_condition": "intact", "seal_number_at_arrival": "AB-1234",
+            "seal_photo_artifact_id": await upload("arrival"),
+        })
+        await complete("unloading", {})
         selected_artifact_id = await upload("POD")
         if phase_type == "receiver_confirmation":
             confirmation_id = await _phase_event_id(client, trip.id, driver_token, "confirmation")

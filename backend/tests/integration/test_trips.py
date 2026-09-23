@@ -179,8 +179,8 @@ async def test_create_trip_response_shape(client: AsyncClient, seed_data, db_ses
     assert body["idvs_check_status"] == "pending"
     # POST /trips now returns the trip's whole committed phase plan (Stage 3.4),
     # not just the single trip_creation row — this fixture's single-leg
-    # (2-stop) trip yields 7 rows (length is data, but this fixture's own).
-    assert len(body["phases"]) == 7
+    # (2-stop) trip yields 8 rows (length is data, but this fixture's own).
+    assert len(body["phases"]) == 8
     assert body["phases"][0]["phase_type"] == "trip_creation"
     # h0 completes inline in create_trip once its anchor succeeds (Stage 2
     # final-review fix) — it's never "pending" in a real response.
@@ -486,10 +486,10 @@ async def test_get_trip_detail_returns_200(client: AsyncClient, seed_data, db_se
     body = resp.json()
     assert resp.status_code == 200
     assert body["id"] == trip_id
-    # create_trip now writes the full 7-row committed phase plan for this
+    # create_trip now writes the full 8-row committed phase plan for this
     # single-leg (2-stop) trip (Stage 2.1), and get_trip_detail returns every
     # PhaseEvent row — not just H0 — ordered by sequence_number.
-    assert len(body["phases"]) == 7
+    assert len(body["phases"]) == 8
     assert body["phases"][0]["phase_type"] == "trip_creation"
 
 

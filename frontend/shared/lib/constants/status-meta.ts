@@ -52,10 +52,12 @@ export const DRIVER_EXCEPTION_TYPES: ExceptionType[] = [
 export const SYSTEM_EXCEPTION_TYPES: ExceptionType[] = [
   'seal_mismatch',
   'seal_unverified',
+  'seal_compromised',
   'parcel_count_mismatch',
   'gps_mismatch',
   'driver_vehicle_separation',
   'driver_location_mismatch',
+  'trailer_location_mismatch',
   'route_deviation',
   'vehicle_substitution',
   'driver_substitution',

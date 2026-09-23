@@ -376,14 +376,17 @@ async def record_phase_corroboration(
             )
 
         # ── FP-194: the geofence verdict ────────────────────────────────────────
-        if PhaseType(event.phase_type) in _PHASES_WITHOUT_A_GEOFENCE_VERDICT:
+        # Loaded once and shared with the trailer verdicts below. None for a phase
+        # that gets no verdict at all, which the trailer loop reads as "do not judge".
+        judges_geofence = PhaseType(event.phase_type) not in _PHASES_WITHOUT_A_GEOFENCE_VERDICT
+        precinct = await _load_precinct_for_phase(db, event=event) if judges_geofence else None
+        if not judges_geofence:
             logger.info(
                 "Geofence verdict deliberately not evaluated for %s: this phase's stop is "
                 "the one it departed from, not the one it is at",
                 context,
             )
         else:
-            precinct = await _load_precinct_for_phase(db, event=event)
             # An untimely fix is passed as None rather than the real fix: to
             # evaluate_geofence, "the fix cannot be trusted for this moment" and "there
             # was no fix at all" both mean the same thing — could not check — and the
@@ -405,6 +408,15 @@ async def record_phase_corroboration(
                     trailer_id, context, trailer_fix.status.value,
                 )
                 continue
+            # Each trailer gets its own verdict under the same rules as the horse: only a
+            # timely fix is judged, and anything short of a measurement stays NULL. The
+            # position is stored either way; only the judgement is withheld.
+            if judges_geofence and _within_corroboration_skew(
+                fixed_at=trailer_fix.fixed_at, driver_captured_at=driver_captured_at,
+            ):
+                snapshot.geofence_confirmed = _geofence_verdict_to_column(
+                    trailer_fix, precinct, context=f"{context} trailer_id={trailer_id}",
+                )
             db.add(snapshot)
 
         return horse_fix

@@ -40,7 +40,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.core.config import settings
 from app.db.models.enums import (
-    AnchorStatus, IdvsStatus, ParcelStatus, PhaseStatus, PhaseType, TripStatus, TripType, VehicleType,
+    AnchorStatus, IdvsStatus, ParcelStatus, PhaseStatus, PhaseType, SealCondition, TripStatus, TripType,
+    VehicleType,
 )
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
@@ -343,8 +344,8 @@ def _apply_walk_evidence(
 
     Only fields the real completion path writes (orchestration/phase_service.py):
     activation captures phone GPS, loading the driver's visual count, departure the
-    seal, unloading the seal re-read at destination, confirmation the delivered
-    counts. parcel_count_origin is deliberately NOT set - nothing on the live path
+    seal, arrival the seal as found at the gate, confirmation the delivered counts.
+    Unloading writes nothing of its own here: the seal moved from it to arrival. parcel_count_origin is deliberately NOT set - nothing on the live path
     writes it, and a seed that populates a column the application never fills would
     make a dead column look load-bearing.
     """
@@ -358,10 +359,12 @@ def _apply_walk_evidence(
         event.driver_visual_count = loaded_at.get(stop_sequence, 0)
     elif phase_type == PhaseType.DEPARTURE:
         event.seal_number = spec.seal_number
-    elif phase_type == PhaseType.UNLOADING:
-        # The seal read at destination. Matching the departure seal is what a clean
-        # trip looks like; the mismatch path is an exception, not a seed.
+    elif phase_type == PhaseType.ARRIVAL:
+        # The seal as found at the gate. Intact and matching the departure seal is what
+        # a clean trip looks like; the mismatch and compromised paths are exceptions,
+        # not seeds.
         event.seal_number = spec.seal_number
+        event.seal_condition = SealCondition.INTACT.value
     elif phase_type == PhaseType.CONFIRMATION and stop_sequence is not None:
         delivered = delivered_at.get(stop_sequence, 0)
         event.driver_visual_count = delivered

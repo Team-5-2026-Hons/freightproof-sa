@@ -12,7 +12,7 @@ import type { ActionLocationAssessment } from './action-location'
 
 export type ExceptionId = string & { readonly __brand: 'ExceptionId' }
 
-// All 20 backend ExceptionType values — see DRIVER_EXCEPTION_TYPES and
+// All 25 backend ExceptionType values — see DRIVER_EXCEPTION_TYPES and
 // SYSTEM_EXCEPTION_TYPES in lib/constants/status-meta.ts for the UI split.
 export type ExceptionType =
   // System-detected (raised automatically by backend validation logic)
@@ -20,6 +20,10 @@ export type ExceptionType =
   // Seals differ (theft indicator, CRITICAL) vs no departure seal recorded at all
   // (WARNING) — kept apart so filtering for tampering never surfaces overridden departures.
   | 'seal_unverified'
+  // A third seal finding, distinct from both: the seal at arrival is physically damaged
+  // or missing. seal_mismatch is "the number differs" (a swap); seal_compromised is
+  // "the seal is broken" (an opening). Both can fire on the same arrival row.
+  | 'seal_compromised'
   | 'parcel_count_mismatch'
   | 'gps_mismatch'
   | 'driver_vehicle_separation'
@@ -27,6 +31,9 @@ export type ExceptionType =
   // distinct from gps_mismatch (the vehicle TRACKER disagrees with the precinct) and
   // driver_vehicle_separation (the phone disagrees with the TRACKER, not the precinct).
   | 'driver_location_mismatch'
+  // A trailer measured outside the stop's precinct and far from its own horse, while the
+  // horse was inside: a decoupled trailer (CRITICAL). Distinct from gps_mismatch (horse).
+  | 'trailer_location_mismatch'
   | 'route_deviation'
   | 'vehicle_substitution'
   | 'driver_substitution'

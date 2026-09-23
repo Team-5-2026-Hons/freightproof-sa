@@ -2,7 +2,7 @@
 //
 // The plan is DATA, generated at trip creation from the trip's stops and consignments —
 // not a fixed list of six. A single-leg trip is the degenerate case of a multi-stop plan
-// (7 rows); a three-stop cross-dock is 11. Nothing in this file may assume a length.
+// (8 rows); a three-stop cross-dock is 13. Nothing in this file may assume a length.
 //
 // Replaces ./handshake.ts, which encodes the old fixed 1-5 model. Both exist during the
 // phase refactor; handshake.ts is removed once its last consumer goes (Stages 4 and 5).
@@ -26,8 +26,12 @@ export type PhaseType =
   | 'loading'
   | 'departure'
   | 'in_transit'
+  | 'arrival'
   | 'unloading'
   | 'confirmation'
+
+// Mirrors backend SealCondition. A seal found at arrival is intact, damaged or missing.
+export type SealCondition = 'intact' | 'damaged' | 'missing'
 
 // pending -> in_progress -> completed (happy path); exception and overridden are off-path.
 export type PhaseStatus =
@@ -101,10 +105,14 @@ export interface PhaseDescriptor {
   // Optional ONLY until the driver-pwa fixtures are updated; same convention as blocked_on above.
   driver_captured_at?: string | null
 
-  // Captured at `departure`, NOT at `loading` — parent D7 and §2.6. Verified again at
-  // `unloading` before the doors open. Moving this is the highest-risk edit in the
-  // refactor: a silent NULL == NULL comparison raises nothing and fails no test.
+  // Captured at `departure`, NOT at `loading` — parent D7 and §2.6. Inspected again at
+  // `arrival` before the doors open (the arrival row holds its own seal_number and
+  // seal_photo_artifact_id). Moving this is the highest-risk edit in the refactor: a
+  // silent NULL == NULL comparison raises nothing and fails no test.
   seal_number: string | null
+  // Arrival only: the seal's condition as found. Mirrors PhaseEventRead.seal_condition.
+  // Optional ONLY until the fixtures are updated, same convention as blocked_on above.
+  seal_condition?: SealCondition | null
   seal_photo_artifact_id: string | null
   waybill_photo_artifact_id: string | null
   gate_photo_artifact_id: string | null

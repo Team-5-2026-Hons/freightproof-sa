@@ -29,9 +29,11 @@ import { uniqueExceptionsById } from './exception-dedupe'
 // Phase types the compact location verdict applies to. trip_creation has no fix fields
 // worth reading and in_transit gets its own "Recorded location at arrival" section
 // instead (with an explicit no-verdict line); a chip here would pre-empt that and
-// imply a checked boundary that in-transit never has, see location-evidence.ts.
+// imply a checked boundary that in-transit never has, see location-evidence.ts. arrival
+// IS a stop-anchored phase (checked against the destination precinct, same as unloading)
+// so it belongs in this list — see design note §4.5.
 const LOCATION_SUMMARY_PHASE_TYPES: readonly PhaseDescriptor['phase_type'][] =
-  ['activation', 'loading', 'departure', 'unloading', 'confirmation']
+  ['activation', 'loading', 'departure', 'arrival', 'unloading', 'confirmation']
 
 /** The row's compact verdict chip, or undefined for a phase type/state this summary does
  *  not cover. A `pending` node has not run yet, so there is nothing recorded to show.
@@ -120,7 +122,9 @@ export function TripTimeline({ trip, precincts, returnTo, lastUpdated, onJump, o
         const exceptions = sortExceptionsByEventTime(exceptionsById.filter(e => e.phase_event_id === phase.phase_event_id), evidence.artifactsById)
         const receipt = trip.blockchain_receipts.find(r => r.id === phase.blockchain_receipt_id)
           ?? (phase.phase_type === 'trip_creation' ? trip.blockchain_receipts.find(r => r.receipt_type === 'journey_lock') : undefined)
-        const verifiesEvidence = receipt?.receipt_type === 'pickup' || receipt?.receipt_type === 'delivery'
+        // Every phase receipt (and an override's) can be rebuilt and verified server-side;
+        // the journey lock is a trip receipt with its own verify path, so key on subject.
+        const verifiesEvidence = receipt?.subject_type === 'phase_event'
         const summary = [phase.parcel_count_origin !== null ? `${phase.parcel_count_origin} recorded at origin` : null, phase.seal_number ? `Seal ${phase.seal_number}` : null].filter(Boolean).join(' · ')
         const isLastPhase = phaseIndex === phases.length - 1
         const isTransit = phase.phase_type === 'in_transit'

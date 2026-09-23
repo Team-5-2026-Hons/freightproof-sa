@@ -8,12 +8,19 @@ import { TripCreatedDetail } from '@/components/domain/TripCreatedDetail'
 import { ActivationDetail } from '@/components/domain/ActivationDetail'
 import { LoadingDetail } from '@/components/domain/LoadingDetail'
 import { DepartureDetail } from '@/components/domain/DepartureDetail'
+import { ArrivalDetail } from '@/components/domain/ArrivalDetail'
 import { UnloadingDetail } from '@/components/domain/UnloadingDetail'
 import { ConfirmationDetail } from '@/components/domain/ConfirmationDetail'
 import { InTransitArrivalLocation } from '@/components/domain/InTransitTimeline'
 import { PhaseOverrideAction } from '@/components/domain/PhaseOverrideAction'
 import { countAtStop, precinctAtPhase } from '@/lib/phase/trip-detail'
 import { originScannedCount } from '@/lib/phase/derive'
+import type { ExceptionType } from '@shared/lib/types/exception'
+
+// The three seal findings recorded on an ARRIVAL row (design note §4.2/§4.3). A single
+// arrival can carry seal_compromised (broken/missing) AND seal_mismatch (wrong number)
+// together, so ArrivalDetail is handed every match, never just the first.
+const SEAL_EXCEPTION_TYPES: readonly ExceptionType[] = ['seal_mismatch', 'seal_unverified', 'seal_compromised']
 
 /** The stop this in-transit leg is travelling TO — the trip's next stop after the one
  *  this phase departs from. Exported so TripTimeline can resolve the identical
@@ -38,8 +45,9 @@ export function PhaseEvidence({ trip, phase, precincts, onChanged, ...evidence }
     case 'activation': content = <ActivationDetail {...shared} trip={trip} precinct={precinct} />; break
     case 'loading': content = <LoadingDetail {...shared} expectedCount={countAtStop(trip, phase, 'out', 'expected')} liveScannedOutCount={countAtStop(trip, phase, 'out', 'scanned')} precinct={precinct} />; break
     case 'departure': content = <DepartureDetail {...shared} precinct={precinct} />; break
-    case 'unloading': content = <UnloadingDetail {...shared} allPhases={trip.phases} scannedInCount={countAtStop(trip, phase, 'in', 'scanned')} expectedAtStopCount={countAtStop(trip, phase, 'in', 'expected')} precinct={precinct}
-      sealException={trip.exceptions.find(e => e.phase_event_id === phase.phase_event_id && (e.exception_type === 'seal_mismatch' || e.exception_type === 'seal_unverified'))} />; break
+    case 'arrival': content = <ArrivalDetail {...shared} allPhases={trip.phases} precinct={precinct}
+      sealExceptions={trip.exceptions.filter(e => e.phase_event_id === phase.phase_event_id && SEAL_EXCEPTION_TYPES.includes(e.exception_type))} />; break
+    case 'unloading': content = <UnloadingDetail {...shared} scannedInCount={countAtStop(trip, phase, 'in', 'scanned')} expectedAtStopCount={countAtStop(trip, phase, 'in', 'expected')} precinct={precinct} />; break
     case 'confirmation': content = <ConfirmationDetail {...shared} precinct={precinct} originScannedCount={originScannedCount(trip.phases)} />; break
     case 'in_transit':
       // The journey mini-timeline sits OUTSIDE disclosure (TripTimeline renders it as

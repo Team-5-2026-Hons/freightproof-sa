@@ -36,7 +36,10 @@ from tests.integration._fleet_seed import (
 
 _PROBLEMS = "/api/v1/analytics/fleet/problems"
 _WEEKS_BACK = 4
-_STEPS = ["trip_creation", "activation", "loading", "departure", "in_transit", "unloading", "confirmation", "unlinked"]
+_STEPS = [
+    "trip_creation", "activation", "loading", "departure", "in_transit", "arrival",
+    "unloading", "confirmation", "unlinked",
+]
 
 
 def _week0() -> date:
@@ -224,7 +227,7 @@ async def test_fleet_problems_by_step_counts_unlinked_last(
     assert response.status_code == 200
     assert {row["step"]: row["count"] for row in response.json()["by_step"]} == {
         "trip_creation": 0, "activation": 0, "loading": 0, "departure": 1,
-        "in_transit": 2, "unloading": 1, "confirmation": 0, "unlinked": 1,
+        "in_transit": 2, "arrival": 0, "unloading": 1, "confirmation": 0, "unlinked": 1,
     }
 
 

@@ -16,7 +16,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.phase_meta import STEP_SLUGS
-from app.db.models.enums import AnchorStatus, PhaseStatus, PhaseType
+from app.db.models.enums import AnchorStatus, PhaseStatus, PhaseType, SealCondition
 from app.schemas.action_location import ActionLocationAssessment
 
 _SEAL_PATTERN = re.compile(r"^[A-Z]{2}-\d{4}$")
@@ -105,8 +105,11 @@ class PhaseEventRead(BaseModel):
     location_warning_acknowledged_at: Optional[datetime] = None
     location_warning_reason: Optional[str] = None
     seal_number: Optional[str] = None
+    seal_condition: Optional[SealCondition] = None
     seal_photo_artifact_id: Optional[UUID] = None
     waybill_photo_artifact_id: Optional[UUID] = None
+    # No longer written (the seal photo moved to arrival's seal_photo_artifact_id).
+    # Kept while the column exists; a later migration drops both together.
     gate_photo_artifact_id: Optional[UUID] = None
     pod_photo_artifact_id: Optional[UUID] = None
     pod_signature_artifact_id: Optional[UUID] = None
@@ -161,6 +164,7 @@ class TrailerGpsSnapshotBase(BaseModel):
     lat: float
     lng: float
     captured_at: datetime
+    geofence_confirmed: Optional[bool] = None
 
 
 class TrailerGpsSnapshotCreate(TrailerGpsSnapshotBase):
@@ -367,43 +371,44 @@ class InTransitCompleteRequest(_PhaseCompleteBase):
     # capture step, which would need a step recipe, which would change STEP_SLUGS — the
     # shared contract this design was explicitly shaped to leave alone.
     #
-    # Unanchored, like activation/loading/unloading: ANCHORED_PHASES stays
-    # trip_creation/departure/confirmation (frontend/shared/lib/constants/phase-meta.ts).
-    # An arrival timestamp derives its integrity from the departure and confirmation
-    # anchors that bracket it, not from a receipt of its own.
+    # Anchored like every phase (receipt type TRANSIT_ARRIVAL), with an IDs-only payload:
+    # the attestation is the fact, and HCS's consensus timestamp is what makes it hard to
+    # backdate.
     phase_type: Literal[PhaseType.IN_TRANSIT]
 
 
-class UnloadingCompleteRequest(_PhaseCompleteBase):
-    phase_type: Literal[PhaseType.UNLOADING]
-    seal_number_at_destination: str
-    # Photo of the seal as found at destination, BEFORE it is broken — the
-    # tamper-evidence bookend to departure's seal_photo_artifact_id. Required, not
-    # optional: the seal is the single piece of physical evidence this phase exists
-    # to capture, and once the truck is open it cannot be re-photographed. An
-    # unloading recorded without it is an assertion, not evidence.
-    #
-    # Reuses PhaseEvent.gate_photo_artifact_id, which existed unused on the model
-    # before this — no migration needed.
-    #
-    # Contract note for driver-pwa: its unloading flow must upload this artifact and
-    # send the id, or completion 422s. As of Stage 5 the app already CAPTURES a seal
-    # photo at unloading (SealBreakInspection's sealBrokenPhotoDataUrl, mandatory
-    # before the step can be confirmed) but drops it — lib/api/phases.ts sends only
-    # seal_number_at_destination. Wiring it through is the same upload-then-send
-    # pattern confirmation already uses for the POD photo.
-    #
-    # UNRESOLVED, needs a decision before the flows are wired together: this field is
-    # specified as the seal AS FOUND, intact, before the warehouse breaks it. The
-    # driver app's step photographs the seal AFTER breaking. Those are two different
-    # photographs with different evidential value, and only one of them proves the
-    # seal was intact on arrival.
-    gate_photo_artifact_id: UUID
+class ArrivalCompleteRequest(_PhaseCompleteBase):
+    # The seal AS FOUND at the destination gate, before anything is opened. A phase of
+    # its own, completed before unloading can start, so "inspected before opened" is a
+    # sequence rule the server enforces instead of an order photos happen to be taken in.
+    phase_type: Literal[PhaseType.ARRIVAL]
+    seal_condition: SealCondition
+    # Required unless the seal is MISSING: there is no number to read off a seal that
+    # is not there, and forcing one would make the driver invent evidence. A damaged
+    # seal usually still shows its number, so it is still required.
+    seal_number_at_arrival: Optional[str] = None
+    # Required in every condition. A missing seal is photographed as a missing seal:
+    # the empty hasp is the evidence.
+    seal_photo_artifact_id: UUID
 
-    @field_validator("seal_number_at_destination")
+    @field_validator("seal_number_at_arrival")
     @classmethod
-    def validate_seal_number(cls, v: str) -> str:
-        return _validate_seal_format(v)
+    def validate_seal_number(cls, v: Optional[str]) -> Optional[str]:
+        return None if v is None else _validate_seal_format(v)
+
+    @model_validator(mode="after")
+    def validate_seal_number_present(self) -> "ArrivalCompleteRequest":
+        if self.seal_condition != SealCondition.MISSING and self.seal_number_at_arrival is None:
+            raise ValueError("seal_number_at_arrival is required unless the seal is missing")
+        return self
+
+
+class UnloadingCompleteRequest(_PhaseCompleteBase):
+    # Unloading only. The seal number and the seal photo moved to ArrivalCompleteRequest:
+    # the seal is inspected at arrival, before the doors open, which also settles the old
+    # conflict of this schema asking for the seal "as found" while the driver app
+    # photographed it after breaking. The scan gate and the count checks stay here.
+    phase_type: Literal[PhaseType.UNLOADING]
 
 
 class ConfirmationCompleteRequest(_PhaseCompleteBase):
@@ -448,7 +453,7 @@ class ConfirmationCompleteRequest(_PhaseCompleteBase):
         return self
 
 
-# Decision S5. One endpoint, six real shapes: Pydantic picks the member from
+# Decision S5. One endpoint, seven real shapes: Pydantic picks the member from
 # `phase_type` and validates it properly, so a missing seal_number is still a
 # 422 and not a hand-rolled service-layer error.
 #
@@ -469,6 +474,7 @@ PhaseCompleteRequest = Annotated[
         LoadingCompleteRequest,
         DepartureCompleteRequest,
         InTransitCompleteRequest,
+        ArrivalCompleteRequest,
         UnloadingCompleteRequest,
         ConfirmationCompleteRequest,
     ],

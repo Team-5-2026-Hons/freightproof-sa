@@ -314,10 +314,10 @@ describe('InTransitPageClient driving screen', () => {
 
     await confirmArrival()
 
-    // Unloading recipe (shared/lib/constants/phase-meta.ts) is ['2-seal-verify',
-    // '4-visual-count'] as of 2026-08-05 — '1-hand-waybill' was deleted, so the first
-    // arrival step is now seal-verify.
-    expect(mockRouterPush).toHaveBeenCalledWith('/trip/phase/unloading/step/2-seal-verify')
+    // The arrival phase's own recipe (shared/lib/constants/phase-meta.ts) is
+    // ['2-seal-verify'] — the seal inspection moved here from unloading, so the first
+    // step after the swipe is the arrival phase's seal-verify, not unloading's.
+    expect(mockRouterPush).toHaveBeenCalledWith('/trip/phase/arrival/step/2-seal-verify')
   })
 
   it('never routes "Arrive at destination" back to a trip screen, which would loop', async () => {
@@ -427,7 +427,7 @@ describe('InTransitPageClient arrival attestation (Task 5)', () => {
     await confirmArrival()
 
     expect(mockMarkPhaseSyncing).toHaveBeenCalledWith(IN_TRANSIT_PHASE.phase_event_id)
-    expect(mockRouterPush).toHaveBeenCalledWith('/trip/phase/unloading/step/2-seal-verify')
+    expect(mockRouterPush).toHaveBeenCalledWith('/trip/phase/arrival/step/2-seal-verify')
     // Order matters: without it Home renders one frame with in_transit still pending and
     // isDriving() (lib/phase/derive.ts) still true.
     const markOrder = mockMarkPhaseSyncing.mock.invocationCallOrder[0]
@@ -443,7 +443,7 @@ describe('InTransitPageClient arrival attestation (Task 5)', () => {
 
     // Stranding the driver on the driving screen would only invite a third swipe — the
     // evidence is already on its way either way.
-    expect(mockRouterPush).toHaveBeenCalledWith('/trip/phase/unloading/step/2-seal-verify')
+    expect(mockRouterPush).toHaveBeenCalledWith('/trip/phase/arrival/step/2-seal-verify')
   })
 
   it('rolls the marker back when the ledger refuses the arrival', async () => {

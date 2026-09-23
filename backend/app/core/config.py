@@ -82,6 +82,12 @@ class Settings(BaseSettings):
     DRIVER_TRUCK_MAX_SKEW_SECONDS: int = 30
     DRIVER_TRUCK_MAX_PHONE_ACCURACY_METRES: float = 50.0
 
+    # Trailer-vs-horse: how far a trailer's tracker must be from its own horse's before a
+    # "horse inside the precinct, trailer outside" reading counts as a decoupled trailer.
+    # Without it a coupled trailer ~20 m behind a horse parked at the fence edge could read
+    # outside while its horse reads inside, and raise a CRITICAL alarm for nothing.
+    TRAILER_HORSE_MAX_SEPARATION_METRES: float = 500.0
+
     DEMO_MODE: bool = False
 
     # Sole gate for the dev panel: the demo deploy runs as production but still needs it.

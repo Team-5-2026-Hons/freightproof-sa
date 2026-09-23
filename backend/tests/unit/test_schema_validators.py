@@ -324,17 +324,19 @@ def _departure_request(**overrides):
     return DepartureCompleteRequest(**payload)
 
 
-def _unloading_request(**overrides):
-    from app.schemas.phases import UnloadingCompleteRequest
+def _arrival_request(**overrides):
+    from app.schemas.phases import ArrivalCompleteRequest
+    from app.db.models.enums import SealCondition
 
     payload = {
-        "phase_type": "unloading",
+        "phase_type": "arrival",
         "idempotency_key": "idem-1",
-        "seal_number_at_destination": "AB-1234",
-        "gate_photo_artifact_id": _uuid.uuid4(),
+        "seal_condition": SealCondition.INTACT,
+        "seal_number_at_arrival": "AB-1234",
+        "seal_photo_artifact_id": _uuid.uuid4(),
     }
     payload.update(overrides)
-    return UnloadingCompleteRequest(**payload)
+    return ArrivalCompleteRequest(**payload)
 
 
 def test_departure_seal_number_canonical_form_is_unchanged():
@@ -354,17 +356,17 @@ def test_departure_seal_number_still_rejects_a_bad_format():
         _departure_request(seal_number="not-a-seal")
 
 
-def test_unloading_seal_number_at_destination_lowercase_and_padding_is_normalized():
-    request = _unloading_request(seal_number_at_destination=" ab-1234 ")
+def test_arrival_seal_number_at_arrival_lowercase_and_padding_is_normalized():
+    request = _arrival_request(seal_number_at_arrival=" ab-1234 ")
 
-    assert request.seal_number_at_destination == "AB-1234"
+    assert request.seal_number_at_arrival == "AB-1234"
 
 
-def test_unloading_seal_number_at_destination_still_rejects_a_bad_format():
+def test_arrival_seal_number_at_arrival_still_rejects_a_bad_format():
     from pydantic import ValidationError as PydanticValidationError
 
     with pytest.raises(PydanticValidationError):
-        _unloading_request(seal_number_at_destination="1234")
+        _arrival_request(seal_number_at_arrival="1234")
 
 
 def test_seal_number_confirmed_stays_free_form_not_normalized():

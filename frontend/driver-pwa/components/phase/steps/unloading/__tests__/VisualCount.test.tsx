@@ -35,9 +35,6 @@ vi.mock('@/lib/hooks/useTrip', () => ({
 function makeDraft(overrides: Partial<UnloadingEvidence> = {}): UnloadingEvidence {
   return {
     waybillHandedOver: null,
-    sealNumberAtDestination: null,
-    sealIntactPhotoDataUrl: null,
-    sealIntactPhotoArtifactId: null,
     driverVisualCount: null,
     capturedAt: null,
     ...overrides,
