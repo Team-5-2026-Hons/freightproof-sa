@@ -52,6 +52,16 @@ export interface DevTripStop {
   // physically leaving the origin is the precondition for any destination scan.
   // Null when no departure precedes this stop (i.e. it is the origin).
   preceding_departure_status: string | null
+  // Scan IN at this stop opens once ARRIVAL is decided (the seal is inspected first).
+  arrival_phase_status: string | null
+  unloading_phase_status: string | null
+}
+
+/** One vehicle on the trip, so the panel can offer a per-trailer scenario. */
+export interface DevVehicle {
+  vehicle_id: string
+  registration: string
+  role: 'horse' | 'trailer'
 }
 
 export interface DevTripSummary {
@@ -62,6 +72,10 @@ export interface DevTripSummary {
   driver_full_name: string | null
   created_at: string
   stops: DevTripStop[]
+  // Trip.current_stop: the stop sequence the ledger says the trip is at.
+  current_stop_sequence: number | null
+  // Horse first, then trailers by registration.
+  vehicles: DevVehicle[]
 }
 
 export interface ConsignmentScanResult {
@@ -285,3 +299,47 @@ export interface MoveTruckResponse {
  * so the two never drift onto different literal strings.
  */
 export const PRECINCT_WAYPOINT_ID = 'precinct'
+
+// Mirrors RigScenario in backend/app/schemas/dev.py — kept in sync by hand.
+export const RIG_SCENARIOS = [
+  'at_stop', 'away_from_stop', 'en_route', 'left_before_departure', 'trailer_uncoupled', 'silent',
+] as const
+export type RigScenario = (typeof RIG_SCENARIOS)[number]
+
+export interface RigScenarioRequest {
+  trip_id: string
+  scenario: RigScenario
+  trip_stop_id?: string
+  vehicle_id?: string
+}
+
+export interface RigReadingRead {
+  vehicle_id: string
+  registration: string
+  role: 'horse' | 'trailer'
+  status: string
+  // Decimal serialised as a string — never coerce to number (see WaypointRead).
+  latitude: string | null
+  longitude: string | null
+}
+
+export interface RoadFindingRead {
+  exception_type: string
+  severity: string
+  vehicle_id: string
+  description: string
+  // False when this run matched a finding already on record — shown, not re-written.
+  newly_recorded: boolean
+}
+
+export interface RoadCheckResponse {
+  trip_id: string
+  readings: RigReadingRead[]
+  findings: RoadFindingRead[]
+  skipped_reason: string | null
+}
+
+export interface RigScenarioResponse extends RoadCheckResponse {
+  scenario: RigScenario
+  label: string
+}

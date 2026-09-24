@@ -18,6 +18,7 @@
 | **Confirm which database `DATABASE_URL` points at** | The refactor DB and the original dev DB are different projects, on different schemas. |
 | **Have the dispatcher open before the driver acts** | The live-update story only lands if the reviewer sees the screen *change*, not a screen that was already correct. |
 | **Backup tab: a cross-dock trip** | See §7. Costs nothing to have open. |
+| **Demo panel flags** | Backend DEV_PANEL_ENABLED=true and PULSE_USE_MOCK=true; dispatcher NEXT_PUBLIC_DEV_PANEL=true. Turn DEV_PANEL_ENABLED off when the demo window closes. |
 
 ---
 
@@ -30,7 +31,7 @@ One origin, one destination, one consignment, a departure time. Point out that t
 departure — as of 2026-08-05 the API requires one too, so a trip that could never be activated is now
 unrepresentable rather than merely discouraged.
 
-→ *On screen:* the trip appears with a **7-row phase plan, all pending**. Say the number out loud. The
+→ *On screen:* the trip appears with an **8-row phase plan, all pending** (creation · activation · loading · departure · in transit · arrival · unloading · confirmation). Say the number out loud. The
 plan was generated from the stops and consignments at creation — it was not looked up from a constant.
 
 **2. Show the journey lock.**
@@ -46,9 +47,22 @@ is the point.
 **4. Loading.**
 The driver enters a blind count. → Say: *"The driver is never shown the expected number. If the driver
 could see it, a match would prove nothing. The server reconciles privately."*
+Warehouse scans come from the demo panel (Warehouse → All parcels / One parcel short), then **Close scan session** unblocks the driver.
 
 **5. Departure — the seal.**
 → *On screen:* seal number and photo captured; a `pickup` receipt anchored, fail-open.
+
+**5a. On the road — an uncoupled trailer.** *(Demo panel → Tracker.)*
+Press "Driving normally", then "Trailer {registration} uncoupled".
+→ *On screen (dispatcher, no reload):* a CRITICAL **Trailer separated on the road** appears on the
+in-transit leg's journey, with the trailer's position and its distance from the horse.
+Say: *"Nobody typed that. The panel only moved a simulated tracker. The system read both trackers,
+measured the gap, and recorded it — source: system. We don't have live Pulsit credentials, so the
+tracker is simulated; everything after the position is the real pipeline."*
+Then press "Truck reaches {destination}" so the arrival check passes.
+
+**5b. Arrival — the seal as found.** The driver inspects the seal before any door opens. Scanning in
+is locked on the panel until this completes; point at the reason it gives.
 
 **6. In transit → unloading → confirmation.**
 → *On screen:* the trip reaches `closed`, with a `delivery` receipt.

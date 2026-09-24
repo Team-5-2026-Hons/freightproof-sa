@@ -24,7 +24,7 @@ from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.phases import PhaseEvent
 from app.db.models.transit import TripException
-from app.db.models.trips import Consignment, Parcel, Trip, TripStop
+from app.db.models.trips import Consignment, Parcel, Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
 from app.integrations import parcel_perfect as pp_module
@@ -764,3 +764,37 @@ async def test_flushing_mock_state_leaves_evidence_intact(dev_client, db_session
     )).scalars().all())
     assert parcels_after == parcels_before
     assert exceptions_after == exceptions_before
+
+
+async def test_list_trips_reports_arrival_and_unloading_status(dev_client, db_session, seeded, store):
+    db_session.add_all([
+        PhaseEvent(id=uuid.uuid4(), trip_id=seeded["trip"].id, trip_stop_id=seeded["stop"].id,
+                   phase_type=PhaseType.ARRIVAL, sequence_number=5, status=PhaseStatus.COMPLETED),
+        PhaseEvent(id=uuid.uuid4(), trip_id=seeded["trip"].id, trip_stop_id=seeded["stop"].id,
+                   phase_type=PhaseType.UNLOADING, sequence_number=6, status=PhaseStatus.PENDING),
+    ])
+    await db_session.flush()
+
+    res = await dev_client.get("/api/v1/dev/trips", headers=auth_header(_token(seeded)))
+
+    trip_body = next(t for t in res.json() if t["trip_id"] == str(seeded["trip"].id))
+    stop_body = trip_body["stops"][0]
+    assert stop_body["arrival_phase_status"] == PhaseStatus.COMPLETED.value
+    assert stop_body["unloading_phase_status"] == PhaseStatus.PENDING.value
+
+
+async def test_list_trips_reports_vehicles_and_current_stop(dev_client, db_session, seeded, store):
+    trailer = Vehicle(id=uuid.uuid4(), organization_id=seeded["org"].id, vehicle_type=VehicleType.TRAILER,
+                      registration="TRL 9", pulsit_device_id=f"T-{uuid.uuid4().hex[:6]}")
+    db_session.add(trailer)
+    await db_session.flush()
+    db_session.add(TripTrailer(trip_id=seeded["trip"].id, trailer_id=trailer.id,
+                               pulsit_device_id_snapshot=trailer.pulsit_device_id))
+    seeded["trip"].current_stop = seeded["stop"].sequence
+    await db_session.flush()
+
+    res = await dev_client.get("/api/v1/dev/trips", headers=auth_header(_token(seeded)))
+
+    trip_body = next(t for t in res.json() if t["trip_id"] == str(seeded["trip"].id))
+    assert [(v["registration"], v["role"]) for v in trip_body["vehicles"]] == [("ABC123GP", "horse"), ("TRL 9", "trailer")]
+    assert trip_body["current_stop_sequence"] == seeded["stop"].sequence

@@ -34,6 +34,12 @@ export type ExceptionType =
   // A trailer measured outside the stop's precinct and far from its own horse, while the
   // horse was inside: a decoupled trailer (CRITICAL). Distinct from gps_mismatch (horse).
   | 'trailer_location_mismatch'
+  // On the road: a trailer's tracker far from its horse's (no fence involved).
+  | 'trailer_separated_in_transit'
+  // The horse left its stop's precinct before departure was recorded.
+  | 'moved_before_departure'
+  // A known tracker returned no position — a gap, not a verdict.
+  | 'tracker_silent'
   | 'route_deviation'
   | 'vehicle_substitution'
   | 'driver_substitution'

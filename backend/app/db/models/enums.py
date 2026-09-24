@@ -122,7 +122,18 @@ class ExceptionType(str, enum.Enum):
     # strongest theft signals the system can see. Kept apart from GPS_MISMATCH, which
     # is about the horse. See phase_service._raise_trailer_decoupling_if_unrecorded.
     TRAILER_LOCATION_MISMATCH = "trailer_location_mismatch"
-    ROUTE_DEVIATION        = "route_deviation"
+    # On the ROAD, not at a stop: a trailer tracker is further than
+    # TRAILER_HORSE_MAX_SEPARATION_METRES from its horse's tracker while the trip is
+    # on an in-transit leg. No fence is involved, which is what keeps it apart from
+    # TRAILER_LOCATION_MISMATCH (trailer vs the stop's precinct). See road_check_service.
+    TRAILER_SEPARATED_IN_TRANSIT = "trailer_separated_in_transit"
+    # The horse's tracker is outside its stop's precinct while that stop's departure is
+    # still pending: the truck moved without a recorded seal. See road_check_service.
+    MOVED_BEFORE_DEPARTURE = "moved_before_departure"
+    # A known tracker returned no position. A gap in the record, not a verdict: nothing
+    # else is inferred from it. See road_check_service.
+    TRACKER_SILENT = "tracker_silent"
+    ROUTE_DEVIATION       = "route_deviation"
     VEHICLE_SUBSTITUTION   = "vehicle_substitution"
     DRIVER_SUBSTITUTION    = "driver_substitution"
     CHECKPOINT_TIMEOUT     = "checkpoint_timeout"

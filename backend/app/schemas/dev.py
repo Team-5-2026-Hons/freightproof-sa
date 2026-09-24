@@ -7,7 +7,7 @@ ORM rows, so the panel's contract is explicit and does not drift with the schema
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import Literal, Optional
+from typing import Final, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -57,6 +57,18 @@ class DevTripStop(BaseModel):
     # physically leaving the origin is the precondition for any destination scan.
     # None when no departure precedes this stop (i.e. it is the origin).
     preceding_departure_status: Optional[str] = None
+    # Scan IN at this stop opens once ARRIVAL is decided: the warehouse scans after the
+    # driver has inspected the seal, never while the truck is still at the gate.
+    arrival_phase_status: Optional[str] = None
+    unloading_phase_status: Optional[str] = None
+
+
+class DevVehicle(BaseModel):
+    """One vehicle on the trip, so the panel can offer a per-trailer scenario."""
+
+    vehicle_id: uuid.UUID
+    registration: str
+    role: Literal["horse", "trailer"]
 
 
 class DevTripSummary(BaseModel):
@@ -71,6 +83,11 @@ class DevTripSummary(BaseModel):
     # so a join miss degrades to a blank label in the panel rather than a 500 mid-demo.
     driver_full_name: Optional[str] = None
     created_at: datetime
+    # Trip.current_stop: the stop sequence the ledger says the trip is at. A cache, read
+    # here only to pick which stop the panel's actions address.
+    current_stop_sequence: Optional[int] = None
+    # Horse first, then trailers by registration.
+    vehicles: list[DevVehicle] = []
 
 
 class ScanTriggerRequest(BaseModel):
@@ -252,15 +269,16 @@ class WaypointRead(BaseModel):
 # so the two always agree on where "the precinct" is.
 #
 # Named constants rather than bare literal strings at call sites, mirroring
-# demo_waypoints.py's WAYPOINT_* precedent for the legacy mode.
+# demo_waypoints.py's WAYPOINT_* precedent for the legacy mode. Final, so mypy reads
+# each as its Literal and it can be passed where a DevTruckScenario is expected.
 # ---------------------------------------------------------------------------
 
-SCENARIO_AT_STOP = "at_stop"
-SCENARIO_INSIDE_TOLERANCE = "inside_tolerance"
-SCENARIO_OUTSIDE_TOLERANCE = "outside_tolerance"
-SCENARIO_THREE_KM = "three_km"
-SCENARIO_FIFTY_KM = "fifty_km"
-SCENARIO_NO_SIGNAL = "no_signal"
+SCENARIO_AT_STOP: Final = "at_stop"
+SCENARIO_INSIDE_TOLERANCE: Final = "inside_tolerance"
+SCENARIO_OUTSIDE_TOLERANCE: Final = "outside_tolerance"
+SCENARIO_THREE_KM: Final = "three_km"
+SCENARIO_FIFTY_KM: Final = "fifty_km"
+SCENARIO_NO_SIGNAL: Final = "no_signal"
 
 # The one place this six-way enum is spelled out. `orchestration/dev_truck_service.py`
 # imports the constants above from here (schemas -> orchestration is the wrong
@@ -392,3 +410,69 @@ class MoveTruckResponse(BaseModel):
     # name alone does not say "expected" when a target is also on screen.
     expected_trip_stop_id: Optional[uuid.UUID] = None
     expected_precinct_name: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Rig scenarios and the on-road tracker check (design note §4.7, stage S7)
+# ---------------------------------------------------------------------------
+
+RigScenario = Literal[
+    "at_stop", "away_from_stop", "en_route", "left_before_departure", "trailer_uncoupled", "silent",
+]
+_NEEDS_STOP: frozenset[str] = frozenset({"at_stop", "away_from_stop"})
+_NEEDS_VEHICLE: frozenset[str] = frozenset({"trailer_uncoupled", "silent"})
+
+
+class RigScenarioRequest(BaseModel):
+    """Stage every tracker on a trip for one named scenario, then run the road check."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    trip_id: uuid.UUID
+    scenario: RigScenario
+    trip_stop_id: Optional[uuid.UUID] = None
+    vehicle_id: Optional[uuid.UUID] = None
+
+    @model_validator(mode="after")
+    def _required_context(self) -> "RigScenarioRequest":
+        if self.scenario in _NEEDS_STOP and self.trip_stop_id is None:
+            raise ValueError(f"trip_stop_id is required for {self.scenario}")
+        if self.scenario in _NEEDS_VEHICLE and self.vehicle_id is None:
+            raise ValueError(f"vehicle_id is required for {self.scenario}")
+        return self
+
+
+class RoadCheckRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    trip_id: uuid.UUID
+
+
+class RigReadingRead(BaseModel):
+    vehicle_id: uuid.UUID
+    registration: str
+    role: Literal["horse", "trailer"]
+    status: str
+    latitude: Optional[Decimal] = None
+    longitude: Optional[Decimal] = None
+
+
+class RoadFindingRead(BaseModel):
+    exception_type: ExceptionType
+    severity: str
+    vehicle_id: uuid.UUID
+    description: str
+    # False when this run matched a finding already on record — shown, not re-written.
+    newly_recorded: bool
+
+
+class RoadCheckResponse(BaseModel):
+    trip_id: uuid.UUID
+    readings: list[RigReadingRead]
+    findings: list[RoadFindingRead]
+    skipped_reason: Optional[str] = None
+
+
+class RigScenarioResponse(RoadCheckResponse):
+    scenario: RigScenario
+    label: str
