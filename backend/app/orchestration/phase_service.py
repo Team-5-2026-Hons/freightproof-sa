@@ -1436,9 +1436,16 @@ def compute_unloading_canonical_payload_v2(
 
 
 def _override_commitment(phase_event_id: uuid.UUID, value: str) -> str:
-    """SHA-256 of a value keyed to one phase row. Keyed so a short, common note ("phone
-    lost") or a dispatcher's id cannot be recognised across trips by hashing guesses;
-    the row that holds the plain value is what verification rehashes."""
+    """SHA-256 of a value salted with its phase row's id.
+
+    What the salt does: the same note or dispatcher id hashes differently on every row,
+    so one precomputed table of guesses cannot be matched against every override at
+    once, and two overrides cannot be linked by an identical hash. What it does NOT do:
+    the salt (phase_event_id) is in the payload itself, so anyone holding a payload can
+    still test candidate notes against that one row. It is a commitment, not
+    encryption. That is acceptable because the plain note stays in PostgreSQL (POPIA)
+    and a short note guessed back reveals only what an auditor would be shown anyway.
+    Verification rehashes the plain value stored on the row."""
     return hashlib.sha256(f"{phase_event_id}:{value}".encode("utf-8")).hexdigest()
 
 

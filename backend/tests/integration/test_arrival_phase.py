@@ -291,6 +291,98 @@ async def test_arrival_with_no_departure_seal_raises_seal_unverified(
     assert body["exceptions"][0]["severity"] == "critical"
 
 
+# ── combined seal findings ───────────────────────────────────────────────────
+
+async def test_arrival_damaged_seal_with_wrong_number_raises_compromised_and_mismatch(
+    client: AsyncClient, db_session,
+):
+    """The two findings are independent (advance_arrival's own comment): a damaged
+    seal that also carries the wrong number records both, not just one."""
+    trip, driver = await _seed_trip(db_session)
+    token = make_token(sub=str(driver.id), role="driver")
+    await _walk_to_arrival(client, db_session, trip, token)
+    seal_photo_id = await _make_artifact(db_session, trip.id)
+
+    resp = await _complete_arrival(
+        client, trip.id, token,
+        seal_photo_artifact_id=seal_photo_id,
+        seal_condition="damaged", seal_number_at_arrival="ZZ-9999",
+    )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    arrival = next(p for p in body["phases"] if p["phase_type"] == "arrival")
+    assert arrival["status"] == "exception"
+    findings = {(e["exception_type"], e["severity"]) for e in body["exceptions"]}
+    assert findings == {
+        (ExceptionType.SEAL_COMPROMISED.value, ExceptionSeverity.CRITICAL.value),
+        (ExceptionType.SEAL_MISMATCH.value, ExceptionSeverity.CRITICAL.value),
+    }
+
+
+async def test_arrival_damaged_seal_with_no_departure_seal_raises_compromised_and_unverified(
+    client: AsyncClient, db_session,
+):
+    """No departure seal to compare against means no mismatch is possible — the
+    damaged-seal finding and the unverified-continuity finding both still fire,
+    independently of each other, and neither is a mismatch."""
+    trip, driver = await _seed_trip(db_session)
+    trip_id = trip.id  # captured before expire_all() — see MissingGreenlet note elsewhere
+    token = make_token(sub=str(driver.id), role="driver")
+    await _walk_to_arrival(client, db_session, trip, token)
+
+    db_session.expire_all()
+    departure = (await db_session.execute(
+        select(PhaseEvent).where(
+            PhaseEvent.trip_id == trip_id, PhaseEvent.phase_type == PhaseType.DEPARTURE,
+        )
+    )).scalar_one()
+    departure.seal_number = None
+    await db_session.flush()
+
+    seal_photo_id = await _make_artifact(db_session, trip_id)
+    resp = await _complete_arrival(
+        client, trip_id, token,
+        seal_photo_artifact_id=seal_photo_id,
+        seal_condition="damaged", seal_number_at_arrival="AB-9999",
+    )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    arrival = next(p for p in body["phases"] if p["phase_type"] == "arrival")
+    assert arrival["status"] == "exception"
+    findings = {(e["exception_type"], e["severity"]) for e in body["exceptions"]}
+    assert findings == {
+        (ExceptionType.SEAL_COMPROMISED.value, ExceptionSeverity.CRITICAL.value),
+        (ExceptionType.SEAL_UNVERIFIED.value, ExceptionSeverity.CRITICAL.value),
+    }
+
+
+async def test_arrival_missing_seal_with_departure_seal_present_raises_only_compromised(
+    client: AsyncClient, db_session,
+):
+    """A missing seal has no number to compare, so it must never ALSO raise
+    seal_mismatch — even though the departure leg genuinely has a seal on record."""
+    trip, driver = await _seed_trip(db_session)
+    token = make_token(sub=str(driver.id), role="driver")
+    await _walk_to_arrival(client, db_session, trip, token)
+    seal_photo_id = await _make_artifact(db_session, trip.id)
+
+    resp = await _complete_arrival(
+        client, trip.id, token,
+        seal_photo_artifact_id=seal_photo_id, seal_condition="missing",
+    )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    arrival = next(p for p in body["phases"] if p["phase_type"] == "arrival")
+    assert arrival["status"] == "exception"
+    findings = {(e["exception_type"], e["severity"]) for e in body["exceptions"]}
+    assert findings == {
+        (ExceptionType.SEAL_COMPROMISED.value, ExceptionSeverity.CRITICAL.value),
+    }
+
+
 # ── sequencing: arrival gates unloading ─────────────────────────────────────
 
 async def test_unloading_before_arrival_is_rejected(client: AsyncClient, db_session):

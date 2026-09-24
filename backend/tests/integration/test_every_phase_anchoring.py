@@ -20,7 +20,7 @@ written" and "receipt landed". Anchoring is instead driven directly through
 import base64
 import hashlib
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest_asyncio
@@ -33,7 +33,7 @@ from app.core.config import settings
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import (
     AnchorStatus, BlockchainReceiptType, IdvsStatus, OrganizationType, PhaseStatus, PhaseType,
-    SubjectType, TripStatus, VehicleType,
+    SealCondition, SubjectType, TripStatus, VehicleType, VerifyStatus,
 )
 from app.db.models.evidence import EvidenceArtifact
 from app.db.models.organisations import Organization, Precinct
@@ -42,9 +42,9 @@ from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Trip, TripStop
 from app.db.models.vehicles import Vehicle
 from app.orchestration.phase_service import (
-    _PHASE_RECEIPT_TYPES, anchor_phase_event, receipt_type_for,
+    _PHASE_RECEIPT_TYPES, anchor_phase_event, receipt_type_for, recover_phase_anchor,
 )
-from app.orchestration.verification_service import reconstruct_pending_phase_payload
+from app.orchestration.verification_service import reconstruct_pending_phase_payload, verify_subject
 
 from tests.conftest import auth_header, make_token
 # override_get_db is autouse and never referenced by name below, so importing it is
@@ -280,6 +280,169 @@ async def test_dispatcher_override_of_a_pending_phase_anchors_with_override_rece
     assert loading.anchor_status == AnchorStatus.ANCHORED
     receipt = await db_session.get(BlockchainReceipt, loading.blockchain_receipt_id)
     assert receipt.receipt_type == BlockchainReceiptType.PHASE_OVERRIDE
+
+
+# ── recovery sweep: overridden rows and loading's optional linehaul photo ──────
+
+async def test_recover_phase_anchor_picks_up_an_overdue_override_and_anchors_it(
+    client: AsyncClient, db_session, seed_trip,
+):
+    """recover_phase_anchor's eligibility set includes OVERRIDDEN (not just COMPLETED/
+    EXCEPTION) rows — an override that never got its receipt must be recoverable by the
+    same sweep as any other phase, and must still land the PHASE_OVERRIDE receipt type,
+    never the phase's own."""
+    trip, driver = seed_trip
+    driver_token = make_token(sub=str(driver.id), role="driver")
+    await _complete_activation(client, trip.id, driver_token)
+
+    user = (await db_session.execute(
+        select(User).where(User.organization_id == trip.operator_organization_id)
+    )).scalar_one()
+    dispatcher_token = make_token(sub=str(user.id), role="dispatcher")
+
+    loading_id = await _phase_id(client, trip.id, driver_token, "loading")
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{loading_id}/override",
+        json={"note": "driver's phone was lost before loading"},
+        headers=auth_header(dispatcher_token),
+    )
+    assert resp.status_code == 200, resp.text
+
+    loading = await db_session.get(PhaseEvent, uuid.UUID(loading_id))
+    assert loading.status == PhaseStatus.OVERRIDDEN
+    assert loading.event_hash is not None
+    # Simulate a dispatch that never landed a receipt — recover_phase_anchor's own
+    # eligibility case (anchor_status FAILED/PENDING, no receipt, overdue updated_at).
+    loading.anchor_status = AnchorStatus.FAILED
+    loading.updated_at = datetime.now(UTC) - timedelta(minutes=10)
+    await db_session.flush()
+
+    recovered = await recover_phase_anchor(db_session, due_before=datetime.now(UTC))
+
+    assert recovered is True
+    await db_session.flush()
+    assert loading.anchor_status == AnchorStatus.ANCHORED
+    assert loading.blockchain_receipt_id is not None
+    receipt = await db_session.get(BlockchainReceipt, loading.blockchain_receipt_id)
+    assert receipt.receipt_type == BlockchainReceiptType.PHASE_OVERRIDE
+
+
+async def test_recover_phase_anchor_recovers_a_loading_row_with_a_linehaul_photo(
+    client: AsyncClient, db_session, seed_trip,
+):
+    """The linehaul photo is optional evidence on loading (PhaseEvent.
+    linehaul_photo_artifact_id) — reconstruction must still succeed and anchor with
+    the LOADING receipt type when one was actually captured, not just on the bare
+    IDs-only case the rest of this module's loading coverage exercises."""
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+    await _complete_activation(client, trip.id, token)
+
+    linehaul_photo_id = await _make_artifact(db_session, trip.id)
+    loading_id = await _phase_id(client, trip.id, token, "loading")
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{loading_id}/complete",
+        json={
+            "phase_type": "loading",
+            "linehaul_photo_artifact_id": linehaul_photo_id,
+            "idempotency_key": str(uuid.uuid4()),
+        },
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 200, resp.text
+
+    loading = await db_session.get(PhaseEvent, uuid.UUID(loading_id))
+    assert str(loading.linehaul_photo_artifact_id) == linehaul_photo_id
+    assert loading.event_hash is not None
+    loading.anchor_status = AnchorStatus.PENDING
+    loading.updated_at = datetime.now(UTC) - timedelta(minutes=10)
+    await db_session.flush()
+
+    recovered = await recover_phase_anchor(db_session, due_before=datetime.now(UTC))
+
+    assert recovered is True
+    await db_session.flush()
+    assert loading.anchor_status == AnchorStatus.ANCHORED
+    receipt = await db_session.get(BlockchainReceipt, loading.blockchain_receipt_id)
+    assert receipt.receipt_type == BlockchainReceiptType.LOADING
+    assert receipt.payload_json["linehaul_photo_sha256"] is not None
+
+
+# ── tamper detection: a row edited after anchoring must verify as DB_MISMATCH ──
+
+async def test_verify_subject_detects_tampered_seal_condition_after_arrival_anchors(
+    client: AsyncClient, db_session, seed_trip,
+):
+    """The anchored payload commits to seal_condition (compute_arrival_canonical_
+    payload_v2) — editing the column directly in the DB after anchoring, bypassing
+    every code path that would normally raise a finding, must still be caught as
+    tampering by verify_subject rather than silently re-verifying."""
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+    await _walk_to_in_transit(client, db_session, trip, token)
+    await _complete_in_transit(client, trip, token)
+    await _complete_arrival(client, db_session, trip, token)  # default seal "AB-1234" matches departure
+
+    arrival = next(
+        p for p in await _all_phases(db_session, trip.id) if PhaseType(p.phase_type) == PhaseType.ARRIVAL
+    )
+    reconstructed = await reconstruct_pending_phase_payload(db_session, arrival)
+    assert reconstructed is not None
+    anchored = await anchor_phase_event(
+        db_session, phase_event_id=arrival.id,
+        canonical_payload=reconstructed, receipt_type=receipt_type_for(arrival),
+    )
+    assert anchored is True
+    await db_session.flush()
+
+    arrival.seal_condition = SealCondition.DAMAGED.value
+    await db_session.flush()
+
+    outcome = await verify_subject(db_session, subject_type=SubjectType.PHASE_EVENT, subject_id=arrival.id)
+
+    assert outcome.status == VerifyStatus.DB_MISMATCH
+
+
+async def test_verify_subject_detects_tampered_override_note_after_anchoring(
+    client: AsyncClient, db_session, seed_trip,
+):
+    """The override's anchored payload commits to a keyed hash of dispatcher_override_
+    note (compute_override_canonical_payload_v2) — editing the plain note after
+    anchoring must change the reconstructed hash and be caught, same as any other
+    anchored evidence column."""
+    trip, driver = seed_trip
+    driver_token = make_token(sub=str(driver.id), role="driver")
+    await _complete_activation(client, trip.id, driver_token)
+
+    user = (await db_session.execute(
+        select(User).where(User.organization_id == trip.operator_organization_id)
+    )).scalar_one()
+    dispatcher_token = make_token(sub=str(user.id), role="dispatcher")
+
+    loading_id = await _phase_id(client, trip.id, driver_token, "loading")
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{loading_id}/override",
+        json={"note": "driver's phone was lost before loading"},
+        headers=auth_header(dispatcher_token),
+    )
+    assert resp.status_code == 200, resp.text
+
+    loading = await db_session.get(PhaseEvent, uuid.UUID(loading_id))
+    reconstructed = await reconstruct_pending_phase_payload(db_session, loading)
+    assert reconstructed is not None
+    anchored = await anchor_phase_event(
+        db_session, phase_event_id=loading.id,
+        canonical_payload=reconstructed, receipt_type=receipt_type_for(loading),
+    )
+    assert anchored is True
+    await db_session.flush()
+
+    loading.dispatcher_override_note = "a completely different note, substituted after the fact"
+    await db_session.flush()
+
+    outcome = await verify_subject(db_session, subject_type=SubjectType.PHASE_EVENT, subject_id=loading.id)
+
+    assert outcome.status == VerifyStatus.DB_MISMATCH
 
 
 @respx.mock

@@ -50,6 +50,7 @@ from app.orchestration.phase_service import (
     compute_departure_canonical_payload_v2, compute_in_transit_canonical_payload_v2,
     compute_loading_canonical_payload_v2, compute_override_canonical_payload_v2,
     compute_unloading_canonical_payload_v2,
+    override_phase,
     receipt_type_for,
     recover_phase_anchor,
 )
@@ -1285,14 +1286,16 @@ def test_no_v2_payload_leaks_gps_artifact_ids_pii_or_completed_at():
     """Every builder — including departure/confirmation's v2 shape and the override
     commitment — must obey the same whitelist rule stated in each builder's own
     docstring (design note §4.4 point 3): no GPS/coordinates, no `*_artifact_id`
-    keys, no `completed_at`, and nothing that leaks an artifact UUID never handed
-    to the builder in the first place."""
+    keys, no `completed_at`.
+
+    Only the builder-level key shape is proven here (pure logic, no DB). Whether a
+    REAL artifact id or override note ever reaches a dispatched payload is proven
+    end to end by test_anchored_payloads_across_a_full_trip_never_leak_artifact_ids_
+    gps_or_override_plaintext below, which drives the actual advance_*/override_phase
+    path rather than calling builders directly with values chosen not to collide."""
     phase_event_id = uuid.uuid4()
     trip_id = uuid.uuid4()
     override_user_id = uuid.uuid4()
-    # Deliberately never passed to any builder below — a regression that let an
-    # artifact id slip into a payload would surface as this value appearing.
-    unrelated_artifact_id = uuid.uuid4()
 
     payloads = [
         compute_activation_canonical_payload_v2(phase_event_id=phase_event_id, trip_id=trip_id),
@@ -1325,8 +1328,111 @@ def test_no_v2_payload_leaks_gps_artifact_ids_pii_or_completed_at():
             assert not _LOCATION_KEY_PATTERN.search(key), f"{key!r} looks like a location field"
             assert not key.endswith("_artifact_id"), f"{key!r} is an artifact id field"
             assert key != "completed_at"
+
+
+@pytest.mark.asyncio
+async def test_anchored_payloads_across_a_full_trip_never_leak_artifact_ids_gps_or_override_plaintext(
+    db_session, trip_fixture, captured_anchor_dispatches,
+):
+    """S3's payload whitelist (design note §4.4 point 3), proven end to end rather than
+    only at the builder level: drives a full single-leg trip — including one dispatcher
+    override of loading — through the real advance_*/override_phase completion path and
+    inspects every payload actually queued for anchoring, not a hand-built example.
+
+    This is the strong version of the check test_no_v2_payload_leaks_gps_artifact_ids_pii_
+    or_completed_at above could not be: that test only proves a value never PASSED to a
+    builder cannot leak, which is true by construction and proves nothing about whether a
+    value the row genuinely HOLDS — a real artifact id created for this trip, the
+    override's real plaintext note/user id — ever reaches a dispatched payload.
+    """
+    trip, driver, phases = trip_fixture
+    override_note = "driver's phone was lost before loading; loading could not be scanned"
+    # A real row, not a bare uuid4(): dispatcher_override_user_id carries an FK to
+    # users, so an arbitrary id would fail the write before the payload was ever built.
+    override_user_id = (await db_session.execute(
+        select(User.id).where(User.organization_id == trip.operator_organization_id)
+    )).scalar_one()
+
+    await advance_activation(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["activation"].id,
+        payload=ActivationCompleteRequest(
+            phase_type=PhaseType.ACTIVATION,
+            driver_phone_lat=Decimal("0"), driver_phone_lng=Decimal("0"), idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+    # Overridden, not completed normally — the one override S3's plaintext-leak rule
+    # (POPIA: the note may name a person) must also hold for.
+    await override_phase(
+        db_session, trip_id=trip.id, phase_event_id=phases["loading"].id,
+        operator_organization_id=trip.operator_organization_id,
+        user_id=override_user_id, note=override_note,
+    )
+    await advance_departure(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["departure"].id,
+        payload=DepartureCompleteRequest(
+            phase_type=PhaseType.DEPARTURE,
+            waybill_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            seal_number="AB-1234",
+            seal_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            guard_verified_seal=True, idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+    await advance_in_transit(
+        db_session, trip_id=trip.id, driver_id=driver.id,
+        phase_event_id=phases["in_transit"].id, payload=_arrival_payload(),
+    )
+    await advance_arrival(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["arrival"].id,
+        payload=ArrivalCompleteRequest(
+            phase_type=PhaseType.ARRIVAL, seal_condition=SealCondition.INTACT,
+            seal_number_at_arrival="AB-1234",
+            seal_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+    await advance_unloading(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading"].id,
+        payload=UnloadingCompleteRequest(phase_type=PhaseType.UNLOADING, idempotency_key=str(uuid.uuid4())),
+    )
+    await advance_confirmation(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["confirmation"].id,
+        payload=ConfirmationCompleteRequest(
+            phase_type=PhaseType.CONFIRMATION,
+            pod_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            pod_signature_artifact_id=await _make_artifact(db_session, trip.id),
+            driver_visual_count=42, idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    # Fires _dispatch_anchor's after_commit hook for every phase above, exactly as
+    # production does (see _drain_anchors's own docstring on why this commit is safe
+    # inside the rolled-back db_session fixture) — but without draining the captured
+    # list through anchor_phase_event, so it is still there to inspect below.
+    await db_session.commit()
+    await asyncio.gather(*_BACKGROUND_ANCHOR_TASKS)
+
+    assert len(captured_anchor_dispatches) == 7  # 6 driver phases + the one override
+
+    artifact_ids = {
+        str(artifact_id) for (artifact_id,) in (await db_session.execute(
+            select(EvidenceArtifact.id).where(EvidenceArtifact.trip_id == trip.id)
+        )).all()
+    }
+    assert artifact_ids  # sanity: the walk above genuinely created evidence to leak
+
+    for phase_event_id, payload, receipt_type in captured_anchor_dispatches:
+        for key in payload:
+            assert not _LOCATION_KEY_PATTERN.search(key), f"{key!r} looks like a location field"
+            assert not key.endswith("_artifact_id"), f"{key!r} is an artifact id field"
+            assert key != "completed_at"
         for value in payload.values():
-            assert value != str(unrelated_artifact_id)
+            assert str(value) not in artifact_ids, (
+                f"payload for phase_event_id={phase_event_id} leaks a real artifact id: {value!r}"
+            )
+
+        if receipt_type == BlockchainReceiptType.PHASE_OVERRIDE.value:
+            assert override_note not in payload.values()
+            assert str(override_user_id) not in payload.values()
 
 
 # ── S3: override commitments are keyed and never expose the plain value ───────
