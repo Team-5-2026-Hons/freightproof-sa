@@ -40,8 +40,16 @@ from app.core.config import settings
 
 # FK-safe order: children before parents. phase_events precedes evidence_artifacts
 # and blockchain_receipts because it points at both; exceptions and checkpoints
-# precede merkle_batches for the same reason.
+# precede merkle_batches for the same reason. The receiver-handover chain comes first:
+# verifications point at confirmations and tokens, attempts and confirmations at
+# tokens, and tokens at phase_events and trip_stops. Both facts (coverage and order)
+# are checked against the models by tests/unit/test_dev_reset_lifecycle.py.
 _DELETE_ORDER = [
+    "receiver_identity_verifications",
+    "handover_token_attempts",
+    "handover_confirmations",
+    "handover_capability_tokens",
+    "trip_location_pings",
     "merkle_batch_leaves",
     "trailer_gps_snapshots",
     "driver_substitutions",
@@ -60,9 +68,11 @@ _DELETE_ORDER = [
 # referenced by vehicle_events / driver_events, which are reference-side audit rows.
 _RECEIPTS_DELETE = "DELETE FROM blockchain_receipts WHERE trip_id IS NOT NULL"
 
+# precinct_events is the precinct registry's audit trail, the same kind of row as
+# vehicle_events / driver_events: it points at trip_id-NULL receipts, which survive.
 _REFERENCE_TABLES = [
     "organizations", "precincts", "users", "drivers", "vehicles",
-    "trip_templates", "sla_configs", "vehicle_events", "driver_events",
+    "trip_templates", "sla_configs", "vehicle_events", "driver_events", "precinct_events",
 ]
 
 
