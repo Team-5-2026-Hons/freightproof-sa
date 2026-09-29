@@ -1,11 +1,14 @@
 # FreightProof SA — API Contract: Dispatcher & Driver Endpoints
 
-**Source of truth for every endpoint the Dispatcher Portal and Driver PWA will consume.**
+> **Historical, non-authoritative reference — May 2026.** This contract predates the
+> phase model and current routes. For current API behaviour, inspect
+> `backend/app/api/v1/endpoints/`, `backend/app/schemas/`, and application OpenAPI; for
+> lifecycle terminology, use [`docs/phase-model-explained.md`](../../docs/phase-model-explained.md).
 
 Generated from analysis of:
-- `docs/FreightProof_Frontend_Spec_v1.md` — page catalogue, hook names, data shapes
-- `docs/FreightProof_Full_Picture_v6.md` — domain rules, handshake flow
-- `backend/app/db/models/` — authoritative DB schema
+- `docs/archive/root/FreightProof_Frontend_Spec_v1.md` — historical page catalogue, hook names, data shapes
+- `docs/archive/root/FreightProof_Full_Picture_v6.md` — historical domain rules and handshake flow
+- `backend/app/db/models/` — models inspected when this historical contract was written
 - `backend/app/schemas/` — existing Pydantic v2 schemas
 
 Date: 2026-05-10 | Author: Claude Code (Tim Gultig session)

@@ -1,14 +1,16 @@
 # Alembic autogenerate drift — what it was, how it was fixed, what is still open
 
-**Date:** 2026-09-15 · **Status:** ✅ FIXED — 28 operations reduced to 0 · **Applies to:** every developer
+**Date:** 2026-09-15 · **Status:** historical remediation recorded; current drift unverified
+without an authorised database check · **Applies to:** every developer
 
 ---
 
-## Status: fixed
+## Recorded remediation; current status unknown
 
-Autogenerate used to emit **28 operations nobody asked for** on every run, including two
-that would have broken authentication system-wide. As of 2026-09-15 it emits **none** —
-a fresh `alembic revision --autogenerate` now produces only the change you actually made.
+Autogenerate previously emitted **28 operations nobody asked for**, including two that
+could break authentication system-wide. The 2026-09-15 observation is historical only:
+this documentation pass did not connect to a database or run a drift check, so it makes
+no claim that current drift is fixed or unresolved.
 
 Keep reading anyway if you are about to write a migration: the pruning discipline in
 "The procedure" below still applies, because nothing stops drift returning, and **CI still
@@ -20,9 +22,8 @@ does not verify migrations** (see "Still open").
 cd backend && .venv/bin/alembic check
 ```
 
-This is read-only — it compares the models against the database and reports the diff
-without writing a file. It currently FAILS with the 28 operations below. That failure is
-the expected state today, not a sign you broke something.
+This is read-only, but it requires an authorised database connection. Record the target
+database, commit, date, and result before treating its output as current evidence.
 
 ## What gets emitted, worst first
 

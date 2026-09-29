@@ -1,5 +1,9 @@
 # FreightProof SA
 
+> **Historical record — archived 2026-09-26.** Superseded by the current
+> [FreightProof Full Picture v7](../../FreightProof_Full_Picture_v7.md). Do not
+> use this version as implementation authority.
+
 The Full Picture — v6 
 
 A complete walkthrough of what FreightProof is, who uses it, how every handshake in a depot-to-depot trip works, and how the system connects to Pulsit, Parcel Perfect, and the gate security systems that already run South African logistics precincts. 

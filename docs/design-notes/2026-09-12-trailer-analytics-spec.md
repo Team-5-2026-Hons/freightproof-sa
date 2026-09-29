@@ -1,9 +1,9 @@
 # Trailer Analytics — Per-Vehicle Breakdown Attribution — Build Spec
 
 Author: Tom (Thomas Davis), with Claude · Written 2026-09-12
-Status: **BUILT — all four stages built and reviewed by Tom on 2026-09-12. The branch is
-ready for its PR to `dev`.** §13 records what each stage built. The two migrations are
-applied only after the merge (§9).
+Status: **IMPLEMENTED IN THIS BRANCH — source rechecked 2026-09-26.** §13 records the
+historical build stages. This recheck confirms trailer-aware analytics code is present;
+it does not claim a migration was applied, merged, or deployed.
 Branch: `trailer-analytics`, created 2026-09-12 from `origin/dev` at `df9c2be` (after FP-156
 merged as PR #47). Stages 1–4 go in as a single commit on this branch.
 No Jira ticket exists for this work yet. Do not invent one.
