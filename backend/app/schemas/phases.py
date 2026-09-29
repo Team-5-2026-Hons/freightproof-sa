@@ -2,9 +2,9 @@
 
 Replaces schemas/handshakes.py, whose HandshakeEventRead predates the phase
 ledger and is missing three real columns (trip_stop_id, anchor_status,
-idempotency_key). Serves the frozen contract's PhaseDescriptor — parent plan
-§3.1 — which is why stop_sequence and step_recipe appear here as derived fields
-rather than as columns.
+idempotency_key). Serves the frozen contract's PhaseDescriptor — which is why
+stop_sequence and step_recipe appear here as derived fields rather than as
+columns.
 """
 
 import math
@@ -66,12 +66,12 @@ class PhaseEventRead(BaseModel):
     status: PhaseStatus
     anchor_status: AnchorStatus
 
-    # Null ONLY for trip_creation (parent D3). in_transit anchors to the stop it
+    # Null ONLY for trip_creation. in_transit anchors to the stop it
     # DEPARTS FROM, so in_transit at stop 1 means "the leg leaving stop 1".
     trip_stop_id: Optional[UUID] = None
     stop_sequence: Optional[int] = None
 
-    # Capture-component slugs for this phase type (decision S2). Empty for
+    # Capture-component slugs for this phase type. Empty for
     # system-observed phases.
     step_recipe: tuple[str, ...] = ()
 
@@ -88,14 +88,14 @@ class PhaseEventRead(BaseModel):
     dispatcher_override_note: Optional[str] = None
     driver_phone_lat: Optional[float] = None
     driver_phone_lng: Optional[float] = None
-    # Task 0A. The instant the driver's phone submitted, independent of completed_at
+    # The instant the driver's phone submitted, independent of completed_at
     # (the server's clock). Optional here purely because the underlying column is
-    # nullable for a row a pre-0A client completed.
+    # nullable for a row completed before this field existed.
     driver_captured_at: Optional[datetime] = None
     horse_gps_lat: Optional[float] = None
     horse_gps_lng: Optional[float] = None
     pulsit_geofence_confirmed: Optional[bool] = None
-    # Task 5: the versioned driver-phone-vs-tracker proximity snapshot (plus precinct
+    # The versioned driver-phone-vs-tracker proximity snapshot (plus precinct
     # membership facts) assembled at completion time by orchestration/action_location_
     # service.build_phase_assessment. Validated through ActionLocationAssessment on
     # every read (from_attributes maps the stored JSONB dict straight through
@@ -204,7 +204,7 @@ class _PhaseCompleteBase(BaseModel):
     driver_phone_lat: Optional[float] = Field(default=None, ge=-90, le=90)
     driver_phone_lng: Optional[float] = Field(default=None, ge=-180, le=180)
 
-    # Task 0A: the instant the driver's OWN PHONE submitted this completion — captured
+    # The instant the driver's OWN PHONE submitted this completion — captured
     # client-side at swipe time (frontend/driver-pwa/lib/submission/phase-submitter.ts),
     # not when this request happens to reach the server. This is what lets
     # corroboration_service tell a live handshake from an offline replay flushed hours
@@ -219,7 +219,7 @@ class _PhaseCompleteBase(BaseModel):
     # send it (frontend/driver-pwa/lib/submission/phase-submitter.ts).
     driver_captured_at: Optional[datetime] = None
 
-    # R8 (Task 5, trip-location-timeline-improvements): the phone's own claimed
+    # The phone's own claimed
     # accuracy at the moment of driver_phone_lat/lng, feeding proximity_service.
     # evaluate_proximity's `poor_accuracy`/`missing_accuracy` gates via orchestration/
     # action_location_service.build_phase_assessment. NOT a phase_events column —
@@ -229,7 +229,7 @@ class _PhaseCompleteBase(BaseModel):
     # forces the proximity verdict to 'unverified' rather than a fabricated pass.
     driver_accuracy_metres: Optional[float] = Field(default=None, ge=0)
 
-    # Task 7: acknowledgement of the warning the driver saw during the optional
+    # Acknowledgement of the warning the driver saw during the optional
     # preview. This is deliberately separate from action_location_assessment: the
     # latter is only assembled from independent measurements by the backend after the
     # final completion request, while these fields describe the driver's own context.
@@ -294,14 +294,15 @@ class ActivationCompleteRequest(_PhaseCompleteBase):
 
 
 class LoadingCompleteRequest(_PhaseCompleteBase):
-    # D7/T5: the seal is applied at departure, not here.
+    # The seal is applied at departure, not here.
     #
     # driver_visual_count is Optional and IGNORED by advance_loading as of the
     # scan-driven redesign. It is kept on the schema rather than removed for one
     # reason: a loading queued offline under the old schema replays from
     # localStorage with the field present, and removing it would 422 that entry
-    # forever — the queue would never drain. The driver app stops sending it in
-    # Stage C; this field is deleted only once no client can still be holding one.
+    # forever — the queue would never drain. The driver app will stop sending it
+    # once every client has moved off the old schema; this field is deleted only
+    # once no client can still be holding one.
     phase_type: Literal[PhaseType.LOADING]
     driver_visual_count: Optional[int] = None
     # The paper linehaul sheet photographed at loading. Optional — a warehouse that has
@@ -312,7 +313,7 @@ class LoadingCompleteRequest(_PhaseCompleteBase):
 
 
 class DepartureCompleteRequest(_PhaseCompleteBase):
-    # D7/T5: the seal is applied HERE — the driver photographs and applies the seal as
+    # The seal is applied HERE — the driver photographs and applies the seal as
     # they physically close the trailer at exit.
     phase_type: Literal[PhaseType.DEPARTURE]
     # Optional as of 2026-08-10, and no longer sent by the driver app. It carried the
@@ -383,9 +384,9 @@ class ArrivalCompleteRequest(_PhaseCompleteBase):
     # sequence rule the server enforces instead of an order photos happen to be taken in.
     phase_type: Literal[PhaseType.ARRIVAL]
     seal_condition: SealCondition
-    # Required unless the seal is MISSING: there is no number to read off a seal that
-    # is not there, and forcing one would make the driver invent evidence. A damaged
-    # seal usually still shows its number, so it is still required.
+    # Required unless the seal is MISSING, when it must be omitted: there is no
+    # number to read off a seal that is not there. A damaged seal usually still
+    # shows its number, so it is still required.
     seal_number_at_arrival: Optional[str] = None
     # Required in every condition. A missing seal is photographed as a missing seal:
     # the empty hasp is the evidence.
@@ -398,7 +399,10 @@ class ArrivalCompleteRequest(_PhaseCompleteBase):
 
     @model_validator(mode="after")
     def validate_seal_number_present(self) -> "ArrivalCompleteRequest":
-        if self.seal_condition != SealCondition.MISSING and self.seal_number_at_arrival is None:
+        if self.seal_condition == SealCondition.MISSING:
+            if self.seal_number_at_arrival is not None:
+                raise ValueError("seal_number_at_arrival must be omitted when the seal is missing")
+        elif self.seal_number_at_arrival is None:
             raise ValueError("seal_number_at_arrival is required unless the seal is missing")
         return self
 
@@ -412,7 +416,7 @@ class UnloadingCompleteRequest(_PhaseCompleteBase):
 
 
 class ConfirmationCompleteRequest(_PhaseCompleteBase):
-    # BQ2 resolved 2026-06-29: proof of delivery is a photo AND an on-device
+    # Resolved 2026-06-29: proof of delivery is a photo AND an on-device
     # signature — both required, not either/or.
     #
     # pp_scan_in_count is GONE from the wire. The driver app used to send its own
@@ -422,7 +426,7 @@ class ConfirmationCompleteRequest(_PhaseCompleteBase):
     # must stay — verification_service rebuilds from it, so renaming it would break
     # hash verification on every historical trip.
     #
-    # Checked before removing (task 8, §"CHECK THIS BEFORE PROCEEDING"): no schema
+    # Checked before removing: no schema
     # in this codebase sets extra="forbid" (BaseModel/_PhaseCompleteBase both use
     # Pydantic v2's default extra="ignore"), so an offline-queued confirmation still
     # carrying pp_scan_in_count from before this change is silently accepted and the
@@ -436,7 +440,7 @@ class ConfirmationCompleteRequest(_PhaseCompleteBase):
     # A PARCEL count (team decision), captured blind: the driver is never shown an
     # expected figure before committing his own. Recorded and anchored as evidence
     # in its own right, and deliberately never reconciled against the depot scan
-    # counts (design §5) — the two independent scans already settle that, and
+    # counts — the two independent scans already settle that, and
     # scoring the driver against them would spend the independence for nothing.
     # Optional (not required) as of the scan-driven
     # redesign: the driver may now skip the count at unloading and at
@@ -453,7 +457,7 @@ class ConfirmationCompleteRequest(_PhaseCompleteBase):
         return self
 
 
-# Decision S5. One endpoint, seven real shapes: Pydantic picks the member from
+# One endpoint, seven real shapes: Pydantic picks the member from
 # `phase_type` and validates it properly, so a missing seal_number is still a
 # 422 and not a hand-rolled service-layer error.
 #

@@ -6,6 +6,7 @@ from test_road_check._seed, a plain function so it can be shared.
 """
 
 import importlib
+from decimal import Decimal
 from typing import AsyncGenerator
 
 import pytest
@@ -20,6 +21,7 @@ from app.db.models.enums import ExceptionSource, PhaseType
 from app.db.models.transit import TripException
 from app.db.session import get_db
 from app.integrations import pulsit as pulsit_module
+from app.integrations.pulsit import MockPulsitClient, get_pulsit_client
 from tests.conftest import FakeMockStateStore, auth_header, make_jwks, make_token, production_settings
 from tests.integration.test_road_check import _seed
 
@@ -119,6 +121,46 @@ async def test_en_route_while_loading_is_409(pulsit_client, db_session):
     )
 
     assert resp.status_code == 409
+
+
+async def test_left_before_departure_at_final_stop_is_409_without_moving_trackers(
+    pulsit_client, db_session, store: FakeMockStateStore,
+):
+    seed = await _seed(db_session, completed_through=PhaseType.ARRIVAL)
+    tracker = get_pulsit_client(organization_id=seed["trip"].operator_organization_id)
+    assert isinstance(tracker, MockPulsitClient)  # staging exists only on the mock
+    for vehicle in (seed["horse"], seed["trailer"]):
+        await tracker.stage_position(
+            vehicle.pulsit_device_id, lat=Decimal("-33.7342000"), lng=Decimal("18.9621000"),
+        )
+    original_state = {key: value.copy() for key, value in store.data.items()}
+
+    resp = await pulsit_client.post(
+        _SCENARIO_URL,
+        json={"trip_id": str(seed["trip"].id), "scenario": "left_before_departure"},
+        headers=auth_header(_token_for(seed)),
+    )
+
+    assert resp.status_code == 409
+    assert store.data == original_state
+    rows = (await db_session.execute(select(TripException).where(TripException.trip_id == seed["trip"].id))).scalars().all()
+    assert rows == []
+
+
+async def test_left_before_departure_at_origin_records_finding(pulsit_client, db_session):
+    seed = await _seed(db_session, completed_through=PhaseType.LOADING)
+
+    resp = await pulsit_client.post(
+        _SCENARIO_URL,
+        json={"trip_id": str(seed["trip"].id), "scenario": "left_before_departure"},
+        headers=auth_header(_token_for(seed)),
+    )
+
+    assert resp.status_code == 200
+    assert [f["exception_type"] for f in resp.json()["findings"]] == ["moved_before_departure"]
+    rows = (await db_session.execute(select(TripException).where(TripException.trip_id == seed["trip"].id))).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].source == ExceptionSource.SYSTEM
 
 
 async def test_at_stop_without_stop_is_422(pulsit_client, db_session):

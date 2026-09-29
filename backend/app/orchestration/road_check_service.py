@@ -3,7 +3,7 @@
 Stop phases read the trackers only when the driver completes a phase at a precinct, so
 between stops nothing looked: a trailer uncoupled on the N1 stayed invisible until
 arrival. This module reads the horse and every trailer once, on demand, and records
-SYSTEM exceptions for three findings (design note 2026-09-23 §4.7).
+SYSTEM exceptions for three findings.
 
 Two halves. evaluate_road_readings is pure: no I/O, exhaustively unit-tested.
 check_trip_on_road loads state, calls it, and writes each finding at most once.
@@ -229,7 +229,8 @@ async def load_rig(db: AsyncSession, *, trip: Trip) -> list[RigVehicle]:
     ]
 
 
-async def _road_stage(db: AsyncSession, *, current: PhaseEvent) -> RoadStage:
+async def road_stage_for_current(db: AsyncSession, *, current: PhaseEvent) -> RoadStage:
+    """Use the same pending-departure rule for checks and dev scenario staging."""
     if current.phase_type == PhaseType.IN_TRANSIT:
         return RoadStage(current.id, current.trip_stop_id, True, None, None)
     if current.trip_stop_id is None:
@@ -290,7 +291,7 @@ async def check_trip_on_road(db: AsyncSession, *, trip: Trip) -> RoadCheckResult
         for v, fix in zip(rig, fixes, strict=True)
     ]
 
-    stage = await _road_stage(db, current=current)
+    stage = await road_stage_for_current(db, current=current)
     findings = evaluate_road_readings(
         stage=stage, readings=readings,
         max_separation_metres=settings.TRAILER_HORSE_MAX_SEPARATION_METRES,

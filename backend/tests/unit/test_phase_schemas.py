@@ -3,8 +3,9 @@ import uuid
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
-from app.db.models.enums import PhaseType
+from app.db.models.enums import PhaseType, SealCondition
 from app.schemas.phases import (
+    ArrivalCompleteRequest,
     ConfirmationCompleteRequest,
     DepartureCompleteRequest,
     InTransitCompleteRequest,
@@ -74,6 +75,28 @@ def test_departure_rejects_one_artifact_used_for_two_evidence_roles():
         )
 
 
+def test_arrival_missing_seal_rejects_a_reported_seal_number():
+    with pytest.raises(ValidationError, match="must be omitted"):
+        ArrivalCompleteRequest(
+            phase_type=PhaseType.ARRIVAL,
+            idempotency_key=str(uuid.uuid4()),
+            seal_condition=SealCondition.MISSING,
+            seal_number_at_arrival="AB-1234",
+            seal_photo_artifact_id=uuid.uuid4(),
+        )
+
+
+def test_arrival_missing_seal_accepts_no_seal_number():
+    request = ArrivalCompleteRequest(
+        phase_type=PhaseType.ARRIVAL,
+        idempotency_key=str(uuid.uuid4()),
+        seal_condition=SealCondition.MISSING,
+        seal_photo_artifact_id=uuid.uuid4(),
+    )
+
+    assert request.seal_number_at_arrival is None
+
+
 def test_confirmation_rejects_one_artifact_used_for_two_evidence_roles():
     artifact_id = uuid.uuid4()
 
@@ -87,7 +110,7 @@ def test_confirmation_rejects_one_artifact_used_for_two_evidence_roles():
 
 
 # ---------------------------------------------------------------------------
-# Task 0A: driver_captured_at
+# driver_captured_at
 # ---------------------------------------------------------------------------
 
 

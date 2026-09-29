@@ -545,3 +545,23 @@ async def test_arrival_complete_missing_seal_photo_returns_422(
 
     assert resp.status_code == 422
     assert "seal_photo_artifact_id" in resp.text
+
+
+async def test_arrival_complete_missing_seal_with_number_returns_422_without_completing(
+    client: AsyncClient, db_session,
+):
+    trip, driver = await _seed_trip(db_session)
+    token = make_token(sub=str(driver.id), role="driver")
+    await _walk_to_arrival(client, db_session, trip, token)
+    seal_photo_id = await _make_artifact(db_session, trip.id)
+
+    resp = await _complete_arrival(
+        client, trip.id, token,
+        seal_photo_artifact_id=seal_photo_id,
+        seal_condition="missing", seal_number_at_arrival="AB-1234",
+    )
+
+    assert resp.status_code == 422
+    assert "seal_number_at_arrival" in resp.text
+    arrival = await _arrival_row(db_session, trip.id)
+    assert arrival.status == PhaseStatus.PENDING

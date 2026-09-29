@@ -24,7 +24,7 @@ from app.db.models.trips import Trip, TripStop
 from app.integrations.pulsit import MockPulsitClient
 from app.orchestration import dev_truck_service
 from app.orchestration.phase_service import current_phase_event
-from app.orchestration.road_check_service import RigRole, RigVehicle, load_rig
+from app.orchestration.road_check_service import RigRole, RigVehicle, load_rig, road_stage_for_current
 from app.schemas.dev import SCENARIO_AT_STOP, SCENARIO_THREE_KM, DevTruckScenario, RigScenario
 
 # 5 km: unmistakably apart on the dispatcher's map, and ten times the default 500 m
@@ -121,6 +121,9 @@ async def stage_rig_scenario(
         current = await current_phase_event(db, trip.id)
         if current is None or current.phase_type == PhaseType.IN_TRANSIT or current.trip_stop_id is None:
             raise ScenarioNotApplicableError("The truck can only leave early while it is at a stop.")
+        stage = await road_stage_for_current(db, current=current)
+        if stage.pending_departure_id is None:
+            raise ScenarioNotApplicableError("This stop has no departure ahead to leave early.")
         name, position = await _stop_target(
             db, trip=trip, trip_stop_id=current.trip_stop_id, scenario=SCENARIO_THREE_KM,
         )
