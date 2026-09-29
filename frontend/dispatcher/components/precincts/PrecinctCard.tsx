@@ -37,7 +37,7 @@ export function PrecinctCard({ precinct, isOwned, onClick }: PrecinctCardProps) 
               {precinct.name}
             </span>
           </div>
-          {/* D5: ownership is the normal case and gets no chip at all — colour marks
+          {/* Ownership is the normal case and gets no chip at all — colour marks
               only the exceptional "not yours" state, never the default. */}
           {!isOwned && <Chip type="pending" label="Shared" />}
         </div>

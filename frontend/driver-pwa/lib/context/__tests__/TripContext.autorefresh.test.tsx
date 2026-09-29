@@ -1,11 +1,12 @@
 // frontend/driver-pwa/lib/context/__tests__/TripContext.autorefresh.test.tsx
 //
-// refreshQuietly's own contract — see docs/superpowers/specs/
-// 2026-08-10-driver-pwa-trip-auto-refresh-design.md "Required properties" 1 and 2, plus
-// the offline-safe/never-throw guarantee useTripAutoRefresh.ts depends on. Real (non-demo)
-// mode, same split as TripContext.real.test.tsx: IS_DEMO_MODE is a module-level constant,
-// and refreshQuietly is a documented no-op in demo mode (property 7), so these three
-// properties can only be exercised with it mocked false.
+// refreshQuietly's own contract: it must never set isLoading (no spinner flash on a
+// poll), and it must preserve the optimistic layer — writing serverTrip while re-layering
+// syncingPhaseIds on top, so a poll landing mid-submission can't un-complete a phase the
+// driver just swiped — plus the offline-safe/never-throw guarantee useTripAutoRefresh.ts
+// depends on. Real (non-demo) mode, same split as TripContext.real.test.tsx: IS_DEMO_MODE
+// is a module-level constant, and refreshQuietly is a documented no-op in demo mode, so
+// these three properties can only be exercised with it mocked false.
 import { useContext } from 'react'
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'

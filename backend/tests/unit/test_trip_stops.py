@@ -46,7 +46,7 @@ def _base_kwargs() -> dict:
         "horse_id": uuid.uuid4(),
         "trailer_ids": [uuid.uuid4()],
         # trip_type defaults to TripType.LOADED, which now requires at least one
-        # consignment (trip-creation redesign, Task 3) — orthogonal to the
+        # consignment (trip-creation redesign) — orthogonal to the
         # stop-routing behaviour these tests exercise.
         "consignments": [{"pp_reference": "WAY001", "unit_count_expected": 4}],
         # Required by validate_request — a resolvable schedule at creation
@@ -123,8 +123,8 @@ def test_stops_with_fewer_than_two_raises():
 
 
 # ---------------------------------------------------------------------------
-# TripCreateRequest — client_organization_id removed (trip-creation redesign,
-# Task 3): client now lives per-consignment, resolved from the PP accnum, not
+# TripCreateRequest — client_organization_id removed (trip-creation redesign):
+# client now lives per-consignment, resolved from the PP accnum, not
 # on the trip. test_client_organization_id_is_optional deleted — it asserted
 # the field's presence-but-optionality, which no longer applies since the
 # field itself is gone. See test_trip_schemas.py::test_client_organization_id_removed

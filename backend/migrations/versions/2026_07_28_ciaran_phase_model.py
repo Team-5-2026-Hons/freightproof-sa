@@ -1,13 +1,13 @@
 """Phase model: handshake_events -> phase_events, per-stop ledger, anchor state.
 
-Renames rather than rebuilds (parent plan D1): the rename carries the three RLS
+Renames rather than rebuilds: the rename carries the three RLS
 policies, the indexes and the five inbound FKs across automatically, and preserves
 the evidence_artifacts circular-FK use_alter arrangement that 0001 works hard to
 get right. What a rename does NOT carry is policy and constraint NAMES — they stay
 spelled "handshake_events" on a phase_events table — so this migration renames them
 explicitly. FastAPI connects as service_role and bypasses RLS, so an RLS mistake
 here produces no error anywhere: it produces a phase ledger carrying driver GPS and
-seal data readable outside the POPIA posture via PostgREST. Treat §5.2 of the parent
+seal data readable outside the POPIA posture via PostgREST. Treat the RLS rename
 as a security control, not housekeeping.
 
 Revision ID: 2026_07_28_ciaran_phase
@@ -105,7 +105,7 @@ def upgrade() -> None:
         sa.Column("idempotency_key", sa.String(length=100), nullable=True),
     )
 
-    # ── 3. D3 uniqueness ────────────────────────────────────────────────────
+    # ── 3. Per-stop uniqueness ──────────────────────────────────────────────
     # The old constraint allowed exactly one row per (trip, type) — which is the
     # wall this refactor exists to remove: a cross-dock trip loads twice.
     op.drop_constraint("uq_handshake_events_trip_type", "phase_events", type_="unique")
@@ -129,7 +129,7 @@ def upgrade() -> None:
                     new_column_name="phase_event_id")
     op.alter_column("exceptions", "handshake_event_id", new_column_name="phase_event_id")
 
-    # ── 5. Trip denormalisation (D6) — caches, never sources of truth ───────
+    # ── 5. Trip denormalisation — caches, never sources of truth ────────────
     op.add_column("trips", sa.Column("current_phase", sa.String(length=30), nullable=True))
     op.add_column("trips", sa.Column("current_stop", sa.Integer(), nullable=True))
 
@@ -137,7 +137,7 @@ def upgrade() -> None:
     op.execute("UPDATE blockchain_receipts SET subject_type = 'phase_event' "
                "WHERE subject_type = 'handshake_event';")
 
-    # ── 7. 🔴 RLS (parent §5.2) ─────────────────────────────────────────────
+    # ── 7. 🔴 RLS ───────────────────────────────────────────────────────────
     # relrowsecurity is a table property and follows the rename, so RLS stays
     # ENABLED without action here — the gate asserts it rather than assuming it.
     # The three SELECT policies also follow the table, but keep stale names.

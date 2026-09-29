@@ -209,7 +209,7 @@ export function useDevTriggers(): UseDevTriggersResult {
           const verdict = result.geofence_confirmed === null
             ? 'no verdict (tracker dark)'
             : result.geofence_confirmed ? 'geofence confirmed' : 'geofence failed'
-          // FP-197 Task 3: scenario mode names a real target stop; legacy waypoints
+          // FP-197: scenario mode names a real target stop; legacy waypoints
           // don't, so target_precinct_name is null for them and this suffix is empty.
           // The verdict itself always describes the EXPECTED (phase-ledger) stop —
           // named explicitly here so the toast can never read as if it graded the

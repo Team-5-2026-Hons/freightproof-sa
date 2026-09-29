@@ -382,7 +382,7 @@ async def test_entry_missing_its_timestamp_reads_as_unavailable(pulsit_settings)
 
 
 # ---------------------------------------------------------------------------
-# Task 0A: a naive timestamp or an impossible coordinate must never become evidence
+# A naive timestamp or an impossible coordinate must never become evidence
 # ---------------------------------------------------------------------------
 
 

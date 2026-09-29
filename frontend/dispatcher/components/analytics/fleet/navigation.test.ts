@@ -6,7 +6,7 @@ function search(href: string): URLSearchParams {
   return new URLSearchParams(href.split('?')[1] ?? '')
 }
 
-describe('analytics return address (D25)', () => {
+describe('analytics return address', () => {
   it('carries the tab, View by and period', () => {
     expect(analyticsReturnHref('routes', { grain: 'week', period: { preset: 'last_26_weeks' } }))
       .toBe('/analytics?tab=routes&grain=week&period=last_26_weeks')

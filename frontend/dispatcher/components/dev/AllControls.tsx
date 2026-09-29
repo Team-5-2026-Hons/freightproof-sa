@@ -26,7 +26,7 @@ import {
 const METRES_PER_KILOMETRE = 1000
 
 // Formats a distance for display with an explicit "from WHAT" phrase, or names the
-// reason there is nothing to show. FP-197 Task 3 made this a parameter rather than a
+// reason there is nothing to show. FP-197 made this a parameter rather than a
 // hardcoded "from the precinct": once a response can carry two distances (the
 // EXPECTED phase-ledger stop and, in scenario mode, the simulated TARGET stop),
 // leaving either unlabelled would be exactly the ambiguity the panel copy must avoid.
@@ -129,7 +129,7 @@ function buildScanOptions(stops: readonly DevTripStop[]): ScanOption[] {
       // confirmation must report the confirmation reason, not the arrival one.
       const alreadyComplete = isClosedPhaseStatus(stop.confirmation_phase_status)
       // Scan IN waits for ARRIVAL, not departure: the warehouse scans only after the
-      // driver has inspected the seal (design note §4.2).
+      // driver has inspected the seal.
       const notYetArrived = !isClosedPhaseStatus(stop.arrival_phase_status)
       const disabled = alreadyComplete || notYetArrived
       const disabledReason = alreadyComplete
@@ -221,7 +221,7 @@ export function AllControls({ controls, tripId }: AllControlsProps): React.React
   const [activeScenarioKey, setActiveScenarioKey] = useState<string | null>(null)
   const [moveTruckResult, setMoveTruckResult] = useState<MoveTruckResponse | null>(null)
 
-  // FP-197 Task 3: which of the selected trip's own stops the scenario mode targets.
+  // FP-197: which of the selected trip's own stops the scenario mode targets.
   // '' means "no stop chosen" — valid only for the no_signal scenario.
   const [selectedTripStopId, setSelectedTripStopId] = useState<string>('')
 
@@ -279,7 +279,7 @@ export function AllControls({ controls, tripId }: AllControlsProps): React.React
   }
 
   // Changing the targeted stop is the other half of "changing trip or stop clears
-  // results" (FP-197 Task 3): a result on screen that named a different stop as its
+  // results" (FP-197): a result on screen that named a different stop as its
   // target would misdescribe where the tracker actually is relative to the NEWLY
   // selected stop.
   const [resetForTripStopId, setResetForTripStopId] = useState<string>(selectedTripStopId)
@@ -292,7 +292,7 @@ export function AllControls({ controls, tripId }: AllControlsProps): React.React
 
   const selectedTrip = trips.find((t) => t.trip_id === tripId) ?? null
 
-  // FP-197 Task 3: the ordered stops a scenario can target, built from the trip
+  // FP-197: the ordered stops a scenario can target, built from the trip
   // summary the panel already loads — no separate endpoint needed. Labels use
   // position (origin/destination/Stop N), and option VALUES are trip_stop_id: a
   // repeated-precinct multi-stop trip can have two stops sharing one precinct name,
@@ -598,7 +598,7 @@ export function AllControls({ controls, tripId }: AllControlsProps): React.React
                     : 'No fix'}
                 </span>
               </p>
-              {/* FP-197 Task 3: the two distances a scenario-mode response can carry
+              {/* FP-197: the two distances a scenario-mode response can carry
                   are never both labelled "from the precinct" — one names the
                   EXPECTED phase-ledger stop, the other (only present in scenario
                   mode) names the simulated TARGET stop actually requested. */}

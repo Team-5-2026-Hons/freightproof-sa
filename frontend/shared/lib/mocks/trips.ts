@@ -42,7 +42,7 @@ function planStops(stops: TripStop[]): PlanStopInput[] {
 
 // Mark the plan as walked through `throughSequence` inclusive, and attach the
 // evidence the dispatcher's panels read. Mirrors what the backend writes: the seal
-// at DEPARTURE (parent D7/§2.6, never at loading), the counts at LOADING.
+// at DEPARTURE (never at loading), the counts at LOADING.
 //
 // `count` and `scannedCount` are two different real-world figures now that
 // advance_loading was rewritten: `count` is the driver's own visual tally,

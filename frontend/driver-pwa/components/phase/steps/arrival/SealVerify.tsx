@@ -21,8 +21,8 @@ interface SealVerifyProps {
   onComplete: () => void | Promise<void>
 }
 
-// The custody check this whole phase exists for (design note 2026-09-23 §2): the seal
-// as found at the gate, before anything is opened. Moved here from unloading, where the
+// The custody check this whole phase exists for: the seal as found at the gate, before
+// anything is opened. Moved here from unloading, where the
 // photo could only ever be taken AFTER the warehouse broke the seal — a screen that
 // exists before the doors open is what makes "inspected before opened" a rule the
 // server enforces, not an order photos happen to be taken in.

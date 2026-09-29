@@ -68,7 +68,7 @@ class Settings(BaseSettings):
 
     GPS_TOLERANCE_METRES: int = 50
 
-    # Driver-vs-truck proximity check (Task 4, trip-location-timeline story):
+    # Driver-vs-truck proximity check:
     # independent corroboration that the driver's OWN PHONE fix and the vehicle's
     # Pulsit tracker fix describe the same place at roughly the same time. This is
     # a different question from GPS_TOLERANCE_METRES above (is the TRUCK inside its

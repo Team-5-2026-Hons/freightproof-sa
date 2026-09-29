@@ -2,7 +2,7 @@
 
 Shared by the read schema and phase_service's completion guard so both agree.
 Gated per (phase_type, trip_stop_id), since a cross-dock trip has its own scan
-session at each stop. Three states (design §3.1): no expected parcel set -> not
+session at each stop. Three states: no expected parcel set -> not
 blocked; session open -> BLOCKED_ON_SCAN; session closed -> not blocked. A trip
 with no Parcel Perfect reference has no Consignment rows and must never block at
 loading forever.

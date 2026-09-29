@@ -11,14 +11,14 @@ What each block proves:
   * a FALSE verdict writes exactly one exception, scoped to the right phase and stop,
     with both position sources reachable from the row
   * a TRUE verdict writes nothing
-  * a NULL verdict writes nothing — the single most important rule in the story: a
+  * a NULL verdict writes nothing — the single most important rule here: a
     driver in a coverage dead zone on the N3 must never have a position disagreement
     recorded against their name because a tracker could not be reached
   * a re-synced handshake from the driver app's offline queue adds no second row
   * a failure while recording the finding still leaves the handshake successful
 
 FIXTURES: the trip, the precincts, the mocked Pulsit store and the completion helpers
-are FP-143's, imported rather than rebuilt, so the two stories cannot drift apart on
+are FP-143's, imported rather than rebuilt, so FP-143 and FP-145 cannot drift apart on
 what a corroborated handshake looks like. Their provenance note applies here too — no
 position in this module was recorded from real Pulsit hardware.
 
@@ -451,7 +451,7 @@ async def test_the_description_states_a_measurement_and_never_a_verdict(
     """A dispatcher decides what the separation means; this row must not decide for them.
 
     Guarding the copy in a test rather than in review only, because the wording is the
-    part of this story most likely to be "improved" later by someone who has not read
+    part of this test most likely to be "improved" later by someone who has not read
     the reasoning. The platform reports a measured distance between two independent
     sources. It does not accuse anyone.
     """
@@ -492,7 +492,7 @@ async def test_a_handshake_with_no_driver_phone_fix_says_so_rather_than_inventin
     resp = await client.post(
         f"/api/v1/trips/{trip.id}/phases/{phase_event_id}/complete",
         headers=auth_header(token),
-        # Task 0A: within skew of the staged fix's default "now" — this test is about
+        # Within skew of the staged fix's default "now" — this test is about
         # the missing PHONE fix, not about the corroboration timing gate.
         json={
             "phase_type": "loading", "idempotency_key": f"idem-{uuid.uuid4()}",
@@ -511,7 +511,7 @@ async def test_a_handshake_with_no_driver_phone_fix_says_so_rather_than_inventin
     assert exc.gps_lng is None
 
 
-# ── NULL never raises. The rule the whole story turns on. ──────────────────────
+# ── NULL never raises — the central rule these tests enforce. ──────────────────
 
 
 async def test_a_true_verdict_raises_nothing(
@@ -531,7 +531,7 @@ async def test_a_true_verdict_raises_nothing(
 async def test_a_dark_tracker_raises_nothing(
     client: AsyncClient, db_session, corroboration_trip, pulsit_store,
 ):
-    """THE most important test in this story.
+    """THE most important test in this module.
 
     A driver in a coverage dead zone on the N3 must never generate a position
     disagreement against their name because a tracker was unreachable. FP-143 records
@@ -586,13 +586,13 @@ async def test_a_pulsit_outage_raises_nothing(
 async def test_a_stale_capture_time_raises_no_gps_mismatch_even_though_the_fix_is_far_away(
     client: AsyncClient, db_session, corroboration_trip, pulsit_store,
 ):
-    """Task 0A: an untimely fix is 'could not compare', never a manufactured mismatch.
+    """An untimely fix is 'could not compare', never a manufactured mismatch.
 
     The tracker really is far away RIGHT NOW, which — if trusted — would read as a
     clean FALSE verdict and raise (see test_a_false_verdict_raises_exactly_one_gps_
     mismatch, same coordinates). But the driver's own capture instant is hours old, so
     the timing cannot be verified, and the honest outcome is silence, not an
-    accusation — this is the offline-replay scenario task 0A exists to close.
+    accusation — this is the offline-replay scenario this test closes.
     """
     trip, driver, _org, _stop = corroboration_trip
     await _stage(_HORSE_DEVICE, _FAR_AWAY_LAT, _FAR_AWAY_LNG)
@@ -631,7 +631,7 @@ async def test_in_transit_never_raises_even_from_far_away(
 
     FP-143 excludes it deliberately: judging an arrival attestation against the origin
     would stamp a mismatch on every healthy trip in the fleet. This is the seam test —
-    if that exclusion is ever removed, this story starts fabricating accusations at
+    if that exclusion is ever removed, GPS_MISMATCH starts fabricating accusations at
     scale, and this fails first.
     """
     trip, driver, _org, _stop = corroboration_trip
@@ -775,7 +775,7 @@ async def test_a_failure_recording_the_finding_leaves_the_handshake_successful(
 async def test_a_failure_building_the_assessment_leaves_the_handshake_successful(
     client: AsyncClient, db_session, corroboration_trip, pulsit_store,
 ):
-    """Task 5's assessment is a derived comparison, not the evidence: same fail-open
+    """The corroboration assessment is a derived comparison, not the evidence: same fail-open
     stance as the GPS_MISMATCH finding and the corroboration itself. If assembling it
     blows up, the completion still lands, the column reads NULL ("not assessed"), and
     no separation finding is invented from a snapshot that was never built.

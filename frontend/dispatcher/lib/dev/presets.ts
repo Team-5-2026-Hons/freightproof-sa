@@ -35,7 +35,7 @@ export function ppRequestForPreset(tripId: string, consignment: DevConsignment, 
   const base = { trip_id: tripId, parcel_perfect_reference: consignment.parcel_perfect_reference }
   if (preset === 'delivered') return { ...base, poddate: ppDate(now) }
   if (preset === 'delivery_failed') return { ...base, failtype: DEMO_FAILURE_REASON }
-  // One more parcel than the manifest: the verified mid-trip PP edit (spec §B2c).
+  // One more parcel than the manifest: the verified mid-trip PP edit.
   return { ...base, parcel_count: consignment.barcodes.length + 1 }
 }
 

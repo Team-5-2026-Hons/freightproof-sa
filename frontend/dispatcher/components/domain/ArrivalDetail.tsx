@@ -15,7 +15,7 @@ interface Props {
   artifactLoading?: boolean
   artifactError?: string | null
   onRetryArtifacts?: () => void
-  // Every seal finding recorded on THIS row — design note §4.2/§4.3: a single arrival
+  // Every seal finding recorded on THIS row: a single arrival
   // can carry seal_compromised (broken/missing) AND seal_mismatch (wrong number)
   // together, so this is a list, never a single exception like UnloadingDetail's was.
   sealExceptions?: readonly Pick<TripException, 'exception_type' | 'severity'>[]
@@ -26,7 +26,7 @@ interface Props {
   allPhases: readonly PhaseDescriptor[]
   artifactsById: Map<string, EvidenceArtifactWithUrl>
   // The precinct this phase is anchored to (the destination stop), resolved by the
-  // page from the phase's stop. Arrival is a stop-anchored phase (design note §4.5.3),
+  // page from the phase's stop. Arrival is a stop-anchored phase,
   // so it gets the same geofence verdict as unloading, never in_transit's "no verdict".
   precinct: Precinct | undefined
 }
@@ -76,7 +76,7 @@ const FINDING_TONE_CLASS: Record<Finding['tone'], string> = {
 }
 
 /**
- * The seal AS FOUND at the gate, before anything is opened — design note §4.2. Moved
+ * The seal AS FOUND at the gate, before anything is opened. Moved
  * out of UnloadingDetail: arrival is the custody boundary, completed and anchored
  * before unloading can even start, so this is where the intact-seal check and its
  * findings now live.

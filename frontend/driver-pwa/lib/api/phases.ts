@@ -76,7 +76,7 @@ export interface ArrivalCompleteRequest extends PhaseCompleteRequestBase {
   seal_photo_artifact_id: string
 }
 
-// Slimmed (design note §4.3): the seal check moved to `arrival`, which the plan
+// Slimmed: the seal check moved to `arrival`, which the plan
 // guarantees completes first — _gate_and_load enforces plan order, so unloading can
 // never be submitted before it. Only the scan gate, visual count and location checks
 // remain here.
@@ -313,7 +313,7 @@ export async function submitPhase(
     }
     case 'unloading': {
       // No seal evidence — that moved to `arrival`, which the plan guarantees completes
-      // first (design note §4.3). Base fields only.
+      // first. Base fields only.
       updatedTrip = await completePhase(tripId, phaseEventId, {
         phase_type: 'unloading',
         ...driverPosition(position),

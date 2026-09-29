@@ -185,7 +185,7 @@ class PpTriggerRequest(BaseModel):
     """Stage a change to a mock waybill, as if someone edited it in the PP portal.
 
     Every field is optional; supplied fields are staged and the rest are untouched.
-    `parcel_count` reproduces the verified mid-trip edit (spec §B2c) that grew a
+    `parcel_count` reproduces the verified mid-trip edit that grew a
     waybill's tracks[] from 2 to 27 barcodes.
     """
 
@@ -257,7 +257,7 @@ class WaypointRead(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# FP-197 (Task 3) — trip-stop-relative scenario mode, alongside the legacy
+# FP-197 — trip-stop-relative scenario mode, alongside the legacy
 # fixed-waypoint mode above.
 #
 # WHY A SECOND MODE: the legacy waypoints are fixed Cape Town coordinates, generated
@@ -348,7 +348,7 @@ class MoveTruckResponse(BaseModel):
     same `orchestration.geofence_service.evaluate_geofence` a handshake uses — read
     only, nothing here is persisted.
 
-    EXPECTED vs TARGET, and why both exist (FP-197 Task 3): `precinct_id`/
+    EXPECTED vs TARGET, and why both exist (FP-197): `precinct_id`/
     `precinct_name` and the distance/verdict fields below all describe the EXPECTED
     phase stop — the trip's current stop per the phase-event ledger, exactly as
     before this change. `target_*` fields describe where scenario mode actually
@@ -388,7 +388,7 @@ class MoveTruckResponse(BaseModel):
     in_tolerance_band: bool
     verdict_reason: str
 
-    # ---- FP-197 Task 3 additions, all nullable: null in legacy waypoint mode, and
+    # ---- FP-197 additions, all nullable: null in legacy waypoint mode, and
     # null for target_* when scenario=no_signal names no stop. ----
 
     # The stop scenario mode actually staged the tracker relative to. Distinct from
@@ -413,7 +413,7 @@ class MoveTruckResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Rig scenarios and the on-road tracker check (design note §4.7, stage S7)
+# Rig scenarios and the on-road tracker check
 # ---------------------------------------------------------------------------
 
 RigScenario = Literal[

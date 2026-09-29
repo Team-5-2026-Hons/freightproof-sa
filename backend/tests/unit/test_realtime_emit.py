@@ -782,7 +782,7 @@ def test_every_trip_exception_write_site_is_accounted_for():
         "realtime event."
     )
 
-    # Task 2 (FP-146 follow-on): every one of the sites counted above must also set
+    # FP-146 follow-on: every one of the sites counted above must also set
     # review_status through initial_review_status() rather than hand-coding a value or
     # relying on the column's server_default — a site that only works by matching the
     # default is a site the next severity change breaks silently, with nothing here to

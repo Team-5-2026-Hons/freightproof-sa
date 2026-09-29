@@ -1,7 +1,6 @@
-"""Queries behind the On time tab (GET /analytics/fleet/on-time, spec §5.2, D23, D24).
-On time is strict, on or before the plan (spec D9); plan spread uses the lane view's
-schedule delta, from the first attested departure (never trips.actual_departure_at,
-spec G3)."""
+"""Queries behind the On time tab (GET /analytics/fleet/on-time).
+On time is strict, on or before the plan; plan spread uses the lane view's
+schedule delta, from the first attested departure (never trips.actual_departure_at)."""
 
 import uuid
 from collections import Counter
@@ -39,7 +38,7 @@ from app.schemas.fleet_analytics import (
 
 @dataclass(frozen=True)
 class TripTimes:
-    """One closed trip's timings. departed_at is its first attested departure (spec G3)."""
+    """One closed trip's timings. departed_at is its first attested departure."""
 
     bucket_start: date
     departed_at: datetime

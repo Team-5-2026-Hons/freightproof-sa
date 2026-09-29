@@ -8,7 +8,7 @@ const storageKey = (tripId: string, phaseEventId: string): string =>
 
 // Renamed from useHandshakeDraft, which keyed its storage on (tripId, handshakeType) —
 // a fixed 1-5 handshake enum where each type occurred at most once per trip. Under the
-// phase model a trip's plan LENGTH IS DATA (parent plan §2.2) and a phase_type can
+// phase model a trip's plan LENGTH IS DATA and a phase_type can
 // recur: a three-stop cross-dock visits `unloading` up to three times. Keying by
 // phase_type alone, as the old hook did, would collide every occurrence of that type
 // onto the SAME localStorage key — a driver's seal entry at the first `unloading`

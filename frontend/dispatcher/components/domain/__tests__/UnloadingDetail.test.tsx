@@ -85,7 +85,7 @@ describe('UnloadingDetail', () => {
     expect(screen.queryByText(/scan in progress/i)).not.toBeInTheDocument()
   })
 
-  // The seal check moved to ArrivalDetail (design note §4.2/§4.3) — unloading no
+  // The seal check moved to ArrivalDetail — unloading no
   // longer captures or renders anything seal-shaped, even when the row carries stale
   // seal_number data (a legacy fixture, never a live server response post-refactor).
   it('never renders seal content, even when the phase row still carries a seal_number', () => {
@@ -103,7 +103,7 @@ describe('UnloadingDetail', () => {
   })
 })
 
-// Task 3: advance_unloading's schema does not typically capture a fix, so the section
+// advance_unloading's schema does not typically capture a fix, so the section
 // must appear ONLY when there is something recorded: same three-way split as loading.
 describe('UnloadingDetail: location section', () => {
   it('shows no location heading when neither a fix nor a stored verdict is recorded', () => {

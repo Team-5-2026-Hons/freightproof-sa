@@ -158,7 +158,8 @@ export interface Trip {
 // Re-exported here so existing imports from './trip' continue to resolve.
 export type { BlockchainReceipt } from './blockchain'
 
-// Pagination envelope for GET /trips — keys confirmed by API contract §0.2.
+// Pagination envelope for GET /trips — key names match the backend response exactly,
+// do not rename.
 export interface PaginatedList<T> {
   items: T[]
   total: number

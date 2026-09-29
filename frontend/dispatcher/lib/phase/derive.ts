@@ -128,7 +128,7 @@ export interface AnchorTally {
   /** Phases that owe a Hedera receipt — anchor_status !== 'not_required'. */
   owed: number
   anchored: number
-  /** Fail-open casualties (parent D7). A completed phase with a failed anchor must
+  /** Fail-open casualties. A completed phase with a failed anchor must
    *  never render as an unqualified success. */
   failed: number
 }

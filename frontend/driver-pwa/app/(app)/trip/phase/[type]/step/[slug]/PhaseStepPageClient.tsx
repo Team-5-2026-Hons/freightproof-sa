@@ -58,7 +58,7 @@ const ARRIVAL_INITIAL: ArrivalEvidence = {
   sealCondition: null, sealNumberAtArrival: null,
   sealPhotoDataUrl: null, sealPhotoArtifactId: null, capturedAt: null,
 }
-// driverVisualCount is seeded per-mount from the carry-forward hook (task 4) — see
+// driverVisualCount is seeded per-mount from the carry-forward hook — see
 // ConfirmationStep below — never hard-coded here.
 const CONFIRMATION_INITIAL_BASE: Omit<ConfirmationEvidence, 'driverVisualCount'> = {
   podPhotoDataUrl: null, podPhotoArtifactId: null,
@@ -499,7 +499,7 @@ function usePhaseStepController<T extends PhaseEvidence>(
     onHandOff()
     if (idempotencyKeyRef.current === null) idempotencyKeyRef.current = crypto.randomUUID()
     const evidence = draftRef.current
-    // Task 0A: stamped HERE, at the same instant the driver confirms — mirrors
+    // Stamped HERE, at the same instant the driver confirms — mirrors
     // idempotencyKeyRef above (generated once per attempt, reused across any retry of
     // that attempt) so a replay from the offline queue reports the ORIGINAL swipe
     // instant, never the retry's own clock.

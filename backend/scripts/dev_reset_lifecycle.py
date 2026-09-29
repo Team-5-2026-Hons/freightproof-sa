@@ -4,10 +4,10 @@ A trip is immutable evidence. FreightProof has no trip-deletion feature and must
 never grow one: no endpoint, no orchestration path, no UI affordance. This script is
 out-of-band maintenance for a disposable refactor database, in the same category as
 seed_demo.py, and nothing under app/ may import from it. It exists because
-trips.trip_reference is UNIQUE, so re-seeding demo trips during Stages 1-4 fails on
-the second run without it.
+trips.trip_reference is UNIQUE, so repeatedly re-seeding demo trips during development
+fails on the second run without it.
 
-Existing trips are old-shape and anchored over old payloads; parent §5.3 regenerates
+Existing trips are old-shape and anchored over old payloads, so this script regenerates
 them rather than migrating them. Reference data — organizations, precincts, users,
 drivers, vehicles, templates, SLA configs — survives untouched, and the script
 asserts that rather than hoping.
@@ -21,7 +21,7 @@ silently wipe the entire fleet audit trail. At demo volumes DELETE costs nothing
 single row is touched. No pg_dump stands behind this script (decision 2026-07-28),
 so the guard IS the safety net: the failure mode that matters is running it while
 DATABASE_URL still points at the old fallback project, which is exactly the class
-of misconfiguration Stage 0 found three instances of.
+of misconfiguration that has bitten this project before.
 
 Usage:
     cd backend

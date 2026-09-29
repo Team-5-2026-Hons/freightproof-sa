@@ -7,7 +7,7 @@ import type { Grain } from '@shared/lib/types/fleet-analytics'
 const GRAIN_PLURAL: Record<Grain, string> = { week: 'weeks', month: 'months', year: 'years' }
 
 export const FLEET_COPY = {
-  // Spec §3, verbatim. Trends and tiles follow different time rules, so the page says so once.
+  // Verbatim wording, kept exact. Trends and tiles follow different time rules, so the page says so once.
   scopeNote:
     'Trends count closed trips, grouped by the day they first departed (South African time). Tiles show right now.',
 
@@ -76,7 +76,7 @@ export const FLEET_COPY = {
   },
 
   activity: {
-    // Y-axis headings, worded as in spec §7.7's table.
+    // Y-axis headings, worded to match the table view's column headers.
     axis: { trips: 'Trips', cancelledTrips: 'Cancelled trips', avgPerDay: 'Avg per day' },
     trips: {
       title: 'Trips over time',
@@ -130,7 +130,7 @@ export const FLEET_COPY = {
   },
 
   onTime: {
-    // Y-axis headings, worded as in spec §7.7's table.
+    // Y-axis headings, worded to match the table view's column headers.
     axis: { onTime: '% on time', trips: 'Trips' },
     punctuality: {
       title: 'On-time departures and arrivals',
@@ -176,7 +176,7 @@ export const FLEET_COPY = {
         `${count} ran over${typical === null ? '' : ` (typically ${typical})`}`,
       finishedEarly: '← Finished early',
       ranOver: 'Ran over →',
-      // Under the middle axis (D24): trips exactly on plan are named there, not drawn.
+      // Under the middle axis: trips exactly on plan are named there, not drawn.
       onPlan: 'On plan',
       onPlanCount: (count: number): string => `On plan · ${count} ${count === 1 ? 'trip' : 'trips'}`,
       legend: { early: 'Finished early', over: 'Ran over' },
@@ -196,7 +196,7 @@ export const FLEET_COPY = {
   },
 
   problems: {
-    // Spec §5.3's tab note, so a total lower than the driver pages is never a mystery (D10).
+    // Tab note, so a total lower than the driver pages is never a mystery.
     tabNote:
       'Dispatcher notes (recorded automatically for every cancellation and override) are not counted as problems, so totals can be lower than on driver pages.',
     axis: {
@@ -205,7 +205,7 @@ export const FLEET_COPY = {
       share: '% of total',
     },
     noTrips: 'No closed trips departed in this period.',
-    // D25: the bars count problems. A rate per 100 trips read "400 per 100" on two trips, so
+    // The bars count problems. A rate per 100 trips read "400 per 100" on two trips, so
     // the rate lives in the tooltip and the table, where the trip count sits beside it.
     perTrip: {
       title: 'Problems over time',
@@ -261,7 +261,7 @@ export const FLEET_COPY = {
       basis: (hours: string, problems: number): string =>
         `${hours} of driving and ${problems} problems raised while driving, by South African time of day`,
       note: "If a block's problem share is much taller than its driving share, that time of day is riskier.",
-      // D21: shown with the table, where the times can be read one by one.
+      // Shown with the table, where the times can be read one by one.
       caveat:
         'A problem counts in the block when the server received it. A report sent from a phone with no signal may arrive later than it happened.',
       empty: 'No driving legs or problems raised while driving in this period.',
@@ -274,7 +274,7 @@ export const FLEET_COPY = {
 
   review: {
     // The rest of the page counts closed trips; this tab can't, because a review happens
-    // whatever the trip's status (spec §5.4). Said once, at the top of the tab.
+    // whatever the trip's status. Said once, at the top of the tab.
     tabNote:
       'Review figures cover every critical problem, on open and closed trips alike. Reviews recorded by the old system, before outcomes existed, are left out.',
     axis: { waiting: 'Problems waiting', hours: 'Hours', reviews: 'Reviews' },
@@ -309,7 +309,7 @@ export const FLEET_COPY = {
       basis: (count: number): string => `${count} reviews of any severity concluded in this period`,
       note: 'A large "data discrepancy" share means automatic checks are raising false alarms.',
       empty: 'No reviews were concluded in this period.',
-      // The donut's centre (D25): every review ends in exactly one outcome.
+      // The donut's centre: every review ends in exactly one outcome.
       centre: (count: number): string => `${count} ${count === 1 ? 'review' : 'reviews'}`,
       legendValue: (count: number, share: string): string => `${count} · ${share}`,
       share: 'Share',
@@ -403,7 +403,7 @@ export const FLEET_COPY = {
       basis: (count: number): string =>
         `${count} lanes with closed trips in this period. Problems leave out dispatcher notes.`,
       note: 'The two faint lines mark the average lane: trips across, problems per trip up. Top-right = busy and risky.',
-      // Written in the chart's top-right corner (D25).
+      // Written in the chart's top-right corner.
       corner: 'Busy and risky',
       empty: 'No closed trips on a known lane in this period.',
       problems: 'Problems',
@@ -421,7 +421,7 @@ export const FLEET_COPY = {
       unlocated: (count: number): string =>
         `${count} ${count === 1 ? 'report' : 'reports'} in this period had no location.`,
       mapUnavailable: 'Map unavailable — every pin is listed in the table below.',
-      // D25: the table shows ten at a time, and a row finds its pin on the map.
+      // The table shows ten at a time, and a row finds its pin on the map.
       loadMore: (count: number): string => `Load ${count} more`,
       showing: (shown: number, total: number): string => `Showing ${shown} of ${total}`,
       rowHint: 'Click a row to find it on the map.',
@@ -433,7 +433,7 @@ export const FLEET_COPY = {
 
   chart: {
     aboutChart: (title: string): string => `About this chart: ${title}`,
-    // The last line of every time-axis card's "i" popover (spec §7.7 item 6).
+    // The last line of every time-axis card's "i" popover.
     partialFootnote: 'Faded: a part week, month or year at either end of the period, or one still running.',
     showTable: 'Show table',
     showChart: 'Show chart',

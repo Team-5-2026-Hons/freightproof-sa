@@ -400,7 +400,7 @@ describe('InTransitPageClient driving screen', () => {
 // paperwork happened to be submitted. Since 2026-08-09 the swipe hands that attestation
 // to the background submitter (lib/submission/phase-submitter.ts) before navigating —
 // the same hand-off model PhaseStepPageClient's final step already uses.
-describe('InTransitPageClient arrival attestation (Task 5)', () => {
+describe('InTransitPageClient arrival attestation', () => {
   beforeEach(() => {
     mockUseTrip.mockReturnValue({ trip: baseTrip, isLoading: false, exceptions: [], ...tripStateFields })
   })

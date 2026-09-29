@@ -271,7 +271,7 @@ def test_a_date_the_period_never_reaches_has_no_average() -> None:
     assert by_date[10].average_per_day == 0.0
 
 
-# ── Plan spread bands (chart 2.5, D23) ───────────────────────────────────────
+# ── Plan spread bands ─────────────────────────────────────────────────────────
 
 
 @pytest.mark.parametrize(

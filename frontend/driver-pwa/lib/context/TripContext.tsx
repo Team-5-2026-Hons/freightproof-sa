@@ -442,7 +442,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
         gps_lat: hasGpsFix ? gpsLat : null,
         gps_lng: hasGpsFix ? gpsLng : null,
         vehicle_id: demoBreakdownVehicleId(trip, type, vehicleType, trailerId),
-        // Mirrors backend initial_review_status (Task 2): CRITICAL starts
+        // Mirrors backend initial_review_status: CRITICAL starts
         // needs_review, everything else starts recorded — so a demo-mode
         // panic/seal-broken exception behaves like the real backend path instead of
         // always displaying as recorded regardless of severity.

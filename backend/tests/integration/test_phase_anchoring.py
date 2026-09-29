@@ -1,5 +1,5 @@
 """Integration tests: departure/confirmation phase completion anchors to
-Hedera HCS. D7/T5 (task 2.6) moved the anchor whole from loading to
+Hedera HCS. The anchor moved whole from loading to
 departure — see DepartureCompleteRequest/advance_departure in
 app/schemas/phases.py and app/orchestration/phase_service.py.
 
@@ -90,7 +90,7 @@ async def seed_trip(db_session):
     await db_session.flush()
 
     # Hand-built single-leg phase plan, mirroring what create_trip's plan
-    # generator (task 2.1) writes at trip creation — every PhaseEvent row a
+    # generator writes at trip creation — every PhaseEvent row a
     # driver will ever complete already exists, `pending`, before any endpoint
     # call. IN_TRANSIT (P4) is included and stays PENDING like every other
     # driver-facing row: it is opened by advance_departure and closed by the
@@ -163,7 +163,7 @@ def _loading_payload() -> dict:
 
 
 def _departure_payload(waybill_id: str, seal_photo_id: str, **overrides: object) -> dict:
-    # D7/T5: the seal (waybill photo, seal number, seal photo) is applied at
+    # The seal (waybill photo, seal number, seal photo) is applied at
     # departure now, not loading.
     payload = {
         "phase_type": "departure",
@@ -234,10 +234,9 @@ async def test_departure_complete_anchors_and_returns_event_hash(client: AsyncCl
     The receipt is not: since 2026-08-05 the Hedera submit is queued for the worker rather
     than awaited (a ~4-6s round trip was holding the driver's swipe open), so the response
     carries blockchain_receipt_id = null and the driver app renders "anchoring in
-    progress" until the worker lands it. Every phase anchors on completion now (design note
-    2026-09-23 §4.4), so the loading row completed earlier in this same trip must ALSO carry
-    its own event_hash with no receipt yet — it is no longer the departure-only anchor task
-    2.6 left behind."""
+    progress" until the worker lands it. Every phase anchors on completion now, so the
+    loading row completed earlier in this same trip must ALSO carry
+    its own event_hash with no receipt yet — it is no longer a departure-only anchor."""
     trip, driver = seed_trip
     token = make_token(sub=str(driver.id), role="driver")
     await _complete_activation(client, db_session, trip, token)
@@ -269,8 +268,7 @@ async def test_departure_complete_anchors_and_returns_event_hash(client: AsyncCl
 async def test_departure_complete_hedera_failure_still_returns_200_fail_open(
     client: AsyncClient, db_session, seed_trip,
 ):
-    """D7 (task 2.5's fail-open policy, wired into advance_departure for the
-    first time in task 2.6): unlike the old loading-phase fail-closed anchor, a Hedera
+    """Fail-open policy: unlike the old loading-phase fail-closed anchor, a Hedera
     failure during departure completion must NOT block the phase from
     completing or the trip from advancing — the seal event already happened.
     No 504/502 here; the endpoint doesn't even catch
@@ -315,7 +313,7 @@ async def test_trip_detail_lists_departure_receipt_for_dispatcher(
     PHASE_EVENT receipt in blockchain_receipts. resource_service.get_trip_detail
     used to filter subject_type == TRIP only, silently hiding every
     driver-anchored receipt from the dispatcher's per-trip evidence view."""
-    # Every phase anchors now (design note 2026-09-23 §4.4), so activation and loading
+    # Every phase anchors now, so activation and loading
     # (completed via the two helpers below) queue their own receipts alongside
     # departure's — this test isolates departure's own receipt among them.
     trip, driver = seed_trip

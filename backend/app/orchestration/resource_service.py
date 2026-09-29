@@ -94,7 +94,7 @@ async def list_trips(
     # NEEDS_REVIEW only, not "!= REVIEWED": a RECORDED row (e.g. a WARNING-severity
     # parcel-count mismatch) is on the trip's exception list but not queued for a
     # dispatcher decision — counting it here would put every recorded warning in
-    # front of a dispatcher as if it demanded action (Task 2, FP-146 follow-on).
+    # front of a dispatcher as if it demanded action (FP-146 follow-on).
     exc_result = await db.execute(
         select(TripException.trip_id, func.count(TripException.id))
         .where(

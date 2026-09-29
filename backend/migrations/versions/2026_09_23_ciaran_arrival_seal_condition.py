@@ -3,8 +3,7 @@
 Arrival records the seal as found at the destination gate, before anything is opened:
 its number, a photo, and its physical condition (intact / damaged / missing). The number
 and photo reuse the existing per-row seal_number and seal_photo_artifact_id columns, so
-the condition is the only new fact. See
-docs/design-notes/2026-09-23-arrival-phase-and-live-journey.md §4.2.
+the condition is the only new fact.
 
 Additive only - one nullable column. Plain String, not a Postgres enum, like every enum
 column on this table, so a new SealCondition value never needs a type migration. NULL on

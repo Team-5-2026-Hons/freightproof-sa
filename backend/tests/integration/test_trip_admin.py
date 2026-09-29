@@ -1,10 +1,10 @@
-"""Integration tests for the dispatcher-only trip lifecycle exits (task 6.1):
+"""Integration tests for the dispatcher-only trip lifecycle exits:
 
   POST /trips/{trip_id}/cancel
   POST /trips/{trip_id}/phases/{phase_event_id}/override
 
-New router: app/api/v1/endpoints/trip_admin.py — dispatcher-scoped (S3 kept
-phases.py driver-scoped, so these two write actions live on their own router
+New router: app/api/v1/endpoints/trip_admin.py — dispatcher-scoped (phases.py
+stays driver-scoped, so these two write actions live on their own router
 rather than mixing auth audiences into an existing file). Reuses the
 seed/auth patterns from tests/integration/test_phases.py.
 """
@@ -217,14 +217,14 @@ async def test_override_rejects_a_completed_phase(client: AsyncClient, db_sessio
 
 
 async def test_override_leaves_anchor_status_untouched(client: AsyncClient, db_session, seed):
-    """D3 — an override must not fabricate an anchor state.
+    """An override must not fabricate an anchor state.
 
     Deliberately overrides a DEPARTURE, not an activation. Departure is P3: an
     anchored phase, so its anchor_status is PENDING — a receipt is genuinely owed.
     An activation is never anchored, so its anchor_status is the column's
     server_default ('not_required') and asserting that value would hold no matter
     what the code did, including if override_phase explicitly wrote NOT_REQUIRED —
-    which is exactly the laundering D3 forbids. Only the PENDING case can fail.
+    which is exactly the laundering this test forbids. Only the PENDING case can fail.
     """
     trip = await _make_trip(db_session, seed, order_number="OVERRIDE-3")
     dispatcher_token = _dispatcher_token(seed)
@@ -316,9 +316,9 @@ async def test_admin_routes_reject_a_foreign_org_trip(client: AsyncClient, db_se
     assert override_resp.status_code == 404
 
 
-# ── D5: the intervention lands on the ledger ────────────────────────────────
+# ── The intervention lands on the ledger ─────────────────────────────────────
 # The point of an evidence platform is that a human bypassing a gate is itself an
-# event worth recording. Without these, D5 was asserted in comments and nowhere else.
+# event worth recording. Without these, that was asserted in comments and nowhere else.
 
 
 async def _exceptions_for(db_session, trip_id) -> list[TripException]:

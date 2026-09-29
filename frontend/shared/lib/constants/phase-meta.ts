@@ -17,7 +17,7 @@ export const PHASE_NAMES: Record<PhaseType, string> = {
 
 // An empty recipe means no driver interaction. `loading` must stay non-empty: it's the
 // only phase advance_loading (backend/app/orchestration/phase_service.py) can complete,
-// and it requires driver_visual_count entered blind — no expected value shown, per F1.
+// and it requires driver_visual_count entered blind — no expected value shown.
 //
 // Slug numbers are ordering prefixes, not indices — do not renumber surviving slugs,
 // that would break deep links and stored draft keys.
@@ -49,7 +49,7 @@ export const STEP_NAMES: Record<PhaseType, readonly string[]> = {
   confirmation: ['Photograph POD', 'Receiver Handover', 'Reconciliation', 'Trip Closed'],
 }
 
-// Which phases carry a Hedera anchor: all of them, since 2026-09-23 (design note §4.4).
+// Which phases carry a Hedera anchor: all of them, since 2026-09-23.
 // Mirrors backend phase_plan.ANCHORED_PHASES. P0 is fail-closed: a failed anchor rolls the
 // whole trip back. Every other phase is fail-open: it completes and anchor_status records
 // that a receipt is still owed. Derived from PHASE_NAMES (a Record over every PhaseType) so a

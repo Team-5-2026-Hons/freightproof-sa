@@ -177,13 +177,13 @@ async def test_create_trip_response_shape(client: AsyncClient, seed_data, db_ses
     assert body["trip_reference"].startswith("FP-")
     assert len(body["journey_lock_hash"]) == 64
     assert body["idvs_check_status"] == "pending"
-    # POST /trips now returns the trip's whole committed phase plan (Stage 3.4),
+    # POST /trips now returns the trip's whole committed phase plan,
     # not just the single trip_creation row — this fixture's single-leg
     # (2-stop) trip yields 8 rows (length is data, but this fixture's own).
     assert len(body["phases"]) == 8
     assert body["phases"][0]["phase_type"] == "trip_creation"
-    # h0 completes inline in create_trip once its anchor succeeds (Stage 2
-    # final-review fix) — it's never "pending" in a real response.
+    # h0 completes inline in create_trip once its anchor succeeds —
+    # it's never "pending" in a real response.
     assert body["phases"][0]["status"] == "completed"
     assert body["phases"][0]["sequence_number"] == 0
     assert len(body["trailers"]) == 1
@@ -228,7 +228,7 @@ async def test_create_trip_writes_trailer_snapshot_to_db(client: AsyncClient, se
 
 
 async def test_create_trip_writes_h0_handshake_to_db(client: AsyncClient, seed_data, db_session):
-    """create_trip now writes the full committed phase plan (Stage 2.1), not just
+    """create_trip now writes the full committed phase plan, not just
     H0 — filter to trip_creation specifically; row-count coverage of the full plan
     lives in test_create_trip_writes_full_pending_plan / test_create_trip_multistop.py.
 
@@ -461,9 +461,9 @@ async def test_list_trips_status_filter(client: AsyncClient, seed_data, db_sessi
         "/api/v1/trips?status=created",
         headers=_auth_headers(seed_data),
     )
-    # TripStatus.IN_TRANSIT (a LEGACY per-handshake value) was deleted in Stage
-    # 2.2/T6 — CLOSED is the coarse-model equivalent of "a status this
-    # freshly-created trip cannot have yet".
+    # TripStatus.IN_TRANSIT (a LEGACY per-handshake value) was deleted — CLOSED
+    # is the coarse-model equivalent of "a status this freshly-created trip
+    # cannot have yet".
     resp_closed = await client.get(
         "/api/v1/trips?status=closed",
         headers=_auth_headers(seed_data),
@@ -487,7 +487,7 @@ async def test_get_trip_detail_returns_200(client: AsyncClient, seed_data, db_se
     assert resp.status_code == 200
     assert body["id"] == trip_id
     # create_trip now writes the full 8-row committed phase plan for this
-    # single-leg (2-stop) trip (Stage 2.1), and get_trip_detail returns every
+    # single-leg (2-stop) trip, and get_trip_detail returns every
     # PhaseEvent row — not just H0 — ordered by sequence_number.
     assert len(body["phases"]) == 8
     assert body["phases"][0]["phase_type"] == "trip_creation"
@@ -558,7 +558,7 @@ async def test_create_trip_response_populates_derived_phase_fields(
     reads stop_sequence/step_recipe off body["phases"] — existing tests only
     check phase_type/status/sequence_number/event_hash — so a regression to
     plain model_validate() here would silently null every stop_sequence and
-    stay green everywhere else (the same failure shape as Stage 2's NEW-10)."""
+    stay green everywhere else."""
     resp = await client.post(
         "/api/v1/trips",
         json=_make_payload(seed_data),
@@ -576,8 +576,9 @@ async def test_get_trip_detail_phases_agree_with_creation_response(
     """Guards resource_service.get_trip_detail's from_event() call site (GET
     /trips/{id}) the same way the test above guards create_trip's — and, since
     both endpoints serve the same trip here, additionally proves POST and GET
-    describe the SAME plan (the actual dispatcher-contract consistency task 3.4
-    fixed, not merely that each path independently populates something)."""
+    describe the SAME plan (the actual dispatcher-contract consistency this
+    endpoint pairing must maintain, not merely that each path independently
+    populates something)."""
     create_resp = await client.post(
         "/api/v1/trips",
         json=_make_payload(seed_data),
@@ -616,7 +617,7 @@ async def test_get_trip_detail_not_found_returns_404(client: AsyncClient, seed_d
     assert resp.status_code == 404
 
 
-# ─── Consignment loop / empty legs (trip-creation-redesign Task 6) ─────────────
+# ─── Consignment loop / empty legs ──────────────────────────────────────────────
 
 async def test_create_trip_persists_consignments_and_parcels(client: AsyncClient, seed_data, db_session):
     """POST with two consignments persists a Consignment row per waybill (with the
@@ -815,7 +816,7 @@ async def test_create_empty_leg_no_consignments_no_pp_call(client: AsyncClient, 
 
 
 async def test_create_trip_response_carries_seeded_position_cache(client: AsyncClient, seed_data, db_session):
-    """U4: create_trip completes h0 inline but never seeded trip.current_phase,
+    """create_trip completes h0 inline but never seeded trip.current_phase,
     so a freshly created trip reported no current phase at all until its first
     advance. The cache must be derived the moment the plan exists."""
     resp = await client.post(
@@ -834,7 +835,7 @@ async def test_create_trip_response_carries_seeded_position_cache(client: AsyncC
 
 
 async def test_trip_list_item_carries_plan_counts(client: AsyncClient, seed_data, db_session):
-    """U3: TripListItemResponse has no phase plan, so the dashboard cannot show
+    """TripListItemResponse has no phase plan, so the dashboard cannot show
     plan-driven progress without these. phase_total is the plan's own length —
     never 6, never 7 as a constant."""
     create = await client.post(
@@ -856,7 +857,7 @@ async def test_trip_list_item_carries_plan_counts(client: AsyncClient, seed_data
     assert row["current_stop"] == 0
 
 
-# ─── Task 6.4: global exception handler must not swallow deliberate errors ────
+# ─── Global exception handler must not swallow deliberate errors ──────────────
 
 async def test_global_handler_preserves_http_exceptions(client: AsyncClient, seed_data, db_session):
     """main.py's new @app.exception_handler(Exception) hooks Starlette's outer

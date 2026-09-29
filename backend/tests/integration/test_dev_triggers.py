@@ -445,8 +445,8 @@ async def test_pp_trigger_404s_for_a_consignment_not_on_the_trip(dev_client, see
 
 
 async def test_mid_trip_waybill_edit_moves_the_baseline(dev_client, db_session, seeded, store):
-    """Reproduces spec §B2c. Drift DETECTION is Stage 5 and deliberately not built,
-    so this asserts the gap: the expected count is silently adopted."""
+    """Drift DETECTION is deliberately not built, so this asserts the gap: the
+    expected count is silently adopted."""
     res = await dev_client.post(
         "/api/v1/dev/pp/waybill",
         json={
@@ -722,7 +722,7 @@ async def test_barcodes_by_reference_rejects_an_oversized_total(dev_client, seed
 
 
 async def test_flushing_mock_state_leaves_evidence_intact(dev_client, db_session, seeded, store):
-    """THE test for this plan's non-negotiable principle.
+    """THE test for the dev trigger panel's non-negotiable principle.
 
     Redis holds only the simulated outside world. Every permanent effect is a
     PostgreSQL row written by orchestration. Wiping the former must not disturb

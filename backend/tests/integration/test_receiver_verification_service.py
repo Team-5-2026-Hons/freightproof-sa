@@ -1,7 +1,7 @@
 """The verification lifecycle against a real database, with the mock vendor.
 
 The ordering assertion matters most: a verification row exists BEFORE any confirmation
-row does, which is the whole reason Task 1 re-keyed it onto the token."""
+row does, which is the whole reason it was re-keyed onto the token."""
 
 import hashlib
 import uuid
@@ -209,7 +209,7 @@ async def test_extracted_identity_disagreeing_with_typed_identity_fails(db_sessi
 async def test_attach_confirmation_links_the_row_after_the_receiver_signs(db_session, seeded_phase_event):
     # A synthetic UUID would violate the real FK on handover_confirmation_id in this test
     # database (Postgres), so a genuine handover_confirmations row is created here via
-    # record_handover_confirmation — same as Stage 2B's end-to-end flow will produce.
+    # record_handover_confirmation — same as the end-to-end flow will produce.
     raw_token, token = await _fresh_token(db_session, seeded_phase_event)
     v = await record_consent(db_session, token=token, consent_text=_CONSENT)
     artifact = EvidenceArtifact(

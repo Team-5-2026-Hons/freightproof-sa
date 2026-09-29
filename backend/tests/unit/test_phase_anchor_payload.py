@@ -206,7 +206,7 @@ async def _advance_to_departure(
     db_session, trip, driver, phases, *,
     waybill_hash: str | None = "a" * 64, seal_hash: str = "a" * 64,
 ):
-    """D7/T5 (task 2.6): the seal — and the anchor — moved from loading to
+    """The seal — and the anchor — moved from loading to
     departure, so this is now the helper that produces an anchored handshake."""
     await advance_activation(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["activation"].id,
@@ -271,7 +271,7 @@ async def _advance_to_unloading(db_session, trip, driver, phases):
 # ── Payload shape: no GPS/artifact/PII keys (pure logic, no DB) ────────────────
 
 def test_departure_v1_payload_remains_byte_compatible():
-    """T5/task 2.6: driver_visual_count is gone from this payload — it stays
+    """driver_visual_count is gone from this payload — it stays
     on loading, unanchored, and never travels with the seal to departure."""
     event_id = uuid.uuid4()
     trip_id = uuid.uuid4()
@@ -431,7 +431,7 @@ async def _drain_anchors(db_session, dispatched) -> None:
 async def test_advance_departure_anchors_with_pickup_receipt_type(
     db_session, trip_fixture, captured_anchor_dispatches,
 ):
-    """D7/T5 (task 2.6): the PICKUP-typed anchor moved whole from loading to
+    """The PICKUP-typed anchor moved whole from loading to
     departure — this is now where it's produced."""
     trip, driver, phases = trip_fixture
 
@@ -503,9 +503,9 @@ async def test_advance_departure_v2_anchors_null_for_absent_legacy_waybill(
     assert receipt.payload_json["waybill_photo_sha256"] is None
 
 
-# Task 7 removed test_advance_confirmation_anchors_even_on_count_mismatch from
+# test_advance_confirmation_anchors_even_on_count_mismatch was removed from
 # here (see git history) — advance_loading stopped writing driver_visual_count,
-# so the old three-way count check it drove became unreachable. Task 8 restores
+# so the old three-way count check it drove became unreachable. This restores
 # the same property below, now driven by a genuine scan-out vs scan-in mismatch.
 
 @pytest.mark.asyncio
@@ -633,7 +633,7 @@ async def test_advance_confirmation_anchors_even_on_a_scan_mismatch(
 async def test_verify_subject_after_departure_reconstructs_matching_payload(
     db_session, trip_fixture, captured_anchor_dispatches,
 ):
-    """D7/T5 (task 2.6): verification_service._reconstruct_phase_event_payload
+    """verification_service._reconstruct_phase_event_payload
     now dispatches on PhaseType.DEPARTURE, not LOADING, matching where the
     seal (and the anchor) actually live post-refactor."""
     trip, driver, phases = trip_fixture
@@ -1157,10 +1157,10 @@ async def test_recovery_retries_failed_hedera_submission(db_session, trip_fixtur
     assert event.anchor_status == AnchorStatus.ANCHORED
 
 
-# ── S3: every phase anchors (design note 2026-09-23 §4.4) ─────────────────────
+# ── Every phase anchors ─────────────────────────────────────────────────────────
 
 def test_anchored_phases_is_every_phase_type():
-    """The rule from §4.4: ANCHORED_PHASES becomes frozenset(PhaseType), so every
+    """ANCHORED_PHASES becomes frozenset(PhaseType), so every
     row a plan writes is created PENDING rather than NOT_REQUIRED."""
     assert ANCHORED_PHASES == frozenset(PhaseType)
 
@@ -1192,7 +1192,7 @@ def test_receipt_type_for_returns_override_for_any_overridden_row(phase_type):
     assert receipt_type_for(event) == BlockchainReceiptType.PHASE_OVERRIDE
 
 
-# ── S3: per-phase v2 payload shapes (pure logic, no DB) ────────────────────────
+# ── Per-phase v2 payload shapes (pure logic, no DB) ─────────────────────────────
 
 def test_activation_v2_payload_key_set():
     payload = compute_activation_canonical_payload_v2(phase_event_id=uuid.uuid4(), trip_id=uuid.uuid4())
@@ -1277,7 +1277,7 @@ def test_override_v2_payload_key_set():
     assert payload["phase_status"] == "overridden"
 
 
-# ── S3: no payload leaks GPS, artifact ids, PII, or completed_at ───────────────
+# ── No payload leaks GPS, artifact ids, PII, or completed_at ────────────────────
 
 _LOCATION_KEY_PATTERN = re.compile(r"(lat|lng|latitude|longitude|gps|coordinates)", re.IGNORECASE)
 
@@ -1285,7 +1285,7 @@ _LOCATION_KEY_PATTERN = re.compile(r"(lat|lng|latitude|longitude|gps|coordinates
 def test_no_v2_payload_leaks_gps_artifact_ids_pii_or_completed_at():
     """Every builder — including departure/confirmation's v2 shape and the override
     commitment — must obey the same whitelist rule stated in each builder's own
-    docstring (design note §4.4 point 3): no GPS/coordinates, no `*_artifact_id`
+    docstring: no GPS/coordinates, no `*_artifact_id`
     keys, no `completed_at`.
 
     Only the builder-level key shape is proven here (pure logic, no DB). Whether a
@@ -1334,7 +1334,7 @@ def test_no_v2_payload_leaks_gps_artifact_ids_pii_or_completed_at():
 async def test_anchored_payloads_across_a_full_trip_never_leak_artifact_ids_gps_or_override_plaintext(
     db_session, trip_fixture, captured_anchor_dispatches,
 ):
-    """S3's payload whitelist (design note §4.4 point 3), proven end to end rather than
+    """The payload whitelist, proven end to end rather than
     only at the builder level: drives a full single-leg trip — including one dispatcher
     override of loading — through the real advance_*/override_phase completion path and
     inspects every payload actually queued for anchoring, not a hand-built example.
@@ -1360,7 +1360,7 @@ async def test_anchored_payloads_across_a_full_trip_never_leak_artifact_ids_gps_
             driver_phone_lat=Decimal("0"), driver_phone_lng=Decimal("0"), idempotency_key=str(uuid.uuid4()),
         ),
     )
-    # Overridden, not completed normally — the one override S3's plaintext-leak rule
+    # Overridden, not completed normally — the one override the plaintext-leak rule
     # (POPIA: the note may name a person) must also hold for.
     await override_phase(
         db_session, trip_id=trip.id, phase_event_id=phases["loading"].id,
@@ -1435,7 +1435,7 @@ async def test_anchored_payloads_across_a_full_trip_never_leak_artifact_ids_gps_
             assert str(override_user_id) not in payload.values()
 
 
-# ── S3: override commitments are keyed and never expose the plain value ───────
+# ── Override commitments are keyed and never expose the plain value ─────────────
 
 def test_override_commitments_differ_for_the_same_note_on_different_phase_events():
     """The commitment is keyed to the phase_event_id (see _override_commitment's

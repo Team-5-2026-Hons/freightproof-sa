@@ -9,7 +9,7 @@ already trusts.
 Fan-out is Redis Pub/Sub (shared with Celery) since the write and the SSE
 connection usually land on different API worker processes.
 
-Publish-after-commit (D9): orchestration only ``flush()``s; ``get_db`` commits
+Publish-after-commit: orchestration only ``flush()``s; ``get_db`` commits
 after the endpoint returns. Callers ``enqueue_event`` onto a per-request
 outbox, and a SQLAlchemy ``after_commit`` listener publishes once the data is
 durable, so a race against an uncommitted transaction can't happen. A
@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 # One Pub/Sub channel per org; each screen filters the stream client-side.
 CHANNEL_PREFIX = "org:"
 
-# Key for the per-request outbox on Session.info (D9); AsyncSession.info
+# Key for the per-request outbox on Session.info; AsyncSession.info
 # proxies to the same dict the commit listener reads.
 _OUTBOX_KEY = "realtime_outbox"
 
@@ -110,7 +110,7 @@ def _get_redis() -> redis_async.Redis:
 
 async def publish_event(org_id: UUID, event: TripEvent) -> None:
     """Broadcast one event on the org channel. Low-level — request handlers
-    should use ``enqueue_event`` so the publish happens after commit (D9)."""
+    should use ``enqueue_event`` so the publish happens after commit."""
     await _get_redis().publish(_channel(org_id), event.model_dump_json())
 
 
@@ -130,7 +130,7 @@ async def subscribe(org_id: UUID) -> AsyncIterator[TripEvent]:
         await pubsub.aclose()
 
 
-# ── Per-request outbox + after-commit publish (D9) ─────────────────────────────
+# ── Per-request outbox + after-commit publish ───────────────────────────────────
 
 
 def enqueue_event(session: AsyncSession, org_id: UUID, event: TripEvent) -> None:

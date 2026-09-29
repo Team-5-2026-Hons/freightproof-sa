@@ -1,8 +1,8 @@
 // frontend/driver-pwa/components/phase/steps/arrival/__tests__/SealVerify.test.tsx
 //
-// Ported from the deleted components/phase/steps/unloading/__tests__/SealVerify.test.tsx
-// (design note 2026-09-23): the seal-at-arrival check moved from unloading to its own
-// arrival phase, so the seal is now photographed BEFORE the doors open, not after the
+// Ported from the deleted components/phase/steps/unloading/__tests__/SealVerify.test.tsx:
+// the seal-at-arrival check moved from unloading to its own arrival phase, so the seal is
+// now photographed BEFORE the doors open, not after the
 // warehouse breaks it. The blinding contract carries over unchanged — no reference card,
 // no verdict, a neutral swipe label in every condition — plus new coverage for the
 // tri-state seal_condition choice this component adds: 'missing' hides the number
@@ -214,8 +214,8 @@ describe('arrival SealVerify — missing seal', () => {
 })
 
 // The photo satisfies ArrivalCompleteRequest.seal_photo_artifact_id, which is a required
-// UUID in every condition (design note §4.2: a missing seal is photographed as a missing
-// seal). Letting the driver past this step without it means a guaranteed 422.
+// UUID in every condition — a missing seal is photographed as a missing seal, not skipped.
+// Letting the driver past this step without it means a guaranteed 422.
 describe('arrival SealVerify seal photo gate', () => {
   it('blocks the swipe when the seal number is valid but no photo has been taken', () => {
     renderStep({

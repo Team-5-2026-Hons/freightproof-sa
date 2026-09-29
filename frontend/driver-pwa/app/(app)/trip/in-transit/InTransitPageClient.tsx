@@ -254,7 +254,7 @@ export default function InTransitPageClient() {
     }
 
     const phaseEventId = arrivalPhase.phase_event_id
-    // Task 0A: the same "swipe instant" evidence.capturedAt below already stamps — reused
+    // The same "swipe instant" evidence.capturedAt below already stamps — reused
     // here rather than taken a second time, so both fields describe the identical moment.
     // Return value deliberately ignored: `false` means a submission for this row is
     // already running, and the right response is still to navigate — the attestation is

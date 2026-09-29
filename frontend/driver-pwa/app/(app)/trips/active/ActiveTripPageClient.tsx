@@ -40,9 +40,8 @@ export default function ActiveTripPageClient() {
       onBack={() => router.push(ROUTES.trips)}
       onInTransitHub={() => router.push(ROUTES.inTransit)}
       onSelectPhase={(phase) => router.push(firstStepRoute(phase))}
-      // The real, session-derived trip shows only the single current phase
-      // (docs/superpowers/specs/2026-06-29-driver-pwa-current-handshake-only-design.md,
-      // unchanged design intent under the phase model).
+      // The real, session-derived trip shows only the single current phase —
+      // unchanged design intent under the phase model.
       showAllPhases={false}
     />
   )

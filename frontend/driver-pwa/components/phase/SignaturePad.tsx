@@ -22,8 +22,8 @@ interface NormalizedPoint {
 // reads as pen-weight on phone screens without turning into a marker on small pads.
 const STROKE_WIDTH_PX = 2.5
 
-// Receiver signs directly on the driver's device at H5 (BQ2 resolved: POD is a
-// photo AND a signature, not either/or). Pointer events cover touch, mouse, and
+// Receiver signs directly on the driver's device (a 2026-06-29 decision settled that
+// POD is a photo AND a signature, not either/or). Pointer events cover touch, mouse, and
 // stylus in one handler set — no separate touch/mouse listeners needed.
 export function SignaturePad({ label, dataUrl, onCapture }: SignaturePadProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)

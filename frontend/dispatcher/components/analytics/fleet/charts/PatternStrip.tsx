@@ -85,7 +85,7 @@ interface PatternColumnsProps {
 /** One small column chart. Emphasis form: the busiest bar in the accent, the rest in the
  *  neutral grey, so the eye goes to the peak without the bars being reordered. */
 function PatternColumns({ bars, spec, renderTooltip, yLabel }: PatternColumnsProps) {
-  // Taller inside the zoom modal (D27).
+  // Taller inside the zoom modal.
   const height = useChartHeight(PATTERN_CHART_HEIGHT)
   const busiest = busiestKey(bars)
   const byKey = new Map(bars.map((bar) => [String(bar.key), bar]))

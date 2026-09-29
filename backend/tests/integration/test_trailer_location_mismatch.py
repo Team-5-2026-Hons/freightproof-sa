@@ -1,4 +1,4 @@
-"""Integration tests for FP-146 (design note §4.5) — TRAILER_LOCATION_MISMATCH.
+"""Integration tests for FP-146 — TRAILER_LOCATION_MISMATCH.
 
 phase_service._raise_trailer_decoupling_if_unrecorded raises one CRITICAL exception
 per phase event when the horse's own verdict is TRUE (the precinct data and horse
@@ -18,8 +18,8 @@ aliased-import pattern test_gps_mismatch.py already established, for the same ru
 F811 reason documented there.
 
 Every scenario below completes the real ARRIVAL phase — the new destination-stop
-phase from the 2026-09-23 design note — which is itself proof that arrival gets
-trailer geofence verdicts exactly like every other stop phase (§4.5 point 3).
+phase — which is itself proof that arrival gets
+trailer geofence verdicts exactly like every other stop phase.
 """
 
 import uuid

@@ -1,6 +1,6 @@
-"""Integration coverage for S3 (design note 2026-09-23 §4.4): every phase anchors.
+"""Integration coverage: every phase anchors.
 
-The stage's own done-criterion: "every phase row of a completed test trip ends
+This feature's own done-criterion: "every phase row of a completed test trip ends
 ANCHORED with a matching receipt type". This file drives a real single-leg trip
 through every phase over HTTP, then proves the anchor/reconstruction contract on
 the resulting rows directly against the shared DB session — the same helpers
@@ -231,9 +231,9 @@ async def test_arrival_seal_mismatch_still_anchors_and_reconstructs(
 async def test_dispatcher_override_of_a_pending_phase_anchors_with_override_receipt_type(
     client: AsyncClient, db_session, seed_trip,
 ):
-    """D3 (design note §4.4 point 5, resolved yes): an override anchors its own
-    PHASE_OVERRIDE record, never the phase's own receipt type — anchor_phase_event
-    must reject an attempt to anchor the override under the phase's normal type."""
+    """An override anchors its own PHASE_OVERRIDE record, never the phase's own
+    receipt type — anchor_phase_event must reject an attempt to anchor the override
+    under the phase's normal type."""
     trip, driver = seed_trip
     driver_token = make_token(sub=str(driver.id), role="driver")
     await _complete_activation(client, trip.id, driver_token)

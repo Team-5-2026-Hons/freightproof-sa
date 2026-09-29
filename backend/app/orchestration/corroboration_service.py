@@ -42,18 +42,17 @@ Scope fences, so a reader knows what this module deliberately does NOT do:
 ║  honest — see _geofence_verdict_to_column() below.                           ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 
-Offline handshakes and the timestamp gap (decision recorded 2026-09-04, CLOSED by
-task 0A on 2026-09-06):
+Offline handshakes and the timestamp gap (closed 2026-09-06):
 The driver app queues completions offline on the N3 and flushes on reconnect
 (driver-pwa/lib/hooks/useOfflineQueue.ts). A completion queued at 14:00 and
-flushed at 17:00 reaches this module at 17:00. Before task 0A the phase-complete
+flushed at 17:00 reaches this module at 17:00. Before 2026-09-06 the phase-complete
 request body carried NO client capture timestamp at all, and Pulsit could not close
 that gap either: asked at 17:00 it returns a fresh 17:00 fix, so the fix's own age
 never revealed the delay — the server compared a driver claim from 14:00 against a
 tracker reading from 17:00 as if both described the same instant, manufacturing a
 mismatch (or a match) neither source actually attested to.
 
-Task 0A closes it with `driver_captured_at` — the instant the driver's OWN PHONE
+This was closed by adding `driver_captured_at` — the instant the driver's OWN PHONE
 submitted (schemas/phases.py, schemas/transit.py), carried on the wire and diffed
 against `PulsitFix.fixed_at` by `_within_corroboration_skew` below. Only a fix taken
 within `settings.PULSIT_CORROBORATION_MAX_SKEW_SECONDS` of that instant is trusted:
@@ -71,7 +70,7 @@ within `settings.PULSIT_CORROBORATION_MAX_SKEW_SECONDS` of that instant is trust
     the TRACKER's own reading time (`PulsitFix.fixed_at`), never now() and never
     compared against `driver_captured_at`. A trailer snapshot is independent
     evidence in its own right — a reader comparing it against `completed_at` can
-    still see the separation for themselves, exactly as before task 0A.
+    still see the separation for themselves, exactly as before 2026-09-06.
   * `phase_events.horse_gps_lat/lng` still have no timestamp column of their own;
     that is fine now, because the skew gate means a stored value can only ever be
     one that was already proven close to `driver_captured_at`.
@@ -133,7 +132,7 @@ async def _load_horse_device_id(db: AsyncSession, *, horse_id: uuid.UUID) -> Opt
     to read: Trip.horse_id is a plain FK and trip_trailers is the only table that
     froze a device id at creation. Reassigning a horse's tracker mid-trip would
     therefore change which device later phases read — flagged rather than solved,
-    since fixing it means a column this story is forbidden from adding.
+    since fixing it would need a new column, which is out of scope here.
     """
     result = await db.execute(select(Vehicle.pulsit_device_id).where(Vehicle.id == horse_id))
     return result.scalar_one_or_none()
@@ -163,7 +162,7 @@ async def _load_precinct_for_phase(
 ) -> Optional[Precinct]:
     """The precinct this phase should have happened at, or None if it has no stop.
 
-    Only trip_creation has a NULL trip_stop_id (parent D3), and no driver handshake
+    Only trip_creation has a NULL trip_stop_id, and no driver handshake
     completes that row — so the None branch is defensive rather than expected.
     """
     if event.trip_stop_id is None:
@@ -218,14 +217,14 @@ def _within_corroboration_skew(
     *, fixed_at: Optional[datetime], driver_captured_at: Optional[datetime],
 ) -> bool:
     """Whether a Pulsit fix and the driver's own capture instant are close enough in
-    time for the fix to stand as corroboration at all (task 0A).
+    time for the fix to stand as corroboration at all.
 
     Both sides must be present and comparable. `driver_captured_at` missing means an
     older client that predates the field, or a request that genuinely captured no
     fix; `fixed_at` missing is already filtered upstream by `PulsitFix.has_position`.
     Either absence resolves to False — "cannot verify timing" — never True, because
-    treating an unknown gap as safe is exactly the fabrication this task exists to
-    close. Both inputs are timezone-aware by the time they reach here (enforced by
+    treating an unknown gap as safe is exactly the fabrication this check exists to
+    prevent. Both inputs are timezone-aware by the time they reach here (enforced by
     the Pydantic schema for `driver_captured_at` and by `_parse_position`/`_fix_from_
     staged` for `fixed_at`), so the subtraction below is never comparing a naive
     value against an aware one.
@@ -248,7 +247,7 @@ def _snapshot_for_trailer(
 
     The fixed_at guard is not redundant with has_position: PulsitFix's contract
     sets a timestamp on every positioned fix, but this module will not depend on
-    another story's invariant to decide whether to invent a timestamp for
+    another module's invariant to decide whether to invent a timestamp for
     evidence. If that invariant is ever broken, the row is dropped and logged
     rather than stamped with now().
     """
@@ -282,18 +281,18 @@ async def record_phase_corroboration(
 
     Returns the raw horse `PulsitFix` this call obtained — whether or not it turned
     out timely enough to be written anywhere — or `None` if no fix could be obtained
-    at all (no device on record, or the whole call failed). Task 5's
+    at all (no device on record, or the whole call failed).
     orchestration/action_location_service.py needs the SAME fix this function
     already fetched to assemble its own assessment; returning it here is what makes
     that a second CONSUMER of one Pulsit read rather than a second Pulsit round trip
-    for the same handshake (R12) — see the callers in phase_service.py, each of
+    for the same handshake — see the callers in phase_service.py, each of
     which passes this return value straight through to `_finish_phase`.
 
     Called by every advance_* in phase_service.py, immediately after the driver's
     own phone fix is recorded, so the independent reading is taken as close as
     possible to the moment the driver's claim was.
 
-    `driver_captured_at` is the driver's OWN capture instant (task 0A) — passed
+    `driver_captured_at` is the driver's OWN capture instant — passed
     through from the request payload, never defaulted to now() here. Gates whether
     the horse position and the geofence verdict below get written at all; see
     `_within_corroboration_skew` and this module's docstring.
@@ -347,7 +346,7 @@ async def record_phase_corroboration(
         else:
             trailer_fixes = fixes
 
-        # ── Task 0A: is this fix even close enough in time to trust? ────────────
+        # ── Is this fix even close enough in time to trust? ─────────────────────
         # Checked once, up front, and used to gate BOTH the position write below and
         # the verdict computation after it — a timing miss must null out both, not
         # just one of the two things this fix would otherwise support.
@@ -452,7 +451,7 @@ async def record_checkpoint_corroboration(
     there is no fence to be inside of. Checkpoints have no trailer snapshot table
     either — trailer_gps_snapshots is keyed to a phase_event_id.
 
-    `driver_captured_at` (task 0A) gates the position write exactly as it does in
+    `driver_captured_at` gates the position write exactly as it does in
     record_phase_corroboration — a checkpoint is offline-queued the same way a phase
     handshake is, so the same timing-honesty rule applies: see
     `_within_corroboration_skew` and this module's docstring.
@@ -462,7 +461,7 @@ async def record_checkpoint_corroboration(
 
     Returns the raw fix obtained (whether or not it was usable/timely enough to be
     written to horse_gps_lat/lng), or `None` if none could be obtained at all —
-    same R12 contract as record_phase_corroboration, for the same reason:
+    same contract as record_phase_corroboration, for the same reason:
     checkpoint_service.log_checkpoint passes this straight to
     action_location_service.build_checkpoint_assessment rather than asking Pulsit a
     second time for the same checkpoint.

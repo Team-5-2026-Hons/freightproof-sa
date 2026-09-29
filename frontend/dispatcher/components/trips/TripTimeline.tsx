@@ -31,7 +31,7 @@ import { uniqueExceptionsById } from './exception-dedupe'
 // instead (with an explicit no-verdict line); a chip here would pre-empt that and
 // imply a checked boundary that in-transit never has, see location-evidence.ts. arrival
 // IS a stop-anchored phase (checked against the destination precinct, same as unloading)
-// so it belongs in this list — see design note §4.5.
+// so it belongs in this list.
 const LOCATION_SUMMARY_PHASE_TYPES: readonly PhaseDescriptor['phase_type'][] =
   ['activation', 'loading', 'departure', 'arrival', 'unloading', 'confirmation']
 
@@ -132,7 +132,7 @@ export function TripTimeline({ trip, precincts, returnTo, lastUpdated, onJump, o
         // render at all: an unreached phase (`pending`), or the active gate on a
         // cancelled trip (cancel_trip leaves every row PENDING, so this is currently
         // unreachable via that path in practice, but kept as the same explicit guard
-        // PhaseEvidence itself was gated on before task 9). The journey summary must
+        // PhaseEvidence itself was gated on previously). The journey summary must
         // never show for a phase whose full evidence would not show either — showing
         // one without the other would just be a different way of overclaiming.
         const showEvidence = nodeType !== 'pending' && !(trip.status === 'cancelled' && nodeType === 'next')

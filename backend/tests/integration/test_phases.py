@@ -1,4 +1,4 @@
-"""Integration tests for the three phase-plan endpoints (parent plan §3.2, task 3.3):
+"""Integration tests for the three phase-plan endpoints:
 
   GET  /trips/{trip_id}/phases
   GET  /trips/{trip_id}/phases/next
@@ -6,7 +6,7 @@
 
 Replaces tests/integration/test_handshakes.py, whose five /h{n}/complete routes
 and GET /{handshake_type} route were deleted along with app/schemas/handshakes.py
-and app/api/v1/endpoints/handshakes.py (task 3.2/3.3). Reuses seed_trip,
+and app/api/v1/endpoints/handshakes.py. Reuses seed_trip,
 override_get_db, auth_header, and make_token exactly as test_handshakes.py did —
 these are not reinvented here.
 """
@@ -85,7 +85,7 @@ async def seed_trip(db_session):
     await db_session.flush()
 
     # Hand-built single-leg phase plan, mirroring what create_trip actually
-    # produces: the plan generator (task 2.1) writes every row `pending` at
+    # produces: the plan generator writes every row `pending` at
     # trip creation, but create_trip then completes TRIP_CREATION (h0) inline
     # once its Hedera anchor succeeds (see trip_service.create_trip) — so h0
     # is seeded COMPLETED here and every driver-facing row stays PENDING
@@ -590,7 +590,7 @@ async def test_complete_with_wrong_phase_type_in_body_returns_409(client: AsyncC
 
 
 async def test_phase_complete_maps_db_error_to_500(client: AsyncClient, db_session, seed_trip):
-    """Task 6.4 step 1: a DB fault that escapes complete_phase must map to a clean
+    """A DB fault that escapes complete_phase must map to a clean
     500 (matching trips.py's create_trip_endpoint's exact SQLAlchemyError->500
     shape) rather than an unhandled exception reaching main.py's new global
     handler. Patched at the orchestration boundary the endpoint calls through —
@@ -1018,7 +1018,7 @@ async def test_full_single_leg_walk_over_http_closes_the_trip(client: AsyncClien
     assert resp.json()["status"] == "closed"
 
 
-# ── F1 (task 6.2a): an EMPTY_LEG trip must reach `closed` ──────────────────
+# ── An EMPTY_LEG trip must reach `closed` ───────────────────────────────────
 #
 # The plan generator emits no LOADING row at all for an empty leg (nothing is
 # picked up), and advance_confirmation used to call _find_loading_for_leg,
@@ -1195,7 +1195,7 @@ async def test_empty_leg_trip_walks_to_closed(
     assert resp.json()["status"] == "closed"
 
 
-# ── Task 5: blocked_on served on the phase read schema ─────────────────────
+# ── blocked_on served on the phase read schema ──────────────────────────────
 
 async def test_phase_list_reports_blocked_on_for_loading(
     client: AsyncClient, db_session, seed_trip_with_consignment,
@@ -1261,7 +1261,7 @@ async def test_phase_list_query_count_is_independent_of_phase_count(
     assert len(consignment_queries) == 1
 
 
-# ── Task 6: the gate enforced on completion, not just read ─────────────────
+# ── The gate enforced on completion, not just read ──────────────────────────
 
 @pytest_asyncio.fixture
 async def completed_activation_trip(client: AsyncClient, db_session, seed_trip):
@@ -1362,7 +1362,7 @@ async def test_an_idempotent_replay_of_a_completed_phase_does_not_409(
     assert response.status_code == 200
 
 
-# ── Task 8: a closed phase row is never rewritten by a later scan ──────────
+# ── A closed phase row is never rewritten by a later scan ───────────────────
 
 
 @pytest.fixture
@@ -1534,7 +1534,7 @@ async def completed_unloading_trip(
 async def test_a_closed_phase_row_is_never_written_again(
     db_session, store, completed_unloading_trip,
 ):
-    """Design §2.1: a phase's anchored payload may only contain data that existed when
+    """A phase's anchored payload may only contain data that existed when
     it closed. Scan data arriving after close belongs on a LATER row, never back-written
     onto this one — an anchored row whose fields change no longer hashes to its Hedera
     tx, which is precisely the tampering signal this product exists to detect."""
@@ -1571,7 +1571,7 @@ async def test_a_closed_phase_row_is_never_written_again(
     } == before
 
 
-# ── Task 13: the paper linehaul sheet photographed at loading ──────────────
+# ── The paper linehaul sheet photographed at loading ─────────────────────────
 
 async def _complete_activation(client: AsyncClient, trip_id, token) -> None:
     """Advances a fresh seed_trip past activation so `loading` is reachable."""

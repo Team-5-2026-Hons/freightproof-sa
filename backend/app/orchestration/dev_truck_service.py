@@ -1,4 +1,4 @@
-"""FP-197 (Task 3) — trip-stop-relative move-truck mode: stop resolution and scenario maths.
+"""FP-197 — trip-stop-relative move-truck mode: stop resolution and scenario maths.
 
 Split out of api/v1/endpoints/dev_pulsit.py so the endpoint stays a thin HTTP shim and
 the two things a reviewer would actually want to audit independently — "does this pick
@@ -14,7 +14,7 @@ scenario", nothing more. It does not stage the position (dev_pulsit.py calls
 MockPulsitClient itself, so the "this endpoint writes Pulsit mock state and nothing
 else" claim in dev_pulsit.py's own docstring stays checkable by reading one file), and
 it does not evaluate a geofence verdict (orchestration/geofence_service.py owns that,
-unchanged by this task — see MoveTruckResponse's EXPECTED vs TARGET docstring for why
+unchanged here — see MoveTruckResponse's EXPECTED vs TARGET docstring for why
 the two are computed against different precincts).
 """
 

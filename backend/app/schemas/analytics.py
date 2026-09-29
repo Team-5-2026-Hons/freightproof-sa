@@ -3,11 +3,11 @@
 Each model carries the RAW ingredients summed across the requested months and derives
 every rate or average from them as a computed field. A rate is therefore divided exactly
 once, after summing, and can never disagree with the counts shipped beside it — averaging
-per-month percentages is wrong whenever the months had different volumes (spec §3 rule 1).
+per-month percentages is wrong whenever the months had different volumes.
 
 A derived value is None when its denominator is zero: "no observations" is not 0%.
 
-No blended score exists anywhere here, by design (spec §3 rule 4): severities are
+No blended score exists anywhere here, by design: severities are
 returned as separate counts and the reader weighs them.
 
 Organisation is not echoed back — every read function is scoped to one organisation by
@@ -86,7 +86,7 @@ class DriverMetrics(BaseModel):
     def unloading_dwell_minutes_avg(self) -> float | None:
         return safe_ratio(self.unloading_dwell_minutes_sum, self.unloading_dwell_events_count)
 
-    # The caveat travels with the number (spec §4) so a UI built on it cannot drop it.
+    # The caveat travels with the number so a UI built on it cannot drop it.
     @computed_field(  # type: ignore[prop-decorator]
         description=(
             "Not purely driver behaviour: a slow receiver at the destination also "

@@ -30,7 +30,7 @@ export interface FleetQueryResult<T> {
 }
 
 interface FleetParams {
-  /** null = All time: sent without a start (spec G11). */
+  /** null = All time: sent without a start. */
   start: string | null
   end: string
   /** Trend endpoints only. */
@@ -55,7 +55,7 @@ export function fleetPath(endpoint: string, params: FleetParams, allTimeStart: s
  *
  * Modelled on useAnalyticsList (lib/hooks/useAnalytics.ts): the request is keyed on the path,
  * and a generation counter drops any reply that lands after a newer request. Two deliberate
- * differences (spec §7.4, §7.6):
+ * differences:
  *   - the previous answer stays while a new period loads, so a chart dims instead of
  *     blanking and jumping;
  *   - a failed request clears it, so old numbers are never left on screen under a new period.
@@ -107,14 +107,14 @@ export function useFleetTiles(): FleetQueryResult<FleetTiles> {
   return useFleetQuery<FleetTiles>(`${FLEET_ANALYTICS_PATH}/tiles`)
 }
 
-/** Activity tab trends (charts 1.1 and 1.7), for the tab's own period and grain. */
+/** Activity tab trends, for the tab's own period and grain. */
 export function useFleetActivity(query: TabQuery, allTimeStart: string | null): FleetQueryResult<FleetActivity> {
   return useFleetQuery<FleetActivity>(
     fleetPath('activity', { start: query.start, end: query.end, grain: query.grain }, allTimeStart),
   )
 }
 
-/** Busy patterns (chart 1.3), for the patterns' own period. No grain, so it never waits. */
+/** Busy patterns, for the patterns' own period. No grain, so it never waits. */
 export function useFleetPatterns(period: ResolvedPeriod): FleetQueryResult<FleetPatterns> {
   return useFleetQuery<FleetPatterns>(fleetPath('patterns', { start: period.start, end: period.end }, null))
 }
@@ -124,22 +124,22 @@ function useFleetTrend<T>(endpoint: string, query: TabQuery, allTimeStart: strin
   return useFleetQuery<T>(fleetPath(endpoint, { start: query.start, end: query.end, grain: query.grain }, allTimeStart))
 }
 
-/** On time tab (charts 2.1, 2.2, 2.3, 2.5). */
+/** On time tab. */
 export function useFleetOnTime(query: TabQuery, allTimeStart: string | null): FleetQueryResult<FleetOnTime> {
   return useFleetTrend<FleetOnTime>('on-time', query, allTimeStart)
 }
 
-/** Problems tab (charts 3.1–3.5). */
+/** Problems tab. */
 export function useFleetProblems(query: TabQuery, allTimeStart: string | null): FleetQueryResult<FleetProblems> {
   return useFleetTrend<FleetProblems>('problems', query, allTimeStart)
 }
 
-/** Review desk tab (charts 4.1–4.4). */
+/** Review desk tab. */
 export function useFleetReview(query: TabQuery, allTimeStart: string | null): FleetQueryResult<FleetReview> {
   return useFleetTrend<FleetReview>('review', query, allTimeStart)
 }
 
-/** Evidence tab (charts 5.1, 5.2, 5.4, 5.7). */
+/** Evidence tab. */
 export function useFleetEvidence(query: TabQuery, allTimeStart: string | null): FleetQueryResult<FleetEvidence> {
   return useFleetTrend<FleetEvidence>('evidence', query, allTimeStart)
 }

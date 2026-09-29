@@ -31,7 +31,7 @@ const ACTIVATION_EVIDENCE: ActivationEvidence = {
 // evidence — it is no longer part of any draft (see lib/types/location.ts).
 const POSITION: DriverPosition = { lat: -26.09, lng: 28.13, accuracyM: 8 }
 
-// loading captures only one thing itself (Task 13, 2026-08-05): a photo of the paper
+// loading captures only one thing itself: a photo of the paper
 // linehaul sheet, optional on the wire. The warehouse scan is what records what was
 // loaded — the driver's step is otherwise a read-only linehaul review. No photo here is
 // the base case; the "photos uploaded at capture" block below covers the captured one.
@@ -59,7 +59,7 @@ const LEGACY_QUEUED_DEPARTURE_EVIDENCE = {
   waybillPhotoArtifactId: null,
 } satisfies DepartureEvidence & { waybillPhotoDataUrl: string; waybillPhotoArtifactId: string | null }
 
-// Slimmed (design note 2026-09-23 §4.3): the seal check moved to its own arrival phase,
+// Slimmed: the seal check moved to its own arrival phase,
 // so unloading's draft — and its wire payload — carries no seal fields any more.
 const UNLOADING_EVIDENCE: UnloadingEvidence = {
   waybillHandedOver: true,
@@ -93,7 +93,7 @@ const CONFIRMATION_EVIDENCE: ConfirmationEvidence = {
 
 const IDEMPOTENCY_KEY = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
 
-// Task 0A: the instant this app stamps a submission — distinct from any evidence
+// The instant this app stamps a submission — distinct from any evidence
 // capturedAt above, and sent on every completePhase call regardless of phase type.
 const DRIVER_CAPTURED_AT = '2026-06-12T10:30:00Z'
 
@@ -168,7 +168,7 @@ describe('submitPhase (real-backend branch)', () => {
     )
   })
 
-  // Parent plan's flagged 🔴 risk: the seal moved from `loading` to `departure` (D7/T5).
+  // A flagged 🔴 risk: the seal moved from `loading` to `departure`.
   // A stale field or a silently-null seal here would let a NULL == NULL comparison
   // pass server-side without raising anything and without failing any test — this
   // proves the seal captured IN the departure draft is exactly what departure submits.
@@ -222,7 +222,7 @@ describe('submitPhase (real-backend branch)', () => {
     expect(mockPost).not.toHaveBeenCalled()
   })
 
-  // Slimmed (design note 2026-09-23 §4.3): the seal check moved to its own arrival
+  // Slimmed: the seal check moved to its own arrival
   // phase, which the plan guarantees completes first — unloading now uploads nothing
   // and sends base fields only.
   it('completes unloading with base fields only — no seal, no upload', async () => {
@@ -389,7 +389,7 @@ describe('submitPhase (real-backend branch)', () => {
     expect(mockPost).not.toHaveBeenCalled()
   })
 
-  // Task 5.3: the idempotency key is caller-supplied and must be sent verbatim,
+  // The idempotency key is caller-supplied and must be sent verbatim,
   // unchanged across a caller-driven retry of the same logical submission.
   it('sends the exact idempotency_key it was given, unchanged from the caller', async () => {
     mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
@@ -647,7 +647,7 @@ describe('submitPhase — in_transit (arrival attestation)', () => {
   })
 })
 
-// The ARRIVAL phase (design note 2026-09-23) — not to be confused with the block above,
+// The ARRIVAL phase — not to be confused with the block above,
 // whose "arrival attestation" name predates this phase and refers to the in_transit
 // swipe. This is the seal-at-the-gate step the swipe hands off to: phase_type 'arrival',
 // STEP_SLUGS.arrival = ['2-seal-verify'].

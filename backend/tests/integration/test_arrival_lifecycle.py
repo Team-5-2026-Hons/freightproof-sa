@@ -1,12 +1,11 @@
-"""Hub-to-hub checkpoint for the driver-submitted arrival attestation (Task 7 of
-docs/superpowers/plans/2026-08-09-in-transit-driver-owned-arrival.md).
+"""Hub-to-hub checkpoint for the driver-submitted arrival attestation.
 
 Scope fence: single origin, single destination, two stops, exactly one
 `in_transit` row per trip. Multi-stop cross-dock is deliberately out of scope.
 
-Written as a checkpoint BEFORE Task 8 deleted `_gate_and_load`'s IN_TRANSIT
-exclusion and `advance_unloading`'s in_transit-closing side effect, so that the
-new arrival path was proven end to end on the simple case before anything
+Written as a checkpoint before `_gate_and_load`'s IN_TRANSIT
+exclusion and `advance_unloading`'s in_transit-closing side effect were deleted, so
+that the new arrival path was proven end to end on the simple case before anything
 load-bearing was removed. Both are now gone, and these tests pass either way —
 they submit the arrival explicitly rather than relying on a side effect, which
 is exactly why they survived the removal unchanged.

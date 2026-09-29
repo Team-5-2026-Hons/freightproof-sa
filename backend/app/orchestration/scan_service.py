@@ -7,7 +7,7 @@ The expected set is Parcel Perfect's tracks[], already persisted as Parcel rows 
 partitioned per stop by Consignment.pickup_stop_id / delivery_stop_id (FP-112). The
 observed set comes from the ScanFeed. Any difference between them is an evidence
 event, scoped to the consignment and the stop so a multi-client trip's evidence can
-be cut per client (v7 §6.1).
+be cut per client.
 
 This module is the first writer of Parcel.pp_scan_out_at / pp_scan_in_at and the
 first writer of TripException.consignment_id / trip_stop_id — both documented in
@@ -47,7 +47,7 @@ _DISCREPANCY_SOURCE = ExceptionSource.SYSTEM
 
 
 def _initial_review_status(severity: ExceptionSeverity) -> ExceptionReviewStatus:
-    """Delegates to exception_service.initial_review_status (Task 2) so this module's
+    """Delegates to exception_service.initial_review_status so this module's
     TripException write routes through the same severity->status rule as every other
     site, instead of hand-coding a value or relying on the column's server_default.
 
@@ -92,7 +92,7 @@ class ScannedCounts:
 
     Deliberately NOT read from PhaseEvent.parcel_count_origin / _destination.
     Those are aggregates cached at phase close; reading one to make a decision
-    reintroduces staleness by the back door (design §2.1).
+    reintroduces staleness by the back door.
     """
 
     expected: int

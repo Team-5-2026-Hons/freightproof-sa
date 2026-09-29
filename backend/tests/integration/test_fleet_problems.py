@@ -1,8 +1,8 @@
-"""Integration contract for GET /api/v1/analytics/fleet/problems (fleet analytics spec §5.3).
+"""Integration contract for GET /api/v1/analytics/fleet/problems.
 
-Charts 3.1–3.5. One seeded fortnight (two whole past weeks, built from "now") with problems of
+One seeded fortnight (two whole past weeks, built from "now") with problems of
 every kind that matters: theft signs and a seal_unverified (a paperwork gap, never a theft sign),
-a dispatcher note (never a problem, D10), problems on the driving step at known SAST times, one
+a dispatcher note (never a problem), problems on the driving step at known SAST times, one
 problem with no step, and another operator's and an open trip's problems that must never count.
 """
 
@@ -192,7 +192,7 @@ async def test_fleet_problems_theft_signs_are_exactly_the_d12_types(
     week0, week1 = response.json()["theft_signals"]
     assert list(week0["by_type"]) == [signal.value for signal in THEFT_SIGNAL_TYPES]
     assert "seal_unverified" not in week0["by_type"]
-    # D25: a receiver ID that was checked and didn't match is a theft sign; one never checked is not.
+    # A receiver ID that was checked and didn't match is a theft sign; one never checked is not.
     assert "receiver_id_mismatch" in week0["by_type"]
     assert "receiver_id_unverified" not in week0["by_type"]
     assert (week0["total_count"], week0["by_type"]["seal_mismatch"]) == (1, 1)

@@ -201,7 +201,7 @@ async def get_trip_scoped_artifact(
     """Resolve and sign exactly one artifact, scoped to the trip it must belong to.
 
     An artifact id that exists but belongs to a different trip is indistinguishable
-    from one that does not exist at all (Task 0B's ownership invariant) — callers must
+    from one that does not exist at all (the ownership invariant) — callers must
     never trust a stored artifact id without this check, even one this same codebase
     wrote. Returns None only when no such artifact is scoped to this trip; a found
     artifact is always returned, with signed_url left None if Storage declines to sign

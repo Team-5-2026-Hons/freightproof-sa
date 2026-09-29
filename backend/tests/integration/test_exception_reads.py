@@ -1,10 +1,9 @@
-"""Integration tests for the dispatcher's exception read endpoints (Task 6 of the
-exception-review-and-pagination plan): GET .../review-queue, GET .../history and
-GET .../{exception_id}, which together replace the old undifferentiated
-GET /api/v1/exceptions.
+"""Integration tests for the dispatcher's exception read endpoints:
+GET .../review-queue, GET .../history and GET .../{exception_id}, which together
+replace the old undifferentiated GET /api/v1/exceptions.
 
 Complements tests/integration/test_exceptions_dispatcher.py, which owns
-PATCH .../review — that route and its tests are unchanged by this task.
+PATCH .../review — that route and its tests are unchanged here.
 """
 
 import uuid

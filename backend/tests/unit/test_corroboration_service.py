@@ -5,7 +5,7 @@ Covers the module-level helpers that turn a Pulsit fix into what gets written:
     _geofence_verdict_to_column   the three-state (True / False / None) contract for
                                    phase_events.pulsit_geofence_confirmed
     _snapshot_for_trailer         builds (or refuses to build) a TrailerGpsSnapshot row
-    _within_corroboration_skew   task 0A's timing gate — is a fix close enough to the
+    _within_corroboration_skew   the timing gate — is a fix close enough to the
                                    driver's own capture instant to trust at all?
 
 record_phase_corroboration/record_checkpoint_corroboration are not exercised here —
@@ -341,7 +341,7 @@ def test_snapshot_lat_lng_remain_decimal():
 
 
 # ---------------------------------------------------------------------------
-# _within_corroboration_skew — task 0A's timing gate
+# _within_corroboration_skew — the timing gate
 # ---------------------------------------------------------------------------
 
 
@@ -398,7 +398,7 @@ def test_the_skew_is_symmetric_a_fix_taken_before_the_capture_can_also_miss():
 def test_a_missing_driver_captured_at_is_never_treated_as_safe():
     # Arrange: an older queued client that predates this field entirely. THE
     # single most important assertion in this block — treating "we don't know" as
-    # "assume it's fine" is exactly the fabrication task 0A exists to close.
+    # "assume it's fine" is exactly the fabrication this gate exists to close.
     fix_taken_right_now = _PINNED_NOW
 
     # Act
@@ -429,7 +429,7 @@ def test_both_absent_is_never_treated_as_safe():
 
 
 # ---------------------------------------------------------------------------
-# The TRAILER geofence verdict (design note §4.5, FP-146's TRAILER_LOCATION_MISMATCH)
+# The TRAILER geofence verdict (FP-146's TRAILER_LOCATION_MISMATCH)
 #
 # trailer_gps_snapshots.geofence_confirmed is written by record_phase_corroboration's
 # trailer loop by composing the SAME two functions already exercised above —
@@ -551,7 +551,7 @@ def test_in_transit_is_the_one_phase_a_trailer_never_gets_a_verdict_for():
 
 
 def test_arrival_is_judged_like_every_other_stop_phase():
-    # Arrange: the 2026-09-23 design note's §4.5 point 3 — Arrival is a stop-anchored
+    # Arrange: Arrival is a stop-anchored
     # phase, so it gets the full trailer geofence treatment automatically, with no
     # special-casing needed in _PHASES_WITHOUT_A_GEOFENCE_VERDICT.
     # Act / Assert

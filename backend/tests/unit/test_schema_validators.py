@@ -151,7 +151,7 @@ def test_merkle_leaf_source_type_invalid():
 
 # ---------------------------------------------------------------------------
 # TripCreateRequest — trailer_ids/consignment validators moved to
-# tests/unit/test_trip_schemas.py (trip-creation redesign, Task 3):
+# tests/unit/test_trip_schemas.py (trip-creation redesign):
 #   - empty-trailer-ids-rejected: deleted — trailer_ids no longer has min_length=1
 #     (see test_zero_trailers_valid, which asserts the opposite).
 #   - single-trailer-accepted: deleted — redundant with the valid-payload cases
@@ -633,7 +633,7 @@ def test_precinct_update_body_rejects_out_of_range_radius(radius):
 
 
 # ---------------------------------------------------------------------------
-# TripExceptionReviewRequest — the dispatcher review action (Task 1, FP-146)
+# TripExceptionReviewRequest — the dispatcher review action (FP-146)
 # ---------------------------------------------------------------------------
 
 def test_exception_review_requires_note_and_outcome() -> None:

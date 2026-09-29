@@ -247,7 +247,7 @@ async def _make_artifact(db_session, trip_id):
 
 
 async def _h3_payload(db_session, trip_id, **overrides) -> DepartureCompleteRequest:
-    """T5 (task 2.6): the seal now applies at departure, so every H3 payload
+    """The seal now applies at departure, so every H3 payload
     needs waybill/seal artifact fields that used to live on H2. Defaults give
     every existing departure-focused test a valid, matching seal (AB-1234)
     unless a test overrides seal_number/seal_number_confirmed/guard_verified_seal
@@ -319,7 +319,7 @@ async def _advance_to_unloading(db_session, trip, driver, phases, seal="AB-1234"
     unloading can run — then unloading itself. `seal` is the seal AS FOUND at
     the destination gate, compared against departure's own seal by
     advance_arrival; it is no longer part of UnloadingCompleteRequest at all
-    (T4's seal comparison moved whole to advance_arrival)."""
+    (the seal comparison moved whole to advance_arrival)."""
     await _advance_to_arrival(db_session, trip, driver, phases)
     await advance_arrival(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["arrival"].id,
@@ -445,14 +445,14 @@ async def test_phase_without_a_fix_completes_anyway(db_session, trip_fixture):
 
 @pytest.mark.asyncio
 async def test_advance_loading_happy_path_ignores_driver_visual_count(db_session, trip_fixture):
-    """D7/T5 (task 2.6): loading no longer carries or anchors the seal — only
+    """Loading no longer carries or anchors the seal — only
     driver_visual_count. Loading DOES now anchor its own IDs-plus-counts payload
-    (design note 2026-09-23 §4.4, every phase anchors): event_hash is set in-request,
+    (every phase anchors): event_hash is set in-request,
     but blockchain_receipt_id stays unset because the Hedera submit is queued to the
     worker on commit, not awaited here.
 
-    Renamed from test_advance_loading_happy_path_stores_driver_visual_count_only
-    (Task 7): loading no longer stores driver_visual_count at all — a legacy
+    Renamed from test_advance_loading_happy_path_stores_driver_visual_count_only:
+    loading no longer stores driver_visual_count at all — a legacy
     offline-queue payload that still carries it (schema kept it Optional so
     that entry doesn't 422 forever) must be accepted, not stored."""
     trip, driver, phases = trip_fixture
@@ -510,8 +510,8 @@ async def _add_parcels(db_session, *, consignment_id: uuid.UUID, barcodes: list[
 
 @pytest.mark.asyncio
 async def test_advance_loading_full_scan_out_completes_with_no_exception(db_session, trip_fixture):
-    """Renamed from test_advance_loading_manifest_matches_driver_count_completes
-    (Task 7): the loading-count check moved from manifest-vs-driver-count to
+    """Renamed from test_advance_loading_manifest_matches_driver_count_completes:
+    the loading-count check moved from manifest-vs-driver-count to
     scanned-out-vs-expected — a full scan-out is still what closes a loading
     clean, it's just measured by the warehouse now, not the driver's guess."""
     trip, driver, phases = trip_fixture
@@ -534,7 +534,7 @@ async def test_advance_loading_full_scan_out_completes_with_no_exception(db_sess
         db_session, trip_id=trip.id, trip_stop_id=stop_id, direction=ScanDirection.OUT,
     )
     # The warehouse closes its session once its own scan is done — what
-    # unblocks _gate_and_load's gate (task 6) and is what makes the counts
+    # unblocks _gate_and_load's gate and is what makes the counts
     # final by the time advance_loading reads them.
     await feed.close_session(
         consignment_reference="PP-1", stop_reference=str(stop_id), direction=ScanDirection.OUT,
@@ -559,8 +559,8 @@ async def test_advance_loading_full_scan_out_completes_with_no_exception(db_sess
 
 @pytest.mark.asyncio
 async def test_advance_loading_short_scan_out_flags_but_does_not_hold(db_session, trip_fixture):
-    """Renamed from test_advance_loading_manifest_mismatch_flags_but_does_not_hold
-    (Task 7): the mismatch is now scanned-out-vs-expected (2 of 3 barcodes),
+    """Renamed from test_advance_loading_manifest_mismatch_flags_but_does_not_hold:
+    the mismatch is now scanned-out-vs-expected (2 of 3 barcodes),
     not manifest-vs-driver-count — same non-blocking precedent either way.
     scan_service._reconcile_consignment raises this exception at ingest time
     (before advance_loading is ever called); advance_loading's own backstop
@@ -664,7 +664,7 @@ async def test_scan_shortfall_backstop_records_again_after_review(db_session, tr
 
 @pytest.mark.asyncio
 async def test_replayed_completion_is_idempotent_returns_200_no_duplicate(db_session, trip_fixture, stub_hedera_service):
-    """Anchor moved to departure (task 2.6) — the idempotent-replay-doesn't-
+    """Anchor moved to departure — the idempotent-replay-doesn't-
     double-anchor guarantee now needs proving there, not at loading."""
     trip, driver, phases = trip_fixture
     await _advance_to_loading(db_session, trip, driver, phases)
@@ -726,7 +726,7 @@ async def test_replayed_exception_completion_is_idempotent_no_duplicate_exceptio
 async def test_advance_departure_happy_path_completes(
     db_session, trip_fixture, captured_anchor_dispatches,
 ):
-    """D7/T5 (task 2.6): departure now owns the seal AND the anchor — the
+    """Departure now owns the seal AND the anchor — the
     single place both are asserted together, since they're written/computed
     in the same wrapper call."""
     trip, driver, phases = trip_fixture
@@ -751,7 +751,7 @@ async def test_advance_departure_happy_path_completes(
     assert captured_anchor_dispatches == []
     await db_session.commit()
     await asyncio.gather(*_BACKGROUND_ANCHOR_TASKS)
-    # Every phase anchors now (design note 2026-09-23 §4.4), so _advance_to_loading's own
+    # Every phase anchors now, so _advance_to_loading's own
     # activation and loading dispatches are on the same list — filter to departure's own
     # PICKUP receipt rather than asserting the list is departure-only.
     pickup_dispatches = [d for d in captured_anchor_dispatches if d[2] == BlockchainReceiptType.PICKUP.value]
@@ -780,7 +780,7 @@ async def test_advance_departure_guard_refused_creates_exception_but_departs(
     assert result.exceptions[0].severity == ExceptionSeverity.CRITICAL
     departure = next(h for h in result.phases if h.phase_type == PhaseType.DEPARTURE)
     assert departure.status == PhaseStatus.EXCEPTION
-    # D7: the anchor is queued regardless of the mismatch outcome — a mismatch is
+    # The anchor is queued regardless of the mismatch outcome — a mismatch is
     # evidence in its own right, not a reason to withhold the receipt.
     await db_session.commit()
     await asyncio.gather(*_BACKGROUND_ANCHOR_TASKS)
@@ -909,7 +909,7 @@ async def test_advance_departure_seal_number_confirmed_still_supersedes_a_none_f
 @pytest.mark.asyncio
 async def test_exception_status_phase_does_not_block_next_phase(db_session, trip_fixture):
     """Renamed/kept from the old H3-confirmed-seal-mismatch test, extended to
-    prove T3's predicate: a phase left in EXCEPTION status is resolved for
+    prove this predicate: a phase left in EXCEPTION status is resolved for
     gating purposes, so the phase after it (unloading) must still be reachable.
     No mismatch of any kind holds a trip today — trip.status == EXCEPTION_HOLD
     is reserved for a future manual dispatcher hold and nothing sets it."""
@@ -925,7 +925,7 @@ async def test_exception_status_phase_does_not_block_next_phase(db_session, trip
     assert result.exceptions[0].exception_type == ExceptionType.SEAL_MISMATCH
     departure = next(h for h in result.phases if h.phase_type == PhaseType.DEPARTURE)
     assert departure.status == PhaseStatus.EXCEPTION
-    # T5: the row stores the seal actually APPLIED at departure (payload.seal_number,
+    # The row stores the seal actually APPLIED at departure (payload.seal_number,
     # "AB-1234" — the _h3_payload default), not the guard's differing re-entered
     # confirmation ("ZZ-9999") — that confirmation is used only for the
     # intra-request comparison, it's never what gets written to the ledger.
@@ -955,7 +955,7 @@ async def test_exception_status_phase_does_not_block_next_phase(db_session, trip
 @pytest.mark.asyncio
 async def test_advance_departure_confirmed_seal_match_supersedes_guard_flag(db_session, trip_fixture):
     """The intra-request comparison against THIS SAME request's applied seal
-    (T5) is authoritative: a device that lost its local seal reference sends
+    is authoritative: a device that lost its local seal reference sends
     guard_verified_seal=False, which must not create a false mismatch when the
     re-entered seal matches."""
     trip, driver, phases = trip_fixture
@@ -1129,7 +1129,7 @@ async def test_advance_in_transit_accepts_a_submission_with_no_fix(db_session, t
 async def test_advance_in_transit_anchors_with_transit_arrival_receipt(
     db_session, trip_fixture, stub_hedera_service, captured_anchor_dispatches,
 ):
-    """Every phase anchors on completion since 2026-09-23 (design note §4.4), including
+    """Every phase anchors on completion, including
     in_transit: the driver's own "I have arrived" attestation is the fact anchored, with
     an IDs-only payload (compute_in_transit_canonical_payload_v2) and its own
     TRANSIT_ARRIVAL receipt type — never PICKUP/DELIVERY, which stay departure's and
@@ -1218,7 +1218,7 @@ async def multi_leg_trip_fixture(db_session):
 
     Deliberately not a true cross-dock (two LOADING rows) — this fixture
     isolates exactly what's under test here: that an arrival submission resolves
-    the correct leg's row, and only that leg's row. T4's per-leg
+    the correct leg's row, and only that leg's row. The per-leg
     _find_departure_for_leg fix (proving the seal-continuity lookup itself
     picks the right leg on a genuine multi-LOADING cross-dock) is covered
     separately by test_cross_dock_seal_continuity_* below, built on a fixture
@@ -1390,7 +1390,7 @@ async def test_advance_departure_leaves_all_in_transit_rows_pending_until_each_a
 
 # ── advance_arrival (seal inspection) ───────────────────────────────────────
 #
-# Ported from the old advance_unloading seal tests (T4/task 2.6): the seal
+# Ported from the old advance_unloading seal tests: the seal
 # comparison moved whole to advance_arrival, its own phase completed before
 # unloading can run, so these now drive advance_arrival with
 # ArrivalCompleteRequest instead of advance_unloading.
@@ -1489,8 +1489,8 @@ async def test_overridden_departure_then_arrival_records_unverified_not_mismatch
 ):
     """The production path this distinction exists for, driven through the real
     override_phase rather than a hand-set status. A dispatcher overrides a departure
-    the driver cannot complete; override_phase deliberately writes no seal (its own D3
-    comment), _is_resolved treats OVERRIDDEN as resolved, so the trip runs on and
+    the driver cannot complete; override_phase deliberately writes no seal (see its own
+    docstring), _is_resolved treats OVERRIDDEN as resolved, so the trip runs on and
     arrival finds no seal to compare. Before SEAL_UNVERIFIED existed this produced a
     CRITICAL seal_mismatch on a trip whose seal was simply never captured."""
     trip, driver, phases = trip_fixture
@@ -1757,18 +1757,18 @@ async def test_advance_confirmation_matching_counts_closes_trip(
     assert confirmation_dispatches[0][2] == BlockchainReceiptType.DELIVERY.value
 
 
-# Task 7 removed test_advance_confirmation_count_mismatch_creates_exception_but_still_closes
-# and test_replayed_confirmation_that_closed_trip_is_idempotent_not_409 from here.
-# Both drove advance_confirmation's WAYBILL_COUNT_MISMATCH branch by submitting a
-# driver_visual_count at confirmation that disagreed with loading's
+# test_advance_confirmation_count_mismatch_creates_exception_but_still_closes
+# and test_replayed_confirmation_that_closed_trip_is_idempotent_not_409 were removed
+# from here. Both drove advance_confirmation's WAYBILL_COUNT_MISMATCH branch by
+# submitting a driver_visual_count at confirmation that disagreed with loading's
 # driver_visual_count — but advance_loading no longer writes driver_visual_count at
-# all (this task's whole point), so loading_event.driver_visual_count is now always
+# all, so loading_event.driver_visual_count is now always
 # None and advance_confirmation's origin_count lookup always takes the "no baseline"
 # skip branch. The mismatch path this pair tested is genuinely unreachable via any
 # real flow today, not just untested — manufacturing coverage by hand-setting
 # driver_visual_count on the loading row would test a write path nothing in
-# production performs any more. Task 8 ("advance_confirmation reconciles
-# scanned-out against scanned-in per consignment") owns reintroducing equivalent
+# production performs any more. advance_confirmation reconciling scanned-out
+# against scanned-in per consignment owns reintroducing equivalent
 # coverage once that reconciliation is scan-based instead.
 
 
@@ -1845,12 +1845,12 @@ async def test_replayed_confirmation_that_closed_trip_is_idempotent_not_409(db_s
     assert exception_count == 0
 
 
-# ── F1 (task 6.2a): confirmation must not 404 / must not manufacture a
+# ── Confirmation must not 404 / must not manufacture a
 # mismatch when there is no origin baseline to reconcile against ───────────
 
 @pytest_asyncio.fixture
 async def empty_leg_trip_fixture(db_session):
-    """An EMPTY_LEG trip's real phase plan (finding F1): no consignments means
+    """An EMPTY_LEG trip's real phase plan: no consignments means
     build_phase_plan never emits a LOADING row at all — trip_creation,
     activation, departure, in_transit, unloading, confirmation. Built via the
     real build_phase_plan, not hand-numbered sequence_number literals, for the
@@ -1975,7 +1975,7 @@ async def test_confirmation_skips_reconciliation_when_no_loading_exists(
 async def test_confirmation_skips_reconciliation_when_origin_count_is_null(
     db_session, trip_fixture,
 ):
-    """Newly reachable since task 6.1's dispatcher override: an overridden
+    """Reachable once a loading row can be dispatcher-overridden: an overridden
     loading row is resolved (so _gate_and_load lets confirmation proceed) but
     never had a driver actually record a count, so driver_visual_count stays
     null. Without the origin_count-is-None guard, Python's
@@ -1988,7 +1988,7 @@ async def test_confirmation_skips_reconciliation_when_origin_count_is_null(
             driver_phone_lat=Decimal("0"), driver_phone_lng=Decimal("0"), idempotency_key=str(uuid.uuid4()),
         ),
     )
-    # Simulate task 6.1's override_phase outcome directly: the loading row is
+    # Simulate override_phase's outcome directly: the loading row is
     # resolved (OVERRIDDEN) but its driver_visual_count was never captured.
     phases["loading"].status = PhaseStatus.OVERRIDDEN
     await db_session.flush()
@@ -2054,7 +2054,7 @@ async def test_current_phase_and_current_stop_track_the_ledger(db_session, trip_
         payload=await _h3_payload(db_session, trip.id),
     )
     # Departure opens the driving leg; the cache sits on in_transit for the whole drive.
-    # in_transit anchors to the stop it DEPARTS FROM (D3), so current_stop stays 0 here.
+    # in_transit anchors to the stop it DEPARTS FROM, so current_stop stays 0 here.
     assert trip.current_phase == PhaseType.IN_TRANSIT
     assert trip.current_stop == 0
 
@@ -2094,9 +2094,9 @@ async def test_current_phase_and_current_stop_track_the_ledger(db_session, trip_
     assert trip.current_stop is None
 
 
-# ── T4 fence: per-leg seal continuity on a genuine cross-dock trip ─────────
+# ── Per-leg seal continuity on a genuine cross-dock trip ────────────────────
 #
-# This is the specific regression Task 2.6 exists to fix: on a real multi-stop
+# This is the specific regression the per-leg lookup exists to fix: on a real multi-stop
 # trip there can be TWO (or more) LOADING/DEPARTURE rows, and a naive
 # trip-wide `phase_type == LOADING` (or DEPARTURE) lookup either raises
 # MultipleResultsFound the instant advance_unloading runs on ANY leg, or —
@@ -2324,11 +2324,11 @@ async def test_cross_dock_seal_continuity_wrong_leg_seal_raises_mismatch(
     assert leg2_result.exceptions[0].severity == ExceptionSeverity.CRITICAL
 
 
-# ── S1 / NEW-9: confirmation's origin count must be leg-scoped ─────────────
+# ── Confirmation's origin count must be leg-scoped ──────────────────────────
 #
 # test_confirmation_origin_count_uses_nearest_preceding_loading_not_trip_wide used
-# to live here, proving decision S1's leg-scoped _find_loading_for_leg lookup.
-# Task 8 deletes it as superseded: _find_loading_for_leg is gone (advance_confirmation
+# to live here, proving the leg-scoped _find_loading_for_leg lookup. It was later
+# deleted as superseded: _find_loading_for_leg is gone (advance_confirmation
 # now reconciles per CONSIGNMENT via Consignment.pickup_stop_id/delivery_stop_id,
 # never per leg), and this fixture (cross_dock_trip_fixture) carries no Consignment
 # rows at all, so under the new reconciliation the test would only pass vacuously —
@@ -2339,10 +2339,11 @@ async def test_cross_dock_seal_continuity_wrong_leg_seal_raises_mismatch(
 
 @pytest.mark.asyncio
 async def test_cross_dock_plan_walks_to_closed(db_session, cross_dock_trip_fixture):
-    """Stage 2's ledger recorded this as its unmet "Done when": a 13-row
+    """This was previously an unmet "Done when": a 13-row
     cross-dock plan walks its final phase and closes the trip. It was
-    blocked only by NEW-9 (advance_confirmation's trip-wide LOADING lookup
-    crashing with MultipleResultsFound) until decision S1's fix. Both in_transit
+    blocked only by advance_confirmation's trip-wide LOADING lookup
+    crashing with MultipleResultsFound, until that lookup became per-consignment.
+    Both in_transit
     rows (seq 4, 9) are walked explicitly: each leg's drive is closed by the
     driver's own arrival submission, and the walk cannot skip either one.
     """
@@ -2377,7 +2378,7 @@ async def test_cross_dock_plan_walks_to_closed(db_session, cross_dock_trip_fixtu
     assert trip.current_phase is None
 
 
-# ── F13 (task 6.2b): the loading-count baseline must be scoped to its own
+# ── The loading-count baseline must be scoped to its own
 # stop, not summed trip-wide ─────────────────────────────────────────────
 #
 # The old _expected_parcel_count summed Consignment.parcel_count_expected
@@ -2388,7 +2389,7 @@ async def test_cross_dock_plan_walks_to_closed(db_session, cross_dock_trip_fixtu
 # picks up A+B, loading_2 (stop1) only picks up C, but both were held to the
 # full A+B+C total, raising a false PARCEL_COUNT_MISMATCH on both.
 #
-# Task 7 replaced the manifest-vs-driver-count baseline with a scanned-out
+# The manifest-vs-driver-count baseline was replaced with a scanned-out
 # aggregate, but the underlying stop-scoping the fix proved is untouched:
 # scan_service.load_consignments_at_stop filters on Consignment.pickup_stop_id
 # exactly as _expected_parcel_count used to, so this test is rewritten onto
@@ -2555,7 +2556,7 @@ async def test_loading_count_check_skipped_when_stop_has_no_mapped_consignments(
     )
 
 
-# ── complete_phase / next_phase: the two new Stage 3 service entry points ──
+# ── complete_phase / next_phase: the two service entry points ──────────────
 
 @pytest.mark.asyncio
 async def test_complete_phase_rejects_payload_for_a_different_phase_type(db_session, trip_fixture):
@@ -2837,7 +2838,7 @@ async def test_activation_replay_is_not_blocked_by_a_trip_started_since(db_sessi
 async def test_anchor_phase_event_fails_open_on_hedera_trouble(
     db_session, trip_fixture, monkeypatch, hedera_exception,
 ):
-    """D7 fail-open, now asserted where it actually runs: the worker.
+    """Fail-open, now asserted where it actually runs: the worker.
 
     The phase itself can no longer be blocked by Hedera at all — completion returns
     before the submit is even attempted. What still matters is that the worker's attempt
@@ -3008,12 +3009,12 @@ async def test_local_anchor_fallback_runs_on_the_request_event_loop(monkeypatch)
     assert calls == [phase_event_id]
 
 
-# ── D8: row locking on _load_phase_event ────────────────────────────────────
+# ── Row locking on _load_phase_event ─────────────────────────────────────────
 
 async def test_load_phase_event_emits_for_update(db_session, trip_fixture, monkeypatch):
-    """D8: proves the lock hint is not silently dropped. A lock that got typo'd
+    """Proves the lock hint is not silently dropped. A lock that got typo'd
     into a no-op is strictly worse than no lock at all — it looks handled in code
-    review while leaving the exact Hedera double-submission race this task exists
+    review while leaving the exact Hedera double-submission race this test exists
     to close, and that race writes an on-chain message a rollback cannot un-submit.
 
     Deliberately spies on the statement _load_phase_event ACTUALLY hands the
@@ -3041,7 +3042,7 @@ async def test_load_phase_event_emits_for_update(db_session, trip_fixture, monke
     assert "FOR UPDATE" in compiled
 
 
-# ── Task 7: advance_loading closes on the warehouse scan, not a driver count ──
+# ── advance_loading closes on the warehouse scan, not a driver count ────────
 #
 # The driver never enters the warehouse and may reach the truck after loading
 # finished, so a parcel count he types in is not evidence — it's a guess. These
@@ -3339,11 +3340,11 @@ async def test_a_session_closed_with_nothing_scanned_still_raises(
     assert len(exceptions) == 1
 
 
-# ── Task 8: advance_confirmation reconciles scan-out against scan-in ───────
+# ── advance_confirmation reconciles scan-out against scan-in ────────────────
 #
 # Replaces the old circular check (origin_count came from loading_event.driver_
-# visual_count, which advance_loading stopped writing — see the "Task 7 removed"
-# comment above test_advance_confirmation_matching_counts_closes_trip). The new
+# visual_count, which advance_loading stopped writing — see the comment
+# above test_advance_confirmation_matching_counts_closes_trip). The new
 # reconciliation is per CONSIGNMENT, scoped by Consignment.pickup_stop_id /
 # delivery_stop_id (FP-112), never per leg — built the same way ready_to_load
 # above was: real Consignment/Parcel rows, barcodes staged on MockScanFeed, and
@@ -3837,9 +3838,9 @@ async def test_a_parcel_lost_in_transit_raises_a_scoped_mismatch(
     assert exception.trip_stop_id == ready_to_confirm_short["delivery_stop"].id
     assert "3" in exception.description and "2" in exception.description
 
-    # Task 7 deleted test_advance_confirmation_count_mismatch_creates_exception_but_
-    # still_closes, leaving "a mismatch records an exception but still lets the trip
-    # close" for task 8 to reintroduce (see the comment above
+    # An earlier version of this suite deleted test_advance_confirmation_count_mismatch_
+    # creates_exception_but_still_closes, leaving "a mismatch records an exception but
+    # still lets the trip close" to be reintroduced later (see the comment above
     # test_advance_confirmation_matching_counts_closes_trip). Asserted here rather
     # than in a sibling test — this fixture is already the mismatch case.
     confirmation_row = next(h for h in result.phases if h.id == ready_to_confirm_short["confirmation_event"].id)

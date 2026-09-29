@@ -8,9 +8,8 @@ import type { ActivationEvidence, ArrivalEvidence } from '@/lib/types/evidence-d
 // instead — this one still proves the "nothing stored yet" path.
 const INITIAL: ActivationEvidence = { capturedAt: null }
 
-// The seal check moved from unloading to its own arrival phase (design note
-// 2026-09-23) — this suite's string-field draft now exercises ArrivalEvidence, the
-// current home of that evidence.
+// The seal check moved from unloading to its own arrival phase — this suite's
+// string-field draft now exercises ArrivalEvidence, the current home of that evidence.
 const ARRIVAL_INITIAL: ArrivalEvidence = {
   sealCondition: null, sealNumberAtArrival: null,
   sealPhotoDataUrl: null, sealPhotoArtifactId: null, capturedAt: null,

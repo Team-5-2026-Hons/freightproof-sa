@@ -138,7 +138,7 @@ function makeMoveTruckResponse(overrides: Partial<MoveTruckResponse> = {}): Move
     geofence_confirmed: true,
     in_tolerance_band: true,
     verdict_reason: 'Within the geofence radius.',
-    // FP-197 Task 3 additions. Null by default (as they are in legacy waypoint mode)
+    // FP-197 additions. Null by default (as they are in legacy waypoint mode)
     // — tests for scenario mode override these explicitly.
     target_trip_stop_id: null,
     target_precinct_name: null,
@@ -628,7 +628,7 @@ describe('AllControls — move the truck', () => {
   })
 })
 
-// FP-197 Task 3: trip-stop-relative scenario mode.
+// FP-197: trip-stop-relative scenario mode.
 describe('AllControls — move relative to a trip stop', () => {
   it('builds stop options labelled by position, keyed on stop id (not name)', () => {
     const origin = makeStop({ trip_stop_id: 'stop-a', sequence: 1, precinct_name: 'Johannesburg CBD' })

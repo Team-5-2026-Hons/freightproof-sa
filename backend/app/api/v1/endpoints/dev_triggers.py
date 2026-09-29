@@ -405,8 +405,9 @@ async def trigger_pp_change(
             status_code=http_status.HTTP_409_CONFLICT, detail=_MOCK_REQUIRED_DETAIL,
         ) from exc
 
-    # Overwrites the reconciliation baseline without raising (spec §B2c); detecting that
-    # drift is Stage 5, deliberately not built here.
+    # PP waybills are mutable after creation, so this overwrites the reconciliation
+    # baseline without raising if it drifted; detecting that drift is a known gap,
+    # deliberately not built here.
     sync_result = await consignment_service.fetch_and_sync_consignment(
         db, body.parcel_perfect_reference, trip_id=body.trip_id,
     )

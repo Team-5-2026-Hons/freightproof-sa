@@ -11,9 +11,9 @@ from dataclasses import dataclass
 from app.db.models.enums import PhaseType
 
 # The phases that carry a Hedera receipt: all of them. Every phase is custody
-# evidence, so every completion is anchored (design note 2026-09-23 §4.4). Kept as a
-# named constant rather than deleted so the rule stays one testable fact, and rows
-# are still created PENDING from it.
+# evidence, so every completion is anchored. Kept as a named constant rather than
+# deleted so the rule stays one testable fact, and rows are still created PENDING
+# from it.
 ANCHORED_PHASES: frozenset[PhaseType] = frozenset(PhaseType)
 
 

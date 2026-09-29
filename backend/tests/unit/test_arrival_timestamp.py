@@ -41,7 +41,7 @@ def arrival_context(monkeypatch: pytest.MonkeyPatch) -> tuple[AsyncMock, Trip, P
     monkeypatch.setattr(phase_service, "recompute_position", AsyncMock())
     monkeypatch.setattr(phase_service, "enqueue_event", MagicMock())
     monkeypatch.setattr(phase_service, "get_trip_detail", AsyncMock())
-    # Every phase anchors on completion now (design note 2026-09-23 §4.4), including
+    # Every phase anchors on completion now, including
     # in_transit — _dispatch_anchor registers a real SQLAlchemy after_commit listener
     # on db.sync_session, which this mock AsyncSession has no genuine event target for.
     # These tests are about timestamp orchestration, not anchoring, so the dispatch

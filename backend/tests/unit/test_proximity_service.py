@@ -9,7 +9,7 @@ explicitly (an injected clock) — nothing here ever calls datetime.now().
 Also includes side-by-side yard-membership tests (evaluate_geofence +
 evaluate_proximity, run on the same fixes) demonstrating that precinct membership
 and driver/truck separation are independent facts — no assembled
-ActionLocationAssessment yet, that is Task 5's job.
+ActionLocationAssessment here yet.
 """
 
 import math
@@ -580,7 +580,7 @@ def test_multiple_failures_are_reported_in_fixed_order():
 # ── Yard-membership vs. driver/truck separation: independent facts ──────────────
 #
 # These tests run evaluate_geofence and evaluate_proximity side by side on the same
-# fixture, with NO assembled ActionLocationAssessment (Task 5's job) — demonstrating
+# fixture, with NO assembled ActionLocationAssessment — demonstrating
 # that "is the truck in its precinct?" and "how far apart are the driver and the
 # truck?" are two separate questions that can independently pass or fail.
 

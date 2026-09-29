@@ -1,7 +1,7 @@
 """Integration tests for FP-143 — Pulsit corroboration written at every handshake.
 
 These assert the ACTUAL DATABASE STATE after a phase completes, not that a function
-was called. The story is about four things that were always null; a mock-call
+was called. This suite is about four things that were always null; a mock-call
 assertion would pass just as happily while continuing to write nothing.
 
 What each block proves:
@@ -9,7 +9,7 @@ What each block proves:
   * every column populated on a normal handshake, at every phase
   * a Pulsit failure leaves the handshake successful and corroboration unavailable
   * a geofence-failing position writes FALSE, and a missing fix writes NULL — the
-    distinction the whole story turns on
+    distinction this suite turns on
   * one trailer_gps_snapshots row per trailer; none for a trailer with no tracker
   * a trip with no trailers still corroborates
   * a handshake replayed from the driver app's offline queue does not duplicate rows
@@ -223,11 +223,11 @@ async def _complete_activation(
         "driver_phone_lng": float(_ORIGIN_LNG) if driver_phone_lng is None else driver_phone_lng,
         "idempotency_key": idempotency_key or f"idem-{uuid.uuid4()}",
     }
-    # Task 0A: defaults to "now", matching the Pulsit fixture's own default fixed_at
+    # Defaults to "now", matching the Pulsit fixture's own default fixed_at
     # (both _stage's default and the unstaged MOCK_DEVICE_POSITIONS fixture use
     # datetime.now(UTC)) so an ordinary test stays inside the corroboration skew
     # without every caller having to think about timing. omit_driver_captured_at
-    # simulates a pre-task-0A client that never sends the field at all.
+    # simulates an older client that never sends the field at all.
     if not omit_driver_captured_at:
         body["driver_captured_at"] = driver_captured_at or datetime.now(UTC).isoformat()
     if driver_accuracy_metres is not None:
@@ -372,7 +372,7 @@ async def test_a_normal_handshake_populates_every_corroboration_column(
 async def test_corroboration_is_written_at_every_phase_not_only_the_first(
     client: AsyncClient, db_session, corroboration_trip, pulsit_store,
 ):
-    """The story's core requirement: this fires at ALL phases, not just pickup.
+    """The core requirement: this fires at ALL phases, not just pickup.
 
     Drives the entire plan through its real endpoints — no scaffolding — because a
     wiring bug that reached only activation would pass every single-phase test in
@@ -410,7 +410,7 @@ async def test_corroboration_is_written_at_every_phase_not_only_the_first(
             resp = await client.post(
                 f"/api/v1/trips/{trip.id}/phases/{phase_event_id}/complete",
                 headers=auth_header(token),
-                # Task 0A: every phase needs a capture time close to the staged Pulsit
+                # Every phase needs a capture time close to the staged Pulsit
                 # fix's "now" to keep this walk's True/False verdicts meaningful rather
                 # than uniformly NULL.
                 json={
@@ -519,7 +519,7 @@ async def test_in_transit_records_position_but_no_geofence_verdict(
     resp = await client.post(
         f"/api/v1/trips/{trip.id}/phases/{phase_event_id}/complete",
         headers=auth_header(token),
-        # Task 0A: within skew of the staged fix's default "now", so this test still
+        # Within skew of the staged fix's default "now", so this test still
         # proves ITS OWN point (a position is stored with no verdict) rather than
         # accidentally exercising the timing gate instead.
         json={
@@ -734,9 +734,9 @@ async def test_a_positioned_fix_with_no_reading_time_is_dropped_rather_than_inve
 
     Reaches past the mock client deliberately: PulsitFix's own contract says a
     positioned fix always carries fixed_at, and this module refuses to depend on
-    another story's invariant to decide whether to invent evidence.
+    an invariant enforced elsewhere to decide whether to invent evidence.
 
-    Task 0A supersedes this test's original expectation for the HORSE position too: a
+    The corroboration skew gate applies to the HORSE position too: a
     fix with no fixed_at cannot be compared against driver_captured_at at all, so
     _within_corroboration_skew treats it as untimely — the same "cannot verify timing"
     outcome as a fix that arrives outside the skew window. horse_gps_lat/lng are
@@ -775,7 +775,7 @@ async def test_a_positioned_fix_with_no_reading_time_is_dropped_rather_than_inve
     assert trailer.id is not None
 
 
-# ── Task 0A: the corroboration skew gate ────────────────────────────────────────
+# ── The corroboration skew gate ──────────────────────────────────────────────────
 
 
 async def test_a_stale_driver_captured_at_leaves_horse_position_and_verdict_null(
@@ -783,7 +783,7 @@ async def test_a_stale_driver_captured_at_leaves_horse_position_and_verdict_null
 ):
     """The horse is genuinely at the origin RIGHT NOW — a live, in-tolerance fix — but
     the driver's own capture instant is hours old, exactly what an offline queue flush
-    looks like server-side. Task 0A: skew, not agreement, decides whether this counts
+    looks like server-side. Skew, not agreement, decides whether this counts
     as evidence at all. Without the gate this would wrongly read as a clean TRUE.
     """
     trip, driver, _org, _stop = corroboration_trip
@@ -823,8 +823,8 @@ async def test_trailer_snapshots_are_written_even_when_the_horse_position_misses
 ):
     """The skew gate governs the horse-derived writes only. trailer_gps_snapshots
     carries its own tracker reading time (captured_at) and is independent evidence in
-    its own right — it has never been compared against driver_captured_at and task 0A
-    does not start now (see the module docstring's "CLOSED by task 0A" section).
+    its own right — it has never been compared against driver_captured_at and the
+    skew gate does not start doing so now.
     """
     trip, driver, org, _stop = corroboration_trip
     await _attach_trailer(db_session, trip=trip, org=org, device_id=_TRAILER_A_DEVICE)
@@ -888,7 +888,7 @@ async def _log_checkpoint(
     return await client.post(
         f"/api/v1/trips/{trip.id}/checkpoints",
         headers=auth_header(token),
-        # Task 0A: defaults to "now" so the checkpoint's horse position stays inside
+        # Defaults to "now" so the checkpoint's horse position stays inside
         # the corroboration skew by default — same reasoning as _complete_activation's
         # own default. **extra last so a test can still override it explicitly.
         json={
@@ -969,14 +969,14 @@ async def test_a_pulsit_outage_leaves_the_checkpoint_successful(
     assert checkpoint.horse_gps_lng is None
 
 
-# ── driver-location-timeline-gap: DRIVER_LOCATION_MISMATCH ──────────────────────
+# ── DRIVER_LOCATION_MISMATCH ─────────────────────────────────────────────────────
 #
 # The gap DRIVER_VEHICLE_SEPARATION alone leaves open: with no tracker fix to
 # compare against, evaluate_proximity can only return "unverified" (missing_
 # tracker), so DRIVER_VEHICLE_SEPARATION never fires — yet the driver's own phone
 # is measurably outside the stop's precinct the whole time. These tests drive a
 # real completion request and assert the DB state after the mutation, not a mock
-# call, per the story's own contract for FP-143/FP-145's sibling tests above.
+# call, consistent with FP-143/FP-145's sibling tests above.
 
 
 async def _mismatch_rows(db_session, trip: Trip) -> list:
@@ -992,7 +992,7 @@ async def _mismatch_rows(db_session, trip: Trip) -> list:
 async def test_driver_outside_precinct_with_no_tracker_fix_raises_driver_location_mismatch(
     client: AsyncClient, db_session, corroboration_trip, pulsit_store,
 ):
-    """The exact hole this story closes: the truck's tracker fix is stale/unavailable
+    """The exact hole this test closes: the truck's tracker fix is stale/unavailable
     (nothing staged for the horse device), so DRIVER_VEHICLE_SEPARATION has no
     distance to measure and stays silent — but the driver's own phone is recorded
     ~1270 km from the origin precinct, and that alone must still be caught."""
@@ -1018,7 +1018,7 @@ async def test_driver_outside_precinct_with_no_tracker_fix_raises_driver_locatio
     assert "Driver's reason:" in rows[0].description
     assert "far gate" in rows[0].description
 
-    # The gap this story closes, proven negatively: no distance was ever measured
+    # The gap closed here, proven negatively: no distance was ever measured
     # (no tracker fix), so DRIVER_VEHICLE_SEPARATION correctly raised nothing.
     separation_rows = await db_session.execute(
         select(TripException).where(

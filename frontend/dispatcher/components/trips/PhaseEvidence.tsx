@@ -17,14 +17,14 @@ import { countAtStop, precinctAtPhase } from '@/lib/phase/trip-detail'
 import { originScannedCount } from '@/lib/phase/derive'
 import type { ExceptionType } from '@shared/lib/types/exception'
 
-// The three seal findings recorded on an ARRIVAL row (design note §4.2/§4.3). A single
+// The three seal findings recorded on an ARRIVAL row. A single
 // arrival can carry seal_compromised (broken/missing) AND seal_mismatch (wrong number)
 // together, so ArrivalDetail is handed every match, never just the first.
 const SEAL_EXCEPTION_TYPES: readonly ExceptionType[] = ['seal_mismatch', 'seal_unverified', 'seal_compromised']
 
 /** The stop this in-transit leg is travelling TO — the trip's next stop after the one
  *  this phase departs from. Exported so TripTimeline can resolve the identical
- *  destination for the always-visible journey summary (task 9) without re-deriving
+ *  destination for the always-visible journey summary without re-deriving
  *  stop order a second, potentially divergent, way. */
 export function nextTripStop(trip: Trip, phase: PhaseDescriptor): TripStop | undefined {
   const stops = [...trip.stops].sort((a, b) => a.sequence - b.sequence)

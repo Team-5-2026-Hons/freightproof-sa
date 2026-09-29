@@ -195,7 +195,7 @@ export interface WaypointRead {
 }
 
 /**
- * FP-197 (Task 3) — trip-stop-relative scenario mode, alongside the legacy fixed
+ * FP-197 — trip-stop-relative scenario mode, alongside the legacy fixed
  * waypoint mode above. Mirrors backend/app/schemas/dev.py's SCENARIO_* constants and
  * DevTruckScenario exactly — kept in sync by hand like CLOSED_PHASE_STATUSES above,
  * since this file has no import path back to the backend.
@@ -255,7 +255,7 @@ export interface MoveTruckResponse {
   device_id: string
   vehicle_registration: string
   // The EXPECTED precinct — the trip's current phase-ledger stop. Unchanged meaning
-  // from before FP-197 Task 3; see expected_trip_stop_id/expected_precinct_name
+  // from before FP-197; see expected_trip_stop_id/expected_precinct_name
   // below for the same stop under an unambiguous name.
   precinct_id: string
   precinct_name: string
@@ -272,7 +272,7 @@ export interface MoveTruckResponse {
   in_tolerance_band: boolean
   verdict_reason: string
 
-  // ---- FP-197 Task 3 additions, all nullable: null in legacy waypoint mode, and
+  // ---- FP-197 additions, all nullable: null in legacy waypoint mode, and
   // null for target_* when scenario='no_signal' named no stop. ----
 
   // The stop scenario mode actually staged the tracker relative to. Distinct from

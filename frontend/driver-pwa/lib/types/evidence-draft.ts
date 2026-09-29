@@ -50,7 +50,7 @@ export interface UnloadingEvidence {
 }
 
 // The seal as found at the destination gate, before anything is opened — the custody
-// check this whole phase exists for (see the design note's §2). Captured blind: the
+// check this whole phase exists for. Captured blind: the
 // backend needs the actual seal number, not a verdict, and does the authoritative
 // comparison against the leg's departure seal server-side (advance_arrival), never on
 // this device. The driver is never told the result.
@@ -60,7 +60,7 @@ export interface ArrivalEvidence {
   // that isn't there. Enforced in lib/api/phases.ts's submitPhase, not here.
   sealNumberAtArrival: string | null
   // Required in every condition, including 'missing': a missing seal is photographed
-  // as a missing seal (design note §4.2) — the absence is itself the evidence.
+  // as a missing seal — the absence is itself the evidence.
   sealPhotoDataUrl: string | null
   sealPhotoArtifactId: string | null
   capturedAt: string | null

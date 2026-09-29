@@ -240,9 +240,9 @@ async def _reconstruct_phase_event_payload(
     departure/confirmation v1 shape. New v2 receipts also return the role-to-
     artifact mapping needed to hash the current private Storage bytes.
 
-    Task 2.6 (D7/T5) moved the seal — and the anchor with it — from loading to
-    departure, so this dispatches on PhaseType.DEPARTURE, not LOADING, and no
-    longer needs driver_visual_count (which stays on loading, unanchored).
+    The seal — and the anchor with it — moved from loading to departure, so this
+    dispatches on PhaseType.DEPARTURE, not LOADING, and no longer needs
+    driver_visual_count (which stays on loading, unanchored).
 
     driver_visual_count is no longer part of the CONFIRMATION completeness
     check below: it is now Optional on the request (the driver may skip the

@@ -5,7 +5,7 @@ Until now only the horse got a geofence verdict at each stop phase
 else, so a trailer left behind somewhere while its horse drove on to the gate was never
 judged. trailer_gps_snapshots.geofence_confirmed closes that, with the same three-state
 meaning as the horse's column: TRUE inside, FALSE measured outside, NULL could not
-check. See docs/design-notes/2026-09-23-arrival-phase-and-live-journey.md §4.5.
+check.
 
 The partial unique index is the idempotency key for the new TRAILER_LOCATION_MISMATCH
 exception (one per phase event), the same pattern as uq_exceptions_phase_separation and

@@ -36,7 +36,7 @@ class TripType(str, enum.Enum):
 
 
 class PhaseType(str, enum.Enum):
-    """One entry in a trip's committed phase plan (parent plan D5); plan LENGTH is
+    """One entry in a trip's committed phase plan; plan LENGTH is
     data generated per trip, so this enum's cardinality is not the phase count of
     any one trip — a type can appear more than once on a multi-stop route."""
 
@@ -48,7 +48,7 @@ class PhaseType(str, enum.Enum):
     # The custody check at the gate: the seal as found, BEFORE anything is opened.
     # Its own phase (not a step of unloading) so "inspected before opened" is a
     # sequence rule the server enforces, and so it gets its own completed_at and
-    # anchor. See docs/design-notes/2026-09-23-arrival-phase-and-live-journey.md §2.
+    # anchor.
     ARRIVAL       = "arrival"
     UNLOADING     = "unloading"
     CONFIRMATION  = "confirmation"
@@ -72,8 +72,8 @@ class PhaseStatus(str, enum.Enum):
 
 
 class AnchorStatus(str, enum.Enum):
-    """Hedera anchor state for one phase event (parent plan D4). A phase may be
-    `completed` while its anchor is `failed` — that keeps the fail-open policy (D7)
+    """Hedera anchor state for one phase event. A phase may be
+    `completed` while its anchor is `failed` — that keeps the fail-open policy
     honest, since the system still knows a receipt is owed. Never render `failed`
     as success."""
 
@@ -96,8 +96,7 @@ class ExceptionType(str, enum.Enum):
     SEAL_COMPROMISED       = "seal_compromised"
     PARCEL_COUNT_MISMATCH  = "parcel_count_mismatch"
     GPS_MISMATCH           = "gps_mismatch"
-    # Task 5 (trip-location-timeline-improvements): a DISTINCT finding from
-    # GPS_MISMATCH. GPS_MISMATCH is "the vehicle tracker disagrees with the
+    # A DISTINCT finding from GPS_MISMATCH. GPS_MISMATCH is "the vehicle tracker disagrees with the
     # PRECINCT" (FP-145, geofence_service); this is "the driver's OWN PHONE
     # disagrees with the vehicle tracker" (proximity_service.evaluate_proximity) —
     # independent questions that can both fire, or either alone, on the same
@@ -176,9 +175,9 @@ class BlockchainReceiptType(str, enum.Enum):
     JOURNEY_LOCK        = "journey_lock"
     PICKUP              = "pickup"
     DELIVERY            = "delivery"
-    # One per phase anchored since every phase started anchoring on completion
-    # (design note 2026-09-23 §4.4). PICKUP (departure) and DELIVERY (confirmation)
-    # keep their names so existing receipts stay valid.
+    # One per phase anchored since every phase started anchoring on completion.
+    # PICKUP (departure) and DELIVERY (confirmation) keep their names so existing
+    # receipts stay valid.
     ACTIVATION          = "activation"
     LOADING             = "loading"
     TRANSIT_ARRIVAL     = "transit_arrival"
