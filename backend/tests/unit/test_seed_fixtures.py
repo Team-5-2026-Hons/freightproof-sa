@@ -10,6 +10,10 @@ This file is that test. It imports the seeder's spec rather than duplicating it,
 so a reference added to one side and not the other fails the build.
 """
 
+from datetime import UTC, datetime
+from decimal import Decimal
+import uuid
+
 import pytest
 
 from app.integrations.parcel_perfect import (
@@ -18,11 +22,16 @@ from app.integrations.parcel_perfect import (
     UNASSIGNED_WAYBILLS,
     MockParcelPerfectClient,
 )
-from app.db.models.enums import PhaseType, SealCondition
+from app.db.models.enums import ParcelStatus, PhaseType, SealCondition
 from app.db.models.phases import PhaseEvent
+from app.db.models.trips import Parcel
 from app.orchestration.phase_plan import PlanStop, build_phase_plan
 from scripts.seed_trips import (
     _apply_walk_evidence,
+    _apply_seed_position_evidence,
+    _apply_seed_scan_evidence,
+    _position_for_event,
+    _trailer_snapshot_for_event,
     SEEDED_WAYBILL_REFERENCES,
     TRIP_CREATION_SEQUENCE,
     TRIP_SPECS,
@@ -193,3 +202,84 @@ def test_seeded_arrival_row_finds_the_departure_seal_intact(spec):
 
     assert arrival.seal_number == departure.seal_number == spec.seal_number
     assert arrival.seal_condition == SealCondition.INTACT.value
+
+
+def test_seeded_position_for_in_transit_uses_the_next_stop():
+    stop_id = uuid.uuid4()
+    event = PhaseEvent(
+        phase_type=PhaseType.IN_TRANSIT.value,
+        trip_stop_id=stop_id,
+    )
+
+    position = _position_for_event(
+        event,
+        stop_sequence_by_id={stop_id: 1},
+        precinct_by_sequence={
+            1: (Decimal("-33.9249"), Decimal("18.4241")),
+            2: (Decimal("-29.0852"), Decimal("26.1596")),
+        },
+    )
+
+    assert position == (Decimal("-29.0852"), Decimal("26.1596"), None)
+
+
+def test_seeded_scan_evidence_stamps_scanned_out_and_in_parcels():
+    parcels = [
+        Parcel(barcode="A-1", status=ParcelStatus.PENDING),
+        Parcel(barcode="A-2", status=ParcelStatus.PENDING),
+    ]
+    scanned_out_at = datetime(2026, 7, 30, 6, 40, tzinfo=UTC)
+    scanned_in_at = datetime(2026, 7, 30, 10, 40, tzinfo=UTC)
+
+    _apply_seed_scan_evidence(
+        parcels,
+        scanned_out_at=scanned_out_at,
+        scanned_in_at=scanned_in_at,
+    )
+
+    assert all(parcel.pp_scan_out_at == scanned_out_at for parcel in parcels)
+    assert all(parcel.pp_scan_in_at == scanned_in_at for parcel in parcels)
+    assert all(parcel.status == ParcelStatus.SCANNED_IN for parcel in parcels)
+
+
+def test_seeded_completed_phase_carries_phone_and_horse_position():
+    event = PhaseEvent(
+        phase_type=PhaseType.ACTIVATION.value,
+        completed_at=datetime(2026, 7, 30, 6, 20, tzinfo=UTC),
+    )
+
+    _apply_seed_position_evidence(
+        event,
+        position=(Decimal("-33.9249"), Decimal("18.4241"), True),
+    )
+
+    assert event.driver_phone_lat == Decimal("-33.9249")
+    assert event.driver_phone_lng == Decimal("18.4241")
+    assert event.driver_captured_at == event.completed_at
+    assert event.horse_gps_lat == Decimal("-33.9249")
+    assert event.horse_gps_lng == Decimal("18.4241")
+    assert event.pulsit_geofence_confirmed is True
+
+
+def test_seeded_completed_phase_carries_trailer_position():
+    event = PhaseEvent(
+        id=uuid.uuid4(),
+        phase_type=PhaseType.ACTIVATION.value,
+        completed_at=datetime(2026, 7, 30, 6, 20, tzinfo=UTC),
+    )
+    trailer_id = uuid.uuid4()
+
+    snapshot = _trailer_snapshot_for_event(
+        event,
+        trailer_id=trailer_id,
+        pulsit_device_id="PLT-TRAILER-001",
+        position=(Decimal("-33.9249"), Decimal("18.4241"), True),
+    )
+
+    assert snapshot is not None
+    assert snapshot.phase_event_id == event.id
+    assert snapshot.trailer_id == trailer_id
+    assert snapshot.pulsit_device_id == "PLT-TRAILER-001"
+    assert snapshot.lat == Decimal("-33.9249")
+    assert snapshot.lng == Decimal("18.4241")
+    assert snapshot.geofence_confirmed is True

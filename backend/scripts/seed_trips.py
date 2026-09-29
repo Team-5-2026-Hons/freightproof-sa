@@ -1,6 +1,6 @@
 """Seed the four demo trips: single-leg, cross-dock, in-flight, and closed.
 
-The 11-row cross-dock trip is the point: it is the shape the old
+The 13-row cross-dock trip is the point: it is the shape the old
 UNIQUE(trip_id, handshake_type) constraint made unrepresentable, and it is what a
 reviewer is walked through at the demo. Consignments A (stop 1->3), B (1->2) and
 C (2->3) make stop 2 both a drop-off and a pick-up.
@@ -45,7 +45,7 @@ from app.db.models.enums import (
 )
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
-from app.db.models.phases import PhaseEvent
+from app.db.models.phases import PhaseEvent, TrailerGpsSnapshot
 from app.db.models.trips import Consignment, Parcel, Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.integrations.parcel_perfect import MOCK_WAYBILLS, PPWaybillResponse
@@ -96,7 +96,7 @@ class _TripSpec:
 
 
 TRIP_SPECS: tuple[_TripSpec, ...] = (
-    # Single-leg: the degenerate case of the multi-stop plan. 7 rows.
+    # Single-leg: the degenerate case of the multi-stop plan. 8 rows.
     _TripSpec(
         trip_reference="FP-DEMO-SINGLE-0001",
         order_number="ORD-DEMO-SINGLE-0001",
@@ -104,7 +104,7 @@ TRIP_SPECS: tuple[_TripSpec, ...] = (
         consignments=(_ConsignmentLeg("MOCKWB0001", 1, 2),),
         seal_number="FP-4471",
     ),
-    # Cross-dock: stop 2 is both a drop-off and a pick-up. 11 rows.
+    # Cross-dock: stop 2 is both a drop-off and a pick-up. 13 rows.
     _TripSpec(
         trip_reference="FP-DEMO-XDOCK-0001",
         order_number="ORD-DEMO-XDOCK-0001",
@@ -118,7 +118,7 @@ TRIP_SPECS: tuple[_TripSpec, ...] = (
     ),
     # The in-flight trip. Same cross-dock shape, walked through seq 4 - trip_creation,
     # activation, loading, departure and the leg-1 in_transit are done; the trip sits
-    # at `unloading` at stop 2. This is the trip a reviewer is walked through: it is
+    # at `arrival` at stop 2. This is the trip a reviewer is walked through: it is
     # the only seed on which the derived-active marker, the coarse `active` status
     # filter, and a real seal + parcel count are all visible at once.
     _TripSpec(
@@ -191,8 +191,8 @@ def _scheduled_departure_for(spec: _TripSpec) -> datetime:
         _DEPARTURE_HOUR, 0, tzinfo=_OPERATING_TZ,
     ).astimezone(UTC)
 
-# build_phase_plan always emits trip_creation first, at sequence 0 with a NULL stop
-# (D3). Named rather than spelled 0 inline because resolved_sequences() below turns
+# build_phase_plan always emits trip_creation first, at sequence 0 with a NULL stop.
+# Named rather than spelled 0 inline because resolved_sequences() below turns
 # on it and the reason it is special is not obvious from the literal.
 TRIP_CREATION_SEQUENCE = 0
 
@@ -222,6 +222,86 @@ def resolved_sequences(spec: _TripSpec, plan_length: int) -> set[int]:
         plan_length - 1 if spec.advance_through == _ADVANCE_ALL else spec.advance_through
     )
     return {TRIP_CREATION_SEQUENCE} | set(range(walk_limit + 1))
+
+
+def _position_for_event(
+    event: PhaseEvent, *,
+    stop_sequence_by_id: dict[uuid.UUID, int],
+    precinct_by_sequence: dict[int, tuple[Decimal, Decimal]],
+) -> tuple[Decimal, Decimal, Optional[bool]] | None:
+    """Return the deterministic two-source position for one completed phase.
+
+    The live corroboration path records a phone fix and a horse fix for every phase.
+    ``in_transit`` is the one deliberate exception to stop semantics: its ledger row
+    remains anchored to the departure stop, but the driver's completion action occurs
+    at the next stop, so its seeded coordinates must describe that destination.
+    """
+    if event.trip_stop_id is None:
+        return None
+
+    stop_sequence = stop_sequence_by_id[event.trip_stop_id]
+    coordinate_sequence = stop_sequence + 1 if PhaseType(event.phase_type) == PhaseType.IN_TRANSIT else stop_sequence
+    coordinates = precinct_by_sequence.get(coordinate_sequence)
+    if coordinates is None:
+        return None
+
+    return coordinates[0], coordinates[1], None if PhaseType(event.phase_type) == PhaseType.IN_TRANSIT else True
+
+
+def _apply_seed_position_evidence(
+    event: PhaseEvent, *, position: tuple[Decimal, Decimal, Optional[bool]] | None,
+) -> None:
+    """Populate both position sources on a completed seeded phase.
+
+    Seeded coordinates are deterministic demo evidence, not a fabricated Hedera
+    receipt. Keeping the capture instant equal to the phase completion time preserves
+    the same temporal relationship the live path would expose to the dispatcher.
+    """
+    if position is None or event.completed_at is None:
+        return
+
+    lat, lng, geofence_confirmed = position
+    event.driver_phone_lat = lat
+    event.driver_phone_lng = lng
+    event.driver_captured_at = event.completed_at
+    event.horse_gps_lat = lat
+    event.horse_gps_lng = lng
+    event.pulsit_geofence_confirmed = geofence_confirmed
+
+
+def _trailer_snapshot_for_event(
+    event: PhaseEvent, *, trailer_id: uuid.UUID, pulsit_device_id: str,
+    position: tuple[Decimal, Decimal, Optional[bool]] | None,
+) -> TrailerGpsSnapshot | None:
+    """Build the trailer-side corroboration row for one completed phase."""
+    if position is None or event.completed_at is None:
+        return None
+
+    lat, lng, geofence_confirmed = position
+    return TrailerGpsSnapshot(
+        id=uuid.uuid4(),
+        phase_event_id=event.id,
+        trailer_id=trailer_id,
+        pulsit_device_id=pulsit_device_id,
+        lat=lat,
+        lng=lng,
+        captured_at=event.completed_at,
+        geofence_confirmed=geofence_confirmed,
+    )
+
+
+def _apply_seed_scan_evidence(
+    parcels: list[Parcel], *,
+    scanned_out_at: Optional[datetime], scanned_in_at: Optional[datetime],
+) -> None:
+    """Stamp parcel rows when their seeded loading/unloading phases are resolved."""
+    for parcel in parcels:
+        if scanned_out_at is not None:
+            parcel.pp_scan_out_at = scanned_out_at
+            parcel.status = ParcelStatus.SCANNED_OUT
+        if scanned_in_at is not None:
+            parcel.pp_scan_in_at = scanned_in_at
+            parcel.status = ParcelStatus.SCANNED_IN
 
 
 def _fixture(pp_reference: str) -> PPWaybillResponse:
@@ -277,25 +357,25 @@ async def _reference(db: AsyncSession):
 async def _seed_consignments(
     db: AsyncSession, *, trip: Trip, spec: _TripSpec,
     stops_by_sequence: dict[int, TripStop], organizations: dict[str, Organization],
-) -> dict[str, int]:
+) -> dict[str, list[Parcel]]:
     """Write one Consignment (+ its Parcel rows) per leg, sourced from the PP fixture.
 
-    Returns the parcel count keyed by pp_reference so the caller can derive the
-    per-stop counts a driver would actually have recorded.
+    Returns the parcel rows keyed by pp_reference so the caller can stamp scan
+    evidence only when the matching seeded loading/unloading phases are completed.
 
     Field-for-field this mirrors consignment_service.fetch_and_sync_consignment on
     the live path - same pp_raw_json shape, same parcel-count basis (len(tracks)),
     same client-org resolution through accnum. A seed that stores a different shape
     from the live path is a seed that hides bugs in whatever reads those columns.
     """
-    parcel_counts: dict[str, int] = {}
+    parcels_by_reference: dict[str, list[Parcel]] = {}
 
     for leg in spec.consignments:
         waybill = _fixture(leg.pp_reference)
         pickup = stops_by_sequence[leg.pickup_sequence]
         delivery = stops_by_sequence[leg.delivery_sequence]
         parcel_count = len(waybill.tracks)
-        parcel_counts[leg.pp_reference] = parcel_count
+        parcel_rows: list[Parcel] = []
 
         client_org = organizations.get(waybill.details.accnum)
         declared_value = (
@@ -325,15 +405,18 @@ async def _seed_consignments(
         await db.flush()
 
         for track in waybill.tracks:
-            db.add(Parcel(
+            parcel = Parcel(
                 id=uuid.uuid4(),
                 consignment_id=consignment.id,
                 barcode=track.trackno,
                 status=ParcelStatus.PENDING,
-            ))
+            )
+            db.add(parcel)
+            parcel_rows.append(parcel)
+        parcels_by_reference[leg.pp_reference] = parcel_rows
 
     await db.flush()
-    return parcel_counts
+    return parcels_by_reference
 
 
 def _apply_walk_evidence(
@@ -345,9 +428,9 @@ def _apply_walk_evidence(
     Only fields the real completion path writes (orchestration/phase_service.py):
     activation captures phone GPS, loading the driver's visual count, departure the
     seal, arrival the seal as found at the gate, confirmation the delivered counts.
-    Unloading writes nothing of its own here: the seal moved from it to arrival. parcel_count_origin is deliberately NOT set - nothing on the live path
-    writes it, and a seed that populates a column the application never fills would
-    make a dead column look load-bearing.
+    Unloading writes nothing of its own here: the seal moved from it to arrival. Scan
+    columns are applied after the ledger walk, once the seeder knows which loading and
+    unloading rows are actually resolved.
     """
     phase_type = PhaseType(event.phase_type)
 
@@ -425,9 +508,13 @@ async def _seed_trip(
     trip.destination_precinct_id = stops[-1].precinct_id
     by_sequence = {s.sequence: s for s in stops}
 
-    parcel_counts = await _seed_consignments(
+    parcels_by_reference = await _seed_consignments(
         db, trip=trip, spec=spec, stops_by_sequence=by_sequence, organizations=organizations,
     )
+    parcel_counts = {
+        pp_reference: len(parcels)
+        for pp_reference, parcels in parcels_by_reference.items()
+    }
 
     # Per-stop cargo movement, derived from the legs - the same derivation the phase
     # plan itself runs on, so the counts a driver "recorded" always agree with the
@@ -468,6 +555,10 @@ async def _seed_trip(
     stop_sequence_by_id = {s.id: s.sequence for s in stops}
     precinct_by_stop_id = {s.id: precincts[name]
                            for s, name in zip(stops, spec.precinct_names, strict=True)}
+    precinct_by_sequence = {
+        s.sequence: (precincts[name].latitude, precincts[name].longitude)
+        for s, name in zip(stops, spec.precinct_names, strict=True)
+    }
 
     # Which rows start resolved is a decision, not a loop bound - resolved_sequences()
     # owns it so the "P0 is always complete" rule is unit-testable without a database
@@ -492,6 +583,41 @@ async def _seed_trip(
             loaded_at=loaded_at, delivered_at=delivered_at,
         )
 
+        position = _position_for_event(
+            event,
+            stop_sequence_by_id=stop_sequence_by_id,
+            precinct_by_sequence=precinct_by_sequence,
+        )
+        _apply_seed_position_evidence(event, position=position)
+        snapshot = _trailer_snapshot_for_event(
+            event,
+            trailer_id=trailer.id,
+            pulsit_device_id=trailer.pulsit_device_id,
+            position=position,
+        )
+        if snapshot is not None:
+            db.add(snapshot)
+
+    completed_by_stop_and_phase = {
+        (
+            stop_sequence_by_id[event.trip_stop_id],
+            PhaseType(event.phase_type),
+        ): event
+        for event in events
+        if event.status == PhaseStatus.COMPLETED and event.trip_stop_id is not None
+    }
+    for leg in spec.consignments:
+        parcels = parcels_by_reference[leg.pp_reference]
+        loading_event = completed_by_stop_and_phase.get((leg.pickup_sequence, PhaseType.LOADING))
+        unloading_event = completed_by_stop_and_phase.get((leg.delivery_sequence, PhaseType.UNLOADING))
+        _apply_seed_scan_evidence(
+            parcels,
+            scanned_out_at=None if loading_event is None else loading_event.completed_at,
+            scanned_in_at=None if unloading_event is None else unloading_event.completed_at,
+        )
+        if loading_event is not None:
+            loading_event.parcel_count_origin = len(parcels)
+
     current = next((e for e in events if e.status != PhaseStatus.COMPLETED), None)
     # event.phase_type comes back as a plain str after the bulk PhaseEvent insert
     # (insertmanyvalues repopulates every column from the RETURNING row, not just
@@ -503,13 +629,30 @@ async def _seed_trip(
         else stop_sequence_by_id[current.trip_stop_id]
     )
     if current is None:
-        # Every phase resolved. Mirrors recompute_position's closing rule (§2.4
-        # steps 8-9) rather than inventing a second definition of "closed".
+        # Every phase resolved. Mirrors recompute_position's closing rule rather than
+        # inventing a second definition of "closed".
         trip.status = TripStatus.CLOSED
         trip.closed_at = events[-1].completed_at
     elif spec.advance_through is not None:
         # Walked but not finished - U9's derived-active state.
         trip.status = TripStatus.ACTIVE
+
+    departure_times = [
+        event.completed_at for event in events
+        if PhaseType(event.phase_type) == PhaseType.DEPARTURE
+        and event.status == PhaseStatus.COMPLETED
+        and event.completed_at is not None
+    ]
+    if departure_times:
+        trip.actual_departure_at = min(departure_times)
+
+    in_transit_events = [
+        event for event in events
+        if PhaseType(event.phase_type) == PhaseType.IN_TRANSIT
+    ]
+    if in_transit_events and in_transit_events[-1].status == PhaseStatus.COMPLETED:
+        trip.actual_arrival_at = in_transit_events[-1].completed_at
+
     await db.flush()
 
     total_parcels = sum(parcel_counts.values())
