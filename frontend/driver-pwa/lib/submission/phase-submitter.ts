@@ -154,7 +154,7 @@ export interface PhaseSubmissionRequest {
    */
   position: Promise<DriverPosition | null>
   /**
-   * Task 0A: the instant the caller (the step controller) considers this attempt
+   * The instant the caller (the step controller) considers this attempt
    * submitted — generated once per logical attempt, same as idempotencyKey, and reused
    * across any retry of that attempt so a replay from the offline queue still reports the
    * ORIGINAL swipe instant, never a retry's own clock.

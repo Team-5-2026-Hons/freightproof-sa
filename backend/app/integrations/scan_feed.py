@@ -3,8 +3,7 @@
 PP is the system of record for what was *supposed* to be on the truck;
 FreightProof is the system of record for what *actually* was. No API we can
 reach exposes the observed set (PP's ecomService has one read method and our
-account is Mode: Customer — see docs/parcel-perfect-integration-spec.md §B),
-so the feed is specified here as an interface and mocked behind it,
+account is Mode: Customer), so the feed is specified here as an interface and mocked behind it,
 mirroring get_pp_client():
 
     ScanFeed (Protocol)

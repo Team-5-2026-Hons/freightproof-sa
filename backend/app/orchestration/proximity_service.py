@@ -1,5 +1,4 @@
-"""Pure driver-vs-truck proximity evaluation (Task 4 of the trip-location-timeline
-story).
+"""Pure driver-vs-truck proximity evaluation.
 
 `geofence_service.evaluate_geofence` answers "is the TRUCK inside the precinct?".
 This module answers a different, independent question: "how far apart are the
@@ -8,7 +7,7 @@ correctly inside its precinct while the driver's phone is genuinely metres away
 (left in the cab, handed to a co-driver, a phase completed from the office
 tablet) — precinct membership and driver/truck separation are independent
 facts and this module deliberately never touches a Precinct row or calls
-evaluate_geofence. Task 5 assembles both answers into one
+evaluate_geofence. action_location_service assembles both answers into one
 `ActionLocationAssessment`; this module only ever answers the second question,
 alone, with no DB and no HTTP.
 

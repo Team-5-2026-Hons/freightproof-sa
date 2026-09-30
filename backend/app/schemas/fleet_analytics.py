@@ -63,7 +63,7 @@ class UnusedVehicle(_Frozen):
 
 class UnusedVehicles(_Frozen):
     """Active vehicles with no trip in the tile window and none live now. Vehicles only,
-    never drivers: listing idle drivers would be a ranking by another name (spec D13)."""
+    never drivers: listing idle drivers would be a ranking by another name."""
 
     window_days: int
     vehicles: list[UnusedVehicle]
@@ -122,7 +122,7 @@ class CancellationsBucket(_Frozen):
 class CancelledTrip(_Frozen):
     """One row of chart 1.7's table. The cancellation note is not carried here: it lives
     inside a free-text exception description, so the table links to the trip page, which
-    shows it (spec D20)."""
+    shows it."""
 
     trip_id: UUID
     trip_reference: str
@@ -157,7 +157,7 @@ class PatternBar(_Frozen):
 
 class PatternSet(_Frozen):
     """Always complete and in clock/calendar order: 24 hours (0-23), 7 weekdays (Monday = 0),
-    31 dates (1-31), 12 months (1-12). Never sorted by size (spec §5.1)."""
+    31 dates (1-31), 12 months (1-12). Never sorted by size."""
 
     hour_of_day: list[PatternBar]
     weekday: list[PatternBar]
@@ -176,7 +176,7 @@ class PatternsResponse(_Frozen):
 
 
 class PunctualityBucket(_Frozen):
-    """Chart 2.1. Strict: on or before the plan, no grace window (spec D9)."""
+    """Chart 2.1. Strict: on or before the plan, no grace window."""
 
     bucket_start: date
     is_partial: bool
@@ -235,7 +235,7 @@ class OnTimeResponse(_Frozen):
 
 
 # GET /problems
-# Every count excludes dispatcher notes (spec D10).
+# Every count excludes dispatcher notes.
 
 _PER_100 = 100
 
@@ -273,7 +273,7 @@ class TheftSignalsBucket(_Frozen):
 
 class ProblemTypeCount(_Frozen):
     """Chart 3.3: only (type, source) pairs that happened, so a type nothing creates never
-    sits at a reassuring zero (spec D11)."""
+    sits at a reassuring zero."""
 
     exception_type: ExceptionType
     source: ExceptionSource
@@ -427,7 +427,7 @@ class SiteActivity(_Frozen):
     """Chart 1.6: attested pickups and deliveries at one site over the period."""
 
     precinct_id: UUID
-    # Looked up by id only (spec G16): a site belongs to the client, not the operator.
+    # Looked up by id only: a site belongs to the client, not the operator.
     precinct_name: str | None
     pickup_count: int
     delivery_count: int
@@ -444,7 +444,7 @@ class LaneRisk(_Frozen):
     # First attested departure to final arrival, per closed trip, pooled for the period: the
     # lane view's actual_transit_minutes.
     driving_minutes: DurationStats
-    # Excludes dispatcher notes (spec D10), unlike the lane view's exception_count.
+    # Excludes dispatcher notes, unlike the lane view's exception_count.
     problem_count: int
 
     @computed_field  # type: ignore[prop-decorator]
@@ -467,7 +467,7 @@ class RoutesResponse(_Frozen):
 class IncidentPin(_Frozen):
     """One located report on the incident map (chart 3.6). Deliberately nothing about the
     person: no driver name, phone or id. A pin is where a named driver was, so it carries only
-    what the dispatcher needs to open the report (spec D14, POPIA)."""
+    what the dispatcher needs to open the report (POPIA)."""
 
     exception_id: UUID
     trip_id: UUID

@@ -1,7 +1,7 @@
-"""Phase plan endpoints — the frozen contract's HTTP surface (parent plan §3.2).
+"""Phase plan endpoints — the frozen contract's HTTP surface.
 
-Replaces endpoints/handshakes.py and its five /h{n}/complete routes. Decision S3:
-these are driver-scoped. The dispatcher reads the same plan through
+Replaces endpoints/handshakes.py and its five /h{n}/complete routes. These routes
+are driver-scoped. The dispatcher reads the same plan through
 TripDetailResponse.phases on GET /trips/{id}, which it already calls — giving
 these routes a second auth path would be new security surface with no consumer.
 """
@@ -139,7 +139,7 @@ async def complete_phase_endpoint(
 ) -> TripDetailResponse:
     """Always 200 on a successful completion, including when the phase records a
     mismatch (that is evidence, not a client error) and including when its Hedera
-    anchor failed (fail-open, D7 — dispatchers see anchor_status='failed', not a 504).
+    anchor failed (fail-open — dispatchers see anchor_status='failed', not a 504).
     """
     try:
         return await complete_phase(

@@ -1,6 +1,12 @@
 # FreightProof SA — Database Models Reference
 
-> **Audience:** All team members. Read this before writing migrations, adding models, or writing orchestration logic.
+> **Historical, non-authoritative reference — May 2026.** This describes the initial
+> 19-table migration and former handshake model. For current data structures, inspect
+> `backend/app/db/models/` and `backend/app/schemas/`; for lifecycle terminology, use
+> [the maintained phase-model reference](phase-model-explained.md).
+
+> **Original audience:** All team members. Preserve this record for historical context;
+> do not use it as the current migration or orchestration authority.
 >
 > **Last updated:** 2026-05-10 · **Migration:** `0001_initial_schema.py` (19 tables)
 

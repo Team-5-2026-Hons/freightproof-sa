@@ -20,7 +20,7 @@ import { ROUTES }         from '@/lib/constants/routes'
 import { COPY }           from '@shared/lib/constants/copy'
 import type { TripStatus } from '@shared/lib/types/trip'
 
-// Coarse since Stage 2 (parent §2.3): `active` is every trip between creation and
+// Coarse: `active` is every trip between creation and
 // closure. The old list enumerated six per-step statuses from the pre-phase model
 // that no longer exist, so every advanced trip silently disappeared from this dashboard.
 // `exception_hold` currently matches nothing — no backend path sets it (see
@@ -178,7 +178,7 @@ export default function ActiveTripsPage() {
         </Button>
       </TopBar>
 
-      {/* No stat strip: fleet figures live on the Analytics page (fleet analytics spec D15). */}
+      {/* No stat strip: fleet figures live on the Analytics page. */}
 
       {/* Search */}
       <div className="px-6 py-3 shrink-0">

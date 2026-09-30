@@ -416,8 +416,8 @@ async def raise_exception(
     )
     await db.refresh(exc)
 
-    # Notify dispatchers watching this trip so the exception surfaces live (published on
-    # commit, D9). A thin ping — the exception's GPS/description never crosses the channel.
+    # Notify dispatchers watching this trip so the exception surfaces live (published
+    # after commit). A thin ping — the exception's GPS/description never crosses the channel.
     enqueue_event(
         db, trip.operator_organization_id,
         TripEvent(

@@ -325,7 +325,7 @@ async def test_declared_value_coerced_to_decimal():
 
 
 # ---------------------------------------------------------------------------
-# accnum resolution / unit count / manifest number (Task 5)
+# accnum resolution / unit count / manifest number
 # ---------------------------------------------------------------------------
 
 

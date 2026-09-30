@@ -96,7 +96,7 @@ class Consignment(Base):
         UUID(as_uuid=True), ForeignKey("trip_stops.id"), nullable=True
     )
     # Recorded evidence only (door vs bulkhead) — FreightProof records freight
-    # position, it does not enforce loading order (scope-boundaries.md §3).
+    # position, it does not enforce loading order.
     load_priority: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     # Consolidated-unit grain (pallets), distinct from parcel_count_expected; PP
     # can't supply this, so it's populated outside the PP pull.
@@ -189,7 +189,7 @@ class Trip(Base):
         UUID(as_uuid=True), ForeignKey("trip_templates.id"), nullable=True
     )
     status: Mapped[TripStatus] = mapped_column(String(30), nullable=False, server_default="created")
-    # Denormalised caches of the ledger derivation (D6), refreshed on every phase
+    # Denormalised caches of the ledger derivation, refreshed on every phase
     # completion so list views don't recompute. Read paths only — the ledger is
     # the truth; no write path may branch on these.
     current_phase: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
@@ -254,9 +254,9 @@ class TripTrailer(Base):
 
 
 class DriverSubstitution(Base):
-    """Records every mid-trip driver change — planned or unplanned (spec §5,
-    Handshake 3). Unplanned substitutions link to a TripException via exception_id
-    and are anchored to blockchain separately."""
+    """Records every mid-trip driver change — planned or unplanned. Unplanned
+    substitutions link to a TripException via exception_id and are anchored to
+    blockchain separately."""
 
     __tablename__ = "driver_substitutions"
     # Declared so autogenerate stops proposing to drop an index that already exists
@@ -269,7 +269,8 @@ class DriverSubstitution(Base):
     trip_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("trips.id"), nullable=False
     )
-    # The four required log fields from the spec.
+    # The four required log fields for a driver substitution: who left, who took
+    # over, where, and who approved it.
     original_driver_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("drivers.id"), nullable=False
     )

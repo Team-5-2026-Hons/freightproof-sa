@@ -1,8 +1,8 @@
 """Named constants for the fleet analytics page.
 
-Spec: docs/design-notes/2026-09-15-fleet-analytics-page-spec.md. Every threshold the fleet
-queries and their tests share is defined here once, with the reason it has its value, so a
-chart's definition can be read without opening the query that applies it.
+Every threshold the fleet queries and their tests share is defined here once, with the
+reason it has its value, so a chart's definition can be read without opening the query
+that applies it.
 """
 
 import enum
@@ -11,11 +11,11 @@ from app.db.models.enums import ExceptionType
 
 # The zone the SQL buckets by. Named rather than a bare offset so the boundary reads as
 # intent, the same choice the FP-153 views make. SAST has no daylight saving, so it always
-# agrees with settings.OPERATIONS_UTC_OFFSET_HOURS, which the Python side uses (spec G5).
+# agrees with settings.OPERATIONS_UTC_OFFSET_HOURS, which the Python side uses.
 OPERATIONS_TIME_ZONE_NAME = "Africa/Johannesburg"
 
 # One year of weeks. Past this, a trend chart's bars get too thin to read or hover, so a
-# longer period has to be viewed by month or year instead (spec G12).
+# longer period has to be viewed by month or year instead.
 MAX_TREND_BUCKETS = 53
 
 # How many South African calendar days (today included) the "right now" tiles look back.
@@ -41,23 +41,27 @@ REVIEW_AGE_EDGES_HOURS: tuple[int, int, int] = (1, 24, 72)
 # agrees with what that list shows. Further out than 180 days is not a concern yet.
 EXPIRY_BAND_EDGES_DAYS: tuple[int, int, int] = (30, 90, 180)
 
-# Signs that cargo may have been tampered with (spec D12). SEAL_UNVERIFIED is deliberately
+# Signs that cargo may have been tampered with. SEAL_UNVERIFIED is deliberately
 # absent: it means no departure seal existed to compare against, a paperwork gap rather than
 # evidence of tampering (see its comment in app/db/models/enums.py). A tuple, not a set, so
 # the per-type columns of chart 3.2 keep one stable order.
 THEFT_SIGNAL_TYPES: tuple[ExceptionType, ...] = (
     ExceptionType.SEAL_MISMATCH,
+    # The seal was found damaged or missing at arrival: the load may have been opened.
+    ExceptionType.SEAL_COMPROMISED,
     ExceptionType.SEAL_BROKEN_IN_TRANSIT,
+    # A trailer measured away from its own horse at a stop: it may have been uncoupled.
+    ExceptionType.TRAILER_LOCATION_MISMATCH,
     ExceptionType.PARCEL_COUNT_MISMATCH,
     ExceptionType.WAYBILL_COUNT_MISMATCH,
     ExceptionType.PANIC_BUTTON,
     # The receiver's ID was checked at delivery and did not match: the goods may have gone to
-    # the wrong person (D25). Its sibling RECEIVER_ID_UNVERIFIED stays out for the reason
+    # the wrong person. Its sibling RECEIVER_ID_UNVERIFIED stays out for the reason
     # SEAL_UNVERIFIED does: no check completed, a gap in the chain rather than a theft sign.
     ExceptionType.RECEIVER_ID_MISMATCH,
 )
 
-# Never counted as a problem (spec D10). Every cancellation and every dispatcher override
+# Never counted as a problem. Every cancellation and every dispatcher override
 # records one automatically, so counting them would make "problems" rise whenever a
 # dispatcher does their job.
 EXCLUDED_FROM_PROBLEMS: frozenset[ExceptionType] = frozenset({ExceptionType.DISPATCHER_NOTE})

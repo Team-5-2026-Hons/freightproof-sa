@@ -13,7 +13,7 @@ import { Verification } from './activation/Verification'
 import { Linehaul } from './loading/Linehaul'
 import { CaptureSeal } from './departure/CaptureSeal'
 import { ConfirmDeparture } from './departure/ConfirmDeparture'
-import { SealVerify } from './unloading/SealVerify'
+import { SealVerify as ArrivalSealVerify } from './arrival/SealVerify'
 import { VisualCount as UnloadingVisualCount } from './unloading/VisualCount'
 import { PodPhoto } from './confirmation/PodPhoto'
 import { ReceiverHandover } from './confirmation/ReceiverHandover'
@@ -25,8 +25,10 @@ type AnyStepComponent = ComponentType<never>
 type ActivationSlug = '2-verification'
 type LoadingSlug = '1-linehaul'
 type DepartureSlug = '2-capture-seal' | '4-departure'
-// Slug prefixes order the recipe; they are not an index, so surviving slugs keep their numbers.
-type UnloadingSlug = '2-seal-verify' | '4-visual-count'
+// The seal check moved here from unloading — same slug, new phase (see arrival/SealVerify.tsx).
+type ArrivalSlug = '2-seal-verify'
+// Slimmed to visual count only; the seal check now lives on `arrival` above.
+type UnloadingSlug = '4-visual-count'
 type ConfirmationSlug = '1-pod-photo' | '2-receiver-handover' | '3-reconciliation' | '4-closed'
 
 export interface StepRegistry {
@@ -37,6 +39,7 @@ export interface StepRegistry {
   departure: Record<DepartureSlug, AnyStepComponent>
   // in_transit is driver-submitted from the in-transit hub's swipe, not a step page.
   in_transit: Record<string, never>
+  arrival: Record<ArrivalSlug, AnyStepComponent>
   unloading: Record<UnloadingSlug, AnyStepComponent>
   confirmation: Record<ConfirmationSlug, AnyStepComponent>
 }
@@ -54,8 +57,10 @@ export const STEP_REGISTRY: StepRegistry = {
     '4-departure': ConfirmDeparture,
   },
   in_transit: {},
+  arrival: {
+    '2-seal-verify': ArrivalSealVerify,
+  },
   unloading: {
-    '2-seal-verify': SealVerify,
     '4-visual-count': UnloadingVisualCount,
   },
   confirmation: {

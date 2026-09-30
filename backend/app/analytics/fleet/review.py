@@ -1,4 +1,4 @@
-"""Queries behind the Review desk tab (GET /analytics/fleet/review, spec §5.4). Not
+"""Queries behind the Review desk tab (GET /analytics/fleet/review). Not
 limited to closed trips, since reviewing is independent of trip status. Rows marked
 legacy_review are excluded everywhere — that outcome is a migration marker, not a finding."""
 

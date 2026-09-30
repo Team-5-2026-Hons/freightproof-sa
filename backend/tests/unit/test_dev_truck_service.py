@@ -1,4 +1,4 @@
-"""FP-197 (Task 3): the trip-stop-relative scenario maths, tested with no DB at all.
+"""FP-197: the trip-stop-relative scenario maths, tested with no DB at all.
 
 Mirrors test_demo_waypoints.py's own discipline for the legacy mode: every offset is
 verified against the same `haversine_metres` the real geofence verdict uses, so a

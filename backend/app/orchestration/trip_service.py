@@ -122,7 +122,7 @@ async def _check_order_number_conflict(
     partial unique index behind LIVE_TRIP_STATUSES is what actually decides it, and
     _order_number_conflict below turns that decision back into this same error.
     """
-    # Coarse set post-Stage-2.2 (T6) — the old per-handshake TripStatus values
+    # Coarse set — the old per-handshake TripStatus values
     # are gone; ACTIVE now covers everything between activation and closing.
     # EXCEPTION_HOLD is currently unreachable (nothing in app/ sets it — see
     # phase_service._is_resolved) but stays listed: a held trip is by definition
@@ -379,7 +379,7 @@ async def create_trip(
         result.consignment.pickup_stop_id = trip_stops[0].id
         result.consignment.delivery_stop_id = trip_stops[-1].id
 
-    # 6. Build and write the trip's full committed phase plan (parent plan D5/D6).
+    # 6. Build and write the trip's full committed phase plan.
     #    Every phase row for every stop is created here, `pending`, in plan order —
     #    a later task's completion engine fills them in one at a time. No code path
     #    outside create_trip may insert a PhaseEvent after this stage lands (not yet
@@ -389,7 +389,7 @@ async def create_trip(
         db.add(event)
     await db.flush()
 
-    # trip_creation is always sequence 0 with a NULL stop (D3) — build_phase_plan
+    # trip_creation is always sequence 0 with a NULL stop — build_phase_plan
     # guarantees this, so h0 is simply the first row of the plan just written.
     h0 = phase_events[0]
 
@@ -446,7 +446,7 @@ async def create_trip(
     h0.event_hash = compute_payload_hash(canonical)
     h0.anchor_status = AnchorStatus.ANCHORED
 
-    # U4: derive the cache from the ledger now that h0 is resolved. Note this call
+    # Derive the cache from the ledger now that h0 is resolved. Note this call
     # would also CLOSE a trip whose every phase is resolved — unreachable here,
     # because build_phase_plan always emits at least `activation` after h0, and the
     # test asserts status is still CREATED so the day that changes it fails loudly.
@@ -464,7 +464,7 @@ async def create_trip(
     for result in consignment_results:
         await db.refresh(result.consignment)
 
-    # Notify dispatchers in this org that a new trip exists (published on commit, D9).
+    # Notify dispatchers in this org that a new trip exists (published on commit).
     enqueue_event(db, current_user.organization_id, TripEvent(id=trip.id, kind=RealtimeKind.TRIP_CREATED))
 
     # 8. Assemble and return the response (no ORM relationships — fetch separately).
@@ -521,7 +521,7 @@ async def cancel_trip(
     db: AsyncSession, *, trip_id: uuid.UUID, operator_organization_id: uuid.UUID,
     user_id: uuid.UUID, note: str,
 ) -> TripDetailResponse:
-    """Dispatcher-only terminal exit for a trip abandoned mid-plan (task 6.1).
+    """Dispatcher-only terminal exit for a trip abandoned mid-plan.
 
     Before this, nothing in app/ ever wrote TripStatus.CANCELLED — an abandoned
     trip (cargo pulled, vehicle broken down) sat ACTIVE forever, and worse,
@@ -557,7 +557,7 @@ async def cancel_trip(
     # would overwrite this CANCELLED write with CLOSED — a trap a future reader
     # chasing "why isn't the trip cancelled any more" would otherwise walk into.
 
-    # D5: the human intervention lands on the ledger, not just in an audit column.
+    # The human intervention lands on the ledger, not just in an audit column.
     #
     # The acting dispatcher is carried in the description rather than a column
     # because TripException has no raised_by_user_id — only reviewed_by_user_id.
@@ -582,7 +582,7 @@ async def cancel_trip(
         ),
     )
 
-    # D9: published on commit — the dispatcher's list must drop this trip from
+    # Published on commit — the dispatcher's list must drop this trip from
     # Active on the same refetch trip_closed already triggers.
     enqueue_event(db, trip.operator_organization_id, TripEvent(id=trip.id, kind=RealtimeKind.TRIP_CLOSED))
 
@@ -706,7 +706,7 @@ async def list_trips_for_driver(
 
     # NEEDS_REVIEW only, not "!= REVIEWED" — a RECORDED row is on the driver's own
     # trip for context, but is not a review-workflow item (the driver has no review
-    # action at all; see Task 2, FP-146 follow-on).
+    # action at all; see FP-146 follow-on).
     exc_counts: dict[uuid.UUID, int] = {
         row[0]: row[1]
         for row in (

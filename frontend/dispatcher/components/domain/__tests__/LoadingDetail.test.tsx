@@ -152,7 +152,7 @@ it('labels an excess scan without a negative shortage', () => {
   expect(screen.queryByText(/-2 not scanned/)).not.toBeInTheDocument()
 })
 
-// Task 3: loading is system-observed and most rows never carry a fix at all, so the
+// Loading is system-observed and most rows never carry a fix at all, so the
 // section must appear ONLY when there is something to show it: hasLocationEvidence's
 // three-way split, exercised end to end through the rendered component.
 describe('LoadingDetail: location section', () => {

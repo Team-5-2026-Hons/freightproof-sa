@@ -37,7 +37,7 @@ interface DonutChartProps<Row> {
 export function DonutChart<Row>({
   rows, rowKey, value, color, centre, renderTooltip, height: normalHeight = CHART_HEIGHT,
 }: DonutChartProps<Row>) {
-  // Taller inside the zoom modal (D27); the ring's radii are percentages, so it grows with it.
+  // Taller inside the zoom modal; the ring's radii are percentages, so it grows with it.
   const height = useChartHeight(normalHeight)
   const byKey = new Map(rows.map((row) => [rowKey(row), row]))
   const data: DonutDatum[] = rows

@@ -376,7 +376,7 @@ describe('LogExceptionPageClient location capture', () => {
   })
 })
 
-// Trailer analytics (Stage 3): a breakdown records WHICH vehicle broke down. The driver
+// Trailer analytics: a breakdown records WHICH vehicle broke down. The driver
 // answers only "Truck or Trailer?", plus a plate on an interlink; the server works out
 // the exact vehicle from the trip.
 
@@ -592,7 +592,7 @@ describe('LogExceptionPageClient photo capture (FP-150)', () => {
   })
 
   it('does not upload the photo until Submit is pressed', async () => {
-    // Task 0B: retaking or abandoning the form must never create server-side evidence —
+    // Retaking or abandoning the form must never create server-side evidence —
     // upload only ever begins at Submit, never at capture.
     mockUseTrip.mockReturnValue({ trip: RIGID_TRIP, logException: vi.fn() })
 

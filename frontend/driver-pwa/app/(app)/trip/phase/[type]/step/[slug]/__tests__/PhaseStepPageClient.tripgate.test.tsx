@@ -32,7 +32,7 @@ import type { PhaseDescriptor, PhaseEventId } from '@shared/lib/types/phase'
 
 const TRIP_ID = 'trip-gate-1'
 const ACTIVATION_PE = 'pe-activation-1' as PhaseEventId
-const UNLOADING_PE = 'pe-unloading-1' as PhaseEventId
+const ARRIVAL_PE = 'pe-arrival-1' as PhaseEventId
 const CONFIRMATION_PE = 'pe-confirmation-1' as PhaseEventId
 
 const mockUseParams = vi.fn()
@@ -99,21 +99,21 @@ vi.mock('@/lib/api/phases', () => ({ submitPhase: (...args: unknown[]) => mockSu
 // nothing. Step components are stubbed via the registry (components/phase/ is out of
 // scope for this task and stubbing the lookup point avoids depending on 16 real
 // components' own internals).
-// Unloading, not activation: activation's draft is down to capturedAt now that its GPS
+// Arrival, not activation: activation's draft is down to capturedAt now that its GPS
 // is captured silently at submit, so it no longer holds evidence worth proving survives
-// a cold start. Unloading's seal number and visual count are exactly that kind of
-// evidence — typed by the driver, expensive to re-capture, and lost forever if a
-// mid-flight reload wipes the draft.
+// a cold start. Arrival's seal number is exactly that kind of evidence — typed by the
+// driver, expensive to re-capture, and lost forever if a mid-flight reload wipes the
+// draft. (The seal check moved here from unloading; see evidence-draft.ts.)
 function SealVerifyStub({
   draft, onUpdate,
 }: {
-  draft: { sealNumberAtDestination: string | null }
-  onUpdate: (patch: { driverVisualCount: number }) => void
+  draft: { sealNumberAtArrival: string | null }
+  onUpdate: (patch: { sealCondition: string }) => void
 }) {
   return (
     <div>
-      <p>seal:{draft.sealNumberAtDestination ?? 'null'}</p>
-      <button onClick={() => onUpdate({ driverVisualCount: 31 })}>patch-count</button>
+      <p>seal:{draft.sealNumberAtArrival ?? 'null'}</p>
+      <button onClick={() => onUpdate({ sealCondition: 'intact' })}>patch-condition</button>
     </div>
   )
 }
@@ -124,7 +124,7 @@ function ClosedStub({ onComplete }: { onComplete: () => void }) {
 
 vi.mock('@/components/phase/steps/registry', () => ({
   stepComponentFor: (phaseType: string, slug: string) => {
-    if (phaseType === 'unloading' && slug === '2-seal-verify') return SealVerifyStub
+    if (phaseType === 'arrival' && slug === '2-seal-verify') return SealVerifyStub
     if (phaseType === 'confirmation' && slug === '4-closed') return ClosedStub
     return undefined
   },
@@ -201,8 +201,8 @@ function makeTrip(phases: PhaseDescriptor[], overrides: Partial<Trip> = {}): Tri
   }
 }
 
-function unloadingDraftKey(): string {
-  return `fp_draft_${TRIP_ID}_${UNLOADING_PE}`
+function arrivalDraftKey(): string {
+  return `fp_draft_${TRIP_ID}_${ARRIVAL_PE}`
 }
 
 beforeEach(() => {
@@ -217,23 +217,23 @@ afterEach(() => {
 
 describe('trip-loading gate — drafts survive a mount that begins before the trip loads (Fix 1)', () => {
   it('loads a previously persisted draft under the real (tripId, phase_event_id) key, and the next update merges instead of wiping it', async () => {
-    // The driver typed the destination seal on an earlier session; then the app
-    // cold-starts straight onto the step URL (reload / relaunch / notification deep link).
+    // The driver typed the arrival seal on an earlier session; then the app cold-starts
+    // straight onto the step URL (reload / relaunch / notification deep link).
     //
-    // Deliberately written with sealVerifiedMatch and sealBrokenPhotoDataUrl, which were
-    // removed from UnloadingEvidence on 2026-08-05. This is raw JSON, not a typed
-    // literal, precisely so it can carry them: it stands in for a draft persisted by the
-    // PREVIOUS build and read back by this one — the real situation for any driver who
-    // was mid-trip when the app updated. Reading it must merge cleanly and ignore the
-    // dead keys, not throw or wipe the seal the driver already typed.
+    // Deliberately written with gatePhotoArtifactId, a field that lived on
+    // UnloadingEvidence before the seal check moved to its own arrival phase. This is
+    // raw JSON, not a typed literal, precisely so it can carry a dead key: it stands in
+    // for a draft persisted by the PREVIOUS build and read back by this one — the real
+    // situation for any driver who was mid-trip when the app updated. Reading it must
+    // merge cleanly and ignore the dead key, not throw or wipe the seal already typed.
     localStorage.setItem(
-      unloadingDraftKey(),
+      arrivalDraftKey(),
       JSON.stringify({
-        waybillHandedOver: null, sealNumberAtDestination: 'AB-1234', sealVerifiedMatch: null,
-        sealBrokenPhotoDataUrl: null, driverVisualCount: null, capturedAt: '2026-07-01T08:00:00Z',
+        sealNumberAtArrival: 'AB-1234', sealCondition: null, gatePhotoArtifactId: null,
+        sealPhotoDataUrl: null, sealPhotoArtifactId: null, capturedAt: '2026-07-01T08:00:00Z',
       }),
     )
-    mockUseParams.mockReturnValue({ type: 'unloading', slug: '2-seal-verify' })
+    mockUseParams.mockReturnValue({ type: 'arrival', slug: '2-seal-verify' })
     setTripState(null, true)
 
     const { rerender } = render(<PhaseStepPageClient />)
@@ -246,7 +246,7 @@ describe('trip-loading gate — drafts survive a mount that begins before the tr
     // The trip arrives on the SAME mount. The step appears with the persisted draft —
     // not an empty ACTIVATION_INITIAL.
     const trip = makeTrip([makePhase({
-      phase_event_id: UNLOADING_PE, phase_type: 'unloading', sequence_number: 4, status: 'in_progress',
+      phase_event_id: ARRIVAL_PE, phase_type: 'arrival', sequence_number: 4, status: 'in_progress',
     })])
     setTripState(trip, false)
     rerender(<PhaseStepPageClient />)
@@ -254,13 +254,13 @@ describe('trip-loading gate — drafts survive a mount that begins before the tr
 
     // The next onUpdate must MERGE into the stored draft. The buggy version would have
     // written {...emptyPrev, ...patch} to the real key here, erasing the typed seal.
-    fireEvent.click(screen.getByText('patch-count'))
+    fireEvent.click(screen.getByText('patch-condition'))
 
-    const stored = JSON.parse(localStorage.getItem(unloadingDraftKey()) ?? '{}') as {
-      sealNumberAtDestination: string | null; driverVisualCount: number | null
+    const stored = JSON.parse(localStorage.getItem(arrivalDraftKey()) ?? '{}') as {
+      sealNumberAtArrival: string | null; sealCondition: string | null
     }
-    expect(stored.sealNumberAtDestination).toBe('AB-1234') // previously captured evidence survived
-    expect(stored.driverVisualCount).toBe(31) // and the new patch landed alongside it
+    expect(stored.sealNumberAtArrival).toBe('AB-1234') // previously captured evidence survived
+    expect(stored.sealCondition).toBe('intact') // and the new patch landed alongside it
   })
 })
 

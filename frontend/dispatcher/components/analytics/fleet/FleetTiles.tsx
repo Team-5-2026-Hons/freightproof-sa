@@ -18,7 +18,7 @@ import { FLEET_COPY } from './copy'
 const COPY = FLEET_COPY.tiles
 // Enough registrations to act on without the tile growing taller than its neighbours.
 const MAX_LISTED_REGISTRATIONS = 3
-// Parcels complete and Receipts owed were removed (D26), leaving four.
+// Parcels complete and Receipts owed were removed, leaving four.
 const TILE_COUNT = 4
 
 const EXPIRY_BAND_ORDER: readonly (keyof ExpiryBands)[] = [
@@ -37,7 +37,7 @@ interface FleetTileProps {
   children?: ReactNode
 }
 
-/** One headline number (spec §7.5): label, value in proportional figures, one sub-line. */
+/** One headline number: label, value in proportional figures, one sub-line. */
 export function FleetTile({ label, value, sub, href, warn = false, className, children }: FleetTileProps) {
   const body = (
     <>
@@ -151,7 +151,7 @@ interface FleetTilesProps {
 // Five columns at xl: three single tiles plus the two-wide licence table, all on one row.
 const GRID = 'grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5'
 
-/** The four headline tiles. No controls: they always describe the fleet right now (spec D4). */
+/** The four headline tiles. No controls: they always describe the fleet right now. */
 export function FleetTiles({ data, isLoading, error, onRetry, now }: FleetTilesProps) {
   if (error !== null) {
     return (

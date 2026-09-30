@@ -11,6 +11,7 @@ role-labelled evidence hashes without exposing artifact IDs or private data.
 """
 
 import asyncio
+import re
 import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -25,7 +26,7 @@ from app.blockchain.hedera import HederaReceipt
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import (
     AnchorStatus, ArtifactType, BlockchainReceiptType, ExceptionType, ParcelStatus, PhaseStatus, PhaseType, IdvsStatus,
-    OrganizationType, SubjectType, TripStatus, VehicleType, VerifyStatus,
+    OrganizationType, SealCondition, SubjectType, TripStatus, VehicleType, VerifyStatus,
 )
 from app.db.models.evidence import EvidenceArtifact
 from app.db.models.phases import PhaseEvent
@@ -37,20 +38,29 @@ from app.db.models.vehicles import Vehicle
 from app.integrations import scan_feed as scan_feed_module
 from app.integrations.scan_feed import MockScanFeed, ScanDirection
 from app.orchestration import scan_service
+from app.orchestration.phase_plan import ANCHORED_PHASES
 from app.orchestration.phase_service import (
     _BACKGROUND_ANCHOR_TASKS,
-    advance_activation, advance_confirmation, advance_departure, advance_in_transit, advance_loading,
-    advance_unloading, compute_confirmation_canonical_payload_v1,
+    _PHASE_RECEIPT_TYPES,
+    advance_activation, advance_arrival, advance_confirmation, advance_departure,
+    advance_in_transit, advance_loading,
+    advance_unloading, compute_activation_canonical_payload_v2,
+    compute_arrival_canonical_payload_v2, compute_confirmation_canonical_payload_v1,
     compute_confirmation_canonical_payload_v2, compute_departure_canonical_payload_v1,
-    compute_departure_canonical_payload_v2,
+    compute_departure_canonical_payload_v2, compute_in_transit_canonical_payload_v2,
+    compute_loading_canonical_payload_v2, compute_override_canonical_payload_v2,
+    compute_unloading_canonical_payload_v2,
+    override_phase,
+    receipt_type_for,
     recover_phase_anchor,
 )
 from app.orchestration.phase_service import anchor_phase_event
 from app.orchestration.verification_service import verify_subject
 from app.storage.supabase_storage import EvidenceObjectNotFoundError, EvidenceStorageUnavailableError
 from app.schemas.phases import (
-    ActivationCompleteRequest, ConfirmationCompleteRequest, DepartureCompleteRequest,
-    InTransitCompleteRequest, LoadingCompleteRequest, UnloadingCompleteRequest,
+    ActivationCompleteRequest, ArrivalCompleteRequest, ConfirmationCompleteRequest,
+    DepartureCompleteRequest, InTransitCompleteRequest, LoadingCompleteRequest,
+    UnloadingCompleteRequest,
 )
 from tests.conftest import FakeMockStateStore
 
@@ -161,13 +171,17 @@ async def trip_fixture(db_session):
             trip_id=trip.id, phase_type=PhaseType.IN_TRANSIT, trip_stop_id=stop0.id,
             sequence_number=4, status=PhaseStatus.PENDING,
         ),
+        "arrival": PhaseEvent(
+            trip_id=trip.id, phase_type=PhaseType.ARRIVAL, trip_stop_id=stop1.id,
+            sequence_number=5, status=PhaseStatus.PENDING,
+        ),
         "unloading": PhaseEvent(
             trip_id=trip.id, phase_type=PhaseType.UNLOADING, trip_stop_id=stop1.id,
-            sequence_number=5, status=PhaseStatus.PENDING,
+            sequence_number=6, status=PhaseStatus.PENDING,
         ),
         "confirmation": PhaseEvent(
             trip_id=trip.id, phase_type=PhaseType.CONFIRMATION, trip_stop_id=stop1.id,
-            sequence_number=6, status=PhaseStatus.PENDING,
+            sequence_number=7, status=PhaseStatus.PENDING,
         ),
     }
     db_session.add_all(phases.values())
@@ -192,7 +206,7 @@ async def _advance_to_departure(
     db_session, trip, driver, phases, *,
     waybill_hash: str | None = "a" * 64, seal_hash: str = "a" * 64,
 ):
-    """D7/T5 (task 2.6): the seal — and the anchor — moved from loading to
+    """The seal — and the anchor — moved from loading to
     departure, so this is now the helper that produces an anchored handshake."""
     await advance_activation(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["activation"].id,
@@ -239,20 +253,25 @@ async def _advance_to_arrival(db_session, trip, driver, phases):
 
 async def _advance_to_unloading(db_session, trip, driver, phases):
     await _advance_to_arrival(db_session, trip, driver, phases)
-    return await advance_unloading(
-        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading"].id,
-        payload=UnloadingCompleteRequest(
-            phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-1234",
-            gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
+    await advance_arrival(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["arrival"].id,
+        payload=ArrivalCompleteRequest(
+            phase_type=PhaseType.ARRIVAL, seal_condition=SealCondition.INTACT,
+            seal_number_at_arrival="AB-1234",
+            seal_photo_artifact_id=await _make_artifact(db_session, trip.id),
             idempotency_key=str(uuid.uuid4()),
         ),
+    )
+    return await advance_unloading(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading"].id,
+        payload=UnloadingCompleteRequest(phase_type=PhaseType.UNLOADING, idempotency_key=str(uuid.uuid4())),
     )
 
 
 # ── Payload shape: no GPS/artifact/PII keys (pure logic, no DB) ────────────────
 
 def test_departure_v1_payload_remains_byte_compatible():
-    """T5/task 2.6: driver_visual_count is gone from this payload — it stays
+    """driver_visual_count is gone from this payload — it stays
     on loading, unanchored, and never travels with the seal to departure."""
     event_id = uuid.uuid4()
     trip_id = uuid.uuid4()
@@ -412,7 +431,7 @@ async def _drain_anchors(db_session, dispatched) -> None:
 async def test_advance_departure_anchors_with_pickup_receipt_type(
     db_session, trip_fixture, captured_anchor_dispatches,
 ):
-    """D7/T5 (task 2.6): the PICKUP-typed anchor moved whole from loading to
+    """The PICKUP-typed anchor moved whole from loading to
     departure — this is now where it's produced."""
     trip, driver, phases = trip_fixture
 
@@ -484,9 +503,9 @@ async def test_advance_departure_v2_anchors_null_for_absent_legacy_waybill(
     assert receipt.payload_json["waybill_photo_sha256"] is None
 
 
-# Task 7 removed test_advance_confirmation_anchors_even_on_count_mismatch from
+# test_advance_confirmation_anchors_even_on_count_mismatch was removed from
 # here (see git history) — advance_loading stopped writing driver_visual_count,
-# so the old three-way count check it drove became unreachable. Task 8 restores
+# so the old three-way count check it drove became unreachable. This restores
 # the same property below, now driven by a genuine scan-out vs scan-in mismatch.
 
 @pytest.mark.asyncio
@@ -550,6 +569,15 @@ async def test_advance_confirmation_anchors_even_on_a_scan_mismatch(
         db_session, trip_id=trip.id, driver_id=driver.id,
         phase_event_id=phases["in_transit"].id, payload=_arrival_payload(),
     )
+    await advance_arrival(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["arrival"].id,
+        payload=ArrivalCompleteRequest(
+            phase_type=PhaseType.ARRIVAL, seal_condition=SealCondition.INTACT,
+            seal_number_at_arrival="AB-1234",
+            seal_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            idempotency_key=str(uuid.uuid4()),
+        ),
+    )
     # Only 2 of 3 scanned in at destination — the mismatch this test exists to
     # anchor. Staged/ingested/closed BEFORE advance_unloading, not after: UNLOADING
     # now gates on this stop's IN-direction scan session (phase_gate.GATED_PHASES).
@@ -567,11 +595,7 @@ async def test_advance_confirmation_anchors_even_on_a_scan_mismatch(
 
     await advance_unloading(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading"].id,
-        payload=UnloadingCompleteRequest(
-            phase_type=PhaseType.UNLOADING, seal_number_at_destination="AB-1234",
-            gate_photo_artifact_id=await _make_artifact(db_session, trip.id),
-            idempotency_key=str(uuid.uuid4()),
-        ),
+        payload=UnloadingCompleteRequest(phase_type=PhaseType.UNLOADING, idempotency_key=str(uuid.uuid4())),
     )
 
     result = await advance_confirmation(
@@ -609,7 +633,7 @@ async def test_advance_confirmation_anchors_even_on_a_scan_mismatch(
 async def test_verify_subject_after_departure_reconstructs_matching_payload(
     db_session, trip_fixture, captured_anchor_dispatches,
 ):
-    """D7/T5 (task 2.6): verification_service._reconstruct_phase_event_payload
+    """verification_service._reconstruct_phase_event_payload
     now dispatches on PhaseType.DEPARTURE, not LOADING, matching where the
     seal (and the anchor) actually live post-refactor."""
     trip, driver, phases = trip_fixture
@@ -1131,3 +1155,319 @@ async def test_recovery_retries_failed_hedera_submission(db_session, trip_fixtur
 
     assert await recover_phase_anchor(db_session, due_before=datetime.now(UTC) + timedelta(minutes=1)) is True
     assert event.anchor_status == AnchorStatus.ANCHORED
+
+
+# ── Every phase anchors ─────────────────────────────────────────────────────────
+
+def test_anchored_phases_is_every_phase_type():
+    """ANCHORED_PHASES becomes frozenset(PhaseType), so every
+    row a plan writes is created PENDING rather than NOT_REQUIRED."""
+    assert ANCHORED_PHASES == frozenset(PhaseType)
+
+
+def test_receipt_types_cover_every_phase_except_trip_creation():
+    """trip_creation is deliberately absent — it anchors through create_trip's own
+    JOURNEY_LOCK path, never through this module (receipt_type_for's docstring)."""
+    assert PhaseType.TRIP_CREATION not in _PHASE_RECEIPT_TYPES
+    assert set(_PHASE_RECEIPT_TYPES) == set(PhaseType) - {PhaseType.TRIP_CREATION}
+
+
+def test_receipt_types_are_distinct():
+    """Two phase types must never be able to produce the same receipt type — that
+    would make a receipt ambiguous about which phase it actually evidences."""
+    assert len(set(_PHASE_RECEIPT_TYPES.values())) == len(_PHASE_RECEIPT_TYPES)
+
+
+@pytest.mark.parametrize("phase_type", list(PhaseType))
+def test_receipt_type_for_returns_override_for_any_overridden_row(phase_type):
+    """An overridden row of ANY phase type anchors the override record, never its
+    own phase's receipt — receipt_type_for checks event.status before consulting
+    _PHASE_RECEIPT_TYPES at all, so this holds even for trip_creation, which has
+    no entry in that map."""
+    event = PhaseEvent(
+        id=uuid.uuid4(), trip_id=uuid.uuid4(), phase_type=phase_type,
+        sequence_number=0, status=PhaseStatus.OVERRIDDEN,
+    )
+
+    assert receipt_type_for(event) == BlockchainReceiptType.PHASE_OVERRIDE
+
+
+# ── Per-phase v2 payload shapes (pure logic, no DB) ─────────────────────────────
+
+def test_activation_v2_payload_key_set():
+    payload = compute_activation_canonical_payload_v2(phase_event_id=uuid.uuid4(), trip_id=uuid.uuid4())
+
+    assert set(payload) == {"payload_version", "phase_event_id", "trip_id", "phase_type"}
+    assert payload["payload_version"] == 2
+    assert payload["phase_type"] == "activation"
+
+
+def test_loading_v2_payload_key_set():
+    payload = compute_loading_canonical_payload_v2(
+        phase_event_id=uuid.uuid4(), trip_id=uuid.uuid4(),
+        parcel_count_origin=3, linehaul_photo_sha256="a" * 64,
+    )
+
+    assert set(payload) == {
+        "payload_version", "phase_event_id", "trip_id", "phase_type",
+        "parcel_count_origin", "linehaul_photo_sha256",
+    }
+    assert payload["phase_type"] == "loading"
+
+
+def test_loading_v2_payload_keeps_optional_keys_present_when_absent():
+    """Both parcel_count_origin and linehaul_photo_sha256 are nullable — the keys
+    must stay present with value None so reconstruction has one deterministic shape."""
+    payload = compute_loading_canonical_payload_v2(
+        phase_event_id=uuid.uuid4(), trip_id=uuid.uuid4(),
+        parcel_count_origin=None, linehaul_photo_sha256=None,
+    )
+
+    assert payload["parcel_count_origin"] is None
+    assert payload["linehaul_photo_sha256"] is None
+
+
+def test_in_transit_v2_payload_key_set():
+    payload = compute_in_transit_canonical_payload_v2(phase_event_id=uuid.uuid4(), trip_id=uuid.uuid4())
+
+    assert set(payload) == {"payload_version", "phase_event_id", "trip_id", "phase_type"}
+    assert payload["phase_type"] == "in_transit"
+
+
+def test_arrival_v2_payload_key_set():
+    payload = compute_arrival_canonical_payload_v2(
+        phase_event_id=uuid.uuid4(), trip_id=uuid.uuid4(),
+        seal_number="AB-1234", seal_condition="intact", seal_photo_sha256="a" * 64,
+    )
+
+    assert set(payload) == {
+        "payload_version", "phase_event_id", "trip_id", "phase_type",
+        "seal_number", "seal_condition", "seal_photo_sha256",
+    }
+    assert payload["phase_type"] == "arrival"
+
+
+def test_arrival_v2_payload_seal_number_none_only_for_a_missing_seal():
+    payload = compute_arrival_canonical_payload_v2(
+        phase_event_id=uuid.uuid4(), trip_id=uuid.uuid4(),
+        seal_number=None, seal_condition=SealCondition.MISSING.value, seal_photo_sha256="a" * 64,
+    )
+
+    assert "seal_number" in payload
+    assert payload["seal_number"] is None
+
+
+def test_unloading_v2_payload_key_set():
+    payload = compute_unloading_canonical_payload_v2(phase_event_id=uuid.uuid4(), trip_id=uuid.uuid4())
+
+    assert set(payload) == {"payload_version", "phase_event_id", "trip_id", "phase_type"}
+    assert payload["phase_type"] == "unloading"
+
+
+def test_override_v2_payload_key_set():
+    payload = compute_override_canonical_payload_v2(
+        phase_event_id=uuid.uuid4(), trip_id=uuid.uuid4(), phase_type=PhaseType.DEPARTURE,
+        override_user_id=uuid.uuid4(), override_note="phone lost",
+    )
+
+    assert set(payload) == {
+        "payload_version", "phase_event_id", "trip_id", "phase_type",
+        "phase_status", "overridden_by_sha256", "override_note_sha256",
+    }
+    assert payload["phase_status"] == "overridden"
+
+
+# ── No payload leaks GPS, artifact ids, PII, or completed_at ────────────────────
+
+_LOCATION_KEY_PATTERN = re.compile(r"(lat|lng|latitude|longitude|gps|coordinates)", re.IGNORECASE)
+
+
+def test_no_v2_payload_leaks_gps_artifact_ids_pii_or_completed_at():
+    """Every builder — including departure/confirmation's v2 shape and the override
+    commitment — must obey the same whitelist rule stated in each builder's own
+    docstring: no GPS/coordinates, no `*_artifact_id`
+    keys, no `completed_at`.
+
+    Only the builder-level key shape is proven here (pure logic, no DB). Whether a
+    REAL artifact id or override note ever reaches a dispatched payload is proven
+    end to end by test_anchored_payloads_across_a_full_trip_never_leak_artifact_ids_
+    gps_or_override_plaintext below, which drives the actual advance_*/override_phase
+    path rather than calling builders directly with values chosen not to collide."""
+    phase_event_id = uuid.uuid4()
+    trip_id = uuid.uuid4()
+    override_user_id = uuid.uuid4()
+
+    payloads = [
+        compute_activation_canonical_payload_v2(phase_event_id=phase_event_id, trip_id=trip_id),
+        compute_loading_canonical_payload_v2(
+            phase_event_id=phase_event_id, trip_id=trip_id,
+            parcel_count_origin=3, linehaul_photo_sha256="a" * 64,
+        ),
+        compute_in_transit_canonical_payload_v2(phase_event_id=phase_event_id, trip_id=trip_id),
+        compute_arrival_canonical_payload_v2(
+            phase_event_id=phase_event_id, trip_id=trip_id,
+            seal_number="AB-1234", seal_condition="intact", seal_photo_sha256="b" * 64,
+        ),
+        compute_unloading_canonical_payload_v2(phase_event_id=phase_event_id, trip_id=trip_id),
+        compute_departure_canonical_payload_v2(
+            phase_event_id=phase_event_id, trip_id=trip_id, seal_number="AB-1234",
+            seal_photo_sha256="c" * 64, waybill_photo_sha256="d" * 64,
+        ),
+        compute_confirmation_canonical_payload_v2(
+            phase_event_id=phase_event_id, trip_id=trip_id, pp_scan_in_count=3,
+            driver_visual_count=3, pod_photo_sha256="e" * 64, pod_signature_sha256="f" * 64,
+        ),
+        compute_override_canonical_payload_v2(
+            phase_event_id=phase_event_id, trip_id=trip_id, phase_type=PhaseType.DEPARTURE,
+            override_user_id=override_user_id, override_note="phone lost",
+        ),
+    ]
+
+    for payload in payloads:
+        for key in payload:
+            assert not _LOCATION_KEY_PATTERN.search(key), f"{key!r} looks like a location field"
+            assert not key.endswith("_artifact_id"), f"{key!r} is an artifact id field"
+            assert key != "completed_at"
+
+
+@pytest.mark.asyncio
+async def test_anchored_payloads_across_a_full_trip_never_leak_artifact_ids_gps_or_override_plaintext(
+    db_session, trip_fixture, captured_anchor_dispatches,
+):
+    """The payload whitelist, proven end to end rather than
+    only at the builder level: drives a full single-leg trip — including one dispatcher
+    override of loading — through the real advance_*/override_phase completion path and
+    inspects every payload actually queued for anchoring, not a hand-built example.
+
+    This is the strong version of the check test_no_v2_payload_leaks_gps_artifact_ids_pii_
+    or_completed_at above could not be: that test only proves a value never PASSED to a
+    builder cannot leak, which is true by construction and proves nothing about whether a
+    value the row genuinely HOLDS — a real artifact id created for this trip, the
+    override's real plaintext note/user id — ever reaches a dispatched payload.
+    """
+    trip, driver, phases = trip_fixture
+    override_note = "driver's phone was lost before loading; loading could not be scanned"
+    # A real row, not a bare uuid4(): dispatcher_override_user_id carries an FK to
+    # users, so an arbitrary id would fail the write before the payload was ever built.
+    override_user_id = (await db_session.execute(
+        select(User.id).where(User.organization_id == trip.operator_organization_id)
+    )).scalar_one()
+
+    await advance_activation(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["activation"].id,
+        payload=ActivationCompleteRequest(
+            phase_type=PhaseType.ACTIVATION,
+            driver_phone_lat=Decimal("0"), driver_phone_lng=Decimal("0"), idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+    # Overridden, not completed normally — the one override the plaintext-leak rule
+    # (POPIA: the note may name a person) must also hold for.
+    await override_phase(
+        db_session, trip_id=trip.id, phase_event_id=phases["loading"].id,
+        operator_organization_id=trip.operator_organization_id,
+        user_id=override_user_id, note=override_note,
+    )
+    await advance_departure(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["departure"].id,
+        payload=DepartureCompleteRequest(
+            phase_type=PhaseType.DEPARTURE,
+            waybill_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            seal_number="AB-1234",
+            seal_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            guard_verified_seal=True, idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+    await advance_in_transit(
+        db_session, trip_id=trip.id, driver_id=driver.id,
+        phase_event_id=phases["in_transit"].id, payload=_arrival_payload(),
+    )
+    await advance_arrival(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["arrival"].id,
+        payload=ArrivalCompleteRequest(
+            phase_type=PhaseType.ARRIVAL, seal_condition=SealCondition.INTACT,
+            seal_number_at_arrival="AB-1234",
+            seal_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+    await advance_unloading(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["unloading"].id,
+        payload=UnloadingCompleteRequest(phase_type=PhaseType.UNLOADING, idempotency_key=str(uuid.uuid4())),
+    )
+    await advance_confirmation(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["confirmation"].id,
+        payload=ConfirmationCompleteRequest(
+            phase_type=PhaseType.CONFIRMATION,
+            pod_photo_artifact_id=await _make_artifact(db_session, trip.id),
+            pod_signature_artifact_id=await _make_artifact(db_session, trip.id),
+            driver_visual_count=42, idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+    # Fires _dispatch_anchor's after_commit hook for every phase above, exactly as
+    # production does (see _drain_anchors's own docstring on why this commit is safe
+    # inside the rolled-back db_session fixture) — but without draining the captured
+    # list through anchor_phase_event, so it is still there to inspect below.
+    await db_session.commit()
+    await asyncio.gather(*_BACKGROUND_ANCHOR_TASKS)
+
+    assert len(captured_anchor_dispatches) == 7  # 6 driver phases + the one override
+
+    artifact_ids = {
+        str(artifact_id) for (artifact_id,) in (await db_session.execute(
+            select(EvidenceArtifact.id).where(EvidenceArtifact.trip_id == trip.id)
+        )).all()
+    }
+    assert artifact_ids  # sanity: the walk above genuinely created evidence to leak
+
+    for phase_event_id, payload, receipt_type in captured_anchor_dispatches:
+        for key in payload:
+            assert not _LOCATION_KEY_PATTERN.search(key), f"{key!r} looks like a location field"
+            assert not key.endswith("_artifact_id"), f"{key!r} is an artifact id field"
+            assert key != "completed_at"
+        for value in payload.values():
+            assert str(value) not in artifact_ids, (
+                f"payload for phase_event_id={phase_event_id} leaks a real artifact id: {value!r}"
+            )
+
+        if receipt_type == BlockchainReceiptType.PHASE_OVERRIDE.value:
+            assert override_note not in payload.values()
+            assert str(override_user_id) not in payload.values()
+
+
+# ── Override commitments are keyed and never expose the plain value ─────────────
+
+def test_override_commitments_differ_for_the_same_note_on_different_phase_events():
+    """The commitment is keyed to the phase_event_id (see _override_commitment's
+    docstring) precisely so a common note like "phone lost" cannot be recognised
+    across trips by hashing guesses — proving that here means two different rows
+    with the identical note/user must hash to different commitments."""
+    user_id = uuid.uuid4()
+    note = "driver lost phone before departure"
+
+    payload_a = compute_override_canonical_payload_v2(
+        phase_event_id=uuid.uuid4(), trip_id=uuid.uuid4(), phase_type=PhaseType.DEPARTURE,
+        override_user_id=user_id, override_note=note,
+    )
+    payload_b = compute_override_canonical_payload_v2(
+        phase_event_id=uuid.uuid4(), trip_id=uuid.uuid4(), phase_type=PhaseType.DEPARTURE,
+        override_user_id=user_id, override_note=note,
+    )
+
+    assert payload_a["overridden_by_sha256"] != payload_b["overridden_by_sha256"]
+    assert payload_a["override_note_sha256"] != payload_b["override_note_sha256"]
+
+
+def test_override_commitments_never_expose_the_plain_note_or_user_id():
+    """The note is free text that may name a person (POPIA) — only its keyed hash
+    may leave the database."""
+    user_id = uuid.uuid4()
+    note = "driver's phone was stolen at the depot"
+
+    payload = compute_override_canonical_payload_v2(
+        phase_event_id=uuid.uuid4(), trip_id=uuid.uuid4(), phase_type=PhaseType.ARRIVAL,
+        override_user_id=user_id, override_note=note,
+    )
+
+    assert note not in payload.values()
+    assert str(user_id) not in payload.values()

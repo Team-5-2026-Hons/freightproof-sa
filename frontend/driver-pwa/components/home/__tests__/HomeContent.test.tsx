@@ -72,17 +72,18 @@ describe('HomeContent driving entry', () => {
     vi.clearAllMocks()
   })
 
-  it('shows the unloading capture card, not the driving screen, once arrival is recorded', () => {
-    // in_transit resolved, unloading current — the driver has submitted their arrival and
-    // is standing at the destination doing seal-verify. This state used to be mistaken for
-    // "still driving" (the old case-2 fossil, V7): it is the exact moment driving must be
-    // false, and the unloading capture card is what should be offered instead.
+  it('shows the arrival capture card, not the driving screen, once in_transit resolves', () => {
+    // in_transit resolved, arrival current — the driver has swiped "Arrive at
+    // destination" and is standing at the gate doing seal-verify, before unloading. This
+    // state used to be mistaken for "still driving" (the old case-2 fossil, V7): it is the
+    // exact moment driving must be false, and the arrival capture card is what should be
+    // offered instead.
     mockUseTrip.mockReturnValue({ trip: makeTrip(walk(SINGLE_LEG_PHASE_PLAN, 4)), isLoading: false })
 
     render(<HomeContent />)
 
     expect(screen.queryByRole('button', { name: /continue driving/i })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /unloading/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /arrival/i })).toBeInTheDocument()
   })
 
   it('offers the current phase card and no driving entry when the trip is not moving', () => {

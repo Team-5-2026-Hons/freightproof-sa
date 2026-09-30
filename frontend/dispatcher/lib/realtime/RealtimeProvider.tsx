@@ -23,7 +23,7 @@ interface RealtimeContextValue {
   // Register a listener; returns an unsubscribe fn. Stable across renders.
   subscribe: (listener: Listener) => () => void
   // Increments on every successful (re)connection. Consumers use a *change* after the
-  // first as the cue to refetch — a reconnect may have missed pings while down (D7).
+  // first as the cue to refetch — a reconnect may have missed pings while down.
   reconnectNonce: number
 }
 

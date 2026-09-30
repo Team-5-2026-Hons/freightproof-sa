@@ -1,7 +1,7 @@
 """Pulsit vehicle-tracker client — position reads for a horse or trailer.
 
 THE API SHAPE IN THIS MODULE IS ASSUMED, NOT FROM PULSIT DOCUMENTATION —
-credentials aren't in hand yet (docs/iteration3_plan.md §9), so this is built
+credentials aren't in hand yet, so this is built
 behind PULSE_USE_MOCK. Every guess is quarantined in `_parse_position()` and
 the `_PULSIT_*` constants; `PulsitFix` (what callers consume) is ours and
 stable. Raw Pulsit JSON never leaves this module.

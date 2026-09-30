@@ -1,7 +1,9 @@
 # Vehicle Detail — Immutable History / Analytics Toggle — Build Spec
 
 Author: Tom (Thomas Davis), with Claude · Written 2026-09-12
-Status: **PLANNED, not built.** This is a handoff spec for a fresh session to execute.
+Status: **IMPLEMENTED IN THIS BRANCH — verified 2026-09-26** against the vehicle detail
+page, which renders an Analytics tab and `VehicleAnalyticsSummary` for horses and trailers.
+The original plan remains as a build record; no deployed-behaviour claim is made.
 Branch: `fp-156-analytics-screen` (current branch at time of writing) or whatever branch
 Tom is on when this is pasted into a new chat — confirm before starting, per CLAUDE.md.
 No Jira/ticket number exists for this piece of work yet — do not invent one.

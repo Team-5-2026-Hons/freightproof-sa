@@ -144,7 +144,7 @@ async def _load_trip_context(
     stale cache degrades the panel's readout and nothing else.
 
     Returns the TripStop row alongside its Precinct (not just the Precinct, as before
-    FP-197 Task 3) so the endpoint can echo `expected_trip_stop_id` in the response —
+    FP-197) so the endpoint can echo `expected_trip_stop_id` in the response —
     the id previously had no reason to leave this function.
     """
     trip = (await db.execute(
@@ -207,7 +207,7 @@ async def move_truck(
 
     Nothing is committed. The session is used only for reads and never written to.
 
-    TWO INPUT MODES (FP-197 Task 3), mutually exclusive by MoveTruckRequest's own
+    TWO INPUT MODES (FP-197), mutually exclusive by MoveTruckRequest's own
     validator: `waypoint_id` (legacy, fixed Cape Town demo locations — unchanged
     below) or `scenario` (+ `trip_stop_id`), which computes a position relative to
     THIS trip's own stop via orchestration/dev_truck_service.py. Whichever mode ran,
@@ -319,7 +319,7 @@ async def move_truck(
     )
     # Always evaluated against the EXPECTED stop (the phase ledger's current stop),
     # never the scenario-mode TARGET — see MoveTruckResponse's EXPECTED vs TARGET
-    # docstring. This is unchanged from before FP-197 Task 3.
+    # docstring. This is unchanged from before FP-197.
     verdict = evaluate_geofence(tracker_fix, expected_precinct)
 
     logger.info(

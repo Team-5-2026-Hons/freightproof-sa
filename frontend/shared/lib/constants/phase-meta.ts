@@ -10,13 +10,14 @@ export const PHASE_NAMES: Record<PhaseType, string> = {
   loading: 'Loading',
   departure: 'Departure',
   in_transit: 'In Transit',
+  arrival: 'Arrival',
   unloading: 'Unloading',
   confirmation: 'Confirmation',
 }
 
 // An empty recipe means no driver interaction. `loading` must stay non-empty: it's the
 // only phase advance_loading (backend/app/orchestration/phase_service.py) can complete,
-// and it requires driver_visual_count entered blind — no expected value shown, per F1.
+// and it requires driver_visual_count entered blind — no expected value shown.
 //
 // Slug numbers are ordering prefixes, not indices — do not renumber surviving slugs,
 // that would break deep links and stored draft keys.
@@ -29,7 +30,10 @@ export const STEP_SLUGS: Record<PhaseType, readonly string[]> = {
   loading: ['1-linehaul'],
   departure: ['2-capture-seal', '4-departure'],
   in_transit: [],
-  unloading: ['2-seal-verify', '4-visual-count'],
+  // The seal inspection moved here from unloading with its slug unchanged: the seal is
+  // inspected as found, before the doors open, in a phase that must finish first.
+  arrival: ['2-seal-verify'],
+  unloading: ['4-visual-count'],
   confirmation: ['1-pod-photo', '2-receiver-handover', '3-reconciliation', '4-closed'],
 }
 
@@ -40,11 +44,14 @@ export const STEP_NAMES: Record<PhaseType, readonly string[]> = {
   loading: ['Linehaul'],
   departure: ['Capture Seal', 'Confirm Departure'],
   in_transit: [],
-  unloading: ['Verify Seal', 'Visual Count'],
+  arrival: ['Inspect Seal'],
+  unloading: ['Visual Count'],
   confirmation: ['Photograph POD', 'Receiver Handover', 'Reconciliation', 'Trip Closed'],
 }
 
-// Which phases carry a Hedera anchor, and under which failure policy — parent plan D7.
-// P0 is fail-closed: a failed anchor rolls the whole trip back. P3/P6 are fail-open: the
-// phase completes and anchor_status records that a receipt is still owed.
-export const ANCHORED_PHASES: readonly PhaseType[] = ['trip_creation', 'departure', 'confirmation']
+// Which phases carry a Hedera anchor: all of them, since 2026-09-23.
+// Mirrors backend phase_plan.ANCHORED_PHASES. P0 is fail-closed: a failed anchor rolls the
+// whole trip back. Every other phase is fail-open: it completes and anchor_status records
+// that a receipt is still owed. Derived from PHASE_NAMES (a Record over every PhaseType) so a
+// new phase type is anchored by default rather than silently left out.
+export const ANCHORED_PHASES: readonly PhaseType[] = Object.keys(PHASE_NAMES) as PhaseType[]

@@ -1,4 +1,4 @@
-// Display rules for the analytics screen (FP-156 spec §4.5). A rate is never shown
+// Display rules for the analytics screen. A rate is never shown
 // without the counts it came from ("67% (2/3)"), and no data reads "—", never "0%".
 
 import { fmtDelay } from './schedule'

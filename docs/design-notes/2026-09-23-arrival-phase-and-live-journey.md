@@ -1,6 +1,11 @@
 # Arrival phase, anchoring every phase, and a live journey timeline
 
-> **Author:** Ciaran · **Date:** 2026-09-23 · **Status:** decided design, pre-implementation
+> **Author:** Ciaran · **Date:** 2026-09-23 · **Status:** S1–S4 implemented on `Ciaran`; S5 pending merge
+> **Revised 2026-09-24:** §4.7 rewritten. Pulsit is mock-only (no credentials), so the continuous
+> tracker watcher (old S8) and driver checkpoints on the journey (old S7) are dropped. They are
+> replaced by one **on-road tracker check** that records system exceptions and is driven from the
+> dev trigger panel (§4.7, stage S7). The checkpoint plan is parked:
+> [2026-09-24-s7-journey-checkpoints.md](../superpowers/plans/2026-09-24-s7-journey-checkpoints.md).
 > **Owner:** Ciaran, whole slice, on his own branch
 > **Replaces:** [known-issues.md §10](../known-issues.md#10-deferred--dedicated-arrival-custody-check-phase-iteration-4-candidate)
 > (the deferred Arrival proposal) and the capture-event-rail "Path A vs Path B" decision in
@@ -20,8 +25,8 @@ driver records the seal *as found*, before anything is opened, and the server co
 departure seal. Unloading becomes unloading only. **Every phase** is anchored to Hedera when it
 completes, not just trip creation, departure and confirmation. Every stop phase checks the driver's
 phone, the horse tracker **and every trailer tracker** against the stop's precinct. The dispatcher
-timeline shows the individual acts inside each phase (driver actions, photos, exceptions, and later
-checkpoints and tracker events) as timestamped rows that appear live. The child ledger
+timeline shows the individual acts inside each phase (driver actions, photos, exceptions, including
+exceptions the tracker raises on the road) as timestamped rows that appear live. The child ledger
 (`phase_steps`) is not built; it stays a design note and a future-work slide. All current trip data
 is test data, so it is wiped and recreated. No compatibility layer for old trips is written.
 
@@ -35,7 +40,7 @@ is test data, so it is wiped and recreated. No compatibility layer for old trips
 | D2 | Is Arrival anchored? | Yes, and so is **every phase** on completion (§4.4) |
 | D3 | What moves from unloading to arrival? | Destination seal number, intact-seal photo, the departure-to-destination seal comparison, and the `SEAL_MISMATCH` / `SEAL_UNVERIFIED` exceptions. The warehouse scan gate stays on unloading |
 | D4 | Record seal opening? | **No, out of scope.** What matters is that the same seal is still closed on arrival. Arrival records the seal's *condition as found*. If the driver finds it already broken, that is recorded as a finding, not as an opening event |
-| D5 | Geofence checks | At **every stop phase**, check the phone, the horse tracker and every trailer tracker against the precinct (§4.5). Continuously watching the tracker *between* phases is a separate later stage (§4.7, S8) |
+| D5 | Geofence checks | At **every stop phase**, check the phone, the horse tracker and every trailer tracker against the precinct (§4.5). Between phases, an on-demand on-road tracker check records road incidents (§4.7, S7); there is no continuous watcher |
 | D6 | Ownership | Ciaran implements all of it. Tom and Tim are told about the parts touching their code (§6) |
 | D7 | Existing trips | Wipe trip data and recreate trips. Old trips are neither migrated nor backfilled (§5) |
 | D8 | Child ledger | **Not built.** The acts inside a phase come from existing tables (§4.6) |
@@ -112,7 +117,7 @@ publish `EXCEPTION_RAISED` over SSE. `useTripResource` subscribes to that trip a
 
 | Missing | State today |
 |---|---|
-| Driver-logged **checkpoints** | Written with phone and tracker fixes (`checkpoint_service.log_checkpoint`). **No GET endpoint, no realtime event, never shown to the dispatcher** |
+| Driver-logged **checkpoints** | Written with phone and tracker fixes (`checkpoint_service.log_checkpoint`). **No GET endpoint, no realtime event, never shown to the dispatcher.** Parked 2026-09-24: not used in practice |
 | The phone **location trail** | Written (`location_service.record_location_pings`). **No read endpoint.** The module docstring flags the dispatcher map as not done |
 | Where the **truck** was while driving | Never recorded. The tracker is only read when the driver acts |
 | Tracker-derived events (left depot, stopped for X min, trailer separated from horse, tracker went dark) | Do not exist |
@@ -249,7 +254,7 @@ The phone and the horse are already checked at every stop phase. The gap is **tr
 3. Arrival gets all of this automatically: it is a stop-anchored phase, so it is not in
    `_PHASES_WITHOUT_A_GEOFENCE_VERDICT`.
 4. `IN_TRANSIT` stays without a verdict at completion (no precinct to compare with). Its location
-   checks come from S8.
+   checks come from the on-road tracker check (§4.7, S7).
 
 ### 4.6 The capture-event rail: acts inside each phase, live
 
@@ -269,42 +274,51 @@ completion. Publish an **INFO** realtime event on upload (INFO, or it raises a r
 dispatcher screen; see `lib/realtime/ranking.ts`). The full spec is in the 2026-09-05 handoff §3
 "Path A"; it still stands.
 
-### 4.7 The in-transit journey in detail
+### 4.7 On-road tracker check (revised 2026-09-24)
 
-The most important phase has the thinnest record. Build it up in two stages, both **recording,
-not responding**. Nothing here reroutes or dispatches anyone.
+**Why this replaced the watcher and checkpoints.** Pulsit is mock-only: there are no
+credentials, and every position comes from state the demo stages (`MockPulsitClient`,
+behind `PULSE_USE_MOCK`). A Celery beat poller over a mock would re-read a value that
+only changes when the presenter clicks, so the poller, its `trip_tracker_fixes` table,
+the stationary/entered-precinct rows and the rate-limit question (old Q4/Q5) bought
+nothing. Driver checkpoints are not used in practice and are parked. What matters on the
+road is **incidents**, and incidents are exceptions, which already appear live on the
+journey (`EXCEPTION_RAISED`, scoped to the leg by `phase_event_id`).
 
-**S7: checkpoints on the journey (small).** Add a dispatcher read for checkpoints (or include
-them in the trip detail response), publish an INFO `CHECKPOINT_LOGGED` realtime event, and render
-each checkpoint as a node in `InTransitTimeline` with its time, type, phone fix and tracker
-corroboration. The data is already written; this makes it visible.
+**The gap today.** The tracker is read only when the driver completes a stop phase.
+Moving the truck mid-journey changes nothing the dispatcher can see, and the
+trailer-decoupling rule (`_raise_trailer_decoupling_if_unrecorded`) runs at stops only.
 
-**S8: tracker watcher (the real change).** A Celery beat task polls Pulsit for the horse and every
-trailer of each `ACTIVE` trip every *N* minutes (`TRACKER_POLL_INTERVAL_SECONDS` in config). It
-stores fixes in a new append-only `trip_tracker_fixes` table and derives events from them:
+**The check.** One orchestration function reads the horse and every trailer of a trip in
+one Pulsit call and records **system** findings (`source=SYSTEM`) against the leg:
 
-| Derived event | Rule (thresholds in config) | Journey row | Exception? |
+| Finding | Rule | Exception | Severity |
 |---|---|---|---|
-| Left origin precinct | First fix outside the departure stop's fence | "Truck left {origin}" | If departure is still pending: **CRITICAL** (moved without a recorded seal) |
-| Entered destination precinct | First fix inside the next stop's fence | "Truck reached {dest}" | No |
-| Stationary | No movement beyond X m for Y min outside any precinct | "Stopped {duration}" | WARNING above a longer threshold |
-| Trailer separated from horse | Trailer–horse distance > Z m | "Trailer {reg} separated" | **CRITICAL** |
-| Tracker dark | No fix for > T min | "Tracker silent since {time}" | WARNING |
+| Trailer separated on the road | A trailer fix is more than `TRAILER_HORSE_MAX_SEPARATION_METRES` from the horse fix, while the trip is on an in-transit leg | New `TRAILER_SEPARATED_IN_TRANSIT` | CRITICAL |
+| Moved before departure | Horse fix outside the origin precinct's fence while the leg's departure is still pending | New `MOVED_BEFORE_DEPARTURE` | CRITICAL |
+| Tracker silent | A tracker returns no position | New `TRACKER_SILENT` | WARNING |
 
-The driver's swipe stays authoritative for departure and arrival. The tracker **corroborates**
-the swipe and never advances a phase. That keeps the seal evidence mandatory and a named person
-accountable, and GPS jitter at the fence edge cannot move the trip on.
+`TRAILER_SEPARATED_IN_TRANSIT` is deliberately separate from `TRAILER_LOCATION_MISMATCH`:
+that one means "trailer outside the precinct at a stop" and is judged against a fence;
+this one is judged trailer-to-horse with no fence at all. An insurer reads them differently.
 
-**POPIA:** the tracker is the vehicle's hardware, not the driver's phone, so polling it
-continuously is consistent with the app's existing choice not to track the phone in the
-background. Fixes stay in PostgreSQL and are never anchored. The exceptions they raise are
-anchored only if the direct exception anchoring proposed in research note P6 is built.
+Rules shared with the stop-phase checks: NULL never raises (no fix is its own finding,
+not a pass or a fail); each finding is recorded **once per leg, per type, per vehicle**,
+however often the check runs; the separated trailer's fix and the distance go on the
+exception row (`gps_lat`/`gps_lng`, description). Registrations identify vehicles, not
+people, so they may be named in descriptions.
 
-**Demo:** `dev_truck_service` already simulates a truck along a corridor. The watcher should read
-through the same Pulsit integration seam so the demo exercises the real code path.
+**How it runs.** On demand, never on a timer: the dev panel runs it straight after it
+moves a tracker, and offers it as its own action. The tracker **corroborates**, it never
+advances a phase; the driver's swipe stays authoritative. A real scheduler, once live
+Pulsit exists, is a thin wrapper around the same function and is future work.
 
-An optional map of the leg (tracker trail plus checkpoints) is a presentation layer on top of S8,
-not a prerequisite.
+**Demo seam.** The dev move-truck endpoint gains a target vehicle (horse or a named
+trailer), so a trailer can be staged away from its horse. The dev panel redesign that
+drives this is its own spec (see §7, S7).
+
+**POPIA:** tracker fixes are the vehicle's hardware, never the driver's phone; they stay
+in PostgreSQL and are never anchored.
 
 ### 4.8 Schema changes, all hand-written migrations named `2026_MM_DD_ciaran_*.py`
 
@@ -313,7 +327,6 @@ not a prerequisite.
 | `phase_events.seal_condition` (nullable String) | S2 |
 | `trailer_gps_snapshots.geofence_confirmed` (nullable Boolean) | S4 |
 | `evidence_artifacts.phase_event_id`, `step_slug` + CHECK | S6 |
-| New `trip_tracker_fixes` table | S8 |
 | Analytics views gain `arrival` dwell (Tom's views, §6) | S1 |
 
 No migration is needed for `PhaseType.ARRIVAL` or the new receipt types (`String(30)`). **Never**
@@ -333,21 +346,44 @@ Wiping is safer than migrating:
 | Backfill arrival rows into old trips | Renumbers `sequence_number` and rewrites rows whose hashes are already anchored. That is tampering with our own evidence |
 | **Wipe trip data and recreate** | One shape, no legacy fields, nothing to defend |
 
-**How:**
+**How:** the script already exists: `backend/scripts/dev_reset_lifecycle.py`. It is not an Alembic
+migration, because deleting data is not a schema change. It uses ordered `DELETE`, not
+`TRUNCATE … CASCADE`. It refuses to run unless `--project-ref` matches `DATABASE_URL`, and it
+asserts that reference data survives. Run **by Ciaran**, once, **from `dev`, after the Arrival
+branch merges and its migrations are applied**.
 
-- A one-off script in `backend/scripts/` (not an Alembic migration: deleting data is not a schema
-  change), run **by Ciaran**, once, **from `dev`, after the Arrival branch merges and its
-  migrations are applied**.
-- Deletes every **trip-scoped** row in FK order, working out the table list from the models'
-  foreign keys to `trips` and their children, not from memory: phases, trailer snapshots,
-  evidence artifacts, checkpoints, exceptions, handover tokens/attempts/confirmations, receiver
-  verifications, location pings, trip trailers, stops, consignments, trip-scoped blockchain
-  receipts, trips. Evidence files in Supabase Storage for those artifacts are deleted too.
+**It must be updated first (part of S5).** Its `_DELETE_ORDER` predates five trip-scoped tables:
+
+| Missing table | Foreign keys (from the models) | Must be deleted before |
+|---|---|---|
+| `receiver_identity_verifications` | handover token, handover confirmation, trip, evidence artifact | confirmations, tokens |
+| `handover_token_attempts` | handover token | tokens |
+| `handover_confirmations` | handover token, phase event, trip, evidence artifact | tokens, `phase_events`, `evidence_artifacts` |
+| `handover_capability_tokens` | phase event, trip, trip stop | `phase_events`, `trip_stops` |
+| `trip_location_pings` | trip, driver | `trips` |
+
+So the five go at the **front** of `_DELETE_ORDER`, in the order listed.
+
+As it stands, the `DELETE FROM trips` fails on a foreign key. It stops safely, but the reset
+cannot complete. Add the tables in dependency order, worked out from the models' `ForeignKey`s
+rather than from this table. Also add a unit test asserting that every model with a foreign key
+into the trip graph is in either `_DELETE_ORDER` or `_REFERENCE_TABLES`, so the next new table
+cannot be missed silently.
+
 - **Keeps** organisations, precincts, vehicles, drivers, users and their registry receipts
   (`vehicle_created`, `driver_created`, …), so no re-seeding of the fleet.
-- Dry-run mode prints row counts per table before deleting anything.
+- Evidence files in Supabase Storage for deleted artifacts become orphans. They are harmless
+  for test data; empty the bucket in the dashboard if a clean slate matters.
 - Analytics read models are refreshed afterwards.
 - Old Hedera messages stay on testnet. They are harmless and simply unreferenced.
+- Then re-seed trips with `scripts/seed_trips.py` (updated in S2, below).
+
+**`seed_trips.py` must be updated in S2.** It writes phase rows directly rather than calling
+`create_trip()`. Its plans come from the generator, so seeded trips gain arrival rows
+automatically. But its completed phases put the destination seal on the **unloading** row.
+Move that evidence onto the arrival row: seal number, `seal_condition` and the seal photo.
+Leave unloading with only its own fields. `tests/unit/test_seed_fixtures.py` should assert
+that no seeded unloading row carries seal fields.
 
 **Before running it:**
 
@@ -381,21 +417,20 @@ Other code that hardcodes `UNLOADING` and must be checked for arrival: `core/pha
 
 ## 7. Stages
 
-Each stage ends green and visible. S1–S4 are the Arrival core; S5 is the reset; S6–S8 are the
+Each stage ends green and visible. S1–S4 are the Arrival core; S5 is the reset; S6–S7 are the
 live journey.
 
 | Stage | Delivers | Done when |
 |---|---|---|
 | **S1** Plan | `PhaseType.ARRIVAL`; both generators emit it; analytics view migration; dispatcher and driver app render the new row (placeholder screen) | Unit tests: single leg = 8 rows, cross-dock = 13, pickup-only stop has arrival; backend/frontend plan-parity test passes; trip detail shows Arrival |
-| **S2** Arrival phase | `ArrivalCompleteRequest`, `advance_arrival`, seal logic moved, unloading slimmed, driver-app arrival screens, `seal_condition` migration | Integration tests: intact + match → completed, no exception; number mismatch → CRITICAL `SEAL_MISMATCH`; `damaged`/`missing` → CRITICAL; no departure seal → `SEAL_UNVERIFIED`; unloading before arrival → rejected; 401 / 404 / 422 |
+| **S2** Arrival phase | `ArrivalCompleteRequest`, `advance_arrival`, seal logic moved, unloading slimmed, driver-app arrival screens, `seal_condition` migration, `seed_trips.py` puts seal evidence on arrival (§5) | Integration tests: intact + match → completed, no exception; number mismatch → CRITICAL `SEAL_MISMATCH`; `damaged`/`missing` → CRITICAL; no departure seal → `SEAL_UNVERIFIED`; unloading before arrival → rejected; 401 / 404 / 422 |
 | **S3** Anchor every phase | `ANCHORED_PHASES` = all, receipt types, per-phase canonical payloads, receipt labels | Every phase row of a completed test trip ends `ANCHORED` with a matching receipt type; payload hash tests per phase; a test asserts no payload contains coordinates, artifact IDs or `completed_at` |
 | **S4** Trailer geofence | `trailer_gps_snapshots.geofence_confirmed`, `TRAILER_LOCATION_MISMATCH` | Unit: inside / outside / no fix → TRUE / FALSE / NULL; integration: horse in and trailer out raises CRITICAL |
-| **S5** Reset | Merge to `dev`, apply migrations, run wipe script, rebuild APKs, recreate trips | §5 checklist ticked |
+| **S5** Reset | Add the five missing tables to `dev_reset_lifecycle.py` plus its coverage test; merge to `dev`; apply migrations; run the reset; rebuild APKs; re-seed trips | Coverage test passes; §5 checklist ticked |
 | **S6** Live photo rows | Attribution migration, upload validation, INFO upload event, photo rows on the rail | A photo taken mid-phase appears on the dispatcher rail without reload |
-| **S7** Checkpoints on journey | Read path, `CHECKPOINT_LOGGED`, journey nodes | A driver checkpoint appears on the in-transit timeline live |
-| **S8** Tracker watcher | Beat task, `trip_tracker_fixes`, derived events, exceptions | With the dev truck simulator: leaving the depot, a stop, and trailer separation each appear as journey rows; moving before departure raises CRITICAL |
+| **S7** On-road tracker check | New exception types, road check function, move-truck target vehicle, dev panel actions (§4.7) | Unit: separation / moved-before-departure / silent / no-fix-no-raise / once-per-leg. Integration: staging a trailer away from its horse and running the check raises one CRITICAL `TRAILER_SEPARATED_IN_TRANSIT` that appears on the journey live — **done 2026-09-24** |
 
-S1–S5 must ship together; there is no useful state in between. S6–S8 are independent and can be
+S1–S5 must ship together; there is no useful state in between. S6–S7 are independent and can be
 cut from the end if time runs out.
 
 ---
@@ -407,8 +442,8 @@ cut from the end if time runs out.
 | Q1 | Separate `SEAL_COMPROMISED` for damaged/missing, or reuse `SEAL_MISMATCH`? | Separate. "Wrong seal number" and "seal broken" are different findings for an insurer |
 | Q2 | Does a dispatcher override anchor? | Yes. Anchor the override record (who, when, reason hash). An override is exactly what a dispute questions |
 | Q3 | Should arrival require the tracker to be inside the destination fence? | No. Record the verdict and raise the exception; never block the driver on a tracker that may be dark |
-| Q4 | S8 poll interval and thresholds | Start at 5 min poll, 30 min stationary, 500 m trailer separation, 20 min dark. All in config, tuned against the simulator |
-| Q5 | Pulsit rate limits for continuous polling | Check before S8; design the poller to batch devices per call if the API allows it |
+| Q4 | ~~S8 poll interval and thresholds~~ | Dropped 2026-09-24: no poller. Separation reuses `TRAILER_HORSE_MAX_SEPARATION_METRES` |
+| Q5 | ~~Pulsit rate limits for continuous polling~~ | Dropped 2026-09-24: Pulsit is mock-only; revisit if live credentials arrive |
 
 ---
 

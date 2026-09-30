@@ -674,7 +674,7 @@ async def test_vehicle_streaks_and_trips_since_last_incident(
     assert since == {"mixed": 1, "record": 3, "clean": 2, "double": 1}
 
 
-# ── Trailers (trailer analytics spec, Stage 2) ───────────────────────────────
+# ── Trailers ──────────────────────────────────────────────────────────────────
 
 
 async def _vehicle_rows(db: AsyncSession, operator: Operator, month: date) -> dict[uuid.UUID, Any]:
@@ -820,7 +820,7 @@ async def test_breakdown_recorded_against_the_horse_counts_for_no_trailer(
 async def test_trailer_streaks_and_trips_since_last_incident(
     db_session: AsyncSession, operator: Operator, lane: list[Precinct], month: date,
 ) -> None:
-    """FP-153 §11.4's worked examples, applied to trailers. Every breakdown is recorded
+    """FP-153's worked examples, applied to trailers. Every breakdown is recorded
     against a trailer, so the horse pulling them all keeps a clean record."""
     trailers = {name: _new_trailer(operator.org) for name in ("mixed", "record", "clean", "double")}
     db_session.add_all(trailers.values())

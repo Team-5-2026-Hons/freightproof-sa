@@ -1,11 +1,14 @@
 # Step-Event Ledger — Correction Decision Record
 
+> **Historical record — archived 2026-09-26.** Incorporated into and superseded
+> by the [Step-Event Ledger implementation plan](../../design-notes/2026-09-02-step-event-ledger-implementation-plan.md).
+
 > **Status:** incorporated and superseded · **Author:** Ciaran · **Date:** 2026-09-05
 > · **Incorporated:** 2026-09-06
 > **Authority:**
-> [2026-09-02-step-event-ledger-implementation-plan.md](2026-09-02-step-event-ledger-implementation-plan.md)
+> [2026-09-02-step-event-ledger-implementation-plan.md](../../design-notes/2026-09-02-step-event-ledger-implementation-plan.md)
 > **Handoff:**
-> [2026-09-05-live-phase-timeline-handoff.md](2026-09-05-live-phase-timeline-handoff.md)
+> [2026-09-05-live-phase-timeline-handoff.md](../../design-notes/2026-09-05-live-phase-timeline-handoff.md)
 
 This file preserves the audit trail for the review that corrected the implementation plan.
 It is **not** a second implementation plan. All accepted corrections now live in the

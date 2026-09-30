@@ -26,7 +26,7 @@ describe('CurrentPhaseCard', () => {
     expect(onSelect).toHaveBeenCalledTimes(1)
   })
 
-  // Cross-dock disambiguation (parent plan): a phase_type can occur more than once in
+  // Cross-dock disambiguation: a phase_type can occur more than once in
   // one trip's plan, so the sequence number alone isn't enough for a driver to place
   // which occurrence they're on — stop_sequence must appear too.
   it('shows the stop number to disambiguate a repeated phase type on a cross-dock plan', () => {

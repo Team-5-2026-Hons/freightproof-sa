@@ -1,29 +1,15 @@
 'use client'
 
-import { EvidencePhoto } from './EvidencePhoto'
 import { Field, PhaseDetailCard, Section } from './PhaseDetailFields'
 import { PhaseLocationSection } from './PhaseLocationSection'
 import { PhaseOverrideSection } from './PhaseOverrideSection'
-import { departureSealForLeg } from '@/lib/phase/derive'
 import { locationEvidenceForPhase, hasLocationEvidence } from '@/lib/phase/location-evidence'
 import { isClosedPhaseStatus } from '@/lib/types/dev'
-import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { Precinct } from '@shared/lib/types/precinct'
 
-import type { TripException } from '@shared/lib/types/exception'
-
 interface Props {
-  artifactLoading?: boolean
-  artifactError?: string | null
-  onRetryArtifacts?: () => void
-  sealException?: Pick<TripException, 'exception_type' | 'severity'>
   phase: PhaseDescriptor
-  // Needed to find THIS leg's own departure — see departureSealForLeg. A cross-dock
-  // trip has one departure per leg, so a plain "the trip's departure" lookup would
-  // compare a later leg's arrival against an earlier leg's seal.
-  allPhases: readonly PhaseDescriptor[]
-  artifactsById: Map<string, EvidenceArtifactWithUrl>
   /** Live, summed scanned_in_count over the consignments delivered at THIS stop —
    *  recomputed per request straight from Parcel rows. There is no stamped equivalent
    *  on this phase to fall back to once unloading closes: parcel_count_destination is
@@ -39,11 +25,9 @@ interface Props {
   precinct: Precinct | undefined
 }
 
-export function UnloadingDetail({ artifactLoading, artifactError, onRetryArtifacts,
-  phase, allPhases, artifactsById, scannedInCount, expectedAtStopCount, sealException, precinct,
+export function UnloadingDetail({
+  phase, scannedInCount, expectedAtStopCount, precinct,
 }: Props) {
-  const departureSeal = departureSealForLeg(allPhases, phase)
-
   // Whether unloading itself has been decided — NOT whether the scan count could still
   // change (it always could, since it is recomputed live and nothing stamps it here).
   // This only controls the "scan in progress" note below.
@@ -52,15 +36,6 @@ export function UnloadingDetail({ artifactLoading, artifactError, onRetryArtifac
   // Null is not zero: no baseline means nothing to compare, not "nothing was delivered".
   const hasBoth = expectedAtStopCount !== null && scannedInCount !== null
   const missing = hasBoth ? expectedAtStopCount - scannedInCount : 0
-
-  // An exceptional phase alone does not identify which seal finding was recorded.
-  const verdict = sealException?.exception_type === 'seal_mismatch'
-    ? 'mismatch'
-    : sealException?.exception_type === 'seal_unverified' || !departureSeal || !phase.seal_number
-      ? 'unverified'
-      : phase.status === 'completed' && departureSeal === phase.seal_number
-        ? 'match'
-        : 'unverified'
 
   return (
     <PhaseDetailCard>
@@ -84,35 +59,6 @@ export function UnloadingDetail({ artifactLoading, artifactError, onRetryArtifac
           Scan in progress — this count may still change.
         </p>
       )}
-
-      <Section title="Seal">
-        <div className="col-span-2">
-          <div className="text-[10px] text-on-surf-v mb-[3px]">Seal at destination</div>
-          {phase.seal_number ? (
-            <span className="font-mono tracking-[0.06em] font-[700] text-[13px] bg-on-surf text-surf-lowest rounded-sm px-[10px] py-[3px]">
-              {phase.seal_number}
-            </span>
-          ) : (
-            <span className="text-[12px] text-on-surf-v">Not captured</span>
-          )}
-        </div>
-        <Field label="Seal at departure (this leg)" value={departureSeal} mono />
-        {verdict !== null && (
-          <div className={`col-span-2 text-[12px] font-[600] ${verdict === 'match' ? 'text-ok' : sealException?.severity === 'critical' ? 'text-err' : 'text-warn'}`}>
-            {verdict === 'match'
-              ? 'Recorded seals match ✓'
-              : verdict === 'mismatch'
-                ? `Mismatch — recorded as a ${sealException?.severity ?? 'recorded'} exception ✗`
-                : 'Seal continuity unverified'}
-          </div>
-        )}
-        <EvidencePhoto
-          loading={artifactLoading} error={artifactError} onRetry={onRetryArtifacts}
-          label="Seal photo at destination"
-          artifactId={phase.gate_photo_artifact_id}
-          artifact={phase.gate_photo_artifact_id ? artifactsById.get(phase.gate_photo_artifact_id) : undefined}
-        />
-      </Section>
 
       {/* hasLocationEvidence guards the section so a row with neither a fix nor a stored
           verdict does not grow an empty "Location at unloading" heading. This is NOT

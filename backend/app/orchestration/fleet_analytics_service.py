@@ -1,4 +1,4 @@
-"""Service functions for the fleet-wide Analytics page (fleet analytics spec §7.1).
+"""Service functions for the fleet-wide Analytics page.
 
 Sits between the endpoints and app/analytics/fleet/. It works out "today" in South African
 time, resolves and validates periods, supplies the orchestration facts the query layer is not
@@ -10,7 +10,7 @@ Layering: imports analytics/, db/, orchestration/ and schemas/ only. Never api/ 
 Precinct names are looked up by id ONLY, with no organisation or is_shared filter, for the
 same reason as analytics_service._precinct_names: a precinct belongs to the CLIENT, so an
 operator filter would name almost no depot, and the ids come only from this operator's own
-trips, so naming them reveals only places its trucks have been (spec G16).
+trips, so naming them reveals only places its trucks have been.
 """
 
 import uuid
@@ -83,7 +83,7 @@ def check_period(
     *, start: date, end: date, grain: Grain | None, now: datetime | None = None,
 ) -> Period:
     """Raise ValueError, with a message for the dispatcher, for a period the charts cannot
-    answer: ending after today, starting after it ends, or too many bars (spec G12)."""
+    answer: ending after today, starting after it ends, or too many bars."""
     return build_period(start=start, end=end, grain=grain, today=today_sast(now))
 
 
@@ -130,7 +130,7 @@ async def get_evidence(
 
 
 async def _precinct_names(db: AsyncSession, precinct_ids: Collection[uuid.UUID]) -> dict[uuid.UUID, str]:
-    """By id only, deliberately (module docstring, spec G16)."""
+    """By id only, deliberately — see the module docstring."""
     if not precinct_ids:
         return {}
     result = await db.execute(select(Precinct.id, Precinct.name).where(Precinct.id.in_(precinct_ids)))

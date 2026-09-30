@@ -1,4 +1,4 @@
-"""Unit tests for the phase-refactor's data-model changes (parent plan D3/D4/D6).
+"""Unit tests for the phase-refactor's data-model changes.
 
 Inspects SQLAlchemy metadata only -- no engine, no session, no DB. Mirrors
 test_model_schema_v6.py's `_column_names` style.
@@ -12,7 +12,7 @@ def _column_names(model_cls) -> set[str]:
 
 
 def test_phase_event_has_trip_stop_anchor_status_idempotency_key():
-    """D3/D4: trip_stop_id (nullable), anchor_status (non-nullable), idempotency_key exist."""
+    """trip_stop_id (nullable), anchor_status (non-nullable), idempotency_key exist."""
     from app.db.models.phases import PhaseEvent
 
     cols = {c.name: c for c in PhaseEvent.__table__.columns}
@@ -47,7 +47,7 @@ def test_phase_event_uniqueness_is_per_stop():
 
 
 def test_trip_has_current_phase_and_current_stop():
-    """D6: current_phase and current_stop exist on Trip and are both nullable."""
+    """current_phase and current_stop exist on Trip and are both nullable."""
     from app.db.models.trips import Trip
 
     cols = {c.name: c for c in Trip.__table__.columns}

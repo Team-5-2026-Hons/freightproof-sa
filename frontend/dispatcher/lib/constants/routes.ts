@@ -1,5 +1,4 @@
 // All dispatcher route strings in one place — never write URL literals in components.
-// See spec §7 for the full page catalogue.
 
 export const ROUTES = {
   home:            '/',

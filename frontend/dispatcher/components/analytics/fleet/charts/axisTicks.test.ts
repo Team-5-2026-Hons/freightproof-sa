@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { AXIS_CHAR_WIDTH_PX, AXIS_LABEL_GAP_PX } from './chartStyle'
 import { isLabelled, labelStep, labelWidthFor } from './axisTicks'
 
-describe('time-axis labels (spec §7.7 item 4)', () => {
+describe('time-axis labels', () => {
   it('labels every bucket when they all fit', () => {
     expect(labelStep(4, 600, 60)).toBe(1)
   })

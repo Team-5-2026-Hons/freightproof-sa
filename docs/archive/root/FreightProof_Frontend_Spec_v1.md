@@ -1,5 +1,10 @@
 # FreightProof SA — Frontend Spec v1
 
+> **Historical record — archived 2026-09-26.** This pre-backend, five-handshake
+> frontend specification has **no direct replacement**. Consult the
+> [documentation index](../../README.md), current source, and approved active
+> plans before making frontend decisions.
+
 **The page-by-page build manual for the Dispatcher Portal and Driver PWA.**
 
 UCT INF4027W Honours Project · 2026 · Ciaran Formby, Tim Gultig, Chiko Kasongo, Tom Davis
@@ -7,7 +12,7 @@ UCT INF4027W Honours Project · 2026 · Ciaran Formby, Tim Gultig, Chiko Kasongo
 This document is the single source of truth for the FreightProof frontend. It is paired with two sibling documents and inherits everything in them — read both before using this one:
 
 - [`docs/FreightProof_Full_Picture_v6.md`](FreightProof_Full_Picture_v6.md) — what the system does, who uses it, the five handshakes, exceptions, integrations
-- [`frontend/DESIGN_SYSTEM.md`](../frontend/DESIGN_SYSTEM.md) — colour tokens, typography, spacing, components, motion, accessibility
+- [`frontend/DESIGN_SYSTEM.md`](../../../frontend/DESIGN_SYSTEM.md) — colour tokens, typography, spacing, components, motion, accessibility
 
 This spec covers **only** the Dispatcher Portal and the Driver PWA. The guard page and client portal are out of scope for v1 and will get their own spec.
 
@@ -27,7 +32,7 @@ There is **no backend**. Every page in this spec is UI/UX only. State is local +
 
 ## 1. Stack and ground rules
 
-The stack is **not negotiable** and is fixed by [`CLAUDE.md`](../CLAUDE.md) and [`README.md`](../README.md):
+The stack is **not negotiable** and is fixed by [`CLAUDE.md`](../../../CLAUDE.md) and [`README.md`](../../../README.md):
 
 | Concern | Choice |
 |---|---|
@@ -273,7 +278,7 @@ Pages that import from `lib/mocks/` directly are a code-review block.
 
 ## 4. Design-system enforcement
 
-The design system in [`frontend/DESIGN_SYSTEM.md`](../frontend/DESIGN_SYSTEM.md) is the visual contract. This spec adds enforcement.
+The design system in [`frontend/DESIGN_SYSTEM.md`](../../../frontend/DESIGN_SYSTEM.md) is the visual contract. This spec adds enforcement.
 
 ### 4.1 Token map
 
@@ -992,9 +997,9 @@ These are intentionally excluded so the spec doesn't sprawl. Each has a future h
 ## 12. References
 
 - [`docs/FreightProof_Full_Picture_v6.md`](FreightProof_Full_Picture_v6.md) — domain reference; the source of truth for what each page must record.
-- [`frontend/DESIGN_SYSTEM.md`](../frontend/DESIGN_SYSTEM.md) — visual reference; the source of truth for tokens, type, and components.
-- [`CLAUDE.md`](../CLAUDE.md) — Claude Code instructions; covers stack, layering, testing, git rules.
-- [`README.md`](../README.md) — project overview, ports, install steps.
+- [`frontend/DESIGN_SYSTEM.md`](../../../frontend/DESIGN_SYSTEM.md) — visual reference; the source of truth for tokens, type, and components.
+- [`CLAUDE.md`](../../../CLAUDE.md) — Claude Code instructions; covers stack, layering, testing, git rules.
+- [`README.md`](../../../README.md) — project overview, ports, install steps.
 
 ---
 

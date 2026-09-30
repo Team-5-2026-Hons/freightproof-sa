@@ -1,10 +1,10 @@
-"""Queries behind the four headline tiles (GET /analytics/fleet/tiles, spec §5.0).
+"""Queries behind the four headline tiles (GET /analytics/fleet/tiles).
 
 Every tile describes the fleet right now, so none takes a period. Unused vehicles needs recent
 history, so it looks back TILE_WINDOW_DAYS South African days, today included. The queries
 run one after another because an AsyncSession can only run one statement at a time.
 
-The Parcels complete and Receipts owed tiles were removed (D26).
+The Parcels complete and Receipts owed tiles were removed.
 """
 
 import uuid

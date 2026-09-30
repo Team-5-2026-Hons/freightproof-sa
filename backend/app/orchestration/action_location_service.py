@@ -1,8 +1,7 @@
 """Assembles ActionLocationAssessment snapshots and raises the distinct
 DRIVER_VEHICLE_SEPARATION and DRIVER_LOCATION_MISMATCH findings they can imply
-(Task 5 of the trip-location-timeline-improvements story; DRIVER_LOCATION_MISMATCH
-added to close a gap DRIVER_VEHICLE_SEPARATION alone leaves open — see
-record_driver_location_finding's own docstring).
+(DRIVER_LOCATION_MISMATCH added to close a gap DRIVER_VEHICLE_SEPARATION alone
+leaves open — see record_driver_location_finding's own docstring).
 
 Two independent modules each answer one narrow question, deliberately kept apart
 (see their own docstrings): `proximity_service.evaluate_proximity` answers "how far
@@ -11,7 +10,7 @@ service.evaluate_geofence` answers "is a fix inside a precinct's fence?" — ask
 here once for the driver's own phone and once for the truck, so a dispatcher can
 tell "truck in precinct, driver's phone elsewhere" apart from "both parties
 together, outside the fence". This module is the ONLY place those two answers are
-combined into one `ActionLocationAssessment` (schemas/action_location.py, Task 4)
+combined into one `ActionLocationAssessment` (schemas/action_location.py)
 and the only place that snapshot is persisted or turned into evidence.
 
 Kept separate from GPS_MISMATCH (phase_service._raise_position_disagreement_if_
@@ -33,13 +32,13 @@ driver_in_precinct` directly instead, so it fires independently of whether a
 tracker fix existed to compare against.
 
 Scope fence for reviewers: driver-raised exception reports (exception_service.py,
-DriverExceptionCreateBody) are NOT wired to this module by this story, even though
-R8 adds `driver_accuracy_metres` to that schema and R13 adds `exceptions.
-action_location_assessment` to the table those reports live in. Both exist now so
-a later task can populate them without a second migration; exception_service.py is
-not in this story's file list, and a driver exception report's own capture
+DriverExceptionCreateBody) are NOT wired to this module yet, even though
+`driver_accuracy_metres` was added to that schema and `exceptions.
+action_location_assessment` was added to the table those reports live in. Both exist
+now so a later change can populate them without a second migration; exception_service.py
+is out of scope here, and a driver exception report's own capture
 assessment — embedded on ITS OWN row, never as a second recursively-generated
-TripException — is that later task's wiring, not this one's.
+TripException — is that later change's wiring, not this one's.
 
 Layering: orchestration → orchestration/proximity_service, orchestration/
 geofence_service, integrations(PulsitFix type only) → db. Never imported by
@@ -169,7 +168,7 @@ async def build_phase_assessment(
     """Assemble one ActionLocationAssessment for a phase handshake.
 
     `horse_fix` is the SAME fix corroboration_service.record_phase_corroboration
-    already obtained moments earlier in this same request (R12) — this function
+    already obtained moments earlier in this same request — this function
     never calls Pulsit itself, so no action pays for a second tracker round trip.
 
     Precinct membership (driver_in_precinct/truck_in_precinct and the geometry

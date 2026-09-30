@@ -10,12 +10,11 @@ from dataclasses import dataclass
 
 from app.db.models.enums import PhaseType
 
-# The phases that carry a Hedera receipt; the rest are unanchored feeders.
-ANCHORED_PHASES: frozenset[PhaseType] = frozenset({
-    PhaseType.TRIP_CREATION,
-    PhaseType.DEPARTURE,
-    PhaseType.CONFIRMATION,
-})
+# The phases that carry a Hedera receipt: all of them. Every phase is custody
+# evidence, so every completion is anchored. Kept as a named constant rather than
+# deleted so the rule stays one testable fact, and rows are still created PENDING
+# from it.
+ANCHORED_PHASES: frozenset[PhaseType] = frozenset(PhaseType)
 
 
 @dataclass(frozen=True)
@@ -43,14 +42,19 @@ def build_phase_plan(stops: list[PlanStop]) -> list[PlannedPhase]:
     """Emit a trip's committed phase plan, in order, from its stops.
 
     The rule: `trip_creation` once with no stop; then for each stop in sequence,
-    `activation` (first stop only) or `unloading` (if anything delivers here); then
-    `loading` (if anything collects here); then `departure` + `in_transit` unless it
-    is the final stop, where `confirmation` is emitted instead.
+    `activation` (first stop only) or `arrival` (every later stop) followed by
+    `unloading` (if anything delivers here); then `loading` (if anything collects
+    here); then `departure` + `in_transit` unless it is the final stop, where
+    `confirmation` is emitted instead.
+
+    Every `in_transit` is followed by `arrival`, even at a pickup-only stop: the
+    seal is inspected before the doors open, whatever happens next at that stop.
 
     `in_transit` anchors to the stop it DEPARTS FROM, never the one it arrives at,
-    which keeps trip_creation the only NULL-stop row.
+    which keeps trip_creation the only NULL-stop row. `arrival` anchors to the stop
+    it arrives AT, so (trip, stop, phase_type) stays unique: one arrival per stop.
 
-    2 stops -> 7 rows. 3-stop cross-dock -> 11 rows. The single-leg trip is the
+    2 stops -> 8 rows. 3-stop cross-dock -> 13 rows. The single-leg trip is the
     degenerate case of the multi-stop plan: one code path, forever.
     """
     if not stops:
@@ -71,8 +75,10 @@ def build_phase_plan(stops: list[PlanStop]) -> list[PlannedPhase]:
     for i, stop in enumerate(stops):
         if i == 0:
             emit(PhaseType.ACTIVATION, stop)
-        elif stop.drops_off:
-            emit(PhaseType.UNLOADING, stop)
+        else:
+            emit(PhaseType.ARRIVAL, stop)
+            if stop.drops_off:
+                emit(PhaseType.UNLOADING, stop)
 
         if stop.picks_up:
             emit(PhaseType.LOADING, stop)

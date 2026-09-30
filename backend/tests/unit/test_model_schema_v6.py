@@ -29,7 +29,7 @@ def _column_names(model_cls) -> set[str]:
 
 
 def test_driver_substitution_has_four_required_log_fields():
-    """Spec §5+H3: original_driver_id, substituting_driver_id, exchange_location,
+    """original_driver_id, substituting_driver_id, exchange_location,
     approving_dispatcher_user_id must all be present and non-nullable."""
     from app.db.models.trips import DriverSubstitution
 

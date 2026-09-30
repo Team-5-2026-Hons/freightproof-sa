@@ -1,4 +1,4 @@
-"""Decision S2: the backend owns STEP_SLUGS and the frontend mirrors it. This
+"""The backend owns STEP_SLUGS and the frontend mirrors it. This
 test is the only thing making that duplication safe — it parses the TS file
 rather than trusting a comment. If it fails, the two lists disagree and one of
 them is lying to a consumer."""
@@ -36,7 +36,7 @@ def test_backend_step_slugs_match_shared_typescript_constant():
 
     assert ts == py, (
         "STEP_SLUGS disagree between backend/app/core/phase_meta.py and "
-        "frontend/shared/lib/constants/phase-meta.ts. Decision S2 requires them "
+        "frontend/shared/lib/constants/phase-meta.ts. They must stay "
         "identical; update whichever one is stale."
     )
 

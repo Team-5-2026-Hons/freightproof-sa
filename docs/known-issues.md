@@ -66,7 +66,7 @@ reproducibility, which the `CLAUDE.md` standards section is meant to guarantee.
 
 ---
 
-## 3. Xcode's "Update to recommended settings" breaks the iOS build
+## 3. Xcode's "Update to recommended settings" breaks the iOS build — resolved on the recorded branch
 
 **Files:** `frontend/driver-pwa/ios/App/App.xcodeproj/project.pbxproj`.
 
@@ -82,6 +82,10 @@ cannot set it for the App target, which is the one Xcode "upgraded".
 
 **Impact:** Hard build failure, blocks all device testing. Reappears any time the banner
 is accepted again.
+
+**Disposition (recorded 2026-09-26):** the documented source fix remains present; this is
+kept as a resolved incident record rather than an active issue. It was not re-tested on a
+device in this documentation pass.
 
 **Fix (applied):** `ENABLE_USER_SCRIPT_SANDBOXING = NO` in both Debug and Release. If the
 banner returns, do not accept it for the App project — and never for Pods, which
@@ -149,7 +153,13 @@ appear during a live demo on conference wifi, which is the worst possible time.
 
 ---
 
-## 5. `alembic --autogenerate` proposes dropping 17 indexes and the Supabase auth FKs
+## 5. `alembic --autogenerate` proposed dropping indexes and Supabase auth FKs — current status unverified
+
+**Disposition (2026-09-26):** the operation counts and result below are historical
+observations. The migration-review precaution remains active, but this documentation pass
+did not connect to a database or run `alembic check`; current drift is deliberately
+recorded as unknown. See the reconciled
+[migration-drift note](design-notes/2026-09-15-alembic-autogenerate-drift.md).
 
 **Files:** `backend/migrations/versions/0001_initial_schema.py`, `backend/app/db/models/`,
 `backend/tests/conftest.py:183-207`.

@@ -2,10 +2,10 @@
 // returning the trip's full updated TripDetailResponse rather than just the phase.
 import { api } from './client'
 import type { Trip } from '@shared/lib/types/trip'
-import type { PhaseStatus, PhaseType } from '@shared/lib/types/phase'
+import type { PhaseStatus, PhaseType, SealCondition } from '@shared/lib/types/phase'
 import type {
-  ConfirmationEvidence, DepartureEvidence,
-  LoadingEvidence, PhaseEvidence, UnloadingEvidence,
+  ArrivalEvidence, ConfirmationEvidence, DepartureEvidence,
+  LoadingEvidence, PhaseEvidence,
 } from '@/lib/types/evidence-draft'
 import type { DriverPosition, LocationWarningAcknowledgement } from '@/lib/types/location'
 import type { ActionLocationAssessment, DriverLocationCapture } from '@shared/lib/types/action-location'
@@ -63,12 +63,25 @@ export interface InTransitCompleteRequest extends PhaseCompleteRequestBase {
   phase_type: Extract<PhaseType, 'in_transit'>
 }
 
+// The seal as found at the destination gate, before anything is opened — advance_arrival
+// compares this against the leg's own departure seal server-side and raises
+// SEAL_MISMATCH/SEAL_UNVERIFIED/SEAL_COMPROMISED; the driver is never told the verdict.
+// seal_number_at_arrival is omitted (not sent as null) when the seal is missing — there
+// is nothing to read off a seal that isn't there, and the backend 422s a non-null value
+// that doesn't match XX-#### rather than treating an empty string as "not collected".
+export interface ArrivalCompleteRequest extends PhaseCompleteRequestBase {
+  phase_type: Extract<PhaseType, 'arrival'>
+  seal_condition: SealCondition
+  seal_number_at_arrival?: string
+  seal_photo_artifact_id: string
+}
+
+// Slimmed: the seal check moved to `arrival`, which the plan
+// guarantees completes first — _gate_and_load enforces plan order, so unloading can
+// never be submitted before it. Only the scan gate, visual count and location checks
+// remain here.
 export interface UnloadingCompleteRequest extends PhaseCompleteRequestBase {
   phase_type: Extract<PhaseType, 'unloading'>
-  seal_number_at_destination: string
-  // Seal as found at destination, intact, before the warehouse breaks it. Required —
-  // omitting it 422s. Named for the PhaseEvent column it reuses, not what it depicts.
-  gate_photo_artifact_id: string
 }
 
 export interface ConfirmationCompleteRequest extends PhaseCompleteRequestBase {
@@ -88,6 +101,7 @@ export type PhaseCompleteRequest =
   | LoadingCompleteRequest
   | DepartureCompleteRequest
   | InTransitCompleteRequest
+  | ArrivalCompleteRequest
   | UnloadingCompleteRequest
   | ConfirmationCompleteRequest
 
@@ -268,21 +282,41 @@ export async function submitPhase(
       })
       break
     }
-    case 'unloading': {
-      const e = evidence as UnloadingEvidence
-      // Truthiness, not `=== null`: a stale offline entry may have this property absent
-      // entirely, and `undefined === null` is false.
-      if (e.sealNumberAtDestination === null || !e.sealIntactPhotoDataUrl) {
-        throw new Error('Unloading evidence incomplete — seal number and intact seal photo are required.')
+    case 'arrival': {
+      const e = evidence as ArrivalEvidence
+      // Truthiness, not `=== null`, for the photo: a stale offline entry may have the
+      // property absent entirely, and `undefined === null` is false.
+      if (e.sealCondition === null || !e.sealPhotoDataUrl) {
+        throw new Error('Arrival evidence incomplete — seal condition and seal photo are required.')
       }
-      const sealIntactPhotoId = await artifactIdFor(
-        tripId, 'photo', e.sealIntactPhotoArtifactId ?? null, e.sealIntactPhotoDataUrl, capturedAt,
+      // A missing seal has nothing to read a number off — required for every other
+      // condition, but must never block completion when there is no seal to record.
+      if (e.sealCondition !== 'missing' && e.sealNumberAtArrival === null) {
+        throw new Error('Arrival evidence incomplete — seal number is required unless the seal is missing.')
+      }
+      const sealPhotoId = await artifactIdFor(
+        tripId, 'photo', e.sealPhotoArtifactId, e.sealPhotoDataUrl, capturedAt,
       )
+      updatedTrip = await completePhase(tripId, phaseEventId, {
+        phase_type: 'arrival',
+        ...driverPosition(position),
+        seal_condition: e.sealCondition,
+        // Omitted, not sent as null, when missing — mirrors the backend's own
+        // "nothing to read off a seal that isn't there" rule (see the type's comment).
+        ...(e.sealCondition === 'missing' ? {} : { seal_number_at_arrival: e.sealNumberAtArrival ?? undefined }),
+        seal_photo_artifact_id: sealPhotoId,
+        idempotency_key: idempotencyKey,
+        driver_captured_at: driverCapturedAt,
+        ...acknowledgementFields,
+      })
+      break
+    }
+    case 'unloading': {
+      // No seal evidence — that moved to `arrival`, which the plan guarantees completes
+      // first. Base fields only.
       updatedTrip = await completePhase(tripId, phaseEventId, {
         phase_type: 'unloading',
         ...driverPosition(position),
-        seal_number_at_destination: e.sealNumberAtDestination,
-        gate_photo_artifact_id: sealIntactPhotoId,
         idempotency_key: idempotencyKey,
         driver_captured_at: driverCapturedAt,
         ...acknowledgementFields,

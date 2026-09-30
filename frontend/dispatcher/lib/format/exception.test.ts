@@ -58,3 +58,13 @@ describe('fmtBreakdownVehicle', () => {
     })).toBe('—')
   })
 })
+
+describe('road exception labels', () => {
+  it.each([
+    ['trailer_separated_in_transit', 'Trailer separated on the road'],
+    ['moved_before_departure', 'Moved before departure'],
+    ['tracker_silent', 'Tracker silent'],
+  ])('labels %s', (type, label) => {
+    expect(fmtExceptionType(type)).toBe(label)
+  })
+})
