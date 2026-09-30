@@ -157,3 +157,30 @@ def test_render_audit_pack_html_shows_declared_police_facts_as_declared():
     assert "W/O Dlamini" in incident
     assert "tier-declared" in incident
     assert "Ops Desk" in incident
+
+
+def test_render_audit_pack_html_arrival_shows_seal_condition():
+    # Arrange
+    manifest = make_manifest(phases=[
+        make_phase(1, "departure", seal_number="SEAL-001"),
+        make_phase(3, "arrival", seal_number="SEAL-001", seal_condition="damaged"),
+    ])
+
+    # Act
+    html = render_audit_pack_html(manifest, issue=None, mirror_base_url=MIRROR)
+
+    # Assert
+    assert "P3 · Arrival" in html
+    assert "Seal condition" in html
+    assert "<strong>Damaged</strong>" in html
+
+
+def test_render_audit_pack_html_pre_arrival_phase_has_no_condition_row():
+    # Arrange
+    manifest = make_manifest(phases=[make_phase(3, "unloading", seal_number="SEAL-001")])
+
+    # Act
+    html = render_audit_pack_html(manifest, issue=None, mirror_base_url=MIRROR)
+
+    # Assert
+    assert "Seal condition" not in html

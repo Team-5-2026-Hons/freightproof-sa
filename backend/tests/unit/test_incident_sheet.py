@@ -51,6 +51,25 @@ def test_suggested_tapa_category_for_panic_is_hijacking():
     assert suggested_tapa_category("panic_button") == "Hijacking / robbery (suspected)"
 
 
+def test_suggested_tapa_category_broken_seal_at_arrival_is_theft_from_vehicle():
+    assert suggested_tapa_category("seal_compromised") == "Theft from vehicle (suspected)"
+
+
+def test_suggested_tapa_category_covers_every_critical_theft_indicator():
+    # Arrange: the exception types the phase and geofence services raise as critical
+    # or safety findings; each should give the reporter a starting category.
+    indicators = [
+        "panic_button", "seal_mismatch", "seal_compromised", "parcel_count_mismatch",
+        "trailer_separated_in_transit", "trailer_location_mismatch", "moved_before_departure",
+    ]
+
+    # Act
+    missing = [t for t in indicators if suggested_tapa_category(t) is None]
+
+    # Assert
+    assert missing == []
+
+
 def test_suggested_tapa_category_unknown_type_is_none():
     assert suggested_tapa_category("dispatcher_note") is None
 

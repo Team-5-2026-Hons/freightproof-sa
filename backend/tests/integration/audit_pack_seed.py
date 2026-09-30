@@ -43,6 +43,7 @@ from app.db.models.transit import Checkpoint, TripException
 from app.db.models.trips import Consignment, Parcel, Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.orchestration.phase_service import (
+    compute_arrival_canonical_payload_v2,
     compute_confirmation_canonical_payload_v2,
     compute_departure_canonical_payload_v2,
 )
@@ -69,6 +70,7 @@ class AuditTrip:
     departure: PhaseEvent
     departure_receipt: BlockchainReceipt
     seal_photo: EvidenceArtifact
+    arrival: PhaseEvent
     panic: TripException
     scoped_mismatch: TripException
     stop_pmb: TripStop
@@ -164,7 +166,8 @@ async def seed_audit_trip(db: AsyncSession) -> AuditTrip:
     pod_photo = _artifact(trip.id, "pod", T0 + timedelta(hours=9))
     pod_signature = _artifact(trip.id, "signature", T0 + timedelta(hours=9))
     selfie = _artifact(trip.id, "selfie", T0 + timedelta(hours=4))
-    db.add_all([seal_photo, waybill_photo, pod_photo, pod_signature, selfie])
+    arrival_seal_photo = _artifact(trip.id, "arrival-seal", T0 + timedelta(hours=8, minutes=15))
+    db.add_all([seal_photo, waybill_photo, pod_photo, pod_signature, selfie, arrival_seal_photo])
     await db.flush()
 
     def phase(seq: int, phase_type: PhaseType, stop: TripStop | None, hours: float, **kw: object) -> PhaseEvent:
@@ -181,11 +184,15 @@ async def seed_audit_trip(db: AsyncSession) -> AuditTrip:
                       seal_photo_artifact_id=seal_photo.id, waybill_photo_artifact_id=waybill_photo.id,
                       anchor_status=AnchorStatus.ANCHORED)
     in_transit = phase(4, PhaseType.IN_TRANSIT, stop_jhb, 7)
-    unloading = phase(5, PhaseType.UNLOADING, stop_dbn, 8.5, seal_number="seal-001")
-    confirmation = phase(6, PhaseType.CONFIRMATION, stop_dbn, 9, parcel_count_destination=3,
+    # Arrival-era shape: the seal is read, photographed and anchored at the gate;
+    # unloading no longer carries one.
+    arrival = phase(5, PhaseType.ARRIVAL, stop_dbn, 8.25, seal_number="SEAL-001", seal_condition="intact",
+                    seal_photo_artifact_id=arrival_seal_photo.id, anchor_status=AnchorStatus.ANCHORED)
+    unloading = phase(6, PhaseType.UNLOADING, stop_dbn, 8.5)
+    confirmation = phase(7, PhaseType.CONFIRMATION, stop_dbn, 9, parcel_count_destination=3,
                          driver_visual_count=3, pod_photo_artifact_id=pod_photo.id,
                          pod_signature_artifact_id=pod_signature.id, anchor_status=AnchorStatus.ANCHORED)
-    db.add_all([creation, activation, loading, departure, in_transit, unloading, confirmation])
+    db.add_all([creation, activation, loading, departure, in_transit, arrival, unloading, confirmation])
     await db.flush()
 
     lock_payload = compute_trip_canonical_payload(
@@ -207,9 +214,18 @@ async def seed_audit_trip(db: AsyncSession) -> AuditTrip:
         ),
     )
     departure.blockchain_receipt_id = departure_receipt.id
+    arrival_receipt = await _receipt(
+        db, trip_id=trip.id, subject_type=SubjectType.PHASE_EVENT, subject_id=arrival.id,
+        receipt_type=BlockchainReceiptType.ARRIVAL_INSPECTION, sequence=3, at=T0 + timedelta(hours=8, minutes=15),
+        payload=compute_arrival_canonical_payload_v2(
+            phase_event_id=arrival.id, trip_id=trip.id, seal_number="SEAL-001", seal_condition="intact",
+            seal_photo_sha256=arrival_seal_photo.file_hash,
+        ),
+    )
+    arrival.blockchain_receipt_id = arrival_receipt.id
     confirmation_receipt = await _receipt(
         db, trip_id=trip.id, subject_type=SubjectType.PHASE_EVENT, subject_id=confirmation.id,
-        receipt_type=BlockchainReceiptType.DELIVERY, sequence=3, at=T0 + timedelta(hours=9),
+        receipt_type=BlockchainReceiptType.DELIVERY, sequence=4, at=T0 + timedelta(hours=9),
         payload=compute_confirmation_canonical_payload_v2(
             phase_event_id=confirmation.id, trip_id=trip.id, pp_scan_in_count=3, driver_visual_count=3,
             pod_photo_sha256=pod_photo.file_hash, pod_signature_sha256=pod_signature.file_hash,
@@ -274,5 +290,5 @@ async def seed_audit_trip(db: AsyncSession) -> AuditTrip:
     return AuditTrip(
         org=org, dispatcher=dispatcher, trip=trip, driver=driver, consignment_a=consignment_a, consignment_b=consignment_b,
         departure=departure, departure_receipt=departure_receipt, seal_photo=seal_photo,
-        panic=panic, scoped_mismatch=scoped_mismatch, stop_pmb=stop_pmb,
+        arrival=arrival, panic=panic, scoped_mismatch=scoped_mismatch, stop_pmb=stop_pmb,
     )

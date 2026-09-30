@@ -58,7 +58,7 @@ def storage(monkeypatch: pytest.MonkeyPatch, audit_trip: AuditTrip) -> dict[str,
     async def fake_download(*, s3_bucket: str, s3_key: str) -> bytes:
         return store[s3_key]
 
-    for label in ("seal", "waybill", "pod", "signature", "selfie"):
+    for label in ("seal", "waybill", "pod", "signature", "selfie", "arrival-seal"):
         store[f"{label}.jpg"] = label.encode()
 
     async def fake_hash(*, s3_bucket: str, s3_key: str) -> str:

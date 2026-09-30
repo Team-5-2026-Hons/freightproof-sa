@@ -142,6 +142,8 @@ export interface PhaseRecord {
   overridden_by_dispatcher: boolean
   override_note: string | null
   seal_number: string | null
+  /** intact / damaged / missing — Arrival rows only; absent on packs frozen before Arrival. */
+  seal_condition?: string | null
   parcel_count_origin: number | null
   parcel_count_destination: number | null
   driver_visual_count: number | null

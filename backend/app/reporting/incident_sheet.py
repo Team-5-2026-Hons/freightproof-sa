@@ -21,11 +21,16 @@ _TAPA_SUGGESTION: dict[str, str] = {
     "panic_button": "Hijacking / robbery (suspected)",
     "seal_broken_in_transit": "Theft from vehicle (suspected)",
     "seal_mismatch": "Theft from vehicle (suspected)",
+    "seal_compromised": "Theft from vehicle (suspected)",
+    "trailer_separated_in_transit": "Theft of vehicle / trailer (suspected)",
     "parcel_count_mismatch": "Theft — shortage on delivery (suspected)",
     "waybill_count_mismatch": "Theft — shortage on delivery (suspected)",
     "route_deviation": "Suspicious circumstances",
     "driver_vehicle_separation": "Suspicious circumstances",
     "driver_location_mismatch": "Suspicious circumstances",
+    "trailer_location_mismatch": "Suspicious circumstances",
+    "moved_before_departure": "Suspicious circumstances",
+    "tracker_silent": "Suspicious circumstances",
 }
 
 

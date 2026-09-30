@@ -231,6 +231,7 @@
     <tr><th>Location warning acknowledged</th><td>{{ p.location_warning_acknowledged_at|sast }}{% if p.location_warning_reason %}: {{ p.location_warning_reason }}{% endif %}</td></tr>
     {% endif %}
     {% if p.seal_number %}<tr><th>Seal number</th><td>{{ p.seal_number }}</td></tr>{% endif %}
+    {% if p.seal_condition %}<tr><th>Seal condition</th><td>{% if p.seal_condition != 'intact' %}<strong>{{ p.seal_condition|humanise }}</strong>{% else %}{{ p.seal_condition|humanise }}{% endif %}</td></tr>{% endif %}
     {% if p.parcel_count_origin is not none %}<tr><th>Parcels scanned out</th><td>{{ p.parcel_count_origin }}</td></tr>{% endif %}
     {% if p.parcel_count_destination is not none %}<tr><th>Parcels scanned in</th><td>{{ p.parcel_count_destination }}</td></tr>{% endif %}
     {% if p.driver_visual_count is not none %}<tr><th>Driver's count</th><td>{{ p.driver_visual_count }}</td></tr>{% endif %}

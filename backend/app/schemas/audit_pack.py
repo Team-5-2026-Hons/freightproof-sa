@@ -187,6 +187,9 @@ class PhaseRecord(_Frozen):
     overridden_by_dispatcher: bool
     override_note: str | None
     seal_number: str | None
+    # intact / damaged / missing, recorded at the Arrival gate only (None on every other
+    # phase). Defaulted so a manifest frozen before Arrival existed still validates.
+    seal_condition: str | None = None
     parcel_count_origin: int | None
     parcel_count_destination: int | None
     driver_visual_count: int | None

@@ -328,6 +328,145 @@ def test_derive_observations_seal_mismatch_is_attention():
     assert "XYZ999" in observations["seal.continuity"].text
 
 
+def _seal_observations(manifest: AuditPackManifest, code: str = "seal.continuity") -> list[Any]:
+    return [o for o in derive_observations(manifest) if o.code == code]
+
+
+def test_derive_observations_seal_read_at_arrival_not_unloading():
+    # Arrange: Arrival-era leg. Unloading at the same stop no longer carries a seal, so
+    # pairing departure with it would wrongly report "cannot be verified".
+    stop_id = uuid.uuid4()
+    manifest = _manifest(phases=[
+        _phase(1, "departure", seal_number="ABC123"),
+        _phase(3, "arrival", seal_number="ABC123", seal_condition="intact", trip_stop_id=stop_id),
+        _phase(4, "unloading", trip_stop_id=stop_id),
+    ])
+
+    # Act
+    seals = _seal_observations(manifest)
+
+    # Assert
+    assert len(seals) == 1
+    assert seals[0].level == "info"
+    assert "Arrival" in seals[0].text
+
+
+def test_derive_observations_seal_arrival_anchored_reading_says_anchored():
+    # Arrange
+    manifest = _manifest(phases=[
+        _phase(1, "departure", seal_number="ABC123"),
+        _phase(3, "arrival", seal_number="ABC123", seal_condition="intact", anchor_status="anchored",
+               anchored_fields=[AnchoredField(name="seal_number", value="ABC123", matches_anchor=True)]),
+    ])
+
+    # Act
+    seals = _seal_observations(manifest)
+
+    # Assert
+    assert "anchored on Hedera" in seals[0].text
+    assert "not anchored" not in seals[0].text
+
+
+def test_derive_observations_seal_pre_arrival_unloading_still_compared():
+    # Arrange: a trip created before Arrival existed read the seal at unloading.
+    manifest = _manifest(phases=[
+        _phase(1, "departure", seal_number="ABC123"),
+        _phase(3, "unloading", seal_number="ABC123", trip_stop_id=uuid.uuid4()),
+    ])
+
+    # Act
+    seals = _seal_observations(manifest)
+
+    # Assert
+    assert len(seals) == 1
+    assert seals[0].level == "info"
+    assert "recorded, not anchored" in seals[0].text
+
+
+def test_derive_observations_seal_damaged_at_arrival_is_attention_even_when_number_matches():
+    # Arrange
+    manifest = _manifest(phases=[
+        _phase(1, "departure", seal_number="ABC123"),
+        _phase(3, "arrival", seal_number="ABC123", seal_condition="damaged"),
+    ])
+
+    # Act
+    condition = _seal_observations(manifest, "seal.condition")
+    continuity = _seal_observations(manifest)
+
+    # Assert
+    assert len(condition) == 1
+    assert condition[0].level == "attention"
+    assert "damaged" in condition[0].text
+    assert continuity[0].level == "info"
+
+
+def test_derive_observations_seal_missing_at_arrival_reports_condition_and_unverifiable():
+    # Arrange
+    manifest = _manifest(phases=[
+        _phase(1, "departure", seal_number="ABC123"),
+        _phase(3, "arrival", seal_number=None, seal_condition="missing", status="exception"),
+    ])
+
+    # Act
+    condition = _seal_observations(manifest, "seal.condition")
+    continuity = _seal_observations(manifest)
+
+    # Assert
+    assert "missing" in condition[0].text
+    assert continuity[0].level == "attention"
+    assert "cannot be verified" in continuity[0].text
+
+
+def test_derive_observations_seal_intact_arrival_adds_no_condition_observation():
+    # Arrange
+    manifest = _manifest(phases=[
+        _phase(1, "departure", seal_number="ABC123"),
+        _phase(3, "arrival", seal_number="ABC123", seal_condition="intact"),
+    ])
+
+    # Act
+    condition = _seal_observations(manifest, "seal.condition")
+
+    # Assert
+    assert condition == []
+
+
+def test_derive_observations_seal_pending_arrival_is_not_judged():
+    # Arrange
+    manifest = _manifest(status="active", phases=[
+        _phase(1, "departure", seal_number="ABC123"),
+        _phase(3, "arrival", status="pending"),
+    ])
+
+    # Act
+    seals = _seal_observations(manifest)
+
+    # Assert
+    assert seals == []
+
+
+def test_derive_observations_seal_each_leg_pairs_with_its_own_departure():
+    # Arrange: cross-dock trip, a fresh seal per leg; leg two's seal was swapped.
+    first_stop, second_stop = uuid.uuid4(), uuid.uuid4()
+    manifest = _manifest(phases=[
+        _phase(1, "departure", seal_number="LEG1"),
+        _phase(3, "arrival", seal_number="LEG1", seal_condition="intact", trip_stop_id=first_stop),
+        _phase(4, "unloading", trip_stop_id=first_stop),
+        _phase(5, "departure", seal_number="LEG2"),
+        _phase(7, "arrival", seal_number="SWAPPED", seal_condition="intact", trip_stop_id=second_stop),
+        _phase(8, "unloading", trip_stop_id=second_stop),
+    ])
+
+    # Act
+    seals = _seal_observations(manifest)
+
+    # Assert
+    assert [o.level for o in seals] == ["info", "attention"]
+    assert "LEG2" in seals[1].text
+    assert "SWAPPED" in seals[1].text
+
+
 def test_derive_observations_count_shortfall_is_attention():
     # Arrange
     manifest = _manifest(phases=[

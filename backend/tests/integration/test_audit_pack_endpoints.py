@@ -55,7 +55,7 @@ async def test_preview_audit_trail_returns_manifest_for_admin(client: AsyncClien
     body = response.json()
     assert body["trip"]["trip_reference"] == "FP-AUDIT"
     assert body["driver"]["id_number"] == "*********9087"
-    assert len(body["phases"]) == 7
+    assert len(body["phases"]) == 8
     assert body["observations"]
 
 

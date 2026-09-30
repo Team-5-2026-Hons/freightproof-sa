@@ -45,6 +45,13 @@ export function EventDetail({ token, item }: { token: string; item: TimelineItem
               </Field>
             )}
             {item.record.seal_number && <Field label="Seal number"><span className="num font-bold">{item.record.seal_number}</span></Field>}
+            {item.record.seal_condition && (
+              <Field label="Seal condition">
+                <span className={item.record.seal_condition === 'intact' ? 'font-semibold text-ok' : 'font-semibold text-err'}>
+                  {humanise(item.record.seal_condition)}
+                </span>
+              </Field>
+            )}
             {item.record.parcel_count_origin != null && <Field label="Parcels scanned out"><span className="num">{item.record.parcel_count_origin}</span></Field>}
             {item.record.parcel_count_destination != null && <Field label="Parcels scanned in"><span className="num">{item.record.parcel_count_destination}</span></Field>}
             {item.record.driver_visual_count != null && <Field label="Driver's count"><span className="num">{item.record.driver_visual_count}</span></Field>}

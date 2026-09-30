@@ -11,6 +11,7 @@ FreightProof records what happened, it does not decide who is at fault
 
 from collections.abc import Iterable, Sequence
 from datetime import date, datetime, timedelta
+from uuid import UUID
 
 from app.core.display import format_sast
 from app.core.geo import haversine_metres
@@ -261,21 +262,58 @@ def _observe_anchors(manifest: AuditPackManifest) -> list[Observation]:
     return observations
 
 
+def _destination_seal_phases(ordered: Sequence[PhaseRecord]) -> list[PhaseRecord]:
+    """The phase that read the seal at each destination gate. Arrival does, since it was
+    added; before it, unloading did. A stop that has an arrival row never falls back to
+    its unloading row, which no longer carries a seal."""
+    stops_with_arrival = {p.trip_stop_id for p in ordered if p.phase_type == "arrival"}
+    return [
+        p for p in ordered
+        if p.phase_type == "arrival"
+        or (p.phase_type == "unloading" and p.trip_stop_id not in stops_with_arrival)
+    ]
+
+
+def _destination_reading_note(phase: PhaseRecord) -> str:
+    """Whether the destination reading can be checked against Hedera. Only an arrival
+    row anchors the seal it read; a pre-Arrival unloading row only recorded it."""
+    anchored = any(f.name == "seal_number" and f.matches_anchor for f in phase.anchored_fields)
+    if phase.phase_type == "arrival" and anchored:
+        return "The destination reading is anchored on Hedera."
+    return "The destination reading is recorded, not anchored."
+
+
+def _observe_seal_condition(phase: PhaseRecord, ids: list[UUID]) -> Observation | None:
+    """A damaged or missing seal is a finding on its own, even when the number matches:
+    a matching number on a broken seal still means the load could have been opened."""
+    if phase.seal_condition is None or phase.seal_condition == "intact":
+        return None
+    return Observation(
+        code="seal.condition", level="attention",
+        text=f"Seal found {phase.seal_condition} at {_phase_label(phase)}.",
+        evidence_ids=ids,
+    )
+
+
 def _observe_seals(phases: Sequence[PhaseRecord]) -> list[Observation]:
-    """Pair every unloading with the departure before it — a multi-stop trip has one
-    seal per leg, so a trip-wide single comparison would be wrong."""
+    """Pair every destination seal reading with the departure before it — a multi-stop
+    trip has one seal per leg, so a trip-wide single comparison would be wrong."""
     ordered = sorted(phases, key=lambda p: p.sequence_number)
+    destinations = {p.phase_event_id for p in _destination_seal_phases(ordered)}
     observations: list[Observation] = []
     departure: PhaseRecord | None = None
     for phase in ordered:
         if phase.phase_type == "departure":
             departure = phase
             continue
-        if phase.phase_type != "unloading" or phase.status in _UNFINISHED_STATUSES:
+        if phase.phase_event_id not in destinations or phase.status in _UNFINISHED_STATUSES:
             continue
         applied = _normalized_seal(departure.seal_number if departure else None)
         found = _normalized_seal(phase.seal_number)
         ids = [p.phase_event_id for p in (departure, phase) if p is not None]
+        condition = _observe_seal_condition(phase, ids)
+        if condition is not None:
+            observations.append(condition)
         if not applied or not found:
             observations.append(Observation(
                 code="seal.continuity", level="attention",
@@ -288,7 +326,7 @@ def _observe_seals(phases: Sequence[PhaseRecord]) -> list[Observation]:
             observations.append(Observation(
                 code="seal.continuity", level="info",
                 text=(f"Seal {applied} applied at departure matched at {_phase_label(phase)}. "
-                      "The destination reading is recorded, not anchored."),
+                      f"{_destination_reading_note(phase)}"),
                 evidence_ids=ids,
             ))
         else:

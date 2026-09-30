@@ -76,6 +76,7 @@ REDACTED_STOP_NAME = "Other stop on route"
 # Anchored payload key → PhaseEvent attribute it committed (phase_service v2 payloads).
 _ANCHORED_PHASE_FIELDS: Mapping[str, str] = {
     "seal_number": "seal_number",
+    "seal_condition": "seal_condition",
     "pp_scan_in_count": "parcel_count_destination",
     "driver_visual_count": "driver_visual_count",
 }
@@ -220,6 +221,7 @@ def _phase_record(
         overridden_by_dispatcher=event.dispatcher_override_user_id is not None,
         override_note=event.dispatcher_override_note,
         seal_number=event.seal_number,
+        seal_condition=event.seal_condition,
         parcel_count_origin=counts["parcel_count_origin"],
         parcel_count_destination=counts["parcel_count_destination"],
         driver_visual_count=counts["driver_visual_count"],

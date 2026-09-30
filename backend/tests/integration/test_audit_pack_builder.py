@@ -34,7 +34,7 @@ async def test_build_audit_manifest_lists_phases_in_ledger_order(db_session, aud
     manifest = await _build(db_session, audit_trip)
 
     # Assert
-    assert [p.sequence_number for p in manifest.phases] == [0, 1, 2, 3, 4, 5, 6]
+    assert [p.sequence_number for p in manifest.phases] == [0, 1, 2, 3, 4, 5, 6, 7]
     assert manifest.trip.trip_reference == "FP-AUDIT"
     assert manifest.trip.operator_name == "Load Factor"
     assert sorted(manifest.trip.client_names) == ["Courier Guy", "FedEx"]
@@ -54,6 +54,48 @@ async def test_build_audit_manifest_marks_anchored_departure_and_its_photo(db_se
     assert {f.name: f.matches_anchor for f in departure.anchored_fields}["seal_number"] is True
 
 
+async def test_build_audit_manifest_arrival_carries_anchored_seal_reading(db_session, audit_trip):
+    # Act
+    manifest = await _build(db_session, audit_trip)
+
+    # Assert
+    arrival = next(p for p in manifest.phases if p.phase_type == "arrival")
+    assert arrival.seal_number == "SEAL-001"
+    assert arrival.seal_condition == "intact"
+    assert arrival.tier == "anchored"
+    fields = {f.name: f.matches_anchor for f in arrival.anchored_fields}
+    assert fields["seal_number"] is True
+    assert fields["seal_condition"] is True
+    seal_photo = next(e for e in arrival.evidence if e.role == "seal_photo")
+    assert seal_photo.tier == "anchored"
+
+
+async def test_build_audit_manifest_seal_continuity_uses_arrival(db_session, audit_trip):
+    # Act
+    manifest = await _build(db_session, audit_trip)
+
+    # Assert
+    continuity = [o for o in manifest.observations if o.code == "seal.continuity"]
+    assert len(continuity) == 1
+    assert continuity[0].level == "info"
+    assert audit_trip.arrival.id in continuity[0].evidence_ids
+    assert "anchored on Hedera" in continuity[0].text
+
+
+async def test_build_audit_manifest_tampered_arrival_condition_is_flagged(db_session, audit_trip):
+    # Arrange: someone edits the stored reading after it was anchored.
+    audit_trip.arrival.seal_condition = "damaged"
+    await db_session.flush()
+
+    # Act
+    manifest = await _build(db_session, audit_trip)
+
+    # Assert
+    arrival = next(p for p in manifest.phases if p.phase_type == "arrival")
+    assert {f.name: f.matches_anchor for f in arrival.anchored_fields}["seal_condition"] is False
+    assert any(o.code == "anchors.field_mismatch" for o in manifest.observations)
+
+
 async def test_build_audit_manifest_unanchored_phase_evidence_is_recorded(db_session, audit_trip):
     # Act
     manifest = await _build(db_session, audit_trip)
@@ -69,7 +111,7 @@ async def test_build_audit_manifest_canonical_strings_hash_to_receipts(db_sessio
     manifest = await _build(db_session, audit_trip)
 
     # Assert
-    assert len(manifest.anchored_records) == 3
+    assert len(manifest.anchored_records) == 4
     for record in manifest.anchored_records:
         assert hashlib.sha256(record.canonical_payload.encode()).hexdigest() == record.data_hash
         assert record.payload_matches_hash is True
