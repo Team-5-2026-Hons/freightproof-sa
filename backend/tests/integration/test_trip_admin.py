@@ -17,7 +17,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 
 from app.db.models.enums import (
-    AnchorStatus, ExceptionSeverity, ExceptionSource, ExceptionType,
+    AnchorStatus, ExceptionReviewOutcome, ExceptionReviewStatus, ExceptionSeverity, ExceptionSource, ExceptionType,
     IdvsStatus, OrganizationType, PhaseStatus, PhaseType, TripStatus,
 )
 from app.db.models.organisations import Organization
@@ -161,7 +161,57 @@ async def test_cancel_frees_the_driver_to_activate_another_trip(client: AsyncCli
     assert unblocked.status_code == 200
 
 
+async def test_cancel_note_is_reviewed_by_its_author(client: AsyncClient, db_session, seed):
+    trip = await _make_trip(db_session, seed, order_number="CANCEL-AUTHORED")
+    token = _dispatcher_token(seed)
+
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/cancel", json={"note": "Client withdrew the load."},
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 200
+    note = (await db_session.execute(
+        select(TripException).where(
+            TripException.trip_id == trip.id,
+            TripException.exception_type == ExceptionType.DISPATCHER_NOTE,
+        )
+    )).scalar_one()
+    assert note.review_status == ExceptionReviewStatus.REVIEWED
+    assert note.review_outcome == ExceptionReviewOutcome.DISPATCHER_AUTHORED
+    assert note.reviewed_by_user_id == seed["dispatcher"].id
+    assert note.claimed_by_user_id == seed["dispatcher"].id
+    assert note.reviewed_at == note.claimed_at
+
+
 # ── override ────────────────────────────────────────────────────────────────
+
+async def test_override_note_is_reviewed_by_its_author(client: AsyncClient, db_session, seed):
+    trip = await _make_trip(db_session, seed, order_number="OVERRIDE-AUTHORED")
+    dispatcher_token = _dispatcher_token(seed)
+    driver_token = make_token(sub=str(seed["driver"].id), role="driver")
+    arrival_id = await _phase_id(client, trip.id, driver_token, "arrival")
+
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{arrival_id}/override",
+        json={"note": "Gate log confirms arrival; phone dead."},
+        headers=auth_header(dispatcher_token),
+    )
+
+    assert resp.status_code == 200
+    rows = (await db_session.execute(
+        select(TripException).where(TripException.trip_id == trip.id)
+    )).scalars().all()
+    note = next(r for r in rows if r.exception_type == ExceptionType.DISPATCHER_NOTE)
+    assert note.review_status == ExceptionReviewStatus.REVIEWED
+    assert note.review_outcome == ExceptionReviewOutcome.DISPATCHER_AUTHORED
+    assert note.reviewed_by_user_id == seed["dispatcher"].id
+    assert note.claimed_by_user_id == seed["dispatcher"].id
+    assert note.reviewed_at == note.claimed_at
+    # The system's seal warning is not authored by anyone, so it goes to the inbox.
+    seal = next(r for r in rows if r.exception_type == ExceptionType.SEAL_UNVERIFIED)
+    assert seal.review_status == ExceptionReviewStatus.NEEDS_REVIEW
+    assert seal.claimed_by_user_id is None
 
 async def test_override_resolves_a_pending_phase_and_unblocks_the_next(client: AsyncClient, db_session, seed):
     trip = await _make_trip(db_session, seed, order_number="OVERRIDE-1")

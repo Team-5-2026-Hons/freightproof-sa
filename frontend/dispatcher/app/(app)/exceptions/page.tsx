@@ -11,6 +11,9 @@ import { Spinner }         from '@/components/ui/Spinner'
 import { Button }          from '@/components/ui/Button'
 import { Pagination }      from '@/components/ui/Pagination'
 import { DateRangePicker } from '@/components/ui/DateRangePicker'
+import { useAuth }             from '@/lib/hooks/useAuth'
+import { reviewState }         from '@/lib/format/review-state'
+import type { ReviewStateKind } from '@/lib/format/review-state'
 import { useExceptionQueue }   from '@/lib/hooks/useExceptions'
 import { useExceptionHistory } from '@/lib/hooks/useExceptionHistory'
 import type { UseExceptionQueueResult } from '@/lib/hooks/useExceptions'
@@ -63,17 +66,17 @@ function phaseStopLabel(phaseLabel: string | null, stopLabel: number | null): st
   return parts.length > 0 ? parts.join(' · ') : null
 }
 
-// Local to this file, deliberately — there is no shared meta for the review-status
-// badge (recorded vs reviewed) because nothing outside the History tab needs it yet.
-function reviewStatusMeta(status: ExceptionReviewStatus): { label: string; chipType: ChipType } {
-  switch (status) {
-    case 'reviewed': return { label: 'Reviewed', chipType: 'complete' }
-    case 'recorded': return { label: 'Recorded', chipType: 'pending' }
-    // The history endpoint never actually returns needs_review rows, but the field's
-    // type is the full ExceptionReviewStatus union (see useExceptionHistory.ts) —
-    // this branch exists so the switch stays exhaustive rather than needing a cast.
-    default: return { label: 'Needs Review', chipType: 'exception' }
-  }
+// Chip styling for each review state stays local to this page: only the inbox and the
+// Reviewed tab use it. ChipType has no dedicated "muted" or "highlight" values, so the
+// closest existing ones are used: pending (neutral) for unreviewed and someone else's
+// claim, transit (highlight) for my own claim.
+const REVIEW_STATE_CHIP: Record<ReviewStateKind, ChipType> = {
+  unreviewed:       'pending',
+  claimed_by_me:    'transit',
+  claimed_by_other: 'loading',
+  reviewed:         'complete',
+  authored:         'complete',
+  recorded:         'pending',
 }
 
 // Left-border accent per severity — draws the eye to high-priority items
@@ -83,13 +86,31 @@ const SEVERITY_BORDER: Record<string, string> = {
   info:     'border-l-4 border-outline-v/30',
 }
 
-type Tab = 'queue' | 'history'
+type Tab = 'unreviewed' | 'mine' | 'reviewed'
+
+const TAB_BASE = 'px-4 pb-3 text-[13px] font-[600] border-b-2 transition-colors duration-150'
+const CLAIM_HINT = 'Nothing claimed — claim an exception from Unreviewed to work it.'
 
 export default function ExceptionsPage() {
   const router = useRouter()
-  const [tab, setTab] = useState<Tab>('queue')
+  const [tab, setTab] = useState<Tab>('unreviewed')
 
   const queue = useExceptionQueue()
+  const { user } = useAuth()
+  const meId = user?.id ?? null
+
+  // One fetch, split on the client, so the tab counts can never disagree with the lists.
+  // The server already orders rows by severity; filter() preserves that order.
+  const { unreviewed, mine } = useMemo(() => {
+    const unreviewedRows: TripExceptionListItem[] = []
+    const mineRows: TripExceptionListItem[] = []
+    for (const item of queue.items) {
+      const kind = reviewState(item, meId).kind
+      if (kind === 'claimed_by_me') mineRows.push(item)
+      else if (kind === 'unreviewed' || kind === 'claimed_by_other') unreviewedRows.push(item)
+    }
+    return { unreviewed: unreviewedRows, mine: mineRows }
+  }, [queue.items, meId])
 
   // History filters are this tab's own local UI state, translated into
   // ExceptionHistoryFilters below and handed to the hook every render — the hook itself
@@ -128,44 +149,46 @@ export default function ExceptionsPage() {
 
       {/* Underline tab toggle */}
       <div className="flex px-6 pt-5 shrink-0">
-        <button
-          onClick={() => setTab('queue')}
-          className={cn(
-            'px-4 pb-3 text-[13px] font-[600] border-b-2 transition-colors duration-150',
-            tab === 'queue'
-              ? 'border-sec text-sec'
-              : 'border-transparent text-on-surf-v hover:text-on-surf',
-          )}
-        >
-          Needs Review
-          {queue.items.length > 0 && (
-            <span className="ml-1.5 bg-err text-white text-[10px] font-[700] rounded-sm px-[5px] py-[1px]">
-              {queue.items.length}
-            </span>
-          )}
-        </button>
-        <button
-          onClick={() => setTab('history')}
-          className={cn(
-            'px-4 pb-3 text-[13px] font-[600] border-b-2 transition-colors duration-150',
-            tab === 'history'
-              ? 'border-sec text-sec'
-              : 'border-transparent text-on-surf-v hover:text-on-surf',
-          )}
-        >
-          History
-        </button>
+        {([
+          ['unreviewed', `Unreviewed · ${unreviewed.length}`],
+          ['mine', `Claimed by me · ${mine.length}`],
+          ['reviewed', 'Reviewed'],
+        ] as const).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            className={cn(
+              TAB_BASE,
+              tab === key
+                ? 'border-sec text-sec'
+                : 'border-transparent text-on-surf-v hover:text-on-surf',
+            )}
+          >
+            {label}
+          </button>
+        ))}
         {/* Underline fills remaining width */}
         <div className="flex-1 border-b-2 border-outline-v/20" />
       </div>
 
       {/* Content */}
       <div className="flex-1 min-h-0 overflow-auto">
-        {tab === 'queue' ? (
-          <QueueTab queue={queue} onRowClick={goToDetail} />
+        {tab === 'unreviewed' ? (
+          <QueueTab
+            queue={queue} items={unreviewed} meId={meId} onRowClick={goToDetail}
+            title="Unreviewed"
+            emptyState={{ title: COPY.emptyState.allClear.title, body: COPY.emptyState.allClear.body }}
+          />
+        ) : tab === 'mine' ? (
+          <QueueTab
+            queue={queue} items={mine} meId={meId} onRowClick={goToDetail}
+            title="Claimed by me"
+            emptyState={{ title: 'Nothing claimed', body: CLAIM_HINT }}
+          />
         ) : (
           <HistoryTab
             history={history}
+            meId={meId}
             rawSearch={rawSearch}
             onSearchChange={setRawSearch}
             reviewStatus={reviewStatus}
@@ -187,7 +210,7 @@ export default function ExceptionsPage() {
 interface ExceptionRowProps {
   item: TripExceptionListItem
   onClick: () => void
-  /** History-only review-status badge — omitted entirely on the Needs Review tab. */
+  /** Review-state chip — shown on the inbox tabs and the Reviewed tab. */
   trailing?: React.ReactNode
 }
 
@@ -282,28 +305,35 @@ function StaleBanner({ onRetry }: { onRetry: () => void }) {
   )
 }
 
-// ─── Needs Review tab ─────────────────────────────────────────────────────────
+// ─── Unreviewed / Claimed by me tabs ─────────────────────────────────────────────────────────
 
 interface QueueTabProps {
   queue: UseExceptionQueueResult
+  /** This tab's slice of queue.items; loading, error and staleness still come from the
+   *  whole queue, so an empty slice never looks like a failed fetch. */
+  items: TripExceptionListItem[]
+  meId: string | null
+  title: string
+  emptyState: { title: string; body: string }
   onRowClick: (id: string) => void
 }
 
-function QueueTab({ queue, onRowClick }: QueueTabProps) {
-  const { items, isLoading, error, refetch } = queue
+function QueueTab({ queue, items, meId, title, emptyState, onRowClick }: QueueTabProps) {
+  const { isLoading, error, refetch } = queue
+  const hasAnyRows = queue.items.length > 0
 
   return (
     <div className="mx-6 my-5">
       {/* A background refresh failed while rows were already on screen — the list below
           is still real data, just possibly stale, so it stays up with a warning rather
           than being replaced by an error page. */}
-      {error && items.length > 0 && <StaleBanner onRetry={refetch} />}
+      {error && hasAnyRows && <StaleBanner onRetry={refetch} />}
 
       {isLoading ? (
         <div className="flex items-center justify-center py-16">
           <Spinner size="lg" />
         </div>
-      ) : error && items.length === 0 ? (
+      ) : error && !hasAnyRows ? (
         /* Ranked ahead of the all-clear empty state deliberately: "no exceptions" is the
            most reassuring thing this screen can say, and saying it because a fetch
            failed would be the worst error this page could make. */
@@ -319,13 +349,13 @@ function QueueTab({ queue, onRowClick }: QueueTabProps) {
         <div className="bg-surf-lowest rounded-lg shadow-level-3 p-10">
           <EmptyState
             icon={<Ic n="check" s={32} className="text-on-surf-v" />}
-            title={COPY.emptyState.allClear.title}
-            body={COPY.emptyState.allClear.body}
+            title={emptyState.title}
+            body={emptyState.body}
           />
         </div>
       ) : (
         <div className="bg-surf-lowest rounded-lg shadow-level-3 overflow-hidden">
-          <SecHead title="Needs Review" />
+          <SecHead title={title} />
 
           <div className="flex items-center gap-4 px-6 py-[7px] bg-surf-low border-b border-outline-v/10 select-none">
             <div className="w-[80px] shrink-0 text-[10px] font-[700] tracking-[0.1em] uppercase text-on-surf-v">Severity</div>
@@ -335,13 +365,22 @@ function QueueTab({ queue, onRowClick }: QueueTabProps) {
             <div className="w-[100px] shrink-0 text-[10px] font-[700] tracking-[0.1em] uppercase text-on-surf-v">Trip Status</div>
             <div className="w-[150px] shrink-0 text-[10px] font-[700] tracking-[0.1em] uppercase text-on-surf-v">Phase / Stop</div>
             <div className="w-[100px] shrink-0 text-[10px] font-[700] tracking-[0.1em] uppercase text-on-surf-v">Raised</div>
+            <div className="w-[100px] shrink-0 text-[10px] font-[700] tracking-[0.1em] uppercase text-on-surf-v">Review</div>
             <div className="w-[48px] shrink-0" />
           </div>
 
           <div className="divide-y divide-outline-v/10">
-            {items.map(item => (
-              <ExceptionRow key={item.id} item={item} onClick={() => onRowClick(item.id)} />
-            ))}
+            {items.map(item => {
+              const state = reviewState(item, meId)
+              return (
+                <ExceptionRow
+                  key={item.id}
+                  item={item}
+                  onClick={() => onRowClick(item.id)}
+                  trailing={<Chip type={REVIEW_STATE_CHIP[state.kind]} label={state.label} />}
+                />
+              )
+            })}
           </div>
         </div>
       )}
@@ -353,6 +392,7 @@ function QueueTab({ queue, onRowClick }: QueueTabProps) {
 
 interface HistoryTabProps {
   history: UseExceptionHistoryResult
+  meId: string | null
   rawSearch: string
   onSearchChange: (value: string) => void
   reviewStatus: '' | ExceptionReviewStatus
@@ -365,7 +405,7 @@ interface HistoryTabProps {
 }
 
 function HistoryTab({
-  history,
+  history, meId,
   rawSearch, onSearchChange,
   reviewStatus, onReviewStatusChange,
   severity, onSeverityChange,
@@ -402,7 +442,6 @@ function HistoryTab({
             className="appearance-none py-2 pl-3 pr-8 text-[13px] bg-surf-low rounded-md border border-outline-v/30 text-on-surf outline-none focus:border-sec focus:bg-surf-lowest transition-colors"
           >
             <option value="">All statuses</option>
-            <option value="recorded">Recorded</option>
             <option value="reviewed">Reviewed</option>
           </select>
           <Ic n="chev" s={12} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rotate-90 text-on-surf-v" />
@@ -425,7 +464,7 @@ function HistoryTab({
 
       {/* A page-turn or background refresh failed while a previous page's rows were
           still on screen — the hook's own isStale flag exists precisely for this,
-          rather than reusing Needs Review's `error && items.length > 0` shape. */}
+          rather than reusing the queue tabs' `error && items.length > 0` shape. */}
       {isStale && items.length > 0 && <StaleBanner onRetry={refetch} />}
 
       {isLoading ? (
@@ -470,13 +509,13 @@ function HistoryTab({
 
           <div className="divide-y divide-outline-v/10">
             {items.map(item => {
-              const rMeta = reviewStatusMeta(item.review_status)
+              const rState = reviewState(item, meId)
               return (
                 <ExceptionRow
                   key={item.id}
                   item={item}
                   onClick={() => onRowClick(item.id)}
-                  trailing={<Chip type={rMeta.chipType} label={rMeta.label} />}
+                  trailing={<Chip type={REVIEW_STATE_CHIP[rState.kind]} label={rState.label} />}
                 />
               )
             })}

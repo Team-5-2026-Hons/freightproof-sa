@@ -311,9 +311,10 @@ class ExceptionReviewStatus(str, enum.Enum):
 
 
 class ExceptionReviewOutcome(str, enum.Enum):
-    """What a dispatcher concluded when reviewing an exception. LEGACY_REVIEW is not
-    a real choice (see DispatcherReviewOutcome) — it only back-marks a pre-existing
-    `resolved=true` row as reviewed with no recorded finding."""
+    """What a dispatcher concluded when reviewing an exception. LEGACY_REVIEW and
+    DISPATCHER_AUTHORED are not real choices (see DispatcherReviewOutcome): the first
+    only back-marks a pre-existing `resolved=true` row as reviewed with no recorded
+    finding, the second marks a dispatcher's own note as reviewed by its author."""
 
     NO_ACTION_REQUIRED     = "no_action_required"
     HANDLED_EXTERNALLY     = "handled_externally"
@@ -321,6 +322,11 @@ class ExceptionReviewOutcome(str, enum.Enum):
     DATA_DISCREPANCY       = "data_discrepancy"
     REFERRED_FOR_FOLLOW_UP = "referred_for_follow_up"
     LEGACY_REVIEW          = "legacy_review"
+    # Not a finding either: marks a dispatcher's own note (phase override, trip
+    # cancellation) as reviewed by its author the moment it is written. Only the
+    # author knows why they acted, so queueing it would have a colleague rubber-stamp
+    # it. Excluded from DispatcherReviewOutcome for the same reason as LEGACY_REVIEW.
+    DISPATCHER_AUTHORED    = "dispatcher_authored"
 
 
 class DispatcherReviewOutcome(str, enum.Enum):

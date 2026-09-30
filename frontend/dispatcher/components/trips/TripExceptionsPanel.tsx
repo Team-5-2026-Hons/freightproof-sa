@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import type { Trip } from '@shared/lib/types/trip'
 import type { Precinct } from '@shared/lib/types/precinct'
 import { precinctAtPhase } from '@/lib/phase/trip-detail'
@@ -8,6 +9,8 @@ import { PHASE_NAMES } from '@shared/lib/constants/phase-meta'
 import { ExceptionSummary } from '@/components/domain/ExceptionSummary'
 import { Button } from '@/components/ui/Button'
 import { useDocked } from '@/components/ui/DetailPanel'
+import { useAuth } from '@/lib/hooks/useAuth'
+import { BatchReviewForm } from './BatchReviewForm'
 import { uniqueExceptionsById } from './exception-dedupe'
 
 export type ExceptionFilter = 'needs_review' | 'all'
@@ -26,6 +29,8 @@ export function TripExceptionsPanel({ trip, precincts, filter, selectedPhaseId =
   // card there would have the identical blending problem in the other direction. Each
   // context needs the tone its OWN container is not.
   const tone = useDocked() ? 'lowest' : 'low'
+  const { user } = useAuth()
+  const [batchOpen, setBatchOpen] = useState(false)
   if (invalidPhaseId) {
     return <div role="status" className="rounded-lg border border-warn/30 bg-warn-c/30 p-4 text-sm text-on-surf">
       <p>This phase filter is not part of this trip.</p>
@@ -40,6 +45,13 @@ export function TripExceptionsPanel({ trip, precincts, filter, selectedPhaseId =
   const exceptions = [...scopedExceptions].filter(e => filter === 'all' || e.review_status === 'needs_review')
     .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
   const needsReview = scopedExceptions.filter(e => e.review_status === 'needs_review').length
+  // Only what a dispatcher can sign for without deciding about a colleague's work or a
+  // critical event: critical rows always get their own look, and a colleague's claim is
+  // theirs to release or for this dispatcher to take over deliberately on the detail page.
+  const batchable = scopedExceptions.filter(e =>
+    e.review_status === 'needs_review'
+    && e.severity !== 'critical'
+    && (e.claimed_by_user_id === null || e.claimed_by_user_id === user?.id))
   return <div>
     {selectedPhaseId && <div className="mb-4 rounded-lg border border-outline-v/30 bg-surf-low p-3 text-sm text-on-surf">
       <p>Selected phase · {scopedExceptions.length} of {tripExceptions.length} trip exceptions</p>
@@ -49,9 +61,18 @@ export function TripExceptionsPanel({ trip, precincts, filter, selectedPhaseId =
         a dispatcher looking at two rows had no way to tell whether "All recorded" held
         another ten or the same two, which is the question the button is there to answer. */}
     <div className="mb-4 flex flex-wrap gap-2" aria-label="Exception filters">
-      <Button variant={filter === 'needs_review' ? 'primary' : 'secondary'} size="sm" onClick={() => onFilter('needs_review')}>Needs review · {needsReview}</Button>
+      <Button variant={filter === 'needs_review' ? 'primary' : 'secondary'} size="sm" onClick={() => onFilter('needs_review')}>Unreviewed · {needsReview}</Button>
       <Button variant={filter === 'all' ? 'primary' : 'secondary'} size="sm" onClick={() => onFilter('all')}>All recorded · {scopedExceptions.length}</Button>
+      {batchable.length > 0 && <Button variant="secondary" size="sm" onClick={() => setBatchOpen(open => !open)} aria-expanded={batchOpen}>
+        Review {batchable.length} {batchable.length === 1 ? 'warning' : 'warnings'}
+      </Button>}
     </div>
+    {batchOpen && batchable.length > 0 && <BatchReviewForm
+      tripId={trip.id}
+      exceptions={batchable}
+      onDone={() => setBatchOpen(false)}
+      onCancel={() => setBatchOpen(false)}
+    />}
     {!exceptions.length && <p className="py-5 text-sm text-on-surf-v">{filter === 'needs_review' ? 'No exceptions need review.' : 'No exceptions recorded.'}</p>}
     <div className="space-y-3">{exceptions.map(exception => {
       const phase = trip.phases.find(p => p.phase_event_id === exception.phase_event_id)

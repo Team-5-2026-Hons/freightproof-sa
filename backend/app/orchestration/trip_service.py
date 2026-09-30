@@ -36,7 +36,7 @@ from app.db.models.trips import (
     LIVE_ORDER_NUMBER_INDEX, LIVE_TRIP_STATUSES, Trip, TripStop, TripTrailer,
 )
 from app.db.models.vehicles import Vehicle
-from app.orchestration.exception_service import initial_review_status
+from app.orchestration.review_policy import dispatcher_authored_review
 from app.orchestration.integrity import is_unique_violation, violated_constraint
 from app.orchestration.phase_gate import blocked_on_by_stop
 from app.orchestration.phase_plan import ANCHORED_PHASES, PlanStop, build_phase_plan
@@ -566,10 +566,11 @@ async def cancel_trip(
     # was abandoned" record is exactly the kind of unattributable evidence this
     # platform exists to avoid. Deliberate no-migration stopgap: the proper fix is a
     # raised_by_user_id column, which is a schema change and its own task.
+    # Reviewed by its author at creation (FP-280) — see review_policy.
     db.add(TripException(
         trip_id=trip.id, exception_type=ExceptionType.DISPATCHER_NOTE,
         source=ExceptionSource.DISPATCHER, severity=ExceptionSeverity.WARNING,
-        review_status=initial_review_status(ExceptionSeverity.WARNING),
+        **dispatcher_authored_review(user_id=user_id, at=trip.closed_at),
         description=f"{_CANCELLED_BY_PREFIX}{user_id}: {note}",
     ))
     await db.flush()
@@ -704,9 +705,10 @@ async def list_trips_for_driver(
     def precinct_name(precinct_id: uuid.UUID | None) -> str | None:
         return None if precinct_id is None else precinct_names.get(precinct_id)
 
-    # NEEDS_REVIEW only, not "!= REVIEWED" — a RECORDED row is on the driver's own
-    # trip for context, but is not a review-workflow item (the driver has no review
-    # action at all; see FP-146 follow-on).
+    # Unreviewed CRITICAL rows only. Since FP-280 every exception starts needs_review,
+    # but the driver has no review action at all (see FP-146 follow-on): a count of
+    # routine warnings they can neither act on nor clear is noise on their trip card.
+    # The dispatcher-facing counts deliberately include every severity.
     exc_counts: dict[uuid.UUID, int] = {
         row[0]: row[1]
         for row in (
@@ -715,6 +717,7 @@ async def list_trips_for_driver(
                 .where(
                     TripException.trip_id.in_(trip_ids),
                     TripException.review_status == ExceptionReviewStatus.NEEDS_REVIEW,
+                    TripException.severity == ExceptionSeverity.CRITICAL,
                 )
                 .group_by(TripException.trip_id)
             )

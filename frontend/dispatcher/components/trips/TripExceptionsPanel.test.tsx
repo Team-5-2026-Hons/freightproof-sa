@@ -18,6 +18,12 @@ vi.mock('@/lib/supabase/client', () => ({
   getAccessToken: vi.fn(),
 }))
 
+// The card shows who holds a claim relative to the signed-in dispatcher.
+const ME = 'user-me'
+// BatchReviewForm (opened from the panel) toasts through useToast.
+vi.mock('@/lib/hooks/useToast', () => ({ useToast: () => ({ notify: vi.fn() }) }))
+vi.mock('@/lib/hooks/useAuth', () => ({ useAuth: () => ({ user: { id: ME } }) }))
+
 function tripWith(reviewed: number, needsReview: number): Trip {
   const trip = mockTrips.find(candidate => candidate.id === TRIP_0040_ID)
   if (!trip) throw new Error('TRIP_0040 fixture is missing')
@@ -44,7 +50,7 @@ describe('TripExceptionsPanel filters', () => {
 
     // The panel opens filtered to what needs review, so a dispatcher looking at two rows
     // could not tell whether "All recorded" held another ten or the same two.
-    expect(screen.getByRole('button', { name: 'Needs review · 2' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Unreviewed · 2' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'All recorded · 12' })).toBeInTheDocument()
   })
 
@@ -53,7 +59,7 @@ describe('TripExceptionsPanel filters', () => {
 
     // "Twelve recorded, none owed" and "no exceptions at all" are different facts about a
     // trip, and only one of them is good news.
-    expect(screen.getByRole('button', { name: 'Needs review · 0' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Unreviewed · 0' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'All recorded · 12' })).toBeInTheDocument()
   })
 
@@ -63,7 +69,7 @@ describe('TripExceptionsPanel filters', () => {
 
     render(<TripExceptionsPanel precincts={[]} trip={{ ...base, exceptions: [repeated, { ...repeated }] }} filter="all" onFilter={vi.fn()} returnTo="/trips/x" />)
 
-    expect(screen.getByRole('button', { name: 'Needs review · 1' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Unreviewed · 1' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'All recorded · 1' })).toBeInTheDocument()
     expect(screen.getAllByRole('heading', { name: 'Checkpoint Timeout' })).toHaveLength(1)
   })
@@ -82,7 +88,7 @@ describe('TripExceptionsPanel filters', () => {
 
     expect(screen.getByText('Selected phase · 1 of 2 trip exceptions')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'All recorded · 1' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Needs review · 0' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Unreviewed · 0' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Show in timeline' }))
     expect(onShowInTimeline).toHaveBeenCalledWith(phase.phase_event_id)
     fireEvent.click(screen.getByRole('button', { name: 'Clear phase filter' }))
@@ -113,5 +119,46 @@ describe('TripExceptionsPanel filters', () => {
     expect(screen.getAllByRole('button', { name: VIEW_ON_MAP_LABEL })).toHaveLength(1)
     fireEvent.click(screen.getByRole('button', { name: VIEW_ON_MAP_LABEL }))
     expect(screen.getByRole('dialog', { name: /Recorded locations: Gps Mismatch · Loading/ })).toBeInTheDocument()
+  })
+
+  it('offers batch review only for my or unclaimed non-critical unreviewed rows', () => {
+    const base = tripWith(0, 1)
+    const template = base.exceptions[0]!
+    const row = (id: string, over: Partial<TripException>): TripException =>
+      ({ ...template, id: id as TripException['id'], review_status: 'needs_review', ...over })
+    const exceptions = [
+      row('critical', { severity: 'critical' }),
+      row('claimed-by-ana', { severity: 'warning', claimed_by_user_id: 'ana', claimed_by_name: 'Ana' }),
+      row('unclaimed', { severity: 'warning' }),
+      row('mine-info', { severity: 'info', claimed_by_user_id: ME, claimed_by_name: 'Me' }),
+    ]
+
+    render(<TripExceptionsPanel precincts={[]} trip={{ ...base, exceptions }} filter="needs_review" onFilter={vi.fn()} returnTo="/trips/x" />)
+
+    expect(screen.getByRole('button', { name: 'Review 2 warnings' })).toBeInTheDocument()
+    expect(screen.getByText(/^Claimed by Ana/)).toBeInTheDocument()
+  })
+
+  it('opens the batch form above the list and closes it again', () => {
+    const base = tripWith(0, 2)
+    // Pinned explicitly: the fixture's own severity is not what this test is about.
+    const exceptions = base.exceptions.map(e => ({ ...e, severity: 'warning' as const, claimed_by_user_id: null }))
+
+    render(<TripExceptionsPanel precincts={[]} trip={{ ...base, exceptions }} filter="needs_review" onFilter={vi.fn()} returnTo="/trips/x" />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Review 2 warnings' }))
+    expect(screen.getByLabelText('Review note')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByLabelText('Review note')).not.toBeInTheDocument()
+  })
+
+  it('hides batch review when nothing is batchable', () => {
+    const base = tripWith(3, 0)
+    const critical: TripException = { ...base.exceptions[0]!, id: 'crit' as TripException['id'], review_status: 'needs_review', severity: 'critical' }
+
+    render(<TripExceptionsPanel precincts={[]} trip={{ ...base, exceptions: [...base.exceptions, critical] }} filter="all" onFilter={vi.fn()} returnTo="/trips/x" />)
+
+    expect(screen.queryByRole('button', { name: /^Review \d+ warning/ })).not.toBeInTheDocument()
   })
 })

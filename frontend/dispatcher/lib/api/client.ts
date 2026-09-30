@@ -211,6 +211,7 @@ export const api = {
     ),
   patch: <T>(path: string, body: unknown): Promise<T> =>
     request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
+  delete: <T>(path: string): Promise<T> => request<T>(path, { method: 'DELETE' }),
 }
 
 // Dispatcher-only trip lifecycle exits: typed wrappers so callers never hand-build the
@@ -236,10 +237,43 @@ export function overridePhase(tripId: string, phaseEventId: string, note: string
  *
  *  Returns the narrower TripExceptionRead shape (no trip_status/phase_label/
  *  supporting_artifact) — don't re-render the exception-detail page from it directly,
- *  use refetchSilent() from useExceptionDetail instead. */
+ *  use refetchSilent() from useExceptionDetail instead.
+ *
+ *  `take_over: true` takes a colleague's claim and reviews in one step (soft claim);
+ *  omit it otherwise. */
 export function reviewException(
   exceptionId: string,
-  body: { review_note: string; review_outcome: DispatcherReviewOutcome; contact_method: ExceptionContactMethod | null },
+  body: {
+    review_note: string
+    review_outcome: DispatcherReviewOutcome
+    contact_method: ExceptionContactMethod | null
+    take_over?: boolean
+  },
 ): Promise<TripException> {
   return api.patch<TripException>(`/api/v1/exceptions/${exceptionId}/review`, body)
+}
+
+/** POST /exceptions/{id}/claim — the caller is now working this exception. takeOver
+ *  replaces a colleague's claim; without it a colleague's claim is a 409. */
+export function claimException(exceptionId: string, takeOver = false): Promise<TripException> {
+  return api.post<TripException>(`/api/v1/exceptions/${exceptionId}/claim`, { take_over: takeOver })
+}
+
+/** DELETE /exceptions/{id}/claim — give the exception back to the unreviewed inbox. */
+export function releaseException(exceptionId: string): Promise<TripException> {
+  return api.delete<TripException>(`/api/v1/exceptions/${exceptionId}/claim`)
+}
+
+export interface BatchReviewBody {
+  trip_id: string
+  exception_ids: string[]
+  review_note: string
+  review_outcome: DispatcherReviewOutcome
+  contact_method: ExceptionContactMethod | null
+}
+
+/** POST /exceptions/review-batch — one note and outcome across several non-critical
+ *  exceptions on one trip. Explicit ids: only the rows the dispatcher was shown. */
+export function reviewExceptionBatch(body: BatchReviewBody): Promise<TripException[]> {
+  return api.post<TripException[]>('/api/v1/exceptions/review-batch', body)
 }

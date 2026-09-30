@@ -53,6 +53,9 @@ class RealtimeKind(str, Enum):
     PHASE_COMPLETED = "phase_completed"
     EXCEPTION_RAISED = "exception_raised"
     EXCEPTION_REVIEWED = "exception_reviewed"
+    # Claim, release and take-over share one kind: every screen reacts the same way
+    # (silent refetch, never a toast), and the payload stays ids-only either way.
+    EXCEPTION_CLAIMED = "exception_claimed"
     TRIP_CLOSED = "trip_closed"
 
 

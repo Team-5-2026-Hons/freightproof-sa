@@ -108,7 +108,7 @@ const EXCEPTIONS_0035: TripException[] = [
     review_status: 'reviewed', review_outcome: 'legacy_review', reviewed_by_user_id: 'user-dispatcher-01',
     reviewed_at: '2026-05-04T08:30:00Z', review_note: 'Confirmed pre-existing. Client notified. No further action.',
     contact_method: null, vehicle_id: null,
-    merkle_batch_id: null, created_at: '2026-05-03T19:00:00Z', updated_at: '2026-05-04T08:30:00Z',
+    merkle_batch_id: null, claimed_by_user_id: null, claimed_at: null, claimed_by_name: null, reviewed_by_name: null, created_at: '2026-05-03T19:00:00Z', updated_at: '2026-05-04T08:30:00Z',
   },
   {
     id: excId('ec000002-0035-4002-8001-000000000002'),
@@ -121,7 +121,7 @@ const EXCEPTIONS_0035: TripException[] = [
     review_status: 'reviewed', review_outcome: 'legacy_review', reviewed_by_user_id: 'user-dispatcher-01',
     reviewed_at: '2026-05-04T09:00:00Z', review_note: 'FedEx to re-schedule delivery. Parcels returned to DBN hub.',
     contact_method: null, vehicle_id: null,
-    merkle_batch_id: null, created_at: '2026-05-03T18:45:00Z', updated_at: '2026-05-04T09:00:00Z',
+    merkle_batch_id: null, claimed_by_user_id: null, claimed_at: null, claimed_by_name: null, reviewed_by_name: null, created_at: '2026-05-03T18:45:00Z', updated_at: '2026-05-04T09:00:00Z',
   },
 ]
 
@@ -183,7 +183,7 @@ const EXCEPTIONS_0039: TripException[] = [
     phase_event_id: null, checkpoint_id: null, supporting_artifact_id: null,
     review_status: 'recorded', review_outcome: null, reviewed_by_user_id: null, reviewed_at: null,
     review_note: null, contact_method: null, vehicle_id: null,
-    merkle_batch_id: null, created_at: '2026-05-09T07:04:00Z', updated_at: '2026-05-09T07:04:00Z',
+    merkle_batch_id: null, claimed_by_user_id: null, claimed_at: null, claimed_by_name: null, reviewed_by_name: null, created_at: '2026-05-09T07:04:00Z', updated_at: '2026-05-09T07:04:00Z',
   },
 ]
 
@@ -210,7 +210,7 @@ const EXCEPTIONS_0040: TripException[] = [
     review_status: 'reviewed', review_outcome: 'legacy_review', reviewed_by_user_id: 'user-dispatcher-01',
     reviewed_at: '2026-05-09T13:10:00Z', review_note: 'Driver confirmed scheduled break. No issue.',
     contact_method: null, vehicle_id: null,
-    merkle_batch_id: null, created_at: '2026-05-09T12:52:00Z', updated_at: '2026-05-09T13:10:00Z',
+    merkle_batch_id: null, claimed_by_user_id: null, claimed_at: null, claimed_by_name: null, reviewed_by_name: null, created_at: '2026-05-09T12:52:00Z', updated_at: '2026-05-09T13:10:00Z',
   },
 ]
 
@@ -236,7 +236,7 @@ const EXCEPTIONS_0041: TripException[] = [
     phase_event_id: null, checkpoint_id: null, supporting_artifact_id: null,
     review_status: 'recorded', review_outcome: null, reviewed_by_user_id: null, reviewed_at: null,
     review_note: null, contact_method: null, vehicle_id: null,
-    merkle_batch_id: null, created_at: '2026-05-09T13:22:00Z', updated_at: '2026-05-09T13:22:00Z',
+    merkle_batch_id: null, claimed_by_user_id: null, claimed_at: null, claimed_by_name: null, reviewed_by_name: null, created_at: '2026-05-09T13:22:00Z', updated_at: '2026-05-09T13:22:00Z',
   },
   {
     id: excId('ec000006-0041-4006-8001-000000000006'),
@@ -248,7 +248,7 @@ const EXCEPTIONS_0041: TripException[] = [
     phase_event_id: null, checkpoint_id: null, supporting_artifact_id: null,
     review_status: 'recorded', review_outcome: null, reviewed_by_user_id: null, reviewed_at: null,
     review_note: null, contact_method: null, vehicle_id: null,
-    merkle_batch_id: null, created_at: '2026-05-09T13:35:00Z', updated_at: '2026-05-09T13:35:00Z',
+    merkle_batch_id: null, claimed_by_user_id: null, claimed_at: null, claimed_by_name: null, reviewed_by_name: null, created_at: '2026-05-09T13:35:00Z', updated_at: '2026-05-09T13:35:00Z',
   },
 ]
 
@@ -274,7 +274,7 @@ const EXCEPTIONS_0042: TripException[] = [
     phase_event_id: null, checkpoint_id: null, supporting_artifact_id: 'art-0042-broken-seal',
     review_status: 'needs_review', review_outcome: null, reviewed_by_user_id: null, reviewed_at: null,
     review_note: null, contact_method: null, vehicle_id: null,
-    merkle_batch_id: null, created_at: '2026-05-09T07:41:00Z', updated_at: '2026-05-09T07:41:00Z',
+    merkle_batch_id: null, claimed_by_user_id: null, claimed_at: null, claimed_by_name: null, reviewed_by_name: null, created_at: '2026-05-09T07:41:00Z', updated_at: '2026-05-09T07:41:00Z',
   },
   {
     id: excId('ec000008-0042-4008-8001-000000000008'),
@@ -286,7 +286,7 @@ const EXCEPTIONS_0042: TripException[] = [
     phase_event_id: null, checkpoint_id: null, supporting_artifact_id: null,
     review_status: 'needs_review', review_outcome: null, reviewed_by_user_id: null, reviewed_at: null,
     review_note: null, contact_method: null, vehicle_id: null,
-    merkle_batch_id: null, created_at: '2026-05-08T17:30:00Z', updated_at: '2026-05-08T17:30:00Z',
+    merkle_batch_id: null, claimed_by_user_id: null, claimed_at: null, claimed_by_name: null, reviewed_by_name: null, created_at: '2026-05-08T17:30:00Z', updated_at: '2026-05-08T17:30:00Z',
   },
 ]
 
