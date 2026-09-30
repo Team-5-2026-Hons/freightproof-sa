@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 
 import ExceptionsPage from './page'
 import { ForensicModeProvider } from '@/lib/context/ForensicModeContext'
@@ -20,8 +20,9 @@ vi.mock('@/lib/supabase/client', () => ({
 // ForensicModeProvider (mounted via TopBar -> ForensicControls) reads the signed-in
 // user. Nothing these tests assert depends on who that is, so identity is stubbed
 // rather than standing up a real AuthProvider — same approach as the [id] page test.
+const mockUser = vi.hoisted(() => ({ current: { id: 'me' } as { id: string } | null }))
 vi.mock('@/lib/hooks/useAuth', () => ({
-  useAuth: () => ({ user: null }),
+  useAuth: () => ({ user: mockUser.current }),
 }))
 
 const push = vi.fn()
@@ -54,6 +55,10 @@ function makeQueueItem(overrides: Partial<TripExceptionListItem> = {}): TripExce
     trip_status: 'active',
     phase_label: 'In Transit',
     stop_label: 2,
+    claimed_by_user_id: null,
+    claimed_at: null,
+    claimed_by_name: null,
+    reviewed_by_name: null,
     ...overrides,
   }
 }
@@ -64,6 +69,10 @@ function makeHistoryItem(overrides: Partial<TripExceptionListItem> = {}): TripEx
     id: 'exc-h1' as TripExceptionListItem['id'],
     review_status: 'recorded',
     trip_status: 'closed',
+    claimed_by_user_id: null,
+    claimed_at: null,
+    claimed_by_name: null,
+    reviewed_by_name: null,
     ...overrides,
   }
 }
@@ -105,24 +114,28 @@ function renderPage() {
   )
 }
 
+function mockMe() {
+  mockUser.current = { id: 'me' }
+}
+
 function goToHistoryTab() {
-  fireEvent.click(screen.getByRole('button', { name: 'History' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Reviewed' }))
 }
 
 beforeEach(() => {
+  mockMe()
   push.mockReset()
   mockedUseExceptionQueue.mockReset().mockReturnValue(queueState())
   mockedUseExceptionHistory.mockReset().mockReturnValue(historyState())
 })
 
-describe('Needs Review tab', () => {
-  it('reflects the queue hook item count in the tab badge', () => {
+describe('Unreviewed tab', () => {
+  it('reflects the unreviewed count in the tab label', () => {
     mockedUseExceptionQueue.mockReturnValue(queueState({ items: [makeQueueItem(), makeQueueItem({ id: 'exc-2' as TripExceptionListItem['id'] }), makeQueueItem({ id: 'exc-3' as TripExceptionListItem['id'] })] }))
 
     renderPage()
 
-    const tabButton = screen.getByRole('button', { name: /needs review/i })
-    expect(within(tabButton).getByText('3')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Unreviewed · 3' })).toBeInTheDocument()
   })
 
   it('never renders pagination controls, even with many queue items', () => {
@@ -201,7 +214,82 @@ describe('Needs Review tab', () => {
   })
 })
 
+describe('Claimed by me tab', () => {
+  const claimedByMe = () => makeQueueItem({
+    id: 'exc-mine' as TripExceptionListItem['id'],
+    description: 'Mine row',
+    claimed_by_user_id: 'me',
+    claimed_by_name: 'Me',
+  })
+  const claimedByAna = () => makeQueueItem({
+    id: 'exc-ana' as TripExceptionListItem['id'],
+    description: 'Ana row',
+    claimed_by_user_id: 'ana',
+    claimed_by_name: 'Ana',
+  })
+  const unclaimed = () => makeQueueItem({
+    id: 'exc-free' as TripExceptionListItem['id'],
+    description: 'Free row',
+  })
+
+  it('splits the queue into Unreviewed and Claimed by me with counts', () => {
+    mockedUseExceptionQueue.mockReturnValue(queueState({ items: [claimedByMe(), claimedByAna(), unclaimed()] }))
+
+    renderPage()
+
+    expect(screen.getByRole('button', { name: 'Unreviewed · 2' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Claimed by me · 1' })).toBeInTheDocument()
+    expect(screen.getByText('Claimed by Ana')).toBeInTheDocument()
+    expect(screen.queryByText('Mine row')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Claimed by me · 1' }))
+
+    expect(screen.getByText('Mine row')).toBeInTheDocument()
+    expect(screen.getByText('Claimed by you')).toBeInTheDocument()
+    expect(screen.queryByText('Ana row')).not.toBeInTheDocument()
+    expect(screen.queryByText('Free row')).not.toBeInTheDocument()
+  })
+
+  it('shows the claim hint when nothing is claimed by me', () => {
+    mockedUseExceptionQueue.mockReturnValue(queueState({ items: [unclaimed()] }))
+
+    renderPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Claimed by me · 0' }))
+
+    expect(
+      screen.getByText('Nothing claimed — claim an exception from Unreviewed to work it.'),
+    ).toBeInTheDocument()
+  })
+
+  it('keeps queue order from the server', () => {
+    mockedUseExceptionQueue.mockReturnValue(queueState({
+      items: [
+        makeQueueItem({ id: 'a' as TripExceptionListItem['id'], severity: 'critical', description: 'First critical' }),
+        makeQueueItem({ id: 'b' as TripExceptionListItem['id'], severity: 'warning', description: 'Second warning' }),
+        makeQueueItem({ id: 'c' as TripExceptionListItem['id'], severity: 'info', description: 'Third info' }),
+      ],
+    }))
+
+    renderPage()
+
+    const text = document.body.textContent ?? ''
+    expect(text.indexOf('First critical')).toBeLessThan(text.indexOf('Second warning'))
+    expect(text.indexOf('Second warning')).toBeLessThan(text.indexOf('Third info'))
+  })
+})
+
 describe('History tab', () => {
+  it('shows the reviewer on the Reviewed tab', () => {
+    mockedUseExceptionHistory.mockReturnValue(historyState({
+      items: [makeHistoryItem({ review_status: 'reviewed', reviewed_by_name: 'Ben' })],
+    }))
+
+    renderPage()
+    goToHistoryTab()
+
+    expect(screen.getByText('Reviewed by Ben')).toBeInTheDocument()
+  })
+
   it("reflects the hook's totalItems, distinct from items.length", () => {
     const items = Array.from({ length: 25 }, (_, i) => makeHistoryItem({ id: `exc-h${i}` as TripExceptionListItem['id'] }))
     mockedUseExceptionHistory.mockReturnValue(

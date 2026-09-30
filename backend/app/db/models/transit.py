@@ -231,8 +231,10 @@ class TripException(Base):
     # which could not distinguish "nobody has looked at this"
     # from "looked at, still needs a decision" — see ExceptionReviewStatus's own comment.
     # String(20), not a native PG enum, matching every other enum column on this table.
+    # Every exception starts needs_review (FP-280), whatever its severity or source, so a
+    # write site that omits the column still reaches the inbox rather than being silently recorded.
     review_status: Mapped[ExceptionReviewStatus] = mapped_column(
-        String(20), nullable=False, server_default=ExceptionReviewStatus.RECORDED.value
+        String(20), nullable=False, server_default=ExceptionReviewStatus.NEEDS_REVIEW.value
     )
     # What the dispatcher concluded, set only once review_status reaches REVIEWED.
     # Nullable: unreviewed rows (the overwhelming majority at any moment) have no
@@ -256,6 +258,16 @@ class TripException(Base):
     contact_method: Mapped[Optional[ExceptionContactMethod]] = mapped_column(
         String(20), nullable=True
     )
+    # Who is working this exception right now (FP-280); NULL = nobody. Deliberately not
+    # a review_status value of its own: "claimed" is needs_review plus a claimer, so the
+    # history filter, the analytics queries and every needs_review count keep their
+    # meaning unchanged. Kept after review, so the record shows who took it on as well
+    # as who concluded it. The FK is named explicitly to match the migration, because
+    # Base has no naming_convention.
+    claimed_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", name="fk_exceptions_claimed_by_user_id"), nullable=True
+    )
+    claimed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     merkle_batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("merkle_batches.id"), nullable=True
     )

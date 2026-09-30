@@ -139,7 +139,10 @@ def evaluate_proximity(
     reasons = [reason for reason in _REASON_ORDER if reason in triggered]
 
     separation_metres: float | None = None
-    if not missing_phone and not missing_tracker:
+    if (
+        driver_lat is not None and driver_lng is not None
+        and tracker_lat is not None and tracker_lng is not None
+    ):  # equivalent to `not missing_phone and not missing_tracker`, spelled out so mypy narrows
         separation_metres = haversine_metres(driver_lat, driver_lng, tracker_lat, tracker_lng)
 
     if reasons:

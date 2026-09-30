@@ -5,6 +5,8 @@ import type { ReactNode } from 'react'
 import { Chip } from '@/components/ui/Chip'
 import { Ic } from '@/components/ui/Ic'
 import { fmtExceptionType } from '@/lib/format/exception'
+import { reviewState } from '@/lib/format/review-state'
+import { useAuth } from '@/lib/hooks/useAuth'
 import { ROUTES } from '@/lib/constants/routes'
 import { withReturnTo } from '@/lib/navigation/returnTo'
 import { EXCEPTION_SEVERITY_META, EXCEPTION_SOURCE_META } from '@shared/lib/constants/status-meta'
@@ -35,6 +37,13 @@ interface Props {
 export function ExceptionSummary({ exception, phaseLabel, returnTo, footer, onOpenPanel, tone = 'low' }: Props) {
   const severity = EXCEPTION_SEVERITY_META[exception.severity]
   const target = ROUTES.exceptionDetail(exception.id)
+  const { user } = useAuth()
+  const state = reviewState(exception, user?.id ?? null)
+  // Reviewed rows show when they were reviewed, claimed rows when they were claimed;
+  // an unclaimed unreviewed row has no event to time.
+  const stateTime = exception.review_status === 'reviewed' ? exception.reviewed_at
+    : state.kind === 'claimed_by_me' || state.kind === 'claimed_by_other' ? exception.claimed_at
+    : null
   return (
     <article className={`min-w-0 rounded-lg border border-outline-v/30 px-4 py-3 ${tone === 'lowest' ? 'bg-surf-lowest' : 'bg-surf-low'}`}>
       {phaseLabel && <p className="mb-2 text-xs font-semibold text-on-surf-v">{phaseLabel} · Exception</p>}
@@ -54,9 +63,11 @@ export function ExceptionSummary({ exception, phaseLabel, returnTo, footer, onOp
       <p className="mt-1 text-xs text-on-surf-v">{EXCEPTION_SOURCE_META[exception.source].label}</p>
       <p className="mt-2 break-words text-sm text-on-surf">{exception.description}</p>
       <p className="mt-2 text-xs font-semibold text-on-surf-v">
-        {exception.review_status === 'needs_review' ? 'Needs review' : exception.review_status === 'reviewed' ? 'Reviewed' : 'Recorded'}
-        {exception.review_status === 'reviewed' && exception.reviewed_at && ` · ${fmtDateTime(exception.reviewed_at)}`}
-        {exception.review_outcome && ` · ${exception.review_outcome.replaceAll('_', ' ')}`}
+        {state.label}
+        {stateTime && ` · ${fmtDateTime(stateTime)}`}
+        {/* A dispatcher's own note is authored, not reviewed: its outcome is an internal
+            marker, and the label already says who wrote it. */}
+        {exception.review_outcome && exception.review_outcome !== 'dispatcher_authored' && ` · ${exception.review_outcome.replaceAll('_', ' ')}`}
       </p>
       {onOpenPanel
         ? <button type="button" onClick={onOpenPanel} className="mt-2 inline-flex min-h-9 items-center text-sm font-semibold text-sec underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sec">

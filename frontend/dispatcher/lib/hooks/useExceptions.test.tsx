@@ -33,6 +33,10 @@ function makeItem(overrides: Partial<TripExceptionListItem> = {}): TripException
     trip_status: 'active',
     phase_label: 'in_transit',
     stop_label: 1,
+    claimed_by_user_id: null,
+    claimed_at: null,
+    claimed_by_name: null,
+    reviewed_by_name: null,
     ...overrides,
   }
 }
@@ -88,7 +92,7 @@ describe('useExceptionQueue', () => {
       'trip',
       'any',
       expect.any(Function),
-      { kinds: ['exception_raised', 'exception_reviewed'] },
+      { kinds: ['exception_raised', 'exception_reviewed', 'exception_claimed'] },
     )
   })
 })

@@ -17,7 +17,7 @@ function exception(id: string, reviewStatus: TripException['review_status'], sev
     phase_event_id: phaseId, checkpoint_id: null, supporting_artifact_id: null,
     review_status: reviewStatus, review_outcome: null, reviewed_by_user_id: null,
     reviewed_at: null, review_note: null, contact_method: null, vehicle_id: null,
-    merkle_batch_id: null, created_at: '2026-09-15T08:00:00Z', updated_at: '2026-09-15T08:00:00Z',
+    merkle_batch_id: null, claimed_by_user_id: null, claimed_at: null, claimed_by_name: null, reviewed_by_name: null, created_at: '2026-09-15T08:00:00Z', updated_at: '2026-09-15T08:00:00Z',
   }
 }
 

@@ -201,6 +201,7 @@ def test_build_scenario_target_lands_the_intended_distance_from_the_precinct(sce
     )
 
     assert target.distance_metres is not None
+    assert target.latitude is not None and target.longitude is not None
     measured = haversine_metres(_ORIGIN_LAT, _ORIGIN_LNG, target.latitude, target.longitude)
     assert measured == pytest.approx(target.distance_metres, abs=_DISTANCE_ASSERTION_TOLERANCE_METRES)
 

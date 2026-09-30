@@ -149,7 +149,7 @@ async def resolve_target_stop(
     )).one_or_none()
     if row is None:
         raise ResourceNotFoundError("TripStop", str(trip_stop_id))
-    return row
+    return row  # type: ignore[return-value]  # Row is a tuple subclass; callers unpack it, wrapping would change the returned object
 
 
 def scenario_distance_metres(

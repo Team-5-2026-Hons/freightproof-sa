@@ -32,7 +32,7 @@ from app.db.models.receiver_verification import IdvsQuotaLedger, ReceiverIdentit
 from app.db.models.transit import TripException
 from app.db.models.trips import Trip
 from app.integrations.idvs import IdvsClient, IdvsDecisionStatus, IdvsError, IdvsSession, _parse_decision
-from app.orchestration.exception_service import initial_review_status
+from app.orchestration.review_policy import initial_review_status
 from app.orchestration.handover_service import build_scan_url, extend_token_for_verification
 
 logger = logging.getLogger(__name__)

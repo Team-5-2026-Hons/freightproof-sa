@@ -49,7 +49,7 @@ import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
-from typing import Optional
+from typing import Optional, cast
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -59,7 +59,7 @@ from app.core.config import settings
 from app.core.exceptions import ResourceNotFoundError
 from app.core.realtime import RealtimeKind, TripEvent, enqueue_event, event_severity
 from app.db.models.enums import (
-    ExceptionReviewStatus, ExceptionSeverity, ExceptionSource, ExceptionType, PhaseStatus, PhaseType,
+    ExceptionSeverity, ExceptionSource, ExceptionType, PhaseStatus, PhaseType,
     TripStatus,
 )
 from app.db.models.organisations import Precinct
@@ -72,6 +72,7 @@ from app.orchestration.geofence_service import (
 )
 from app.orchestration.integrity import is_unique_violation, violated_constraint
 from app.orchestration.proximity_service import evaluate_proximity
+from app.orchestration.review_policy import initial_review_status
 from app.schemas.action_location import (
     ACTION_LOCATION_POLICY_VERSION, ActionLocationAssessment, DriverLocationCapture,
 )
@@ -198,7 +199,8 @@ async def build_phase_assessment(
     tracker_lat: Optional[float] = None
     tracker_lng: Optional[float] = None
     tracker_captured_at: Optional[datetime] = None
-    if horse_fix is not None and horse_fix.has_position:
+    # lat/lng None-checks are implied by has_position; repeated so mypy can narrow the Decimal | None.
+    if horse_fix is not None and horse_fix.has_position and horse_fix.lat is not None and horse_fix.lng is not None:
         tracker_lat = float(horse_fix.lat)
         tracker_lng = float(horse_fix.lng)
         tracker_captured_at = horse_fix.fixed_at
@@ -225,7 +227,7 @@ async def build_phase_assessment(
     checkable = (
         PhaseType(event.phase_type) is not PhaseType.IN_TRANSIT and event.trip_stop_id is not None
     )
-    if checkable:
+    if checkable and event.trip_stop_id is not None:  # None already excluded by `checkable`; narrows for mypy
         precinct = await _load_precinct_for_stop(db, trip_stop_id=event.trip_stop_id)
         if precinct is not None and precinct.latitude is not None and precinct.longitude is not None:
             precinct_id = precinct.id
@@ -377,7 +379,8 @@ def build_capture_assessment(
     tracker_lat: Optional[float] = None
     tracker_lng: Optional[float] = None
     tracker_captured_at: Optional[datetime] = None
-    if horse_fix is not None and horse_fix.has_position:
+    # lat/lng None-checks are implied by has_position; repeated so mypy can narrow the Decimal | None.
+    if horse_fix is not None and horse_fix.has_position and horse_fix.lat is not None and horse_fix.lng is not None:
         tracker_lat = float(horse_fix.lat)
         tracker_lng = float(horse_fix.lng)
         tracker_captured_at = horse_fix.fixed_at
@@ -462,11 +465,10 @@ async def record_separation_finding(
     SYSTEM source, WARNING severity (mirrors GPS_MISMATCH's own reasoning in
     phase_service._raise_position_disagreement_if_unrecorded: real false-positive
     modes exist — a phone left in the cab, a co-driver holding it, stale accuracy —
-    so this is not the alarm tier), and `review_status` is set EXPLICITLY to
-    NEEDS_REVIEW rather than routed through exception_service.initial_review_status
-    (which would return RECORDED for a WARNING) — a controller decision (P5) that a
-    measured driver/vehicle separation should reach a dispatcher's queue even though
-    its severity alone would not otherwise earn that.
+    so this is not the alarm tier), and `review_status` comes from
+    review_policy.initial_review_status like every other write site (FP-280: every
+    exception starts NEEDS_REVIEW, so a measured driver/vehicle separation reaches a
+    dispatcher's queue).
 
     Idempotent two ways at once, exactly like exception_service.raise_exception's
     client_report_id handling: an existence check up front closes the common case (a
@@ -506,7 +508,7 @@ async def record_separation_finding(
         # docstring) — reached this line only because assessment.proximity ==
         # 'separated' above.
         description = (
-            f"Driver phone and vehicle tracker were recorded {_format_metres(assessment.separation_metres)} "
+            f"Driver phone and vehicle tracker were recorded {_format_metres(cast(float, assessment.separation_metres))} "
             f"apart at this handshake; limit {_format_metres(assessment.max_separation_metres)}."
             f"{_describe_driver_reason(driver_reason)}"
         )
@@ -522,7 +524,7 @@ async def record_separation_finding(
             exception_type=ExceptionType.DRIVER_VEHICLE_SEPARATION,
             source=ExceptionSource.SYSTEM,
             severity=ExceptionSeverity.WARNING,
-            review_status=ExceptionReviewStatus.NEEDS_REVIEW,
+            review_status=initial_review_status(ExceptionSeverity.WARNING),
             description=description,
         )
 
@@ -611,9 +613,9 @@ async def record_driver_location_finding(
     `driver_reason` mirrors record_separation_finding's own parameter exactly — see
     its docstring.
 
-    Same controller decision as record_separation_finding (SYSTEM source, WARNING
-    severity, review_status forced to NEEDS_REVIEW rather than left to exception_
-    service.initial_review_status), and the identical two-layer idempotency:
+    Same policy as record_separation_finding (SYSTEM source, WARNING severity,
+    review_status from review_policy.initial_review_status), and the identical
+    two-layer idempotency:
     an existence check up front for the common replay, and a SAVEPOINT insert
     around the partial unique index uq_exceptions_phase_driver_location (migration
     tim_driver_location_mismatch) to recover the loser of a genuine race. Only that
@@ -652,7 +654,7 @@ async def record_driver_location_finding(
             exception_type=ExceptionType.DRIVER_LOCATION_MISMATCH,
             source=ExceptionSource.SYSTEM,
             severity=ExceptionSeverity.WARNING,
-            review_status=ExceptionReviewStatus.NEEDS_REVIEW,
+            review_status=initial_review_status(ExceptionSeverity.WARNING),
             description=description,
         )
 

@@ -51,6 +51,38 @@ class ExceptionAlreadyReviewedError(Exception):
         self.exception_id = exception_id
 
 
+class ExceptionClaimedByColleagueError(Exception):
+    """Raised when a request meets a colleague's claim without saying it means to take over.
+
+    Not a lock — anyone may take over, by claiming or reviewing with take_over=True. This
+    only refuses the *silent* override: a page loaded before the colleague claimed would
+    otherwise replace their claim without the dispatcher ever seeing it existed.
+    """
+
+    def __init__(self, exception_id: str) -> None:
+        super().__init__(
+            f"Exception '{exception_id}' is claimed by another dispatcher. "
+            "Take it over before acting on it."
+        )
+
+
+class ExceptionNotOpenError(Exception):
+    """Raised when claiming or releasing an exception that is already reviewed — by
+    then, who claimed it is part of the record, not a work assignment."""
+
+    def __init__(self, exception_id: str) -> None:
+        super().__init__(f"Exception '{exception_id}' is already reviewed; its claim can no longer change.")
+
+
+class BatchReviewRejectedError(Exception):
+    """A batch review that breaks a batch rule (a critical row, rows from another trip).
+    422, not 409: nothing changed underneath the caller — the request itself is not a
+    reviewable batch."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+
+
 class PhaseSequenceError(Exception):
     """Raised when a phase is completed out of order (gated on the phase plan, not trip.status).
 

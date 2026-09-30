@@ -408,6 +408,20 @@ Exception detail. Consumed by Dispatcher Exception Detail page.
 | Tags | `["exceptions"]` |
 | Response 200 | `TripExceptionRead` — includes nested trip summary, handshake context, and last checkpoint |
 
+#### Review claims and batch review (FP-280)
+Every exception starts `needs_review`, except a dispatcher's own override/cancel note, which is saved already reviewed by its author (`review_outcome = dispatcher_authored`). "Claimed" is `needs_review` plus a claimer. Soft claim: anyone may take over, but only explicitly with `take_over: true`; a claim or review that meets a colleague's claim without it is a 409.
+
+`TripExceptionRead`, `TripExceptionListItem` and `TripExceptionDetail` gain `claimed_by_user_id`, `claimed_at`, `claimed_by_name` and `reviewed_by_name` (all nullable). Names are resolved server-side from `users.full_name` within the caller's organisation, and are only populated on dispatcher-facing reads (never on driver responses).
+
+| Endpoint | Auth | Body | Response |
+|---|---|---|---|
+| `POST /api/v1/exceptions/{exception_id}/claim` | Dispatcher JWT | `{ "take_over": bool }` (default `false`) | 200 `TripExceptionRead`. 404 missing/cross-org; 409 colleague's claim without `take_over`, or already reviewed |
+| `DELETE /api/v1/exceptions/{exception_id}/claim` | Dispatcher JWT | none | 200 `TripExceptionRead`. Only the claimer may release; 409 for a colleague's claim or a reviewed row; no-op when unclaimed |
+| `PATCH /api/v1/exceptions/{exception_id}/review` | Dispatcher JWT | existing body plus optional `take_over: bool` | Reviewing an unclaimed row auto-claims it; 409 if a colleague holds the claim and `take_over` is false |
+| `POST /api/v1/exceptions/review-batch` | Dispatcher JWT | `{ trip_id, exception_ids (1–100, unique), review_note, review_outcome, contact_method }` | 200 `list[TripExceptionRead]`. 404 any id missing/cross-org; 422 critical row, other-trip row, empty/over-cap/duplicate ids; 409 colleague's claim or review. All-or-nothing; never takes over |
+
+`GET /api/v1/exceptions/review-queue` is ordered critical → warning → info, then newest first.
+
 #### `POST /api/v1/exceptions/{exception_id}/resolve`
 Mark exception resolved (with note). Consumed by Dispatcher "Resolve" action.
 

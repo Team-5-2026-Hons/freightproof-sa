@@ -8,6 +8,7 @@ export type RealtimeKind =
   | 'phase_completed'
   | 'exception_raised'
   | 'exception_reviewed'
+  | 'exception_claimed'
   | 'trip_closed'
 
 // How much it matters, read off the same value the backend writes onto TripException
