@@ -99,7 +99,7 @@ class _FakePrecinct:
 
 class _FakeTripStop:
     """Stands in for the EXPECTED TripStop row `_load_trip_context` now returns
-    alongside its Precinct (FP-197 Task 3) — this suite stubs that function entirely,
+    alongside its Precinct (FP-197) — this suite stubs that function entirely,
     so it only needs an `.id` for MoveTruckResponse.expected_trip_stop_id."""
 
     def __init__(self) -> None:
@@ -196,7 +196,7 @@ async def test_unknown_waypoint_raises_before_anything_is_staged(wired) -> None:
     assert wired.data == {}
 
 
-# ── FP-197 Task 3: scenario mode, still with no DB reachable ──────────────────
+# ── FP-197: scenario mode, still with no DB reachable ─────────────────────────
 #
 # `resolve_target_stop` is the endpoint's only real query for scenario mode, and it
 # is stubbed out here exactly like `_load_trip_context` is above — so this suite

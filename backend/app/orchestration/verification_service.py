@@ -20,15 +20,21 @@ from app.crypto.hashing import compute_trip_canonical_payload
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.evidence import EvidenceArtifact
 from app.db.models.events import DriverEvent, PrecinctEvent, VehicleEvent
-from app.db.models.enums import PhaseType, SubjectType, VerifyStatus
+from app.db.models.enums import PhaseStatus, PhaseType, SubjectType, VerifyStatus
 from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Trip, TripTrailer
 from app.orchestration.phase_service import (
     PHASE_PAYLOAD_VERSION_V2,
+    compute_activation_canonical_payload_v2,
+    compute_arrival_canonical_payload_v2,
     compute_confirmation_canonical_payload_v1,
     compute_confirmation_canonical_payload_v2,
     compute_departure_canonical_payload_v1,
     compute_departure_canonical_payload_v2,
+    compute_in_transit_canonical_payload_v2,
+    compute_loading_canonical_payload_v2,
+    compute_override_canonical_payload_v2,
+    compute_unloading_canonical_payload_v2,
 )
 from app.storage.supabase_storage import (
     EvidenceObjectIntegrityError,
@@ -37,6 +43,13 @@ from app.storage.supabase_storage import (
 )
 
 _LEGACY_PHASE_PAYLOAD_VERSION = 1
+# Phases first anchored on 2026-09-23, when every phase started anchoring. They only
+# ever produced v2 payloads; loading and unloading keep their separate pre-phase legacy
+# handshake contracts below, matched by exact key set before this set is consulted.
+_V2_ONLY_PHASE_TYPES = frozenset({
+    PhaseType.ACTIVATION, PhaseType.LOADING, PhaseType.IN_TRANSIT,
+    PhaseType.ARRIVAL, PhaseType.UNLOADING,
+})
 _LEGACY_LOADING_PAYLOAD_KEYS = frozenset({
     "handshake_event_id", "trip_id", "handshake_type", "seal_number",
     "driver_visual_count",
@@ -227,9 +240,9 @@ async def _reconstruct_phase_event_payload(
     departure/confirmation v1 shape. New v2 receipts also return the role-to-
     artifact mapping needed to hash the current private Storage bytes.
 
-    Task 2.6 (D7/T5) moved the seal — and the anchor with it — from loading to
-    departure, so this dispatches on PhaseType.DEPARTURE, not LOADING, and no
-    longer needs driver_visual_count (which stays on loading, unanchored).
+    The seal — and the anchor with it — moved from loading to departure, so this
+    dispatches on PhaseType.DEPARTURE, not LOADING, and no longer needs
+    driver_visual_count (which stays on loading, unanchored).
 
     driver_visual_count is no longer part of the CONFIRMATION completeness
     check below: it is now Optional on the request (the driver may skip the
@@ -278,6 +291,63 @@ async def _reconstruct_phase_event_payload(
                 "pp_scan_in_count": event.parcel_count_destination,
                 "driver_visual_count": event.driver_visual_count,
             })
+    if event.status == PhaseStatus.OVERRIDDEN:
+        # Checked before any phase-type branch: an overridden row anchored the override
+        # record (PHASE_OVERRIDE), never its phase's own payload. v2 only, because
+        # overrides were not anchored at all before v2 existed.
+        if version == _LEGACY_PHASE_PAYLOAD_VERSION:
+            raise _PhaseEvidenceMissing("overrides have no legacy payload")
+        if event.dispatcher_override_user_id is None or event.dispatcher_override_note is None:
+            raise _PhaseEvidenceMissing("anchored override fields are missing")
+        return _PhasePayloadState(payload=compute_override_canonical_payload_v2(
+            phase_event_id=event.id, trip_id=event.trip_id,
+            phase_type=PhaseType(event.phase_type),
+            override_user_id=event.dispatcher_override_user_id,
+            override_note=event.dispatcher_override_note,
+        ))
+    if event.phase_type in _V2_ONLY_PHASE_TYPES and version == _LEGACY_PHASE_PAYLOAD_VERSION:
+        # These phases started anchoring after v2 existed, so an unversioned payload for
+        # one of them is not a real receipt shape and must not verify.
+        raise _PhaseEvidenceMissing("this phase type has no legacy payload")
+    if event.phase_type in (PhaseType.ACTIVATION, PhaseType.IN_TRANSIT, PhaseType.UNLOADING):
+        builder = {
+            PhaseType.ACTIVATION: compute_activation_canonical_payload_v2,
+            PhaseType.IN_TRANSIT: compute_in_transit_canonical_payload_v2,
+            PhaseType.UNLOADING: compute_unloading_canonical_payload_v2,
+        }[PhaseType(event.phase_type)]
+        return _PhasePayloadState(payload=builder(phase_event_id=event.id, trip_id=event.trip_id))
+    if event.phase_type == PhaseType.LOADING:
+        loading_artifacts: tuple[_ArtifactCommitment, ...] = ()
+        if event.linehaul_photo_artifact_id is not None:
+            loading_artifacts = await _load_artifacts_for_roles(
+                db, event=event,
+                roles=(("linehaul_photo_sha256", event.linehaul_photo_artifact_id),),
+            )
+        return _PhasePayloadState(
+            payload=compute_loading_canonical_payload_v2(
+                phase_event_id=event.id, trip_id=event.trip_id,
+                parcel_count_origin=event.parcel_count_origin,
+                linehaul_photo_sha256=(
+                    loading_artifacts[0].artifact.file_hash if loading_artifacts else None
+                ),
+            ),
+            artifacts=loading_artifacts,
+        )
+    if event.phase_type == PhaseType.ARRIVAL:
+        if event.seal_condition is None or event.seal_photo_artifact_id is None:
+            raise _PhaseEvidenceMissing("anchored arrival seal evidence is missing")
+        arrival_artifacts = await _load_artifacts_for_roles(
+            db, event=event, roles=(("seal_photo_sha256", event.seal_photo_artifact_id),),
+        )
+        return _PhasePayloadState(
+            payload=compute_arrival_canonical_payload_v2(
+                phase_event_id=event.id, trip_id=event.trip_id,
+                seal_number=event.seal_number,
+                seal_condition=event.seal_condition,
+                seal_photo_sha256=arrival_artifacts[0].artifact.file_hash,
+            ),
+            artifacts=arrival_artifacts,
+        )
     if event.phase_type == PhaseType.DEPARTURE:
         # seal_number is a nullable column (not yet completed), but a receipt
         # only ever exists once departure anchored it. If it's still None here,

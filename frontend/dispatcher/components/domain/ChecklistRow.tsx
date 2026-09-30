@@ -146,7 +146,7 @@ export function ChecklistRow({ trip, colWidths, precincts, className, showProgre
             <span className="text-[11px] font-[600] text-warn truncate">{hint}</span>
           ) : (
             // NOT "No exceptions" — needs_review_count is zero once reviewed exceptions
-            // are resolved, even though the record still holds them. See docs/known-issues.md issue 11.
+            // are resolved, even though the record still holds them.
             <span className="text-[11px] font-[600] text-ok">None need review</span>
           )}
         </div>

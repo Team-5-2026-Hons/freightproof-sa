@@ -5,9 +5,9 @@ They verify that:
   - fetch_and_sync_consignment is NOT called for an empty-leg trip (no consignments)
   - fetch_and_sync_consignment IS called once per consignment, with the correct args
   - a PP failure for any consignment surfaces as PPSyncError and rolls back the session
-  - create_trip writes the trip's full committed phase plan (Stage 2.1), not just H0
+  - create_trip writes the trip's full committed phase plan, not just H0
 
-One exception (task 2.5): test_create_trip_anchor_failure_still_rolls_back_whole_trip
+One exception: test_create_trip_anchor_failure_still_rolls_back_whole_trip
 uses the real (rolled-back) db_session fixture, because it asserts on rows actually
 persisted/not-persisted — a mocked session can't prove that.
 """
@@ -235,11 +235,11 @@ async def test_create_trip_unknown_waybill_raises_ppsync_error() -> None:
 @pytest.mark.asyncio
 async def test_create_trip_writes_full_pending_plan() -> None:
     """A single-leg (2-stop, 1-consignment) create_trip call writes the full
-    7-row committed phase plan up front (Stage 2.1) — not just a hand-built H0.
+    8-row committed phase plan up front — not just a hand-built H0.
 
-    All 7 rows must be `pending`, ordered by sequence_number, and match
+    All 8 rows must be `pending`, ordered by sequence_number, and match
     build_phase_plan's 2-stop shape: trip_creation, activation, loading,
-    departure, in_transit, unloading, confirmation.
+    departure, in_transit, arrival, unloading, confirmation.
     """
     from app.orchestration.trip_service import create_trip
 
@@ -304,12 +304,12 @@ async def test_create_trip_writes_full_pending_plan() -> None:
         key=lambda e: e.sequence_number,
     )
 
-    assert len(phase_events) == 7
-    assert [e.sequence_number for e in phase_events] == list(range(7))
+    assert len(phase_events) == 8
+    assert [e.sequence_number for e in phase_events] == list(range(8))
     # h0 (trip_creation) is the one row create_trip completes inline, right
     # after its Hedera anchor succeeds — every other row stays PENDING until a
     # later advance_* call resolves it. Regression coverage for the h0-never-
-    # completes bug (Stage 2 final review): h0 used to stay PENDING forever,
+    # completes bug: h0 used to stay PENDING forever,
     # which _gate_and_load's "all lower sequence_numbers resolved" check turned
     # into a permanent block on every later phase.
     assert phase_events[0].status == PhaseStatus.COMPLETED
@@ -320,34 +320,31 @@ async def test_create_trip_writes_full_pending_plan() -> None:
         PhaseType.LOADING,
         PhaseType.DEPARTURE,
         PhaseType.IN_TRANSIT,
+        PhaseType.ARRIVAL,
         PhaseType.UNLOADING,
         PhaseType.CONFIRMATION,
     ]
-    # trip_creation is the only NULL-stop row (D3); every other row anchors to
+    # trip_creation is the only NULL-stop row; every other row anchors to
     # a real stop.
     assert phase_events[0].trip_stop_id is None
     assert all(e.trip_stop_id is not None for e in phase_events[1:])
-    # D7: only trip_creation/departure/confirmation carry a Hedera receipt. h0's
-    # anchor is ANCHORED (not just PENDING) because create_trip completes it
-    # inline in the same step that succeeds the anchor; departure/confirmation
-    # stay PENDING until their own advance_* calls run.
+    # Every phase carries a Hedera receipt now (ANCHORED_PHASES =
+    # frozenset(PhaseType)). h0's anchor is ANCHORED (not just
+    # PENDING) because create_trip completes it inline in the same step that
+    # succeeds the anchor; every other row stays PENDING until its own advance_*
+    # call anchors it on completion.
     assert phase_events[0].anchor_status == AnchorStatus.ANCHORED
-    assert phase_events[3].anchor_status == AnchorStatus.PENDING
-    assert phase_events[6].anchor_status == AnchorStatus.PENDING
-    assert phase_events[1].anchor_status == AnchorStatus.NOT_REQUIRED
-    assert phase_events[2].anchor_status == AnchorStatus.NOT_REQUIRED
-    assert phase_events[4].anchor_status == AnchorStatus.NOT_REQUIRED
-    assert phase_events[5].anchor_status == AnchorStatus.NOT_REQUIRED
+    assert all(e.anchor_status == AnchorStatus.PENDING for e in phase_events[1:])
     assert phase_events[0].completed_at is not None
     assert phase_events[0].event_hash is not None
     assert phase_events[0].blockchain_receipt_id is not None
 
 
 def test_build_phase_events_single_leg_matches_plan() -> None:
-    """_build_phase_events is a pure function (Stage 2.1 code-review extraction) —
+    """_build_phase_events is a pure function —
     no session, no mocking, just plain in-memory TripStop/consignment-result
     stand-ins. Complements test_create_trip_writes_full_pending_plan above, which
-    checks the same 7-row shape end-to-end through create_trip's session-mocked
+    checks the same 8-row shape end-to-end through create_trip's session-mocked
     wiring; this test isolates the plan-building logic itself.
     """
     from app.orchestration.trip_service import _build_phase_events
@@ -371,31 +368,28 @@ def test_build_phase_events_single_leg_matches_plan() -> None:
         PhaseType.LOADING,
         PhaseType.DEPARTURE,
         PhaseType.IN_TRANSIT,
+        PhaseType.ARRIVAL,
         PhaseType.UNLOADING,
         PhaseType.CONFIRMATION,
     ]
-    assert [e.sequence_number for e in phase_events] == list(range(7))
+    assert [e.sequence_number for e in phase_events] == list(range(8))
     assert all(e.trip_id == trip_id for e in phase_events)
     assert all(e.status == PhaseStatus.PENDING for e in phase_events)
-    # trip_creation is the only NULL-stop row (D3); activation/loading anchor
-    # to stop 0, unloading/confirmation to stop 1.
+    # trip_creation is the only NULL-stop row; activation/loading anchor
+    # to stop 0, arrival/unloading/confirmation to stop 1.
     assert phase_events[0].trip_stop_id is None
     assert phase_events[1].trip_stop_id == stop_0.id
     assert phase_events[2].trip_stop_id == stop_0.id
-    assert phase_events[6].trip_stop_id == stop_1.id
-    # D7: only trip_creation/departure/confirmation carry a Hedera receipt.
-    assert [e.anchor_status for e in phase_events] == [
-        AnchorStatus.PENDING,
-        AnchorStatus.NOT_REQUIRED,
-        AnchorStatus.NOT_REQUIRED,
-        AnchorStatus.PENDING,
-        AnchorStatus.NOT_REQUIRED,
-        AnchorStatus.NOT_REQUIRED,
-        AnchorStatus.PENDING,
-    ]
+    assert phase_events[5].trip_stop_id == stop_1.id
+    assert phase_events[7].trip_stop_id == stop_1.id
+    # Every phase carries a Hedera receipt now (ANCHORED_PHASES =
+    # frozenset(PhaseType)) — every row this pure builder emits
+    # is PENDING (create_trip's own inline completion of trip_creation to ANCHORED
+    # happens later, outside this function; see test_create_trip_writes_full_pending_plan).
+    assert all(e.anchor_status == AnchorStatus.PENDING for e in phase_events)
 
 
-# ── P0 fail-closed contrast (task 2.5, D7) ─────────────────────────────────────
+# ── P0 fail-closed contrast ──────────────────────────────────────────────────
 
 @pytest_asyncio.fixture
 async def create_trip_seed(db_session):

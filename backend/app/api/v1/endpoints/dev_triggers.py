@@ -26,7 +26,8 @@ from app.db.models.enums import PhaseType
 from app.db.models.organisations import Precinct
 from app.db.models.people import Driver
 from app.db.models.phases import PhaseEvent
-from app.db.models.trips import Consignment, Parcel, Trip, TripStop
+from app.db.models.trips import Consignment, Parcel, Trip, TripStop, TripTrailer
+from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
 from app.integrations.mock_state import get_mock_state_store
 from app.integrations.parcel_perfect import (
@@ -37,7 +38,7 @@ from app.orchestration import consignment_service, exception_service, scan_servi
 from app.orchestration.phase_gate import GATED_PHASES
 from app.schemas.dev import (
     CloseScanSessionRequest, CloseScanSessionResponse, ConsignmentScanResultRead,
-    DevConsignment, DevTripStop, DevTripSummary, ExceptionTriggerRequest,
+    DevConsignment, DevTripStop, DevTripSummary, DevVehicle, ExceptionTriggerRequest,
     ExceptionTriggerResponse, FlushMockStateResponse, PpTriggerRequest, PpTriggerResponse,
     ScanTriggerRequest, ScanTriggerResponse,
 )
@@ -113,10 +114,11 @@ async def list_dev_trips(
         barcodes_by_consignment.setdefault(consignment_id, []).append(barcode)
 
     # Imported, not re-declared, so this can never drift from phase_gate.py. Plus
-    # DEPARTURE (not gated) to derive preceding_departure_status below; extending this
-    # one query rather than adding a second keeps this endpoint's batched-query discipline.
+    # DEPARTURE (not gated) to derive preceding_departure_status below, and ARRIVAL,
+    # which gates scan IN on the panel; extending this one query rather than adding a
+    # second keeps this endpoint's batched-query discipline.
     gated_phase_types = list(GATED_PHASES.keys())
-    phase_event_types = [*gated_phase_types, PhaseType.UNLOADING, PhaseType.DEPARTURE]
+    phase_event_types = [*gated_phase_types, PhaseType.UNLOADING, PhaseType.ARRIVAL, PhaseType.DEPARTURE]
     phase_events = list((await db.execute(
         select(
             PhaseEvent.trip_id, PhaseEvent.trip_stop_id,
@@ -173,6 +175,27 @@ async def list_dev_trips(
             barcodes=barcodes_by_consignment.get(c.id, []),
         )
 
+    # One query for horses, one for trailers, same batched-query discipline as above.
+    horses = {v.id: v for v in (await db.execute(
+        select(Vehicle).where(Vehicle.id.in_([t.horse_id for t in trips]))
+    )).scalars().all()}
+    trailers_by_trip: dict[uuid.UUID, list[Vehicle]] = {}
+    for trailer_trip_id, vehicle in (await db.execute(
+        select(TripTrailer.trip_id, Vehicle)
+        .join(Vehicle, Vehicle.id == TripTrailer.trailer_id)
+        .where(TripTrailer.trip_id.in_(trip_ids))
+        .order_by(Vehicle.registration)
+    )).all():
+        trailers_by_trip.setdefault(trailer_trip_id, []).append(vehicle)
+
+    def _vehicles(trip: Trip) -> list[DevVehicle]:
+        horse = horses.get(trip.horse_id)
+        return [
+            *([DevVehicle(vehicle_id=horse.id, registration=horse.registration, role="horse")] if horse else []),
+            *(DevVehicle(vehicle_id=v.id, registration=v.registration, role="trailer")
+              for v in trailers_by_trip.get(trip.id, [])),
+        ]
+
     summaries: list[DevTripSummary] = []
     for trip in trips:
         trip_stops: list[DevTripStop] = []
@@ -194,6 +217,8 @@ async def list_dev_trips(
                     (stop.id, PhaseType.CONFIRMATION)
                 ),
                 preceding_departure_status=_preceding_departure_status(trip.id, stop.id),
+                arrival_phase_status=phase_status_by_stop.get((stop.id, PhaseType.ARRIVAL)),
+                unloading_phase_status=phase_status_by_stop.get((stop.id, PhaseType.UNLOADING)),
             ))
         summaries.append(DevTripSummary(
             trip_id=trip.id,
@@ -203,6 +228,8 @@ async def list_dev_trips(
             stops=trip_stops,
             driver_full_name=driver_name_by_trip.get(trip.id),
             created_at=trip.created_at,
+            current_stop_sequence=trip.current_stop,
+            vehicles=_vehicles(trip),
         ))
     return summaries
 
@@ -378,8 +405,9 @@ async def trigger_pp_change(
             status_code=http_status.HTTP_409_CONFLICT, detail=_MOCK_REQUIRED_DETAIL,
         ) from exc
 
-    # Overwrites the reconciliation baseline without raising (spec §B2c); detecting that
-    # drift is Stage 5, deliberately not built here.
+    # PP waybills are mutable after creation, so this overwrites the reconciliation
+    # baseline without raising if it drifted; detecting that drift is a known gap,
+    # deliberately not built here.
     sync_result = await consignment_service.fetch_and_sync_consignment(
         db, body.parcel_perfect_reference, trip_id=body.trip_id,
     )

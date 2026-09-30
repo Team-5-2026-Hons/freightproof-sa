@@ -132,12 +132,12 @@ def _body(**overrides) -> dict:
 # ── review ───────────────────────────────────────────────────────────────────
 #
 # The old undifferentiated GET /api/v1/exceptions list (and its `resolved` filter) was
-# retired by the exception-review-and-pagination plan's Task 6 in favour of three
-# purpose-built reads — GET .../review-queue, GET .../history and GET .../{id} — whose
-# coverage lives in tests/integration/test_exception_reads.py. The tests that exercised
-# the old route lived here; removed rather than ported, since the new routes have a
-# materially different contract (a compact list item shape, no `resolved` bool) and
-# porting them would just re-describe test_exception_reads.py under a different name.
+# retired in favour of three purpose-built reads — GET .../review-queue, GET .../history
+# and GET .../{id} — whose coverage lives in tests/integration/test_exception_reads.py.
+# The tests that exercised the old route lived here; removed rather than ported,
+# since the new routes have a materially different contract (a compact list item
+# shape, no `resolved` bool) and porting them would just re-describe
+# test_exception_reads.py under a different name.
 
 
 async def test_review_records_complete_evidence(client: AsyncClient, db_session, two_orgs):

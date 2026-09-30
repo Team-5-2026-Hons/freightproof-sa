@@ -110,7 +110,7 @@ export function SplitColumns<Row>({
   left, right, rowKey, categoryLabel, value, leftColor, rightColor, yLabel, centreLabel,
   leftCaption, rightCaption, renderTooltip, height: normalHeight = CHART_HEIGHT,
 }: SplitColumnsProps<Row>) {
-  // Taller inside the zoom modal (D27); both halves share it, so they keep one baseline.
+  // Taller inside the zoom modal; both halves share it, so they keep one baseline.
   const height = useChartHeight(normalHeight)
   const ticks = countTicks(Math.max(0, ...left.map(value), ...right.map(value)))
   // The axis line is the right half's plot edge: half-way across, plus the tick numbers' width.

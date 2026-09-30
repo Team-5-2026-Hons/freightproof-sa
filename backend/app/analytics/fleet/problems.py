@@ -1,6 +1,6 @@
-"""Queries behind the Problems tab (GET /analytics/fleet/problems, spec §5.3). Every
-figure is about exceptions on the closed-trip set (spec G4), bucketed by first
-departure, and never counts dispatcher notes (spec D10)."""
+"""Queries behind the Problems tab (GET /analytics/fleet/problems). Every
+figure is about exceptions on the closed-trip set, bucketed by first
+departure, and never counts dispatcher notes."""
 
 import uuid
 from collections import Counter
@@ -39,7 +39,7 @@ from app.schemas.fleet_analytics import (
 # A problem with no linked phase event; its own bar on chart 3.4 so it's never
 # silently dropped.
 UNLINKED_STEP = "unlinked"
-# Plan order (PhaseType's own order), then "unlinked" last (spec §5.3, 3.4).
+# Plan order (PhaseType's own order), then "unlinked" last.
 STEP_ORDER: tuple[str, ...] = (*(phase.value for phase in PhaseType), UNLINKED_STEP)
 _SOURCE_ORDER: dict[ExceptionSource, int] = {source: index for index, source in enumerate(ExceptionSource)}
 
@@ -74,7 +74,7 @@ def per_trip(
 
 
 def theft_signals(rows: Sequence[ProblemRow], bucket_list: Sequence[Bucket]) -> list[TheftSignalsBucket]:
-    """Only THEFT_SIGNAL_TYPES (spec D12); seal_unverified is excluded, since no
+    """Only THEFT_SIGNAL_TYPES; seal_unverified is excluded, since no
     departure seal existed to compare against."""
     counts = Counter((row.bucket_start, row.exception_type) for row in rows if row.exception_type in THEFT_SIGNAL_TYPES)
     result: list[TheftSignalsBucket] = []
@@ -111,7 +111,7 @@ def by_step(rows: Sequence[ProblemRow]) -> list[ProblemStepCount]:
 
 def risky_times(legs: Sequence[tuple[datetime, datetime]], rows: Sequence[ProblemRow]) -> list[RiskyTimeBlock]:
     """Share of driving time vs share of problems raised during the driving step, per
-    SAST quarter of the day (spec §5.3, D21). Driving step only, any severity. A
+    SAST quarter of the day. Driving step only, any severity. A
     problem counts in the block its created_at (server receipt time) falls in, so a
     report from a phone with no signal can arrive late."""
     minutes = {block: 0.0 for block, _, _ in DAY_BLOCKS}
@@ -172,7 +172,7 @@ async def trips_per_bucket(db: AsyncSession, *, organization_id: uuid.UUID, peri
 async def driving_legs(
     db: AsyncSession, *, organization_id: uuid.UUID, period: Period,
 ) -> list[tuple[datetime, datetime]]:
-    """(departed, arrived) for every driving leg of the closed-trip set (spec G14): an attested
+    """(departed, arrived) for every driving leg of the closed-trip set: an attested
     in_transit step straight after an attested departure."""
     trips = closed_trips(organization_id, instant_range(period.start, period.end), require_grain(period))
     steps = trip_steps(trips)

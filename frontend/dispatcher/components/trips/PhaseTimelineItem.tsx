@@ -50,7 +50,7 @@ interface Props {
   /** Compact recorded-location verdict, shown in the summary area so it reads without expanding the card. */
   evidenceSummary?: ReactNode
   /** Content rendered OUTSIDE the toggle, always visible whether or not the card is
-   *  open — for a fact (a transit leg's departure/arrival, task 9) that must survive
+   *  open — for a fact (a transit leg's departure/arrival) that must survive
    *  collapse the way `evidenceSummary` does, but is too substantial to squeeze into
    *  the summary row itself. Sits between the summary and the disclosed `children`. */
   persistentContent?: ReactNode

@@ -25,7 +25,7 @@ describe('activePhase', () => {
   })
 
   it('is null when every phase is resolved', () => {
-    const plan = walk(SINGLE_LEG_PHASE_PLAN, 6)
+    const plan = walk(SINGLE_LEG_PHASE_PLAN, 7)
 
     expect(activePhase(plan)).toBeNull()
   })
@@ -55,16 +55,16 @@ describe('activePhase', () => {
 })
 
 describe('completionPct', () => {
-  it('never exceeds 100 on an 11-phase plan', () => {
-    const plan = walk(CROSS_DOCK_PHASE_PLAN, 10)
+  it('never exceeds 100 on a 13-phase plan', () => {
+    const plan = walk(CROSS_DOCK_PHASE_PLAN, 12)
 
-    expect(plan).toHaveLength(11)
+    expect(plan).toHaveLength(13)
     expect(completionPct(plan)).toBe(100)
   })
 
   it('uses the plan its own length as the denominator, not a constant', () => {
-    // 6 of 11 done is 55%. Against a hard-coded denominator of 6 it would be 100%.
-    expect(completionPct(walk(CROSS_DOCK_PHASE_PLAN, 5))).toBe(55)
+    // 7 of 13 done is 54%. Against a hard-coded denominator of 6 it would be 100%.
+    expect(completionPct(walk(CROSS_DOCK_PHASE_PLAN, 6))).toBe(54)
   })
 
   it('is 0 on an empty plan rather than NaN', () => {
@@ -75,7 +75,7 @@ describe('completionPct', () => {
   // anomaly is evidence attached to it, not outstanding work. Reporting 86% on a
   // delivered load reads as an unfinished trip on the board.
   it('reaches 100 on a closed trip that carries an exception phase', () => {
-    const plan = walk(SINGLE_LEG_PHASE_PLAN, 6).map(p =>
+    const plan = walk(SINGLE_LEG_PHASE_PLAN, 7).map(p =>
       p.sequence_number === 3 ? { ...p, status: 'exception' as const } : p)
 
     expect(completionPct(plan)).toBe(100)
@@ -147,9 +147,9 @@ describe('nodeTypeFor', () => {
 
 describe('currentSealNumber', () => {
   it('is the highest-sequence completed departure — the seal actually on the vehicle', () => {
-    // Cross-dock: two departures (seq 3 and 7). Leg 1 is sealed and done, leg 2 is
+    // Cross-dock: two departures (seq 3 and 8). Leg 1 is sealed and done, leg 2 is
     // sealed and done, so the current seal is leg 2 s.
-    const plan = walk(CROSS_DOCK_PHASE_PLAN, 8).map(p =>
+    const plan = walk(CROSS_DOCK_PHASE_PLAN, 9).map(p =>
       p.phase_type === 'departure'
         ? { ...p, seal_number: p.sequence_number === 3 ? 'AB-1111' : 'AB-2222' }
         : p)
@@ -179,13 +179,13 @@ describe('currentSealNumber', () => {
 
 describe('departureSealForLeg', () => {
   it("is the seal from THIS leg's own departure, not an earlier leg's", () => {
-    // Cross-dock: departures at seq 3 (leg 1) and seq 7 (leg 2). Leg 2's unloading
-    // (seq 9) must compare against leg 2's own seal, never leg 1's.
+    // Cross-dock: departures at seq 3 (leg 1) and seq 8 (leg 2). Leg 2's unloading
+    // (seq 11) must compare against leg 2's own seal, never leg 1's.
     const plan = CROSS_DOCK_PHASE_PLAN.map(p =>
       p.phase_type === 'departure'
         ? { ...p, seal_number: p.sequence_number === 3 ? 'AB-1111' : 'AB-2222' }
         : p)
-    const unloading = plan.find(p => p.sequence_number === 9)!
+    const unloading = plan.find(p => p.sequence_number === 11)!
 
     expect(departureSealForLeg(plan, unloading)).toBe('AB-2222')
   })
@@ -195,7 +195,7 @@ describe('departureSealForLeg', () => {
       p.phase_type === 'departure'
         ? { ...p, seal_number: p.sequence_number === 3 ? 'AB-1111' : 'AB-2222' }
         : p)
-    const unloading = plan.find(p => p.sequence_number === 5)!
+    const unloading = plan.find(p => p.sequence_number === 6)!
 
     expect(departureSealForLeg(plan, unloading)).toBe('AB-1111')
   })
@@ -211,7 +211,7 @@ describe('originScannedCount', () => {
   it('is the lowest-sequence loading — the origin pickup, not the hub pickup', () => {
     const plan = CROSS_DOCK_PHASE_PLAN.map(p => {
       if (p.sequence_number === 2) return { ...p, parcel_count_origin: 40 }
-      if (p.sequence_number === 6) return { ...p, parcel_count_origin: 7 }
+      if (p.sequence_number === 7) return { ...p, parcel_count_origin: 7 }
       return p
     })
 
@@ -249,9 +249,9 @@ describe('destinationScannedCount', () => {
 
 describe('anchorTally', () => {
   it('counts receipts owed from anchor_status, never from plan length', () => {
-    // A single-leg plan owes three: trip_creation, departure, confirmation.
-    expect(anchorTally(SINGLE_LEG_PHASE_PLAN).owed).toBe(3)
-    expect(SINGLE_LEG_PHASE_PLAN).toHaveLength(7)
+    // Every phase anchors, so a single-leg plan owes one receipt per row: eight.
+    expect(anchorTally(SINGLE_LEG_PHASE_PLAN).owed).toBe(8)
+    expect(SINGLE_LEG_PHASE_PLAN).toHaveLength(8)
   })
 
   it('surfaces a failed anchor separately from an anchored one', () => {
@@ -261,7 +261,7 @@ describe('anchorTally', () => {
       return p
     })
 
-    expect(anchorTally(plan)).toEqual({ owed: 3, anchored: 1, failed: 1 })
+    expect(anchorTally(plan)).toEqual({ owed: 8, anchored: 1, failed: 1 })
   })
 })
 
@@ -353,11 +353,11 @@ describe('legDepartureAt', () => {
   })
 
   it('scopes to the leg — leg 2 is dated from its own departure, not leg 1 s', () => {
-    // Cross-dock: departure at seq 3 (stop 1) and seq 7 (stop 2). The in-transit row at
-    // seq 8 belongs to the SECOND leg and must never inherit the first departure time.
+    // Cross-dock: departure at seq 3 (stop 1) and seq 8 (stop 2). The in-transit row at
+    // seq 9 belongs to the SECOND leg and must never inherit the first departure time.
     let plan = complete(CROSS_DOCK_PHASE_PLAN, 3, '2026-07-27T14:00:00Z')
-    plan = complete(plan, 7, '2026-07-27T19:30:00Z')
-    const secondLeg = plan.find(p => p.phase_type === 'in_transit' && p.sequence_number === 8)!
+    plan = complete(plan, 8, '2026-07-27T19:30:00Z')
+    const secondLeg = plan.find(p => p.phase_type === 'in_transit' && p.sequence_number === 9)!
 
     expect(legDepartureAt(plan, secondLeg)).toBe('2026-07-27T19:30:00Z')
   })

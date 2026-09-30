@@ -8,6 +8,10 @@ export type SubjectType =
 
 export type BlockchainReceiptType =
   | 'journey_lock' | 'pickup' | 'delivery' | 'checkpoint_batch'
+  // One per phase anchored since every phase started anchoring (2026-09-23), plus the
+  // dispatcher override record. pickup = departure, delivery = confirmation.
+  | 'activation' | 'loading' | 'transit_arrival' | 'arrival_inspection' | 'unloading'
+  | 'phase_override'
   | 'exception_batch' | 'driver_substitution'
   | 'vehicle_created' | 'vehicle_updated'
   | 'driver_created' | 'driver_updated'

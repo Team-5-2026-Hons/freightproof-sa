@@ -1,4 +1,4 @@
-"""Task 0B — two replays of the same queued exception landing at the same instant.
+"""Two replays of the same queued exception landing at the same instant.
 
 Separate module, and separate from the shared `db_session` fixture, for the identical
 reason tests/integration/test_exception_resolve_concurrency.py is: that fixture binds

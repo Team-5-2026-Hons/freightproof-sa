@@ -310,7 +310,7 @@ async def test_driver_linehaul_mixed_unit_counts_applies_fallback_per_consignmen
 
 @pytest_asyncio.fixture
 async def seed_empty_leg_trip(db_session):
-    """Repositioning run — no consignments by construction (Task 6 schema guard)."""
+    """Repositioning run — no consignments by construction (schema guard)."""
     org = Organization(id=uuid.uuid4(), name="Org", org_type=OrganizationType.OPERATOR)
     db_session.add(org)
     await db_session.flush()

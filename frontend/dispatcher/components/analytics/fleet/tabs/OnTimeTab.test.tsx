@@ -88,7 +88,7 @@ describe('OnTimeTab', () => {
     expect(screen.getByText('No closed trip in this period had a full plan to compare with.')).toBeInTheDocument()
   })
 
-  it('has no step tiles: "Where the time goes" was removed (D24)', async () => {
+  it('has no step tiles: "Where the time goes" was removed', async () => {
     mockedGet.mockResolvedValue(makeOnTime(true))
 
     renderTab()

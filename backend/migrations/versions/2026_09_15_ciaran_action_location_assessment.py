@@ -1,5 +1,5 @@
 """Storage for ActionLocationAssessment snapshots + the driver_vehicle_separation
-exception type (Task 5 of the trip-location-timeline-improvements story).
+exception type.
 
 Additive only, no backfill and no data migration — every column here is nullable
 and every existing row simply reads NULL/absent for it, exactly like every other
@@ -9,19 +9,19 @@ What this migration is for, and what it deliberately is NOT for yet:
 
   * `phase_events.action_location_assessment` / `checkpoints.action_location_
     assessment` / `exceptions.action_location_assessment` — the JSONB snapshot of
-    one ActionLocationAssessment (schemas/action_location.py, Task 4), assembled by
-    Task 5's orchestration/action_location_service.py and validated through that
+    one ActionLocationAssessment (schemas/action_location.py), assembled by
+    orchestration/action_location_service.py and validated through that
     model on every read. Never arbitrary dict storage at the API boundary.
 
   * `phase_events.location_warning_acknowledged_at` / `location_warning_reason` —
-    column only. Task 7 owns the acknowledgement workflow that writes to these; no
-    logic in this story reads or writes them yet.
+    column only. No code reads or writes them yet — added ahead of the
+    acknowledgement workflow that will use them.
 
   * `checkpoints.client_report_id` / `checkpoints.phase_event_id` (+ the partial
     unique index on client_report_id) — column/index only, mirroring exactly what
     `exceptions.client_report_id` already does (migration ciaran_exc_idempotency).
-    Task 8 wires these through checkpoint_service.log_checkpoint; this story's own
-    checkpoint path does not touch them.
+    Not yet wired through checkpoint_service.log_checkpoint; the checkpoint path
+    added here does not touch them.
 
   * Two narrow partial unique indexes scoped to the NEW exception_type only —
     `(phase_event_id, exception_type) WHERE exception_type = 'driver_vehicle_
@@ -67,7 +67,7 @@ _CHECKPOINT_SEPARATION_INDEX = "uq_exceptions_checkpoint_separation"
 def upgrade() -> None:
     # ── phase_events ─────────────────────────────────────────────────────────
     op.add_column("phase_events", sa.Column(_ASSESSMENT_COLUMN, JSONB, nullable=True))
-    # Task 7 columns — no reader/writer in this story, see module docstring.
+    # No reader/writer yet — see module docstring.
     op.add_column(
         "phase_events",
         sa.Column("location_warning_acknowledged_at", sa.DateTime(timezone=True), nullable=True),
@@ -76,8 +76,8 @@ def upgrade() -> None:
 
     # ── checkpoints ──────────────────────────────────────────────────────────
     op.add_column("checkpoints", sa.Column(_ASSESSMENT_COLUMN, JSONB, nullable=True))
-    # Task 8 columns — mirrors exceptions.client_report_id exactly (migration
-    # ciaran_exc_idempotency); no caller in this story populates either.
+    # Mirrors exceptions.client_report_id exactly (migration
+    # ciaran_exc_idempotency); no caller populates these yet.
     op.add_column(
         "checkpoints", sa.Column("client_report_id", UUID(as_uuid=True), nullable=True)
     )
@@ -99,7 +99,7 @@ def upgrade() -> None:
     # ── exceptions ───────────────────────────────────────────────────────────
     op.add_column("exceptions", sa.Column(_ASSESSMENT_COLUMN, JSONB, nullable=True))
 
-    # R13/Task 5: one DRIVER_VEHICLE_SEPARATION finding per source event. Scoped to
+    # One DRIVER_VEHICLE_SEPARATION finding per source event. Scoped to
     # this exception_type only (never broadened) so GPS_MISMATCH — which can
     # legitimately coexist with a separation finding on the very same phase_event_id
     # — keeps allowing as many rows as it always has.

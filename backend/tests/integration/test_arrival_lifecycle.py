@@ -1,12 +1,11 @@
-"""Hub-to-hub checkpoint for the driver-submitted arrival attestation (Task 7 of
-docs/superpowers/plans/2026-08-09-in-transit-driver-owned-arrival.md).
+"""Hub-to-hub checkpoint for the driver-submitted arrival attestation.
 
 Scope fence: single origin, single destination, two stops, exactly one
 `in_transit` row per trip. Multi-stop cross-dock is deliberately out of scope.
 
-Written as a checkpoint BEFORE Task 8 deleted `_gate_and_load`'s IN_TRANSIT
-exclusion and `advance_unloading`'s in_transit-closing side effect, so that the
-new arrival path was proven end to end on the simple case before anything
+Written as a checkpoint before `_gate_and_load`'s IN_TRANSIT
+exclusion and `advance_unloading`'s in_transit-closing side effect were deleted, so
+that the new arrival path was proven end to end on the simple case before anything
 load-bearing was removed. Both are now gone, and these tests pass either way —
 they submit the arrival explicitly rather than relying on a side effect, which
 is exactly why they survived the removal unchanged.
@@ -31,7 +30,7 @@ from app.db.models.trips import Trip
 
 from tests.conftest import auth_header, make_token
 from tests.integration.test_phases import (
-    _complete_in_transit, _fake_hedera_receipt, _make_artifact, _walk_to_in_transit,
+    _complete_arrival, _complete_in_transit, _fake_hedera_receipt, _make_artifact, _walk_to_in_transit,
 )
 from tests.integration.test_trip_admin import (  # noqa: F401  (fixtures)
     _dispatcher_token, _make_trip, _phase_id, override_get_db,
@@ -67,15 +66,12 @@ async def test_arrival_timestamp_precedes_the_unloading_submission(
     driver_token = make_token(sub=str(seed["driver"].id), role="driver")
     await _walk_to_in_transit(client, db_session, trip, driver_token)
     await _complete_in_transit(client, trip, driver_token)
+    await _complete_arrival(client, db_session, trip, driver_token)
 
-    gate_photo_id = await _make_artifact(db_session, trip_id)
     unloading_id = await _phase_id(client, trip_id, driver_token, "unloading")
     resp = await client.post(
         f"/api/v1/trips/{trip_id}/phases/{unloading_id}/complete",
-        json={
-            "phase_type": "unloading", "seal_number_at_destination": "AB-1234",
-            "gate_photo_artifact_id": gate_photo_id, "idempotency_key": str(uuid.uuid4()),
-        },
+        json={"phase_type": "unloading", "idempotency_key": str(uuid.uuid4())},
         headers=auth_header(driver_token),
     )
     assert resp.status_code == 200, resp.text
@@ -105,15 +101,12 @@ async def test_full_hub_to_hub_walk_with_arrival_closes_the_trip(
     driver_token = make_token(sub=str(seed["driver"].id), role="driver")
     await _walk_to_in_transit(client, db_session, trip, driver_token)
     await _complete_in_transit(client, trip, driver_token)
+    await _complete_arrival(client, db_session, trip, driver_token)
 
-    gate_photo_id = await _make_artifact(db_session, trip_id)
     unloading_id = await _phase_id(client, trip_id, driver_token, "unloading")
     resp = await client.post(
         f"/api/v1/trips/{trip_id}/phases/{unloading_id}/complete",
-        json={
-            "phase_type": "unloading", "seal_number_at_destination": "AB-1234",
-            "gate_photo_artifact_id": gate_photo_id, "idempotency_key": str(uuid.uuid4()),
-        },
+        json={"phase_type": "unloading", "idempotency_key": str(uuid.uuid4())},
         headers=auth_header(driver_token),
     )
     assert resp.status_code == 200, resp.text
@@ -184,6 +177,17 @@ async def test_overridden_unloading_closes_trip_without_manufacturing_arrival(
         )
         assert resp.status_code == 200, resp.text
         assert resp.json()["actual_arrival_at"] is None
+
+    # The seal-inspection (arrival) phase sits below unloading too, and override_phase
+    # has no lower-sequence gate of its own — but confirmation still does, so this row
+    # must be resolved one way or another before the walk can reach confirmation.
+    seal_inspection_id = await _phase_id(client, trip_id, driver_token, "arrival")
+    resp = await client.post(
+        f"/api/v1/trips/{trip_id}/phases/{seal_inspection_id}/override",
+        json={"note": "warehouse gate scanner offline, seal could not be inspected"},
+        headers=auth_header(dispatcher_token),
+    )
+    assert resp.status_code == 200, resp.text
 
     unloading_id = await _phase_id(client, trip_id, driver_token, "unloading")
     resp = await client.post(

@@ -1,4 +1,4 @@
-"""FastAPI router for the fleet-wide Analytics page (fleet analytics spec §6).
+"""FastAPI router for the fleet-wide Analytics page.
 
 GET /analytics/fleet/tiles      headline numbers, always "right now" (no parameters)
 GET /analytics/fleet/activity   trips and cancellations over time (start?, end, grain)
@@ -16,7 +16,7 @@ shared main.py needs no change. Read-only, so any dispatcher may call these
 
 Periods: `end` is required and may not be after today (SAST). An omitted `start` means All
 time. FastAPI's own validation rejects a malformed date or an unknown grain. _require_valid_period
-rejects the rest as a 422 (spec G12).
+rejects the rest as a 422.
 """
 
 import uuid

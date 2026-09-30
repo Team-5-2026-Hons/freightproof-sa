@@ -1,14 +1,14 @@
-"""Dispatcher-only trip lifecycle exits — the two dead-end closers (task 6.1):
+"""Dispatcher-only trip lifecycle exits — the two dead-end closers:
 
 POST /trips/{trip_id}/cancel
 POST /trips/{trip_id}/phases/{phase_event_id}/override
 
-Kept out of trips.py and phases.py deliberately. phases.py is driver-scoped by
-decision S3 ("giving these routes a second auth path would be new security
+Kept out of trips.py and phases.py deliberately. phases.py is driver-scoped
+("giving these routes a second auth path would be new security
 surface with no consumer") — override is dispatcher-only, so putting it there
-would mix two auth audiences into one file, exactly what S3 protects against.
-trips.py stays the create/read surface; these are the two write actions that
-close a dead end rather than advance the plan.
+would mix two auth audiences into one file, exactly what that separation protects
+against. trips.py stays the create/read surface; these are the two write actions
+that close a dead end rather than advance the plan.
 """
 
 import logging

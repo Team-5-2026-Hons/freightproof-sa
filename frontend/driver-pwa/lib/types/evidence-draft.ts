@@ -4,6 +4,8 @@
 // different fields on two different phase drafts, bridged by a durable carry-forward
 // mechanism, lib/hooks/useVisualCountCarry.ts (wired in PhaseStepPageClient.tsx).
 
+import type { SealCondition } from '@shared/lib/types/phase'
+
 // No driver-captured evidence: the fix that proves where the trip started is attached
 // at submit time (lib/types/location.ts, lib/context/LocationContext.tsx), not stored here.
 export interface ActivationEvidence {
@@ -21,7 +23,7 @@ export interface LoadingEvidence {
 
 // The seal is captured here, in `departure`. There is no confirmation half any more, on
 // this phase or across phases — a comparison happens in exactly one place: server-side,
-// in advance_unloading.
+// in advance_arrival.
 //
 // Each photo appears twice from here on: the data URL the camera produced, and the
 // artifact id once uploaded. Uploading starts at capture (lib/hooks/useArtifactUpload.ts),
@@ -34,21 +36,33 @@ export interface DepartureEvidence {
   capturedAt: string | null
 }
 
+// Seal evidence lives on the ARRIVAL phase now, not here — see ArrivalEvidence below.
+// advance_unloading no longer does any seal comparison; that moved to advance_arrival,
+// which runs before this phase can even be reached (arrival is due before unloading in
+// the plan, and _gate_and_load enforces plan order).
 export interface UnloadingEvidence {
   waybillHandedOver: boolean | null
-  // Captured blind — the backend needs the actual value
-  // (UnloadingCompleteRequest.seal_number_at_destination), not a verdict.
-  // advance_unloading does the authoritative comparison server-side.
-  sealNumberAtDestination: string | null
-  // Closing half of the tamper-evidence bookend with DepartureEvidence.sealPhotoDataUrl:
-  // one photo when the seal is applied, one when found intact. Required — an unloading
-  // submitted without it 422s (UnloadingCompleteRequest.gate_photo_artifact_id).
-  sealIntactPhotoDataUrl: string | null
-  sealIntactPhotoArtifactId: string | null
   // Carried forward to ConfirmationEvidence.driverVisualCount; no field of its own on
   // UnloadingCompleteRequest. Optional — null means "not counted", not "zero"; the step
   // still gates on the warehouse's own destination scan (VisualCount.tsx's isBlocked).
   driverVisualCount: number | null
+  capturedAt: string | null
+}
+
+// The seal as found at the destination gate, before anything is opened — the custody
+// check this whole phase exists for. Captured blind: the
+// backend needs the actual seal number, not a verdict, and does the authoritative
+// comparison against the leg's departure seal server-side (advance_arrival), never on
+// this device. The driver is never told the result.
+export interface ArrivalEvidence {
+  sealCondition: SealCondition | null
+  // Required unless sealCondition is 'missing' — there is nothing to read off a seal
+  // that isn't there. Enforced in lib/api/phases.ts's submitPhase, not here.
+  sealNumberAtArrival: string | null
+  // Required in every condition, including 'missing': a missing seal is photographed
+  // as a missing seal — the absence is itself the evidence.
+  sealPhotoDataUrl: string | null
+  sealPhotoArtifactId: string | null
   capturedAt: string | null
 }
 
@@ -84,5 +98,6 @@ export type PhaseEvidence =
   | LoadingEvidence
   | DepartureEvidence
   | InTransitEvidence
+  | ArrivalEvidence
   | UnloadingEvidence
   | ConfirmationEvidence

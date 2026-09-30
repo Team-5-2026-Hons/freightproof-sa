@@ -24,15 +24,18 @@ describe('currentPhase', () => {
     expect(current?.sequence_number).toBe(0)
   })
 
-  it('returns row N+1 on the 11-row cross-dock plan with the first N resolved', () => {
-    // Resolves sequence 0..8 (9 rows) — past what a plan hardcoded to a 7-row bound
-    // could even index into, so this specifically catches a single-leg-shaped assumption.
+  it('returns row N+1 on the 13-row cross-dock plan with the first N resolved', () => {
+    // Resolves sequence 0..8 (9 rows) — past what a plan hardcoded to an 8-row
+    // single-leg bound could even index into, so this specifically catches a
+    // single-leg-shaped assumption. Sequence 9 is leg 2's in_transit (arrival's own
+    // row, 5, sits earlier — this plan interleaves stop 2's arrival/unloading/loading
+    // before leg 2 even departs).
     const plan = walk(CROSS_DOCK_PHASE_PLAN, 8)
     const current = currentPhase(plan)
 
-    expect(CROSS_DOCK_PHASE_PLAN).toHaveLength(11)
+    expect(CROSS_DOCK_PHASE_PLAN).toHaveLength(13)
     expect(current?.sequence_number).toBe(9)
-    expect(current?.phase_type).toBe('unloading')
+    expect(current?.phase_type).toBe('in_transit')
   })
 
   it('returns the THIRD unloading, not the first, when the first two are resolved', () => {
@@ -88,23 +91,23 @@ describe('actionablePhase', () => {
 
   it('skips the PENDING, driverless in_transit row and returns the arrival phase', () => {
     // The whole reason this function exists. During the drive the LEDGER is on
-    // in_transit, but the driver's next action is unloading — and asking currentPhase
-    // for "what does the driver do next" is what deadlocked the arrival step.
+    // in_transit, but the driver's next action is the arrival seal check — and asking
+    // currentPhase for "what does the driver do next" is what deadlocked the arrival step.
     const departureSeq = SINGLE_LEG_PHASE_PLAN.find((p) => p.phase_type === 'departure')!.sequence_number
     const plan = walk(SINGLE_LEG_PHASE_PLAN, departureSeq)
 
     expect(currentPhase(plan)?.phase_type).toBe('in_transit')
-    expect(actionablePhase(plan)?.phase_type).toBe('unloading')
+    expect(actionablePhase(plan)?.phase_type).toBe('arrival')
   })
 
-  it('returns leg 2’s unloading, not leg 1’s, on a cross-dock plan', () => {
+  it('returns leg 2’s arrival, not leg 1’s, on a cross-dock plan', () => {
     const secondInTransit = CROSS_DOCK_PHASE_PLAN.filter((p) => p.phase_type === 'in_transit')[1]
     const plan = walk(CROSS_DOCK_PHASE_PLAN, secondInTransit.sequence_number - 1)
 
     const actionable = actionablePhase(plan)
 
-    expect(actionable?.phase_type).toBe('unloading')
-    // Proves the sequence walk, not a phase_type lookup: leg 1's unloading sits earlier
+    expect(actionable?.phase_type).toBe('arrival')
+    // Proves the sequence walk, not a phase_type lookup: leg 1's arrival sits earlier
     // in this same plan and is already resolved.
     expect(actionable!.sequence_number).toBeGreaterThan(secondInTransit.sequence_number)
   })
@@ -138,31 +141,21 @@ describe('planProgress', () => {
   it('reads total from the plan itself, not a constant', () => {
     expect(planProgress(SINGLE_LEG_PHASE_PLAN).total).toBe(SINGLE_LEG_PHASE_PLAN.length)
     expect(planProgress(CROSS_DOCK_PHASE_PLAN).total).toBe(CROSS_DOCK_PHASE_PLAN.length)
-    expect(SINGLE_LEG_PHASE_PLAN).toHaveLength(7)
-    expect(CROSS_DOCK_PHASE_PLAN).toHaveLength(11)
+    expect(SINGLE_LEG_PHASE_PLAN).toHaveLength(8)
+    expect(CROSS_DOCK_PHASE_PLAN).toHaveLength(13)
   })
 
   it('counts resolved phases (completed/exception/overridden) as completed', () => {
     const plan = walk(CROSS_DOCK_PHASE_PLAN, 5) // sequence 0..5 resolved = 6 rows
 
-    expect(planProgress(plan)).toEqual({ completed: 6, total: 11 })
+    expect(planProgress(plan)).toEqual({ completed: 6, total: 13 })
   })
 })
 
 describe('isAnchored', () => {
-  it('is true for trip_creation, departure and confirmation', () => {
-    const anchoredTypes = ['trip_creation', 'departure', 'confirmation'] as const
-    for (const type of anchoredTypes) {
-      const phase = SINGLE_LEG_PHASE_PLAN.find((p) => p.phase_type === type)!
+  it('is true for every phase in the plan — every phase anchors since 2026-09-23', () => {
+    for (const phase of SINGLE_LEG_PHASE_PLAN) {
       expect(isAnchored(phase)).toBe(true)
-    }
-  })
-
-  it('is false for activation, loading, in_transit and unloading', () => {
-    const unanchoredTypes = ['activation', 'loading', 'in_transit', 'unloading'] as const
-    for (const type of unanchoredTypes) {
-      const phase = SINGLE_LEG_PHASE_PLAN.find((p) => p.phase_type === type)!
-      expect(isAnchored(phase)).toBe(false)
     }
   })
 })
@@ -180,27 +173,27 @@ describe('isDriving', () => {
     expect(isDriving(plan)).toBe(true)
   })
 
-  it('is false once arrival is recorded and unloading is current', () => {
-    // Before driver-submitted arrival, in_transit could never be resolved while unloading
-    // was current — that state was unreachable, so "unloading after a resolved in_transit"
-    // was a safe (if accidental) proxy for driving. Arrival submission makes this the
-    // NORMAL state of standing at the destination doing seal-verify: the exact moment the
-    // driver is not driving. Keeping the old proxy here would have shown "Continue driving"
-    // for the entire unloading phase.
-    const plan = walk(SINGLE_LEG_PHASE_PLAN, 4) // through in_transit — arrival submitted
+  it('is false once in_transit resolves and the arrival phase is current', () => {
+    // Before the driver's "Arrive at destination" swipe, in_transit could never be
+    // resolved while a later phase was current — that state was unreachable, so
+    // "current is anything but in_transit" is a safe proxy for "not driving". The swipe
+    // resolves in_transit and opens the arrival phase (seal-verify at the gate): the
+    // exact moment the driver has stopped driving but has not yet unloaded.
+    const plan = walk(SINGLE_LEG_PHASE_PLAN, 4) // through in_transit — arrival swipe done
 
-    expect(currentPhase(plan)?.phase_type).toBe('unloading')
+    expect(currentPhase(plan)?.phase_type).toBe('arrival')
     expect(isDriving(plan)).toBe(false)
   })
 
-  it('is false when an arrival was overridden by the dispatcher', () => {
+  it('is false when in_transit was overridden by the dispatcher', () => {
     // The lost-phone recovery path — a dispatcher closed the leg on the driver's behalf.
-    // The trip is not driving; it is exactly as "arrived" as a driver-submitted one.
+    // The trip is not driving; the arrival phase is next, exactly as if the driver had
+    // swiped "Arrive at destination" themselves.
     const plan = walk(SINGLE_LEG_PHASE_PLAN, 3).map((p) =>
       p.phase_type === 'in_transit' ? { ...p, status: 'overridden' as const } : p,
     )
 
-    expect(currentPhase(plan)?.phase_type).toBe('unloading')
+    expect(currentPhase(plan)?.phase_type).toBe('arrival')
     expect(isDriving(plan)).toBe(false)
   })
 
@@ -226,7 +219,7 @@ describe('isDriving', () => {
   })
 
   it('is false once the truck has arrived and unloading is resolved', () => {
-    const plan = walk(SINGLE_LEG_PHASE_PLAN, 5) // through unloading
+    const plan = walk(SINGLE_LEG_PHASE_PLAN, 6) // through unloading (0 creation..6 unloading)
 
     expect(currentPhase(plan)?.phase_type).toBe('confirmation')
     expect(isDriving(plan)).toBe(false)
@@ -285,17 +278,17 @@ describe('isDriving', () => {
     expect(isDriving(shuffled)).toBe(true)
   })
 
-  it('is false once an EXCEPTION-closed in_transit hands off to unloading', () => {
+  it('is false once an EXCEPTION-closed in_transit hands off to arrival', () => {
     // 'exception' is a resolved status (the backend has moved past the row) same as
     // 'completed' or 'overridden' — a broken seal found on the road still closes the leg.
-    // Whichever way in_transit was resolved, once unloading is current the driver has
+    // Whichever way in_transit was resolved, once arrival is current the driver has
     // stopped, so this must be false exactly like the 'completed' and 'overridden' cases
     // above — there is no resolution reason that keeps the driving screen up.
     const plan = walk(SINGLE_LEG_PHASE_PLAN, 4).map((p) =>
       p.phase_type === 'in_transit' ? { ...p, status: 'exception' as const } : p,
     )
 
-    expect(currentPhase(plan)?.phase_type).toBe('unloading')
+    expect(currentPhase(plan)?.phase_type).toBe('arrival')
     expect(isDriving(plan)).toBe(false)
   })
 })
@@ -303,12 +296,13 @@ describe('isDriving', () => {
 describe('contextPhaseEventId', () => {
   it('tags an on-the-road exception to in_transit, not to the arrival still ahead', () => {
     // The case the whole thing exists for. Everything through departure is resolved, so
-    // in_transit is the current row while the driver's NEXT action is unloading. A panic
-    // pressed here belongs to the drive; actionablePhase would say unloading and be wrong.
+    // in_transit is the current row while the driver's NEXT action is the arrival seal
+    // check. A panic pressed here belongs to the drive; actionablePhase would say
+    // arrival and be wrong.
     const plan = walk(SINGLE_LEG_PHASE_PLAN, 3)
     const inTransit = plan.find((p) => p.phase_type === 'in_transit')
 
-    expect(actionablePhase(plan)?.phase_type).toBe('unloading')
+    expect(actionablePhase(plan)?.phase_type).toBe('arrival')
     expect(contextPhaseEventId(plan)).toBe(inTransit?.phase_event_id)
   })
 

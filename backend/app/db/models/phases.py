@@ -28,12 +28,12 @@ class PhaseEvent(Base):
 
     __tablename__ = "phase_events"
     __table_args__ = (
-        # D3: only trip_creation has a NULL trip_stop_id, so this constraint is total
+        # Only trip_creation has a NULL trip_stop_id, so this constraint is total
         # for P1..P6 — Postgres treats NULLs as distinct in a unique constraint, which
         # is why in_transit anchors to its departure stop rather than being left NULL.
         UniqueConstraint("trip_id", "trip_stop_id", "phase_type", name="uq_phase_events_trip_stop_type"),
-        # The other half of D3: exactly one P0 per trip, which the constraint above
-        # can't express since its trip_stop_id is NULL.
+        # The other half of that rule: exactly one P0 per trip, which the constraint
+        # above can't express since its trip_stop_id is NULL.
         Index(
             "uq_phase_events_trip_creation",
             "trip_id",
@@ -55,14 +55,14 @@ class PhaseEvent(Base):
     trip_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("trips.id"), nullable=False
     )
-    # NULL only for trip_creation (D3). in_transit anchors to its departure stop.
+    # NULL only for trip_creation. in_transit anchors to its departure stop.
     trip_stop_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("trip_stops.id"), nullable=True
     )
     phase_type: Mapped[PhaseType] = mapped_column(String(30), nullable=False)
     sequence_number: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     status: Mapped[PhaseStatus] = mapped_column(String(20), nullable=False, server_default="pending")
-    # D4. Decoupled from `status`: a completed phase with a failed anchor is a real
+    # Decoupled from `status`: a completed phase with a failed anchor is a real
     # state under the fail-open policy, and the system must still know a receipt is owed.
     anchor_status: Mapped[AnchorStatus] = mapped_column(
         String(20), nullable=False, server_default="not_required"
@@ -83,7 +83,7 @@ class PhaseEvent(Base):
     horse_gps_lat: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     horse_gps_lng: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     pulsit_geofence_confirmed: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
-    # Task 5: the versioned ActionLocationAssessment snapshot (schemas/action_location.py)
+    # The versioned ActionLocationAssessment snapshot (schemas/action_location.py)
     # assembled by orchestration/action_location_service.build_phase_assessment at
     # _finish_phase time — the driver-phone-vs-tracker proximity verdict plus the
     # precinct-membership facts, frozen as they stood at evaluation. Nullable: every row
@@ -92,7 +92,7 @@ class PhaseEvent(Base):
     # what was actually evaluated at the time. Validated through ActionLocationAssessment
     # on every read (schemas/phases.py's PhaseEventRead), never read as a raw dict.
     action_location_assessment: Mapped[Optional[Any]] = mapped_column(JSONB, nullable=True)
-    # Task 7: the driver's acknowledgement of a preview warning. This never replaces
+    # The driver's acknowledgement of a preview warning. This never replaces
     # the independently assembled action_location_assessment above; it records only
     # what the driver saw and, for a reliable discrepancy, why they continued.
     location_warning_acknowledged_at: Mapped[Optional[datetime]] = mapped_column(
@@ -100,6 +100,10 @@ class PhaseEvent(Base):
     )
     location_warning_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     seal_number: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    # Arrival only: the seal's condition as found (SealCondition). Plain String like
+    # every enum column here, so new values need no migration. NULL on every other
+    # phase type, where "condition" has no meaning.
+    seal_condition: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     # Artifact FKs use use_alter=True to break the migration's circular dependency:
     # evidence_artifacts is created before trips, so these FKs are added via ALTER TABLE.
     seal_photo_artifact_id: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -170,4 +174,9 @@ class TrailerGpsSnapshot(Base):
     lat: Mapped[Decimal] = mapped_column(Numeric(10, 7), nullable=False)
     lng: Mapped[Decimal] = mapped_column(Numeric(10, 7), nullable=False)
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # This trailer's own verdict against the phase's precinct, with the same three-state
+    # meaning as PhaseEvent.pulsit_geofence_confirmed: TRUE inside, FALSE measured
+    # outside, NULL could not check (fix too far in time from the driver's action, no
+    # precinct coordinates, or a phase with no verdict such as in_transit).
+    geofence_confirmed: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

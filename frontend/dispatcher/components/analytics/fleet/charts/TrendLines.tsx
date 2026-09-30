@@ -66,7 +66,7 @@ export function TrendLines<Row>({
   rows, rowKey, tickLabel, isPartial, series, renderTooltip, yLabel, height: normalHeight = CHART_HEIGHT,
   yTickFormat, yDomain, allowDecimals = false,
 }: TrendLinesProps<Row>) {
-  // Taller inside the zoom modal (D27).
+  // Taller inside the zoom modal.
   const height = useChartHeight(normalHeight)
   const byKey = new Map(rows.map((row) => [rowKey(row), row]))
   const labelWidth = labelWidthFor(rows.map((row) => tickLabel(rowKey(row))))

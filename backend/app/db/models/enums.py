@@ -36,7 +36,7 @@ class TripType(str, enum.Enum):
 
 
 class PhaseType(str, enum.Enum):
-    """One entry in a trip's committed phase plan (parent plan D5); plan LENGTH is
+    """One entry in a trip's committed phase plan; plan LENGTH is
     data generated per trip, so this enum's cardinality is not the phase count of
     any one trip — a type can appear more than once on a multi-stop route."""
 
@@ -45,8 +45,22 @@ class PhaseType(str, enum.Enum):
     LOADING       = "loading"
     DEPARTURE     = "departure"
     IN_TRANSIT    = "in_transit"
+    # The custody check at the gate: the seal as found, BEFORE anything is opened.
+    # Its own phase (not a step of unloading) so "inspected before opened" is a
+    # sequence rule the server enforces, and so it gets its own completed_at and
+    # anchor.
+    ARRIVAL       = "arrival"
     UNLOADING     = "unloading"
     CONFIRMATION  = "confirmation"
+
+
+class SealCondition(str, enum.Enum):
+    """The seal's physical condition as the driver finds it at arrival. Stored as a
+    plain String, like every enum here, so adding a value needs no migration."""
+
+    INTACT  = "intact"
+    DAMAGED = "damaged"
+    MISSING = "missing"
 
 
 class PhaseStatus(str, enum.Enum):
@@ -58,8 +72,8 @@ class PhaseStatus(str, enum.Enum):
 
 
 class AnchorStatus(str, enum.Enum):
-    """Hedera anchor state for one phase event (parent plan D4). A phase may be
-    `completed` while its anchor is `failed` — that keeps the fail-open policy (D7)
+    """Hedera anchor state for one phase event. A phase may be
+    `completed` while its anchor is `failed` — that keeps the fail-open policy
     honest, since the system still knows a receipt is owed. Never render `failed`
     as success."""
 
@@ -75,10 +89,14 @@ class ExceptionType(str, enum.Enum):
     # theft indicator); UNVERIFIED means no departure seal exists to compare (a
     # gap in the chain, not evidence of tampering).
     SEAL_UNVERIFIED        = "seal_unverified"
+    # A third seal finding, distinct from both: the seal at arrival is physically
+    # damaged or missing. MISMATCH is "the number differs" (a swap); COMPROMISED is
+    # "the seal is broken" (an opening). Different findings for an insurer, so the
+    # dispatcher must be able to tell them apart without reading descriptions.
+    SEAL_COMPROMISED       = "seal_compromised"
     PARCEL_COUNT_MISMATCH  = "parcel_count_mismatch"
     GPS_MISMATCH           = "gps_mismatch"
-    # Task 5 (trip-location-timeline-improvements): a DISTINCT finding from
-    # GPS_MISMATCH. GPS_MISMATCH is "the vehicle tracker disagrees with the
+    # A DISTINCT finding from GPS_MISMATCH. GPS_MISMATCH is "the vehicle tracker disagrees with the
     # PRECINCT" (FP-145, geofence_service); this is "the driver's OWN PHONE
     # disagrees with the vehicle tracker" (proximity_service.evaluate_proximity) —
     # independent questions that can both fire, or either alone, on the same
@@ -96,7 +114,25 @@ class ExceptionType(str, enum.Enum):
     # (never IN_TRANSIT, never a checkpoint — see build_phase_assessment). See
     # orchestration/action_location_service.record_driver_location_finding.
     DRIVER_LOCATION_MISMATCH = "driver_location_mismatch"
-    ROUTE_DEVIATION        = "route_deviation"
+    # A FOURTH position question: is a TRAILER where its own HORSE is? Raised only when
+    # the horse was measured inside the stop's precinct, the trailer was measured
+    # outside it, and the two trackers are further apart than
+    # TRAILER_HORSE_MAX_SEPARATION_METRES. That is a decoupled trailer, one of the
+    # strongest theft signals the system can see. Kept apart from GPS_MISMATCH, which
+    # is about the horse. See phase_service._raise_trailer_decoupling_if_unrecorded.
+    TRAILER_LOCATION_MISMATCH = "trailer_location_mismatch"
+    # On the ROAD, not at a stop: a trailer tracker is further than
+    # TRAILER_HORSE_MAX_SEPARATION_METRES from its horse's tracker while the trip is
+    # on an in-transit leg. No fence is involved, which is what keeps it apart from
+    # TRAILER_LOCATION_MISMATCH (trailer vs the stop's precinct). See road_check_service.
+    TRAILER_SEPARATED_IN_TRANSIT = "trailer_separated_in_transit"
+    # The horse's tracker is outside its stop's precinct while that stop's departure is
+    # still pending: the truck moved without a recorded seal. See road_check_service.
+    MOVED_BEFORE_DEPARTURE = "moved_before_departure"
+    # A known tracker returned no position. A gap in the record, not a verdict: nothing
+    # else is inferred from it. See road_check_service.
+    TRACKER_SILENT = "tracker_silent"
+    ROUTE_DEVIATION       = "route_deviation"
     VEHICLE_SUBSTITUTION   = "vehicle_substitution"
     DRIVER_SUBSTITUTION    = "driver_substitution"
     CHECKPOINT_TIMEOUT     = "checkpoint_timeout"
@@ -139,6 +175,17 @@ class BlockchainReceiptType(str, enum.Enum):
     JOURNEY_LOCK        = "journey_lock"
     PICKUP              = "pickup"
     DELIVERY            = "delivery"
+    # One per phase anchored since every phase started anchoring on completion.
+    # PICKUP (departure) and DELIVERY (confirmation) keep their names so existing
+    # receipts stay valid.
+    ACTIVATION          = "activation"
+    LOADING             = "loading"
+    TRANSIT_ARRIVAL     = "transit_arrival"
+    ARRIVAL_INSPECTION  = "arrival_inspection"
+    UNLOADING           = "unloading"
+    # A dispatcher override of any phase. Its own type, so a receipt can never make
+    # an overridden phase read as one the driver actually evidenced.
+    PHASE_OVERRIDE      = "phase_override"
     CHECKPOINT_BATCH    = "checkpoint_batch"
     EXCEPTION_BATCH     = "exception_batch"
     DRIVER_SUBSTITUTION = "driver_substitution"

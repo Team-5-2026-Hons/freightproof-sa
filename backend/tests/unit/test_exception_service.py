@@ -159,7 +159,7 @@ async def test_review_sets_complete_evidence_from_the_caller(db_session):
     assert exc.contact_method == ExceptionContactMethod.PHONE
     assert exc.review_note == _NOTE
     # Set by this process, not by the database — deliberately asserted against the Python
-    # clock. The test database's own clock cannot be trusted for this (known-issues §6).
+    # clock. The test database's own clock cannot be trusted for this.
     assert before - timedelta(seconds=5) <= exc.reviewed_at <= datetime.now(UTC)
 
 
@@ -278,7 +278,7 @@ async def test_a_suppressed_repeat_review_enqueues_nothing(db_session):
     assert _outbox(db_session) == []
 
 
-# ── Task 0B: raise_exception — evidence ownership + client_report_id idempotency ──
+# ── raise_exception — evidence ownership + client_report_id idempotency ───────
 
 
 async def _seed_trip(db_session, *, tag: str) -> dict:
@@ -381,7 +381,7 @@ async def test_raise_exception_accepts_an_artifact_owned_by_this_trip(db_session
 
     assert result.supporting_artifact_id == artifact.id
     # CARGO_DAMAGE is not in _CRITICAL_TYPES, so it is WARNING severity and starts
-    # RECORDED, not NEEDS_REVIEW (Task 2, FP-146 follow-on).
+    # RECORDED, not NEEDS_REVIEW (an FP-146 follow-on).
     assert result.review_status == ExceptionReviewStatus.RECORDED
 
 
@@ -443,8 +443,8 @@ async def test_raise_exception_without_a_client_report_id_is_unaffected(db_sessi
     assert result.id is not None
 
 
-# ── Trailer analytics Stage 1: pick_breakdown_vehicle (pure, no DB) ─────────────
-# One test per row of the spec's §5.2 table, plus the stray-field variants. Every
+# ── Trailer analytics: pick_breakdown_vehicle (pure, no DB) ────────────────────
+# One test per row of the vehicle-attribution rules, plus the stray-field variants. Every
 # failure path returns None and logs a warning, never raises: the offline queue discards
 # a report on any 4xx, and a breakdown must never be lost over its vehicle.
 

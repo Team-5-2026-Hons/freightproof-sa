@@ -1,4 +1,4 @@
-"""The four public receiver-verification routes (Stage 2B, Task 4).
+"""The four public receiver-verification routes.
 
 The one thing every case here must prove alongside its own behaviour: every public
 failure — unknown token, missing consent, whatever the reason — produces the byte-identical

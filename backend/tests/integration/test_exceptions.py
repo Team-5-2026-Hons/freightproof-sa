@@ -97,7 +97,7 @@ async def test_driver_raises_panic_exception(client: AsyncClient, seed_trip):
     body = resp.json()
     assert body["severity"] == "critical"
     assert body["source"] == "driver"
-    # CRITICAL findings start NEEDS_REVIEW (Task 2, FP-146 follow-on) — a panic
+    # CRITICAL findings start NEEDS_REVIEW (FP-146 follow-on) — a panic
     # button needs a dispatcher's decision now, not just visibility on the list.
     assert body["review_status"] == "needs_review"
 
@@ -484,7 +484,7 @@ async def test_exception_with_a_foreign_phase_event_id_still_records(
     assert row.phase_event_id == phases["in_transit"].id
 
 
-# ── Task 0B: evidence ownership ─────────────────────────────────────────────────
+# ── Evidence ownership ───────────────────────────────────────────────────────────
 
 
 async def _seed_another_trip(db_session):
@@ -589,7 +589,7 @@ async def test_supporting_artifact_owned_by_this_trip_is_accepted(
     assert resp.json()["supporting_artifact_id"] == str(artifact_id)
 
 
-# ── Task 0B: client_report_id idempotency ───────────────────────────────────────
+# ── client_report_id idempotency ────────────────────────────────────────────────
 
 
 async def test_replaying_the_same_client_report_id_returns_the_original_exception(
@@ -708,7 +708,7 @@ async def test_raise_exception_without_a_token_returns_403(client: AsyncClient, 
     assert resp.status_code == 403
 
 
-# ── Trailer analytics Stage 1: which vehicle broke down ─────────────────────────
+# ── Trailer analytics: which vehicle broke down ─────────────────────────────────
 
 
 async def _attach_trailers(db_session, trip: Trip, count: int) -> list[Vehicle]:

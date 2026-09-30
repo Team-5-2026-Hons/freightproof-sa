@@ -1,7 +1,7 @@
-"""Integration contract for GET /api/v1/analytics/fleet/activity (fleet analytics spec §5.1).
+"""Integration contract for GET /api/v1/analytics/fleet/activity.
 
-Charts 1.1 (closed trips by departure date, loaded vs empty) and 1.7 (cancellations by the
-day trips ended). Every expected number is hand-computed from the rows each test seeds. The
+Covers closed trips by departure date (loaded vs empty) and cancellations by the
+day trips ended. Every expected number is hand-computed from the rows each test seeds. The
 period is built from "now": it starts on the Wednesday of the week four weeks back and ends on
 the Sunday two weeks later, so its first week is partial and the other two are whole and past.
 """

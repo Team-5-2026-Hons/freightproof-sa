@@ -1,8 +1,7 @@
-"""Pure, versioned wire contract for one driver-vs-truck proximity assessment
-(Task 4 of the trip-location-timeline story).
+"""Pure, versioned wire contract for one driver-vs-truck proximity assessment.
 
 `ActionLocationAssessment` is the ONE shape shared by preview (computed on demand
-for a dispatcher), persistence (Task 6 writes it down), and display (both
+for a dispatcher), persistence (written to storage), and display (both
 frontends render it) — defined once here so those three call sites can never
 quietly drift into three different ideas of what "an assessment" contains.
 
@@ -12,7 +11,7 @@ finite in-range coordinates, non-negative distances/accuracy). It says nothing
 about how the numbers inside it were computed — that is `orchestration.
 proximity_service.evaluate_proximity` for the driver/truck separation half, and
 `orchestration.geofence_service.evaluate_geofence` for the precinct-membership
-half. Task 5 assembles both into an instance of this model; this file never
+half. Both are assembled into an instance of this model; this file never
 calls either.
 
 No client-supplied assessment is authoritative: every field here is either
@@ -38,7 +37,7 @@ from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 # Bumped whenever a field is added, removed, renamed, or a threshold's meaning
 # changes in a way that would make an older stored assessment misleading if read
-# under the new rules. Task 6 persists this string verbatim; a reader comparing
+# under the new rules. This string is persisted verbatim; a reader comparing
 # `policy_version` across two assessments can tell whether they were evaluated
 # under the same policy at all before comparing their numbers.
 ACTION_LOCATION_POLICY_VERSION = "2026-09-15.1"
@@ -121,7 +120,7 @@ class DriverLocationCapture(BaseModel):
 
 class ActionLocationAssessment(BaseModel):
     """One evaluated snapshot: a driver/truck proximity verdict plus the
-    precinct-membership facts evaluated alongside it (assembled by Task 5).
+    precinct-membership facts evaluated alongside it.
 
     `frozen=True`: an assessment is a record of what was observed at
     `evaluated_at` — mutating it after construction would let a caller silently

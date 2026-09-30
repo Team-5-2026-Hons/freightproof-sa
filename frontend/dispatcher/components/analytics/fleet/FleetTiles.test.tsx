@@ -44,7 +44,7 @@ describe('FleetTiles', () => {
     expect(within(tileLink('Live trips')).getByText('7')).toBeInTheDocument()
   })
 
-  it('shows only the four tiles, with no Parcels complete or Receipts owed (D26)', () => {
+  it('shows only the four tiles, with no Parcels complete or Receipts owed', () => {
     renderTiles(makeTiles())
 
     expect(screen.getAllByText(/^(Live trips|Critical Exceptions Waiting|Licences & discs|Unused vehicles)$/)).toHaveLength(4)

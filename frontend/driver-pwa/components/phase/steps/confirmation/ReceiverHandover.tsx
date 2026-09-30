@@ -2,12 +2,12 @@
 //
 // Replaces PodSignature.tsx (FP-155). The driver no longer collects the signature.
 //
-// BQ2 (2026-06-29) said proof of delivery is a photo AND a signature, both required. That
-// still holds — the artifact is still produced, still uploaded, still required at submit.
-// What changed is WHERE it is produced: on the receiver's own phone, reached by scanning
-// the rotating QR this step displays. The property that matters is not who the receiver
-// is (we still cannot prove that) but that the confirmation was produced somewhere the
-// driver's device is not. See docs/iteration2-feedback-response-2026-08-25.md §7.
+// A 2026-06-29 decision settled that proof of delivery is a photo AND a signature, both
+// required. That still holds — the artifact is still produced, still uploaded, still
+// required at submit. What changed is WHERE it is produced: on the receiver's own phone,
+// reached by scanning the rotating QR this step displays. The property that matters is not
+// who the receiver is (we still cannot prove that) but that the confirmation was produced
+// somewhere the driver's device is not.
 //
 // This step captures nothing locally and holds no evidence of its own. Its entire job is
 // to display a code, wait, and write the resulting artifact id into the draft that

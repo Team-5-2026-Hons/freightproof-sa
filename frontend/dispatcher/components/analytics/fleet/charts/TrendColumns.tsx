@@ -52,7 +52,7 @@ type Datum = Record<string, string | number | boolean>
 export function TrendColumns<Row>({
   rows, rowKey, tickLabel, isPartial, series, renderTooltip, yLabel, height: normalHeight = CHART_HEIGHT,
 }: TrendColumnsProps<Row>) {
-  // Taller inside the zoom modal (D27).
+  // Taller inside the zoom modal.
   const height = useChartHeight(normalHeight)
   const byKey = new Map(rows.map((row) => [rowKey(row), row]))
   const labelWidth = labelWidthFor(rows.map((row) => tickLabel(rowKey(row))))

@@ -43,7 +43,7 @@ const EVIDENCE: ActivationEvidence = {
 // when they swiped, not where they were when signal came back.
 const POSITION: DriverPosition = { lat: -26.09, lng: 28.13, accuracyM: 8 }
 
-// Task 0A: the instant the caller stamped the submission — stored WITH the queue entry
+// The instant the caller stamped the submission — stored WITH the queue entry
 // for the same reason POSITION above is.
 const DRIVER_CAPTURED_AT = '2026-06-12T10:00:00Z'
 
@@ -70,7 +70,7 @@ describe('useOfflineQueue', () => {
     expect(stored[0].phaseType).toBe('activation')
   })
 
-  // Task 5.3: the entry's own id (generated once, at enqueue time) IS the idempotency
+  // The entry's own id (generated once, at enqueue time) IS the idempotency
   // key sent to the server — proving that wiring here, at the point the entry is built.
   it('enqueuePhase stamps the entry id as its own idempotencyKey', () => {
     const { result } = renderHook(() => useOfflineQueue())
@@ -116,7 +116,7 @@ describe('useOfflineQueue', () => {
     expect(result.current.queueLength).toBe(0)
   })
 
-  // Task 5.3: the same idempotency_key must reach the server on a retry as on the
+  // The same idempotency_key must reach the server on a retry as on the
   // first attempt — a queued entry is never rebuilt with a fresh key between flushes.
   it('sends the same idempotency_key on a retry as on the first attempt', async () => {
     const { submitPhase } = await import('@/lib/api/phases')
@@ -169,7 +169,7 @@ describe('useOfflineQueue', () => {
     expect(stored[0].tripId).toBe('trip-1')
   })
 
-  // Task 0B: the entry's own id (generated once, at enqueue time) IS the
+  // The entry's own id (generated once, at enqueue time) IS the
   // client_report_id sent to the server — the exception counterpart to
   // enqueuePhase's idempotencyKey test above.
   it('enqueueException stamps the entry id as its own client_report_id', () => {
@@ -210,7 +210,7 @@ describe('useOfflineQueue', () => {
     })
   })
 
-  // Task 0B: a lost response (or a retry the driver's app fires while an earlier
+  // A lost response (or a retry the driver's app fires while an earlier
   // attempt is still in flight) must resend the SAME client_report_id, exactly like
   // enqueuePhase's idempotencyKey — proving the exception path was wired the same way.
   it('resends the same client_report_id on a retry after a lost response', async () => {
@@ -758,7 +758,7 @@ describe('queued exception photos (FP-150)', () => {
     expect(stored[0].photoDataUrl).toBe(PHOTO.dataUrl)
   })
 
-  // Task 0B: the queue's own two-step send (upload, then raise) made resumable across
+  // The queue's own two-step send (upload, then raise) made resumable across
   // flushes — a lost/failed response after the photo already landed must not re-upload
   // it, and must still reuse the same client_report_id so the backend's own idempotency
   // recognises the retry as the same report.

@@ -27,7 +27,7 @@ describe('zoomChartHeight', () => {
   })
 })
 
-describe('ChartZoom (D27)', () => {
+describe('ChartZoom', () => {
   it('leaves a chart at its normal height outside the zoom', () => {
     render(<HeightProbe />)
 

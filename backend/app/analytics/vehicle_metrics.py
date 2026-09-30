@@ -1,4 +1,4 @@
-"""Vehicle grain — horses and trailers. Supersedes FP-153 §5's "horses only": a trip
+"""Vehicle grain — horses and trailers. Supersedes FP-153's "horses only": a trip
 counts for its horse and every trailer on it; a breakdown counts for the recorded
 vehicle, or the trip's horse when none was recorded."""
 
@@ -51,7 +51,7 @@ async def get_vehicle_streaks(
     vehicle_ids: Sequence[uuid.UUID] | None = None,
 ) -> list[VehicleStreak]:
     """Whole-history streaks. Takes no month range: a streak filtered to "last 3 months"
-    has no meaning — it is either still running or it is not (spec §3a)."""
+    has no meaning — it is either still running or it is not."""
     view = VehicleIncidentStreaksView
     # Columns, not entities — see rollup.sum_over_months on the identity map.
     stmt = (
@@ -73,10 +73,10 @@ async def trips_since_last_incident(
     vehicle_id: uuid.UUID,
 ) -> int:
     """Closed trips this vehicle has run since its most recent mechanical incident.
-    Live, never stored (spec §5) — a current-state fact, not a period count. Uses the
+    Live, never stored — a current-state fact, not a period count. Uses the
     same attribution as the vehicle_incident_streaks view: incidents recorded against
-    this vehicle, or against no vehicle on a trip it was the horse of (trailer
-    analytics spec, decision 2). No incident returns all closed trips."""
+    this vehicle, or against no vehicle on a trip it was the horse of.
+    No incident returns all closed trips."""
     # Departure from the phase ledger, not trips.actual_departure_at, which holds
     # only the last leg's departure on a multi-stop trip.
     departures = (

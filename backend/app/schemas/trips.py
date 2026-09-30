@@ -554,7 +554,7 @@ class TripDetailResponse(BaseModel):
     planned_arrival_at: Optional[datetime] = None
     actual_arrival_at: Optional[datetime] = None
     closed_at: Optional[datetime] = None
-    # Denormalised position cache (parent D6). READ PATH ONLY — the ledger in
+    # Denormalised position cache. READ PATH ONLY — the ledger in
     # `phases` below is the truth, and the dispatcher's trip-detail view derives
     # the active phase from it. These exist so list views need not recompute.
     current_phase: Optional[str] = None

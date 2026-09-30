@@ -39,7 +39,7 @@ def test_channel_key_uses_org_prefix():
     assert realtime._channel(org_id) == f"org:{org_id}"
 
 
-# ── Outbox: enqueue / drain / rollback (D9) ───────────────────────────────────
+# ── Outbox: enqueue / drain / rollback ────────────────────────────────────────
 
 
 def test_enqueue_event_appends_to_session_outbox():

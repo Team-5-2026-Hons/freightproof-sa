@@ -1,9 +1,10 @@
 # FP-156 — Dispatcher Analytics Screen — Build Spec
 
 Author: Tom (Thomas Davis), with Claude · Written 2026-09-11
-Status: **COMPLETE — 2026-09-11. Built in three stages, each reviewed by Tom, then checked
-in the browser. Read §8 (build record) first.** Not merged yet: FP-156 depends on FP-153,
-whose migration is not applied to Supabase (§8.7). Confirmed decisions are in §0.1 and
+Status: **IMPLEMENTED IN THIS BRANCH — re-verified 2026-09-26** against the analytics
+router, dispatcher analytics page, and tests. §8 remains the historical build record.
+This recheck did not connect to Supabase or inspect deployment, so prior migration and
+browser/deployment claims are historical, not current status. Confirmed decisions are in §0.1 and
 review corrections in §0. The branch was synced with `dev` on 2026-09-11 (§7). Every claim
 below was verified against the live
 repo (file + line cited) on 2026-09-11, after an earlier attempt this session went wrong

@@ -1,8 +1,8 @@
-"""Integration contract for GET /api/v1/analytics/fleet/routes (fleet analytics spec §5.6).
+"""Integration contract for GET /api/v1/analytics/fleet/routes.
 
-Charts 1.6 (busiest sites), 2.4 (driving time per lane) and 6.3 (lane risk) over one seeded
+Covers busiest sites, driving time per lane, and lane risk, over one seeded
 fortnight. Precincts O and D (and X) belong to the CLIENT and are not shared, so naming them
-proves the by-id-only lookup (spec G16).
+proves the by-id-only lookup.
   T1 day 1, loaded O->D, drives 300 min. A mechanical problem and a dispatcher note (not counted).
   T2 day 3, loaded O->D, drives 420 min. A seal mismatch.
   T3 day 4, EMPTY run D->O, no loading step: its unloading at O is not a delivery. Drives 300.

@@ -237,7 +237,7 @@ async def test_get_trip_detail_returns_stops(client: AsyncClient, seed_data, db_
     assert body["stops"][1]["sequence"] == 1
 
 
-# ─── Stage 2.1: full committed phase plan at creation ──────────────────────
+# ─── Full committed phase plan at creation ─────────────────────────────────
 
 def _mock_hedera():
     """Patch HederaService so POST /trips never makes a real Hedera call.
@@ -340,7 +340,7 @@ async def test_multi_stop_create_writes_full_phase_plan(client: AsyncClient, see
         assert actual.trip_stop_id == expected_stop_id
 
 
-# ─── h0-never-completes regression (Stage 2 final review) ─────────────────
+# ─── h0-never-completes regression ──────────────────────────────────────────
 #
 # _build_phase_events (called from create_trip) writes every phase row PENDING,
 # h0/trip_creation included. Nothing in create_trip used to promote h0 to
@@ -373,7 +373,7 @@ async def test_create_trip_output_is_immediately_advanceable(client: AsyncClient
     # Resolve the activation row's real id from a live GET /phases call —
     # never a hardcoded id or an assumed sequence-to-id mapping. The route
     # itself is retargeted from the deleted /handshakes/h1/complete to the
-    # new phase-plan endpoint (task 3.3).
+    # new phase-plan endpoint.
     phases_resp = await client.get(
         f"/api/v1/trips/{trip_id}/phases",
         headers=auth_header(driver_token),

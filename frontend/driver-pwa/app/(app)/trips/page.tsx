@@ -44,7 +44,7 @@ function demoTripsFor(driverId: string): DriverTripSummary[] {
     actual_departure_at: t.actual_departure_at,
     planned_arrival_at: t.planned_arrival_at,
     actual_arrival_at: t.actual_arrival_at,
-    // NEEDS_REVIEW only, matching the backend's needs_review_count (Task 2) — a
+    // NEEDS_REVIEW only, matching the backend's needs_review_count — a
     // RECORDED row is on the trip's exception list but not queued for a decision.
     needs_review_count: t.exceptions.filter((e) => e.review_status === 'needs_review').length,
     created_at: t.created_at,

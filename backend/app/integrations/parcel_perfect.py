@@ -816,7 +816,7 @@ class MockParcelPerfectClient:
 
     When the dev trigger panel is enabled, a Redis-held override layer is applied
     on top of each fixture. This exists because PP waybills were verified to be
-    mutable after creation (spec §B2c: a portal edit changed 68 fields in one
+    mutable after creation (a portal edit changed 68 fields in one
     10-second poll interval, growing tracks[] from 2 to 27 barcodes), and the
     Celery poll that would observe such a change runs in a different process from
     the API — so a module-level dict mutation would be invisible to it.

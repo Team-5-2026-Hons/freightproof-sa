@@ -15,6 +15,12 @@ const EXCEPTION_TYPE_LABELS: Partial<Record<string, string>> = {
   // distinct in wording from driver_vehicle_separation (a tracker disagreement) so a
   // dispatcher scanning the queue can't mistake one for the other.
   driver_location_mismatch: 'Driver outside precinct',
+  // The three road findings (road_check_service) read as one family, in the same
+  // sentence case as the labels above. "In transit" title-cased reads like a phase
+  // name; the dispatcher needs the place.
+  trailer_separated_in_transit: 'Trailer separated on the road',
+  moved_before_departure: 'Moved before departure',
+  tracker_silent: 'Tracker silent',
 }
 
 /** "waybill_count_mismatch" -> "Waybill Count Mismatch"; "receiver_id_mismatch" ->

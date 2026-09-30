@@ -105,7 +105,7 @@ async def log_checkpoint(
         checkpoint_type=payload.checkpoint_type,
         driver_phone_lat=payload.driver_phone_lat,
         driver_phone_lng=payload.driver_phone_lng,
-        # Task 0A: the driver's own submit-instant, stored unconditionally — never
+        # The driver's own submit-instant, stored unconditionally — never
         # gated by whether the horse position below ends up timely enough to keep.
         driver_captured_at=payload.driver_captured_at,
         selfie_artifact_id=payload.selfie_artifact_id,
@@ -140,17 +140,17 @@ async def log_checkpoint(
     # a Pulsit outage untraceable to the checkpoint it affected.
     # Never raises: a driver logging a roadside checkpoint must not be blocked by an
     # unreachable tracker API. A failure leaves horse_gps null, which means "we could
-    # not check" — see corroboration_service's null-semantics contract. Task 0A:
+    # not check" — see corroboration_service's null-semantics contract.
     # driver_captured_at travels through so a stale Pulsit fix cannot masquerade as a
     # live one — see _within_corroboration_skew.
     #
-    # R12: the returned fix is the SAME one just used above — never a second Pulsit
+    # The returned fix is the SAME one just used above — never a second Pulsit
     # round trip for this one checkpoint — fed straight into the assessment below.
     horse_fix = await record_checkpoint_corroboration(
         db, trip=trip, checkpoint=checkpoint, driver_captured_at=payload.driver_captured_at,
     )
 
-    # Task 5: the versioned proximity snapshot for this checkpoint, plus (when it
+    # The versioned proximity snapshot for this checkpoint, plus (when it
     # measures a genuine separation) a distinct DRIVER_VEHICLE_SEPARATION finding —
     # independent of and alongside whatever corroboration_service already wrote.
     # See orchestration/action_location_service.py.
