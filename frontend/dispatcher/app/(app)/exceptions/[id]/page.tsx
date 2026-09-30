@@ -8,14 +8,18 @@ import { SecHead }    from '@/components/ui/SecHead'
 import { Chip }       from '@/components/ui/Chip'
 import { Button }     from '@/components/ui/Button'
 import { Ic }         from '@/components/ui/Ic'
-import { Input }      from '@/components/ui/Input'
-import { Select }     from '@/components/ui/Select'
 import { Spinner }    from '@/components/ui/Spinner'
 import { EmptyState } from '@/components/ui/EmptyState'
+import {
+  CONTACT_METHOD_LABELS, NO_CONTACT_CHOSEN, NO_OUTCOME_CHOSEN,
+  REVIEW_OUTCOME_LABELS, ReviewFields,
+} from '@/components/domain/ReviewFields'
 import { TripIdStamp } from '@/components/domain/TripIdStamp'
 import { ExceptionEvidence } from '@/components/domain/ExceptionEvidence'
 import { GPS_MISMATCH_TRIGGER } from '@/components/domain/PositionDisagreement'
-import { ApiError, reviewException } from '@/lib/api/client'
+import { ApiError, claimException, releaseException, reviewException } from '@/lib/api/client'
+import { useAuth } from '@/lib/hooks/useAuth'
+import { reviewState } from '@/lib/format/review-state'
 import { useToast } from '@/lib/hooks/useToast'
 import { useExceptionDetail } from '@/lib/hooks/useExceptionDetail'
 import { fmtBreakdownVehicle } from '@/lib/format/exception'
@@ -33,37 +37,15 @@ import { ROUTES } from '@/lib/constants/routes'
 import { RETURN_TO_PARAM, safeReturnTo } from '@/lib/navigation/returnTo'
 import { fmtDateTime } from '@shared/lib/utils/datetime'
 
-// Labels for the 5 real, submittable review outcomes — mirrors the old resolve-flow
-// file's RESOLUTION_METHOD_LABELS pattern (a plain Record so a missing case is a
-// compile error, not a silently-blank option).
-const REVIEW_OUTCOME_LABELS: Record<DispatcherReviewOutcome, string> = {
-  no_action_required:     'No action required',
-  handled_externally:     'Handled externally',
-  evidence_verified:      'Evidence verified',
-  data_discrepancy:       'Data discrepancy',
-  referred_for_follow_up: 'Referred for follow-up',
-}
-
-// Reused verbatim from the old resolve-flow file's CONTACT_METHOD_LABELS — these already
-// read correctly, and the review endpoint's ExceptionContactMethod is the exact same
-// three values.
-const CONTACT_METHOD_LABELS: Record<ExceptionContactMethod, string> = {
-  phone:     'Phoned the driver',
-  whatsapp:  'WhatsApp',
-  in_person: 'In person',
-}
-
-// The outcome field's unselected state — a placeholder, never a real value, so the
-// option is rendered `disabled` below and can never be submitted.
-const NO_OUTCOME_CHOSEN = '' as const
-// The contact-method field's blank state — NOT a placeholder. Unlike the outcome above,
-// leaving this blank is a genuine, submittable answer ("no contact happened, reviewed
-// from evidence alone"), so its option is deliberately not disabled.
-const NO_CONTACT_CHOSEN = '' as const
-
 // The one exception type that records which vehicle it happened to (trailer analytics).
 // Any other type showing a Vehicle row would read "Not recorded" for no reason.
 const BREAKDOWN_TYPE: ExceptionType = 'mechanical'
+
+// A 409 can now mean either a colleague's claim or a colleague's review, so one title
+// serves the claim, take-over and review handlers alike.
+const CONFLICT_TOAST_TITLE = 'A colleague got there first'
+const TAKE_OVER_LABEL = 'Take over'
+const TAKE_OVER_AND_REVIEW_LABEL = 'Take over and review'
 
 function fmtType(t: string): string {
   return t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
@@ -124,12 +106,15 @@ export default function ExceptionDetailPage() {
   const backTo = safeReturnTo(search.get(RETURN_TO_PARAM), ROUTES.exceptions)
   const { notify } = useToast()
 
+  const { user } = useAuth()
+  const meId = user?.id ?? null
+
   const exceptionId = params.id as string
   const { exception, isLoading, error, refetch, refetchSilent } = useExceptionDetail(exceptionId)
 
-  // Only meaningful once review_status is 'recorded' — a 'needs_review' exception shows
-  // the form regardless of this flag (see the JSX below), so there is no need to derive
-  // an initial value from data that may not have loaded yet.
+  // Only meaningful for a legacy 'recorded' row — the FP-280 backfill moved every such
+  // row to needs_review, but the status still exists, so the page keeps handling it. A
+  // 'needs_review' exception shows the form regardless of this flag (see the JSX below).
   const [showReviewForm, setShowReviewForm] = useState(false)
 
   const [reviewNote, setReviewNote]         = useState('')
@@ -138,6 +123,7 @@ export default function ExceptionDetailPage() {
   const [contactMethod, setContactMethod]   =
     useState<ExceptionContactMethod | typeof NO_CONTACT_CHOSEN>(NO_CONTACT_CHOSEN)
   const [reviewing, setReviewing]           = useState(false)
+  const [claimBusy, setClaimBusy]            = useState(false)
 
   // Built once and passed to TopBar's `left` slot in every state (loading, error,
   // success), matching the precinct/driver/vehicle detail pages: back navigation always
@@ -192,6 +178,49 @@ export default function ExceptionDetailPage() {
   const isReviewed   = exception.review_status === 'reviewed'
   const needsReview  = exception.review_status === 'needs_review'
   const showForm     = needsReview || showReviewForm
+  const rState       = reviewState(exception, meId)
+  const claimedByOther = rState.kind === 'claimed_by_other'
+  // Reviewing over a colleague's claim is an explicit act, stated on the button itself
+  // (D5), so the server can tell it from a stale page and never silently overrides.
+  const submitLabel  = claimedByOther ? TAKE_OVER_AND_REVIEW_LABEL : COPY.actions.submitReview
+  const claimedLine  = exception.claimed_by_user_id !== null
+    ? `${rState.kind === 'claimed_by_me' ? 'Claimed by you' : `Claimed by ${exception.claimed_by_name ?? 'a colleague'}`}${
+        exception.claimed_at ? ` · ${fmtDateTime(exception.claimed_at)}` : ''}`
+    : null
+  // Shown on a reviewed row only when the claimer and reviewer are different people, so
+  // the record says who was working it as well as who closed it.
+  const showClaimerOnReviewed =
+    exception.claimed_by_user_id !== null
+    && exception.claimed_by_user_id !== exception.reviewed_by_user_id
+
+  // One handler for claim, take-over and release. The mutation responses carry no
+  // reviewer names, so the page always refetches (which does) instead of trusting them.
+  const runClaimAction = async (
+    action: () => Promise<unknown>,
+    successTitle: string,
+    failureTitle: string,
+  ) => {
+    setClaimBusy(true)
+    try {
+      await action()
+      notify({ kind: 'success', title: successTitle })
+      refetchSilent()
+    } catch (err) {
+      const lostTheRace = err instanceof ApiError && err.status === 409
+      notify({
+        kind: 'error',
+        title: lostTheRace ? CONFLICT_TOAST_TITLE : failureTitle,
+        body: err instanceof Error ? err.message : 'Please try again.',
+      })
+      // Our copy of the claim is stale; show the colleague's now-visible claim.
+      if (lostTheRace) refetchSilent()
+    } finally {
+      setClaimBusy(false)
+    }
+  }
+  const handleClaim    = () => runClaimAction(() => claimException(exceptionId), 'Exception claimed.', 'Could not claim this exception')
+  const handleTakeOver = () => runClaimAction(() => claimException(exceptionId, true), 'You took over this exception.', 'Could not take over this exception')
+  const handleRelease  = () => runClaimAction(() => releaseException(exceptionId), 'Claim released.', 'Could not release this exception')
 
   const handleReview = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -208,6 +237,8 @@ export default function ExceptionDetailPage() {
         // Explicit null, not an omitted key — the backend requires the key present so
         // it can tell "no contact happened" apart from a client that forgot the field.
         contact_method: contactMethod || null,
+        // Omitted (not false) unless taking over, so an ordinary review body is unchanged.
+        ...(claimedByOther ? { take_over: true } : {}),
       })
       notify({ kind: 'success', title: COPY.toast.exceptionReviewed })
       // No refetch before navigating: this hook instance dies with the page, and
@@ -222,13 +253,13 @@ export default function ExceptionDetailPage() {
       const lostTheRace = err instanceof ApiError && err.status === 409
       notify({
         kind: 'error',
-        title: lostTheRace ? 'Already reviewed by a colleague' : 'Could not review this exception',
+        title: lostTheRace ? CONFLICT_TOAST_TITLE : 'Could not review this exception',
         body: err instanceof Error ? err.message : 'Please try again.',
       })
       // Deliberately stay on the page and refetch rather than navigating away. Their
-      // note is still in the form, and the silent refetch swaps it for the colleague's
-      // now-visible completed review, so they can read what was established instead of
-      // being bounced to a list that just says "reviewed".
+      // note is still in the form; the silent refetch shows the colleague's claim (the
+      // submit then reads "Take over and review") or their completed review, so they can
+      // read what was established instead of being bounced to a list.
       if (lostTheRace) refetchSilent()
       setReviewing(false)
     }
@@ -356,6 +387,7 @@ export default function ExceptionDetailPage() {
                   <Ic n="check" s={16} className="text-ok shrink-0" />
                   <span className="text-[14px] font-[700] text-ok">
                     {exception.review_outcome && exception.review_outcome !== 'legacy_review'
+                      && exception.review_outcome !== 'dispatcher_authored'
                       ? REVIEW_OUTCOME_LABELS[exception.review_outcome]
                       : 'Reviewed'}
                   </span>
@@ -382,58 +414,43 @@ export default function ExceptionDetailPage() {
                     </div>
                   )}
                 </div>
-                {/* Deliberately no reviewer identity here. reviewed_by_user_id is a bare
-                    UUID with no name-resolution anywhere in this app — there is no user
-                    directory for a dispatcher-facing page to resolve it against. That is
-                    the whole of "reviewer attribution permitted by the schema": nothing
-                    displayable. Do not "fix" this by printing the raw UUID or inventing
-                    a name. */}
+                {/* Names come from the server (users.full_name, org-scoped) — FP-280. */}
+                <div className="flex flex-col gap-1 mt-3 text-[11px] font-[500] text-sec">
+                  <span>
+                    {rState.label}{exception.reviewed_at ? ` · ${fmtDateTime(exception.reviewed_at)}` : ''}
+                  </span>
+                  {showClaimerOnReviewed && claimedLine && <span>{claimedLine}</span>}
+                </div>
               </div>
             </div>
           ) : (
             <div className="bg-surf-lowest rounded-lg shadow-level-3 overflow-hidden">
               <SecHead title={needsReview ? 'Review Required' : 'Review Exception'} />
+              {(rState.kind === 'unreviewed' || rState.kind === 'claimed_by_me' || claimedByOther) && (
+                <div className="px-6 pt-4 flex items-center justify-between gap-3">
+                  <span className="text-[13px] text-on-surf-v">
+                    {claimedLine ?? 'Not claimed'}
+                  </span>
+                  {rState.kind === 'unreviewed' && (
+                    <Button variant="secondary" size="sm" onClick={handleClaim} disabled={claimBusy}>Claim</Button>
+                  )}
+                  {rState.kind === 'claimed_by_me' && (
+                    <Button variant="secondary" size="sm" onClick={handleRelease} disabled={claimBusy}>Release</Button>
+                  )}
+                  {claimedByOther && (
+                    <Button variant="secondary" size="sm" onClick={handleTakeOver} disabled={claimBusy}>
+                      {TAKE_OVER_LABEL}
+                    </Button>
+                  )}
+                </div>
+              )}
               {showForm ? (
                 <form onSubmit={handleReview} className="p-6 flex flex-col gap-4">
-                  <Input
-                    label="Review note"
-                    placeholder={COPY.confirm.reviewNote}
-                    value={reviewNote}
-                    onChange={e => setReviewNote(e.target.value)}
+                  <ReviewFields
+                    note={reviewNote}       onNote={setReviewNote}
+                    outcome={reviewOutcome} onOutcome={setReviewOutcome}
+                    contact={contactMethod} onContact={setContactMethod}
                   />
-                  <Select
-                    label="Outcome"
-                    value={reviewOutcome}
-                    onChange={e =>
-                      setReviewOutcome(e.target.value as DispatcherReviewOutcome | typeof NO_OUTCOME_CHOSEN)
-                    }
-                  >
-                    <option value={NO_OUTCOME_CHOSEN} disabled>
-                      {COPY.confirm.reviewOutcomeUnset}
-                    </option>
-                    {(Object.keys(REVIEW_OUTCOME_LABELS) as DispatcherReviewOutcome[]).map(outcome => (
-                      <option key={outcome} value={outcome}>
-                        {REVIEW_OUTCOME_LABELS[outcome]}
-                      </option>
-                    ))}
-                  </Select>
-                  {/* Optional. Blank is a real, submittable answer here — not a
-                      placeholder — so its option is not `disabled`, unlike the outcome
-                      field above. */}
-                  <Select
-                    label="Contact method"
-                    value={contactMethod}
-                    onChange={e =>
-                      setContactMethod(e.target.value as ExceptionContactMethod | typeof NO_CONTACT_CHOSEN)
-                    }
-                  >
-                    <option value={NO_CONTACT_CHOSEN}>No contact — reviewed from evidence alone</option>
-                    {(Object.keys(CONTACT_METHOD_LABELS) as ExceptionContactMethod[]).map(method => (
-                      <option key={method} value={method}>
-                        {CONTACT_METHOD_LABELS[method]}
-                      </option>
-                    ))}
-                  </Select>
                   <p className="text-[12px] text-on-surf-v">{COPY.confirm.reviewNotice}</p>
                   <div className="flex justify-end">
                     <Button
@@ -443,7 +460,7 @@ export default function ExceptionDetailPage() {
                       loading={reviewing}
                       iconLeft={<Ic n="check" s={14} c="white" />}
                     >
-                      {COPY.actions.submitReview}
+                      {submitLabel}
                     </Button>
                   </div>
                 </form>

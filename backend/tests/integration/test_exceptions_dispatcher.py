@@ -223,7 +223,7 @@ async def test_review_without_credentials_is_403(client: AsyncClient, db_session
 
     assert res.status_code == 403
     await db_session.refresh(mine["exception"])
-    assert mine["exception"].review_status == ExceptionReviewStatus.RECORDED
+    assert mine["exception"].review_status == ExceptionReviewStatus.NEEDS_REVIEW  # FP-280: every exception starts needs_review.
 
 
 async def test_review_with_a_token_for_an_unknown_user_is_401(
@@ -238,7 +238,7 @@ async def test_review_with_a_token_for_an_unknown_user_is_401(
 
     assert res.status_code == 401
     await db_session.refresh(mine["exception"])
-    assert mine["exception"].review_status == ExceptionReviewStatus.RECORDED
+    assert mine["exception"].review_status == ExceptionReviewStatus.NEEDS_REVIEW  # FP-280: every exception starts needs_review.
 
 
 async def test_review_across_organisations_is_404_not_403(
@@ -253,7 +253,7 @@ async def test_review_across_organisations_is_404_not_403(
 
     assert res.status_code == 404
     await db_session.refresh(theirs["exception"])
-    assert theirs["exception"].review_status == ExceptionReviewStatus.RECORDED
+    assert theirs["exception"].review_status == ExceptionReviewStatus.NEEDS_REVIEW  # FP-280: every exception starts needs_review.
 
 
 async def test_review_unknown_id_is_404(client: AsyncClient, two_orgs):

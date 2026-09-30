@@ -30,6 +30,7 @@ from app.db.models.trips import Trip, TripStop
 from app.db.session import get_db
 from app.main import app
 from app.orchestration.handover_service import hash_presented_token
+from app.storage.supabase_storage import UploadResult
 from tests.conftest import auth_header, make_token
 
 _GENERIC_NOT_FOUND = "This delivery confirmation link is not valid."
@@ -52,6 +53,19 @@ def _force_mock_idvs(monkeypatch: pytest.MonkeyPatch) -> None:
     not testing what it claims to.
     """
     monkeypatch.setattr(settings, "IDVS_USE_MOCK", True)
+
+
+@pytest.fixture(autouse=True)
+def fake_storage(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The full-walk tests end in a confirm, which uploads the signature. Without this
+    stub that upload goes to whatever SUPABASE_URL is set: a real bucket on a developer's
+    machine, an unresolvable test host in CI. Same stub as test_handover_endpoints.py."""
+    async def fake_upload(*, trip_id: uuid.UUID, file_bytes: bytes, mime_type: str) -> UploadResult:
+        return UploadResult(
+            s3_bucket="evidence-artifacts", s3_key=f"{trip_id}/{uuid.uuid4()}", file_hash="a" * 64,
+        )
+
+    monkeypatch.setattr("app.orchestration.artifact_service.upload_evidence_file", fake_upload)
 
 
 @pytest_asyncio.fixture(autouse=True)

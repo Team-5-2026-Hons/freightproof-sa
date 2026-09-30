@@ -1,6 +1,6 @@
 # Exception queue — scaling the list, the subscription, and the archive
 
-> **Author:** Ciaran · **Date:** 2026-09-04 · **Status:** proposed, not implemented
+> **Author:** Ciaran · **Date:** 2026-09-04 · **Status:** implemented (FP-146/147/148; invariant widened to every write site in FP-280)
 > **Follows** [2026-09-03-fp146-implementation-plan.md](2026-09-03-fp146-implementation-plan.md).
 > FP-146/147/148 made the exception surface real; this is what shipping it exposed.
 > Every claim below was verified against the working tree on 2026-09-04 and carries the

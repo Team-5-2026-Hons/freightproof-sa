@@ -36,7 +36,7 @@ function makeException(overrides: Partial<TripException> = {}): TripException {
     review_note: null,
     contact_method: null,
     vehicle_id: null,
-    merkle_batch_id: null,
+    merkle_batch_id: null, claimed_by_user_id: null, claimed_at: null, claimed_by_name: null, reviewed_by_name: null,
     created_at: '2026-01-02T02:00:00Z',
     updated_at: '2026-01-02T02:00:00Z',
     ...overrides,

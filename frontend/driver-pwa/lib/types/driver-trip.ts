@@ -28,8 +28,8 @@ export interface DriverTripSummary {
   actual_departure_at: string | null
   planned_arrival_at: string | null
   actual_arrival_at: string | null
-  // NEEDS_REVIEW only (FP-146 follow-on) — displayed for parity with the
-  // dispatcher board, but the driver gains no review workflow of their own.
+  // Unreviewed CRITICAL rows only (FP-146 follow-on, narrowed in FP-280 when every
+  // exception started needs_review) — the driver has no review workflow of their own.
   needs_review_count: number
   created_at: string
   updated_at: string

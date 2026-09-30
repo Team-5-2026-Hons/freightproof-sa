@@ -5,7 +5,7 @@ import ExceptionDetailPage from './page'
 import { ToastProvider } from '@/lib/context/ToastContext'
 import { ForensicModeProvider } from '@/lib/context/ForensicModeContext'
 import { useExceptionDetail } from '@/lib/hooks/useExceptionDetail'
-import { ApiError, reviewException } from '@/lib/api/client'
+import { ApiError, claimException, releaseException, reviewException } from '@/lib/api/client'
 import type { TripException, TripExceptionDetail } from '@shared/lib/types/exception'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 import type { VehicleId } from '@shared/lib/types/vehicle'
@@ -21,8 +21,11 @@ vi.mock('@/lib/supabase/client', () => ({
 
 // ForensicModeProvider reads the signed-in user. Nothing these tests assert depends on
 // who that is, so the identity is stubbed rather than an AuthProvider stood up.
+// The claim UI does depend on who is signed in (mine vs a colleague's claim), so the
+// user is a mutable stub the claim tests set; everything else leaves it at null.
+let mockUserId: string | null = null
 vi.mock('@/lib/hooks/useAuth', () => ({
-  useAuth: () => ({ user: null }),
+  useAuth: () => ({ user: mockUserId === null ? null : { id: mockUserId } }),
 }))
 
 const push = vi.fn()
@@ -42,11 +45,13 @@ vi.mock('@/lib/hooks/useExceptionDetail', () => ({
 // only the one mutation this page calls — same pattern as CancelTripAction.test.tsx.
 vi.mock('@/lib/api/client', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api/client')>('@/lib/api/client')
-  return { ...actual, reviewException: vi.fn() }
+  return { ...actual, reviewException: vi.fn(), claimException: vi.fn(), releaseException: vi.fn() }
 })
 
 const mockedUseExceptionDetail = vi.mocked(useExceptionDetail)
 const mockedReviewException = vi.mocked(reviewException)
+const mockedClaimException = vi.mocked(claimException)
+const mockedReleaseException = vi.mocked(releaseException)
 
 const EXCEPTION_ID = '11111111-1111-1111-1111-111111111111'
 
@@ -86,6 +91,10 @@ function baseException(overrides: Partial<TripExceptionDetail> = {}): TripExcept
     trip_status: 'active',
     phase_label: null,
     stop_label: null,
+    claimed_by_user_id: null,
+    claimed_at: null,
+    claimed_by_name: null,
+    reviewed_by_name: null,
     gps_lat: null,
     gps_lng: null,
     review_outcome: null,
@@ -126,7 +135,7 @@ const REVIEWED_RESPONSE: TripException = {
   review_note: 'Evidence settles it.',
   contact_method: null,
   vehicle_id: null,
-  merkle_batch_id: null,
+  merkle_batch_id: null, claimed_by_user_id: null, claimed_at: null, claimed_by_name: null, reviewed_by_name: null,
   created_at: '2026-09-03T10:00:00Z',
   updated_at: '2026-09-04T09:30:00Z',
 }
@@ -179,6 +188,9 @@ beforeEach(() => {
   refetch.mockReset()
   refetchSilent.mockReset()
   mockedReviewException.mockReset().mockResolvedValue(REVIEWED_RESPONSE)
+  mockedClaimException.mockReset().mockResolvedValue(REVIEWED_RESPONSE)
+  mockedReleaseException.mockReset().mockResolvedValue(REVIEWED_RESPONSE)
+  mockUserId = null
 })
 
 describe('Exception detail — loading and error states', () => {
@@ -521,6 +533,176 @@ describe('Exception detail — submit outcomes', () => {
     // Exact match on the toast TITLE, not a substring search — the toast body also
     // contains "already reviewed by a colleague" (the backend's own detail message),
     // and both must be able to say so without the assertion becoming ambiguous.
-    expect(screen.getByText('Already reviewed by a colleague')).toBeInTheDocument()
+    expect(screen.getByText('A colleague got there first')).toBeInTheDocument()
+  })
+})
+
+const ME = 'me-user-id'
+const ANA = 'ana-user-id'
+const CLAIMED_AT = '2026-09-03T11:00:00Z'
+
+describe('Exception detail — claim, release and take over', () => {
+  it('offers Claim on an unclaimed exception, with the form enabled and a plain review submit', () => {
+    mockUserId = ME
+    mockDetail(baseException())
+    renderPage()
+
+    expect(screen.getByRole('button', { name: 'Claim' })).toBeInTheDocument()
+    fillValidForm()
+    expect(submitButton()).toBeEnabled()
+  })
+
+  it('claims and refetches', async () => {
+    mockUserId = ME
+    mockDetail(baseException())
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Claim' }))
+
+    await waitFor(() => expect(mockedClaimException).toHaveBeenCalledWith(EXCEPTION_ID))
+    await waitFor(() => expect(refetchSilent).toHaveBeenCalled())
+    expect(screen.getByText('Exception claimed.')).toBeInTheDocument()
+  })
+
+  it('offers Take over and a Take over and review submit when a colleague holds the claim', () => {
+    mockUserId = ME
+    mockDetail(baseException({ claimed_by_user_id: ANA, claimed_by_name: 'Ana', claimed_at: CLAIMED_AT }))
+    renderPage()
+
+    expect(screen.getByText(/Claimed by Ana/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Take over' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Take over and review' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Submit review' })).not.toBeInTheDocument()
+  })
+
+  it('takes over and refetches', async () => {
+    mockUserId = ME
+    mockDetail(baseException({ claimed_by_user_id: ANA, claimed_by_name: 'Ana', claimed_at: CLAIMED_AT }))
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Take over' }))
+
+    await waitFor(() => expect(mockedClaimException).toHaveBeenCalledWith(EXCEPTION_ID, true))
+    await waitFor(() => expect(refetchSilent).toHaveBeenCalled())
+  })
+
+  it('takes over and reviews in one step', async () => {
+    mockUserId = ME
+    mockDetail(baseException({ claimed_by_user_id: ANA, claimed_by_name: 'Ana', claimed_at: CLAIMED_AT }))
+    renderPage()
+
+    fillValidForm()
+    fireEvent.click(screen.getByRole('button', { name: 'Take over and review' }))
+
+    await waitFor(() =>
+      expect(mockedReviewException).toHaveBeenCalledWith(EXCEPTION_ID, {
+        review_note: NOTE,
+        review_outcome: 'evidence_verified',
+        contact_method: null,
+        take_over: true,
+      }),
+    )
+  })
+
+  it('sends no take_over for an unclaimed or own-claim review', async () => {
+    mockUserId = ME
+    mockDetail(baseException({ claimed_by_user_id: ME, claimed_by_name: 'Me', claimed_at: CLAIMED_AT }))
+    renderPage()
+
+    fillValidForm()
+    fireEvent.click(submitButton())
+
+    await waitFor(() => expect(mockedReviewException).toHaveBeenCalled())
+    const body = mockedReviewException.mock.calls[0][1]
+    expect(body.take_over ?? false).toBe(false)
+  })
+
+  it('shows my own claim and releases it', async () => {
+    mockUserId = ME
+    mockDetail(baseException({ claimed_by_user_id: ME, claimed_by_name: 'Me', claimed_at: CLAIMED_AT }))
+    renderPage()
+
+    expect(screen.getByText(/Claimed by you/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Release' }))
+
+    await waitFor(() => expect(mockedReleaseException).toHaveBeenCalledWith(EXCEPTION_ID))
+    await waitFor(() => expect(refetchSilent).toHaveBeenCalled())
+  })
+
+  it('toasts "A colleague got there first" and refetches when a claim hits a 409', async () => {
+    mockUserId = ME
+    mockedClaimException.mockReset().mockRejectedValue(new ApiError(409, 'Already claimed by Ana.'))
+    mockDetail(baseException())
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Claim' }))
+
+    await waitFor(() => expect(refetchSilent).toHaveBeenCalled())
+    expect(screen.getByText('A colleague got there first')).toBeInTheDocument()
+  })
+
+  it('toasts a generic error, and does not refetch, when a claim fails for another reason', async () => {
+    mockUserId = ME
+    mockedClaimException.mockReset().mockRejectedValue(new ApiError(500, 'boom'))
+    mockDetail(baseException())
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Claim' }))
+
+    await waitFor(() => expect(screen.getByText('Could not claim this exception')).toBeInTheDocument())
+    expect(refetchSilent).not.toHaveBeenCalled()
+  })
+
+  it('keeps the typed note and refetches when review hits a 409', async () => {
+    mockUserId = ME
+    mockedReviewException.mockReset().mockRejectedValue(new ApiError(409, 'Claimed by Ana.'))
+    mockDetail(baseException())
+    renderPage()
+
+    fillValidForm()
+    fireEvent.click(submitButton())
+
+    await waitFor(() => expect(refetchSilent).toHaveBeenCalled())
+    expect(screen.getByText('A colleague got there first')).toBeInTheDocument()
+    expect(noteField()).toHaveValue(NOTE)
+    expect(push).not.toHaveBeenCalled()
+  })
+
+  it('names the reviewer and claimer on a reviewed exception', () => {
+    mockUserId = ME
+    mockDetail(baseException({
+      review_status: 'reviewed',
+      review_outcome: 'evidence_verified',
+      review_note: 'Done.',
+      reviewed_at: '2026-09-04T09:30:00Z',
+      reviewed_by_user_id: 'ben-id',
+      reviewed_by_name: 'Ben',
+      claimed_by_user_id: ANA,
+      claimed_by_name: 'Ana',
+      claimed_at: CLAIMED_AT,
+    }))
+    renderPage()
+
+    expect(screen.getByText(/Reviewed by Ben/)).toBeInTheDocument()
+    expect(screen.getByText(/Claimed by Ana/)).toBeInTheDocument()
+  })
+
+  it('labels a dispatcher-authored note', () => {
+    mockDetail(baseException({
+      review_status: 'reviewed',
+      review_outcome: 'dispatcher_authored',
+      review_note: 'Cancelled: wrong load.',
+      reviewed_at: '2026-09-04T09:30:00Z',
+      reviewed_by_user_id: 'ben-id',
+      reviewed_by_name: 'Ben',
+      claimed_by_user_id: 'ben-id',
+      claimed_by_name: 'Ben',
+    }))
+    renderPage()
+
+    expect(screen.getByText(/Dispatcher note by Ben/)).toBeInTheDocument()
+    expect(screen.queryByText(/Reviewed by Ben/)).not.toBeInTheDocument()
+    // Reviewer and claimer are the same person, so no separate claim line.
+    expect(screen.queryByText(/Claimed by/)).not.toBeInTheDocument()
   })
 })

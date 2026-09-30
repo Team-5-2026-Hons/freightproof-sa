@@ -97,9 +97,9 @@ async def _seed(db_session, *, completed_through: PhaseType) -> dict:
 async def _stage(trip: Trip, device_id: str, position: tuple[Decimal, Decimal] | None) -> None:
     client = get_pulsit_client(organization_id=trip.operator_organization_id)
     if position is None:
-        await client.stage_no_fix(device_id)
+        await client.stage_no_fix(device_id)  # type: ignore[attr-defined]  # staging helper exists only on the in-memory test client
     else:
-        await client.stage_position(device_id, lat=position[0], lng=position[1])
+        await client.stage_position(device_id, lat=position[0], lng=position[1])  # type: ignore[attr-defined]  # staging helper exists only on the in-memory test client
 
 
 async def _exceptions(db_session, trip_id: uuid.UUID) -> list[TripException]:

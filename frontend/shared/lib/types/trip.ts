@@ -60,8 +60,9 @@ export interface TripHistoryListItem extends TripChecklistItem {
 }
 
 // Lightweight shape for list views (GET /trips), nesting full driver/horse/trailers.
-// needs_review_count counts only NEEDS_REVIEW rows — a RECORDED row is on the trip's
-// exception list but not queued for a dispatcher decision.
+// needs_review_count counts every unreviewed exception on the trip, whatever its severity:
+// since FP-280 every exception starts needs_review. (The driver's own trip list counts
+// critical rows only — see DriverTripSummary.)
 export interface TripSummary extends TripChecklistItem {
   id: TripId
   trip_reference: string

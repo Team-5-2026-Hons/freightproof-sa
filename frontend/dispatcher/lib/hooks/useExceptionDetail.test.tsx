@@ -44,6 +44,10 @@ function makeDetail(overrides: Partial<TripExceptionDetail> = {}): TripException
     vehicle_type: null,
     supporting_artifact_id: null,
     supporting_artifact: null,
+    claimed_by_user_id: null,
+    claimed_at: null,
+    claimed_by_name: null,
+    reviewed_by_name: null,
     ...overrides,
   }
 }
@@ -102,7 +106,7 @@ describe('useExceptionDetail', () => {
         'trip',
         'trip-xyz',
         expect.any(Function),
-        { kinds: ['exception_raised', 'exception_reviewed'] },
+        { kinds: ['exception_raised', 'exception_reviewed', 'exception_claimed'] },
       ])
     })
   })

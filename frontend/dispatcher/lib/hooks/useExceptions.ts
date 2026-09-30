@@ -37,9 +37,10 @@ export function useExceptionQueue(): UseExceptionQueueResult {
   )
 
   // 'any' trip: this queue spans the whole org. Silent so it updates in place, not with
-  // a spinner. Filtered to exception kinds so unrelated phase/close events don't re-poll it.
+  // a spinner. Filtered to exception kinds (claims too — a colleague claiming must move the row
+  // between tabs) so unrelated phase/close events don't re-poll it.
   useLiveResource('trip', 'any', refetchSilent, {
-    kinds: ['exception_raised', 'exception_reviewed'],
+    kinds: ['exception_raised', 'exception_reviewed', 'exception_claimed'],
   })
 
   return { items: data, isLoading, error, refetch, refetchSilent }

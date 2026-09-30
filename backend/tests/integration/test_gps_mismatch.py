@@ -39,6 +39,7 @@ name.
 
 import asyncio
 import uuid
+from typing import Any
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
@@ -131,6 +132,7 @@ async def test_reliable_far_phone_raises_separation_when_truck_is_inside_precinc
 
     assert response.status_code == 200
     event = await _load_event(db_session, trip, PhaseType.ACTIVATION)
+    assert event.action_location_assessment is not None
     assert event.pulsit_geofence_confirmed is True
     assert event.action_location_assessment["proximity"] == "separated"
     assert event.action_location_assessment["truck_in_precinct"] is True
@@ -158,6 +160,7 @@ async def test_colocated_sources_outside_precinct_raise_only_existing_geofence_f
 
     assert response.status_code == 200
     event = await _load_event(db_session, trip, PhaseType.ACTIVATION)
+    assert event.action_location_assessment is not None
     assert event.pulsit_geofence_confirmed is False
     assert event.action_location_assessment["proximity"] == "within_limit"
     assert len(await _load_mismatches(db_session, trip)) == 1
@@ -199,6 +202,7 @@ async def test_legacy_missing_timing_and_accuracy_persists_unverified_assessment
 
     assert response.status_code == 200
     event = await _load_event(db_session, trip, PhaseType.ACTIVATION)
+    assert event.action_location_assessment is not None
     assert event.action_location_assessment["proximity"] == "unverified"
     assert "missing_time" in event.action_location_assessment["reasons"]
     assert "missing_accuracy" in event.action_location_assessment["reasons"]
@@ -214,7 +218,7 @@ async def test_replayed_completion_keeps_one_separation_finding(
     await _stage(_HORSE_DEVICE, _ORIGIN_LAT, _ORIGIN_LNG)
     token = make_token(sub=str(driver.id), role="driver")
     idempotency_key = f"idem-{uuid.uuid4()}"
-    request = {
+    request: dict[str, Any] = {
         "idempotency_key": idempotency_key,
         "token": token,
         "driver_phone_lat": float(_FAR_AWAY_LAT),
@@ -398,7 +402,8 @@ async def test_a_false_verdict_raises_exactly_one_gps_mismatch(
     assert exc.severity == ExceptionSeverity.WARNING
     assert exc.phase_event_id == event.id
     assert exc.trip_stop_id == stop0.id
-    assert exc.review_status == ExceptionReviewStatus.RECORDED
+    # FP-280: every exception starts needs_review.
+    assert exc.review_status == ExceptionReviewStatus.NEEDS_REVIEW
 
 
 async def test_the_exception_carries_both_positions_and_the_separation(

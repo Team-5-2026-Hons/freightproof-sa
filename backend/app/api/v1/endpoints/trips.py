@@ -246,6 +246,7 @@ async def get_trip_detail_endpoint(
             db=db,
             trip_id=trip_id,
             operator_organization_id=current_user.organization_id,
+            include_reviewer_names=True,
         )
     except ResourceNotFoundError as exc:
         raise HTTPException(

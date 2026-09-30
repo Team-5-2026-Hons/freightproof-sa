@@ -18,6 +18,7 @@ from app.db.models.enums import (
     TripStatus,
     VehicleType,
 )
+from app.core.constants import MAX_BATCH_REVIEW_SIZE
 from app.schemas.action_location import ActionLocationAssessment
 from app.schemas.evidence import EvidenceArtifactWithUrl
 from app.schemas.text import CheckpointTypeStr, FreeText, RequiredFreeText
@@ -265,6 +266,10 @@ class TripExceptionReviewRequest(BaseModel):
     applicable" option), and an explicit `null` records "reviewed without contacting
     anyone" (e.g. the evidence alone settled it) rather than a caller having forgotten
     the field.
+
+    `take_over` lets a dispatcher take over a colleague's claim and review in one step
+    (FP-280 soft claim); false by default, so a stale page never overrides a claim it
+    didn't show.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -272,6 +277,38 @@ class TripExceptionReviewRequest(BaseModel):
     review_note: RequiredFreeText
     review_outcome: DispatcherReviewOutcome
     contact_method: Optional[ExceptionContactMethod]
+    take_over: bool = False
+
+
+class TripExceptionBatchReviewRequest(BaseModel):
+    """Review several non-critical exceptions on ONE trip with one note and outcome.
+
+    Explicit ids, never "every warning on the trip": the dispatcher confirms exactly the
+    rows they saw, so a warning raised after the page loaded is never swept into a
+    review nobody looked at. One review is still written per row.
+    """
+
+    trip_id: UUID
+    exception_ids: list[UUID] = Field(min_length=1, max_length=MAX_BATCH_REVIEW_SIZE)
+    review_note: RequiredFreeText
+    review_outcome: DispatcherReviewOutcome
+    contact_method: Optional[ExceptionContactMethod]
+
+    @field_validator("exception_ids")
+    @classmethod
+    def _ids_are_unique(cls, ids: list[UUID]) -> list[UUID]:
+        # A duplicate is a client bug, not a harmless repeat — reject it rather than
+        # quietly reviewing fewer rows than the dispatcher was shown.
+        if len(set(ids)) != len(ids):
+            raise ValueError("exception_ids must not repeat")
+        return ids
+
+
+class ExceptionClaimRequest(BaseModel):
+    """Claim an exception. take_over must be explicit: replacing a colleague's claim is a
+    deliberate act, so the default can only ever claim something nobody holds."""
+
+    take_over: bool = False
 
 
 class TripExceptionListItem(BaseModel):
@@ -306,6 +343,15 @@ class TripExceptionListItem(BaseModel):
     # projected by exception_service._to_list_item, then inherited by detail below.
     # Validated through ActionLocationAssessment, never served as a raw dict.
     action_location_assessment: Optional[ActionLocationAssessment] = None
+
+    # Claim (FP-280): who is working this exception, and since when. None = unclaimed.
+    claimed_by_user_id: Optional[UUID] = None
+    claimed_at: Optional[datetime] = None
+    # Display names for claimer and reviewer, resolved server-side from users.full_name
+    # within the caller's own organisation. Always None on driver-facing responses: a
+    # driver has no review action and no need for dispatcher identities.
+    claimed_by_name: Optional[str] = None
+    reviewed_by_name: Optional[str] = None
 
 
 class TripExceptionDetail(TripExceptionListItem):
@@ -350,6 +396,14 @@ class TripExceptionRead(TripExceptionBase):
     reviewed_at: Optional[datetime] = None
     review_note: Optional[str] = None
     contact_method: Optional[ExceptionContactMethod] = None
+    # Claim (FP-280): who is working this exception, and since when. None = unclaimed.
+    claimed_by_user_id: Optional[UUID] = None
+    claimed_at: Optional[datetime] = None
+    # Display names for claimer and reviewer, resolved server-side from users.full_name
+    # within the caller's own organisation. Always None on driver-facing responses: a
+    # driver has no review action and no need for dispatcher identities.
+    claimed_by_name: Optional[str] = None
+    reviewed_by_name: Optional[str] = None
     merkle_batch_id: Optional[UUID] = None
     # The read-only, server-built snapshot carried by a driver report when a later
     # capture flow supplies one. Kept off TripExceptionBase so POST bodies cannot

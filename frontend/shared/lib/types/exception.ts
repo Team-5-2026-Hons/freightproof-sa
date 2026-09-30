@@ -81,10 +81,12 @@ export type ExceptionReviewOutcome =
   | 'data_discrepancy'
   | 'referred_for_follow_up'
   | 'legacy_review'
+  // A dispatcher's own note, saved already reviewed by its author; never enters the inbox.
+  | 'dispatcher_authored'
 
 // The choices a dispatcher may actually submit — ExceptionReviewOutcome without the
-// migration-only 'legacy_review' marker. Mirrors backend DispatcherReviewOutcome.
-export type DispatcherReviewOutcome = Exclude<ExceptionReviewOutcome, 'legacy_review'>
+// migration-only 'legacy_review' and system-set 'dispatcher_authored' markers. Mirrors backend DispatcherReviewOutcome.
+export type DispatcherReviewOutcome = Exclude<ExceptionReviewOutcome, 'legacy_review' | 'dispatcher_authored'>
 
 // How a dispatcher reached someone while reviewing. A null contact method records that
 // the evidence settled the review without contact, rather than inventing contact history.
@@ -122,6 +124,12 @@ export interface TripException {
   // (evidence alone settled it) — never backfilled with an invented value.
   contact_method: ExceptionContactMethod | null
   merkle_batch_id: string | null
+  // Soft claim (FP-280): who is working this exception. Names are resolved server-side and
+  // only ever appear on dispatcher endpoints, never driver-facing responses.
+  claimed_by_user_id: string | null
+  claimed_at: string | null
+  claimed_by_name: string | null
+  reviewed_by_name: string | null
   action_location_assessment?: ActionLocationAssessment | null
   created_at: string
   updated_at: string
@@ -143,6 +151,12 @@ export interface TripExceptionListItem {
   phase_label: string | null
   stop_label: number | null
   action_location_assessment?: ActionLocationAssessment | null
+  // Soft claim (FP-280): who is working this exception. Names are resolved server-side and
+  // only ever appear on dispatcher endpoints, never driver-facing responses.
+  claimed_by_user_id: string | null
+  claimed_at: string | null
+  claimed_by_name: string | null
+  reviewed_by_name: string | null
 }
 
 // GET /api/v1/exceptions/{id} — the list item plus the fields only a single-record

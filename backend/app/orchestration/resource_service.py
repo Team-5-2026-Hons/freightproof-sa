@@ -29,6 +29,7 @@ from app.db.models.transit import TripException
 from app.db.models.trips import Consignment, Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.orchestration.phase_gate import blocked_on_by_stop
+from app.orchestration.review_identity import with_reviewer_names
 from app.orchestration.scan_service import scanned_counts_for_trip
 from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.phases import PhaseEventRead
@@ -91,10 +92,9 @@ async def list_trips(
         if tt.trailer_id in trailers_by_id:
             trailers_by_trip[tt.trip_id].append(trailers_by_id[tt.trailer_id])
 
-    # NEEDS_REVIEW only, not "!= REVIEWED": a RECORDED row (e.g. a WARNING-severity
-    # parcel-count mismatch) is on the trip's exception list but not queued for a
-    # dispatcher decision — counting it here would put every recorded warning in
-    # front of a dispatcher as if it demanded action (FP-146 follow-on).
+    # NEEDS_REVIEW only, not "!= REVIEWED": REVIEWED rows (including dispatcher-authored
+    # notes, which are saved already reviewed) are excluded — only unreviewed rows are
+    # awaiting a dispatcher decision, so only they count here (FP-146 follow-on).
     exc_result = await db.execute(
         select(TripException.trip_id, func.count(TripException.id))
         .where(
@@ -303,6 +303,8 @@ async def get_trip_detail(
     db: AsyncSession,
     trip_id: uuid.UUID,
     operator_organization_id: uuid.UUID,
+    *,
+    include_reviewer_names: bool = False,
 ) -> TripDetailResponse:
     """Raises ResourceNotFoundError if trip not found or belongs to a different org."""
     # Filter by org at the DB level — avoids leaking trip existence to other orgs.
@@ -342,6 +344,13 @@ async def get_trip_detail(
         select(TripException).where(TripException.trip_id == trip_id)
     )
     exceptions = exc_result.scalars().all()
+    exception_reads = [TripExceptionRead.model_validate(e) for e in exceptions]
+    if include_reviewer_names:
+        # Dispatcher trip page only. The same builder serves the driver's active trip
+        # and phase completion, which must not carry dispatcher identities.
+        exception_reads = await with_reviewer_names(
+            db, organization_id=operator_organization_id, reads=exception_reads,
+        )
 
     # H3/H5 anchor a PHASE_EVENT-subject receipt (not a TRIP-subject one —
     # see phase_service.py advance_departure/advance_confirmation), so a TRIP-only filter here
@@ -431,7 +440,7 @@ async def get_trip_detail(
             )
             for e in phase_events
         ],
-        exceptions=[TripExceptionRead.model_validate(e) for e in exceptions],
+        exceptions=exception_reads,
         blockchain_receipts=[BlockchainReceiptRead.model_validate(r) for r in receipts],
         warnings=[],
         created_at=trip.created_at,

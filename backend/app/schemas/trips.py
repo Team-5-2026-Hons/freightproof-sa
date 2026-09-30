@@ -312,7 +312,7 @@ class DriverTripListItemResponse(BaseModel):
     actual_departure_at: Optional[datetime] = None
     planned_arrival_at: Optional[datetime] = None
     actual_arrival_at: Optional[datetime] = None
-    needs_review_count: int  # display parity with the dispatcher board; no review workflow here
+    needs_review_count: int  # unreviewed critical rows only; the driver has no review workflow
     created_at: datetime
     updated_at: datetime
 

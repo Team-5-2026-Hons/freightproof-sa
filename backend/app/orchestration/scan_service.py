@@ -33,6 +33,7 @@ from app.db.models.phases import PhaseEvent
 from app.db.models.transit import TripException
 from app.db.models.trips import Consignment, Parcel, Trip, TripStop
 from app.integrations.scan_feed import ScanDirection, ScanEvent, get_scan_feed
+from app.orchestration.review_policy import initial_review_status
 
 logger = logging.getLogger(__name__)
 
@@ -44,22 +45,6 @@ _DISCREPANCY_SEVERITY = ExceptionSeverity.WARNING
 
 # The warehouse scanned it, not a human in our system, so the source is the system.
 _DISCREPANCY_SOURCE = ExceptionSource.SYSTEM
-
-
-def _initial_review_status(severity: ExceptionSeverity) -> ExceptionReviewStatus:
-    """Delegates to exception_service.initial_review_status so this module's
-    TripException write routes through the same severity->status rule as every other
-    site, instead of hand-coding a value or relying on the column's server_default.
-
-    Imported lazily, not at module scope: phase_service imports this module at ITS
-    module load, and exception_service imports phase_service — a top-level import of
-    exception_service here would close that loop while exception_service is still
-    mid-import. This function only runs at request time, once every module involved
-    has already finished loading.
-    """
-    from app.orchestration.exception_service import initial_review_status
-
-    return initial_review_status(severity)
 
 
 @dataclass(frozen=True)
@@ -377,7 +362,7 @@ async def _raise_discrepancy(
         exception_type=ExceptionType.PARCEL_COUNT_MISMATCH,
         source=_DISCREPANCY_SOURCE,
         severity=_DISCREPANCY_SEVERITY,
-        review_status=_initial_review_status(_DISCREPANCY_SEVERITY),
+        review_status=initial_review_status(_DISCREPANCY_SEVERITY),
         description=description,
     )
     db.add(exception)

@@ -91,6 +91,7 @@ from app.integrations.scan_feed import ScanDirection
 from app.orchestration import action_location_service, corroboration_service, scan_service
 from app.orchestration.phase_gate import blocked_on_by_stop
 from app.orchestration.resource_service import get_trip_detail
+from app.orchestration.review_policy import dispatcher_authored_review, initial_review_status
 from app.schemas.phases import (
     ActivationCompleteRequest, ArrivalCompleteRequest, ConfirmationCompleteRequest,
     DepartureCompleteRequest, InTransitCompleteRequest, LoadingCompleteRequest,
@@ -126,23 +127,6 @@ def receipt_type_for(event: PhaseEvent) -> BlockchainReceiptType:
 # asyncio keeps only weak references to scheduled tasks. Retain dispatches and
 # fallback anchors until their completion callback has observed the result.
 _BACKGROUND_ANCHOR_TASKS: set[asyncio.Task[bool]] = set()
-
-
-def _initial_review_status(severity: ExceptionSeverity) -> ExceptionReviewStatus:
-    """Delegates to exception_service.initial_review_status so every
-    TripException this module writes routes its review_status through the same
-    severity->status rule as the driver-raised path, instead of hand-coding a value or
-    relying on the column's server_default.
-
-    Imported lazily, not at module scope: exception_service imports
-    phase_service.current_phase_event at ITS module load, so a top-level import here
-    would try to read exception_service while it is still mid-import — deadlocking on
-    the partially-initialised module. This function only runs at request time, by
-    which point both modules have finished loading.
-    """
-    from app.orchestration.exception_service import initial_review_status
-
-    return initial_review_status(severity)
 
 
 async def _load_trip_for_driver(db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID) -> Trip:
@@ -746,7 +730,7 @@ async def _raise_position_disagreement_if_unrecorded(
             # (PARCEL_COUNT_MISMATCH) already uses. The separation is reported; the
             # dispatcher decides what it means.
             severity=ExceptionSeverity.WARNING,
-            review_status=_initial_review_status(ExceptionSeverity.WARNING),
+            review_status=initial_review_status(ExceptionSeverity.WARNING),
             description=description,
             # The driver's own fix, which is what this column means on every other
             # writer. The tracker's fix has no column here and needs none: both
@@ -855,7 +839,7 @@ async def _raise_trailer_decoupling_if_unrecorded(
             exception_type=ExceptionType.TRAILER_LOCATION_MISMATCH,
             source=ExceptionSource.SYSTEM,
             severity=ExceptionSeverity.CRITICAL,
-            review_status=_initial_review_status(ExceptionSeverity.CRITICAL),
+            review_status=initial_review_status(ExceptionSeverity.CRITICAL),
             description=(
                 f"The horse's tracker is inside this stop's geofence, but {trailers} and "
                 f"outside the geofence. The trailer may have been uncoupled."
@@ -1046,7 +1030,7 @@ async def override_phase(
         trip_id=trip_id, phase_event_id=event.id,
         exception_type=ExceptionType.DISPATCHER_NOTE, source=ExceptionSource.DISPATCHER,
         severity=ExceptionSeverity.WARNING,
-        review_status=_initial_review_status(ExceptionSeverity.WARNING),
+        **dispatcher_authored_review(user_id=user_id, at=datetime.now(UTC)),
         description=note,
     ))
 
@@ -1060,7 +1044,7 @@ async def override_phase(
             trip_id=trip_id, phase_event_id=event.id,
             exception_type=ExceptionType.SEAL_UNVERIFIED, source=ExceptionSource.SYSTEM,
             severity=ExceptionSeverity.WARNING,
-            review_status=_initial_review_status(ExceptionSeverity.WARNING),
+            review_status=initial_review_status(ExceptionSeverity.WARNING),
             description=(
                 "The seal was not inspected at arrival: a dispatcher overrode the "
                 "arrival phase, so seal continuity for this leg cannot be verified."
@@ -1612,7 +1596,7 @@ async def _raise_scan_shortfall_if_unrecorded(
         consignment_id=consignment.id, trip_stop_id=event.trip_stop_id,
         exception_type=ExceptionType.PARCEL_COUNT_MISMATCH,
         source=ExceptionSource.SYSTEM, severity=ExceptionSeverity.WARNING,
-        review_status=_initial_review_status(ExceptionSeverity.WARNING),
+        review_status=initial_review_status(ExceptionSeverity.WARNING),
         description=(
             f"Warehouse closed its scan-out session on waybill "
             f"{consignment.parcel_perfect_reference} with "
@@ -1728,7 +1712,7 @@ async def advance_departure(
             trip_id=trip_id, phase_event_id=event.id,
             exception_type=ExceptionType.SEAL_MISMATCH, source=ExceptionSource.DRIVER,
             severity=ExceptionSeverity.CRITICAL,
-            review_status=_initial_review_status(ExceptionSeverity.CRITICAL),
+            review_status=initial_review_status(ExceptionSeverity.CRITICAL),
             description=seal_mismatch_description,
         ))
         # Emitted for consistency with the other system sites, but deliberately
@@ -1843,7 +1827,7 @@ def _record_seal_finding(
         trip_id=trip.id, phase_event_id=event.id,
         exception_type=exception_type, source=ExceptionSource.SYSTEM,
         severity=severity,
-        review_status=_initial_review_status(severity),
+        review_status=initial_review_status(severity),
         description=description,
     ))
     enqueue_event(
@@ -2160,7 +2144,7 @@ async def advance_confirmation(
                 consignment_id=consignment.id, trip_stop_id=event.trip_stop_id,
                 exception_type=ExceptionType.WAYBILL_COUNT_MISMATCH,
                 source=ExceptionSource.SYSTEM, severity=ExceptionSeverity.WARNING,
-                review_status=_initial_review_status(ExceptionSeverity.WARNING),
+                review_status=initial_review_status(ExceptionSeverity.WARNING),
                 description=(
                     f"Parcel count changed in transit on waybill "
                     f"{consignment.parcel_perfect_reference}: "
