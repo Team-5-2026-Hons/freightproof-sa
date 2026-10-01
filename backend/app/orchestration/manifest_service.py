@@ -10,7 +10,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ResourceNotFoundError
-from app.db.models.enums import TripType
+from app.db.models.enums import PhaseType, TripType
+from app.db.models.phases import PhaseEvent
 from app.db.models.people import Driver
 from app.db.models.trips import Consignment, Parcel, Trip
 from app.db.models.vehicles import Vehicle
@@ -57,7 +58,23 @@ async def get_manifest_for_dispatcher(
             consignments=[], pulled_at=trip.updated_at,
         )
 
-    loaded = await _load_consignments_and_parcels(db, trip_id)
+    snapshot = (await db.execute(
+        select(PhaseEvent.parcel_manifest_snapshot).where(
+            PhaseEvent.trip_id == trip_id, PhaseEvent.phase_type == PhaseType.TRIP_CREATION,
+        )
+    )).scalar_one_or_none()
+
+    try:
+        loaded = await _load_consignments_and_parcels(db, trip_id)
+    except ResourceNotFoundError:
+        if snapshot is None:
+            raise
+        # A cancelled trip whose waybills moved to its replacement (spec §10.5): the
+        # snapshot is now its only cargo record, so it is returned rather than a 404.
+        return ManifestResponse(
+            trip_id=trip_id, total_parcel_count=0, origin_scan_complete=False,
+            consignments=[], pulled_at=trip.updated_at, pp_manifest_snapshot=snapshot,
+        )
 
     consignment_manifests: list[ConsignmentManifest] = []
     for consignment, parcels in loaded:
@@ -89,6 +106,7 @@ async def get_manifest_for_dispatcher(
         origin_scan_complete=all(p.pp_scan_out_at is not None for p in all_parcels) if all_parcels else False,
         consignments=consignment_manifests,
         pulled_at=max(c.updated_at for c, _ in loaded),
+        pp_manifest_snapshot=snapshot,
     )
 
 

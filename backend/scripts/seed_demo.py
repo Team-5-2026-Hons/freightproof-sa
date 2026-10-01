@@ -109,6 +109,7 @@ class _SeedPrecinct:
     address: str
     latitude: Decimal
     longitude: Decimal
+    pp_hub_code: str
 
 
 # Four, not two: scripts/seed_trips.py gives each demo trip its own driver, so the
@@ -155,11 +156,11 @@ _VEHICLES = [
 # change across all three files and their tests.
 _PRECINCTS = [
     _SeedPrecinct("Cape Town Depot (Epping)", "12 Gunners Circle, Epping Industria, Cape Town",
-                  Decimal("-33.9249"), Decimal("18.4241")),
+                  Decimal("-33.9249"), Decimal("18.4241"), "CPT"),
     _SeedPrecinct("Bloemfontein Depot (Hamilton)", "8 Reid Street, Hamilton, Bloemfontein",
-                  Decimal("-29.0852"), Decimal("26.1596")),
+                  Decimal("-29.0852"), Decimal("26.1596"), "BFN"),
     _SeedPrecinct("Johannesburg Depot (Linbro)", "1 Depot Street, Linbro Park, Johannesburg",
-                  Decimal("-26.2041"), Decimal("28.0473")),
+                  Decimal("-26.2041"), Decimal("28.0473"), "JNB"),
 ]
 
 
@@ -274,22 +275,29 @@ async def _seed_vehicles(db: AsyncSession, dispatcher_id: uuid.UUID) -> None:
 
 async def _seed_precincts(db: AsyncSession, dispatcher_id: uuid.UUID) -> None:
     for spec in _PRECINCTS:
-        existing = await db.execute(
-            select(Precinct).where(Precinct.name == spec.name,
-                                   Precinct.principal_organization_id == _CLIENT_ORG_ID)
+        query = select(Precinct).where(
+            Precinct.name == spec.name, Precinct.principal_organization_id == _CLIENT_ORG_ID,
         )
-        if existing.scalar_one_or_none() is not None:
-            continue
-        # Owned by the client (the principal whose depots these are). is_shared=True:
-        # the client's depots must stay visible to the operator dispatcher under
-        # per-org precinct scoping.
-        body = PrecinctCreateBody(
-            name=spec.name, address=spec.address,
-            latitude=float(spec.latitude), longitude=float(spec.longitude), is_shared=True,
-        )
-        await create_precinct(db, _CLIENT_ORG_ID, body, dispatcher_id)
-        await db.commit()
-        print(f"  precinct     {spec.name} — anchored")
+        precinct = (await db.execute(query)).scalar_one_or_none()
+        if precinct is None:
+            # Owned by the client (the principal whose depots these are). is_shared=True:
+            # the client's depots must stay visible to the operator dispatcher under
+            # per-org precinct scoping.
+            body = PrecinctCreateBody(
+                name=spec.name, address=spec.address,
+                latitude=float(spec.latitude), longitude=float(spec.longitude), is_shared=True,
+            )
+            await create_precinct(db, _CLIENT_ORG_ID, body, dispatcher_id)
+            await db.commit()
+            print(f"  precinct     {spec.name} — anchored")
+            precinct = (await db.execute(query)).scalar_one()
+        if precinct.pp_hub_code != spec.pp_hub_code:
+            # Reference data for the PP mock, not evidence: set directly, not through
+            # create_precinct, so precinct anchoring is unchanged (FP-281 §7.2). Also
+            # runs on a database seeded before hub codes existed.
+            precinct.pp_hub_code = spec.pp_hub_code
+            await db.commit()
+            print(f"  precinct     {spec.name} — hub {spec.pp_hub_code}")
 
 
 async def seed(password: str) -> None:

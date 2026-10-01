@@ -11,12 +11,14 @@ Driver, vehicle and precinct service functions have been extracted to:
 
 import uuid
 from collections import defaultdict
+from collections.abc import Sequence
 from datetime import date, datetime, time, timedelta, timezone
 
 from sqlalchemy import and_, func, literal, or_, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.constants import PG_INTEGER_MAX
 from app.core.exceptions import ResourceNotFoundError
 from app.core.pagination import CursorPosition, encode_cursor
 from app.db.models.blockchain import BlockchainReceipt
@@ -25,6 +27,7 @@ from app.db.models.enums import (
 )
 from app.db.models.phases import PhaseEvent
 from app.db.models.people import Driver
+from app.db.models.organisations import Organization
 from app.db.models.transit import TripException
 from app.db.models.trips import Consignment, Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
@@ -33,6 +36,7 @@ from app.orchestration.review_identity import with_reviewer_names
 from app.orchestration.scan_service import scanned_counts_for_trip
 from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.phases import PhaseEventRead
+from app.schemas.pp_manifest import PPManifestRef
 from app.schemas.people import DriverRead
 from app.schemas.pagination import CursorPage
 from app.schemas.transit import TripExceptionRead
@@ -48,14 +52,40 @@ from app.schemas.trips import (
 from app.schemas.vehicles import VehicleRead
 
 
+async def _client_names(db: AsyncSession, trips: Sequence[Trip]) -> dict[uuid.UUID, str]:
+    """Client org names for a page of trips, in one query (no N+1 on list views)."""
+    org_ids = {t.client_organization_id for t in trips if t.client_organization_id is not None}
+    if not org_ids:
+        return {}
+    result = await db.execute(
+        select(Organization.id, Organization.name).where(Organization.id.in_(org_ids))
+    )
+    return {org_id: name for org_id, name in result.all()}
+
+
+def _pp_manifest(trip: Trip, client_names: dict[uuid.UUID, str]) -> PPManifestRef | None:
+    return PPManifestRef.from_columns(
+        issuer_account=trip.pp_manifest_issuer_account,
+        origin_hub=trip.pp_manifest_origin_hub,
+        number=trip.pp_manifest_number,
+        client_name=(
+            client_names.get(trip.client_organization_id)
+            if trip.client_organization_id is not None else None
+        ),
+    )
+
+
 async def list_trips(
     db: AsyncSession,
     operator_organization_id: uuid.UUID,
     status_filter: list[TripStatus] | None = None,
+    pp_manifest_number: int | None = None,
 ) -> list[TripListItemResponse]:
     q = select(Trip).where(Trip.operator_organization_id == operator_organization_id)
     if status_filter:
         q = q.where(Trip.status.in_(status_filter))
+    if pp_manifest_number is not None:
+        q = q.where(Trip.pp_manifest_number == pp_manifest_number)
     q = q.order_by(Trip.created_at.desc())
 
     trips_result = await db.execute(q)
@@ -123,11 +153,13 @@ async def list_trips(
         row[0]: (row[1], row[2]) for row in plan_result.all()
     }
 
+    client_names = await _client_names(db, trips)
+
     return [
         TripListItemResponse(
             id=t.id,
             trip_reference=t.trip_reference,
-            order_number=t.order_number,
+            pp_manifest=_pp_manifest(t, client_names),
             status=t.status,
             trip_type=TripType(t.trip_type),
             driver=DriverRead.model_validate(drivers_by_id[t.driver_id]),
@@ -174,11 +206,17 @@ async def list_trip_history(
         Trip.closed_at.is_not(None),
     ]
     if q is not None:
-        filters.append(or_(
+        matches = [
             Trip.trip_reference.icontains(q, autoescape=True),
-            Trip.order_number.icontains(q, autoescape=True),
             Driver.full_name.icontains(q, autoescape=True),
-        ))
+        ]
+        # A manifest number is matched exactly (spec §12); "69" must not find 690. Bounded
+        # because pp_manifest_number is a Postgres integer: a longer run of digits typed
+        # into search would otherwise be a 500, not "no results".
+        term = q.strip()
+        if term.isdecimal() and int(term) <= PG_INTEGER_MAX:
+            matches.append(Trip.pp_manifest_number == int(term))
+        filters.append(or_(*matches))
     if precinct_id is not None:
         filters.append(or_(
             Trip.origin_precinct_id == precinct_id,
@@ -265,11 +303,13 @@ async def list_trip_history(
         for trip_id, total, completed in phases_result.all()
     }
 
+    client_names = await _client_names(db, trips)
+
     items = [
         TripHistoryListItemResponse(
             id=trip.id,
             trip_reference=trip.trip_reference,
-            order_number=trip.order_number,
+            pp_manifest=_pp_manifest(trip, client_names),
             status=trip.status,
             driver=TripHistoryDriverResponse.model_validate(driver),
             horse=TripHistoryVehicleResponse.model_validate(horses_by_id[trip.horse_id]),
@@ -318,6 +358,7 @@ async def get_trip_detail(
     if trip is None:
         raise ResourceNotFoundError("Trip", str(trip_id))
 
+    client_names = await _client_names(db, [trip])
     driver_result = await db.execute(select(Driver).where(Driver.id == trip.driver_id))
     driver = driver_result.scalar_one()
 
@@ -414,7 +455,7 @@ async def get_trip_detail(
     return TripDetailResponse(
         id=trip.id,
         trip_reference=trip.trip_reference,
-        order_number=trip.order_number,
+        pp_manifest=_pp_manifest(trip, client_names),
         status=trip.status,
         trip_type=TripType(trip.trip_type),
         journey_lock_hash=trip.journey_lock_hash,

@@ -45,12 +45,14 @@ Failure modes the spec implies but which are easy to miss. Each line names the t
 
 Also watch the order-number test clean-up in Task 3. Several "no trip was saved" assertions select by `order_number`, and once nothing writes it they pass vacuously. Task 3 rewrites each one.
 
-## Known limitations of piece A
+## Cancel-and-recreate guarantees
 
-Both concern cancel-and-recreate (spec §10.5), a rare path. They are recorded, not built.
-
-- **Recreation racing a scan.** The move check (Task 6) reads scan stamps while holding the consignment's row lock, but scan ingestion does not take that lock. A scan committing at the same instant could therefore follow the parcels onto the replacement trip. This cannot happen today: the only scan source is the dev trigger panel ([dev_triggers.py:275](../../../backend/app/api/v1/endpoints/dev_triggers.py)). When a live scan feed lands, `scan_service.ingest_scans` must lock the consignment rows it stamps (`.with_for_update()` in `load_consignments_at_stop`). Postgres then re-checks `trip_id` once the lock is held, so a moved consignment drops out and the two paths serialise.
-- **Recreated cargo that shrank in PP.** A waybill moved off a cancelled trip keeps its Parcel rows and its `unit_count_expected`. If PP dropped parcels between cancel and recreate, the new trip expects parcels its snapshot no longer lists. Every trip already has the same gap, because the PP poll never deletes parcels. If recreation ever needs it closed, it is about three lines in `_release_from_cancelled_trip`: delete the consignment's Parcel rows (unscanned, by that function's own precondition) and clear `unit_count_expected`.
+Task 6 closes both previously deferred gaps: scan ingestion and consignment reassignment
+serialize on the same consignment row locks, and cancelled, unscanned cargo is rebuilt
+from the fetched PP waybill (including expected counts). Regression tests exercise both
+lock orders using independent database sessions, and changed/shrunken cargo. Multi-waybill
+scan and persistence paths use the same bytewise waybill order, regardless of UUID or
+PP response ordering, to prevent lock-order deadlocks.
 
 ---
 
@@ -70,7 +72,7 @@ Both concern cancel-and-recreate (spec §10.5), a rare path. They are recorded, 
 | `backend/app/orchestration/resource_service.py` (modify) | `pp_manifest` on reads; exact manifest filter and search | 3 |
 | `backend/app/integrations/parcel_perfect.py` (modify) | Manifest dataclasses, fixtures, `get_manifest`, staging | 4 |
 | `backend/app/orchestration/pp_manifest.py` (create) | Pure helpers: snapshot, key, totals, client check | 5 |
-| `backend/app/orchestration/consignment_service.py` (modify) | `sync_consignment_from_waybill`; move off cancelled trips | 6 |
+| `backend/app/orchestration/consignment_service.py`, `scan_service.py` (modify) | Sync from fetched waybill; serialize scans with recreation; rebuild unscanned cargo | 6 |
 | `backend/app/orchestration/trip_service.py` (modify) | `persist_trip`, `NewTrip`, `ManifestCargo`, `find_live_trip_for_manifest` | 2, 3, 7 |
 | `backend/app/core/exceptions.py` (modify) | New manifest errors; `TripConflictError` removed | 3, 6, 7, 8, 9 |
 | `backend/app/orchestration/pp_manifest_service.py` (create) | Preview and create-from-manifest | 8, 9 |
@@ -2253,6 +2255,7 @@ Suggested commit: `feat(orchestration): canonical PP manifest snapshot, key and 
 **Files:**
 - Modify: `backend/app/orchestration/consignment_service.py`
 - Modify: `backend/app/core/exceptions.py`
+- Modify: `backend/app/orchestration/scan_service.py`
 - Test: `backend/tests/integration/test_consignment_move.py` (create)
 
 **Interfaces:**
@@ -2365,6 +2368,20 @@ async def test_waybill_on_a_trip_that_is_not_cancelled_is_refused(db_session, st
     assert type(exc.value) is ConsignmentAlreadyAssignedError
 ```
 
+Add regression tests before implementation:
+- Replacement waybill has fewer/replaced barcodes: old unscanned Parcel rows disappear,
+  new barcodes match PP exactly, `parcel_count_expected` matches the new `tracks` length, and old
+  `unit_count_expected` is cleared (or replaced by an explicitly supplied new value).
+- With independent PostgreSQL sessions: scan takes the consignment lock first; recreate
+  blocks until scan commits, then refuses the move because the committed stamp exists.
+- With independent PostgreSQL sessions: recreate takes the lock first; ingestion for
+  the old trip blocks until recreation commits, then returns no consignments and stamps
+  no replacement parcels. Preload the consignment in the scan session to expose stale
+  identity-map state. Use events plus database lock-wait observation, bounded timeouts,
+  committed seed data, and explicit cleanup; no shared connection or timing-only proof.
+- Cover scan-out and scan-in stamps; live/closed trips and scanned cancelled trips
+  retain their rows and counts when movement is refused.
+
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `cd backend && pytest tests/integration/test_consignment_move.py -v`
@@ -2393,7 +2410,7 @@ class ConsignmentScannedOnCancelledTripError(ConsignmentAlreadyAssignedError):
 
 In `backend/app/orchestration/consignment_service.py`:
 
-Change imports: `from sqlalchemy import or_, select`; add `TripStatus` to the enums import (`from app.db.models.enums import ParcelStatus, TripStatus`); add `ConsignmentScannedOnCancelledTripError` to the exceptions import.
+Change imports: `from sqlalchemy import delete, or_, select`; add `TripStatus` to the enums import (`from app.db.models.enums import ParcelStatus, TripStatus`); add `ConsignmentScannedOnCancelledTripError` to the exceptions import.
 
 Replace the body of `fetch_and_sync_consignment`, after its docstring, with a delegation. Keep the existing docstring, but change its `Raises` to point at `sync_consignment_from_waybill`:
 
@@ -2526,11 +2543,23 @@ async def _release_from_cancelled_trip(
         "Moving consignment pp_reference=%s off cancelled trip %s to trip %s",
         pp_reference, owner_reference, new_trip_id,
     )
+    # The scan path holds this same consignment lock. Only an unscanned cancelled
+    # load can be rebuilt; the replacement's expected set comes from its new PP read.
+    await db.execute(delete(Parcel).where(Parcel.consignment_id == consignment.id))
+    consignment.unit_count_expected = None
     consignment.trip_id = None
     # The cancelled trip's stops; the caller stamps the new route's stops after sync.
     consignment.pickup_stop_id = None
     consignment.delivery_stop_id = None
 ```
+
+In `scan_service.load_consignments_at_stop`, lock the selected consignments with
+`.with_for_update()` and use `.execution_options(populate_existing=True)`, ordered by
+`Consignment.id` for consistent lock order. Keep `trip_id` and stop predicates in that
+locking query: PostgreSQL rechecks them after waiting on a concurrent reassignment.
+Use `populate_existing=True` on the consignment sync locking read too, so a preloaded
+identity-map object cannot bypass the committed ownership check. Hold locks through
+reconciliation until the caller commits/rolls back.
 
 - [ ] **Step 5: Run the tests to verify they pass**
 
@@ -2540,7 +2569,7 @@ Expected: all pass. `test_creation_concurrency.py` still patches `consignment_se
 - [ ] **Step 6: Stage**
 
 ```bash
-git add backend/app/orchestration/consignment_service.py backend/app/core/exceptions.py backend/tests/integration/test_consignment_move.py
+git add backend/app/orchestration/scan_service.py backend/app/orchestration/consignment_service.py backend/app/core/exceptions.py backend/tests/integration/test_consignment_move.py
 ```
 Suggested commit: `feat(orchestration): sync a consignment from a fetched waybill; move only off cancelled, unscanned trips (FP-281)`
 
@@ -5069,5 +5098,5 @@ Produce the CLAUDE.md `TASK COMPLETE` block with:
   - Piece B: the frontend screen; `order_number` out of `frontend/shared`, the dashboard search and the driver PWA; then remove `get_waybills_by_manifest`, `get_manifest_summaries` and `GET /pp/manifests/{n}`. **A merges together with B, not before it.**
   - Piece C: migration dropping `trips.order_number` and `ix_trips_order_number`, plus the remaining `Trip(order_number=...)` test constructors.
   - **Delivery dependency, required before the demo:** the separate fix that strips `pp_raw_json` from driver trip responses. Spec scenario 9 depends on it.
-  - The two known limitations above (recreation racing a scan; recreated cargo that shrank).
+  - Task 6 now serializes scans with recreation and refreshes unscanned cargo/counts; no deferred gap for either.
   - Docs updates listed in the spec review: v7, db-models, glossary, API contract, walkthrough.

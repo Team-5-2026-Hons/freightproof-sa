@@ -39,6 +39,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import settings
+from app.crypto.hashing import PPManifestKey
 from app.db.models.enums import (
     AnchorStatus, IdvsStatus, ParcelStatus, PhaseStatus, PhaseType, SealCondition, TripStatus, TripType,
     VehicleType,
@@ -48,7 +49,7 @@ from app.db.models.people import Driver, User
 from app.db.models.phases import PhaseEvent, TrailerGpsSnapshot
 from app.db.models.trips import Consignment, Parcel, Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
-from app.integrations.parcel_perfect import MOCK_WAYBILLS, PPWaybillResponse
+from app.integrations.parcel_perfect import MOCK_MANIFEST_HEADERS, MOCK_WAYBILLS, PPWaybillResponse
 from app.orchestration.consignment_service import serialise_waybill
 from app.orchestration.phase_plan import ANCHORED_PHASES, PlanStop, build_phase_plan
 
@@ -85,7 +86,6 @@ class _TripSpec:
     """Everything that distinguishes one seeded trip from another."""
 
     trip_reference: str
-    order_number: str
     precinct_names: tuple[str, ...]
     consignments: tuple[_ConsignmentLeg, ...]
     # Format enforced by schemas/phases.py _SEAL_PATTERN - XX-####.
@@ -99,7 +99,6 @@ TRIP_SPECS: tuple[_TripSpec, ...] = (
     # Single-leg: the degenerate case of the multi-stop plan. 8 rows.
     _TripSpec(
         trip_reference="FP-DEMO-SINGLE-0001",
-        order_number="ORD-DEMO-SINGLE-0001",
         precinct_names=(_CPT, _JHB),
         consignments=(_ConsignmentLeg("MOCKWB0001", 1, 2),),
         seal_number="FP-4471",
@@ -107,7 +106,6 @@ TRIP_SPECS: tuple[_TripSpec, ...] = (
     # Cross-dock: stop 2 is both a drop-off and a pick-up. 13 rows.
     _TripSpec(
         trip_reference="FP-DEMO-XDOCK-0001",
-        order_number="ORD-DEMO-XDOCK-0001",
         precinct_names=(_CPT, _BFN, _JHB),
         consignments=(
             _ConsignmentLeg("MOCKWB0002", 1, 3),   # A: straight through
@@ -123,7 +121,6 @@ TRIP_SPECS: tuple[_TripSpec, ...] = (
     # filter, and a real seal + parcel count are all visible at once.
     _TripSpec(
         trip_reference="FP-DEMO-ACTIVE-0001",
-        order_number="ORD-DEMO-ACTIVE-0001",
         precinct_names=(_CPT, _BFN, _JHB),
         consignments=(
             _ConsignmentLeg("MOCKWB0005", 1, 3),   # A: straight through
@@ -139,13 +136,23 @@ TRIP_SPECS: tuple[_TripSpec, ...] = (
     # filter has no rows to return.
     _TripSpec(
         trip_reference="FP-DEMO-CLOSED-0001",
-        order_number="ORD-DEMO-CLOSED-0001",
         precinct_names=(_CPT, _JHB),
         consignments=(_ConsignmentLeg("MOCKWB0008", 1, 2),),
         seal_number="FP-7204",
         advance_through=_ADVANCE_ALL,
     ),
 )
+
+
+def _manifest_key_for(spec: _TripSpec) -> PPManifestKey:
+    """The seeded trip's PP manifest key, read from the PP mock like its cargo is — a
+    trip keyed on a manifest PP has never heard of would contradict its own waybills."""
+    number = MOCK_WAYBILLS[spec.consignments[0].pp_reference].details.manifest
+    if number is None or number not in MOCK_MANIFEST_HEADERS:
+        raise SystemExit(f"{spec.trip_reference}: its waybills sit on no mock manifest")
+    header = MOCK_MANIFEST_HEADERS[number]
+    return PPManifestKey(header.issuer_account, header.origin_hub, number)
+
 
 # Every PP reference this seeder consumes. Exported so a unit test can assert the
 # seeder and the PP mock library have not drifted apart again.
@@ -469,11 +476,16 @@ async def _seed_trip(
     evidence directly. It deliberately does NOT go through advance_phase - see this
     module's docstring - so it performs no gating, anchoring or reconciliation.
     """
+    key = _manifest_key_for(spec)
     departure_at = _scheduled_departure_for(spec)
     trip = Trip(
         id=uuid.uuid4(),
         trip_reference=spec.trip_reference,
-        order_number=spec.order_number,
+        # Keyed on its PP manifest, as a trip created through the API would be.
+        client_organization_id=organizations[key.issuer_account].id,
+        pp_manifest_issuer_account=key.issuer_account,
+        pp_manifest_origin_hub=key.origin_hub,
+        pp_manifest_number=key.number,
         operator_organization_id=user.organization_id,
         driver_id=driver.id,
         horse_id=horse.id,

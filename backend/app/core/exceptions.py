@@ -4,16 +4,8 @@ Endpoints catch these and map them to the appropriate HTTP status codes.
 Do not import FastAPI here — this module must remain framework-agnostic.
 """
 
-
-class TripConflictError(Exception):
-    """Raised when a trip with the given order_number is already active."""
-
-    def __init__(self, order_number: str) -> None:
-        super().__init__(
-            f"An active trip already exists for order_number='{order_number}'. "
-            "Cancel or close the existing trip before creating a new one."
-        )
-        self.order_number = order_number
+import uuid
+from typing import Any
 
 
 class ResourceNotFoundError(Exception):
@@ -165,12 +157,29 @@ class ConsignmentAlreadyAssignedError(Exception):
     (PP answered correctly here); maps to 409, not 422.
     """
 
-    def __init__(self, pp_reference: str, trip_reference: str) -> None:
+    def __init__(self, pp_reference: str, trip_reference: str | None) -> None:
         self.pp_reference = pp_reference
         self.trip_reference = trip_reference
+        # A foreign holder still blocks, but its internal trip identity is private.
+        holder = f"trip {trip_reference}" if trip_reference is not None else "another trip"
         super().__init__(
-            f"Waybill {pp_reference!r} is already assigned to trip {trip_reference}. "
+            f"Waybill {pp_reference!r} is already assigned to {holder}. "
             "A consignment belongs to one trip - remove it there first, or use a different waybill."
+        )
+
+
+class ConsignmentScannedOnCancelledTripError(ConsignmentAlreadyAssignedError):
+    """A waybill's parcels were scanned on a cancelled trip, so it cannot move to a new
+    one (FP-281 §10.5). A subclass, so every existing 409 handler covers it unchanged."""
+
+    def __init__(self, pp_reference: str, trip_reference: str | None) -> None:
+        super().__init__(pp_reference, trip_reference)
+        # The parent's "already on trip X" is not the reason here; say what is.
+        holder = f"cancelled trip {trip_reference}" if trip_reference is not None else "another cancelled trip"
+        self.args = (
+            f"Waybill {pp_reference!r} was scanned on {holder}, so its "
+            "parcels cannot move to a new trip. Handing a loaded manifest to another truck "
+            "is not supported yet.",
         )
 
 
@@ -233,3 +242,46 @@ class PhaseTypeMismatchError(Exception):
         )
         self.expected = expected
         self.received = received
+
+
+class PPManifestAlreadyOnTripError(Exception):
+    """A non-cancelled trip already carries this PP manifest (FP-281 §6). trip_id and
+    trip_reference name it; both are None only when a lost race's winner rolled back."""
+
+    def __init__(self, *, trip_id: uuid.UUID | None, trip_reference: str | None) -> None:
+        holder = f" {trip_reference}" if trip_reference else ""
+        super().__init__(
+            f"This PP manifest is already on trip{holder}. "
+            "Cancel that trip before creating a new one."
+        )
+        self.trip_id = trip_id
+        self.trip_reference = trip_reference
+
+
+class PPUnavailableError(Exception):
+    """Parcel Perfect could not be reached or returned an error (502)."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(f"Parcel Perfect is unavailable: {reason}")
+        self.reason = reason
+
+
+class PPManifestUnusableError(Exception):
+    """The PP manifest cannot become a trip as it stands (FP-281 §10.7's 422 cases).
+    code is a stable string the screen can switch on."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+class PPManifestChangedError(Exception):
+    """The PP manifest changed between the dispatcher's preview and create (FP-281
+    §10.2). Carries the fresh preview, already JSON-shaped, so the 409 shows what changed."""
+
+    def __init__(self, manifest_number: int, preview: dict[str, Any]) -> None:
+        super().__init__(
+            f"PP manifest {manifest_number} changed since it was previewed — review it again."
+        )
+        self.manifest_number = manifest_number
+        self.preview = preview

@@ -6,6 +6,8 @@ GET  /trips/me          — the authenticated driver's own trips (all statuses).
 GET  /trips/me/active   — the trip that driver is currently working.
 GET  /trips/me/{trip_id} — full detail for one of that driver's own trips.
 GET  /trips/{trip_id}   — get full trip detail by ID (dispatcher).
+GET  /trips/pp-manifest-preview — preview a PP manifest (FP-281).
+POST /trips/from-pp-manifest — create a loaded trip from a PP manifest (FP-281).
 """
 
 import logging
@@ -23,15 +25,21 @@ from app.core.exceptions import (
     ConsignmentAlreadyAssignedError,
     HederaServiceError,
     HederaTimeoutError,
+    PPManifestAlreadyOnTripError,
+    PPManifestChangedError,
+    PPManifestUnusableError,
     PPSyncError,
+    PPUnavailableError,
     ResourceNotFoundError,
-    TripConflictError,
 )
-from app.core.limits import TRIP_CREATE
+from app.core.constants import PG_INTEGER_MAX
+from app.core.limits import PP_LOOKUP, TRIP_CREATE
 from app.core.pagination import CursorPosition, decode_cursor
 from app.core.rate_limit import rate_limit
 from app.db.models.enums import DispatcherRole, TripStatus
 from app.db.session import get_db
+from app.integrations.parcel_perfect import PPManifestNotFoundError, PPUnsupportedError
+from app.orchestration.pp_manifest_service import create_trip_from_pp_manifest, preview_pp_manifest
 from app.orchestration.resource_service import get_trip_detail, list_trip_history, list_trips
 from app.orchestration.trip_service import (
     create_trip,
@@ -41,6 +49,12 @@ from app.orchestration.trip_service import (
 )
 from app.schemas.people import DriverRead, UserRead
 from app.schemas.pagination import CursorPage
+from app.schemas.pp_manifest import (
+    PPManifestErrorCode,
+    PPManifestPreviewResponse,
+    PPManifestWarningCode,
+    TripFromPPManifestRequest,
+)
 from app.schemas.trips import (
     DriverTripListItemResponse,
     TripCreateRequest,
@@ -52,6 +66,63 @@ from app.schemas.trips import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/trips", tags=["trips"])
+
+# Stable client-facing text; str(PPUnsupportedError) carries an internal engineering note.
+_MANIFEST_UNSUPPORTED_DETAIL = "Manifest lookup is not available on the live Parcel Perfect API."
+_PP_UNAVAILABLE_DETAIL = "Parcel Perfect is unreachable — try again shortly."
+_HEDERA_TIMEOUT_DETAIL = "Blockchain anchoring timed out — the trip was not created. Please retry."
+_HEDERA_UNAVAILABLE_DETAIL = "Blockchain anchoring is unavailable — the trip was not created. Please retry."
+_UNEXPECTED_DETAIL = "An unexpected error occurred. Please try again."
+
+
+def _trip_http_error(exc: Exception) -> HTTPException | None:
+    """One mapping for both creation endpoints and the manifest preview (spec §10.7), so
+    the same failure always gets the same status. None = not ours: re-raise."""
+    if isinstance(exc, PPManifestNotFoundError):
+        return HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc))
+    if isinstance(exc, PPUnsupportedError):
+        return HTTPException(status_code=http_status.HTTP_501_NOT_IMPLEMENTED, detail=_MANIFEST_UNSUPPORTED_DETAIL)
+    if isinstance(exc, PPUnavailableError):
+        return HTTPException(status_code=http_status.HTTP_502_BAD_GATEWAY, detail=_PP_UNAVAILABLE_DETAIL)
+    if isinstance(exc, PPManifestChangedError):
+        return HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail={
+                "code": PPManifestErrorCode.MANIFEST_CHANGED.value,
+                "message": str(exc),
+                "preview": exc.preview,
+            },
+        )
+    if isinstance(exc, PPManifestAlreadyOnTripError):
+        return HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail={
+                "code": PPManifestWarningCode.MANIFEST_ALREADY_ON_TRIP.value,
+                "message": str(exc),
+                "trip_id": str(exc.trip_id) if exc.trip_id is not None else None,
+                "trip_reference": exc.trip_reference,
+            },
+        )
+    if isinstance(exc, ConsignmentAlreadyAssignedError):
+        return HTTPException(status_code=http_status.HTTP_409_CONFLICT, detail=str(exc))
+    if isinstance(exc, PPManifestUnusableError):
+        return HTTPException(
+            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": exc.code, "message": str(exc)},
+        )
+    if isinstance(exc, ResourceNotFoundError):
+        return HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc))
+    if isinstance(exc, PPSyncError):
+        return HTTPException(status_code=422, detail=f"Parcel Perfect sync failed: {exc.reason}")
+    if isinstance(exc, HederaTimeoutError):
+        return HTTPException(status_code=http_status.HTTP_504_GATEWAY_TIMEOUT, detail=_HEDERA_TIMEOUT_DETAIL)
+    if isinstance(exc, HederaServiceError):
+        logger.error("Hedera anchoring failed during trip creation: %s", exc)
+        return HTTPException(status_code=http_status.HTTP_502_BAD_GATEWAY, detail=_HEDERA_UNAVAILABLE_DETAIL)
+    if isinstance(exc, SQLAlchemyError):
+        logger.exception("Database error on a trip endpoint")
+        return HTTPException(status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR, detail=_UNEXPECTED_DETAIL)
+    return None
 
 
 @router.post(
@@ -68,52 +139,42 @@ async def create_trip_endpoint(
     db: AsyncSession = Depends(get_db),
     current_user: UserRead = Depends(get_current_dispatcher),
 ) -> TripDetailResponse:
-    """Idempotency: one active trip per order_number per operator org is enforced.
-    A second POST with the same order_number returns 409 until the first trip is closed.
-    The H0 PhaseEvent (Trip Creation) is created atomically with the trip row.
-    Journey lock hash is computed here and anchored to Hedera HCS asynchronously.
-    """
+    """The explicit path: empty legs, multi-stop trips, seeds and tests (spec §10.3).
+    Loaded trips from a PP manifest go through POST /trips/from-pp-manifest. This
+    path has no duplicate key; a retried empty leg can be cancelled.
+    The H0 PhaseEvent (Trip Creation) is created atomically with the trip row and the
+    journey lock is anchored to Hedera HCS before the response."""
     try:
         return await create_trip(db=db, payload=payload, current_user=current_user)
-    except ConsignmentAlreadyAssignedError as exc:
-        # Ordered before PPSyncError purely for readability - the two are unrelated
-        # types, so this is not a subclass-shadowing concern.
-        raise HTTPException(
-            status_code=http_status.HTTP_409_CONFLICT,
-            detail=str(exc),
-        ) from exc
-    except PPSyncError as exc:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Parcel Perfect sync failed: {exc.reason}",
-        ) from exc
-    except TripConflictError as exc:
-        raise HTTPException(
-            status_code=http_status.HTTP_409_CONFLICT,
-            detail=str(exc),
-        ) from exc
-    except ResourceNotFoundError as exc:
-        raise HTTPException(
-            status_code=http_status.HTTP_404_NOT_FOUND,
-            detail=str(exc),
-        ) from exc
-    except HederaTimeoutError as exc:
-        raise HTTPException(
-            status_code=http_status.HTTP_504_GATEWAY_TIMEOUT,
-            detail="Blockchain anchoring timed out — the trip was not created. Please retry.",
-        ) from exc
-    except HederaServiceError as exc:
-        logger.error("Hedera anchoring failed during trip creation: %s", exc)
-        raise HTTPException(
-            status_code=http_status.HTTP_502_BAD_GATEWAY,
-            detail="Blockchain anchoring is unavailable — the trip was not created. Please retry.",
-        ) from exc
-    except SQLAlchemyError as exc:
-        logger.exception("Database error during trip creation")
-        raise HTTPException(
-            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred. Please try again.",
-        ) from exc
+    except Exception as exc:
+        http_error = _trip_http_error(exc)
+        if http_error is None:
+            raise
+        raise http_error from exc
+
+
+@router.post(
+    "/from-pp-manifest",
+    response_model=TripDetailResponse,
+    status_code=http_status.HTTP_201_CREATED,
+    summary="Create a loaded trip from a Parcel Perfect manifest",
+    # Anchors a journey lock on Hedera, like POST /trips: same tight budget.
+    dependencies=[Depends(rate_limit(TRIP_CREATE))],
+)
+async def create_trip_from_pp_manifest_endpoint(
+    payload: TripFromPPManifestRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserRead = Depends(get_current_dispatcher),
+) -> TripDetailResponse:
+    """One non-cancelled trip per manifest (409 MANIFEST_ALREADY_ON_TRIP). A manifest
+    that changed since its preview is refused with the fresh preview (409 MANIFEST_CHANGED)."""
+    try:
+        return await create_trip_from_pp_manifest(db, payload, current_user)
+    except Exception as exc:
+        http_error = _trip_http_error(exc)
+        if http_error is None:
+            raise
+        raise http_error from exc
 
 
 @router.get(
@@ -123,6 +184,7 @@ async def create_trip_endpoint(
 )
 async def list_trips_endpoint(
     status: Annotated[list[TripStatus] | None, Query()] = None,
+    pp_manifest_number: Annotated[int | None, Query(gt=0, le=PG_INTEGER_MAX)] = None,
     db: AsyncSession = Depends(get_db),
     current_user: UserRead = Depends(get_current_dispatcher),
 ) -> list[TripListItemResponse]:
@@ -130,6 +192,7 @@ async def list_trips_endpoint(
         db=db,
         operator_organization_id=current_user.organization_id,
         status_filter=status,
+        pp_manifest_number=pp_manifest_number,
     )
 
 
@@ -151,7 +214,7 @@ async def list_trip_history_endpoint(
     """Closed and cancelled trips ordered by their terminal timestamp.
 
     Date bounds are inclusive calendar dates in the configured operations timezone;
-    q matches trip reference, order number, or driver name.
+    q matches trip reference or driver name, or a PP manifest number exactly.
     """
     cursor_position: CursorPosition | None = None
     if cursor is not None:
@@ -173,6 +236,33 @@ async def list_trip_history_endpoint(
         from_date=from_date,
         to_date=to_date,
     )
+
+
+# Declared before GET /trips/{trip_id}: FastAPI matches routes in declaration order, so
+# this literal path registered after "/{trip_id}" would 422 on UUID parsing.
+@router.get(
+    "/pp-manifest-preview",
+    response_model=PPManifestPreviewResponse,
+    summary="Preview a Parcel Perfect manifest before creating its trip",
+    # Reaches Parcel Perfect, a partner's quota we neither own nor pay for.
+    dependencies=[Depends(rate_limit(PP_LOOKUP))],
+)
+async def preview_pp_manifest_endpoint(
+    manifest_number: Annotated[int, Query(gt=0)],
+    db: AsyncSession = Depends(get_db),
+    current_user: UserRead = Depends(get_current_dispatcher),
+) -> PPManifestPreviewResponse:
+    """Read-only. Warnings say what blocks creation and what the dispatcher must supply."""
+    try:
+        return await preview_pp_manifest(
+            db, manifest_number=manifest_number,
+            operator_organization_id=current_user.organization_id,
+        )
+    except Exception as exc:
+        http_error = _trip_http_error(exc)
+        if http_error is None:
+            raise
+        raise http_error from exc
 
 
 @router.get(

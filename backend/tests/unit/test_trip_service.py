@@ -51,7 +51,6 @@ def make_user() -> UserRead:
 def make_loaded_payload(**kwargs) -> TripCreateRequest:
     """A LOADED trip payload — requires at least one consignment."""
     base = dict(
-        order_number="ORD-001",
         driver_id=uuid.uuid4(),
         horse_id=uuid.uuid4(),
         trailer_ids=[uuid.uuid4()],
@@ -70,7 +69,6 @@ def make_loaded_payload(**kwargs) -> TripCreateRequest:
 def make_empty_leg_payload(**kwargs) -> TripCreateRequest:
     """An EMPTY_LEG trip payload — must carry no consignments."""
     base = dict(
-        order_number="ORD-002",
         driver_id=uuid.uuid4(),
         horse_id=uuid.uuid4(),
         trailer_ids=[uuid.uuid4()],
@@ -127,7 +125,6 @@ async def test_create_trip_empty_leg_does_not_call_sync() -> None:
     with (
         patch("app.orchestration.trip_service._fetch_driver", new_callable=AsyncMock) as mock_driver,
         patch("app.orchestration.trip_service._fetch_vehicle", new_callable=AsyncMock) as mock_vehicle,
-        patch("app.orchestration.trip_service._check_order_number_conflict", new_callable=AsyncMock),
         patch("app.orchestration.trip_service.anchor_subject", new_callable=AsyncMock) as mock_anchor,
         patch("app.orchestration.trip_service.compute_journey_lock_hash", return_value="hash-abc"),
         # A real dict, not a placeholder — compute_payload_hash (called for real
@@ -168,7 +165,6 @@ async def test_create_trip_with_consignments_calls_sync() -> None:
     with (
         patch("app.orchestration.trip_service._fetch_driver", new_callable=AsyncMock) as mock_driver,
         patch("app.orchestration.trip_service._fetch_vehicle", new_callable=AsyncMock) as mock_vehicle,
-        patch("app.orchestration.trip_service._check_order_number_conflict", new_callable=AsyncMock),
         patch("app.orchestration.trip_service.anchor_subject", new_callable=AsyncMock) as mock_anchor,
         patch("app.orchestration.trip_service.compute_journey_lock_hash", return_value="hash-abc"),
         # A real dict, not a placeholder — compute_payload_hash (called for real
@@ -215,7 +211,6 @@ async def test_create_trip_unknown_waybill_raises_ppsync_error() -> None:
     with (
         patch("app.orchestration.trip_service._fetch_driver", new_callable=AsyncMock) as mock_driver,
         patch("app.orchestration.trip_service._fetch_vehicle", new_callable=AsyncMock) as mock_vehicle,
-        patch("app.orchestration.trip_service._check_order_number_conflict", new_callable=AsyncMock),
         patch(
             "app.orchestration.consignment_service.fetch_and_sync_consignment",
             new_callable=AsyncMock,
@@ -272,7 +267,6 @@ async def test_create_trip_writes_full_pending_plan() -> None:
     with (
         patch("app.orchestration.trip_service._fetch_driver", new_callable=AsyncMock) as mock_driver,
         patch("app.orchestration.trip_service._fetch_vehicle", new_callable=AsyncMock) as mock_vehicle,
-        patch("app.orchestration.trip_service._check_order_number_conflict", new_callable=AsyncMock),
         patch("app.orchestration.trip_service.anchor_subject", new_callable=AsyncMock) as mock_anchor,
         patch("app.orchestration.trip_service.compute_journey_lock_hash", return_value="hash-abc"),
         # A real dict, not a placeholder — compute_payload_hash (called for real
@@ -451,7 +445,7 @@ async def test_create_trip_anchor_failure_still_rolls_back_whole_trip(db_session
         created_at=_NOW, updated_at=_NOW,
     )
     payload = TripCreateRequest(
-        order_number="ORD-P0-ROLLBACK", driver_id=driver.id, horse_id=horse.id, trailer_ids=[],
+        driver_id=driver.id, horse_id=horse.id, trailer_ids=[],
         origin_precinct_id=origin.id, destination_precinct_id=dest.id, trip_type=TripType.EMPTY_LEG,
         planned_departure_at=_NOW,
     )
@@ -467,9 +461,9 @@ async def test_create_trip_anchor_failure_still_rolls_back_whole_trip(db_session
     # itself has no try/except around P0's anchor call, by design (this task's fence).
     await db_session.rollback()
 
-    trips = (await db_session.execute(select(Trip).where(Trip.order_number == "ORD-P0-ROLLBACK"))).scalars().all()
+    trips = (await db_session.execute(select(Trip).where(Trip.driver_id == driver.id))).scalars().all()
     events = (await db_session.execute(
-        select(PhaseEvent).where(PhaseEvent.trip_id.in_(select(Trip.id).where(Trip.order_number == "ORD-P0-ROLLBACK")))
+        select(PhaseEvent).where(PhaseEvent.trip_id.in_(select(Trip.id).where(Trip.driver_id == driver.id)))
     )).scalars().all()
     assert trips == []
     assert events == []

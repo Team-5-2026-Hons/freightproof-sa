@@ -9,12 +9,13 @@ module path seen by the SUT, use AsyncMock for coroutines.
 
 import uuid
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.core.exceptions import ConsignmentAlreadyAssignedError
-from app.db.models.enums import ParcelStatus
+from app.db.models.enums import ParcelStatus, TripStatus
 from app.db.models.trips import Consignment, Parcel
 from app.integrations.parcel_perfect import (
     MOCK_WAYBILLS,
@@ -453,7 +454,9 @@ async def test_reuse_on_a_different_trip_is_rejected():
     consignment_result = MagicMock()
     consignment_result.scalar_one_or_none.return_value = existing
     owner_result = MagicMock()
-    owner_result.scalar_one_or_none.return_value = "FP-20260101-OWNER01"
+    owner_result.one_or_none.return_value = SimpleNamespace(
+        trip_reference="FP-20260101-OWNER01", status=TripStatus.ACTIVE,
+    )
 
     db = MagicMock()
     db.execute = AsyncMock(side_effect=[consignment_result, owner_result])
