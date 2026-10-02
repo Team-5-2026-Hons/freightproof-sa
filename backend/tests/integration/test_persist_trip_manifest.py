@@ -84,6 +84,7 @@ async def test_persist_trip_writes_a_manifest_trip(db_session: AsyncSession) -> 
     h0 = (await db_session.execute(select(PhaseEvent).where(
         PhaseEvent.trip_id == trip.id, PhaseEvent.phase_type == PhaseType.TRIP_CREATION,
     ))).scalar_one()
+    assert new_trip.manifest is not None
     assert h0.parcel_manifest_snapshot == new_trip.manifest.snapshot
     assert detail.pp_manifest is not None
     assert detail.pp_manifest.display == f"{MOCK_CLIENT_NAME} · CPT {MANIFEST_HAPPY_PATH}"

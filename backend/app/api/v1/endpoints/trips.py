@@ -68,10 +68,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/trips", tags=["trips"])
 
 # Stable client-facing text; str(PPUnsupportedError) carries an internal engineering note.
-_MANIFEST_UNSUPPORTED_DETAIL = "Manifest lookup is not available on the live Parcel Perfect API."
-_PP_UNAVAILABLE_DETAIL = "Parcel Perfect is unreachable — try again shortly."
-_HEDERA_TIMEOUT_DETAIL = "Blockchain anchoring timed out — the trip was not created. Please retry."
-_HEDERA_UNAVAILABLE_DETAIL = "Blockchain anchoring is unavailable — the trip was not created. Please retry."
+_MANIFEST_UNSUPPORTED_DETAIL = "Manifest lookup is not available from the connected parcel system."
+_PP_UNAVAILABLE_DETAIL = "The parcel system is unreachable. Try again shortly."
+_HEDERA_TIMEOUT_DETAIL = "Blockchain anchoring timed out, so the trip was not created. Please retry."
+_HEDERA_UNAVAILABLE_DETAIL = "Blockchain anchoring is unavailable, so the trip was not created. Please retry."
 _UNEXPECTED_DETAIL = "An unexpected error occurred. Please try again."
 
 
@@ -113,7 +113,7 @@ def _trip_http_error(exc: Exception) -> HTTPException | None:
     if isinstance(exc, ResourceNotFoundError):
         return HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc))
     if isinstance(exc, PPSyncError):
-        return HTTPException(status_code=422, detail=f"Parcel Perfect sync failed: {exc.reason}")
+        return HTTPException(status_code=422, detail=f"Waybill sync failed: {exc.reason}")
     if isinstance(exc, HederaTimeoutError):
         return HTTPException(status_code=http_status.HTTP_504_GATEWAY_TIMEOUT, detail=_HEDERA_TIMEOUT_DETAIL)
     if isinstance(exc, HederaServiceError):
@@ -248,7 +248,7 @@ async def list_trip_history_endpoint(
     dependencies=[Depends(rate_limit(PP_LOOKUP))],
 )
 async def preview_pp_manifest_endpoint(
-    manifest_number: Annotated[int, Query(gt=0)],
+    manifest_number: Annotated[int, Query(gt=0, le=PG_INTEGER_MAX)],
     db: AsyncSession = Depends(get_db),
     current_user: UserRead = Depends(get_current_dispatcher),
 ) -> PPManifestPreviewResponse:

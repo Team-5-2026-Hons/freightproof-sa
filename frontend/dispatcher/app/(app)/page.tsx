@@ -13,6 +13,7 @@ import { ChecklistRow }   from '@/components/domain/ChecklistRow'
 import type { ColWidths } from '@/components/domain/ChecklistRow'
 import { useTrips }       from '@/lib/hooks/useTrips'
 import { putTripSeeds }   from '@/lib/trips/tripSeed'
+import { matchesTripSearch } from '@/lib/trips/search'
 import { useAuth }        from '@/lib/hooks/useAuth'
 import { usePrecincts }   from '@/lib/hooks/usePrecincts'
 import { useToast }       from '@/lib/hooks/useToast'
@@ -34,7 +35,7 @@ type ColId = keyof ColWidths
 const COL_HEADERS: { id: ColId; label: string }[] = [
   { id: 'createdAt', label: 'CREATED'        },
   { id: 'tripId',    label: 'TRIP ID'        },
-  { id: 'order',     label: 'ORDER'          },
+  { id: 'manifest',  label: 'MANIFEST'       },
   { id: 'driver',    label: 'DRIVER / HORSE' },
   { id: 'route',     label: 'ROUTE'          },
   { id: 'progress',  label: 'PROGRESS'       },
@@ -44,7 +45,7 @@ const COL_HEADERS: { id: ColId; label: string }[] = [
 const INITIAL_COL_WIDTHS: ColWidths = {
   createdAt: 60,
   tripId:    242,
-  order:     155,
+  manifest:  155,
   driver:    150,
   route:     130,
   progress:  300,
@@ -124,15 +125,10 @@ export default function ActiveTripsPage() {
     [allFetchedTrips],
   )
 
-  const filteredTrips = useMemo(() => {
-    if (!search.trim()) return allTrips
-    const term = search.toLowerCase()
-    return allTrips.filter(t =>
-      t.trip_reference.toLowerCase().includes(term) ||
-      t.driver.full_name.toLowerCase().includes(term) ||
-      t.order_number.toLowerCase().includes(term),
-    )
-  }, [allTrips, search])
+  const filteredTrips = useMemo(
+    () => allTrips.filter(t => matchesTripSearch(t, search)),
+    [allTrips, search],
+  )
 
   function startResize(id: ColId, e: React.MouseEvent) {
     e.preventDefault()
@@ -186,7 +182,7 @@ export default function ActiveTripsPage() {
           <Ic n="search" s={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-outline-v" />
           <input
             type="text"
-            placeholder="Search trip ID, driver, or order…"
+            placeholder="Search trip ID, driver, or manifest…"
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="w-full pl-8 pr-4 py-2 text-[13px] bg-surf-low rounded-md border border-outline-v/30 text-on-surf placeholder:text-on-surf-v/60 outline-none focus:border-sec focus:bg-surf-lowest transition-colors"

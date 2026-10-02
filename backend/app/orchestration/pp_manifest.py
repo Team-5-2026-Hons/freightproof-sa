@@ -1,16 +1,16 @@
 """Pure helpers for PP manifests (FP-281, spec §8–§10).
 
-No I/O: everything is a function of a PPManifestResponse, so it is unit-tested without
-a database. pp_manifest_service holds the parts that read the database.
+No I/O: everything is a function of a PPManifestResponse or of the snapshot built from
+it, so it is unit-tested without a database. pp_manifest_service holds the parts that read the database.
 """
 
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
 from app.crypto.hashing import PPManifestKey, compute_snapshot_sha256
 from app.integrations.parcel_perfect import PPManifestResponse
 from app.orchestration.consignment_service import serialise_waybill
+from app.schemas.pp_manifest import PPManifestSnapshotRead, PPManifestTotalsRead, PPManifestWaybillLine
 
 # Weights are shown to two decimals, like the PP portal.
 _WEIGHT_DECIMALS = 2
@@ -61,21 +61,37 @@ def manifest_key(manifest: PPManifestResponse) -> PPManifestKey:
     return PPManifestKey(header.issuer_account, header.origin_hub, header.manifest_number)
 
 
-@dataclass(frozen=True)
-class ManifestTotals:
-    waybills: int
-    parcels: int
-    weight_kg: float
+def snapshot_read(snapshot: dict[str, Any]) -> PPManifestSnapshotRead:
+    """What a snapshot shows: header facts, one line per waybill, and totals.
 
-
-def manifest_totals(manifest: PPManifestResponse) -> ManifestTotals:
-    """Computed from the waybills, never stored in the header, so they cannot disagree.
-    Parcels count tracks[], the same figure consignment sync stores as expected."""
-    return ManifestTotals(
-        waybills=len(manifest.waybills),
-        parcels=sum(len(w.tracks) for w in manifest.waybills),
-        weight_kg=round(
-            sum(w.details.actual_weight_kg or 0.0 for w in manifest.waybills), _WEIGHT_DECIMALS,
+    The one reading of a manifest for display. The preview applies it to the snapshot it
+    is about to hash and the manifest panel to the one stored on H0, so the create screen
+    and the panel cannot disagree about a manifest. Totals are computed from the
+    waybills, never stored in the header; parcels count tracks[], the same figure
+    consignment sync stores as expected. Waybills keep the snapshot's order (by number).
+    """
+    header = snapshot["header"]
+    lines = [
+        PPManifestWaybillLine(
+            waybill=w["details"]["waybill"],
+            destination_town=w["details"]["dest_town"],
+            parcel_count=len(w["tracks"]),
+            weight_kg=w["details"]["actual_weight_kg"],
+        )
+        for w in snapshot["waybills"]
+    ]
+    return PPManifestSnapshotRead(
+        manifest_number=header["manifest_number"],
+        issuer_account=header["issuer_account"],
+        issuer_name=header["issuer_name"],
+        origin_hub=header["origin_hub"],
+        destination_hub=header["destination_hub"],
+        client_reference=header["client_reference"],
+        waybills=lines,
+        totals=PPManifestTotalsRead(
+            waybills=len(lines),
+            parcels=sum(line.parcel_count for line in lines),
+            weight_kg=round(sum(line.weight_kg or 0.0 for line in lines), _WEIGHT_DECIMALS),
         ),
     )
 

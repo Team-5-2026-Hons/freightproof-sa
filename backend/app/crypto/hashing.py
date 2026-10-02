@@ -31,9 +31,13 @@ def canonical_json(payload: dict[str, Any]) -> str:
     return json.dumps(payload, sort_keys=True, separators=(",", ":"))
 
 
+def _canonical_sha256(payload: dict[str, Any]) -> str:
+    return hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
+
+
 def compute_snapshot_sha256(snapshot: dict[str, Any]) -> str:
     """SHA-256 of a stored PP manifest snapshot, in the lock's canonical form."""
-    return hashlib.sha256(canonical_json(snapshot).encode("utf-8")).hexdigest()
+    return _canonical_sha256(snapshot)
 
 
 def _utc_iso(value: datetime | None) -> str | None:
@@ -87,4 +91,4 @@ def compute_trip_canonical_payload(
 
 def compute_journey_lock_hash(payload: dict[str, Any]) -> str:
     """64-char lowercase hex SHA-256 of a canonical journey-lock payload."""
-    return hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
+    return _canonical_sha256(payload)

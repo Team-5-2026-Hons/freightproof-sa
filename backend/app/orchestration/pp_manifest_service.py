@@ -30,7 +30,7 @@ from app.orchestration.consignment_service import scanned_consignment_ids
 from app.orchestration.pp_manifest import (
     manifest_key,
     manifest_snapshot,
-    manifest_totals,
+    snapshot_read,
     waybills_from_other_clients,
 )
 from app.orchestration.trip_service import (
@@ -47,10 +47,8 @@ from app.schemas.pp_manifest import (
     PPManifestNoteRead,
     PPManifestPreviewResponse,
     PPManifestRef,
-    PPManifestTotalsRead,
     PPManifestWarning,
     PPManifestWarningCode,
-    PPManifestWaybillLine,
     TripFromPPManifestRequest,
 )
 from app.schemas.trips import TripDetailResponse, TripStopCreate, validate_declared_schedule
@@ -178,13 +176,13 @@ async def _build_context(
     if client is None:
         warnings.append(_warning(
             PPManifestWarningCode.CLIENT_NOT_LINKED,
-            f"PP account {header.issuer_account} ({header.issuer_name}) is not linked to any organisation.",
+            f"Client account {header.issuer_account} ({header.issuer_name}) is not linked to any organisation.",
         ))
     mismatched = waybills_from_other_clients(manifest)
     if mismatched:
         warnings.append(_warning(
             PPManifestWarningCode.WAYBILL_CLIENT_MISMATCH,
-            f"{len(mismatched)} waybill(s) belong to a different PP account than {header.issuer_account}.",
+            f"{len(mismatched)} waybill(s) belong to a different client account than {header.issuer_account}.",
             waybills=mismatched,
         ))
     for (trip_id, trip_reference), refs in sorted(held.items(), key=lambda item: item[0][1] or ""):
@@ -197,27 +195,27 @@ async def _build_context(
     if not manifest.waybills:
         warnings.append(_warning(
             PPManifestWarningCode.NO_WAYBILLS,
-            "The manifest has no waybills — create an empty leg instead.",
+            "The manifest has no waybills. Create an empty leg instead.",
         ))
     if client is not None and origin is None:
         warnings.append(_warning(
             PPManifestWarningCode.ORIGIN_HUB_UNLINKED,
-            f"Hub {header.origin_hub} is not linked to a precinct — choose the origin precinct.",
+            f"Hub {header.origin_hub} is not linked to a precinct. Choose the origin precinct.",
         ))
     if client is not None and destination is None:
         warnings.append(_warning(
             PPManifestWarningCode.DESTINATION_HUB_UNLINKED,
-            f"Hub {header.destination_hub} is not linked to a precinct — choose the destination precinct.",
+            f"Hub {header.destination_hub} is not linked to a precinct. Choose the destination precinct.",
         ))
     if header.planned_departure_at is None:
         warnings.append(_warning(
             PPManifestWarningCode.NO_PLANNED_TIMES,
-            "The manifest has no planned departure — enter the planned times.",
+            "The manifest has no planned departure. Enter the planned times.",
         ))
     if header.closed_at is None:
         warnings.append(_warning(
             PPManifestWarningCode.MANIFEST_NOT_CLOSED,
-            "The manifest is still open in Parcel Perfect. Waybills added after the trip is "
+            "The manifest is still open. Waybills added after the trip is "
             "created will not be on it.",
         ))
 
@@ -237,7 +235,9 @@ def _hub(hub_code: str, precinct: Precinct | None) -> PPManifestHub:
 
 def _preview(context: _ManifestContext) -> PPManifestPreviewResponse:
     header = context.manifest.header
-    totals = manifest_totals(context.manifest)
+    # Lines and totals from the snapshot being hashed: what the dispatcher reviews is
+    # exactly what the manifest panel later shows from H0.
+    shown = snapshot_read(context.snapshot)
     client_name = context.client.name if context.client is not None else header.issuer_name
     return PPManifestPreviewResponse(
         pp_manifest=PPManifestRef.of(
@@ -254,14 +254,8 @@ def _preview(context: _ManifestContext) -> PPManifestPreviewResponse:
         is_closed=header.closed_at is not None,
         client_reference=header.client_reference,
         notes=[PPManifestNoteRead(noted_at=n.noted_at, operator=n.operator, text=n.text) for n in header.notes],
-        totals=PPManifestTotalsRead(waybills=totals.waybills, parcels=totals.parcels, weight_kg=totals.weight_kg),
-        waybills=[
-            PPManifestWaybillLine(
-                waybill=w.details.waybill, destination_town=w.details.dest_town,
-                parcel_count=len(w.tracks), weight_kg=w.details.actual_weight_kg,
-            )
-            for w in sorted(context.manifest.waybills, key=lambda w: w.details.waybill)
-        ],
+        totals=shown.totals,
+        waybills=shown.waybills,
         warnings=context.warnings,
         can_create=not any(w.blocking for w in context.warnings),
     )
@@ -313,7 +307,7 @@ async def _resolve_precinct(
     if requested_id is None:
         raise PPManifestUnusableError(
             PPManifestErrorCode.PRECINCT_REQUIRED.value,
-            f"Hub {hub_code} is not linked to a precinct — choose the {role} precinct.",
+            f"Hub {hub_code} is not linked to a precinct. Choose the {role} precinct.",
         )
     precinct = (await db.execute(
         select(Precinct).where(
@@ -378,7 +372,7 @@ async def create_trip_from_pp_manifest(
     if departure is None:
         raise PPManifestUnusableError(
             PPManifestErrorCode.NO_PLANNED_DEPARTURE.value,
-            "The manifest has no planned departure — enter one.",
+            "The manifest has no planned departure. Enter one.",
         )
     try:
         validate_declared_schedule(departure, arrival)

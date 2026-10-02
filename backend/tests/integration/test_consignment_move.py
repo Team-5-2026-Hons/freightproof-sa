@@ -1,7 +1,7 @@
 """Cancel and recreate (FP-281, spec §10.5): a waybill may leave a CANCELLED trip, and
 only while none of its parcels carries a scan stamp."""
 
-from typing import NoReturn
+from typing import Any, NoReturn
 
 import asyncio
 import copy
@@ -224,6 +224,7 @@ async def test_committed_scan_wins_against_recreation(scan_race_world: ScanRaceW
         mover_pid = (await mover.execute(text("SELECT pg_backend_pid()"))).scalar_one()
         # Ownership is cached before the other session stamps: locking reads must refresh it.
         cached = await mover.get(Consignment, race.consignment_id)
+        assert cached is not None
         assert cached.trip_id == race.old_id
         async def scan() -> None:
             await scan_service.ingest_scans(scanner, trip_id=race.old_id, trip_stop_id=race.stop_id, direction=direction)
@@ -248,6 +249,7 @@ async def test_committed_scan_wins_against_recreation(scan_race_world: ScanRaceW
             await mover.rollback()
     async with race.sessions() as reader:
         held = await reader.get(Consignment, race.consignment_id)
+        assert held is not None
         parcel = (await reader.execute(select(Parcel).where(Parcel.consignment_id == race.consignment_id))).scalar_one()
         assert held.trip_id == race.old_id
         assert (parcel.pp_scan_out_at if direction is ScanDirection.OUT else parcel.pp_scan_in_at) is not None
@@ -263,6 +265,7 @@ async def test_committed_recreation_excludes_old_trip_scan(scan_race_world: Scan
         scanner_pid = (await scanner.execute(text("SELECT pg_backend_pid()"))).scalar_one()
         mover_pid = (await mover.execute(text("SELECT pg_backend_pid()"))).scalar_one()
         cached = await scanner.get(Consignment, race.consignment_id)
+        assert cached is not None
         assert cached.trip_id == race.old_id
         await sync_consignment_from_waybill(mover, _waybill(), trip_id=race.replacement_id)
         await mover.flush()
@@ -282,6 +285,7 @@ async def test_committed_recreation_excludes_old_trip_scan(scan_race_world: Scan
             await mover.rollback()
     async with race.sessions() as reader:
         held = await reader.get(Consignment, race.consignment_id)
+        assert held is not None
         parcels = (await reader.execute(select(Parcel).where(Parcel.consignment_id == race.consignment_id))).scalars().all()
         assert held.trip_id == race.replacement_id
         assert len(parcels) == 6
@@ -327,7 +331,7 @@ async def test_multi_waybill_recreation_and_scan_share_one_lock_order(
     real_sync = consignment_service.sync_consignment_from_waybill
 
     async def pause_after_first(
-        db: AsyncSession, waybill: PPWaybillResponse, **kwargs: object,
+        db: AsyncSession, waybill: PPWaybillResponse, **kwargs: Any,
     ) -> consignment_service.ConsignmentSyncResult:
         result = await real_sync(db, waybill, **kwargs)
         if not first_moved.is_set():

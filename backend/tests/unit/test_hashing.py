@@ -4,6 +4,7 @@ import hashlib
 import json
 import uuid
 from datetime import UTC, datetime, timedelta, timezone
+from typing import Any
 
 from app.crypto.hashing import (
     PPManifestKey,
@@ -20,9 +21,9 @@ _EXPECTED_KEYS = {
 }
 
 
-def _args(**overrides: object) -> dict[str, object]:
+def _args(**overrides: Any) -> dict[str, Any]:
     created = datetime.now(UTC)
-    args: dict[str, object] = dict(
+    args: dict[str, Any] = dict(
         trip_id=uuid.uuid4(), driver_id=uuid.uuid4(), horse_id=uuid.uuid4(),
         trailer_ids=[uuid.uuid4(), uuid.uuid4()], origin_precinct_id=uuid.uuid4(),
         destination_precinct_id=uuid.uuid4(), created_by_user_id=uuid.uuid4(),
@@ -123,10 +124,10 @@ def test_each_new_key_changes_the_hash() -> None:
     args = _args()
     base = compute_journey_lock_hash(compute_trip_canonical_payload(**args))
 
-    variants = [
+    variants: list[dict[str, Any]] = [
         {"pp_manifest": PPManifestKey("MOCK01", "CPT", 82)},
         {"pp_manifest_snapshot_sha256": "b" * 64},
-        {"planned_departure_at": args["planned_departure_at"] + timedelta(minutes=1)},  # type: ignore[operator]
+        {"planned_departure_at": args["planned_departure_at"] + timedelta(minutes=1)},
         {"planned_arrival_at": None},
     ]
 

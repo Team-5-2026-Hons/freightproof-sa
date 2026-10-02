@@ -23,6 +23,7 @@ from app.db.models.events import DriverEvent, PrecinctEvent, VehicleEvent
 from app.db.models.enums import PhaseStatus, PhaseType, SubjectType, VerifyStatus
 from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Trip, TripTrailer
+from app.orchestration.manifest_service import load_creation_snapshot
 from app.orchestration.phase_service import (
     PHASE_PAYLOAD_VERSION_V2,
     compute_activation_canonical_payload_v2,
@@ -138,14 +139,7 @@ async def _reconstruct_trip_payload(
         manifest_key = PPManifestKey(
             trip.pp_manifest_issuer_account, trip.pp_manifest_origin_hub, trip.pp_manifest_number,
         )
-        snapshot = (
-            await db.execute(
-                select(PhaseEvent.parcel_manifest_snapshot).where(
-                    PhaseEvent.trip_id == trip_id,
-                    PhaseEvent.phase_type == PhaseType.TRIP_CREATION,
-                )
-            )
-        ).scalar_one_or_none()
+        snapshot = await load_creation_snapshot(db, trip_id)
         # A deleted snapshot leaves the hash null, which cannot match what was anchored.
         snapshot_sha256 = compute_snapshot_sha256(snapshot) if snapshot is not None else None
 

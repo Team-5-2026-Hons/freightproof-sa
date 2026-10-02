@@ -41,7 +41,7 @@ function makeTrip(overrides: Partial<TripHistoryListItem> = {}): TripHistoryList
   return {
     id: 'trip-1' as TripHistoryListItem['id'],
     trip_reference: 'FP-2026-0001',
-    order_number: 'ORD-0001',
+    pp_manifest: null,
     status: 'closed',
     driver: { full_name: 'Nandi Dlamini' },
     horse: { registration: 'CA 123-456' },

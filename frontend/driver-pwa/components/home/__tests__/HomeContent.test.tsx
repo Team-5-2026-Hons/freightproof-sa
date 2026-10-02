@@ -37,7 +37,7 @@ function makeTrip(phases: PhaseDescriptor[], overrides: Partial<Trip> = {}): Tri
   return {
     id: 'trip-1' as unknown as TripId,
     trip_reference: 'TRP-2026-0099',
-    order_number: 'ORD-99',
+    pp_manifest: null,
     status: 'active',
     trip_type: 'loaded',
     journey_lock_hash: null,

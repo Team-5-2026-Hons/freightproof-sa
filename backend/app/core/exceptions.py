@@ -251,7 +251,7 @@ class PPManifestAlreadyOnTripError(Exception):
     def __init__(self, *, trip_id: uuid.UUID | None, trip_reference: str | None) -> None:
         holder = f" {trip_reference}" if trip_reference else ""
         super().__init__(
-            f"This PP manifest is already on trip{holder}. "
+            f"This manifest is already on trip{holder}. "
             "Cancel that trip before creating a new one."
         )
         self.trip_id = trip_id
@@ -281,7 +281,7 @@ class PPManifestChangedError(Exception):
 
     def __init__(self, manifest_number: int, preview: dict[str, Any]) -> None:
         super().__init__(
-            f"PP manifest {manifest_number} changed since it was previewed — review it again."
+            f"Manifest {manifest_number} changed since it was previewed. Review it again."
         )
         self.manifest_number = manifest_number
         self.preview = preview

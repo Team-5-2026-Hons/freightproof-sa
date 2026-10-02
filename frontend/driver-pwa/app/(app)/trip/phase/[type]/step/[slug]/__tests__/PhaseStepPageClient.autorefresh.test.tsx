@@ -73,7 +73,7 @@ function buildTrip(blockedOn: string | null): Trip {
   return {
     id: 'trip-autorefresh-page' as unknown as Trip['id'],
     trip_reference: 'TRP-AR-PAGE',
-    order_number: 'ORD-AR-PAGE',
+    pp_manifest: null,
     status: 'active',
     trip_type: 'loaded',
     journey_lock_hash: null,

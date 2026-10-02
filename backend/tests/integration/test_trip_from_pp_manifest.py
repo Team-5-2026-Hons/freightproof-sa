@@ -93,6 +93,7 @@ async def test_create_persists_a_manifest_trip(client: AsyncClient, db_session: 
     h0 = (await db_session.execute(select(PhaseEvent).where(
         PhaseEvent.trip_id == trip.id, PhaseEvent.phase_type == PhaseType.TRIP_CREATION,
     ))).scalar_one()
+    assert h0.parcel_manifest_snapshot is not None
     assert compute_snapshot_sha256(h0.parcel_manifest_snapshot) == previewed["snapshot_sha256"]
 
 
@@ -105,6 +106,7 @@ async def test_created_trip_verifies_and_an_edited_snapshot_does_not(client: Asy
     h0 = (await db_session.execute(select(PhaseEvent).where(
         PhaseEvent.trip_id == trip_id, PhaseEvent.phase_type == PhaseType.TRIP_CREATION,
     ))).scalar_one()
+    assert h0.parcel_manifest_snapshot is not None
     edited = dict(h0.parcel_manifest_snapshot)
     edited["waybills"] = edited["waybills"][1:]  # quietly drop a waybill
     h0.parcel_manifest_snapshot = edited
@@ -150,6 +152,16 @@ async def test_unknown_manifest_is_404(client: AsyncClient, db_session: AsyncSes
     resp = await client.post(_CREATE, json=body, headers=world.headers())
 
     assert resp.status_code == 404
+
+
+async def test_overlong_manifest_number_is_422(client: AsyncClient, db_session: AsyncSession) -> None:
+    world = await build_manifest_world(db_session)
+    body = create_body(world, await preview(client, world, MANIFEST_HAPPY_PATH), manifest_number=2_147_483_648)
+
+    resp = await client.post(_CREATE, json=body, headers=world.headers())
+
+    assert resp.status_code == 422
+    assert await _trip_count(db_session, world) == 0
 
 
 async def test_live_pp_is_501(client: AsyncClient, db_session: AsyncSession, monkeypatch: MonkeyPatch) -> None:

@@ -59,7 +59,7 @@ function buildTrip({ phaseEventId = OPEN_PHASE_ID, blockedOn = null }: BuildTrip
   return {
     id: 'trip-autorefresh-1' as unknown as Trip['id'],
     trip_reference: 'TRP-AR-0001',
-    order_number: 'ORD-AR-1',
+    pp_manifest: null,
     status: 'active',
     trip_type: 'loaded',
     journey_lock_hash: null,

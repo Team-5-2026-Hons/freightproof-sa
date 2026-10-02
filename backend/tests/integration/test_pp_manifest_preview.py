@@ -107,6 +107,18 @@ async def test_unknown_manifest_is_404(client: AsyncClient, db_session: AsyncSes
     assert resp.status_code == 404
 
 
+async def test_overlong_manifest_number_is_422(client: AsyncClient, db_session: AsyncSession) -> None:
+    # trips.pp_manifest_number is a Postgres integer: one past its range is not a manifest.
+    world = await build_manifest_world(db_session)
+
+    resp = await client.get(
+        "/api/v1/trips/pp-manifest-preview", params={"manifest_number": 2_147_483_648},
+        headers=world.headers(),
+    )
+
+    assert resp.status_code == 422
+
+
 async def test_live_pp_is_501(client: AsyncClient, db_session: AsyncSession, monkeypatch: MonkeyPatch) -> None:
     world = await build_manifest_world(db_session)
     monkeypatch.setattr(settings, "PP_USE_MOCK", False)
@@ -117,7 +129,7 @@ async def test_live_pp_is_501(client: AsyncClient, db_session: AsyncSession, mon
     )
 
     assert resp.status_code == 501
-    assert resp.json()["detail"] == "Manifest lookup is not available on the live Parcel Perfect API."
+    assert resp.json()["detail"] == "Manifest lookup is not available from the connected parcel system."
 
 
 async def test_pp_outage_is_502(client: AsyncClient, db_session: AsyncSession, monkeypatch: MonkeyPatch) -> None:

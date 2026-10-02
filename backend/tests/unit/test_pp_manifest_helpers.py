@@ -1,4 +1,4 @@
-"""Pure manifest helpers (FP-281, spec §8–§9): snapshot, hash, totals, client check."""
+"""Pure manifest helpers (FP-281, spec §8–§9): snapshot, hash, display read, client check."""
 
 import copy
 import json
@@ -13,7 +13,7 @@ from app.orchestration.pp_manifest import (
     manifest_key,
     manifest_snapshot,
     manifest_snapshot_sha256,
-    manifest_totals,
+    snapshot_read,
     waybills_from_other_clients,
 )
 
@@ -58,12 +58,36 @@ async def test_hash_changes_when_the_header_changes() -> None:
     assert manifest_snapshot_sha256(manifest) != manifest_snapshot_sha256(reopened)
 
 
-async def test_totals_are_computed_from_the_waybills() -> None:
+async def test_snapshot_read_computes_lines_and_totals_from_the_waybills() -> None:
     manifest = await MockParcelPerfectClient().get_manifest(MANIFEST_HAPPY_PATH)
 
-    totals = manifest_totals(manifest)
+    shown = snapshot_read(manifest_snapshot(manifest))
 
-    assert (totals.waybills, totals.parcels, totals.weight_kg) == (3, 20, 875.5)
+    assert (shown.totals.waybills, shown.totals.parcels, shown.totals.weight_kg) == (3, 20, 875.5)
+    assert [line.waybill for line in shown.waybills] == ["MFTWB8101", "MFTWB8102", "MFTWB8103"]
+    assert sum(line.parcel_count for line in shown.waybills) == 20
+    assert (shown.manifest_number, shown.origin_hub, shown.issuer_account) == (MANIFEST_HAPPY_PATH, "CPT", "MOCK01")
+
+
+async def test_snapshot_read_is_the_same_after_a_jsonb_round_trip() -> None:
+    # The manifest panel reads the snapshot back from JSONB; the preview reads it fresh.
+    manifest = await MockParcelPerfectClient().get_manifest(MANIFEST_HAPPY_PATH)
+    snapshot = manifest_snapshot(manifest)
+
+    assert snapshot_read(json.loads(json.dumps(snapshot))) == snapshot_read(snapshot)
+
+
+async def test_snapshot_read_counts_an_unstated_weight_as_zero() -> None:
+    manifest = await MockParcelPerfectClient().get_manifest(MANIFEST_HAPPY_PATH)
+    snapshot = manifest_snapshot(manifest)
+    first = snapshot["waybills"][0]
+    unweighed = first["details"]["actual_weight_kg"]
+    first["details"]["actual_weight_kg"] = None
+
+    shown = snapshot_read(snapshot)
+
+    assert shown.waybills[0].weight_kg is None
+    assert shown.totals.weight_kg == round(875.5 - unweighed, 2)
 
 
 async def test_manifest_key() -> None:

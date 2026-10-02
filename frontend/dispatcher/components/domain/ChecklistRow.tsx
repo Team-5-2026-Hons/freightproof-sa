@@ -10,11 +10,12 @@ import { PHASE_NAMES } from '@shared/lib/constants/phase-meta'
 import { chainNodesFromCounts, tripChipMeta } from '@/lib/phase/derive'
 import type { Precinct } from '@shared/lib/types/precinct'
 import { cn } from '@shared/lib/utils/cn'
+import { manifestKey, manifestLabel } from '@/lib/format/manifest'
 
 export interface ColWidths {
   createdAt: number
   tripId: number
-  order:  number
+  manifest: number
   driver: number
   route:  number
   progress: number
@@ -80,6 +81,8 @@ export function ChecklistRow({ trip, colWidths, precincts, className, showProgre
   )
 
   const hint = progressHint(trip)
+  const manifest = manifestLabel(trip.pp_manifest, trip.trip_type ?? null)
+  const manifestShort = manifestKey(trip.pp_manifest, trip.trip_type ?? null)
 
   function navigate() { router.push(ROUTES.tripDetail(trip.id)) }
 
@@ -108,9 +111,15 @@ export function ChecklistRow({ trip, colWidths, precincts, className, showProgre
         <TripIdStamp tripReference={trip.trip_reference} />
       </div>
 
-      {/* Order number */}
-      <div style={{ width: colWidths.order }} className="shrink-0 px-[6px] text-[11px] text-on-surf-v tabular-nums tracking-[0.03em] truncate">
-        {trip.order_number}
+      {/* The trip's external key since FP-281. The key ("CPT 81") alone: with the client
+          name in front, a narrow column truncated away the part that tells trips apart.
+          title carries the whole label, client included. */}
+      <div
+        style={{ width: colWidths.manifest }}
+        title={manifest}
+        className="shrink-0 truncate px-[6px] text-[11px] tabular-nums tracking-[0.03em] text-on-surf-v"
+      >
+        {manifestShort}
       </div>
 
       {/* Driver + Horse */}

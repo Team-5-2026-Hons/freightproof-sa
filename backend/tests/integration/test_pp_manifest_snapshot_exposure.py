@@ -1,4 +1,6 @@
-"""The H0 snapshot holds the whole PP manifest, so it is dispatcher-only (spec §7.3, §12)."""
+"""The H0 snapshot holds the whole PP manifest, so it is dispatcher-only (spec §7.3, §12).
+The manifest key is dispatcher context too: the driver app identifies a trip by its
+trip_reference."""
 
 from httpx import AsyncClient
 from collections.abc import AsyncIterator
@@ -63,14 +65,46 @@ async def test_trip_detail_never_carries_the_snapshot(client: AsyncClient, db_se
     assert "pp_manifest_snapshot" not in driver.text
 
 
-async def test_dispatcher_manifest_view_carries_the_snapshot(client: AsyncClient, db_session: AsyncSession) -> None:
+async def test_driver_trip_views_carry_no_manifest_key(client: AsyncClient, db_session: AsyncSession) -> None:
     world = await build_manifest_world(db_session)
     trip_id = await _manifest_trip(client, world)
 
-    resp = await client.get(f"/api/v1/trips/{trip_id}/manifest", headers=world.headers())
+    driver_headers = world.driver_headers()  # one session: a second login signs the first out
+
+    dispatcher = await client.get(f"/api/v1/trips/{trip_id}", headers=world.headers())
+    active = await client.get("/api/v1/trips/me/active", headers=driver_headers)
+    own = await client.get(f"/api/v1/trips/me/{trip_id}", headers=driver_headers)
+
+    assert dispatcher.json()["pp_manifest"]["number"] == MANIFEST_HAPPY_PATH
+    assert active.json()["id"] == str(trip_id)
+    assert active.json()["pp_manifest"] is None
+    assert own.json()["pp_manifest"] is None
+
+
+async def test_dispatcher_manifest_view_shows_the_snapshot_as_previewed(
+    client: AsyncClient, db_session: AsyncSession,
+) -> None:
+    world = await build_manifest_world(db_session)
+    previewed = await preview(client, world, MANIFEST_HAPPY_PATH)
+    created = await client.post(
+        "/api/v1/trips/from-pp-manifest", json=create_body(world, previewed), headers=world.headers(),
+    )
+    assert created.status_code == 201, created.text
+
+    resp = await client.get(f"/api/v1/trips/{created.json()['id']}/manifest", headers=world.headers())
 
     assert resp.status_code == 200, resp.text
-    assert resp.json()["pp_manifest_snapshot"]["header"]["manifest_number"] == MANIFEST_HAPPY_PATH
+    snapshot = resp.json()["pp_manifest_snapshot"]
+    # A display summary only: the stored JSON's receiver names and numbers stay in Postgres.
+    assert set(snapshot) == {
+        "manifest_number", "issuer_account", "issuer_name", "origin_hub", "destination_hub",
+        "client_reference", "waybills", "totals",
+    }
+    assert snapshot["manifest_number"] == MANIFEST_HAPPY_PATH
+    assert snapshot["client_reference"] == previewed["client_reference"]
+    # One reading of a manifest: the panel shows the lines and totals the dispatcher reviewed.
+    assert snapshot["waybills"] == previewed["waybills"]
+    assert snapshot["totals"] == previewed["totals"]
 
 
 async def test_driver_linehaul_view_has_no_snapshot(client: AsyncClient, db_session: AsyncSession) -> None:
@@ -97,4 +131,4 @@ async def test_cancelled_trip_keeps_its_cargo_record_after_its_waybills_move(cli
 
     assert resp.status_code == 200, resp.text
     assert resp.json()["consignments"] == []
-    assert resp.json()["pp_manifest_snapshot"]["header"]["manifest_number"] == MANIFEST_HAPPY_PATH
+    assert resp.json()["pp_manifest_snapshot"]["manifest_number"] == MANIFEST_HAPPY_PATH

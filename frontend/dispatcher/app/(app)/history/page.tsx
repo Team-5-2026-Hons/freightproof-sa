@@ -49,7 +49,7 @@ type ColId = keyof ColWidths
 const COL_HEADERS: { id: ColId; label: string }[] = [
   { id: 'createdAt', label: 'CLOSED'         },
   { id: 'tripId',    label: 'TRIP ID'        },
-  { id: 'order',     label: 'ORDER'          },
+  { id: 'manifest',  label: 'MANIFEST'       },
   { id: 'driver',    label: 'DRIVER / HORSE' },
   { id: 'route',     label: 'ROUTE'          },
   { id: 'progress',  label: 'EXCEPTIONS'     },
@@ -59,7 +59,7 @@ const COL_HEADERS: { id: ColId; label: string }[] = [
 const INITIAL_COL_WIDTHS: ColWidths = {
   createdAt: 60,
   tripId:    242,
-  order:     155,
+  manifest:  155,
   driver:    150,
   route:     130,
   progress:  160,
@@ -140,7 +140,7 @@ export default function HistoryPage() {
           <Ic n="search" s={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-outline-v" />
           <input
             type="text"
-            placeholder="Search trip ID, driver, or order…"
+            placeholder="Search trip ID, driver, or manifest number…"
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="w-full pl-8 pr-4 py-2 text-[13px] bg-surf-low rounded-md border border-outline-v/30 text-on-surf placeholder:text-on-surf-v/60 outline-none focus:border-sec focus:bg-surf-lowest transition-colors"

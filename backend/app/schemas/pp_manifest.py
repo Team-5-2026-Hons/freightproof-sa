@@ -8,6 +8,8 @@ from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, Field, model_validator
 
+from app.core.constants import PG_INTEGER_MAX
+
 # "CGY Logistics · JNB 69" — client, then the manifest as PP staff would say it.
 _DISPLAY_SEPARATOR = " · "
 
@@ -117,6 +119,24 @@ class PPManifestTotalsRead(BaseModel):
     weight_kg: float
 
 
+class PPManifestSnapshotRead(BaseModel):
+    """The H0 snapshot as the dispatcher's manifest panel shows it (FP-281 §7.3).
+
+    Built from the stored snapshot by the same helper the preview uses, so the panel's
+    creation-time lines and totals are exactly the ones the dispatcher reviewed. The
+    stored JSON itself, which also holds receiver names and contact numbers, stays in
+    Postgres for verification and is never sent."""
+
+    manifest_number: int
+    issuer_account: str
+    issuer_name: str
+    origin_hub: str
+    destination_hub: str
+    client_reference: Optional[str] = None
+    waybills: list[PPManifestWaybillLine]
+    totals: PPManifestTotalsRead
+
+
 class PPManifestPreviewResponse(BaseModel):
     """GET /trips/pp-manifest-preview. Read-only. snapshot_sha256 is sent back with the
     create request, so what the dispatcher reviewed is what gets locked (spec §10.2)."""
@@ -149,7 +169,8 @@ class TripFromPPManifestRequest(BaseModel):
     Times must carry a zone (AwareDatetime): the lock normalises to UTC, and a zone-less
     value could not be normalised honestly."""
 
-    manifest_number: int = Field(..., gt=0)
+    # Stored in a Postgres integer column (trips.pp_manifest_number).
+    manifest_number: int = Field(..., gt=0, le=PG_INTEGER_MAX)
     expected_snapshot_sha256: str = Field(..., pattern=_SHA256_HEX)
     driver_id: UUID
     horse_id: UUID

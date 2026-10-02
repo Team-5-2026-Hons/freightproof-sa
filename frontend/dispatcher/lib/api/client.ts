@@ -3,7 +3,9 @@
  */
 
 import { supabase, getAccessToken } from '@/lib/supabase/client'
-import type { Trip } from '@shared/lib/types/trip'
+import { isRecord } from '@/lib/api/json'
+import type { Trip, TripCreatePayload, TripStatus } from '@shared/lib/types/trip'
+import type { PPManifestPreview, PPManifestRef, TripFromPPManifestPayload } from '@shared/lib/types/pp-manifest'
 import type { TripException, DispatcherReviewOutcome, ExceptionContactMethod } from '@shared/lib/types/exception'
 
 // Exported so non-fetch transports (the SSE stream reader in lib/realtime) hit the
@@ -28,10 +30,27 @@ export class ApiError extends Error {
   constructor(
     public readonly status: number,
     message: string,
+    // The response body's `detail`, as sent: a string, a validation list, or an object
+    // such as FP-281's {code, message, ...}. Callers that act on a code read it here.
+    // null when no response was received.
+    public readonly detail: unknown = null,
   ) {
     super(message)
     this.name = 'ApiError'
   }
+}
+
+// FastAPI sends `detail` as a string, a validation list, or (for the manifest endpoints)
+// an object carrying its own `message`. Turning that object into a string by accident is
+// how a 409 ends up on screen as "[object Object]".
+function detailMessage(raw: unknown, fallback: string): string {
+  if (typeof raw === 'string') return raw
+  if (Array.isArray(raw)) {
+    const first: unknown = raw[0]
+    return isRecord(first) && typeof first.msg === 'string' ? first.msg : fallback
+  }
+  if (isRecord(raw) && typeof raw.message === 'string') return raw.message
+  return fallback
 }
 
 // Rejects with a timeout ApiError if the wrapped promise hasn't settled in `ms`. Used to
@@ -168,12 +187,9 @@ async function request<T>(
     if (!res.ok) {
       // Bounded by the still-armed window, so a stalled error body falls through to
       // statusText instead of hanging.
-      const body = await res.json().catch(() => ({ detail: res.statusText }))
-      const raw = (body as { detail?: unknown }).detail
-      const message = Array.isArray(raw)
-        ? (raw[0] as { msg?: string })?.msg ?? res.statusText
-        : (raw as string | undefined) ?? res.statusText
-      throw new ApiError(res.status, message)
+      const body: unknown = await res.json().catch(() => ({ detail: res.statusText }))
+      const raw = isRecord(body) ? body.detail : undefined
+      throw new ApiError(res.status, detailMessage(raw, res.statusText), raw ?? null)
     }
 
     try {
@@ -258,6 +274,51 @@ export function claimException(exceptionId: string, takeOver = false): Promise<T
 /** DELETE /exceptions/{id}/claim — give the exception back to the unreviewed inbox. */
 export function releaseException(exceptionId: string): Promise<TripException> {
   return api.delete<TripException>(`/api/v1/exceptions/${exceptionId}/claim`)
+}
+
+// ── Trip creation (FP-281) ───────────────────────────────────────────────────
+
+/** GET /trips/pp-manifest-preview: read-only. The warnings say what blocks creation and
+ *  what the dispatcher must supply (spec §10.1). */
+export function previewPPManifest(manifestNumber: number): Promise<PPManifestPreview> {
+  return api.get<PPManifestPreview>(`/api/v1/trips/pp-manifest-preview?manifest_number=${manifestNumber}`)
+}
+
+// Both creation endpoints wait synchronously on the Hedera anchor (the backend's own
+// fail-closed budget runs to ~15-20s), so they can outlive REQUEST_TIMEOUT_MS. If a call
+// still times out, the backend is genuinely unreachable and the caller must reconcile
+// before telling the dispatcher anything.
+export const TRIP_CREATE_TIMEOUT_MS = 30_000
+
+/** POST /trips/from-pp-manifest: a loaded trip from a PP manifest (spec §10.2). */
+export function createTripFromPPManifest(payload: TripFromPPManifestPayload): Promise<Trip> {
+  return api.post<Trip>('/api/v1/trips/from-pp-manifest', payload, { timeoutMs: TRIP_CREATE_TIMEOUT_MS })
+}
+
+/** POST /trips: the explicit path, which the screen uses for empty legs (spec §10.3). */
+export function createTrip(payload: TripCreatePayload): Promise<Trip> {
+  return api.post<Trip>('/api/v1/trips', payload, { timeoutMs: TRIP_CREATE_TIMEOUT_MS })
+}
+
+// Only what the retry lookup reads; the full row is TripSummary.
+interface TripManifestRow {
+  id: string
+  status: TripStatus
+  pp_manifest: PPManifestRef | null
+}
+
+/** The non-cancelled trip carrying this manifest, or null (spec §10.4). The filter on the
+ *  number is exact. The full key is then compared, because the number alone is unique
+ *  only in the mock. Throws ApiError when the lookup itself fails. */
+export async function findLiveTripForManifest(key: PPManifestRef): Promise<{ id: string } | null> {
+  const rows = await api.get<TripManifestRow[]>(`/api/v1/trips?pp_manifest_number=${key.number}`)
+  const live = rows.find(row =>
+    row.status !== 'cancelled'
+    && row.pp_manifest?.issuer_account === key.issuer_account
+    && row.pp_manifest.origin_hub === key.origin_hub
+    && row.pp_manifest.number === key.number,
+  )
+  return live ? { id: live.id } : null
 }
 
 export interface BatchReviewBody {

@@ -127,7 +127,7 @@ Add `pp_hub_code` (`String(10)`, nullable), unique per `(principal_organization_
 
 ## 8. Mocked Parcel Perfect manifest
 
-In [`integrations/parcel_perfect.py`](../../../backend/app/integrations/parcel_perfect.py). This is an **assumed data contract**: PP holds manifests, but its ecomService API exposes only `getSingleWaybill`. The code and UI label it as such.
+In [`integrations/parcel_perfect.py`](../../../backend/app/integrations/parcel_perfect.py). This is an **assumed data contract**: PP holds manifests, but its ecomService API exposes only `getSingleWaybill`. The code labels it as such. The UI does not (decided 2026-10-01): it presents the manifest as coming from the client's parcel system, in neutral terms, so the screen stays the same whichever system supplies it.
 
 ```python
 @dataclass

@@ -111,17 +111,26 @@ async def test_real_client_has_no_manifest_lookup() -> None:
         await ParcelPerfectClient().get_manifest(MANIFEST_HAPPY_PATH)
 
 
-async def test_both_manifest_readers_apply_staged_membership_and_cargo(
+async def test_get_manifest_applies_staged_membership_and_cargo(
     store: FakeMockStateStore, today: date,
 ) -> None:
     client = MockParcelPerfectClient()
     await client.stage_waybill_override("MFTWB8201", manifest=MANIFEST_HAPPY_PATH, parcel_count=2)
     await client.stage_waybill_override("MFTWB8101", manifest=MANIFEST_OPEN_NO_TIMES)
 
-    for number in (MANIFEST_HAPPY_PATH, MANIFEST_OPEN_NO_TIMES):
-        manifest = await client.get_manifest(number)
-        legacy = await client.get_waybills_by_manifest(number)
-        assert legacy == manifest.waybills
+    happy = await client.get_manifest(MANIFEST_HAPPY_PATH)
+    open_no_times = await client.get_manifest(MANIFEST_OPEN_NO_TIMES)
+
+    happy_refs = [w.details.waybill for w in happy.waybills]
+    open_refs = [w.details.waybill for w in open_no_times.waybills]
+    assert "MFTWB8201" in happy_refs and "MFTWB8201" not in open_refs
+    assert "MFTWB8101" in open_refs and "MFTWB8101" not in happy_refs
     fresh = await client.get_single_waybill("MFTWB8201")
     assert len(fresh.tracks) == 2
-    assert fresh in (await client.get_manifest(MANIFEST_HAPPY_PATH)).waybills
+    assert fresh in happy.waybills
+
+
+async def test_manifest_69_holds_its_four_fixture_waybills(store: FakeMockStateStore, today: date) -> None:
+    manifest = await MockParcelPerfectClient().get_manifest(69)
+
+    assert [w.details.waybill for w in manifest.waybills] == ["MOCKWAY001", "WAY001", "WAY002", "WAY003"]

@@ -696,7 +696,16 @@ async def get_active_trip_for_driver(db: AsyncSession, driver_id: uuid.UUID) -> 
     # blockchain_receipts because the PWA anchor UI renders them. Receipts
     # carry hashes/tx ids only — no PII (POPIA-safe). Covered by
     # test_active_trip_includes_receipts_for_driver.
-    return await get_trip_detail(db, trip_id=trip.id, operator_organization_id=trip.operator_organization_id)
+    return _driver_view(
+        await get_trip_detail(db, trip_id=trip.id, operator_organization_id=trip.operator_organization_id)
+    )
+
+
+def _driver_view(detail: TripDetailResponse) -> TripDetailResponse:
+    """The dispatcher's trip detail minus what the driver app must not receive. The PP
+    manifest key names the client's manifest: dispatcher context, never shown to the
+    driver, who identifies a trip by trip_reference (FP-281 §12)."""
+    return detail.model_copy(update={"pp_manifest": None})
 
 
 async def list_trips_for_driver(
@@ -811,6 +820,6 @@ async def get_own_trip_detail_for_driver(
     ).scalars().first()
     if trip is None:
         raise ResourceNotFoundError("Trip", str(trip_id))
-    return await get_trip_detail(
-        db, trip_id=trip.id, operator_organization_id=trip.operator_organization_id
+    return _driver_view(
+        await get_trip_detail(db, trip_id=trip.id, operator_organization_id=trip.operator_organization_id)
     )

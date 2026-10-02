@@ -13,7 +13,7 @@ from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.phases import PhaseEventRead
 from app.schemas.people import DriverRead
 from app.schemas.text import RequiredFreeText, ShortNoteStr
-from app.schemas.pp_manifest import PPManifestRef
+from app.schemas.pp_manifest import PPManifestRef, PPManifestSnapshotRead
 from app.schemas.transit import TripExceptionRead
 from app.schemas.vehicles import VehicleRead
 
@@ -512,8 +512,9 @@ class ManifestResponse(BaseModel):
     origin_scan_complete: bool
     consignments: list[ConsignmentManifest]
     pulled_at: datetime
-    # The PP manifest as it stood at creation (H0, FP-281) — null on trips without one.
-    pp_manifest_snapshot: Optional[dict[str, Any]] = None
+    # The PP manifest as it stood at creation (H0, FP-281), summarised for display —
+    # null on trips without one.
+    pp_manifest_snapshot: Optional[PPManifestSnapshotRead] = None
 
 
 class LinehaulResponse(BaseModel):

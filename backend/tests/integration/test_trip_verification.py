@@ -92,6 +92,7 @@ async def test_edited_planned_departure_fails_verification(client: AsyncClient, 
     world = await build_manifest_world(db_session)
     trip_id = await _create(client, world, datetime.now(UTC).isoformat())
     trip = (await db_session.execute(select(Trip).where(Trip.id == trip_id))).scalar_one()
+    assert trip.planned_departure_at is not None
     trip.planned_departure_at = trip.planned_departure_at + timedelta(hours=1)
     await db_session.flush()
 

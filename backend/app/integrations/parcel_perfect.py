@@ -65,7 +65,7 @@ class PPManifestNotFoundError(Exception):
     """Raised when no PP manifest has the given number."""
 
     def __init__(self, manifest_number: int) -> None:
-        super().__init__(f"PP manifest {manifest_number} not found")
+        super().__init__(f"Manifest {manifest_number} not found")
         self.manifest_number = manifest_number
 
 
@@ -1222,16 +1222,6 @@ class MockParcelPerfectClient:
             raise PPWaybillNotFoundError(waybill_number) from exc
         return await self._apply_overrides(waybill)
 
-    async def get_waybills_by_manifest(self, manifest_number: int) -> list[PPWaybillResponse]:
-        """Legacy mock-only wizard read, retained until Piece B replaces its caller.
-
-        Both manifest readers use PP's current waybill data, including staged edits.
-        """
-        return sorted(
-            (w for w in await self._waybills_with_overrides() if w.details.manifest == manifest_number),
-            key=lambda w: w.details.waybill,
-        )
-
 
 # ---------------------------------------------------------------------------
 # Real client
@@ -1246,11 +1236,6 @@ class ParcelPerfectClient:
     """
 
     supports_manifest_lookup: bool = False
-
-    async def get_waybills_by_manifest(self, manifest_number: int) -> list[PPWaybillResponse]:
-        raise PPUnsupportedError(
-            "PP v28 exposes no manifest-contents endpoint — requested from PP (ask #1, July visit)"
-        )
 
     async def get_manifest(self, manifest_number: int) -> PPManifestResponse:
         raise PPUnsupportedError(
