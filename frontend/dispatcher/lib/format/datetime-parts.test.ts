@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { fmtCalendarDate, fmtSastDateParts, fmtSastDateTime } from '@shared/lib/utils/datetime'
+import { fmtCalendarDate, fmtDateTime, fmtFull, fmtSastDateParts, fmtSastDateTime, fmtTime } from '@shared/lib/utils/datetime'
 
 // Lives beside the dispatcher's other format tests: the shared package has no test runner of its own.
 describe('fmtSastDateParts', () => {
@@ -60,5 +60,42 @@ describe('fmtSastDateTime', () => {
   it('returns null for a missing or unparseable instant', () => {
     expect(fmtSastDateTime(null)).toBeNull()
     expect(fmtSastDateTime('not a date')).toBeNull()
+  })
+})
+
+// 14:30Z is 16:30 SAST. Every formatter below is a shape over the same SAST core.
+describe('the shared formatters agree', () => {
+  const ISO = '2026-09-05T14:30:00Z'
+
+  it('shows the compact, time-only and full shapes in SAST, all saying so', () => {
+    expect(fmtDateTime(ISO)).toBe('05 Sep, 16:30 SAST')
+    expect(fmtTime(ISO)).toBe('16:30 SAST')
+    expect(fmtFull(ISO)).toBe('05 Sep 2026, 16:30 SAST')
+  })
+
+  it('never prints "Sept", whatever the runtime locale data says', () => {
+    for (const text of [fmtDateTime(ISO), fmtFull(ISO), fmtSastDateTime(ISO) ?? '', fmtCalendarDate('2026-09-05') ?? '']) {
+      expect(text).toContain('Sep')
+      expect(text).not.toContain('Sept')
+    }
+  })
+
+  it('does not move with the viewer: 22:00Z is already the next day in SAST', () => {
+    expect(fmtFull('2026-09-05T22:00:00Z')).toBe('06 Sep 2026, 00:00 SAST')
+    expect(fmtDateTime('2026-09-05T21:59:00Z')).toBe('05 Sep, 23:59 SAST')
+  })
+
+  it('reads the full form exactly as the stacked cells do', () => {
+    const parts = fmtSastDateParts(ISO)
+
+    expect(fmtFull(ISO)).toBe(`${parts?.day}, ${parts?.time}`)
+  })
+
+  it('shows a dash for a missing or unreadable instant, never "Invalid Date"', () => {
+    for (const bad of [null, undefined, '', 'garbage']) {
+      expect(fmtDateTime(bad)).toBe('—')
+      expect(fmtTime(bad)).toBe('—')
+      expect(fmtFull(bad)).toBe('—')
+    }
   })
 })

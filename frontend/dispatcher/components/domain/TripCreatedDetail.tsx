@@ -3,6 +3,7 @@
 import { ForensicOnly } from '@/components/blockchain/ForensicOnly'
 import { CopyField, Field, PhaseDetailCard, Section } from './PhaseDetailFields'
 import { manifestLabel } from '@/lib/format/manifest'
+import { fmtFull } from '@shared/lib/utils/datetime'
 import type { ConsignmentRead, Trip } from '@shared/lib/types/trip'
 
 // Declared value and manifest number are independently nullable, so the separator is
@@ -33,14 +34,6 @@ export function TripCreatedDetail({ trip }: Props) {
   // is not a contract — and this panel labels whatever it finds as the journey lock hash.
   const receipt = trip.blockchain_receipts.find(r => r.receipt_type === 'journey_lock') ?? null
   const isPending = !receipt?.hedera_topic_id || receipt.hedera_topic_id === 'None'
-
-  function fmtDate(iso: string | null | undefined): string {
-    if (!iso) return '—'
-    return new Date(iso).toLocaleString('en-ZA', {
-      day: '2-digit', month: 'short', year: 'numeric',
-      hour: '2-digit', minute: '2-digit',
-    })
-  }
 
   // Units (pallets) are dispatcher-entered and never come from a manifest (pallets are
   // deferred, FP-281 §14), so manifest trips have none. A total is shown only when every
@@ -94,8 +87,8 @@ export function TripCreatedDetail({ trip }: Props) {
       <Section title="Trip">
         <Field label="Type" value={trip.trip_type === 'loaded' ? 'Loaded' : 'Empty leg'} />
         <Field label="Manifest" value={manifestLabel(trip.pp_manifest, trip.trip_type)} mono={trip.pp_manifest !== null} />
-        <Field label="Planned departure" value={fmtDate(trip.planned_departure_at)} />
-        <Field label="Planned arrival" value={fmtDate(trip.planned_arrival_at)} />
+        <Field label="Planned departure" value={fmtFull(trip.planned_departure_at)} />
+        <Field label="Planned arrival" value={fmtFull(trip.planned_arrival_at)} />
       </Section>
 
       {/* Tracking ───────────────────────────────────────────────────────── */}
@@ -149,7 +142,7 @@ export function TripCreatedDetail({ trip }: Props) {
             <CopyField label="SHA-256 journey lock hash" value={receipt.data_hash} mono span />
             <Field     label="Hedera topic ID"  value={isPending ? 'Pending' : receipt.hedera_topic_id} mono />
             <Field     label="Sequence"         value={isPending ? '—' : `#${receipt.hedera_sequence_number}`} mono />
-            <Field     label="Anchored at"      value={fmtDate(receipt.hedera_consensus_timestamp)} />
+            <Field     label="Anchored at"      value={fmtFull(receipt.hedera_consensus_timestamp)} />
             <CopyField label="Hedera TX ID"     value={receipt.hedera_tx_id} mono span />
           </Section>
         </ForensicOnly>

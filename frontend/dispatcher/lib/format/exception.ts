@@ -5,6 +5,7 @@ import type { TripExceptionDetail } from '@shared/lib/types/exception'
 import { NO_DATA } from './analytics'
 import { fmtAge } from './period'
 import { VEHICLE_TYPE_LABELS } from './vehicle'
+import { fmtSastDateParts, fmtSastDateTime } from '@shared/lib/utils/datetime'
 
 export const VEHICLE_NOT_RECORDED = 'Not recorded'
 
@@ -58,24 +59,14 @@ export function exceptionCalendarDay(iso: string): string | null {
   return `${part('year')}-${part('month')}-${part('day')}`
 }
 
+/** "03 Sep 2026, 12:00 SAST", or the unavailable message for an unreadable timestamp. */
 export function fmtExceptionRaised(iso: string): string {
-  const date = new Date(iso)
-  if (!Number.isFinite(date.getTime())) return RAISED_TIME_UNAVAILABLE
-  return new Intl.DateTimeFormat('en-GB', { timeZone: EXCEPTION_TIMEZONE, day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(date) + ' SAST'
+  return fmtSastDateTime(iso) ?? RAISED_TIME_UNAVAILABLE
 }
 
-const RAISED_PARTS_FORMAT = new Intl.DateTimeFormat('en-GB', { timeZone: EXCEPTION_TIMEZONE, day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
-
-/** The day and the time as separate strings, for cells that stack them. Built from
- *  formatToParts rather than splitting fmtExceptionRaised: the separator between date and
- *  time is locale data ("," in older ICU, " at " in newer), so splitting on it silently
- *  fails in some browsers and leaves the whole timestamp on one line. */
+/** The day and the time as separate strings, for cells that stack them. */
 export function fmtExceptionRaisedParts(iso: string): { day: string; time: string } | null {
-  const date = new Date(iso)
-  if (!Number.isFinite(date.getTime())) return null
-  const parts = RAISED_PARTS_FORMAT.formatToParts(date)
-  const part = (type: Intl.DateTimeFormatPartTypes): string => parts.find(p => p.type === type)?.value ?? ''
-  return { day: `${part('day')} ${part('month')} ${part('year')}`, time: `${part('hour')}:${part('minute')} SAST` }
+  return fmtSastDateParts(iso)
 }
 
 const JUST_NOW = 'just now'
