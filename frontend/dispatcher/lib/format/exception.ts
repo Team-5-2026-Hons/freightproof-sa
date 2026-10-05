@@ -3,6 +3,7 @@
 
 import type { TripExceptionDetail } from '@shared/lib/types/exception'
 import { NO_DATA } from './analytics'
+import { fmtAge } from './period'
 import { VEHICLE_TYPE_LABELS } from './vehicle'
 
 export const VEHICLE_NOT_RECORDED = 'Not recorded'
@@ -10,8 +11,9 @@ export const VEHICLE_NOT_RECORDED = 'Not recorded'
 // Types whose generic title-casing below reads wrong. The en dash is deliberate: it is
 // a relation between two parties ("driver–vehicle"), not a hyphenated word.
 const EXCEPTION_TYPE_LABELS: Partial<Record<string, string>> = {
+  gps_mismatch: 'GPS mismatch',
   driver_vehicle_separation: 'Driver–vehicle separation',
-  // The driver's phone, not the tracker, was outside the expected precinct — kept
+  // The driver's phone, not the tracker, was outside the expected precinct, kept
   // distinct in wording from driver_vehicle_separation (a tracker disagreement) so a
   // dispatcher scanning the queue can't mistake one for the other.
   driver_location_mismatch: 'Driver outside precinct',
@@ -43,4 +45,67 @@ export function fmtBreakdownVehicle(
     exception.vehicle_registration,
   ].filter((part): part is string => part !== null && part !== '')
   return parts.length > 0 ? parts.join(' · ') : NO_DATA
+}
+
+export const EXCEPTION_TIMEZONE = 'Africa/Johannesburg'
+export const RAISED_TIME_UNAVAILABLE = 'Raised time unavailable'
+
+export function exceptionCalendarDay(iso: string): string | null {
+  const date = new Date(iso)
+  if (!Number.isFinite(date.getTime())) return null
+  const parts = new Intl.DateTimeFormat('en', { timeZone: EXCEPTION_TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date)
+  const part = (type: string): string => parts.find(p => p.type === type)?.value ?? ''
+  return `${part('year')}-${part('month')}-${part('day')}`
+}
+
+export function fmtExceptionRaised(iso: string): string {
+  const date = new Date(iso)
+  if (!Number.isFinite(date.getTime())) return RAISED_TIME_UNAVAILABLE
+  return new Intl.DateTimeFormat('en-GB', { timeZone: EXCEPTION_TIMEZONE, day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(date) + ' SAST'
+}
+
+const RAISED_PARTS_FORMAT = new Intl.DateTimeFormat('en-GB', { timeZone: EXCEPTION_TIMEZONE, day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+
+/** The day and the time as separate strings, for cells that stack them. Built from
+ *  formatToParts rather than splitting fmtExceptionRaised: the separator between date and
+ *  time is locale data ("," in older ICU, " at " in newer), so splitting on it silently
+ *  fails in some browsers and leaves the whole timestamp on one line. */
+export function fmtExceptionRaisedParts(iso: string): { day: string; time: string } | null {
+  const date = new Date(iso)
+  if (!Number.isFinite(date.getTime())) return null
+  const parts = RAISED_PARTS_FORMAT.formatToParts(date)
+  const part = (type: Intl.DateTimeFormatPartTypes): string => parts.find(p => p.type === type)?.value ?? ''
+  return { day: `${part('day')} ${part('month')} ${part('year')}`, time: `${part('hour')}:${part('minute')} SAST` }
+}
+
+const JUST_NOW = 'just now'
+
+/** How long ago a claim was taken: "just now", "2 min ago", "3 h ago". Null for a missing
+ *  or unreadable timestamp, so the cell can omit it rather than print "NaN". */
+export function fmtClaimedFor(claimedAtIso: string | null, now: Date): string | null {
+  if (!claimedAtIso || !Number.isFinite(Date.parse(claimedAtIso))) return null
+  const age = fmtAge(claimedAtIso, now)
+  return age === '0 min' ? JUST_NOW : `${age} ago`
+}
+
+/** Stop numbers are recorded values, not facility names or inferred display indexes. */
+export function fmtExceptionPhaseStop(phase: string | null, stop: number | null): string | null {
+  return [phase ? phase.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : null, stop !== null ? `Recorded stop ${stop}` : null].filter(Boolean).join(' · ') || null
+}
+
+export const ROUTE_NOT_RECORDED = 'Route not recorded'
+const UNKNOWN_PLACE = 'Unknown'
+
+/** "Cape Town Depot (Epping)" -> "Cape Town Depot". Lists drop the parenthesised suburb to
+ *  stay on one line; the detail page keeps the full name. */
+export function shortPlaceName(name: string): string {
+  return name.split(/\s*\(/)[0] || name
+}
+
+/** "Johannesburg DC → Durban Depot". One side missing keeps the arrow so it still reads as a
+ *  route; both missing is stated rather than left blank. */
+export function fmtExceptionRoute(origin: string | null, destination: string | null, short = false): string {
+  if (!origin && !destination) return ROUTE_NOT_RECORDED
+  const label = (name: string | null): string => name ? (short ? shortPlaceName(name) : name) : UNKNOWN_PLACE
+  return `${label(origin)} → ${label(destination)}`
 }

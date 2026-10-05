@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { VehicleId } from '@shared/lib/types/vehicle'
-import { fmtBreakdownVehicle, fmtExceptionType } from './exception'
+import { fmtBreakdownVehicle, fmtClaimedFor, fmtExceptionRaisedParts, fmtExceptionType } from './exception'
 
 describe('fmtExceptionType', () => {
   it('title-cases every word of a snake_case enum', () => {
@@ -66,5 +66,37 @@ describe('road exception labels', () => {
     ['tracker_silent', 'Tracker silent'],
   ])('labels %s', (type, label) => {
     expect(fmtExceptionType(type)).toBe(label)
+  })
+})
+
+describe('fmtExceptionRaisedParts', () => {
+  it('returns the day and the time as separate strings, never one joined string', () => {
+    const parts = fmtExceptionRaisedParts('2026-10-01T10:50:00Z')
+    expect(parts).toEqual({ day: '01 Oct 2026', time: '12:50 SAST' })
+    // Guards the regression: a locale that joins with " at " must not leak into either part.
+    expect(parts?.day).not.toMatch(/ at /)
+    expect(parts?.time).not.toMatch(/ at /)
+  })
+  it('uses the South African clock at the day boundary', () => {
+    expect(fmtExceptionRaisedParts('2026-10-01T21:59:00Z')?.day).toBe('01 Oct 2026')
+    expect(fmtExceptionRaisedParts('2026-10-01T22:00:00Z')?.day).toBe('02 Oct 2026')
+  })
+  it('is null for an unreadable timestamp', () => {
+    expect(fmtExceptionRaisedParts('')).toBeNull()
+  })
+})
+
+describe('fmtClaimedFor', () => {
+  const NOW = new Date('2026-10-05T12:00:00Z')
+  it('says just now inside the first minute', () => {
+    expect(fmtClaimedFor('2026-10-05T11:59:40Z', NOW)).toBe('just now')
+  })
+  it('reads minutes and hours', () => {
+    expect(fmtClaimedFor('2026-10-05T11:58:00Z', NOW)).toBe('2 min ago')
+    expect(fmtClaimedFor('2026-10-05T09:00:00Z', NOW)).toBe('3 h ago')
+  })
+  it('is null when there is no usable claim time', () => {
+    expect(fmtClaimedFor(null, NOW)).toBeNull()
+    expect(fmtClaimedFor('garbage', NOW)).toBeNull()
   })
 })
