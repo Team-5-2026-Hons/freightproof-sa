@@ -24,3 +24,12 @@ export function fmtManifestCargo(totals: PPManifestTotals, { withWeight = true }
   const counts = `${totals.waybills} waybills · ${totals.parcels} parcels`
   return withWeight ? `${counts} · ${totals.weight_kg} kg` : counts
 }
+
+/** The client half of a manifest's display label ("CGY Logistics" from "CGY Logistics · JNB 69"),
+ *  for a cell that stacks it under the key. Null when the ref is absent or its label does not end
+ *  in the key, so a cell shows what it can prove rather than a guess at the client. */
+export function manifestClient(ref: PPManifestRef | null): string | null {
+  if (!ref) return null
+  const suffix = ` · ${manifestKey(ref, null)}`
+  return ref.display.endsWith(suffix) ? ref.display.slice(0, -suffix.length) : null
+}

@@ -1,25 +1,29 @@
 'use client'
 
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { AlertCircle } from 'lucide-react'
 import { TopBar }         from '@/components/ui/TopBar'
 import { SecHead }        from '@/components/ui/SecHead'
 import { Button }         from '@/components/ui/Button'
-import { Spinner }        from '@/components/ui/Spinner'
 import { Ic }             from '@/components/ui/Ic'
 import { EmptyState }     from '@/components/ui/EmptyState'
-import { ChecklistRow }   from '@/components/domain/ChecklistRow'
-import type { ColWidths } from '@/components/domain/ChecklistRow'
+import { Table }          from '@/components/ui/Table'
+import { SearchField }    from '@/components/ui/SearchField'
+import { ListToolbar }    from '@/components/ui/ListToolbar'
+import { buildTripColumns, tripRowClassName } from '@/components/trips/tripColumns'
 import { useTrips }       from '@/lib/hooks/useTrips'
 import { putTripSeeds }   from '@/lib/trips/tripSeed'
 import { matchesTripSearch } from '@/lib/trips/search'
+import { defaultTripSortDirection, sortTrips, TRIP_SORT_KEYS } from '@/lib/trips/sort'
+import { useTableSort } from '@/lib/hooks/useTableSort'
 import { useAuth }        from '@/lib/hooks/useAuth'
 import { usePrecincts }   from '@/lib/hooks/usePrecincts'
 import { useToast }       from '@/lib/hooks/useToast'
 import { ROUTES }         from '@/lib/constants/routes'
 import { COPY }           from '@shared/lib/constants/copy'
-import type { TripStatus } from '@shared/lib/types/trip'
+import { fmtSastDateParts } from '@shared/lib/utils/datetime'
+import type { TripStatus, TripSummary } from '@shared/lib/types/trip'
 
 // Coarse: `active` is every trip between creation and
 // closure. The old list enumerated six per-step statuses from the pre-phase model
@@ -30,70 +34,18 @@ import type { TripStatus } from '@shared/lib/types/trip'
 // dashboard the way the pre-phase statuses did.
 const ACTIVE_STATUSES: TripStatus[] = ['created', 'active', 'exception_hold']
 
-type ColId = keyof ColWidths
-
-const COL_HEADERS: { id: ColId; label: string }[] = [
-  { id: 'createdAt', label: 'CREATED'        },
-  { id: 'tripId',    label: 'TRIP ID'        },
-  { id: 'manifest',  label: 'MANIFEST'       },
-  { id: 'driver',    label: 'DRIVER / HORSE' },
-  { id: 'route',     label: 'ROUTE'          },
-  { id: 'progress',  label: 'PROGRESS'       },
-  { id: 'status',    label: 'STATUS'         },
-]
-
-const INITIAL_COL_WIDTHS: ColWidths = {
-  createdAt: 60,
-  tripId:    242,
-  manifest:  155,
-  driver:    150,
-  route:     130,
-  progress:  300,
-  status:    120,
-}
-
-const MIN_COL_W = 80
-
-function formatDate(d: Date): string {
-  return d.toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' })
-}
+// Names the stored column widths; the Dashboard's must not share History's.
+const DASHBOARD_TABLE_ID = 'dashboard'
+const CREATED_DATE_COLUMN = { label: 'Created', pick: (trip: TripSummary): string => trip.created_at }
 
 export default function ActiveTripsPage() {
   const router = useRouter()
   const { user } = useAuth()
   const { notify } = useToast()
   const [search, setSearch] = useState('')
-  const [colWidths, setColWidths] = useState<ColWidths>(INITIAL_COL_WIDTHS)
-  const resizeRef = useRef<{ id: ColId; startX: number; startW: number; startScale: number } | null>(null)
-
-  // Columns stay fixed-width (and manually resizable) up to this total; past it we
-  // stretch every column proportionally to fill the extra space on wide monitors
-  // instead of leaving it blank to the right of the table.
-  const scrollAreaRef = useRef<HTMLDivElement>(null)
-  const [containerWidth, setContainerWidth] = useState(0)
-
-  useEffect(() => {
-    const el = scrollAreaRef.current
-    if (!el) return
-    const observer = new ResizeObserver(entries => setContainerWidth(entries[0].contentRect.width))
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
-
-  const totalColWidth = useMemo(
-    () => Object.values(colWidths).reduce((sum, w) => sum + w, 0),
-    [colWidths],
-  )
-
-  const colScale = containerWidth > totalColWidth ? containerWidth / totalColWidth : 1
-
-  // Rendered widths only — resize-drag math above always reads/writes the raw
-  // (unscaled) colWidths, so dragging a handle behaves identically at any scale.
-  const scaledColWidths = useMemo(() => {
-    if (colScale === 1) return colWidths
-    const entries = Object.entries(colWidths) as [ColId, number][]
-    return Object.fromEntries(entries.map(([id, w]) => [id, w * colScale])) as unknown as ColWidths
-  }, [colWidths, colScale])
+  // No initial sort: until a header is clicked the list keeps the order the API sends, so the page
+  // never reorders itself. Local state, because this page has no URL state to join.
+  const { sort, tableSort, onSort } = useTableSort({ keys: TRIP_SORT_KEYS, firstDir: defaultTripSortDirection })
 
   // Single fetch for all trips — active and closed are derived client-side
   const { trips: allFetchedTrips, isLoading: tripsLoading, error: tripsError, refetch: refetchTrips } = useTrips()
@@ -125,33 +77,20 @@ export default function ActiveTripsPage() {
     [allFetchedTrips],
   )
 
-  const filteredTrips = useMemo(
-    () => allTrips.filter(t => matchesTripSearch(t, search)),
-    [allTrips, search],
+  const filteredTrips = useMemo(() => {
+    const matching = allTrips.filter(t => matchesTripSearch(t, search))
+    return sort ? sortTrips(matching, sort, precincts) : matching
+  }, [allTrips, search, sort, precincts])
+
+  // Built per render: route names depend on the loaded precincts.
+  const columns = useMemo(
+    () => buildTripColumns<TripSummary>({ precincts, date: CREATED_DATE_COLUMN, showProgress: true, sortable: true }),
+    [precincts],
   )
 
-  function startResize(id: ColId, e: React.MouseEvent) {
-    e.preventDefault()
-    resizeRef.current = { id, startX: e.clientX, startW: colWidths[id], startScale: colScale }
-
-    function onMove(ev: MouseEvent) {
-      const r = resizeRef.current
-      if (!r) return
-      // Divide the mouse delta by the scale in effect at drag start so the column
-      // edge tracks the cursor 1:1 even when columns are stretched to fill a wide screen.
-      const rawDelta = (ev.clientX - r.startX) / r.startScale
-      setColWidths(p => ({ ...p, [r.id]: Math.max(MIN_COL_W, r.startW + rawDelta) }))
-    }
-
-    function onUp() {
-      resizeRef.current = null
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-    }
-
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-  }
+  // Skeleton rows only on the first load: a live refetch swaps rows in place.
+  const initialLoad = tripsLoading && allFetchedTrips.length === 0
+  const loadFailed = !!tripsError && allFetchedTrips.length === 0
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -163,7 +102,7 @@ export default function ActiveTripsPage() {
             Admin
           </span>
         ) : undefined}
-        sub={`${formatDate(new Date())} · Load Factor Transport`}
+        sub={`${fmtSastDateParts(new Date().toISOString())?.day ?? ''} · Load Factor Transport`}
       >
         <Button
           size="sm"
@@ -176,19 +115,9 @@ export default function ActiveTripsPage() {
 
       {/* No stat strip: fleet figures live on the Analytics page. */}
 
-      {/* Search */}
-      <div className="px-6 py-3 shrink-0">
-        <div className="relative">
-          <Ic n="search" s={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-outline-v" />
-          <input
-            type="text"
-            placeholder="Search trip ID, driver, or manifest…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="w-full pl-8 pr-4 py-2 text-[13px] bg-surf-low rounded-md border border-outline-v/30 text-on-surf placeholder:text-on-surf-v/60 outline-none focus:border-sec focus:bg-surf-lowest transition-colors"
-          />
-        </div>
-      </div>
+      <ListToolbar>
+        <SearchField value={search} onChange={setSearch} placeholder="Search trip ID, driver, or manifest…" ariaLabel="Search trip ID, driver, or manifest" />
+      </ListToolbar>
 
       {/* Trip list card */}
       <div className="flex-1 overflow-hidden mx-6 mb-6 bg-surf-lowest rounded-lg shadow-level-3 flex flex-col">
@@ -198,79 +127,49 @@ export default function ActiveTripsPage() {
           onAction={() => router.push(ROUTES.tripNew)}
         />
 
-        {/* Table scroll area */}
-        <div ref={scrollAreaRef} className="flex-1 overflow-auto">
-          {tripsLoading ? (
-            <div className="flex items-center justify-center py-16">
-              <Spinner size="lg" />
+        {loadFailed ? (
+          <div className="flex flex-col items-center justify-center gap-4 py-16 px-6 text-center">
+            <AlertCircle className="w-10 h-10 text-error" />
+            <div className="flex flex-col gap-1">
+              <p className="text-sm font-bold text-surface-on">Failed to load trips</p>
+              <p className="text-xs text-surface-on-variant">{tripsError}</p>
             </div>
-          ) : tripsError ? (
-            <div className="flex flex-col items-center justify-center gap-4 py-16 px-6 text-center">
-              <AlertCircle className="w-10 h-10 text-error" />
-              <div className="flex flex-col gap-1">
-                <p className="text-sm font-bold text-surface-on">Failed to load trips</p>
-                <p className="text-xs text-surface-on-variant">{tripsError}</p>
-              </div>
-              <Button size="sm" variant="ghost" onClick={refetchTrips}>
-                Try again
-              </Button>
-            </div>
-          ) : (
-            <div style={{ minWidth: totalColWidth }}>
-
-              {/* Sticky column header */}
-              <div className="sticky top-0 flex px-6 py-[7px] bg-surf-low border-b border-outline-v/10 divide-x divide-outline/30 select-none">
-                {COL_HEADERS.map(col => {
-                  // Symmetric padding (rather than a flex gap) keeps the divider
-                  // line centred between columns instead of flush against text.
-                  const padCls = col.id === 'createdAt' ? 'pr-[6px]' : col.id === 'status' ? 'pl-[6px]' : 'px-[6px]'
-                  return (
-                    <div
-                      key={col.id}
-                      style={{ width: scaledColWidths[col.id], flexShrink: 0 }}
-                      className={`relative group ${padCls} text-[10px] font-[700] tracking-[0.1em] uppercase text-on-surf-v`}
-                    >
-                      {col.label}
-                      {/* Resize handle — hover to reveal, drag to resize */}
-                      <div
-                        onMouseDown={e => startResize(col.id, e)}
-                        className="absolute right-0 top-0 h-full w-4 cursor-col-resize flex items-center justify-center"
-                      >
-                        <div className="w-[2px] h-3 rounded-full bg-outline-v/50 opacity-0 group-hover:opacity-100 transition-opacity" />
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-
-              {/* Rows */}
-              <div className="divide-y divide-outline-v/10">
-                {allTrips.length === 0 ? (
-                  <div className="p-6">
-                    <EmptyState
-                      icon={<Ic n="truck" s={32} className="text-on-surf-v" />}
-                      title={COPY.emptyState.activeTrips.title}
-                      body={COPY.emptyState.activeTrips.body}
-                    />
-                  </div>
-                ) : filteredTrips.length === 0 ? (
-                  <div className="p-6">
-                    <EmptyState
-                      icon={<Ic n="search" s={32} className="text-on-surf-v" />}
-                      title={COPY.emptyState.noResults.title}
-                      body={COPY.emptyState.noResults.body}
-                    />
-                  </div>
-                ) : (
-                  filteredTrips.map(trip => (
-                    <ChecklistRow key={trip.id} trip={trip} colWidths={scaledColWidths} precincts={precincts} />
-                  ))
-                )}
-              </div>
-
-            </div>
-          )}
-        </div>
+            <Button size="sm" variant="ghost" onClick={refetchTrips}>
+              Try again
+            </Button>
+          </div>
+        ) : !initialLoad && allTrips.length === 0 ? (
+          <div className="p-6">
+            <EmptyState
+              icon={<Ic n="truck" s={32} className="text-on-surf-v" />}
+              title={COPY.emptyState.activeTrips.title}
+              body={COPY.emptyState.activeTrips.body}
+            />
+          </div>
+        ) : !initialLoad && filteredTrips.length === 0 ? (
+          <div className="p-6">
+            <EmptyState
+              icon={<Ic n="search" s={32} className="text-on-surf-v" />}
+              title={COPY.emptyState.noResults.title}
+              body={COPY.emptyState.noResults.body}
+            />
+          </div>
+        ) : (
+          <Table<TripSummary>
+            tableId={DASHBOARD_TABLE_ID}
+            caption="Active trips"
+            isLoading={initialLoad}
+            loadingLabel="Loading active trips"
+            columns={columns}
+            rows={filteredTrips}
+            getRowKey={trip => trip.id}
+            rowClassName={tripRowClassName}
+            sort={tableSort}
+            onSort={onSort}
+            density="compact"
+            className="min-h-0 flex-1"
+          />
+        )}
       </div>
     </div>
   )

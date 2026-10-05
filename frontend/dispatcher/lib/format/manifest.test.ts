@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fmtManifestCargo, manifestKey, manifestLabel } from './manifest'
+import { fmtManifestCargo, manifestClient, manifestKey, manifestLabel } from './manifest'
 
 const REF = { issuer_account: 'MOCK01', origin_hub: 'JNB', number: 69, display: 'CGY Logistics · JNB 69' }
 
@@ -37,5 +37,20 @@ describe('manifestKey', () => {
 
   it('falls back to the label for a trip without a manifest', () => {
     expect(manifestKey(null, 'empty_leg')).toBe('Empty leg')
+  })
+})
+
+describe('manifestClient', () => {
+  it('returns the client half of the display label', () => {
+    expect(manifestClient(REF)).toBe('CGY Logistics')
+  })
+
+  it('keeps a client name that itself contains the separator', () => {
+    expect(manifestClient({ ...REF, display: 'Smith · Sons Freight · JNB 69' })).toBe('Smith · Sons Freight')
+  })
+
+  it('is null without a manifest, or when the label does not end in the key', () => {
+    expect(manifestClient(null)).toBeNull()
+    expect(manifestClient({ ...REF, display: 'Something else entirely' })).toBeNull()
   })
 })
