@@ -89,6 +89,11 @@ function baseException(overrides: Partial<TripExceptionDetail> = {}): TripExcept
     trip_id: '22222222-2222-2222-2222-222222222222',
     trip_reference: 'FP-2026-0001',
     trip_status: 'active',
+    origin_name: 'Johannesburg DC',
+    destination_name: 'Durban Depot',
+    driver_name: 'Thabo Mokoena',
+    horse_registration: 'HRS 001 GP',
+    trailer_registrations: ['TRL 101 GP'],
     phase_label: null,
     stop_label: null,
     claimed_by_user_id: null,
@@ -171,9 +176,9 @@ function renderPage() {
 
 const NOTE = 'Phoned the depot; the seal was cut during a lawful SARS inspection.'
 
-const noteField    = () => screen.getByLabelText('Review note')
-const outcomeField = () => screen.getByLabelText('Outcome')
-const contactField = () => screen.getByLabelText('Contact method')
+const noteField    = () => screen.getByLabelText('Review note (required)')
+const outcomeField = () => screen.getByLabelText('Outcome (required)')
+const contactField = () => screen.getByLabelText('Contact method (optional)')
 const submitButton = () => screen.getByRole('button', { name: 'Submit review' })
 
 function fillValidForm() {
@@ -216,7 +221,7 @@ describe('Exception detail — loading and error states', () => {
     renderPage()
 
     const backButton = screen.getByRole('button', { name: 'Back' })
-    const title = screen.getByText('Seal Mismatch')
+    const title = screen.getAllByText('Seal Mismatch')[0]
 
     // DOCUMENT_POSITION_FOLLOWING: the title comes after Back in the header row, which is
     // what puts Back on the left rather than in TopBar's right-hand action slot.
@@ -232,13 +237,33 @@ describe('Exception detail — loading and error states', () => {
     expect(push).toHaveBeenCalledWith('/exceptions')
   })
 
+  it('shows the trip route, driver, truck and trailers above the evidence', () => {
+    mockDetail(baseException())
+    renderPage()
+
+    const context = screen.getByRole('region', { name: 'Trip context' })
+    expect(context).toHaveTextContent('Johannesburg DC → Durban Depot')
+    expect(context).toHaveTextContent('Thabo Mokoena')
+    expect(context).toHaveTextContent('HRS 001 GP')
+    expect(context).toHaveTextContent('TRL 101 GP')
+  })
+
+  it('states when no trailers or crew were recorded instead of leaving blanks', () => {
+    mockDetail(baseException({ origin_name: null, destination_name: null, driver_name: null, horse_registration: null, trailer_registrations: [] }))
+    renderPage()
+
+    const context = screen.getByRole('region', { name: 'Trip context' })
+    expect(context).toHaveTextContent('Route not recorded')
+    expect(context).toHaveTextContent('None attached')
+  })
+
   it('does not tear down a loaded record when a background refresh fails', () => {
     // useExceptionDetail refetches on realtime events for this trip; a failed background
     // refresh must not replace a half-typed review with an error page.
     mockDetail(baseException(), { error: 'Network error' })
     renderPage()
 
-    expect(screen.getByLabelText('Review note')).toBeInTheDocument()
+    expect(screen.getByLabelText('Review note (required)')).toBeInTheDocument()
   })
 })
 
@@ -277,7 +302,7 @@ describe('Exception detail — phase/stop context', () => {
     mockDetail(baseException({ phase_label: 'In Transit', stop_label: 2 }))
     renderPage()
 
-    expect(screen.getByText('In Transit · Stop 2')).toBeInTheDocument()
+    expect(screen.getByText(/In Transit · Recorded stop 2/)).toBeInTheDocument()
   })
 
   it('degrades cleanly with no literal "null" or dangling separator when phase/stop are absent', () => {
@@ -408,7 +433,7 @@ describe('Exception detail — recorded vs needs_review visibility', () => {
     mockDetail(baseException({ review_status: 'needs_review' }))
     renderPage()
 
-    expect(screen.getByLabelText('Review note')).toBeInTheDocument()
+    expect(screen.getByLabelText('Review note (required)')).toBeInTheDocument()
   })
 
   it('shows a secondary "Add review" action for a recorded exception, form hidden until clicked', () => {
@@ -420,7 +445,7 @@ describe('Exception detail — recorded vs needs_review visibility', () => {
     expect(addReview).toBeInTheDocument()
 
     fireEvent.click(addReview)
-    expect(screen.getByLabelText('Review note')).toBeInTheDocument()
+    expect(screen.getByLabelText('Review note (required)')).toBeInTheDocument()
   })
 })
 
@@ -704,5 +729,20 @@ describe('Exception detail — claim, release and take over', () => {
     expect(screen.queryByText(/Reviewed by Ben/)).not.toBeInTheDocument()
     // Reviewer and claimer are the same person, so no separate claim line.
     expect(screen.queryByText(/Claimed by/)).not.toBeInTheDocument()
+  })
+})
+
+
+describe('assessment redesign', () => {
+  it('lets the dispatcher cancel leaving an unsent assessment', () => {
+    mockDetail(baseException())
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    renderPage()
+    fireEvent.change(screen.getByLabelText(/Review note/), { target: { value: 'Unsent assessment' } })
+    fireEvent.click(screen.getByRole('button', { name: /View trip/ }))
+    expect(confirm).toHaveBeenCalledWith('Leave without submitting this assessment?')
+    expect(push).not.toHaveBeenCalled()
+    expect(screen.getByLabelText(/Review note/)).toHaveValue('Unsent assessment')
+    confirm.mockRestore()
   })
 })
