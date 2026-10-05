@@ -20,6 +20,7 @@ import { useExceptionQueue } from '@/lib/hooks/useExceptions'
 import { useExceptionHistory } from '@/lib/hooks/useExceptionHistory'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useNow } from '@/lib/hooks/useNow'
+import { toggleSort } from '@/lib/sort/sort-rows'
 import { useClaimChanges } from '@/lib/hooks/useClaimChanges'
 import { exceptionCalendarDay, fmtExceptionRaised } from '@/lib/format/exception'
 import { reviewState } from '@/lib/format/review-state'
@@ -106,8 +107,7 @@ export default function ExceptionsPage() {
   function clearFilters(): void { setRawSearch(''); update({ q: '', severity: '', fromDate: undefined, toDate: undefined }, true) }
   function selectTab(next: Tab): void { update({ tab: next }) }
   function sortBy(columnId: string): void {
-    const key = columnId as ExceptionSortKey
-    update({ sort: state.sort.key === key ? { key, dir: state.sort.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: defaultDirection(key) } })
+    update({ sort: toggleSort(state.sort, columnId as ExceptionSortKey, defaultDirection) })
   }
 
   // The picker always holds a concrete range; an untouched one is stored as "no date filter" so

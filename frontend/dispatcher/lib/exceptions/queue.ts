@@ -1,5 +1,6 @@
 import type { TripExceptionListItem } from '@shared/lib/types/exception'
 import { exceptionCalendarDay, fmtExceptionType } from '@/lib/format/exception'
+import { sortRows, type SortValue } from '@/lib/sort/sort-rows'
 
 export interface QueueFilters { q?: string; severity?: TripExceptionListItem['severity'] | ''; fromDate?: string; toDate?: string }
 
@@ -24,28 +25,22 @@ export const EXCEPTION_SORT_KEYS: readonly ExceptionSortKey[] = ['incident', 'tr
 const SEVERITY_RANK: Record<TripExceptionListItem['severity'], number> = { critical: 0, warning: 1, info: 2 }
 
 /** A value the column can order by; null means "no data" and always sorts last. */
-function sortValue(item: TripExceptionListItem, key: ExceptionSortKey): string | number | null {
+function sortValue(item: TripExceptionListItem, key: ExceptionSortKey): SortValue {
   switch (key) {
     // Severity first, then the title the dispatcher reads, so equal severities group by type.
     case 'incident': return `${SEVERITY_RANK[item.severity]} ${fmtExceptionType(item.exception_type)}`
     case 'trip': return item.trip_reference
     case 'crew': return item.driver_name
-    case 'raised': { const t = Date.parse(item.created_at); return Number.isFinite(t) ? t : null }
+    case 'raised': return Date.parse(item.created_at)
     case 'status': return item.claimed_by_user_id === null ? '0' : `1 ${item.claimed_by_name ?? ''}`
   }
 }
 
-/** Sorted copy of the complete tab set. Ties fall back to the chronological order, so equal
- *  values never shuffle between refetches; "no data" is last in both directions because
- *  it is neither the smallest nor the largest value. */
+/** Sorted copy of the complete tab set. The input is put in the queue's own order first (newest
+ *  first, then id) and the sort is stable, so equal values keep that order and never shuffle between
+ *  refetches. "No data" is last in both directions: it is neither the smallest nor the largest value. */
 export function sortQueue(items: readonly TripExceptionListItem[], sort: ExceptionSort): TripExceptionListItem[] {
-  const sign = sort.dir === 'asc' ? 1 : -1
-  return sortQueueChronologically(items).sort((a, b) => {
-    const left = sortValue(a, sort.key), right = sortValue(b, sort.key)
-    if (left === null || right === null) return left === right ? 0 : left === null ? 1 : -1
-    if (typeof left === 'number' && typeof right === 'number') return (left - right) * sign
-    return String(left).localeCompare(String(right)) * sign
-  })
+  return sortRows(sortQueueChronologically(items), sort, sortValue)
 }
 
 /** Filters apply to the complete tab set, in its existing order; %, _ are literal. */
