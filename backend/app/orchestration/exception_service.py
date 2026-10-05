@@ -3,7 +3,8 @@
 import asyncio
 import logging
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time, timedelta, timezone
 from decimal import Decimal
 
@@ -32,6 +33,8 @@ from app.db.models.enums import (
     VehicleType,
 )
 from app.db.models.evidence import EvidenceArtifact
+from app.db.models.organisations import Precinct
+from app.db.models.people import Driver
 from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Trip, TripStop, TripTrailer
 from app.db.models.transit import TripException
@@ -772,9 +775,75 @@ async def review_exceptions_batch(
     )
 
 
+@dataclass(frozen=True)
+class _TripContext:
+    """Route and crew labels for one trip, shown on exception rows."""
+
+    origin_name: str | None = None
+    destination_name: str | None = None
+    driver_name: str | None = None
+    horse_registration: str | None = None
+    trailer_registrations: list[str] = field(default_factory=list)
+
+
+async def _load_trip_contexts(
+    db: AsyncSession, trips: Iterable[Trip],
+) -> dict[uuid.UUID, _TripContext]:
+    """Route/driver/truck/trailer labels for a set of trips, in three queries total.
+
+    Batched per page rather than joined into _exception_read_query: a trip can have many
+    trailers, which would multiply exception rows, and the 4-tuple that query returns is
+    unpacked by every reader in this module. The trips are already organisation-scoped
+    by the caller's join, and driver/vehicle/precinct are reached only through that
+    trip's own foreign keys, so nothing here widens what a dispatcher can see.
+    """
+    unique = {trip.id: trip for trip in trips}
+    if not unique:
+        return {}
+
+    precinct_ids = {
+        pid for trip in unique.values()
+        for pid in (trip.origin_precinct_id, trip.destination_precinct_id) if pid is not None
+    }
+    precinct_names: dict[uuid.UUID, str] = {}
+    if precinct_ids:
+        precinct_names = dict((await db.execute(
+            select(Precinct.id, Precinct.name).where(Precinct.id.in_(precinct_ids))
+        )).all())
+
+    driver_names = dict((await db.execute(
+        select(Driver.id, Driver.full_name).where(Driver.id.in_({t.driver_id for t in unique.values()}))
+    )).all())
+
+    trailer_rows = (await db.execute(
+        select(TripTrailer.trip_id, Vehicle.registration)
+        .join(Vehicle, Vehicle.id == TripTrailer.trailer_id)
+        .where(TripTrailer.trip_id.in_(unique))
+        .order_by(Vehicle.registration)
+    )).all()
+    trailers: dict[uuid.UUID, list[str]] = {}
+    for trip_id, registration in trailer_rows:
+        trailers.setdefault(trip_id, []).append(registration)
+
+    horse_regs = dict((await db.execute(
+        select(Vehicle.id, Vehicle.registration).where(Vehicle.id.in_({t.horse_id for t in unique.values()}))
+    )).all())
+
+    return {
+        trip.id: _TripContext(
+            origin_name=precinct_names.get(trip.origin_precinct_id) if trip.origin_precinct_id else None,
+            destination_name=precinct_names.get(trip.destination_precinct_id) if trip.destination_precinct_id else None,
+            driver_name=driver_names.get(trip.driver_id),
+            horse_registration=horse_regs.get(trip.horse_id),
+            trailer_registrations=trailers.get(trip.id, []),
+        )
+        for trip in unique.values()
+    }
+
+
 def _to_list_item(
     exc: TripException, trip: Trip, phase_type: str | None, stop_sequence: int | None,
-    names: Mapping[uuid.UUID, str],
+    names: Mapping[uuid.UUID, str], context: _TripContext | None = None,
 ) -> TripExceptionListItem:
     """Build the compact list row from one (exception, trip, phase_type, stop_sequence)
     tuple — the shape every 4-column join in this module selects.
@@ -787,6 +856,7 @@ def _to_list_item(
     coerces them into their declared enum types on construction; `.value`'ing an
     already-plain string raises AttributeError.
     """
+    context = context or _TripContext()
     return TripExceptionListItem(
         id=exc.id,
         exception_type=exc.exception_type,
@@ -798,6 +868,11 @@ def _to_list_item(
         trip_id=exc.trip_id,
         trip_reference=trip.trip_reference,
         trip_status=trip.status,
+        origin_name=context.origin_name,
+        destination_name=context.destination_name,
+        driver_name=context.driver_name,
+        horse_registration=context.horse_registration,
+        trailer_registrations=context.trailer_registrations,
         phase_label=phase_type,
         stop_label=stop_sequence,
         # This is the capture-time verdict stored with the driver report, not a
@@ -860,8 +935,9 @@ async def list_review_queue(
         db, organization_id=organization_id,
         user_ids=[uid for exc, *_ in rows for uid in (exc.claimed_by_user_id, exc.reviewed_by_user_id)],
     )
+    contexts = await _load_trip_contexts(db, (row[1] for row in rows))
     return [
-        _to_list_item(exc, trip, phase_type, stop_sequence, names)
+        _to_list_item(exc, trip, phase_type, stop_sequence, names, contexts.get(trip.id))
         for exc, trip, phase_type, stop_sequence in rows
     ]
 
@@ -957,8 +1033,9 @@ async def list_exception_history(
         db, organization_id=organization_id,
         user_ids=[uid for exc, *_ in page_rows for uid in (exc.claimed_by_user_id, exc.reviewed_by_user_id)],
     )
+    contexts = await _load_trip_contexts(db, (row[1] for row in page_rows))
     items = [
-        _to_list_item(exc, trip, phase_type, stop_sequence, names)
+        _to_list_item(exc, trip, phase_type, stop_sequence, names, contexts.get(trip.id))
         for exc, trip, phase_type, stop_sequence in page_rows
     ]
 
@@ -1019,7 +1096,8 @@ async def get_exception_detail(
         db, organization_id=organization_id,
         user_ids=[exc.claimed_by_user_id, exc.reviewed_by_user_id],
     )
-    list_item = _to_list_item(exc, trip, phase_type, stop_sequence, names)
+    context = (await _load_trip_contexts(db, [trip])).get(trip.id)
+    list_item = _to_list_item(exc, trip, phase_type, stop_sequence, names, context)
     return TripExceptionDetail(
         **list_item.model_dump(),
         gps_lat=exc.gps_lat,

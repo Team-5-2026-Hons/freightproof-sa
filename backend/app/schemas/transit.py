@@ -333,6 +333,15 @@ class TripExceptionListItem(BaseModel):
     trip_id: UUID
     trip_reference: str
     trip_status: TripStatus
+    # Trip crew and route, so a dispatcher can tell which truck/driver/lane an exception
+    # belongs to without opening the trip. Names and registrations only, no contact details.
+    # Origin/destination are None for a trip whose precinct was never derived; trailers
+    # is empty for a trip with none attached.
+    origin_name: Optional[str] = None
+    destination_name: Optional[str] = None
+    driver_name: Optional[str] = None
+    horse_registration: Optional[str] = None
+    trailer_registrations: list[str] = Field(default_factory=list)
 
     # PhaseEvent.phase_type / TripStop.sequence for the phase this exception is scoped
     # to — None for a trip-level exception with no phase context. Mirrors the existing

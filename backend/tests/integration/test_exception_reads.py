@@ -33,7 +33,7 @@ from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.phases import PhaseEvent
 from app.db.models.transit import TripException
-from app.db.models.trips import Trip, TripStop
+from app.db.models.trips import Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
 from app.main import app
@@ -750,3 +750,55 @@ async def test_old_undifferentiated_list_route_is_gone(client: AsyncClient, db_s
     res = await client.get("/api/v1/exceptions", headers=_headers(seed))
 
     assert res.status_code == 404
+
+
+# ── trip route / crew context ────────────────────────────────────────────────
+
+
+async def _attach_trailer(db_session, seed: dict, trip: Trip, *, registration: str) -> None:
+    trailer = Vehicle(
+        id=uuid.uuid4(), organization_id=seed["org"].id, vehicle_type=VehicleType.TRAILER,
+        registration=registration, pulsit_device_id=f"PUL-{registration}",
+    )
+    db_session.add(trailer)
+    await db_session.flush()
+    db_session.add(TripTrailer(
+        trip_id=trip.id, trailer_id=trailer.id, pulsit_device_id_snapshot=trailer.pulsit_device_id,
+    ))
+    await db_session.flush()
+
+
+async def test_queue_and_detail_rows_carry_route_driver_and_vehicles(client: AsyncClient, db_session):
+    seed = await _seed_org(db_session, tag="ctx")
+    trip = await _make_trip(db_session, seed, tag="ctx")
+    await _attach_trailer(db_session, seed, trip, registration="TRL-B")
+    await _attach_trailer(db_session, seed, trip, registration="TRL-A")
+    exc = await _make_exception(
+        db_session, trip, tag="ctx", review_status=ExceptionReviewStatus.NEEDS_REVIEW,
+    )
+
+    queue = await client.get(_REVIEW_QUEUE, headers=_headers(seed))
+    detail = await client.get(_detail_url(exc.id), headers=_headers(seed))
+
+    for row in (next(r for r in queue.json() if r["id"] == str(exc.id)), detail.json()):
+        assert row["origin_name"] == seed["origin"].name
+        assert row["destination_name"] == seed["dest"].name
+        assert row["driver_name"] == seed["driver"].full_name
+        assert row["horse_registration"] == seed["horse"].registration
+        assert row["trailer_registrations"] == ["TRL-A", "TRL-B"]
+
+
+async def test_history_rows_carry_context_and_empty_trailers_when_none_attached(
+    client: AsyncClient, db_session,
+):
+    seed = await _seed_org(db_session, tag="ctxh")
+    trip = await _make_trip(db_session, seed, tag="ctxh", origin_precinct_id=None)
+    exc = await _make_exception(db_session, trip, tag="ctxh", review_status=ExceptionReviewStatus.REVIEWED)
+
+    res = await client.get(_HISTORY, headers=_headers(seed))
+
+    row = next(r for r in res.json()["items"] if r["id"] == str(exc.id))
+    assert row["origin_name"] is None
+    assert row["destination_name"] == seed["dest"].name
+    assert row["driver_name"] == seed["driver"].full_name
+    assert row["trailer_registrations"] == []
