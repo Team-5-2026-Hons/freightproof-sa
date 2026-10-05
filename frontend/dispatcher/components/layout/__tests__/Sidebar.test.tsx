@@ -62,7 +62,7 @@ describe('Sidebar role-based navigation', () => {
     renderSidebar()
 
     expect(screen.queryByRole('link', { name: 'Receipt Lookup' })).not.toBeInTheDocument()
-    expect(screen.queryByText('BLOCKCHAIN')).not.toBeInTheDocument()
+    expect(screen.queryByText('Blockchain')).not.toBeInTheDocument()
   })
 
   it('shows the receipt lookup to admin dispatchers', () => {
@@ -71,7 +71,76 @@ describe('Sidebar role-based navigation', () => {
 
     expect(screen.getByRole('link', { name: 'Receipt Lookup' }))
       .toHaveAttribute('href', ROUTES.blockchainReceipts)
-    expect(screen.getByText('BLOCKCHAIN')).toBeInTheDocument()
+    expect(screen.getByText('Blockchain')).toBeInTheDocument()
+  })
+})
+
+describe('Sidebar create-trip action', () => {
+  it('renders create trip once, outside the navigation landmark', () => {
+    renderSidebar()
+
+    const links = screen.getAllByRole('link', { name: 'Create Trip' })
+    expect(links).toHaveLength(1)
+    expect(links[0]).toHaveAttribute('href', ROUTES.tripNew)
+    expect(screen.getByRole('navigation', { name: 'Primary' })).not.toContainElement(links[0])
+  })
+
+  it('keeps create trip reachable from the collapsed rail', async () => {
+    const user = userEvent.setup()
+    renderSidebar()
+
+    await user.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
+
+    expect(screen.queryByText('Create Trip')).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Create Trip' }))
+      .toHaveAttribute('href', ROUTES.tripNew)
+  })
+
+  it('marks create trip as the current page on its route', () => {
+    mockUsePathname.mockReturnValue(ROUTES.tripNew)
+    renderSidebar()
+
+    expect(screen.getByRole('link', { name: 'Create Trip' })).toHaveAttribute('aria-current', 'page')
+  })
+})
+
+describe('Sidebar active state', () => {
+  it('marks only the link for the current route with aria-current', () => {
+    mockUsePathname.mockReturnValue(ROUTES.history)
+    renderSidebar()
+
+    expect(screen.getByRole('link', { name: 'Trip History' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', { name: 'Dashboard' })).not.toHaveAttribute('aria-current')
+  })
+})
+
+describe('Sidebar profile footer', () => {
+  it('shows initials, name and role, with the live status on its own element', () => {
+    renderSidebar()
+
+    expect(screen.getByText('JD')).toBeInTheDocument()
+    expect(screen.getByText('Jane Dispatcher')).toBeInTheDocument()
+    expect(screen.getByText('Dispatcher')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Live')
+  })
+
+  it('shows the admin role in words instead of a badge', () => {
+    mockAuth.role = 'admin_dispatcher'
+    renderSidebar()
+
+    expect(screen.getByText('Admin Dispatcher')).toBeInTheDocument()
+    expect(screen.queryByText('ADMIN')).not.toBeInTheDocument()
+  })
+
+  it('keeps the live status in the collapsed rail and drops the name', async () => {
+    const user = userEvent.setup()
+    renderSidebar()
+
+    await user.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
+
+    expect(screen.queryByText('Jane Dispatcher')).not.toBeInTheDocument()
+    expect(screen.getByText('JD')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveAttribute('title', 'Live')
   })
 })
 
