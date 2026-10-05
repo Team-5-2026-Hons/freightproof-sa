@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 
 import ExceptionDetailPage from './page'
 import { ToastProvider } from '@/lib/context/ToastContext'
@@ -180,6 +180,7 @@ const noteField    = () => screen.getByLabelText('Review note (required)')
 const outcomeField = () => screen.getByLabelText('Outcome (required)')
 const contactField = () => screen.getByLabelText('Contact method (optional)')
 const submitButton = () => screen.getByRole('button', { name: 'Submit review' })
+const assessmentPanel = () => within(screen.getByRole('region', { name: 'Assessment' }))
 
 function fillValidForm() {
   fireEvent.change(noteField(), { target: { value: NOTE } })
@@ -199,12 +200,16 @@ beforeEach(() => {
 })
 
 describe('Exception detail — loading and error states', () => {
-  it('shows a spinner while loading', () => {
+  it('shows a layout-shaped skeleton while loading, with no record facts in it', () => {
     mockDetail(null, { isLoading: true })
     renderPage()
 
     expect(screen.getByText('Exception Detail')).toBeInTheDocument()
-    expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
+    const skeleton = screen.getByRole('status', { name: 'Loading exception' })
+    expect(skeleton).toHaveAttribute('aria-busy', 'true')
+    // Placeholders must never read as recorded evidence.
+    expect(skeleton).toHaveTextContent('')
+    expect(screen.queryByLabelText('Review note (required)')).not.toBeInTheDocument()
   })
 
   it('offers Back while loading, so a slow record never strands the dispatcher', () => {
@@ -594,7 +599,7 @@ describe('Exception detail — claim, release and take over', () => {
     mockDetail(baseException({ claimed_by_user_id: ANA, claimed_by_name: 'Ana', claimed_at: CLAIMED_AT }))
     renderPage()
 
-    expect(screen.getByText(/Claimed by Ana/)).toBeInTheDocument()
+    expect(assessmentPanel().getByText(/Claimed by Ana/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Take over' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Take over and review' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Submit review' })).not.toBeInTheDocument()
@@ -647,7 +652,7 @@ describe('Exception detail — claim, release and take over', () => {
     mockDetail(baseException({ claimed_by_user_id: ME, claimed_by_name: 'Me', claimed_at: CLAIMED_AT }))
     renderPage()
 
-    expect(screen.getByText(/Claimed by you/)).toBeInTheDocument()
+    expect(assessmentPanel().getByText(/Claimed by you/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Release' }))
 
     await waitFor(() => expect(mockedReleaseException).toHaveBeenCalledWith(EXCEPTION_ID))
@@ -744,5 +749,77 @@ describe('assessment redesign', () => {
     expect(push).not.toHaveBeenCalled()
     expect(screen.getByLabelText(/Review note/)).toHaveValue('Unsent assessment')
     confirm.mockRestore()
+  })
+})
+
+describe('exception detail header and hierarchy', () => {
+  it('shows one h1 with the trip reference, source and raised time under it', () => {
+    mockDetail(baseException())
+    renderPage()
+
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Seal Mismatch')
+    // The sub-line names the trip once, in the header, not again in a card below.
+    expect(screen.getAllByText(/FP-2026-0001/)).toHaveLength(1)
+    expect(screen.getByText(/System · Raised 03 Sep\w* 2026, 12:00 SAST/)).toBeInTheDocument()
+  })
+
+  it('puts severity and a neutral review-state chip in the header', () => {
+    mockDetail(baseException())
+    renderPage()
+
+    expect(screen.getByText('Critical')).toBeInTheDocument()
+    expect(screen.getByTestId('review-state-chip')).toHaveTextContent('Needs review')
+    expect(screen.getByTestId('review-state-chip').firstElementChild).toHaveClass('bg-surf-high')
+  })
+
+  it('shows who holds the claim in the header chip, not only inside the assessment', () => {
+    mockUserId = ME
+    mockDetail(baseException({ claimed_by_user_id: ANA, claimed_by_name: 'Ana', claimed_at: CLAIMED_AT }))
+    renderPage()
+
+    expect(screen.getByTestId('review-state-chip')).toHaveTextContent('Needs review · Claimed by Ana')
+  })
+
+  it('labels a reviewed record plainly and leaves the reviewer to the assessment', () => {
+    mockDetail(baseException({
+      review_status: 'reviewed', review_outcome: 'evidence_verified', review_note: 'Done.',
+      reviewed_at: '2026-09-04T09:30:00Z', reviewed_by_user_id: 'ben-id', reviewed_by_name: 'Ben',
+    }))
+    renderPage()
+
+    expect(screen.getByTestId('review-state-chip')).toHaveTextContent(/^Reviewed$/)
+  })
+
+  it('formats the claim time like the raised time, with the year and SAST', () => {
+    mockUserId = ME
+    mockDetail(baseException({ claimed_by_user_id: ME, claimed_by_name: 'Me', claimed_at: CLAIMED_AT }))
+    renderPage()
+
+    expect(assessmentPanel().getByText(/Claimed by you · 03 Sep.* 2026, 13:00 SAST/)).toBeInTheDocument()
+  })
+
+  it('shows the closed-trip notice once and drops the generic one', () => {
+    mockDetail(baseException({ trip_status: 'closed', trip_closed_at: '2026-09-04T08:00:00Z' }))
+    renderPage()
+
+    expect(screen.getByText(/does not reopen the trip/i)).toBeInTheDocument()
+    expect(screen.queryByText(/Reviewing records your assessment/)).not.toBeInTheDocument()
+  })
+
+  it('shows the generic reassurance when the trip needs no lifecycle notice', () => {
+    mockDetail(baseException({ trip_status: 'active' }))
+    renderPage()
+
+    expect(screen.getByText(/Reviewing records your assessment/)).toBeInTheDocument()
+  })
+
+  it('moves focus to the assessment heading from Jump to assessment', () => {
+    mockDetail(baseException())
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Jump to assessment' }))
+
+    expect(screen.getByRole('heading', { level: 2, name: 'Assessment' })).toHaveFocus()
   })
 })
