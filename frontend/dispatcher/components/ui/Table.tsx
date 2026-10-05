@@ -30,6 +30,10 @@ export interface TableGroup<T> {
 
 export interface TableSort { id: string; dir: 'asc' | 'desc' }
 
+/** `comfortable`: roomy rows for multi-line content (the default). `compact`: the tighter,
+ *  centred rows of a scannable list where each row is a record rather than a paragraph. */
+export type TableDensity = 'comfortable' | 'compact'
+
 interface TableProps<T> {
   /** Names the stored column widths; unique per table instance. */
   tableId: string
@@ -55,19 +59,30 @@ interface TableProps<T> {
   /** Receives the scrolling element, for owners that restore scroll position. A callback,
    *  not a RefObject, because a component must not write to a ref it was handed. */
   onScroller?: (el: HTMLDivElement | null) => void
+  density?: TableDensity
   className?: string
 }
 
 // Enough rows to fill a laptop screen, so the table doesn't visibly grow when data arrives.
 const DEFAULT_SKELETON_ROWS = 6
-const HEADER_CELL = 'sticky top-0 z-[1] bg-surf-low px-4 py-[10px] text-left text-[10px] font-[700] uppercase tracking-[0.1em] text-on-surf-v border-b border-outline-v/10'
-const BODY_CELL = 'px-4 py-4 align-top break-words border-b border-outline-v/10'
+const HEADER_CELL = 'sticky top-0 z-[1] bg-surf-low text-left text-[10px] font-[700] uppercase tracking-[0.1em] text-on-surf-v border-b border-outline-v/10'
+const BODY_CELL = 'break-words border-b border-outline-v/10'
+// A line between neighbouring columns, header and body alike. Padding is symmetric, so it sits
+// centred between the text either side. On the cell, not the row: a <tr> takes no border in a
+// border-separate table, and a group's full-width header cell must not get one.
+const COLUMN_DIVIDER = '[&:not(:first-child)]:border-l [&:not(:first-child)]:border-l-outline/30'
+const DENSITY_CLASSES: Record<TableDensity, { header: string; body: string }> = {
+  // Compact also trims the side padding: with dividers every cell pays it twice, and a
+  // dense list should spend that width on content.
+  comfortable: { header: 'px-4 py-[10px]', body: 'px-4 py-4 align-top' },
+  compact: { header: 'px-3 py-[7px]', body: 'px-3 py-3 align-middle' },
+}
 
 /** One table for every list page: fills the screen, columns drag (or arrow-key) to resize and
  *  remember their width, headers sort when the owner allows it. Real table semantics, so
  *  screen readers get row and column navigation without extra ARIA. */
 export function Table<T>({
-  tableId, caption, columns, rows, groups, getRowKey, rowClassName, sort, onSort, isLoading = false, loadingLabel = 'Loading', skeletonRows = DEFAULT_SKELETON_ROWS, onScroller, className,
+  tableId, caption, columns, rows, groups, getRowKey, rowClassName, sort, onSort, isLoading = false, loadingLabel = 'Loading', skeletonRows = DEFAULT_SKELETON_ROWS, onScroller, density = 'comfortable', className,
 }: TableProps<T>) {
   const layout = useTableColumns(tableId, columns)
   const { visible, widths, hidden } = layout
@@ -81,6 +96,8 @@ export function Table<T>({
     containerRef(el)
     onScroller?.(el)
   }, [containerRef, onScroller])
+
+  const bodyCell = cn(BODY_CELL, DENSITY_CLASSES[density].body, COLUMN_DIVIDER)
 
   function onHandleKeyDown(event: KeyboardEvent<HTMLDivElement>, id: string): void {
     const delta = event.key === 'ArrowLeft' ? -KEYBOARD_RESIZE_STEP : event.key === 'ArrowRight' ? KEYBOARD_RESIZE_STEP : 0
@@ -98,7 +115,7 @@ export function Table<T>({
   function renderRow(row: T): ReactNode {
     return (
       <tr key={getRowKey(row)} className={cn('relative text-[13px] focus-within:bg-surf-low', rowClassName?.(row) ?? 'bg-surf-lowest hover:bg-surf-low')}>
-        {visibleColumns.map(column => <td key={column.id} className={BODY_CELL}>{column.render(row, context)}</td>)}
+        {visibleColumns.map(column => <td key={column.id} className={bodyCell}>{column.render(row, context)}</td>)}
       </tr>
     )
   }
@@ -110,7 +127,7 @@ export function Table<T>({
         <tbody aria-hidden>
           {Array.from({ length: skeletonRows }, (_, index) => (
             <tr key={index} className="bg-surf-lowest">
-              {visibleColumns.map(column => <td key={column.id} className={BODY_CELL}>{column.skeleton ?? <SkeletonBar className="h-3 w-3/4" />}</td>)}
+              {visibleColumns.map(column => <td key={column.id} className={bodyCell}>{column.skeleton ?? <SkeletonBar className="h-3 w-3/4" />}</td>)}
             </tr>
           ))}
         </tbody>
@@ -154,7 +171,7 @@ export function Table<T>({
                   // which would otherwise be read as part of every column heading.
                   aria-labelledby={labelId}
                   aria-sort={sortable ? (sorted === 'asc' ? 'ascending' : sorted === 'desc' ? 'descending' : 'none') : undefined}
-                  className={cn(HEADER_CELL, 'relative')}
+                  className={cn(HEADER_CELL, DENSITY_CLASSES[density].header, COLUMN_DIVIDER, 'relative')}
                 >
                   {sortable ? (
                     <button

@@ -128,4 +128,32 @@ describe('Table', () => {
       expect(onSort).toHaveBeenCalledWith('name')
     })
   })
+
+  it('puts a divider between neighbouring columns in the header and every row, never before the first', () => {
+    renderTable()
+    const DIVIDER = '[&:not(:first-child)]:border-l'
+    const header = screen.getAllByRole('columnheader')
+    const cells = within(screen.getByText('Alice').closest('tr') as HTMLElement).getAllByRole('cell')
+    for (const cell of [...header, ...cells]) expect(cell.className).toContain(DIVIDER)
+    // The :not(:first-child) variant is what keeps the first cell's edge clear; assert it is the
+    // variant that is used rather than a bare border-l.
+    expect(header[0].className).not.toMatch(/(^|\s)border-l(\s|$)/)
+  })
+
+  it('does not divide a group header, which is one full-width cell', () => {
+    renderTable({ rows: undefined, groups: [{ id: 'g', header: () => 'Group A', rows: ROWS }] })
+    const groupCell = screen.getByText('Group A').closest('td') as HTMLElement
+    expect(groupCell.className).not.toContain('border-l')
+  })
+
+  it('is comfortable by default and tightens rows and header when compact', () => {
+    const { unmount } = renderTable()
+    expect(screen.getByText('Alice').closest('td')).toHaveClass('px-4', 'py-4', 'align-top')
+    expect(screen.getAllByRole('columnheader')[0]).toHaveClass('py-[10px]')
+    unmount()
+
+    renderTable({ density: 'compact' })
+    expect(screen.getByText('Alice').closest('td')).toHaveClass('px-3', 'py-3', 'align-middle')
+    expect(screen.getAllByRole('columnheader')[0]).toHaveClass('py-[7px]')
+  })
 })
