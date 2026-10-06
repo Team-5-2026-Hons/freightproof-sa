@@ -154,6 +154,16 @@ async def test_unknown_manifest_is_404(client: AsyncClient, db_session: AsyncSes
     assert resp.status_code == 404
 
 
+async def test_unknown_manifest_404_body_names_the_manifest(client: AsyncClient, db_session: AsyncSession) -> None:
+    world = await build_manifest_world(db_session)
+    body = create_body(world, await preview(client, world, MANIFEST_HAPPY_PATH), manifest_number=99999)
+
+    resp = await client.post(_CREATE, json=body, headers=world.headers())
+
+    assert resp.status_code == 404
+    assert resp.json() == {"detail": "Manifest 99999 not found"}
+
+
 async def test_overlong_manifest_number_is_422(client: AsyncClient, db_session: AsyncSession) -> None:
     world = await build_manifest_world(db_session)
     body = create_body(world, await preview(client, world, MANIFEST_HAPPY_PATH), manifest_number=2_147_483_648)
@@ -325,3 +335,16 @@ async def test_cancel_after_scanning_refuses_recreation(client: AsyncClient, db_
 
     assert resp.status_code == 409, resp.text
     assert "scanned" in resp.json()["detail"]
+
+
+async def test_live_pp_501_body_is_the_stable_client_text(
+    client: AsyncClient, db_session: AsyncSession, monkeypatch: MonkeyPatch,
+) -> None:
+    world = await build_manifest_world(db_session)
+    body = create_body(world, await preview(client, world, MANIFEST_HAPPY_PATH))
+    monkeypatch.setattr(settings, "PP_USE_MOCK", False)
+
+    resp = await client.post(_CREATE, json=body, headers=world.headers())
+
+    assert resp.status_code == 501
+    assert resp.json() == {"detail": "Manifest lookup is not available from the connected parcel system."}

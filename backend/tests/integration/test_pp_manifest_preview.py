@@ -107,6 +107,17 @@ async def test_unknown_manifest_is_404(client: AsyncClient, db_session: AsyncSes
     assert resp.status_code == 404
 
 
+async def test_unknown_manifest_404_body_names_the_manifest(client: AsyncClient, db_session: AsyncSession) -> None:
+    world = await build_manifest_world(db_session)
+
+    resp = await client.get(
+        "/api/v1/trips/pp-manifest-preview", params={"manifest_number": 99999}, headers=world.headers(),
+    )
+
+    assert resp.status_code == 404
+    assert resp.json() == {"detail": "Manifest 99999 not found"}
+
+
 async def test_overlong_manifest_number_is_422(client: AsyncClient, db_session: AsyncSession) -> None:
     # trips.pp_manifest_number is a Postgres integer: one past its range is not a manifest.
     world = await build_manifest_world(db_session)

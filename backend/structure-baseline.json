@@ -34,6 +34,6 @@
     "app/orchestration/trip_service.py": 825,
     "app/orchestration/action_location_service.py": 706,
     "app/schemas/trips.py": 576,
-    "app/api/v1/endpoints/handover.py": 560
+    "app/api/v1/endpoints/handover.py": 557
   }
 }
