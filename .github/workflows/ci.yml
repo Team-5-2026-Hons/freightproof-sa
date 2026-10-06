@@ -184,6 +184,10 @@ jobs:
           psql -h localhost -U postgres -d postgres \
             -c "DROP DATABASE IF EXISTS freightproof_migrations;" \
             -c "CREATE DATABASE freightproof_migrations;"
+          # Plain Postgres has no Supabase auth schema or API roles, which the migrations
+          # reference (0002 FKs to auth.users, 0003 RLS policies). Stub just those.
+          psql -h localhost -U postgres -d freightproof_migrations -v ON_ERROR_STOP=1 \
+            -f scripts/ci_supabase_stub.sql
           alembic upgrade head
           echo "Migration chain applied cleanly from empty."
 
