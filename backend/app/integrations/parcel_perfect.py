@@ -26,6 +26,7 @@ import httpx
 
 from app.core.config import settings
 from app.integrations.mock_state import build_key, get_mock_state_store
+from app.integrations.parcel_perfect_port import ParcelPerfectPort
 
 logger = logging.getLogger(__name__)
 
@@ -1474,7 +1475,7 @@ class ParcelPerfectClient:
 # ---------------------------------------------------------------------------
 
 
-def get_pp_client() -> ParcelPerfectClient | MockParcelPerfectClient:
+def get_pp_client() -> ParcelPerfectPort:
     """Return the appropriate PP client based on settings.PP_USE_MOCK.
 
     Callers should depend on this factory rather than instantiating clients
