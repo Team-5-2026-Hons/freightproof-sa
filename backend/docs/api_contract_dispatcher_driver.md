@@ -196,6 +196,16 @@ Dispatcher login.
 | Response 200 | `{ "access_token": str, "token_type": "bearer", "expires_in": int }` |
 | Response 401 | Invalid credentials |
 
+#### `GET /api/v1/auth/me`
+The signed-in dispatcher's profile; also the portal's session check.
+
+| Field | Value |
+|---|---|
+| Auth | Bearer JWT (dispatcher) |
+| Tags | `["auth"]` |
+| Response 200 | `DispatcherProfileRead`: `UserRead` (`id`, `organization_id`, `email`, `full_name`, `is_active`, `created_at`, `updated_at`, `role`) plus `organization_name: str`, the display name of the dispatcher's own organisation. The dashboard subtitle reads it instead of hardcoding an operator. |
+| Response 401/403 | Missing, invalid or expired token / not a dispatcher |
+
 #### `POST /api/v1/auth/driver/token`
 Driver login (phone OTP — two-step: request OTP then verify).
 

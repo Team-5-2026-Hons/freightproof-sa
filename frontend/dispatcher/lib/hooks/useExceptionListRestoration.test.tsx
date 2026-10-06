@@ -6,17 +6,20 @@ describe('scoped list restoration', () => {
   it('restores scroll and focuses remaining results when reviewed row disappears', () => {
     vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => { cb(0); return 1 })
     const el = container(); const ref = { current: el }
-    const first = renderHook(() => useExceptionListRestoration('me', '/exceptions?tab=mine', ref, true))
+    const first = renderHook(() => useExceptionListRestoration({ userId: 'me', origin: '/exceptions?tab=mine', container: ref, ready: true }))
     el.scrollTop = 130
     act(() => first.result.current.save('gone'))
     first.unmount(); el.scrollTop = 0
-    renderHook(() => useExceptionListRestoration('me', '/exceptions?tab=mine', ref, true))
+    renderHook(() => useExceptionListRestoration({ userId: 'me', origin: '/exceptions?tab=mine', container: ref, ready: true }))
     expect(el.scrollTop).toBe(130); expect(document.activeElement).toBe(el.querySelector('a'))
     el.remove(); vi.unstubAllGlobals()
   })
   it('clears prior-user restoration and survives unavailable storage', () => {
     const el = container(); const ref = { current: el }
-    const hook = renderHook(({user}) => useExceptionListRestoration(user, '/exceptions', ref, false), { initialProps: { user: 'first' as string | null } })
+    const hook = renderHook(
+      ({user}) => useExceptionListRestoration({ userId: user, origin: '/exceptions', container: ref, ready: false }),
+      { initialProps: { user: 'first' as string | null } },
+    )
     act(() => hook.result.current.save('row'))
     hook.rerender({user: 'second'})
     expect(Object.keys(sessionStorage).some(key => key.includes('first'))).toBe(false)
@@ -31,10 +34,10 @@ it('restores after expansion state has rendered, without cancelling the only ani
   vi.stubGlobal('requestAnimationFrame',(cb:FrameRequestCallback)=>{callbacks.set(++sequence,cb);return sequence})
   vi.stubGlobal('cancelAnimationFrame',(id:number)=>callbacks.delete(id))
   const el=container();const ref={current:el}
-  const first=renderHook(()=>useExceptionListRestoration('delayed','/exceptions?group=trip',ref,true))
+  const first=renderHook(()=>useExceptionListRestoration({ userId: 'delayed', origin: '/exceptions?group=trip', container: ref, ready: true }))
   act(()=>first.result.current.setExpanded({'trip':false}))
   el.scrollTop=250;act(()=>first.result.current.save('remaining'));first.unmount();el.scrollTop=0
-  renderHook(()=>useExceptionListRestoration('delayed','/exceptions?group=trip',ref,true))
+  renderHook(()=>useExceptionListRestoration({ userId: 'delayed', origin: '/exceptions?group=trip', container: ref, ready: true }))
   act(()=>{for(const callback of callbacks.values()) callback(0)})
   expect(el.scrollTop).toBe(250)
   el.remove();vi.unstubAllGlobals()

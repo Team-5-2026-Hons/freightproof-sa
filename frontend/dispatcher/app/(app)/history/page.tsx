@@ -19,33 +19,13 @@ import { putTripSeeds }     from '@/lib/trips/tripSeed'
 import { usePrecincts }     from '@/lib/hooks/usePrecincts'
 import { useToast }         from '@/lib/hooks/useToast'
 import { COPY }             from '@shared/lib/constants/copy'
+import { sastToday }        from '@shared/lib/utils/datetime'
 import type { DateRange }   from '@/lib/types/date-range'
 import type { TripHistoryListItem } from '@shared/lib/types/trip'
 
 // Lower bound predates the platform, so the picker opens covering the full history by
 // default — narrowing it is an explicit dispatcher action, not a silent default.
 const HISTORY_RANGE_START = '2020-01-01'
-const OPERATIONS_DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', {
-  timeZone: 'Africa/Johannesburg',
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-})
-
-function todayStr(): string {
-  // The API interprets date filters on the configured operations calendar. South
-  // African local date is derived by named zone, independent of process timezone
-  // and without duplicating the backend's configurable numeric UTC offset.
-  const parts = OPERATIONS_DATE_FORMATTER.formatToParts(new Date())
-  const getPart = (type: Intl.DateTimeFormatPartTypes): string | undefined => (
-    parts.find((part) => part.type === type)?.value
-  )
-  const year = getPart('year')
-  const month = getPart('month')
-  const day = getPart('day')
-  if (!year || !month || !day) throw new Error('Unable to resolve operations date')
-  return `${year}-${month}-${day}`
-}
 
 // Names the stored column widths; History's must not share Dashboard's.
 const HISTORY_TABLE_ID = 'history'
@@ -55,7 +35,7 @@ const NO_ROUTE_FILTER = ''
 
 export default function HistoryPage() {
   const [search, setSearch]       = useState('')
-  const [dateRange, setDateRange] = useState<DateRange>({ from: HISTORY_RANGE_START, to: todayStr() })
+  const [dateRange, setDateRange] = useState<DateRange>({ from: HISTORY_RANGE_START, to: sastToday() })
   const [precinctId, setPrecinctId] = useState('')
   const { notify } = useToast()
 
@@ -91,7 +71,7 @@ export default function HistoryPage() {
   const hasNarrowedFilters = search.trim() !== ''
     || precinctId !== ''
     || dateRange.from !== HISTORY_RANGE_START
-    || dateRange.to !== todayStr()
+    || dateRange.to !== sastToday()
 
   // Built per render: route names depend on the loaded precincts.
   const columns = useMemo(

@@ -18,6 +18,7 @@ import { matchesTripSearch } from '@/lib/trips/search'
 import { defaultTripSortDirection, sortTrips, TRIP_SORT_KEYS } from '@/lib/trips/sort'
 import { useTableSort } from '@/lib/hooks/useTableSort'
 import { useAuth }        from '@/lib/hooks/useAuth'
+import { useNow }         from '@/lib/hooks/useNow'
 import { usePrecincts }   from '@/lib/hooks/usePrecincts'
 import { useToast }       from '@/lib/hooks/useToast'
 import { ROUTES }         from '@/lib/constants/routes'
@@ -36,11 +37,15 @@ const ACTIVE_STATUSES: TripStatus[] = ['created', 'active', 'exception_hold']
 
 // Names the stored column widths; the Dashboard's must not share History's.
 const DASHBOARD_TABLE_ID = 'dashboard'
+// A control-room dashboard can stay open overnight; a minute is fine-grained enough for the date to
+// turn over at SAST midnight without a new trip event to re-render it.
+const CLOCK_TICK_MS = 60_000
 const CREATED_DATE_COLUMN = { label: 'Created', pick: (trip: TripSummary): string => trip.created_at }
 
 export default function ActiveTripsPage() {
   const router = useRouter()
   const { user } = useAuth()
+  const now = useNow(CLOCK_TICK_MS)
   const { notify } = useToast()
   const [search, setSearch] = useState('')
   // No initial sort: until a header is clicked the list keeps the order the API sends, so the page
@@ -92,6 +97,11 @@ export default function ActiveTripsPage() {
   const initialLoad = tripsLoading && allFetchedTrips.length === 0
   const loadFailed = !!tripsError && allFetchedTrips.length === 0
 
+  // The dispatcher's own organisation, so no operator's dashboard carries another's name. The
+  // separator goes with the name while /auth/me has not supplied one.
+  const sastDay = fmtSastDateParts(now.toISOString())?.day ?? ''
+  const subtitle = user?.organization_name ? `${sastDay} · ${user.organization_name}` : sastDay
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <TopBar
@@ -102,7 +112,7 @@ export default function ActiveTripsPage() {
             Admin
           </span>
         ) : undefined}
-        sub={`${fmtSastDateParts(new Date().toISOString())?.day ?? ''} · Load Factor Transport`}
+        sub={subtitle}
       >
         <Button
           size="sm"

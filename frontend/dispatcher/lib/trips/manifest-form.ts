@@ -3,6 +3,7 @@
 
 import type { PPManifestPreview, TripFromPPManifestPayload } from '@shared/lib/types/pp-manifest'
 import type { TripCreatePayload } from '@shared/lib/types/trip'
+import { OPERATIONS_TIMEZONE, SAST_OFFSET } from '@shared/lib/utils/datetime'
 
 /** Driver, horse and trailers: LFG's decision, never read from the manifest (spec §5). */
 export interface CrewValues {
@@ -11,7 +12,7 @@ export interface CrewValues {
   trailerIds: string[]
 }
 
-/** A time the dispatcher typed over, as a datetime-local value. null follows the source:
+/** A time the dispatcher typed over, as a SAST datetime-local value. null follows the source:
  *  the manifest's own time, or nothing for an empty leg. */
 export interface ScheduleOverrides {
   departure: string | null
@@ -60,27 +61,38 @@ export function parseManifestNumber(input: string): number | null {
   return MANIFEST_NUMBER.test(trimmed) ? Number(trimmed) : null
 }
 
-function pad2(value: number): string {
-  return String(value).padStart(2, '0')
+// Numeric fields and h23 so the parts can be joined without any locale wording, and midnight
+// reads "00", not "24".
+const SAST_INPUT_FORMAT = new Intl.DateTimeFormat('en-GB', {
+  timeZone: OPERATIONS_TIMEZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+})
+
+/** An instant as a datetime-local value in SAST. Operations run on South African time whatever
+ *  the dispatcher's machine says, so the input is never read from the browser's own zone, which
+ *  would make the same trip show different times on different machines. */
+export function isoToSastInput(iso: string): string {
+  const parts = SAST_INPUT_FORMAT.formatToParts(new Date(iso))
+  const part = (type: Intl.DateTimeFormatPartTypes): string => parts.find(p => p.type === type)?.value ?? ''
+  return `${part('year')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}`
 }
 
-/** An instant as a datetime-local value in the browser's zone (the dispatcher's local time). */
-export function isoToLocalInput(iso: string): string {
-  const d = new Date(iso)
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`
-}
-
-/** A datetime-local value as a UTC instant. The create endpoints refuse zone-less times,
- *  and the journey lock hashes UTC (spec §9). */
-export function localInputToIso(value: string): string {
-  return new Date(value).toISOString()
+/** A datetime-local value, read as SAST, as a UTC instant. The create endpoints refuse zone-less
+ *  times, and the journey lock hashes UTC (spec §9). */
+export function sastInputToIso(value: string): string {
+  return new Date(`${value}:00${SAST_OFFSET}`).toISOString()
 }
 
 /** The manifest's own times as input values: what an untouched field shows. */
 export function manifestTimes(preview: PPManifestPreview): TimeInputs {
   return {
-    departure: preview.planned_departure_at ? isoToLocalInput(preview.planned_departure_at) : '',
-    arrival: preview.expected_arrival_at ? isoToLocalInput(preview.expected_arrival_at) : '',
+    departure: preview.planned_departure_at ? isoToSastInput(preview.planned_departure_at) : '',
+    arrival: preview.expected_arrival_at ? isoToSastInput(preview.expected_arrival_at) : '',
   }
 }
 
@@ -118,7 +130,11 @@ export function validateSchedule(shown: TimeInputs, source: TimeInputs): FieldEr
     // the manifest's arrival. Refuse rather than show one thing and lock another.
     errors.arrival = 'The manifest sets an expected arrival, so it cannot be removed. Change it, or use the manifest time.'
   } else if (shown.departure && shown.arrival) {
-    const minutes = (new Date(shown.arrival).getTime() - new Date(shown.departure).getTime()) / MS_PER_MINUTE
+    // Both go through the same SAST reading as the payload, so the check judges the instants that
+    // will actually be sent.
+    const minutes = (
+      new Date(sastInputToIso(shown.arrival)).getTime() - new Date(sastInputToIso(shown.departure)).getTime()
+    ) / MS_PER_MINUTE
     if (minutes <= 0) errors.arrival = 'Must be after departure.'
     else if (minutes < MINIMUM_TRIP_MINUTES) {
       errors.arrival = `Must be at least ${MINIMUM_TRIP_MINUTES} minutes after departure.`
@@ -157,7 +173,7 @@ export function validateEmptyLegRoute(picks: RoutePicks): FieldErrors {
  *  minute-precision local input. */
 function overrideToIso(override: string | null, source: string): string | null {
   if (override === null || override === '' || override === source) return null
-  return localInputToIso(override)
+  return sastInputToIso(override)
 }
 
 export function buildFromManifestPayload(
@@ -195,7 +211,7 @@ export function buildEmptyLegPayload(
     origin_precinct_id: picks.originId,
     destination_precinct_id: picks.destinationId,
     consignments: [],
-    planned_departure_at: overrides.departure ? localInputToIso(overrides.departure) : null,
-    planned_arrival_at: overrides.arrival ? localInputToIso(overrides.arrival) : null,
+    planned_departure_at: overrides.departure ? sastInputToIso(overrides.departure) : null,
+    planned_arrival_at: overrides.arrival ? sastInputToIso(overrides.arrival) : null,
   }
 }

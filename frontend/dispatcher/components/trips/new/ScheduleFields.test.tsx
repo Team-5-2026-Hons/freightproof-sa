@@ -13,6 +13,13 @@ describe('ScheduleFields', () => {
     expect(screen.getByLabelText(/Planned departure/)).toHaveValue('2026-10-02T18:00')
   })
 
+  it('labels both inputs as SAST', () => {
+    render(<ScheduleFields overrides={NO_OVERRIDES} source={SOURCE} onChange={vi.fn()} errors={{}} />)
+
+    expect(screen.getByLabelText('Planned departure (SAST)')).toBeInTheDocument()
+    expect(screen.getByLabelText('Expected arrival (SAST)')).toBeInTheDocument()
+  })
+
   it('reports an edit, then offers the manifest time back', () => {
     const onChange = vi.fn()
     const { rerender } = render(<ScheduleFields overrides={NO_OVERRIDES} source={SOURCE} onChange={onChange} errors={{}} />)
@@ -31,7 +38,7 @@ describe('ScheduleFields', () => {
     )
 
     const departure = screen.getByLabelText(/Planned departure/) as HTMLInputElement
-    expect(departure.labels?.[0]).toHaveTextContent('Planned departure *')
+    expect(departure.labels?.[0]).toHaveTextContent('Planned departure (SAST) *')
     expect(screen.queryByText('From manifest')).not.toBeInTheDocument()
     expect(screen.getByRole('alert')).toHaveTextContent('Enter a planned departure.')
   })

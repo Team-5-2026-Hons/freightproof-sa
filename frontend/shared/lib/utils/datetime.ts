@@ -7,7 +7,11 @@
 // Extracted because files had grown private copies of the same few lines, which is how they
 // ended up showing a different format (and "Sept" vs "Sep") for the same field.
 
-const OPERATIONS_TIMEZONE = 'Africa/Johannesburg'
+export const OPERATIONS_TIMEZONE = 'Africa/Johannesburg'
+// South Africa has had no daylight saving since 1944, so SAST is a fixed +02:00 and a wall-clock
+// time can be turned into an instant without a timezone database. Keep in step with
+// OPERATIONS_TIMEZONE if that ever changes.
+export const SAST_OFFSET = '+02:00'
 const TIMEZONE_LABEL = 'SAST'
 const MISSING = '—'
 
@@ -32,6 +36,24 @@ function sastFields(iso: string | null | undefined): SastFields | null {
   const part = (type: Intl.DateTimeFormatPartTypes): string => parts.find(p => p.type === type)?.value ?? ''
   const month = MONTH_ABBREVIATIONS[Number(part('month')) - 1]
   return { day: part('day'), month, year: part('year'), time: `${part('hour')}:${part('minute')}` }
+}
+
+/** The SAST calendar day of an instant as "YYYY-MM-DD" (zero-padded, so it also sorts as a plain
+ *  string), or null when unparseable. The one place a calendar day is derived from an instant: a
+ *  UTC or browser-local day is wrong for the two hours after 22:00Z, when SAST has already rolled
+ *  over. */
+export function sastCalendarDay(iso: string | Date): string | null {
+  const date = typeof iso === 'string' ? new Date(iso) : iso
+  if (!Number.isFinite(date.getTime())) return null
+  const parts = SAST_FORMAT.formatToParts(date)
+  const part = (type: Intl.DateTimeFormatPartTypes): string => parts.find(p => p.type === type)?.value ?? ''
+  return `${part('year')}-${part('month')}-${part('day')}`
+}
+
+/** Today's SAST calendar day, "YYYY-MM-DD". */
+export function sastToday(): string {
+  // new Date() is always valid, so the null branch of sastCalendarDay cannot occur here.
+  return sastCalendarDay(new Date())!
 }
 
 /** An instant as separate day and time strings, e.g. { day: "05 Sep 2026", time: "14:30 SAST" },

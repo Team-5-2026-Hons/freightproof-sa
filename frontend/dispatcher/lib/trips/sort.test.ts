@@ -85,6 +85,45 @@ describe('sortTrips', () => {
     expect(ids(sortTrips(trips, { key: 'exceptions', dir: 'desc' }, PRECINCTS))).toEqual(['most', 'half', 'none'])
   })
 
+  it('puts trips needing review above any trip that needs none, however far along', () => {
+    const trips = [
+      trip('quiet', { needs_review_count: 0, phase_total: 10, phase_completed: 1 }),
+      trip('flagged', { needs_review_count: 3, phase_total: 10, phase_completed: 9 }),
+    ]
+
+    expect(ids(sortTrips(trips, { key: 'exceptions', dir: 'asc' }, PRECINCTS))).toEqual(['flagged', 'quiet'])
+  })
+
+  it('puts the trip with more exceptions first when ascending, as the first click should', () => {
+    const trips = [
+      trip('one', { needs_review_count: 1 }),
+      trip('three', { needs_review_count: 3 }),
+    ]
+
+    expect(ids(sortTrips(trips, { key: 'exceptions', dir: 'asc' }, PRECINCTS))).toEqual(['three', 'one'])
+    expect(ids(sortTrips(trips, { key: 'exceptions', dir: 'desc' }, PRECINCTS))).toEqual(['one', 'three'])
+  })
+
+  it('orders trips with no exceptions by progress', () => {
+    const trips = [
+      trip('far', { phase_total: 10, phase_completed: 8 }),
+      trip('near-start', { phase_total: 10, phase_completed: 1 }),
+    ]
+
+    expect(ids(sortTrips(trips, { key: 'exceptions', dir: 'asc' }, PRECINCTS))).toEqual(['near-start', 'far'])
+  })
+
+  it('keeps a trip with no plan last in both directions even when others have exceptions', () => {
+    const trips = [
+      trip('none', { phase_total: 0, phase_completed: 0 }),
+      trip('flagged', { needs_review_count: 2 }),
+      trip('quiet'),
+    ]
+
+    expect(ids(sortTrips(trips, { key: 'exceptions', dir: 'asc' }, PRECINCTS)).at(-1)).toBe('none')
+    expect(ids(sortTrips(trips, { key: 'exceptions', dir: 'desc' }, PRECINCTS)).at(-1)).toBe('none')
+  })
+
   it('breaks ties by creation time then id, so equal rows never shuffle', () => {
     const trips = [
       trip('z', { driver: { full_name: 'Same' }, created_at: '2026-10-02T08:00:00Z' }),
@@ -111,6 +150,7 @@ describe('sortTrips', () => {
 describe('trip sort keys', () => {
   it('recognises exactly the table column ids and defaults the date to newest first', () => {
     for (const key of ['date', 'trip', 'manifest', 'driver', 'route', 'exceptions', 'status']) expect(isTripSortKey(key)).toBe(true)
+    expect(defaultTripSortDirection('exceptions')).toBe('asc')
     expect(isTripSortKey('horse')).toBe(false)
     expect(defaultTripSortDirection('date')).toBe('desc')
     expect((['trip', 'driver', 'route'] as TripSortKey[]).map(defaultTripSortDirection)).toEqual(['asc', 'asc', 'asc'])

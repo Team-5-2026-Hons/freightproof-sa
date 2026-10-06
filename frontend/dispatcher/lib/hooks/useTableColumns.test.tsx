@@ -109,6 +109,46 @@ describe('useTableColumns', () => {
     expect(result.current.widths.a).toBe(250)
   })
 
+  it('ends a drag when the browser cancels the pointer, so later moves change nothing', () => {
+    containerWidth = 100
+    const { result } = setup()
+    act(() => { result.current.startResize('a', 0) })
+    act(() => { window.dispatchEvent(new MouseEvent('pointermove', { clientX: 50 })) })
+    expect(result.current.widths.a).toBe(250)
+
+    act(() => { window.dispatchEvent(new MouseEvent('pointercancel')) })
+    act(() => { window.dispatchEvent(new MouseEvent('pointermove', { clientX: 400 })) })
+
+    expect(result.current.widths.a).toBe(250)
+  })
+
+  it('removes its window listeners when unmounted mid-drag, without throwing or warning', () => {
+    containerWidth = 100
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const removeListener = vi.spyOn(window, 'removeEventListener')
+    const { result, unmount } = setup()
+    act(() => { result.current.startResize('a', 0) })
+
+    unmount()
+
+    const removed = removeListener.mock.calls.map(([type]) => type)
+    expect(removed).toEqual(expect.arrayContaining(['pointermove', 'pointerup', 'pointercancel']))
+    expect(() => window.dispatchEvent(new MouseEvent('pointermove', { clientX: 400 }))).not.toThrow()
+    expect(consoleError).not.toHaveBeenCalled()
+  })
+
+  it('replaces a drag in progress when a new one starts, so only the latest follows the pointer', () => {
+    containerWidth = 100
+    const { result } = setup()
+    act(() => { result.current.startResize('a', 0) })
+    act(() => { result.current.startResize('b', 0) })
+
+    act(() => { window.dispatchEvent(new MouseEvent('pointermove', { clientX: 50 })) })
+
+    expect(result.current.widths.a).toBe(200)
+    expect(result.current.widths.b).toBe(150)
+  })
+
   describe('while the columns fill the container', () => {
     // a 200 + b 100 at container 600 (c is hidden below 800): scale 2, so a 400 and b 200.
     beforeEach(() => { containerWidth = 600 })

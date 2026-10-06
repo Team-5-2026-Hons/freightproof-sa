@@ -114,6 +114,63 @@ describe('Table', () => {
       expect(document.querySelectorAll('tbody .animate-pulse')).toHaveLength(4)
     })
 
+    describe('filling the scroll area', () => {
+      const HEADER_HEIGHT = 40
+      const ROW_HEIGHT = 50
+      let containerHeight = 0
+
+      function height(element: Element): number {
+        if (element.tagName === 'THEAD') return HEADER_HEIGHT
+        return element.tagName === 'TR' ? ROW_HEIGHT : 0
+      }
+
+      beforeEach(() => {
+        containerHeight = 490
+        vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(() => containerHeight)
+        vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+          return { height: height(this) } as DOMRect
+        })
+        // The shared stub never reports a size; a real observer reports one as soon as it observes.
+        vi.stubGlobal('ResizeObserver', class {
+          constructor(private readonly callback: () => void) {}
+          observe(): void { this.callback() }
+          unobserve(): void {}
+          disconnect(): void {}
+        })
+      })
+      afterEach(() => { vi.unstubAllGlobals() })
+
+      it('adds placeholder rows until they reach the bottom of the scroll area', () => {
+        renderTable({ isLoading: true })
+
+        // (490 - 40 header) / 50 per row = 9 rows, more than the default 6.
+        expect(document.querySelectorAll('tbody tr')).toHaveLength(9)
+      })
+
+      it('rounds up so the last placeholder row runs off the bottom edge', () => {
+        containerHeight = 500
+
+        renderTable({ isLoading: true })
+
+        expect(document.querySelectorAll('tbody tr')).toHaveLength(10)
+      })
+
+      it('never shows fewer rows than skeletonRows asks for', () => {
+        containerHeight = 100
+
+        renderTable({ isLoading: true, skeletonRows: 6 })
+
+        expect(document.querySelectorAll('tbody tr')).toHaveLength(6)
+      })
+
+      it('clips rather than scrolls while loading, so the filler never adds a scrollbar', () => {
+        const { container } = renderTable({ isLoading: true })
+
+        expect(container.firstElementChild).toHaveClass('overflow-hidden')
+        expect(container.firstElementChild).not.toHaveClass('overflow-auto')
+      })
+    })
+
     it('shows rows, not busy, and an empty status once loading ends', () => {
       renderTable({ isLoading: false })
       expect(screen.getByText('Alice')).toBeInTheDocument()

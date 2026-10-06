@@ -26,7 +26,7 @@ import { ROUTES } from '@/lib/constants/routes'
 import { fmtManifestCargo } from '@/lib/format/manifest'
 import {
   EMPTY_CREW, NO_OVERRIDES, NO_PICKS, NO_TIMES,
-  buildEmptyLegPayload, buildFromManifestPayload, localInputToIso, manifestTimes, parseManifestNumber,
+  buildEmptyLegPayload, buildFromManifestPayload, sastInputToIso, manifestTimes, parseManifestNumber,
   shownTimes, validateCrew, validateEmptyLegRoute, validateManifestRoute, validateSchedule,
   type CrewValues, type FieldErrors, type RoutePicks, type ScheduleOverrides,
 } from '@/lib/trips/manifest-form'
@@ -283,8 +283,8 @@ export default function TripNewPage(): React.JSX.Element {
       : { label: 'Manifest', value: 'Empty leg' },
     ...(mode === 'manifest' && preview ? [{ label: 'Client', value: preview.client_name }] : []),
     { label: 'Route', value: originName && destinationName ? `${originName} → ${destinationName}` : NOT_SET },
-    { label: 'Departure', value: shown.departure ? fmtDateTime(localInputToIso(shown.departure)) : NOT_SET, numeric: Boolean(shown.departure) },
-    { label: 'Arrival', value: shown.arrival ? fmtDateTime(localInputToIso(shown.arrival)) : NOT_SET, numeric: Boolean(shown.arrival) },
+    { label: 'Departure', value: shown.departure ? fmtDateTime(sastInputToIso(shown.departure)) : NOT_SET, numeric: Boolean(shown.departure) },
+    { label: 'Arrival', value: shown.arrival ? fmtDateTime(sastInputToIso(shown.arrival)) : NOT_SET, numeric: Boolean(shown.arrival) },
     { label: 'Driver', value: drivers.find(d => d.id === crew.driverId)?.full_name ?? NOT_SET },
     { label: 'Horse', value: horses.find(h => h.id === crew.horseId)?.registration ?? NOT_SET, numeric: Boolean(crew.horseId) },
     {

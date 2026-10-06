@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   EMPTY_CREW, NO_OVERRIDES, NO_PICKS, NO_TIMES,
-  buildEmptyLegPayload, buildFromManifestPayload, isoToLocalInput, localInputToIso,
+  buildEmptyLegPayload, buildFromManifestPayload, isoToSastInput, sastInputToIso,
   manifestGaps, manifestTimes, parseManifestNumber, shownTimes, validateCrew,
   validateEmptyLegRoute, validateManifestRoute, validateSchedule,
 } from './manifest-form'
@@ -26,19 +26,31 @@ describe('parseManifestNumber', () => {
   })
 })
 
-describe('local datetime inputs', () => {
-  it('renders an instant as a datetime-local value', () => {
-    expect(isoToLocalInput('2026-10-02T16:00:00Z')).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/)
+// Literal strings on purpose: the answer must be the same whatever zone the machine is in, which
+// is also checked by running this file under TZ=UTC and TZ=America/New_York.
+describe('SAST datetime inputs', () => {
+  it('renders an instant as the SAST wall-clock time', () => {
+    expect(isoToSastInput('2026-10-06T18:00:00Z')).toBe('2026-10-06T20:00')
   })
 
-  it('round-trips an on-the-minute instant in any browser zone', () => {
-    expect(localInputToIso(isoToLocalInput('2026-10-02T16:00:00Z'))).toBe('2026-10-02T16:00:00.000Z')
+  it('rolls the SAST day over at 22:00Z', () => {
+    expect(isoToSastInput('2026-10-05T21:59:00Z')).toBe('2026-10-05T23:59')
+    expect(isoToSastInput('2026-10-05T22:00:00Z')).toBe('2026-10-06T00:00')
+  })
+
+  it('reads an input value as SAST, giving the UTC instant', () => {
+    expect(sastInputToIso('2026-10-06T20:00')).toBe('2026-10-06T18:00:00.000Z')
+  })
+
+  it('round-trips an on-the-minute instant', () => {
+    expect(sastInputToIso(isoToSastInput('2026-10-02T16:00:00Z'))).toBe('2026-10-02T16:00:00.000Z')
+    expect(isoToSastInput(sastInputToIso('2026-10-02T18:00'))).toBe('2026-10-02T18:00')
   })
 })
 
 describe('manifestTimes and shownTimes', () => {
   it("uses the manifest's times, and '' where it has none", () => {
-    expect(manifestTimes(makePreview()).departure).toBe(isoToLocalInput('2026-10-02T16:00:00Z'))
+    expect(manifestTimes(makePreview()).departure).toBe(isoToSastInput('2026-10-02T16:00:00Z'))
     expect(manifestTimes(makePreview({ planned_departure_at: null, expected_arrival_at: null }))).toEqual(NO_TIMES)
   })
 
@@ -138,7 +150,7 @@ describe('buildFromManifestPayload', () => {
       { originId: 'ignored-origin', destinationId: DESTINATION_ID },
     )
 
-    expect(payload.planned_departure_at).toBe(new Date('2026-10-02T19:30').toISOString())
+    expect(payload.planned_departure_at).toBe('2026-10-02T17:30:00.000Z')
     expect(payload.origin_precinct_id).toBeNull()
     expect(payload.destination_precinct_id).toBe(DESTINATION_ID)
   })
@@ -160,7 +172,7 @@ describe('buildEmptyLegPayload', () => {
       origin_precinct_id: 'p1',
       destination_precinct_id: 'p2',
       consignments: [],
-      planned_departure_at: new Date('2026-10-02T19:30').toISOString(),
+      planned_departure_at: '2026-10-02T17:30:00.000Z',
       planned_arrival_at: null,
     })
   })

@@ -8,6 +8,11 @@ describe('queue chronology and filters', () => {
     expect(sortQueueChronologically(items).map(x => x.id)).toEqual(['a', 'b', 'older', 'missing'])
     expect(items[0].id).toBe('older')
   })
+  it('breaks ties by id in natural order, the same collator every other list uses', () => {
+    const items = [row('item-10', '2026-10-02T10:00:00Z'), row('item-9', '2026-10-02T10:00:00Z')]
+
+    expect(sortQueueChronologically(items).map(x => x.id)).toEqual(['item-9', 'item-10'])
+  })
   it('uses inclusive South African days and literal substring search while preserving order', () => {
     const items = [row('next', '2026-10-01T22:00:00Z'), row('preceding', '2026-10-01T21:59:00Z'), row('missing', '')]
     expect(filterQueue(items, { q: '%_', fromDate: '2026-10-01', toDate: '2026-10-01' }).map(x => x.id)).toEqual(['preceding'])
@@ -25,6 +30,14 @@ describe('optional trip grouping', () => {
     expect(groups[1].newestRaised).toBe('2026-10-01T12:00:00Z')
     expect(groups[1].oldestRaised).toBe('2026-10-01T10:00:00Z')
     expect(groups[1].severityCounts).toEqual({critical:1,warning:2,info:0})
+  })
+})
+
+describe('group order ties', () => {
+  it('orders groups raised at the same instant by trip id in natural order', () => {
+    const items = [{ ...row('x', '2026-10-02T10:00:00Z'), trip_id: 'trip-10' }, { ...row('y', '2026-10-02T10:00:00Z'), trip_id: 'trip-9' }]
+
+    expect(groupQueueByTrip(items).map(g => g.tripId)).toEqual(['trip-9', 'trip-10'])
   })
 })
 

@@ -25,6 +25,14 @@ function progressOf(trip: TripChecklistItem): number | null {
   return trip.phase_total > 0 ? trip.phase_completed / trip.phase_total : null
 }
 
+// The Progress cell leads with "⚠ N exceptions" when a trip needs review, so the column sorts that
+// first. One number carries both: a trip needing review is -N (always below any progress, which is
+// 0 to 1, and more exceptions are lower), every other trip is its progress. Ascending, the first
+// click, therefore puts the most exceptions at the top; "no plan" stays null and sorts last.
+function exceptionsThenProgress(trip: TripChecklistItem): number | null {
+  return trip.needs_review_count > 0 ? -trip.needs_review_count : progressOf(trip)
+}
+
 function sortValue(trip: TripChecklistItem, key: TripSortKey, precincts: readonly Precinct[]): SortValue {
   switch (key) {
     case 'date': return Date.parse(trip.created_at)
@@ -33,7 +41,7 @@ function sortValue(trip: TripChecklistItem, key: TripSortKey, precincts: readonl
     case 'driver': return trip.driver.full_name
     // Origin then destination, using the same names the cell shows, so sorting and display agree.
     case 'route': return `${routeShortName(precincts, trip.origin_precinct_id)} ${routeShortName(precincts, trip.destination_precinct_id)}`
-    case 'exceptions': return progressOf(trip)
+    case 'exceptions': return exceptionsThenProgress(trip)
     case 'status': return tripChipMeta(trip.status, trip.current_phase).label
   }
 }

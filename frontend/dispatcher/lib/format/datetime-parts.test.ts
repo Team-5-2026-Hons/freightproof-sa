@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
-import { fmtCalendarDate, fmtDateTime, fmtFull, fmtSastDateParts, fmtSastDateTime, fmtTime } from '@shared/lib/utils/datetime'
+import {
+  fmtCalendarDate, fmtDateTime, fmtFull, fmtSastDateParts, fmtSastDateTime, fmtTime, sastCalendarDay, sastToday,
+} from '@shared/lib/utils/datetime'
 
 // Lives beside the dispatcher's other format tests: the shared package has no test runner of its own.
 describe('fmtSastDateParts', () => {
@@ -97,5 +99,26 @@ describe('the shared formatters agree', () => {
       expect(fmtTime(bad)).toBe('—')
       expect(fmtFull(bad)).toBe('—')
     }
+  })
+})
+
+describe('sastCalendarDay', () => {
+  it('rolls to the next SAST day at 22:00Z, not at midnight UTC', () => {
+    expect(sastCalendarDay('2026-10-05T21:59:00Z')).toBe('2026-10-05')
+    expect(sastCalendarDay('2026-10-05T22:00:00Z')).toBe('2026-10-06')
+  })
+
+  it('returns null for an unparseable instant', () => {
+    expect(sastCalendarDay('not a date')).toBeNull()
+  })
+
+  it('accepts a Date as well as an ISO string', () => {
+    expect(sastCalendarDay(new Date('2026-10-05T22:00:00Z'))).toBe('2026-10-06')
+  })
+})
+
+describe('sastToday', () => {
+  it('is the SAST calendar day of the current instant', () => {
+    expect(sastToday()).toBe(sastCalendarDay(new Date()))
   })
 })

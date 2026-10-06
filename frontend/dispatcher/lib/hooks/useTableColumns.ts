@@ -149,16 +149,28 @@ export function useTableColumns(tableId: string, columns: readonly ColumnSpec[])
     setOverrides(current => ({ ...current, [id]: Math.max(minOf(column), (width + delta) / start.scale) }))
   }, [])
 
+  // The active drag's teardown. Kept so an unmount mid-drag, or a second drag starting, can end it:
+  // the listeners are on window and would otherwise outlive the table they resize.
+  const stopResize = useRef<(() => void) | null>(null)
+
   const startResize = useCallback((id: string, clientX: number): void => {
+    stopResize.current?.()
     const start = snapshotOf()
     const onMove = (event: PointerEvent): void => applyResize(id, event.clientX - clientX, start)
-    const onUp = (): void => {
+    const stop = (): void => {
       window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointerup', stop)
+      // The browser takes the pointer away (touch scroll, a system gesture) without a pointerup.
+      window.removeEventListener('pointercancel', stop)
+      stopResize.current = null
     }
     window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointerup', stop)
+    window.addEventListener('pointercancel', stop)
+    stopResize.current = stop
   }, [applyResize, snapshotOf])
+
+  useEffect(() => () => stopResize.current?.(), [])
 
   const resizeBy = useCallback((id: string, deltaPx: number): void => {
     applyResize(id, deltaPx, snapshotOf())

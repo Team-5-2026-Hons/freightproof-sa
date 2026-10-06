@@ -20,7 +20,7 @@ export function ScheduleFields({ overrides, source, onChange, errors }: Schedule
   return (
     <div className="mt-[14px] flex flex-col gap-3 sm:flex-row">
       <TimeField
-        label="Planned departure"
+        label="Planned departure (SAST)"
         required={!source.departure}
         override={overrides.departure}
         source={source.departure}
@@ -28,7 +28,7 @@ export function ScheduleFields({ overrides, source, onChange, errors }: Schedule
         error={errors.departure}
       />
       <TimeField
-        label="Expected arrival"
+        label="Expected arrival (SAST)"
         required={false}
         override={overrides.arrival}
         source={source.arrival}

@@ -789,7 +789,8 @@ class _TripContext:
 async def _load_trip_contexts(
     db: AsyncSession, trips: Iterable[Trip],
 ) -> dict[uuid.UUID, _TripContext]:
-    """Route/driver/truck/trailer labels for a set of trips, in three queries total.
+    """Route/driver/truck/trailer labels for a set of trips, in three queries total:
+    precincts, driver and horse together, then trailers.
 
     Batched per page rather than joined into _exception_read_query: a trip can have many
     trailers, which would multiply exception rows, and the 4-tuple that query returns is
@@ -811,9 +812,16 @@ async def _load_trip_contexts(
             select(Precinct.id, Precinct.name).where(Precinct.id.in_(precinct_ids))
         )).all())
 
-    driver_names = dict((await db.execute(
-        select(Driver.id, Driver.full_name).where(Driver.id.in_({t.driver_id for t in unique.values()}))
-    )).all())
+    # Outer joins: a driver or horse that cannot be resolved leaves its label None rather than
+    # dropping the trip's row, as the separate lookups this replaced did.
+    crew_rows = (await db.execute(
+        select(Trip.id, Driver.full_name, Vehicle.registration)
+        .select_from(Trip)
+        .outerjoin(Driver, Driver.id == Trip.driver_id)
+        .outerjoin(Vehicle, Vehicle.id == Trip.horse_id)
+        .where(Trip.id.in_(unique))
+    )).all()
+    crew = {trip_id: (driver_name, horse_registration) for trip_id, driver_name, horse_registration in crew_rows}
 
     trailer_rows = (await db.execute(
         select(TripTrailer.trip_id, Vehicle.registration)
@@ -825,20 +833,17 @@ async def _load_trip_contexts(
     for trip_id, registration in trailer_rows:
         trailers.setdefault(trip_id, []).append(registration)
 
-    horse_regs = dict((await db.execute(
-        select(Vehicle.id, Vehicle.registration).where(Vehicle.id.in_({t.horse_id for t in unique.values()}))
-    )).all())
-
-    return {
-        trip.id: _TripContext(
+    contexts: dict[uuid.UUID, _TripContext] = {}
+    for trip in unique.values():
+        driver_name, horse_registration = crew.get(trip.id, (None, None))
+        contexts[trip.id] = _TripContext(
             origin_name=precinct_names.get(trip.origin_precinct_id) if trip.origin_precinct_id else None,
             destination_name=precinct_names.get(trip.destination_precinct_id) if trip.destination_precinct_id else None,
-            driver_name=driver_names.get(trip.driver_id),
-            horse_registration=horse_regs.get(trip.horse_id),
+            driver_name=driver_name,
+            horse_registration=horse_registration,
             trailer_registrations=trailers.get(trip.id, []),
         )
-        for trip in unique.values()
-    }
+    return contexts
 
 
 def _to_list_item(

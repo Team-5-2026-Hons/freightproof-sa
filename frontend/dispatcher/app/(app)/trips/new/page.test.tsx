@@ -33,7 +33,7 @@ import { usePrecincts } from '@/lib/hooks/usePrecincts'
 import { useVehicles } from '@/lib/hooks/useVehicles'
 import { ROUTES } from '@/lib/constants/routes'
 import { makePreview, makeWarning } from '@/lib/trips/__fixtures__/preview'
-import { isoToLocalInput } from '@/lib/trips/manifest-form'
+import { isoToSastInput } from '@/lib/trips/manifest-form'
 import { mockDrivers } from '@shared/lib/mocks/drivers'
 import {
   mockPrecincts, PRECINCT_CGY_JHB_ID, PRECINCT_FEDEX_DBN_ID, PRECINCT_FEDEX_JHB_ID,
@@ -141,7 +141,7 @@ describe('Create Trip: from a manifest', () => {
     const payload = vi.mocked(createTripFromPPManifest).mock.calls[0][0]
     expect(payload.destination_precinct_id).toBe(PRECINCT_CGY_JHB_ID)
     expect(payload.origin_precinct_id).toBeNull()
-    expect(payload.planned_departure_at).toBe(new Date('2026-10-02T18:00').toISOString())
+    expect(payload.planned_departure_at).toBe('2026-10-02T16:00:00.000Z')
   })
 
   it('refuses a blocked manifest and asks for nothing else', async () => {
@@ -201,7 +201,7 @@ describe('Create Trip: from a manifest', () => {
     expect(await screen.findByText(/The manifest changed since you looked it up/)).toBeInTheDocument()
     expect(screen.getByText('PO-CGY-0081-REV')).toBeInTheDocument()
     // The untouched departure follows the new manifest; it was never the dispatcher's own.
-    expect(screen.getByLabelText(/Planned departure/)).toHaveValue(isoToLocalInput('2026-10-02T17:00:00Z'))
+    expect(screen.getByLabelText(/Planned departure/)).toHaveValue(isoToSastInput('2026-10-02T17:00:00Z'))
 
     await create()
 
@@ -230,7 +230,7 @@ describe('Create Trip: from a manifest', () => {
 
     await waitFor(() => expect(createTripFromPPManifest).toHaveBeenCalledTimes(2))
     expect(vi.mocked(createTripFromPPManifest).mock.calls[1][0].planned_departure_at)
-      .toBe(new Date('2026-10-02T20:00').toISOString())
+      .toBe('2026-10-02T18:00:00.000Z')
   })
 
   it('links to the trip that already holds the manifest', async () => {
@@ -403,7 +403,7 @@ describe('Create Trip: empty leg', () => {
       origin_precinct_id: PRECINCT_FEDEX_JHB_ID,
       destination_precinct_id: PRECINCT_FEDEX_DBN_ID,
       consignments: [],
-      planned_departure_at: new Date('2026-10-02T18:00').toISOString(),
+      planned_departure_at: '2026-10-02T16:00:00.000Z',
       planned_arrival_at: null,
     }))
     expect(nav.push).toHaveBeenCalledWith(ROUTES.tripDetail('trip-empty'))

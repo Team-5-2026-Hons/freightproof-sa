@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useCallback, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react'
+import { Fragment, useCallback, useEffect, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react'
 import { ArrowDown, ArrowUp } from 'lucide-react'
 import { cn } from '@shared/lib/utils/cn'
 import { SkeletonBar } from './Skeleton'
@@ -65,6 +65,8 @@ interface TableProps<T> {
 
 // Enough rows to fill a laptop screen, so the table doesn't visibly grow when data arrives.
 const DEFAULT_SKELETON_ROWS = 6
+// Ceiling on measured filler, so an absurdly tall or mis-measured area cannot render thousands of rows.
+const MAX_SKELETON_ROWS = 100
 const HEADER_CELL = 'sticky top-0 z-[1] bg-surf-low text-left text-[10px] font-[700] uppercase tracking-[0.1em] text-on-surf-v border-b border-outline-v/10'
 const BODY_CELL = 'break-words border-b border-outline-v/10'
 // A line between neighbouring columns, header and body alike. Padding is symmetric, so it sits
@@ -92,10 +94,32 @@ export function Table<T>({
 
   // The page needs the scroller (restoration) and the hook needs it too (width); one ref feeds both.
   const { containerRef } = layout
+  const [scroller, setScroller] = useState<HTMLDivElement | null>(null)
   const setContainer = useCallback((el: HTMLDivElement | null): void => {
     containerRef(el)
     onScroller?.(el)
+    setScroller(el)
   }, [containerRef, onScroller])
+
+  // Placeholder rows needed to reach the bottom of the scroll area. A fixed count leaves white space
+  // under a tall window, and short rows (dashboard, drivers, history) leave the most. Measured from the
+  // real placeholder row rather than assumed, because row height depends on density and column content.
+  const [fillRows, setFillRows] = useState(0)
+  useEffect(() => {
+    if (!isLoading || !scroller) return
+    const fit = (): void => {
+      const header = scroller.querySelector('thead')
+      const row = scroller.querySelector('tbody tr')
+      const rowHeight = row?.getBoundingClientRect().height ?? 0
+      if (!header || rowHeight <= 0) return
+
+      const room = scroller.clientHeight - header.getBoundingClientRect().height
+      setFillRows(Math.min(MAX_SKELETON_ROWS, Math.ceil(room / rowHeight)))
+    }
+    const observer = new ResizeObserver(fit)
+    observer.observe(scroller)
+    return () => observer.disconnect()
+  }, [isLoading, scroller])
 
   const bodyCell = cn(BODY_CELL, DENSITY_CLASSES[density].body, COLUMN_DIVIDER)
 
@@ -125,7 +149,7 @@ export function Table<T>({
       // Decorative, so hidden from assistive tech: the status line above says what is happening.
       return (
         <tbody aria-hidden>
-          {Array.from({ length: skeletonRows }, (_, index) => (
+          {Array.from({ length: Math.max(skeletonRows, fillRows) }, (_, index) => (
             <tr key={index} className="bg-surf-lowest">
               {visibleColumns.map(column => <td key={column.id} className={bodyCell}>{column.skeleton ?? <SkeletonBar className="h-3 w-3/4" />}</td>)}
             </tr>
@@ -149,8 +173,9 @@ export function Table<T>({
     })
   }
 
+  // Clipped while loading: the filler deliberately overshoots by up to a row, and a scrollbar would show it.
   return (
-    <div ref={setContainer} className={cn('w-full overflow-auto', className)}>
+    <div ref={setContainer} className={cn('w-full', isLoading ? 'overflow-hidden' : 'overflow-auto', className)}>
       {/* Always mounted: a live region added at the same moment as its text is often not announced. */}
       <p role="status" className="sr-only">{isLoading ? loadingLabel : ''}</p>
       {/* border-separate, not collapse: sticky header cells keep their own bottom border only this way. */}

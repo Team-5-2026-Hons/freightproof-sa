@@ -48,16 +48,7 @@ export function fmtBreakdownVehicle(
   return parts.length > 0 ? parts.join(' · ') : NO_DATA
 }
 
-export const EXCEPTION_TIMEZONE = 'Africa/Johannesburg'
 export const RAISED_TIME_UNAVAILABLE = 'Raised time unavailable'
-
-export function exceptionCalendarDay(iso: string): string | null {
-  const date = new Date(iso)
-  if (!Number.isFinite(date.getTime())) return null
-  const parts = new Intl.DateTimeFormat('en', { timeZone: EXCEPTION_TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date)
-  const part = (type: string): string => parts.find(p => p.type === type)?.value ?? ''
-  return `${part('year')}-${part('month')}-${part('day')}`
-}
 
 /** "03 Sep 2026, 12:00 SAST", or the unavailable message for an unreadable timestamp. */
 export function fmtExceptionRaised(iso: string): string {

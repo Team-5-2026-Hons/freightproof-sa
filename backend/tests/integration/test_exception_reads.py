@@ -12,6 +12,7 @@ from datetime import UTC, date, datetime
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
+from sqlalchemy import event as sa_event
 
 from app.db.models.enums import (
     ArtifactType,
@@ -37,6 +38,7 @@ from app.db.models.trips import Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
 from app.main import app
+from app.orchestration.exception_service import _load_trip_contexts
 
 from tests.conftest import auth_header, make_token
 
@@ -801,4 +803,27 @@ async def test_history_rows_carry_context_and_empty_trailers_when_none_attached(
     assert row["origin_name"] is None
     assert row["destination_name"] == seed["dest"].name
     assert row["driver_name"] == seed["driver"].full_name
+    assert row["horse_registration"] == seed["horse"].registration
     assert row["trailer_registrations"] == []
+
+
+async def test_trip_contexts_are_loaded_in_three_queries(db_session, test_engine):
+    """Precincts, driver and horse together, trailers: three SELECTs however many trips there are."""
+    seed = await _seed_org(db_session, tag="ctxq")
+    trips = [await _make_trip(db_session, seed, tag=f"ctxq{i}") for i in range(3)]
+    await _attach_trailer(db_session, seed, trips[0], registration="TRL-Q")
+    statements: list[str] = []
+
+    def record(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    sa_event.listen(test_engine.sync_engine, "before_cursor_execute", record)
+    try:
+        contexts = await _load_trip_contexts(db_session, trips)
+    finally:
+        sa_event.remove(test_engine.sync_engine, "before_cursor_execute", record)
+
+    assert len(statements) == 3
+    assert contexts[trips[0].id].driver_name == seed["driver"].full_name
+    assert contexts[trips[0].id].horse_registration == seed["horse"].registration
+    assert contexts[trips[0].id].trailer_registrations == ["TRL-Q"]
