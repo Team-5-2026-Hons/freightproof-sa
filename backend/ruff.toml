@@ -1,0 +1,69 @@
+# Ruff config for backend/. Run from backend/: `ruff check .`
+#
+# extend-select ADDS to ruff's default rules (E4, E7, E9, F); it does not replace them.
+# ruff itself is pinned in requirements-dev.txt because a new release can widen the
+# defaults and break CI, so the extra rules are named explicitly here.
+#
+# What these three rules measure, and what they do not:
+#   C901     cyclomatic complexity (branches), not length
+#   PLR0915  number of statements, not physical lines
+#   PLR0913  number of arguments
+# None of them measure how many LINES a function spans. A 300-line function made of
+# simple statements passes all three. Physical length is enforced separately by
+# scripts/check_structure.py against structure-baseline.json.
+#
+# Ratchet: the per-file-ignores below are the violations that exist today (31 files).
+# They exempt a file from only the rule(s) it already breaks, so a new file, or an
+# existing file breaking a *different* rule, is still checked. The list may only shrink:
+# when you fix a function, delete its entry. Do not add an entry to make new code pass.
+# Note this is coarse: inside a listed file a new function can also exceed the limit.
+# That gap is accepted because ruff has no per-function baseline; check_structure.py
+# closes it for length, which is the measure the audit cares about.
+
+[lint]
+extend-select = ["C901", "PLR0915", "PLR0913"]
+
+[lint.mccabe]
+max-complexity = 10
+
+[lint.pylint]
+max-args = 5
+max-statements = 50
+
+[lint.per-file-ignores]
+# Tests: fixtures and parametrised helpers legitimately take many arguments, and the
+# audit targets app/. check_structure.py and the B8 scan still cover tests where specified.
+"tests/**" = ["C901", "PLR0915", "PLR0913"]
+
+# Existing violations in app/ and scripts/ (generated from the tree at the time of writing).
+"app/analytics/lane_metrics.py" = ["PLR0913"]
+"app/analytics/rollup.py" = ["PLR0913"]
+"app/api/v1/endpoints/artifacts.py" = ["PLR0913"]
+"app/api/v1/endpoints/dev_triggers.py" = ["C901"]
+"app/api/v1/endpoints/exceptions.py" = ["PLR0913"]
+"app/api/v1/endpoints/trips.py" = ["C901", "PLR0913"]
+"app/blockchain/anchor_service.py" = ["PLR0913"]
+"app/blockchain/hedera.py" = ["PLR0913"]
+"app/core/config_validation.py" = ["C901"]
+"app/crypto/hashing.py" = ["PLR0913"]
+"app/integrations/parcel_perfect.py" = ["PLR0913"]
+"app/orchestration/action_location_service.py" = ["PLR0913"]
+"app/orchestration/artifact_service.py" = ["PLR0913"]
+"app/orchestration/checkpoint_service.py" = ["C901"]
+"app/orchestration/consignment_service.py" = ["C901", "PLR0913", "PLR0915"]
+"app/orchestration/corroboration_service.py" = ["C901"]
+"app/orchestration/dev_rig_service.py" = ["PLR0913"]
+"app/orchestration/exception_service.py" = ["C901", "PLR0913"]
+"app/orchestration/handover_service.py" = ["PLR0913"]
+"app/orchestration/phase_service.py" = ["PLR0913"]
+"app/orchestration/pp_manifest_service.py" = ["C901", "PLR0913"]
+"app/orchestration/proximity_service.py" = ["C901", "PLR0913"]
+"app/orchestration/resource_service.py" = ["PLR0913"]
+"app/orchestration/scan_service.py" = ["PLR0913"]
+"app/orchestration/trip_service.py" = ["C901", "PLR0915"]
+"app/orchestration/vehicle_service.py" = ["C901"]
+"app/orchestration/verification_service.py" = ["C901"]
+"app/storage/supabase_storage.py" = ["C901"]
+"scripts/check_supabase_wiring.py" = ["C901"]
+"scripts/pp_watch.py" = ["C901", "PLR0913", "PLR0915"]
+"scripts/seed_trips.py" = ["C901", "PLR0913", "PLR0915"]
