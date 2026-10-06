@@ -87,9 +87,25 @@ jobs:
         working-directory: backend
         run: pip install -r requirements-dev.txt
 
+      # Reads backend/ruff.toml: defaults plus C901/PLR0915/PLR0913, with today's
+      # violations grandfathered per file. Complexity, statements and arguments only —
+      # physical length is the next step.
       - name: Lint — ruff
         working-directory: backend
         run: ruff check .
+
+      # No new function over 100 lines, and no growth of an already-oversized function or
+      # of a file in structure-baseline.json. After a legitimate shrink or pure move, run
+      # `python scripts/check_structure.py --update` and commit the baseline diff.
+      - name: Structure — function and file size ratchet
+        working-directory: backend
+        run: python scripts/check_structure.py
+
+      # Layer order and no API layer-skipping, per backend/.importlinter. Existing
+      # violations are listed there as ignores with reasons; the list may only shrink.
+      - name: Layering — import-linter
+        working-directory: backend
+        run: lint-imports
 
       - name: Type-check — mypy
         working-directory: backend
@@ -105,6 +121,18 @@ jobs:
           TEST_DATABASE_URL: postgresql+asyncpg://postgres:test@localhost:5432/freightproof_test
           REDIS_URL: redis://localhost:6379/0
         run: pytest -m "not slow"
+
+      # B7 of the behaviour baseline: import every module under app/ in its own fresh
+      # interpreter, which is the only way to see an order-dependent import cycle. ~160
+      # interpreter start-ups, hence marked slow and run here on its own because the step
+      # above excludes slow tests. Same env as above so Settings() can instantiate.
+      - name: Test — every app module imports in a fresh interpreter (slow)
+        working-directory: backend
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TEST_DATABASE_URL: postgresql+asyncpg://postgres:test@localhost:5432/freightproof_test
+          REDIS_URL: redis://localhost:6379/0
+        run: pytest -m slow tests/baseline/test_b7_import_cycles.py
 
       # ---------------------------------------------------------------------
       # Alembic. CI has never run it, which is exactly why it is being added: a
@@ -143,10 +171,23 @@ jobs:
         env:
           PGPASSWORD: test
           DATABASE_URL: postgresql+asyncpg://postgres:test@localhost:5432/freightproof_migrations
+          # env.py imports app.core.config, so Settings() must instantiate. These are the
+          # placeholders tests/conftest.py supplies, which Alembic never loads. Migrations
+          # only use DATABASE_URL, so no real secret belongs in this step.
+          REDIS_URL: redis://localhost:6379/0
+          SUPABASE_URL: https://test.supabase.co
+          SUPABASE_ANON_KEY: test-anon-key
+          SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
+          HEDERA_ACCOUNT_ID: "0.0.0"
+          HEDERA_PRIVATE_KEY: test-hedera-key
         run: |
           psql -h localhost -U postgres -d postgres \
             -c "DROP DATABASE IF EXISTS freightproof_migrations;" \
             -c "CREATE DATABASE freightproof_migrations;"
+          # Plain Postgres has no Supabase auth schema or API roles, which the migrations
+          # reference (0002 FKs to auth.users, 0003 RLS policies). Stub just those.
+          psql -h localhost -U postgres -d freightproof_migrations -v ON_ERROR_STOP=1 \
+            -f scripts/ci_supabase_stub.sql
           alembic upgrade head
           echo "Migration chain applied cleanly from empty."
 

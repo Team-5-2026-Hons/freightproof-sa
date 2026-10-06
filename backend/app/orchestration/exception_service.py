@@ -810,7 +810,7 @@ async def _load_trip_contexts(
     if precinct_ids:
         precinct_names = dict((await db.execute(
             select(Precinct.id, Precinct.name).where(Precinct.id.in_(precinct_ids))
-        )).all())
+        )).tuples().all())
 
     # Outer joins: a driver or horse that cannot be resolved leaves its label None rather than
     # dropping the trip's row, as the separate lookups this replaced did.

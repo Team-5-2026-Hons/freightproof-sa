@@ -1,0 +1,539 @@
+{
+  "DELETE /api/v1/exceptions/{exception_id}/claim": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:fleet_mutation"
+    ]
+  },
+  "GET /api/v1/analytics/drivers": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/analytics/facilities": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/analytics/fleet/activity": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/analytics/fleet/evidence": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/analytics/fleet/incidents": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/analytics/fleet/on-time": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/analytics/fleet/patterns": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/analytics/fleet/problems": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/analytics/fleet/review": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/analytics/fleet/routes": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/analytics/fleet/tiles": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/analytics/lanes": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/analytics/vehicles": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/analytics/vehicles/streaks": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/auth/me": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/blockchain/receipts": {
+    "access": "admin-dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "app.auth.dependencies.require_admin_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/blockchain/receipts/lookup": {
+    "access": "admin-dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "app.auth.dependencies.require_admin_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/drivers": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/drivers/me": {
+    "access": "driver",
+    "dependencies": [
+      "app.auth.dependencies.get_current_driver",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/drivers/{driver_id}": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/exceptions/history": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/exceptions/review-queue": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/exceptions/{exception_id}": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/handover/{raw_token}": {
+    "access": "receiver-capability-token",
+    "dependencies": [
+      "rate_limit:handover_public"
+    ]
+  },
+  "GET /api/v1/pp/capabilities": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/pp/waybills/{waybill_number}": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:pp_lookup"
+    ]
+  },
+  "GET /api/v1/precincts": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/precincts/{precinct_id}": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/stream": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/trips": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/trips/history": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/trips/me": {
+    "access": "driver",
+    "dependencies": [
+      "app.auth.dependencies.get_current_driver",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/trips/me/active": {
+    "access": "driver",
+    "dependencies": [
+      "app.auth.dependencies.get_current_driver",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/trips/me/{trip_id}": {
+    "access": "driver",
+    "dependencies": [
+      "app.auth.dependencies.get_current_driver",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/trips/pp-manifest-preview": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:pp_lookup"
+    ]
+  },
+  "GET /api/v1/trips/{trip_id}": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/trips/{trip_id}/artifacts": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/trips/{trip_id}/manifest": {
+    "access": "bearer-checked-in-handler",
+    "dependencies": [
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/trips/{trip_id}/phases": {
+    "access": "driver",
+    "dependencies": [
+      "app.auth.dependencies.get_current_driver",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/trips/{trip_id}/phases/next": {
+    "access": "driver",
+    "dependencies": [
+      "app.auth.dependencies.get_current_driver",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/trips/{trip_id}/phases/{phase_event_id}/handover": {
+    "access": "driver",
+    "dependencies": [
+      "app.auth.dependencies.get_current_driver",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/vehicles": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/vehicles/{vehicle_id}": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /docs": {
+    "access": "none",
+    "dependencies": []
+  },
+  "GET /docs/oauth2-redirect": {
+    "access": "none",
+    "dependencies": []
+  },
+  "GET /health": {
+    "access": "none",
+    "dependencies": [
+      "app.db.session.get_read_only_db"
+    ]
+  },
+  "GET /openapi.json": {
+    "access": "none",
+    "dependencies": []
+  },
+  "GET /redoc": {
+    "access": "none",
+    "dependencies": []
+  },
+  "PATCH /api/v1/drivers/{driver_id}": {
+    "access": "admin-dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "app.auth.dependencies.require_admin_dispatcher",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:fleet_mutation"
+    ]
+  },
+  "PATCH /api/v1/exceptions/{exception_id}/review": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:fleet_mutation"
+    ]
+  },
+  "PATCH /api/v1/precincts/{precinct_id}": {
+    "access": "admin-dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "app.auth.dependencies.require_admin_dispatcher",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:precinct_mutation"
+    ]
+  },
+  "PATCH /api/v1/vehicles/{vehicle_id}": {
+    "access": "admin-dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "app.auth.dependencies.require_admin_dispatcher",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:fleet_mutation"
+    ]
+  },
+  "POST /api/v1/artifacts": {
+    "access": "driver",
+    "dependencies": [
+      "app.auth.dependencies.get_current_driver",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:artifact_upload"
+    ]
+  },
+  "POST /api/v1/blockchain/verify": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:blockchain_verify"
+    ]
+  },
+  "POST /api/v1/drivers": {
+    "access": "admin-dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "app.auth.dependencies.require_admin_dispatcher",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:fleet_mutation"
+    ]
+  },
+  "POST /api/v1/exceptions/review-batch": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:fleet_mutation"
+    ]
+  },
+  "POST /api/v1/exceptions/{exception_id}/claim": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:fleet_mutation"
+    ]
+  },
+  "POST /api/v1/handover/webhooks/didit": {
+    "access": "receiver-capability-token",
+    "dependencies": [
+      "rate_limit:idvs_webhook"
+    ]
+  },
+  "POST /api/v1/handover/{raw_token}/confirm": {
+    "access": "receiver-capability-token",
+    "dependencies": [
+      "rate_limit:handover_public"
+    ]
+  },
+  "POST /api/v1/handover/{raw_token}/consent": {
+    "access": "receiver-capability-token",
+    "dependencies": [
+      "rate_limit:handover_public"
+    ]
+  },
+  "POST /api/v1/handover/{raw_token}/verify": {
+    "access": "receiver-capability-token",
+    "dependencies": [
+      "rate_limit:idvs_verify"
+    ]
+  },
+  "POST /api/v1/handover/{raw_token}/verify/resolve": {
+    "access": "receiver-capability-token",
+    "dependencies": [
+      "rate_limit:handover_public"
+    ]
+  },
+  "POST /api/v1/precincts": {
+    "access": "admin-dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "app.auth.dependencies.require_admin_dispatcher",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:precinct_mutation"
+    ]
+  },
+  "POST /api/v1/trips": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:trip_create"
+    ]
+  },
+  "POST /api/v1/trips/from-pp-manifest": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:trip_create"
+    ]
+  },
+  "POST /api/v1/trips/{trip_id}/cancel": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:fleet_mutation"
+    ]
+  },
+  "POST /api/v1/trips/{trip_id}/checkpoints": {
+    "access": "driver",
+    "dependencies": [
+      "app.auth.dependencies.get_current_driver",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:evidence_write"
+    ]
+  },
+  "POST /api/v1/trips/{trip_id}/exceptions": {
+    "access": "driver",
+    "dependencies": [
+      "app.auth.dependencies.get_current_driver",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:evidence_write"
+    ]
+  },
+  "POST /api/v1/trips/{trip_id}/locations": {
+    "access": "driver",
+    "dependencies": [
+      "app.auth.dependencies.get_current_driver",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:evidence_write"
+    ]
+  },
+  "POST /api/v1/trips/{trip_id}/phases/{phase_event_id}/complete": {
+    "access": "driver",
+    "dependencies": [
+      "app.auth.dependencies.get_current_driver",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:evidence_write"
+    ]
+  },
+  "POST /api/v1/trips/{trip_id}/phases/{phase_event_id}/handover/tokens": {
+    "access": "driver",
+    "dependencies": [
+      "app.auth.dependencies.get_current_driver",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:handover_issue"
+    ]
+  },
+  "POST /api/v1/trips/{trip_id}/phases/{phase_event_id}/location-preview": {
+    "access": "driver",
+    "dependencies": [
+      "app.auth.dependencies.get_current_driver",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:evidence_write"
+    ]
+  },
+  "POST /api/v1/trips/{trip_id}/phases/{phase_event_id}/override": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:fleet_mutation"
+    ]
+  },
+  "POST /api/v1/vehicles": {
+    "access": "admin-dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "app.auth.dependencies.require_admin_dispatcher",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:fleet_mutation"
+    ]
+  }
+}

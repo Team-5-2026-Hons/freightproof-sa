@@ -1,0 +1,91 @@
+# import-linter contracts for backend/app. Run from backend/: `lint-imports`.
+#
+# Every ignore_imports line below is a violation that exists TODAY (audit
+# docs/design-notes/2026-10-06-backend-structure-tech-debt-audit.md, section 4.2).
+# The list is a ratchet: it may only shrink. Do not add a line to make a new import
+# pass; fix the import. When a line stops matching (the import was fixed), the run
+# fails with "unmatched ignore" so the stale entry gets deleted.
+
+[importlinter]
+root_package = app
+include_external_packages = False
+# An ignore that no longer matches an import means the debt was paid. Fail so the
+# entry is removed rather than left to silently excuse a future regression.
+unmatched_ignore_imports_alerting = error
+
+# ---------------------------------------------------------------------------
+# 1. Layer order. A module may import from layers below it, never above.
+#    "|" = independent siblings: they may not import each other either.
+#    db may import only app.core (config); that is the bottom-layer rule.
+# ---------------------------------------------------------------------------
+[importlinter:contract:layers]
+name = Layer order (api|tasks > orchestration > integrations|blockchain|storage|auth|analytics > schemas > db > core|crypto)
+type = layers
+layers =
+    app.api | app.tasks
+    app.orchestration
+    app.integrations | app.blockchain | app.storage | app.auth | app.analytics
+    app.schemas
+    app.db
+    app.core | app.crypto
+ignore_imports =
+    # core -> db: enums used as shared vocabulary by two core modules.
+    app.core.phase_meta -> app.db.models.enums
+    app.core.realtime -> app.db.models.enums
+    # schemas -> analytics: pure constants and helpers; candidates to move below schemas.
+    app.schemas.analytics -> app.analytics.stats
+    app.schemas.fleet_analytics -> app.analytics.stats
+    app.schemas.fleet_analytics -> app.analytics.fleet.constants
+    app.schemas.fleet_analytics -> app.analytics.fleet.periods
+    # schemas -> integrations: dev-only schema; moves with app/dev/ (audit phase 4).
+    app.schemas.dev -> app.integrations.scan_feed
+    # orchestration -> tasks: phase_service imports tasks.blockchain lazily (function level)
+    # to dispatch anchoring. tasks.blockchain imports phase_service back, so a module-level
+    # import would be a cycle. Removed structurally by the anchor_dispatch split (audit 5.2).
+    app.orchestration.phase_service -> app.tasks.blockchain
+
+# ---------------------------------------------------------------------------
+# 2. No layer skipping from the API. CLAUDE.md: endpoints -> orchestration -> integrations.
+#    The layers contract above permits skipping; this contract forbids it.
+#    allow_indirect_imports: api -> orchestration -> integrations is the intended path.
+#    app.db.session (get_db) is deliberately not forbidden: CLAUDE.md requires it.
+# ---------------------------------------------------------------------------
+[importlinter:contract:api-no-layer-skip]
+name = Endpoints reach integrations, blockchain, storage and crypto only via orchestration
+type = forbidden
+source_modules =
+    app.api
+forbidden_modules =
+    app.integrations
+    app.blockchain
+    app.storage
+    app.crypto
+allow_indirect_imports = True
+ignore_imports =
+    # Real skips (audit 4.2): to be routed through orchestration in audit phase 2 (item C).
+    app.api.v1.endpoints.trips -> app.integrations.parcel_perfect
+    app.api.v1.endpoints.pp -> app.integrations.parcel_perfect
+    app.api.v1.endpoints.handover -> app.integrations.idvs
+    app.api.v1.endpoints.blockchain -> app.blockchain.anchor_service
+    app.api.v1.endpoints.blockchain -> app.blockchain.subject_visibility
+    # The 5 dev_* imports (audit 4.2): dev-only tooling; moves to app/dev/ in the last window.
+    app.api.v1.endpoints.dev_tracker -> app.integrations.pulsit
+    app.api.v1.endpoints.dev_pulsit -> app.integrations.pulsit
+    app.api.v1.endpoints.dev_triggers -> app.integrations.mock_state
+    app.api.v1.endpoints.dev_triggers -> app.integrations.parcel_perfect
+    app.api.v1.endpoints.dev_triggers -> app.integrations.scan_feed
+
+# ---------------------------------------------------------------------------
+# 3. Written ahead of the phases/ package (audit 5.1). Trivially kept until it exists.
+#    The wildcard form is required: a plain module name raises "does not exist" today.
+#    Stops the new package importing back into its own facade (rule 2 of section 5).
+#    Function-level (lazy) imports are in the graph too, so a lazy import of the facade
+#    from inside phases/ is caught as well.
+# ---------------------------------------------------------------------------
+[importlinter:contract:phases-no-facade]
+name = app.orchestration.phases must not import the phase_service facade
+type = forbidden
+source_modules =
+    app.orchestration.phases.**
+forbidden_modules =
+    app.orchestration.phase_service
