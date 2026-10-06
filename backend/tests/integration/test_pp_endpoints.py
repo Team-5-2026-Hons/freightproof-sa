@@ -139,16 +139,16 @@ async def test_get_waybill_unknown_reference_returns_404(client: AsyncClient, se
     assert resp.status_code == 404
 
 
-async def test_get_manifest_returns_all_waybills_on_manifest(client: AsyncClient, seed_dispatcher):
+async def test_legacy_manifest_route_is_gone(client: AsyncClient, seed_dispatcher):
+    # FP-281: GET /trips/pp-manifest-preview is the one manifest reader. The wizard-era
+    # waybill list must not survive as a second door to the same data, one that carries
+    # none of the preview's warnings.
     user, org = seed_dispatcher
     token = make_token(sub=str(user.id), role="dispatcher", org_id=str(org.id))
 
     resp = await client.get("/api/v1/pp/manifests/69", headers=auth_header(token))
 
-    assert resp.status_code == 200
-    body = resp.json()
-    assert len(body) == 4
-    assert {row["waybill"] for row in body} == {"MOCKWAY001", "WAY001", "WAY002", "WAY003"}
+    assert resp.status_code == 404
 
 
 async def test_capabilities_no_auth_returns_403(client: AsyncClient, seed_dispatcher):

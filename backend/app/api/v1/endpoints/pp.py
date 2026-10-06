@@ -11,7 +11,7 @@ from app.auth.dependencies import get_current_dispatcher
 from app.core.limits import PP_LOOKUP
 from app.core.rate_limit import rate_limit
 from app.db.session import get_db
-from app.integrations.parcel_perfect import PPUnsupportedError, PPWaybillNotFoundError
+from app.integrations.parcel_perfect import PPWaybillNotFoundError
 from app.orchestration import consignment_service, pp_lookup_service
 from app.schemas.people import UserRead
 from app.schemas.pp import PPCapabilities, PPWaybillSummary
@@ -27,12 +27,6 @@ _PP_UNREACHABLE_DETAIL = (
     "Parcel Perfect is unreachable — the reference will be verified at trip creation."
 )
 
-# str(PPUnsupportedError) carries an internal engineering note (PP feature ask);
-# clients get this stable message instead.
-_MANIFEST_UNSUPPORTED_DETAIL = (
-    "Manifest lookup is not available on the live Parcel Perfect API."
-)
-
 
 @router.get("/capabilities", response_model=PPCapabilities, summary="PP client capabilities")
 async def get_capabilities_endpoint(
@@ -41,10 +35,9 @@ async def get_capabilities_endpoint(
     return pp_lookup_service.get_capabilities()
 
 
-# Both lookups below reach out to Parcel Perfect, whose quota is a partner resource we
-# neither own nor pay for — an unbounded loop here is abuse of someone else's system as
-# much as of ours. The wizard fires one per waybill the dispatcher types, so the budget
-# has to cover a multi-waybill trip entered quickly and nothing beyond that.
+# Reaches out to Parcel Perfect, whose quota is a partner resource we neither own nor pay
+# for: an unbounded loop here abuses someone else's system as much as ours. Budgeted like
+# the manifest preview (PP_LOOKUP).
 @router.get("/waybills/{waybill_number}", response_model=PPWaybillSummary,
             summary="Validate a PP waybill reference",
             dependencies=[Depends(rate_limit(PP_LOOKUP))])
@@ -80,26 +73,3 @@ async def get_waybill_endpoint(
         summary.already_assigned_to_trip = None
 
     return summary
-
-
-@router.get("/manifests/{manifest_number}", response_model=list[PPWaybillSummary],
-            summary="List waybills on a PP manifest (mock-only capability)",
-            dependencies=[Depends(rate_limit(PP_LOOKUP))])
-async def get_manifest_endpoint(
-    manifest_number: int,
-    current_user: UserRead = Depends(get_current_dispatcher),
-) -> list[PPWaybillSummary]:
-    try:
-        return await pp_lookup_service.get_manifest_summaries(manifest_number)
-    except PPUnsupportedError as exc:
-        raise HTTPException(
-            status_code=http_status.HTTP_404_NOT_FOUND,
-            detail=_MANIFEST_UNSUPPORTED_DETAIL,
-        ) from exc
-    except (ValueError, httpx.HTTPError) as exc:
-        # Real client raises ValueError (PP errorcode != 0) or httpx errors on outage.
-        logger.warning("PP lookup failed for manifest %s: %s", manifest_number, exc)
-        raise HTTPException(
-            status_code=http_status.HTTP_502_BAD_GATEWAY,
-            detail=_PP_UNREACHABLE_DETAIL,
-        ) from exc

@@ -12,3 +12,7 @@ MINIMUM_TRIP_DURATION = timedelta(minutes=15)
 # pass; a request past this is not a dispatcher looking at rows, and one bounded
 # transaction keeps the row locks short.
 MAX_BATCH_REVIEW_SIZE = 100
+
+
+# Largest value a Postgres `integer` column holds; filters on one must not exceed it.
+PG_INTEGER_MAX = 2_147_483_647

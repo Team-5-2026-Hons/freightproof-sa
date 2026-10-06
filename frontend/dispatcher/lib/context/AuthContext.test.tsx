@@ -52,6 +52,7 @@ function latestIdleExpiryHandler(): (() => void) | undefined {
 const PROFILE: DispatcherUser = {
   id: '2c5b8c1e-6f2a-4f4a-9a1b-1f0d0a7c3e11' as DispatcherUser['id'],
   organization_id: '00000000-0000-0000-0000-000000000003',
+  organization_name: 'Linbro Express',
   email: 'dispatcher@linbroexpress.co.za',
   full_name: 'Dispatcher',
   is_active: true,

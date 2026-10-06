@@ -5,15 +5,18 @@ drivers see only the consolidated Linehaul document (theft-risk rule, see the
 
 import uuid
 from collections import defaultdict
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ResourceNotFoundError
-from app.db.models.enums import TripType
+from app.db.models.enums import PhaseType, TripType
+from app.db.models.phases import PhaseEvent
 from app.db.models.people import Driver
 from app.db.models.trips import Consignment, Parcel, Trip
 from app.db.models.vehicles import Vehicle
+from app.orchestration.pp_manifest import snapshot_read
 from app.schemas.trips import ConsignmentManifest, DeliveryStopManifest, LinehaulResponse, ManifestResponse
 from app.schemas.trips import ParcelRead
 
@@ -40,6 +43,18 @@ async def _load_consignments_and_parcels(
     return [(c, parcels_by_consignment[c.id]) for c in consignments]
 
 
+async def load_creation_snapshot(db: AsyncSession, trip_id: uuid.UUID) -> dict[str, Any] | None:
+    """The PP manifest as stored on the trip's H0 row at creation (FP-281 §7.3), or None.
+
+    Read by the dispatcher's manifest view and by journey-lock verification, which
+    rehashes it rather than trusting a stored hash."""
+    return (await db.execute(
+        select(PhaseEvent.parcel_manifest_snapshot).where(
+            PhaseEvent.trip_id == trip_id, PhaseEvent.phase_type == PhaseType.TRIP_CREATION,
+        )
+    )).scalar_one_or_none()
+
+
 async def get_manifest_for_dispatcher(
     db: AsyncSession, trip_id: uuid.UUID, *, operator_organization_id: uuid.UUID,
 ) -> ManifestResponse:
@@ -57,7 +72,21 @@ async def get_manifest_for_dispatcher(
             consignments=[], pulled_at=trip.updated_at,
         )
 
-    loaded = await _load_consignments_and_parcels(db, trip_id)
+    stored = await load_creation_snapshot(db, trip_id)
+    # Sent as its display summary: the stored JSON also carries receiver contact details.
+    snapshot = snapshot_read(stored) if stored is not None else None
+
+    try:
+        loaded = await _load_consignments_and_parcels(db, trip_id)
+    except ResourceNotFoundError:
+        if snapshot is None:
+            raise
+        # A cancelled trip whose waybills moved to its replacement (spec §10.5): the
+        # snapshot is now its only cargo record, so it is returned rather than a 404.
+        return ManifestResponse(
+            trip_id=trip_id, total_parcel_count=0, origin_scan_complete=False,
+            consignments=[], pulled_at=trip.updated_at, pp_manifest_snapshot=snapshot,
+        )
 
     consignment_manifests: list[ConsignmentManifest] = []
     for consignment, parcels in loaded:
@@ -89,6 +118,7 @@ async def get_manifest_for_dispatcher(
         origin_scan_complete=all(p.pp_scan_out_at is not None for p in all_parcels) if all_parcels else False,
         consignments=consignment_manifests,
         pulled_at=max(c.updated_at for c, _ in loaded),
+        pp_manifest_snapshot=snapshot,
     )
 
 

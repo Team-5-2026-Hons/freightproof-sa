@@ -38,6 +38,9 @@ class TripOverrides(TypedDict, total=False):
     id: uuid.UUID
     trip_reference: str
     order_number: str
+    pp_manifest_issuer_account: str
+    pp_manifest_origin_hub: str
+    pp_manifest_number: int
     driver_id: uuid.UUID
     origin_precinct_id: uuid.UUID | None
     destination_precinct_id: uuid.UUID | None
@@ -184,7 +187,7 @@ async def test_history_row_is_lightweight_but_complete_for_checklist_row(
     assert response.status_code == 200
     row = next(item for item in response.json()["items"] if item["id"] == str(trip.id))
     assert set(row) == {
-        "id", "trip_reference", "order_number", "status", "driver", "horse",
+        "id", "trip_reference", "pp_manifest", "status", "driver", "horse",
         "origin_precinct_id", "destination_precinct_id", "needs_review_count",
         "current_phase", "current_stop", "phase_total", "phase_completed",
         "closed_at", "created_at",
@@ -264,14 +267,15 @@ async def test_history_cursor_pages_tied_closed_at_without_duplicates_or_skips(
     assert totals == [7, 7, 7]
 
 
-async def test_history_search_matches_trip_reference_order_and_driver_name(
+async def test_history_search_matches_trip_reference_manifest_and_driver_name(
     client: AsyncClient, db_session: AsyncSession, seed: HistorySeed,
 ):
     reference_match = await _make_trip(
         db_session, seed, tag="ref-needle", trip_reference="FP-SPECIAL-REFERENCE",
     )
-    order_match = await _make_trip(
-        db_session, seed, tag="order-needle", order_number="ORDER-SPECIAL-991",
+    manifest_match = await _make_trip(
+        db_session, seed, tag="manifest-needle", pp_manifest_issuer_account="MOCK01",
+        pp_manifest_origin_hub="CPT", pp_manifest_number=991,
     )
     named_driver = Driver(
         id=uuid.uuid4(), organization_id=seed["org"].id, full_name="Nomvula Searchable",
@@ -286,7 +290,7 @@ async def test_history_search_matches_trip_reference_order_and_driver_name(
 
     cases: list[tuple[str, uuid.UUID]] = [
         ("special-reference", reference_match.id),
-        ("special-991", order_match.id),
+        ("991", manifest_match.id),
         ("nomvula", driver_match.id),
     ]
     for query, expected_id in cases:

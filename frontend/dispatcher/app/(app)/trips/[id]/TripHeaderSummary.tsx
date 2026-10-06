@@ -6,6 +6,7 @@ import { ChevronDown } from 'lucide-react'
 import { fmtFull } from '@shared/lib/utils/datetime'
 import type { Trip } from '@shared/lib/types/trip'
 import type { Precinct } from '@shared/lib/types/precinct'
+import { manifestLabel } from '@/lib/format/manifest'
 
 const OPEN_DELAY_MS = 150
 const CLOSE_DELAY_MS = 180
@@ -105,6 +106,7 @@ export function TripHeaderSummary({
   }, [])
 
   const originShort = shortPrecinctLabel(origin)
+  const manifest = manifestLabel(trip.pp_manifest, trip.trip_type)
   const destinationShort = shortPrecinctLabel(destination)
   const driverName = trip.driver?.full_name ?? 'Unassigned'
   const vehicleRegistration = trip.horse?.registration ?? 'Unassigned'
@@ -138,7 +140,7 @@ export function TripHeaderSummary({
           />
         </span>
         <span className="block max-w-full overflow-hidden text-[11px] leading-[13px] font-[500] tracking-[0.02em] text-sec tabular-nums [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
-          {trip.order_number} · {originShort} → {destinationShort} · {driverName} · {vehicleRegistration}
+          {manifest} · {originShort} → {destinationShort} · {driverName} · {vehicleRegistration}
         </span>
       </button>
 
@@ -162,7 +164,7 @@ export function TripHeaderSummary({
             </div>
           </div>
 
-          <OverviewRow label="Order" value={trip.order_number} mono />
+          <OverviewRow label="Manifest" value={manifest} mono={trip.pp_manifest !== null} />
           <OverviewRow label="Driver" value={driverName} />
           {trip.driver?.phone_number && <OverviewRow label="Phone" value={trip.driver.phone_number} mono />}
           <OverviewRow label="Horse" value={vehicleRegistration} mono />

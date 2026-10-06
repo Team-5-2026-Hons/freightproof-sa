@@ -114,7 +114,13 @@ async def load_consignments_at_stop(
     result = await db.execute(
         select(Consignment)
         .where(Consignment.trip_id == trip_id, stop_column == trip_stop_id)
-        .order_by(Consignment.created_at)
+        # Same bytewise waybill order as trip persistence (Python string order).
+        # UUID order can invert a multi-waybill recreation and deadlock both.
+        # Shared with consignment sync: recreation cannot move a load while stamps
+        # are being recorded. PostgreSQL rechecks trip/stop predicates after waiting.
+        .order_by(Consignment.parcel_perfect_reference.collate("C"))
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
     return list(result.scalars().all())
 

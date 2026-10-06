@@ -98,7 +98,7 @@ class TripException(Base):
     # comment below. Declared here, not just in migration ciaran_exc_idempotency,
     # because Base.metadata.create_all() (every test's schema) only picks up indexes
     # the model itself declares — mirrors Trip.__table_args__'s identical
-    # LIVE_ORDER_NUMBER_INDEX above it in db/models/trips.py. Partial: rows with no
+    # PP_MANIFEST_INDEX in db/models/trips.py. Partial: rows with no
     # client_report_id carry no idempotency claim and must never collide with each
     # other under this index.
     __table_args__ = (

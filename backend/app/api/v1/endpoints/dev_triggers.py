@@ -31,16 +31,19 @@ from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
 from app.integrations.mock_state import get_mock_state_store
 from app.integrations.parcel_perfect import (
-    MockParcelPerfectClient, PPUnsupportedError, PPWaybillNotFoundError, get_pp_client,
+    MockParcelPerfectClient, PPManifestNotFoundError, PPUnsupportedError, PPWaybillNotFoundError,
+    get_pp_client,
 )
 from app.integrations.scan_feed import MockScanFeed, ScanDirection, get_scan_feed
 from app.orchestration import consignment_service, exception_service, scan_service
+from app.orchestration.pp_manifest import manifest_snapshot_sha256
 from app.orchestration.phase_gate import GATED_PHASES
 from app.schemas.dev import (
     CloseScanSessionRequest, CloseScanSessionResponse, ConsignmentScanResultRead,
     DevConsignment, DevTripStop, DevTripSummary, DevVehicle, ExceptionTriggerRequest,
-    ExceptionTriggerResponse, FlushMockStateResponse, PpTriggerRequest, PpTriggerResponse,
-    ScanTriggerRequest, ScanTriggerResponse,
+    ExceptionTriggerResponse, FlushMockStateResponse, PpManifestTriggerRequest,
+    PpManifestTriggerResponse, PpTriggerRequest, PpTriggerResponse, ScanTriggerRequest,
+    ScanTriggerResponse,
 )
 from app.schemas.people import UserRead
 
@@ -422,6 +425,34 @@ async def trigger_pp_change(
         poddate=details.get("poddate", ""),
         failtype=details.get("failtype"),
         warning=sync_result.warning,
+    )
+
+
+@router.post(
+    "/pp/manifest", response_model=PpManifestTriggerResponse,
+    summary="Simulate a PP manifest header change",
+)
+async def trigger_pp_manifest_change(
+    body: PpManifestTriggerRequest,
+    current_user: UserRead = Depends(get_current_dispatcher),
+) -> PpManifestTriggerResponse:
+    """Stage a header change on the mock manifest (FP-281), e.g. to demo MANIFEST_CHANGED."""
+    pp_client = get_pp_client()
+    if not isinstance(pp_client, MockParcelPerfectClient):
+        raise HTTPException(status_code=http_status.HTTP_409_CONFLICT, detail=_MOCK_REQUIRED_DETAIL)
+    try:
+        await pp_client.stage_manifest_override(
+            body.manifest_number, closed=body.closed,
+            planned_departure_at=body.planned_departure_at,
+            expected_arrival_at=body.expected_arrival_at,
+        )
+        manifest = await pp_client.get_manifest(body.manifest_number)
+    except PPManifestNotFoundError as exc:
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except PPUnsupportedError as exc:
+        raise HTTPException(status_code=http_status.HTTP_409_CONFLICT, detail=_MOCK_REQUIRED_DETAIL) from exc
+    return PpManifestTriggerResponse(
+        manifest_number=body.manifest_number, snapshot_sha256=manifest_snapshot_sha256(manifest),
     )
 
 

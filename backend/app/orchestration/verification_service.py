@@ -16,13 +16,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.blockchain.hedera import HederaService
 from app.core.exceptions import HederaServiceError
-from app.crypto.hashing import compute_trip_canonical_payload
+from app.crypto.hashing import PPManifestKey, compute_snapshot_sha256, compute_trip_canonical_payload
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.evidence import EvidenceArtifact
 from app.db.models.events import DriverEvent, PrecinctEvent, VehicleEvent
 from app.db.models.enums import PhaseStatus, PhaseType, SubjectType, VerifyStatus
 from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Trip, TripTrailer
+from app.orchestration.manifest_service import load_creation_snapshot
 from app.orchestration.phase_service import (
     PHASE_PAYLOAD_VERSION_V2,
     compute_activation_canonical_payload_v2,
@@ -105,13 +106,13 @@ async def _latest_receipt(
 
 
 async def _reconstruct_trip_payload(
-    db: AsyncSession, trip_id: uuid.UUID, *, anchored_payload: dict[str, Any] | None
+    db: AsyncSession, trip_id: uuid.UUID
 ) -> dict[str, Any] | None:
-    """Rebuild the canonical trip payload from live DB rows, version-dispatching trip_type.
+    """Rebuild the canonical journey-lock payload from live DB rows.
 
-    trip_type is only included if the originally anchored payload had it. Older
-    trips were anchored before trip_type existed, so recomputing with it set would
-    change the hash and produce a false DB_MISMATCH ("tampering") on untouched rows.
+    One fixed key set (crypto/hashing.py), so nothing is version-dispatched. For a
+    manifest trip the snapshot hash is RECOMPUTED from H0's stored snapshot, never read
+    from a stored hash: editing or deleting the snapshot must show as tampering.
     """
     trip = (
         await db.execute(select(Trip).where(Trip.id == trip_id))
@@ -127,10 +128,23 @@ async def _reconstruct_trip_payload(
         # Precincts are set at trip creation; a receipt shouldn't exist before that,
         # but treat it like the other reconstruct_* helpers' not-found case either way.
         return None
-    include_trip_type = anchored_payload is not None and "trip_type" in anchored_payload
+
+    manifest_key: PPManifestKey | None = None
+    snapshot_sha256: str | None = None
+    if (
+        trip.pp_manifest_issuer_account is not None
+        and trip.pp_manifest_origin_hub is not None
+        and trip.pp_manifest_number is not None
+    ):
+        manifest_key = PPManifestKey(
+            trip.pp_manifest_issuer_account, trip.pp_manifest_origin_hub, trip.pp_manifest_number,
+        )
+        snapshot = await load_creation_snapshot(db, trip_id)
+        # A deleted snapshot leaves the hash null, which cannot match what was anchored.
+        snapshot_sha256 = compute_snapshot_sha256(snapshot) if snapshot is not None else None
+
     return compute_trip_canonical_payload(
         trip_id=trip.id,
-        order_number=trip.order_number,
         driver_id=trip.driver_id,
         horse_id=trip.horse_id,
         trailer_ids=list(trailer_rows),
@@ -138,7 +152,11 @@ async def _reconstruct_trip_payload(
         destination_precinct_id=trip.destination_precinct_id,
         created_by_user_id=trip.created_by_user_id,
         created_at=trip.created_at,
-        trip_type=trip.trip_type if include_trip_type else None,
+        trip_type=trip.trip_type,
+        pp_manifest=manifest_key,
+        pp_manifest_snapshot_sha256=snapshot_sha256,
+        planned_departure_at=trip.planned_departure_at,
+        planned_arrival_at=trip.planned_arrival_at,
     )
 
 
@@ -486,9 +504,7 @@ async def verify_subject(
 
     phase_state: _PhasePayloadState | None = None
     if subject_type == SubjectType.TRIP:
-        rebuilt = await _reconstruct_trip_payload(
-            db, subject_id, anchored_payload=receipt.payload_json
-        )
+        rebuilt = await _reconstruct_trip_payload(db, subject_id)
         if rebuilt is None:
             return VerifyOutcome(status=VerifyStatus.NO_RECEIPT, receipt=receipt)
         current_hash = _hash_payload(rebuilt)

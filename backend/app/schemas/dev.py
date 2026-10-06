@@ -9,7 +9,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Final, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.db.models.enums import ExceptionType, PhaseStatus
 from app.integrations.scan_feed import ScanDirection
@@ -476,3 +476,22 @@ class RoadCheckResponse(BaseModel):
 class RigScenarioResponse(RoadCheckResponse):
     scenario: RigScenario
     label: str
+
+
+class PpManifestTriggerRequest(BaseModel):
+    """Stage a change to a mock PP manifest header, as if the client edited it in PP.
+
+    Supplied fields are staged; the rest are untouched. Waybills move between manifests
+    through POST /dev/pp/waybill (each waybill's own `manifest` field)."""
+
+    manifest_number: int = Field(..., gt=0)
+    closed: Optional[bool] = None
+    planned_departure_at: Optional[AwareDatetime] = None
+    expected_arrival_at: Optional[AwareDatetime] = None
+
+
+class PpManifestTriggerResponse(BaseModel):
+    """The manifest's new snapshot hash — a preview made before this call is now stale."""
+
+    manifest_number: int
+    snapshot_sha256: str

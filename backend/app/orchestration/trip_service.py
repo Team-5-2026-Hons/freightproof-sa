@@ -1,4 +1,6 @@
-"""Trip orchestration — create_trip() is the single entry point for trip creation.
+"""Trip orchestration — persist_trip() is the single write path for trip creation:
+create_trip() (POST /trips) and pp_manifest_service (POST /trips/from-pp-manifest)
+both go through it.
 
 Layering: this module imports from db/, crypto/, and schemas/ only.
 It must never import from api/ or auth/.
@@ -6,22 +8,24 @@ It must never import from api/ or auth/.
 
 import logging
 import uuid
+from collections.abc import Awaitable
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import case, exists, func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.blockchain.anchor_service import anchor_subject, compute_payload_hash
 from app.core.exceptions import (
     ConsignmentAlreadyAssignedError,
+    PPManifestAlreadyOnTripError,
     PPSyncError,
     ResourceNotFoundError,
-    TripConflictError,
     TripStateError,
 )
-from app.crypto.hashing import compute_journey_lock_hash, compute_trip_canonical_payload
+from app.crypto.hashing import PPManifestKey, compute_journey_lock_hash, compute_trip_canonical_payload
 from app.core.realtime import RealtimeKind, TripEvent, enqueue_event, event_severity
 from app.db.models.enums import (
     AnchorStatus, BlockchainReceiptType, ExceptionReviewStatus, ExceptionSeverity,
@@ -33,11 +37,11 @@ from app.db.models.phases import PhaseEvent
 from app.db.models.people import Driver
 from app.db.models.transit import TripException
 from app.db.models.trips import (
-    LIVE_ORDER_NUMBER_INDEX, LIVE_TRIP_STATUSES, Trip, TripStop, TripTrailer,
+    PP_MANIFEST_INDEX, Trip, TripStop, TripTrailer,
 )
 from app.db.models.vehicles import Vehicle
-from app.orchestration.review_policy import dispatcher_authored_review
 from app.orchestration.integrity import is_unique_violation, violated_constraint
+from app.orchestration.review_policy import dispatcher_authored_review
 from app.orchestration.phase_gate import blocked_on_by_stop
 from app.orchestration.phase_plan import ANCHORED_PHASES, PlanStop, build_phase_plan
 from app.orchestration.phase_service import recompute_position
@@ -45,9 +49,11 @@ from app.orchestration.resource_service import get_trip_detail
 from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.phases import PhaseEventRead
 from app.schemas.people import DriverRead, UserRead
+from app.schemas.pp_manifest import PPManifestRef
 from app.schemas.trips import (
     ConsignmentRead,
     DriverTripListItemResponse,
+    TripConsignmentInput,
     TripCreateRequest,
     TripDetailResponse,
     TripStopCreate,
@@ -56,9 +62,10 @@ from app.schemas.trips import (
 from app.schemas.vehicles import VehicleRead
 
 if TYPE_CHECKING:
-    # Type-only — the runtime import stays local to create_trip (see below) to
+    # Type-only — the runtime import stays local to persist_trip (see below) to
     # avoid a module-load cycle (trip_service -> consignment_service -> trip_service).
     # A TYPE_CHECKING-only import carries no such risk: it never executes at runtime.
+    from app.integrations.parcel_perfect import PPWaybillResponse
     from app.orchestration.consignment_service import ConsignmentSyncResult
 
 logger = logging.getLogger(__name__)
@@ -109,52 +116,97 @@ async def _fetch_vehicle(
     return vehicle
 
 
-async def _check_order_number_conflict(
-    db: AsyncSession,
-    order_number: str,
-    operator_org_id: uuid.UUID,
-) -> None:
-    """Raise TripConflictError if an active trip already has this order_number.
+@dataclass(frozen=True)
+class ManifestCargo:
+    """A loaded trip's cargo exactly as the PP manifest supplied it (FP-281). Already
+    fetched and validated by pp_manifest_service; persist_trip makes no PP call for it."""
 
-    Advisory, not authoritative. This gives a dispatcher a clean 409 in the ordinary
-    case, but a check and an insert are two statements: two dispatchers submitting
-    the same order at the same moment both pass here before either has inserted. The
-    partial unique index behind LIVE_TRIP_STATUSES is what actually decides it, and
-    _order_number_conflict below turns that decision back into this same error.
-    """
-    # Coarse set — the old per-handshake TripStatus values
-    # are gone; ACTIVE now covers everything between activation and closing.
-    # EXCEPTION_HOLD is currently unreachable (nothing in app/ sets it — see
-    # phase_service._is_resolved) but stays listed: a held trip is by definition
-    # still live cargo, so it must keep blocking a duplicate order_number if and
-    # when a manual dispatcher hold introduces the status.
-    conflict_exists = await db.execute(
-        select(
-            exists().where(
-                Trip.order_number == order_number,
-                Trip.operator_organization_id == operator_org_id,
-                Trip.status.in_(LIVE_TRIP_STATUSES),
-            )
+    key: PPManifestKey
+    client_organization_id: uuid.UUID
+    client_name: str
+    waybills: "list[PPWaybillResponse]"
+    snapshot: dict[str, Any]
+    snapshot_sha256: str
+
+
+@dataclass(frozen=True)
+class NewTrip:
+    """Everything persist_trip needs, from either creation endpoint."""
+
+    driver_id: uuid.UUID
+    horse_id: uuid.UUID
+    trailer_ids: list[uuid.UUID]
+    stops: list[TripStopCreate]
+    trip_type: TripType
+    planned_departure_at: datetime | None
+    planned_arrival_at: datetime | None
+    template_id: uuid.UUID | None = None
+    # Explicit path: waybill references pulled from PP one at a time.
+    consignment_refs: list[TripConsignmentInput] = field(default_factory=list)
+    # Manifest path: the waybills already arrived with the manifest.
+    manifest: ManifestCargo | None = None
+
+
+async def find_live_trip_for_manifest(
+    db: AsyncSession, *, operator_organization_id: uuid.UUID, key: PPManifestKey,
+) -> Trip | None:
+    """The non-cancelled trip holding this manifest — the same rule as uq_trips_pp_manifest."""
+    result = await db.execute(
+        select(Trip).where(
+            Trip.operator_organization_id == operator_organization_id,
+            Trip.pp_manifest_issuer_account == key.issuer_account,
+            Trip.pp_manifest_origin_hub == key.origin_hub,
+            Trip.pp_manifest_number == key.number,
+            Trip.status != TripStatus.CANCELLED,
         )
     )
-    if conflict_exists.scalar():
-        raise TripConflictError(order_number)
+    return result.scalar_one_or_none()
 
 
-def _order_number_conflict(exc: IntegrityError, order_number: str) -> TripConflictError | None:
-    """Translate a lost order-number race into the same error the pre-check raises.
+async def _manifest_conflict(
+    db: AsyncSession, exc: IntegrityError, cargo: ManifestCargo | None, operator_org_id: uuid.UUID,
+) -> PPManifestAlreadyOnTripError | None:
+    """Translate a lost manifest race into the same 409 the preview's pre-check gives.
 
-    Returns None when this IntegrityError is something else, so the caller re-raises
-    it untouched. Matching on the index name rather than on 23505 alone matters here:
-    trip_reference, trip_stops and trip_trailers all carry unique constraints that can
-    fire at the very same flush, and reporting any of those as a duplicate order
-    number would send a dispatcher to fix something that is not wrong.
-    """
-    if not is_unique_violation(exc):
+    Returns None when this IntegrityError is something else, so the caller re-raises it.
+    Matching on the index name, not on 23505 alone: trip_reference, trip_stops and
+    trip_trailers carry unique constraints that can fire at the very same flush."""
+    if cargo is None or not is_unique_violation(exc) or violated_constraint(exc) != PP_MANIFEST_INDEX:
         return None
-    if violated_constraint(exc) != LIVE_ORDER_NUMBER_INDEX:
-        return None
-    return TripConflictError(order_number)
+    # Rolled back here rather than relying on get_db(), as the other failure paths do.
+    await db.rollback()
+    winner = await find_live_trip_for_manifest(db, operator_organization_id=operator_org_id, key=cargo.key)
+    logger.warning("Lost PP manifest race for %s (org %s)", cargo.key, operator_org_id)
+    return PPManifestAlreadyOnTripError(
+        trip_id=winner.id if winner is not None else None,
+        trip_reference=winner.trip_reference if winner is not None else None,
+    )
+
+
+async def _sync_cargo_entry(
+    db: AsyncSession, pp_reference: str, sync: Awaitable["ConsignmentSyncResult"],
+) -> "ConsignmentSyncResult":
+    """Run one consignment sync with trip creation's fail-closed error mapping: any
+    failure rolls back the whole trip, because a trip whose cargo plan couldn't be
+    written has no manifest, no linehaul, and no evidence value."""
+    try:
+        return await sync
+    except SQLAlchemyError:
+        # DB faults are not PP faults — re-raise unchanged so the endpoint's
+        # SQLAlchemyError handler keeps its 500 semantics instead of a misleading 422.
+        await db.rollback()
+        raise
+    except ConsignmentAlreadyAssignedError:
+        # Nor is this a PP fault: the waybill is real and the conflict is ours, so it
+        # must not be relabelled as a PP sync failure. Re-raised for the endpoint's 409.
+        await db.rollback()
+        raise
+    except Exception as exc:
+        # Explicit rollback keeps the guarantee independent of the session implementation
+        # (test overrides don't replicate get_db's rollback-on-exception).
+        logger.error("Consignment sync failed for pp_ref=%s: %s", pp_reference, exc)
+        await db.rollback()
+        raise PPSyncError(pp_reference, str(exc)) from exc
 
 
 def _build_phase_events(
@@ -202,60 +254,79 @@ async def create_trip(
     payload: TripCreateRequest,
     current_user: UserRead,
 ) -> TripDetailResponse:
-    """Create a Trip, TripTrailer rows, TripStop rows, and the trip's full committed
-    phase plan atomically — every PhaseEvent row the trip will ever need (H0/
-    trip_creation plus activation/loading/departure/in_transit/unloading/confirmation
-    per stop), all `pending` at creation, H0 included. H0 is `phase_events[0]`,
-    guaranteed by build_phase_plan to be `trip_creation` at sequence 0.
+    """POST /trips — the explicit path (empty legs, multi-stop trips, seeds, tests).
+    See persist_trip for what is written and raised."""
+    # When stops are omitted, synthesise the back-compat single-leg pair (FP-112 A.3);
+    # validate_request guarantees both precincts are set in that case.
+    stops = payload.stops or [
+        TripStopCreate(precinct_id=payload.origin_precinct_id, sequence=0),
+        TripStopCreate(precinct_id=payload.destination_precinct_id, sequence=1),
+    ]
+    return await persist_trip(
+        db,
+        NewTrip(
+            driver_id=payload.driver_id,
+            horse_id=payload.horse_id,
+            trailer_ids=payload.trailer_ids,
+            stops=stops,
+            trip_type=payload.trip_type,
+            planned_departure_at=payload.planned_departure_at,
+            planned_arrival_at=payload.planned_arrival_at,
+            template_id=payload.template_id,
+            consignment_refs=payload.consignments,
+        ),
+        current_user,
+    )
+
+
+async def persist_trip(
+    db: AsyncSession,
+    new_trip: NewTrip,
+    current_user: UserRead,
+) -> TripDetailResponse:
+    """Create a Trip, TripTrailer rows, TripStop rows, its consignments and the full
+    committed phase plan atomically — every PhaseEvent row the trip will ever need,
+    all `pending` at creation — then anchor the journey lock and complete H0.
+
+    Both creation endpoints come through here, so there is one evidence path (FP-281).
 
     Raises:
-        ResourceNotFoundError: if driver, horse, or any trailer is not found/inactive.
-        TripConflictError: if an active trip already exists for the given order_number.
+        ResourceNotFoundError: driver, horse, or any trailer is not found/inactive.
+        PPManifestAlreadyOnTripError: lost the race for this manifest (uq_trips_pp_manifest).
+        ConsignmentAlreadyAssignedError: a waybill is on another trip.
+        PPSyncError: a waybill could not be pulled or written.
     """
+    cargo = new_trip.manifest
+
     # 1. Validate all referenced records exist before any writes.
-    driver = await _fetch_driver(
-        db,
-        payload.driver_id,
-        current_user.organization_id,
-    )
-    horse = await _fetch_vehicle(
-        db,
-        payload.horse_id,
-        VehicleType.HORSE,
-        current_user.organization_id,
-    )
+    driver = await _fetch_driver(db, new_trip.driver_id, current_user.organization_id)
+    horse = await _fetch_vehicle(db, new_trip.horse_id, VehicleType.HORSE, current_user.organization_id)
     trailers: list[Vehicle] = []
-    for trailer_id in payload.trailer_ids:
+    for trailer_id in new_trip.trailer_ids:
         trailers.append(
-            await _fetch_vehicle(
-                db,
-                trailer_id,
-                VehicleType.TRAILER,
-                current_user.organization_id,
-            )
+            await _fetch_vehicle(db, trailer_id, VehicleType.TRAILER, current_user.organization_id)
         )
 
-    # 2. Guard against duplicate active order_number within this operator org.
-    await _check_order_number_conflict(
-        db, payload.order_number, current_user.organization_id
-    )
-
-    # 3. Create the Trip row. origin/destination_precinct_id are set below once the
-    #    route's stops are known (they're a derived convenience, not authoritative — FP-112).
+    # 2. Create the Trip row. origin/destination_precinct_id are set below once the
+    #    route's stops are known (a derived convenience, not authoritative — FP-112).
     trip_id = uuid.uuid4()
     trip = Trip(
         id=trip_id,
         trip_reference=_generate_trip_reference(),
-        order_number=payload.order_number,
         operator_organization_id=current_user.organization_id,
-        client_organization_id=None,
-        driver_id=payload.driver_id,
-        horse_id=payload.horse_id,
-        template_id=payload.template_id,
-        planned_departure_at=payload.planned_departure_at,
-        planned_arrival_at=payload.planned_arrival_at,
+        # Set only for manifest trips: a manifest names one client (spec §6). The
+        # explicit path stays per-consignment (multi-client trips, FP-112).
+        client_organization_id=cargo.client_organization_id if cargo else None,
+        pp_manifest_issuer_account=cargo.key.issuer_account if cargo else None,
+        pp_manifest_origin_hub=cargo.key.origin_hub if cargo else None,
+        pp_manifest_number=cargo.key.number if cargo else None,
+        driver_id=new_trip.driver_id,
+        horse_id=new_trip.horse_id,
+        template_id=new_trip.template_id,
+        planned_departure_at=new_trip.planned_departure_at,
+        planned_arrival_at=new_trip.planned_arrival_at,
         status=TripStatus.CREATED,
-        trip_type=payload.trip_type.value,
+        trip_type=new_trip.trip_type.value,
         idvs_check_status=IdvsStatus.PENDING,
         created_by_user_id=current_user.id,
     )
@@ -272,16 +343,11 @@ async def create_trip(
             )
         )
 
-    # 5. Create TripStop rows — the explicit route if given, else synthesise the
-    #    back-compat single-leg pair from origin/destination precincts (FP-112 A.3).
+    # 5. Create TripStop rows from the route.
     #    Consignment rows ARE created below (PP sync loop); their pickup_stop_id/
     #    delivery_stop_id are stamped stop-0 -> stop-last once synced (see below) —
     #    TripConsignmentInput has no per-consignment stop reference yet, so every
     #    consignment runs the full route until that schema gap is closed.
-    stop_specs: list[TripStopCreate] = payload.stops or [
-        TripStopCreate(precinct_id=payload.origin_precinct_id, sequence=0),
-        TripStopCreate(precinct_id=payload.destination_precinct_id, sequence=1),
-    ]
     trip_stops = [
         TripStop(
             trip_id=trip_id,
@@ -290,7 +356,7 @@ async def create_trip(
             slot_time=spec.slot_time,
             notes=spec.notes,
         )
-        for spec in stop_specs
+        for spec in new_trip.stops
     ]
     for stop in trip_stops:
         db.add(stop)
@@ -299,76 +365,56 @@ async def create_trip(
     trip.destination_precinct_id = trip_stops[-1].precinct_id
 
     # Flush trip + trailers + stops before adding the PhaseEvent. The evidence_artifacts
-    # table has a use_alter=True FK back to trips, creating a circular dependency
-    # in SQLAlchemy's unit-of-work topological sort. Without an explicit flush here,
-    # the sort can emit the PhaseEvent INSERT before trips, violating the FK.
+    # table has a use_alter=True FK back to trips, creating a circular dependency in
+    # SQLAlchemy's unit-of-work topological sort. Without an explicit flush here, the sort
+    # can emit the PhaseEvent INSERT before trips, violating the FK.
     #
-    # It is also where the trip INSERT lands, and so where a lost order-number race
-    # surfaces: the dispatcher who cleared the pre-check first commits, and the
-    # second one's insert is refused by the partial unique index.
+    # It is also where the trip INSERT lands, and so where a lost manifest race surfaces:
+    # the dispatcher who inserted first commits, and the second insert is refused by
+    # uq_trips_pp_manifest.
     try:
         await db.flush()
     except IntegrityError as exc:
-        conflict = _order_number_conflict(exc, payload.order_number)
+        conflict = await _manifest_conflict(db, exc, cargo, current_user.organization_id)
         if conflict is None:
             raise
-        # Rolled back for the same reason the handlers below do it: get_db() rolls back
-        # on exception in production, but every other failure path in this function
-        # states the guarantee itself rather than depending on the session
-        # implementation — a test override or a future Celery caller may not replicate it.
-        await db.rollback()
-        logger.warning(
-            "Lost order-number race for order_number=%s (org %s)",
-            payload.order_number, current_user.organization_id,
-        )
         raise conflict from exc
     for stop in trip_stops:
         await db.refresh(stop)
 
-    # Sync every consignment from PP (loaded trips). Fail-closed and atomic: any PP
-    # error rolls back the whole trip — a trip whose cargo plan couldn't be pulled
-    # has no manifest, no linehaul, and no evidence value. Local import avoids a
-    # module-load cycle (trip_service → consignment_service → parcel_perfect).
+    # Sync every consignment. Local import avoids a module-load cycle
+    # (trip_service → consignment_service → parcel_perfect).
     consignment_results: list["ConsignmentSyncResult"] = []
-    if payload.consignments:
-        from app.orchestration.consignment_service import fetch_and_sync_consignment
+    if cargo is not None or new_trip.consignment_refs:
+        from app.orchestration.consignment_service import (
+            fetch_and_sync_consignment,
+            sync_consignment_from_waybill,
+        )
 
-        for entry in payload.consignments:
-            try:
-                consignment_results.append(
-                    await fetch_and_sync_consignment(
-                        db,
-                        pp_reference=entry.pp_reference,
-                        trip_id=trip.id,
-                        unit_count_expected=entry.unit_count_expected,
+        if cargo is not None:
+            # Scan ingestion locks this same bytewise waybill order. Sort even if
+            # PP returns a different order, so multi-waybill scans cannot deadlock.
+            for waybill in sorted(cargo.waybills, key=lambda w: w.details.waybill):
+                consignment_results.append(await _sync_cargo_entry(
+                    db, waybill.details.waybill,
+                    sync_consignment_from_waybill(
+                        db, waybill, trip_id=trip.id,
                         origin_precinct_id=trip.origin_precinct_id,
                         destination_precinct_id=trip.destination_precinct_id,
-                    )
-                )
-            except SQLAlchemyError:
-                # DB faults are not PP faults — re-raise unchanged so the endpoint's
-                # SQLAlchemyError handler keeps its 500 semantics instead of a misleading 422.
-                await db.rollback()
-                raise
-            except ConsignmentAlreadyAssignedError:
-                # Nor is this a PP fault: PP answered, and the waybill is real. The
-                # conflict is ours, so it must not be relabelled as a PP sync failure -
-                # a dispatcher told "Parcel Perfect rejected a waybill" would go and
-                # check PP, where they would find nothing wrong. Rolled back for the
-                # same reason as below, then re-raised for the endpoint's 409.
-                await db.rollback()
-                raise
-            except Exception as exc:
-                # PP failures (bad waybill, network error) must not create a trip
-                # with missing consignment data. Explicit rollback undoes the Trip/
-                # TripStop/TripTrailer rows already flushed above — get_db() rolls
-                # back on exception in production, but this keeps the guarantee
-                # session-implementation-independent (e.g. under test overrides
-                # that don't replicate that behaviour). Re-raised as PPSyncError so
-                # the endpoint can return a 422 with a meaningful message.
-                logger.error("PP sync failed for pp_ref=%s: %s", entry.pp_reference, exc)
-                await db.rollback()
-                raise PPSyncError(entry.pp_reference, str(exc)) from exc
+                    ),
+                ))
+        for entry in sorted(new_trip.consignment_refs, key=lambda e: e.pp_reference):
+            consignment_results.append(await _sync_cargo_entry(
+                db, entry.pp_reference,
+                fetch_and_sync_consignment(
+                    db,
+                    pp_reference=entry.pp_reference,
+                    trip_id=trip.id,
+                    unit_count_expected=entry.unit_count_expected,
+                    origin_precinct_id=trip.origin_precinct_id,
+                    destination_precinct_id=trip.destination_precinct_id,
+                ),
+            ))
 
     # Stamp the route onto every synced consignment: stop-0 pickup, stop-last
     # delivery. TripConsignmentInput (schemas/trips.py) carries no per-consignment
@@ -392,36 +438,29 @@ async def create_trip(
     # trip_creation is always sequence 0 with a NULL stop — build_phase_plan
     # guarantees this, so h0 is simply the first row of the plan just written.
     h0 = phase_events[0]
+    # The PP manifest as it stood at creation, stored on H0 (spec §7.3): the record the
+    # journey lock's snapshot hash is recomputed from. Dispatcher-only (see PhaseEventRead).
+    if cargo is not None:
+        h0.parcel_manifest_snapshot = cargo.snapshot
 
-    # 7. Compute journey lock hash over the immutable trip parameters.
-    #    Uses trip.origin/destination_precinct_id (derived from the stop route, always set)
-    #    rather than payload.origin/destination_precinct_id, which are None on the explicit-
-    #    stops path. Payload shape is unchanged from pre-FP-112 — FP-113 extends it to cover
-    #    the full route; no real multi-stop trip should be anchored before that lands.
-    lock_hash = compute_journey_lock_hash(
-        trip_id=trip_id,
-        order_number=payload.order_number,
-        driver_id=payload.driver_id,
-        horse_id=payload.horse_id,
-        trailer_ids=payload.trailer_ids,
-        origin_precinct_id=trip.origin_precinct_id,
-        destination_precinct_id=trip.destination_precinct_id,
-        created_by_user_id=current_user.id,
-        created_at=trip.created_at,
-        trip_type=payload.trip_type.value,
-    )
+    # 7. The journey lock (spec §9): one fixed key set. The manifest fields are null on
+    #    the explicit path; planned times are locked as stored on the trip row.
     canonical = compute_trip_canonical_payload(
         trip_id=trip_id,
-        order_number=payload.order_number,
-        driver_id=payload.driver_id,
-        horse_id=payload.horse_id,
-        trailer_ids=payload.trailer_ids,
+        driver_id=new_trip.driver_id,
+        horse_id=new_trip.horse_id,
+        trailer_ids=new_trip.trailer_ids,
         origin_precinct_id=trip.origin_precinct_id,
         destination_precinct_id=trip.destination_precinct_id,
         created_by_user_id=current_user.id,
         created_at=trip.created_at,
-        trip_type=payload.trip_type.value,
+        trip_type=new_trip.trip_type.value,
+        pp_manifest=cargo.key if cargo else None,
+        pp_manifest_snapshot_sha256=cargo.snapshot_sha256 if cargo else None,
+        planned_departure_at=trip.planned_departure_at,
+        planned_arrival_at=trip.planned_arrival_at,
     )
+    lock_hash = compute_journey_lock_hash(canonical)
     trip.journey_lock_hash = lock_hash
 
     # Anchor synchronously to Hedera HCS (blocks ~4-6s for demo).
@@ -472,7 +511,12 @@ async def create_trip(
     return TripDetailResponse(
         id=trip.id,
         trip_reference=trip.trip_reference,
-        order_number=trip.order_number,
+        pp_manifest=PPManifestRef.from_columns(
+            issuer_account=trip.pp_manifest_issuer_account,
+            origin_hub=trip.pp_manifest_origin_hub,
+            number=trip.pp_manifest_number,
+            client_name=cargo.client_name if cargo else None,
+        ),
         status=trip.status,
         trip_type=TripType(trip.trip_type),
         journey_lock_hash=trip.journey_lock_hash,
@@ -652,7 +696,16 @@ async def get_active_trip_for_driver(db: AsyncSession, driver_id: uuid.UUID) -> 
     # blockchain_receipts because the PWA anchor UI renders them. Receipts
     # carry hashes/tx ids only — no PII (POPIA-safe). Covered by
     # test_active_trip_includes_receipts_for_driver.
-    return await get_trip_detail(db, trip_id=trip.id, operator_organization_id=trip.operator_organization_id)
+    return _driver_view(
+        await get_trip_detail(db, trip_id=trip.id, operator_organization_id=trip.operator_organization_id)
+    )
+
+
+def _driver_view(detail: TripDetailResponse) -> TripDetailResponse:
+    """The dispatcher's trip detail minus what the driver app must not receive. The PP
+    manifest key names the client's manifest: dispatcher context, never shown to the
+    driver, who identifies a trip by trip_reference (FP-281 §12)."""
+    return detail.model_copy(update={"pp_manifest": None})
 
 
 async def list_trips_for_driver(
@@ -728,7 +781,6 @@ async def list_trips_for_driver(
         DriverTripListItemResponse(
             id=t.id,
             trip_reference=t.trip_reference,
-            order_number=t.order_number,
             status=t.status,
             trip_type=t.trip_type,
             origin_precinct_id=t.origin_precinct_id,
@@ -768,6 +820,6 @@ async def get_own_trip_detail_for_driver(
     ).scalars().first()
     if trip is None:
         raise ResourceNotFoundError("Trip", str(trip_id))
-    return await get_trip_detail(
-        db, trip_id=trip.id, operator_organization_id=trip.operator_organization_id
+    return _driver_view(
+        await get_trip_detail(db, trip_id=trip.id, operator_organization_id=trip.operator_organization_id)
     )

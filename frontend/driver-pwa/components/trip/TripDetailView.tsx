@@ -62,11 +62,6 @@ export function TripDetailView({
         onBack={onBack}
         titleVariant="reference"
         titleCaption="Trip reference"
-        right={
-          <span className="shrink-0 rounded-xl border-2 border-primary px-3 py-1.5 text-xs font-bold tracking-industrial text-surface-on">
-            {trip.order_number}
-          </span>
-        }
       />
 
       <div className="flex flex-col gap-4 px-4 pt-4 pb-safe">

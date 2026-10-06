@@ -13,7 +13,7 @@ import { TripExceptionsPanel, type ExceptionFilter } from './TripExceptionsPanel
 import type { TripPanel } from './TripSummary'
 import { uniqueExceptionsById } from './exception-dedupe'
 
-const TITLES: Record<TripPanel, string> = { information: 'Trip information', manifest: 'Trip manifest', exceptions: 'Trip exceptions' }
+const TITLES: Record<TripPanel, string> = { information: 'Trip information', manifest: 'Cargo', exceptions: 'Trip exceptions' }
 
 interface Props {
   panel: TripPanel; trip: Trip; precincts: Precinct[]; filter: ExceptionFilter
@@ -33,7 +33,7 @@ export function TripDetailPanel({ panel, trip, precincts, filter, selectedPhaseI
   const [cancelOpen, setCancelOpen] = useState(false)
   const tabs: readonly Tab[] = [
     { id: 'information', label: 'Info' },
-    { id: 'manifest', label: 'Manifest' },
+    { id: 'manifest', label: 'Cargo' },
     // The count is the reason a dispatcher opens this tab, so it rides on the tab itself
     // rather than waiting behind a click. Urgent only when something is actually owed.
     { id: 'exceptions', label: 'Exceptions', badge: exceptions.length, badgeUrgent: needsReview > 0 },

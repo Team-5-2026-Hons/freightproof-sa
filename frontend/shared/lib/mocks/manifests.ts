@@ -91,6 +91,7 @@ export const mockManifest0041: Manifest = {
   total_parcel_count: 27,
   origin_scan_complete: true,
   pulled_at: '2026-05-09T07:05:00Z',
+  pp_manifest_snapshot: null,
   consignments: [CONSIGNMENT_MANIFEST_0041],
 }
 
@@ -138,6 +139,7 @@ export const mockManifest0042: Manifest = {
   total_parcel_count: 42,
   origin_scan_complete: true,
   pulled_at: '2026-05-08T15:20:00Z',
+  pp_manifest_snapshot: null,
   consignments: [CONSIGNMENT_MANIFEST_0042],
 }
 
@@ -173,6 +175,7 @@ export const mockManifest0040: Manifest = {
   total_parcel_count: 32,
   origin_scan_complete: true,
   pulled_at: '2026-05-08T07:20:00Z',
+  pp_manifest_snapshot: null,
   consignments: [CONSIGNMENT_MANIFEST_0040],
 }
 

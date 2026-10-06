@@ -12,7 +12,8 @@ from app.db.models.enums import IdvsStatus, ParcelStatus, TripStatus, TripType
 from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.phases import PhaseEventRead
 from app.schemas.people import DriverRead
-from app.schemas.text import OrderNumberStr, RequiredFreeText, ShortNoteStr
+from app.schemas.text import RequiredFreeText, ShortNoteStr
+from app.schemas.pp_manifest import PPManifestRef, PPManifestSnapshotRead
 from app.schemas.transit import TripExceptionRead
 from app.schemas.vehicles import VehicleRead
 
@@ -129,7 +130,6 @@ class TripBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     trip_reference: str
-    order_number: str
     operator_organization_id: UUID
     client_organization_id: UUID
     driver_id: UUID
@@ -227,7 +227,9 @@ class TripListItemResponse(BaseModel):
 
     id: UUID
     trip_reference: str
-    order_number: str
+    # The PP manifest this trip carries (FP-281), or null for empty legs and trips
+    # created through the explicit path.
+    pp_manifest: Optional[PPManifestRef] = None
     status: TripStatus
     trip_type: TripType
     driver: DriverRead
@@ -273,7 +275,9 @@ class TripHistoryListItemResponse(BaseModel):
 
     id: UUID
     trip_reference: str
-    order_number: str
+    # The PP manifest this trip carries (FP-281), or null for empty legs and trips
+    # created through the explicit path.
+    pp_manifest: Optional[PPManifestRef] = None
     status: TripStatus
     driver: TripHistoryDriverResponse
     horse: TripHistoryVehicleResponse
@@ -300,7 +304,6 @@ class DriverTripListItemResponse(BaseModel):
 
     id: UUID
     trip_reference: str
-    order_number: str
     status: TripStatus
     trip_type: TripType
     origin_precinct_id: Optional[UUID] = None
@@ -387,7 +390,6 @@ class TripConsignmentInput(BaseModel):
 class TripCreateRequest(BaseModel):
     """Dispatcher-facing trip creation payload — excludes auto-generated and JWT-derived fields."""
 
-    order_number: OrderNumberStr
     driver_id: UUID
     horse_id: UUID
     trailer_ids: list[UUID] = Field(default_factory=list)
@@ -510,6 +512,9 @@ class ManifestResponse(BaseModel):
     origin_scan_complete: bool
     consignments: list[ConsignmentManifest]
     pulled_at: datetime
+    # The PP manifest as it stood at creation (H0, FP-281), summarised for display —
+    # null on trips without one.
+    pp_manifest_snapshot: Optional[PPManifestSnapshotRead] = None
 
 
 class LinehaulResponse(BaseModel):
@@ -536,7 +541,9 @@ class TripDetailResponse(BaseModel):
 
     id: UUID
     trip_reference: str
-    order_number: str
+    # The PP manifest this trip carries (FP-281), or null for empty legs and trips
+    # created through the explicit path.
+    pp_manifest: Optional[PPManifestRef] = None
     status: TripStatus
     trip_type: TripType
     journey_lock_hash: Optional[str] = None

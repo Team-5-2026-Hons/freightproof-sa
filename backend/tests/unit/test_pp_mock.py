@@ -5,7 +5,6 @@ from app.integrations.parcel_perfect import (
     MOCK_WAYBILLS,
     MockParcelPerfectClient,
     ParcelPerfectClient,
-    PPUnsupportedError,
     PPWaybillNotFoundError,
 )
 
@@ -26,25 +25,10 @@ async def test_unknown_reference_raises_not_found():
         await client.get_single_waybill("NOPE999")
 
 
-async def test_manifest_lookup_groups_fixtures():
-    client = MockParcelPerfectClient()
-
-    result = await client.get_waybills_by_manifest(69)
-
-    assert [w.details.waybill for w in result] == ["MOCKWAY001", "WAY001", "WAY002", "WAY003"]
-
-
-async def test_manifest_lookup_unknown_number_returns_empty():
-    client = MockParcelPerfectClient()
-
-    assert await client.get_waybills_by_manifest(9999) == []
-
-
-async def test_real_client_manifest_lookup_unsupported():
-    client = ParcelPerfectClient()
-
-    with pytest.raises(PPUnsupportedError):
-        await client.get_waybills_by_manifest(69)
+def test_clients_have_one_manifest_reader():
+    # FP-281 piece B: get_manifest replaced the wizard-era get_waybills_by_manifest.
+    assert not hasattr(MockParcelPerfectClient, "get_waybills_by_manifest")
+    assert not hasattr(ParcelPerfectClient, "get_waybills_by_manifest")
 
 
 def test_capability_flags():

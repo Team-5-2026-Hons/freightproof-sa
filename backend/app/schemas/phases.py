@@ -114,7 +114,9 @@ class PhaseEventRead(BaseModel):
     pod_photo_artifact_id: Optional[UUID] = None
     pod_signature_artifact_id: Optional[UUID] = None
     linehaul_photo_artifact_id: Optional[UUID] = None
-    parcel_manifest_snapshot: Optional[Any] = None
+    # parcel_manifest_snapshot is deliberately absent: on H0 it holds the whole PP
+    # manifest (FP-281) and this schema is served to the driver. Dispatchers read it
+    # through GET /trips/{id}/manifest.
     parcel_count_origin: Optional[int] = None
     parcel_count_destination: Optional[int] = None
     driver_visual_count: Optional[int] = None

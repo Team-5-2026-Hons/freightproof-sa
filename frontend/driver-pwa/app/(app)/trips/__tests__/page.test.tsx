@@ -41,7 +41,6 @@ function makeTrip(overrides: Partial<DriverTripSummary> & { status: CoarseTripSt
   return {
     id: `trip-${overrides.trip_reference ?? overrides.status}` as TripId,
     trip_reference: 'FP-TEST-0001',
-    order_number: 'ORD-0001',
     trip_type: 'loaded',
     origin_precinct_id: 'origin-1',
     destination_precinct_id: 'dest-1',

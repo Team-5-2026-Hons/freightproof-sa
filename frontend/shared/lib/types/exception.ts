@@ -148,6 +148,12 @@ export interface TripExceptionListItem {
   trip_id: string
   trip_reference: string
   trip_status: TripStatus
+  // Trip route and crew, so a row says which lane/truck/driver without opening the trip.
+  origin_name: string | null
+  destination_name: string | null
+  driver_name: string | null
+  horse_registration: string | null
+  trailer_registrations: string[]
   phase_label: string | null
   stop_label: number | null
   action_location_assessment?: ActionLocationAssessment | null

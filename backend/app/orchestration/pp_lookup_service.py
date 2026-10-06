@@ -18,11 +18,6 @@ async def get_waybill_summary(waybill_number: str) -> PPWaybillSummary:
     return _to_summary(await get_pp_client().get_single_waybill(waybill_number))
 
 
-async def get_manifest_summaries(manifest_number: int) -> list[PPWaybillSummary]:
-    waybills = await get_pp_client().get_waybills_by_manifest(manifest_number)
-    return [_to_summary(w) for w in waybills]
-
-
 def get_capabilities() -> PPCapabilities:
     # Deliberately sync — reads a class attribute off the client, no I/O involved.
     return PPCapabilities(manifest_lookup=get_pp_client().supports_manifest_lookup)

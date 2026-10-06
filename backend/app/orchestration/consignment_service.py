@@ -14,12 +14,12 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Optional
 
-from sqlalchemy import select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ConsignmentAlreadyAssignedError
-from app.db.models.enums import ParcelStatus
+from app.core.exceptions import ConsignmentAlreadyAssignedError, ConsignmentScannedOnCancelledTripError
+from app.db.models.enums import ParcelStatus, TripStatus
 from app.db.models.organisations import Organization
 from app.db.models.trips import Consignment, Parcel, Trip
 from app.integrations.parcel_perfect import PPWaybillResponse, get_pp_client
@@ -112,8 +112,9 @@ async def fetch_and_sync_consignment(
 
     Idempotent and safe under concurrent calls: if a Consignment with the same
     pp_reference already exists, its pp_raw_json, parcel_count_expected and
-    pp_manifest_number are refreshed and returned. Parcel rows are never
-    deleted, only new barcodes inserted. The caller is responsible for db.commit().
+    pp_manifest_number are refreshed and returned. Ordinary refreshes only add parcels;
+    moving unscanned cargo off a cancelled trip rebuilds its expected set. The caller
+    is responsible for db.commit().
 
     Concurrency is held by two complementary guards, since one waybill must never
     end up on two trips each anchoring its own journey-lock hash: FOR UPDATE below
@@ -122,15 +123,38 @@ async def fetch_and_sync_consignment(
     (which nothing can lock beforehand).
 
     Raises:
-        ConsignmentAlreadyAssignedError: the waybill is already on another trip,
-            whether visible on entry or only after losing the insert race — both
-            paths raise the same error, so a dispatcher can't tell which way they lost.
+        ConsignmentAlreadyAssignedError: see sync_consignment_from_waybill.
         Any exception from get_pp_client().get_single_waybill() propagates unchanged.
     """
     # Fetched first so a PP error aborts before any DB interaction.
     logger.info("fetch_and_sync_consignment pp_reference=%s", pp_reference)
     waybill: PPWaybillResponse = await get_pp_client().get_single_waybill(pp_reference)
+    return await sync_consignment_from_waybill(
+        db, waybill, trip_id=trip_id, unit_count_expected=unit_count_expected,
+        origin_precinct_id=origin_precinct_id, destination_precinct_id=destination_precinct_id,
+    )
 
+
+async def sync_consignment_from_waybill(
+    db: AsyncSession,
+    waybill: PPWaybillResponse,
+    *,
+    trip_id: Optional[uuid.UUID] = None,
+    unit_count_expected: Optional[int] = None,
+    origin_precinct_id: Optional[uuid.UUID] = None,
+    destination_precinct_id: Optional[uuid.UUID] = None,
+) -> ConsignmentSyncResult:
+    """Upsert a waybill PP has already returned — no PP call (FP-281 §10.2 step 6: the
+    manifest carries full waybills, and a second read could disagree with the snapshot
+    just hashed). Same idempotency and concurrency guarantees as fetch_and_sync_consignment.
+
+    Raises:
+        ConsignmentAlreadyAssignedError: the waybill is on another trip that is not
+            cancelled, whether visible on entry or only after losing the insert race.
+        ConsignmentScannedOnCancelledTripError: it is on a cancelled trip and parcels
+            were scanned there.
+    """
+    pp_reference = waybill.details.waybill
     # FOR UPDATE holds the row for the rest of this transaction, so a second caller
     # at the same waybill waits here rather than reading a trip_id about to change
     # underneath it. Without it, two callers could both read trip_id=None and both
@@ -139,28 +163,22 @@ async def fetch_and_sync_consignment(
         select(Consignment)
         .where(Consignment.parcel_perfect_reference == pp_reference)
         .with_for_update()
+        .execution_options(populate_existing=True)
     )
     consignment: Optional[Consignment] = existing_result.scalar_one_or_none()
 
-    # Refuse to move a consignment between trips: without this, the caller's own
-    # restamping of pickup/delivery stops would silently rewrite an already-
-    # anchored trip's route basis. Same trip_id is not a conflict — that's the
-    # Celery refresh poll re-syncing onto the trip it already has.
+    # Moving a waybill between trips is refused unless its trip was cancelled and
+    # nothing on it was scanned (see _release_from_cancelled_trip). Same trip_id is not
+    # a conflict — that's the Celery refresh poll re-syncing onto the trip it already has.
     if (
         consignment is not None
         and consignment.trip_id is not None
         and trip_id is not None
         and consignment.trip_id != trip_id
     ):
-        owner_result = await db.execute(
-            select(Trip.trip_reference).where(Trip.id == consignment.trip_id)
+        await _release_from_cancelled_trip(
+            db, consignment, pp_reference=pp_reference, new_trip_id=trip_id,
         )
-        owner_reference = owner_result.scalar_one_or_none()
-        logger.warning(
-            "Rejected reassignment of consignment pp_reference=%s from trip %s to trip %s",
-            pp_reference, consignment.trip_id, trip_id,
-        )
-        raise ConsignmentAlreadyAssignedError(pp_reference, owner_reference or str(consignment.trip_id))
 
     # Resolved from accnum, PP's source of truth for client attribution. Skipped
     # when already linked to a client org: re-querying on every Celery refresh is
@@ -218,6 +236,11 @@ async def fetch_and_sync_consignment(
         consignment.pp_manifest_number = waybill.details.manifest
         if trip_id is not None and consignment.trip_id is None:
             consignment.trip_id = trip_id
+            # Attaching (or re-attaching after a cancelled trip): the leg is this trip's.
+            if origin_precinct_id is not None:
+                consignment.origin_precinct_id = origin_precinct_id
+            if destination_precinct_id is not None:
+                consignment.destination_precinct_id = destination_precinct_id
         if unit_count_expected is not None:
             consignment.unit_count_expected = unit_count_expected
         if consignment.client_organization_id is None:
@@ -275,6 +298,70 @@ async def fetch_and_sync_consignment(
         )
 
     return ConsignmentSyncResult(consignment=consignment, warning=warning)
+
+
+async def scanned_consignment_ids(
+    db: AsyncSession, consignment_ids: list[uuid.UUID],
+) -> set[uuid.UUID]:
+    """Which of these consignments have at least one parcel carrying a scan stamp."""
+    if not consignment_ids:
+        return set()
+    result = await db.execute(
+        select(Parcel.consignment_id)
+        .where(
+            Parcel.consignment_id.in_(consignment_ids),
+            or_(Parcel.pp_scan_out_at.is_not(None), Parcel.pp_scan_in_at.is_not(None)),
+        )
+        .distinct()
+    )
+    return set(result.scalars().all())
+
+
+async def _release_from_cancelled_trip(
+    db: AsyncSession, consignment: Consignment, *, pp_reference: str, new_trip_id: uuid.UUID,
+) -> None:
+    """Take a waybill off its trip so new_trip_id can claim it — only when that trip
+    was cancelled and nothing on the waybill was scanned (spec §10.5).
+
+    Everything else is refused, as before: the caller's restamping of pickup/delivery
+    stops would otherwise silently rewrite an anchored trip's route basis. Scanned
+    parcels stay because scan stamps are first-write-wins (scan_service._stamp_parcel):
+    moving them would carry the cancelled trip's scans onto the new trip and hide the
+    real reload scans.
+
+    Raises:
+        ConsignmentAlreadyAssignedError: the owning trip is not cancelled.
+        ConsignmentScannedOnCancelledTripError: it is cancelled, but parcels were scanned.
+    """
+    owner = (await db.execute(
+        select(Trip.trip_reference, Trip.status).where(Trip.id == consignment.trip_id)
+    )).one_or_none()
+    owner_reference = owner.trip_reference if owner is not None else str(consignment.trip_id)
+    if owner is None or owner.status != TripStatus.CANCELLED:
+        logger.warning(
+            "Rejected reassignment of consignment pp_reference=%s from trip %s to trip %s",
+            pp_reference, consignment.trip_id, new_trip_id,
+        )
+        raise ConsignmentAlreadyAssignedError(pp_reference, owner_reference)
+    if consignment.id in await scanned_consignment_ids(db, [consignment.id]):
+        logger.warning(
+            "Refused moving scanned consignment pp_reference=%s off cancelled trip %s",
+            pp_reference, owner_reference,
+        )
+        raise ConsignmentScannedOnCancelledTripError(pp_reference, owner_reference)
+
+    logger.info(
+        "Moving consignment pp_reference=%s off cancelled trip %s to trip %s",
+        pp_reference, owner_reference, new_trip_id,
+    )
+    # Safe to discard: no stamps (checked above), and scan ingestion waits on this same
+    # consignment lock. The replacement's expected parcels come from its own PP read.
+    await db.execute(delete(Parcel).where(Parcel.consignment_id == consignment.id))
+    consignment.unit_count_expected = None
+    consignment.trip_id = None
+    # The cancelled trip's stops; the caller stamps the new route's stops after sync.
+    consignment.pickup_stop_id = None
+    consignment.delivery_stop_id = None
 
 
 async def get_assigned_trip_reference(db: AsyncSession, pp_reference: str) -> Optional[str]:

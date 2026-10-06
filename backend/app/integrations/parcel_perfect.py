@@ -19,6 +19,7 @@ import json
 import logging
 import urllib.parse
 from dataclasses import dataclass
+from datetime import UTC, date, datetime, timedelta, timezone
 from typing import Any, Optional
 
 import httpx
@@ -58,6 +59,14 @@ class PPWaybillNotFoundError(Exception):
 
 class PPUnsupportedError(Exception):
     """Raised when a capability doesn't exist on the real PP v28 API."""
+
+
+class PPManifestNotFoundError(Exception):
+    """Raised when no PP manifest has the given number."""
+
+    def __init__(self, manifest_number: int) -> None:
+        super().__init__(f"Manifest {manifest_number} not found")
+        self.manifest_number = manifest_number
 
 
 # ---------------------------------------------------------------------------
@@ -159,6 +168,55 @@ class PPWaybillResponse:
     def has_delivery_failure(self) -> bool:
         """True when PP has recorded a delivery failure reason."""
         return self.details.failtype is not None
+
+
+# ---------------------------------------------------------------------------
+# Manifests — an ASSUMED data contract (FP-281, spec §8). PP holds manifests, but
+# ecomService v28 exposes only getSingleWaybill. Every datetime here is UTC.
+# ---------------------------------------------------------------------------
+
+_PP_DATE_FORMAT = "%d.%m.%Y"
+PP_DATETIME_FORMAT = f"{_PP_DATE_FORMAT} %H:%M"
+
+
+def pp_timezone() -> timezone:
+    """PP runs on South African time and its date strings carry no zone (spec §8).
+    SAST has no daylight saving, so the configured operations offset is exact."""
+    return timezone(timedelta(hours=settings.OPERATIONS_UTC_OFFSET_HOURS))
+
+
+def parse_pp_datetime(value: str) -> datetime:
+    """A PP date string, read as South African time, returned in UTC."""
+    local = datetime.strptime(value, PP_DATETIME_FORMAT)
+    return local.replace(tzinfo=pp_timezone()).astimezone(UTC)
+
+
+@dataclass
+class PPManifestNote:
+    noted_at: datetime
+    operator: str
+    text: str
+
+
+@dataclass
+class PPManifestHeader:
+    manifest_number: int
+    issuer_account: str             # PP accnum of the client (e.g. RTT)
+    issuer_name: str
+    origin_hub: str                 # e.g. "JNB"
+    destination_hub: str            # e.g. "DUR"
+    created_at: datetime
+    closed_at: Optional[datetime]   # None until the client closes the manifest
+    planned_departure_at: Optional[datetime]
+    expected_arrival_at: Optional[datetime]
+    client_reference: Optional[str]
+    notes: list[PPManifestNote]
+
+
+@dataclass
+class PPManifestResponse:
+    header: PPManifestHeader
+    waybills: list[PPWaybillResponse]   # identical shape to getSingleWaybill
 
 
 # ---------------------------------------------------------------------------
@@ -287,16 +345,22 @@ def _mock_waybill(
 
 @dataclass(frozen=True)
 class _Depot:
-    """A demo depot's PP-facing address fields."""
+    """A demo depot's PP-facing address fields and its PP hub code."""
 
     town: str
     address: str
     contact_person: str
+    hub_code: str
 
 
-_CPT = _Depot("CAPE TOWN", "12 Gunners Circle, Epping Industria", "Epping Goods Inwards")
-_BFN = _Depot("BLOEMFONTEIN", "8 Reid Street, Hamilton", "Hamilton Cross-Dock")
-_JHB = _Depot("JOHANNESBURG", "1 Depot Street, Linbro Park", "Linbro Receiving")
+_CPT = _Depot("CAPE TOWN", "12 Gunners Circle, Epping Industria", "Epping Goods Inwards", "CPT")
+_BFN = _Depot("BLOEMFONTEIN", "8 Reid Street, Hamilton", "Hamilton Cross-Dock", "BFN")
+_JHB = _Depot("JOHANNESBURG", "1 Depot Street, Linbro Park", "Linbro Receiving", "JNB")
+
+# The hub codes scripts/seed_demo.py puts on the three demo precincts.
+DEMO_HUB_CODES: frozenset[str] = frozenset({_CPT.hub_code, _BFN.hub_code, _JHB.hub_code})
+# A real hub with no demo precinct: the unlinked-destination case (manifest 69).
+_HUB_DURBAN = "DUR"
 
 
 def _routed_waybill(
@@ -798,6 +862,151 @@ UNASSIGNED_WAYBILLS: dict[str, PPWaybillResponse] = {
 MOCK_WAYBILLS.update(SEEDED_WAYBILLS)
 MOCK_WAYBILLS.update(UNASSIGNED_WAYBILLS)
 
+# ---------------------------------------------------------------------------
+# Manifest-first fixtures (FP-281). New numbers only: 69/70's waybills are asserted
+# by existing tests and are not modified — they only gain a header.
+# ---------------------------------------------------------------------------
+
+MANIFEST_HAPPY_PATH = 81
+MANIFEST_OPEN_NO_TIMES = 82
+MANIFEST_NO_WAYBILLS = 83
+
+MANIFEST_DEMO_WAYBILLS: dict[str, PPWaybillResponse] = {
+    w.details.waybill: w
+    for w in [
+        _routed_waybill(
+            waybill="MFTWB8101", origin=_CPT, destination=_JHB,
+            manifest=MANIFEST_HAPPY_PATH, parcel_count=6, weight_kg=240.0, declared_value=15800.0,
+            contents=[PPContents(item=1, description="Boxed electronics", actmass=240.0, pieces=6)],
+        ),
+        _routed_waybill(
+            waybill="MFTWB8102", origin=_CPT, destination=_JHB,
+            manifest=MANIFEST_HAPPY_PATH, parcel_count=4, weight_kg=180.5, declared_value=9200.0,
+            contents=[PPContents(item=1, description="Pharmaceutical cartons", actmass=180.5, pieces=4)],
+        ),
+        _routed_waybill(
+            waybill="MFTWB8103", origin=_CPT, destination=_JHB,
+            manifest=MANIFEST_HAPPY_PATH, parcel_count=10, weight_kg=455.0, declared_value=21400.0,
+            contents=[PPContents(item=1, description="Retail FMCG cartons", actmass=455.0, pieces=10)],
+        ),
+        _routed_waybill(
+            waybill="MFTWB8201", origin=_CPT, destination=_JHB,
+            manifest=MANIFEST_OPEN_NO_TIMES, parcel_count=3, weight_kg=96.0, declared_value=4100.0,
+            contents=[PPContents(item=1, description="Spare parts", actmass=96.0, pieces=3)],
+        ),
+        _routed_waybill(
+            waybill="MFTWB8202", origin=_CPT, destination=_JHB,
+            manifest=MANIFEST_OPEN_NO_TIMES, parcel_count=8, weight_kg=310.0, declared_value=12800.0,
+            contents=[PPContents(item=1, description="Homeware cartons", actmass=310.0, pieces=8)],
+        ),
+    ]
+}
+
+MOCK_WAYBILLS.update(MANIFEST_DEMO_WAYBILLS)
+
+
+@dataclass(frozen=True)
+class _PPTime:
+    """A fixture time relative to today in PP's timezone. Demo manifests are always
+    due today, because activation gates on the operating day."""
+
+    day_offset: int
+    hhmm: str
+
+
+@dataclass(frozen=True)
+class _ManifestHeaderFixture:
+    origin_hub: str
+    destination_hub: str
+    created: _PPTime
+    closed: Optional[_PPTime]
+    departure: Optional[_PPTime]
+    arrival: Optional[_PPTime]
+    issuer_account: str = _DEMO_PP_ACCOUNT
+    issuer_name: str = _DEMO_PP_CUSTOMER
+    client_reference: Optional[str] = None
+    notes: tuple[tuple[_PPTime, str, str], ...] = ()
+
+
+# Bruce, 28 Jul §9: the client creates the manifest around 12:00 on the day.
+_CREATED = _PPTime(0, "12:00")
+_CLOSED = _PPTime(0, "16:30")
+_DEPARTS = _PPTime(0, "20:00")
+_ARRIVES = _PPTime(1, "06:00")
+
+
+def _closed_manifest(
+    origin: str,
+    destination: str,
+    *,
+    client_reference: Optional[str] = None,
+    notes: tuple[tuple[_PPTime, str, str], ...] = (),
+) -> _ManifestHeaderFixture:
+    return _ManifestHeaderFixture(
+        origin_hub=origin, destination_hub=destination, created=_CREATED, closed=_CLOSED,
+        departure=_DEPARTS, arrival=_ARRIVES, client_reference=client_reference, notes=notes,
+    )
+
+
+MOCK_MANIFEST_HEADERS: dict[int, _ManifestHeaderFixture] = {
+    # WAY001-003 + MOCKWAY001, all MOCK01. Durban has no demo precinct.
+    69: _closed_manifest(_JHB.hub_code, _HUB_DURBAN),
+    # WAY004 is UNMAP9, WAY005 is MOCK01: two clients on one manifest.
+    70: _closed_manifest(_JHB.hub_code, _CPT.hub_code),
+    # The four seeded trips (scripts/seed_trips.py), all leaving Cape Town.
+    _MANIFEST_SINGLE: _closed_manifest(_CPT.hub_code, _JHB.hub_code),
+    _MANIFEST_XDOCK: _closed_manifest(_CPT.hub_code, _JHB.hub_code),
+    _MANIFEST_ACTIVE: _closed_manifest(_CPT.hub_code, _JHB.hub_code),
+    _MANIFEST_CLOSED: _closed_manifest(_CPT.hub_code, _JHB.hub_code),
+    MANIFEST_HAPPY_PATH: _closed_manifest(
+        _CPT.hub_code, _JHB.hub_code, client_reference="PO-CGY-0081",
+        notes=((_PPTime(0, "16:25"), "CGY Dispatch", "Kaapstad → Gauteng: two pallets shrink-wrapped together"),),
+    ),
+    # The 12:00 case: open, no vehicle yet, no times.
+    MANIFEST_OPEN_NO_TIMES: _ManifestHeaderFixture(
+        origin_hub=_CPT.hub_code, destination_hub=_JHB.hub_code, created=_CREATED,
+        closed=None, departure=None, arrival=None,
+    ),
+    MANIFEST_NO_WAYBILLS: _closed_manifest(_CPT.hub_code, _JHB.hub_code),
+}
+
+
+def _operations_today() -> date:
+    """Today in PP's timezone. A function so tests can pin it."""
+    return datetime.now(pp_timezone()).date()
+
+
+def _render_pp_time(when: _PPTime, today: date) -> str:
+    return f"{(today + timedelta(days=when.day_offset)).strftime(_PP_DATE_FORMAT)} {when.hhmm}"
+
+
+def _build_header(number: int, fixture: _ManifestHeaderFixture, today: date) -> PPManifestHeader:
+    """Render the fixture as PP would send it (date strings), then parse it back —
+    so the mock exercises the same parser a live client would need."""
+
+    def at(when: Optional[_PPTime]) -> Optional[datetime]:
+        return parse_pp_datetime(_render_pp_time(when, today)) if when is not None else None
+
+    return PPManifestHeader(
+        manifest_number=number,
+        issuer_account=fixture.issuer_account,
+        issuer_name=fixture.issuer_name,
+        origin_hub=fixture.origin_hub,
+        destination_hub=fixture.destination_hub,
+        created_at=parse_pp_datetime(_render_pp_time(fixture.created, today)),
+        closed_at=at(fixture.closed),
+        planned_departure_at=at(fixture.departure),
+        expected_arrival_at=at(fixture.arrival),
+        client_reference=fixture.client_reference,
+        notes=[
+            PPManifestNote(
+                noted_at=parse_pp_datetime(_render_pp_time(when, today)),
+                operator=operator, text=text,
+            )
+            for when, operator, text in fixture.notes
+        ],
+    )
+
 
 # ---------------------------------------------------------------------------
 # Mock client
@@ -806,6 +1015,11 @@ MOCK_WAYBILLS.update(UNASSIGNED_WAYBILLS)
 
 # Redis key kind for staged PP waybill overrides, distinct from staged scan state.
 _PP_KEY_KIND = "pp"
+
+# Redis key kind for staged manifest-header overrides (FP-281).
+_PP_MANIFEST_KEY_KIND = "pp-manifest"
+# Header fields a demo may stage; each is an ISO-8601 UTC string, or None to clear.
+_STAGEABLE_HEADER_FIELDS = ("closed_at", "planned_departure_at", "expected_arrival_at")
 
 
 class MockParcelPerfectClient:
@@ -885,9 +1099,10 @@ class MockParcelPerfectClient:
         staged = await get_mock_state_store().get_json(
             self._override_key(waybill.details.waybill)
         )
-        if not staged:
-            return waybill
+        return self._apply_staged(waybill, staged) if staged else waybill
 
+    @staticmethod
+    def _apply_staged(waybill: PPWaybillResponse, staged: dict[str, Any]) -> PPWaybillResponse:
         if (manifest := staged.get("manifest")) is not None:
             waybill.details.manifest = int(manifest)
         if (poddate := staged.get("poddate")) is not None:
@@ -909,6 +1124,94 @@ class MockParcelPerfectClient:
 
         return waybill
 
+    async def _waybills_with_overrides(self) -> list[PPWaybillResponse]:
+        """Every fixture waybill as PP would return it now, staged edits applied. One
+        batched read, not a Redis round trip per fixture."""
+        # Deep copy: callers may mutate results; module-level fixtures must stay pristine.
+        waybills = [copy.deepcopy(w) for w in MOCK_WAYBILLS.values()]
+        if not settings.DEV_PANEL_ENABLED:
+            return waybills
+        staged_all = await get_mock_state_store().get_many_json(
+            [self._override_key(w.details.waybill) for w in waybills]
+        )
+        return [
+            self._apply_staged(w, staged) if staged else w
+            for w, staged in zip(waybills, staged_all, strict=True)
+        ]
+
+    def _manifest_override_key(self, manifest_number: int) -> str:
+        return build_key(_PP_MANIFEST_KEY_KIND, str(manifest_number))
+
+    async def get_manifest(self, manifest_number: int) -> PPManifestResponse:
+        """ASPIRATIONAL — an assumed data contract (spec §8); PP's API has no such call.
+
+        Membership comes from each waybill's own `manifest` field, staged moves included,
+        so there is one source of truth for which waybill is on which manifest.
+
+        Raises:
+            PPManifestNotFoundError: no header fixture has this number.
+        """
+        logger.info("MockParcelPerfectClient.get_manifest manifest=%s", manifest_number)
+        fixture = MOCK_MANIFEST_HEADERS.get(manifest_number)
+        if fixture is None:
+            raise PPManifestNotFoundError(manifest_number)
+        header = await self._apply_manifest_overrides(
+            _build_header(manifest_number, fixture, _operations_today())
+        )
+        waybills = sorted(
+            (w for w in await self._waybills_with_overrides() if w.details.manifest == manifest_number),
+            key=lambda w: w.details.waybill,
+        )
+        return PPManifestResponse(header=header, waybills=waybills)
+
+    async def stage_manifest_override(
+        self,
+        manifest_number: int,
+        *,
+        closed: Optional[bool] = None,
+        planned_departure_at: Optional[datetime] = None,
+        expected_arrival_at: Optional[datetime] = None,
+    ) -> None:
+        """Stage a header change, as if the client edited the manifest in PP. Supplied
+        fields are staged; the rest are untouched (additive, like waybill staging).
+
+        Raises:
+            PPUnsupportedError: PP_USE_MOCK is false.
+            PPManifestNotFoundError: no header fixture has this number.
+        """
+        if not settings.PP_USE_MOCK:
+            raise PPUnsupportedError("Cannot stage a manifest override while PP_USE_MOCK is false")
+        if manifest_number not in MOCK_MANIFEST_HEADERS:
+            raise PPManifestNotFoundError(manifest_number)
+
+        key = self._manifest_override_key(manifest_number)
+        store = get_mock_state_store()
+        staged = dict(await store.get_json(key) or {})
+        if closed is not None:
+            # Stored once, at staging: the snapshot must hash the same on the preview
+            # and on the create that follows it.
+            staged["closed_at"] = datetime.now(UTC).isoformat() if closed else None
+        if planned_departure_at is not None:
+            staged["planned_departure_at"] = planned_departure_at.astimezone(UTC).isoformat()
+        if expected_arrival_at is not None:
+            staged["expected_arrival_at"] = expected_arrival_at.astimezone(UTC).isoformat()
+        await store.set_json(key, staged)
+        logger.info("Staged PP manifest override manifest=%s fields=%s", manifest_number, sorted(staged))
+
+    async def _apply_manifest_overrides(self, header: PPManifestHeader) -> PPManifestHeader:
+        if not settings.DEV_PANEL_ENABLED:
+            return header
+        staged = await get_mock_state_store().get_json(
+            self._manifest_override_key(header.manifest_number)
+        )
+        if not staged:
+            return header
+        for field_name in _STAGEABLE_HEADER_FIELDS:
+            if field_name in staged:
+                raw = staged[field_name]
+                setattr(header, field_name, datetime.fromisoformat(raw) if raw is not None else None)
+        return header
+
     async def get_single_waybill(self, waybill_number: str) -> PPWaybillResponse:
         """Look up the waybill in the fixture library; raise if unregistered."""
         logger.info("MockParcelPerfectClient.get_single_waybill waybill=%s", waybill_number)
@@ -918,17 +1221,6 @@ class MockParcelPerfectClient:
         except KeyError as exc:
             raise PPWaybillNotFoundError(waybill_number) from exc
         return await self._apply_overrides(waybill)
-
-    async def get_waybills_by_manifest(self, manifest_number: int) -> list[PPWaybillResponse]:
-        """ASPIRATIONAL — PP v28 has no such endpoint (ask #1, July visit).
-        Mock-only so the wizard can demo manifest-keyed trip creation."""
-        # Deep copy: callers may mutate results; module-level fixtures must stay pristine.
-        return copy.deepcopy(
-            sorted(
-                (w for w in MOCK_WAYBILLS.values() if w.details.manifest == manifest_number),
-                key=lambda w: w.details.waybill,
-            )
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -945,9 +1237,9 @@ class ParcelPerfectClient:
 
     supports_manifest_lookup: bool = False
 
-    async def get_waybills_by_manifest(self, manifest_number: int) -> list[PPWaybillResponse]:
+    async def get_manifest(self, manifest_number: int) -> PPManifestResponse:
         raise PPUnsupportedError(
-            "PP v28 exposes no manifest-contents endpoint — requested from PP (ask #1, July visit)"
+            "PP v28 exposes no manifest lookup — an assumed data contract until PP offers one (FP-281 §8)"
         )
 
     async def _make_call(

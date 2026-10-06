@@ -2,6 +2,7 @@ import type { Trip } from '@shared/lib/types/trip'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { Precinct } from '@shared/lib/types/precinct'
 import { activePhase, sortedPlan, originScannedCount, destinationScannedCount } from './derive'
+import { manifestLabel } from '@/lib/format/manifest'
 import { delayMinutes, fmtDelay } from '@/lib/format/schedule'
 import { fmtFull } from '@shared/lib/utils/datetime'
 import type { TripSeed } from '@/lib/trips/tripSeed'
@@ -98,7 +99,8 @@ export interface TripVehicles {
  */
 export interface TripHeaderFacts {
   reference: string
-  orderNumber: string
+  /** The PP manifest display, "Empty leg", or "No manifest" (lib/format/manifest.ts). */
+  manifestLabel: string
   originPrecinctId: string | null
   destinationPrecinctId: string | null
   status: Trip['status']
@@ -217,7 +219,7 @@ export function tripHeaderFacts(trip: Trip | null, seed: TripSeed | null): TripH
   if (trip) {
     return {
       reference: trip.trip_reference,
-      orderNumber: trip.order_number,
+      manifestLabel: manifestLabel(trip.pp_manifest, trip.trip_type),
       originPrecinctId: trip.origin_precinct_id,
       destinationPrecinctId: trip.destination_precinct_id,
       status: trip.status,
@@ -233,7 +235,7 @@ export function tripHeaderFacts(trip: Trip | null, seed: TripSeed | null): TripH
   if (!seed) return null
   return {
     reference: seed.trip_reference,
-    orderNumber: seed.order_number,
+    manifestLabel: manifestLabel(seed.pp_manifest, seed.trip_type ?? null),
     originPrecinctId: seed.origin_precinct_id,
     destinationPrecinctId: seed.destination_precinct_id,
     status: seed.status,

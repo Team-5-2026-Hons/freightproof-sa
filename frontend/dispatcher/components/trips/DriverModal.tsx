@@ -5,7 +5,7 @@ import { Modal } from '@/components/ui/Modal'
 import { InfoRow } from '@/components/ui/InfoRow'
 import { LinkButton } from '@/components/ui/LinkButton'
 import { Button } from '@/components/ui/Button'
-import { fmtFull } from '@shared/lib/utils/datetime'
+import { fmtCalendarDate, fmtFull } from '@shared/lib/utils/datetime'
 import { ROUTES } from '@/lib/constants/routes'
 import { withReturnTo } from '@/lib/navigation/returnTo'
 
@@ -27,7 +27,9 @@ export function DriverModal({ driver, open, onClose, returnTo }: Props) {
     <Modal open={open} onClose={onClose} title={driver.full_name} size="md">
       <InfoRow label="Phone" value={driver.phone_number} href={`tel:${driver.phone_number}`} />
       <InfoRow label="Licence" value={driver.license_number} mono />
-      <InfoRow label="Licence expiry" value={driver.license_expiry ? fmtFull(driver.license_expiry) : 'Not recorded'} />
+      {/* A licence expiry is a date with no time: fmtFull would invent a clock reading for it. An
+          unreadable value is shown as it came rather than passed off as "not recorded". */}
+      <InfoRow label="Licence expiry" value={driver.license_expiry ? fmtCalendarDate(driver.license_expiry) ?? driver.license_expiry : 'Not recorded'} />
       <InfoRow label="Identity check" value={driver.idvs_status === 'verified' && driver.idvs_last_verified_at
         ? `Verified · ${fmtFull(driver.idvs_last_verified_at)}`
         : driver.idvs_status} />

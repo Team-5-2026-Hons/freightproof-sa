@@ -6,11 +6,11 @@ import { useRouter } from 'next/navigation'
 import { TopBar } from '@/components/ui/TopBar'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
-import { Spinner } from '@/components/ui/Spinner'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Ic } from '@/components/ui/Ic'
 import { FormField } from '@/components/ui/FormField'
-import { VehicleCard } from '@/components/vehicles/VehicleCard'
+import { VehicleCard, VEHICLE_GRID_CLASSES } from '@/components/vehicles/VehicleCard'
+import { VehicleCardGridSkeleton } from '@/components/vehicles/VehicleCardSkeleton'
 import { useVehicles } from '@/lib/hooks/useVehicles'
 import { useToast } from '@/lib/hooks/useToast'
 import { api } from '@/lib/api/client'
@@ -89,6 +89,8 @@ const EMPTY_FORM: VehicleFormState = {
 export default function FleetVehiclesPage(): React.JSX.Element {
   const router = useRouter()
   const { all: vehicles, horses, trailers, isLoading, error: fetchError, refetch } = useVehicles()
+  // Skeleton cards only for the first load: a refetch (after adding a vehicle) keeps the cards on screen.
+  const initialLoad = isLoading && vehicles.length === 0
   const { notify } = useToast()
   const [modalOpen, setModalOpen] = useState(false)
   const [form, setForm] = useState<VehicleFormState>(EMPTY_FORM)
@@ -286,10 +288,8 @@ export default function FleetVehiclesPage(): React.JSX.Element {
           </div>
         </div>
 
-        {isLoading ? (
-          <div className="flex items-center justify-center py-16">
-            <Spinner size="lg" />
-          </div>
+        {initialLoad ? (
+          <VehicleCardGridSkeleton />
         ) : fetchError ? (
           <EmptyState
             icon={<AlertCircle />}
@@ -319,7 +319,7 @@ export default function FleetVehiclesPage(): React.JSX.Element {
             }
           />
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className={VEHICLE_GRID_CLASSES}>
             {visibleVehicles.map((v) => (
               <VehicleCard key={v.id} vehicle={v} onClick={() => router.push(ROUTES.fleetVehicleDetail(v.id))} />
             ))}

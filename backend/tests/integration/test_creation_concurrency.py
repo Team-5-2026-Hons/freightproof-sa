@@ -1,7 +1,7 @@
-"""Concurrency proofs for trip creation (FP-138 and the order-number sibling).
+"""Concurrency proofs for trip creation (FP-138 and FP-281).
 
 Two dispatchers act at the same instant on something only one of them can have —
-a Parcel Perfect waybill, or a customer order number. Exactly one must win; the
+a Parcel Perfect waybill or manifest. Exactly one must win; the
 other must be told. These tests exist to *prove* that, not to reason about it —
 a race you have only argued about is a race you cannot show you fixed.
 
@@ -37,10 +37,8 @@ Three, and they are genuinely different — which is why no single guard covers 
      writer silently wins. The unique constraint never fires — one row, two UPDATEs.
      Only SELECT ... FOR UPDATE stops this.
 
-  3. Order number — both callers clear _check_order_number_conflict before either
-     has inserted a trip, so both get one for the same customer order. Stopped by
-     the partial unique index on (operator_organization_id, order_number), partial
-     because a closed order number is legitimately reusable.
+  3. Manifest — both callers clear the preview-time check before either inserts;
+     stopped by uq_trips_pp_manifest.
 
 Determinism, and where the barrier goes
 ---------------------------------------
@@ -54,10 +52,11 @@ The barrier must sit BEFORE the contended resource, at a point both callers are
 guaranteed to reach. Put it after, and the test deadlocks rather than fails: the
 winner parks waiting for a partner who is already blocked in Postgres on the
 winner's own lock. That is why the waybill races synchronise on the PP fetch while
-the order-number race synchronises on the pre-check and uses a plain PP stub.
+the manifest race (Task 9) synchronises on its pre-check.
 """
 
 import asyncio
+import dataclasses
 import uuid
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
@@ -65,7 +64,9 @@ from unittest.mock import MagicMock, patch
 import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy import delete, select
-from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from pytest import MonkeyPatch
+from typing import Any
 
 from app.blockchain.hedera import HederaReceipt
 from app.core.exceptions import ConsignmentAlreadyAssignedError
@@ -84,14 +85,17 @@ from app.db.models.sessions import UserSession
 from app.db.models.trips import Consignment, Parcel, Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
+from app.crypto.hashing import compute_snapshot_sha256
+from app.orchestration import pp_manifest_service
+from app.orchestration.pp_manifest import manifest_snapshot
 from app.integrations.parcel_perfect import (
+    PPManifestHeader, PPManifestResponse,
     PPContents,
     PPTrack,
     PPWaybillDetails,
     PPWaybillResponse,
 )
 from app.main import app
-from app.orchestration import trip_service
 from app.orchestration.consignment_service import fetch_and_sync_consignment
 from tests.conftest import auth_header, make_token
 
@@ -155,18 +159,6 @@ class _BarrierPPClient:
         # callers to cite DIFFERENT waybills, so that the waybill constraint (FP-138)
         # cannot be what refuses the loser — otherwise the test would pass without the
         # order-number guard existing at all.
-        return _make_waybill(waybill_number)
-
-
-class _PlainPPClient:
-    """PP stub with no synchronisation at all.
-
-    Used by races that are decided *before* the consignment stage is reached. A
-    barrier here would deadlock those: the winner would park waiting for a partner
-    who is blocked in Postgres on the winner's own lock and can never arrive.
-    """
-
-    async def get_single_waybill(self, waybill_number: str) -> PPWaybillResponse:
         return _make_waybill(waybill_number)
 
 
@@ -423,6 +415,10 @@ async def racing_api_world(test_engine, monkeypatch):
     )
 
     yield {
+        "principal": principal,
+        "origin": origin,
+        "destination": destination,
+        "suffix": suffix,
         "sessionmaker": sessionmaker,
         "pp_reference": pp_reference,
         "org": operator,
@@ -447,8 +443,7 @@ async def racing_api_world(test_engine, monkeypatch):
                 select(Trip.id).where(Trip.operator_organization_id == operator.id)
             )
         ).scalars().all()
-        # LIKE on the run's unique suffix: the order-number race cites two distinct
-        # waybills, so matching one exact reference would leave the other behind.
+        # Match every waybill owned by this run, including the manifest race.
         consignment_ids = (
             await session.execute(
                 select(Consignment.id).where(
@@ -567,106 +562,85 @@ async def test_concurrent_trip_creation_anchors_one_journey_lock(
         )
 
 
-# ── The order-number race: same order, two dispatchers, same instant ─────────
+# ── The manifest race: same PP manifest, two dispatchers, same instant ────────
 
 
-async def test_concurrent_creation_with_same_order_number_creates_one_trip(
-    client: AsyncClient, racing_api_world, monkeypatch
-):
-    """One order number may back only one live trip — under concurrency too.
+class _ManifestPPClient:
+    def __init__(self, manifest: PPManifestResponse) -> None:
+        self._manifest = manifest
 
-    create_trip checks for an active trip with this order number and then, some
-    way further down, inserts one. Two dispatchers submitting the same order at
-    the same moment both pass that check while neither has inserted yet, and both
-    get a trip. Each then anchors its own journey-lock hash, so one customer order
-    acquires two contradictory records on the ledger.
+    async def get_manifest(self, manifest_number: int) -> PPManifestResponse:
+        return self._manifest
 
-    The two callers cite DIFFERENT waybills on purpose: if they shared one, the
-    consignment constraint would refuse the loser and this test would pass whether
-    or not an order-number guard existed.
+
+async def test_concurrent_creation_from_one_manifest_creates_one_trip(
+    client: AsyncClient, racing_api_world: dict[str, Any], monkeypatch: MonkeyPatch
+) -> None:
+    """One PP manifest may back only one non-cancelled trip — under concurrency too.
+
+    Both callers clear the preview-time check (find_live_trip_for_manifest) before
+    either inserts. uq_trips_pp_manifest decides it at the trip INSERT — before any
+    consignment work — so the barrier sits on that pre-check, not on a PP fetch.
     """
     world = racing_api_world
+    account = world["suffix"][:6].upper()
+    async with world["sessionmaker"]() as session:
+        (await session.get(Organization, world["principal"].id)).pp_account_number = account
+        origin = await session.get(Precinct, world["origin"].id)
+        origin.pp_hub_code = "CPT"
+        origin.is_shared = True
+        destination = await session.get(Precinct, world["destination"].id)
+        destination.pp_hub_code = "JNB"
+        destination.is_shared = True
+        await session.commit()
+
+    now = datetime.now(UTC)
+    waybill = _make_waybill(f"{world['pp_reference']}M1")
+    waybill.details = dataclasses.replace(waybill.details, accnum=account, manifest=900)
+    manifest = PPManifestResponse(
+        header=PPManifestHeader(
+            manifest_number=900, issuer_account=account, issuer_name="Racing Client",
+            origin_hub="CPT", destination_hub="JNB", created_at=now, closed_at=now,
+            planned_departure_at=now, expected_arrival_at=None, client_reference=None, notes=[],
+        ),
+        waybills=[waybill],
+    )
+    monkeypatch.setattr(pp_manifest_service, "get_pp_client", lambda: _ManifestPPClient(manifest))
+
+    real_find = pp_manifest_service.find_live_trip_for_manifest
+    barrier = asyncio.Barrier(_RACERS)
+
+    async def _cleared_check_then_wait(db: AsyncSession, **kwargs: Any) -> Trip | None:
+        found = await real_find(db, **kwargs)
+        await barrier.wait()
+        return found
+
+    monkeypatch.setattr(pp_manifest_service, "find_live_trip_for_manifest", _cleared_check_then_wait)
+
+    body = {
+        "manifest_number": 900,
+        "expected_snapshot_sha256": compute_snapshot_sha256(manifest_snapshot(manifest)),
+        "driver_id": world["payload_base"]["driver_id"],
+        "horse_id": world["payload_base"]["horse_id"],
+        "trailer_ids": world["payload_base"]["trailer_ids"],
+    }
     headers_a, headers_b = (
         auth_header(make_token(sub=str(u.id), role="dispatcher", org_id=str(world["org"].id)))
         for u in (world["user"], world["user_b"])
     )
-    order_number = f"ORD-DUP-{world['pp_reference']}"
-    fake_receipt = HederaReceipt(
-        topic_id="0.0.12345", sequence_number=42,
-        consensus_timestamp=None, transaction_id="0.0.12345@1715865600.0",
+
+    first, second = await asyncio.gather(
+        client.post("/api/v1/trips/from-pp-manifest", json=body, headers=headers_a),
+        client.post("/api/v1/trips/from-pp-manifest", json=body, headers=headers_b),
     )
-
-    # Synchronise on the pre-check, not on the PP fetch. This race is decided at the
-    # trip INSERT, which happens BEFORE any consignment work, so the fixture's
-    # barrier-on-PP would deadlock: the winner would insert, then wait for a partner
-    # already blocked on the winner's own index lock.
-    #
-    # The real check still runs against the real database — the barrier only holds
-    # both callers in the window between clearing it and inserting, which is exactly
-    # where the bug lives and is otherwise a matter of timing.
-    real_check = trip_service._check_order_number_conflict
-    barrier = asyncio.Barrier(_RACERS)
-
-    async def _cleared_check_then_wait(db, order_number_arg, operator_org_id):
-        await real_check(db, order_number_arg, operator_org_id)
-        await barrier.wait()
-
-    monkeypatch.setattr(
-        trip_service, "_check_order_number_conflict", _cleared_check_then_wait
-    )
-    monkeypatch.setattr(
-        "app.orchestration.consignment_service.get_pp_client", lambda: _PlainPPClient()
-    )
-
-    def _payload(waybill_suffix: str) -> dict:
-        return {
-            **world["payload_base"],
-            "order_number": order_number,
-            "consignments": [
-                {"pp_reference": f"{world['pp_reference']}{waybill_suffix}",
-                 "unit_count_expected": 2}
-            ],
-        }
-
-    with patch("app.blockchain.anchor_service.HederaService") as MockService:
-        instance = MagicMock()
-        instance.submit_hash.return_value = fake_receipt
-        MockService.return_value = instance
-
-        first, second = await asyncio.gather(
-            client.post("/api/v1/trips", json=_payload("A"), headers=headers_a),
-            client.post("/api/v1/trips", json=_payload("B"), headers=headers_b),
-        )
 
     statuses = sorted([first.status_code, second.status_code])
-    assert statuses == [201, 409], (
-        f"expected one created and one refused, got {statuses}: "
-        f"{first.text[:200]} | {second.text[:200]}"
-    )
-
-    refused = first if first.status_code == 409 else second
-    assert order_number in refused.json()["detail"]
-
+    assert statuses == [201, 409], f"{first.text[:200]} | {second.text[:200]}"
+    winner, refused = (first, second) if first.status_code == 201 else (second, first)
+    assert refused.json()["detail"]["code"] == "MANIFEST_ALREADY_ON_TRIP"
+    assert refused.json()["detail"]["trip_reference"] == winner.json()["trip_reference"]
     async with world["sessionmaker"]() as session:
-        trips = (
-            await session.execute(
-                select(Trip).where(
-                    Trip.operator_organization_id == world["org"].id,
-                    Trip.order_number == order_number,
-                )
-            )
-        ).scalars().all()
-        assert len(trips) == 1, (
-            f"{len(trips)} live trips share order number {order_number} — "
-            "one customer order, two contradictory records"
-        )
-
-        anchors = (
-            await session.execute(
-                select(BlockchainReceipt).where(
-                    BlockchainReceipt.trip_id.in_([t.id for t in trips]),
-                    BlockchainReceipt.receipt_type == BlockchainReceiptType.JOURNEY_LOCK,
-                )
-            )
-        ).scalars().all()
-        assert len(anchors) == 1, f"{len(anchors)} journey-lock hashes for one order"
+        trips = (await session.execute(
+            select(Trip).where(Trip.operator_organization_id == world["org"].id, Trip.pp_manifest_number == 900)
+        )).scalars().all()
+    assert len(trips) == 1
