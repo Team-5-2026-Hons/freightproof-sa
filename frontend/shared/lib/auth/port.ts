@@ -45,3 +45,10 @@ export interface PasswordCredentials {
 export interface PasswordAuthPort extends AuthPort {
   signInWithPassword(credentials: PasswordCredentials): Promise<void>
 }
+
+/** Phone-number one-time-code sign-in (driver app): request a code, then exchange it.
+ *  Both steps reject with the backend's own error, whose message the screens display. */
+export interface OtpAuthPort extends AuthPort {
+  requestOtp(phoneNumber: string): Promise<void>
+  verifyOtp(phoneNumber: string, otp: string): Promise<void>
+}
