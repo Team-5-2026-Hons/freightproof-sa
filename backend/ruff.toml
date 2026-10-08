@@ -55,7 +55,12 @@ max-statements = 50
 "app/orchestration/dev_rig_service.py" = ["PLR0913"]
 "app/orchestration/exception_service.py" = ["C901", "PLR0913"]
 "app/orchestration/handover_service.py" = ["PLR0913"]
-"app/orchestration/phase_service.py" = ["PLR0913"]
+# Relocated, not added: each entry below is an existing PLR0913 violation that moved out of
+# phase_service.py with its function (audit 5.1); the count of violating functions is unchanged.
+"app/orchestration/phases/completion.py" = ["PLR0913"]  # _finish_phase
+"app/orchestration/phases/findings.py" = ["PLR0913"]  # _raise_scan_shortfall_if_unrecorded, _record_seal_finding
+"app/orchestration/phases/override.py" = ["PLR0913"]  # override_phase
+"app/orchestration/phases/payloads.py" = ["PLR0913"]
 "app/orchestration/pp_manifest_service.py" = ["C901", "PLR0913"]
 "app/orchestration/proximity_service.py" = ["C901", "PLR0913"]
 "app/orchestration/resource_service.py" = ["PLR0913"]

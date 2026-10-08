@@ -37,7 +37,7 @@ from app.integrations.parcel_perfect import (
 from app.integrations.scan_feed import MockScanFeed, ScanDirection, get_scan_feed
 from app.orchestration import consignment_service, exception_service, scan_service
 from app.orchestration.pp_manifest import manifest_snapshot_sha256
-from app.orchestration.phase_gate import GATED_PHASES
+from app.orchestration.phases.blocking import GATED_PHASES
 from app.schemas.dev import (
     CloseScanSessionRequest, CloseScanSessionResponse, ConsignmentScanResultRead,
     DevConsignment, DevTripStop, DevTripSummary, DevVehicle, ExceptionTriggerRequest,

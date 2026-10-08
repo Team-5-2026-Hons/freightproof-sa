@@ -43,7 +43,7 @@ from app.integrations.pulsit import PulsitFix, PulsitFixSource, PulsitFixStatus,
 from app.orchestration import action_location_service
 from app.orchestration.artifact_service import get_trip_scoped_artifact
 from app.orchestration.integrity import is_unique_violation, violated_constraint
-from app.orchestration.phase_service import current_phase_event
+from app.orchestration.phases.queries import current_phase_event
 from app.orchestration.review_identity import name_of, user_names, with_reviewer_names
 from app.orchestration.review_policy import initial_review_status
 from app.schemas.pagination import CursorPage

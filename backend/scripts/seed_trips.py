@@ -51,7 +51,7 @@ from app.db.models.trips import Consignment, Parcel, Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.integrations.parcel_perfect import MOCK_MANIFEST_HEADERS, MOCK_WAYBILLS, PPWaybillResponse
 from app.orchestration.consignment_service import serialise_waybill
-from app.orchestration.phase_plan import ANCHORED_PHASES, PlanStop, build_phase_plan
+from app.orchestration.phases.plan import ANCHORED_PHASES, PlanStop, build_phase_plan
 
 _CPT = "Cape Town Depot (Epping)"
 _BFN = "Bloemfontein Depot (Hamilton)"

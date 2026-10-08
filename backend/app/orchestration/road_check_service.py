@@ -44,7 +44,7 @@ from app.db.models.vehicles import Vehicle
 from app.integrations.pulsit import PulsitFixStatus, get_pulsit_client
 from app.orchestration.review_policy import initial_review_status
 from app.orchestration.geofence_service import TrackerFix, evaluate_geofence
-from app.orchestration.phase_service import current_phase_event
+from app.orchestration.phases.queries import current_phase_event
 
 logger = logging.getLogger(__name__)
 

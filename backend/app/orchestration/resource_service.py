@@ -31,7 +31,7 @@ from app.db.models.organisations import Organization
 from app.db.models.transit import TripException
 from app.db.models.trips import Consignment, Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
-from app.orchestration.phase_gate import blocked_on_by_stop
+from app.orchestration.phases.blocking import blocked_on_by_stop
 from app.orchestration.review_identity import with_reviewer_names
 from app.orchestration.scan_service import scanned_counts_for_trip
 from app.schemas.blockchain import BlockchainReceiptRead

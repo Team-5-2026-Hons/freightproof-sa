@@ -23,7 +23,7 @@ from app.db.models.organisations import Precinct
 from app.db.models.trips import Trip, TripStop
 from app.integrations.pulsit import MockPulsitClient
 from app.orchestration import dev_truck_service
-from app.orchestration.phase_service import current_phase_event
+from app.orchestration.phases.queries import current_phase_event
 from app.orchestration.road_check_service import RigRole, RigVehicle, load_rig, road_stage_for_current
 from app.schemas.dev import SCENARIO_AT_STOP, SCENARIO_THREE_KM, DevTruckScenario, RigScenario
 

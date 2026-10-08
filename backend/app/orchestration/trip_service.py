@@ -42,9 +42,9 @@ from app.db.models.trips import (
 from app.db.models.vehicles import Vehicle
 from app.orchestration.integrity import is_unique_violation, violated_constraint
 from app.orchestration.review_policy import dispatcher_authored_review
-from app.orchestration.phase_gate import blocked_on_by_stop
-from app.orchestration.phase_plan import ANCHORED_PHASES, PlanStop, build_phase_plan
-from app.orchestration.phase_service import recompute_position
+from app.orchestration.phases.blocking import blocked_on_by_stop
+from app.orchestration.phases.plan import ANCHORED_PHASES, PlanStop, build_phase_plan
+from app.orchestration.phases.state import recompute_position
 from app.orchestration.resource_service import get_trip_detail
 from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.phases import PhaseEventRead

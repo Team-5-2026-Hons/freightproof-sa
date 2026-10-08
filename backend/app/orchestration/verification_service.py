@@ -25,7 +25,7 @@ from app.db.models.enums import PhaseStatus, PhaseType, SubjectType, VerifyStatu
 from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Trip, TripTrailer
 from app.orchestration.manifest_service import load_creation_snapshot
-from app.orchestration.phase_service import (
+from app.orchestration.phases.payloads import (
     PHASE_PAYLOAD_VERSION_V2,
     compute_activation_canonical_payload_v2,
     compute_arrival_canonical_payload_v2,

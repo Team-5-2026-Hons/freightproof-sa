@@ -2849,7 +2849,7 @@ async def test_anchor_phase_event_fails_open_on_hedera_trouble(
     """
     trip, driver, phases = trip_fixture
     monkeypatch.setattr(
-        "app.orchestration.phase_service.anchor_subject",
+        "app.orchestration.phases.anchor_execution.anchor_subject",
         AsyncMock(side_effect=hedera_exception),
     )
     payload = {"phase_event_id": str(phases["departure"].id)}
@@ -2974,7 +2974,7 @@ async def test_a_broker_failure_schedules_a_local_anchor_fallback(
     monkeypatch.setattr("app.tasks.blockchain.anchor_phase_event_task", _BrokenBroker)
     inline_calls: list[uuid.UUID] = []
     monkeypatch.setattr(
-        "app.orchestration.phase_service._schedule_anchor_after_dispatch_failure",
+        "app.orchestration.phases.anchor_dispatch._schedule_anchor_after_dispatch_failure",
         lambda **kwargs: inline_calls.append(kwargs["phase_event_id"]),
     )
 

@@ -775,7 +775,10 @@ def test_every_trip_exception_write_site_is_accounted_for():
     expected_sites = {
         "app/orchestration/action_location_service.py": 2,
         "app/orchestration/exception_service.py": 1,
-        "app/orchestration/phase_service.py": 8,
+        "app/orchestration/phases/advance_confirmation.py": 1,
+        "app/orchestration/phases/advance_departure.py": 1,
+        "app/orchestration/phases/findings.py": 4,
+        "app/orchestration/phases/override.py": 2,
         "app/orchestration/receiver_verification_service.py": 1,
         "app/orchestration/road_check_service.py": 1,
         "app/orchestration/scan_service.py": 1,

@@ -39,10 +39,12 @@ ignore_imports =
     app.schemas.fleet_analytics -> app.analytics.fleet.periods
     # schemas -> integrations: dev-only schema; moves with app/dev/ (audit phase 4).
     app.schemas.dev -> app.integrations.scan_feed
-    # orchestration -> tasks: phase_service imports tasks.blockchain lazily (function level)
-    # to dispatch anchoring. tasks.blockchain imports phase_service back, so a module-level
-    # import would be a cycle. Removed structurally by the anchor_dispatch split (audit 5.2).
-    app.orchestration.phase_service -> app.tasks.blockchain
+    # orchestration -> tasks: phases.anchor_dispatch imports tasks.blockchain lazily (function
+    # level) to queue the Hedera submit on the Celery worker. The anchor_dispatch split (audit
+    # 5.2) removed the import CYCLE (tasks.blockchain now re-enters phases.anchor_execution,
+    # which never points back here); the layer violation itself remains, so the ignore moved
+    # with the code rather than being deleted.
+    app.orchestration.phases.anchor_dispatch -> app.tasks.blockchain
 
 # ---------------------------------------------------------------------------
 # 2. No layer skipping from the API. CLAUDE.md: endpoints -> orchestration -> integrations.
@@ -78,9 +80,46 @@ ignore_imports =
 #    from inside phases/ is caught as well.
 # ---------------------------------------------------------------------------
 [importlinter:contract:phases-no-facade]
-name = app.orchestration.phases must not import the phase_service facade
+name = app.orchestration.phases must not import the phase_service, phase_gate or phase_plan facades
 type = forbidden
 source_modules =
     app.orchestration.phases.**
+forbidden_modules =
+    app.orchestration.phase_service
+    app.orchestration.phase_gate
+    app.orchestration.phase_plan
+# ---------------------------------------------------------------------------
+# 4. Tier order inside phases/ (audit 5.1). A module may import only from tiers below it;
+#    modules on one tier ("|") may not import each other. This is what keeps the package
+#    acyclic, and it is why _finish_phase lives in `completion`, not `service`.
+#    Layers are not optional: a misspelt or missing module fails the contract.
+# ---------------------------------------------------------------------------
+[importlinter:contract:phases-tier-order]
+name = Inside phases/, modules import only from lower tiers
+type = layers
+containers =
+    app.orchestration.phases
+layers =
+    service
+    advance_activation | advance_loading | advance_departure | advance_in_transit | advance_arrival | advance_unloading | advance_confirmation | override
+    queries | gate | anchor_dispatch | anchor_recovery | completion
+    payloads | loaders | state | artifacts | driver_position | seals | scheduling | findings | anchor_execution | blocking | plan
+ignore_imports =
+    # The one lazy edge that leaves phases/. Audit 5.2 draws it as terminating at
+    # tasks.blockchain: tasks.blockchain re-enters via anchor_execution / anchor_recovery, and
+    # nothing points back at anchor_dispatch. Without this, import-linter follows the chain
+    # through tasks.blockchain and reports anchor_dispatch as importing its own siblings.
+    app.orchestration.phases.anchor_dispatch -> app.tasks.blockchain
+
+# ---------------------------------------------------------------------------
+# 5. verification_service rebuilds payloads to verify stored hashes. It reaches only the
+#    phases.payloads leaf, never the phase_service facade; importing the facade is what
+#    made phase_service <-> verification_service a cycle (audit 5.2).
+# ---------------------------------------------------------------------------
+[importlinter:contract:verification-no-facade]
+name = verification_service must not import the phase_service facade
+type = forbidden
+source_modules =
+    app.orchestration.verification_service
 forbidden_modules =
     app.orchestration.phase_service

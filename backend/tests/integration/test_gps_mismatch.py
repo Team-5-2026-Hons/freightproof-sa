@@ -61,6 +61,7 @@ from app.db.models.vehicles import Vehicle
 from app.orchestration import action_location_service
 from app.schemas.action_location import ActionLocationAssessment
 from app.orchestration import phase_service
+from app.orchestration.phases import findings as phase_findings
 
 # Imported for their fixture side effects as much as their bodies — `override_get_db`
 # is autouse in its defining module and stays autouse here, which is what points the
@@ -766,7 +767,7 @@ async def test_a_failure_recording_the_finding_leaves_the_handshake_successful(
     await _stage(_HORSE_DEVICE, _FAR_AWAY_LAT, _FAR_AWAY_LNG)
 
     with patch.object(
-        phase_service, "_phone_tracker_separation_metres",
+        phase_findings, "_phone_tracker_separation_metres",
         side_effect=RuntimeError("separation maths blew up"),
     ):
         resp = await _complete_activation(client, trip, driver)
