@@ -51,7 +51,7 @@ from app.integrations.pulsit import (
 )
 from app.orchestration import dev_truck_service
 from app.orchestration.dev_truck_service import ScenarioTarget, TargetGeometryUnavailableError
-from app.orchestration.geofence_service import TrackerFix, evaluate_geofence
+from app.orchestration.evidence.geofence import TrackerFix, evaluate_geofence
 from app.schemas.dev import MoveTruckRequest, MoveTruckResponse, WaypointRead
 from app.schemas.people import UserRead
 

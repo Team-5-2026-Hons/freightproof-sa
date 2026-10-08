@@ -217,12 +217,12 @@ async def test_driver_report_survives_a_failure_building_its_assessment(
     """The comparison is enrichment, never a gate: if assembling it fails for any
     reason — not just a slow tracker — the panic row still commits with the
     assessment column NULL, rather than a 500 that rolls the emergency report back."""
-    from app.orchestration import action_location_service
+    from app.orchestration.evidence import action_location
 
     def explode(**_kwargs):
         raise RuntimeError("assessment maths blew up")
 
-    monkeypatch.setattr(action_location_service, "build_capture_assessment", explode)
+    monkeypatch.setattr(action_location, "build_capture_assessment", explode)
     trip, driver = seed_trip
     token = make_token(sub=str(driver.id), role="driver")
 

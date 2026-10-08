@@ -21,7 +21,7 @@ from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Trip, TripStop, TripTrailer
 from app.db.models.transit import TripException
 from app.db.models.vehicles import Vehicle
-from app.orchestration.artifact_service import get_trip_scoped_artifact
+from app.orchestration.evidence.artifacts import get_trip_scoped_artifact
 from app.orchestration.review_identity import name_of, user_names
 from app.schemas.pagination import CursorPage
 from app.schemas.transit import TripExceptionDetail, TripExceptionListItem

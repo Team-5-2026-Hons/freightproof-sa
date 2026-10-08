@@ -44,7 +44,7 @@ from app.db.models.phases import PhaseEvent
 from app.db.models.receiver_verification import ReceiverIdentityVerification
 from app.db.models.trips import Consignment, Trip, TripStop
 from app.db.session import get_db
-from app.orchestration.artifact_service import create_receiver_artifact
+from app.orchestration.evidence.artifacts import create_receiver_artifact
 from app.orchestration.handover_service import (
     build_scan_url,
     find_open_token,

@@ -15,7 +15,7 @@ from app.core.limits import ARTIFACT_UPLOAD
 from app.core.rate_limit import rate_limit
 from app.db.models.enums import ArtifactType
 from app.db.session import get_db
-from app.orchestration.artifact_service import (
+from app.orchestration.evidence.artifacts import (
     MAX_FILE_SIZE_BYTES,
     create_artifact,
     list_artifacts_for_trip,

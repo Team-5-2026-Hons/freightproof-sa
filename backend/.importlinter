@@ -196,3 +196,43 @@ layers =
     unassigned_fixtures | manifest_fixtures
     port | waybill_fixtures | client
     errors | timestamps | models
+
+# ---------------------------------------------------------------------------
+# 11. Stops the evidence package importing back into its own facades (audit 5.5, rule 2:
+#     imports only run old -> new). One facade per moved module, so the list is the eight
+#     old names. Wildcard form for the same reason as contract 3; function-level (lazy)
+#     imports are in the graph too.
+# ---------------------------------------------------------------------------
+[importlinter:contract:evidence-no-facade]
+name = app.orchestration.evidence must not import the evidence facade modules
+type = forbidden
+source_modules =
+    app.orchestration.evidence.**
+forbidden_modules =
+    app.orchestration.action_location_service
+    app.orchestration.artifact_service
+    app.orchestration.checkpoint_service
+    app.orchestration.corroboration_service
+    app.orchestration.geofence_service
+    app.orchestration.location_service
+    app.orchestration.proximity_service
+    app.orchestration.road_check_service
+
+# ---------------------------------------------------------------------------
+# 12. Tier order inside evidence/ (audit 5, move order: leaves first). A module may import
+#     only from tiers below it; modules on one tier ("|") may not import each other. The
+#     tiers are the edges the code has today: checkpoints builds on corroboration and
+#     action_location; those and road_check build on the geofence/proximity leaves.
+#     evidence/__init__ stays empty (audit 5 rule 1), so there is no package facade to
+#     reach siblings through.
+#     Layers are not optional: a misspelt or missing module fails the contract.
+# ---------------------------------------------------------------------------
+[importlinter:contract:evidence-tier-order]
+name = Inside evidence/, modules import only from lower tiers
+type = layers
+containers =
+    app.orchestration.evidence
+layers =
+    checkpoints
+    corroboration | action_location | road_check
+    geofence | proximity | location | artifacts

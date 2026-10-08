@@ -14,7 +14,7 @@ from app.db.models.enums import PhaseStatus, PhaseType, TripStatus
 from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Trip
 from app.integrations.pulsit import PulsitFix
-from app.orchestration import action_location_service
+from app.orchestration.evidence import action_location
 from app.orchestration.phases.findings import (
     _raise_position_disagreement_if_unrecorded, _raise_trailer_decoupling_if_unrecorded,
 )
@@ -78,12 +78,12 @@ async def _finish_phase(
     # a failure inside it leaves the outer transaction usable for the flush below.
     evaluated_at = datetime.now(UTC)
     try:
-        assessment = await action_location_service.build_phase_assessment(
+        assessment = await action_location.build_phase_assessment(
             db, trip=trip, event=event, horse_fix=horse_fix,
             driver_accuracy_metres=driver_accuracy_metres, evaluated_at=evaluated_at,
         )
         event.action_location_assessment = assessment.model_dump(mode="json")
-        await action_location_service.record_separation_finding(
+        await action_location.record_separation_finding(
             db, trip=trip, phase_event_id=event.id, checkpoint_id=None, assessment=assessment,
             driver_reason=event.location_warning_reason,
         )
@@ -92,7 +92,7 @@ async def _finish_phase(
         # a phone measurably outside the precinct with a stale/unavailable tracker
         # fix would otherwise raise nothing at all. Same fail-open block, same
         # driver-typed reason, same event.
-        await action_location_service.record_driver_location_finding(
+        await action_location.record_driver_location_finding(
             db, trip=trip, phase_event_id=event.id, assessment=assessment,
             driver_reason=event.location_warning_reason,
         )

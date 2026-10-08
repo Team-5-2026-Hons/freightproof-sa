@@ -3,12 +3,12 @@
   "functions": {
     "app/api/v1/endpoints/dev_pulsit.py::move_truck": 164,
     "app/api/v1/endpoints/dev_triggers.py::list_dev_trips": 162,
-    "app/orchestration/action_location_service.py::build_phase_assessment": 119,
-    "app/orchestration/action_location_service.py::record_driver_location_finding": 115,
-    "app/orchestration/action_location_service.py::record_separation_finding": 128,
-    "app/orchestration/checkpoint_service.py::log_checkpoint": 151,
     "app/orchestration/consignment_service.py::sync_consignment_from_waybill": 163,
-    "app/orchestration/corroboration_service.py::record_phase_corroboration": 157,
+    "app/orchestration/evidence/action_location.py::build_phase_assessment": 119,
+    "app/orchestration/evidence/action_location.py::record_driver_location_finding": 115,
+    "app/orchestration/evidence/action_location.py::record_separation_finding": 128,
+    "app/orchestration/evidence/checkpoints.py::log_checkpoint": 151,
+    "app/orchestration/evidence/corroboration.py::record_phase_corroboration": 157,
     "app/orchestration/exceptions/creation.py::raise_exception": 168,
     "app/orchestration/exceptions/queries.py::list_exception_history": 103,
     "app/orchestration/exceptions/review.py::review_exception": 123,
@@ -32,7 +32,8 @@
     "app/integrations/parcel_perfect/__init__.py": 81,
     "app/orchestration/exception_service.py": 68,
     "app/orchestration/trip_service.py": 47,
-    "app/orchestration/action_location_service.py": 706,
+    "app/orchestration/action_location_service.py": 28,
+    "app/orchestration/evidence/action_location.py": 706,
     "app/schemas/trips.py": 425,
     "app/api/v1/endpoints/handover.py": 557
   }

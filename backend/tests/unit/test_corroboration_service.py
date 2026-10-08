@@ -228,7 +228,7 @@ def test_fix_inside_tolerance_band_returns_true():
 
     # Act
     with patch(
-        "app.orchestration.geofence_service.haversine_metres",
+        "app.orchestration.evidence.geofence.haversine_metres",
         return_value=float(radius) + 1.0,
     ):
         confirmed = _geofence_verdict_to_column(fix, precinct, context="test-tolerance-band")

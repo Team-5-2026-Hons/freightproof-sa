@@ -5,7 +5,7 @@ import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.enums import PhaseStatus
-from app.orchestration import corroboration_service
+from app.orchestration.evidence import corroboration
 from app.orchestration.phases.anchor_dispatch import _anchor_phase
 from app.orchestration.phases.completion import _finish_phase
 from app.orchestration.phases.driver_position import _record_driver_position
@@ -31,7 +31,7 @@ async def advance_unloading(
     trip, event = gated
 
     _record_driver_position(event, payload)
-    horse_fix = await corroboration_service.record_phase_corroboration(
+    horse_fix = await corroboration.record_phase_corroboration(
         db, trip=trip, event=event, driver_captured_at=payload.driver_captured_at,
     )
     event.status = PhaseStatus.COMPLETED

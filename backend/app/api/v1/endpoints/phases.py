@@ -29,7 +29,7 @@ from app.core.rate_limit import rate_limit
 from app.db.models.trips import TripStop
 from app.db.session import get_db
 from app.orchestration.phases.blocking import blocked_on_by_stop
-from app.orchestration.action_location_service import (
+from app.orchestration.evidence.action_location import (
     PhaseLocationPreviewConflictError, preview_phase_location,
 )
 from app.orchestration.phases.queries import list_phases, next_phase

@@ -117,7 +117,7 @@ def test_distance_exactly_at_radius_is_confirmed_and_not_in_tolerance_band():
     precinct = _make_precinct(geofence_radius_metres=200)
 
     # Act
-    with patch("app.orchestration.geofence_service.haversine_metres", return_value=200.0):
+    with patch("app.orchestration.evidence.geofence.haversine_metres", return_value=200.0):
         verdict = evaluate_geofence(fix, precinct, tolerance_metres=50)
 
     # Assert
@@ -132,7 +132,7 @@ def test_distance_exactly_at_radius_plus_tolerance_is_confirmed_and_in_band():
     precinct = _make_precinct(geofence_radius_metres=200)
 
     # Act
-    with patch("app.orchestration.geofence_service.haversine_metres", return_value=250.0):
+    with patch("app.orchestration.evidence.geofence.haversine_metres", return_value=250.0):
         verdict = evaluate_geofence(fix, precinct, tolerance_metres=50)
 
     # Assert
@@ -148,7 +148,7 @@ def test_distance_one_metre_beyond_tolerance_is_not_confirmed():
     precinct = _make_precinct(geofence_radius_metres=200)
 
     # Act
-    with patch("app.orchestration.geofence_service.haversine_metres", return_value=251.0):
+    with patch("app.orchestration.evidence.geofence.haversine_metres", return_value=251.0):
         verdict = evaluate_geofence(fix, precinct, tolerance_metres=50)
 
     # Assert

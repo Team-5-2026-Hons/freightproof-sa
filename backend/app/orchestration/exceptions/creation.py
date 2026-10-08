@@ -21,7 +21,7 @@ from app.db.models.trips import Trip, TripTrailer
 from app.db.models.transit import TripException
 from app.db.models.vehicles import Vehicle
 from app.integrations.pulsit import PulsitFix, PulsitFixSource, PulsitFixStatus, get_pulsit_client
-from app.orchestration import action_location_service
+from app.orchestration.evidence import action_location
 from app.orchestration.integrity import is_unique_violation, violated_constraint
 from app.orchestration.phases.queries import current_phase_event
 from app.orchestration.review_policy import initial_review_status
@@ -82,7 +82,7 @@ async def _driver_report_assessment(
         # The report row IS the capture: its own gps_lat/gps_lng and the device
         # timestamp the client sent, compared once against the tracker. Never stored
         # as a checkpoint and never turned into a second, system-generated exception.
-        assessment = action_location_service.build_capture_assessment(
+        assessment = action_location.build_capture_assessment(
             driver_lat=float(exc.gps_lat) if exc.gps_lat is not None else None,
             driver_lng=float(exc.gps_lng) if exc.gps_lng is not None else None,
             driver_captured_at=driver_captured_at,

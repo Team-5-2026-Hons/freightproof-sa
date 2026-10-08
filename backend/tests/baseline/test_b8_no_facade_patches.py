@@ -11,8 +11,11 @@ FROZEN_FACADES started EMPTY on purpose: until a module is split it is not a fac
 patches against it are legal and necessary. A module is added here in the SAME commit that
 begins its package move, after its patches have been retargeted; from then on any new
 patch through it fails this test. No patch site remains against a module still to be split:
-the four facades below had 13, 21, 2 and 15 (phase_service, trip_service, exception_service,
-integrations.parcel_perfect) before their windows; phase_gate and phase_plan never had any.
+the facades below had 13, 21, 2 and 15 (phase_service, trip_service, exception_service,
+integrations.parcel_perfect) before their windows, and the evidence window's artifact_service,
+corroboration_service, action_location_service, checkpoint_service and geofence_service had
+5, 5, 3, 2 and 4; phase_gate, phase_plan, location_service, proximity_service and
+road_check_service never had any.
 
 integrations.parcel_perfect is the odd one out: the facade IS the package, so its submodules
 (`...parcel_perfect.mock`) share the facade's dotted prefix. A site is "through the facade"
@@ -31,10 +34,18 @@ BACKEND_DIR = TESTS_DIR.parent
 
 FROZEN_FACADES: frozenset[str] = frozenset({
     "app.integrations.parcel_perfect",
+    "app.orchestration.action_location_service",
+    "app.orchestration.artifact_service",
+    "app.orchestration.checkpoint_service",
+    "app.orchestration.corroboration_service",
     "app.orchestration.exception_service",
+    "app.orchestration.geofence_service",
+    "app.orchestration.location_service",
     "app.orchestration.phase_gate",
     "app.orchestration.phase_plan",
     "app.orchestration.phase_service",
+    "app.orchestration.proximity_service",
+    "app.orchestration.road_check_service",
     "app.orchestration.trip_service",
 })
 

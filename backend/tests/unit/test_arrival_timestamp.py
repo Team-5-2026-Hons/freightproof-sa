@@ -10,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.enums import PhaseStatus, PhaseType, TripStatus
 from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Trip
-from app.orchestration import corroboration_service, phase_service, scan_service
+from app.orchestration import phase_service, scan_service
+from app.orchestration.evidence import corroboration as evidence_corroboration
 from app.orchestration.phases import (
     advance_confirmation,
     advance_in_transit,
@@ -42,7 +43,7 @@ def arrival_context(monkeypatch: pytest.MonkeyPatch) -> tuple[AsyncMock, Trip, P
     # models an unavailable tracker explicitly rather than letting AsyncMock return a
     # truthy mock object whose fake timestamp reaches the evaluator.
     monkeypatch.setattr(
-        corroboration_service,
+        evidence_corroboration,
         "record_phase_corroboration",
         AsyncMock(return_value=None),
     )

@@ -21,7 +21,8 @@ from app.core.exceptions import ResourceNotFoundError
 from app.db.models.trips import Trip
 from app.db.session import get_db
 from app.integrations.pulsit import MockPulsitClient, get_pulsit_client
-from app.orchestration import dev_rig_service, road_check_service
+from app.orchestration import dev_rig_service
+from app.orchestration.evidence import road_check
 from app.orchestration.dev_truck_service import TargetGeometryUnavailableError
 from app.schemas.dev import (
     RigReadingRead,
@@ -47,7 +48,7 @@ async def _load_trip(db: AsyncSession, *, trip_id: uuid.UUID, organization_id: u
     return trip
 
 
-def _to_response(trip_id: uuid.UUID, result: road_check_service.RoadCheckResult) -> RoadCheckResponse:
+def _to_response(trip_id: uuid.UUID, result: road_check.RoadCheckResult) -> RoadCheckResponse:
     return RoadCheckResponse(
         trip_id=trip_id,
         readings=[
@@ -89,7 +90,7 @@ async def run_rig_scenario(
     except (dev_rig_service.ScenarioNotApplicableError, TargetGeometryUnavailableError) as exc:
         raise HTTPException(status_code=http_status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
-    result = await road_check_service.check_trip_on_road(db, trip=trip)
+    result = await road_check.check_trip_on_road(db, trip=trip)
     base = _to_response(trip.id, result)
     return RigScenarioResponse(**base.model_dump(), scenario=body.scenario, label=label)
 
@@ -101,5 +102,5 @@ async def run_road_check(
     current_user: UserRead = Depends(get_current_dispatcher),
 ) -> RoadCheckResponse:
     trip = await _load_trip(db, trip_id=body.trip_id, organization_id=current_user.organization_id)
-    result = await road_check_service.check_trip_on_road(db, trip=trip)
+    result = await road_check.check_trip_on_road(db, trip=trip)
     return _to_response(trip.id, result)

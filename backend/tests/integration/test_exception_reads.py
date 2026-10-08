@@ -64,7 +64,7 @@ def stub_signed_urls(monkeypatch):
     """Storage is out of scope here — the artifact service's own tests cover signing."""
     async def _fake(*, s3_bucket, s3_key, ttl_seconds):
         return f"https://storage.test/{s3_key}?ttl={ttl_seconds}"
-    monkeypatch.setattr("app.orchestration.artifact_service.create_signed_url", _fake)
+    monkeypatch.setattr("app.orchestration.evidence.artifacts.create_signed_url", _fake)
 
 
 # ── seeding helpers ─────────────────────────────────────────────────────────────
