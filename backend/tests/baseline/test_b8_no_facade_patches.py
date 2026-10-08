@@ -20,7 +20,10 @@ from tests.baseline._patch_scan import PatchSite, find_patch_sites, scan_tree, t
 
 TESTS_DIR = Path(__file__).resolve().parents[1]
 
-FROZEN_FACADES: frozenset[str] = frozenset({"app.orchestration.phase_service"})
+FROZEN_FACADES: frozenset[str] = frozenset({
+    "app.orchestration.phase_service",
+    "app.orchestration.trip_service",
+})
 
 
 def _violations(sites: list[PatchSite], frozen: frozenset[str]) -> list[str]:

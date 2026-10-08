@@ -123,3 +123,28 @@ source_modules =
     app.orchestration.verification_service
 forbidden_modules =
     app.orchestration.phase_service
+
+# ---------------------------------------------------------------------------
+# 6. Stops the trips package importing back into its own facade (audit 5.5, rule 2:
+#    imports only run old -> new). Wildcard form for the same reason as contract 3.
+# ---------------------------------------------------------------------------
+[importlinter:contract:trips-no-facade]
+name = app.orchestration.trips must not import the trip_service facade
+type = forbidden
+source_modules =
+    app.orchestration.trips.**
+forbidden_modules =
+    app.orchestration.trip_service
+
+# ---------------------------------------------------------------------------
+# 7. creation, administration and queries share no code today and must stay that way
+#    (audit 5.3). Independence also rejects an indirect chain from one to another, so a
+#    shared helper has to be extracted to a lower module instead of imported sideways.
+# ---------------------------------------------------------------------------
+[importlinter:contract:trips-independent-modules]
+name = trips.creation, trips.administration and trips.queries do not import each other
+type = independence
+modules =
+    app.orchestration.trips.creation
+    app.orchestration.trips.administration
+    app.orchestration.trips.queries

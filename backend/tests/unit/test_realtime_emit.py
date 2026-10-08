@@ -782,7 +782,7 @@ def test_every_trip_exception_write_site_is_accounted_for():
         "app/orchestration/receiver_verification_service.py": 1,
         "app/orchestration/road_check_service.py": 1,
         "app/orchestration/scan_service.py": 1,
-        "app/orchestration/trip_service.py": 1,
+        "app/orchestration/trips/administration.py": 1,
     }
     assert actual == expected_sites, (
         "A TripException write site was added or removed. Every site must enqueue a "

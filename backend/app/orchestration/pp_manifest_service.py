@@ -40,7 +40,7 @@ from app.orchestration.pp_manifest import (
     snapshot_read,
     waybills_from_other_clients,
 )
-from app.orchestration.trip_service import (
+from app.orchestration.trips.creation import (
     ManifestCargo,
     NewTrip,
     find_live_trip_for_manifest,
