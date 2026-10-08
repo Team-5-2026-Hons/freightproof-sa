@@ -1,6 +1,6 @@
 """Integration tests for FP-146 — TRAILER_LOCATION_MISMATCH.
 
-phase_service._raise_trailer_decoupling_if_unrecorded raises one CRITICAL exception
+phases.findings._raise_trailer_decoupling_if_unrecorded raises one CRITICAL exception
 per phase event when the horse's own verdict is TRUE (the precinct data and horse
 tracker are sound), a trailer's snapshot is measured FALSE, and that trailer's fix is
 further than settings.TRAILER_HORSE_MAX_SEPARATION_METRES from the horse's own fix —

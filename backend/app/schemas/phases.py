@@ -74,7 +74,7 @@ class PhaseEventRead(BaseModel):
     step_recipe: tuple[str, ...] = ()
 
     # Non-null while this phase is waiting on an external system — today only the
-    # warehouse scan feed. Derived per request (orchestration/phase_gate.py), never
+    # warehouse scan feed. Derived per request (orchestration/phases/blocking.py), never
     # stored: it is a property of the outside world, not of this row.
     blocked_on: Optional[str] = None
 
@@ -178,7 +178,7 @@ class _PhaseCompleteBase(BaseModel):
     # because the origin-gate position is the one the activation gates are judged on.
     #
     # POPIA: personal location data. Stored in Postgres, never anchored — the canonical
-    # payload builders in orchestration/phase_service.py are explicit whitelists, so a
+    # payload builders in orchestration/phases/payloads.py are explicit whitelists, so a
     # field added here cannot reach a hash by accident.
     driver_phone_lat: Optional[float] = Field(default=None, ge=-90, le=90)
     driver_phone_lng: Optional[float] = Field(default=None, ge=-180, le=180)

@@ -5,7 +5,7 @@ the two things a reviewer would actually want to audit independently — "does t
 the right stop" and "is the offset maths right" — can be unit-tested with no DB, no
 Redis, and no HTTP client at all (see tests/unit/test_dev_truck_service.py).
 
-Layering: this is an orchestration module, so it may import schemas (trip_service.py
+Layering: this is an orchestration module, so it may import schemas (trips/creation.py
 and others already do) and db/models, but never api/ — dev_pulsit.py calls in, not the
 reverse.
 

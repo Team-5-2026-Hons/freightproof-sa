@@ -25,7 +25,7 @@ async def _find_departure_for_leg(
     db: AsyncSession, *, trip_id: uuid.UUID, before_sequence: int,
 ) -> PhaseEvent:
     """The departure that opened the leg ending at `before_sequence`. Well-defined
-    because the plan generator (phase_plan.build_phase_plan) interleaves exactly
+    because the plan generator (phases.plan.build_phase_plan) interleaves exactly
     one `in_transit` between any departure and the unloading/confirmation that
     closes its leg — there is never a second departure to be confused with the
     right one.

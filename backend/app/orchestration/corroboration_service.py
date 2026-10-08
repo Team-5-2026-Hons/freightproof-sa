@@ -285,10 +285,10 @@ async def record_phase_corroboration(
     orchestration/action_location_service.py needs the SAME fix this function
     already fetched to assemble its own assessment; returning it here is what makes
     that a second CONSUMER of one Pulsit read rather than a second Pulsit round trip
-    for the same handshake — see the callers in phase_service.py, each of
+    for the same handshake — see the callers in phases/advance_*.py, each of
     which passes this return value straight through to `_finish_phase`.
 
-    Called by every advance_* in phase_service.py, immediately after the driver's
+    Called by every advance_* in phases/, immediately after the driver's
     own phone fix is recorded, so the independent reading is taken as close as
     possible to the moment the driver's claim was.
 

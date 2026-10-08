@@ -1,8 +1,9 @@
 """Display names for the dispatchers who claimed and reviewed an exception (FP-280).
 
 A leaf module (no other orchestration imports) so exception_service and
-resource_service can both use it: resource_service cannot import exception_service,
-which imports phase_service, which imports resource_service.
+resource_service can both use it: resource_service must not import exception_service:
+it used to be a cycle (exception_service imported phase_service, which imported
+resource_service); exception_service now imports only phases.queries, which does not.
 
 Scoped to the caller's organisation, like every read here: a user id from anywhere
 else resolves to no name rather than to another operator's staff member.

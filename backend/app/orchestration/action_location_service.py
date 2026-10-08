@@ -13,7 +13,7 @@ together, outside the fence". This module is the ONLY place those two answers ar
 combined into one `ActionLocationAssessment` (schemas/action_location.py)
 and the only place that snapshot is persisted or turned into evidence.
 
-Kept separate from GPS_MISMATCH (phase_service._raise_position_disagreement_if_
+Kept separate from GPS_MISMATCH (phases.findings._raise_position_disagreement_if_
 unrecorded), which answers a third, independent question: "does the TRACKER agree
 with the PRECINCT?". A single handshake can trip GPS_MISMATCH, DRIVER_VEHICLE_
 SEPARATION, both, or neither — they measure different pairs of things and neither
@@ -97,11 +97,11 @@ _PHASE_DRIVER_LOCATION_INDEX = "uq_exceptions_phase_driver_location"
 # tighter guard on what actually renders inline in the exception feed.
 _MAX_DRIVER_REASON_CHARS_IN_DESCRIPTION = 300
 
-# Mirrors phase_service._format_separation exactly, duplicated rather than imported:
-# phase_service imports THIS module (to call build_phase_assessment/
-# record_separation_finding from _finish_phase), so importing back from it would be
-# circular. A three-line formatter is cheaper to keep in step by hand than to solve
-# with a shared module for one function.
+# Mirrors phases.findings._format_separation exactly, duplicated rather than imported.
+# The cycle that forced this is gone (phases.completion imports THIS module, but
+# phases.findings, which owns the formatter, imports nothing back from here). A
+# three-line formatter is cheaper to keep in step by hand than to solve with a shared
+# module for one function.
 _SEPARATION_KM_THRESHOLD_METRES = 1000
 _LOCATION_PREVIEW_TRACKER_TIMEOUT_SECONDS = 2.0
 
@@ -463,7 +463,7 @@ async def record_separation_finding(
     gate — not the distance itself — could not be checked.
 
     SYSTEM source, WARNING severity (mirrors GPS_MISMATCH's own reasoning in
-    phase_service._raise_position_disagreement_if_unrecorded: real false-positive
+    phases.findings._raise_position_disagreement_if_unrecorded: real false-positive
     modes exist — a phone left in the cab, a co-driver holding it, stale accuracy —
     so this is not the alarm tier), and `review_status` comes from
     review_policy.initial_review_status like every other write site (FP-280: every
@@ -517,7 +517,7 @@ async def record_separation_finding(
             trip_id=trip.id,
             phase_event_id=phase_event_id,
             checkpoint_id=checkpoint_id,
-            # Scoped like the GPS_MISMATCH finding (phase_service): the stop this
+            # Scoped like the GPS_MISMATCH finding (phases.findings): the stop this
             # assessment's phase was anchored to, or None for a checkpoint/trip_
             # creation, which have none.
             trip_stop_id=assessment.expected_trip_stop_id,

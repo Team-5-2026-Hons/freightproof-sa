@@ -5,7 +5,7 @@ with phase_type="arrival", exercised over real HTTP.
 The seal comparison used to live in advance_unloading; it moved whole to its own
 phase, completed before unloading can run, so "inspected before opened" is a
 sequence rule the server enforces rather than an order photos happen to be taken
-in (see advance_arrival's own docstring in app/orchestration/phase_service.py).
+in (see advance_arrival's own docstring in app/orchestration/phases/advance_arrival.py).
 
 Reuses override_get_db, _phase_id, _make_artifact, _walk_to_in_transit and
 _complete_in_transit from tests/integration/test_phases.py rather than

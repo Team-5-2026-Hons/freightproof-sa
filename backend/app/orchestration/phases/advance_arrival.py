@@ -29,7 +29,7 @@ async def advance_arrival(
     what makes "inspected before opened" enforced rather than hoped for.
 
     No _reject_if_not_due and no scan gate: ARRIVAL is absent from
-    phase_gate.GATED_PHASES for the reason advance_in_transit gives. The warehouse
+    phases.blocking.GATED_PHASES for the reason advance_in_transit gives. The warehouse
     scans after arrival, so gating on the scan here would deadlock the leg.
     """
     gated = await _gate_and_load(

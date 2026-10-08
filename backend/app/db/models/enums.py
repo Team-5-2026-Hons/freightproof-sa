@@ -119,7 +119,7 @@ class ExceptionType(str, enum.Enum):
     # outside it, and the two trackers are further apart than
     # TRAILER_HORSE_MAX_SEPARATION_METRES. That is a decoupled trailer, one of the
     # strongest theft signals the system can see. Kept apart from GPS_MISMATCH, which
-    # is about the horse. See phase_service._raise_trailer_decoupling_if_unrecorded.
+    # is about the horse. See phases.findings._raise_trailer_decoupling_if_unrecorded.
     TRAILER_LOCATION_MISMATCH = "trailer_location_mismatch"
     # On the ROAD, not at a stop: a trailer tracker is further than
     # TRAILER_HORSE_MAX_SEPARATION_METRES from its horse's tracker while the trip is

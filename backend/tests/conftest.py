@@ -391,7 +391,7 @@ async def empty_trip(db_session):
     """A trip with TripStop rows but no Consignment rows — no PP reference at all.
 
     manifest.ts documents this shape as common and normal, not a failure: a trip
-    created without a Parcel Perfect reference. phase_gate must never block it.
+    created without a Parcel Perfect reference. phases.blocking must never block it.
     """
     from app.db.models.enums import IdvsStatus, OrganizationType, TripStatus, VehicleType
     from app.db.models.organisations import Organization, Precinct

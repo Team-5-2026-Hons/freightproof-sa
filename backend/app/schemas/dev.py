@@ -18,8 +18,8 @@ from app.integrations.scan_feed import ScanDirection
 # the panel turning into thousands of rows; no real consignment approaches it.
 MAX_STAGED_BARCODES = 500
 
-# Mirrors phase_service._is_resolved's definition of "already decided" — stated
-# again here (not imported) because that predicate is private to phase_service,
+# Mirrors phases.state._is_resolved's definition of "already decided" — stated
+# again here (not imported) because that predicate is private to phases.state,
 # which this slice is explicitly scoped to leave untouched. A phase in one of
 # these statuses is not going to change its mind about a scan; the panel uses
 # this to know when triggering a scan for that phase no longer makes sense.
@@ -283,7 +283,7 @@ SCENARIO_NO_SIGNAL: Final = "no_signal"
 # The one place this six-way enum is spelled out. `orchestration/dev_truck_service.py`
 # imports the constants above from here (schemas -> orchestration is the wrong
 # direction for the reverse import — orchestration already depends on schemas
-# elsewhere in this codebase, e.g. trip_service.py, so this keeps that same direction).
+# elsewhere in this codebase, e.g. trips/creation.py, so this keeps that same direction).
 DevTruckScenario = Literal[
     "at_stop", "inside_tolerance", "outside_tolerance", "three_km", "fifty_km", "no_signal",
 ]

@@ -1,5 +1,5 @@
-"""Read side of the phase ledger: the driver's current and next phase event, and the full phase
-list for a trip.
+"""Read side of the phase ledger: a trip's current phase event, the driver's next phase event,
+and the full phase list for a trip.
 """
 
 import uuid

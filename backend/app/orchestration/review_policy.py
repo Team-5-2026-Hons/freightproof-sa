@@ -2,8 +2,9 @@
 
 A leaf module — it imports nothing from app.orchestration — so every service that
 writes a TripException imports it at module scope. The rule used to live in
-exception_service, which phase_service and scan_service could only reach through
-lazy-import wrappers (exception_service imports phase_service at load time), and
+exception_service, which phase_service (now orchestration/phases) and scan_service could
+only reach through lazy-import wrappers (exception_service then imported phase_service at
+load time; it now imports only phases.queries), and
 action_location_service not at all, so it hard-coded its own value. One rule that
 three files cannot import cleanly is a rule the next write site skips.
 """

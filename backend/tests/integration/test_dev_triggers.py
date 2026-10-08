@@ -598,7 +598,7 @@ async def test_list_trips_preceding_departure_status_reflects_the_preceding_depa
     dev_client, db_session, seeded, store,
 ):
     """A destination stop's preceding_departure_status is the status of the
-    DEPARTURE that opened its leg — mirrors phase_service._find_departure_for_leg
+    DEPARTURE that opened its leg — mirrors phases.seals._find_departure_for_leg
     (the highest sequence_number DEPARTURE strictly before the stop's own closing
     event), never a hardcoded or otherwise-derived departure. The origin stop
     itself still reports None: nothing closes there."""

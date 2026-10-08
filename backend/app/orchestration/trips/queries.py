@@ -38,7 +38,7 @@ async def get_active_trip_for_driver(db: AsyncSession, driver_id: uuid.UUID) -> 
     order the driver runs them: two assignments captured back-to-back, one leaving on
     the 5th and one on the 6th, handed Home the 6th purely because it was saved last.
     Departure order is also the order the driver is permitted to work in —
-    phase_service's activation gates refuse a trip while an earlier one that day is
+    phases.scheduling's activation gates refuse a trip while an earlier one that day is
     still unstarted — so this makes Home agree with what the driver can actually do.
 
     A departure already in the past therefore still sorts first: an assignment that

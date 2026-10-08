@@ -2,8 +2,8 @@
 create_trip() (POST /trips) and pp_manifest_service (POST /trips/from-pp-manifest)
 both go through it.
 
-Layering: this module imports from db/, crypto/, and schemas/ only.
-It must never import from api/ or auth/.
+Layering: this module imports from blockchain/, core/, crypto/, db/, schemas/ and other
+orchestration/ modules (integrations/ for types only). It must never import from api/ or auth/.
 """
 
 import logging
@@ -55,9 +55,11 @@ from app.schemas.trips import (
 from app.schemas.vehicles import VehicleRead
 
 if TYPE_CHECKING:
-    # Type-only — the runtime import stays local to persist_trip (see below) to
-    # avoid a module-load cycle (trip_service -> consignment_service -> trip_service).
-    # A TYPE_CHECKING-only import carries no such risk: it never executes at runtime.
+    # Type-only — the runtime import stays local to persist_trip (see below). No
+    # module-load cycle exists today (consignment_service reaches only integrity,
+    # integrations/ and db/), so the local import is a leftover from before the split
+    # and may be promoted in its own commit. A TYPE_CHECKING-only import carries no
+    # such risk: it never executes at runtime.
     from app.integrations.parcel_perfect import PPWaybillResponse
     from app.orchestration.consignment_service import ConsignmentSyncResult
 
@@ -375,8 +377,8 @@ async def persist_trip(
     for stop in trip_stops:
         await db.refresh(stop)
 
-    # Sync every consignment. Local import avoids a module-load cycle
-    # (trip_service → consignment_service → parcel_perfect).
+    # Sync every consignment. Local import kept from before the split; no module-load
+    # cycle exists today (consignment_service → parcel_perfect never imports back here).
     consignment_results: list["ConsignmentSyncResult"] = []
     if cargo is not None or new_trip.consignment_refs:
         from app.orchestration.consignment_service import (

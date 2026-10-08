@@ -1,6 +1,6 @@
 """Derives which phases are waiting on the warehouse scan feed.
 
-Shared by the read schema and phase_service's completion guard so both agree.
+Shared by the read schema and phases.gate's completion guard so both agree.
 Gated per (phase_type, trip_stop_id), since a cross-dock trip has its own scan
 session at each stop. Three states: no expected parcel set -> not
 blocked; session open -> BLOCKED_ON_SCAN; session closed -> not blocked. A trip

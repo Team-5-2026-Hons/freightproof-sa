@@ -337,7 +337,7 @@ async def raise_exception(
         trip_id=trip_id,
         phase_event_id=phase_event.id if phase_event is not None else None,
         # Scope to the stop that phase is anchored to, exactly as the system-detected
-        # exceptions in phase_service already do (parcel/waybill count mismatches).
+        # exceptions in orchestration/phases already do (parcel/waybill count mismatches).
         # Nullable throughout: trip_creation carries no stop, and neither does an
         # exception on a trip with no plan.
         trip_stop_id=phase_event.trip_stop_id if phase_event is not None else None,
@@ -967,7 +967,7 @@ async def list_exception_history(
     a bad cursor fails before any work is done on its behalf.
 
     from_date/to_date are SA (UTC+settings.OPERATIONS_UTC_OFFSET_HOURS) calendar dates,
-    both inclusive — see phase_service.operating_day for the inverse conversion this
+    both inclusive — see phases.scheduling.operating_day for the inverse conversion this
     mirrors. The exclusive upper bound (start of the day AFTER to_date, in SA time) is
     what makes to_date read as inclusive rather than as a UTC midnight cutoff that would
     silently exclude the tail of that SA day.

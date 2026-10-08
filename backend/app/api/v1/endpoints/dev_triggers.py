@@ -116,7 +116,7 @@ async def list_dev_trips(
     for consignment_id, barcode in parcels:
         barcodes_by_consignment.setdefault(consignment_id, []).append(barcode)
 
-    # Imported, not re-declared, so this can never drift from phase_gate.py. Plus
+    # Imported, not re-declared, so this can never drift from phases/blocking.py. Plus
     # DEPARTURE (not gated) to derive preceding_departure_status below, and ARRIVAL,
     # which gates scan IN on the panel; extending this one query rather than adding a
     # second keeps this endpoint's batched-query discipline.
@@ -139,7 +139,7 @@ async def list_dev_trips(
         if trip_stop_id is not None
     }
 
-    # DEPARTURE events per trip, mirroring phase_service._find_departure_for_leg's rule:
+    # DEPARTURE events per trip, mirroring phases.seals._find_departure_for_leg's rule:
     # the highest-sequence_number DEPARTURE strictly before the stop's own closing event.
     departures_by_trip: dict[uuid.UUID, list[tuple[int, str]]] = {}
     for trip_id_col, _, phase_type, status, sequence_number in phase_events:

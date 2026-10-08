@@ -356,11 +356,11 @@ async def test_first_exception_review_enqueues_exception_reviewed_at_info(
 # Site inventory (grep "TripException(" app/orchestration/ — note that scan_service
 # assigns before adding, so a "db.add(TripException(" grep misses it):
 #
-#   phase_service  advance_departure     departure seal mismatch    CRITICAL
-#   phase_service  advance_arrival       seal continuity            WARNING|CRITICAL
-#   phase_service  advance_arrival       destination seal mismatch  CRITICAL
-#   phase_service  advance_confirmation  waybill count mismatch     WARNING
-#   phase_service  advance_loading       scan shortfall backstop    WARNING
+#   phases         advance_departure     departure seal mismatch    CRITICAL
+#   phases         advance_arrival       seal continuity            WARNING|CRITICAL
+#   phases         advance_arrival       destination seal mismatch  CRITICAL
+#   phases         advance_confirmation  waybill count mismatch     WARNING
+#   phases         advance_loading       scan shortfall backstop    WARNING
 #   scan_service   ingest_scans          scan discrepancy           WARNING
 #
 # advance_departure's site has no test here, and deliberately. Both of its entry
@@ -568,7 +568,7 @@ _BARCODES = ["EMITSCAN001", "EMITSCAN002", "EMITSCAN003"]
 async def _seed_manifest(db_session, trip, stop, *, reference: str) -> Consignment:
     """One waybill of three parcels, picked up and delivered at the same stop.
 
-    pickup_stop_id and delivery_stop_id are both set: phase_gate skips a consignment
+    pickup_stop_id and delivery_stop_id are both set: phases.blocking skips a consignment
     whose relevant stop is NULL, so leaving either off would silently disable the very
     gate these tests need to pass through.
     """

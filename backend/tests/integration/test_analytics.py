@@ -258,7 +258,7 @@ async def _trip(
         created_by_user_id=operator.dispatcher.id,
         planned_departure_at=planned_departure,
         planned_arrival_at=planned_arrival,
-        # Reproduces phase_service's known defect: stamped on EVERY departure, so it holds
+        # Reproduces phases.advance_departure's known defect: stamped on EVERY departure, so it holds
         # the LAST leg. Seeded deliberately wrong to prove no view reads it.
         actual_departure_at=at(departures[-1].minute) if departures else None,
         actual_arrival_at=(
@@ -271,7 +271,7 @@ async def _trip(
     db.add(trip)
     await db.flush()
 
-    # Linked exactly as trip creation does it (trip_service), snapshot included.
+    # Linked exactly as trip creation does it (trips.creation), snapshot included.
     db.add_all([
         TripTrailer(
             trip_id=trip.id, trailer_id=trailer.id,

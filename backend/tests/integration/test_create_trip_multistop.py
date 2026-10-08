@@ -267,7 +267,7 @@ def _mock_hedera():
 async def test_multi_stop_create_stamps_consignment_stop_ids(client: AsyncClient, seed_data, db_session):
     """The single consignment on a 3-stop trip is stamped stop-0 (pickup) ->
     stop-last (delivery) — TripConsignmentInput has no per-consignment stop
-    reference yet (pre-existing schema gap, see trip_service.py comments)."""
+    reference yet (pre-existing schema gap, see trips/creation.py comments)."""
     mock_service, configure = _mock_hedera()
     with mock_service as MockService:
         configure(MockService)
@@ -322,7 +322,7 @@ async def test_multi_stop_create_writes_full_phase_plan(client: AsyncClient, see
 
     # The one consignment on this route (see the stamping test above) picks up
     # at the first stop and drops off at the last — the same rule build_phase_plan
-    # is fed here, independently of trip_service's internal wiring.
+    # is fed here, independently of trips.creation's internal wiring.
     plan_stops = [
         PlanStop(sequence=s.sequence, picks_up=(s is stops[0]), drops_off=(s is stops[-1]))
         for s in stops
@@ -345,7 +345,7 @@ async def test_multi_stop_create_writes_full_phase_plan(client: AsyncClient, see
 # _build_phase_events (called from create_trip) writes every phase row PENDING,
 # h0/trip_creation included. Nothing in create_trip used to promote h0 to
 # COMPLETED afterward, even though its Hedera anchor had already succeeded by
-# that point. _gate_and_load (phase_service.py) blocks a phase until every
+# that point. _gate_and_load (phases/gate.py) blocks a phase until every
 # lower-sequence_number row is resolved (COMPLETED/EXCEPTION/OVERRIDDEN) — h0
 # is sequence 0, the lowest possible, so a never-resolved h0 permanently
 # blocked every phase after it on every trip. Every fixture that exercises

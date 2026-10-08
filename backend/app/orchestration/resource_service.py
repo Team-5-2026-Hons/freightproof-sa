@@ -394,7 +394,7 @@ async def get_trip_detail(
         )
 
     # H3/H5 anchor a PHASE_EVENT-subject receipt (not a TRIP-subject one —
-    # see phase_service.py advance_departure/advance_confirmation), so a TRIP-only filter here
+    # see phases.advance_departure/advance_confirmation), so a TRIP-only filter here
     # silently hid every driver-anchored pickup/delivery receipt from the
     # dispatcher's per-trip evidence view. Reuse the phase event ids already
     # fetched above (no extra query) and OR in their receipts alongside the

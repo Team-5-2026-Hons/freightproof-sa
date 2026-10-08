@@ -35,7 +35,7 @@ async def cancel_trip(
 
     Before this, nothing in app/ ever wrote TripStatus.CANCELLED — an abandoned
     trip (cargo pulled, vehicle broken down) sat ACTIVE forever, and worse,
-    phase_service._reject_if_another_trip_underway then blocked that driver from
+    phases.scheduling._reject_if_another_trip_underway then blocked that driver from
     EVER activating another trip. Cancel is the only exit; it is also a promise
     the dispatcher wizard's confirmation modal already makes to the user.
 

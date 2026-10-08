@@ -1,7 +1,7 @@
 """Integration tests: departure/confirmation phase completion anchors to
 Hedera HCS. The anchor moved whole from loading to
 departure — see DepartureCompleteRequest/advance_departure in
-app/schemas/phases.py and app/orchestration/phase_service.py.
+app/schemas/phases.py and app/orchestration/phases/advance_departure.py.
 
 Mirrors tests/integration/test_trips_anchor.py's approach (patch HederaService
 at the app.blockchain.anchor_service import boundary) applied to the
@@ -80,7 +80,7 @@ async def seed_trip(db_session):
         driver_id=driver.id, horse_id=horse.id,
         origin_precinct_id=origin.id, destination_precinct_id=dest.id,
         status=TripStatus.CREATED, idvs_check_status=IdvsStatus.VERIFIED,
-        # Activation is gated on the trip being due (phase_service._reject_if_not_due) and
+        # Activation is gated on the trip being due (phases.scheduling._reject_if_not_due) and
         # an unscheduled trip is deliberately unstartable, so this fixture books itself for
         # today — what it always meant: a trip a driver is about to run.
         planned_departure_at=datetime.now(UTC),
@@ -95,7 +95,7 @@ async def seed_trip(db_session):
     # call. IN_TRANSIT (P4) is included and stays PENDING like every other
     # driver-facing row: it is opened by advance_departure and closed by the
     # driver's own arrival submission — see advance_in_transit's docstring in
-    # phase_service.py.
+    # phases/advance_in_transit.py.
     stop0 = TripStop(trip_id=trip.id, precinct_id=origin.id, sequence=0)
     stop1 = TripStop(trip_id=trip.id, precinct_id=dest.id, sequence=1)
     db_session.add_all([stop0, stop1])

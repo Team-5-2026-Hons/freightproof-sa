@@ -10,7 +10,7 @@ Both pin behaviour that no existing test asserts, found by the Phase 1 coverage 
       but not these fields.
   B5  phase completion stays committed when the broker rejects the anchor dispatch. The
       existing broker test only asserts that the local fallback is scheduled (and patches
-      it through the phase_service facade); this one asserts the committed phase row, and
+      it in app.orchestration.phases.anchor_dispatch); this one asserts the committed phase row, and
       patches only app.tasks.blockchain, which is not moving.
 
 The fixture is reused from test_phase_anchor_payload (same hand-built single-leg plan).

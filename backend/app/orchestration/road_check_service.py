@@ -48,7 +48,7 @@ from app.orchestration.phases.queries import current_phase_event
 
 logger = logging.getLogger(__name__)
 
-# Below 1 km a distance reads better in metres. Same rule as phase_service's
+# Below 1 km a distance reads better in metres. Same rule as phases.findings'
 # _format_separation, so the stop and road trailer findings word distance alike.
 _KM_THRESHOLD_METRES = 1_000.0
 

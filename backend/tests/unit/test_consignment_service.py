@@ -432,7 +432,7 @@ async def test_refresh_does_not_blank_unit_count():
 # ---------------------------------------------------------------------------
 # Cross-trip reuse guard
 #
-# Without this guard, create_trip's own post-sync step (trip_service.py:
+# Without this guard, create_trip's own post-sync step (trips/creation.py:
 # `result.consignment.pickup_stop_id = trip_stops[0].id`) silently rewrites an
 # already-anchored trip's consignment onto a second trip's stops the moment the
 # same pp_reference is entered twice - corrupting the first trip's phase-plan

@@ -106,7 +106,7 @@ async def _finish_phase(
     await db.flush()
 
     # Notify dispatchers watching this trip. The completion may also have CLOSED the trip
-    # (advance_confirmation, phase_service.py) — distinguish the two so the UI raises the
+    # (advance_confirmation, phases/advance_confirmation.py) — distinguish the two so the UI raises the
     # right signal. Published on commit, never here; a thin ping, no trip data.
     kind = RealtimeKind.TRIP_CLOSED if TripStatus(trip.status) == TripStatus.CLOSED else RealtimeKind.PHASE_COMPLETED
     enqueue_event(db, trip.operator_organization_id, TripEvent(id=trip.id, kind=kind))

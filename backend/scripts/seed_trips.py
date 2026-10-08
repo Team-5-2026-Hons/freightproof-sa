@@ -167,7 +167,7 @@ _WALK_STARTED_AT = datetime(2026, 7, 30, 6, 0, tzinfo=UTC)
 _MINUTES_PER_PHASE = 20
 
 # Every seeded trip now carries a real schedule, because activation is gated on it:
-# phase_service._reject_if_not_due refuses to start a trip before its scheduled day, and
+# phases.scheduling._reject_if_not_due refuses to start a trip before its scheduled day, and
 # treats a trip with no schedule at all as not-yet-due. Seeding without these would make
 # every demo trip permanently unstartable.
 _OPERATING_TZ = timezone(timedelta(hours=settings.OPERATIONS_UTC_OFFSET_HOURS))
@@ -209,7 +209,7 @@ def resolved_sequences(spec: _TripSpec, plan_length: int) -> set[int]:
 
     ALWAYS includes trip_creation, whether or not the spec walks any further.
     Creating the trip IS P0's completion event, which is why create_trip() resolves
-    it inline the moment its anchor succeeds (orchestration/trip_service.py) with
+    it inline the moment its anchor succeeds (orchestration/trips/creation.py) with
     the warning that names this exact bug: "Without this, h0 stays PENDING forever
     and _gate_and_load's 'all lower sequence_numbers resolved' check blocks every
     later phase permanently, since h0 is sequence 0 - the lowest possible."
@@ -432,7 +432,7 @@ def _apply_walk_evidence(
 ) -> None:
     """Write the evidence a driver would have captured completing this phase.
 
-    Only fields the real completion path writes (orchestration/phase_service.py):
+    Only fields the real completion path writes (orchestration/phases/):
     activation captures phone GPS, loading the driver's visual count, departure the
     seal, arrival the seal as found at the gate, confirmation the delivered counts.
     Unloading writes nothing of its own here: the seal moved from it to arrival. Scan
@@ -634,7 +634,7 @@ async def _seed_trip(
     # event.phase_type comes back as a plain str after the bulk PhaseEvent insert
     # (insertmanyvalues repopulates every column from the RETURNING row, not just
     # server-generated ones) — coerce before .value, matching the same guard in
-    # complete_phase (phase_service.py: `actual = PhaseType(event.phase_type)`).
+    # complete_phase (phases/service.py: `actual = PhaseType(event.phase_type)`).
     trip.current_phase = PhaseType(current.phase_type).value if current is not None else None
     trip.current_stop = (
         None if current is None or current.trip_stop_id is None

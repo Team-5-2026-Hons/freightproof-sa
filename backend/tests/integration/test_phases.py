@@ -75,7 +75,7 @@ async def seed_trip(db_session):
         driver_id=driver.id, horse_id=horse.id,
         origin_precinct_id=origin.id, destination_precinct_id=dest.id,
         status=TripStatus.CREATED, idvs_check_status=IdvsStatus.VERIFIED,
-        # Activation is gated on the trip being due (phase_service._reject_if_not_due) and
+        # Activation is gated on the trip being due (phases.scheduling._reject_if_not_due) and
         # an unscheduled trip is deliberately unstartable, so this fixture books itself for
         # today — which is what it always meant: a trip a driver is about to run.
         planned_departure_at=datetime.now(UTC),
@@ -87,13 +87,13 @@ async def seed_trip(db_session):
     # Hand-built single-leg phase plan, mirroring what create_trip actually
     # produces: the plan generator writes every row `pending` at
     # trip creation, but create_trip then completes TRIP_CREATION (h0) inline
-    # once its Hedera anchor succeeds (see trip_service.create_trip) — so h0
+    # once its Hedera anchor succeeds (see trips.creation.create_trip) — so h0
     # is seeded COMPLETED here and every driver-facing row stays PENDING
     # before any endpoint call (the deleted _get_handshake_event no longer
     # creates them on demand). IN_TRANSIT (P4) is included and stays PENDING like
     # every other driver-facing row: it is opened by advance_departure and closed by
     # the driver's own arrival submission — see advance_in_transit's docstring in
-    # phase_service.py.
+    # phases/advance_in_transit.py.
     stop0 = TripStop(trip_id=trip.id, precinct_id=origin.id, sequence=0)
     stop1 = TripStop(trip_id=trip.id, precinct_id=dest.id, sequence=1)
     db_session.add_all([stop0, stop1])
@@ -117,7 +117,7 @@ async def seed_trip(db_session):
 async def seed_trip_with_consignment(db_session, seed_trip):
     """seed_trip plus a Consignment picked up at stop0 (sequence 0).
 
-    phase_gate.py only gates a (phase_type, stop) pair that has a Consignment row
+    phases/blocking.py only gates a (phase_type, stop) pair that has a Consignment row
     — "no Consignment" is the ungated case, not the blocked one (see its module
     docstring). No scan session is closed here, so the mock feed's default
     (nothing staged) reads as an OPEN session and loading stays blocked.
@@ -884,7 +884,7 @@ async def test_complete_addressing_trip_creation_row_returns_422(
 async def test_arrival_is_not_gated_on_the_destination_warehouse_scan(
     client: AsyncClient, db_session, seed_trip,
 ):
-    """IN_TRANSIT is absent from phase_gate.GATED_PHASES and must stay absent. The
+    """IN_TRANSIT is absent from phases.blocking.GATED_PHASES and must stay absent. The
     destination warehouse has scanned nothing when the driver pulls up at the boom, so
     gating arrival on a scan that only happens AFTER arrival would deadlock the leg.
     UNLOADING carries that gate instead.
@@ -1215,7 +1215,7 @@ async def test_phase_list_reports_blocked_on_for_loading(
 async def test_phase_list_reports_null_blocked_on_for_departure(
     client: AsyncClient, db_session, seed_trip_with_consignment,
 ):
-    """departure is absent from phase_gate's _GATED_PHASES map entirely — never
+    """departure is absent from phases.blocking's GATED_PHASES map entirely — never
     blocked regardless of consignment or scan-session state."""
     trip, driver = seed_trip_with_consignment
     token = make_token(sub=str(driver.id), role="driver")
@@ -1267,7 +1267,7 @@ async def test_phase_list_query_count_is_independent_of_phase_count(
 async def completed_activation_trip(client: AsyncClient, db_session, seed_trip):
     """seed_trip with activation already completed under a known idempotency_key.
 
-    Activation is never gated by phase_gate (only loading/confirmation are), so this
+    Activation is never gated by phases.blocking (only loading/confirmation are), so this
     fixture is deliberately independent of any scan-session state — it exists purely
     to give the replay-ordering test a phase that is genuinely already resolved.
     """
@@ -1380,7 +1380,7 @@ async def completed_unloading_trip(
     destination stop, with a Consignment whose parcels are scanned OUT in full
     at origin (closed) but deliberately NOT YET scanned IN at destination —
     unloading now gates on the destination stop's IN-direction scan SESSION being
-    closed (phase_gate.py's GATED_PHASES), but a closed session is a separate
+    closed (phases/blocking.py's GATED_PHASES), but a closed session is a separate
     fact from actual scanned barcodes: the warehouse operator can close an empty
     session (nothing scanned yet) purely to satisfy the gate, and that is what
     happens below. No barcode DATA exists at destination until the test itself

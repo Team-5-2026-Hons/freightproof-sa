@@ -7,11 +7,12 @@ silently stops affecting the code that now lives elsewhere, and the test passes 
 testing nothing (audit section 5.5). Each move commit therefore retargets patches to the
 module that USES the name, and this test keeps them from creeping back.
 
-FROZEN_FACADES starts EMPTY on purpose. Today those modules are not facades yet, so the
-patches against them (phase_service 13, exception_service 2, trip_service 21,
-integrations.parcel_perfect 15 at the time of writing) are legal and necessary. A module
-is added here in the SAME commit that begins its package move, after its patches have
-been retargeted; from then on any new patch through it fails this test.
+FROZEN_FACADES started EMPTY on purpose: until a module is split it is not a facade, so
+patches against it are legal and necessary. A module is added here in the SAME commit that
+begins its package move, after its patches have been retargeted; from then on any new
+patch through it fails this test. Patch sites against modules still to be split, at the
+time of writing: exception_service 2, integrations.parcel_perfect 15. (phase_service had
+13 and trip_service 21 before their windows; phase_gate and phase_plan never had any.)
 """
 
 from pathlib import Path
@@ -21,6 +22,8 @@ from tests.baseline._patch_scan import PatchSite, find_patch_sites, scan_tree, t
 TESTS_DIR = Path(__file__).resolve().parents[1]
 
 FROZEN_FACADES: frozenset[str] = frozenset({
+    "app.orchestration.phase_gate",
+    "app.orchestration.phase_plan",
     "app.orchestration.phase_service",
     "app.orchestration.trip_service",
 })

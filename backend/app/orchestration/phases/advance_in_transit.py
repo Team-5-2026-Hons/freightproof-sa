@@ -31,7 +31,7 @@ async def advance_in_transit(
     with no actor able to resolve it, stranding the trip ACTIVE forever.
 
     No _reject_if_not_due and no scan gate: IN_TRANSIT is absent from
-    phase_gate.GATED_PHASES on purpose. The destination warehouse has not scanned anything
+    phases.blocking.GATED_PHASES on purpose. The destination warehouse has not scanned anything
     when the driver pulls up at the boom — gating arrival on a scan that only happens
     after arrival would deadlock the leg. UNLOADING carries that gate instead, which is
     the correct place for it.

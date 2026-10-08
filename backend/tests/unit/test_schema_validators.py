@@ -311,7 +311,7 @@ def test_seal_number_confirmed_stays_free_form_not_normalized():
     """The one deliberate exception: a mistyped guard confirmation must survive
     verbatim, because the mismatch it produces against seal_number is itself the
     evidence. Comparison-time tolerance for THIS field lives in
-    phase_service._normalized_seal, not in schema validation."""
+    phases.seals._normalized_seal, not in schema validation."""
     request = _departure_request(seal_number="AB-1234", seal_number_confirmed=" not a seal at all ")
 
     assert request.seal_number_confirmed == " not a seal at all "
