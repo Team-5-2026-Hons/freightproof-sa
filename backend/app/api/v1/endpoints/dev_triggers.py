@@ -35,7 +35,8 @@ from app.integrations.parcel_perfect import (
     get_pp_client,
 )
 from app.integrations.scan_feed import MockScanFeed, ScanDirection, get_scan_feed
-from app.orchestration import consignment_service, exception_service, scan_service
+from app.orchestration import consignment_service, scan_service
+from app.orchestration.exceptions import creation as exception_creation
 from app.orchestration.pp_manifest import manifest_snapshot_sha256
 from app.orchestration.phases.blocking import GATED_PHASES
 from app.schemas.dev import (
@@ -472,7 +473,7 @@ async def trigger_exception(
     try:
         # driver_id read from the trip, not the body, so the service's own
         # assigned-driver check runs for real instead of being bypassed.
-        raised = await exception_service.raise_exception(
+        raised = await exception_creation.raise_exception(
             db, trip_id=body.trip_id, driver_id=trip.driver_id,
             exception_type=body.exception_type, description=body.description,
             supporting_artifact_id=None,

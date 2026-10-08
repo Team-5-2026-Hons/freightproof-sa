@@ -148,3 +148,28 @@ modules =
     app.orchestration.trips.creation
     app.orchestration.trips.administration
     app.orchestration.trips.queries
+
+# ---------------------------------------------------------------------------
+# 8. Stops the exceptions package importing back into its own facade (audit 5.5, rule 2:
+#    imports only run old -> new). Wildcard form for the same reason as contract 3.
+# ---------------------------------------------------------------------------
+[importlinter:contract:exceptions-no-facade]
+name = app.orchestration.exceptions must not import the exception_service facade
+type = forbidden
+source_modules =
+    app.orchestration.exceptions.**
+forbidden_modules =
+    app.orchestration.exception_service
+
+# ---------------------------------------------------------------------------
+# 9. creation, review and queries share no code today and must stay that way (audit 5.4).
+#    Independence also rejects an indirect chain from one to another, so a shared helper has
+#    to be extracted to a lower module instead of imported sideways.
+# ---------------------------------------------------------------------------
+[importlinter:contract:exceptions-independent-modules]
+name = exceptions.creation, exceptions.review and exceptions.queries do not import each other
+type = independence
+modules =
+    app.orchestration.exceptions.creation
+    app.orchestration.exceptions.review
+    app.orchestration.exceptions.queries

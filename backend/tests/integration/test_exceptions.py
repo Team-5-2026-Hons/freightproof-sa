@@ -174,6 +174,7 @@ async def test_driver_report_survives_a_bounded_tracker_timeout(
 ):
     """The adapter timeout is comparison-only; no wall-clock sleep is required."""
     from app.orchestration import exception_service
+    from app.orchestration.exceptions import creation as exception_creation
 
     class StalledTracker:
         async def get_position(self, _device_id: str):
@@ -184,8 +185,10 @@ async def test_driver_report_survives_a_bounded_tracker_timeout(
         _awaitable.close()
         raise TimeoutError
 
-    monkeypatch.setattr(exception_service, "get_pulsit_client", lambda **_kwargs: StalledTracker())
-    monkeypatch.setattr(exception_service.asyncio, "wait_for", timeout_immediately)
+    monkeypatch.setattr(exception_creation, "get_pulsit_client", lambda **_kwargs: StalledTracker())
+    # asyncio is one module object shared by the whole process, so this is the same patch the
+    # old `exception_service.asyncio` spelling made, minus a hop through the facade.
+    monkeypatch.setattr(asyncio, "wait_for", timeout_immediately)
     trip, driver = seed_trip
     token = make_token(sub=str(driver.id), role="driver")
 

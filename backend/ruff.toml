@@ -53,7 +53,12 @@ max-statements = 50
 "app/orchestration/consignment_service.py" = ["C901", "PLR0913", "PLR0915"]
 "app/orchestration/corroboration_service.py" = ["C901"]
 "app/orchestration/dev_rig_service.py" = ["PLR0913"]
-"app/orchestration/exception_service.py" = ["C901", "PLR0913"]
+# Relocated, not added: each entry below is an existing violation that moved out of
+# exception_service.py with its function (audit 5.4); the count of violating functions is
+# unchanged (9: 3 C901, 6 PLR0913).
+"app/orchestration/exceptions/creation.py" = ["C901", "PLR0913"]  # pick_breakdown_vehicle, raise_exception
+"app/orchestration/exceptions/queries.py" = ["PLR0913"]  # _to_list_item, list_exception_history
+"app/orchestration/exceptions/review.py" = ["C901", "PLR0913"]  # review_exception, review_exceptions_batch
 "app/orchestration/handover_service.py" = ["PLR0913"]
 # Relocated, not added: each entry below is an existing PLR0913 violation that moved out of
 # phase_service.py with its function (audit 5.1); the count of violating functions is unchanged.

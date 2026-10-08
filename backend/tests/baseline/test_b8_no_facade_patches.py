@@ -11,8 +11,8 @@ FROZEN_FACADES started EMPTY on purpose: until a module is split it is not a fac
 patches against it are legal and necessary. A module is added here in the SAME commit that
 begins its package move, after its patches have been retargeted; from then on any new
 patch through it fails this test. Patch sites against modules still to be split, at the
-time of writing: exception_service 2, integrations.parcel_perfect 15. (phase_service had
-13 and trip_service 21 before their windows; phase_gate and phase_plan never had any.)
+time of writing: integrations.parcel_perfect 15. (phase_service had 13, trip_service 21 and
+exception_service 2 before their windows; phase_gate and phase_plan never had any.)
 """
 
 from pathlib import Path
@@ -22,6 +22,7 @@ from tests.baseline._patch_scan import PatchSite, find_patch_sites, scan_tree, t
 TESTS_DIR = Path(__file__).resolve().parents[1]
 
 FROZEN_FACADES: frozenset[str] = frozenset({
+    "app.orchestration.exception_service",
     "app.orchestration.phase_gate",
     "app.orchestration.phase_plan",
     "app.orchestration.phase_service",

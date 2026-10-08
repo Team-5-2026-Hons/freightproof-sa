@@ -477,7 +477,8 @@ async def test_raise_exception_without_a_client_report_id_is_unaffected(db_sessi
 # failure path returns None and logs a warning, never raises: the offline queue discards
 # a report on any 4xx, and a breakdown must never be lost over its vehicle.
 
-_SERVICE_LOGGER = "app.orchestration.exception_service"
+# pick_breakdown_vehicle logs through its own module's logger since the exceptions split.
+_SERVICE_LOGGER = "app.orchestration.exceptions.creation"
 
 
 def _pick(
