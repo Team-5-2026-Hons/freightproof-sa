@@ -17,6 +17,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import (
     ConsignmentAlreadyAssignedError,
     PPManifestAlreadyOnTripError,
+    ManifestLookupUnsupportedError,
+    ManifestNotFoundError,
     PPManifestChangedError,
     PPManifestUnusableError,
     PPUnavailableError,
@@ -25,7 +27,12 @@ from app.crypto.hashing import compute_snapshot_sha256
 from app.db.models.enums import TripStatus, TripType
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.trips import Consignment, Trip
-from app.integrations.parcel_perfect import PPManifestResponse, get_pp_client
+from app.integrations.parcel_perfect import (
+    PPManifestNotFoundError,
+    PPManifestResponse,
+    PPUnsupportedError,
+    get_pp_client,
+)
 from app.orchestration.consignment_service import scanned_consignment_ids
 from app.orchestration.pp_manifest import (
     manifest_key,
@@ -81,10 +88,15 @@ class _ManifestContext:
 
 
 async def _fetch_manifest(manifest_number: int) -> PPManifestResponse:
-    """Outages become PPUnavailableError (502). PPManifestNotFoundError (404) and
-    PPUnsupportedError (501) are not caught here: they propagate to the endpoint."""
+    """Outages become PPUnavailableError (502), an unknown manifest ManifestNotFoundError
+    (404), and a PP without manifest lookup ManifestLookupUnsupportedError (501). The
+    endpoint sits above this layer, so it sees only these domain types."""
     try:
         return await get_pp_client().get_manifest(manifest_number)
+    except PPManifestNotFoundError as exc:
+        raise ManifestNotFoundError(exc.manifest_number) from exc
+    except PPUnsupportedError as exc:
+        raise ManifestLookupUnsupportedError() from exc
     except (ValueError, httpx.HTTPError) as exc:
         # The real client raises ValueError (PP errorcode != 0) or httpx errors.
         logger.warning("PP manifest lookup failed for %s: %s", manifest_number, exc)
@@ -267,7 +279,7 @@ async def preview_pp_manifest(
     """Read-only (spec §10.1): fetch, check, describe. Writes nothing.
 
     Raises:
-        PPManifestNotFoundError, PPUnsupportedError, PPUnavailableError.
+        ManifestNotFoundError, ManifestLookupUnsupportedError, PPUnavailableError.
     """
     manifest = await _fetch_manifest(manifest_number)
     context = await _build_context(db, manifest, operator_organization_id=operator_organization_id)
@@ -330,7 +342,7 @@ async def create_trip_from_pp_manifest(
     """Spec §10.2, in one transaction, fail-closed.
 
     Raises:
-        PPManifestNotFoundError, PPUnsupportedError, PPUnavailableError: from the fetch.
+        ManifestNotFoundError, ManifestLookupUnsupportedError, PPUnavailableError: from the fetch.
         PPManifestChangedError: the snapshot differs from what the dispatcher previewed.
         PPManifestAlreadyOnTripError: a non-cancelled trip holds this manifest.
         PPManifestUnusableError: a 422 case from §10.7.

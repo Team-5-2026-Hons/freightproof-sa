@@ -31,7 +31,14 @@ from app.db.models.handover import HandoverCapabilityToken
 from app.db.models.receiver_verification import IdvsQuotaLedger, ReceiverIdentityVerification
 from app.db.models.transit import TripException
 from app.db.models.trips import Trip
-from app.integrations.idvs import IdvsClient, IdvsDecisionStatus, IdvsError, IdvsSession, _parse_decision
+from app.integrations.idvs import (
+    IdvsClient,
+    IdvsDecisionStatus,
+    IdvsError,
+    IdvsSession,
+    _parse_decision,
+    get_idvs_client,
+)
 from app.orchestration.review_policy import initial_review_status
 from app.orchestration.handover_service import build_scan_url, extend_token_for_verification
 
@@ -306,7 +313,7 @@ async def start_verification(
     token: HandoverCapabilityToken,
     raw_token: str,
     verification: ReceiverIdentityVerification,
-    client: IdvsClient,
+    client: IdvsClient | None = None,
 ) -> Optional[IdvsSession]:
     """Claim quota, create a vendor session, and extend the token to cover it.
 
@@ -323,7 +330,12 @@ async def start_verification(
     (FP-240), so a leaked callback URL yields at worst a rendered scan page, never
     a confirmed delivery — the bounded exposure, versus a return-page alternative
     that strands any receiver whose browser refuses storage.
+
+    `client` is for tests and callers that already hold one; by default the configured
+    mock-or-live client is used, so the endpoint never touches the integration layer.
     """
+    if client is None:
+        client = get_idvs_client()
     if not await consume_quota_slot(db, provider=PROVIDER_DIDIT):
         verification.status = ReceiverVerificationStatus.UNVERIFIED
         verification.unverified_reason = ReceiverVerificationUnverifiedReason.QUOTA_EXHAUSTED
@@ -356,9 +368,9 @@ async def resolve_verification(
     db: AsyncSession,
     *,
     verification: ReceiverIdentityVerification,
-    client: IdvsClient,
     typed_name: str,
     typed_id_number: str,
+    client: IdvsClient | None = None,
 ) -> Verdict:
     """Fetch the authoritative decision and write our verdict.
 
@@ -368,7 +380,11 @@ async def resolve_verification(
 
     A vendor that cannot be reached leaves the row PENDING rather than guessing;
     the sweeper terminalises it later.
+
+    `client` defaults to the configured mock-or-live client (see start_verification).
     """
+    if client is None:
+        client = get_idvs_client()
     if verification.provider_session_id is None:
         return Verdict(
             status=ReceiverVerificationStatus.UNVERIFIED,

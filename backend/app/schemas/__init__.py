@@ -12,17 +12,13 @@ from app.schemas.vehicles import (  # noqa: F401
     VehicleBase, VehicleCreate, VehicleUpdate, VehicleRead,
 )
 from app.schemas.trips import (  # noqa: F401
-    TripTemplateBase, TripTemplateCreate, TripTemplateUpdate, TripTemplateRead,
-    ConsignmentBase, ConsignmentCreate, ConsignmentUpdate, ConsignmentRead,
-    ParcelBase, ParcelCreate, ParcelUpdate, ParcelRead,
-    TripBase, TripCreate, TripUpdate, TripRead,
-    TripTrailerBase, TripTrailerCreate, TripTrailerRead,
+    ConsignmentBase, ConsignmentRead,
+    ParcelBase, ParcelRead,
 )
 from app.schemas.phases import (  # noqa: F401
     PhaseEventRead,
     ActivationCompleteRequest, LoadingCompleteRequest, DepartureCompleteRequest,
     UnloadingCompleteRequest, ConfirmationCompleteRequest, PhaseCompleteRequest,
-    TrailerGpsSnapshotBase, TrailerGpsSnapshotCreate, TrailerGpsSnapshotRead,
 )
 from app.schemas.transit import (  # noqa: F401
     CheckpointBase, CheckpointCreate, CheckpointUpdate, CheckpointRead,
@@ -34,9 +30,5 @@ from app.schemas.evidence import (  # noqa: F401
 )
 from app.schemas.blockchain import (  # noqa: F401
     BlockchainReceiptBase, BlockchainReceiptCreate, BlockchainReceiptUpdate, BlockchainReceiptRead,
-    MerkleBatchBase, MerkleBatchCreate, MerkleBatchUpdate, MerkleBatchRead,
-    MerkleBatchLeafBase, MerkleBatchLeafCreate, MerkleBatchLeafRead,
-)
-from app.schemas.sla import (  # noqa: F401
-    SlaConfigBase, SlaConfigCreate, SlaConfigUpdate, SlaConfigRead,
+    MerkleBatchLeafBase, MerkleBatchLeafCreate,
 )

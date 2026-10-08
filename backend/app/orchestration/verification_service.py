@@ -15,6 +15,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.blockchain.hedera import HederaService
+from app.blockchain.subject_visibility import assert_subject_visible
 from app.core.exceptions import HederaServiceError
 from app.crypto.hashing import PPManifestKey, compute_snapshot_sha256, compute_trip_canonical_payload
 from app.db.models.blockchain import BlockchainReceipt
@@ -599,3 +600,22 @@ async def verify_subject(
         receipt=receipt,
         evidence_verified=phase_state is not None and bool(phase_state.artifacts),
     )
+
+
+async def verify_visible_subject(
+    db: AsyncSession,
+    *,
+    subject_type: SubjectType,
+    subject_id: uuid.UUID,
+    organization_id: uuid.UUID,
+) -> VerifyOutcome:
+    """Verify a subject only after proving it belongs to the caller's organisation.
+
+    The visibility check comes first so a foreign subject is never read, let alone
+    re-hashed or looked up on Hedera. Raises SubjectNotVisibleError (the endpoint maps it
+    to 404) and verifies nothing in that case.
+    """
+    await assert_subject_visible(
+        db, subject_type=subject_type, subject_id=subject_id, organization_id=organization_id,
+    )
+    return await verify_subject(db, subject_type=subject_type, subject_id=subject_id)

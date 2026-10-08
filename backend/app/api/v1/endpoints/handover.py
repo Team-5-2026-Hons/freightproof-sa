@@ -44,7 +44,6 @@ from app.db.models.phases import PhaseEvent
 from app.db.models.receiver_verification import ReceiverIdentityVerification
 from app.db.models.trips import Consignment, Trip, TripStop
 from app.db.session import get_db
-from app.integrations.idvs import get_idvs_client
 from app.orchestration.artifact_service import create_receiver_artifact
 from app.orchestration.handover_service import (
     build_scan_url,
@@ -460,7 +459,6 @@ async def handover_verify_endpoint(
         token=token,
         raw_token=raw_token,  # row stores only a hash; vendor needs the presented token
         verification=verification,
-        client=get_idvs_client(),
     )
     await db.commit()
 
@@ -499,7 +497,6 @@ async def handover_resolve_endpoint(
     verdict = await resolve_verification(
         db,
         verification=verification,
-        client=get_idvs_client(),
         typed_name=receiver_name,
         typed_id_number=receiver_id_number,
     )

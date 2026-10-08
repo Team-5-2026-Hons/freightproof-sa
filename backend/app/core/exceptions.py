@@ -285,3 +285,28 @@ class PPManifestChangedError(Exception):
         )
         self.manifest_number = manifest_number
         self.preview = preview
+
+
+class WaybillNotFoundError(Exception):
+    """The parcel system has no waybill under this reference (404).
+
+    Domain-side twin of the integration's lookup error, so the API layer can map it
+    without importing the integration. The message is client-facing: keep it stable.
+    """
+
+    def __init__(self, waybill_number: str) -> None:
+        super().__init__(f"Waybill {waybill_number!r} not found in Parcel Perfect")
+        self.waybill_number = waybill_number
+
+
+class ManifestNotFoundError(Exception):
+    """The parcel system has no manifest under this number (404). Client-facing message."""
+
+    def __init__(self, manifest_number: int) -> None:
+        super().__init__(f"Manifest {manifest_number} not found")
+        self.manifest_number = manifest_number
+
+
+class ManifestLookupUnsupportedError(Exception):
+    """The connected parcel system cannot look manifests up (501). Carries no detail on
+    purpose: the integration's own message is an internal engineering note."""

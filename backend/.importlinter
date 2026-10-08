@@ -63,11 +63,6 @@ forbidden_modules =
 allow_indirect_imports = True
 ignore_imports =
     # Real skips (audit 4.2): to be routed through orchestration in audit phase 2 (item C).
-    app.api.v1.endpoints.trips -> app.integrations.parcel_perfect
-    app.api.v1.endpoints.pp -> app.integrations.parcel_perfect
-    app.api.v1.endpoints.handover -> app.integrations.idvs
-    app.api.v1.endpoints.blockchain -> app.blockchain.anchor_service
-    app.api.v1.endpoints.blockchain -> app.blockchain.subject_visibility
     # The 5 dev_* imports (audit 4.2): dev-only tooling; moves to app/dev/ in the last window.
     app.api.v1.endpoints.dev_tracker -> app.integrations.pulsit
     app.api.v1.endpoints.dev_pulsit -> app.integrations.pulsit

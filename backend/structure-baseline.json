@@ -29,11 +29,11 @@
   },
   "files": {
     "app/orchestration/phase_service.py": 2289,
-    "app/integrations/parcel_perfect.py": 1485,
+    "app/integrations/parcel_perfect.py": 1486,
     "app/orchestration/exception_service.py": 1121,
     "app/orchestration/trip_service.py": 825,
     "app/orchestration/action_location_service.py": 706,
-    "app/schemas/trips.py": 576,
-    "app/api/v1/endpoints/handover.py": 560
+    "app/schemas/trips.py": 425,
+    "app/api/v1/endpoints/handover.py": 557
   }
 }

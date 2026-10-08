@@ -25,6 +25,8 @@ from app.core.exceptions import (
     ConsignmentAlreadyAssignedError,
     HederaServiceError,
     HederaTimeoutError,
+    ManifestLookupUnsupportedError,
+    ManifestNotFoundError,
     PPManifestAlreadyOnTripError,
     PPManifestChangedError,
     PPManifestUnusableError,
@@ -38,7 +40,6 @@ from app.core.pagination import CursorPosition, decode_cursor
 from app.core.rate_limit import rate_limit
 from app.db.models.enums import DispatcherRole, TripStatus
 from app.db.session import get_db
-from app.integrations.parcel_perfect import PPManifestNotFoundError, PPUnsupportedError
 from app.orchestration.pp_manifest_service import create_trip_from_pp_manifest, preview_pp_manifest
 from app.orchestration.resource_service import get_trip_detail, list_trip_history, list_trips
 from app.orchestration.trip_service import (
@@ -67,7 +68,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/trips", tags=["trips"])
 
-# Stable client-facing text; str(PPUnsupportedError) carries an internal engineering note.
+# Stable client-facing text; the integration's own unsupported message is an internal engineering note.
 _MANIFEST_UNSUPPORTED_DETAIL = "Manifest lookup is not available from the connected parcel system."
 _PP_UNAVAILABLE_DETAIL = "The parcel system is unreachable. Try again shortly."
 _HEDERA_TIMEOUT_DETAIL = "Blockchain anchoring timed out, so the trip was not created. Please retry."
@@ -78,9 +79,9 @@ _UNEXPECTED_DETAIL = "An unexpected error occurred. Please try again."
 def _trip_http_error(exc: Exception) -> HTTPException | None:
     """One mapping for both creation endpoints and the manifest preview (spec §10.7), so
     the same failure always gets the same status. None = not ours: re-raise."""
-    if isinstance(exc, PPManifestNotFoundError):
+    if isinstance(exc, ManifestNotFoundError):
         return HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc))
-    if isinstance(exc, PPUnsupportedError):
+    if isinstance(exc, ManifestLookupUnsupportedError):
         return HTTPException(status_code=http_status.HTTP_501_NOT_IMPLEMENTED, detail=_MANIFEST_UNSUPPORTED_DETAIL)
     if isinstance(exc, PPUnavailableError):
         return HTTPException(status_code=http_status.HTTP_502_BAD_GATEWAY, detail=_PP_UNAVAILABLE_DETAIL)

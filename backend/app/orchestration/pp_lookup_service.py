@@ -1,5 +1,6 @@
 """Wizard-time PP lookups. Layering: orchestration → integrations only."""
-from app.integrations.parcel_perfect import PPWaybillResponse, get_pp_client
+from app.core.exceptions import WaybillNotFoundError
+from app.integrations.parcel_perfect import PPWaybillNotFoundError, PPWaybillResponse, get_pp_client
 from app.schemas.pp import PPCapabilities, PPWaybillSummary
 
 
@@ -15,7 +16,14 @@ def _to_summary(w: PPWaybillResponse) -> PPWaybillSummary:
 
 
 async def get_waybill_summary(waybill_number: str) -> PPWaybillSummary:
-    return _to_summary(await get_pp_client().get_single_waybill(waybill_number))
+    """Raises WaybillNotFoundError for an unknown reference; outages propagate unchanged
+    (the endpoint maps them to 502)."""
+    try:
+        waybill = await get_pp_client().get_single_waybill(waybill_number)
+    except PPWaybillNotFoundError as exc:
+        # The endpoint sits above this layer and must not import the integration's types.
+        raise WaybillNotFoundError(exc.waybill_number) from exc
+    return _to_summary(waybill)
 
 
 def get_capabilities() -> PPCapabilities:

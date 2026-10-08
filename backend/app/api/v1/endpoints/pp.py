@@ -8,10 +8,10 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_dispatcher
+from app.core.exceptions import WaybillNotFoundError
 from app.core.limits import PP_LOOKUP
 from app.core.rate_limit import rate_limit
 from app.db.session import get_db
-from app.integrations.parcel_perfect import PPWaybillNotFoundError
 from app.orchestration import consignment_service, pp_lookup_service
 from app.schemas.people import UserRead
 from app.schemas.pp import PPCapabilities, PPWaybillSummary
@@ -48,7 +48,7 @@ async def get_waybill_endpoint(
 ) -> PPWaybillSummary:
     try:
         summary = await pp_lookup_service.get_waybill_summary(waybill_number)
-    except PPWaybillNotFoundError as exc:
+    except WaybillNotFoundError as exc:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except (ValueError, httpx.HTTPError) as exc:
         # Real client raises ValueError (PP errorcode != 0) or httpx errors on outage.
