@@ -9,6 +9,7 @@
 | **Scope** | Backend first (file size, purpose, layering). Frontend in §7. Security findings live in [reviews/2026-09-14-security-structure-review.md](../reviews/2026-09-14-security-structure-review.md) and are not repeated here |
 | **Revision 2** | Corrected counts, assigned every `phase_service` symbol a home, designed the import graph to be acyclic, merged "split" and "move" into one window per package, and added a behaviour baseline that runs before any cleanup. What changed and why: §10 |
 | **Revision 3** | 2026-10-08. Added §0 (progress), §5.6 (naming rules); renamed the planned `orchestration/parcel_perfect/` package to `orchestration/consignments/`; updated §3, §7 and §8 with what phases 0–2 settled |
+| **Revision 4** | 2026-10-08. Phase 4 complete: §0 records the parcel_perfect, evidence, fleet, handover, consignments and `app/dev` windows; §5's layout now shows the packages as built, including where they deviate from rev. 3's plan and why; §5.5 records how B8 handles a facade that is also a package |
 
 > Sections 1–4 are a snapshot measured at `8e2b698`; §0 records what has changed since.
 > Numbers come from an AST scan of `backend/app/` (function spans as
@@ -23,7 +24,7 @@
 | 0 Guardrails | A | **Done**: ruff complexity rules, `check_structure.py` + `structure-baseline.json`, import-linter, all in CI | `dd2498d` (PR #68, merged `3b1f05a`) |
 | 1 Behaviour baseline | K (B1–B8) | **Done** | `dd2498d` (PR #68) |
 | — CI repairs found on the way | — | **Done**: mypy fix in `exception_service`; settings for the migration step; Supabase auth/role stub so the migration chain applies to plain Postgres | `7364c4b`, `8476db2`, `f751194` (PR #68) |
-| 2 Cheap SOLID wins | B `ParcelPerfectPort` | **Done** (port in `integrations/parcel_perfect_port.py`; moves to `integrations/parcel_perfect/port.py` in its phase-4 window) | `36c3450` |
+| 2 Cheap SOLID wins | B `ParcelPerfectPort` | **Done** (now `integrations/parcel_perfect/port.py`, moved in its phase-4 window) | `36c3450` |
 | | C endpoint layer skips | **Done**: the 5 non-dev skips now go through orchestration (`receipt_service`, `verify_visible_subject`, core `ManifestNotFoundError` / `ManifestLookupUnsupportedError` / `WaybillNotFoundError`, IDVS client resolved in the service) | `a44904c` |
 | | J dead schemas | **Done**: 33 classes and `schemas/sla.py` deleted; models and tables untouched | `b467785` |
 | | L `AuthPort` | **Done**: `PasswordAuthPort` (dispatcher) and `OtpAuthPort` + `DriverProfileSource` (driver-pwa), with Supabase, API and demo adapters | `221fb32`, `c4d98e7` |
@@ -32,25 +33,36 @@
 | 4 Package windows | phases | **Done**: `phase_service.py` split into `phases/` (25 modules); `phase_service`, `phase_gate`, `phase_plan` are facades; callers switched. Step 3 skipped for this package (see §6). Logger names are now per module: hosted log filters still to be checked | `f1c9219` |
 | | trips | **Done**: `trip_service.py` split into `trips/` (creation, administration, queries); facade; callers switched. Step 3 skipped: `persist_trip` kept whole (see §5.3) | `d1dd771` |
 | | exceptions | **Done**: `exception_service.py` split into `exceptions/` (creation, review, queries); facade; callers switched. Step 3 skipped (see §6) | `84c2753` |
-| | parcel_perfect → … | **Next** | — |
-| 5 Facade removal | — | Not started | — |
+| | integrations/parcel_perfect | **Done**: `parcel_perfect.py` split into a 10-module package (errors, timestamps, models, port, waybill_fixtures, client, unassigned_fixtures, manifest_fixtures, mock, factory); `parcel_perfect_port.py` became `port.py`. The package `__init__` is the facade (§5 rule 6). No function over 100 lines, so step 3 had nothing to do | `0e0ff3f` |
+| | evidence | **Done**: eight `*_service` modules moved whole into `evidence/`; the old modules are facades. Step 3: only `log_checkpoint` (102 code lines) does more than one job; split deferred to a follow-up commit | `bc03250` |
+| | fleet, handover, consignments | **Done** as one batch: eleven modules moved whole (§5 layout); old modules are facades. Two string-constant patch targets that B8 could not see were found and retargeted. Step 3: `update_vehicle` does more than one job and belongs with phase 3 D (`record_and_anchor`); `sync_consignment_from_waybill` is one job, kept whole | `d4a621a` |
+| | app/dev | **Done**: dev endpoints, services and schemas moved into `app/dev/` with no facades (no branch imported them). `app.dev` sits in the top layer, so production code cannot import it. All endpoint layer-skip ignores are gone. B8 now resolves patch targets held in module-level string constants | `a2a8847` |
+| 5 Facade removal | — | Not started. 24 facades in `orchestration/` plus the `integrations/parcel_perfect` package `__init__`; remove each when §5.5's condition holds | — |
 
 **Current baselines** (re-measure after every PR):
 
-| Measure | At `8e2b698` | Now (`84c2753`) |
+| Measure | At `8e2b698` | Now (`a2a8847`) |
 |---|---|---|
-| Backend suite, slow included | — | **2,469 passed, 4 skipped** (195 of them the slow B7 import checks) |
-| Backend suite as CI runs it (`-m "not slow"`) | 2,263 passed, 4 skipped | **2,274 passed, 4 skipped** |
-| dispatcher vitest | 1,480 | **1,500** |
-| driver-pwa vitest | 821 | **859** |
-| import-linter ignores, endpoint layer skips | 10 | **5** (all `dev_*`, removed with `app/dev/`) |
-| import-linter ignores, layer order | 8 | 8 (the `tasks.blockchain` ignore moved to `phases.anchor_dispatch`; see §5.2) |
+| Backend suite, slow included | — | **2,519 passed, 4 skipped** (230 of them the slow B7 import checks) |
+| Backend suite as CI runs it (`-m "not slow"`) | 2,263 passed, 4 skipped | **2,289 passed, 4 skipped** |
+| dispatcher vitest | 1,480 | **1,500** (at `84c2753`; frontend untouched since) |
+| driver-pwa vitest | 821 | **859** (at `84c2753`; frontend untouched since) |
+| import-linter contracts | 0 | **19** |
+| import-linter ignores, endpoint layer skips | 10 | **0** |
+| import-linter ignores, layer order | 8 | **7** (`schemas.dev -> scan_feed` went with `app/dev/`) |
+| `orchestration/` top level | 34 modules, one flat folder | **8** real modules, 24 facades, 7 packages (`phases`, `trips`, `exceptions`, `evidence`, `fleet`, `handover`, `consignments`) |
 | `orchestration/phase_service.py` | 2,289 lines | **119** (facade only) |
 | `orchestration/trip_service.py` | 825 lines | **47** (facade only) |
 | `orchestration/exception_service.py` | 1,121 lines | **68** (facade only) |
+| `integrations/parcel_perfect.py` | 1,485 lines | **81** (`parcel_perfect/__init__.py`, facade only) |
 | `schemas/trips.py` | 576 lines | **425** |
-| `endpoints/handover.py` | 560 lines | **557** |
-| `integrations/parcel_perfect.py` | 1,485 lines | **1,486** (+1 import line for the port; accepted, the file is split in phase 4) |
+| `endpoints/handover.py` | 560 lines | **557** (thinning it is a separate follow-up; see §0 note below) |
+
+**Follow-ups after phase 4** (none blocks merging): split `log_checkpoint`; move the DB work out of
+`endpoints/handover.py` into `orchestration/handover/` (the `service.py` rev. 3 planned; not a pure move, so
+it was left out of the window); remove the `_format_separation` duplicate now that the cycle is gone
+(§5.1); update stale `*_service` path mentions in comments and docs (endpoint docstrings only together with
+a B1 snapshot update, because they are in the OpenAPI contract).
 
 ---
 
@@ -201,22 +213,41 @@ sync, analytics and dev tooling. Dev tooling (`dev_rig_service`, `dev_truck_serv
 blockchain/, crypto/, storage/ → db/`). Add **domain sub-packages inside** the large
 layers. No vertical slices — that is a re-engineer, which the lecturer advised against.
 
+As built (rev. 4). Where this differs from rev. 3's plan, the reason is under the tree.
+
 ```
 backend/app/orchestration/
 ├── trips/            creation.py · queries.py · administration.py
 ├── phases/           (§5.1 — 25 modules)
 ├── exceptions/       creation.py · review.py · queries.py
-├── evidence/         artifacts, checkpoints, corroboration, action_location, geofence,
-│                     location, proximity, road_check (existing modules, moved whole)
+├── evidence/         artifacts · checkpoints · corroboration · action_location · geofence ·
+│                     location · proximity · road_check (existing *_service modules, moved whole)
 ├── fleet/            drivers.py · vehicles.py · precincts.py
-├── handover/         capability.py · verification.py · service.py
-├── consignments/     existing pp_lookup / pp_manifest* / consignment / scan modules, moved whole
-│                     (named for the job, not the vendor; see §5.6)
-└── (shared leaf modules stay flat: integrity, review_policy, review_identity, resource_service)
+├── handover/         capability.py · receiver_verification.py
+├── consignments/     sync · scans · waybill_lookup · manifest_snapshot · manifest_import ·
+│                     manifest_reads (consignment, scan, pp_lookup, pp_manifest, pp_manifest_service
+│                     and manifest services, moved whole; named for the job, not the vendor, §5.6)
+└── (flat: integrity, review_policy, review_identity, resource_service, receipt_service,
+     verification_service, analytics_service, fleet_analytics_service; plus the 24 facades)
 
-backend/app/integrations/parcel_perfect/   port.py · client.py · mock.py · models.py · factory.py
-backend/app/dev/                           dev_* endpoints, services, schemas; mounted only with the dev flag
+backend/app/integrations/parcel_perfect/   __init__ (facade) · errors · timestamps · models · port ·
+                                           waybill_fixtures · unassigned_fixtures · manifest_fixtures ·
+                                           client · mock · factory
+backend/app/dev/                           endpoints/ (triggers, pulsit, tracker) · services/ (rig, truck) ·
+                                           schemas.py; routers still mounted only behind the dev flags
 ```
+
+**Deviations from rev. 3, and why:**
+- `integrations/parcel_perfect/` has ten modules, not five. A single `mock.py` would have been about
+  1,000 lines, most of it demo data, so the fixtures got three modules of their own, and errors and
+  timestamps became leaves the rest import.
+- `handover/` has no `service.py` yet. Moving the database work out of `endpoints/handover.py` changes
+  code, not just its location, so it is a follow-up commit rather than part of a move window.
+  `receiver_verification.py` is not named `verification.py` so it cannot be mistaken for
+  `orchestration/verification_service.py` (Hedera verification).
+- `consignments/` also took `manifest_service` (role-aware manifest reads), which rev. 3's list missed.
+- `app/dev/` has no facades: no open branch imported the old paths, and facades there would have
+  imported upward from production layers.
 
 **Package rules (these are what keep the graph acyclic):**
 
@@ -366,7 +397,18 @@ structure baseline, so it still cannot grow.
 - **B8 must match facades exactly, not by prefix.** For `integrations/parcel_perfect/`
   the facade and the package share a path, so adding it to `FROZEN_FACADES` must ban
   `app.integrations.parcel_perfect.X` but still allow `app.integrations.parcel_perfect.client.X`.
-  Check B8's matching before that window opens.
+  **Done** (`0e0ff3f`): a target counts as "through the facade" only if its first segment after
+  the facade is not a module in the facade's own directory, read from disk. For plain-module
+  facades this is the old prefix match.
+- **import-linter cannot ban a package importing its own `__init__`.** A `forbidden` contract
+  does not see it (checked). A `layers` contract with `containers` catches it indirectly, because
+  the facade imports every sibling, for every tier except the top one; an AST test
+  (`tests/unit/test_parcel_perfect_package.py`) covers the rest.
+- **B8 also resolves string constants** (`a2a8847`): `_ANCHOR = "app....anchor_subject"; patch(_ANCHOR)`
+  hid about ten patch calls from the scanner until the fleet window found them by hand.
+- **A facade must not re-export a name that is rebound with `global`** (`parcel_perfect`'s
+  `_cached_token`): the facade would hold a stale copy, and a test assigning through it would test
+  nothing.
 
 ### 5.6 Naming rules
 
@@ -447,6 +489,11 @@ rather than duplicating it — the phase-1 PR's first task is to confirm which e
 22 test files mention `phase_service` at all (two are support files rather than test
 modules — not independently re-checked). Rev. 1's 8 / 22 / 37 undercounted multiline
 patches and aliases.
+
+**Rev. 4:** every site above was retargeted in its window. The later windows added more:
+evidence 19, fleet 29, consignments 29 (plus 2 string-constant targets the scanner could not see
+then), `app/dev` 7. B8 now freezes 25 facades (24 in `orchestration/` plus the `parcel_perfect` package) and
+reports no patch through any of them.
 
 ### How to avoid breaking four branches
 
