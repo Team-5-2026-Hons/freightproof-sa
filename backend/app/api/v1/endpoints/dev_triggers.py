@@ -30,10 +30,9 @@ from app.db.models.trips import Consignment, Parcel, Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
 from app.integrations.mock_state import get_mock_state_store
-from app.integrations.parcel_perfect import (
-    MockParcelPerfectClient, PPManifestNotFoundError, PPUnsupportedError, PPWaybillNotFoundError,
-    get_pp_client,
-)
+from app.integrations.parcel_perfect.errors import PPManifestNotFoundError, PPUnsupportedError, PPWaybillNotFoundError
+from app.integrations.parcel_perfect.factory import get_pp_client
+from app.integrations.parcel_perfect.mock import MockParcelPerfectClient
 from app.integrations.scan_feed import MockScanFeed, ScanDirection, get_scan_feed
 from app.orchestration import consignment_service, scan_service
 from app.orchestration.exceptions import creation as exception_creation

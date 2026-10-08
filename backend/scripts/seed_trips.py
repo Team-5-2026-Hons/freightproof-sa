@@ -49,7 +49,9 @@ from app.db.models.people import Driver, User
 from app.db.models.phases import PhaseEvent, TrailerGpsSnapshot
 from app.db.models.trips import Consignment, Parcel, Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
-from app.integrations.parcel_perfect import MOCK_MANIFEST_HEADERS, MOCK_WAYBILLS, PPWaybillResponse
+from app.integrations.parcel_perfect.manifest_fixtures import MOCK_MANIFEST_HEADERS
+from app.integrations.parcel_perfect.models import PPWaybillResponse
+from app.integrations.parcel_perfect.waybill_fixtures import MOCK_WAYBILLS
 from app.orchestration.consignment_service import serialise_waybill
 from app.orchestration.phases.plan import ANCHORED_PHASES, PlanStop, build_phase_plan
 

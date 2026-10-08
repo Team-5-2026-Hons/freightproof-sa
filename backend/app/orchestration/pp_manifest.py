@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.crypto.hashing import PPManifestKey, compute_snapshot_sha256
-from app.integrations.parcel_perfect import PPManifestResponse
+from app.integrations.parcel_perfect.models import PPManifestResponse
 from app.orchestration.consignment_service import serialise_waybill
 from app.schemas.pp_manifest import PPManifestSnapshotRead, PPManifestTotalsRead, PPManifestWaybillLine
 

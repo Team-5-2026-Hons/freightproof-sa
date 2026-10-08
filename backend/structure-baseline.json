@@ -29,7 +29,7 @@
   },
   "files": {
     "app/orchestration/phase_service.py": 119,
-    "app/integrations/parcel_perfect.py": 1486,
+    "app/integrations/parcel_perfect/__init__.py": 81,
     "app/orchestration/exception_service.py": 68,
     "app/orchestration/trip_service.py": 47,
     "app/orchestration/action_location_service.py": 706,

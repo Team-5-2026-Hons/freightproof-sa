@@ -66,10 +66,12 @@ allow_indirect_imports = True
 ignore_imports =
     # Real skips (audit 4.2): to be routed through orchestration in audit phase 2 (item C).
     # The 5 dev_* imports (audit 4.2): dev-only tooling; moves to app/dev/ in the last window.
+    # dev_triggers reaches three parcel_perfect submodules (errors, factory, mock), hence the
+    # wildcard: still one ignore line, and it goes when the dev_* endpoints move.
     app.api.v1.endpoints.dev_tracker -> app.integrations.pulsit
     app.api.v1.endpoints.dev_pulsit -> app.integrations.pulsit
     app.api.v1.endpoints.dev_triggers -> app.integrations.mock_state
-    app.api.v1.endpoints.dev_triggers -> app.integrations.parcel_perfect
+    app.api.v1.endpoints.dev_triggers -> app.integrations.parcel_perfect.*
     app.api.v1.endpoints.dev_triggers -> app.integrations.scan_feed
 
 # ---------------------------------------------------------------------------
@@ -173,3 +175,24 @@ modules =
     app.orchestration.exceptions.creation
     app.orchestration.exceptions.review
     app.orchestration.exceptions.queries
+
+# ---------------------------------------------------------------------------
+# 10. Tier order inside integrations/parcel_perfect/ (audit 5, rule 6). A module may import
+#     only from tiers below it; modules on one tier ("|") may not import each other. The
+#     package __init__ is a facade that imports every submodule, so a child importing the
+#     facade is an import of its siblings through it, and this contract catches that too,
+#     for every tier except `factory` (nothing sits above it to be checked); the AST test in
+#     tests/unit/test_parcel_perfect_package.py covers `factory` as well.
+#     Layers are not optional: a misspelt or missing module fails the contract.
+# ---------------------------------------------------------------------------
+[importlinter:contract:parcel-perfect-tier-order]
+name = Inside integrations/parcel_perfect/, modules import only from lower tiers
+type = layers
+containers =
+    app.integrations.parcel_perfect
+layers =
+    factory
+    mock
+    unassigned_fixtures | manifest_fixtures
+    port | waybill_fixtures | client
+    errors | timestamps | models

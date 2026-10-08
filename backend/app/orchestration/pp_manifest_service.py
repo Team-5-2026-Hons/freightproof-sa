@@ -27,12 +27,9 @@ from app.crypto.hashing import compute_snapshot_sha256
 from app.db.models.enums import TripStatus, TripType
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.trips import Consignment, Trip
-from app.integrations.parcel_perfect import (
-    PPManifestNotFoundError,
-    PPManifestResponse,
-    PPUnsupportedError,
-    get_pp_client,
-)
+from app.integrations.parcel_perfect.errors import PPManifestNotFoundError, PPUnsupportedError
+from app.integrations.parcel_perfect.factory import get_pp_client
+from app.integrations.parcel_perfect.models import PPManifestResponse
 from app.orchestration.consignment_service import scanned_consignment_ids
 from app.orchestration.pp_manifest import (
     manifest_key,

@@ -6,6 +6,7 @@ import pytest
 
 from app.core.config import settings
 from app.integrations import parcel_perfect as pp_module
+from app.integrations.parcel_perfect import mock as pp_mock_module
 from app.integrations.parcel_perfect import (
     MANIFEST_HAPPY_PATH,
     MANIFEST_NO_WAYBILLS,
@@ -22,7 +23,7 @@ from tests.conftest import FakeMockStateStore
 @pytest.fixture
 def store(monkeypatch: pytest.MonkeyPatch) -> FakeMockStateStore:
     fake = FakeMockStateStore()
-    monkeypatch.setattr(pp_module, "get_mock_state_store", lambda: fake)
+    monkeypatch.setattr(pp_mock_module, "get_mock_state_store", lambda: fake)
     monkeypatch.setattr(settings, "DEV_PANEL_ENABLED", True)
     monkeypatch.setattr(settings, "PP_USE_MOCK", True)
     return fake
@@ -31,7 +32,7 @@ def store(monkeypatch: pytest.MonkeyPatch) -> FakeMockStateStore:
 @pytest.fixture
 def today(monkeypatch: pytest.MonkeyPatch) -> date:
     pinned = datetime.now(pp_module.pp_timezone()).date()
-    monkeypatch.setattr(pp_module, "_operations_today", lambda: pinned)
+    monkeypatch.setattr(pp_mock_module, "_operations_today", lambda: pinned)
     return pinned
 
 

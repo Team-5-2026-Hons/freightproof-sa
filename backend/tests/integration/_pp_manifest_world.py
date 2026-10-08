@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.integrations import parcel_perfect as pp_module
+from app.integrations.parcel_perfect import mock as pp_mock_module
 from tests.conftest import FakeMockStateStore
 
 from app.db.models.enums import (
@@ -155,11 +156,11 @@ def install_pp_mock(monkeypatch: pytest.MonkeyPatch) -> FakeMockStateStore:
     """PP mock with an in-memory override store and a pinned "today", so a preview and
     the create that follows read an identical manifest and nothing touches Redis."""
     store = FakeMockStateStore()
-    monkeypatch.setattr(pp_module, "get_mock_state_store", lambda: store)
+    monkeypatch.setattr(pp_mock_module, "get_mock_state_store", lambda: store)
     monkeypatch.setattr(settings, "PP_USE_MOCK", True)
     monkeypatch.setattr(settings, "DEV_PANEL_ENABLED", True)
     today = datetime.now(pp_module.pp_timezone()).date()
-    monkeypatch.setattr(pp_module, "_operations_today", lambda: today)
+    monkeypatch.setattr(pp_mock_module, "_operations_today", lambda: today)
     return store
 
 

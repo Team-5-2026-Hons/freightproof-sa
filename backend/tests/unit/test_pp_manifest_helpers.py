@@ -8,6 +8,7 @@ import pytest
 
 from app.core.config import settings
 from app.integrations import parcel_perfect as pp_module
+from app.integrations.parcel_perfect import mock as pp_mock_module
 from app.integrations.parcel_perfect import MANIFEST_HAPPY_PATH, MockParcelPerfectClient, PPTrack
 from app.orchestration.pp_manifest import (
     manifest_key,
@@ -23,7 +24,7 @@ def pinned_mock(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "DEV_PANEL_ENABLED", False)
     monkeypatch.setattr(settings, "PP_USE_MOCK", True)
     pinned = datetime.now(pp_module.pp_timezone()).date()
-    monkeypatch.setattr(pp_module, "_operations_today", lambda: pinned)
+    monkeypatch.setattr(pp_mock_module, "_operations_today", lambda: pinned)
 
 
 async def test_snapshot_survives_a_json_round_trip() -> None:

@@ -22,7 +22,8 @@ from app.core.exceptions import ConsignmentAlreadyAssignedError, ConsignmentScan
 from app.db.models.enums import ParcelStatus, TripStatus
 from app.db.models.organisations import Organization
 from app.db.models.trips import Consignment, Parcel, Trip
-from app.integrations.parcel_perfect import PPWaybillResponse, get_pp_client
+from app.integrations.parcel_perfect.factory import get_pp_client
+from app.integrations.parcel_perfect.models import PPWaybillResponse
 from app.orchestration.integrity import is_unique_violation
 
 logger = logging.getLogger(__name__)

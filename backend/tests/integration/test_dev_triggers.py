@@ -30,6 +30,7 @@ from app.db.models.trips import Consignment, Parcel, Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
 from app.integrations import parcel_perfect as pp_module
+from app.integrations.parcel_perfect import mock as pp_mock_module
 from app.integrations import scan_feed as scan_feed_module
 from app.integrations.parcel_perfect import MANIFEST_HAPPY_PATH, MockParcelPerfectClient
 from app.orchestration.pp_manifest import manifest_snapshot_sha256
@@ -64,7 +65,7 @@ def dev_app():
 def store(monkeypatch: pytest.MonkeyPatch) -> FakeMockStateStore:
     fake = FakeMockStateStore()
     monkeypatch.setattr(scan_feed_module, "get_mock_state_store", lambda: fake)
-    monkeypatch.setattr(pp_module, "get_mock_state_store", lambda: fake)
+    monkeypatch.setattr(pp_mock_module, "get_mock_state_store", lambda: fake)
     monkeypatch.setattr(
         "app.api.v1.endpoints.dev_triggers.get_mock_state_store", lambda: fake
     )
@@ -819,7 +820,7 @@ async def dispatcher_headers(db_session: AsyncSession) -> dict[str, str]:
 @pytest.fixture
 def pinned_today(monkeypatch: pytest.MonkeyPatch) -> None:
     pinned = datetime.now(pp_module.pp_timezone()).date()
-    monkeypatch.setattr(pp_module, "_operations_today", lambda: pinned)
+    monkeypatch.setattr(pp_mock_module, "_operations_today", lambda: pinned)
 
 
 async def test_pp_manifest_trigger_changes_the_snapshot(

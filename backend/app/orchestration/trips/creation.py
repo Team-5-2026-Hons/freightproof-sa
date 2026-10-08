@@ -60,7 +60,7 @@ if TYPE_CHECKING:
     # integrations/ and db/), so the local import is a leftover from before the split
     # and may be promoted in its own commit. A TYPE_CHECKING-only import carries no
     # such risk: it never executes at runtime.
-    from app.integrations.parcel_perfect import PPWaybillResponse
+    from app.integrations.parcel_perfect.models import PPWaybillResponse
     from app.orchestration.consignment_service import ConsignmentSyncResult
 
 logger = logging.getLogger(__name__)

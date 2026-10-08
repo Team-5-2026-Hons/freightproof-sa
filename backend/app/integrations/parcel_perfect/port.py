@@ -5,9 +5,9 @@ ParcelPerfectClient or the fixture-backed MockParcelPerfectClient, chosen by
 PP_USE_MOCK. The two are interchangeable to every caller, so callers should depend on
 this Protocol rather than on the concrete union. Mirrors ScanFeed in scan_feed.py.
 
-The vendor name stays in the file name because the port's types are PP's own response
-models. Those are imported for type checking only: parcel_perfect.py imports this
-module, so a runtime import back would be a cycle.
+The vendor name stays in the package name because the port's types are PP's own response
+models. Those are imported for type checking only: the annotations below are strings
+(`from __future__ import annotations`), so no runtime import is needed.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
-    from app.integrations.parcel_perfect import PPManifestResponse, PPWaybillResponse
+    from app.integrations.parcel_perfect.models import PPManifestResponse, PPWaybillResponse
 
 
 class ParcelPerfectPort(Protocol):

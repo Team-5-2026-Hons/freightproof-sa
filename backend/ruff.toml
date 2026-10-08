@@ -46,7 +46,9 @@ max-statements = 50
 "app/blockchain/hedera.py" = ["PLR0913"]
 "app/core/config_validation.py" = ["C901"]
 "app/crypto/hashing.py" = ["PLR0913"]
-"app/integrations/parcel_perfect.py" = ["PLR0913"]
+# Relocated, not added: the two PLR0913 fixture builders moved out of parcel_perfect.py with
+# their functions (audit phase 4); the count of violating functions is unchanged (2).
+"app/integrations/parcel_perfect/waybill_fixtures.py" = ["PLR0913"]  # _mock_waybill, _routed_waybill
 "app/orchestration/action_location_service.py" = ["PLR0913"]
 "app/orchestration/artifact_service.py" = ["PLR0913"]
 "app/orchestration/checkpoint_service.py" = ["C901"]

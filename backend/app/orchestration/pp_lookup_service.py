@@ -1,6 +1,8 @@
 """Wizard-time PP lookups. Layering: orchestration → integrations only."""
 from app.core.exceptions import WaybillNotFoundError
-from app.integrations.parcel_perfect import PPWaybillNotFoundError, PPWaybillResponse, get_pp_client
+from app.integrations.parcel_perfect.errors import PPWaybillNotFoundError
+from app.integrations.parcel_perfect.factory import get_pp_client
+from app.integrations.parcel_perfect.models import PPWaybillResponse
 from app.schemas.pp import PPCapabilities, PPWaybillSummary
 
 
