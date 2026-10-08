@@ -2,7 +2,8 @@
 
 import { createContext, useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react'
 import type { AuthState, DispatcherUser } from '@/lib/types/user'
-import { supabase } from '@/lib/supabase/client'
+import type { PasswordAuthPort } from '@shared/lib/auth/port'
+import { supabasePasswordAuth } from '@/lib/auth/SupabasePasswordAuth'
 import { api } from '@/lib/api/client'
 import { useIdleTimeout } from '@/lib/hooks/useIdleTimeout'
 import { clearActivity, recordActivity } from '@shared/lib/session/idle'
@@ -38,7 +39,14 @@ export class ProfileUnavailableError extends Error {
   }
 }
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+interface AuthProviderProps {
+  children: React.ReactNode
+  /** The authentication backend. Defaults to Supabase; tests and other backends inject
+   *  their own so this provider never touches a vendor SDK. */
+  port?: PasswordAuthPort
+}
+
+export function AuthProvider({ children, port = supabasePasswordAuth }: AuthProviderProps) {
   const [user, setUser] = useState<DispatcherUser | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   // Claimed by signIn so the SIGNED_IN listener below doesn't double-fetch /auth/me for
@@ -60,7 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let active = true
 
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
+    port.getSession().then(async session => {
       if (!active) return
       if (session) {
         const profile = await fetchProfile()
@@ -71,11 +79,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (active) setIsLoading(false)
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const unsubscribe = port.onChange((event, session) => {
       if (!active) return
 
       // Missing session = genuinely unauthenticated. The ONLY path that clears the user.
-      if (event === 'SIGNED_OUT' || !session) {
+      if (event === 'signed_out' || !session) {
         setUser(null)
         return
       }
@@ -83,7 +91,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Only a fresh sign-in needs a profile load; re-fetching on TOKEN_REFRESHED /
       // USER_UPDATED / INITIAL_SESSION was bouncing authenticated users to /login after
       // an idle tab on a transient /auth/me failure.
-      if (event === 'SIGNED_IN') {
+      if (event === 'signed_in') {
         if (signInWillLoadProfile.current) {
           // Our own signIn raised this and is already loading the profile; release the
           // claim so a later, non-signIn sign-in still gets fetched here.
@@ -101,16 +109,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       active = false
-      subscription.unsubscribe()
+      unsubscribe()
     }
-  }, [fetchProfile])
+  }, [fetchProfile, port])
 
   const signIn = useCallback(async (credentials: { email: string; password: string }) => {
     setIsLoading(true)
     signInWillLoadProfile.current = true
     try {
-      const { error } = await supabase.auth.signInWithPassword(credentials)
-      if (error) throw error
+      await port.signInWithPassword(credentials)
       // Start the idle clock at sign-in itself, or a session left untouched would inherit
       // a stale timestamp from a previous session.
       recordActivity(window.localStorage)
@@ -128,18 +135,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setIsLoading(false)
     }
-  }, [fetchProfile])
+  }, [fetchProfile, port])
 
   // The actual exit mechanics, shared by both ways a session ends below. Deliberately
   // silent on the return path — callers decide that, since a manual sign-out and an idle
   // expiry want opposite outcomes for it.
   const performSignOut = useCallback(async () => {
-    await supabase.auth.signOut()
+    await port.signOut()
     // Clear before the state update so another tab's storage listener sees a signed-out
     // machine, not a live timestamp with no session behind it.
     clearActivity(window.localStorage)
     setUser(null)
-  }, [])
+  }, [port])
 
   // Manual sign-out (Settings > Sign out): clears any saved return path — a dispatcher
   // who deliberately leaves a screen should not be dropped back onto it next time they
