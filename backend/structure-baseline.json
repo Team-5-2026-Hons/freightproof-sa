@@ -33,7 +33,7 @@
     "app/orchestration/exception_service.py": 1121,
     "app/orchestration/trip_service.py": 825,
     "app/orchestration/action_location_service.py": 706,
-    "app/schemas/trips.py": 576,
+    "app/schemas/trips.py": 425,
     "app/api/v1/endpoints/handover.py": 557
   }
 }

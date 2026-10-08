@@ -1,4 +1,4 @@
-"""Pydantic v2 schemas for PhaseEvent and TrailerGpsSnapshot.
+"""Pydantic v2 schemas for PhaseEvent and the per-phase completion requests.
 
 Replaces schemas/handshakes.py, whose HandshakeEventRead predates the phase
 ledger and is missing three real columns (trip_stop_id, anchor_status,
@@ -53,9 +53,7 @@ class PhaseEventRead(BaseModel):
 
     # Wire name is `phase_event_id`, matching the shared frontend contract
     # (frontend/shared/lib/types/phase.ts) — this is the phase's own identity,
-    # not a foreign key pointing at one (contrast
-    # TrailerGpsSnapshotBase.phase_event_id below, which IS an FK and is
-    # unaffected by this alias). serialization_alias only changes the OUTBOUND
+    # not a foreign key pointing at one. serialization_alias only changes the OUTBOUND
     # key: model_validate(event)/from_attributes still binds the ORM's `id`
     # attribute by field name, and FastAPI serialises response models with
     # by_alias=True by default, so `id` never reaches the JSON body.
@@ -155,27 +153,6 @@ class PhaseEventRead(BaseModel):
                 (PhaseType(event.phase_type), event.trip_stop_id)
             )
         return read
-
-
-class TrailerGpsSnapshotBase(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    phase_event_id: UUID
-    trailer_id: UUID
-    pulsit_device_id: str
-    lat: float
-    lng: float
-    captured_at: datetime
-    geofence_confirmed: Optional[bool] = None
-
-
-class TrailerGpsSnapshotCreate(TrailerGpsSnapshotBase):
-    pass
-
-
-class TrailerGpsSnapshotRead(TrailerGpsSnapshotBase):
-    id: UUID
-    created_at: datetime
 
 
 class _PhaseCompleteBase(BaseModel):

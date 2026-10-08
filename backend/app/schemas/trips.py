@@ -1,4 +1,4 @@
-"""Pydantic v2 schemas for TripTemplate, Consignment, Parcel, Trip, TripTrailer."""
+"""Pydantic v2 schemas for Consignment, Parcel, Trip creation requests and trip reads."""
 
 from datetime import datetime
 from decimal import Decimal
@@ -18,35 +18,6 @@ from app.schemas.transit import TripExceptionRead
 from app.schemas.vehicles import VehicleRead
 
 
-class TripTemplateBase(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    operator_organization_id: UUID
-    client_organization_id: UUID
-    name: str
-    default_origin_precinct_id: Optional[UUID] = None
-    default_destination_precinct_id: Optional[UUID] = None
-    is_active: bool = True
-
-
-class TripTemplateCreate(TripTemplateBase):
-    pass
-
-
-class TripTemplateUpdate(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    name: Optional[str] = None
-    default_origin_precinct_id: Optional[UUID] = None
-    default_destination_precinct_id: Optional[UUID] = None
-    is_active: Optional[bool] = None
-
-
-class TripTemplateRead(TripTemplateBase):
-    id: UUID
-    created_at: datetime
-
-
 class ConsignmentBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -56,25 +27,6 @@ class ConsignmentBase(BaseModel):
     origin_precinct_id: Optional[UUID] = None
     destination_precinct_id: Optional[UUID] = None
     declared_value: Optional[Decimal] = None
-    parcel_count_expected: Optional[int] = None
-    slot_time_origin: Optional[datetime] = None
-    slot_time_destination: Optional[datetime] = None
-    pp_raw_json: Optional[Any] = None
-    pickup_stop_id: Optional[UUID] = None
-    delivery_stop_id: Optional[UUID] = None
-    load_priority: Optional[int] = None
-    unit_count_expected: Optional[int] = None
-    pp_manifest_number: Optional[int] = None
-
-
-class ConsignmentCreate(ConsignmentBase):
-    pass
-
-
-class ConsignmentUpdate(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    trip_id: Optional[UUID] = None
     parcel_count_expected: Optional[int] = None
     slot_time_origin: Optional[datetime] = None
     slot_time_destination: Optional[datetime] = None
@@ -106,41 +58,12 @@ class ParcelBase(BaseModel):
     status: ParcelStatus = ParcelStatus.PENDING
 
 
-class ParcelCreate(ParcelBase):
-    pass
-
-
-class ParcelUpdate(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    status: Optional[ParcelStatus] = None
-    pp_scan_out_at: Optional[datetime] = None
-    pp_scan_in_at: Optional[datetime] = None
-
-
 class ParcelRead(ParcelBase):
     id: UUID
     pp_scan_out_at: Optional[datetime] = None
     pp_scan_in_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
-
-
-class TripBase(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    trip_reference: str
-    operator_organization_id: UUID
-    client_organization_id: UUID
-    driver_id: UUID
-    horse_id: UUID
-    origin_precinct_id: UUID
-    destination_precinct_id: UUID
-    created_by_user_id: UUID
-    pulsit_trip_reference_id: Optional[str] = None
-    template_id: Optional[UUID] = None
-    planned_departure_at: Optional[datetime] = None
-    planned_arrival_at: Optional[datetime] = None
 
 
 def stop_slot_times(stops: Optional[list["TripStopCreate"]]) -> list[datetime]:
@@ -183,41 +106,6 @@ def validate_declared_schedule(
             f"planned trip duration must be at least {minimum_minutes} minutes "
             f"(declared {declared_minutes:g}, from {schedule_source})"
         )
-
-
-class TripCreate(TripBase):
-    @model_validator(mode="after")
-    def validate_arrival_after_departure(self) -> "TripCreate":
-        validate_declared_schedule(self.planned_departure_at, self.planned_arrival_at)
-        return self
-
-
-class TripUpdate(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    status: Optional[TripStatus] = None
-    pulsit_trip_reference_id: Optional[str] = None
-    journey_lock_hash: Optional[str] = None
-    idvs_check_status: Optional[IdvsStatus] = None
-    idvs_checked_at: Optional[datetime] = None
-    actual_departure_at: Optional[datetime] = None
-    actual_arrival_at: Optional[datetime] = None
-    closed_at: Optional[datetime] = None
-
-
-class TripRead(TripBase):
-    id: UUID
-    status: TripStatus
-    journey_lock_hash: Optional[str] = None
-    idvs_check_status: IdvsStatus
-    idvs_checked_at: Optional[datetime] = None
-    actual_departure_at: Optional[datetime] = None
-    actual_arrival_at: Optional[datetime] = None
-    closed_at: Optional[datetime] = None
-    created_at: datetime
-    updated_at: datetime
-    driver: Optional[DriverRead] = None
-    horse: Optional[VehicleRead] = None
 
 
 class TripListItemResponse(BaseModel):
@@ -318,45 +206,6 @@ class DriverTripListItemResponse(BaseModel):
     needs_review_count: int  # unreviewed critical rows only; the driver has no review workflow
     created_at: datetime
     updated_at: datetime
-
-
-class TripTrailerBase(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    trip_id: UUID
-    trailer_id: UUID
-    pulsit_device_id_snapshot: str
-
-
-class TripTrailerCreate(TripTrailerBase):
-    pass
-
-
-class TripTrailerRead(TripTrailerBase):
-    pass
-
-
-class DriverSubstitutionBase(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    trip_id: UUID
-    original_driver_id: UUID
-    substituting_driver_id: UUID
-    exchange_location: str
-    approving_dispatcher_user_id: UUID
-    is_planned: bool
-    substitution_at: datetime
-    exception_id: Optional[UUID] = None
-    blockchain_receipt_id: Optional[UUID] = None
-
-
-class DriverSubstitutionCreate(DriverSubstitutionBase):
-    pass
-
-
-class DriverSubstitutionRead(DriverSubstitutionBase):
-    id: UUID
-    created_at: datetime
 
 
 class TripStopBase(BaseModel):

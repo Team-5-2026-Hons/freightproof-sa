@@ -9,8 +9,6 @@ Covers:
 Run: pytest tests/unit/test_model_schema_v6.py -v
 """
 
-import uuid
-from datetime import datetime, timezone
 
 import pytest
 
@@ -102,39 +100,3 @@ def test_model_has_updated_at(model_cls) -> None:
     assert "updated_at" in _column_names(model_cls)
 
 
-# ---------------------------------------------------------------------------
-# DriverSubstitutionCreate schema — validates the four required log fields
-# ---------------------------------------------------------------------------
-
-def test_driver_substitution_schema_valid():
-    from app.schemas.trips import DriverSubstitutionCreate
-
-    ds = DriverSubstitutionCreate(
-        trip_id=uuid.uuid4(),
-        original_driver_id=uuid.uuid4(),
-        substituting_driver_id=uuid.uuid4(),
-        exchange_location="Harrismith N3 fuel stop",
-        approving_dispatcher_user_id=uuid.uuid4(),
-        is_planned=True,
-        substitution_at=datetime(2026, 5, 1, 14, 30, tzinfo=timezone.utc),
-    )
-    assert ds.is_planned is True
-    assert ds.exception_id is None
-
-
-def test_driver_substitution_schema_unplanned_accepts_exception_id():
-    from app.schemas.trips import DriverSubstitutionCreate
-
-    eid = uuid.uuid4()
-    ds = DriverSubstitutionCreate(
-        trip_id=uuid.uuid4(),
-        original_driver_id=uuid.uuid4(),
-        substituting_driver_id=uuid.uuid4(),
-        exchange_location="Side of N3 near Mooi River",
-        approving_dispatcher_user_id=uuid.uuid4(),
-        is_planned=False,
-        substitution_at=datetime(2026, 5, 1, 14, 30, tzinfo=timezone.utc),
-        exception_id=eid,
-    )
-    assert ds.is_planned is False
-    assert ds.exception_id == eid

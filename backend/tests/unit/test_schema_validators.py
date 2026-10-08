@@ -57,68 +57,6 @@ def test_driver_id_number_non_digits():
 
 
 # ---------------------------------------------------------------------------
-# TripCreate — planned_arrival_at must be after planned_departure_at
-# ---------------------------------------------------------------------------
-
-def test_trip_arrival_after_departure_valid():
-    from app.schemas.trips import TripCreate
-    import uuid
-    t = TripCreate(
-        trip_reference="TRP-2026-0001",
-        order_number="FDX-001",
-        operator_organization_id=uuid.uuid4(),
-        client_organization_id=uuid.uuid4(),
-        driver_id=uuid.uuid4(),
-        horse_id=uuid.uuid4(),
-        origin_precinct_id=uuid.uuid4(),
-        destination_precinct_id=uuid.uuid4(),
-        created_by_user_id=uuid.uuid4(),
-        planned_departure_at=datetime(2026, 5, 1, 8, 0, tzinfo=timezone.utc),
-        planned_arrival_at=datetime(2026, 5, 1, 16, 0, tzinfo=timezone.utc),
-    )
-    assert t.planned_arrival_at > t.planned_departure_at
-
-
-def test_trip_arrival_before_departure_invalid():
-    from app.schemas.trips import TripCreate
-    import uuid
-    with pytest.raises(Exception):
-        TripCreate(
-            trip_reference="TRP-2026-0002",
-            order_number="FDX-002",
-            operator_organization_id=uuid.uuid4(),
-            client_organization_id=uuid.uuid4(),
-            driver_id=uuid.uuid4(),
-            horse_id=uuid.uuid4(),
-            origin_precinct_id=uuid.uuid4(),
-            destination_precinct_id=uuid.uuid4(),
-            created_by_user_id=uuid.uuid4(),
-            planned_departure_at=datetime(2026, 5, 1, 16, 0, tzinfo=timezone.utc),
-            planned_arrival_at=datetime(2026, 5, 1, 8, 0, tzinfo=timezone.utc),
-        )
-
-
-def test_trip_only_departure_no_arrival_valid():
-    """Validator must not fire when only one of the two fields is provided."""
-    from app.schemas.trips import TripCreate
-    import uuid
-    t = TripCreate(
-        trip_reference="TRP-2026-0003",
-        order_number="FDX-003",
-        operator_organization_id=uuid.uuid4(),
-        client_organization_id=uuid.uuid4(),
-        driver_id=uuid.uuid4(),
-        horse_id=uuid.uuid4(),
-        origin_precinct_id=uuid.uuid4(),
-        destination_precinct_id=uuid.uuid4(),
-        created_by_user_id=uuid.uuid4(),
-        planned_departure_at=datetime(2026, 5, 1, 8, 0, tzinfo=timezone.utc),
-    )
-    assert t.planned_departure_at is not None
-    assert t.planned_arrival_at is None
-
-
-# ---------------------------------------------------------------------------
 # MerkleBatchLeafCreate — source_type must be "checkpoint", "exception", or "artifact"
 # ---------------------------------------------------------------------------
 
