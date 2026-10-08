@@ -29,19 +29,25 @@
 | | L `AuthPort` | **Done**: `PasswordAuthPort` (dispatcher) and `OtpAuthPort` + `DriverProfileSource` (driver-pwa), with Supabase, API and demo adapters | `221fb32`, `c4d98e7` |
 | | F doc fixes | **Partly**: this revision. `CLAUDE.md` corrections still need the four-reviewer PR | — |
 | 3 Name the patterns | D | **Waiting** for Tim's `Feat-ValueAddedDocumentation` to merge (he edits `subject_visibility.py`) | — |
-| 4 Package windows | phases → … | **Not started**. Phases can start before Tim merges | — |
+| 4 Package windows | phases | **Done**: `phase_service.py` split into `phases/` (25 modules); `phase_service`, `phase_gate`, `phase_plan` are facades; callers switched. Step 3 skipped for this package (see §6). Logger names are now per module: hosted log filters still to be checked | `f1c9219` |
+| | trips | **Done**: `trip_service.py` split into `trips/` (creation, administration, queries); facade; callers switched. Step 3 skipped: `persist_trip` kept whole (see §5.3) | `d1dd771` |
+| | exceptions | **Done**: `exception_service.py` split into `exceptions/` (creation, review, queries); facade; callers switched. Step 3 skipped (see §6) | `84c2753` |
+| | parcel_perfect → … | **Next** | — |
 | 5 Facade removal | — | Not started | — |
 
 **Current baselines** (re-measure after every PR):
 
-| Measure | At `8e2b698` | Now (`c4d98e7`) |
+| Measure | At `8e2b698` | Now (`84c2753`) |
 |---|---|---|
-| Backend suite, slow included | — | **2,435 passed, 4 skipped** (161 of them the slow B7 import checks) |
+| Backend suite, slow included | — | **2,469 passed, 4 skipped** (195 of them the slow B7 import checks) |
 | Backend suite as CI runs it (`-m "not slow"`) | 2,263 passed, 4 skipped | **2,274 passed, 4 skipped** |
 | dispatcher vitest | 1,480 | **1,500** |
 | driver-pwa vitest | 821 | **859** |
 | import-linter ignores, endpoint layer skips | 10 | **5** (all `dev_*`, removed with `app/dev/`) |
-| import-linter ignores, layer order | 8 | 8 |
+| import-linter ignores, layer order | 8 | 8 (the `tasks.blockchain` ignore moved to `phases.anchor_dispatch`; see §5.2) |
+| `orchestration/phase_service.py` | 2,289 lines | **119** (facade only) |
+| `orchestration/trip_service.py` | 825 lines | **47** (facade only) |
+| `orchestration/exception_service.py` | 1,121 lines | **68** (facade only) |
 | `schemas/trips.py` | 576 lines | **425** |
 | `endpoints/handover.py` | 560 lines | **557** |
 | `integrations/parcel_perfect.py` | 1,485 lines | **1,486** (+1 import line for the port; accepted, the file is split in phase 4) |
@@ -198,7 +204,7 @@ layers. No vertical slices — that is a re-engineer, which the lecturer advised
 ```
 backend/app/orchestration/
 ├── trips/            creation.py · queries.py · administration.py
-├── phases/           (§5.1 — 23 modules)
+├── phases/           (§5.1 — 25 modules)
 ├── exceptions/       creation.py · review.py · queries.py
 ├── evidence/         artifacts, checkpoints, corroboration, action_location, geofence,
 │                     location, proximity, road_check (existing modules, moved whole)
@@ -312,6 +318,11 @@ phases.anchor_dispatch ──► tasks.blockchain          (nothing above points
 No arrow returns to `anchor_dispatch`, and `verification_service` reaches only the
 `payloads` leaf, not the facade. Enforced by import-linter (§6, phase 0).
 
+The cycle is gone, but the lazy `phases.anchor_dispatch → tasks.blockchain` import is
+still an orchestration → tasks layer violation. It stays as an ignore in both the layer
+contract and the `phases-tier-order` contract (import-linter follows the chain through
+`tasks.blockchain` to `anchor_recovery`, a same-tier sibling).
+
 ### 5.3 `trip_service.py` → `orchestration/trips/`
 
 | Module | Symbols |
@@ -320,8 +331,10 @@ No arrow returns to `anchor_dispatch`, and `verification_service` reaches only t
 | `administration.py` | `_CANCELLED_BY_PREFIX`, `cancel_trip` |
 | `queries.py` | `get_active_trip_for_driver`, `_driver_view`, `list_trips_for_driver`, `get_own_trip_detail_for_driver` |
 
-`persist_trip` (274) is then decomposed **inside `creation.py`**, along its own numbered
-comments, in commits after the move (§6, phase 4).
+`persist_trip` (274 lines, about 180 of code) is **kept whole** in `creation.py`. Decided
+after the move: it is one job (persist a new trip), its numbered step comments make it
+readable as it stands, and it now sits in a file with a single purpose. It stays in the
+structure baseline, so it still cannot grow.
 
 ### 5.4 `exception_service.py` → `orchestration/exceptions/`
 
@@ -343,7 +356,10 @@ comments, in commits after the move (§6, phase 4).
   the module that *uses* the name (`phases.advance_arrival._gate_and_load`,
   `phases.completion.enqueue_event`). Test patches through a facade are then banned by
   check B8. Open branches that add new facade patches will hit the same trap — say so
-  in the merge announcement.
+  in the merge announcement. Where a name is looked up in several modules, a shared
+  fixture needs one patch per module (`_gate_and_load` in each `advance_*` it drives).
+  `phase_gate` and `phase_plan` are facades too; they had no patch sites, so they are not
+  yet in `FROZEN_FACADES`.
 - **Removal is a condition, not a date.** Delete a facade only when `grep` finds no
   importer on `dev` **and** on any open branch, and every affected developer has
   rebased past the move.
@@ -390,7 +406,7 @@ worth doing ahead of need; rule 3 keeps it cheap.
 | **1 — Behaviour baseline (K)** | Before any of B, D, E, G, H. One PR, tests only | Checks B1–B8 below. Pin outputs at `8e2b698`-equivalent behaviour on `dev` | B1–B8 committed and green; fresh pass/skip counts recorded in the PR |
 | **2 — Cheap, visible SOLID wins** | Alongside features | **B:** `ParcelPerfectPort`. **L:** `AuthPort` in `frontend/shared/` + Supabase/demo adapters; typed interfaces for the shared API client. **J:** delete verified-dead schemas (schemas only). **F:** doc fixes. **C:** route the api → integration/blockchain skips through orchestration | Each its own small PR; B1–B8 green |
 | **3 — Name the patterns** | Alongside features | **D:** `SubjectPolicy` registry; shared `record_and_anchor` with a canonicalise-before-hash hook (the `pulsit_device_id` POPIA case in `vehicle_service.py` must survive) | B3, B4 and `test_subject_visibility`, `test_verification_service`, fleet tests green |
-| **4 — Package windows** | One package at a time, at agreed checkpoints | Per package, in this order: **phases → trips → exceptions → integrations/parcel_perfect (absorbing `parcel_perfect_port.py` as `port.py`) → evidence, fleet, handover, orchestration/consignments → app/dev**. Inside each window: (1) move commits, leaves first, one tier per commit, facade + patch retargets in the same commit; (2) switch in-repo callers to new paths; (3) decompose the long functions now living in the package (`persist_trip`, the four 100+ `advance_*`, `override_phase`, `raise_exception`, `review_exception`, `_raise_position_disagreement_if_unrecorded`); (4) promote lazy imports only if B7 still passes | After **every commit**: full `pytest` green with the phase-1 pass count, B1–B8 green, import-linter green. Window closes when the old file is facade-only |
+| **4 — Package windows** | One package at a time, at agreed checkpoints | Per package, in this order: **phases → trips → exceptions → integrations/parcel_perfect (absorbing `parcel_perfect_port.py` as `port.py`) → evidence, fleet, handover, orchestration/consignments → app/dev**. Inside each window: (1) move commits, leaves first, one tier per commit, facade + patch retargets in the same commit; (2) switch in-repo callers to new paths; (3) decompose the long functions now living in the package, only where a function does more than one job; the 100-line limit is a tripwire, not a target. Skipped so far: the phases functions (each is one handshake with 50–80 lines of code, long because of required "why" comments, so splitting them would scatter one purpose), `persist_trip` (one job; see §5.3), `raise_exception` (98 lines of code; its insert-once savepoint block carries the B5 duplicate-report guarantee, and one extraction would not take it under 100) and `review_exception` (58 lines of code, long from its docstring). `list_exception_history` (69 lines of code) could optionally lose its predicate builder as a small separate commit; (4) promote lazy imports only if B7 still passes | After **every commit**: full `pytest` green with the phase-1 pass count, B1–B8 green, import-linter green. Window closes when the old file is facade-only |
 | **5 — Facade removal** | Per facade, when its condition (§5.5) holds | Delete facade; tighten import-linter | No importer on `dev` or open branches |
 
 The rev. 1 plan split "extract into temporary modules" (phase 4) from "move into
