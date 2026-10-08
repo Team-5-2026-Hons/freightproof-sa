@@ -326,7 +326,7 @@ async def _release_from_cancelled_trip(
 
     Everything else is refused, as before: the caller's restamping of pickup/delivery
     stops would otherwise silently rewrite an anchored trip's route basis. Scanned
-    parcels stay because scan stamps are first-write-wins (scan_service._stamp_parcel):
+    parcels stay because scan stamps are first-write-wins (consignments.scans._stamp_parcel):
     moving them would carry the cancelled trip's scans onto the new trip and hide the
     real reload scans.
 

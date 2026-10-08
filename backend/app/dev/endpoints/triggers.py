@@ -7,7 +7,7 @@ endpoint here writes to the database directly.
   scan triggers      -> MockScanFeed.stage_scans  -> scan_service.ingest_scans
   PP triggers        -> MockParcelPerfectClient.stage_waybill_override
                                                    -> consignment_service.fetch_and_sync_consignment
-  exception triggers -> exception_service.raise_exception
+  exception triggers -> exceptions.creation.raise_exception
 """
 
 import logging

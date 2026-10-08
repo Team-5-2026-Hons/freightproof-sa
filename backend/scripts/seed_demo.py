@@ -5,7 +5,7 @@ vehicles (three horses, four trailers), three precincts. Trips are created throu
 dispatcher UI, or by scripts/seed_trips.py for shapes the wizard cannot build yet.
 
 Drivers, vehicles and precincts are created through the same orchestration functions
-the dispatcher UI calls (driver_service.create_driver and friends), not as raw rows.
+the dispatcher UI calls (fleet.drivers.create_driver and friends), not as raw rows.
 That matters on an evidence platform: each of those functions writes the record's
 creation event and anchors it to Hedera, so a seeded horse has the same history and
 receipt as one a dispatcher registered by hand. Raw inserts would leave fleet records
@@ -15,7 +15,7 @@ Organizations and the dispatcher have no such create path, so they stay direct.
 Identifiers (licence numbers, registrations, Pulsit device ids, precinct names) are
 deliberately unchanged from the earlier version: scripts/seed_trips.py looks rows up by
 them, and the precinct addresses match the depot addresses the Parcel Perfect mock
-fixtures state (app/integrations/parcel_perfect.py, "Demo depot geography"), so a
+fixtures state (app/integrations/parcel_perfect/waybill_fixtures.py, "Demo depot geography"), so a
 waybill's route never contradicts the trip's own stops.
 
 Requires working Hedera settings: anchoring is fail-closed, so a missing key would

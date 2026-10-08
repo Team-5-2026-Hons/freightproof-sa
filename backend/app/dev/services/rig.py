@@ -5,7 +5,7 @@ exactly the case where they part. Positions are computed from THIS trip's own st
 (dev_truck_service geometry), never fixed coordinates.
 
 Writes Pulsit mock state and nothing else. Any exception the room then sees is written
-by road_check_service reading those positions, called separately by the endpoint.
+by evidence.road_check reading those positions, called separately by the endpoint.
 
 Layering: orchestration → integrations (MockPulsitClient), db, schemas. Never api/.
 """

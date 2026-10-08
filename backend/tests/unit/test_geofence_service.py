@@ -1,4 +1,4 @@
-"""Unit tests for app.orchestration.geofence_service — pure logic, no DB, no HTTP.
+"""Unit tests for app.orchestration.evidence.geofence — pure logic, no DB, no HTTP.
 
 Precinct rows are constructed in memory (never persisted) following the pattern in
 tests/unit/test_verification_service.py. Coordinates are real South African depot

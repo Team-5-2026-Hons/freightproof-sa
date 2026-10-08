@@ -1,5 +1,5 @@
 """Focused behaviour tests for separation-finding and driver-location-mismatch
-persistence (action_location_service.record_separation_finding /
+persistence (evidence.action_location.record_separation_finding /
 record_driver_location_finding)."""
 
 import uuid

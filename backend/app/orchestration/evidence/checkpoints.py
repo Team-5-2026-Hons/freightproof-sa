@@ -48,6 +48,78 @@ async def _validate_trip_artifact(
         raise ResourceNotFoundError("EvidenceArtifact", str(artifact_id))
 
 
+async def _corroborate_and_assess(
+    db: AsyncSession,
+    *,
+    trip: Trip,
+    checkpoint: Checkpoint,
+    phase_event: PhaseEvent | None,
+    payload: DriverCheckpointCreateBody,
+) -> None:
+    """Corroborate a freshly inserted checkpoint against the tracker and record what it shows.
+
+    Runs only after the row is flushed (it needs checkpoint.id) and after a duplicate
+    replay has already returned, so it executes exactly once per checkpoint.
+    """
+    # Never raises: a driver logging a roadside checkpoint must not be blocked by an
+    # unreachable tracker API. A failure leaves horse_gps null, which means "we could
+    # not check" — see evidence.corroboration's null-semantics contract.
+    # driver_captured_at travels through so a stale Pulsit fix cannot masquerade as a
+    # live one — see _within_corroboration_skew.
+    #
+    # The returned fix is the SAME one just used above — never a second Pulsit
+    # round trip for this one checkpoint — fed straight into the assessment below.
+    horse_fix = await record_checkpoint_corroboration(
+        db, trip=trip, checkpoint=checkpoint, driver_captured_at=payload.driver_captured_at,
+    )
+
+    # The versioned proximity snapshot for this checkpoint, plus (when it
+    # measures a genuine separation) a distinct DRIVER_VEHICLE_SEPARATION finding —
+    # independent of and alongside whatever evidence.corroboration already wrote.
+    # See orchestration/evidence/action_location.py.
+    evaluated_at = datetime.now(UTC)
+    if phase_event is not None and payload.driver_captured_at is not None:
+        # The report still owns the capture; phase context contributes only the leg's
+        # frozen stop/precinct reference so a resulting checkpoint finding is scoped.
+        assessment = await action_location_service.build_phase_assessment(
+            db,
+            trip=trip,
+            event=phase_event,
+            horse_fix=horse_fix,
+            driver_accuracy_metres=payload.driver_accuracy_metres,
+            evaluated_at=evaluated_at,
+            capture=DriverLocationCapture(
+                driver_phone_lat=payload.driver_phone_lat,
+                driver_phone_lng=payload.driver_phone_lng,
+                driver_captured_at=payload.driver_captured_at,
+                driver_accuracy_metres=payload.driver_accuracy_metres,
+            ),
+        )
+    else:
+        assessment = action_location_service.build_checkpoint_assessment(
+            checkpoint=checkpoint, horse_fix=horse_fix,
+            driver_accuracy_metres=payload.driver_accuracy_metres, evaluated_at=evaluated_at,
+        )
+    checkpoint.action_location_assessment = assessment.model_dump(mode="json")
+    await action_location_service.record_separation_finding(
+        db, trip=trip, phase_event_id=None, checkpoint_id=checkpoint.id,
+        assessment=assessment, driver_reason=None,
+    )
+    # DRIVER_LOCATION_MISMATCH is phase-scoped only (see its own docstring): a bare
+    # checkpoint capture never sets driver_in_precinct, so this only ever fires when
+    # the checkpoint carries a real phase_event_id — and even then only if that
+    # phase happens to be stop-anchored and not IN_TRANSIT, which no current
+    # checkpoint path produces. Called anyway for symmetry with the finding above
+    # and so it starts working the day that changes, with no second wiring pass.
+    # No location_warning_reason on DriverCheckpointCreateBody, so driver_reason
+    # is always None here.
+    if phase_event is not None:
+        await action_location_service.record_driver_location_finding(
+            db, trip=trip, phase_event_id=phase_event.id, assessment=assessment,
+            driver_reason=None,
+        )
+
+
 async def log_checkpoint(
     db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID, payload: DriverCheckpointCreateBody,
 ) -> CheckpointRead:
@@ -138,63 +210,9 @@ async def log_checkpoint(
     # Flushed before corroboration so the row has its id — the corroboration log
     # lines identify the checkpoint they belong to, and a null id there would make
     # a Pulsit outage untraceable to the checkpoint it affected.
-    # Never raises: a driver logging a roadside checkpoint must not be blocked by an
-    # unreachable tracker API. A failure leaves horse_gps null, which means "we could
-    # not check" — see corroboration_service's null-semantics contract.
-    # driver_captured_at travels through so a stale Pulsit fix cannot masquerade as a
-    # live one — see _within_corroboration_skew.
-    #
-    # The returned fix is the SAME one just used above — never a second Pulsit
-    # round trip for this one checkpoint — fed straight into the assessment below.
-    horse_fix = await record_checkpoint_corroboration(
-        db, trip=trip, checkpoint=checkpoint, driver_captured_at=payload.driver_captured_at,
+    await _corroborate_and_assess(
+        db, trip=trip, checkpoint=checkpoint, phase_event=phase_event, payload=payload,
     )
-
-    # The versioned proximity snapshot for this checkpoint, plus (when it
-    # measures a genuine separation) a distinct DRIVER_VEHICLE_SEPARATION finding —
-    # independent of and alongside whatever corroboration_service already wrote.
-    # See orchestration/action_location_service.py.
-    evaluated_at = datetime.now(UTC)
-    if phase_event is not None and payload.driver_captured_at is not None:
-        # The report still owns the capture; phase context contributes only the leg's
-        # frozen stop/precinct reference so a resulting checkpoint finding is scoped.
-        assessment = await action_location_service.build_phase_assessment(
-            db,
-            trip=trip,
-            event=phase_event,
-            horse_fix=horse_fix,
-            driver_accuracy_metres=payload.driver_accuracy_metres,
-            evaluated_at=evaluated_at,
-            capture=DriverLocationCapture(
-                driver_phone_lat=payload.driver_phone_lat,
-                driver_phone_lng=payload.driver_phone_lng,
-                driver_captured_at=payload.driver_captured_at,
-                driver_accuracy_metres=payload.driver_accuracy_metres,
-            ),
-        )
-    else:
-        assessment = action_location_service.build_checkpoint_assessment(
-            checkpoint=checkpoint, horse_fix=horse_fix,
-            driver_accuracy_metres=payload.driver_accuracy_metres, evaluated_at=evaluated_at,
-        )
-    checkpoint.action_location_assessment = assessment.model_dump(mode="json")
-    await action_location_service.record_separation_finding(
-        db, trip=trip, phase_event_id=None, checkpoint_id=checkpoint.id,
-        assessment=assessment, driver_reason=None,
-    )
-    # DRIVER_LOCATION_MISMATCH is phase-scoped only (see its own docstring): a bare
-    # checkpoint capture never sets driver_in_precinct, so this only ever fires when
-    # the checkpoint carries a real phase_event_id — and even then only if that
-    # phase happens to be stop-anchored and not IN_TRANSIT, which no current
-    # checkpoint path produces. Called anyway for symmetry with the finding above
-    # and so it starts working the day that changes, with no second wiring pass.
-    # No location_warning_reason on DriverCheckpointCreateBody, so driver_reason
-    # is always None here.
-    if phase_event is not None:
-        await action_location_service.record_driver_location_finding(
-            db, trip=trip, phase_event_id=phase_event.id, assessment=assessment,
-            driver_reason=None,
-        )
 
     await db.flush()
     await db.refresh(checkpoint)

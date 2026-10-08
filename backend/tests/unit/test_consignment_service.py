@@ -1,4 +1,4 @@
-"""Unit tests for orchestration/consignment_service.py.
+"""Unit tests for orchestration/consignments/sync.py.
 
 All tests are DB-free — the AsyncSession and get_pp_client are fully mocked.
 No real network calls, no migrations, no fixtures requiring a live DB.

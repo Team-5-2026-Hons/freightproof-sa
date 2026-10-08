@@ -28,7 +28,7 @@ from app.db.models.vehicles import Vehicle
 from app.schemas.people import UserRead
 from tests.conftest import auth_header, make_token
 
-# The PP mock's demo client (integrations/parcel_perfect.py _DEMO_PP_ACCOUNT and
+# The PP mock's demo client (integrations/parcel_perfect/waybill_fixtures.py _DEMO_PP_ACCOUNT and
 # _DEMO_PP_CUSTOMER). A world built with this account links every mock manifest.
 MOCK_CLIENT_ACCOUNT = "MOCK01"
 MOCK_CLIENT_NAME = "CGY Logistics"

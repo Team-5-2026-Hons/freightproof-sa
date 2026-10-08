@@ -666,7 +666,7 @@ async def test_get_trip_detail_scanned_counts_are_zero_before_any_scan(
 async def test_get_trip_detail_scanned_counts_track_real_scans(
     client: AsyncClient, seed_data, db_session,
 ):
-    """A live warehouse scan (Parcel.pp_scan_out_at stamped by scan_service, not
+    """A live warehouse scan (Parcel.pp_scan_out_at stamped by consignments.scans, not
     the phase ledger) must be visible on the very next trip-detail poll — the
     dispatcher's unloading panel reads this instead of waiting for confirmation
     close to stamp parcel_count_destination."""
@@ -679,7 +679,7 @@ async def test_get_trip_detail_scanned_counts_track_real_scans(
     consignment_id = uuid.UUID(create_resp.json()["consignments"][0]["id"])
 
     # MOCKWAY001 (the seed payload's waybill) has 2 tracks — stamp one directly,
-    # mirroring what scan_service._stamp_parcel does on a real warehouse scan.
+    # mirroring what consignments.scans._stamp_parcel does on a real warehouse scan.
     parcels = (await db_session.execute(
         select(Parcel).where(Parcel.consignment_id == consignment_id)
     )).scalars().all()

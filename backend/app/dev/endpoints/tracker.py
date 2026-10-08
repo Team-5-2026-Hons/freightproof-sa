@@ -3,7 +3,7 @@
 Separate from dev_pulsit.py because that file's rule is "writes Pulsit mock state and
 nothing else" (tests/unit/test_dev_pulsit_writes_nothing.py). These routes stage mock
 state AND then run the real road check, which records exceptions through
-road_check_service — the same function a scheduler would call. The row a reviewer sees
+evidence.road_check — the same function a scheduler would call. The row a reviewer sees
 was written by the check reading the trackers, never by this endpoint.
 
 Registered under the same two guards as move-truck (dev_pulsit.move_truck_enabled).

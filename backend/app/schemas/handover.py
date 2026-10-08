@@ -14,7 +14,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator
 
 # Caps decoded bytes so an anonymous caller can't spend our Storage bill or memory
-# (well under artifact_service.MAX_FILE_SIZE_BYTES). Base64 field is bounded separately
+# (well under evidence.artifacts.MAX_FILE_SIZE_BYTES). Base64 field is bounded separately
 # (4/3 inflation) so an oversized body is rejected before decoding.
 MAX_SIGNATURE_BYTES = 512 * 1024
 MAX_SIGNATURE_B64_CHARS = (MAX_SIGNATURE_BYTES * 4) // 3 + 4

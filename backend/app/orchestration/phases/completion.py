@@ -30,11 +30,11 @@ async def _finish_phase(
     horse_fix: PulsitFix | None = None, driver_accuracy_metres: float | None = None,
 ) -> TripDetailResponse:
     """`horse_fix`/`driver_accuracy_metres`: the SAME Pulsit fix each
-    wrapper's own call to corroboration_service.record_phase_corroboration already
+    wrapper's own call to evidence.corroboration.record_phase_corroboration already
     obtained a few lines earlier, and the request's own driver-claimed phone
     accuracy — both threaded through as keyword-only, defaulted, arguments rather
     than positional ones, so every existing call site not yet touched keeps
-    compiling unchanged. See action_location_service.build_phase_assessment's
+    compiling unchanged. See evidence.action_location.build_phase_assessment's
     own docstring for why this function does not re-fetch the fix itself."""
     event.idempotency_key = idempotency_key
     event.completed_at = event.completed_at or datetime.now(UTC)
@@ -88,7 +88,7 @@ async def _finish_phase(
             driver_reason=event.location_warning_reason,
         )
         # Closes the gap DRIVER_VEHICLE_SEPARATION alone leaves open (see that
-        # function's own docstring and action_location_service's module docstring):
+        # function's own docstring and evidence.action_location's module docstring):
         # a phone measurably outside the precinct with a stale/unavailable tracker
         # fix would otherwise raise nothing at all. Same fail-open block, same
         # driver-typed reason, same event.

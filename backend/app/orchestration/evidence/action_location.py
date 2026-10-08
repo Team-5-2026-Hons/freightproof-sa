@@ -4,7 +4,7 @@ DRIVER_VEHICLE_SEPARATION and DRIVER_LOCATION_MISMATCH findings they can imply
 leaves open — see record_driver_location_finding's own docstring).
 
 Two independent modules each answer one narrow question, deliberately kept apart
-(see their own docstrings): `proximity_service.evaluate_proximity` answers "how far
+(see their own docstrings): `evidence.proximity.evaluate_proximity` answers "how far
 apart are the driver's own phone and the vehicle's Pulsit tracker?"; `geofence_
 service.evaluate_geofence` answers "is a fix inside a precinct's fence?" — asked
 here once for the driver's own phone and once for the truck, so a dispatcher can
@@ -31,17 +31,17 @@ produces no finding whatsoever. DRIVER_LOCATION_MISMATCH reads `assessment.
 driver_in_precinct` directly instead, so it fires independently of whether a
 tracker fix existed to compare against.
 
-Scope fence for reviewers: driver-raised exception reports (exception_service.py,
+Scope fence for reviewers: driver-raised exception reports (exceptions/creation.py,
 DriverExceptionCreateBody) are NOT wired to this module yet, even though
 `driver_accuracy_metres` was added to that schema and `exceptions.
 action_location_assessment` was added to the table those reports live in. Both exist
-now so a later change can populate them without a second migration; exception_service.py
+now so a later change can populate them without a second migration; exceptions/creation.py
 is out of scope here, and a driver exception report's own capture
 assessment — embedded on ITS OWN row, never as a second recursively-generated
 TripException — is that later change's wiring, not this one's.
 
-Layering: orchestration → orchestration/proximity_service, orchestration/
-geofence_service, integrations(PulsitFix type only) → db. Never imported by
+Layering: orchestration → evidence.proximity, evidence.geofence,
+integrations(PulsitFix type only) → db. Never imported by
 integrations/ or db/; never imports from api/.
 """
 
@@ -57,6 +57,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.exceptions import ResourceNotFoundError
+from app.core.geo import format_distance
 from app.core.realtime import RealtimeKind, TripEvent, enqueue_event, event_severity
 from app.db.models.enums import (
     ExceptionSeverity, ExceptionSource, ExceptionType, PhaseStatus, PhaseType,
@@ -97,12 +98,6 @@ _PHASE_DRIVER_LOCATION_INDEX = "uq_exceptions_phase_driver_location"
 # tighter guard on what actually renders inline in the exception feed.
 _MAX_DRIVER_REASON_CHARS_IN_DESCRIPTION = 300
 
-# Mirrors phases.findings._format_separation exactly, duplicated rather than imported.
-# The cycle that forced this is gone (phases.completion imports THIS module, but
-# phases.findings, which owns the formatter, imports nothing back from here). A
-# three-line formatter is cheaper to keep in step by hand than to solve with a shared
-# module for one function.
-_SEPARATION_KM_THRESHOLD_METRES = 1000
 _LOCATION_PREVIEW_TRACKER_TIMEOUT_SECONDS = 2.0
 
 # Trip states in which a preview is pointless: nothing can be completed on a trip that
@@ -114,12 +109,6 @@ _PREVIEW_INELIGIBLE_TRIP_STATUSES = frozenset(
 
 class PhaseLocationPreviewConflictError(Exception):
     """The addressed phase is no longer eligible for an advisory preview."""
-
-
-def _format_metres(metres: float) -> str:
-    if metres < _SEPARATION_KM_THRESHOLD_METRES:
-        return f"{round(metres)} m"
-    return f"{metres / _SEPARATION_KM_THRESHOLD_METRES:.1f} km"
 
 
 def _describe_driver_reason(driver_reason: Optional[str]) -> str:
@@ -139,7 +128,7 @@ def _describe_driver_reason(driver_reason: Optional[str]) -> str:
 
 
 async def _load_precinct_for_stop(db: AsyncSession, *, trip_stop_id: uuid.UUID) -> Optional[Precinct]:
-    """The precinct a stop resolves to. Mirrors corroboration_service._load_precinct_
+    """The precinct a stop resolves to. Mirrors evidence.corroboration._load_precinct_
     for_phase's join exactly — deliberately not imported from there (that helper takes
     a PhaseEvent and this module also serves checkpoints, which have no trip_stop_id),
     so this owns the smaller, phase-agnostic query it actually needs.
@@ -168,13 +157,13 @@ async def build_phase_assessment(
 ) -> ActionLocationAssessment:
     """Assemble one ActionLocationAssessment for a phase handshake.
 
-    `horse_fix` is the SAME fix corroboration_service.record_phase_corroboration
+    `horse_fix` is the SAME fix evidence.corroboration.record_phase_corroboration
     already obtained moments earlier in this same request — this function
     never calls Pulsit itself, so no action pays for a second tracker round trip.
 
     Precinct membership (driver_in_precinct/truck_in_precinct and the geometry
     fields) is only ever evaluated for a phase anchored to a stop, and never for
-    IN_TRANSIT — exactly `corroboration_service._PHASES_WITHOUT_A_GEOFENCE_VERDICT`'s
+    IN_TRANSIT — exactly `evidence.corroboration._PHASES_WITHOUT_A_GEOFENCE_VERDICT`'s
     own reasoning: IN_TRANSIT's trip_stop_id names the stop the leg DEPARTED FROM,
     so checking an arrival attestation's position against it would judge "have you
     arrived" against "where you started". `expected_trip_stop_id` on the returned
@@ -373,7 +362,7 @@ def build_capture_assessment(
     or precinct context — the shape a checkpoint and a driver exception report share.
 
     Takes the capture as plain values rather than an ORM row so a caller that holds
-    the fix on some other record (exception_service: the report row itself) never has
+    the fix on some other record (exceptions.creation: the report row itself) never has
     to fabricate a Checkpoint instance just to satisfy a parameter type. Pure: no DB.
     """
     tracker_lat: Optional[float] = None
@@ -470,7 +459,7 @@ async def record_separation_finding(
     exception starts NEEDS_REVIEW, so a measured driver/vehicle separation reaches a
     dispatcher's queue).
 
-    Idempotent two ways at once, exactly like exception_service.raise_exception's
+    Idempotent two ways at once, exactly like exceptions.creation.raise_exception's
     client_report_id handling: an existence check up front closes the common case (a
     replayed offline completion re-running this same handshake), and a SAVEPOINT
     around the insert catches the race where two attempts land in the same instant —
@@ -508,8 +497,8 @@ async def record_separation_finding(
         # docstring) — reached this line only because assessment.proximity ==
         # 'separated' above.
         description = (
-            f"Driver phone and vehicle tracker were recorded {_format_metres(cast(float, assessment.separation_metres))} "
-            f"apart at this handshake; limit {_format_metres(assessment.max_separation_metres)}."
+            f"Driver phone and vehicle tracker were recorded {format_distance(cast(float, assessment.separation_metres))} "
+            f"apart at this handshake; limit {format_distance(assessment.max_separation_metres)}."
             f"{_describe_driver_reason(driver_reason)}"
         )
 
@@ -600,7 +589,7 @@ async def record_driver_location_finding(
     driver_in_precinct is only ever set to True/False for a phase handshake anchored
     to a stop (build_phase_assessment; never IN_TRANSIT, never a bare checkpoint
     capture — build_checkpoint_assessment/build_capture_assessment always leave it
-    None). Still safe, and intentionally called, from checkpoint_service.log_
+    None). Still safe, and intentionally called, from evidence.checkpoints.log_
     checkpoint when a checkpoint carries a real phase_event_id: that call simply
     no-ops there today via the guard below, and stays ready for the day a checkpoint
     resolves to a stop-anchored, non-IN_TRANSIT phase.
@@ -642,7 +631,7 @@ async def record_driver_location_finding(
         tolerance_metres = assessment.precinct_tolerance_metres or 0.0
         description = (
             "Driver's phone was recorded outside the expected precinct for this stop "
-            f"(geofence radius {_format_metres(radius_metres)}, tolerance {_format_metres(tolerance_metres)})."
+            f"(geofence radius {format_distance(radius_metres)}, tolerance {format_distance(tolerance_metres)})."
             f"{_describe_driver_reason(driver_reason)}"
         )
 

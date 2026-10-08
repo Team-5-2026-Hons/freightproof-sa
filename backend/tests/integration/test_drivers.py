@@ -22,7 +22,7 @@ async def stub_driver_auth_user():
 
     create_driver_auth_user makes a live HTTP call to the Supabase Admin API. Left
     unpatched, the FIRST run of a creation test here registered a real auth user against
-    the shared project — and every run since got 422 back, which driver_service maps to a
+    the shared project — and every run since got 422 back, which fleet.drivers maps to a
     409 on a duplicate the test itself created. The tests passed exactly once and were
     permanently red afterwards.
 

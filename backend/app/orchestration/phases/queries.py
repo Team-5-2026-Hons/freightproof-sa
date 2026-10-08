@@ -21,7 +21,7 @@ async def current_phase_event(db: AsyncSession, trip_id: uuid.UUID) -> PhaseEven
     Exists so an event that happens OUTSIDE a phase completion — a panic hold, a
     breakdown — can still be tagged with the phase it happened during. Every
     TripException this module writes already carries phase_event_id because it has an
-    `event` in hand; the driver-raised ones (exception_service) have no such handle and
+    `event` in hand; the driver-raised ones (exceptions.creation) have no such handle and
     were landing untagged, which pushed placement onto the dispatcher's render-time
     fallback and let an exception appear to move between phases as the trip advanced.
 

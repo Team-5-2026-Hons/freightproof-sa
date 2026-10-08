@@ -1,7 +1,7 @@
 """PP manifest preview and trip creation (FP-281, spec §10).
 
 Layering: orchestration → integrations, crypto, db. Endpoints stay thin; this module
-decides what a dispatcher may create from a manifest. Pure helpers live in pp_manifest.py.
+decides what a dispatcher may create from a manifest. Pure helpers live in consignments/manifest_snapshot.py.
 """
 
 import logging
@@ -61,7 +61,7 @@ logger = logging.getLogger(__name__)
 
 
 def _visible_to(operator_organization_id: uuid.UUID) -> ColumnElement[bool]:
-    """The precinct read rule (SEC-PRECINCT-1, as in precinct_service.list_precincts):
+    """The precinct read rule (SEC-PRECINCT-1, as in fleet.precincts.list_precincts):
     a dispatcher sees their own organisation's precincts plus any marked is_shared. A
     manifest must neither reveal a depot the dispatcher cannot see nor route a trip into
     one, so both the hub lookup and the dispatcher's own pick apply it."""

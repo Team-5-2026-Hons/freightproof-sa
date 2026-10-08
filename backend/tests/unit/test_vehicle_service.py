@@ -1,4 +1,4 @@
-"""Unit tests for orchestration/vehicle_service.py.
+"""Unit tests for orchestration/fleet/vehicles.py.
 
 Characterization tests of the vehicle create/update anchoring behaviour. All are
 DB-free: the AsyncSession and the Hedera anchor call are mocked at the boundaries
@@ -51,7 +51,7 @@ class _FakeUniqueViolation(Exception):
 # ── Test doubles ───────────────────────────────────────────────────────────────
 
 def _mock_db(scalar_result: object | None = None) -> MagicMock:
-    """AsyncSession double for vehicle_service.
+    """AsyncSession double for fleet.vehicles.
 
     - execute(...).scalar_one_or_none() → `scalar_result` (the row update_vehicle fetches).
     - flush() simulates Postgres applying server_default columns on INSERT

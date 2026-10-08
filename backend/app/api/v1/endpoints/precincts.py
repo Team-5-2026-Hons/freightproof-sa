@@ -8,7 +8,7 @@ PATCH /precincts/{id}  — correct an existing one. Admin dispatcher only.
 
 Reads and writes are scoped differently on purpose: a dispatcher can SEE a shared
 precinct owned by another organization, but may only WRITE to one their own org owns.
-A write against anything else returns 404 rather than 403 — see precinct_service.
+A write against anything else returns 404 rather than 403 — see fleet.precincts.
 """
 
 from uuid import UUID

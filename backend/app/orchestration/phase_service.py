@@ -5,6 +5,7 @@ New code imports from the phases.* module that owns the name; tests must patch t
 that looks a name up, never this one (check B8).
 """
 
+from app.core.geo import KM_THRESHOLD_METRES as _SEPARATION_KM_THRESHOLD_METRES, format_distance as _format_separation
 from app.orchestration.phases.payloads import (
     PHASE_PAYLOAD_VERSION_V2, _override_commitment, _phase_payload_base,
     compute_activation_canonical_payload_v2, compute_arrival_canonical_payload_v2,
@@ -26,13 +27,11 @@ from app.orchestration.phases.scheduling import (
     is_before_scheduled_day, operating_day,
 )
 from app.orchestration.phases.findings import (
-    _SEPARATION_KM_THRESHOLD_METRES, _format_separation, _phone_tracker_separation_metres,
-    _raise_position_disagreement_if_unrecorded, _raise_scan_shortfall_if_unrecorded,
-    _raise_trailer_decoupling_if_unrecorded, _record_seal_finding, _seal_unverified_severity,
+    _phone_tracker_separation_metres, _raise_position_disagreement_if_unrecorded,
+    _raise_scan_shortfall_if_unrecorded, _raise_trailer_decoupling_if_unrecorded,
+    _record_seal_finding, _seal_unverified_severity,
 )
-from app.orchestration.phases.anchor_execution import (
-    _PHASE_RECEIPT_TYPES, _anchor_or_fail_open, anchor_phase_event, receipt_type_for,
-)
+from app.orchestration.phases.anchor_execution import _PHASE_RECEIPT_TYPES, _anchor_or_fail_open, anchor_phase_event, receipt_type_for
 from app.orchestration.phases.queries import current_phase_event, list_phases, next_phase
 from app.orchestration.phases.gate import _gate_and_load
 from app.orchestration.phases.anchor_dispatch import (

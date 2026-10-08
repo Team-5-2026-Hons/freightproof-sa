@@ -280,7 +280,7 @@ SCENARIO_THREE_KM: Final = "three_km"
 SCENARIO_FIFTY_KM: Final = "fifty_km"
 SCENARIO_NO_SIGNAL: Final = "no_signal"
 
-# The one place this six-way enum is spelled out. `orchestration/dev_truck_service.py`
+# The one place this six-way enum is spelled out. `app/dev/services/truck.py`
 # imports the constants above from here (schemas -> orchestration is the wrong
 # direction for the reverse import — orchestration already depends on schemas
 # elsewhere in this codebase, e.g. trips/creation.py, so this keeps that same direction).

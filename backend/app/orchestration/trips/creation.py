@@ -1,5 +1,5 @@
 """Trip orchestration — persist_trip() is the single write path for trip creation:
-create_trip() (POST /trips) and pp_manifest_service (POST /trips/from-pp-manifest)
+create_trip() (POST /trips) and consignments.manifest_import (POST /trips/from-pp-manifest)
 both go through it.
 
 Layering: this module imports from blockchain/, core/, crypto/, db/, schemas/ and other
@@ -56,7 +56,7 @@ from app.schemas.vehicles import VehicleRead
 
 if TYPE_CHECKING:
     # Type-only — the runtime import stays local to persist_trip (see below). No
-    # module-load cycle exists today (consignment_service reaches only integrity,
+    # module-load cycle exists today (consignments.sync reaches only integrity,
     # integrations/ and db/), so the local import is a leftover from before the split
     # and may be promoted in its own commit. A TYPE_CHECKING-only import carries no
     # such risk: it never executes at runtime.
@@ -114,7 +114,7 @@ async def _fetch_vehicle(
 @dataclass(frozen=True)
 class ManifestCargo:
     """A loaded trip's cargo exactly as the PP manifest supplied it (FP-281). Already
-    fetched and validated by pp_manifest_service; persist_trip makes no PP call for it."""
+    fetched and validated by consignments.manifest_import; persist_trip makes no PP call for it."""
 
     key: PPManifestKey
     client_organization_id: uuid.UUID
@@ -378,7 +378,7 @@ async def persist_trip(
         await db.refresh(stop)
 
     # Sync every consignment. Local import kept from before the split; no module-load
-    # cycle exists today (consignment_service → parcel_perfect never imports back here).
+    # cycle exists today (consignments.sync → parcel_perfect never imports back here).
     consignment_results: list["ConsignmentSyncResult"] = []
     if cargo is not None or new_trip.consignment_refs:
         from app.orchestration.consignments.sync import (

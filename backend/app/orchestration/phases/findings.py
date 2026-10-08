@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.geo import haversine_metres
+from app.core.geo import format_distance, haversine_metres
 from app.core.realtime import RealtimeKind, TripEvent, enqueue_event, event_severity
 from app.db.models.enums import (
     ExceptionReviewStatus, ExceptionSeverity, ExceptionSource, ExceptionType, PhaseStatus,
@@ -20,19 +20,6 @@ from app.db.models.vehicles import Vehicle
 from app.orchestration.review_policy import initial_review_status
 
 logger = logging.getLogger(__name__)
-
-
-# Where a rendered separation crosses from metres to kilometres. A gap under a
-# kilometre printed as "0.3 km" reads as rounding noise, when 300 m is the
-# difference between standing at the gate and standing across the yard.
-_SEPARATION_KM_THRESHOLD_METRES = 1000
-
-
-def _format_separation(metres: float) -> str:
-    """A distance in the units a dispatcher reads at a glance."""
-    if metres < _SEPARATION_KM_THRESHOLD_METRES:
-        return f"{round(metres)} m"
-    return f"{metres / _SEPARATION_KM_THRESHOLD_METRES:.1f} km"
 
 
 def _phone_tracker_separation_metres(event: PhaseEvent) -> float | None:
@@ -60,7 +47,7 @@ async def _raise_position_disagreement_if_unrecorded(
 ) -> None:
     """Record GPS_MISMATCH when Pulsit measured the vehicle away from this stop (FP-145).
 
-    Consumes what FP-143's corroboration_service wrote moments earlier in this same
+    Consumes what FP-143's evidence.corroboration wrote moments earlier in this same
     request; computes nothing about geofences itself.
 
     ── ONLY FALSE RAISES. NEVER NULL. ────────────────────────────────────────────
@@ -71,16 +58,15 @@ async def _raise_position_disagreement_if_unrecorded(
     coverage dead zone on the N3. FALSE is a measurement; NULL is an admission that
     no measurement exists. This one line is what keeps them apart.
 
-    ── Why this lives here and not in exception_service ──────────────────────────
-    exception_service owns DRIVER-raised exceptions: its entry point asserts the
+    ── Why this lives here and not in exceptions.creation ───────────────────
+    exceptions.creation owns DRIVER-raised exceptions: its entry point asserts the
     caller is the trip's assigned driver and stamps ExceptionSource.DRIVER on the
     row. Routing a system measurement through it would file the finding as something
     the driver reported about themselves, which is precisely backwards — the value of
     this exception is that a source the driver cannot influence produced it. Every
     other system-detected exception (parcel count, seal mismatch, seal unverified,
     waybill count) is written here, in this module, with source=SYSTEM; this follows
-    that path rather than inventing a second one. exception_service also imports this
-    module, so the reverse import would be circular.
+    that path rather than inventing a second one.
 
     ── Idempotent against the phase event ────────────────────────────────────────
     _gate_and_load already short-circuits a replayed completion before any wrapper
@@ -118,7 +104,7 @@ async def _raise_position_disagreement_if_unrecorded(
         else:
             description = (
                 f"Driver phone and vehicle tracker reported positions "
-                f"{_format_separation(separation)} apart at this handshake. The tracker's "
+                f"{format_distance(separation)} apart at this handshake. The tracker's "
                 f"position is outside this stop's geofence."
             )
 
@@ -243,7 +229,7 @@ async def _raise_trailer_decoupling_if_unrecorded(
 
         # Registrations identify vehicles, not people, so they may be named here.
         trailers = "; ".join(
-            f"trailer {registration} is {_format_separation(separation)} from the horse"
+            f"trailer {registration} is {format_distance(separation)} from the horse"
             for registration, separation in decoupled
         )
         db.add(TripException(
@@ -283,7 +269,7 @@ async def _raise_scan_shortfall_if_unrecorded(
     db: AsyncSession, *, trip_id: uuid.UUID, event: PhaseEvent,
     consignment: Consignment, scanned_out: int, expected: int,
 ) -> bool:
-    """Record a scan-out shortfall only if scan_service has not already recorded one.
+    """Record a scan-out shortfall only if consignments.scans has not already recorded one.
 
     Returns True when a row was written, False when an existing unresolved one made
     this a no-op. The caller needs the distinction to decide whether to publish a
@@ -291,7 +277,7 @@ async def _raise_scan_shortfall_if_unrecorded(
     and a suppressed duplicate must not wake the dispatcher a second time.
 
     Deliberately keyed on (consignment, stop, type, unresolved) rather than on the
-    description string scan_service's own dedup compares: the two writers word the
+    description string consignments.scans's own dedup compares: the two writers word the
     same finding differently, so a text comparison would let both through. The
     question being asked here is "is this discrepancy already on the dispatcher's
     list", and the answer must not depend on who phrased it.

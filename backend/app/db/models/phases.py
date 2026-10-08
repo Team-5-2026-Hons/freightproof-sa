@@ -77,14 +77,14 @@ class PhaseEvent(Base):
     driver_phone_lat: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     driver_phone_lng: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     # Instant the driver's phone submitted this completion, not when the server
-    # processed it — needed so corroboration_service can tell a live handshake from a
+    # processed it — needed so evidence.corroboration can tell a live handshake from a
     # stale offline replay. Nullable for older clients; never backfilled with completed_at.
     driver_captured_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     horse_gps_lat: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     horse_gps_lng: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     pulsit_geofence_confirmed: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     # The versioned ActionLocationAssessment snapshot (schemas/action_location.py)
-    # assembled by orchestration/action_location_service.build_phase_assessment at
+    # assembled by evidence.action_location.build_phase_assessment at
     # _finish_phase time — the driver-phone-vs-tracker proximity verdict plus the
     # precinct-membership facts, frozen as they stood at evaluation. Nullable: every row
     # completed before this column existed, and never backfilled — fabricating a

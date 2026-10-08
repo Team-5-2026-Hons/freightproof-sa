@@ -4,9 +4,9 @@ Layering: imports db/, schemas/, core/exceptions, integrations/ only.
 Never import from api/ or auth/.
 
 Driver, vehicle and precinct service functions have been extracted to:
-  - orchestration/driver_service.py
-  - orchestration/vehicle_service.py
-  - orchestration/precinct_service.py
+  - orchestration/fleet/drivers.py
+  - orchestration/fleet/vehicles.py
+  - orchestration/fleet/precincts.py
 """
 
 import uuid

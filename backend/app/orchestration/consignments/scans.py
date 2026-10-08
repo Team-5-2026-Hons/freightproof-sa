@@ -37,8 +37,8 @@ from app.orchestration.review_policy import initial_review_status
 
 logger = logging.getLogger(__name__)
 
-# A discrepancy is a warning, not a critical: the exception_service's critical set
-# is seals and panic buttons — events that stop a trip. A count difference at the
+# A discrepancy is a warning, not a critical: the exceptions.creation critical set
+# (_CRITICAL_TYPES) is seals and panic buttons — events that stop a trip. A count difference at the
 # door is recorded and reviewed, it does not halt anything (FreightProof records,
 # it does not operate).
 _DISCREPANCY_SEVERITY = ExceptionSeverity.WARNING

@@ -82,7 +82,7 @@ class PulsitFix:
     compared against Precinct.latitude/longitude (also Decimal) — keeps
     binary-float error out of evidence.
 
-    Consumers: FP-68 maps this onto geofence_service.TrackerFix; FP-143/195
+    Consumers: FP-68 maps this onto evidence.geofence.TrackerFix; FP-143/195
     persist lat/lng/device_id/fixed_at into trailer_gps_snapshots.
     """
 
@@ -452,7 +452,7 @@ def _parse_position(device_id: str, entry: dict[str, Any]) -> PulsitFix:
     (out-of-range coordinate, timestamp with no UTC offset) is UNAVAILABLE
     for this device only, so one malformed entry doesn't discard the rest
     of the response. A naive timestamp specifically must not become
-    evidence — corroboration_service compares fixed_at against the driver's
+    evidence — evidence.corroboration compares fixed_at against the driver's
     own aware capture instant, and a naive value would silently compare as UTC.
     """
     lat_raw = entry.get(_PULSIT_FIELD_LAT)

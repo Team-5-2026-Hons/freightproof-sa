@@ -211,7 +211,7 @@ async def test_driver_raised_exceptions_carry_their_own_severity(
 ):
     """Regression: a driver-raised exception must be as loud as what it is.
 
-    exception_service used to publish a fixed kind with no severity at all, while the
+    exceptions.creation used to publish a fixed kind with no severity at all, while the
     system-detected sites promoted their CRITICAL rows. The result was inverted — a
     panic button pressed during a hijacking reached the dispatcher quieter than an
     automated parcel-count mismatch. The severity now comes off the same binding that

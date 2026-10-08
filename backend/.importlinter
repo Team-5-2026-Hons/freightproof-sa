@@ -337,3 +337,32 @@ layers =
     endpoints
     services
     schemas
+
+# ---------------------------------------------------------------------------
+# 20. Keeps the anchoring cycle from returning through tasks.blockchain (audit 5.2).
+#     phases.anchor_dispatch imports tasks.blockchain to dispatch the anchor task, so nothing
+#     tasks.blockchain reaches may lead back to anchor_dispatch. Today it reaches phases only
+#     through two lazy imports, anchor_execution and anchor_recovery, which are the leaves of
+#     that chain. This contract fails the day tasks.blockchain imports anything that itself
+#     imports anchor_dispatch (directly or through the facade, the advance_* modules, override
+#     or service). Indirect chains count, and so do function-level imports.
+#     The forbidden list is explicit because import-linter rejects partial wildcards such as
+#     advance_*. A new phases module that imports anchor_dispatch belongs in this list.
+# ---------------------------------------------------------------------------
+[importlinter:contract:tasks-blockchain-entry-points]
+name = tasks.blockchain reaches phases only through anchor_execution and anchor_recovery
+type = forbidden
+source_modules =
+    app.tasks.blockchain
+forbidden_modules =
+    app.orchestration.phase_service
+    app.orchestration.phases.anchor_dispatch
+    app.orchestration.phases.advance_activation
+    app.orchestration.phases.advance_loading
+    app.orchestration.phases.advance_departure
+    app.orchestration.phases.advance_in_transit
+    app.orchestration.phases.advance_arrival
+    app.orchestration.phases.advance_unloading
+    app.orchestration.phases.advance_confirmation
+    app.orchestration.phases.override
+    app.orchestration.phases.service

@@ -465,7 +465,7 @@ async def reconstruct_pending_phase_payload(
 async def _reconstruct_precinct_event_payload(
     db: AsyncSession, event_id: uuid.UUID
 ) -> dict[str, Any] | None:
-    """Rebuild the canonical payload precinct_service anchored, from the live row.
+    """Rebuild the canonical payload fleet.precincts anchored, from the live row.
 
     Key order and value shapes must match create_precinct/update_precinct exactly —
     _hash_payload sorts keys, but a renamed key or a Decimal where a float was anchored

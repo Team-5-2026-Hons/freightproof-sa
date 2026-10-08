@@ -44,7 +44,7 @@ async def advance_activation(
     # then Pulsit says where the vehicle is. The second is what makes the first
     # corroborated rather than merely asserted. A feeder check — P1 is unanchored,
     # and a Pulsit outage leaves the columns null ("could not check") rather than
-    # failing the handshake. See orchestration/corroboration_service.py.
+    # failing the handshake. See orchestration/evidence/corroboration.py.
     _record_driver_position(event, payload)
     horse_fix = await corroboration.record_phase_corroboration(
         db, trip=trip, event=event, driver_captured_at=payload.driver_captured_at,

@@ -1,17 +1,17 @@
-"""Unit tests for orchestration/driver_service.py.
+"""Unit tests for orchestration/fleet/drivers.py.
 
 Characterization tests of the driver create/update anchoring behaviour. All are
 DB-free: the AsyncSession, the Supabase auth-user provisioning, and the Hedera
 anchor call are mocked at the boundaries only. The diff/hash/payload logic runs
 as real code so the POPIA guarantees (no PII on chain) are genuinely exercised.
 
-Naming note: this file tests orchestration/driver_service.py — NOT core/exceptions
+Naming note: this file tests orchestration/fleet/drivers.py — NOT core/exceptions
 (which is test_exceptions.py).
 
 Mock boundaries:
 - db (AsyncSession): _mock_db() below.
 - create_driver_auth_user: patched at app.orchestration.fleet.drivers.create_driver_auth_user
-  (the name driver_service actually resolves).
+  (the name fleet.drivers actually resolves).
 - anchor_subject: patched at app.orchestration.fleet.drivers.anchor_subject.
 """
 
@@ -58,7 +58,7 @@ class _FakeUniqueViolation(Exception):
 # ── Test doubles ───────────────────────────────────────────────────────────────
 
 def _mock_db(scalar_result: object | None = None) -> MagicMock:
-    """AsyncSession double for driver_service.
+    """AsyncSession double for fleet.drivers.
 
     - execute(...).scalar_one_or_none() → `scalar_result` (the row update_driver fetches).
     - flush() simulates Postgres applying server_default columns on INSERT

@@ -1,4 +1,4 @@
-"""Unit tests for app.orchestration.proximity_service — pure logic, no DB, no HTTP.
+"""Unit tests for app.orchestration.evidence.proximity — pure logic, no DB, no HTTP.
 
 Coordinates are generated from ONE base point (Riverhorse Valley, Durban — the same
 precinct fixture used by tests/unit/test_geofence_service.py) via `_offset_east`, a

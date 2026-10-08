@@ -972,7 +972,7 @@ async def test_lane_metrics_skip_trips_with_unknown_endpoint(
 async def test_facility_metrics_three_states_without_in_transit_or_overrides(
     db_session: AsyncSession, operator: Operator, lane: list[Precinct], month: date,
 ) -> None:
-    # in_transit is left NULL on both trips, as corroboration_service always leaves it.
+    # in_transit is left NULL on both trips, as evidence.corroboration always leaves it.
     await _trip(
         db_session, operator, start=_start(month, 10), stops=lane,
         steps=_geofenced(_single_leg(), {

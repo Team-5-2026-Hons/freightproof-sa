@@ -1,7 +1,7 @@
 """Pure helpers for PP manifests (FP-281, spec §8–§10).
 
 No I/O: everything is a function of a PPManifestResponse or of the snapshot built from
-it, so it is unit-tested without a database. pp_manifest_service holds the parts that read the database.
+it, so it is unit-tested without a database. consignments.manifest_import holds the parts that read the database.
 """
 
 from datetime import UTC, datetime

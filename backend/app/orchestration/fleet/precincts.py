@@ -1,7 +1,7 @@
 """Service functions for precinct resources.
 
-Extracted from resource_service.py on the same grounds as driver_service.py and
-vehicle_service.py before it — owns list/create/update/detail for Precinct.
+Extracted from resource_service.py on the same grounds as fleet/drivers.py and
+fleet/vehicles.py before it — owns list/create/update/detail for Precinct.
 
 Layering: imports db/, schemas/, blockchain/, core/exceptions only. Never api/ or auth/.
 
@@ -17,7 +17,7 @@ A write against a precinct owned by another org raises ResourceNotFoundError, wh
 endpoint maps to 404 rather than 403 — the same choice get_trip_detail and update_vehicle
 already make, so a caller cannot probe for the existence of another org's rows.
 
-Anchoring mirrors vehicle_service: every write appends a PrecinctEvent, and changes to
+Anchoring mirrors fleet.vehicles: every write appends a PrecinctEvent, and changes to
 PRECINCT_CRITICAL_FIELDS additionally anchor to Hedera.
 """
 

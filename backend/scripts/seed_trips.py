@@ -6,7 +6,7 @@ reviewer is walked through at the demo. Consignments A (stop 1->3), B (1->2) and
 C (2->3) make stop 2 both a drop-off and a pick-up.
 
 Every consignment's cargo data is READ FROM THE PP MOCK FIXTURE LIBRARY
-(app/integrations/parcel_perfect.py), never invented here. This is not tidiness:
+(app/integrations/parcel_perfect/), never invented here. This is not tidiness:
 the seeder previously made up references PP had never heard of, so the dispatcher
 wizard's fail-closed lookup returned 404 on the platform's own demo data. Any
 reference in TRIP_SPECS that is missing from MOCK_WAYBILLS aborts the seed, and
@@ -346,7 +346,7 @@ async def _reference(db: AsyncSession):
         p.name: p for p in (await db.execute(select(Precinct))).scalars().all()
     }
     # Client attribution comes from the waybill's PP account number, exactly as
-    # consignment_service resolves it on the live path - never hardcoded here.
+    # consignments.sync resolves it on the live path - never hardcoded here.
     organizations = {
         o.pp_account_number: o
         for o in (await db.execute(select(Organization))).scalars().all()
@@ -372,7 +372,7 @@ async def _seed_consignments(
     Returns the parcel rows keyed by pp_reference so the caller can stamp scan
     evidence only when the matching seeded loading/unloading phases are completed.
 
-    Field-for-field this mirrors consignment_service.fetch_and_sync_consignment on
+    Field-for-field this mirrors consignments.sync.fetch_and_sync_consignment on
     the live path - same pp_raw_json shape, same parcel-count basis (len(tracks)),
     same client-org resolution through accnum. A seed that stores a different shape
     from the live path is a seed that hides bugs in whatever reads those columns.

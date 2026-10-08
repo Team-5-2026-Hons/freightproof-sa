@@ -1,4 +1,4 @@
-"""GET /trips/{trip_id}/manifest — role-aware. See manifest_service docstring."""
+"""GET /trips/{trip_id}/manifest — role-aware. See consignments.manifest_reads docstring."""
 
 from typing import Annotated
 from uuid import UUID

@@ -1,24 +1,24 @@
 """Pure driver-vs-truck proximity evaluation.
 
-`geofence_service.evaluate_geofence` answers "is the TRUCK inside the precinct?".
+`evidence.geofence.evaluate_geofence` answers "is the TRUCK inside the precinct?".
 This module answers a different, independent question: "how far apart are the
 DRIVER'S OWN PHONE and the vehicle's Pulsit tracker, right now?" A truck can sit
 correctly inside its precinct while the driver's phone is genuinely metres away
 (left in the cab, handed to a co-driver, a phase completed from the office
 tablet) — precinct membership and driver/truck separation are independent
 facts and this module deliberately never touches a Precinct row or calls
-evaluate_geofence. action_location_service assembles both answers into one
+evaluate_geofence. evidence.action_location assembles both answers into one
 `ActionLocationAssessment`; this module only ever answers the second question,
 alone, with no DB and no HTTP.
 
 Mirrors the NULL-is-an-admission philosophy documented at the top of
-corroboration_service.py: every quality gate that could not be checked (a
+evidence/corroboration.py: every quality gate that could not be checked (a
 missing coordinate, a missing timestamp, a missing accuracy figure) is reported
 as an explicit reason code rather than silently deciding "close enough".
 'unverified' means exactly what it says — we do not know — and is never
 produced by falling back to a zero-distance or an assumed-fresh fix.
 
-Deliberately pure, like geofence_service.py: a plain `def`, not `async def` —
+Deliberately pure, like evidence/geofence.py: a plain `def`, not `async def` —
 there is no I/O here to yield on, only arithmetic over the caller's arguments.
 """
 
@@ -85,7 +85,7 @@ def evaluate_proximity(
     `separation_metres` is the factual straight-line distance, computed whenever
     BOTH coordinate pairs exist — even when every other quality gate fails and
     the verdict ends `'unverified'`. A real measured distance is evidence in its
-    own right (exactly the stance corroboration_service.py takes on distance:
+    own right (exactly the stance evidence/corroboration.py takes on distance:
     "logged... so a mismatch is traceable"); withholding it because a timestamp
     happened to be stale would hide information the UI can legitimately show,
     captioned as unreliable. It is `None` only when a coordinate pair is itself
@@ -109,7 +109,7 @@ def evaluate_proximity(
     if driver_captured_at is None or tracker_captured_at is None:
         # We need BOTH timestamps to compare timing at all — an absent side means
         # "cannot verify timing", not "assume it's live" (same stance
-        # corroboration_service._within_corroboration_skew takes).
+        # evidence.corroboration._within_corroboration_skew takes).
         triggered.add("missing_time")
 
     if driver_accuracy_metres is None:

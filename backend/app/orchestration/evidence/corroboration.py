@@ -17,7 +17,7 @@ No migration accompanies this module. All four already existed and simply had no
 writer; that absence is what this module closes.
 
 Scope fences, so a reader knows what this module deliberately does NOT do:
-  * It does not compute geofence maths. FP-68's geofence_service owns that; this
+  * It does not compute geofence maths. FP-68's evidence.geofence owns that; this
     calls it and stores the verdict.
   * It does not speak HTTP to Pulsit. FP-87's integrations/pulsit.py owns that.
   * It does not raise GPS_MISMATCH. FP-145 owns that, and consumes what is
@@ -282,7 +282,7 @@ async def record_phase_corroboration(
     Returns the raw horse `PulsitFix` this call obtained — whether or not it turned
     out timely enough to be written anywhere — or `None` if no fix could be obtained
     at all (no device on record, or the whole call failed).
-    orchestration/action_location_service.py needs the SAME fix this function
+    orchestration/evidence/action_location.py needs the SAME fix this function
     already fetched to assemble its own assessment; returning it here is what makes
     that a second CONSUMER of one Pulsit read rather than a second Pulsit round trip
     for the same handshake — see the callers in phases/advance_*.py, each of
@@ -462,8 +462,8 @@ async def record_checkpoint_corroboration(
     Returns the raw fix obtained (whether or not it was usable/timely enough to be
     written to horse_gps_lat/lng), or `None` if none could be obtained at all —
     same contract as record_phase_corroboration, for the same reason:
-    checkpoint_service.log_checkpoint passes this straight to
-    action_location_service.build_checkpoint_assessment rather than asking Pulsit a
+    evidence.checkpoints.log_checkpoint passes this straight to
+    evidence.action_location.build_checkpoint_assessment rather than asking Pulsit a
     second time for the same checkpoint.
     """
     context = f"checkpoint_id={checkpoint.id} trip_id={trip.id}"

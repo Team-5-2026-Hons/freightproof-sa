@@ -874,7 +874,7 @@ async def test_a_snapshot_uses_the_trip_frozen_device_id_not_the_current_vehicle
 # ── Checkpoints: the driver payload no longer supplies the horse position ───────
 #
 # SCOPE NOTE FOR REVIEW: FP-143 as written covers phase handshakes only. These three
-# tests cover an explicit extension of the same treatment to checkpoint_service.py,
+# tests cover an explicit extension of the same treatment to evidence/checkpoints.py,
 # decided 2026-09-04. Flagged here rather than buried, because it changes an existing
 # endpoint's behaviour: Checkpoint.horse_gps_lat/lng used to be whatever the driver's
 # app put in the request body, which made the column a second copy of the driver's own

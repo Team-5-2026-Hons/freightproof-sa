@@ -186,10 +186,10 @@ class _PhaseCompleteBase(BaseModel):
     # The instant the driver's OWN PHONE submitted this completion — captured
     # client-side at swipe time (frontend/driver-pwa/lib/submission/phase-submitter.ts),
     # not when this request happens to reach the server. This is what lets
-    # corroboration_service tell a live handshake from an offline replay flushed hours
+    # evidence.corroboration tell a live handshake from an offline replay flushed hours
     # later: comparing a fresh Pulsit fix against a stale driver claim, with no capture
     # time on the wire, was the exact gap this field exists to close (see
-    # corroboration_service.py's module docstring).
+    # evidence/corroboration.py's module docstring).
     #
     # Optional so a client built before this field existed — an entry already sitting in
     # a driver's offline queue — still 200s on replay instead of 422ing forever; a
@@ -199,9 +199,9 @@ class _PhaseCompleteBase(BaseModel):
     driver_captured_at: Optional[datetime] = None
 
     # The phone's own claimed
-    # accuracy at the moment of driver_phone_lat/lng, feeding proximity_service.
+    # accuracy at the moment of driver_phone_lat/lng, feeding evidence.proximity.
     # evaluate_proximity's `poor_accuracy`/`missing_accuracy` gates via orchestration/
-    # action_location_service.build_phase_assessment. NOT a phase_events column —
+    # evidence.action_location.build_phase_assessment. NOT a phase_events column —
     # it lives only inside the action_location_assessment JSONB snapshot (schemas/
     # action_location.py). Optional so a client built before this field existed
     # still 200s on replay: an omitted value reads as `missing_accuracy`, which
@@ -218,7 +218,7 @@ class _PhaseCompleteBase(BaseModel):
     @field_validator("driver_captured_at")
     @classmethod
     def validate_driver_captured_at_is_timezone_aware(cls, v: Optional[datetime]) -> Optional[datetime]:
-        # A naive value would silently compare as if it were UTC in corroboration_service,
+        # A naive value would silently compare as if it were UTC in evidence.corroboration,
         # manufacturing a skew verdict from a timestamp that was never actually anchored
         # to a real instant. Rejected outright rather than assumed.
         if v is not None and v.tzinfo is None:

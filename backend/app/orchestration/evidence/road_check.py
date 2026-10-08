@@ -27,7 +27,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.geo import haversine_metres
+from app.core.geo import format_distance, haversine_metres
 from app.core.realtime import RealtimeKind, TripEvent, enqueue_event, event_severity
 from app.db.models.enums import (
     ExceptionSeverity,
@@ -47,10 +47,6 @@ from app.orchestration.evidence.geofence import TrackerFix, evaluate_geofence
 from app.orchestration.phases.queries import current_phase_event
 
 logger = logging.getLogger(__name__)
-
-# Below 1 km a distance reads better in metres. Same rule as phases.findings'
-# _format_separation, so the stop and road trailer findings word distance alike.
-_KM_THRESHOLD_METRES = 1_000.0
 
 
 class RigRole(str, Enum):
@@ -105,12 +101,6 @@ def _position(reading: RigReading) -> tuple[Decimal, Decimal] | None:
     return reading.lat, reading.lng
 
 
-def _fmt_distance(metres: float) -> str:
-    if metres < _KM_THRESHOLD_METRES:
-        return f"{round(metres)} m"
-    return f"{metres / _KM_THRESHOLD_METRES:.1f} km"
-
-
 def evaluate_road_readings(
     *,
     stage: RoadStage,
@@ -157,7 +147,7 @@ def evaluate_road_readings(
                     # Registrations identify vehicles, not people, so they may be named.
                     description=(
                         f"On the road, trailer {trailer.registration} is "
-                        f"{_fmt_distance(separation)} from horse {horse.registration}. "
+                        f"{format_distance(separation)} from horse {horse.registration}. "
                         f"The trailer may have been uncoupled."
                     ),
                     lat=trailer_position[0], lng=trailer_position[1],
@@ -175,7 +165,7 @@ def evaluate_road_readings(
                 trip_stop_id=stage.trip_stop_id,
                 vehicle_id=horse.vehicle_id,
                 description=(
-                    f"Horse {horse.registration} is {_fmt_distance(verdict.distance_metres)} "
+                    f"Horse {horse.registration} is {format_distance(verdict.distance_metres)} "
                     f"from {stage.stop_precinct.name}, but departure has not been recorded. "
                     f"The truck moved without a recorded seal."
                 ),
@@ -213,7 +203,7 @@ async def load_rig(db: AsyncSession, *, trip: Trip) -> list[RigVehicle]:
     """The horse, then each trailer by registration.
 
     Trailer device ids come from TripTrailer.pulsit_device_id_snapshot, as in
-    corroboration_service: the tracker that was on the trailer when the trip was
+    evidence.corroboration: the tracker that was on the trailer when the trip was
     committed, not whatever the vehicle row says now.
     """
     horse = (await db.execute(select(Vehicle).where(Vehicle.id == trip.horse_id))).scalar_one()
