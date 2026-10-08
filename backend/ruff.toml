@@ -39,17 +39,19 @@ max-statements = 50
 "app/analytics/lane_metrics.py" = ["PLR0913"]
 "app/analytics/rollup.py" = ["PLR0913"]
 "app/api/v1/endpoints/artifacts.py" = ["PLR0913"]
-"app/api/v1/endpoints/dev_triggers.py" = ["C901"]
 "app/api/v1/endpoints/exceptions.py" = ["PLR0913"]
 "app/api/v1/endpoints/trips.py" = ["C901", "PLR0913"]
 "app/blockchain/anchor_service.py" = ["PLR0913"]
 "app/blockchain/hedera.py" = ["PLR0913"]
 "app/core/config_validation.py" = ["C901"]
 "app/crypto/hashing.py" = ["PLR0913"]
+# Relocated, not added: two existing violations moved with their modules into app/dev/ (audit
+# phase 4, dev window); the count of ruff diagnostics is unchanged.
+"app/dev/endpoints/triggers.py" = ["C901"]
+"app/dev/services/rig.py" = ["PLR0913"]
 # Relocated, not added: the two PLR0913 fixture builders moved out of parcel_perfect.py with
 # their functions (audit phase 4); the count of violating functions is unchanged (2).
 "app/integrations/parcel_perfect/waybill_fixtures.py" = ["PLR0913"]  # _mock_waybill, _routed_waybill
-"app/orchestration/dev_rig_service.py" = ["PLR0913"]
 # Relocated, not added: each entry below is an existing violation that moved out of the flat
 # *_service.py modules with its functions (audit phase 4, fleet, handover and consignments
 # windows); the count of ruff diagnostics is unchanged (11: 7 PLR0913, 3 C901 and 1 PLR0915,

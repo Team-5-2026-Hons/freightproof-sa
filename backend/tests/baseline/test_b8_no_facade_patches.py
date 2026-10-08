@@ -256,6 +256,82 @@ def test_scan_allows_a_setattr_on_an_aliased_submodule_of_the_facade_package() -
     assert _flagged(source, PACKAGE_FACADE) == []
 
 
+# ── Patch targets held in a module-level string constant ─────────────────────────────
+
+def test_scan_catches_a_constant_held_target_through_a_frozen_facade() -> None:
+    source = (
+        "from unittest.mock import patch\n"
+        "\n"
+        '_ANCHOR = "app.orchestration.phase_service.anchor_subject"\n'
+        "\n"
+        "def test_something():\n"
+        "    with patch(_ANCHOR):\n"
+        "        pass\n"
+    )
+
+    flagged = _flagged(source)
+
+    assert flagged == [
+        "synthetic.py:6 patches app.orchestration.phase_service.anchor_subject "
+        "(facade app.orchestration.phase_service)"
+    ]
+
+
+def test_scan_catches_an_annotated_constant_held_target_through_a_frozen_facade() -> None:
+    source = (
+        "from typing import Final\n"
+        "\n"
+        '_ANCHOR: Final[str] = "app.orchestration.phase_service.anchor_subject"\n'
+        "\n"
+        "def test_something(monkeypatch):\n"
+        "    monkeypatch.setattr(_ANCHOR, fake)\n"
+    )
+
+    assert len(_flagged(source)) == 1
+
+
+def test_scan_allows_a_constant_held_target_in_a_submodule_of_the_facade_package() -> None:
+    source = (
+        "from unittest.mock import patch\n"
+        "\n"
+        '_ANCHOR = "app.integrations.parcel_perfect.mock.get_mock_state_store"\n'
+        "\n"
+        "def test_something():\n"
+        "    with patch(_ANCHOR):\n"
+        "        pass\n"
+    )
+
+    assert _flagged(source, PACKAGE_FACADE) == []
+
+
+def test_scan_ignores_a_constant_that_is_not_a_patch_target() -> None:
+    source = (
+        "from unittest.mock import patch\n"
+        "\n"
+        '_FACADE_PATH = "app.orchestration.phase_service.anchor_subject"\n'
+        "\n"
+        "def test_something():\n"
+        '    assert _FACADE_PATH.endswith("anchor_subject")\n'
+        '    with patch("app.tasks.blockchain.submit"):\n'
+        "        pass\n"
+    )
+
+    assert _flagged(source) == []
+
+
+def test_scan_prefers_an_import_over_a_constant_of_the_same_name() -> None:
+    source = (
+        "from app.tasks import blockchain\n"
+        "\n"
+        'blockchain = "app.orchestration.phase_service.anchor_subject"\n'
+        "\n"
+        "def test_something(monkeypatch):\n"
+        '    monkeypatch.setattr(blockchain, "submit", fake)\n'
+    )
+
+    assert _flagged(source) == []
+
+
 def test_owned_submodules_are_read_from_disk_and_empty_for_plain_module_facades() -> None:
     assert {"client", "mock", "models", "port"} <= _owned_submodules("app.integrations.parcel_perfect")
     assert "__init__" not in _owned_submodules("app.integrations.parcel_perfect")

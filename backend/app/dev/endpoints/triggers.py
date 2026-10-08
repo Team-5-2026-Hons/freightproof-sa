@@ -39,7 +39,7 @@ from app.orchestration.consignments import sync as consignment_service
 from app.orchestration.exceptions import creation as exception_creation
 from app.orchestration.consignments.manifest_snapshot import manifest_snapshot_sha256
 from app.orchestration.phases.blocking import GATED_PHASES
-from app.schemas.dev import (
+from app.dev.schemas import (
     CloseScanSessionRequest, CloseScanSessionResponse, ConsignmentScanResultRead,
     DevConsignment, DevTripStop, DevTripSummary, DevVehicle, ExceptionTriggerRequest,
     ExceptionTriggerResponse, FlushMockStateResponse, PpManifestTriggerRequest,

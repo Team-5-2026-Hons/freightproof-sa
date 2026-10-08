@@ -31,7 +31,7 @@ from app.core.exceptions import ResourceNotFoundError
 from app.core.geo import EARTH_RADIUS_METRES
 from app.db.models.organisations import Precinct
 from app.db.models.trips import TripStop
-from app.schemas.dev import (
+from app.dev.schemas import (
     SCENARIO_AT_STOP,
     SCENARIO_FIFTY_KM,
     SCENARIO_INSIDE_TOLERANCE,

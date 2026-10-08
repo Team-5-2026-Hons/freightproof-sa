@@ -1,8 +1,8 @@
 {
   "function_line_limit": 100,
   "functions": {
-    "app/api/v1/endpoints/dev_pulsit.py::move_truck": 164,
-    "app/api/v1/endpoints/dev_triggers.py::list_dev_trips": 162,
+    "app/dev/endpoints/pulsit.py::move_truck": 164,
+    "app/dev/endpoints/triggers.py::list_dev_trips": 162,
     "app/orchestration/consignments/sync.py::sync_consignment_from_waybill": 163,
     "app/orchestration/evidence/action_location.py::build_phase_assessment": 119,
     "app/orchestration/evidence/action_location.py::record_driver_location_finding": 115,

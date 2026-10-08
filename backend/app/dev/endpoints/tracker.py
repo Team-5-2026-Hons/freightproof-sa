@@ -21,10 +21,10 @@ from app.core.exceptions import ResourceNotFoundError
 from app.db.models.trips import Trip
 from app.db.session import get_db
 from app.integrations.pulsit import MockPulsitClient, get_pulsit_client
-from app.orchestration import dev_rig_service
+from app.dev.services import rig as dev_rig_service
 from app.orchestration.evidence import road_check
-from app.orchestration.dev_truck_service import TargetGeometryUnavailableError
-from app.schemas.dev import (
+from app.dev.services.truck import TargetGeometryUnavailableError
+from app.dev.schemas import (
     RigReadingRead,
     RigScenarioRequest,
     RigScenarioResponse,
