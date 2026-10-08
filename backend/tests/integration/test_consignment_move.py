@@ -27,6 +27,8 @@ from app.db.models.people import Driver, User
 from app.db.models.vehicles import Vehicle
 from app.integrations.parcel_perfect import MOCK_WAYBILLS, PPTrack, PPWaybillResponse
 from app.orchestration import consignment_service, scan_service
+from app.orchestration.consignments import scans as consignments_scans
+from app.orchestration.consignments import sync as consignments_sync
 from app.orchestration.trip_service import ManifestCargo, NewTrip, persist_trip
 from app.orchestration.pp_manifest import manifest_key, manifest_snapshot, manifest_snapshot_sha256
 from app.integrations.parcel_perfect import MANIFEST_HAPPY_PATH, PPManifestResponse, MockParcelPerfectClient
@@ -62,7 +64,7 @@ async def _held_by(db_session: AsyncSession, trip: Trip, *, scanned: bool) -> Co
 def no_pp(monkeypatch: pytest.MonkeyPatch) -> None:
     def _refuse() -> NoReturn:
         raise AssertionError("sync_consignment_from_waybill must not call Parcel Perfect")
-    monkeypatch.setattr(consignment_service, "get_pp_client", _refuse)
+    monkeypatch.setattr(consignments_sync, "get_pp_client", _refuse)
 
 
 async def test_sync_from_a_waybill_makes_no_pp_call(db_session: AsyncSession) -> None:
@@ -218,7 +220,7 @@ async def _wait_for_lock(sessions: async_sessionmaker[AsyncSession], waiter: int
 async def test_committed_scan_wins_against_recreation(scan_race_world: ScanRaceWorld, monkeypatch: pytest.MonkeyPatch, direction: ScanDirection) -> None:
     race = scan_race_world
     polled, release = asyncio.Event(), asyncio.Event()
-    monkeypatch.setattr(scan_service, "get_scan_feed", lambda: RaceScanFeed(race, polled, release))
+    monkeypatch.setattr(consignments_scans, "get_scan_feed", lambda: RaceScanFeed(race, polled, release))
     async with race.sessions() as scanner, race.sessions() as mover:
         scanner_pid = (await scanner.execute(text("SELECT pg_backend_pid()"))).scalar_one()
         mover_pid = (await mover.execute(text("SELECT pg_backend_pid()"))).scalar_one()
@@ -260,7 +262,7 @@ async def test_committed_recreation_excludes_old_trip_scan(scan_race_world: Scan
     race = scan_race_world
     polled, release = asyncio.Event(), asyncio.Event()
     release.set()
-    monkeypatch.setattr(scan_service, "get_scan_feed", lambda: RaceScanFeed(race, polled, release))
+    monkeypatch.setattr(consignments_scans, "get_scan_feed", lambda: RaceScanFeed(race, polled, release))
     async with race.sessions() as scanner, race.sessions() as mover:
         scanner_pid = (await scanner.execute(text("SELECT pg_backend_pid()"))).scalar_one()
         mover_pid = (await mover.execute(text("SELECT pg_backend_pid()"))).scalar_one()
@@ -344,8 +346,8 @@ async def test_multi_waybill_recreation_and_scan_share_one_lock_order(
         async def poll_scans(self, **kwargs: object) -> list[ScanEvent]:
             raise AssertionError("the committed replacement owns both waybills")
 
-    monkeypatch.setattr(consignment_service, "sync_consignment_from_waybill", pause_after_first)
-    monkeypatch.setattr(scan_service, "get_scan_feed", NoOldTripFeed)
+    monkeypatch.setattr(consignments_sync, "sync_consignment_from_waybill", pause_after_first)
+    monkeypatch.setattr(consignments_scans, "get_scan_feed", NoOldTripFeed)
     async with race.sessions() as scanner, race.sessions() as mover:
         scanner_pid = (await scanner.execute(text("SELECT pg_backend_pid()"))).scalar_one()
         mover_pid = (await mover.execute(text("SELECT pg_backend_pid()"))).scalar_one()

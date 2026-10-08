@@ -45,7 +45,7 @@ from app.db.models.receiver_verification import ReceiverIdentityVerification
 from app.db.models.trips import Consignment, Trip, TripStop
 from app.db.session import get_db
 from app.orchestration.evidence.artifacts import create_receiver_artifact
-from app.orchestration.handover_service import (
+from app.orchestration.handover.capability import (
     build_scan_url,
     find_open_token,
     hash_presented_token,
@@ -56,7 +56,7 @@ from app.orchestration.handover_service import (
     rotate_capability_token,
     session_secret_matches,
 )
-from app.orchestration.receiver_verification_service import (
+from app.orchestration.handover.receiver_verification import (
     attach_confirmation,
     ingest_webhook_decision,
     load_verification_for_token,

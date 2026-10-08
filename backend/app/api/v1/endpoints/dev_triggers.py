@@ -34,9 +34,10 @@ from app.integrations.parcel_perfect.errors import PPManifestNotFoundError, PPUn
 from app.integrations.parcel_perfect.factory import get_pp_client
 from app.integrations.parcel_perfect.mock import MockParcelPerfectClient
 from app.integrations.scan_feed import MockScanFeed, ScanDirection, get_scan_feed
-from app.orchestration import consignment_service, scan_service
+from app.orchestration.consignments import scans as scan_service
+from app.orchestration.consignments import sync as consignment_service
 from app.orchestration.exceptions import creation as exception_creation
-from app.orchestration.pp_manifest import manifest_snapshot_sha256
+from app.orchestration.consignments.manifest_snapshot import manifest_snapshot_sha256
 from app.orchestration.phases.blocking import GATED_PHASES
 from app.schemas.dev import (
     CloseScanSessionRequest, CloseScanSessionResponse, ConsignmentScanResultRead,

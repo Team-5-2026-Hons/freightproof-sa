@@ -52,7 +52,7 @@ from app.db.models.vehicles import Vehicle
 from app.integrations.parcel_perfect.manifest_fixtures import MOCK_MANIFEST_HEADERS
 from app.integrations.parcel_perfect.models import PPWaybillResponse
 from app.integrations.parcel_perfect.waybill_fixtures import MOCK_WAYBILLS
-from app.orchestration.consignment_service import serialise_waybill
+from app.orchestration.consignments.sync import serialise_waybill
 from app.orchestration.phases.plan import ANCHORED_PHASES, PlanStop, build_phase_plan
 
 _CPT = "Cape Town Depot (Epping)"

@@ -132,7 +132,7 @@ async def test_create_trip_empty_leg_does_not_call_sync() -> None:
         # compute_trip_canonical_payload's actual dict return type.
         patch("app.orchestration.trips.creation.compute_trip_canonical_payload", return_value={"trip_id": "canonical"}),
         patch(
-            "app.orchestration.consignment_service.fetch_and_sync_consignment",
+            "app.orchestration.consignments.sync.fetch_and_sync_consignment",
             new_callable=AsyncMock,
         ) as mock_sync,
     ):
@@ -170,7 +170,7 @@ async def test_create_trip_with_consignments_calls_sync() -> None:
         # compute_trip_canonical_payload's actual dict return type.
         patch("app.orchestration.trips.creation.compute_trip_canonical_payload", return_value={"trip_id": "canonical"}),
         patch(
-            "app.orchestration.consignment_service.fetch_and_sync_consignment",
+            "app.orchestration.consignments.sync.fetch_and_sync_consignment",
             new_callable=AsyncMock,
         ) as mock_sync,
     ):
@@ -208,7 +208,7 @@ async def test_create_trip_unknown_waybill_raises_ppsync_error() -> None:
         patch("app.orchestration.trips.creation._fetch_driver", new_callable=AsyncMock) as mock_driver,
         patch("app.orchestration.trips.creation._fetch_vehicle", new_callable=AsyncMock) as mock_vehicle,
         patch(
-            "app.orchestration.consignment_service.fetch_and_sync_consignment",
+            "app.orchestration.consignments.sync.fetch_and_sync_consignment",
             new_callable=AsyncMock,
         ) as mock_sync,
     ):
@@ -270,7 +270,7 @@ async def test_create_trip_writes_full_pending_plan() -> None:
         # compute_trip_canonical_payload's actual dict return type.
         patch("app.orchestration.trips.creation.compute_trip_canonical_payload", return_value={"trip_id": "canonical"}),
         patch(
-            "app.orchestration.consignment_service.fetch_and_sync_consignment",
+            "app.orchestration.consignments.sync.fetch_and_sync_consignment",
             new_callable=AsyncMock,
             return_value=fake_sync_result,
         ),

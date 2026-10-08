@@ -31,7 +31,7 @@ async def stub_driver_auth_user():
     and the same one-shot lifetime, and nothing in the failure says so.
     """
     with patch(
-        "app.orchestration.driver_service.create_driver_auth_user",
+        "app.orchestration.fleet.drivers.create_driver_auth_user",
         new_callable=AsyncMock,
     ) as mock_auth:
         mock_auth.side_effect = lambda **kwargs: uuid.uuid4()

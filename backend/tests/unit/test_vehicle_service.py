@@ -9,7 +9,7 @@ test_create_vehicle_payload_json_hashes_pulsit_device_id at the unit level.
 
 Mock boundaries:
 - db (AsyncSession): _mock_db() below.
-- anchor_subject: patched at app.orchestration.vehicle_service.anchor_subject.
+- anchor_subject: patched at app.orchestration.fleet.vehicles.anchor_subject.
 """
 
 import hashlib
@@ -142,7 +142,7 @@ async def test_create_vehicle_anchors_once_and_hashes_pulsit_device_id() -> None
         pulsit_device_id=secret_device_id,
     )
 
-    with patch("app.orchestration.vehicle_service.anchor_subject", new=anchor):
+    with patch("app.orchestration.fleet.vehicles.anchor_subject", new=anchor):
         await create_vehicle(db, uuid.uuid4(), data, uuid.uuid4())
 
     anchor.assert_called_once()
@@ -168,7 +168,7 @@ async def test_update_vehicle_cosmetic_does_not_anchor_but_records_event() -> No
     anchor = _anchor_stub()
     data = VehicleUpdateBody(make="Scania")
 
-    with patch("app.orchestration.vehicle_service.anchor_subject", new=anchor):
+    with patch("app.orchestration.fleet.vehicles.anchor_subject", new=anchor):
         await update_vehicle(db, vehicle.id, vehicle.organization_id, data, uuid.uuid4())
 
     anchor.assert_not_called()
@@ -189,7 +189,7 @@ async def test_update_vehicle_critical_anchors_only_the_diff() -> None:
     anchor = _anchor_stub()
     data = VehicleUpdateBody(registration=new_reg)
 
-    with patch("app.orchestration.vehicle_service.anchor_subject", new=anchor):
+    with patch("app.orchestration.fleet.vehicles.anchor_subject", new=anchor):
         await update_vehicle(db, vehicle.id, vehicle.organization_id, data, uuid.uuid4())
 
     anchor.assert_called_once()
@@ -213,7 +213,7 @@ async def test_update_vehicle_pulsit_change_anchors_only_hashed() -> None:
     anchor = _anchor_stub()
     data = VehicleUpdateBody(pulsit_device_id=new_device)
 
-    with patch("app.orchestration.vehicle_service.anchor_subject", new=anchor):
+    with patch("app.orchestration.fleet.vehicles.anchor_subject", new=anchor):
         await update_vehicle(db, vehicle.id, vehicle.organization_id, data, uuid.uuid4())
 
     anchor.assert_called_once()
@@ -235,7 +235,7 @@ async def test_update_vehicle_unknown_id_raises_not_found() -> None:
     db = _mock_db(scalar_result=None)
     anchor = _anchor_stub()
 
-    with patch("app.orchestration.vehicle_service.anchor_subject", new=anchor):
+    with patch("app.orchestration.fleet.vehicles.anchor_subject", new=anchor):
         with pytest.raises(ResourceNotFoundError):
             await update_vehicle(
                 db, uuid.uuid4(), uuid.uuid4(), VehicleUpdateBody(make="X"), uuid.uuid4()
@@ -256,7 +256,7 @@ async def test_create_vehicle_duplicate_raises_duplicate_resource() -> None:
         pulsit_device_id="PLT-DUP-001",
     )
 
-    with patch("app.orchestration.vehicle_service.anchor_subject", new=anchor):
+    with patch("app.orchestration.fleet.vehicles.anchor_subject", new=anchor):
         with pytest.raises(DuplicateResourceError):
             await create_vehicle(db, uuid.uuid4(), data, uuid.uuid4())
 
@@ -283,7 +283,7 @@ async def test_create_vehicle_duplicate_pulsit_names_the_device_field() -> None:
         pulsit_device_id="PLT-SHARED-001",
     )
 
-    with patch("app.orchestration.vehicle_service.anchor_subject", new=anchor):
+    with patch("app.orchestration.fleet.vehicles.anchor_subject", new=anchor):
         with pytest.raises(DuplicateResourceError) as caught:
             await create_vehicle(db, uuid.uuid4(), data, uuid.uuid4())
 
@@ -309,7 +309,7 @@ async def test_create_vehicle_unknown_constraint_is_not_relabelled() -> None:
         pulsit_device_id="PLT-OTHER-001",
     )
 
-    with patch("app.orchestration.vehicle_service.anchor_subject", new=anchor):
+    with patch("app.orchestration.fleet.vehicles.anchor_subject", new=anchor):
         with pytest.raises(IntegrityError):
             await create_vehicle(db, uuid.uuid4(), data, uuid.uuid4())
 

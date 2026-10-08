@@ -10,9 +10,9 @@ Naming note: this file tests orchestration/driver_service.py — NOT core/except
 
 Mock boundaries:
 - db (AsyncSession): _mock_db() below.
-- create_driver_auth_user: patched at app.orchestration.driver_service.create_driver_auth_user
+- create_driver_auth_user: patched at app.orchestration.fleet.drivers.create_driver_auth_user
   (the name driver_service actually resolves).
-- anchor_subject: patched at app.orchestration.driver_service.anchor_subject.
+- anchor_subject: patched at app.orchestration.fleet.drivers.anchor_subject.
 """
 
 import hashlib
@@ -151,10 +151,10 @@ async def test_create_driver_anchors_once_without_pii() -> None:
 
     with (
         patch(
-            "app.orchestration.driver_service.create_driver_auth_user",
+            "app.orchestration.fleet.drivers.create_driver_auth_user",
             new=AsyncMock(return_value=driver_uuid),
         ),
-        patch("app.orchestration.driver_service.anchor_subject", new=anchor),
+        patch("app.orchestration.fleet.drivers.anchor_subject", new=anchor),
     ):
         await create_driver(db, org_id, data, user_id)
 
@@ -185,7 +185,7 @@ async def test_update_driver_cosmetic_does_not_anchor_but_records_event() -> Non
     anchor = _anchor_stub()
     data = DriverUpdateBody(full_name="Renamed Driver")
 
-    with patch("app.orchestration.driver_service.anchor_subject", new=anchor):
+    with patch("app.orchestration.fleet.drivers.anchor_subject", new=anchor):
         await update_driver(db, driver.id, driver.organization_id, data, uuid.uuid4())
 
     anchor.assert_not_called()
@@ -209,7 +209,7 @@ async def test_update_driver_critical_anchors_only_the_diff() -> None:
     anchor = _anchor_stub()
     data = DriverUpdateBody(license_number=new_license)
 
-    with patch("app.orchestration.driver_service.anchor_subject", new=anchor):
+    with patch("app.orchestration.fleet.drivers.anchor_subject", new=anchor):
         await update_driver(db, driver.id, driver.organization_id, data, uuid.uuid4())
 
     anchor.assert_called_once()
@@ -237,7 +237,7 @@ async def test_update_driver_unknown_id_raises_not_found() -> None:
     db = _mock_db(scalar_result=None)
     anchor = _anchor_stub()
 
-    with patch("app.orchestration.driver_service.anchor_subject", new=anchor):
+    with patch("app.orchestration.fleet.drivers.anchor_subject", new=anchor):
         with pytest.raises(ResourceNotFoundError):
             await update_driver(
                 db, uuid.uuid4(), uuid.uuid4(), DriverUpdateBody(full_name="X"), uuid.uuid4()
@@ -261,10 +261,10 @@ async def test_create_driver_duplicate_raises_duplicate_resource() -> None:
 
     with (
         patch(
-            "app.orchestration.driver_service.create_driver_auth_user",
+            "app.orchestration.fleet.drivers.create_driver_auth_user",
             new=AsyncMock(return_value=uuid.uuid4()),
         ),
-        patch("app.orchestration.driver_service.anchor_subject", new=anchor),
+        patch("app.orchestration.fleet.drivers.anchor_subject", new=anchor),
     ):
         with pytest.raises(DuplicateResourceError):
             await create_driver(db, uuid.uuid4(), data, uuid.uuid4())

@@ -27,7 +27,7 @@ from app.core.limits import PRECINCT_MUTATION
 from app.core.rate_limit import rate_limit
 from app.db.models.enums import DispatcherRole
 from app.db.session import get_db
-from app.orchestration.precinct_service import (
+from app.orchestration.fleet.precincts import (
     create_precinct, get_precinct_detail, list_precincts, update_precinct,
 )
 from app.schemas.organisations import (

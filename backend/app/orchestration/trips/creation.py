@@ -61,7 +61,7 @@ if TYPE_CHECKING:
     # and may be promoted in its own commit. A TYPE_CHECKING-only import carries no
     # such risk: it never executes at runtime.
     from app.integrations.parcel_perfect.models import PPWaybillResponse
-    from app.orchestration.consignment_service import ConsignmentSyncResult
+    from app.orchestration.consignments.sync import ConsignmentSyncResult
 
 logger = logging.getLogger(__name__)
 
@@ -381,7 +381,7 @@ async def persist_trip(
     # cycle exists today (consignment_service → parcel_perfect never imports back here).
     consignment_results: list["ConsignmentSyncResult"] = []
     if cargo is not None or new_trip.consignment_refs:
-        from app.orchestration.consignment_service import (
+        from app.orchestration.consignments.sync import (
             fetch_and_sync_consignment,
             sync_consignment_from_waybill,
         )

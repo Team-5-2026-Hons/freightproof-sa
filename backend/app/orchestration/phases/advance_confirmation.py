@@ -13,7 +13,7 @@ from app.db.models.enums import (
 )
 from app.db.models.transit import TripException
 from app.integrations.scan_feed import ScanDirection
-from app.orchestration import scan_service
+from app.orchestration.consignments import scans as scan_service
 from app.orchestration.evidence import corroboration
 from app.orchestration.phases.anchor_dispatch import _dispatch_anchor
 from app.orchestration.phases.artifacts import _assert_artifacts_belong_to_trip

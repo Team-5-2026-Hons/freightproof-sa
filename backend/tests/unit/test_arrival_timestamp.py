@@ -10,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.enums import PhaseStatus, PhaseType, TripStatus
 from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Trip
-from app.orchestration import phase_service, scan_service
+from app.orchestration import phase_service
+from app.orchestration.consignments import scans as consignments_scans
 from app.orchestration.evidence import corroboration as evidence_corroboration
 from app.orchestration.phases import (
     advance_confirmation,
@@ -128,7 +129,7 @@ async def test_confirmation_preserves_arrival_or_its_absence(
         "_assert_artifacts_belong_to_trip",
         AsyncMock(return_value={pod_photo_id: "a" * 64, pod_signature_id: "b" * 64}),
     )
-    monkeypatch.setattr(scan_service, "load_consignments_at_stop", AsyncMock(return_value=[]))
+    monkeypatch.setattr(consignments_scans, "load_consignments_at_stop", AsyncMock(return_value=[]))
     monkeypatch.setattr(advance_confirmation, "_dispatch_anchor", MagicMock())
 
     await phase_service.advance_confirmation(

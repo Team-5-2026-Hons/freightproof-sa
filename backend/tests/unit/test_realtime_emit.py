@@ -773,15 +773,15 @@ def test_every_trip_exception_write_site_is_accounted_for():
     actual = {path: count for path, count in actual.items() if count}
 
     expected_sites = {
+        "app/orchestration/consignments/scans.py": 1,
         "app/orchestration/evidence/action_location.py": 2,
         "app/orchestration/evidence/road_check.py": 1,
         "app/orchestration/exceptions/creation.py": 1,
+        "app/orchestration/handover/receiver_verification.py": 1,
         "app/orchestration/phases/advance_confirmation.py": 1,
         "app/orchestration/phases/advance_departure.py": 1,
         "app/orchestration/phases/findings.py": 4,
         "app/orchestration/phases/override.py": 2,
-        "app/orchestration/receiver_verification_service.py": 1,
-        "app/orchestration/scan_service.py": 1,
         "app/orchestration/trips/administration.py": 1,
     }
     assert actual == expected_sites, (

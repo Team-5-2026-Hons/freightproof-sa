@@ -773,7 +773,7 @@ async def test_create_empty_leg_no_consignments_no_pp_call(client: AsyncClient, 
     def _raise(*args, **kwargs):
         raise AssertionError("PP client must not be called for an empty-leg trip")
 
-    monkeypatch.setattr("app.orchestration.consignment_service.get_pp_client", _raise)
+    monkeypatch.setattr("app.orchestration.consignments.sync.get_pp_client", _raise)
 
     payload = _make_payload(seed_data)
     payload["trip_type"] = "empty_leg"

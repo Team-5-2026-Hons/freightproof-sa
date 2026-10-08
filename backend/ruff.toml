@@ -49,8 +49,16 @@ max-statements = 50
 # Relocated, not added: the two PLR0913 fixture builders moved out of parcel_perfect.py with
 # their functions (audit phase 4); the count of violating functions is unchanged (2).
 "app/integrations/parcel_perfect/waybill_fixtures.py" = ["PLR0913"]  # _mock_waybill, _routed_waybill
-"app/orchestration/consignment_service.py" = ["C901", "PLR0913", "PLR0915"]
 "app/orchestration/dev_rig_service.py" = ["PLR0913"]
+# Relocated, not added: each entry below is an existing violation that moved out of the flat
+# *_service.py modules with its functions (audit phase 4, fleet, handover and consignments
+# windows); the count of ruff diagnostics is unchanged (11: 7 PLR0913, 3 C901 and 1 PLR0915,
+# across 9 functions).
+"app/orchestration/consignments/manifest_import.py" = ["C901", "PLR0913"]  # _build_context, _resolve_precinct
+"app/orchestration/consignments/scans.py" = ["PLR0913"]  # _reconcile_consignment, _raise_discrepancy, _build_discrepancy_description
+"app/orchestration/consignments/sync.py" = ["C901", "PLR0913", "PLR0915"]  # fetch_and_sync_consignment (PLR0913), sync_consignment_from_waybill (all three)
+"app/orchestration/fleet/vehicles.py" = ["C901"]  # update_vehicle
+"app/orchestration/handover/capability.py" = ["PLR0913"]  # record_handover_confirmation
 # Relocated, not added: each entry below is an existing violation that moved out of the flat
 # *_service.py modules with its functions (audit phase 4, evidence window); the count of
 # ruff diagnostics is unchanged (10: 7 PLR0913 and 3 C901, across 9 functions).
@@ -65,20 +73,16 @@ max-statements = 50
 "app/orchestration/exceptions/creation.py" = ["C901", "PLR0913"]  # pick_breakdown_vehicle, raise_exception
 "app/orchestration/exceptions/queries.py" = ["PLR0913"]  # _to_list_item, list_exception_history
 "app/orchestration/exceptions/review.py" = ["C901", "PLR0913"]  # review_exception, review_exceptions_batch
-"app/orchestration/handover_service.py" = ["PLR0913"]
 # Relocated, not added: each entry below is an existing PLR0913 violation that moved out of
 # phase_service.py with its function (audit 5.1); the count of violating functions is unchanged.
 "app/orchestration/phases/completion.py" = ["PLR0913"]  # _finish_phase
 "app/orchestration/phases/findings.py" = ["PLR0913"]  # _raise_scan_shortfall_if_unrecorded, _record_seal_finding
 "app/orchestration/phases/override.py" = ["PLR0913"]  # override_phase
 "app/orchestration/phases/payloads.py" = ["PLR0913"]  # compute_confirmation_canonical_payload_v2
-"app/orchestration/pp_manifest_service.py" = ["C901", "PLR0913"]
 "app/orchestration/resource_service.py" = ["PLR0913"]
-"app/orchestration/scan_service.py" = ["PLR0913"]
 # Relocated, not added: persist_trip moved out of trip_service.py with its C901 and PLR0915
 # violations (audit 5.3); the count of violating functions is unchanged.
 "app/orchestration/trips/creation.py" = ["C901", "PLR0915"]  # persist_trip
-"app/orchestration/vehicle_service.py" = ["C901"]
 "app/orchestration/verification_service.py" = ["C901"]
 "app/storage/supabase_storage.py" = ["C901"]
 "scripts/check_supabase_wiring.py" = ["C901"]

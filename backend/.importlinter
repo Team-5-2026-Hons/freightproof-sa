@@ -236,3 +236,96 @@ layers =
     checkpoints
     corroboration | action_location | road_check
     geofence | proximity | location | artifacts
+
+# ---------------------------------------------------------------------------
+# 13. Stops the fleet package importing back into its own facades (audit 5.5, rule 2:
+#     imports only run old -> new). One facade per moved module, so the list is the three
+#     old names. Wildcard form for the same reason as contract 3; function-level (lazy)
+#     imports are in the graph too.
+# ---------------------------------------------------------------------------
+[importlinter:contract:fleet-no-facade]
+name = app.orchestration.fleet must not import the fleet facade modules
+type = forbidden
+source_modules =
+    app.orchestration.fleet.**
+forbidden_modules =
+    app.orchestration.driver_service
+    app.orchestration.vehicle_service
+    app.orchestration.precinct_service
+
+# ---------------------------------------------------------------------------
+# 14. drivers, vehicles and precincts share no code today and must stay that way (audit 5).
+#     Independence also rejects an indirect chain from one to another, so a shared helper
+#     has to be extracted to a lower module instead of imported sideways.
+# ---------------------------------------------------------------------------
+[importlinter:contract:fleet-independent-modules]
+name = fleet.drivers, fleet.vehicles and fleet.precincts do not import each other
+type = independence
+modules =
+    app.orchestration.fleet.drivers
+    app.orchestration.fleet.vehicles
+    app.orchestration.fleet.precincts
+
+# ---------------------------------------------------------------------------
+# 15. Stops the handover package importing back into its own facades (audit 5.5, rule 2:
+#     imports only run old -> new). Wildcard form for the same reason as contract 3.
+# ---------------------------------------------------------------------------
+[importlinter:contract:handover-no-facade]
+name = app.orchestration.handover must not import the handover facade modules
+type = forbidden
+source_modules =
+    app.orchestration.handover.**
+forbidden_modules =
+    app.orchestration.handover_service
+    app.orchestration.receiver_verification_service
+
+# ---------------------------------------------------------------------------
+# 16. Tier order inside handover/. receiver_verification builds on capability (it extends a
+#     handover token and builds the scan URL); capability never reaches back. handover/__init__
+#     stays empty (audit 5 rule 1), so there is no package facade to reach siblings through.
+#     Layers are not optional: a misspelt or missing module fails the contract.
+# ---------------------------------------------------------------------------
+[importlinter:contract:handover-tier-order]
+name = Inside handover/, modules import only from lower tiers
+type = layers
+containers =
+    app.orchestration.handover
+layers =
+    receiver_verification
+    capability
+
+# ---------------------------------------------------------------------------
+# 17. Stops the consignments package importing back into its own facades (audit 5.5, rule 2:
+#     imports only run old -> new). One facade per moved module, so the list is the six old
+#     names. Wildcard form for the same reason as contract 3; function-level (lazy) imports
+#     are in the graph too.
+# ---------------------------------------------------------------------------
+[importlinter:contract:consignments-no-facade]
+name = app.orchestration.consignments must not import the consignments facade modules
+type = forbidden
+source_modules =
+    app.orchestration.consignments.**
+forbidden_modules =
+    app.orchestration.consignment_service
+    app.orchestration.scan_service
+    app.orchestration.pp_lookup_service
+    app.orchestration.pp_manifest
+    app.orchestration.pp_manifest_service
+    app.orchestration.manifest_service
+
+# ---------------------------------------------------------------------------
+# 18. Tier order inside consignments/ (audit 5, move order: leaves first). The tiers are the
+#     edges the code has today: manifest_import and manifest_reads build on manifest_snapshot,
+#     which builds on sync (it serialises a waybill); sync, scans and waybill_lookup are the
+#     leaves and share nothing. consignments/__init__ stays empty (audit 5 rule 1).
+#     Layers are not optional: a misspelt or missing module fails the contract.
+# ---------------------------------------------------------------------------
+[importlinter:contract:consignments-tier-order]
+name = Inside consignments/, modules import only from lower tiers
+type = layers
+containers =
+    app.orchestration.consignments
+layers =
+    manifest_import | manifest_reads
+    manifest_snapshot
+    sync | scans | waybill_lookup

@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.realtime import RealtimeKind, TripEvent, enqueue_event, event_severity
 from app.db.models.enums import ExceptionSeverity, PhaseStatus
 from app.integrations.scan_feed import ScanDirection
-from app.orchestration import scan_service
+from app.orchestration.consignments import scans as scan_service
 from app.orchestration.evidence import corroboration
 from app.orchestration.phases.anchor_dispatch import _anchor_phase
 from app.orchestration.phases.artifacts import _assert_artifacts_belong_to_trip

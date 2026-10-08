@@ -54,9 +54,9 @@ from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.vehicles import Vehicle
 from app.integrations.supabase_admin import create_dispatcher_auth_user
-from app.orchestration.driver_service import create_driver
-from app.orchestration.precinct_service import create_precinct
-from app.orchestration.vehicle_service import create_vehicle
+from app.orchestration.fleet.drivers import create_driver
+from app.orchestration.fleet.precincts import create_precinct
+from app.orchestration.fleet.vehicles import create_vehicle
 from app.schemas.organisations import PrecinctCreateBody
 from app.schemas.people import DriverCreateBody
 from app.schemas.vehicles import VehicleCreateBody

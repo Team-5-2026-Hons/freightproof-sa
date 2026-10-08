@@ -150,7 +150,7 @@ async def test_pp_outage_is_502(client: AsyncClient, db_session: AsyncSession, m
         async def get_manifest(self, manifest_number: int) -> PPManifestResponse:
             raise httpx.ConnectError("PP down")
 
-    monkeypatch.setattr("app.orchestration.pp_manifest_service.get_pp_client", lambda: _DownPP())
+    monkeypatch.setattr("app.orchestration.consignments.manifest_import.get_pp_client", lambda: _DownPP())
 
     resp = await client.get(
         "/api/v1/trips/pp-manifest-preview", params={"manifest_number": MANIFEST_HAPPY_PATH},

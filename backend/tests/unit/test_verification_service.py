@@ -229,7 +229,7 @@ async def test_reconstruction_matches_the_real_create_precinct_payload(
         return receipt
 
     with patch(
-        "app.orchestration.precinct_service.anchor_subject", new=_persist_real_receipt,
+        "app.orchestration.fleet.precincts.anchor_subject", new=_persist_real_receipt,
     ):
         created = await create_precinct(
             db=db_session,
