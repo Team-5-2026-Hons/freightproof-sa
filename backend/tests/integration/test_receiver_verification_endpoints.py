@@ -12,7 +12,7 @@ import uuid
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
-from sqlalchemy import select
+from sqlalchemy import event, select
 
 from app.core.config import settings
 from app.db.models.enums import (
@@ -21,13 +21,16 @@ from app.db.models.enums import (
     PhaseStatus,
     PhaseType,
     ReceiverVerificationStatus,
+    ReceiverVerificationTier,
+    ReceiverVerificationUnverifiedReason,
     TripStatus,
 )
 from app.db.models.handover import HandoverCapabilityToken
 from app.db.models.phases import PhaseEvent
-from app.db.models.receiver_verification import ReceiverIdentityVerification
+from app.db.models.receiver_verification import IdvsQuotaLedger, ReceiverIdentityVerification
 from app.db.models.trips import Trip, TripStop
 from app.db.session import get_db
+from app.integrations.idvs import IdvsDecisionStatus, MockIdvsClient
 from app.main import app
 from app.orchestration.handover_service import hash_presented_token
 from app.storage.supabase_storage import UploadResult
@@ -191,6 +194,73 @@ async def test_consent_without_a_document_degrades_to_selfie_only(
     assert body["unverified_reason"] == "no_document"
 
 
+async def test_declining_the_identity_check_records_no_consent(
+    client, handover_trip, driver_auth, db_session,
+):
+    """A decline is the opposite of consent: the row must say a decision was made without
+    claiming the receiver agreed to anything, or evidence of consent is manufactured."""
+    token = await _issue(client, handover_trip, driver_auth)
+
+    res = await client.post(
+        f"/api/v1/handover/{token}/consent", json={**_CONSENT_BODY, "consented": False},
+    )
+
+    assert res.status_code == 201
+    body = res.json()
+    assert body["status"] == ReceiverVerificationStatus.UNVERIFIED.value
+    assert body["unverified_reason"] == ReceiverVerificationUnverifiedReason.DECLINED_CONSENT.value
+    assert body["tier"] == ReceiverVerificationTier.TYPED_ONLY.value
+
+    row = await _verification_row(db_session, token)
+    assert row.consent_given_at is None
+    assert row.consent_text_hash is None
+    assert row.provider_session_id is None
+
+
+async def test_declining_is_idempotent_across_a_reload(client, handover_trip, driver_auth):
+    token = await _issue(client, handover_trip, driver_auth)
+    body = {**_CONSENT_BODY, "consented": False}
+
+    first = await client.post(f"/api/v1/handover/{token}/consent", json=body)
+    second = await client.post(f"/api/v1/handover/{token}/consent", json=body)
+
+    assert first.status_code == second.status_code == 201
+    assert first.json() == second.json()
+
+
+async def test_consent_without_the_decision_field_is_still_treated_as_consent(
+    client, handover_trip, driver_auth, db_session,
+):
+    """A receiver page cached from before this field existed never sends it, and every
+    request it ever sent meant 'agreed'. Defaulting to a decline would silently turn off
+    identity checks for those browsers."""
+    token = await _issue(client, handover_trip, driver_auth)
+
+    res = await client.post(f"/api/v1/handover/{token}/consent", json=_CONSENT_BODY)
+
+    assert res.status_code == 201
+    row = await _verification_row(db_session, token)
+    assert row.consent_given_at is not None
+    assert row.consent_text_hash is not None
+
+
+async def test_agreeing_without_a_document_records_consent_at_selfie_only(
+    client, handover_trip, driver_auth, db_session,
+):
+    token = await _issue(client, handover_trip, driver_auth)
+
+    res = await client.post(
+        f"/api/v1/handover/{token}/consent",
+        json={**_CONSENT_BODY, "consented": True, "has_document": False},
+    )
+
+    assert res.status_code == 201
+    assert res.json()["tier"] == ReceiverVerificationTier.SELFIE_ONLY.value
+    row = await _verification_row(db_session, token)
+    assert row.consent_given_at is not None, "agreeing with no document is still consent"
+    assert row.unverified_reason == ReceiverVerificationUnverifiedReason.NO_DOCUMENT
+
+
 # ── Verify ───────────────────────────────────────────────────────────────────
 
 
@@ -227,6 +297,80 @@ async def test_verify_degrades_without_creating_a_session_when_quota_is_spent(
     assert row.provider_session_id is None, "no vendor session may be created once quota is spent"
 
 
+async def _quota_used(db_session) -> int:
+    """Free-tier sessions spent across every ledger row (each test runs in its own
+    rolled-back transaction, so this is only this test's own spend plus any baseline)."""
+    used = (await db_session.execute(select(IdvsQuotaLedger.sessions_used))).scalars().all()
+    return sum(used)
+
+
+async def test_verify_after_a_decline_degrades_without_a_vendor_call_or_quota(
+    client, handover_trip, driver_auth, db_session,
+):
+    """Declined means no biometric processing: no vendor session, and no free-tier session
+    spent on a check nobody agreed to. Degrades like every other path (200, null URL)."""
+    token = await _issue(client, handover_trip, driver_auth)
+    await client.post(
+        f"/api/v1/handover/{token}/consent", json={**_CONSENT_BODY, "consented": False},
+    )
+    used_before = await _quota_used(db_session)
+
+    res = await client.post(f"/api/v1/handover/{token}/verify")
+
+    assert res.status_code == 200
+    body = res.json()
+    assert body["session_url"] is None
+    assert body["tier"] == ReceiverVerificationTier.TYPED_ONLY.value
+    assert body["unverified_reason"] == ReceiverVerificationUnverifiedReason.DECLINED_CONSENT.value
+    row = await _verification_row(db_session, token)
+    assert row.provider_session_id is None
+    assert await _quota_used(db_session) == used_before
+
+
+async def test_a_repeated_verify_returns_the_same_degraded_answer_not_a_second_session(
+    client, handover_trip, driver_auth, db_session,
+):
+    token = await _issue(client, handover_trip, driver_auth)
+    await client.post(f"/api/v1/handover/{token}/consent", json=_CONSENT_BODY)
+    first = await client.post(f"/api/v1/handover/{token}/verify")
+    session_id = (await _verification_row(db_session, token)).provider_session_id
+    used_after_first = await _quota_used(db_session)
+
+    second = await client.post(f"/api/v1/handover/{token}/verify")
+
+    assert first.json()["session_url"] is not None
+    assert second.status_code == 200
+    assert second.json()["session_url"] is None
+    assert (await _verification_row(db_session, token)).provider_session_id == session_id
+    assert await _quota_used(db_session) == used_after_first
+
+
+async def test_verify_locks_the_verification_row_before_deciding(
+    client, handover_trip, driver_auth, db_session,
+):
+    """Two simultaneous /verify calls must serialise on the row, or both would pass the
+    'no session yet' check. Asserts the lock is actually requested."""
+    token = await _issue(client, handover_trip, driver_auth)
+    await client.post(f"/api/v1/handover/{token}/consent", json=_CONSENT_BODY)
+    statements: list[str] = []
+
+    def capture(conn, cursor, statement, parameters, context, executemany) -> None:
+        statements.append(statement)
+
+    engine = db_session.bind.sync_engine
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        await client.post(f"/api/v1/handover/{token}/verify")
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+
+    locking = [
+        sql for sql in statements
+        if "receiver_identity_verifications" in sql and "FOR UPDATE" in sql
+    ]
+    assert locking, "the verification row was read without FOR UPDATE"
+
+
 async def test_verify_without_prior_consent_is_the_generic_404(client, handover_trip, driver_auth):
     token = await _issue(client, handover_trip, driver_auth)
 
@@ -248,7 +392,7 @@ async def test_resolve_moves_the_row_to_a_terminal_status(
 
     res = await client.post(
         f"/api/v1/handover/{token}/verify/resolve",
-        params={"receiver_name": "Thandi Nkosi", "receiver_id_number": "9202204720082"},
+        json={"receiver_name": "Thandi Nkosi", "receiver_id_number": "9202204720082"},
     )
 
     assert res.status_code == 200
@@ -260,6 +404,98 @@ async def test_resolve_moves_the_row_to_a_terminal_status(
     assert row.status != ReceiverVerificationStatus.PENDING
 
 
+_NKOSI_NAME = "Thandi Nkosi"
+_NKOSI_ID = "9202204720082"
+
+
+async def _stage_nkosi_document(db_session, token: str) -> None:
+    """Make the mock vendor 'read' Nkosi's document, so the identity cross-check has
+    something to compare against (an unstaged mock session extracts nothing)."""
+    row = await _verification_row(db_session, token)
+    assert row.provider_session_id is not None
+    await MockIdvsClient().stage_decision(
+        row.provider_session_id,
+        status=IdvsDecisionStatus.APPROVED,
+        extracted_surname="Nkosi",
+        extracted_id_number=_NKOSI_ID,
+    )
+
+
+async def _started_session(client, handover_trip, driver_auth, db_session) -> str:
+    token = await _issue(client, handover_trip, driver_auth)
+    await client.post(f"/api/v1/handover/{token}/consent", json=_CONSENT_BODY)
+    await client.post(f"/api/v1/handover/{token}/verify")
+    await _stage_nkosi_document(db_session, token)
+    return token
+
+
+async def test_resolve_compares_the_identity_sent_in_the_json_body(
+    client, handover_trip, driver_auth, db_session,
+):
+    token = await _started_session(client, handover_trip, driver_auth, db_session)
+
+    res = await client.post(
+        f"/api/v1/handover/{token}/verify/resolve",
+        json={"receiver_name": _NKOSI_NAME, "receiver_id_number": _NKOSI_ID},
+    )
+
+    assert res.status_code == 200
+    assert res.json()["status"] == ReceiverVerificationStatus.VERIFIED.value
+    assert res.json()["identity_match"] is True
+
+
+async def test_resolve_ignores_identity_sent_in_the_query_string(
+    client, handover_trip, driver_auth, db_session,
+):
+    """The query string lands in access and proxy logs, so it must never carry the
+    identity: values there may not feed the comparison at all."""
+    token = await _started_session(client, handover_trip, driver_auth, db_session)
+
+    res = await client.post(
+        f"/api/v1/handover/{token}/verify/resolve",
+        params={"receiver_name": _NKOSI_NAME, "receiver_id_number": _NKOSI_ID},
+        json={},
+    )
+
+    assert res.status_code == 200
+    assert res.json()["identity_match"] is False, "the query-string identity was compared"
+    assert res.json()["status"] == ReceiverVerificationStatus.FAILED.value
+
+
+async def test_resolve_without_a_body_is_unprocessable(
+    client, handover_trip, driver_auth, db_session,
+):
+    """An old client still sending only a query string must fail loudly, not be compared
+    against two empty strings and file a false identity-mismatch finding."""
+    token = await _started_session(client, handover_trip, driver_auth, db_session)
+
+    res = await client.post(
+        f"/api/v1/handover/{token}/verify/resolve",
+        params={"receiver_name": _NKOSI_NAME, "receiver_id_number": _NKOSI_ID},
+    )
+
+    assert res.status_code == 422
+    row = await _verification_row(db_session, token)
+    assert row.status == ReceiverVerificationStatus.PENDING
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"receiver_name": "n" * 121},
+        {"receiver_id_number": "9" * 61},
+    ],
+)
+async def test_resolve_rejects_oversized_identity_fields(
+    client, handover_trip, driver_auth, db_session, body,
+):
+    token = await _started_session(client, handover_trip, driver_auth, db_session)
+
+    res = await client.post(f"/api/v1/handover/{token}/verify/resolve", json=body)
+
+    assert res.status_code == 422
+
+
 # ── The shared oracle ────────────────────────────────────────────────────────
 
 
@@ -268,7 +504,7 @@ async def test_an_unknown_token_is_the_identical_404_on_every_route(client):
 
     consent = await client.post(f"/api/v1/handover/{unknown}/consent", json=_CONSENT_BODY)
     verify = await client.post(f"/api/v1/handover/{unknown}/verify")
-    resolve = await client.post(f"/api/v1/handover/{unknown}/verify/resolve")
+    resolve = await client.post(f"/api/v1/handover/{unknown}/verify/resolve", json={})
 
     for res in (consent, verify, resolve):
         assert res.status_code == 404
@@ -338,7 +574,7 @@ async def test_full_walk_verified_receiver_confirms_the_delivery(
 
     resolved = await client.post(
         f"/api/v1/handover/{token}/verify/resolve",
-        params={"receiver_name": "Thandi Nkosi", "receiver_id_number": "9202204720082"},
+        json={"receiver_name": "Thandi Nkosi", "receiver_id_number": "9202204720082"},
     )
     assert resolved.status_code == 200
     assert resolved.json()["status"] == ReceiverVerificationStatus.VERIFIED.value

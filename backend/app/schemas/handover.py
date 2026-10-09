@@ -19,6 +19,12 @@ from pydantic import BaseModel, Field, field_validator
 MAX_SIGNATURE_BYTES = 512 * 1024
 MAX_SIGNATURE_B64_CHARS = (MAX_SIGNATURE_BYTES * 4) // 3 + 4
 
+# Same ceilings as HandoverConfirmRequest below: the identity resolve compares what the
+# receiver typed at consent time, which is later submitted at confirm time under those
+# limits, so a longer value could never match anything the confirm route would accept.
+MAX_RECEIVER_NAME_LENGTH = 120
+MAX_RECEIVER_ID_NUMBER_LENGTH = 60
+
 _PNG_DATA_URL_PREFIX = "data:image/png;base64,"
 _PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
@@ -109,7 +115,26 @@ class HandoverConsentRequest(BaseModel):
     """
 
     consent_text: str = Field(min_length=1, max_length=4000)
+    # False records a refusal: no consent is stored and no vendor session may follow.
+    # Defaults to True because a receiver page cached from before this field existed never
+    # sends it, and every request such a page sent meant "agreed" — defaulting to False
+    # would silently switch identity checks off for those browsers.
+    consented: bool = True
     has_document: bool = True  # False routes to selfie-only tier, not a refusal
+
+
+class HandoverResolveRequest(BaseModel):
+    """What the receiver typed, for the identity cross-check against the vendor's document.
+
+    A body, not query parameters: a name and an ID number in a URL are written to the
+    access log, proxy logs and platform logs. Defaults stay empty (not required) so a
+    receiver whose storage was cleared across the vendor redirect can still resolve;
+    empty simply compares as "nothing typed". Still no session identifier: the server
+    uses the one it stored itself.
+    """
+
+    receiver_name: str = Field(default="", max_length=MAX_RECEIVER_NAME_LENGTH)
+    receiver_id_number: str = Field(default="", max_length=MAX_RECEIVER_ID_NUMBER_LENGTH)
 
 
 class HandoverVerifyResponse(BaseModel):

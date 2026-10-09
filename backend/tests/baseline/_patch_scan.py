@@ -10,8 +10,10 @@ What counts as a patch site, wherever it appears (statement, `with`, decorator, 
   * unittest.mock.patch(target, ...)           target is a dotted string
   * unittest.mock.patch.object(obj, "name")    obj is an expression
   * unittest.mock.patch.multiple(obj, ...)     obj is an expression or a dotted string
+  * unittest.mock.patch.dict(target, ...)      target is a dotted string or a dict expression
+                                               (`"app.x.facade.__dict__"` rewrites the facade's namespace)
   * <anything>.setattr(target, ...)            monkeypatch.setattr, any receiver name
-  * mocker.patch / mocker.patch.object         the pytest-mock spellings
+  * mocker.patch / .object / .multiple / .dict  the pytest-mock spellings
 A patch target held in a module-level string constant is resolved too:
   * _ANCHOR = "app.x.facade.fn"; patch(_ANCHOR)   plain and annotated `NAME = "<str>"`
     (an import of the same name wins; constants bound anywhere but module level are not seen)
@@ -27,11 +29,13 @@ _MOCK_PATCH_CALLABLES = frozenset({
     "unittest.mock.patch",
     "unittest.mock.patch.object",
     "unittest.mock.patch.multiple",
+    "unittest.mock.patch.dict",
 })
 # The third-party `mock` package spells it the same way under a different root.
 _MOCK_PACKAGE_ROOT = "mock.patch"
 _MOCKER_PATCH_CHAINS = frozenset({
     ("mocker", "patch"), ("mocker", "patch", "object"), ("mocker", "patch", "multiple"),
+    ("mocker", "patch", "dict"),
 })
 _TARGET_KEYWORD = "target"
 

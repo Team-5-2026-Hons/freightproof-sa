@@ -161,6 +161,53 @@ def test_scan_catches_patch_object_and_aliased_patch_import() -> None:
     assert len(_flagged(source)) == 1
 
 
+def test_scan_catches_a_patch_dict_string_target() -> None:
+    source = (
+        "from unittest.mock import patch\n"
+        "\n"
+        "def test_something():\n"
+        '    with patch.dict("app.orchestration.phase_service.__dict__", {"x": 1}):\n'
+        "        pass\n"
+    )
+
+    assert len(_flagged(source)) == 1
+
+
+def test_scan_catches_a_patch_dict_on_an_aliased_facade_module() -> None:
+    source = (
+        "from unittest.mock import patch\n"
+        "from app.orchestration import phase_service as ps\n"
+        "\n"
+        "def test_something():\n"
+        '    with patch.dict(ps.__dict__, {"x": 1}):\n'
+        "        pass\n"
+    )
+
+    assert len(_flagged(source)) == 1
+
+
+def test_scan_catches_a_mocker_patch_dict_string_target() -> None:
+    source = (
+        "def test_something(mocker):\n"
+        '    mocker.patch.dict("app.orchestration.phase_service.__dict__", {"x": 1})\n'
+    )
+
+    assert len(_flagged(source)) == 1
+
+
+def test_scan_ignores_a_patch_dict_of_a_non_facade_target() -> None:
+    source = (
+        "from unittest.mock import patch\n"
+        "\n"
+        "def test_something(mocker):\n"
+        '    with patch.dict("os.environ", {"A": "1"}):\n'
+        "        pass\n"
+        '    mocker.patch.dict("sys.modules", {"x": None})\n'
+    )
+
+    assert _flagged(source) == []
+
+
 def test_scan_catches_a_dependency_patched_through_the_facade() -> None:
     source = (
         "import app.orchestration.phase_service\n"

@@ -95,7 +95,29 @@ export async function recordConsent(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ consent_text: consentText, has_document: hasDocument }),
+      // `consented: true` stated outright rather than left to the server's default: this
+      // route records agreement, and a refusal goes through recordConsentDecline.
+      body: JSON.stringify({ consent_text: consentText, consented: true, has_document: hasDocument }),
+    }),
+  )
+}
+
+/**
+ * Record that the receiver declined the identity check.
+ *
+ * Separate from recordConsent so a refusal can never be sent as agreement: the server
+ * stores no consent timestamp or wording hash for it.
+ */
+export async function recordConsentDecline(
+  token: string,
+  consentText: string,
+): Promise<VerificationState> {
+  return parse<VerificationState>(
+    await fetch(`${BASE_URL}/api/v1/handover/${token}/consent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ consent_text: consentText, consented: false }),
     }),
   )
 }
@@ -112,7 +134,8 @@ export async function startVerification(token: string): Promise<VerifyStarted> {
 /**
  * Ask the server to fetch the vendor's decision.
  *
- * Deliberately sends NO session identifier — the server uses the id it stored before
+ * Deliberately sends NO session identifier (only the typed name and ID number, in the
+ * body for the cross-check) — the server uses the id it stored before
  * redirecting. A client that could name a session could point us at someone else's
  * approved one, and this route has no authentication by design.
  */
@@ -121,14 +144,15 @@ export async function resolveVerification(
   receiverName: string,
   receiverIdNumber: string,
 ): Promise<VerificationState> {
-  const q = new URLSearchParams({
-    receiver_name: receiverName,
-    receiver_id_number: receiverIdNumber,
-  })
   return parse<VerificationState>(
-    await fetch(`${BASE_URL}/api/v1/handover/${token}/verify/resolve?${q}`, {
+    await fetch(`${BASE_URL}/api/v1/handover/${token}/verify/resolve`, {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
+      // A body, never the URL: the name and ID number would otherwise be written to the
+      // server's access log and every proxy and platform log in front of it. These are the
+      // typed identity only; the session id is still never sent.
+      body: JSON.stringify({ receiver_name: receiverName, receiver_id_number: receiverIdNumber }),
     }),
   )
 }

@@ -75,6 +75,12 @@ def _normalise_id_number(value: str) -> str:
     return "".join(char for char in value if char.isalnum()).casefold()
 
 
+def _contains_token_run(haystack: list[str], needle: list[str]) -> bool:
+    """Whether `needle` appears in `haystack` as a contiguous run of whole tokens."""
+    width = len(needle)
+    return any(haystack[i:i + width] == needle for i in range(len(haystack) - width + 1))
+
+
 def identity_matches(
     *,
     typed_name: str,
@@ -91,6 +97,12 @@ def identity_matches(
     Only the SURNAME is compared, for presence among the typed name's tokens.
     Given-name ordering/initials vary too much to carry a fraud signal; an absent
     surname does. Never blocks anything — a False result is evidence, not a gate.
+
+    The surname is matched as a contiguous run of whole tokens, not a single token:
+    "van der Merwe" is three tokens, and "Smith-Jones" normalises to two because
+    punctuation becomes a space. Whole tokens (not a substring) so "Merwe" does not
+    match "Merwenstein"; contiguous and ordered so "van Merwe" does not match
+    "van der Merwe".
     """
     if extracted_surname is None and extracted_id_number is None:
         return None
@@ -100,8 +112,10 @@ def identity_matches(
             return False
 
     if extracted_surname is not None:
-        surname = _normalise_name(extracted_surname)
-        if not surname or surname not in _normalise_name(typed_name).split():
+        surname_tokens = _normalise_name(extracted_surname).split()
+        if not surname_tokens or not _contains_token_run(
+            _normalise_name(typed_name).split(), surname_tokens,
+        ):
             return False
 
     return True
@@ -307,6 +321,57 @@ async def record_consent(
     return verification
 
 
+async def record_consent_declined(
+    db: AsyncSession, *, token: HandoverCapabilityToken,
+) -> ReceiverIdentityVerification:
+    """Create the verification row for a receiver who declined the identity check.
+
+    The row still exists because the flow needs to know a decision was made, but it
+    claims nothing: no consent timestamp or wording hash (nobody agreed to anything),
+    and TYPED_ONLY rather than SELFIE_ONLY because neither a selfie nor a document was
+    taken — the only identity evidence is what the receiver typed. UNVERIFIED with
+    DECLINED_CONSENT lets a dispatcher tell "chose not to" from "had no ID" or "vendor
+    was down".
+    """
+    verification = ReceiverIdentityVerification(
+        id=uuid.uuid4(),
+        token_id=token.id,
+        trip_id=token.trip_id,
+        status=ReceiverVerificationStatus.UNVERIFIED,
+        tier=ReceiverVerificationTier.TYPED_ONLY,
+        unverified_reason=ReceiverVerificationUnverifiedReason.DECLINED_CONSENT,
+        provider=PROVIDER_DIDIT,
+    )
+    db.add(verification)
+    await db.flush()
+    return verification
+
+
+async def record_consent_decision(
+    db: AsyncSession,
+    *,
+    token: HandoverCapabilityToken,
+    consent_text: str,
+    consented: bool,
+    has_document: bool,
+) -> ReceiverIdentityVerification:
+    """Create the verification row for whichever decision the receiver made.
+
+    One place for the three outcomes so the endpoint cannot blur them: declined (no
+    consent stored), agreed with no document (consent stored, SELFIE_ONLY), or agreed
+    with a document (consent stored, ready for a vendor session).
+    """
+    if not consented:
+        return await record_consent_declined(db, token=token)
+
+    verification = await record_consent(db, token=token, consent_text=consent_text)
+    if not has_document:
+        verification.tier = ReceiverVerificationTier.SELFIE_ONLY
+        verification.status = ReceiverVerificationStatus.UNVERIFIED
+        verification.unverified_reason = ReceiverVerificationUnverifiedReason.NO_DOCUMENT
+    return verification
+
+
 async def start_verification(
     db: AsyncSession,
     *,
@@ -322,6 +387,17 @@ async def start_verification(
     vendor outage, spent quota, or unreachable network all end with a confirmable
     delivery carrying an honest reason, not a failure.
 
+    Starts a session at most once per verification. A row that is no longer PENDING
+    (declined, no document, quota or vendor failure already recorded, resolved) or that
+    already has a session returns None untouched, with no quota claimed and no vendor
+    call: a retried request would otherwise overwrite provider_session_id, orphaning the
+    first session's webhook decision and spending a second free-tier slot. So would a row
+    with no consent_given_at — biometric processing needs recorded consent. The caller
+    must hold the row lock (load_verification_for_token(lock=True)) so two simultaneous
+    requests cannot both pass this check. An abandoned session is left to the sweeper.
+    Storing the session URL so a retry could resume the same session would be a later
+    improvement, but it needs a column.
+
     `raw_token` is needed because the vendor's hosted flow must be told where to
     send the receiver back to; the `token` ROW only stores an irreversible hash.
 
@@ -334,6 +410,18 @@ async def start_verification(
     `client` is for tests and callers that already hold one; by default the configured
     mock-or-live client is used, so the endpoint never touches the integration layer.
     """
+    # `!=`, never `is not`: status loads as a bare str (see ingest_webhook_decision).
+    if (
+        verification.consent_given_at is None
+        or verification.status != ReceiverVerificationStatus.PENDING
+        or verification.provider_session_id is not None
+    ):
+        logger.info(
+            "Not starting an IDVS session for verification=%s (status=%s, session already=%s)",
+            verification.id, verification.status, verification.provider_session_id is not None,
+        )
+        return None
+
     if client is None:
         client = get_idvs_client()
     if not await consume_quota_slot(db, provider=PROVIDER_DIDIT):
@@ -542,16 +630,20 @@ async def ingest_webhook_decision(
 
 
 async def load_verification_for_token(
-    db: AsyncSession, *, token_id: uuid.UUID,
+    db: AsyncSession, *, token_id: uuid.UUID, lock: bool = False,
 ) -> Optional[ReceiverIdentityVerification]:
-    """The verification for one grant, or None if the receiver never consented."""
-    return (
-        await db.execute(
-            select(ReceiverIdentityVerification).where(
-                ReceiverIdentityVerification.token_id == token_id
-            )
-        )
-    ).scalar_one_or_none()
+    """The verification for one grant, or None if the receiver never consented.
+
+    `lock=True` takes SELECT ... FOR UPDATE, held until the caller commits. Used by
+    /verify so a second simultaneous request waits for the first, then sees its
+    provider_session_id instead of racing it (see start_verification).
+    """
+    statement = select(ReceiverIdentityVerification).where(
+        ReceiverIdentityVerification.token_id == token_id
+    )
+    if lock:
+        statement = statement.with_for_update()
+    return (await db.execute(statement)).scalar_one_or_none()
 
 
 async def sweep_abandoned_verifications(db: AsyncSession, *, older_than_seconds: int) -> int:
