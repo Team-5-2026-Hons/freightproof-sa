@@ -95,8 +95,8 @@ export async function recordConsent(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      // `consented: true` stated outright rather than left to the server's default: this
-      // route records agreement, and a refusal goes through recordConsentDecline.
+      // The server requires `consented` (no default), so a body that omits it can never be
+      // read as agreement; a refusal goes through recordConsentDecline.
       body: JSON.stringify({ consent_text: consentText, consented: true, has_document: hasDocument }),
     }),
   )

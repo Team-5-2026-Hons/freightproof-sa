@@ -116,10 +116,10 @@ class HandoverConsentRequest(BaseModel):
 
     consent_text: str = Field(min_length=1, max_length=4000)
     # False records a refusal: no consent is stored and no vendor session may follow.
-    # Defaults to True because a receiver page cached from before this field existed never
-    # sends it, and every request such a page sent meant "agreed" — defaulting to False
-    # would silently switch identity checks off for those browsers.
-    consented: bool = True
+    # Required, with no default: a receiver page cached from before this field existed
+    # sends its decline without it, so a default of True would store that refusal as
+    # agreement. A missing decision is rejected (422) and the stale page has to reload.
+    consented: bool
     has_document: bool = True  # False routes to selfie-only tier, not a refusal
 
 

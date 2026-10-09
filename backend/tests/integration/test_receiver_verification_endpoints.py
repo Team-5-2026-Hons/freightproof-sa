@@ -37,7 +37,8 @@ from app.storage.supabase_storage import UploadResult
 from tests.conftest import auth_header, make_token
 
 _GENERIC_NOT_FOUND = "This delivery confirmation link is not valid."
-_CONSENT_BODY = {"consent_text": "I agree to my identity document and photograph being checked."}
+_CONSENT_TEXT = "I agree to my identity document and photograph being checked."
+_CONSENT_BODY = {"consent_text": _CONSENT_TEXT, "consented": True}
 
 
 @pytest.fixture(autouse=True)
@@ -228,20 +229,35 @@ async def test_declining_is_idempotent_across_a_reload(client, handover_trip, dr
     assert first.json() == second.json()
 
 
-async def test_consent_without_the_decision_field_is_still_treated_as_consent(
+async def test_consent_without_the_decision_field_is_rejected(
     client, handover_trip, driver_auth, db_session,
 ):
-    """A receiver page cached from before this field existed never sends it, and every
-    request it ever sent meant 'agreed'. Defaulting to a decline would silently turn off
-    identity checks for those browsers."""
+    """A receiver page cached from before this field existed sends its decline without it
+    (the old decline body below). Missing data must never establish agreement, so the
+    request is rejected and nothing is stored."""
     token = await _issue(client, handover_trip, driver_auth)
 
-    res = await client.post(f"/api/v1/handover/{token}/consent", json=_CONSENT_BODY)
+    res = await client.post(
+        f"/api/v1/handover/{token}/consent",
+        json={"consent_text": _CONSENT_TEXT, "has_document": False},
+    )
 
-    assert res.status_code == 201
-    row = await _verification_row(db_session, token)
-    assert row.consent_given_at is not None
-    assert row.consent_text_hash is not None
+    assert res.status_code == 422
+    token_row = (
+        await db_session.execute(
+            select(HandoverCapabilityToken).where(
+                HandoverCapabilityToken.token_hash == hash_presented_token(token)
+            )
+        )
+    ).scalar_one()
+    verification = (
+        await db_session.execute(
+            select(ReceiverIdentityVerification).where(
+                ReceiverIdentityVerification.token_id == token_row.id
+            )
+        )
+    ).scalar_one_or_none()
+    assert verification is None
 
 
 async def test_agreeing_without_a_document_records_consent_at_selfie_only(

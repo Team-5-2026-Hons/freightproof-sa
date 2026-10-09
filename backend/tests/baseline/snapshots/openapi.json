@@ -3431,7 +3431,6 @@
             "type": "string"
           },
           "consented": {
-            "default": true,
             "title": "Consented",
             "type": "boolean"
           },
@@ -3442,7 +3441,8 @@
           }
         },
         "required": [
-          "consent_text"
+          "consent_text",
+          "consented"
         ],
         "title": "HandoverConsentRequest",
         "type": "object"
