@@ -130,7 +130,7 @@ async def test_create_trip_empty_leg_does_not_call_sync() -> None:
         # A real dict, not a placeholder — compute_payload_hash (called for real
         # on h0's inline completion) needs a JSON-serialisable payload, matching
         # compute_trip_canonical_payload's actual dict return type.
-        patch("app.orchestration.trips.creation.compute_trip_canonical_payload", return_value={"trip_id": "canonical"}),
+        patch("app.orchestration.trips.creation.compute_trip_canonical_payload_v2", return_value={"trip_id": "canonical"}),
         patch(
             "app.orchestration.consignments.sync.fetch_and_sync_consignment",
             new_callable=AsyncMock,
@@ -168,7 +168,7 @@ async def test_create_trip_with_consignments_calls_sync() -> None:
         # A real dict, not a placeholder — compute_payload_hash (called for real
         # on h0's inline completion) needs a JSON-serialisable payload, matching
         # compute_trip_canonical_payload's actual dict return type.
-        patch("app.orchestration.trips.creation.compute_trip_canonical_payload", return_value={"trip_id": "canonical"}),
+        patch("app.orchestration.trips.creation.compute_trip_canonical_payload_v2", return_value={"trip_id": "canonical"}),
         patch(
             "app.orchestration.consignments.sync.fetch_and_sync_consignment",
             new_callable=AsyncMock,
@@ -268,7 +268,7 @@ async def test_create_trip_writes_full_pending_plan() -> None:
         # A real dict, not a placeholder — compute_payload_hash (called for real
         # on h0's inline completion) needs a JSON-serialisable payload, matching
         # compute_trip_canonical_payload's actual dict return type.
-        patch("app.orchestration.trips.creation.compute_trip_canonical_payload", return_value={"trip_id": "canonical"}),
+        patch("app.orchestration.trips.creation.compute_trip_canonical_payload_v2", return_value={"trip_id": "canonical"}),
         patch(
             "app.orchestration.consignments.sync.fetch_and_sync_consignment",
             new_callable=AsyncMock,

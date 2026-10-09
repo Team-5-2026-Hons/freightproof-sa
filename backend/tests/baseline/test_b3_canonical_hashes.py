@@ -25,7 +25,10 @@ from typing import Any
 import pytest
 
 from app.blockchain.anchor_service import compute_payload_hash
-from app.crypto.hashing import PPManifestKey, compute_journey_lock_hash, compute_trip_canonical_payload
+from app.crypto.hashing import (
+    PPManifestKey, StopCommitment, compute_journey_lock_hash, compute_trip_canonical_payload,
+    compute_trip_canonical_payload_v2,
+)
 from app.db.models.enums import PhaseType
 from app.orchestration.phase_service import (
     compute_activation_canonical_payload_v2,
@@ -212,3 +215,63 @@ def test_trip_journey_lock_hash_is_the_golden_sha256() -> None:
     payload = _trip_payload()
 
     assert compute_journey_lock_hash(payload) == "a3b87bb27053cf4437ec035929dbdfdec6d95bc2ebe1cf2ab2aca4f431e97e7a"
+
+
+# ── Journey lock v2 (commits to the ordered stops). The v1 vector above stays as it is:
+# receipts anchored before v2 must keep verifying. Payload and hash below were written once,
+# the hash computed from the hand-written payload with hashlib rather than from the builder.
+
+MIDDLE_PRECINCT_ID = uuid.UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+
+
+def _trip_payload_v2() -> dict[str, Any]:
+    return compute_trip_canonical_payload_v2(
+        trip_id=TRIP_ID, driver_id=DRIVER_ID, horse_id=HORSE_ID,
+        trailer_ids=[TRAILER_B_ID, TRAILER_A_ID],
+        origin_precinct_id=ORIGIN_PRECINCT_ID, destination_precinct_id=DESTINATION_PRECINCT_ID,
+        created_by_user_id=USER_ID,
+        created_at=datetime(2026, 1, 15, 8, 30, 0, tzinfo=UTC),
+        trip_type="linehaul",
+        pp_manifest=PPManifestKey(issuer_account="ACC1", origin_hub="CPT", number=1234),
+        pp_manifest_snapshot_sha256=DIGEST_C,
+        planned_departure_at=datetime(2026, 1, 15, 10, 0, 0, tzinfo=timezone(timedelta(hours=2))),
+        planned_arrival_at=datetime(2026, 1, 16, 6, 0, 0),
+        # Deliberately out of order, one stop without a slot and one with a +02:00 slot.
+        stops=[
+            StopCommitment(2, DESTINATION_PRECINCT_ID, datetime(2026, 1, 16, 6, 0, 0)),
+            StopCommitment(0, ORIGIN_PRECINCT_ID, datetime(2026, 1, 15, 10, 0, 0, tzinfo=timezone(timedelta(hours=2)))),
+            StopCommitment(1, MIDDLE_PRECINCT_ID, None),
+        ],
+    )
+
+
+def test_trip_journey_lock_v2_payload_is_byte_for_byte_the_golden_payload() -> None:
+    expected = {
+        "trip_id": str(TRIP_ID),
+        "driver_id": str(DRIVER_ID),
+        "horse_id": str(HORSE_ID),
+        "trailers": [str(TRAILER_A_ID), str(TRAILER_B_ID)],
+        "origin_precinct_id": str(ORIGIN_PRECINCT_ID),
+        "destination_precinct_id": str(DESTINATION_PRECINCT_ID),
+        "created_by_user_id": str(USER_ID),
+        "created_at": "2026-01-15T08:30:00+00:00",
+        "trip_type": "linehaul",
+        "pp_manifest": {"issuer_account": "ACC1", "origin_hub": "CPT", "number": 1234},
+        "pp_manifest_snapshot_sha256": DIGEST_C,
+        "planned_departure_at": "2026-01-15T08:00:00+00:00",
+        "planned_arrival_at": "2026-01-16T06:00:00+00:00",
+        "payload_version": 2,
+        "stops": [
+            {"sequence": 0, "precinct_id": str(ORIGIN_PRECINCT_ID), "slot_time": "2026-01-15T08:00:00+00:00"},
+            {"sequence": 1, "precinct_id": str(MIDDLE_PRECINCT_ID), "slot_time": None},
+            {"sequence": 2, "precinct_id": str(DESTINATION_PRECINCT_ID), "slot_time": "2026-01-16T06:00:00+00:00"},
+        ],
+    }
+
+    assert _trip_payload_v2() == expected
+
+
+def test_trip_journey_lock_v2_hash_is_the_golden_sha256() -> None:
+    payload = _trip_payload_v2()
+
+    assert compute_journey_lock_hash(payload) == "cefc8ffa1a5ceb8b5e23b99488cae35a1876880a3e86edaa281918e13761632c"

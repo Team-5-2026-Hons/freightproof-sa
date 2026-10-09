@@ -24,7 +24,9 @@ from app.core.exceptions import (
     PPSyncError,
     ResourceNotFoundError,
 )
-from app.crypto.hashing import PPManifestKey, compute_journey_lock_hash, compute_trip_canonical_payload
+from app.crypto.hashing import (
+    PPManifestKey, StopCommitment, compute_journey_lock_hash, compute_trip_canonical_payload_v2,
+)
 from app.core.realtime import RealtimeKind, TripEvent, enqueue_event
 from app.db.models.enums import (
     AnchorStatus, BlockchainReceiptType, IdvsStatus, PhaseStatus, SubjectType, TripStatus,
@@ -274,6 +276,35 @@ async def create_trip(
     )
 
 
+def _journey_lock_payload(
+    trip: Trip, new_trip: NewTrip, trip_stops: list[TripStop], *, creator_id: uuid.UUID,
+) -> dict[str, Any]:
+    """The journey lock (spec §9): one fixed key set. The manifest fields are null on the
+    explicit path; planned times are locked as stored on the trip row.
+
+    Stops come from the rows just persisted (sorted by sequence), so the lock commits to exactly what
+    verification will read back; slot_time is UTC-normalised by the hasher on both sides.
+    """
+    cargo = new_trip.manifest
+    return compute_trip_canonical_payload_v2(
+        trip_id=trip.id,
+        driver_id=new_trip.driver_id,
+        horse_id=new_trip.horse_id,
+        trailer_ids=new_trip.trailer_ids,
+        # trip.origin/destination_precinct_id are these same two stops, narrowed here to non-null.
+        origin_precinct_id=trip_stops[0].precinct_id,
+        destination_precinct_id=trip_stops[-1].precinct_id,
+        created_by_user_id=creator_id,
+        created_at=trip.created_at,
+        trip_type=new_trip.trip_type.value,
+        pp_manifest=cargo.key if cargo else None,
+        pp_manifest_snapshot_sha256=cargo.snapshot_sha256 if cargo else None,
+        planned_departure_at=trip.planned_departure_at,
+        planned_arrival_at=trip.planned_arrival_at,
+        stops=[StopCommitment(s.sequence, s.precinct_id, s.slot_time) for s in trip_stops],
+    )
+
+
 async def persist_trip(
     db: AsyncSession,
     new_trip: NewTrip,
@@ -440,21 +471,7 @@ async def persist_trip(
 
     # 7. The journey lock (spec §9): one fixed key set. The manifest fields are null on
     #    the explicit path; planned times are locked as stored on the trip row.
-    canonical = compute_trip_canonical_payload(
-        trip_id=trip_id,
-        driver_id=new_trip.driver_id,
-        horse_id=new_trip.horse_id,
-        trailer_ids=new_trip.trailer_ids,
-        origin_precinct_id=trip.origin_precinct_id,
-        destination_precinct_id=trip.destination_precinct_id,
-        created_by_user_id=current_user.id,
-        created_at=trip.created_at,
-        trip_type=new_trip.trip_type.value,
-        pp_manifest=cargo.key if cargo else None,
-        pp_manifest_snapshot_sha256=cargo.snapshot_sha256 if cargo else None,
-        planned_departure_at=trip.planned_departure_at,
-        planned_arrival_at=trip.planned_arrival_at,
-    )
+    canonical = _journey_lock_payload(trip, new_trip, trip_stops, creator_id=current_user.id)
     lock_hash = compute_journey_lock_hash(canonical)
     trip.journey_lock_hash = lock_hash
 
