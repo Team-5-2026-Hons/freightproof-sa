@@ -9,6 +9,9 @@ import type { Precinct } from '@shared/lib/types/precinct'
 // so cards don't jitter between differing source precisions across precincts.
 const COORDINATE_DECIMAL_PLACES = 5
 
+// The list's grid, shared with its loading skeleton so the two always lay out the same.
+export const PRECINCT_GRID_CLASSES = 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4'
+
 interface PrecinctCardProps {
   precinct: Precinct
   isOwned: boolean
@@ -37,7 +40,7 @@ export function PrecinctCard({ precinct, isOwned, onClick }: PrecinctCardProps) 
               {precinct.name}
             </span>
           </div>
-          {/* D5: ownership is the normal case and gets no chip at all — colour marks
+          {/* Ownership is the normal case and gets no chip at all — colour marks
               only the exceptional "not yours" state, never the default. */}
           {!isOwned && <Chip type="pending" label="Shared" />}
         </div>

@@ -16,7 +16,7 @@ truck leaving, not a coordinate typo.
 Anchor: the Cape Town depot, where every seeded tracker is parked
 (integrations/pulsit.py:MOCK_DEVICE_POSITIONS). Distances below are true
 distances from that origin; the endpoint itself reports the live measured
-distance from wherever the trip actually is (api/v1/endpoints/dev_pulsit.py).
+distance from wherever the trip actually is (dev/endpoints/pulsit.py).
 """
 
 from dataclasses import dataclass

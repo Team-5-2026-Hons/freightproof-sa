@@ -416,7 +416,19 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     const phaseEventId = contextPhaseEventId(trip.phases)
 
     if (IS_DEMO_MODE) {
-      const criticalTypes: ExceptionType[] = ['panic_button', 'seal_broken_in_transit', 'seal_mismatch']
+      // seal_mismatch and seal_compromised are both system-raised (advance_arrival's own
+      // comparison), never passed here by a driver action — this app only ever calls
+      // logException with 'panic_button' or a DRIVER_EXCEPTION_TYPES pick, and neither
+      // seal type is offered on that picker (status-meta.ts). Both stay listed anyway,
+      // for the same reason: CRITICAL is this codebase's alarm tier (phase_service.py's
+      // own comment) — "the number differs" (seal_mismatch) and "the seal is broken or
+      // missing" (seal_compromised) are both findings with no benign reading, exactly
+      // like seal_broken_in_transit and panic_button. Keeping them paired here means a
+      // future caller that DOES reach this branch with either type gets the right
+      // severity by construction, rather than by remembering to update this list twice.
+      const criticalTypes: ExceptionType[] = [
+        'panic_button', 'seal_broken_in_transit', 'seal_mismatch', 'seal_compromised',
+      ]
       const newExc: TripException = {
         id: crypto.randomUUID() as unknown as TripException['id'],
         trip_id: trip.id, exception_type: type, source: 'driver',
@@ -430,14 +442,13 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
         gps_lat: hasGpsFix ? gpsLat : null,
         gps_lng: hasGpsFix ? gpsLng : null,
         vehicle_id: demoBreakdownVehicleId(trip, type, vehicleType, trailerId),
-        // Mirrors backend initial_review_status (Task 2): CRITICAL starts
-        // needs_review, everything else starts recorded — so a demo-mode
-        // panic/seal-broken exception behaves like the real backend path instead of
-        // always displaying as recorded regardless of severity.
-        review_status: criticalTypes.includes(type) ? 'needs_review' : 'recorded',
+        // Mirrors backend initial_review_status: every exception starts needs_review,
+        // whatever its severity (FP-280), so demo mode matches the real backend path.
+        review_status: 'needs_review',
         review_outcome: null, reviewed_by_user_id: null,
         reviewed_at: null, review_note: null, contact_method: null,
         merkle_batch_id: null,
+        claimed_by_user_id: null, claimed_at: null, claimed_by_name: null, reviewed_by_name: null,
         created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
       }
       setExceptions(prev => [...prev, newExc])

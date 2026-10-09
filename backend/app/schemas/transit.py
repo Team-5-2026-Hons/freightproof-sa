@@ -18,6 +18,7 @@ from app.db.models.enums import (
     TripStatus,
     VehicleType,
 )
+from app.core.constants import MAX_BATCH_REVIEW_SIZE
 from app.schemas.action_location import ActionLocationAssessment
 from app.schemas.evidence import EvidenceArtifactWithUrl
 from app.schemas.text import CheckpointTypeStr, FreeText, RequiredFreeText
@@ -30,7 +31,7 @@ class CheckpointBase(BaseModel):
     checkpoint_type: str
     driver_phone_lat: Optional[float] = None
     driver_phone_lng: Optional[float] = None
-    # Task 0A: mirrors PhaseEventRead.driver_captured_at — the instant the driver's
+    # Mirrors PhaseEventRead.driver_captured_at — the instant the driver's
     # phone submitted, independent of the server's created_at clock. See
     # DriverCheckpointCreateBody.driver_captured_at for the full rationale.
     driver_captured_at: Optional[datetime] = None
@@ -64,16 +65,16 @@ class DriverCheckpointCreateBody(BaseModel):
     driver_phone_lng: Optional[float] = Field(default=None, ge=-180, le=180)
     horse_gps_lat: Optional[float] = Field(default=None, ge=-90, le=90)
     horse_gps_lng: Optional[float] = Field(default=None, ge=-180, le=180)
-    # Task 0A: the instant the driver's own phone submitted this checkpoint. Mirrors
+    # The instant the driver's own phone submitted this checkpoint. Mirrors
     # schemas/phases.py's _PhaseCompleteBase.driver_captured_at exactly — a checkpoint
     # is offline-queued the same way a phase handshake is, and record_checkpoint_
     # corroboration needs this to tell a live check from a stale replay. Optional for
     # the same replay-compatibility reason; new builds always send it
     # (frontend/driver-pwa/lib/api/checkpoints.ts).
     driver_captured_at: Optional[datetime] = None
-    # R8 (Task 5): mirrors _PhaseCompleteBase.driver_accuracy_metres exactly — the
+    # Mirrors _PhaseCompleteBase.driver_accuracy_metres exactly — the
     # phone's own claimed accuracy at driver_phone_lat/lng, feeding proximity_
-    # service.evaluate_proximity via action_location_service.build_checkpoint_
+    # service.evaluate_proximity via evidence.action_location.build_checkpoint_
     # assessment. Not a DB column; lives only inside the checkpoint's own
     # action_location_assessment JSONB snapshot.
     driver_accuracy_metres: Optional[float] = Field(default=None, ge=0)
@@ -91,7 +92,7 @@ class DriverCheckpointCreateBody(BaseModel):
     @field_validator("driver_captured_at")
     @classmethod
     def validate_driver_captured_at_is_timezone_aware(cls, v: Optional[datetime]) -> Optional[datetime]:
-        # A naive value would silently compare as if it were UTC in corroboration_service.
+        # A naive value would silently compare as if it were UTC in evidence.corroboration.
         if v is not None and v.tzinfo is None:
             raise ValueError("driver_captured_at must be timezone-aware")
         return v
@@ -123,8 +124,8 @@ class CheckpointUpdate(BaseModel):
 class CheckpointRead(CheckpointBase):
     id: UUID
     merkle_batch_id: Optional[UUID] = None
-    # Task 5: the versioned proximity snapshot for this checkpoint's own handshake
-    # (orchestration/action_location_service.build_checkpoint_assessment). Never a
+    # The versioned proximity snapshot for this checkpoint's own handshake
+    # (evidence.action_location.build_checkpoint_assessment). Never a
     # precinct check — a checkpoint happens on the road, so those fields are always
     # None here. Validated through ActionLocationAssessment, never a raw dict.
     action_location_assessment: Optional[ActionLocationAssessment] = None
@@ -209,7 +210,7 @@ class DriverExceptionCreateBody(BaseModel):
     gps_lat: Optional[float] = Field(default=None, ge=-90, le=90)
     gps_lng: Optional[float] = Field(default=None, ge=-180, le=180)
     # Mirrors _PhaseCompleteBase.driver_accuracy_metres — the phone's own claimed
-    # accuracy at gps_lat/lng, used by exception_service to build the report's
+    # accuracy at gps_lat/lng, used by exceptions.creation to build the report's
     # capture-time assessment.
     driver_accuracy_metres: Optional[float] = Field(default=None, ge=0)
     # The device timestamp belongs to this report's capture, not to its later queue
@@ -225,7 +226,7 @@ class DriverExceptionCreateBody(BaseModel):
     client_report_id: Optional[UUID] = None
     # The driver's answer to "Truck or Trailer?" on a vehicle breakdown: horse ("Truck")
     # or trailer. The server works out the exact vehicle from the trip itself
-    # (exception_service.pick_breakdown_vehicle), so the driver never has to identify a
+    # (exceptions.creation.pick_breakdown_vehicle), so the driver never has to identify a
     # vehicle by id. Optional: older installed apps, and reports already sitting in a
     # phone's offline queue, send neither field, and those breakdowns are stored with no
     # vehicle rather than rejected.
@@ -265,6 +266,10 @@ class TripExceptionReviewRequest(BaseModel):
     applicable" option), and an explicit `null` records "reviewed without contacting
     anyone" (e.g. the evidence alone settled it) rather than a caller having forgotten
     the field.
+
+    `take_over` lets a dispatcher take over a colleague's claim and review in one step
+    (FP-280 soft claim); false by default, so a stale page never overrides a claim it
+    didn't show.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -272,6 +277,38 @@ class TripExceptionReviewRequest(BaseModel):
     review_note: RequiredFreeText
     review_outcome: DispatcherReviewOutcome
     contact_method: Optional[ExceptionContactMethod]
+    take_over: bool = False
+
+
+class TripExceptionBatchReviewRequest(BaseModel):
+    """Review several non-critical exceptions on ONE trip with one note and outcome.
+
+    Explicit ids, never "every warning on the trip": the dispatcher confirms exactly the
+    rows they saw, so a warning raised after the page loaded is never swept into a
+    review nobody looked at. One review is still written per row.
+    """
+
+    trip_id: UUID
+    exception_ids: list[UUID] = Field(min_length=1, max_length=MAX_BATCH_REVIEW_SIZE)
+    review_note: RequiredFreeText
+    review_outcome: DispatcherReviewOutcome
+    contact_method: Optional[ExceptionContactMethod]
+
+    @field_validator("exception_ids")
+    @classmethod
+    def _ids_are_unique(cls, ids: list[UUID]) -> list[UUID]:
+        # A duplicate is a client bug, not a harmless repeat — reject it rather than
+        # quietly reviewing fewer rows than the dispatcher was shown.
+        if len(set(ids)) != len(ids):
+            raise ValueError("exception_ids must not repeat")
+        return ids
+
+
+class ExceptionClaimRequest(BaseModel):
+    """Claim an exception. take_over must be explicit: replacing a colleague's claim is a
+    deliberate act, so the default can only ever claim something nobody holds."""
+
+    take_over: bool = False
 
 
 class TripExceptionListItem(BaseModel):
@@ -296,6 +333,15 @@ class TripExceptionListItem(BaseModel):
     trip_id: UUID
     trip_reference: str
     trip_status: TripStatus
+    # Trip crew and route, so a dispatcher can tell which truck/driver/lane an exception
+    # belongs to without opening the trip. Names and registrations only, no contact details.
+    # Origin/destination are None for a trip whose precinct was never derived; trailers
+    # is empty for a trip with none attached.
+    origin_name: Optional[str] = None
+    destination_name: Optional[str] = None
+    driver_name: Optional[str] = None
+    horse_registration: Optional[str] = None
+    trailer_registrations: list[str] = Field(default_factory=list)
 
     # PhaseEvent.phase_type / TripStop.sequence for the phase this exception is scoped
     # to — None for a trip-level exception with no phase context. Mirrors the existing
@@ -303,9 +349,18 @@ class TripExceptionListItem(BaseModel):
     phase_label: Optional[str] = None
     stop_label: Optional[int] = None
     # A driver exception report's own capture assessment, when one was built. This is
-    # projected by exception_service._to_list_item, then inherited by detail below.
+    # projected by exceptions.queries._to_list_item, then inherited by detail below.
     # Validated through ActionLocationAssessment, never served as a raw dict.
     action_location_assessment: Optional[ActionLocationAssessment] = None
+
+    # Claim (FP-280): who is working this exception, and since when. None = unclaimed.
+    claimed_by_user_id: Optional[UUID] = None
+    claimed_at: Optional[datetime] = None
+    # Display names for claimer and reviewer, resolved server-side from users.full_name
+    # within the caller's own organisation. Always None on driver-facing responses: a
+    # driver has no review action and no need for dispatcher identities.
+    claimed_by_name: Optional[str] = None
+    reviewed_by_name: Optional[str] = None
 
 
 class TripExceptionDetail(TripExceptionListItem):
@@ -336,7 +391,7 @@ class TripExceptionDetail(TripExceptionListItem):
     # this trip — see `supporting_artifact`.
     supporting_artifact_id: Optional[UUID] = None
     # None means no photo was ever attached (or the id could not be verified as this
-    # trip's own — Task 0B's ownership invariant). Present with signed_url=None means
+    # trip's own — the ownership invariant). Present with signed_url=None means
     # the opposite: real evidence, but Storage declined to sign a URL right now. The UI
     # must be able to tell "no photo" apart from "recorded, image unavailable".
     supporting_artifact: Optional["EvidenceArtifactWithUrl"] = None
@@ -350,6 +405,14 @@ class TripExceptionRead(TripExceptionBase):
     reviewed_at: Optional[datetime] = None
     review_note: Optional[str] = None
     contact_method: Optional[ExceptionContactMethod] = None
+    # Claim (FP-280): who is working this exception, and since when. None = unclaimed.
+    claimed_by_user_id: Optional[UUID] = None
+    claimed_at: Optional[datetime] = None
+    # Display names for claimer and reviewer, resolved server-side from users.full_name
+    # within the caller's own organisation. Always None on driver-facing responses: a
+    # driver has no review action and no need for dispatcher identities.
+    claimed_by_name: Optional[str] = None
+    reviewed_by_name: Optional[str] = None
     merkle_batch_id: Optional[UUID] = None
     # The read-only, server-built snapshot carried by a driver report when a later
     # capture flow supplies one. Kept off TripExceptionBase so POST bodies cannot

@@ -41,7 +41,7 @@ export function TripSummary({ facts, precincts, driver, returnTo, onBack, onPane
         <BackButton onClick={onBack} />
         <div className="min-w-0 flex-1 basis-48">
           <h1 className="break-words text-lg font-extrabold leading-tight text-on-surf">{facts.reference}</h1>
-          <p className="mt-1 text-xs text-on-surf-v">Order {facts.orderNumber}</p>
+          <p className="mt-1 text-xs tabular-nums tracking-[0.03em] text-on-surf-v">{facts.manifestLabel}</p>
           {/* Not blue: the design system reserves --sec for links, actions and
               identifiers (trip ids, timestamps). A route is a description of two places,
               so colouring it like a link invited clicks it never answered. */}
@@ -81,7 +81,7 @@ export function TripSummary({ facts, precincts, driver, returnTo, onBack, onPane
           space above the panel column once the buttons it was spacing are gone. */}
       <nav aria-label="Trip sections" className="mt-4 flex flex-wrap gap-2 xl:hidden">
         <Button variant="secondary" size="sm" onClick={() => onPanel('information')}>Trip information</Button>
-        <Button variant="secondary" size="sm" onClick={() => onPanel('manifest')}>Manifest</Button>
+        <Button variant="secondary" size="sm" onClick={() => onPanel('manifest')}>Cargo</Button>
         <Button variant={facts.needsReviewCount ? 'primary' : 'secondary'} size="sm" onClick={() => onPanel('exceptions')}>
           {facts.exceptionsTotal === null
             ? `${facts.needsReviewCount} need review`

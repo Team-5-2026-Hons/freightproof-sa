@@ -2,7 +2,7 @@
 //
 // Pure timing/visibility mechanism. Owns the interval, the foreground listeners, the
 // single-flight guard, and the offline skip — knows nothing about trips, TripContext, or
-// what a "refresh" means. See docs/superpowers/specs/2026-08-10-driver-pwa-trip-auto-refresh-design.md.
+// what a "refresh" means.
 'use client'
 
 import { useEffect, useRef } from 'react'

@@ -7,7 +7,7 @@ is a different process from the API and cannot see module-level mutation.
 import pytest
 
 from app.core.config import settings
-from app.integrations import parcel_perfect as pp_module
+from app.integrations.parcel_perfect import mock as pp_mock_module
 from app.integrations.parcel_perfect import MockParcelPerfectClient, PPUnsupportedError
 from tests.conftest import FakeMockStateStore
 
@@ -15,7 +15,7 @@ from tests.conftest import FakeMockStateStore
 @pytest.fixture
 def dev_panel_on(monkeypatch: pytest.MonkeyPatch) -> FakeMockStateStore:
     fake = FakeMockStateStore()
-    monkeypatch.setattr(pp_module, "get_mock_state_store", lambda: fake)
+    monkeypatch.setattr(pp_mock_module, "get_mock_state_store", lambda: fake)
     monkeypatch.setattr(settings, "DEV_PANEL_ENABLED", True)
     monkeypatch.setattr(settings, "PP_USE_MOCK", True)
     return fake

@@ -98,7 +98,7 @@ describe('ChartCard', () => {
     expect(screen.getByText('No closed trips departed in this period.')).toBeInTheDocument()
   })
 
-  it('zooms the chart and its legend into a dialog, and closes it again (D27)', () => {
+  it('zooms the chart and its legend into a dialog, and closes it again', () => {
     renderCard({ legend: <p>the legend</p>, sampleSize: 3 })
     expect(screen.queryByRole('dialog')).toBeNull()
 
@@ -142,7 +142,7 @@ describe('ChartCard', () => {
   })
 })
 
-describe('ChartCard info popover (spec §7.7)', () => {
+describe('ChartCard info popover', () => {
   it('keeps the question and basis off the card face until asked', () => {
     renderCard()
 

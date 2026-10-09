@@ -240,7 +240,7 @@ async def _seed_trip(
     db.add(trip)
     await db.flush()
 
-    # Linked exactly as trip creation does it (trip_service), snapshot included.
+    # Linked exactly as trip creation does it (trips.creation), snapshot included.
     db.add_all([
         TripTrailer(
             trip_id=trip.id, trailer_id=trailer.id,
@@ -327,7 +327,7 @@ def operator(seed: dict[str, Any]) -> _Operator:
 @pytest_asyncio.fixture
 async def lane(db_session: AsyncSession, seed: dict[str, Any]) -> list[Precinct]:
     """Two depots owned by the CLIENT and not shared — the normal case the precinct
-    name lookup has to handle (spec §3.3). is_shared is set explicitly, not left to the
+    name lookup has to handle. is_shared is set explicitly, not left to the
     server default, so the tests can assert it without a lazy load."""
     precincts = [
         Precinct(

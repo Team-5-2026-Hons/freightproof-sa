@@ -1,6 +1,6 @@
 """Lane grain — origin -> destination precinct pairs.
 
-The one grain where road time is the subject rather than noise (spec §6).
+The one grain where road time is the subject rather than noise.
 """
 
 import uuid

@@ -33,7 +33,6 @@ function demoTripsFor(driverId: string): DriverTripSummary[] {
   return tripsForDriver(mockTrips, driverId as Parameters<typeof tripsForDriver>[1]).map((t) => ({
     id: t.id,
     trip_reference: t.trip_reference,
-    order_number: t.order_number,
     status: t.status,
     trip_type: t.trip_type,
     origin_precinct_id: t.origin_precinct_id,
@@ -44,9 +43,11 @@ function demoTripsFor(driverId: string): DriverTripSummary[] {
     actual_departure_at: t.actual_departure_at,
     planned_arrival_at: t.planned_arrival_at,
     actual_arrival_at: t.actual_arrival_at,
-    // NEEDS_REVIEW only, matching the backend's needs_review_count (Task 2) — a
-    // RECORDED row is on the trip's exception list but not queued for a decision.
-    needs_review_count: t.exceptions.filter((e) => e.review_status === 'needs_review').length,
+    // Unreviewed critical rows only, matching the backend's needs_review_count: every
+    // exception starts needs_review, but the driver cannot review any of them.
+    needs_review_count: t.exceptions.filter(
+      (e) => e.review_status === 'needs_review' && e.severity === 'critical',
+    ).length,
     created_at: t.created_at,
     updated_at: t.updated_at,
   }))

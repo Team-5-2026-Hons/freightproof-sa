@@ -38,11 +38,13 @@ from app.db.models.transit import TripException
 from app.db.models.trips import Trip
 from app.db.models.vehicles import Vehicle
 from app.orchestration.exception_service import (
-    initial_review_status,
+    claim_exception,
     pick_breakdown_vehicle,
     raise_exception,
     review_exception,
+    review_exceptions_batch,
 )
+from app.orchestration.review_policy import initial_review_status
 
 _OUTBOX_KEY = "realtime_outbox"
 
@@ -129,8 +131,9 @@ async def _review(db_session, seed, **overrides):
     ("severity", "expected"),
     [
         (ExceptionSeverity.CRITICAL, ExceptionReviewStatus.NEEDS_REVIEW),
-        (ExceptionSeverity.WARNING, ExceptionReviewStatus.RECORDED),
-        (ExceptionSeverity.INFO, ExceptionReviewStatus.RECORDED),
+        # FP-280: every exception starts needs_review.
+        (ExceptionSeverity.WARNING, ExceptionReviewStatus.NEEDS_REVIEW),
+        (ExceptionSeverity.INFO, ExceptionReviewStatus.NEEDS_REVIEW),
     ],
 )
 def test_initial_review_status_is_derived_from_severity(severity, expected) -> None:
@@ -159,7 +162,7 @@ async def test_review_sets_complete_evidence_from_the_caller(db_session):
     assert exc.contact_method == ExceptionContactMethod.PHONE
     assert exc.review_note == _NOTE
     # Set by this process, not by the database — deliberately asserted against the Python
-    # clock. The test database's own clock cannot be trusted for this (known-issues §6).
+    # clock. The test database's own clock cannot be trusted for this.
     assert before - timedelta(seconds=5) <= exc.reviewed_at <= datetime.now(UTC)
 
 
@@ -175,7 +178,7 @@ async def test_review_refuses_another_organisations_exception(db_session):
             exception_id=theirs["exception"].id,  # their row, my credentials
         )
 
-    assert theirs["exception"].review_status == ExceptionReviewStatus.RECORDED
+    assert theirs["exception"].review_status == ExceptionReviewStatus.NEEDS_REVIEW  # FP-280: every exception starts needs_review.
 
 
 async def test_review_of_an_unknown_id_raises(db_session):
@@ -267,6 +270,32 @@ async def test_review_enqueues_an_info_event(db_session):
     assert event.severity is EventSeverity.INFO
 
 
+async def test_claim_enqueues_an_info_claimed_event(db_session):
+    seed = await _seed(db_session, tag="claim-emit")
+
+    await claim_exception(
+        db_session, exception_id=seed["exception"].id, user_id=seed["user"].id,
+        organization_id=seed["org"].id, take_over=False,
+    )
+
+    [(org_id, event)] = _outbox(db_session)
+    assert org_id == seed["org"].id
+    assert event.kind is RealtimeKind.EXCEPTION_CLAIMED
+    assert event.severity is EventSeverity.INFO
+
+
+async def test_idempotent_reclaim_enqueues_nothing(db_session):
+    seed = await _seed(db_session, tag="reclaim-emit")
+    kwargs = dict(exception_id=seed["exception"].id, user_id=seed["user"].id,
+                  organization_id=seed["org"].id, take_over=False)
+    await claim_exception(db_session, **kwargs)
+    _outbox(db_session).clear()
+
+    await claim_exception(db_session, **kwargs)
+
+    assert _outbox(db_session) == []
+
+
 async def test_a_suppressed_repeat_review_enqueues_nothing(db_session):
     """No new record, no new event — the same rule the scan-discrepancy emit follows."""
     seed = await _seed(db_session, tag="emit-twice")
@@ -278,7 +307,7 @@ async def test_a_suppressed_repeat_review_enqueues_nothing(db_session):
     assert _outbox(db_session) == []
 
 
-# ── Task 0B: raise_exception — evidence ownership + client_report_id idempotency ──
+# ── raise_exception — evidence ownership + client_report_id idempotency ───────
 
 
 async def _seed_trip(db_session, *, tag: str) -> dict:
@@ -380,9 +409,9 @@ async def test_raise_exception_accepts_an_artifact_owned_by_this_trip(db_session
     )
 
     assert result.supporting_artifact_id == artifact.id
-    # CARGO_DAMAGE is not in _CRITICAL_TYPES, so it is WARNING severity and starts
-    # RECORDED, not NEEDS_REVIEW (Task 2, FP-146 follow-on).
-    assert result.review_status == ExceptionReviewStatus.RECORDED
+    # CARGO_DAMAGE is not in _CRITICAL_TYPES, so it is WARNING severity.
+    # FP-280: every exception starts needs_review.
+    assert result.review_status == ExceptionReviewStatus.NEEDS_REVIEW
 
 
 async def test_raise_exception_replays_the_same_client_report_id(db_session):
@@ -443,12 +472,13 @@ async def test_raise_exception_without_a_client_report_id_is_unaffected(db_sessi
     assert result.id is not None
 
 
-# ── Trailer analytics Stage 1: pick_breakdown_vehicle (pure, no DB) ─────────────
-# One test per row of the spec's §5.2 table, plus the stray-field variants. Every
+# ── Trailer analytics: pick_breakdown_vehicle (pure, no DB) ────────────────────
+# One test per row of the vehicle-attribution rules, plus the stray-field variants. Every
 # failure path returns None and logs a warning, never raises: the offline queue discards
 # a report on any 4xx, and a breakdown must never be lost over its vehicle.
 
-_SERVICE_LOGGER = "app.orchestration.exception_service"
+# pick_breakdown_vehicle logs through its own module's logger since the exceptions split.
+_SERVICE_LOGGER = "app.orchestration.exceptions.creation"
 
 
 def _pick(
@@ -640,3 +670,25 @@ def test_pick_breakdown_vehicle_interlink_with_a_foreign_trailer_id_is_none_and_
 
     assert result is None
     assert len(_warnings(caplog)) == 1
+
+
+async def test_batch_review_enqueues_one_event_for_the_whole_batch(db_session):
+    seed = await _seed(db_session, tag="batch-emit")
+    warnings = [
+        TripException(
+            id=uuid.uuid4(), trip_id=seed["trip"].id, exception_type=ExceptionType.CHECKPOINT_TIMEOUT,
+            source=ExceptionSource.SYSTEM, severity=ExceptionSeverity.WARNING, description=f"warn {i}",
+        )
+        for i in range(2)
+    ]
+    db_session.add_all(warnings)
+    await db_session.flush()
+
+    await review_exceptions_batch(
+        db_session, trip_id=seed["trip"].id, exception_ids=[w.id for w in warnings],
+        user_id=seed["user"].id, organization_id=seed["org"].id, review_note="Batch.",
+        review_outcome=DispatcherReviewOutcome.NO_ACTION_REQUIRED, contact_method=None,
+    )
+
+    kinds = [event.kind for _org, event in _outbox(db_session)]
+    assert kinds == [RealtimeKind.EXCEPTION_REVIEWED]

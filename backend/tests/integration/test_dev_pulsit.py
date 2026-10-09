@@ -47,9 +47,9 @@ from app.db.models.trips import Trip, TripStop
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
 from app.integrations import pulsit as pulsit_module
-from app.orchestration.dev_truck_service import TOLERANCE_BOUNDARY_MARGIN_METRES
+from app.dev.services.truck import TOLERANCE_BOUNDARY_MARGIN_METRES
 from app.orchestration.geofence_service import TrackerFix, evaluate_geofence
-from app.schemas.dev import (
+from app.dev.schemas import (
     SCENARIO_AT_STOP,
     SCENARIO_FIFTY_KM,
     SCENARIO_INSIDE_TOLERANCE,
@@ -74,7 +74,7 @@ _SEEDED_RADIUS_METRES = 200
 # is staged, which is exactly the path these tests drive.
 _DEVICE_ID = "PLT-HORSE-001"
 
-# FP-197 Task 3: a real, non-Cape-Town precinct pair, so the scenario-mode tests below
+# FP-197: a real, non-Cape-Town precinct pair, so the scenario-mode tests below
 # do not accidentally pass just because everything in this codebase's fixtures
 # happens to sit near the seeded demo depot. Johannesburg CBD and Durban Point —
 # genuinely far apart, on real South African coordinates.
@@ -468,7 +468,7 @@ async def test_move_truck_rejects_a_malformed_body(pulsit_client, seeded) -> Non
     assert response.status_code == 422
 
 
-# ── FP-197 Task 3: trip-stop-relative scenario mode ────────────────────────────
+# ── FP-197: trip-stop-relative scenario mode ────────────────────────────────────
 
 
 @pytest_asyncio.fixture

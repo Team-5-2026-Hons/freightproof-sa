@@ -1,4 +1,4 @@
-// Fleet-wide Analytics page (docs/design-notes/2026-09-15-fleet-analytics-page-spec.md).
+// Types for the Fleet-wide Analytics page.
 // Mirrors backend response models in app/schemas/fleet_analytics.py.
 //
 // Every rate is `number | null`. null means its denominator was zero and must render as
@@ -45,7 +45,8 @@ export interface UnusedVehicle {
   vehicle_type: VehicleType
 }
 
-/** Vehicles only, never drivers (spec D13). Ordered horses first, then by registration. */
+/** Vehicles only, never drivers — this page never surfaces driver-level rankings or data.
+ *  Ordered horses first, then by registration. */
 export interface UnusedVehicles {
   window_days: number
   vehicles: UnusedVehicle[]
@@ -87,7 +88,7 @@ export interface CancellationsBucket {
   cancelled_rate: number | null
 }
 
-/** The note lives on the trip page, so the table links there instead (spec D20). */
+/** The note lives on the trip page, so the table links there instead. */
 export interface CancelledTrip {
   trip_id: TripId
   trip_reference: string
@@ -346,7 +347,7 @@ export interface FleetRoutes {
 }
 
 /** One located report. Deliberately nothing about the person: no driver name, phone or id
- *  (spec D14, POPIA). */
+ *  (POPIA). */
 export interface IncidentPin {
   exception_id: ExceptionId
   trip_id: TripId

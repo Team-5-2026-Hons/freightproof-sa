@@ -8,7 +8,7 @@ export interface LogCheckpointBody {
   checkpoint_type: string
   driver_phone_lat?: number
   driver_phone_lng?: number
-  // Task 0A. The instant this app stamped the submission (CheckpointEvidence.capturedAt,
+  // The instant this app stamped the submission (CheckpointEvidence.capturedAt,
   // already taken at submit time and already persisted into the offline queue via the
   // queued evidence object — see CheckpointPageClient.tsx). Optional on the wire for the
   // same backend-compatibility reason as phases.ts's driver_captured_at, but this build
@@ -93,7 +93,7 @@ export async function submitCheckpoint(tripId: string, evidence: CheckpointEvide
     ...(evidence.gpsLat !== null && evidence.gpsLng !== null
       ? { driver_phone_lat: evidence.gpsLat, driver_phone_lng: evidence.gpsLng }
       : {}),
-    // Task 0A: already stamped at submit time onto the evidence object (see
+    // Already stamped at submit time onto the evidence object (see
     // CheckpointPageClient.tsx), so replaying this from the offline queue sends the
     // ORIGINAL submit instant, never the flush-time clock.
     driver_captured_at: evidence.capturedAt,

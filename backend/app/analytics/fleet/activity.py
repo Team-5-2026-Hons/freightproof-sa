@@ -1,5 +1,5 @@
-"""Queries behind the Activity tab's trend charts (GET /analytics/fleet/activity,
-spec §5.1). Chart 1.1 buckets by first departure (spec D8); chart 1.7 buckets by
+"""Queries behind the Activity tab's trend charts (GET /analytics/fleet/activity).
+Chart 1.1 buckets by first departure; chart 1.7 buckets by
 closed_at instead, since a cancelled trip may never have departed."""
 
 import uuid

@@ -98,3 +98,17 @@ describe('Driver detail — right panel', () => {
     expect(screen.queryByText(TIMELINE_ENTRY)).not.toBeInTheDocument()
   })
 })
+
+describe('Driver detail — loading', () => {
+  it('shows the header with its back button over a skeleton, not a spinner, while the record loads', () => {
+    mockedUseDriverDetail.mockReturnValue({
+      data: null, isLoading: true, error: null, refetch: vi.fn(), refetchSilent: vi.fn(),
+    })
+
+    render(<DriverDetailPage />)
+
+    expect(screen.getByRole('status', { name: 'Loading driver' })).toHaveAttribute('aria-busy', 'true')
+    expect(screen.getByText('Driver')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /back/i })).toBeInTheDocument()
+  })
+})

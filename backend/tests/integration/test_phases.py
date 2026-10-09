@@ -1,4 +1,4 @@
-"""Integration tests for the three phase-plan endpoints (parent plan §3.2, task 3.3):
+"""Integration tests for the three phase-plan endpoints:
 
   GET  /trips/{trip_id}/phases
   GET  /trips/{trip_id}/phases/next
@@ -6,7 +6,7 @@
 
 Replaces tests/integration/test_handshakes.py, whose five /h{n}/complete routes
 and GET /{handshake_type} route were deleted along with app/schemas/handshakes.py
-and app/api/v1/endpoints/handshakes.py (task 3.2/3.3). Reuses seed_trip,
+and app/api/v1/endpoints/handshakes.py. Reuses seed_trip,
 override_get_db, auth_header, and make_token exactly as test_handshakes.py did —
 these are not reinvented here.
 """
@@ -75,7 +75,7 @@ async def seed_trip(db_session):
         driver_id=driver.id, horse_id=horse.id,
         origin_precinct_id=origin.id, destination_precinct_id=dest.id,
         status=TripStatus.CREATED, idvs_check_status=IdvsStatus.VERIFIED,
-        # Activation is gated on the trip being due (phase_service._reject_if_not_due) and
+        # Activation is gated on the trip being due (phases.scheduling._reject_if_not_due) and
         # an unscheduled trip is deliberately unstartable, so this fixture books itself for
         # today — which is what it always meant: a trip a driver is about to run.
         planned_departure_at=datetime.now(UTC),
@@ -85,15 +85,15 @@ async def seed_trip(db_session):
     await db_session.flush()
 
     # Hand-built single-leg phase plan, mirroring what create_trip actually
-    # produces: the plan generator (task 2.1) writes every row `pending` at
+    # produces: the plan generator writes every row `pending` at
     # trip creation, but create_trip then completes TRIP_CREATION (h0) inline
-    # once its Hedera anchor succeeds (see trip_service.create_trip) — so h0
+    # once its Hedera anchor succeeds (see trips.creation.create_trip) — so h0
     # is seeded COMPLETED here and every driver-facing row stays PENDING
     # before any endpoint call (the deleted _get_handshake_event no longer
     # creates them on demand). IN_TRANSIT (P4) is included and stays PENDING like
     # every other driver-facing row: it is opened by advance_departure and closed by
     # the driver's own arrival submission — see advance_in_transit's docstring in
-    # phase_service.py.
+    # phases/advance_in_transit.py.
     stop0 = TripStop(trip_id=trip.id, precinct_id=origin.id, sequence=0)
     stop1 = TripStop(trip_id=trip.id, precinct_id=dest.id, sequence=1)
     db_session.add_all([stop0, stop1])
@@ -104,8 +104,9 @@ async def seed_trip(db_session):
         PhaseEvent(trip_id=trip.id, phase_type=PhaseType.LOADING, trip_stop_id=stop0.id, sequence_number=2, status=PhaseStatus.PENDING),
         PhaseEvent(trip_id=trip.id, phase_type=PhaseType.DEPARTURE, trip_stop_id=stop0.id, sequence_number=3, status=PhaseStatus.PENDING),
         PhaseEvent(trip_id=trip.id, phase_type=PhaseType.IN_TRANSIT, trip_stop_id=stop0.id, sequence_number=4, status=PhaseStatus.PENDING),
-        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.UNLOADING, trip_stop_id=stop1.id, sequence_number=5, status=PhaseStatus.PENDING),
-        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.CONFIRMATION, trip_stop_id=stop1.id, sequence_number=6, status=PhaseStatus.PENDING),
+        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.ARRIVAL, trip_stop_id=stop1.id, sequence_number=5, status=PhaseStatus.PENDING),
+        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.UNLOADING, trip_stop_id=stop1.id, sequence_number=6, status=PhaseStatus.PENDING),
+        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.CONFIRMATION, trip_stop_id=stop1.id, sequence_number=7, status=PhaseStatus.PENDING),
     ])
     await db_session.flush()
 
@@ -116,7 +117,7 @@ async def seed_trip(db_session):
 async def seed_trip_with_consignment(db_session, seed_trip):
     """seed_trip plus a Consignment picked up at stop0 (sequence 0).
 
-    phase_gate.py only gates a (phase_type, stop) pair that has a Consignment row
+    phases/blocking.py only gates a (phase_type, stop) pair that has a Consignment row
     — "no Consignment" is the ungated case, not the blocked one (see its module
     docstring). No scan session is closed here, so the mock feed's default
     (nothing staged) reads as an OPEN session and loading stays blocked.
@@ -542,15 +543,12 @@ async def test_next_phase_tracks_the_ledger_and_returns_null_when_closed(client:
     assert resp.json()["phase_type"] == "in_transit"
 
     await _complete_in_transit(client, trip, token)
+    await _complete_arrival(client, db_session, trip, token)
 
-    gate_photo_id = await _make_artifact(db_session, trip.id)
     unloading_id = await _phase_id(client, trip.id, token, "unloading")
     await client.post(
         f"/api/v1/trips/{trip.id}/phases/{unloading_id}/complete",
-        json={
-            "phase_type": "unloading", "seal_number_at_destination": "AB-1234",
-            "gate_photo_artifact_id": gate_photo_id, "idempotency_key": str(uuid.uuid4()),
-        },
+        json={"phase_type": "unloading", "idempotency_key": str(uuid.uuid4())},
         headers=auth_header(token),
     )
 
@@ -592,7 +590,7 @@ async def test_complete_with_wrong_phase_type_in_body_returns_409(client: AsyncC
 
 
 async def test_phase_complete_maps_db_error_to_500(client: AsyncClient, db_session, seed_trip):
-    """Task 6.4 step 1: a DB fault that escapes complete_phase must map to a clean
+    """A DB fault that escapes complete_phase must map to a clean
     500 (matching trips.py's create_trip_endpoint's exact SQLAlchemyError->500
     shape) rather than an unhandled exception reaching main.py's new global
     handler. Patched at the orchestration boundary the endpoint calls through —
@@ -886,7 +884,7 @@ async def test_complete_addressing_trip_creation_row_returns_422(
 async def test_arrival_is_not_gated_on_the_destination_warehouse_scan(
     client: AsyncClient, db_session, seed_trip,
 ):
-    """IN_TRANSIT is absent from phase_gate.GATED_PHASES and must stay absent. The
+    """IN_TRANSIT is absent from phases.blocking.GATED_PHASES and must stay absent. The
     destination warehouse has scanned nothing when the driver pulls up at the boom, so
     gating arrival on a scan that only happens AFTER arrival would deadlock the leg.
     UNLOADING carries that gate instead.
@@ -991,15 +989,12 @@ async def test_full_single_leg_walk_over_http_closes_the_trip(client: AsyncClien
     assert resp.status_code == 200
 
     await _complete_in_transit(client, trip, token)
+    await _complete_arrival(client, db_session, trip, token)
 
-    gate_photo_id = await _make_artifact(db_session, trip.id)
     unloading_id = await _phase_id(client, trip.id, token, "unloading")
     resp = await client.post(
         f"/api/v1/trips/{trip.id}/phases/{unloading_id}/complete",
-        json={
-            "phase_type": "unloading", "seal_number_at_destination": "AB-1234",
-            "gate_photo_artifact_id": gate_photo_id, "idempotency_key": str(uuid.uuid4()),
-        },
+        json={"phase_type": "unloading", "idempotency_key": str(uuid.uuid4())},
         headers=auth_header(token),
     )
     assert resp.status_code == 200
@@ -1023,7 +1018,7 @@ async def test_full_single_leg_walk_over_http_closes_the_trip(client: AsyncClien
     assert resp.json()["status"] == "closed"
 
 
-# ── F1 (task 6.2a): an EMPTY_LEG trip must reach `closed` ──────────────────
+# ── An EMPTY_LEG trip must reach `closed` ───────────────────────────────────
 #
 # The plan generator emits no LOADING row at all for an empty leg (nothing is
 # picked up), and advance_confirmation used to call _find_loading_for_leg,
@@ -1112,7 +1107,7 @@ async def test_empty_leg_trip_walks_to_closed(
     # all on an empty leg (build_phase_plan never emits one when nothing is
     # picked up).
     assert phase_types == [
-        "trip_creation", "activation", "departure", "in_transit", "unloading", "confirmation",
+        "trip_creation", "activation", "departure", "in_transit", "arrival", "unloading", "confirmation",
     ]
 
     activation_id = await _phase_id(client, trip_id, driver_token, "activation")
@@ -1158,14 +1153,25 @@ async def test_empty_leg_trip_walks_to_closed(
     )
     assert resp.status_code == 200, resp.text
 
-    gate_photo_id = await _make_artifact(db_session, trip_id)
+    # The seal is inspected at the gate before anything is opened — even on an
+    # empty leg, which still has a real seal applied at departure.
+    seal_photo_id = await _make_artifact(db_session, trip_id)
+    arrival_id = await _phase_id(client, trip_id, driver_token, "arrival")
+    resp = await client.post(
+        f"/api/v1/trips/{trip_id}/phases/{arrival_id}/complete",
+        json={
+            "phase_type": "arrival", "seal_condition": "intact",
+            "seal_number_at_arrival": "AB-1234",
+            "seal_photo_artifact_id": seal_photo_id, "idempotency_key": str(uuid.uuid4()),
+        },
+        headers=auth_header(driver_token),
+    )
+    assert resp.status_code == 200, resp.text
+
     unloading_id = await _phase_id(client, trip_id, driver_token, "unloading")
     resp = await client.post(
         f"/api/v1/trips/{trip_id}/phases/{unloading_id}/complete",
-        json={
-            "phase_type": "unloading", "seal_number_at_destination": "AB-1234",
-            "gate_photo_artifact_id": gate_photo_id, "idempotency_key": str(uuid.uuid4()),
-        },
+        json={"phase_type": "unloading", "idempotency_key": str(uuid.uuid4())},
         headers=auth_header(driver_token),
     )
     assert resp.status_code == 200
@@ -1189,7 +1195,7 @@ async def test_empty_leg_trip_walks_to_closed(
     assert resp.json()["status"] == "closed"
 
 
-# ── Task 5: blocked_on served on the phase read schema ─────────────────────
+# ── blocked_on served on the phase read schema ──────────────────────────────
 
 async def test_phase_list_reports_blocked_on_for_loading(
     client: AsyncClient, db_session, seed_trip_with_consignment,
@@ -1209,7 +1215,7 @@ async def test_phase_list_reports_blocked_on_for_loading(
 async def test_phase_list_reports_null_blocked_on_for_departure(
     client: AsyncClient, db_session, seed_trip_with_consignment,
 ):
-    """departure is absent from phase_gate's _GATED_PHASES map entirely — never
+    """departure is absent from phases.blocking's GATED_PHASES map entirely — never
     blocked regardless of consignment or scan-session state."""
     trip, driver = seed_trip_with_consignment
     token = make_token(sub=str(driver.id), role="driver")
@@ -1255,13 +1261,13 @@ async def test_phase_list_query_count_is_independent_of_phase_count(
     assert len(consignment_queries) == 1
 
 
-# ── Task 6: the gate enforced on completion, not just read ─────────────────
+# ── The gate enforced on completion, not just read ──────────────────────────
 
 @pytest_asyncio.fixture
 async def completed_activation_trip(client: AsyncClient, db_session, seed_trip):
     """seed_trip with activation already completed under a known idempotency_key.
 
-    Activation is never gated by phase_gate (only loading/confirmation are), so this
+    Activation is never gated by phases.blocking (only loading/confirmation are), so this
     fixture is deliberately independent of any scan-session state — it exists purely
     to give the replay-ordering test a phase that is genuinely already resolved.
     """
@@ -1356,7 +1362,7 @@ async def test_an_idempotent_replay_of_a_completed_phase_does_not_409(
     assert response.status_code == 200
 
 
-# ── Task 8: a closed phase row is never rewritten by a later scan ──────────
+# ── A closed phase row is never rewritten by a later scan ───────────────────
 
 
 @pytest.fixture
@@ -1374,7 +1380,7 @@ async def completed_unloading_trip(
     destination stop, with a Consignment whose parcels are scanned OUT in full
     at origin (closed) but deliberately NOT YET scanned IN at destination —
     unloading now gates on the destination stop's IN-direction scan SESSION being
-    closed (phase_gate.py's GATED_PHASES), but a closed session is a separate
+    closed (phases/blocking.py's GATED_PHASES), but a closed session is a separate
     fact from actual scanned barcodes: the warehouse operator can close an empty
     session (nothing scanned yet) purely to satisfy the gate, and that is what
     happens below. No barcode DATA exists at destination until the test itself
@@ -1438,8 +1444,9 @@ async def completed_unloading_trip(
         PhaseEvent(trip_id=trip.id, phase_type=PhaseType.LOADING, trip_stop_id=stop0.id, sequence_number=2, status=PhaseStatus.PENDING),
         PhaseEvent(trip_id=trip.id, phase_type=PhaseType.DEPARTURE, trip_stop_id=stop0.id, sequence_number=3, status=PhaseStatus.PENDING),
         PhaseEvent(trip_id=trip.id, phase_type=PhaseType.IN_TRANSIT, trip_stop_id=stop0.id, sequence_number=4, status=PhaseStatus.PENDING),
-        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.UNLOADING, trip_stop_id=stop1.id, sequence_number=5, status=PhaseStatus.PENDING),
-        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.CONFIRMATION, trip_stop_id=stop1.id, sequence_number=6, status=PhaseStatus.PENDING),
+        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.ARRIVAL, trip_stop_id=stop1.id, sequence_number=5, status=PhaseStatus.PENDING),
+        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.UNLOADING, trip_stop_id=stop1.id, sequence_number=6, status=PhaseStatus.PENDING),
+        PhaseEvent(trip_id=trip.id, phase_type=PhaseType.CONFIRMATION, trip_stop_id=stop1.id, sequence_number=7, status=PhaseStatus.PENDING),
     ])
     await db_session.flush()
 
@@ -1498,6 +1505,7 @@ async def completed_unloading_trip(
     assert resp.status_code == 200
 
     await _complete_in_transit(client, trip, token)
+    await _complete_arrival(client, db_session, trip, token)
 
     # Close (not stage) the destination IN-direction session: satisfies unloading's
     # new gate without giving it any barcode data — see the fixture docstring above.
@@ -1505,14 +1513,10 @@ async def completed_unloading_trip(
         consignment_reference=pp_reference, stop_reference=str(stop1.id), direction=ScanDirection.IN,
     )
 
-    gate_photo_id = await _make_artifact(db_session, trip.id)
     unloading_id = await _phase_id(client, trip.id, token, "unloading")
     resp = await client.post(
         f"/api/v1/trips/{trip.id}/phases/{unloading_id}/complete",
-        json={
-            "phase_type": "unloading", "seal_number_at_destination": "AB-1234",
-            "gate_photo_artifact_id": gate_photo_id, "idempotency_key": str(uuid.uuid4()),
-        },
+        json={"phase_type": "unloading", "idempotency_key": str(uuid.uuid4())},
         headers=auth_header(token),
     )
     assert resp.status_code == 200
@@ -1530,7 +1534,7 @@ async def completed_unloading_trip(
 async def test_a_closed_phase_row_is_never_written_again(
     db_session, store, completed_unloading_trip,
 ):
-    """Design §2.1: a phase's anchored payload may only contain data that existed when
+    """A phase's anchored payload may only contain data that existed when
     it closed. Scan data arriving after close belongs on a LATER row, never back-written
     onto this one — an anchored row whose fields change no longer hashes to its Hedera
     tx, which is precisely the tampering signal this product exists to detect."""
@@ -1567,7 +1571,7 @@ async def test_a_closed_phase_row_is_never_written_again(
     } == before
 
 
-# ── Task 13: the paper linehaul sheet photographed at loading ──────────────
+# ── The paper linehaul sheet photographed at loading ─────────────────────────
 
 async def _complete_activation(client: AsyncClient, trip_id, token) -> None:
     """Advances a fresh seed_trip past activation so `loading` is reachable."""
@@ -1634,6 +1638,27 @@ async def _complete_in_transit(client: AsyncClient, trip, token: str) -> None:
         json={
             "phase_type": "in_transit",
             "driver_phone_lat": -29.8587, "driver_phone_lng": 31.0218,
+            "idempotency_key": str(uuid.uuid4()),
+        },
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 200, resp.text
+
+
+async def _complete_arrival(
+    client: AsyncClient, db_session, trip, token: str, *, seal_number_at_arrival: str = "AB-1234",
+) -> None:
+    """The seal inspection at the destination gate. Every walk that reaches unloading
+    needs this too: ARRIVAL sits at a lower sequence than UNLOADING and must be
+    resolved before the driver can open the trailer."""
+    seal_photo_id = await _make_artifact(db_session, trip.id)
+    arrival_id = await _phase_id(client, trip.id, token, "arrival")
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{arrival_id}/complete",
+        json={
+            "phase_type": "arrival", "seal_condition": "intact",
+            "seal_number_at_arrival": seal_number_at_arrival,
+            "seal_photo_artifact_id": seal_photo_id,
             "idempotency_key": str(uuid.uuid4()),
         },
         headers=auth_header(token),

@@ -83,7 +83,7 @@ export function CategoryBars<Row>({
   }))
   const isBars = orientation === 'bars'
   const lastIndex = series.length - 1
-  // Inside the zoom modal (D27) columns take the zoomed height. Horizontal bars size by their
+  // Inside the zoom modal, columns take the zoomed height. Horizontal bars size by their
   // rows, so each row gets more room instead: one tall box would leave a short list of bars
   // floating in empty space.
   const isZoomed = useIsChartZoomed()

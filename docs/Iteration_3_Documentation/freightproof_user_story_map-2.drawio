@@ -1,0 +1,205 @@
+<?xml version="1.0" ?><mxfile host="app.diagrams.net" agent="Claude">
+  <diagram id="freightproof-story-map" name="FreightProof User Story Map">
+    <mxGraphModel dx="3362" dy="967" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1698" pageHeight="1115" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="n2" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontSize=20;fontStyle=1;fontFamily=Calibri;fontColor=#1A1A1A;" value="FreightProof User Story Map - Iteration 3 slice highlighted" vertex="1">
+          <mxGeometry height="42" width="1638" as="geometry"/>
+        </mxCell>
+        <mxCell id="n3" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontSize=16;fontStyle=1;fontFamily=Calibri;fontColor=#595959;horizontal=0;" value="BACKBONE" vertex="1">
+          <mxGeometry height="118" width="32" x="-40" y="54" as="geometry"/>
+        </mxCell>
+        <mxCell id="n4" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontSize=16;fontStyle=1;fontFamily=Calibri;fontColor=#595959;horizontal=0;" value="RELEASE SLICES" vertex="1">
+          <mxGeometry height="860" width="32" x="-40" y="188" as="geometry"/>
+        </mxCell>
+        <mxCell id="n5" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#262626;strokeColor=none;fontColor=#FFFFFF;fontStyle=1;fontSize=16;fontFamily=Calibri;align=center;verticalAlign=middle;" value="Prepare &amp;amp; plan" vertex="1">
+          <mxGeometry height="50" width="404" x="189" y="54" as="geometry"/>
+        </mxCell>
+        <mxCell id="n6" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#262626;strokeColor=none;fontColor=#FFFFFF;fontStyle=1;fontSize=16;fontFamily=Calibri;align=center;verticalAlign=middle;" value="Execute custody" vertex="1">
+          <mxGeometry height="50" width="613" x="607" y="54" as="geometry"/>
+        </mxCell>
+        <mxCell id="n7" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#262626;strokeColor=none;fontColor=#FFFFFF;fontStyle=1;fontSize=16;fontFamily=Calibri;align=center;verticalAlign=middle;" value="Assure &amp;amp; prove" vertex="1">
+          <mxGeometry height="50" width="404" x="1234" y="54" as="geometry"/>
+        </mxCell>
+        <mxCell id="n8" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#595959;strokeColor=none;fontColor=#FFFFFF;fontStyle=1;fontSize=16;fontFamily=Calibri;align=center;verticalAlign=middle;" value="Access &amp;amp; fleet" vertex="1">
+          <mxGeometry height="60" width="195" x="189" y="112" as="geometry"/>
+        </mxCell>
+        <mxCell id="n9" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#595959;strokeColor=none;fontColor=#FFFFFF;fontStyle=1;fontSize=16;fontFamily=Calibri;align=center;verticalAlign=middle;" value="Plan trip &amp;amp; cargo" vertex="1">
+          <mxGeometry height="60" width="195" x="398" y="112" as="geometry"/>
+        </mxCell>
+        <mxCell id="n10" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#595959;strokeColor=none;fontColor=#FFFFFF;fontStyle=1;fontSize=16;fontFamily=Calibri;align=center;verticalAlign=middle;" value="Capture pickup" vertex="1">
+          <mxGeometry height="60" width="195" x="607" y="112" as="geometry"/>
+        </mxCell>
+        <mxCell id="n11" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#595959;strokeColor=none;fontColor=#FFFFFF;fontStyle=1;fontSize=16;fontFamily=Calibri;align=center;verticalAlign=middle;" value="Travel &amp;amp; deliver" vertex="1">
+          <mxGeometry height="60" width="195" x="816" y="112" as="geometry"/>
+        </mxCell>
+        <mxCell id="n12" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E8821A;strokeColor=none;fontColor=#FFFFFF;fontStyle=1;fontSize=16;fontFamily=Calibri;align=center;verticalAlign=middle;" value="Hand over to receiver" vertex="1">
+          <mxGeometry height="60" width="195" x="1025" y="112" as="geometry"/>
+        </mxCell>
+        <mxCell id="n13" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#595959;strokeColor=none;fontColor=#FFFFFF;fontStyle=1;fontSize=16;fontFamily=Calibri;align=center;verticalAlign=middle;" value="Monitor &amp;amp; intervene" vertex="1">
+          <mxGeometry height="60" width="195" x="1234" y="112" as="geometry"/>
+        </mxCell>
+        <mxCell id="n14" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#595959;strokeColor=none;fontColor=#FFFFFF;fontStyle=1;fontSize=16;fontFamily=Calibri;align=center;verticalAlign=middle;" value="Verify &amp;amp; analyse" vertex="1">
+          <mxGeometry height="60" width="195" x="1443" y="112" as="geometry"/>
+        </mxCell>
+        <mxCell id="n15" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F2F2F2;strokeColor=#B3B3B3;dashed=1;fontSize=16;" value="" vertex="1">
+          <mxGeometry height="98" width="1638" y="188" as="geometry"/>
+        </mxCell>
+        <mxCell id="n16" parent="1" style="text;html=1;align=left;verticalAlign=top;fontSize=16;fontFamily=Calibri;fontColor=#1A1A1A;spacing=2;whiteSpace=wrap;" value="&lt;b&gt;ITERATION 1&lt;/b&gt;&lt;br&gt;Foundation&lt;br&gt;March–May&lt;br&gt;&lt;i&gt;Completed&lt;/i&gt;" vertex="1">
+          <mxGeometry height="82" width="163" x="6" y="196" as="geometry"/>
+        </mxCell>
+        <mxCell id="n17" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#808080;fontSize=16;fontFamily=Calibri;fontColor=#262626;align=center;verticalAlign=middle;spacing=3;" value="Dispatcher signs in and manages drivers and vehicles" vertex="1">
+          <mxGeometry height="70" width="183" x="195" y="202" as="geometry"/>
+        </mxCell>
+        <mxCell id="n18" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#808080;fontSize=16;fontFamily=Calibri;fontColor=#262626;align=center;verticalAlign=middle;spacing=3;" value="Dispatcher creates a basic trip; journey lock anchored" vertex="1">
+          <mxGeometry height="70" width="183" x="404" y="202" as="geometry"/>
+        </mxCell>
+        <mxCell id="n19" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#808080;fontSize=16;fontFamily=Calibri;fontColor=#262626;align=center;verticalAlign=middle;spacing=3;" value="First blockchain-backed journey record on Hedera" vertex="1">
+          <mxGeometry height="70" width="183" x="1449" y="202" as="geometry"/>
+        </mxCell>
+        <mxCell id="n20" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F2F2F2;strokeColor=#B3B3B3;dashed=1;fontSize=16;" value="" vertex="1">
+          <mxGeometry height="176" width="1638" y="294" as="geometry"/>
+        </mxCell>
+        <mxCell id="n21" parent="1" style="text;html=1;align=left;verticalAlign=top;fontSize=16;fontFamily=Calibri;fontColor=#1A1A1A;spacing=2;whiteSpace=wrap;" value="&lt;b&gt;ITERATION 2&lt;/b&gt;&lt;br&gt;Evidence lifecycle&lt;br&gt;May–August&lt;br&gt;&lt;i&gt;Completed&lt;/i&gt;" vertex="1">
+          <mxGeometry height="160" width="163" x="6" y="302" as="geometry"/>
+        </mxCell>
+        <mxCell id="n22" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#808080;fontSize=16;fontFamily=Calibri;fontColor=#262626;align=center;verticalAlign=middle;spacing=3;" value="Driver signs in with phone OTP; one device per driver" vertex="1">
+          <mxGeometry height="70" width="183" x="195" y="308" as="geometry"/>
+        </mxCell>
+        <mxCell id="n23" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#808080;fontSize=16;fontFamily=Calibri;fontColor=#262626;align=center;verticalAlign=middle;spacing=3;" value="Multi-stop trip model; phase plan generated per trip" vertex="1">
+          <mxGeometry height="70" width="183" x="404" y="308" as="geometry"/>
+        </mxCell>
+        <mxCell id="n24" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#808080;fontSize=16;fontFamily=Calibri;fontColor=#262626;align=center;verticalAlign=middle;spacing=3;" value="Expected cargo pulled from Parcel Perfect" vertex="1">
+          <mxGeometry height="70" width="183" x="404" y="386" as="geometry"/>
+        </mxCell>
+        <mxCell id="n25" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#808080;fontSize=16;fontFamily=Calibri;fontColor=#262626;align=center;verticalAlign=middle;spacing=3;" value="Driver activates at origin; captures photos, seal and GPS" vertex="1">
+          <mxGeometry height="70" width="183" x="613" y="308" as="geometry"/>
+        </mxCell>
+        <mxCell id="n26" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#808080;fontSize=16;fontFamily=Calibri;fontColor=#262626;align=center;verticalAlign=middle;spacing=3;" value="Offline queue replays actions when signal returns" vertex="1">
+          <mxGeometry height="70" width="183" x="822" y="308" as="geometry"/>
+        </mxCell>
+        <mxCell id="n27" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#808080;fontSize=16;fontFamily=Calibri;fontColor=#262626;align=center;verticalAlign=middle;spacing=3;" value="Driver raises panic or exception" vertex="1">
+          <mxGeometry height="70" width="183" x="822" y="386" as="geometry"/>
+        </mxCell>
+        <mxCell id="n28" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#808080;fontSize=16;fontFamily=Calibri;fontColor=#262626;align=center;verticalAlign=middle;spacing=3;" value="Driver records a timestamped swipe as proof of delivery" vertex="1">
+          <mxGeometry height="70" width="183" x="1031" y="308" as="geometry"/>
+        </mxCell>
+        <mxCell id="n29" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#808080;fontSize=16;fontFamily=Calibri;fontColor=#262626;align=center;verticalAlign=middle;spacing=3;" value="Live trip timeline; cancel trip; override phase with a reason" vertex="1">
+          <mxGeometry height="70" width="183" x="1240" y="308" as="geometry"/>
+        </mxCell>
+        <mxCell id="n30" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#808080;fontSize=16;fontFamily=Calibri;fontColor=#262626;align=center;verticalAlign=middle;spacing=3;" value="Per-phase Hedera anchoring; forensic view" vertex="1">
+          <mxGeometry height="70" width="183" x="1449" y="308" as="geometry"/>
+        </mxCell>
+        <mxCell id="n31" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FDEBD3;strokeColor=#E8821A;dashed=0;fontSize=16;" value="" vertex="1">
+          <mxGeometry height="386" width="1638" y="478" as="geometry"/>
+        </mxCell>
+        <mxCell id="n32" parent="1" style="text;html=1;align=left;verticalAlign=top;fontSize=16;fontFamily=Calibri;fontColor=#1A1A1A;spacing=2;whiteSpace=wrap;" value="&lt;b&gt;ITERATION 3&lt;/b&gt;&lt;br&gt;Corroboration &amp;amp; business value&lt;br&gt;26 Aug–16 Sep&lt;br&gt;&lt;i&gt;This release&lt;/i&gt;" vertex="1">
+          <mxGeometry height="370" width="163" x="6" y="486" as="geometry"/>
+        </mxCell>
+        <mxCell id="n33" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F4A261;strokeColor=#C1650A;fontStyle=1;fontSize=16;fontFamily=Calibri;fontColor=#1A1A1A;align=center;verticalAlign=middle;spacing=3;" value="Dispatcher creates and edits precincts with a geofence radius - FP-259" vertex="1">
+          <mxGeometry height="82" width="183" x="195" y="492" as="geometry"/>
+        </mxCell>
+        <mxCell id="n34" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F4A261;strokeColor=#C1650A;fontStyle=1;fontSize=16;fontFamily=Calibri;fontColor=#1A1A1A;align=center;verticalAlign=middle;spacing=3;" value="Health endpoint probes real dependencies&lt;br&gt;FP-141" vertex="1">
+          <mxGeometry height="82" width="183" x="195" y="584" as="geometry"/>
+        </mxCell>
+        <mxCell id="n35" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F4A261;strokeColor=#C1650A;fontStyle=1;fontSize=16;fontFamily=Calibri;fontColor=#1A1A1A;align=center;verticalAlign=middle;spacing=3;" value="Same waybill blocked from two trips - FP-138" vertex="1">
+          <mxGeometry height="82" width="183" x="404" y="492" as="geometry"/>
+        </mxCell>
+        <mxCell id="n36" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F4A261;strokeColor=#C1650A;fontStyle=1;fontSize=16;fontFamily=Calibri;fontColor=#1A1A1A;align=center;verticalAlign=middle;spacing=3;" value="Pulsit tracker client, mock-backed and credential-ready - FP-87" vertex="1">
+          <mxGeometry height="82" width="183" x="404" y="584" as="geometry"/>
+        </mxCell>
+        <mxCell id="n37" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F4A261;strokeColor=#C1650A;fontStyle=1;fontSize=16;fontFamily=Calibri;fontColor=#1A1A1A;align=center;verticalAlign=middle;spacing=3;" value="Location corroborated on every action: device, horse, trailer, geofence - FP-143 · FP-68" vertex="1">
+          <mxGeometry height="82" width="183" x="613" y="492" as="geometry"/>
+        </mxCell>
+        <mxCell id="n38" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F4A261;strokeColor=#C1650A;fontStyle=1;fontSize=16;fontFamily=Calibri;fontColor=#1A1A1A;align=center;verticalAlign=middle;spacing=3;" value="GPS_MISMATCH raised on the timeline when sources disagree - FP-145" vertex="1">
+          <mxGeometry height="82" width="183" x="613" y="584" as="geometry"/>
+        </mxCell>
+        <mxCell id="n39" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F4A261;strokeColor=#C1650A;fontStyle=1;fontSize=16;fontFamily=Calibri;fontColor=#1A1A1A;align=center;verticalAlign=middle;spacing=3;" value="Driver photographs an exception as evidence - FP-150" vertex="1">
+          <mxGeometry height="82" width="183" x="822" y="492" as="geometry"/>
+        </mxCell>
+        <mxCell id="n40" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F4A261;strokeColor=#C1650A;fontStyle=1;fontSize=16;fontFamily=Calibri;fontColor=#1A1A1A;align=center;verticalAlign=middle;spacing=3;" value="Seal break raises an alert - FP-147" vertex="1">
+          <mxGeometry height="82" width="183" x="822" y="584" as="geometry"/>
+        </mxCell>
+        <mxCell id="n41" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F4A261;strokeColor=#C1650A;fontStyle=1;fontSize=16;fontFamily=Calibri;fontColor=#1A1A1A;align=center;verticalAlign=middle;spacing=3;" value="Receiver confirms on their own phone via rotating QR: consent, ID tier, signature - FP-155" vertex="1">
+          <mxGeometry height="82" width="183" x="1031" y="492" as="geometry"/>
+        </mxCell>
+        <mxCell id="n42" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F4A261;strokeColor=#C1650A;fontStyle=1;fontSize=16;fontFamily=Calibri;fontColor=#1A1A1A;align=center;verticalAlign=middle;spacing=3;" value="Alert stream scoped so the critical one is not buried - FP-148" vertex="1">
+          <mxGeometry height="82" width="183" x="1240" y="492" as="geometry"/>
+        </mxCell>
+        <mxCell id="n43" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F4A261;strokeColor=#C1650A;fontStyle=1;fontSize=16;fontFamily=Calibri;fontColor=#1A1A1A;align=center;verticalAlign=middle;spacing=3;" value="Exception resolved with the phone call recorded - FP-146" vertex="1">
+          <mxGeometry height="82" width="183" x="1240" y="584" as="geometry"/>
+        </mxCell>
+        <mxCell id="n44" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F4A261;strokeColor=#C1650A;fontStyle=1;fontSize=16;fontFamily=Calibri;fontColor=#1A1A1A;align=center;verticalAlign=middle;spacing=3;" value="Exception review with paginated trip history - FP-268" vertex="1">
+          <mxGeometry height="82" width="183" x="1240" y="676" as="geometry"/>
+        </mxCell>
+        <mxCell id="n45" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F4A261;strokeColor=#C1650A;fontStyle=1;fontSize=16;fontFamily=Calibri;fontColor=#1A1A1A;align=center;verticalAlign=middle;spacing=3;" value="Trip detail rebuilt around the phase timeline - FP-267" vertex="1">
+          <mxGeometry height="82" width="183" x="1240" y="768" as="geometry"/>
+        </mxCell>
+        <mxCell id="n46" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F4A261;strokeColor=#C1650A;fontStyle=1;fontSize=16;fontFamily=Calibri;fontColor=#1A1A1A;align=center;verticalAlign=middle;spacing=3;" value="Artifact hashes bound into departure and confirmation anchors - FP-154" vertex="1">
+          <mxGeometry height="82" width="183" x="1449" y="492" as="geometry"/>
+        </mxCell>
+        <mxCell id="n47" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F4A261;strokeColor=#C1650A;fontStyle=1;fontSize=16;fontFamily=Calibri;fontColor=#1A1A1A;align=center;verticalAlign=middle;spacing=3;" value="Receipt lookup by hash or transaction id - FP-157" vertex="1">
+          <mxGeometry height="82" width="183" x="1449" y="584" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="n49" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F4A261;strokeColor=#C1650A;fontStyle=1;fontSize=16;fontFamily=Calibri;fontColor=#1A1A1A;align=center;verticalAlign=middle;spacing=3;" value="Driver, vehicle, facility and fleet analytics - FP-153 · FP-156" vertex="1">
+          <mxGeometry height="82" width="183" x="1449" y="676" as="geometry"/>
+        </mxCell>
+        <mxCell id="n50" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F4A261;strokeColor=#C1650A;fontStyle=1;fontSize=16;fontFamily=Calibri;fontColor=#1A1A1A;align=center;verticalAlign=middle;spacing=3;" value="Lane transit metrics - FP-158" vertex="1">
+          <mxGeometry height="82" width="183" x="1449" y="768" as="geometry"/>
+        </mxCell>
+        <mxCell id="n51" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F2F2F2;strokeColor=#B3B3B3;dashed=1;fontSize=16;" value="" vertex="1">
+          <mxGeometry height="176" width="1638" y="872" as="geometry"/>
+        </mxCell>
+        <mxCell id="n52" parent="1" style="text;html=1;align=left;verticalAlign=top;fontSize=16;fontFamily=Calibri;fontColor=#1A1A1A;spacing=2;whiteSpace=wrap;" value="&lt;b&gt;ITERATION 4&lt;/b&gt;&lt;br&gt;Pilot readiness&lt;br&gt;Sep–Oct&lt;br&gt;&lt;i&gt;Planned&lt;/i&gt;" vertex="1">
+          <mxGeometry height="160" width="163" x="6" y="880" as="geometry"/>
+        </mxCell>
+        <mxCell id="n53" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#B3B3B3;dashed=1;fontSize=16;fontFamily=Calibri;fontColor=#808080;align=center;verticalAlign=middle;spacing=3;" value="Multi-stop authoring in the trip wizard" vertex="1">
+          <mxGeometry height="70" width="183" x="404" y="886" as="geometry"/>
+        </mxCell>
+        <mxCell id="n54" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#B3B3B3;dashed=1;fontSize=16;fontFamily=Calibri;fontColor=#808080;align=center;verticalAlign=middle;spacing=3;" value="Live Pulsit credentials" vertex="1">
+          <mxGeometry height="70" width="183" x="613" y="886" as="geometry"/>
+        </mxCell>
+        <mxCell id="n55" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#B3B3B3;dashed=1;fontSize=16;fontFamily=Calibri;fontColor=#808080;align=center;verticalAlign=middle;spacing=3;" value="Live end-to-end receiver identity verification" vertex="1">
+          <mxGeometry height="70" width="183" x="1031" y="886" as="geometry"/>
+        </mxCell>
+        <mxCell id="n56" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#B3B3B3;dashed=1;fontSize=16;fontFamily=Calibri;fontColor=#808080;align=center;verticalAlign=middle;spacing=3;" value="Find a parcel by barcode and see everywhere it has been - FP-149" vertex="1">
+          <mxGeometry height="70" width="183" x="1240" y="886" as="geometry"/>
+        </mxCell>
+        <mxCell id="n57" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#B3B3B3;dashed=1;fontSize=16;fontFamily=Calibri;fontColor=#808080;align=center;verticalAlign=middle;spacing=3;" value="Measure the 60 s anchoring target under load" vertex="1">
+          <mxGeometry height="70" width="183" x="1449" y="886" as="geometry"/>
+        </mxCell>
+        <mxCell id="n59" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontSize=16;fontFamily=Calibri;fontColor=#1A1A1A;fontStyle=2;" value="Figure 2.1: User story map by journey activity, Iteration 3 slice highlighted." vertex="1">
+          <mxGeometry height="28" width="1638" y="1092" as="geometry"/>
+        </mxCell>
+      <mxCell id="n_Originanddestinationseal" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#808080;fontSize=16;fontFamily=Calibri;fontColor=#262626;align=center;verticalAlign=middle;spacing=3;" value="Origin and destination seals compared automatically" vertex="1">
+          <mxGeometry height="70" width="183" x="1031" y="386" as="geometry"/>
+        </mxCell><mxCell id="n_LiveParcelPerfectmanifes" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#B3B3B3;dashed=1;fontSize=16;fontFamily=Calibri;fontColor=#808080;align=center;verticalAlign=middle;spacing=3;" value="Live Parcel Perfect manifest access" vertex="1">
+          <mxGeometry height="70" width="183" x="404" y="964" as="geometry"/>
+        </mxCell><mxCell id="n_legend" parent="1" vertex="1" value="Shaded cards = Iteration 3 stories (FP keys are Jira issues) &amp;nbsp;·&amp;nbsp; Dashed cards = planned for Iteration 4 &amp;nbsp;·&amp;nbsp; Orange task column = new participant in Iteration 3 (the receiver)" style="text;html=1;align=center;verticalAlign=middle;fontSize=14;fontFamily=Calibri;fontColor=#595959;"><mxGeometry as="geometry" x="0" y="1060" width="1638" height="24"/></mxCell></root>
+    </mxGraphModel>
+  </diagram>
+<diagram name="Trip Lifecycle Management (Iteration 3)" id="uctlm"><mxGraphModel dx="1200" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="1654"><root><mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="uctlm_t" value="Trip Lifecycle Management (Iteration 3)" style="text;html=1;align=left;verticalAlign=middle;fontFamily=Calibri;fontSize=14;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="200" y="10" width="600" height="24" as="geometry"/></mxCell><mxCell id="uctlm_b" value="FreightProof" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#333333;verticalAlign=top;align=right;fontFamily=Calibri;fontSize=11;fontColor=#595959;spacingTop=4;spacingRight=8;" vertex="1" parent="1"><mxGeometry x="200" y="40" width="720" height="1040" as="geometry"/></mxCell><mxCell id="t11" value="TLM 1.1
+Register a Driver" style="ellipse;whiteSpace=wrap;html=1;fontFamily=Calibri;fontSize=11;fillColor=#FFFFFF;strokeColor=#333333;" vertex="1" parent="1"><mxGeometry x="240" y="70" width="190" height="60" as="geometry"/></mxCell><mxCell id="t18" value="TLM 1.8
+Register a Vehicle" style="ellipse;whiteSpace=wrap;html=1;fontFamily=Calibri;fontSize=11;fillColor=#FFFFFF;strokeColor=#333333;" vertex="1" parent="1"><mxGeometry x="240" y="150" width="190" height="60" as="geometry"/></mxCell><mxCell id="t111" value="TLM 1.11
+Manage a Precinct" style="ellipse;whiteSpace=wrap;html=1;fontFamily=Calibri;fontSize=11;fontStyle=1;fillColor=#F4A261;strokeColor=#B85C00;strokeWidth=1.5;" vertex="1" parent="1"><mxGeometry x="240" y="230" width="190" height="60" as="geometry"/></mxCell><mxCell id="t12" value="TLM 1.2
+Create a Trip" style="ellipse;whiteSpace=wrap;html=1;fontFamily=Calibri;fontSize=11;fillColor=#FFFFFF;strokeColor=#333333;" vertex="1" parent="1"><mxGeometry x="240" y="310" width="190" height="60" as="geometry"/></mxCell><mxCell id="tgp" value="Generate Phase Plan" style="ellipse;whiteSpace=wrap;html=1;fontFamily=Calibri;fontSize=11;fillColor=#FFFFFF;strokeColor=#333333;dashed=1;" vertex="1" parent="1"><mxGeometry x="560" y="270" width="190" height="60" as="geometry"/></mxCell><mxCell id="tjl" value="Anchor Journey-Lock Hash" style="ellipse;whiteSpace=wrap;html=1;fontFamily=Calibri;fontSize=11;fillColor=#FFFFFF;strokeColor=#333333;dashed=1;" vertex="1" parent="1"><mxGeometry x="560" y="350" width="190" height="60" as="geometry"/></mxCell><mxCell id="t13" value="TLM 1.3
+Monitor Active Trips" style="ellipse;whiteSpace=wrap;html=1;fontFamily=Calibri;fontSize=11;fillColor=#FFFFFF;strokeColor=#333333;" vertex="1" parent="1"><mxGeometry x="240" y="470" width="190" height="60" as="geometry"/></mxCell><mxCell id="t14" value="TLM 1.4
+Access Trip History and Evidence" style="ellipse;whiteSpace=wrap;html=1;fontFamily=Calibri;fontSize=11;fillColor=#FFFFFF;strokeColor=#333333;" vertex="1" parent="1"><mxGeometry x="240" y="550" width="190" height="60" as="geometry"/></mxCell><mxCell id="t19" value="TLM 1.9
+Review an Exception" style="ellipse;whiteSpace=wrap;html=1;fontFamily=Calibri;fontSize=11;fontStyle=1;fillColor=#F4A261;strokeColor=#B85C00;strokeWidth=1.5;" vertex="1" parent="1"><mxGeometry x="240" y="630" width="190" height="60" as="geometry"/></mxCell><mxCell id="t110" value="TLM 1.10
+Inspect Operational Analytics" style="ellipse;whiteSpace=wrap;html=1;fontFamily=Calibri;fontSize=11;fontStyle=1;fillColor=#F4A261;strokeColor=#B85C00;strokeWidth=1.5;" vertex="1" parent="1"><mxGeometry x="240" y="710" width="190" height="60" as="geometry"/></mxCell><mxCell id="t17" value="TLM 1.7
+Cancel a Trip" style="ellipse;whiteSpace=wrap;html=1;fontFamily=Calibri;fontSize=11;fillColor=#FFFFFF;strokeColor=#333333;" vertex="1" parent="1"><mxGeometry x="240" y="790" width="190" height="60" as="geometry"/></mxCell><mxCell id="t15" value="TLM 1.5
+Verify Evidence Against the Blockchain" style="ellipse;whiteSpace=wrap;html=1;fontFamily=Calibri;fontSize=11;fontStyle=1;fillColor=#FFE8CC;strokeColor=#B85C00;strokeWidth=1.5;" vertex="1" parent="1"><mxGeometry x="240" y="870" width="190" height="60" as="geometry"/></mxCell><mxCell id="t16" value="TLM 1.6
+View Forensic Detail" style="ellipse;whiteSpace=wrap;html=1;fontFamily=Calibri;fontSize=11;fillColor=#FFFFFF;strokeColor=#333333;" vertex="1" parent="1"><mxGeometry x="240" y="950" width="190" height="60" as="geometry"/></mxCell><mxCell id="aDisp" value="Dispatcher" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fontFamily=Calibri;fontSize=12;" vertex="1" parent="1"><mxGeometry x="60" y="550" width="30" height="60" as="geometry"/></mxCell><mxCell id="aAdmin" value="Admin-Dispatcher" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fontFamily=Calibri;fontSize=12;" vertex="1" parent="1"><mxGeometry x="60" y="950" width="30" height="60" as="geometry"/></mxCell><mxCell id="uctlm2" value="" style="endArrow=block;endFill=0;html=1;strokeColor=#333333;endSize=12;" edge="1" parent="1" source="aAdmin" target="aDisp"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="uctlm3" value="" style="endArrow=none;html=1;strokeColor=#333333;" edge="1" parent="1" source="aDisp" target="t12"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="uctlm4" value="" style="endArrow=none;html=1;strokeColor=#333333;" edge="1" parent="1" source="aDisp" target="t13"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="uctlm5" value="" style="endArrow=none;html=1;strokeColor=#333333;" edge="1" parent="1" source="aDisp" target="t14"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="uctlm6" value="" style="endArrow=none;html=1;strokeColor=#333333;" edge="1" parent="1" source="aDisp" target="t19"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="uctlm7" value="" style="endArrow=none;html=1;strokeColor=#333333;" edge="1" parent="1" source="aDisp" target="t110"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="uctlm8" value="" style="endArrow=none;html=1;strokeColor=#333333;" edge="1" parent="1" source="aDisp" target="t17"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="uctlm9" value="" style="endArrow=none;html=1;strokeColor=#333333;" edge="1" parent="1" source="aAdmin" target="t11"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="uctlm10" value="" style="endArrow=none;html=1;strokeColor=#333333;" edge="1" parent="1" source="aAdmin" target="t18"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="uctlm11" value="" style="endArrow=none;html=1;strokeColor=#333333;" edge="1" parent="1" source="aAdmin" target="t111"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="uctlm12" value="" style="endArrow=none;html=1;strokeColor=#333333;" edge="1" parent="1" source="aAdmin" target="t15"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="uctlm13" value="" style="endArrow=none;html=1;strokeColor=#333333;" edge="1" parent="1" source="aAdmin" target="t16"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="uctlm14" value="«include»" style="endArrow=open;endFill=0;dashed=1;html=1;strokeColor=#333333;fontFamily=Calibri;fontSize=10;" edge="1" parent="1" source="t12" target="tgp"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="uctlm15" value="«include»" style="endArrow=open;endFill=0;dashed=1;html=1;strokeColor=#333333;fontFamily=Calibri;fontSize=10;" edge="1" parent="1" source="t12" target="tjl"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="uctlm16" value="Dark orange = new in Iteration 3 (no Iteration 2 equivalent). Light orange = existed in Iteration 2 and its flow changed materially. TLM 1.1 is split into TLM 1.1 and 1.8 as a documentation correction (Iteration 1 feedback); the flows are unchanged since Iteration 1. White = user goal and main flow unchanged: refer to the Iteration 2 narrative; rule-level deltas are listed in §3.4.3. Admin-Dispatcher inherits Dispatcher. External systems are shown in the §4 architecture diagram." style="text;html=1;align=left;verticalAlign=top;fontFamily=Calibri;fontSize=10;fontColor=#595959;whiteSpace=wrap;" vertex="1" parent="1"><mxGeometry x="200" y="1090" width="720" height="40" as="geometry"/></mxCell></root></mxGraphModel></diagram><diagram name="Custody Chain Capture (Iteration 3)" id="uccc"><mxGraphModel dx="1200" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="1654"><root><mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="uccc_t" value="Custody Chain Capture (Iteration 3)" style="text;html=1;align=left;verticalAlign=middle;fontFamily=Calibri;fontSize=14;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="200" y="10" width="600" height="24" as="geometry"/></mxCell><mxCell id="uccc_b" value="FreightProof" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#333333;verticalAlign=top;align=right;fontFamily=Calibri;fontSize=11;fontColor=#595959;spacingTop=4;spacingRight=8;" vertex="1" parent="1"><mxGeometry x="200" y="40" width="720" height="1000" as="geometry"/></mxCell><mxCell id="c11" value="CC 1.1
+Sign In with Phone OTP" style="ellipse;whiteSpace=wrap;html=1;fontFamily=Calibri;fontSize=11;fillColor=#FFFFFF;strokeColor=#333333;" vertex="1" parent="1"><mxGeometry x="240" y="70" width="190" height="60" as="geometry"/></mxCell><mxCell id="c12" value="CC 1.2
+Activate Trip at Origin" style="ellipse;whiteSpace=wrap;html=1;fontFamily=Calibri;fontSize=11;fillColor=#FFFFFF;strokeColor=#333333;" vertex="1" parent="1"><mxGeometry x="240" y="150" width="190" height="60" as="geometry"/></mxCell><mxCell id="c13" value="CC 1.3
+Confirm Loading" style="ellipse;whiteSpace=wrap;html=1;fontFamily=Calibri;fontSize=11;fillColor=#FFFFFF;strokeColor=#333333;" vertex="1" parent="1"><mxGeometry x="240" y="230" width="190" height="60" as="geometry"/></mxCell><mxCell id="c14" value="CC 1.4
+Seal and Depart" style="ellipse;whiteSpace=wrap;html=1;fontFamily=Calibri;fontSize=11;fontStyle=1;fillColor=#FFE8CC;strokeColor=#B85C00;strokeWidth=1.5;" vertex="1" parent="1"><mxGeometry x="240" y="310" width="190" height="60" as="geometry"/></mxCell><mxCell id="cad" value="Anchor Departure Receipt" style="ellipse;whiteSpace=wrap;html=1;fontFamily=Calibri;fontSize=11;fillColor=#FFFFFF;strokeColor=#333333;dashed=1;" vertex="1" parent="1"><mxGeometry x="560" y="310" width="190" height="60" as="geometry"/></mxCell><mxCell id="c15" value="CC 1.5
+Log Transit Checkpoint" style="ellipse;whiteSpace=wrap;html=1;fontFamily=Calibri;fontSize=11;fillColor=#FFFFFF;strokeColor=#333333;" vertex="1" parent="1"><mxGeometry x="240" y="390" width="190" height="60" as="geometry"/></mxCell><mxCell id="c16" value="CC 1.6
+Raise Exception or Panic" style="ellipse;whiteSpace=wrap;html=1;fontFamily=Calibri;fontSize=11;fontStyle=1;fillColor=#FFE8CC;strokeColor=#B85C00;strokeWidth=1.5;" vertex="1" parent="1"><mxGeometry x="240" y="470" width="190" height="60" as="geometry"/></mxCell><mxCell id="c17" value="CC 1.7
+Unload at Destination" style="ellipse;whiteSpace=wrap;html=1;fontFamily=Calibri;fontSize=11;fillColor=#FFFFFF;strokeColor=#333333;" vertex="1" parent="1"><mxGeometry x="240" y="550" width="190" height="60" as="geometry"/></mxCell><mxCell id="c19" value="CC 1.9
+Override a Blocked Phase" style="ellipse;whiteSpace=wrap;html=1;fontFamily=Calibri;fontSize=11;fillColor=#FFFFFF;strokeColor=#333333;" vertex="1" parent="1"><mxGeometry x="560" y="550" width="190" height="60" as="geometry"/></mxCell><mxCell id="c18" value="CC 1.8
+Confirm Delivery and Close Trip" style="ellipse;whiteSpace=wrap;html=1;fontFamily=Calibri;fontSize=11;fontStyle=1;fillColor=#FFE8CC;strokeColor=#B85C00;strokeWidth=1.5;" vertex="1" parent="1"><mxGeometry x="240" y="710" width="190" height="60" as="geometry"/></mxCell><mxCell id="cdl" value="Anchor Delivery Receipt" style="ellipse;whiteSpace=wrap;html=1;fontFamily=Calibri;fontSize=11;fillColor=#FFE8CC;strokeColor=#B85C00;dashed=1;" vertex="1" parent="1"><mxGeometry x="560" y="660" width="190" height="60" as="geometry"/></mxCell><mxCell id="c110" value="CC 1.10
+Receive and Acknowledge Delivery" style="ellipse;whiteSpace=wrap;html=1;fontFamily=Calibri;fontSize=11;fontStyle=1;fillColor=#F4A261;strokeColor=#B85C00;strokeWidth=1.5;" vertex="1" parent="1"><mxGeometry x="560" y="800" width="190" height="60" as="geometry"/></mxCell><mxCell id="cvr" value="Verify Receiver Identity" style="ellipse;whiteSpace=wrap;html=1;fontFamily=Calibri;fontSize=11;fontStyle=1;fillColor=#F4A261;strokeColor=#B85C00;dashed=1;" vertex="1" parent="1"><mxGeometry x="560" y="910" width="190" height="60" as="geometry"/></mxCell><mxCell id="aDrv" value="Driver" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fontFamily=Calibri;fontSize=12;" vertex="1" parent="1"><mxGeometry x="60" y="390" width="30" height="60" as="geometry"/></mxCell><mxCell id="aDsp" value="Dispatcher" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fontFamily=Calibri;fontSize=12;" vertex="1" parent="1"><mxGeometry x="860" y="550" width="30" height="60" as="geometry"/></mxCell><mxCell id="aRcv" value="Receiver
+(no account)" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fontFamily=Calibri;fontSize=12;" vertex="1" parent="1"><mxGeometry x="860" y="800" width="30" height="60" as="geometry"/></mxCell><mxCell id="uccc2" value="" style="endArrow=none;html=1;strokeColor=#333333;" edge="1" parent="1" source="aDrv" target="c11"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="uccc3" value="" style="endArrow=none;html=1;strokeColor=#333333;" edge="1" parent="1" source="aDrv" target="c12"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="uccc4" value="" style="endArrow=none;html=1;strokeColor=#333333;" edge="1" parent="1" source="aDrv" target="c13"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="uccc5" value="" style="endArrow=none;html=1;strokeColor=#333333;" edge="1" parent="1" source="aDrv" target="c14"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="uccc6" value="" style="endArrow=none;html=1;strokeColor=#333333;" edge="1" parent="1" source="aDrv" target="c15"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="uccc7" value="" style="endArrow=none;html=1;strokeColor=#333333;" edge="1" parent="1" source="aDrv" target="c16"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="uccc8" value="" style="endArrow=none;html=1;strokeColor=#333333;" edge="1" parent="1" source="aDrv" target="c17"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="uccc9" value="" style="endArrow=none;html=1;strokeColor=#333333;" edge="1" parent="1" source="aDrv" target="c18"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="uccc10" value="" style="endArrow=none;html=1;strokeColor=#333333;" edge="1" parent="1" source="aRcv" target="c110"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="uccc11" value="" style="endArrow=none;html=1;strokeColor=#333333;" edge="1" parent="1" source="aDsp" target="c19"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="uccc12" value="«include»" style="endArrow=open;endFill=0;dashed=1;html=1;strokeColor=#333333;fontFamily=Calibri;fontSize=10;" edge="1" parent="1" source="c14" target="cad"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="uccc13" value="«include»" style="endArrow=open;endFill=0;dashed=1;html=1;strokeColor=#333333;fontFamily=Calibri;fontSize=10;" edge="1" parent="1" source="c18" target="cdl"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="uccc14" value="«include»" style="endArrow=open;endFill=0;dashed=1;html=1;strokeColor=#333333;fontFamily=Calibri;fontSize=10;" edge="1" parent="1" source="c18" target="c110"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="uccc15" value="«extend»" style="endArrow=open;endFill=0;dashed=1;html=1;strokeColor=#333333;fontFamily=Calibri;fontSize=10;" edge="1" parent="1" source="cvr" target="c110"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="uccc16" value="«extend»" style="endArrow=open;endFill=0;dashed=1;html=1;strokeColor=#333333;fontFamily=Calibri;fontSize=10;" edge="1" parent="1" source="c19" target="c13"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="uccc17" value="«extend»" style="endArrow=open;endFill=0;dashed=1;html=1;strokeColor=#333333;fontFamily=Calibri;fontSize=10;" edge="1" parent="1" source="c19" target="c14"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="uccc18" value="«extend»" style="endArrow=open;endFill=0;dashed=1;html=1;strokeColor=#333333;fontFamily=Calibri;fontSize=10;" edge="1" parent="1" source="c19" target="c17"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="uccc19" value="«extend»" style="endArrow=open;endFill=0;dashed=1;html=1;strokeColor=#333333;fontFamily=Calibri;fontSize=10;" edge="1" parent="1" source="c19" target="c18"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="uccc20" value="Dark orange = new in Iteration 3. Light orange = existed in Iteration 2 and changed materially (Anchor Delivery Receipt existed but is now drawn as an include to mirror CC 1.4). White = unchanged: refer to the Iteration 2 narrative; rule-level deltas in §3.4.3. The Receiver acts on their own phone with no account; CC 1.10 replaces the Iteration 2 «include» Digitally Sign Confirmation. Identity verification is an optional extension the receiver may decline." style="text;html=1;align=left;verticalAlign=top;fontFamily=Calibri;fontSize=10;fontColor=#595959;whiteSpace=wrap;" vertex="1" parent="1"><mxGeometry x="200" y="1050" width="720" height="40" as="geometry"/></mxCell></root></mxGraphModel></diagram></mxfile>

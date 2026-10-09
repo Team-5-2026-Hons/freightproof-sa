@@ -1,10 +1,10 @@
-"""Pydantic v2 schemas for PhaseEvent and TrailerGpsSnapshot.
+"""Pydantic v2 schemas for PhaseEvent and the per-phase completion requests.
 
 Replaces schemas/handshakes.py, whose HandshakeEventRead predates the phase
 ledger and is missing three real columns (trip_stop_id, anchor_status,
-idempotency_key). Serves the frozen contract's PhaseDescriptor — parent plan
-§3.1 — which is why stop_sequence and step_recipe appear here as derived fields
-rather than as columns.
+idempotency_key). Serves the frozen contract's PhaseDescriptor — which is why
+stop_sequence and step_recipe appear here as derived fields rather than as
+columns.
 """
 
 import math
@@ -16,7 +16,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.phase_meta import STEP_SLUGS
-from app.db.models.enums import AnchorStatus, PhaseStatus, PhaseType
+from app.db.models.enums import AnchorStatus, PhaseStatus, PhaseType, SealCondition
 from app.schemas.action_location import ActionLocationAssessment
 
 _SEAL_PATTERN = re.compile(r"^[A-Z]{2}-\d{4}$")
@@ -53,9 +53,7 @@ class PhaseEventRead(BaseModel):
 
     # Wire name is `phase_event_id`, matching the shared frontend contract
     # (frontend/shared/lib/types/phase.ts) — this is the phase's own identity,
-    # not a foreign key pointing at one (contrast
-    # TrailerGpsSnapshotBase.phase_event_id below, which IS an FK and is
-    # unaffected by this alias). serialization_alias only changes the OUTBOUND
+    # not a foreign key pointing at one. serialization_alias only changes the OUTBOUND
     # key: model_validate(event)/from_attributes still binds the ORM's `id`
     # attribute by field name, and FastAPI serialises response models with
     # by_alias=True by default, so `id` never reaches the JSON body.
@@ -66,17 +64,17 @@ class PhaseEventRead(BaseModel):
     status: PhaseStatus
     anchor_status: AnchorStatus
 
-    # Null ONLY for trip_creation (parent D3). in_transit anchors to the stop it
+    # Null ONLY for trip_creation. in_transit anchors to the stop it
     # DEPARTS FROM, so in_transit at stop 1 means "the leg leaving stop 1".
     trip_stop_id: Optional[UUID] = None
     stop_sequence: Optional[int] = None
 
-    # Capture-component slugs for this phase type (decision S2). Empty for
+    # Capture-component slugs for this phase type. Empty for
     # system-observed phases.
     step_recipe: tuple[str, ...] = ()
 
     # Non-null while this phase is waiting on an external system — today only the
-    # warehouse scan feed. Derived per request (orchestration/phase_gate.py), never
+    # warehouse scan feed. Derived per request (orchestration/phases/blocking.py), never
     # stored: it is a property of the outside world, not of this row.
     blocked_on: Optional[str] = None
 
@@ -88,14 +86,14 @@ class PhaseEventRead(BaseModel):
     dispatcher_override_note: Optional[str] = None
     driver_phone_lat: Optional[float] = None
     driver_phone_lng: Optional[float] = None
-    # Task 0A. The instant the driver's phone submitted, independent of completed_at
+    # The instant the driver's phone submitted, independent of completed_at
     # (the server's clock). Optional here purely because the underlying column is
-    # nullable for a row a pre-0A client completed.
+    # nullable for a row completed before this field existed.
     driver_captured_at: Optional[datetime] = None
     horse_gps_lat: Optional[float] = None
     horse_gps_lng: Optional[float] = None
     pulsit_geofence_confirmed: Optional[bool] = None
-    # Task 5: the versioned driver-phone-vs-tracker proximity snapshot (plus precinct
+    # The versioned driver-phone-vs-tracker proximity snapshot (plus precinct
     # membership facts) assembled at completion time by orchestration/action_location_
     # service.build_phase_assessment. Validated through ActionLocationAssessment on
     # every read (from_attributes maps the stored JSONB dict straight through
@@ -105,13 +103,18 @@ class PhaseEventRead(BaseModel):
     location_warning_acknowledged_at: Optional[datetime] = None
     location_warning_reason: Optional[str] = None
     seal_number: Optional[str] = None
+    seal_condition: Optional[SealCondition] = None
     seal_photo_artifact_id: Optional[UUID] = None
     waybill_photo_artifact_id: Optional[UUID] = None
+    # No longer written (the seal photo moved to arrival's seal_photo_artifact_id).
+    # Kept while the column exists; a later migration drops both together.
     gate_photo_artifact_id: Optional[UUID] = None
     pod_photo_artifact_id: Optional[UUID] = None
     pod_signature_artifact_id: Optional[UUID] = None
     linehaul_photo_artifact_id: Optional[UUID] = None
-    parcel_manifest_snapshot: Optional[Any] = None
+    # parcel_manifest_snapshot is deliberately absent: on H0 it holds the whole PP
+    # manifest (FP-281) and this schema is served to the driver. Dispatchers read it
+    # through GET /trips/{id}/manifest.
     parcel_count_origin: Optional[int] = None
     parcel_count_destination: Optional[int] = None
     driver_visual_count: Optional[int] = None
@@ -152,26 +155,6 @@ class PhaseEventRead(BaseModel):
         return read
 
 
-class TrailerGpsSnapshotBase(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    phase_event_id: UUID
-    trailer_id: UUID
-    pulsit_device_id: str
-    lat: float
-    lng: float
-    captured_at: datetime
-
-
-class TrailerGpsSnapshotCreate(TrailerGpsSnapshotBase):
-    pass
-
-
-class TrailerGpsSnapshotRead(TrailerGpsSnapshotBase):
-    id: UUID
-    created_at: datetime
-
-
 class _PhaseCompleteBase(BaseModel):
     # Completion requests may carry raw driver evidence only. In particular, clients
     # must not smuggle a server-evaluated ActionLocationAssessment verdict into the
@@ -195,18 +178,18 @@ class _PhaseCompleteBase(BaseModel):
     # because the origin-gate position is the one the activation gates are judged on.
     #
     # POPIA: personal location data. Stored in Postgres, never anchored — the canonical
-    # payload builders in orchestration/phase_service.py are explicit whitelists, so a
+    # payload builders in orchestration/phases/payloads.py are explicit whitelists, so a
     # field added here cannot reach a hash by accident.
     driver_phone_lat: Optional[float] = Field(default=None, ge=-90, le=90)
     driver_phone_lng: Optional[float] = Field(default=None, ge=-180, le=180)
 
-    # Task 0A: the instant the driver's OWN PHONE submitted this completion — captured
+    # The instant the driver's OWN PHONE submitted this completion — captured
     # client-side at swipe time (frontend/driver-pwa/lib/submission/phase-submitter.ts),
     # not when this request happens to reach the server. This is what lets
-    # corroboration_service tell a live handshake from an offline replay flushed hours
+    # evidence.corroboration tell a live handshake from an offline replay flushed hours
     # later: comparing a fresh Pulsit fix against a stale driver claim, with no capture
     # time on the wire, was the exact gap this field exists to close (see
-    # corroboration_service.py's module docstring).
+    # evidence/corroboration.py's module docstring).
     #
     # Optional so a client built before this field existed — an entry already sitting in
     # a driver's offline queue — still 200s on replay instead of 422ing forever; a
@@ -215,17 +198,17 @@ class _PhaseCompleteBase(BaseModel):
     # send it (frontend/driver-pwa/lib/submission/phase-submitter.ts).
     driver_captured_at: Optional[datetime] = None
 
-    # R8 (Task 5, trip-location-timeline-improvements): the phone's own claimed
-    # accuracy at the moment of driver_phone_lat/lng, feeding proximity_service.
+    # The phone's own claimed
+    # accuracy at the moment of driver_phone_lat/lng, feeding evidence.proximity.
     # evaluate_proximity's `poor_accuracy`/`missing_accuracy` gates via orchestration/
-    # action_location_service.build_phase_assessment. NOT a phase_events column —
+    # evidence.action_location.build_phase_assessment. NOT a phase_events column —
     # it lives only inside the action_location_assessment JSONB snapshot (schemas/
     # action_location.py). Optional so a client built before this field existed
     # still 200s on replay: an omitted value reads as `missing_accuracy`, which
     # forces the proximity verdict to 'unverified' rather than a fabricated pass.
     driver_accuracy_metres: Optional[float] = Field(default=None, ge=0)
 
-    # Task 7: acknowledgement of the warning the driver saw during the optional
+    # Acknowledgement of the warning the driver saw during the optional
     # preview. This is deliberately separate from action_location_assessment: the
     # latter is only assembled from independent measurements by the backend after the
     # final completion request, while these fields describe the driver's own context.
@@ -235,7 +218,7 @@ class _PhaseCompleteBase(BaseModel):
     @field_validator("driver_captured_at")
     @classmethod
     def validate_driver_captured_at_is_timezone_aware(cls, v: Optional[datetime]) -> Optional[datetime]:
-        # A naive value would silently compare as if it were UTC in corroboration_service,
+        # A naive value would silently compare as if it were UTC in evidence.corroboration,
         # manufacturing a skew verdict from a timestamp that was never actually anchored
         # to a real instant. Rejected outright rather than assumed.
         if v is not None and v.tzinfo is None:
@@ -290,14 +273,15 @@ class ActivationCompleteRequest(_PhaseCompleteBase):
 
 
 class LoadingCompleteRequest(_PhaseCompleteBase):
-    # D7/T5: the seal is applied at departure, not here.
+    # The seal is applied at departure, not here.
     #
     # driver_visual_count is Optional and IGNORED by advance_loading as of the
     # scan-driven redesign. It is kept on the schema rather than removed for one
     # reason: a loading queued offline under the old schema replays from
     # localStorage with the field present, and removing it would 422 that entry
-    # forever — the queue would never drain. The driver app stops sending it in
-    # Stage C; this field is deleted only once no client can still be holding one.
+    # forever — the queue would never drain. The driver app will stop sending it
+    # once every client has moved off the old schema; this field is deleted only
+    # once no client can still be holding one.
     phase_type: Literal[PhaseType.LOADING]
     driver_visual_count: Optional[int] = None
     # The paper linehaul sheet photographed at loading. Optional — a warehouse that has
@@ -308,7 +292,7 @@ class LoadingCompleteRequest(_PhaseCompleteBase):
 
 
 class DepartureCompleteRequest(_PhaseCompleteBase):
-    # D7/T5: the seal is applied HERE — the driver photographs and applies the seal as
+    # The seal is applied HERE — the driver photographs and applies the seal as
     # they physically close the trailer at exit.
     phase_type: Literal[PhaseType.DEPARTURE]
     # Optional as of 2026-08-10, and no longer sent by the driver app. It carried the
@@ -367,47 +351,51 @@ class InTransitCompleteRequest(_PhaseCompleteBase):
     # capture step, which would need a step recipe, which would change STEP_SLUGS — the
     # shared contract this design was explicitly shaped to leave alone.
     #
-    # Unanchored, like activation/loading/unloading: ANCHORED_PHASES stays
-    # trip_creation/departure/confirmation (frontend/shared/lib/constants/phase-meta.ts).
-    # An arrival timestamp derives its integrity from the departure and confirmation
-    # anchors that bracket it, not from a receipt of its own.
+    # Anchored like every phase (receipt type TRANSIT_ARRIVAL), with an IDs-only payload:
+    # the attestation is the fact, and HCS's consensus timestamp is what makes it hard to
+    # backdate.
     phase_type: Literal[PhaseType.IN_TRANSIT]
 
 
-class UnloadingCompleteRequest(_PhaseCompleteBase):
-    phase_type: Literal[PhaseType.UNLOADING]
-    seal_number_at_destination: str
-    # Photo of the seal as found at destination, BEFORE it is broken — the
-    # tamper-evidence bookend to departure's seal_photo_artifact_id. Required, not
-    # optional: the seal is the single piece of physical evidence this phase exists
-    # to capture, and once the truck is open it cannot be re-photographed. An
-    # unloading recorded without it is an assertion, not evidence.
-    #
-    # Reuses PhaseEvent.gate_photo_artifact_id, which existed unused on the model
-    # before this — no migration needed.
-    #
-    # Contract note for driver-pwa: its unloading flow must upload this artifact and
-    # send the id, or completion 422s. As of Stage 5 the app already CAPTURES a seal
-    # photo at unloading (SealBreakInspection's sealBrokenPhotoDataUrl, mandatory
-    # before the step can be confirmed) but drops it — lib/api/phases.ts sends only
-    # seal_number_at_destination. Wiring it through is the same upload-then-send
-    # pattern confirmation already uses for the POD photo.
-    #
-    # UNRESOLVED, needs a decision before the flows are wired together: this field is
-    # specified as the seal AS FOUND, intact, before the warehouse breaks it. The
-    # driver app's step photographs the seal AFTER breaking. Those are two different
-    # photographs with different evidential value, and only one of them proves the
-    # seal was intact on arrival.
-    gate_photo_artifact_id: UUID
+class ArrivalCompleteRequest(_PhaseCompleteBase):
+    # The seal AS FOUND at the destination gate, before anything is opened. A phase of
+    # its own, completed before unloading can start, so "inspected before opened" is a
+    # sequence rule the server enforces instead of an order photos happen to be taken in.
+    phase_type: Literal[PhaseType.ARRIVAL]
+    seal_condition: SealCondition
+    # Required unless the seal is MISSING, when it must be omitted: there is no
+    # number to read off a seal that is not there. A damaged seal usually still
+    # shows its number, so it is still required.
+    seal_number_at_arrival: Optional[str] = None
+    # Required in every condition. A missing seal is photographed as a missing seal:
+    # the empty hasp is the evidence.
+    seal_photo_artifact_id: UUID
 
-    @field_validator("seal_number_at_destination")
+    @field_validator("seal_number_at_arrival")
     @classmethod
-    def validate_seal_number(cls, v: str) -> str:
-        return _validate_seal_format(v)
+    def validate_seal_number(cls, v: Optional[str]) -> Optional[str]:
+        return None if v is None else _validate_seal_format(v)
+
+    @model_validator(mode="after")
+    def validate_seal_number_present(self) -> "ArrivalCompleteRequest":
+        if self.seal_condition == SealCondition.MISSING:
+            if self.seal_number_at_arrival is not None:
+                raise ValueError("seal_number_at_arrival must be omitted when the seal is missing")
+        elif self.seal_number_at_arrival is None:
+            raise ValueError("seal_number_at_arrival is required unless the seal is missing")
+        return self
+
+
+class UnloadingCompleteRequest(_PhaseCompleteBase):
+    # Unloading only. The seal number and the seal photo moved to ArrivalCompleteRequest:
+    # the seal is inspected at arrival, before the doors open, which also settles the old
+    # conflict of this schema asking for the seal "as found" while the driver app
+    # photographed it after breaking. The scan gate and the count checks stay here.
+    phase_type: Literal[PhaseType.UNLOADING]
 
 
 class ConfirmationCompleteRequest(_PhaseCompleteBase):
-    # BQ2 resolved 2026-06-29: proof of delivery is a photo AND an on-device
+    # Resolved 2026-06-29: proof of delivery is a photo AND an on-device
     # signature — both required, not either/or.
     #
     # pp_scan_in_count is GONE from the wire. The driver app used to send its own
@@ -417,7 +405,7 @@ class ConfirmationCompleteRequest(_PhaseCompleteBase):
     # must stay — verification_service rebuilds from it, so renaming it would break
     # hash verification on every historical trip.
     #
-    # Checked before removing (task 8, §"CHECK THIS BEFORE PROCEEDING"): no schema
+    # Checked before removing: no schema
     # in this codebase sets extra="forbid" (BaseModel/_PhaseCompleteBase both use
     # Pydantic v2's default extra="ignore"), so an offline-queued confirmation still
     # carrying pp_scan_in_count from before this change is silently accepted and the
@@ -431,7 +419,7 @@ class ConfirmationCompleteRequest(_PhaseCompleteBase):
     # A PARCEL count (team decision), captured blind: the driver is never shown an
     # expected figure before committing his own. Recorded and anchored as evidence
     # in its own right, and deliberately never reconciled against the depot scan
-    # counts (design §5) — the two independent scans already settle that, and
+    # counts — the two independent scans already settle that, and
     # scoring the driver against them would spend the independence for nothing.
     # Optional (not required) as of the scan-driven
     # redesign: the driver may now skip the count at unloading and at
@@ -448,7 +436,7 @@ class ConfirmationCompleteRequest(_PhaseCompleteBase):
         return self
 
 
-# Decision S5. One endpoint, six real shapes: Pydantic picks the member from
+# One endpoint, seven real shapes: Pydantic picks the member from
 # `phase_type` and validates it properly, so a missing seal_number is still a
 # 422 and not a hand-rolled service-layer error.
 #
@@ -469,6 +457,7 @@ PhaseCompleteRequest = Annotated[
         LoadingCompleteRequest,
         DepartureCompleteRequest,
         InTransitCompleteRequest,
+        ArrivalCompleteRequest,
         UnloadingCompleteRequest,
         ConfirmationCompleteRequest,
     ],

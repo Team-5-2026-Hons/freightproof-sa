@@ -1,10 +1,9 @@
-"""Integration tests for the dispatcher's exception read endpoints (Task 6 of the
-exception-review-and-pagination plan): GET .../review-queue, GET .../history and
-GET .../{exception_id}, which together replace the old undifferentiated
-GET /api/v1/exceptions.
+"""Integration tests for the dispatcher's exception read endpoints:
+GET .../review-queue, GET .../history and GET .../{exception_id}, which together
+replace the old undifferentiated GET /api/v1/exceptions.
 
 Complements tests/integration/test_exceptions_dispatcher.py, which owns
-PATCH .../review — that route and its tests are unchanged by this task.
+PATCH .../review — that route and its tests are unchanged here.
 """
 
 import uuid
@@ -13,6 +12,7 @@ from datetime import UTC, date, datetime
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
+from sqlalchemy import event as sa_event
 
 from app.db.models.enums import (
     ArtifactType,
@@ -34,10 +34,11 @@ from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.phases import PhaseEvent
 from app.db.models.transit import TripException
-from app.db.models.trips import Trip, TripStop
+from app.db.models.trips import Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
 from app.main import app
+from app.orchestration.exception_service import _load_trip_contexts
 
 from tests.conftest import auth_header, make_token
 
@@ -63,7 +64,7 @@ def stub_signed_urls(monkeypatch):
     """Storage is out of scope here — the artifact service's own tests cover signing."""
     async def _fake(*, s3_bucket, s3_key, ttl_seconds):
         return f"https://storage.test/{s3_key}?ttl={ttl_seconds}"
-    monkeypatch.setattr("app.orchestration.artifact_service.create_signed_url", _fake)
+    monkeypatch.setattr("app.orchestration.evidence.artifacts.create_signed_url", _fake)
 
 
 # ── seeding helpers ─────────────────────────────────────────────────────────────
@@ -259,7 +260,7 @@ async def test_history_pagination_has_no_duplicates_or_omissions_with_tied_times
     client: AsyncClient, db_session,
 ):
     """Rows sharing one created_at value (a realistic tie, not a contrived one — see
-    exception_service._read_with_trip's own comment on why `id` breaks the tie) must
+    exceptions.review._read_with_trip's own comment on why `id` breaks the tie) must
     still page cleanly: every seeded row appears exactly once across all pages."""
     seed = await _seed_org(db_session, tag="page")
     trip = await _make_trip(db_session, seed, tag="page")
@@ -751,3 +752,78 @@ async def test_old_undifferentiated_list_route_is_gone(client: AsyncClient, db_s
     res = await client.get("/api/v1/exceptions", headers=_headers(seed))
 
     assert res.status_code == 404
+
+
+# ── trip route / crew context ────────────────────────────────────────────────
+
+
+async def _attach_trailer(db_session, seed: dict, trip: Trip, *, registration: str) -> None:
+    trailer = Vehicle(
+        id=uuid.uuid4(), organization_id=seed["org"].id, vehicle_type=VehicleType.TRAILER,
+        registration=registration, pulsit_device_id=f"PUL-{registration}",
+    )
+    db_session.add(trailer)
+    await db_session.flush()
+    db_session.add(TripTrailer(
+        trip_id=trip.id, trailer_id=trailer.id, pulsit_device_id_snapshot=trailer.pulsit_device_id,
+    ))
+    await db_session.flush()
+
+
+async def test_queue_and_detail_rows_carry_route_driver_and_vehicles(client: AsyncClient, db_session):
+    seed = await _seed_org(db_session, tag="ctx")
+    trip = await _make_trip(db_session, seed, tag="ctx")
+    await _attach_trailer(db_session, seed, trip, registration="TRL-B")
+    await _attach_trailer(db_session, seed, trip, registration="TRL-A")
+    exc = await _make_exception(
+        db_session, trip, tag="ctx", review_status=ExceptionReviewStatus.NEEDS_REVIEW,
+    )
+
+    queue = await client.get(_REVIEW_QUEUE, headers=_headers(seed))
+    detail = await client.get(_detail_url(exc.id), headers=_headers(seed))
+
+    for row in (next(r for r in queue.json() if r["id"] == str(exc.id)), detail.json()):
+        assert row["origin_name"] == seed["origin"].name
+        assert row["destination_name"] == seed["dest"].name
+        assert row["driver_name"] == seed["driver"].full_name
+        assert row["horse_registration"] == seed["horse"].registration
+        assert row["trailer_registrations"] == ["TRL-A", "TRL-B"]
+
+
+async def test_history_rows_carry_context_and_empty_trailers_when_none_attached(
+    client: AsyncClient, db_session,
+):
+    seed = await _seed_org(db_session, tag="ctxh")
+    trip = await _make_trip(db_session, seed, tag="ctxh", origin_precinct_id=None)
+    exc = await _make_exception(db_session, trip, tag="ctxh", review_status=ExceptionReviewStatus.REVIEWED)
+
+    res = await client.get(_HISTORY, headers=_headers(seed))
+
+    row = next(r for r in res.json()["items"] if r["id"] == str(exc.id))
+    assert row["origin_name"] is None
+    assert row["destination_name"] == seed["dest"].name
+    assert row["driver_name"] == seed["driver"].full_name
+    assert row["horse_registration"] == seed["horse"].registration
+    assert row["trailer_registrations"] == []
+
+
+async def test_trip_contexts_are_loaded_in_three_queries(db_session, test_engine):
+    """Precincts, driver and horse together, trailers: three SELECTs however many trips there are."""
+    seed = await _seed_org(db_session, tag="ctxq")
+    trips = [await _make_trip(db_session, seed, tag=f"ctxq{i}") for i in range(3)]
+    await _attach_trailer(db_session, seed, trips[0], registration="TRL-Q")
+    statements: list[str] = []
+
+    def record(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    sa_event.listen(test_engine.sync_engine, "before_cursor_execute", record)
+    try:
+        contexts = await _load_trip_contexts(db_session, trips)
+    finally:
+        sa_event.remove(test_engine.sync_engine, "before_cursor_execute", record)
+
+    assert len(statements) == 3
+    assert contexts[trips[0].id].driver_name == seed["driver"].full_name
+    assert contexts[trips[0].id].horse_registration == seed["horse"].registration
+    assert contexts[trips[0].id].trailer_registrations == ["TRL-Q"]

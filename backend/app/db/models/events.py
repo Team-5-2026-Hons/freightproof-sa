@@ -81,7 +81,7 @@ class DriverEvent(Base):
 class PrecinctEvent(Base):
     """Append-only log of changes to a precinct — same shape as VehicleEvent, since a
     precinct is reference data FP-68's geofence verdict depends on. Nothing to hash
-    before anchoring: it holds no personal data (see precinct_service.create_precinct)."""
+    before anchoring: it holds no personal data (see fleet.precincts.create_precinct)."""
 
     __tablename__ = "precinct_events"
     # Declared so autogenerate stops proposing to drop an index that already exists.

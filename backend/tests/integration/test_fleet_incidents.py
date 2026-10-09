@@ -1,11 +1,11 @@
-"""Integration contract for GET /api/v1/analytics/fleet/incidents (fleet analytics spec §5.6, 3.6).
+"""Integration contract for GET /api/v1/analytics/fleet/incidents.
 
 A pin is where a named driver was, so the most important assertion here is what a pin does NOT
-carry: its keys are exactly the spec's, with nothing about the person (spec D14, POPIA).
+carry: its keys have nothing about the person (POPIA).
 Over one seeded fortnight:
   panic (critical, located) on a closed trip           -> pin
   mechanical (warning, located) on an open trip        -> pin (any trip status)
-  dispatcher note (located)                            -> never a pin (D10)
+  dispatcher note (located)                            -> never a pin
   seal mismatch with no location                       -> counted as unlocated
   a located report from before the period              -> not in the period
   another operator's located report                    -> never shown

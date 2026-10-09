@@ -36,7 +36,7 @@ class TripType(str, enum.Enum):
 
 
 class PhaseType(str, enum.Enum):
-    """One entry in a trip's committed phase plan (parent plan D5); plan LENGTH is
+    """One entry in a trip's committed phase plan; plan LENGTH is
     data generated per trip, so this enum's cardinality is not the phase count of
     any one trip — a type can appear more than once on a multi-stop route."""
 
@@ -45,8 +45,22 @@ class PhaseType(str, enum.Enum):
     LOADING       = "loading"
     DEPARTURE     = "departure"
     IN_TRANSIT    = "in_transit"
+    # The custody check at the gate: the seal as found, BEFORE anything is opened.
+    # Its own phase (not a step of unloading) so "inspected before opened" is a
+    # sequence rule the server enforces, and so it gets its own completed_at and
+    # anchor.
+    ARRIVAL       = "arrival"
     UNLOADING     = "unloading"
     CONFIRMATION  = "confirmation"
+
+
+class SealCondition(str, enum.Enum):
+    """The seal's physical condition as the driver finds it at arrival. Stored as a
+    plain String, like every enum here, so adding a value needs no migration."""
+
+    INTACT  = "intact"
+    DAMAGED = "damaged"
+    MISSING = "missing"
 
 
 class PhaseStatus(str, enum.Enum):
@@ -58,8 +72,8 @@ class PhaseStatus(str, enum.Enum):
 
 
 class AnchorStatus(str, enum.Enum):
-    """Hedera anchor state for one phase event (parent plan D4). A phase may be
-    `completed` while its anchor is `failed` — that keeps the fail-open policy (D7)
+    """Hedera anchor state for one phase event. A phase may be
+    `completed` while its anchor is `failed` — that keeps the fail-open policy
     honest, since the system still knows a receipt is owed. Never render `failed`
     as success."""
 
@@ -75,18 +89,22 @@ class ExceptionType(str, enum.Enum):
     # theft indicator); UNVERIFIED means no departure seal exists to compare (a
     # gap in the chain, not evidence of tampering).
     SEAL_UNVERIFIED        = "seal_unverified"
+    # A third seal finding, distinct from both: the seal at arrival is physically
+    # damaged or missing. MISMATCH is "the number differs" (a swap); COMPROMISED is
+    # "the seal is broken" (an opening). Different findings for an insurer, so the
+    # dispatcher must be able to tell them apart without reading descriptions.
+    SEAL_COMPROMISED       = "seal_compromised"
     PARCEL_COUNT_MISMATCH  = "parcel_count_mismatch"
     GPS_MISMATCH           = "gps_mismatch"
-    # Task 5 (trip-location-timeline-improvements): a DISTINCT finding from
-    # GPS_MISMATCH. GPS_MISMATCH is "the vehicle tracker disagrees with the
-    # PRECINCT" (FP-145, geofence_service); this is "the driver's OWN PHONE
-    # disagrees with the vehicle tracker" (proximity_service.evaluate_proximity) —
+    # A DISTINCT finding from GPS_MISMATCH. GPS_MISMATCH is "the vehicle tracker disagrees with the
+    # PRECINCT" (FP-145, evidence.geofence); this is "the driver's OWN PHONE
+    # disagrees with the vehicle tracker" (evidence.proximity.evaluate_proximity) —
     # independent questions that can both fire, or either alone, on the same
-    # handshake. See orchestration/action_location_service.record_separation_finding.
+    # handshake. See evidence.action_location.record_separation_finding.
     DRIVER_VEHICLE_SEPARATION = "driver_vehicle_separation"
     # A THIRD independent question, distinct from both of the above: "does the
     # DRIVER'S OWN PHONE agree with the STOP'S PRECINCT?" (ActionLocationAssessment.
-    # driver_in_precinct, geofence_service). Closes a gap neither existing type can
+    # driver_in_precinct, evidence.geofence). Closes a gap neither existing type can
     # catch: DRIVER_VEHICLE_SEPARATION only fires once a real phone-to-tracker
     # distance was measured (proximity == "separated"), so a driver's phone that is
     # measurably outside the fence produces NOTHING today if the truck's tracker fix
@@ -94,9 +112,27 @@ class ExceptionType(str, enum.Enum):
     # nothing. GPS_MISMATCH cannot catch it either: it only ever judges the TRACKER's
     # position, never the phone's. Only ever evaluated for a phase anchored to a stop
     # (never IN_TRANSIT, never a checkpoint — see build_phase_assessment). See
-    # orchestration/action_location_service.record_driver_location_finding.
+    # evidence.action_location.record_driver_location_finding.
     DRIVER_LOCATION_MISMATCH = "driver_location_mismatch"
-    ROUTE_DEVIATION        = "route_deviation"
+    # A FOURTH position question: is a TRAILER where its own HORSE is? Raised only when
+    # the horse was measured inside the stop's precinct, the trailer was measured
+    # outside it, and the two trackers are further apart than
+    # TRAILER_HORSE_MAX_SEPARATION_METRES. That is a decoupled trailer, one of the
+    # strongest theft signals the system can see. Kept apart from GPS_MISMATCH, which
+    # is about the horse. See phases.findings._raise_trailer_decoupling_if_unrecorded.
+    TRAILER_LOCATION_MISMATCH = "trailer_location_mismatch"
+    # On the ROAD, not at a stop: a trailer tracker is further than
+    # TRAILER_HORSE_MAX_SEPARATION_METRES from its horse's tracker while the trip is
+    # on an in-transit leg. No fence is involved, which is what keeps it apart from
+    # TRAILER_LOCATION_MISMATCH (trailer vs the stop's precinct). See evidence.road_check.
+    TRAILER_SEPARATED_IN_TRANSIT = "trailer_separated_in_transit"
+    # The horse's tracker is outside its stop's precinct while that stop's departure is
+    # still pending: the truck moved without a recorded seal. See evidence.road_check.
+    MOVED_BEFORE_DEPARTURE = "moved_before_departure"
+    # A known tracker returned no position. A gap in the record, not a verdict: nothing
+    # else is inferred from it. See evidence.road_check.
+    TRACKER_SILENT = "tracker_silent"
+    ROUTE_DEVIATION       = "route_deviation"
     VEHICLE_SUBSTITUTION   = "vehicle_substitution"
     DRIVER_SUBSTITUTION    = "driver_substitution"
     CHECKPOINT_TIMEOUT     = "checkpoint_timeout"
@@ -139,6 +175,17 @@ class BlockchainReceiptType(str, enum.Enum):
     JOURNEY_LOCK        = "journey_lock"
     PICKUP              = "pickup"
     DELIVERY            = "delivery"
+    # One per phase anchored since every phase started anchoring on completion.
+    # PICKUP (departure) and DELIVERY (confirmation) keep their names so existing
+    # receipts stay valid.
+    ACTIVATION          = "activation"
+    LOADING             = "loading"
+    TRANSIT_ARRIVAL     = "transit_arrival"
+    ARRIVAL_INSPECTION  = "arrival_inspection"
+    UNLOADING           = "unloading"
+    # A dispatcher override of any phase. Its own type, so a receipt can never make
+    # an overridden phase read as one the driver actually evidenced.
+    PHASE_OVERRIDE      = "phase_override"
     CHECKPOINT_BATCH    = "checkpoint_batch"
     EXCEPTION_BATCH     = "exception_batch"
     DRIVER_SUBSTITUTION = "driver_substitution"
@@ -261,9 +308,10 @@ class ExceptionReviewStatus(str, enum.Enum):
 
 
 class ExceptionReviewOutcome(str, enum.Enum):
-    """What a dispatcher concluded when reviewing an exception. LEGACY_REVIEW is not
-    a real choice (see DispatcherReviewOutcome) — it only back-marks a pre-existing
-    `resolved=true` row as reviewed with no recorded finding."""
+    """What a dispatcher concluded when reviewing an exception. LEGACY_REVIEW and
+    DISPATCHER_AUTHORED are not real choices (see DispatcherReviewOutcome): the first
+    only back-marks a pre-existing `resolved=true` row as reviewed with no recorded
+    finding, the second marks a dispatcher's own note as reviewed by its author."""
 
     NO_ACTION_REQUIRED     = "no_action_required"
     HANDLED_EXTERNALLY     = "handled_externally"
@@ -271,6 +319,11 @@ class ExceptionReviewOutcome(str, enum.Enum):
     DATA_DISCREPANCY       = "data_discrepancy"
     REFERRED_FOR_FOLLOW_UP = "referred_for_follow_up"
     LEGACY_REVIEW          = "legacy_review"
+    # Not a finding either: marks a dispatcher's own note (phase override, trip
+    # cancellation) as reviewed by its author the moment it is written. Only the
+    # author knows why they acted, so queueing it would have a colleague rubber-stamp
+    # it. Excluded from DispatcherReviewOutcome for the same reason as LEGACY_REVIEW.
+    DISPATCHER_AUTHORED    = "dispatcher_authored"
 
 
 class DispatcherReviewOutcome(str, enum.Enum):

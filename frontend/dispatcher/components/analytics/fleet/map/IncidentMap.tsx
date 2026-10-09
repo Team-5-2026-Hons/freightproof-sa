@@ -26,7 +26,7 @@ export const INCIDENT_MAP_HEIGHT = 360
 const PIN_SIZE_PX = 22
 const FIT_PADDING_PX = 32
 const SINGLE_PIN_ZOOM = 12
-// Close enough to read the streets around a pin chosen from the table (D25).
+// Close enough to read the streets around a pin chosen from the table.
 const SELECTED_PIN_ZOOM = 15
 // South Africa as a whole, until pins arrive.
 const DEFAULT_CENTER: [number, number] = [-29, 25]
@@ -35,8 +35,8 @@ const DEFAULT_ZOOM = 5
 const PRIMARY_BUTTON = 0
 
 /** Pin styling by severity, on the app's own tokens rather than hex (eslint's no-raw-hex rule,
- *  and one source of truth): warning is the light amber warn-c, critical the err red (spec
- *  §5.6, D18). Each carries a glyph, so severity never rests on colour alone. */
+ *  and one source of truth): warning is the light amber warn-c, critical the err red.
+ *  Each carries a glyph, so severity never rests on colour alone. */
 export const PIN_STYLE: Record<ExceptionSeverity, { className: string; glyph: string }> = {
   info: { className: 'bg-surf-high text-on-surf', glyph: 'i' },
   warning: { className: 'bg-warn-c text-warn-onc', glyph: '!' },
@@ -52,8 +52,8 @@ export interface PinSelection {
 
 /** The popup's content, built as DOM with textContent rather than an HTML string, so a report
  *  type or reference can never be read as markup. Nothing about the driver: type, severity,
- *  date, trip reference and a link to the report (spec D14). The link carries `returnTo`, so
- *  the report's Back button brings the dispatcher straight back here (D25).
+ *  date, trip reference and a link to the report. The link carries `returnTo`, so
+ *  the report's Back button brings the dispatcher straight back here.
  *
  *  `onOpen` moves to the report inside the running app, like a Next `Link`. A popup lives
  *  outside React, so its plain `<a>` would otherwise make the browser reload the whole app:
@@ -107,14 +107,14 @@ interface IncidentMapProps {
   returnTo?: string
 }
 
-/** The incident map (chart 3.6). Follows GeofenceMap exactly: Leaflet's JS is imported inside
- *  an effect because it touches `window` at module scope, which would break the server render
- *  (risk R8); tiles come from lib/map/tiles.ts; a tile-server outage shows a message over the
+/** The incident map. Follows GeofenceMap exactly: Leaflet's JS is imported inside
+ *  an effect because it touches `window` at module scope, which would break the server render;
+ *  tiles come from lib/map/tiles.ts; a tile-server outage shows a message over the
  *  map instead of a grey void, and lifts on its own when tiles load again. The table under
  *  the map (in the card) lists every pin, for keyboard and screen-reader users. */
 export function IncidentMap({ pins, selection = null, returnTo }: IncidentMapProps) {
   const router = useRouter()
-  // Taller inside the zoom modal (D27). The zoomed map is its own Leaflet instance.
+  // Taller inside the zoom modal. The zoomed map is its own Leaflet instance.
   const height = useChartHeight(INCIDENT_MAP_HEIGHT)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<LeafletMap | null>(null)
@@ -132,8 +132,8 @@ export function IncidentMap({ pins, selection = null, returnTo }: IncidentMapPro
         const L = await import('leaflet')
         if (cancelled || containerRef.current === null || mapRef.current !== null) return
         // Scroll-wheel zoom starts off, so the page scrolls past the map instead of zooming it on
-        // the way by. It switches on once the dispatcher clicks into the map (D25: Tom wanted to
-        // zoom in further) and off again when the pointer leaves.
+        // the way by. It switches on once the dispatcher clicks into the map, so they can zoom in
+        // further, and off again when the pointer leaves.
         const map = L.map(containerRef.current, { center: DEFAULT_CENTER, zoom: DEFAULT_ZOOM, scrollWheelZoom: false })
         map.on('click', () => map.scrollWheelZoom.enable())
         map.on('mouseout', () => map.scrollWheelZoom.disable())
@@ -205,7 +205,7 @@ export function IncidentMap({ pins, selection = null, returnTo }: IncidentMapPro
   }, [pins, ready, returnTo, router])
 
   // A row chosen in the table: bring the map into view, fly to that pin and open its popup, as
-  // if it had been clicked on the map itself (D25).
+  // if it had been clicked on the map itself.
   useEffect(() => {
     const map = mapRef.current
     if (!ready || map === null || selection === null) return

@@ -5,13 +5,13 @@ import { useParams, useRouter } from 'next/navigation'
 import { TopBar }    from '@/components/ui/TopBar'
 import { BackButton } from '@/components/ui/BackButton'
 import { Chip }      from '@/components/ui/Chip'
-import { Spinner }   from '@/components/ui/Spinner'
 import { Button }    from '@/components/ui/Button'
 import { Ic }        from '@/components/ui/Ic'
 import { InfoRow }   from '@/components/ui/InfoRow'
 import { FormField } from '@/components/ui/FormField'
 import { Switch }    from '@/components/ui/Switch'
 import { Tabs, type Tab } from '@/components/ui/Tabs'
+import { SplitDetailSkeleton } from '@/components/ui/DetailSkeleton'
 import { DriverAnalyticsSummary } from '@/components/analytics/DriverAnalyticsSummary'
 import { BlockchainBadge } from '@/components/blockchain/BlockchainBadge'
 import { EventTimeline }   from '@/components/blockchain/EventTimeline'
@@ -76,9 +76,7 @@ export default function DriverDetailPage() {
     return (
       <div className="flex flex-col flex-1">
         <TopBar title="Driver" left={backButton} />
-        <div className="flex items-center justify-center flex-1">
-          <Spinner size="lg" />
-        </div>
+        <SplitDetailSkeleton label="Loading driver" />
       </div>
     )
   }

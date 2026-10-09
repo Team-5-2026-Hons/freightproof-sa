@@ -68,12 +68,12 @@ class Settings(BaseSettings):
 
     GPS_TOLERANCE_METRES: int = 50
 
-    # Driver-vs-truck proximity check (Task 4, trip-location-timeline story):
+    # Driver-vs-truck proximity check:
     # independent corroboration that the driver's OWN PHONE fix and the vehicle's
     # Pulsit tracker fix describe the same place at roughly the same time. This is
     # a different question from GPS_TOLERANCE_METRES above (is the TRUCK inside its
     # precinct?) — a truck can be correctly inside its geofence while the driver's
-    # phone sits genuinely metres away. See orchestration/proximity_service.py.
+    # phone sits genuinely metres away. See orchestration/evidence/proximity.py.
     # Four independent settings rather than reusing GPS_TOLERANCE_METRES /
     # PULSIT_CORROBORATION_MAX_SKEW_SECONDS, so a future change to either of those
     # never silently drags this unrelated policy along with it.
@@ -81,6 +81,12 @@ class Settings(BaseSettings):
     DRIVER_TRUCK_MAX_FIX_AGE_SECONDS: int = 60
     DRIVER_TRUCK_MAX_SKEW_SECONDS: int = 30
     DRIVER_TRUCK_MAX_PHONE_ACCURACY_METRES: float = 50.0
+
+    # Trailer-vs-horse: how far a trailer's tracker must be from its own horse's before a
+    # "horse inside the precinct, trailer outside" reading counts as a decoupled trailer.
+    # Without it a coupled trailer ~20 m behind a horse parked at the fence edge could read
+    # outside while its horse reads inside, and raise a CRITICAL alarm for nothing.
+    TRAILER_HORSE_MAX_SEPARATION_METRES: float = 500.0
 
     DEMO_MODE: bool = False
 

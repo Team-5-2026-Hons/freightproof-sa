@@ -2,9 +2,11 @@
 
 import { ForensicOnly } from '@/components/blockchain/ForensicOnly'
 import { CopyField, Field, PhaseDetailCard, Section } from './PhaseDetailFields'
+import { manifestLabel } from '@/lib/format/manifest'
+import { fmtFull } from '@shared/lib/utils/datetime'
 import type { ConsignmentRead, Trip } from '@shared/lib/types/trip'
 
-// Declared value and PP manifest number are independently nullable, so the separator is
+// Declared value and manifest number are independently nullable, so the separator is
 // joined between the parts that exist rather than appended to the first — otherwise a
 // consignment with a value but no manifest number renders a dangling "· ".
 function consignmentMeta(c: ConsignmentRead): string {
@@ -15,7 +17,7 @@ function consignmentMeta(c: ConsignmentRead): string {
     // thousands separators — Number() coercion is safe whether it arrives as a string
     // or a number.
     c.declared_value !== null ? `Declared R${Number(c.declared_value).toLocaleString('en-ZA')}` : null,
-    c.pp_manifest_number !== null ? `PP manifest ${c.pp_manifest_number}` : null,
+    c.pp_manifest_number !== null ? `Manifest ${c.pp_manifest_number}` : null,
   ].filter((part): part is string => part !== null).join(' · ')
 }
 
@@ -33,17 +35,13 @@ export function TripCreatedDetail({ trip }: Props) {
   const receipt = trip.blockchain_receipts.find(r => r.receipt_type === 'journey_lock') ?? null
   const isPending = !receipt?.hedera_topic_id || receipt.hedera_topic_id === 'None'
 
-  function fmtDate(iso: string | null | undefined): string {
-    if (!iso) return '—'
-    return new Date(iso).toLocaleString('en-ZA', {
-      day: '2-digit', month: 'short', year: 'numeric',
-      hour: '2-digit', minute: '2-digit',
-    })
-  }
-
-  // Nullable per consignment (unit/parcel counts are dispatcher-entered and PP-derived
-  // respectively) — a missing value must contribute zero, not poison the sum to NaN.
-  const totalUnits   = trip.consignments.reduce((n, c) => n + (c.unit_count_expected ?? 0), 0)
+  // Units (pallets) are dispatcher-entered and never come from a manifest (pallets are
+  // deferred, FP-281 §14), so manifest trips have none. A total is shown only when every
+  // waybill has a count: summing the missing ones as zero printed "0 units", which is false.
+  const unitCounts   = trip.consignments.map(c => c.unit_count_expected)
+  const totalUnits   = unitCounts.every((n): n is number => n !== null)
+    ? unitCounts.reduce((sum, n) => sum + n, 0)
+    : null
   const totalParcels = trip.consignments.reduce((n, c) => n + (c.parcel_count_expected ?? 0), 0)
 
   return (
@@ -72,15 +70,25 @@ export function TripCreatedDetail({ trip }: Props) {
       {/* Trailers ────────────────────────────────────────────────────────── */}
       {trip.trailers.length > 0 && (
         <Section title={`Trailer${trip.trailers.length > 1 ? 's' : ''}`}>
-          {trip.trailers.map(trailer => (
-            <Field key={trailer.id} label={trailer.vehicle_type} value={trailer.registration} mono />
+          {trip.trailers.map((trailer, index) => (
+            <Field
+              key={trailer.id}
+              label={trip.trailers.length > 1 ? `Trailer ${index + 1}` : 'Registration'}
+              value={trailer.registration}
+              mono
+            />
           ))}
         </Section>
       )}
 
       {/* Trip type ───────────────────────────────────────────────────────── */}
+      {/* The manifest key and planned times are in the journey lock (FP-281 §9), so the
+          creation record shows them beside the other locked parameters. */}
       <Section title="Trip">
         <Field label="Type" value={trip.trip_type === 'loaded' ? 'Loaded' : 'Empty leg'} />
+        <Field label="Manifest" value={manifestLabel(trip.pp_manifest, trip.trip_type)} mono={trip.pp_manifest !== null} />
+        <Field label="Planned departure" value={fmtFull(trip.planned_departure_at)} />
+        <Field label="Planned arrival" value={fmtFull(trip.planned_arrival_at)} />
       </Section>
 
       {/* Tracking ───────────────────────────────────────────────────────── */}
@@ -96,7 +104,7 @@ export function TripCreatedDetail({ trip }: Props) {
       {trip.consignments.length > 0 && (
         <div className="py-3">
           <div className="text-[13px] font-[800] tracking-[0.09em] uppercase text-on-surf mb-[6px]">
-            Consignments ({trip.consignments.length})
+            Waybills ({trip.consignments.length})
           </div>
           <div className="divide-y divide-outline-v/15">
             {trip.consignments.map(c => (
@@ -106,7 +114,8 @@ export function TripCreatedDetail({ trip }: Props) {
                     {c.parcel_perfect_reference}
                   </span>
                   <span className="text-[11px] text-on-surf-v tabular-nums shrink-0">
-                    {c.unit_count_expected ?? '—'} units · {c.parcel_count_expected ?? '—'} parcels
+                    {c.unit_count_expected !== null && `${c.unit_count_expected} units · `}
+                    {c.parcel_count_expected ?? '—'} parcels
                   </span>
                 </div>
                 {consignmentMeta(c) && (
@@ -120,7 +129,7 @@ export function TripCreatedDetail({ trip }: Props) {
           <div className="flex items-baseline justify-between gap-3 pt-[8px] mt-[4px] border-t border-outline-v/20">
             <span className="text-[10px] font-[700] tracking-[0.09em] uppercase text-on-surf-v">Total</span>
             <span className="text-[11px] font-[600] text-on-surf tabular-nums">
-              {totalUnits} units · {totalParcels} parcels
+              {totalUnits !== null && `${totalUnits} units · `}{totalParcels} parcels
             </span>
           </div>
         </div>
@@ -133,7 +142,7 @@ export function TripCreatedDetail({ trip }: Props) {
             <CopyField label="SHA-256 journey lock hash" value={receipt.data_hash} mono span />
             <Field     label="Hedera topic ID"  value={isPending ? 'Pending' : receipt.hedera_topic_id} mono />
             <Field     label="Sequence"         value={isPending ? '—' : `#${receipt.hedera_sequence_number}`} mono />
-            <Field     label="Anchored at"      value={fmtDate(receipt.hedera_consensus_timestamp)} />
+            <Field     label="Anchored at"      value={fmtFull(receipt.hedera_consensus_timestamp)} />
             <CopyField label="Hedera TX ID"     value={receipt.hedera_tx_id} mono span />
           </Section>
         </ForensicOnly>

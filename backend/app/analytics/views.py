@@ -65,7 +65,7 @@ class VehicleAnalyticsView(AnalyticsViewBase):
 
 
 class VehicleIncidentStreaksView(AnalyticsViewBase):
-    """Whole-history streaks — one row per vehicle, not month-bucketed (spec §3a)."""
+    """Whole-history streaks — one row per vehicle, not month-bucketed."""
 
     __tablename__ = "vehicle_incident_streaks"
 

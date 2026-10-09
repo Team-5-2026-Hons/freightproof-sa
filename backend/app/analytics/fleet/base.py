@@ -1,6 +1,6 @@
 """Shared SQLAlchemy Core builders for the fleet queries, rebuilt from FP-153's views
-as typed Core expressions (house style, see app/analytics/views.py; spec D8, G1-G4).
-Every builder filters by organisation first (spec G1)."""
+as typed Core expressions (house style, see app/analytics/views.py).
+Every builder filters by organisation first."""
 
 import uuid
 from datetime import date, datetime
@@ -23,14 +23,14 @@ from app.db.models.trips import Trip
 def sast_bucket(
     instant: ColumnElement[Any] | InstrumentedAttribute[Any], grain: Grain,
 ) -> ColumnElement[date]:
-    """The first SAST day of the week/month/year an instant falls in (spec G4).
+    """The first SAST day of the week/month/year an instant falls in.
     timezone(zone, instant) is Postgres's AT TIME ZONE: it converts the stored UTC
     instant to SAST wall-clock time before truncating."""
     return cast(func.date_trunc(grain.value, func.timezone(OPERATIONS_TIME_ZONE_NAME, instant)), Date)
 
 
 def trip_departures(organization_id: uuid.UUID) -> CTE:
-    """Each of the organisation's trips with its first attested departure (spec G3).
+    """Each of the organisation's trips with its first attested departure.
     Read from the phase ledger, not trips.actual_departure_at, which is overwritten
     on every leg of a multi-stop trip and so holds only the last departure."""
     return (
@@ -50,7 +50,7 @@ def trip_departures(organization_id: uuid.UUID) -> CTE:
 def closed_trips(
     organization_id: uuid.UUID, window: InstantRange, grain: Grain | None = None,
 ) -> CTE:
-    """The organisation's closed trips whose first departure falls in `window` (spec G4).
+    """The organisation's closed trips whose first departure falls in `window`.
 
     Closed only, because an open trip's numbers are not final yet. With a grain, each row
     also carries bucket_start: the first SAST day of the bucket its departure falls in.
@@ -83,7 +83,7 @@ def closed_trips(
 
 
 def trip_steps(trips: CTE) -> Subquery:
-    """Every phase row of `trips`, beside the plan step before it (spec G15). The
+    """Every phase row of `trips`, beside the plan step before it. The
     window runs over every row, trip_creation included, so the previous row is
     always the true previous plan step; filter only afterwards."""
     bucket = [trips.c.bucket_start] if "bucket_start" in trips.c else []
@@ -126,8 +126,8 @@ def gap_is_attested(steps: Subquery) -> ColumnElement[bool]:
 
 
 async def earliest_trip_date(db: AsyncSession, *, organization_id: uuid.UUID) -> date | None:
-    """The SAST day the organisation's first trip was created: where "All time" starts
-    (G11). created_at rather than departure, so "All time" also reaches cancelled
+    """The SAST day the organisation's first trip was created: where "All time" starts.
+    created_at rather than departure, so "All time" also reaches cancelled
     trips that never left. None when the organisation has no trips."""
     result = await db.execute(
         select(func.min(Trip.created_at)).where(Trip.operator_organization_id == organization_id)

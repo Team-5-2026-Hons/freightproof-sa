@@ -5,7 +5,7 @@ from typing import Optional
 from decimal import Decimal
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, column
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -36,10 +36,23 @@ class Organization(Base):
     )
 
 
+# RTT's JNB and FedEx's JNB are different depots, so a hub code is unique per principal.
+PP_HUB_CODE_INDEX = "uq_precincts_principal_pp_hub_code"
+
+
 class Precinct(Base):
     """Physical depot or warehouse governed by a principal organization."""
 
     __tablename__ = "precincts"
+    __table_args__ = (
+        Index(
+            PP_HUB_CODE_INDEX,
+            "principal_organization_id",
+            "pp_hub_code",
+            unique=True,
+            postgresql_where=column("pp_hub_code").is_not(None),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -53,6 +66,9 @@ class Precinct(Base):
     # Cross-org visibility opt-in; False means only the owning org's dispatchers can
     # see this precinct (SEC-PRECINCT-1).
     is_shared: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    # PP hub code (e.g. "JNB") that a manifest's origin/destination resolves to (spec §7.2).
+    # Reference data for the PP mock, set by the seed scripts; not editable in the UI.
+    pp_hub_code: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False

@@ -1,10 +1,10 @@
-"""Queries behind the four headline tiles (GET /analytics/fleet/tiles, spec §5.0).
+"""Queries behind the four headline tiles (GET /analytics/fleet/tiles).
 
 Every tile describes the fleet right now, so none takes a period. Unused vehicles needs recent
 history, so it looks back TILE_WINDOW_DAYS South African days, today included. The queries
 run one after another because an AsyncSession can only run one statement at a time.
 
-The Parcels complete and Receipts owed tiles were removed (D26).
+The Parcels complete and Receipts owed tiles were removed.
 """
 
 import uuid
@@ -65,9 +65,9 @@ async def count_live_trips(db: AsyncSession, *, organization_id: uuid.UUID) -> i
 
 
 async def critical_waiting(db: AsyncSession, *, organization_id: uuid.UUID) -> CriticalWaiting:
-    """Critical exceptions still in the review queue. Only critical ones enter it on their
-    own (exception_service.initial_review_status), so the severity filter keeps a warning a
-    dispatcher chose to flag out of the "must act on" count."""
+    """Critical exceptions still in the review queue. Every exception enters it now
+    (review_policy.initial_review_status), so the severity filter is what keeps this a
+    "must act on" count rather than a count of everything unreviewed."""
     result = await db.execute(
         select(func.count(TripException.id), func.min(TripException.created_at))
         .join(Trip, Trip.id == TripException.trip_id)

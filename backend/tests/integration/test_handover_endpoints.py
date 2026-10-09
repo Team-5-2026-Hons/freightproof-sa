@@ -121,7 +121,7 @@ def fake_storage(monkeypatch):
             s3_bucket="evidence-artifacts", s3_key=f"{trip_id}/{uuid.uuid4()}", file_hash="a" * 64,
         )
 
-    monkeypatch.setattr("app.orchestration.artifact_service.upload_evidence_file", fake_upload)
+    monkeypatch.setattr("app.orchestration.evidence.artifacts.upload_evidence_file", fake_upload)
 
 
 async def _issue(client: AsyncClient, handover_trip, driver_auth, *, force: bool = False):
@@ -161,8 +161,7 @@ async def test_issue_returns_a_scan_url_and_rotation_interval(client, handover_t
 
 async def test_another_drivers_trip_is_a_404_not_a_403(client, handover_trip, other_driver_auth):
     # A trip id read off dispatch chatter must be indistinguishable from one that does not
-    # exist — the NEW-12 reasoning from the Stage 3 phase-refactor plan. A 403 here would
-    # confirm the trip is real, which is exactly what must not leak.
+    # exist. A 403 here would confirm the trip is real, which is exactly what must not leak.
     trip, event = handover_trip["trip"], handover_trip["event"]
 
     res = await client.post(

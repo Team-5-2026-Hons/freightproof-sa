@@ -26,6 +26,10 @@ vi.mock('@/lib/context/ForensicModeContext', () => ({
   useForensicMode: () => ({ canViewForensics: false, forensicOn: false, toggle: vi.fn() }),
 }))
 
+// ExceptionSummary reads the signed-in user to word a claim as mine or a colleague's.
+// Nothing this file asserts depends on who that is, so the identity is stubbed.
+vi.mock('@/lib/hooks/useAuth', () => ({ useAuth: () => ({ user: { id: 'user-me' } }) }))
+
 // The `driving` (alwaysOpen) in-transit row renders PhaseEvidence unconditionally —
 // including PhaseOverrideAction, which calls useToast() — even though this suite never
 // opens the override modal. Mocked the same way the trip detail page's own test suite
@@ -76,7 +80,7 @@ function makeTransitException(overrides: Partial<TripException> & Pick<TripExcep
     review_note: null,
     contact_method: null,
     vehicle_id: null,
-    merkle_batch_id: null,
+    merkle_batch_id: null, claimed_by_user_id: null, claimed_at: null, claimed_by_name: null, reviewed_by_name: null,
     created_at: '2026-01-01T10:00:00Z',
     updated_at: '2026-01-01T10:00:00Z',
     ...overrides,
@@ -230,7 +234,7 @@ describe('TripTimeline: gps_mismatch exception evidence', () => {
       contact_method: null,
       // A gps_mismatch is not a breakdown, so it names no vehicle (trailer analytics, dev).
       vehicle_id: null,
-      merkle_batch_id: null,
+      merkle_batch_id: null, claimed_by_user_id: null, claimed_at: null, claimed_by_name: null, reviewed_by_name: null,
       created_at: '2026-05-01T00:00:00Z',
       updated_at: '2026-05-01T00:00:00Z',
     }
@@ -280,7 +284,7 @@ describe('TripTimeline: gps_mismatch exception evidence', () => {
       review_note: null,
       contact_method: null,
       vehicle_id: null,
-      merkle_batch_id: null,
+      merkle_batch_id: null, claimed_by_user_id: null, claimed_at: null, claimed_by_name: null, reviewed_by_name: null,
       created_at: '2026-05-01T00:00:00Z',
       updated_at: '2026-05-01T00:00:00Z',
     }

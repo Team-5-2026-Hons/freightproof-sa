@@ -44,9 +44,6 @@ const phaseWithCounts = () =>
 
 const unloadingDraft: UnloadingEvidence = {
   waybillHandedOver: null,
-  sealNumberAtDestination: null,
-  sealIntactPhotoDataUrl: null,
-  sealIntactPhotoArtifactId: null,
   driverVisualCount: null,
   capturedAt: null,
 }

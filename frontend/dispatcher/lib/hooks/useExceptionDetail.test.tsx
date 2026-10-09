@@ -29,6 +29,11 @@ function makeDetail(overrides: Partial<TripExceptionDetail> = {}): TripException
     trip_id: '33333333-3333-3333-3333-333333333333',
     trip_reference: 'FP-2026-0001',
     trip_status: 'active',
+    origin_name: 'Johannesburg DC',
+    destination_name: 'Durban Depot',
+    driver_name: 'Thabo Mokoena',
+    horse_registration: 'HRS 001 GP',
+    trailer_registrations: ['TRL 101 GP'],
     phase_label: 'in_transit',
     stop_label: 1,
     gps_lat: null,
@@ -44,6 +49,10 @@ function makeDetail(overrides: Partial<TripExceptionDetail> = {}): TripException
     vehicle_type: null,
     supporting_artifact_id: null,
     supporting_artifact: null,
+    claimed_by_user_id: null,
+    claimed_at: null,
+    claimed_by_name: null,
+    reviewed_by_name: null,
     ...overrides,
   }
 }
@@ -102,7 +111,7 @@ describe('useExceptionDetail', () => {
         'trip',
         'trip-xyz',
         expect.any(Function),
-        { kinds: ['exception_raised', 'exception_reviewed'] },
+        { kinds: ['exception_raised', 'exception_reviewed', 'exception_claimed'] },
       ])
     })
   })

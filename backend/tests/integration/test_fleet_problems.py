@@ -1,8 +1,8 @@
-"""Integration contract for GET /api/v1/analytics/fleet/problems (fleet analytics spec §5.3).
+"""Integration contract for GET /api/v1/analytics/fleet/problems.
 
-Charts 3.1–3.5. One seeded fortnight (two whole past weeks, built from "now") with problems of
+One seeded fortnight (two whole past weeks, built from "now") with problems of
 every kind that matters: theft signs and a seal_unverified (a paperwork gap, never a theft sign),
-a dispatcher note (never a problem, D10), problems on the driving step at known SAST times, one
+a dispatcher note (never a problem), problems on the driving step at known SAST times, one
 problem with no step, and another operator's and an open trip's problems that must never count.
 """
 
@@ -36,7 +36,10 @@ from tests.integration._fleet_seed import (
 
 _PROBLEMS = "/api/v1/analytics/fleet/problems"
 _WEEKS_BACK = 4
-_STEPS = ["trip_creation", "activation", "loading", "departure", "in_transit", "unloading", "confirmation", "unlinked"]
+_STEPS = [
+    "trip_creation", "activation", "loading", "departure", "in_transit", "arrival",
+    "unloading", "confirmation", "unlinked",
+]
 
 
 def _week0() -> date:
@@ -189,7 +192,7 @@ async def test_fleet_problems_theft_signs_are_exactly_the_d12_types(
     week0, week1 = response.json()["theft_signals"]
     assert list(week0["by_type"]) == [signal.value for signal in THEFT_SIGNAL_TYPES]
     assert "seal_unverified" not in week0["by_type"]
-    # D25: a receiver ID that was checked and didn't match is a theft sign; one never checked is not.
+    # A receiver ID that was checked and didn't match is a theft sign; one never checked is not.
     assert "receiver_id_mismatch" in week0["by_type"]
     assert "receiver_id_unverified" not in week0["by_type"]
     assert (week0["total_count"], week0["by_type"]["seal_mismatch"]) == (1, 1)
@@ -224,7 +227,7 @@ async def test_fleet_problems_by_step_counts_unlinked_last(
     assert response.status_code == 200
     assert {row["step"]: row["count"] for row in response.json()["by_step"]} == {
         "trip_creation": 0, "activation": 0, "loading": 0, "departure": 1,
-        "in_transit": 2, "unloading": 1, "confirmation": 0, "unlinked": 1,
+        "in_transit": 2, "arrival": 0, "unloading": 1, "confirmation": 0, "unlinked": 1,
     }
 
 

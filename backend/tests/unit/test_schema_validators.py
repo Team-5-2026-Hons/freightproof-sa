@@ -57,68 +57,6 @@ def test_driver_id_number_non_digits():
 
 
 # ---------------------------------------------------------------------------
-# TripCreate — planned_arrival_at must be after planned_departure_at
-# ---------------------------------------------------------------------------
-
-def test_trip_arrival_after_departure_valid():
-    from app.schemas.trips import TripCreate
-    import uuid
-    t = TripCreate(
-        trip_reference="TRP-2026-0001",
-        order_number="FDX-001",
-        operator_organization_id=uuid.uuid4(),
-        client_organization_id=uuid.uuid4(),
-        driver_id=uuid.uuid4(),
-        horse_id=uuid.uuid4(),
-        origin_precinct_id=uuid.uuid4(),
-        destination_precinct_id=uuid.uuid4(),
-        created_by_user_id=uuid.uuid4(),
-        planned_departure_at=datetime(2026, 5, 1, 8, 0, tzinfo=timezone.utc),
-        planned_arrival_at=datetime(2026, 5, 1, 16, 0, tzinfo=timezone.utc),
-    )
-    assert t.planned_arrival_at > t.planned_departure_at
-
-
-def test_trip_arrival_before_departure_invalid():
-    from app.schemas.trips import TripCreate
-    import uuid
-    with pytest.raises(Exception):
-        TripCreate(
-            trip_reference="TRP-2026-0002",
-            order_number="FDX-002",
-            operator_organization_id=uuid.uuid4(),
-            client_organization_id=uuid.uuid4(),
-            driver_id=uuid.uuid4(),
-            horse_id=uuid.uuid4(),
-            origin_precinct_id=uuid.uuid4(),
-            destination_precinct_id=uuid.uuid4(),
-            created_by_user_id=uuid.uuid4(),
-            planned_departure_at=datetime(2026, 5, 1, 16, 0, tzinfo=timezone.utc),
-            planned_arrival_at=datetime(2026, 5, 1, 8, 0, tzinfo=timezone.utc),
-        )
-
-
-def test_trip_only_departure_no_arrival_valid():
-    """Validator must not fire when only one of the two fields is provided."""
-    from app.schemas.trips import TripCreate
-    import uuid
-    t = TripCreate(
-        trip_reference="TRP-2026-0003",
-        order_number="FDX-003",
-        operator_organization_id=uuid.uuid4(),
-        client_organization_id=uuid.uuid4(),
-        driver_id=uuid.uuid4(),
-        horse_id=uuid.uuid4(),
-        origin_precinct_id=uuid.uuid4(),
-        destination_precinct_id=uuid.uuid4(),
-        created_by_user_id=uuid.uuid4(),
-        planned_departure_at=datetime(2026, 5, 1, 8, 0, tzinfo=timezone.utc),
-    )
-    assert t.planned_departure_at is not None
-    assert t.planned_arrival_at is None
-
-
-# ---------------------------------------------------------------------------
 # MerkleBatchLeafCreate — source_type must be "checkpoint", "exception", or "artifact"
 # ---------------------------------------------------------------------------
 
@@ -151,7 +89,7 @@ def test_merkle_leaf_source_type_invalid():
 
 # ---------------------------------------------------------------------------
 # TripCreateRequest — trailer_ids/consignment validators moved to
-# tests/unit/test_trip_schemas.py (trip-creation redesign, Task 3):
+# tests/unit/test_trip_schemas.py (trip-creation redesign):
 #   - empty-trailer-ids-rejected: deleted — trailer_ids no longer has min_length=1
 #     (see test_zero_trailers_valid, which asserts the opposite).
 #   - single-trailer-accepted: deleted — redundant with the valid-payload cases
@@ -324,17 +262,19 @@ def _departure_request(**overrides):
     return DepartureCompleteRequest(**payload)
 
 
-def _unloading_request(**overrides):
-    from app.schemas.phases import UnloadingCompleteRequest
+def _arrival_request(**overrides):
+    from app.schemas.phases import ArrivalCompleteRequest
+    from app.db.models.enums import SealCondition
 
     payload = {
-        "phase_type": "unloading",
+        "phase_type": "arrival",
         "idempotency_key": "idem-1",
-        "seal_number_at_destination": "AB-1234",
-        "gate_photo_artifact_id": _uuid.uuid4(),
+        "seal_condition": SealCondition.INTACT,
+        "seal_number_at_arrival": "AB-1234",
+        "seal_photo_artifact_id": _uuid.uuid4(),
     }
     payload.update(overrides)
-    return UnloadingCompleteRequest(**payload)
+    return ArrivalCompleteRequest(**payload)
 
 
 def test_departure_seal_number_canonical_form_is_unchanged():
@@ -354,24 +294,24 @@ def test_departure_seal_number_still_rejects_a_bad_format():
         _departure_request(seal_number="not-a-seal")
 
 
-def test_unloading_seal_number_at_destination_lowercase_and_padding_is_normalized():
-    request = _unloading_request(seal_number_at_destination=" ab-1234 ")
+def test_arrival_seal_number_at_arrival_lowercase_and_padding_is_normalized():
+    request = _arrival_request(seal_number_at_arrival=" ab-1234 ")
 
-    assert request.seal_number_at_destination == "AB-1234"
+    assert request.seal_number_at_arrival == "AB-1234"
 
 
-def test_unloading_seal_number_at_destination_still_rejects_a_bad_format():
+def test_arrival_seal_number_at_arrival_still_rejects_a_bad_format():
     from pydantic import ValidationError as PydanticValidationError
 
     with pytest.raises(PydanticValidationError):
-        _unloading_request(seal_number_at_destination="1234")
+        _arrival_request(seal_number_at_arrival="1234")
 
 
 def test_seal_number_confirmed_stays_free_form_not_normalized():
     """The one deliberate exception: a mistyped guard confirmation must survive
     verbatim, because the mismatch it produces against seal_number is itself the
     evidence. Comparison-time tolerance for THIS field lives in
-    phase_service._normalized_seal, not in schema validation."""
+    phases.seals._normalized_seal, not in schema validation."""
     request = _departure_request(seal_number="AB-1234", seal_number_confirmed=" not a seal at all ")
 
     assert request.seal_number_confirmed == " not a seal at all "
@@ -631,7 +571,7 @@ def test_precinct_update_body_rejects_out_of_range_radius(radius):
 
 
 # ---------------------------------------------------------------------------
-# TripExceptionReviewRequest — the dispatcher review action (Task 1, FP-146)
+# TripExceptionReviewRequest — the dispatcher review action (FP-146)
 # ---------------------------------------------------------------------------
 
 def test_exception_review_requires_note_and_outcome() -> None:

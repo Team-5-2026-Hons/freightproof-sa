@@ -17,7 +17,9 @@
 | 🔴 **Pre-authenticate the driver device** | Driver login is phone OTP over Twilio. Live SMS on stage depends on network and delivery timing you do not control. Log in beforehand so the session persists, or use a Supabase test number with a fixed OTP. |
 | **Confirm which database `DATABASE_URL` points at** | The refactor DB and the original dev DB are different projects, on different schemas. |
 | **Have the dispatcher open before the driver acts** | The live-update story only lands if the reviewer sees the screen *change*, not a screen that was already correct. |
+| **Re-seed after the FP-281 migration** | `scripts/seed_demo.py` sets each demo precinct's PP hub code. Without it, every manifest shows its hubs as unlinked and asks for both precincts. |
 | **Backup tab: a cross-dock trip** | See §7. Costs nothing to have open. |
+| **Demo panel flags** | Backend DEV_PANEL_ENABLED=true and PULSE_USE_MOCK=true; dispatcher NEXT_PUBLIC_DEV_PANEL=true. Turn DEV_PANEL_ENABLED off when the demo window closes. |
 
 ---
 
@@ -26,17 +28,25 @@
 Each step names what the reviewer should *see*, because that is the demo.
 
 **1. Create the trip — dispatcher.**
-One origin, one destination, one consignment, a departure time. Point out that the wizard *requires* a
-departure — as of 2026-08-05 the API requires one too, so a trip that could never be activated is now
-unrepresentable rather than merely discouraged.
+Type manifest **81** and look it up. FreightProof pulls the client, the route, the planned times and all three
+waybills from (mocked) Parcel Perfect and shows them. Pick the driver, horse and trailer, and create.
+Point out what the dispatcher did **not** type: client, route, times, cargo. The screen still requires a
+departure (from the manifest, or entered when the manifest has none), so a trip that could never be
+activated stays unrepresentable.
 
-→ *On screen:* the trip appears with a **7-row phase plan, all pending**. Say the number out loud. The
+Optional, to show the guards: look up **70** (a mixed-client manifest is refused), **82** (the 12:00 case:
+no times yet, so the dispatcher enters them), or look up 81, stage a header change with
+`POST /api/v1/dev/pp/manifest {"manifest_number": 81, "closed": false}`, and press Create. The screen
+refuses with the new summary (`MANIFEST_CHANGED`).
+
+→ *On screen:* the trip appears with an **8-row phase plan, creation completed and the remaining rows pending** (creation · activation · loading · departure · in transit · arrival · unloading · confirmation). Say the number out loud. The
 plan was generated from the stops and consignments at creation — it was not looked up from a constant.
 
 **2. Show the journey lock.**
 → *On screen:* a `journey_lock` blockchain receipt exists **already**, at creation.
 Say: *"P0 is fail-closed. If the anchor fails, the trip is not created at all. Everything after this is
 compared against this hash."*
+Add: *"The lock covers the manifest key, a hash of the manifest as pulled, and the planned times — so a changed manifest or an edited time shows as tampering."*
 
 **3. Driver activates — phone.**
 → *On screen (dispatcher, no reload):* the activation node ticks over and the LiveBadge shows the
@@ -46,9 +56,22 @@ is the point.
 **4. Loading.**
 The driver enters a blind count. → Say: *"The driver is never shown the expected number. If the driver
 could see it, a match would prove nothing. The server reconciles privately."*
+Warehouse scans come from the demo panel (Warehouse → All parcels / One parcel short), then **Close scan session** unblocks the driver.
 
 **5. Departure — the seal.**
 → *On screen:* seal number and photo captured; a `pickup` receipt anchored, fail-open.
+
+**5a. On the road — an uncoupled trailer.** *(Demo panel → Tracker.)*
+Press "Driving normally", then "Trailer {registration} uncoupled".
+→ *On screen (dispatcher, no reload):* a CRITICAL **Trailer separated on the road** appears on the
+in-transit leg's journey, with the trailer's position and its distance from the horse.
+Say: *"Nobody typed that. The panel only moved a simulated tracker. The system read both trackers,
+measured the gap, and recorded it — source: system. We don't have live Pulsit credentials, so the
+tracker is simulated; everything after the position is the real pipeline."*
+Then press "Truck reaches {destination}" so the arrival check passes.
+
+**5b. Arrival — the seal as found.** The driver inspects the seal before any door opens. Scanning in
+is locked on the panel until this completes; point at the reason it gives.
 
 **6. In transit → unloading → confirmation.**
 → *On screen:* the trip reaches `closed`, with a `delivery` receipt.
@@ -80,6 +103,7 @@ closes cleanly, rather than 404-ing forever.
 Over-claiming is precisely what gets probed at a presentation. Each of these is true today; say them
 before you are asked.
 
+- 🔴 **"The manifest lookup is mocked."** Parcel Perfect's API has no manifest call. Trip creation runs on an assumed contract; against live PP the preview returns 501 and the screen offers an empty leg.
 - 🔴 **"Parcel Perfect load and unload completion is simulated."** `ecomService v28` cannot supply live
   load/unload status (spec §6). The integration is mocked at that boundary.
 - 🔴 **"The manifest shows committed cargo, not scanned cargo."** `pp_scan_out_at` / `pp_scan_in_at`
@@ -146,6 +170,7 @@ before you are asked.
 
 Worth having ready — reviewers who saw an earlier version will ask.
 
+- Trips are created from the client's Parcel Perfect manifest number, and the order number is gone (FP-281). One non-cancelled trip per manifest is enforced by the database.
 - The lifecycle is plan-driven. Phase count is data.
 - A seal mismatch no longer holds the trip (2026-08-04).
 - A dispatcher can now cancel a trip and override a phase, both with a mandatory note, both recorded on

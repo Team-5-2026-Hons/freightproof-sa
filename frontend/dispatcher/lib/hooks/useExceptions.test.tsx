@@ -31,8 +31,17 @@ function makeItem(overrides: Partial<TripExceptionListItem> = {}): TripException
     trip_id: '22222222-2222-2222-2222-222222222222',
     trip_reference: 'FP-2026-0001',
     trip_status: 'active',
+    origin_name: 'Johannesburg DC',
+    destination_name: 'Durban Depot',
+    driver_name: 'Thabo Mokoena',
+    horse_registration: 'HRS 001 GP',
+    trailer_registrations: ['TRL 101 GP'],
     phase_label: 'in_transit',
     stop_label: 1,
+    claimed_by_user_id: null,
+    claimed_at: null,
+    claimed_by_name: null,
+    reviewed_by_name: null,
     ...overrides,
   }
 }
@@ -88,7 +97,7 @@ describe('useExceptionQueue', () => {
       'trip',
       'any',
       expect.any(Function),
-      { kinds: ['exception_raised', 'exception_reviewed'] },
+      { kinds: ['exception_raised', 'exception_reviewed', 'exception_claimed'] },
     )
   })
 })

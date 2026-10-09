@@ -5,13 +5,12 @@ Revises: tom_add_exception_vehicle
 Create Date: 2026-09-12
 
 FP-153 built vehicle_analytics and vehicle_incident_streaks for horses only. This extends
-both to trailers, with each breakdown counted only for the vehicle it belongs to
-(docs/design-notes/2026-09-12-trailer-analytics-spec.md, Stage 2). A materialized view
-cannot be altered, so both are dropped and recreated. Their output columns are
-unchanged, so the read layer, the rollup and the refresh task need no change. The
-driver, lane and facility views are not touched.
+both to trailers, with each breakdown counted only for the vehicle it belongs to. A
+materialized view cannot be altered, so both are dropped and recreated. Their output
+columns are unchanged, so the read layer, the rollup and the refresh task need no
+change. The driver, lane and facility views are not touched.
 
-Attribution rules (spec §6.1):
+Attribution rules:
   1. Vehicle rows: every closed trip gives one row for its horse, plus one row per
      trailer in trip_trailers.
   2. Trip count and driving hours are credited to every vehicle row of the trip.
@@ -20,8 +19,7 @@ Attribution rules (spec §6.1):
   3. A mechanical exception counts for a vehicle when exceptions.vehicle_id is that
      vehicle, OR vehicle_id is NULL and that vehicle is the trip's horse. NULL is every
      breakdown from before drivers were asked "truck or trailer", and every report from
-     an app that doesn't ask. Those keep counting for the horse exactly as before (spec
-     decision 2).
+     an app that doesn't ask. Those keep counting for the horse exactly as before.
   4. The grain stays unique. Trip creation looks the horse up as a horse and each
      trailer as a trailer, so one vehicle can't be both on the same trip, and
      trip_trailers' primary key stops a trailer appearing twice.
@@ -32,8 +30,8 @@ migration is a frozen record. DOWNGRADE_STATEMENTS restore FP-153's horse-only v
 a frozen copy of their SQL. Tests load UPGRADE_STATEMENTS and DOWNGRADE_STATEMENTS from
 this module, so the SQL under test is the SQL shipped.
 
-These views now also read trip_trailers and exceptions.vehicle_id. As FP-153 §11.8 #2
-warns for its own columns, a later migration that alters or drops either column must
+These views now also read trip_trailers and exceptions.vehicle_id. As FP-153 warns for
+its own columns, a later migration that alters or drops either column must
 drop and recreate these views.
 """
 

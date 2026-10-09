@@ -1,11 +1,11 @@
-"""Unit tests for app.orchestration.corroboration_service — pure logic, no DB, no HTTP.
+"""Unit tests for app.orchestration.evidence.corroboration — pure logic, no DB, no HTTP.
 
 Covers the module-level helpers that turn a Pulsit fix into what gets written:
 
     _geofence_verdict_to_column   the three-state (True / False / None) contract for
                                    phase_events.pulsit_geofence_confirmed
     _snapshot_for_trailer         builds (or refuses to build) a TrailerGpsSnapshot row
-    _within_corroboration_skew   task 0A's timing gate — is a fix close enough to the
+    _within_corroboration_skew   the timing gate — is a fix close enough to the
                                    driver's own capture instant to trust at all?
 
 record_phase_corroboration/record_checkpoint_corroboration are not exercised here —
@@ -28,11 +28,13 @@ from typing import Optional, cast
 from unittest.mock import patch
 
 from app.core.config import settings
+from app.db.models.enums import PhaseType
 from app.db.models.organisations import Precinct
 from app.db.models.phases import TrailerGpsSnapshot
 from app.integrations.pulsit import PulsitFix, PulsitFixSource, PulsitFixStatus
 from app.orchestration.corroboration_service import (
-    _geofence_verdict_to_column, _snapshot_for_trailer, _within_corroboration_skew,
+    _PHASES_WITHOUT_A_GEOFENCE_VERDICT, _geofence_verdict_to_column, _snapshot_for_trailer,
+    _within_corroboration_skew,
 )
 from app.orchestration.geofence_service import DEFAULT_GEOFENCE_RADIUS_METRES
 
@@ -226,7 +228,7 @@ def test_fix_inside_tolerance_band_returns_true():
 
     # Act
     with patch(
-        "app.orchestration.geofence_service.haversine_metres",
+        "app.orchestration.evidence.geofence.haversine_metres",
         return_value=float(radius) + 1.0,
     ):
         confirmed = _geofence_verdict_to_column(fix, precinct, context="test-tolerance-band")
@@ -301,7 +303,7 @@ def test_positioned_fix_without_fixed_at_returns_none():
     # normal contract never produces this shape (every OK fix from either client
     # carries fixed_at), but this module deliberately refuses to depend on another
     # story's invariant to decide whether to invent a timestamp for evidence — see
-    # the fixed_at guard's own comment in corroboration_service.py. If that
+    # the fixed_at guard's own comment in evidence/corroboration.py. If that
     # invariant is ever broken upstream, the row must still be dropped, not stamped
     # with now().
     fix = _make_fix(status=PulsitFixStatus.OK, lat=_NEARBY_LAT, lng=_NEARBY_LNG, fixed_at=None)
@@ -339,7 +341,7 @@ def test_snapshot_lat_lng_remain_decimal():
 
 
 # ---------------------------------------------------------------------------
-# _within_corroboration_skew — task 0A's timing gate
+# _within_corroboration_skew — the timing gate
 # ---------------------------------------------------------------------------
 
 
@@ -396,7 +398,7 @@ def test_the_skew_is_symmetric_a_fix_taken_before_the_capture_can_also_miss():
 def test_a_missing_driver_captured_at_is_never_treated_as_safe():
     # Arrange: an older queued client that predates this field entirely. THE
     # single most important assertion in this block — treating "we don't know" as
-    # "assume it's fine" is exactly the fabrication task 0A exists to close.
+    # "assume it's fine" is exactly the fabrication this gate exists to close.
     fix_taken_right_now = _PINNED_NOW
 
     # Act
@@ -424,3 +426,151 @@ def test_both_absent_is_never_treated_as_safe():
 
     # Assert
     assert result is False
+
+
+# ---------------------------------------------------------------------------
+# The TRAILER geofence verdict (FP-146's TRAILER_LOCATION_MISMATCH)
+#
+# trailer_gps_snapshots.geofence_confirmed is written by record_phase_corroboration's
+# trailer loop by composing the SAME two functions already exercised above —
+# _within_corroboration_skew gates whether a trailer fix is even judged, then
+# _geofence_verdict_to_column turns a judged fix into the three-state column — with
+# the SAME precinct object the horse verdict used for that phase. record_phase_
+# corroboration itself needs a DB session and the Pulsit client (see this module's own
+# docstring), so it is exercised in tests/integration/test_trailer_location_mismatch.py
+# and test_phase_corroboration.py; what is unit-testable in isolation is that this
+# composition, applied to a trailer's own fix, produces the same honest three states a
+# trailer snapshot's column promises.
+# ---------------------------------------------------------------------------
+
+
+def test_trailer_fix_inside_radius_returns_true():
+    # Arrange: exactly the function record_phase_corroboration calls for each
+    # trailer's own fix, against the phase's precinct.
+    fix = _make_fix(status=PulsitFixStatus.OK, lat=_NEARBY_LAT, lng=_NEARBY_LNG)
+    precinct = _make_precinct()
+
+    # Act
+    confirmed = _geofence_verdict_to_column(fix, precinct, context="test-trailer-inside")
+
+    # Assert
+    assert confirmed is True
+
+
+def test_trailer_fix_outside_radius_returns_false_not_none():
+    # Arrange: a trailer measured away from the precinct — the FALSE half of the
+    # decoupled-trailer signal FP-146's exception is built on.
+    fix = _make_fix(status=PulsitFixStatus.OK, lat=_FAR_LAT, lng=_FAR_LNG)
+    precinct = _make_precinct()
+
+    # Act
+    confirmed = _geofence_verdict_to_column(fix, precinct, context="test-trailer-outside")
+
+    # Assert: a real accusation, not the "could not check" NULL.
+    assert confirmed is False
+    assert confirmed is not None
+
+
+def test_trailer_fix_outside_the_skew_window_is_not_judged_but_position_still_stored():
+    # Arrange: a trailer fix that WOULD read False if judged (it is far from the
+    # precinct), but arrives well outside settings.PULSIT_CORROBORATION_MAX_SKEW_
+    # SECONDS of the driver's own capture instant — record_phase_corroboration's
+    # trailer loop gates the verdict on `_within_corroboration_skew` before ever
+    # calling `_geofence_verdict_to_column`, exactly like it does for the horse.
+    driver_captured_at = _PINNED_NOW
+    stale_fixed_at = _PINNED_NOW - timedelta(
+        seconds=settings.PULSIT_CORROBORATION_MAX_SKEW_SECONDS + 1
+    )
+    fix = _make_fix(
+        status=PulsitFixStatus.OK, lat=_FAR_LAT, lng=_FAR_LNG,
+        fixed_at=stale_fixed_at, device_id="PLT-TRAILER-STALE",
+    )
+    precinct = _make_precinct()
+    phase_event_id = uuid.uuid4()
+    trailer_id = uuid.uuid4()
+
+    # Act: the skew gate a trailer verdict is subject to before the verdict function
+    # is ever reached.
+    is_timely = _within_corroboration_skew(
+        fixed_at=fix.fixed_at, driver_captured_at=driver_captured_at,
+    )
+    # The trailer's POSITION is independent of the skew gate (trailer_gps_snapshots.
+    # captured_at is the tracker's own reading time, never compared against driver_
+    # captured_at — see evidence.corroboration's module docstring). Only the verdict
+    # is gated, mirroring the trailer loop's `if judges_geofence and _within_
+    # corroboration_skew(...)` condition.
+    snapshot = _snapshot_for_trailer(
+        phase_event_id=phase_event_id, trailer_id=trailer_id, fix=fix
+    )
+    geofence_confirmed = (
+        _geofence_verdict_to_column(fix, precinct, context="test-trailer-stale") if is_timely
+        else None
+    )
+
+    # Assert
+    assert is_timely is False
+    assert geofence_confirmed is None
+    assert snapshot is not None
+    assert snapshot.lat == _FAR_LAT
+    assert snapshot.lng == _FAR_LNG
+
+
+def test_trailer_precinct_without_coordinates_returns_none():
+    # Arrange: the same "nothing to compare against" case as the horse's own test
+    # above, applied to a trailer fix.
+    fix = _make_fix(status=PulsitFixStatus.OK, lat=_NEARBY_LAT, lng=_NEARBY_LNG)
+    precinct = _make_precinct(latitude=None)
+
+    # Act
+    confirmed = _geofence_verdict_to_column(fix, precinct, context="test-trailer-no-precinct")
+
+    # Assert
+    assert confirmed is None
+
+
+def test_in_transit_is_the_one_phase_a_trailer_never_gets_a_verdict_for():
+    # Arrange: record_phase_corroboration's trailer loop only calls _geofence_
+    # verdict_to_column when `judges_geofence` is True, i.e. when the phase is NOT in
+    # _PHASES_WITHOUT_A_GEOFENCE_VERDICT. A trailer's fix genuinely outside the
+    # precinct would otherwise read False; on in_transit the precinct is the one the
+    # truck departed FROM, so judging it there would fabricate a mismatch on every
+    # healthy trip in the fleet (see the module docstring's reasoning for the horse).
+    fix = _make_fix(status=PulsitFixStatus.OK, lat=_FAR_LAT, lng=_FAR_LNG)
+    precinct = _make_precinct()
+
+    # Act: the exact gate record_phase_corroboration's trailer loop evaluates first.
+    judges_geofence = PhaseType.IN_TRANSIT not in _PHASES_WITHOUT_A_GEOFENCE_VERDICT
+    geofence_confirmed = (
+        _geofence_verdict_to_column(fix, precinct, context="test-trailer-in-transit")
+        if judges_geofence else None
+    )
+
+    # Assert: NULL even though the raw fix, if judged, would measure False.
+    assert judges_geofence is False
+    assert geofence_confirmed is None
+
+
+def test_arrival_is_judged_like_every_other_stop_phase():
+    # Arrange: Arrival is a stop-anchored
+    # phase, so it gets the full trailer geofence treatment automatically, with no
+    # special-casing needed in _PHASES_WITHOUT_A_GEOFENCE_VERDICT.
+    # Act / Assert
+    assert PhaseType.ARRIVAL not in _PHASES_WITHOUT_A_GEOFENCE_VERDICT
+
+
+def test_horse_and_trailer_verdicts_are_independent_on_the_same_call():
+    # Arrange: one precinct, two fixes — the horse's own, and one trailer's own — the
+    # same shape record_phase_corroboration reads for a single phase completion: one
+    # precinct resolved once, then _geofence_verdict_to_column called once per entity.
+    precinct = _make_precinct()
+    horse_fix = _make_fix(status=PulsitFixStatus.OK, lat=_NEARBY_LAT, lng=_NEARBY_LNG)
+    trailer_fix = _make_fix(status=PulsitFixStatus.OK, lat=_FAR_LAT, lng=_FAR_LNG)
+
+    # Act
+    horse_confirmed = _geofence_verdict_to_column(horse_fix, precinct, context="test-horse")
+    trailer_confirmed = _geofence_verdict_to_column(trailer_fix, precinct, context="test-trailer")
+
+    # Assert: the same precinct, the same call site's logic, two independent verdicts
+    # — exactly the "horse TRUE, trailer FALSE" reading FP-146's exception depends on.
+    assert horse_confirmed is True
+    assert trailer_confirmed is False

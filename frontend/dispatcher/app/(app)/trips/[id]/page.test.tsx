@@ -46,6 +46,10 @@ vi.mock('@/lib/hooks/useTripArtifacts', () => ({
   }),
 }))
 
+// ExceptionSummary reads the signed-in user to word a claim as mine or a colleague's.
+// Nothing this file asserts depends on who that is, so the identity is stubbed.
+vi.mock('@/lib/hooks/useAuth', () => ({ useAuth: () => ({ user: { id: 'user-me' } }) }))
+
 vi.mock('@/lib/hooks/useToast', () => ({
   useToast: () => ({ notify }),
 }))

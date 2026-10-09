@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any, Optional
 
 from sqlalchemy import (
-    Boolean, DateTime, ForeignKey, Index, Integer, Numeric,
+    Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, Numeric,
     PrimaryKeyConstraint, String, Text, UniqueConstraint, column, desc,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -16,16 +16,17 @@ from sqlalchemy.sql import func
 from app.db.models import Base
 from app.db.models.enums import IdvsStatus, ParcelStatus, TripStatus, TripType
 
-# Statuses that make a trip live — one order number may back only one of these at a
-# time. Named here so the partial index on Trip and orchestration's check share one list.
+# Statuses that make a trip live — fleet analytics counts these as in use.
 LIVE_TRIP_STATUSES: tuple[TripStatus, ...] = (
     TripStatus.CREATED,
     TripStatus.ACTIVE,
     TripStatus.EXCEPTION_HOLD,
 )
 
-# Referenced by orchestration when translating a unique violation into a domain error.
-LIVE_ORDER_NUMBER_INDEX = "uq_trips_live_order_number"
+# The trip's PP manifest key (FP-281, spec §6). Referenced by orchestration when
+# translating a unique violation into a domain error, and by the schema tests.
+PP_MANIFEST_INDEX = "uq_trips_pp_manifest"
+PP_MANIFEST_CHECK = "ck_trips_pp_manifest_all_or_none"
 
 
 class TripTemplate(Base):
@@ -96,7 +97,7 @@ class Consignment(Base):
         UUID(as_uuid=True), ForeignKey("trip_stops.id"), nullable=True
     )
     # Recorded evidence only (door vs bulkhead) — FreightProof records freight
-    # position, it does not enforce loading order (scope-boundaries.md §3).
+    # position, it does not enforce loading order.
     load_priority: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     # Consolidated-unit grain (pallets), distinct from parcel_count_expected; PP
     # can't supply this, so it's populated outside the PP pull.
@@ -141,16 +142,26 @@ class Trip(Base):
     """Central entity — one row per depot-to-depot trip, progresses through TripStatus states."""
 
     __tablename__ = "trips"
-    # One live trip per (operator, order number): trip_service's check-then-insert
-    # can't close this race alone, so the database enforces it. Partial, not total:
-    # a closed or cancelled order number is legitimately reusable.
     __table_args__ = (
+        # One non-cancelled trip per PP manifest (spec §6). Not LIVE_TRIP_STATUSES: a
+        # manifest is one departure, so a closed trip still owns it. Only cancelling
+        # frees it, so the dispatcher can recreate the trip.
         Index(
-            LIVE_ORDER_NUMBER_INDEX,
+            PP_MANIFEST_INDEX,
             "operator_organization_id",
-            "order_number",
+            "pp_manifest_issuer_account",
+            "pp_manifest_origin_hub",
+            "pp_manifest_number",
             unique=True,
-            postgresql_where=column("status").in_([s.value for s in LIVE_TRIP_STATUSES]),
+            postgresql_where=column("status") != TripStatus.CANCELLED.value,
+        ),
+        # A partial key identifies nothing: all three set (manifest trip) or none.
+        CheckConstraint(
+            "(pp_manifest_issuer_account IS NULL AND pp_manifest_origin_hub IS NULL"
+            " AND pp_manifest_number IS NULL)"
+            " OR (pp_manifest_issuer_account IS NOT NULL AND pp_manifest_origin_hub IS NOT NULL"
+            " AND pp_manifest_number IS NOT NULL)",
+            name=PP_MANIFEST_CHECK,
         ),
         # Declared so autogenerate stops proposing to drop indexes that already exist
         # in the deployed database.
@@ -163,7 +174,9 @@ class Trip(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     trip_reference: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
-    order_number: Mapped[str] = mapped_column(String(100), nullable=False)
+    # No longer written (FP-281): the PP manifest key replaced it. Nullable so trips
+    # without one can be inserted; the column itself is dropped in piece C.
+    order_number: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     operator_organization_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False
     )
@@ -171,6 +184,11 @@ class Trip(Base):
     client_organization_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=True
     )
+    # PP manifest key (spec §6): issuer account + origin hub + number. All null on
+    # empty legs and on trips created through the explicit POST /trips path.
+    pp_manifest_issuer_account: Mapped[Optional[str]] = mapped_column(String(6), nullable=True)
+    pp_manifest_origin_hub: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    pp_manifest_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     driver_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("drivers.id"), nullable=False
     )
@@ -189,7 +207,7 @@ class Trip(Base):
         UUID(as_uuid=True), ForeignKey("trip_templates.id"), nullable=True
     )
     status: Mapped[TripStatus] = mapped_column(String(30), nullable=False, server_default="created")
-    # Denormalised caches of the ledger derivation (D6), refreshed on every phase
+    # Denormalised caches of the ledger derivation, refreshed on every phase
     # completion so list views don't recompute. Read paths only — the ledger is
     # the truth; no write path may branch on these.
     current_phase: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
@@ -254,9 +272,9 @@ class TripTrailer(Base):
 
 
 class DriverSubstitution(Base):
-    """Records every mid-trip driver change — planned or unplanned (spec §5,
-    Handshake 3). Unplanned substitutions link to a TripException via exception_id
-    and are anchored to blockchain separately."""
+    """Records every mid-trip driver change — planned or unplanned. Unplanned
+    substitutions link to a TripException via exception_id and are anchored to
+    blockchain separately."""
 
     __tablename__ = "driver_substitutions"
     # Declared so autogenerate stops proposing to drop an index that already exists
@@ -269,7 +287,8 @@ class DriverSubstitution(Base):
     trip_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("trips.id"), nullable=False
     )
-    # The four required log fields from the spec.
+    # The four required log fields for a driver substitution: who left, who took
+    # over, where, and who approved it.
     original_driver_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("drivers.id"), nullable=False
     )

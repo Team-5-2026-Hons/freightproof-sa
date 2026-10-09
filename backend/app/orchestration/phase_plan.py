@@ -1,91 +1,15 @@
-"""Phase-plan generation.
+"""Compatibility facade: this module now lives at app.orchestration.phases.plan."""
 
-Pure and DB-free, so plan length ("length is data") is a function of the route,
-easy to test independently of trip creation. Ports makePhasePlan() in
-frontend/shared/lib/mocks/phase-trips.ts; the two must emit identical plans, and
-the backend is authoritative if they ever drift.
-"""
+from app.orchestration.phases.plan import (
+    ANCHORED_PHASES,
+    PlannedPhase,
+    PlanStop,
+    build_phase_plan,
+)
 
-from dataclasses import dataclass
-
-from app.db.models.enums import PhaseType
-
-# The phases that carry a Hedera receipt; the rest are unanchored feeders.
-ANCHORED_PHASES: frozenset[PhaseType] = frozenset({
-    PhaseType.TRIP_CREATION,
-    PhaseType.DEPARTURE,
-    PhaseType.CONFIRMATION,
-})
-
-
-@dataclass(frozen=True)
-class PlanStop:
-    """One stop's routing role — all the generator needs to decide what happens there.
-
-    Derived from the trip's consignments: `picks_up` if any consignment's
-    pickup_stop_id is this stop, `drops_off` if any consignment's delivery_stop_id is.
-    A TripStop has no inherent origin/destination role (FP-112).
-    """
-
-    sequence: int
-    picks_up: bool
-    drops_off: bool
-
-
-@dataclass(frozen=True)
-class PlannedPhase:
-    sequence_number: int
-    phase_type: PhaseType
-    stop_sequence: int | None  # None only for trip_creation
-
-
-def build_phase_plan(stops: list[PlanStop]) -> list[PlannedPhase]:
-    """Emit a trip's committed phase plan, in order, from its stops.
-
-    The rule: `trip_creation` once with no stop; then for each stop in sequence,
-    `activation` (first stop only) or `unloading` (if anything delivers here); then
-    `loading` (if anything collects here); then `departure` + `in_transit` unless it
-    is the final stop, where `confirmation` is emitted instead.
-
-    `in_transit` anchors to the stop it DEPARTS FROM, never the one it arrives at,
-    which keeps trip_creation the only NULL-stop row.
-
-    2 stops -> 7 rows. 3-stop cross-dock -> 11 rows. The single-leg trip is the
-    degenerate case of the multi-stop plan: one code path, forever.
-    """
-    if not stops:
-        raise ValueError("a trip needs at least one stop to generate a phase plan")
-
-    plan: list[PlannedPhase] = []
-
-    def emit(phase_type: PhaseType, stop: PlanStop | None) -> None:
-        plan.append(PlannedPhase(
-            sequence_number=len(plan),
-            phase_type=phase_type,
-            stop_sequence=None if stop is None else stop.sequence,
-        ))
-
-    emit(PhaseType.TRIP_CREATION, None)
-
-    last_index = len(stops) - 1
-    for i, stop in enumerate(stops):
-        if i == 0:
-            emit(PhaseType.ACTIVATION, stop)
-        elif stop.drops_off:
-            emit(PhaseType.UNLOADING, stop)
-
-        if stop.picks_up:
-            emit(PhaseType.LOADING, stop)
-
-        if i < last_index:
-            emit(PhaseType.DEPARTURE, stop)
-            emit(PhaseType.IN_TRANSIT, stop)
-        else:
-            # The final stop always closes the custody chain, even on an empty leg
-            # where nothing is dropped — otherwise a repositioning run would end
-            # with no unloading row and the ledger would not be a complete story.
-            if i != 0 and not stop.drops_off:
-                emit(PhaseType.UNLOADING, stop)
-            emit(PhaseType.CONFIRMATION, stop)
-
-    return plan
+__all__ = [
+    "ANCHORED_PHASES",
+    "PlanStop",
+    "PlannedPhase",
+    "build_phase_plan",
+]

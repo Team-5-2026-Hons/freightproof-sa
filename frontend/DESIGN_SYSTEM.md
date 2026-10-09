@@ -4,8 +4,6 @@
 
 - **Version**: 2.0 (replaces v1 "Industrial Brutalism")
 - **Source of truth**: `FreightProof Hi-Fi.html`
-- **Reference HTMLs**: `docs/reference/*.html` (per-screen extracts — to be split)
-- **Archived**: `docs/archive/DESIGN_SYSTEM_brutalist_v1.md`
 
 ---
 
@@ -371,7 +369,7 @@ CTA                  (gradient primary + panic siren)
 
 ## 11. Reference HTMLs
 
-The dispatcher and driver page extracts live in `docs/reference/`:
+Each screen was built from a per-page HTML extract of the hi-fi design:
 
 | File | Component | Notes |
 |---|---|---|
@@ -452,4 +450,4 @@ body { font-family: 'Inter', sans-serif; background: var(--surf); color: var(--o
 
 ---
 
-**End of v2 design system.** Reference HTMLs are split in a follow-up step. Brutalist v1 lives at `docs/archive/DESIGN_SYSTEM_brutalist_v1.md` for trace.
+**End of v2 design system.**

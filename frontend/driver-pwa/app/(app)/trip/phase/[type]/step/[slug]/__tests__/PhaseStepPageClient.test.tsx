@@ -117,10 +117,10 @@ function SubmitLoadingStub({ onComplete }: { onComplete: () => void }) {
   return <button onClick={onComplete}>submit-loading</button>
 }
 
-// unloading's first step — the arrival screen the driver reaches from "Arrive at
-// destination", and the one the mismatch guard used to make unreachable. As of
-// 2026-08-08 that first step is the INTACT-seal photo: the recipe was reordered to
-// ['2-seal-verify', '4-visual-count'] and '1-hand-waybill' was deleted.
+// arrival's own step — the seal-verify screen the driver reaches from "Arrive at
+// destination", and the one the mismatch guard used to make unreachable. The seal
+// inspection moved here from unloading (arrival is its own phase, ahead of unloading)
+// so this is now registered under phase_type 'arrival', not 'unloading'.
 function AdvanceSealVerifyStub({ onComplete }: { onComplete: () => void }) {
   return <button onClick={onComplete}>advance-seal-verify</button>
 }
@@ -130,7 +130,7 @@ vi.mock('@/components/phase/steps/registry', () => ({
     if (phaseType === 'departure' && slug === '2-capture-seal') return AdvanceCaptureSealStub
     if (phaseType === 'activation' && slug === '2-verification') return SubmitVerificationStub
     if (phaseType === 'loading' && slug === '1-linehaul') return SubmitLoadingStub
-    if (phaseType === 'unloading' && slug === '2-seal-verify') return AdvanceSealVerifyStub
+    if (phaseType === 'arrival' && slug === '2-seal-verify') return AdvanceSealVerifyStub
     return undefined
   },
 }))
@@ -176,7 +176,7 @@ function makeTrip(phases: PhaseDescriptor[], overrides: Partial<Trip> = {}): Tri
   return {
     id: TRIP_ID as unknown as Trip['id'],
     trip_reference: 'TRP-TEST-0001',
-    order_number: 'ORD-1',
+    pp_manifest: null,
     status: 'active',
     trip_type: 'loaded',
     journey_lock_hash: null,
@@ -241,17 +241,18 @@ describe('type-mismatch guard', () => {
 
   it('opens the arrival step while the driverless in_transit row is still the ledger-current phase', () => {
     // The deadlock this guard used to create. in_transit is PENDING for the whole drive
-    // (the backend closes it from advance_unloading, i.e. as a RESULT of this step being
-    // submitted), so guarding on currentPhase meant the arrival step demanded a ledger
-    // position that only this step could produce. The driver got bounced to /trips/active
-    // on every "Arrive at destination" and the trip could never be completed.
+    // (the backend closes it from the driver's own "Arrive at destination" swipe), so
+    // guarding on currentPhase meant the arrival step demanded a ledger position that
+    // only that swipe could produce. The driver got bounced to /trips/active on every
+    // swipe and the trip could never be completed.
     const trip = makeTrip([
       makePhase({ phase_type: 'departure', sequence_number: 3, status: 'completed' }),
       makePhase({ phase_type: 'in_transit', sequence_number: 4, status: 'pending' }),
-      makePhase({ phase_type: 'unloading', sequence_number: 5, status: 'pending' }),
+      makePhase({ phase_type: 'arrival', sequence_number: 5, status: 'pending' }),
+      makePhase({ phase_type: 'unloading', sequence_number: 6, status: 'pending' }),
     ])
     setTripState(trip)
-    mockUseParams.mockReturnValue({ type: 'unloading', slug: '2-seal-verify' })
+    mockUseParams.mockReturnValue({ type: 'arrival', slug: '2-seal-verify' })
 
     render(<PhaseStepPageClient />)
 
@@ -265,14 +266,15 @@ describe('type-mismatch guard', () => {
     const trip = makeTrip([
       makePhase({ phase_type: 'departure', sequence_number: 3, status: 'completed' }),
       makePhase({ phase_type: 'in_transit', sequence_number: 4, status: 'pending' }),
-      makePhase({ phase_type: 'unloading', sequence_number: 5, status: 'pending' }),
+      makePhase({ phase_type: 'arrival', sequence_number: 5, status: 'pending' }),
+      makePhase({ phase_type: 'unloading', sequence_number: 6, status: 'pending' }),
     ])
     setTripState(trip)
     mockUseParams.mockReturnValue({ type: 'activation', slug: '2-verification' })
 
     render(<PhaseStepPageClient />)
 
-    expect(mockRouterReplace).toHaveBeenCalledWith('/trip/phase/unloading/step/2-seal-verify')
+    expect(mockRouterReplace).toHaveBeenCalledWith('/trip/phase/arrival/step/2-seal-verify')
   })
 
   it('renders normally when the URL phase type matches the ledger\'s current phase', () => {

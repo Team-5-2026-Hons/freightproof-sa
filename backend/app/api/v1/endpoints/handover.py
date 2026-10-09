@@ -44,9 +44,8 @@ from app.db.models.phases import PhaseEvent
 from app.db.models.receiver_verification import ReceiverIdentityVerification
 from app.db.models.trips import Consignment, Trip, TripStop
 from app.db.session import get_db
-from app.integrations.idvs import get_idvs_client
-from app.orchestration.artifact_service import create_receiver_artifact
-from app.orchestration.handover_service import (
+from app.orchestration.evidence.artifacts import create_receiver_artifact
+from app.orchestration.handover.capability import (
     build_scan_url,
     find_open_token,
     hash_presented_token,
@@ -57,12 +56,12 @@ from app.orchestration.handover_service import (
     rotate_capability_token,
     session_secret_matches,
 )
-from app.orchestration.receiver_verification_service import (
+from app.orchestration.handover.receiver_verification import (
     attach_confirmation,
     ingest_webhook_decision,
     load_verification_for_token,
     raise_verification_exception,
-    record_consent,
+    record_consent_decision,
     resolve_verification,
     start_verification,
     verify_webhook_signature,
@@ -72,6 +71,7 @@ from app.schemas.handover import (
     HandoverConfirmRequest,
     HandoverConfirmResponse,
     HandoverConsentRequest,
+    HandoverResolveRequest,
     HandoverScanResponse,
     HandoverStatusResponse,
     HandoverTokenResponse,
@@ -416,11 +416,10 @@ async def handover_consent_endpoint(
         # Idempotent: a reload mid-flow must not create a second row.
         return _verification_state(existing)
 
-    verification = await record_consent(db, token=token, consent_text=payload.consent_text)
-    if not payload.has_document:
-        verification.tier = ReceiverVerificationTier.SELFIE_ONLY
-        verification.status = ReceiverVerificationStatus.UNVERIFIED
-        verification.unverified_reason = ReceiverVerificationUnverifiedReason.NO_DOCUMENT
+    verification = await record_consent_decision(
+        db, token=token, consent_text=payload.consent_text,
+        consented=payload.consented, has_document=payload.has_document,
+    )
 
     try:
         await db.commit()
@@ -451,7 +450,8 @@ async def handover_verify_endpoint(
     to signing at a lower tier so a delivery stays confirmable when the vendor is down.
     """
     token = await _live_token(db, raw_token)
-    verification = await load_verification_for_token(db, token_id=token.id)
+    # Locked: a doubled request waits, then sees the first's session instead of making another.
+    verification = await load_verification_for_token(db, token_id=token.id, lock=True)
     if verification is None:
         raise _not_found()
 
@@ -460,7 +460,6 @@ async def handover_verify_endpoint(
         token=token,
         raw_token=raw_token,  # row stores only a hash; vendor needs the presented token
         verification=verification,
-        client=get_idvs_client(),
     )
     await db.commit()
 
@@ -477,19 +476,18 @@ async def handover_verify_endpoint(
 @public_router.post(
     "/{raw_token}/verify/resolve",
     response_model=HandoverVerificationState,
-    summary="Fetch the authoritative decision (public, no auth, EMPTY BODY)",
+    summary="Fetch the authoritative decision (public, no auth, no session id accepted)",
     dependencies=[Depends(rate_limit(HANDOVER_PUBLIC))],
 )
 async def handover_resolve_endpoint(
     raw_token: str,
-    receiver_name: str = "",
-    receiver_id_number: str = "",
+    payload: HandoverResolveRequest,
     db: AsyncSession = Depends(get_db),
 ) -> HandoverVerificationState:
     """The security boundary: takes no session identifier from the caller. The session id
     comes from our own row, written before the redirect — the client can only say "I am
     back", never claim a result directly (the exact failure Didit patched in their own
-    WordPress plugin).
+    WordPress plugin). The body holds only the typed name and ID number, never the URL.
     """
     token = await _live_token(db, raw_token)
     verification = await load_verification_for_token(db, token_id=token.id)
@@ -499,9 +497,8 @@ async def handover_resolve_endpoint(
     verdict = await resolve_verification(
         db,
         verification=verification,
-        client=get_idvs_client(),
-        typed_name=receiver_name,
-        typed_id_number=receiver_id_number,
+        typed_name=payload.receiver_name,
+        typed_id_number=payload.receiver_id_number,
     )
 
     if verdict.exception_type is not None:

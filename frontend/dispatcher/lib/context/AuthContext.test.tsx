@@ -52,6 +52,7 @@ function latestIdleExpiryHandler(): (() => void) | undefined {
 const PROFILE: DispatcherUser = {
   id: '2c5b8c1e-6f2a-4f4a-9a1b-1f0d0a7c3e11' as DispatcherUser['id'],
   organization_id: '00000000-0000-0000-0000-000000000003',
+  organization_name: 'Linbro Express',
   email: 'dispatcher@linbroexpress.co.za',
   full_name: 'Dispatcher',
   is_active: true,
@@ -63,7 +64,11 @@ function renderAuth() {
 }
 
 // Supabase's onAuthStateChange callback, as this file needs to drive it.
-type AuthListener = (event: string, session: { access_token: string } | null) => void
+type FakeSession = { access_token: string; user: { id: string } }
+type AuthListener = (event: string, session: FakeSession | null) => void
+
+// A real Supabase session always carries its user; the port reads the id from it.
+const sessionOf = (access_token: string): FakeSession => ({ access_token, user: { id: 'user-1' } })
 
 /** Register the provider's listener and hand it back, so a test can raise events itself. */
 function captureAuthListener(): { current: AuthListener | undefined } {
@@ -177,7 +182,7 @@ describe('profile fetching', () => {
     mockedGet.mockResolvedValue(PROFILE)
     mockedSignIn.mockImplementation((async () => {
       // Where Supabase actually raises it: inside signInWithPassword, before signIn returns.
-      listener.current?.('SIGNED_IN', { access_token: 'tok' })
+      listener.current?.('SIGNED_IN', sessionOf('tok'))
       return { data: { user: null, session: null }, error: null }
     }) as unknown as typeof supabase.auth.signInWithPassword)
 
@@ -204,7 +209,7 @@ describe('profile fetching', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false))
     mockedGet.mockClear()
 
-    act(() => { listener.current?.('SIGNED_IN', { access_token: 'tok' }) })
+    act(() => { listener.current?.('SIGNED_IN', sessionOf('tok')) })
     await flushDeferrals()
 
     expect(mockedGet).toHaveBeenCalledTimes(1)
@@ -242,12 +247,12 @@ describe('AuthContext cache scoping', () => {
 
     // A sign-in raised from another tab, which is the case that never passes through a
     // signed-out state: the provider keeps rendering while the identity behind it swaps.
-    act(() => { listener.current?.('SIGNED_IN', { access_token: 'tok' }) })
+    act(() => { listener.current?.('SIGNED_IN', sessionOf('tok')) })
     await flushDeferrals()
     expect(mockedClearCaches).toHaveBeenCalledTimes(1)
 
     mockedGet.mockResolvedValue(other)
-    act(() => { listener.current?.('SIGNED_IN', { access_token: 'tok2' }) })
+    act(() => { listener.current?.('SIGNED_IN', sessionOf('tok2')) })
     await flushDeferrals()
 
     expect(result.current.user).toEqual(other)
@@ -263,7 +268,7 @@ describe('AuthContext cache scoping', () => {
     // A token refresh is the same session; clearing here would throw away a live page's
     // records for nothing, on a timer the dispatcher never sees.
     mockedClearCaches.mockClear()
-    act(() => { listener.current?.('TOKEN_REFRESHED', { access_token: 'tok2' }) })
+    act(() => { listener.current?.('TOKEN_REFRESHED', sessionOf('tok2')) })
     await flushDeferrals()
 
     expect(mockedClearCaches).not.toHaveBeenCalled()

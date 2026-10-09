@@ -258,7 +258,7 @@ async def _trip(
         created_by_user_id=operator.dispatcher.id,
         planned_departure_at=planned_departure,
         planned_arrival_at=planned_arrival,
-        # Reproduces phase_service's known defect: stamped on EVERY departure, so it holds
+        # Reproduces phases.advance_departure's known defect: stamped on EVERY departure, so it holds
         # the LAST leg. Seeded deliberately wrong to prove no view reads it.
         actual_departure_at=at(departures[-1].minute) if departures else None,
         actual_arrival_at=(
@@ -271,7 +271,7 @@ async def _trip(
     db.add(trip)
     await db.flush()
 
-    # Linked exactly as trip creation does it (trip_service), snapshot included.
+    # Linked exactly as trip creation does it (trips.creation), snapshot included.
     db.add_all([
         TripTrailer(
             trip_id=trip.id, trailer_id=trailer.id,
@@ -674,7 +674,7 @@ async def test_vehicle_streaks_and_trips_since_last_incident(
     assert since == {"mixed": 1, "record": 3, "clean": 2, "double": 1}
 
 
-# ── Trailers (trailer analytics spec, Stage 2) ───────────────────────────────
+# ── Trailers ──────────────────────────────────────────────────────────────────
 
 
 async def _vehicle_rows(db: AsyncSession, operator: Operator, month: date) -> dict[uuid.UUID, Any]:
@@ -820,7 +820,7 @@ async def test_breakdown_recorded_against_the_horse_counts_for_no_trailer(
 async def test_trailer_streaks_and_trips_since_last_incident(
     db_session: AsyncSession, operator: Operator, lane: list[Precinct], month: date,
 ) -> None:
-    """FP-153 §11.4's worked examples, applied to trailers. Every breakdown is recorded
+    """FP-153's worked examples, applied to trailers. Every breakdown is recorded
     against a trailer, so the horse pulling them all keeps a clean record."""
     trailers = {name: _new_trailer(operator.org) for name in ("mixed", "record", "clean", "double")}
     db_session.add_all(trailers.values())
@@ -972,7 +972,7 @@ async def test_lane_metrics_skip_trips_with_unknown_endpoint(
 async def test_facility_metrics_three_states_without_in_transit_or_overrides(
     db_session: AsyncSession, operator: Operator, lane: list[Precinct], month: date,
 ) -> None:
-    # in_transit is left NULL on both trips, as corroboration_service always leaves it.
+    # in_transit is left NULL on both trips, as evidence.corroboration always leaves it.
     await _trip(
         db_session, operator, start=_start(month, 10), stops=lane,
         steps=_geofenced(_single_leg(), {

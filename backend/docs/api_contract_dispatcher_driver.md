@@ -1,11 +1,16 @@
 # FreightProof SA — API Contract: Dispatcher & Driver Endpoints
 
-**Source of truth for every endpoint the Dispatcher Portal and Driver PWA will consume.**
+> **Historical, non-authoritative reference — May 2026.** This contract predates the
+> phase model and current routes. For current API behaviour, inspect
+> `backend/app/api/v1/endpoints/`, `backend/app/schemas/`, and application OpenAPI; for
+> lifecycle terminology, use [`docs/phase-model-explained.md`](../../docs/phase-model-explained.md).
+
+> **FP-281 (2026-10-01):** the list, create, preview and create-from-manifest routes in §3.2 and the manifest route in §3.3 below describe current behaviour. `order_number` is gone from every trip schema; dispatcher trip reads carry `pp_manifest: {issuer_account, origin_hub, number, display} | null` instead. Driver trip responses (`/trips/me`, `/trips/me/active`, `/trips/me/{trip_id}`) carry `pp_manifest: null` and never the snapshot. The wizard-era `GET /api/v1/pp/manifests/{n}` is removed. The field substitutions in §4.1–4.2 refer to dispatcher schemas; their remaining shapes and other routes retain the historical context above.
 
 Generated from analysis of:
-- `docs/FreightProof_Frontend_Spec_v1.md` — page catalogue, hook names, data shapes
-- `docs/FreightProof_Full_Picture_v6.md` — domain rules, handshake flow
-- `backend/app/db/models/` — authoritative DB schema
+- `docs/archive/root/FreightProof_Frontend_Spec_v1.md` — historical page catalogue, hook names, data shapes
+- `docs/archive/root/FreightProof_Full_Picture_v6.md` — historical domain rules and handshake flow
+- `backend/app/db/models/` — models inspected when this historical contract was written
 - `backend/app/schemas/` — existing Pydantic v2 schemas
 
 Date: 2026-05-10 | Author: Claude Code (Tim Gultig session)
@@ -191,6 +196,16 @@ Dispatcher login.
 | Response 200 | `{ "access_token": str, "token_type": "bearer", "expires_in": int }` |
 | Response 401 | Invalid credentials |
 
+#### `GET /api/v1/auth/me`
+The signed-in dispatcher's profile; also the portal's session check.
+
+| Field | Value |
+|---|---|
+| Auth | Bearer JWT (dispatcher) |
+| Tags | `["auth"]` |
+| Response 200 | `DispatcherProfileRead`: `UserRead` (`id`, `organization_id`, `email`, `full_name`, `is_active`, `created_at`, `updated_at`, `role`) plus `organization_name: str`, the display name of the dispatcher's own organisation. The dashboard subtitle reads it instead of hardcoding an operator. |
+| Response 401/403 | Missing, invalid or expired token / not a dispatcher |
+
 #### `POST /api/v1/auth/driver/token`
 Driver login (phone OTP — two-step: request OTP then verify).
 
@@ -210,30 +225,52 @@ Driver login (phone OTP — two-step: request OTP then verify).
 Router prefix: `/api/v1/trips`
 
 #### `GET /api/v1/trips`
-Paginated trip list for the Dispatcher Active Trips and History pages.
-Consumed by `useTrips(filter?)` hook.
+Trip list for the Dispatcher Active Trips page. Consumed by `useTrips(filter?)`. History uses the separate cursor-paginated `GET /api/v1/trips/history` route.
 
 | Field | Value |
 |---|---|
 | Auth | Dispatcher JWT |
 | Tags | `["trips"]` |
-| Query params | `status` (repeatable, any `TripStatus` value), `driver_id` (UUID), `search` (order number or trip reference), `has_exceptions` (bool), `from_date` (ISO date), `to_date` (ISO date), `page` (int, default 1), `page_size` (int, default 25, max 100) |
-| Response 200 | `TripListResponse` — see schema §4.1 |
+| Query params | `status` (repeatable, any `TripStatus`), `pp_manifest_number` (int, exact match: the retry lookup after a create timeout, FP-281 §10.4) |
+| Response 200 | `list[TripListItemResponse]` (JSON array, not a pagination envelope) |
 | Filtering | `status` is a multi-value filter: `?status=loading&status=in_transit`. If omitted, all statuses returned. |
-| Ordering | `updated_at DESC` (most recently changed trip first). Not configurable on v1. |
+| Ordering | `created_at DESC` (newest trip first). |
 | Scope | Caller's `operator_organization_id` is applied automatically from the JWT — no cross-org leakage. |
 
 #### `POST /api/v1/trips`
-Trip creation (Handshake 0). Consumed by dispatcher Trip Creation page.
+Explicit trip creation (H0): empty legs, multi-stop trips, seeds and tests. Loaded trips in the dispatcher UI use `POST /api/v1/trips/from-pp-manifest`.
 
 | Field | Value |
 |---|---|
 | Auth | Dispatcher JWT |
 | Tags | `["trips"]` |
-| Request body | `TripCreate` (from `schemas/trips.py`) |
+| Request body | `TripCreateRequest` (no `order_number`) |
 | Response 201 | `TripDetailResponse` — see schema §4.2 |
-| Side effects | Creates `HandshakeEvent` row for H0, computes journey lock hash, queues Hedera HCS anchor task via Celery, runs IDVS check for the assigned driver. |
-| Errors | 422 if validation fails, 409 if `order_number` is already active in another trip |
+| Side effects | Creates trip, stops and phase plan, computes the journey lock hash and anchors it to Hedera HCS synchronously before completing the H0 `PhaseEvent`. Fail-closed: an anchor failure rolls the trip back. |
+| Errors | 422 if validation fails. There is no duplicate key since FP-281 removed the order number; this path serves empty legs, multi-stop trips, seeds and tests. 404 for missing resources; 409 for a consignment conflict; 502/504 for PP/Hedera failures |
+
+#### `GET /api/v1/trips/pp-manifest-preview?manifest_number={n}` (FP-281)
+Read-only preview of a client's PP manifest before its trip is created.
+
+| Field | Value |
+|---|---|
+| Auth | Dispatcher JWT |
+| Tags | `["trips"]` |
+| Response 200 | `PPManifestPreviewResponse` (`schemas/pp_manifest.py`): `pp_manifest` (key + display), `snapshot_sha256`, client, origin/destination hub → precinct, planned times, closed flag, client reference, notes, totals, waybill lines, `warnings[]`, `can_create` |
+| Warnings | Blocking: `MANIFEST_ALREADY_ON_TRIP`, `CLIENT_NOT_LINKED`, `WAYBILL_CLIENT_MISMATCH`, `WAYBILL_ON_OTHER_TRIP`, `NO_WAYBILLS`. Prompts: `ORIGIN_HUB_UNLINKED`, `DESTINATION_HUB_UNLINKED`, `NO_PLANNED_TIMES`, `MANIFEST_NOT_CLOSED`. A holder trip in another organisation is reported with `trip_id` and `trip_reference` null |
+| Errors | 404 manifest not found · 501 live PP has no manifest lookup · 502 PP unreachable |
+
+#### `POST /api/v1/trips/from-pp-manifest` (FP-281)
+Creates a loaded trip from a PP manifest, in one transaction, fail-closed.
+
+| Field | Value |
+|---|---|
+| Auth | Dispatcher JWT |
+| Tags | `["trips"]` |
+| Request body | `TripFromPPManifestRequest`: `manifest_number`, `expected_snapshot_sha256` (from the preview), `driver_id`, `horse_id`, `trailer_ids`; optional `planned_departure_at` / `planned_arrival_at` (zone required; they override the manifest's); optional `origin_precinct_id` / `destination_precinct_id` (read only for an unlinked hub). Cargo is never accepted from the client |
+| Response 201 | `TripDetailResponse` |
+| Errors | 409 `detail: {code: "MANIFEST_ALREADY_ON_TRIP", message, trip_id, trip_reference}` · 409 `detail: {code: "MANIFEST_CHANGED", message, preview}` · 409 string `detail` (a waybill on another live trip, or scanned on a cancelled one) · 422 `detail: {code, message}` (`CLIENT_NOT_LINKED`, `WAYBILL_CLIENT_MISMATCH`, `NO_WAYBILLS`, `PRECINCT_REQUIRED`, `PRECINCT_NOT_AVAILABLE`, `SAME_PRECINCT`, `NO_PLANNED_DEPARTURE`, `SCHEDULE_INVALID`) · 422 string `detail` on PP sync failure · 404 · 501 · 502/504 (PP or Hedera: the trip rolls back) |
+| Side effects | Trip, consignments and parcels from the manifest's own waybills, stops, phase plan, H0 snapshot, journey lock anchored to Hedera HCS |
 
 #### `GET /api/v1/trips/{trip_id}`
 Full trip detail. Consumed by `useTrip(id)` hook in both surfaces.
@@ -266,11 +303,12 @@ Parcel manifest for one trip. Consumed by `useManifest(tripId)` hook.
 
 | Field | Value |
 |---|---|
-| Auth | Dispatcher JWT OR Driver JWT (driver sees only their own trip's manifest) |
+| Auth | Dispatcher JWT (own organisation) OR Driver JWT (own assigned trip; linehaul only) |
 | Tags | `["trips"]` |
-| Response 200 | `ManifestResponse` — see schema §4.3 |
-| Response 404 | Trip not found, or manifest not yet pulled from Parcel Perfect (loading not started) |
-| Timing | Available after H2 loading starts. Before that, the endpoint returns 404. The driver's H2 Step 1 "loading status" polling uses a separate endpoint (§3.4 handshake detail). |
+| Response 200 | Dispatcher: `ManifestResponse` with live cargo detail. Driver: `LinehaulResponse` (vehicle, driver, consolidated unit count and scan status; no cargo contents or PP manifest fields) |
+| Dispatcher extra (FP-281) | `pp_manifest_snapshot`: `PPManifestSnapshotRead` (`schemas/pp_manifest.py`), the PP manifest as locked at creation, summarised for display — `manifest_number`, `issuer_account`, `issuer_name`, `origin_hub`, `destination_hub`, `client_reference`, `waybills[]` and `totals` in the preview's own line and totals shapes — or null. The stored H0 JSON (which holds receiver contact details) is never sent. Dispatcher branch only. A cancelled trip whose waybills moved returns `consignments: []` with the snapshot instead of 404 |
+| Response 404 | Trip not found or inaccessible, or no consignments and no H0 snapshot on a loaded dispatcher trip. Driver linehaul requires live consignments on loaded trips |
+| Timing | PP-created trips have cargo and the H0 snapshot from creation. Empty legs return a defined zero-cargo response |
 
 ---
 
@@ -405,6 +443,20 @@ Exception detail. Consumed by Dispatcher Exception Detail page.
 | Tags | `["exceptions"]` |
 | Response 200 | `TripExceptionRead` — includes nested trip summary, handshake context, and last checkpoint |
 
+#### Review claims and batch review (FP-280)
+Every exception starts `needs_review`, except a dispatcher's own override/cancel note, which is saved already reviewed by its author (`review_outcome = dispatcher_authored`). "Claimed" is `needs_review` plus a claimer. Soft claim: anyone may take over, but only explicitly with `take_over: true`; a claim or review that meets a colleague's claim without it is a 409.
+
+`TripExceptionRead`, `TripExceptionListItem` and `TripExceptionDetail` gain `claimed_by_user_id`, `claimed_at`, `claimed_by_name` and `reviewed_by_name` (all nullable). Names are resolved server-side from `users.full_name` within the caller's organisation, and are only populated on dispatcher-facing reads (never on driver responses).
+
+| Endpoint | Auth | Body | Response |
+|---|---|---|---|
+| `POST /api/v1/exceptions/{exception_id}/claim` | Dispatcher JWT | `{ "take_over": bool }` (default `false`) | 200 `TripExceptionRead`. 404 missing/cross-org; 409 colleague's claim without `take_over`, or already reviewed |
+| `DELETE /api/v1/exceptions/{exception_id}/claim` | Dispatcher JWT | none | 200 `TripExceptionRead`. Only the claimer may release; 409 for a colleague's claim or a reviewed row; no-op when unclaimed |
+| `PATCH /api/v1/exceptions/{exception_id}/review` | Dispatcher JWT | existing body plus optional `take_over: bool` | Reviewing an unclaimed row auto-claims it; 409 if a colleague holds the claim and `take_over` is false |
+| `POST /api/v1/exceptions/review-batch` | Dispatcher JWT | `{ trip_id, exception_ids (1–100, unique), review_note, review_outcome, contact_method }` | 200 `list[TripExceptionRead]`. 404 any id missing/cross-org; 422 critical row, other-trip row, empty/over-cap/duplicate ids; 409 colleague's claim or review. All-or-nothing; never takes over |
+
+`GET /api/v1/exceptions/review-queue` is ordered critical → warning → info, then newest first.
+
 #### `POST /api/v1/exceptions/{exception_id}/resolve`
 Mark exception resolved (with note). Consumed by Dispatcher "Resolve" action.
 
@@ -516,7 +568,7 @@ class TripSummaryRead(BaseModel):
 
     id: UUID
     trip_reference: str
-    order_number: str
+    pp_manifest: Optional[PPManifestRef] = None  # FP-281: dispatcher only; replaces order_number
     status: TripStatus
     driver: DriverRead                  # full nested object
     horse: VehicleRead                  # full nested object
@@ -552,7 +604,7 @@ class TripDetailResponse(BaseModel):
 
     id: UUID
     trip_reference: str
-    order_number: str
+    pp_manifest: Optional[PPManifestRef] = None  # FP-281: dispatcher only; replaces order_number
     status: TripStatus
     journey_lock_hash: Optional[str]
     idvs_check_status: IdvsStatus

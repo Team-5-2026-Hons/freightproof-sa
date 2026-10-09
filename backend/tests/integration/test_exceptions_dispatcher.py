@@ -132,12 +132,12 @@ def _body(**overrides) -> dict:
 # ── review ───────────────────────────────────────────────────────────────────
 #
 # The old undifferentiated GET /api/v1/exceptions list (and its `resolved` filter) was
-# retired by the exception-review-and-pagination plan's Task 6 in favour of three
-# purpose-built reads — GET .../review-queue, GET .../history and GET .../{id} — whose
-# coverage lives in tests/integration/test_exception_reads.py. The tests that exercised
-# the old route lived here; removed rather than ported, since the new routes have a
-# materially different contract (a compact list item shape, no `resolved` bool) and
-# porting them would just re-describe test_exception_reads.py under a different name.
+# retired in favour of three purpose-built reads — GET .../review-queue, GET .../history
+# and GET .../{id} — whose coverage lives in tests/integration/test_exception_reads.py.
+# The tests that exercised the old route lived here; removed rather than ported,
+# since the new routes have a materially different contract (a compact list item
+# shape, no `resolved` bool) and porting them would just re-describe
+# test_exception_reads.py under a different name.
 
 
 async def test_review_records_complete_evidence(client: AsyncClient, db_session, two_orgs):
@@ -223,7 +223,7 @@ async def test_review_without_credentials_is_403(client: AsyncClient, db_session
 
     assert res.status_code == 403
     await db_session.refresh(mine["exception"])
-    assert mine["exception"].review_status == ExceptionReviewStatus.RECORDED
+    assert mine["exception"].review_status == ExceptionReviewStatus.NEEDS_REVIEW  # FP-280: every exception starts needs_review.
 
 
 async def test_review_with_a_token_for_an_unknown_user_is_401(
@@ -238,7 +238,7 @@ async def test_review_with_a_token_for_an_unknown_user_is_401(
 
     assert res.status_code == 401
     await db_session.refresh(mine["exception"])
-    assert mine["exception"].review_status == ExceptionReviewStatus.RECORDED
+    assert mine["exception"].review_status == ExceptionReviewStatus.NEEDS_REVIEW  # FP-280: every exception starts needs_review.
 
 
 async def test_review_across_organisations_is_404_not_403(
@@ -253,7 +253,7 @@ async def test_review_across_organisations_is_404_not_403(
 
     assert res.status_code == 404
     await db_session.refresh(theirs["exception"])
-    assert theirs["exception"].review_status == ExceptionReviewStatus.RECORDED
+    assert theirs["exception"].review_status == ExceptionReviewStatus.NEEDS_REVIEW  # FP-280: every exception starts needs_review.
 
 
 async def test_review_unknown_id_is_404(client: AsyncClient, two_orgs):

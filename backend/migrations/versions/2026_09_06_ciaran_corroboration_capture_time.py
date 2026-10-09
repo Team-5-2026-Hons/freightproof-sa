@@ -1,6 +1,6 @@
 """add phase_events.driver_captured_at and checkpoints.driver_captured_at
 
-Task 0A: closes the timestamp gap in Pulsit corroboration (FP-68 follow-up).
+Closes the timestamp gap in Pulsit corroboration (FP-68 follow-up).
 Before this, a phase/checkpoint completion queued offline and flushed hours later
 carried no independent record of WHEN the driver's phone actually submitted it —
 only completed_at/created_at, both stamped when the SERVER processed the request.

@@ -11,14 +11,14 @@ What each block proves:
   * a FALSE verdict writes exactly one exception, scoped to the right phase and stop,
     with both position sources reachable from the row
   * a TRUE verdict writes nothing
-  * a NULL verdict writes nothing — the single most important rule in the story: a
+  * a NULL verdict writes nothing — the single most important rule here: a
     driver in a coverage dead zone on the N3 must never have a position disagreement
     recorded against their name because a tracker could not be reached
   * a re-synced handshake from the driver app's offline queue adds no second row
   * a failure while recording the finding still leaves the handshake successful
 
 FIXTURES: the trip, the precincts, the mocked Pulsit store and the completion helpers
-are FP-143's, imported rather than rebuilt, so the two stories cannot drift apart on
+are FP-143's, imported rather than rebuilt, so FP-143 and FP-145 cannot drift apart on
 what a corroborated handshake looks like. Their provenance note applies here too — no
 position in this module was recorded from real Pulsit hardware.
 
@@ -39,6 +39,7 @@ name.
 
 import asyncio
 import uuid
+from typing import Any
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
@@ -58,8 +59,10 @@ from app.db.models.transit import TripException
 from app.db.models.trips import Trip, TripStop
 from app.db.models.vehicles import Vehicle
 from app.orchestration import action_location_service
+from app.orchestration.evidence import action_location as evidence_action_location
 from app.schemas.action_location import ActionLocationAssessment
 from app.orchestration import phase_service
+from app.orchestration.phases import findings as phase_findings
 
 # Imported for their fixture side effects as much as their bodies — `override_get_db`
 # is autouse in its defining module and stays autouse here, which is what points the
@@ -131,6 +134,7 @@ async def test_reliable_far_phone_raises_separation_when_truck_is_inside_precinc
 
     assert response.status_code == 200
     event = await _load_event(db_session, trip, PhaseType.ACTIVATION)
+    assert event.action_location_assessment is not None
     assert event.pulsit_geofence_confirmed is True
     assert event.action_location_assessment["proximity"] == "separated"
     assert event.action_location_assessment["truck_in_precinct"] is True
@@ -158,6 +162,7 @@ async def test_colocated_sources_outside_precinct_raise_only_existing_geofence_f
 
     assert response.status_code == 200
     event = await _load_event(db_session, trip, PhaseType.ACTIVATION)
+    assert event.action_location_assessment is not None
     assert event.pulsit_geofence_confirmed is False
     assert event.action_location_assessment["proximity"] == "within_limit"
     assert len(await _load_mismatches(db_session, trip)) == 1
@@ -199,6 +204,7 @@ async def test_legacy_missing_timing_and_accuracy_persists_unverified_assessment
 
     assert response.status_code == 200
     event = await _load_event(db_session, trip, PhaseType.ACTIVATION)
+    assert event.action_location_assessment is not None
     assert event.action_location_assessment["proximity"] == "unverified"
     assert "missing_time" in event.action_location_assessment["reasons"]
     assert "missing_accuracy" in event.action_location_assessment["reasons"]
@@ -214,7 +220,7 @@ async def test_replayed_completion_keeps_one_separation_finding(
     await _stage(_HORSE_DEVICE, _ORIGIN_LAT, _ORIGIN_LNG)
     token = make_token(sub=str(driver.id), role="driver")
     idempotency_key = f"idem-{uuid.uuid4()}"
-    request = {
+    request: dict[str, Any] = {
         "idempotency_key": idempotency_key,
         "token": token,
         "driver_phone_lat": float(_FAR_AWAY_LAT),
@@ -331,7 +337,7 @@ async def test_concurrent_separation_finding_attempts_recover_the_partial_unique
         await barrier.wait()
         return existing
 
-    monkeypatch.setattr(action_location_service, "_find_existing_separation", synchronized_find)
+    monkeypatch.setattr(evidence_action_location, "_find_existing_separation", synchronized_find)
     assessment = ActionLocationAssessment(
         policy_version="test-policy", evaluated_at=datetime.now(UTC),
         driver_lat=float(_ORIGIN_LAT), driver_lng=float(_ORIGIN_LNG),
@@ -398,7 +404,8 @@ async def test_a_false_verdict_raises_exactly_one_gps_mismatch(
     assert exc.severity == ExceptionSeverity.WARNING
     assert exc.phase_event_id == event.id
     assert exc.trip_stop_id == stop0.id
-    assert exc.review_status == ExceptionReviewStatus.RECORDED
+    # FP-280: every exception starts needs_review.
+    assert exc.review_status == ExceptionReviewStatus.NEEDS_REVIEW
 
 
 async def test_the_exception_carries_both_positions_and_the_separation(
@@ -451,7 +458,7 @@ async def test_the_description_states_a_measurement_and_never_a_verdict(
     """A dispatcher decides what the separation means; this row must not decide for them.
 
     Guarding the copy in a test rather than in review only, because the wording is the
-    part of this story most likely to be "improved" later by someone who has not read
+    part of this test most likely to be "improved" later by someone who has not read
     the reasoning. The platform reports a measured distance between two independent
     sources. It does not accuse anyone.
     """
@@ -492,7 +499,7 @@ async def test_a_handshake_with_no_driver_phone_fix_says_so_rather_than_inventin
     resp = await client.post(
         f"/api/v1/trips/{trip.id}/phases/{phase_event_id}/complete",
         headers=auth_header(token),
-        # Task 0A: within skew of the staged fix's default "now" — this test is about
+        # Within skew of the staged fix's default "now" — this test is about
         # the missing PHONE fix, not about the corroboration timing gate.
         json={
             "phase_type": "loading", "idempotency_key": f"idem-{uuid.uuid4()}",
@@ -511,7 +518,7 @@ async def test_a_handshake_with_no_driver_phone_fix_says_so_rather_than_inventin
     assert exc.gps_lng is None
 
 
-# ── NULL never raises. The rule the whole story turns on. ──────────────────────
+# ── NULL never raises — the central rule these tests enforce. ──────────────────
 
 
 async def test_a_true_verdict_raises_nothing(
@@ -531,7 +538,7 @@ async def test_a_true_verdict_raises_nothing(
 async def test_a_dark_tracker_raises_nothing(
     client: AsyncClient, db_session, corroboration_trip, pulsit_store,
 ):
-    """THE most important test in this story.
+    """THE most important test in this module.
 
     A driver in a coverage dead zone on the N3 must never generate a position
     disagreement against their name because a tracker was unreachable. FP-143 records
@@ -572,7 +579,7 @@ async def test_a_pulsit_outage_raises_nothing(
     trip, driver, _org, _stop = corroboration_trip
 
     with patch(
-        "app.orchestration.corroboration_service.get_pulsit_client",
+        "app.orchestration.evidence.corroboration.get_pulsit_client",
         side_effect=RuntimeError("Pulsit unreachable"),
     ):
         resp = await _complete_activation(client, trip, driver)
@@ -586,13 +593,13 @@ async def test_a_pulsit_outage_raises_nothing(
 async def test_a_stale_capture_time_raises_no_gps_mismatch_even_though_the_fix_is_far_away(
     client: AsyncClient, db_session, corroboration_trip, pulsit_store,
 ):
-    """Task 0A: an untimely fix is 'could not compare', never a manufactured mismatch.
+    """An untimely fix is 'could not compare', never a manufactured mismatch.
 
     The tracker really is far away RIGHT NOW, which — if trusted — would read as a
     clean FALSE verdict and raise (see test_a_false_verdict_raises_exactly_one_gps_
     mismatch, same coordinates). But the driver's own capture instant is hours old, so
     the timing cannot be verified, and the honest outcome is silence, not an
-    accusation — this is the offline-replay scenario task 0A exists to close.
+    accusation — this is the offline-replay scenario this test closes.
     """
     trip, driver, _org, _stop = corroboration_trip
     await _stage(_HORSE_DEVICE, _FAR_AWAY_LAT, _FAR_AWAY_LNG)
@@ -631,7 +638,7 @@ async def test_in_transit_never_raises_even_from_far_away(
 
     FP-143 excludes it deliberately: judging an arrival attestation against the origin
     would stamp a mismatch on every healthy trip in the fleet. This is the seam test —
-    if that exclusion is ever removed, this story starts fabricating accusations at
+    if that exclusion is ever removed, GPS_MISMATCH starts fabricating accusations at
     scale, and this fails first.
     """
     trip, driver, _org, _stop = corroboration_trip
@@ -761,7 +768,7 @@ async def test_a_failure_recording_the_finding_leaves_the_handshake_successful(
     await _stage(_HORSE_DEVICE, _FAR_AWAY_LAT, _FAR_AWAY_LNG)
 
     with patch.object(
-        phase_service, "_phone_tracker_separation_metres",
+        phase_findings, "_phone_tracker_separation_metres",
         side_effect=RuntimeError("separation maths blew up"),
     ):
         resp = await _complete_activation(client, trip, driver)
@@ -775,7 +782,7 @@ async def test_a_failure_recording_the_finding_leaves_the_handshake_successful(
 async def test_a_failure_building_the_assessment_leaves_the_handshake_successful(
     client: AsyncClient, db_session, corroboration_trip, pulsit_store,
 ):
-    """Task 5's assessment is a derived comparison, not the evidence: same fail-open
+    """The corroboration assessment is a derived comparison, not the evidence: same fail-open
     stance as the GPS_MISMATCH finding and the corroboration itself. If assembling it
     blows up, the completion still lands, the column reads NULL ("not assessed"), and
     no separation finding is invented from a snapshot that was never built.
@@ -784,7 +791,7 @@ async def test_a_failure_building_the_assessment_leaves_the_handshake_successful
     await _stage(_HORSE_DEVICE, _ORIGIN_LAT, _ORIGIN_LNG)
 
     with patch.object(
-        action_location_service, "build_phase_assessment",
+        evidence_action_location, "build_phase_assessment",
         side_effect=RuntimeError("assessment maths blew up"),
     ):
         resp = await _complete_activation(client, trip, driver)

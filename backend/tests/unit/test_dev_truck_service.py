@@ -1,4 +1,4 @@
-"""FP-197 (Task 3): the trip-stop-relative scenario maths, tested with no DB at all.
+"""FP-197: the trip-stop-relative scenario maths, tested with no DB at all.
 
 Mirrors test_demo_waypoints.py's own discipline for the legacy mode: every offset is
 verified against the same `haversine_metres` the real geofence verdict uses, so a
@@ -14,7 +14,7 @@ from decimal import Decimal
 import pytest
 
 from app.core.geo import haversine_metres
-from app.orchestration.dev_truck_service import (
+from app.dev.services.truck import (
     FIFTY_KM_METRES,
     SCENARIO_LABELS,
     THREE_KM_METRES,
@@ -24,7 +24,7 @@ from app.orchestration.dev_truck_service import (
     destination_point,
     scenario_distance_metres,
 )
-from app.schemas.dev import (
+from app.dev.schemas import (
     SCENARIO_AT_STOP,
     SCENARIO_FIFTY_KM,
     SCENARIO_INSIDE_TOLERANCE,
@@ -201,6 +201,7 @@ def test_build_scenario_target_lands_the_intended_distance_from_the_precinct(sce
     )
 
     assert target.distance_metres is not None
+    assert target.latitude is not None and target.longitude is not None
     measured = haversine_metres(_ORIGIN_LAT, _ORIGIN_LNG, target.latitude, target.longitude)
     assert measured == pytest.approx(target.distance_metres, abs=_DISTANCE_ASSERTION_TOLERANCE_METRES)
 

@@ -97,7 +97,7 @@ async def test_driver_raises_panic_exception(client: AsyncClient, seed_trip):
     body = resp.json()
     assert body["severity"] == "critical"
     assert body["source"] == "driver"
-    # CRITICAL findings start NEEDS_REVIEW (Task 2, FP-146 follow-on) — a panic
+    # CRITICAL findings start NEEDS_REVIEW (FP-146 follow-on) — a panic
     # button needs a dispatcher's decision now, not just visibility on the list.
     assert body["review_status"] == "needs_review"
 
@@ -174,6 +174,7 @@ async def test_driver_report_survives_a_bounded_tracker_timeout(
 ):
     """The adapter timeout is comparison-only; no wall-clock sleep is required."""
     from app.orchestration import exception_service
+    from app.orchestration.exceptions import creation as exception_creation
 
     class StalledTracker:
         async def get_position(self, _device_id: str):
@@ -184,8 +185,10 @@ async def test_driver_report_survives_a_bounded_tracker_timeout(
         _awaitable.close()
         raise TimeoutError
 
-    monkeypatch.setattr(exception_service, "get_pulsit_client", lambda **_kwargs: StalledTracker())
-    monkeypatch.setattr(exception_service.asyncio, "wait_for", timeout_immediately)
+    monkeypatch.setattr(exception_creation, "get_pulsit_client", lambda **_kwargs: StalledTracker())
+    # asyncio is one module object shared by the whole process, so this is the same patch the
+    # old `exception_service.asyncio` spelling made, minus a hop through the facade.
+    monkeypatch.setattr(asyncio, "wait_for", timeout_immediately)
     trip, driver = seed_trip
     token = make_token(sub=str(driver.id), role="driver")
 
@@ -214,12 +217,12 @@ async def test_driver_report_survives_a_failure_building_its_assessment(
     """The comparison is enrichment, never a gate: if assembling it fails for any
     reason — not just a slow tracker — the panic row still commits with the
     assessment column NULL, rather than a 500 that rolls the emergency report back."""
-    from app.orchestration import action_location_service
+    from app.orchestration.evidence import action_location
 
     def explode(**_kwargs):
         raise RuntimeError("assessment maths blew up")
 
-    monkeypatch.setattr(action_location_service, "build_capture_assessment", explode)
+    monkeypatch.setattr(action_location, "build_capture_assessment", explode)
     trip, driver = seed_trip
     token = make_token(sub=str(driver.id), role="driver")
 
@@ -484,7 +487,7 @@ async def test_exception_with_a_foreign_phase_event_id_still_records(
     assert row.phase_event_id == phases["in_transit"].id
 
 
-# ── Task 0B: evidence ownership ─────────────────────────────────────────────────
+# ── Evidence ownership ───────────────────────────────────────────────────────────
 
 
 async def _seed_another_trip(db_session):
@@ -589,7 +592,7 @@ async def test_supporting_artifact_owned_by_this_trip_is_accepted(
     assert resp.json()["supporting_artifact_id"] == str(artifact_id)
 
 
-# ── Task 0B: client_report_id idempotency ───────────────────────────────────────
+# ── client_report_id idempotency ────────────────────────────────────────────────
 
 
 async def test_replaying_the_same_client_report_id_returns_the_original_exception(
@@ -708,7 +711,7 @@ async def test_raise_exception_without_a_token_returns_403(client: AsyncClient, 
     assert resp.status_code == 403
 
 
-# ── Trailer analytics Stage 1: which vehicle broke down ─────────────────────────
+# ── Trailer analytics: which vehicle broke down ─────────────────────────────────
 
 
 async def _attach_trailers(db_session, trip: Trip, count: int) -> list[Vehicle]:

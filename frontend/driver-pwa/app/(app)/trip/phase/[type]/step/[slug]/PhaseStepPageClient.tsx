@@ -36,7 +36,7 @@ import type { Trip } from '@shared/lib/types/trip'
 import type { PhaseDescriptor, PhaseType } from '@shared/lib/types/phase'
 import type { Linehaul as LinehaulDocument } from '@shared/lib/types/manifest'
 import type {
-  ActivationEvidence, LoadingEvidence, DepartureEvidence, UnloadingEvidence,
+  ActivationEvidence, LoadingEvidence, DepartureEvidence, ArrivalEvidence, UnloadingEvidence,
   ConfirmationEvidence, PhaseEvidence,
 } from '@/lib/types/evidence-draft'
 import type { ActionLocationAssessment } from '@shared/lib/types/action-location'
@@ -50,12 +50,15 @@ const LOADING_INITIAL: LoadingEvidence = {
 const DEPARTURE_INITIAL: DepartureEvidence = {
   sealNumber: null, sealPhotoDataUrl: null, sealPhotoArtifactId: null, capturedAt: null,
 }
+// The seal is no longer captured here — see ArrivalEvidence/ARRIVAL_INITIAL below.
 const UNLOADING_INITIAL: UnloadingEvidence = {
-  waybillHandedOver: null, sealNumberAtDestination: null,
-  sealIntactPhotoDataUrl: null, sealIntactPhotoArtifactId: null,
-  driverVisualCount: null, capturedAt: null,
+  waybillHandedOver: null, driverVisualCount: null, capturedAt: null,
 }
-// driverVisualCount is seeded per-mount from the carry-forward hook (task 4) — see
+const ARRIVAL_INITIAL: ArrivalEvidence = {
+  sealCondition: null, sealNumberAtArrival: null,
+  sealPhotoDataUrl: null, sealPhotoArtifactId: null, capturedAt: null,
+}
+// driverVisualCount is seeded per-mount from the carry-forward hook — see
 // ConfirmationStep below — never hard-coded here.
 const CONFIRMATION_INITIAL_BASE: Omit<ConfirmationEvidence, 'driverVisualCount'> = {
   podPhotoDataUrl: null, podPhotoArtifactId: null,
@@ -273,6 +276,7 @@ function PhaseStepRouter(props: StepControllerProps) {
     case 'activation': return <ActivationStep {...props} />
     case 'loading': return <LoadingStep {...props} />
     case 'departure': return <DepartureStep {...props} />
+    case 'arrival': return <ArrivalStep {...props} />
     case 'unloading': return <UnloadingStep {...props} />
     case 'confirmation': return <ConfirmationStep {...props} />
     case 'trip_creation':
@@ -362,9 +366,8 @@ function usePhaseStepController<T extends PhaseEvidence>(
   // which naturally gets one, from a fresh mount after a rolled-back failure.
   const idempotencyKeyRef = useRef<string | null>(null)
 
-  // The anchored set is ANCHORED_PHASES (phase-meta.ts): trip_creation, departure,
-  // confirmation — not loading/unloading, which is what the OLD (deleted)
-  // HandshakeStepPageClient.anchoring.test.tsx hard-coded and is now wrong.
+  // The anchored set is ANCHORED_PHASES (phase-meta.ts): every phase since 2026-09-23,
+  // so every driver submission shows the anchoring notice.
   function recordedNotice(addressedPhase: PhaseDescriptor | null): RecordedNotice {
     if (IS_DEMO_MODE || !isAnchored(phase)) return 'plain'
     return addressedPhase?.blockchain_receipt_id ? 'anchored' : 'anchoring'
@@ -496,7 +499,7 @@ function usePhaseStepController<T extends PhaseEvidence>(
     onHandOff()
     if (idempotencyKeyRef.current === null) idempotencyKeyRef.current = crypto.randomUUID()
     const evidence = draftRef.current
-    // Task 0A: stamped HERE, at the same instant the driver confirms — mirrors
+    // Stamped HERE, at the same instant the driver confirms — mirrors
     // idempotencyKeyRef above (generated once per attempt, reused across any retry of
     // that attempt) so a replay from the offline queue reports the ORIGINAL swipe
     // instant, never the retry's own clock.
@@ -664,10 +667,24 @@ function DepartureStep({ trip, phase, slug, stepIndex, isFinalStep, onHandOff }:
   // No carry-forward. The seal committed here used to be persisted per-trip
   // (useSealReference) so `unloading` could display it as a reference to type against;
   // that display is gone (2026-08-05) because showing a driver the expected number is
-  // not verification. advance_unloading compares against this leg's own departure event
+  // not verification. advance_arrival compares against this leg's own departure event
   // server-side, so nothing on the device needs to remember the seal.
   const { draft, onUpdate, onComplete, locationCheckModal } = usePhaseStepController<DepartureEvidence>(
     trip, phase, slug, isFinalStep, DEPARTURE_INITIAL, onHandOff, () => {},
+  )
+  const StepComponent = stepComponentFor(phase.phase_type, slug)
+  if (!StepComponent) return <UnknownStep phaseType={phase.phase_type} slug={slug} />
+  return <>{renderStep(StepComponent, { tripId, phase, stepIndex, draft, onUpdate, onComplete })}{locationCheckModal}</>
+}
+
+function ArrivalStep({ trip, phase, slug, stepIndex, isFinalStep, onHandOff }: StepControllerProps) {
+  const tripId = String(trip.id)
+  // No carry-forward, same reasoning as DepartureStep above: the seal comparison is
+  // server-side (advance_arrival), so nothing on the device needs to remember either
+  // seal. sealNumberAtArrival is cleared to a fresh draft per phase_event_id by
+  // usePhaseDraft, which is exactly right for a repeated arrival on a cross-dock plan.
+  const { draft, onUpdate, onComplete, locationCheckModal } = usePhaseStepController<ArrivalEvidence>(
+    trip, phase, slug, isFinalStep, ARRIVAL_INITIAL, onHandOff, () => {},
   )
   const StepComponent = stepComponentFor(phase.phase_type, slug)
   if (!StepComponent) return <UnknownStep phaseType={phase.phase_type} slug={slug} />

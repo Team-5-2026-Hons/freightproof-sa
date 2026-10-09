@@ -29,7 +29,7 @@ function twoStops(trip: TripId, originPrecinct: string, destPrecinct: string, at
 }
 
 // A trip's stops in the shape the plan generator needs. Every mock trip here is a
-// two-stop run (see twoStops above), so every plan is the 7-row single-leg shape —
+// two-stop run (see twoStops above), so every plan is the 8-row single-leg shape —
 // the degenerate case of the multi-stop plan, not a special one.
 function planStops(stops: TripStop[]): PlanStopInput[] {
   return stops.map((s, i) => ({
@@ -42,7 +42,7 @@ function planStops(stops: TripStop[]): PlanStopInput[] {
 
 // Mark the plan as walked through `throughSequence` inclusive, and attach the
 // evidence the dispatcher's panels read. Mirrors what the backend writes: the seal
-// at DEPARTURE (parent D7/§2.6, never at loading), the counts at LOADING.
+// at DEPARTURE (never at loading), the counts at LOADING.
 //
 // `count` and `scannedCount` are two different real-world figures now that
 // advance_loading was rewritten: `count` is the driver's own visual tally,
@@ -91,7 +91,7 @@ const STOPS_0035 = twoStops(TRIP_0035_ID, PRECINCT_FEDEX_JHB_ID, PRECINCT_FEDEX_
 
 const PLAN_0035 = walkPlan(
   makePhasePlan(TRIP_0035_ID, planStops(STOPS_0035), '2026-05-03T06:00:00Z', 'aa003500-0000-4000-8001'),
-  6,
+  7,
   '2026-05-03T19:45:00Z',
   { seal: 'FP-1234', count: 18 },
 )
@@ -108,7 +108,7 @@ const EXCEPTIONS_0035: TripException[] = [
     review_status: 'reviewed', review_outcome: 'legacy_review', reviewed_by_user_id: 'user-dispatcher-01',
     reviewed_at: '2026-05-04T08:30:00Z', review_note: 'Confirmed pre-existing. Client notified. No further action.',
     contact_method: null, vehicle_id: null,
-    merkle_batch_id: null, created_at: '2026-05-03T19:00:00Z', updated_at: '2026-05-04T08:30:00Z',
+    merkle_batch_id: null, claimed_by_user_id: null, claimed_at: null, claimed_by_name: null, reviewed_by_name: null, created_at: '2026-05-03T19:00:00Z', updated_at: '2026-05-04T08:30:00Z',
   },
   {
     id: excId('ec000002-0035-4002-8001-000000000002'),
@@ -121,7 +121,7 @@ const EXCEPTIONS_0035: TripException[] = [
     review_status: 'reviewed', review_outcome: 'legacy_review', reviewed_by_user_id: 'user-dispatcher-01',
     reviewed_at: '2026-05-04T09:00:00Z', review_note: 'FedEx to re-schedule delivery. Parcels returned to DBN hub.',
     contact_method: null, vehicle_id: null,
-    merkle_batch_id: null, created_at: '2026-05-03T18:45:00Z', updated_at: '2026-05-04T09:00:00Z',
+    merkle_batch_id: null, claimed_by_user_id: null, claimed_at: null, claimed_by_name: null, reviewed_by_name: null, created_at: '2026-05-03T18:45:00Z', updated_at: '2026-05-04T09:00:00Z',
   },
 ]
 
@@ -183,7 +183,7 @@ const EXCEPTIONS_0039: TripException[] = [
     phase_event_id: null, checkpoint_id: null, supporting_artifact_id: null,
     review_status: 'recorded', review_outcome: null, reviewed_by_user_id: null, reviewed_at: null,
     review_note: null, contact_method: null, vehicle_id: null,
-    merkle_batch_id: null, created_at: '2026-05-09T07:04:00Z', updated_at: '2026-05-09T07:04:00Z',
+    merkle_batch_id: null, claimed_by_user_id: null, claimed_at: null, claimed_by_name: null, reviewed_by_name: null, created_at: '2026-05-09T07:04:00Z', updated_at: '2026-05-09T07:04:00Z',
   },
 ]
 
@@ -210,7 +210,7 @@ const EXCEPTIONS_0040: TripException[] = [
     review_status: 'reviewed', review_outcome: 'legacy_review', reviewed_by_user_id: 'user-dispatcher-01',
     reviewed_at: '2026-05-09T13:10:00Z', review_note: 'Driver confirmed scheduled break. No issue.',
     contact_method: null, vehicle_id: null,
-    merkle_batch_id: null, created_at: '2026-05-09T12:52:00Z', updated_at: '2026-05-09T13:10:00Z',
+    merkle_batch_id: null, claimed_by_user_id: null, claimed_at: null, claimed_by_name: null, reviewed_by_name: null, created_at: '2026-05-09T12:52:00Z', updated_at: '2026-05-09T13:10:00Z',
   },
 ]
 
@@ -236,7 +236,7 @@ const EXCEPTIONS_0041: TripException[] = [
     phase_event_id: null, checkpoint_id: null, supporting_artifact_id: null,
     review_status: 'recorded', review_outcome: null, reviewed_by_user_id: null, reviewed_at: null,
     review_note: null, contact_method: null, vehicle_id: null,
-    merkle_batch_id: null, created_at: '2026-05-09T13:22:00Z', updated_at: '2026-05-09T13:22:00Z',
+    merkle_batch_id: null, claimed_by_user_id: null, claimed_at: null, claimed_by_name: null, reviewed_by_name: null, created_at: '2026-05-09T13:22:00Z', updated_at: '2026-05-09T13:22:00Z',
   },
   {
     id: excId('ec000006-0041-4006-8001-000000000006'),
@@ -248,7 +248,7 @@ const EXCEPTIONS_0041: TripException[] = [
     phase_event_id: null, checkpoint_id: null, supporting_artifact_id: null,
     review_status: 'recorded', review_outcome: null, reviewed_by_user_id: null, reviewed_at: null,
     review_note: null, contact_method: null, vehicle_id: null,
-    merkle_batch_id: null, created_at: '2026-05-09T13:35:00Z', updated_at: '2026-05-09T13:35:00Z',
+    merkle_batch_id: null, claimed_by_user_id: null, claimed_at: null, claimed_by_name: null, reviewed_by_name: null, created_at: '2026-05-09T13:35:00Z', updated_at: '2026-05-09T13:35:00Z',
   },
 ]
 
@@ -274,7 +274,7 @@ const EXCEPTIONS_0042: TripException[] = [
     phase_event_id: null, checkpoint_id: null, supporting_artifact_id: 'art-0042-broken-seal',
     review_status: 'needs_review', review_outcome: null, reviewed_by_user_id: null, reviewed_at: null,
     review_note: null, contact_method: null, vehicle_id: null,
-    merkle_batch_id: null, created_at: '2026-05-09T07:41:00Z', updated_at: '2026-05-09T07:41:00Z',
+    merkle_batch_id: null, claimed_by_user_id: null, claimed_at: null, claimed_by_name: null, reviewed_by_name: null, created_at: '2026-05-09T07:41:00Z', updated_at: '2026-05-09T07:41:00Z',
   },
   {
     id: excId('ec000008-0042-4008-8001-000000000008'),
@@ -286,7 +286,7 @@ const EXCEPTIONS_0042: TripException[] = [
     phase_event_id: null, checkpoint_id: null, supporting_artifact_id: null,
     review_status: 'needs_review', review_outcome: null, reviewed_by_user_id: null, reviewed_at: null,
     review_note: null, contact_method: null, vehicle_id: null,
-    merkle_batch_id: null, created_at: '2026-05-08T17:30:00Z', updated_at: '2026-05-08T17:30:00Z',
+    merkle_batch_id: null, claimed_by_user_id: null, claimed_at: null, claimed_by_name: null, reviewed_by_name: null, created_at: '2026-05-08T17:30:00Z', updated_at: '2026-05-08T17:30:00Z',
   },
 ]
 
@@ -307,7 +307,7 @@ export const mockTrips: Trip[] = [
   {
     id: TRIP_0035_ID,
     trip_reference: 'TRP-2026-0035',
-    order_number: 'FX-ORD-2026-0035',
+    pp_manifest: { issuer_account: 'FDX001', origin_hub: 'JNB', number: 3501, display: 'FedEx South Africa · JNB 3501' },
     status: 'closed',
     trip_type: 'loaded',
     journey_lock_hash: 'c2956f8a3d1e4b09f72a83c1d4e5b96f2a3c8d0e1f4a7b2c9d6e3f0a1b4c7d2',
@@ -338,7 +338,7 @@ export const mockTrips: Trip[] = [
   {
     id: TRIP_0038_ID,
     trip_reference: 'TRP-2026-0038',
-    order_number: 'CGY-ORD-2026-0038',
+    pp_manifest: { issuer_account: 'CGY001', origin_hub: 'JNB', number: 3801, display: 'The Courier Guy · JNB 3801' },
     status: 'created',
     trip_type: 'loaded',
     journey_lock_hash: null,
@@ -369,7 +369,7 @@ export const mockTrips: Trip[] = [
   {
     id: TRIP_0039_ID,
     trip_reference: 'TRP-2026-0039',
-    order_number: 'FX-ORD-2026-0039',
+    pp_manifest: { issuer_account: 'FDX001', origin_hub: 'DUR', number: 3901, display: 'FedEx South Africa · DUR 3901' },
     status: 'active',
     trip_type: 'loaded',
     journey_lock_hash: 'f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6',
@@ -409,7 +409,7 @@ export const mockTrips: Trip[] = [
   {
     id: TRIP_0040_ID,
     trip_reference: 'TRP-2026-0040',
-    order_number: 'FX-ORD-2026-0040',
+    pp_manifest: { issuer_account: 'FDX001', origin_hub: 'JNB', number: 4001, display: 'FedEx South Africa · JNB 4001' },
     status: 'active',
     trip_type: 'loaded',
     journey_lock_hash: 'b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8',
@@ -457,7 +457,7 @@ export const mockTrips: Trip[] = [
   {
     id: TRIP_0041_ID,
     trip_reference: 'TRP-2026-0041',
-    order_number: 'FX-ORD-2026-0041',
+    pp_manifest: { issuer_account: 'FDX001', origin_hub: 'JNB', number: 4101, display: 'FedEx South Africa · JNB 4101' },
     status: 'active',
     trip_type: 'loaded',
     journey_lock_hash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
@@ -505,7 +505,7 @@ export const mockTrips: Trip[] = [
   {
     id: TRIP_0042_ID,
     trip_reference: 'TRP-2026-0042',
-    order_number: 'FX-ORD-2026-0042',
+    pp_manifest: { issuer_account: 'FDX001', origin_hub: 'JNB', number: 4201, display: 'FedEx South Africa · JNB 4201' },
     status: 'active',
     trip_type: 'loaded',
     journey_lock_hash: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
@@ -553,7 +553,7 @@ export const mockTrips: Trip[] = [
   {
     id: TRIP_0043_ID,
     trip_reference: 'TRP-2026-0043',
-    order_number: 'FX-ORD-2026-0043',
+    pp_manifest: { issuer_account: 'FDX001', origin_hub: 'JNB', number: 4301, display: 'FedEx South Africa · JNB 4301' },
     status: 'created',
     trip_type: 'loaded',
     journey_lock_hash: null,

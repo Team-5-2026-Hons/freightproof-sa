@@ -31,4 +31,17 @@ describe('DriverModal', () => {
 
     expect(onClose).toHaveBeenCalledTimes(1)
   })
+
+  it('shows the licence expiry as the date it is, without inventing a time of day', () => {
+    render(<DriverModal driver={{ ...driver, license_expiry: '2027-05-21' }} open onClose={vi.fn()} returnTo="/trips/x" />)
+
+    expect(screen.getByText('21 May 2027')).toBeInTheDocument()
+    expect(screen.queryByText(/21 May 2027,/)).toBeNull()
+  })
+
+  it('says so when no licence expiry is recorded', () => {
+    render(<DriverModal driver={{ ...driver, license_expiry: null }} open onClose={vi.fn()} returnTo="/trips/x" />)
+
+    expect(screen.getByText('Not recorded')).toBeInTheDocument()
+  })
 })

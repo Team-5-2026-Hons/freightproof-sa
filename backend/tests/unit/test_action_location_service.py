@@ -1,5 +1,5 @@
 """Focused behaviour tests for separation-finding and driver-location-mismatch
-persistence (action_location_service.record_separation_finding /
+persistence (evidence.action_location.record_separation_finding /
 record_driver_location_finding)."""
 
 import uuid
@@ -76,8 +76,8 @@ async def test_unexpected_database_failure_propagates_from_separation_persistenc
 
     with pytest.raises(OperationalError, match="down"):
         await record_separation_finding(
-            db,
-            trip=trip,
+            db,  # type: ignore[arg-type]  # deliberate SimpleNamespace fake: only .execute is exercised
+            trip=trip,  # type: ignore[arg-type]  # deliberate SimpleNamespace fake: only two attributes are read
             phase_event_id=uuid.uuid4(),
             checkpoint_id=None,
             assessment=_separated_assessment(),

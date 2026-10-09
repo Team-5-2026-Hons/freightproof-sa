@@ -71,7 +71,7 @@ function mean(values: readonly number[]): number {
 export function LaneScatter<Row>({
   rows, rowKey, x, y, renderTooltip, xLabel, yLabel, color, pointLabel, cornerLabel, height: normalHeight = CHART_HEIGHT,
 }: LaneScatterProps<Row>) {
-  // Taller inside the zoom modal (D27), which also spreads crowded dot names apart.
+  // Taller inside the zoom modal, which also spreads crowded dot names apart.
   const height = useChartHeight(normalHeight)
   const byKey = new Map(rows.map((row) => [rowKey(row), row]))
   const points = rows.map((row) => ({ row, x: x(row), y: y(row) }))

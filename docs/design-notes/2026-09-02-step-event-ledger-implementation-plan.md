@@ -13,7 +13,7 @@
 > **Siblings:** [2026-09-02-step-event-payload-audit.md](2026-09-02-step-event-payload-audit.md) ·
 > [2026-09-02-seal-chain-rework.md](2026-09-02-seal-chain-rework.md) ·
 > [2026-09-05-live-phase-timeline-handoff.md](2026-09-05-live-phase-timeline-handoff.md) ·
-> [2026-09-05-step-event-ledger-plan-corrections.md](2026-09-05-step-event-ledger-plan-corrections.md) ·
+> [2026-09-05-step-event-ledger-plan-corrections.md](../archive/design-notes/2026-09-05-step-event-ledger-plan-corrections.md) ·
 > [../iteration3_plan.md](../iteration3_plan.md) §3, §5
 > **Verified against `Ciaran` on 2026-09-06.** Line numbers move; match on content.
 

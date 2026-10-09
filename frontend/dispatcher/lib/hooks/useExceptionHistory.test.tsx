@@ -31,8 +31,17 @@ function makeItem(overrides: Partial<TripExceptionListItem> = {}): TripException
     trip_id: '22222222-2222-2222-2222-222222222222',
     trip_reference: 'FP-2026-0001',
     trip_status: 'closed',
+    origin_name: 'Johannesburg DC',
+    destination_name: 'Durban Depot',
+    driver_name: 'Thabo Mokoena',
+    horse_registration: 'HRS 001 GP',
+    trailer_registrations: ['TRL 101 GP'],
     phase_label: 'in_transit',
     stop_label: 1,
+    claimed_by_user_id: null,
+    claimed_at: null,
+    claimed_by_name: null,
+    reviewed_by_name: null,
     ...overrides,
   }
 }
@@ -284,5 +293,30 @@ describe('useExceptionHistory', () => {
     await waitFor(() => expect(mockedGet).toHaveBeenCalled())
 
     expect(mockedUseLiveResource).not.toHaveBeenCalled()
+  })
+})
+
+describe('URL navigation adapter', () => {
+  it('restores page two on mount and reports page changes without losing the cursor stack', async () => {
+    mockedGet.mockResolvedValue(makePage())
+    const onChange=vi.fn()
+    const { result }=renderHook(()=>useExceptionHistory({}, {cursorStack:[undefined,'page-two'],pageIndex:1,onChange}))
+    await waitFor(()=>expect(result.current.isLoading).toBe(false))
+    expect(mockedGet.mock.calls.at(-1)?.[0]).toContain('cursor=page-two')
+    expect(result.current.page).toBe(2)
+    act(()=>result.current.goToPreviousPage())
+    expect(onChange).toHaveBeenCalledWith({cursorStack:[undefined,'page-two'],pageIndex:0})
+  })
+  it('never requests the old controlled cursor when filters change', async () => {
+    mockedGet.mockResolvedValue(makePage())
+    const onChange=vi.fn()
+    const navigation={cursorStack:[undefined,'old-cursor'],pageIndex:1,onChange}
+    const { result,rerender }=renderHook(({q})=>useExceptionHistory({q},navigation), {initialProps:{q:'old'}})
+    await waitFor(()=>expect(result.current.isLoading).toBe(false))
+    mockedGet.mockClear()
+    rerender({q:'new'})
+    await waitFor(()=>expect(mockedGet).toHaveBeenCalled())
+    expect(mockedGet.mock.calls.every(call=>!String(call[0]).includes('old-cursor'))).toBe(true)
+    expect(onChange).toHaveBeenCalledWith({cursorStack:[undefined],pageIndex:0})
   })
 })

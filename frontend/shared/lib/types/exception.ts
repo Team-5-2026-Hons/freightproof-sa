@@ -12,7 +12,7 @@ import type { ActionLocationAssessment } from './action-location'
 
 export type ExceptionId = string & { readonly __brand: 'ExceptionId' }
 
-// All 20 backend ExceptionType values — see DRIVER_EXCEPTION_TYPES and
+// All 25 backend ExceptionType values — see DRIVER_EXCEPTION_TYPES and
 // SYSTEM_EXCEPTION_TYPES in lib/constants/status-meta.ts for the UI split.
 export type ExceptionType =
   // System-detected (raised automatically by backend validation logic)
@@ -20,6 +20,10 @@ export type ExceptionType =
   // Seals differ (theft indicator, CRITICAL) vs no departure seal recorded at all
   // (WARNING) — kept apart so filtering for tampering never surfaces overridden departures.
   | 'seal_unverified'
+  // A third seal finding, distinct from both: the seal at arrival is physically damaged
+  // or missing. seal_mismatch is "the number differs" (a swap); seal_compromised is
+  // "the seal is broken" (an opening). Both can fire on the same arrival row.
+  | 'seal_compromised'
   | 'parcel_count_mismatch'
   | 'gps_mismatch'
   | 'driver_vehicle_separation'
@@ -27,6 +31,15 @@ export type ExceptionType =
   // distinct from gps_mismatch (the vehicle TRACKER disagrees with the precinct) and
   // driver_vehicle_separation (the phone disagrees with the TRACKER, not the precinct).
   | 'driver_location_mismatch'
+  // A trailer measured outside the stop's precinct and far from its own horse, while the
+  // horse was inside: a decoupled trailer (CRITICAL). Distinct from gps_mismatch (horse).
+  | 'trailer_location_mismatch'
+  // On the road: a trailer's tracker far from its horse's (no fence involved).
+  | 'trailer_separated_in_transit'
+  // The horse left its stop's precinct before departure was recorded.
+  | 'moved_before_departure'
+  // A known tracker returned no position — a gap, not a verdict.
+  | 'tracker_silent'
   | 'route_deviation'
   | 'vehicle_substitution'
   | 'driver_substitution'
@@ -68,10 +81,12 @@ export type ExceptionReviewOutcome =
   | 'data_discrepancy'
   | 'referred_for_follow_up'
   | 'legacy_review'
+  // A dispatcher's own note, saved already reviewed by its author; never enters the inbox.
+  | 'dispatcher_authored'
 
 // The choices a dispatcher may actually submit — ExceptionReviewOutcome without the
-// migration-only 'legacy_review' marker. Mirrors backend DispatcherReviewOutcome.
-export type DispatcherReviewOutcome = Exclude<ExceptionReviewOutcome, 'legacy_review'>
+// migration-only 'legacy_review' and system-set 'dispatcher_authored' markers. Mirrors backend DispatcherReviewOutcome.
+export type DispatcherReviewOutcome = Exclude<ExceptionReviewOutcome, 'legacy_review' | 'dispatcher_authored'>
 
 // How a dispatcher reached someone while reviewing. A null contact method records that
 // the evidence settled the review without contact, rather than inventing contact history.
@@ -109,6 +124,12 @@ export interface TripException {
   // (evidence alone settled it) — never backfilled with an invented value.
   contact_method: ExceptionContactMethod | null
   merkle_batch_id: string | null
+  // Soft claim (FP-280): who is working this exception. Names are resolved server-side and
+  // only ever appear on dispatcher endpoints, never driver-facing responses.
+  claimed_by_user_id: string | null
+  claimed_at: string | null
+  claimed_by_name: string | null
+  reviewed_by_name: string | null
   action_location_assessment?: ActionLocationAssessment | null
   created_at: string
   updated_at: string
@@ -127,9 +148,21 @@ export interface TripExceptionListItem {
   trip_id: string
   trip_reference: string
   trip_status: TripStatus
+  // Trip route and crew, so a row says which lane/truck/driver without opening the trip.
+  origin_name: string | null
+  destination_name: string | null
+  driver_name: string | null
+  horse_registration: string | null
+  trailer_registrations: string[]
   phase_label: string | null
   stop_label: number | null
   action_location_assessment?: ActionLocationAssessment | null
+  // Soft claim (FP-280): who is working this exception. Names are resolved server-side and
+  // only ever appear on dispatcher endpoints, never driver-facing responses.
+  claimed_by_user_id: string | null
+  claimed_at: string | null
+  claimed_by_name: string | null
+  reviewed_by_name: string | null
 }
 
 // GET /api/v1/exceptions/{id} — the list item plus the fields only a single-record

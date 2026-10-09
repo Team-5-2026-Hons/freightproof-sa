@@ -30,9 +30,9 @@ import {
 } from '@/lib/format/period'
 import { useFleetTiles } from '@/lib/hooks/useFleetAnalytics'
 
-// Fleet-wide patterns and trends (fleet analytics spec). Per-entity numbers live on each
+// Fleet-wide patterns and trends. Per-entity numbers live on each
 // vehicle, driver and precinct detail page, so this page answers "how is the whole
-// operation doing": headline tiles, then one tab per section (layout b, spec D2).
+// operation doing": headline tiles, then one tab per section.
 const TABS = [
   { id: 'activity', label: 'Activity' },
   { id: 'on-time', label: 'On time' },
@@ -47,7 +47,7 @@ type TabId = (typeof TABS)[number]['id']
 const DEFAULT_TAB: TabId = 'activity'
 const PANEL_ID = 'fleet-analytics-panel'
 
-// Routes & sites shows distributions over the whole period, never a time axis (spec D4).
+// Routes & sites shows distributions over the whole period, never a time axis.
 const TABS_WITHOUT_GRAIN: readonly TabId[] = ['routes']
 
 const DEFAULT_CONTROLS: TabControls = { grain: 'week', period: { preset: 'last_12_weeks' } }
@@ -61,14 +61,14 @@ const INITIAL_CONTROLS: Record<TabId, TabControls> = {
   routes: DEFAULT_CONTROLS,
 }
 
-// Busy patterns need lots of history to mean anything, so they default to All time (spec D5).
+// Busy patterns need lots of history to mean anything, so they default to All time.
 const DEFAULT_PATTERN_PERIOD: PeriodSelection = { preset: 'all_time' }
 
 function isTabId(id: string | null): id is TabId {
   return TABS.some((tab) => tab.id === id)
 }
 
-/** Every tab's controls, with the tab the dispatcher came back to set as they left it (D25).
+/** Every tab's controls, with the tab the dispatcher came back to set as they left it.
  *  A period the tab can't offer (a View by preset on Routes & sites, or one that doesn't suit
  *  the View by) falls back to what the tab would have chosen itself. */
 function initialControls(tab: TabId, search: URLSearchParams): Record<TabId, TabControls> {
@@ -143,7 +143,7 @@ function FleetAnalytics() {
               allTimeStart={allTimeStart}
             />
             <p className="text-[12px] text-on-surf-v">{FLEET_COPY.scopeNote}</p>
-            {/* Only the open tab is mounted, so only its requests run (spec D2). */}
+            {/* Only the open tab is mounted, so only its requests run. */}
             {active === 'activity' && (
               <ActivityTab
                 query={query}

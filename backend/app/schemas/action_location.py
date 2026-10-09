@@ -1,8 +1,7 @@
-"""Pure, versioned wire contract for one driver-vs-truck proximity assessment
-(Task 4 of the trip-location-timeline story).
+"""Pure, versioned wire contract for one driver-vs-truck proximity assessment.
 
 `ActionLocationAssessment` is the ONE shape shared by preview (computed on demand
-for a dispatcher), persistence (Task 6 writes it down), and display (both
+for a dispatcher), persistence (written to storage), and display (both
 frontends render it) — defined once here so those three call sites can never
 quietly drift into three different ideas of what "an assessment" contains.
 
@@ -12,7 +11,7 @@ finite in-range coordinates, non-negative distances/accuracy). It says nothing
 about how the numbers inside it were computed — that is `orchestration.
 proximity_service.evaluate_proximity` for the driver/truck separation half, and
 `orchestration.geofence_service.evaluate_geofence` for the precinct-membership
-half. Task 5 assembles both into an instance of this model; this file never
+half. Both are assembled into an instance of this model; this file never
 calls either.
 
 No client-supplied assessment is authoritative: every field here is either
@@ -38,7 +37,7 @@ from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 # Bumped whenever a field is added, removed, renamed, or a threshold's meaning
 # changes in a way that would make an older stored assessment misleading if read
-# under the new rules. Task 6 persists this string verbatim; a reader comparing
+# under the new rules. This string is persisted verbatim; a reader comparing
 # `policy_version` across two assessments can tell whether they were evaluated
 # under the same policy at all before comparing their numbers.
 ACTION_LOCATION_POLICY_VERSION = "2026-09-15.1"
@@ -48,11 +47,11 @@ ACTION_LOCATION_POLICY_VERSION = "2026-09-15.1"
 # either at-or-under, or over, the policy threshold. 'unverified' means the
 # quality gates did not all pass (see ProximityReason) — it may still carry a
 # real `separation_metres` for display, but that number must never be read as a
-# pass/fail verdict on its own. See orchestration/proximity_service.py.
+# pass/fail verdict on its own. See orchestration/evidence/proximity.py.
 ProximityVerdict = Literal["within_limit", "separated", "unverified"]
 
 # Why a proximity check could not produce a positive verdict. Deliberately
-# distinct from GeofenceVerdictReason (geofence_service.py) — these two modules
+# distinct from GeofenceVerdictReason (evidence/geofence.py) — these two modules
 # answer independent questions (truck-vs-precinct vs. driver-vs-truck) and must
 # never share a reason vocabulary that implies one explains the other.
 ProximityReason = Literal[
@@ -121,7 +120,7 @@ class DriverLocationCapture(BaseModel):
 
 class ActionLocationAssessment(BaseModel):
     """One evaluated snapshot: a driver/truck proximity verdict plus the
-    precinct-membership facts evaluated alongside it (assembled by Task 5).
+    precinct-membership facts evaluated alongside it.
 
     `frozen=True`: an assessment is a record of what was observed at
     `evaluated_at` — mutating it after construction would let a caller silently
@@ -166,7 +165,7 @@ class ActionLocationAssessment(BaseModel):
     # Which stop this assessment was checked against, and the precinct-membership
     # facts for that stop at evaluation time (see module docstring on
     # geometry-at-evaluation-time). All None when the phase has no stop to check
-    # against (mirrors corroboration_service._load_precinct_for_phase) or when a
+    # against (mirrors evidence.corroboration._load_precinct_for_phase) or when a
     # historical record predates this contract.
     expected_trip_stop_id: UUID | None
     precinct_id: UUID | None
@@ -182,7 +181,7 @@ class ActionLocationAssessment(BaseModel):
     def _require_timezone_aware(cls, value: datetime | None) -> datetime | None:
         # A naive value would silently compare as if it were UTC everywhere this
         # assessment's timestamps are later diffed (skew, age) — see
-        # proximity_service.evaluate_proximity and corroboration_service's own
+        # evidence.proximity.evaluate_proximity and evidence.corroboration's own
         # identical rule for driver_captured_at.
         if value is not None and value.tzinfo is None:
             raise ValueError("datetime fields must be timezone-aware")

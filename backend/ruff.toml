@@ -1,0 +1,92 @@
+# Ruff config for backend/. Run from backend/: `ruff check .`
+#
+# extend-select ADDS to ruff's default rules (E4, E7, E9, F); it does not replace them.
+# ruff itself is pinned in requirements-dev.txt because a new release can widen the
+# defaults and break CI, so the extra rules are named explicitly here.
+#
+# What these three rules measure, and what they do not:
+#   C901     cyclomatic complexity (branches), not length
+#   PLR0915  number of statements, not physical lines
+#   PLR0913  number of arguments
+# None of them measure how many LINES a function spans. A 300-line function made of
+# simple statements passes all three. Physical length is enforced separately by
+# scripts/check_structure.py against structure-baseline.json.
+#
+# Ratchet: the per-file-ignores below are the violations that exist today (31 files).
+# They exempt a file from only the rule(s) it already breaks, so a new file, or an
+# existing file breaking a *different* rule, is still checked. The list may only shrink:
+# when you fix a function, delete its entry. Do not add an entry to make new code pass.
+# Note this is coarse: inside a listed file a new function can also exceed the limit.
+# That gap is accepted because ruff has no per-function baseline; check_structure.py
+# closes it for length, which is the measure the audit cares about.
+
+[lint]
+extend-select = ["C901", "PLR0915", "PLR0913"]
+
+[lint.mccabe]
+max-complexity = 10
+
+[lint.pylint]
+max-args = 5
+max-statements = 50
+
+[lint.per-file-ignores]
+# Tests: fixtures and parametrised helpers legitimately take many arguments, and the
+# audit targets app/. check_structure.py and the B8 scan still cover tests where specified.
+"tests/**" = ["C901", "PLR0915", "PLR0913"]
+
+# Existing violations in app/ and scripts/ (generated from the tree at the time of writing).
+"app/analytics/lane_metrics.py" = ["PLR0913"]
+"app/analytics/rollup.py" = ["PLR0913"]
+"app/api/v1/endpoints/artifacts.py" = ["PLR0913"]
+"app/api/v1/endpoints/exceptions.py" = ["PLR0913"]
+"app/api/v1/endpoints/trips.py" = ["C901", "PLR0913"]
+"app/blockchain/anchor_service.py" = ["PLR0913"]
+"app/blockchain/hedera.py" = ["PLR0913"]
+"app/core/config_validation.py" = ["C901"]
+"app/crypto/hashing.py" = ["PLR0913"]
+# Relocated, not added: two existing violations moved with their modules into app/dev/ (audit
+# phase 4, dev window); the count of ruff diagnostics is unchanged.
+"app/dev/endpoints/triggers.py" = ["C901"]
+"app/dev/services/rig.py" = ["PLR0913"]
+# Relocated, not added: the two PLR0913 fixture builders moved out of parcel_perfect.py with
+# their functions (audit phase 4); the count of violating functions is unchanged (2).
+"app/integrations/parcel_perfect/waybill_fixtures.py" = ["PLR0913"]  # _mock_waybill, _routed_waybill
+# Relocated, not added: each entry below is an existing violation that moved out of the flat
+# *_service.py modules with its functions (audit phase 4, fleet, handover and consignments
+# windows); the count of ruff diagnostics is unchanged (11: 7 PLR0913, 3 C901 and 1 PLR0915,
+# across 9 functions).
+"app/orchestration/consignments/manifest_import.py" = ["C901", "PLR0913"]  # _build_context, _resolve_precinct
+"app/orchestration/consignments/scans.py" = ["PLR0913"]  # _reconcile_consignment, _raise_discrepancy, _build_discrepancy_description
+"app/orchestration/consignments/sync.py" = ["C901", "PLR0913", "PLR0915"]  # fetch_and_sync_consignment (PLR0913), sync_consignment_from_waybill (all three)
+"app/orchestration/fleet/vehicles.py" = ["C901"]  # update_vehicle
+"app/orchestration/handover/capability.py" = ["PLR0913"]  # record_handover_confirmation
+# Relocated, not added: each entry below is an existing violation that moved out of the flat
+# *_service.py modules with its functions (audit phase 4, evidence window); the count of
+# ruff diagnostics is unchanged (10: 7 PLR0913 and 3 C901, across 9 functions).
+"app/orchestration/evidence/action_location.py" = ["PLR0913"]  # build_phase_assessment, build_capture_assessment, record_separation_finding
+"app/orchestration/evidence/artifacts.py" = ["PLR0913"]  # create_artifact, _persist_artifact, create_receiver_artifact
+"app/orchestration/evidence/checkpoints.py" = ["C901"]  # log_checkpoint
+"app/orchestration/evidence/corroboration.py" = ["C901"]  # record_phase_corroboration
+"app/orchestration/evidence/proximity.py" = ["C901", "PLR0913"]  # evaluate_proximity
+# Relocated, not added: each entry below is an existing violation that moved out of
+# exception_service.py with its function (audit 5.4); the count of violating functions is
+# unchanged (9: 3 C901, 6 PLR0913).
+"app/orchestration/exceptions/creation.py" = ["C901", "PLR0913"]  # pick_breakdown_vehicle, raise_exception
+"app/orchestration/exceptions/queries.py" = ["PLR0913"]  # _to_list_item, list_exception_history
+"app/orchestration/exceptions/review.py" = ["C901", "PLR0913"]  # review_exception, review_exceptions_batch
+# Relocated, not added: each entry below is an existing PLR0913 violation that moved out of
+# phase_service.py with its function (audit 5.1); the count of violating functions is unchanged.
+"app/orchestration/phases/completion.py" = ["PLR0913"]  # _finish_phase
+"app/orchestration/phases/findings.py" = ["PLR0913"]  # _raise_scan_shortfall_if_unrecorded, _record_seal_finding
+"app/orchestration/phases/override.py" = ["PLR0913"]  # override_phase
+"app/orchestration/phases/payloads.py" = ["PLR0913"]  # compute_confirmation_canonical_payload_v2
+"app/orchestration/resource_service.py" = ["PLR0913"]
+# Relocated, not added: persist_trip moved out of trip_service.py with its C901 and PLR0915
+# violations (audit 5.3); the count of violating functions is unchanged.
+"app/orchestration/trips/creation.py" = ["C901", "PLR0915"]  # persist_trip
+"app/orchestration/verification_service.py" = ["C901"]
+"app/storage/supabase_storage.py" = ["C901"]
+"scripts/check_supabase_wiring.py" = ["C901"]
+"scripts/pp_watch.py" = ["C901", "PLR0913", "PLR0915"]
+"scripts/seed_trips.py" = ["C901", "PLR0913", "PLR0915"]

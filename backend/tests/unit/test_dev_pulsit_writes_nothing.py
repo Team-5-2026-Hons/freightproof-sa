@@ -18,7 +18,7 @@ from typing import Any
 
 import pytest
 
-from app.api.v1.endpoints import dev_pulsit
+from app.dev.endpoints import pulsit as dev_pulsit
 from app.core.config import settings
 from app.core.demo_waypoints import (
     DEMO_WAYPOINTS,
@@ -28,7 +28,8 @@ from app.core.demo_waypoints import (
 )
 from app.core.exceptions import ResourceNotFoundError
 from app.integrations.pulsit import MockPulsitClient
-from app.schemas.dev import (
+from app.dev.services import truck as dev_truck_service
+from app.dev.schemas import (
     SCENARIO_AT_STOP,
     SCENARIO_NO_SIGNAL,
     SCENARIO_THREE_KM,
@@ -99,7 +100,7 @@ class _FakePrecinct:
 
 class _FakeTripStop:
     """Stands in for the EXPECTED TripStop row `_load_trip_context` now returns
-    alongside its Precinct (FP-197 Task 3) — this suite stubs that function entirely,
+    alongside its Precinct (FP-197) — this suite stubs that function entirely,
     so it only needs an `.id` for MoveTruckResponse.expected_trip_stop_id."""
 
     def __init__(self) -> None:
@@ -196,7 +197,7 @@ async def test_unknown_waypoint_raises_before_anything_is_staged(wired) -> None:
     assert wired.data == {}
 
 
-# ── FP-197 Task 3: scenario mode, still with no DB reachable ──────────────────
+# ── FP-197: scenario mode, still with no DB reachable ─────────────────────────
 #
 # `resolve_target_stop` is the endpoint's only real query for scenario mode, and it
 # is stubbed out here exactly like `_load_trip_context` is above — so this suite
@@ -237,7 +238,7 @@ def wired_scenario(wired: FakeMockStateStore, monkeypatch: pytest.MonkeyPatch) -
     async def _stub_resolve(_db: Any, **_kwargs: Any):
         return target_stop, target_precinct
 
-    monkeypatch.setattr(dev_pulsit.dev_truck_service, "resolve_target_stop", _stub_resolve)
+    monkeypatch.setattr(dev_truck_service, "resolve_target_stop", _stub_resolve)
     return {"store": wired, "target_stop": target_stop, "target_precinct": target_precinct}
 
 
@@ -288,7 +289,7 @@ async def test_no_signal_without_a_stop_never_calls_resolve_target_stop(
     def _fail_if_called(*_args: Any, **_kwargs: Any) -> Any:
         raise AssertionError("resolve_target_stop must not be called with no stop named")
 
-    monkeypatch.setattr(dev_pulsit.dev_truck_service, "resolve_target_stop", _fail_if_called)
+    monkeypatch.setattr(dev_truck_service, "resolve_target_stop", _fail_if_called)
 
     result = await _call_scenario(scenario=SCENARIO_NO_SIGNAL, trip_stop_id=None)
 
@@ -307,7 +308,7 @@ async def test_missing_target_geometry_raises_409_before_staging(
     async def _stub_resolve(_db: Any, **_kwargs: Any):
         return target_stop, broken_precinct
 
-    monkeypatch.setattr(dev_pulsit.dev_truck_service, "resolve_target_stop", _stub_resolve)
+    monkeypatch.setattr(dev_truck_service, "resolve_target_stop", _stub_resolve)
 
     with pytest.raises(Exception) as exc_info:
         await _call_scenario(scenario=SCENARIO_THREE_KM, trip_stop_id=target_stop.id)
@@ -322,7 +323,7 @@ async def test_unknown_trip_stop_id_raises_404_before_staging(
     async def _stub_resolve(_db: Any, **kwargs: Any):
         raise ResourceNotFoundError("TripStop", str(kwargs["trip_stop_id"]))
 
-    monkeypatch.setattr(dev_pulsit.dev_truck_service, "resolve_target_stop", _stub_resolve)
+    monkeypatch.setattr(dev_truck_service, "resolve_target_stop", _stub_resolve)
 
     with pytest.raises(Exception) as exc_info:
         await _call_scenario(scenario=SCENARIO_AT_STOP, trip_stop_id=uuid.uuid4())
