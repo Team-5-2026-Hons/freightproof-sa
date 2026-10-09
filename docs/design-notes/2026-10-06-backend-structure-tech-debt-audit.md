@@ -43,7 +43,7 @@
 
 **Team handoff:** use the [backend structure migration guide](2026-10-09-backend-structure-migration-guide.md)
 for current import paths, test-patch examples and handling edits on older branches. This audit remains
-the source of truth for planned work and facade retirement; the guide is its operating checklist,
+the source of truth for planned work and facade retirement (dated plan: §6.2); the guide is its operating checklist,
 not a second refactor plan. Branch migration statuses remain unconfirmed until their owners report them.
 
 **Current baselines** (re-measure after every PR):
@@ -464,6 +464,7 @@ fixing the exact split. These are separate package windows, not permission to mo
 | `verification_service.py`, `receipt_service.py` | `orchestration/verification/` | Separate receipt reads, shared verification coordination and subject-specific reconstruction. Coordinate with phase 3 D and Tim's `subject_visibility.py` work; preserve all legacy hash generations |
 | `resource_service.py` | `orchestration/trips/` | Its remaining responsibilities are trip listing, history and detail reads. Put shared detail assembly below creation/administration/driver queries rather than adding sideways dependencies between those independent modules |
 | `review_identity.py`, `review_policy.py` | `orchestration/exceptions/` | Move as shared leaf modules: neither may import creation/review/query coordinators. Keep the package `__init__.py` empty so callers outside exceptions do not acquire a cycle |
+| Tim's `audit_pack_access`, `audit_pack_analysis`, `audit_pack_builder`, `audit_pack_service`, `incident_declaration_service` (1,841 lines on `Feat-ValueAddedDocumentation`) | `orchestration/audit_packs/` | After Tim integrates `dev` and merges. Assess `build_audit_manifest`'s responsibilities in the same window, not only the file location. Imports `verification_service`, so it lands before the verification window |
 | `integrity.py` | Keep as a small shared module | Database uniqueness-error decoding supports multiple domains; a new folder or a function split adds no useful separation |
 
 Receipts concern trips, phases and fleet events, so they belong with verification, not exception
@@ -587,6 +588,31 @@ Before deleting any candidate wrapper:
 
 **Removal record:** none yet. For each retirement, append the old paths, branch acknowledgements,
 reference-check revisions, validation evidence and removal PR/commit here.
+
+
+### 6.2 Completion plan to submission (23 October 2026)
+
+Every stage is owned by **Ciaran** unless the row names someone else. To take a stage, put your name
+in its Owner cell in a PR, so everyone can see who has it. Each stage is its own PR; behaviour
+changes and moves stay in separate commits.
+
+| # | Stage | Owner | Depends on | Done when | Target |
+|---|---|---|---|---|---|
+| 1 | Merge this restructure into `dev` | Ciaran | — | PR green in CI, reviewed, merged; Tim told to integrate | Sat 10 Oct |
+| 2 | Receiver selfie: save it or remove it (review F2/F5) | Ciaran | — | `SELFIE_ONLY` is assigned only when a photo is stored and linked through `selfie_artifact_id` (column already exists); a skipped photo records `TYPED_ONLY`. **Fallback if the upload is not working by Tue 13 Oct:** remove the capture step and record `TYPED_ONLY` | Tue 13 Oct |
+| 3a | Thin `endpoints/handover.py` | Ciaran | 1 | Routes validate, call `orchestration/handover/`, return; no DB calls in the route module; B1 snapshot unchanged | Wed 14 Oct |
+| 3b | `resource_service` → `trips/` (list, history, detail reads) | Ciaran | 1 | Wrapper kept; patches retargeted; guardrails green | Thu 15 Oct |
+| 4 | `review_identity`, `review_policy` → `exceptions/`; analytics pair → `orchestration/analytics/` | Ciaran | 1 | Wrappers kept; guardrails green | Thu 15 Oct |
+| — | Tim integrates `dev` into his branch and merges | **Tim** | 1 | His branch green on the integrated revision; §6.1 row filled in | Thu 15 Oct |
+| 5 | Tim's modules → `orchestration/audit_packs/` | Ciaran | Tim's merge | Audit-pack tests green; `build_audit_manifest` assessed | Fri 16 Oct |
+| 6 | `verification_service`, `receipt_service` → `verification/`, with phase 3 D (`SubjectPolicy`, `record_and_anchor`) | Ciaran | 5 | B3/B4 legacy hashes unchanged; verification and subject-visibility tests green. **Dropped if not started by Fri 16 Oct**, recorded as remaining work | Sat 17 Oct |
+| 7 | Remove wrappers that have no consumers (§6.1) | Ciaran | 1–6 | §6.1 checklist met for each removed wrapper; the rest stay, documented | Sun 18 Oct |
+| — | **Structural freeze** from Mon 19 Oct | everyone | — | No moves, renames or refactors; only fixes found by testing | Mon 19 Oct |
+| 8 | Integrated testing and demo | everyone | freeze | Every UI journey end to end (dispatcher, driver PWA, receiver, guard), failure and retry cases, deployed build, demo rehearsed | Thu 22 Oct |
+
+If a stage slips, it moves to the remaining-work list. The freeze does not move. Wrappers left
+in place at submission are an acceptable, documented state. A feature that claims evidence
+it never stores is not.
 
 ---
 
