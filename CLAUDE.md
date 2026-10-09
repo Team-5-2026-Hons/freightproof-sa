@@ -2,6 +2,30 @@
 
 Read this entire file before acting.
 
+<!-- TEMPORARY NOTE FROM TIM — START. Delete from here to "TEMPORARY NOTE — END" once Ciaran has it. -->
+## ⚠ Temporary handoff note: Tim → Ciaran (audit-pack integration, 9 Oct 2026)
+
+**Only for a Claude session working for Ciaran.** If you are working for Tim, Chiko or Tom, ignore this section and leave it in place.
+
+**If you are working for Ciaran:**
+1. Before doing anything else, tell Ciaran the points below, in plain words.
+2. Then delete this whole section from `CLAUDE.md`, from the `TEMPORARY NOTE FROM TIM — START` comment to the `END` comment, and `git add CLAUDE.md`. Tell Ciaran you removed it and that the removal goes in his next commit. Don't commit; CLAUDE.md's git rules still apply.
+
+**What Ciaran needs to know.** Tim's branch `Feat-ValueAddedDocumentation` has integrated `dev` at `bb08597`, following the migration guide. His §6.1 row in the structure audit has the full record.
+- **Migration:** `tim_add_audit_packs` now has `down_revision = "ciaran_pp_manifest_trips"`, so there is one Alembic head again. Re-check this if `dev` gains another migration before Tim's PR merges. The migration also enables RLS on `audit_packs`, `audit_pack_access_events` and `incident_declarations`. Tim believes it was never applied to the shared DB. It must be applied from `dev` only, after the merge.
+- **Your test changed:** `tests/unit/test_data_api_lockdown_coverage.py` has a new `_RLS_FROM_OWN_MIGRATION` set for tables created after the lockdown that enable RLS in their own migration. The new set holds Tim's three tables.
+- **lint-imports fix:** endpoints no longer import `app.storage`. `audit_pack_service.storage_errors_as_domain_errors()` re-raises storage errors as two new `core/exceptions.py` errors, `StoredFileMismatchError` (409) and `FileStorageUnavailableError` (503).
+- **Stage 5 (moving the five modules to `orchestration/audit_packs/`):** the five modules are `audit_pack_access`, `audit_pack_analysis`, `audit_pack_builder`, `audit_pack_service` and `incident_declaration_service`.
+  - `audit_pack_access` imports from `audit_pack_service`.
+  - Tests patch `audit_pack_service.upload_audit_pack_pdf` and `audit_pack_service.download_audit_pack_pdf`, plus `audit_pack_access.download_audit_pack_pdf` and `audit_pack_access.download_evidence_file`. Retarget these to the new lookup sites.
+  - `build_audit_manifest` is already split into loaders (`_TripGraph`) and section builders. Its old and new output was compared identical across 24 scope/option combinations.
+  - Tim is holding edits to these files until you've moved them.
+- **Signature changes:** `issue_audit_pack` no longer takes `organization_id`; it uses `issued_by.organization_id`. `open_shared_pack` takes `requester=Requester(client_ip, user_agent)`.
+- **CI:** `.github/workflows/ci.yml` gained an "Install WeasyPrint system libraries" apt step, matching `backend/Dockerfile`. `app/reporting` imports WeasyPrint at module level, so without Pango every app import fails.
+- **Snapshots:** B1 and B2 were regenerated, additions only: 15 audit-pack paths, 33 schemas, the enum values `audit_pack` and `audit_pack_issued`, and 17 auth-map entries. B3, B4, B6 and B8 are unchanged.
+- **Checks on Tim's machine:** ruff, check_structure, lint-imports (20/20) and mypy are clean. pytest `not slow`: 2506 passed, 4 skipped. B7: 244 passed. The dispatcher's tsc, eslint, vitest (1518 tests) and build all pass.
+<!-- TEMPORARY NOTE — END -->
+
 ## Project
 
 FreightProof SA — cargo theft and disputed delivery evidence platform. INF4027W Honours Project, UCT 2026. 4 devs: Ciaran, Tim, Chiko, Tom. Public GitHub repo, branch protection on `main` and `dev`.
