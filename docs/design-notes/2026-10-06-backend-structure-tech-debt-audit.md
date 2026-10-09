@@ -389,8 +389,8 @@ structure baseline, so it still cannot grow.
   check B8. Open branches that add new facade patches will hit the same trap — say so
   in the merge announcement. Where a name is looked up in several modules, a shared
   fixture needs one patch per module (`_gate_and_load` in each `advance_*` it drives).
-  `phase_gate` and `phase_plan` are facades too; they had no patch sites, so they are not
-  yet in `FROZEN_FACADES`.
+  `phase_gate` and `phase_plan` are facades too; they had no patch sites, and are in
+  `FROZEN_FACADES` so none can be added.
 - **Removal is a condition, not a date.** Delete a facade only when `grep` finds no
   importer on `dev` **and** on any open branch, and every affected developer has
   rebased past the move.
@@ -542,8 +542,8 @@ as the backend.
 1. **Adopt §5's layout and package rules** before anyone starts — it is shared ground.
 2. **Cleanup owner** for phase 4, and the package-window order.
 3. ~~New dev dependency: `import-linter`~~. **Settled**: added in PR #68.
-4. **Dev tooling:** move `dev_*` endpoints, services and `schemas/dev.py` into `app/dev/`?
-   (Recommended: yes, last window. Removes the last 5 endpoint layer-skip ignores.)
+4. ~~**Dev tooling:** move `dev_*` endpoints, services and `schemas/dev.py` into `app/dev/`?~~
+   **Settled**: moved in `a2a8847`; the last 5 endpoint layer-skip ignores are gone.
 5. **Dead tables:** the schemas are gone (phase 2 J). Drop the tables `MerkleBatch`,
    `TripTemplate`, `SlaConfig` too? That needs an Alembic migration and coordination.
    **`DriverSubstitution` is no longer a candidate:** Tim's audit-pack builder reads the model.
