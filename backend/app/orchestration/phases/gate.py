@@ -26,7 +26,7 @@ async def _gate_and_load(
     """Loads and validates the trip and phase event before completion. Returns
     (trip, event) to continue, or a TripDetailResponse if idempotent replay
     already short-circuited."""
-    trip = await _load_trip_for_driver(db, trip_id=trip_id, driver_id=driver_id)
+    trip = await _load_trip_for_driver(db, trip_id=trip_id, driver_id=driver_id, lock=True)
     event = await _load_phase_event(db, trip_id=trip_id, phase_event_id=phase_event_id)
 
     if _is_resolved(event.status):

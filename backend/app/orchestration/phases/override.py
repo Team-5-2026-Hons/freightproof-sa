@@ -41,7 +41,7 @@ async def override_phase(
     needs no override, and completed evidence must not be rewritable.
     """
     trip = await _load_trip_for_dispatcher(
-        db, trip_id=trip_id, operator_organization_id=operator_organization_id,
+        db, trip_id=trip_id, operator_organization_id=operator_organization_id, lock=True,
     )
 
     # A terminal trip is not overridable, and this guard is load-bearing rather

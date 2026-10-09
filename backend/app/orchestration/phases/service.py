@@ -113,7 +113,11 @@ async def complete_phase(
     # holding someone else's trip_id/phase_event_id could probe a foreign trip's
     # plan by sending a deliberately wrong phase_type and reading the error.
     # A non-owner must get the same 404 as for a trip that does not exist.
-    await _load_trip_for_driver(db, trip_id=trip_id, driver_id=driver_id)
+    #
+    # Locked here as well as in _gate_and_load: the phase row is locked on the next line, and
+    # the trip lock must always come first (see loaders._lock_trip) or this would wait on the
+    # phase row while an override holds the trip and waits on the same row.
+    await _load_trip_for_driver(db, trip_id=trip_id, driver_id=driver_id, lock=True)
     event = await _load_phase_event(db, trip_id=trip_id, phase_event_id=phase_event_id)
     actual = PhaseType(event.phase_type)
     if actual != payload.phase_type:

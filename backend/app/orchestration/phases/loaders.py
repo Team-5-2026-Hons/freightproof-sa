@@ -5,7 +5,7 @@ with the LOADING phase.
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ResourceNotFoundError
@@ -13,8 +13,28 @@ from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Trip
 
 
-async def _load_trip_for_driver(db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID) -> Trip:
-    result = await db.execute(select(Trip).where(Trip.id == trip_id, Trip.driver_id == driver_id))
+def _lock_trip(statement: Select[tuple[Trip]]) -> Select[tuple[Trip]]:
+    """Row-lock the trip so a phase write and cancel_trip cannot interleave.
+
+    Without it a phase write that read an active trip could commit after a cancellation and
+    overwrite CANCELLED (recompute_position writes CLOSED, advance_activation writes ACTIVE).
+    Always taken before the PhaseEvent lock, so every path locks in the same order: a phase
+    write and a cancellation queue behind each other but can never deadlock.
+
+    FOR NO KEY UPDATE, not FOR UPDATE: the anchor worker holds a phase row and inserts a
+    BlockchainReceipt, whose trip_id foreign key takes FOR KEY SHARE on the trip. FOR UPDATE
+    conflicts with that, so a replayed completion (trip lock, then queue on the phase row)
+    would deadlock with the worker. FOR NO KEY UPDATE still conflicts with cancel_trip's
+    FOR UPDATE and with itself, which is all the serialisation needed here.
+    """
+    return statement.with_for_update(of=Trip, key_share=True)
+
+
+async def _load_trip_for_driver(
+    db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID, lock: bool = False,
+) -> Trip:
+    statement = select(Trip).where(Trip.id == trip_id, Trip.driver_id == driver_id)
+    result = await db.execute(_lock_trip(statement) if lock else statement)
     trip = result.scalar_one_or_none()
     if trip is None:
         raise ResourceNotFoundError("Trip", str(trip_id))
@@ -23,6 +43,7 @@ async def _load_trip_for_driver(db: AsyncSession, *, trip_id: uuid.UUID, driver_
 
 async def _load_trip_for_dispatcher(
     db: AsyncSession, *, trip_id: uuid.UUID, operator_organization_id: uuid.UUID,
+    lock: bool = False,
 ) -> Trip:
     """Dispatcher-scoped trip lookup — the override counterpart to _load_trip_for_driver.
 
@@ -31,11 +52,10 @@ async def _load_trip_for_dispatcher(
     trip belonging to another org — same no-existence-disclosure rule as everywhere
     else in this module.
     """
-    result = await db.execute(
-        select(Trip).where(
-            Trip.id == trip_id, Trip.operator_organization_id == operator_organization_id,
-        )
+    statement = select(Trip).where(
+        Trip.id == trip_id, Trip.operator_organization_id == operator_organization_id,
     )
+    result = await db.execute(_lock_trip(statement) if lock else statement)
     trip = result.scalar_one_or_none()
     if trip is None:
         raise ResourceNotFoundError("Trip", str(trip_id))
