@@ -74,7 +74,7 @@ class DriverCheckpointCreateBody(BaseModel):
     driver_captured_at: Optional[datetime] = None
     # Mirrors _PhaseCompleteBase.driver_accuracy_metres exactly — the
     # phone's own claimed accuracy at driver_phone_lat/lng, feeding proximity_
-    # service.evaluate_proximity via action_location_service.build_checkpoint_
+    # service.evaluate_proximity via evidence.action_location.build_checkpoint_
     # assessment. Not a DB column; lives only inside the checkpoint's own
     # action_location_assessment JSONB snapshot.
     driver_accuracy_metres: Optional[float] = Field(default=None, ge=0)
@@ -92,7 +92,7 @@ class DriverCheckpointCreateBody(BaseModel):
     @field_validator("driver_captured_at")
     @classmethod
     def validate_driver_captured_at_is_timezone_aware(cls, v: Optional[datetime]) -> Optional[datetime]:
-        # A naive value would silently compare as if it were UTC in corroboration_service.
+        # A naive value would silently compare as if it were UTC in evidence.corroboration.
         if v is not None and v.tzinfo is None:
             raise ValueError("driver_captured_at must be timezone-aware")
         return v
@@ -125,7 +125,7 @@ class CheckpointRead(CheckpointBase):
     id: UUID
     merkle_batch_id: Optional[UUID] = None
     # The versioned proximity snapshot for this checkpoint's own handshake
-    # (orchestration/action_location_service.build_checkpoint_assessment). Never a
+    # (evidence.action_location.build_checkpoint_assessment). Never a
     # precinct check — a checkpoint happens on the road, so those fields are always
     # None here. Validated through ActionLocationAssessment, never a raw dict.
     action_location_assessment: Optional[ActionLocationAssessment] = None
@@ -210,7 +210,7 @@ class DriverExceptionCreateBody(BaseModel):
     gps_lat: Optional[float] = Field(default=None, ge=-90, le=90)
     gps_lng: Optional[float] = Field(default=None, ge=-180, le=180)
     # Mirrors _PhaseCompleteBase.driver_accuracy_metres — the phone's own claimed
-    # accuracy at gps_lat/lng, used by exception_service to build the report's
+    # accuracy at gps_lat/lng, used by exceptions.creation to build the report's
     # capture-time assessment.
     driver_accuracy_metres: Optional[float] = Field(default=None, ge=0)
     # The device timestamp belongs to this report's capture, not to its later queue
@@ -226,7 +226,7 @@ class DriverExceptionCreateBody(BaseModel):
     client_report_id: Optional[UUID] = None
     # The driver's answer to "Truck or Trailer?" on a vehicle breakdown: horse ("Truck")
     # or trailer. The server works out the exact vehicle from the trip itself
-    # (exception_service.pick_breakdown_vehicle), so the driver never has to identify a
+    # (exceptions.creation.pick_breakdown_vehicle), so the driver never has to identify a
     # vehicle by id. Optional: older installed apps, and reports already sitting in a
     # phone's offline queue, send neither field, and those breakdowns are stored with no
     # vehicle rather than rejected.
@@ -333,6 +333,15 @@ class TripExceptionListItem(BaseModel):
     trip_id: UUID
     trip_reference: str
     trip_status: TripStatus
+    # Trip crew and route, so a dispatcher can tell which truck/driver/lane an exception
+    # belongs to without opening the trip. Names and registrations only, no contact details.
+    # Origin/destination are None for a trip whose precinct was never derived; trailers
+    # is empty for a trip with none attached.
+    origin_name: Optional[str] = None
+    destination_name: Optional[str] = None
+    driver_name: Optional[str] = None
+    horse_registration: Optional[str] = None
+    trailer_registrations: list[str] = Field(default_factory=list)
 
     # PhaseEvent.phase_type / TripStop.sequence for the phase this exception is scoped
     # to — None for a trip-level exception with no phase context. Mirrors the existing
@@ -340,7 +349,7 @@ class TripExceptionListItem(BaseModel):
     phase_label: Optional[str] = None
     stop_label: Optional[int] = None
     # A driver exception report's own capture assessment, when one was built. This is
-    # projected by exception_service._to_list_item, then inherited by detail below.
+    # projected by exceptions.queries._to_list_item, then inherited by detail below.
     # Validated through ActionLocationAssessment, never served as a raw dict.
     action_location_assessment: Optional[ActionLocationAssessment] = None
 

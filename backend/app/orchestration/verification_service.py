@@ -15,15 +15,20 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.blockchain.hedera import HederaService
+from app.blockchain.subject_visibility import assert_subject_visible
 from app.core.exceptions import HederaServiceError
-from app.crypto.hashing import compute_trip_canonical_payload
+from app.crypto.hashing import (
+    TRIP_PAYLOAD_VERSION_V2, PPManifestKey, StopCommitment, compute_snapshot_sha256,
+    compute_trip_canonical_payload, compute_trip_canonical_payload_v2,
+)
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.evidence import EvidenceArtifact
 from app.db.models.events import DriverEvent, PrecinctEvent, VehicleEvent
 from app.db.models.enums import PhaseStatus, PhaseType, SubjectType, VerifyStatus
 from app.db.models.phases import PhaseEvent
-from app.db.models.trips import Trip, TripTrailer
-from app.orchestration.phase_service import (
+from app.db.models.trips import Trip, TripStop, TripTrailer
+from app.orchestration.consignments.manifest_reads import load_creation_snapshot
+from app.orchestration.phases.payloads import (
     PHASE_PAYLOAD_VERSION_V2,
     compute_activation_canonical_payload_v2,
     compute_arrival_canonical_payload_v2,
@@ -43,6 +48,8 @@ from app.storage.supabase_storage import (
 )
 
 _LEGACY_PHASE_PAYLOAD_VERSION = 1
+# Journey locks anchored before stops were committed carry no payload_version key.
+_LEGACY_TRIP_PAYLOAD_VERSION = 1
 # Phases first anchored on 2026-09-23, when every phase started anchoring. They only
 # ever produced v2 payloads; loading and unloading keep their separate pre-phase legacy
 # handshake contracts below, matched by exact key set before this set is consulted.
@@ -104,15 +111,35 @@ async def _latest_receipt(
     return result.scalar_one_or_none()
 
 
-async def _reconstruct_trip_payload(
-    db: AsyncSession, trip_id: uuid.UUID, *, anchored_payload: dict[str, Any] | None
-) -> dict[str, Any] | None:
-    """Rebuild the canonical trip payload from live DB rows, version-dispatching trip_type.
+def _trip_payload_version(anchored_payload: Any) -> int:
+    """Which journey-lock generation the receipt was anchored as.
 
-    trip_type is only included if the originally anchored payload had it. Older
-    trips were anchored before trip_type existed, so recomputing with it set would
-    change the hash and produce a false DB_MISMATCH ("tampering") on untouched rows.
+    Read from the receipt's stored payload_json, which is safe even though the database is
+    the thing under suspicion: the result is only ever compared against the receipt's
+    data_hash, which is also what Hedera holds. Editing payload_json down to v1 makes the
+    rebuild a v1 payload, and a v1 payload cannot hash to a v2 anchored hash.
     """
+    if not isinstance(anchored_payload, dict):
+        raise _UnsupportedPhasePayloadVersion("trip receipt payload must be a JSON object")
+    if "payload_version" not in anchored_payload:
+        return _LEGACY_TRIP_PAYLOAD_VERSION
+
+    version = anchored_payload["payload_version"]
+    if type(version) is not int or version != TRIP_PAYLOAD_VERSION_V2:
+        raise _UnsupportedPhasePayloadVersion(f"unsupported trip payload version: {version!r}")
+    return version
+
+
+async def _reconstruct_trip_payload(
+    db: AsyncSession, trip_id: uuid.UUID, *, anchored_payload: Any,
+) -> dict[str, Any] | None:
+    """Rebuild the canonical journey-lock payload from live DB rows.
+
+    The generation (v1 without stops, v2 with them) is the one the receipt was anchored
+    as. For a manifest trip the snapshot hash is RECOMPUTED from H0's stored snapshot, never
+    read from a stored hash: editing or deleting the snapshot must show as tampering.
+    """
+    version = _trip_payload_version(anchored_payload)
     trip = (
         await db.execute(select(Trip).where(Trip.id == trip_id))
     ).scalar_one_or_none()
@@ -127,10 +154,23 @@ async def _reconstruct_trip_payload(
         # Precincts are set at trip creation; a receipt shouldn't exist before that,
         # but treat it like the other reconstruct_* helpers' not-found case either way.
         return None
-    include_trip_type = anchored_payload is not None and "trip_type" in anchored_payload
-    return compute_trip_canonical_payload(
+
+    manifest_key: PPManifestKey | None = None
+    snapshot_sha256: str | None = None
+    if (
+        trip.pp_manifest_issuer_account is not None
+        and trip.pp_manifest_origin_hub is not None
+        and trip.pp_manifest_number is not None
+    ):
+        manifest_key = PPManifestKey(
+            trip.pp_manifest_issuer_account, trip.pp_manifest_origin_hub, trip.pp_manifest_number,
+        )
+        snapshot = await load_creation_snapshot(db, trip_id)
+        # A deleted snapshot leaves the hash null, which cannot match what was anchored.
+        snapshot_sha256 = compute_snapshot_sha256(snapshot) if snapshot is not None else None
+
+    fields: dict[str, Any] = dict(
         trip_id=trip.id,
-        order_number=trip.order_number,
         driver_id=trip.driver_id,
         horse_id=trip.horse_id,
         trailer_ids=list(trailer_rows),
@@ -138,7 +178,24 @@ async def _reconstruct_trip_payload(
         destination_precinct_id=trip.destination_precinct_id,
         created_by_user_id=trip.created_by_user_id,
         created_at=trip.created_at,
-        trip_type=trip.trip_type if include_trip_type else None,
+        trip_type=trip.trip_type,
+        pp_manifest=manifest_key,
+        pp_manifest_snapshot_sha256=snapshot_sha256,
+        planned_departure_at=trip.planned_departure_at,
+        planned_arrival_at=trip.planned_arrival_at,
+    )
+    if version == _LEGACY_TRIP_PAYLOAD_VERSION:
+        return compute_trip_canonical_payload(**fields)
+
+    stop_rows = (
+        await db.execute(
+            select(TripStop.sequence, TripStop.precinct_id, TripStop.slot_time)
+            .where(TripStop.trip_id == trip_id)
+            .order_by(TripStop.sequence)
+        )
+    ).all()
+    return compute_trip_canonical_payload_v2(
+        **fields, stops=[StopCommitment(*row) for row in stop_rows],
     )
 
 
@@ -446,7 +503,7 @@ async def reconstruct_pending_phase_payload(
 async def _reconstruct_precinct_event_payload(
     db: AsyncSession, event_id: uuid.UUID
 ) -> dict[str, Any] | None:
-    """Rebuild the canonical payload precinct_service anchored, from the live row.
+    """Rebuild the canonical payload fleet.precincts anchored, from the live row.
 
     Key order and value shapes must match create_precinct/update_precinct exactly —
     _hash_payload sorts keys, but a renamed key or a Decimal where a float was anchored
@@ -473,6 +530,32 @@ def _hash_payload(payload: dict[str, Any]) -> str:
     ).hexdigest()
 
 
+async def _live_artifact_mismatch(
+    phase_state: _PhasePayloadState, receipt: BlockchainReceipt,
+) -> VerifyOutcome | None:
+    """Re-hash the private Storage bytes behind a phase's artifacts against the receipt.
+    None means they still match; otherwise the outcome verify_subject should return."""
+    try:
+        live_payload = await _payload_with_live_artifact_hashes(phase_state)
+    except EvidenceObjectIntegrityError:
+        return VerifyOutcome(
+            status=VerifyStatus.DB_MISMATCH,
+            receipt=receipt,
+            expected_hash=receipt.data_hash,
+        )
+    except EvidenceStorageUnavailableError:
+        return VerifyOutcome(status=VerifyStatus.ERROR, receipt=receipt)
+    live_hash = _hash_payload(live_payload)
+    if live_hash != receipt.data_hash:
+        return VerifyOutcome(
+            status=VerifyStatus.DB_MISMATCH,
+            receipt=receipt,
+            expected_hash=receipt.data_hash,
+            current_hash=live_hash,
+        )
+    return None
+
+
 async def verify_subject(
     db: AsyncSession,
     *,
@@ -486,9 +569,12 @@ async def verify_subject(
 
     phase_state: _PhasePayloadState | None = None
     if subject_type == SubjectType.TRIP:
-        rebuilt = await _reconstruct_trip_payload(
-            db, subject_id, anchored_payload=receipt.payload_json
-        )
+        try:
+            rebuilt = await _reconstruct_trip_payload(
+                db, subject_id, anchored_payload=receipt.payload_json,
+            )
+        except _UnsupportedPhasePayloadVersion:
+            return VerifyOutcome(status=VerifyStatus.ERROR, receipt=receipt)
         if rebuilt is None:
             return VerifyOutcome(status=VerifyStatus.NO_RECEIPT, receipt=receipt)
         current_hash = _hash_payload(rebuilt)
@@ -534,24 +620,9 @@ async def verify_subject(
         )
 
     if phase_state is not None and phase_state.artifacts:
-        try:
-            live_payload = await _payload_with_live_artifact_hashes(phase_state)
-        except EvidenceObjectIntegrityError:
-            return VerifyOutcome(
-                status=VerifyStatus.DB_MISMATCH,
-                receipt=receipt,
-                expected_hash=receipt.data_hash,
-            )
-        except EvidenceStorageUnavailableError:
-            return VerifyOutcome(status=VerifyStatus.ERROR, receipt=receipt)
-        live_hash = _hash_payload(live_payload)
-        if live_hash != receipt.data_hash:
-            return VerifyOutcome(
-                status=VerifyStatus.DB_MISMATCH,
-                receipt=receipt,
-                expected_hash=receipt.data_hash,
-                current_hash=live_hash,
-            )
+        mismatch = await _live_artifact_mismatch(phase_state, receipt)
+        if mismatch is not None:
+            return mismatch
 
     if not receipt.hedera_topic_id or not receipt.hedera_sequence_number:
         return VerifyOutcome(status=VerifyStatus.ERROR, receipt=receipt)
@@ -583,3 +654,22 @@ async def verify_subject(
         receipt=receipt,
         evidence_verified=phase_state is not None and bool(phase_state.artifacts),
     )
+
+
+async def verify_visible_subject(
+    db: AsyncSession,
+    *,
+    subject_type: SubjectType,
+    subject_id: uuid.UUID,
+    organization_id: uuid.UUID,
+) -> VerifyOutcome:
+    """Verify a subject only after proving it belongs to the caller's organisation.
+
+    The visibility check comes first so a foreign subject is never read, let alone
+    re-hashed or looked up on Hedera. Raises SubjectNotVisibleError (the endpoint maps it
+    to 404) and verifies nothing in that case.
+    """
+    await assert_subject_visible(
+        db, subject_type=subject_type, subject_id=subject_id, organization_id=organization_id,
+    )
+    return await verify_subject(db, subject_type=subject_type, subject_id=subject_id)

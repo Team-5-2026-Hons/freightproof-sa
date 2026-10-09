@@ -16,13 +16,14 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.client_ip import resolve_client_ip
-from app.core.exceptions import ResourceNotFoundError
+from app.core.exceptions import FileStorageUnavailableError, ResourceNotFoundError, StoredFileMismatchError
 from app.core.limits import AUDIT_PACK_PUBLIC, BLOCKCHAIN_VERIFY
 from app.core.rate_limit import rate_limit
 from app.db.models.audit_packs import AuditPack
 from app.db.models.enums import AuditPackAccessEventType
 from app.db.session import get_db
 from app.orchestration.audit_pack_access import (
+    Requester,
     ShareLinkClosed,
     open_shared_pack,
     seal_by_pack_id,
@@ -34,7 +35,6 @@ from app.orchestration.audit_pack_access import (
 )
 from app.reporting.incident_sheet import NoIncidentError
 from app.schemas.audit_pack import LiveVerification, PublicAuditPackView, PublicPackSeal
-from app.storage.supabase_storage import EvidenceObjectIntegrityError, EvidenceStorageUnavailableError
 
 logger = logging.getLogger(__name__)
 
@@ -54,10 +54,8 @@ def _closed(exc: ShareLinkClosed) -> JSONResponse:
 async def _open(
     request: Request, db: AsyncSession, token: str, event_type: AuditPackAccessEventType,
 ) -> AuditPack:
-    return await open_shared_pack(
-        db, raw_token=token, event_type=event_type, client_ip=resolve_client_ip(request),
-        user_agent=request.headers.get("user-agent"),
-    )
+    requester = Requester(client_ip=resolve_client_ip(request), user_agent=request.headers.get("user-agent"))
+    return await open_shared_pack(db, raw_token=token, event_type=event_type, requester=requester)
 
 
 @router.get(
@@ -107,12 +105,12 @@ async def shared_pdf_endpoint(token: str, request: Request, db: AsyncSession = D
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=_LINK_NOT_FOUND) from exc
     except ShareLinkClosed as exc:
         return _closed(exc)
-    except EvidenceObjectIntegrityError as exc:
+    except StoredFileMismatchError as exc:
         raise HTTPException(
             status_code=http_status.HTTP_409_CONFLICT,
             detail="The stored PDF no longer matches the one issued. Contact the issuing operator.",
         ) from exc
-    except EvidenceStorageUnavailableError as exc:
+    except FileStorageUnavailableError as exc:
         raise HTTPException(status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE, detail="Try again shortly.") from exc
     return Response(
         content=pdf, media_type="application/pdf",
@@ -161,7 +159,7 @@ async def shared_artifact_endpoint(
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Not found.") from exc
     except ShareLinkClosed as exc:
         return _closed(exc)
-    except (EvidenceStorageUnavailableError, EvidenceObjectIntegrityError) as exc:
+    except (FileStorageUnavailableError, StoredFileMismatchError) as exc:
         raise HTTPException(status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE, detail="Try again shortly.") from exc
     # Evidence bytes must never be interpreted as a page by the browser.
     return Response(

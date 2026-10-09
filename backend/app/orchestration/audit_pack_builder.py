@@ -11,12 +11,14 @@ the manifest cannot leak through a template bug.
 import logging
 import uuid
 from collections.abc import Iterable, Mapping, Sequence
-from datetime import UTC, datetime
+from collections.abc import Set as AbstractSet
+from dataclasses import dataclass
+from datetime import UTC, date, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import ValidationError
-from sqlalchemy import or_, select
+from sqlalchemy import Row, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.blockchain.anchor_service import canonicalize_payload, compute_payload_hash
@@ -149,15 +151,22 @@ def _evidence(
     )
 
 
-def _phase_record(
-    event: PhaseEvent,
-    *,
-    stop: StopRecord | None,
-    receipt: BlockchainReceipt | None,
-    artifacts: Mapping[uuid.UUID, EvidenceArtifact],
-    trailer_snapshots: Sequence[TrailerGpsSnapshot],
-    withhold_counts: bool,
-) -> PhaseRecord:
+@dataclass(frozen=True)
+class _PhaseContext:
+    """What every phase record is looked up against, built once per manifest."""
+
+    stops: Mapping[uuid.UUID, StopRecord]
+    receipts_by_id: Mapping[uuid.UUID, BlockchainReceipt]
+    artifacts: Mapping[uuid.UUID, EvidenceArtifact]
+    snapshots_by_phase: Mapping[uuid.UUID, Sequence[TrailerGpsSnapshot]]
+    # Stops shared with other clients' cargo in a consignment-scoped pack: counts withheld.
+    shared_stop_ids: AbstractSet[uuid.UUID | None]
+
+
+def _phase_record(event: PhaseEvent, ctx: _PhaseContext) -> PhaseRecord:
+    stop = ctx.stops.get(event.trip_stop_id) if event.trip_stop_id else None
+    receipt = ctx.receipts_by_id.get(event.blockchain_receipt_id) if event.blockchain_receipt_id else None
+    withhold_counts = event.trip_stop_id in ctx.shared_stop_ids
     assessment = _assessment(event.action_location_assessment, owner_id=event.id)
     # Only a receipt the ledger itself says landed counts — AnchorStatus warns never to
     # render a pending or failed anchor as success.
@@ -178,7 +187,7 @@ def _phase_record(
     evidence: list[EvidenceFile] = []
     for role, (attribute, payload_key) in _PHASE_EVIDENCE.items():
         artifact_id = getattr(event, attribute)
-        artifact = artifacts.get(artifact_id) if artifact_id is not None else None
+        artifact = ctx.artifacts.get(artifact_id) if artifact_id is not None else None
         committed = payload.get(payload_key) if payload_key is not None else None
         if artifact is not None:
             evidence.append(_evidence(artifact, role, anchored_hash=committed))
@@ -197,7 +206,7 @@ def _phase_record(
     driver_accuracy = assessment.driver_accuracy_metres if assessment is not None else None
     trailer_fixes = [
         PositionFix(lat=float(s.lat), lng=float(s.lng), source="trailer_tracker", recorded_at=s.captured_at)
-        for s in trailer_snapshots
+        for s in ctx.snapshots_by_phase.get(event.id, [])
     ]
 
     return PhaseRecord(
@@ -274,21 +283,45 @@ def _record_changes(
     return sorted(changes, key=lambda c: c.changed_at)
 
 
-async def build_audit_manifest(
-    db: AsyncSession,
-    *,
-    trip_id: uuid.UUID,
-    operator_organization_id: uuid.UUID,
-    options: AuditPackOptions,
-    generated_at: datetime | None = None,
-) -> AuditPackManifest:
-    """Snapshot everything an insurer, adjuster or detective needs about one trip.
+# ── Loading: every row a manifest reads, in a fixed number of queries ─────────────
 
-    Raises ResourceNotFoundError when the trip is not this operator's, or when the
-    requested consignment scope is not on the trip.
-    """
-    generated_at = generated_at or datetime.now(UTC)
 
+@dataclass(frozen=True)
+class _TripGraph:
+    """Everything one manifest is assembled from. Loaded once, read by the pure builders below."""
+
+    trip: Trip
+    consignments: list[Consignment]
+    in_scope: list[Consignment]
+    parcels: list[Parcel]
+    stop_rows: Sequence[Row[tuple[TripStop, Precinct]]]
+    phases: list[PhaseEvent]
+    snapshots: list[TrailerGpsSnapshot]
+    checkpoints: list[Checkpoint]
+    exceptions: list[TripException]
+    substitutions: list[DriverSubstitution]
+    drivers: dict[uuid.UUID, Driver]
+    horse: Vehicle
+    trailers: list[Vehicle]
+    vehicle_events: list[VehicleEvent]
+    driver_events: list[DriverEvent]
+    receipts: list[BlockchainReceipt]
+    artifacts: dict[uuid.UUID, EvidenceArtifact]
+    pings: list[TripLocationPing]
+    orgs: dict[uuid.UUID, Organization]
+    users: dict[uuid.UUID, User]
+    window_start: datetime | None
+    window_end: datetime
+
+    @property
+    def out_of_scope(self) -> list[Consignment]:
+        return [c for c in self.consignments if c not in self.in_scope]
+
+
+async def _load_trip_and_cargo(
+    db: AsyncSession, *, trip_id: uuid.UUID, operator_organization_id: uuid.UUID, scope_id: uuid.UUID | None,
+) -> tuple[Trip, list[Consignment], list[Consignment], list[Parcel]]:
+    """The trip, all its consignments, the ones in scope, and the in-scope parcels."""
     trip = (await db.execute(
         select(Trip).where(Trip.id == trip_id, Trip.operator_organization_id == operator_organization_id)
     )).scalar_one_or_none()
@@ -298,66 +331,79 @@ async def build_audit_manifest(
     consignments = list((await db.execute(
         select(Consignment).where(Consignment.trip_id == trip.id).order_by(Consignment.parcel_perfect_reference)
     )).scalars())
-    scope_id = options.scope_consignment_id
     if scope_id is not None and scope_id not in {c.id for c in consignments}:
         raise ResourceNotFoundError("Consignment", str(scope_id))
     in_scope = [c for c in consignments if scope_id is None or c.id == scope_id]
-    out_of_scope = [c for c in consignments if c not in in_scope]
 
     parcels = list((await db.execute(
         select(Parcel).where(Parcel.consignment_id.in_([c.id for c in in_scope])).order_by(Parcel.barcode)
     )).scalars()) if in_scope else []
+    return trip, consignments, in_scope, parcels
 
+
+async def _load_route(
+    db: AsyncSession, trip_id: uuid.UUID,
+) -> tuple[Sequence[Row[tuple[TripStop, Precinct]]], list[PhaseEvent], list[TrailerGpsSnapshot], list[Checkpoint]]:
+    """Stops with their precincts, the phase ledger, its trailer fixes, and checkpoints."""
     stop_rows = (await db.execute(
         select(TripStop, Precinct).join(Precinct, Precinct.id == TripStop.precinct_id)
-        .where(TripStop.trip_id == trip.id).order_by(TripStop.sequence)
+        .where(TripStop.trip_id == trip_id).order_by(TripStop.sequence)
     )).all()
 
     phases = list((await db.execute(
-        select(PhaseEvent).where(PhaseEvent.trip_id == trip.id).order_by(PhaseEvent.sequence_number)
+        select(PhaseEvent).where(PhaseEvent.trip_id == trip_id).order_by(PhaseEvent.sequence_number)
     )).scalars())
     snapshots = list((await db.execute(
         select(TrailerGpsSnapshot).where(TrailerGpsSnapshot.phase_event_id.in_([p.id for p in phases]))
     )).scalars()) if phases else []
 
     checkpoints = list((await db.execute(
-        select(Checkpoint).where(Checkpoint.trip_id == trip.id).order_by(Checkpoint.created_at)
+        select(Checkpoint).where(Checkpoint.trip_id == trip_id).order_by(Checkpoint.created_at)
     )).scalars())
+    return stop_rows, phases, snapshots, checkpoints
 
-    exceptions = [
+
+async def _load_exceptions(db: AsyncSession, trip_id: uuid.UUID, scope_id: uuid.UUID | None) -> list[TripException]:
+    return [
         e for e in (await db.execute(
-            select(TripException).where(TripException.trip_id == trip.id).order_by(TripException.created_at)
+            select(TripException).where(TripException.trip_id == trip_id).order_by(TripException.created_at)
         )).scalars()
         # Trip-level exceptions (no consignment) stay in every scope: a hijack affects all
         # cargo on the truck. Only rows pinned to ANOTHER client's consignment are cut.
         if scope_id is None or e.consignment_id is None or e.consignment_id == scope_id
     ]
 
+
+def _crew_driver_ids(trip: Trip, substitutions: Iterable[DriverSubstitution]) -> set[uuid.UUID]:
+    ids = {trip.driver_id}
+    for s in substitutions:
+        ids |= {s.original_driver_id, s.substituting_driver_id}
+    return ids
+
+
+async def _load_crew(
+    db: AsyncSession, trip: Trip,
+) -> tuple[list[DriverSubstitution], dict[uuid.UUID, Driver], Vehicle, list[Vehicle]]:
+    """Driver substitutions, every driver who held the trip, the horse and its trailers."""
     substitutions = list((await db.execute(
         select(DriverSubstitution).where(DriverSubstitution.trip_id == trip.id)
         .order_by(DriverSubstitution.substitution_at)
     )).scalars())
-    driver_ids = {trip.driver_id} | {s.original_driver_id for s in substitutions} | {
-        s.substituting_driver_id for s in substitutions
-    }
+    driver_ids = _crew_driver_ids(trip, substitutions)
     drivers = {d.id: d for d in (await db.execute(select(Driver).where(Driver.id.in_(driver_ids)))).scalars()}
 
-    trailer_rows = (await db.execute(
+    trailers = list((await db.execute(
         select(Vehicle).join(TripTrailer, TripTrailer.trailer_id == Vehicle.id)
         .where(TripTrailer.trip_id == trip.id).order_by(Vehicle.registration)
-    )).scalars()
-    trailers = list(trailer_rows)
+    )).scalars())
     horse = (await db.execute(select(Vehicle).where(Vehicle.id == trip.horse_id))).scalar_one()
+    return substitutions, drivers, horse, trailers
 
-    window_start = min(
-        (p.completed_at for p in phases if p.completed_at is not None and p.phase_type != PhaseType.TRIP_CREATION),
-        default=None,
-    )
-    # A trip that never closed (the hijack case) is judged up to the moment of issue —
-    # "no position since" is exactly what an adjuster needs to see.
-    window_end = trip.closed_at or generated_at
 
-    vehicle_ids = [horse.id, *(t.id for t in trailers)]
+async def _load_record_changes(
+    db: AsyncSession, *, trip: Trip, vehicle_ids: list[uuid.UUID], driver_ids: set[uuid.UUID], window_end: datetime,
+) -> tuple[list[VehicleEvent], list[DriverEvent]]:
+    """Edits to the trip's vehicles and drivers made while the trip was live."""
     vehicle_events = list((await db.execute(
         select(VehicleEvent).where(
             VehicleEvent.vehicle_id.in_(vehicle_ids),
@@ -372,24 +418,39 @@ async def build_audit_manifest(
             DriverEvent.created_at >= trip.created_at, DriverEvent.created_at <= window_end,
         )
     )).scalars())
+    return vehicle_events, driver_events
 
-    linked_receipt_ids = {
+
+def _linked_receipt_ids(
+    vehicle_events: Iterable[VehicleEvent], driver_events: Iterable[DriverEvent],
+    substitutions: Iterable[DriverSubstitution],
+) -> set[uuid.UUID]:
+    """Receipts anchored against a vehicle, driver or substitution rather than the trip itself."""
+    return {
         r for r in (
             *(e.blockchain_receipt_id for e in vehicle_events),
             *(e.blockchain_receipt_id for e in driver_events),
             *(s.blockchain_receipt_id for s in substitutions),
         ) if r is not None
     }
-    receipt_filter = BlockchainReceipt.trip_id == trip.id
+
+
+async def _load_receipts(
+    db: AsyncSession, trip_id: uuid.UUID, linked_receipt_ids: set[uuid.UUID],
+) -> list[BlockchainReceipt]:
+    receipt_filter = BlockchainReceipt.trip_id == trip_id
     if linked_receipt_ids:
         receipt_filter = or_(receipt_filter, BlockchainReceipt.id.in_(linked_receipt_ids))
-    receipts = list((await db.execute(
+    return list((await db.execute(
         select(BlockchainReceipt).where(receipt_filter)
         .order_by(BlockchainReceipt.hedera_consensus_timestamp, BlockchainReceipt.created_at)
     )).scalars())
-    receipts_by_id = {r.id: r for r in receipts}
 
-    artifact_ids = {
+
+def _artifact_ids(
+    phases: Iterable[PhaseEvent], checkpoints: Iterable[Checkpoint], exceptions: Iterable[TripException],
+) -> set[uuid.UUID]:
+    return {
         a for a in (
             *(getattr(p, attribute) for p in phases for attribute, _ in _PHASE_EVIDENCE.values()),
             *(c.selfie_artifact_id for c in checkpoints),
@@ -397,51 +458,130 @@ async def build_audit_manifest(
             *(e.supporting_artifact_id for e in exceptions),
         ) if a is not None
     }
-    artifacts = {
-        a.id: a for a in (await db.execute(
-            select(EvidenceArtifact).where(EvidenceArtifact.id.in_(artifact_ids), EvidenceArtifact.trip_id == trip.id)
-        )).scalars()
-    } if artifact_ids else {}
 
-    pings = list((await db.execute(
-        select(TripLocationPing).where(TripLocationPing.trip_id == trip.id).order_by(TripLocationPing.recorded_at)
+
+async def _load_artifacts(
+    db: AsyncSession, trip_id: uuid.UUID, artifact_ids: set[uuid.UUID],
+) -> dict[uuid.UUID, EvidenceArtifact]:
+    if not artifact_ids:
+        return {}
+    return {
+        a.id: a for a in (await db.execute(
+            select(EvidenceArtifact).where(EvidenceArtifact.id.in_(artifact_ids), EvidenceArtifact.trip_id == trip_id)
+        )).scalars()
+    }
+
+
+async def _load_pings(db: AsyncSession, trip_id: uuid.UUID) -> list[TripLocationPing]:
+    return list((await db.execute(
+        select(TripLocationPing).where(TripLocationPing.trip_id == trip_id).order_by(TripLocationPing.recorded_at)
     )).scalars())
 
+
+async def _load_orgs(
+    db: AsyncSession, trip: Trip, consignments: Iterable[Consignment],
+) -> dict[uuid.UUID, Organization]:
     org_ids = {trip.operator_organization_id} | {
         c.client_organization_id for c in consignments if c.client_organization_id is not None
     }
     if trip.client_organization_id is not None:
         org_ids.add(trip.client_organization_id)
-    orgs = {o.id: o for o in (await db.execute(select(Organization).where(Organization.id.in_(org_ids)))).scalars()}
+    return {o.id: o for o in (await db.execute(select(Organization).where(Organization.id.in_(org_ids)))).scalars()}
 
+
+async def _load_reviewers(db: AsyncSession, exceptions: Iterable[TripException]) -> dict[uuid.UUID, User]:
     user_ids = {e.reviewed_by_user_id for e in exceptions if e.reviewed_by_user_id is not None}
-    users = {
-        u.id: u for u in (await db.execute(select(User).where(User.id.in_(user_ids)))).scalars()
-    } if user_ids else {}
+    if not user_ids:
+        return {}
+    return {u.id: u for u in (await db.execute(select(User).where(User.id.in_(user_ids)))).scalars()}
 
-    # ── Scope: which stops and counts belong to someone else ────────────────────
+
+async def _load_trip_graph(
+    db: AsyncSession, *, trip_id: uuid.UUID, operator_organization_id: uuid.UUID,
+    scope_id: uuid.UUID | None, generated_at: datetime,
+) -> _TripGraph:
+    trip, consignments, in_scope, parcels = await _load_trip_and_cargo(
+        db, trip_id=trip_id, operator_organization_id=operator_organization_id, scope_id=scope_id,
+    )
+    stop_rows, phases, snapshots, checkpoints = await _load_route(db, trip.id)
+    exceptions = await _load_exceptions(db, trip.id, scope_id)
+    substitutions, drivers, horse, trailers = await _load_crew(db, trip)
+
+    window_start = min(
+        (p.completed_at for p in phases if p.completed_at is not None and p.phase_type != PhaseType.TRIP_CREATION),
+        default=None,
+    )
+    # A trip that never closed (the hijack case) is judged up to the moment of issue —
+    # "no position since" is exactly what an adjuster needs to see.
+    window_end = trip.closed_at or generated_at
+
+    vehicle_events, driver_events = await _load_record_changes(
+        db, trip=trip, vehicle_ids=[horse.id, *(t.id for t in trailers)],
+        driver_ids=_crew_driver_ids(trip, substitutions), window_end=window_end,
+    )
+    receipts = await _load_receipts(db, trip.id, _linked_receipt_ids(vehicle_events, driver_events, substitutions))
+    artifacts = await _load_artifacts(db, trip.id, _artifact_ids(phases, checkpoints, exceptions))
+    pings = await _load_pings(db, trip.id)
+    orgs = await _load_orgs(db, trip, consignments)
+    users = await _load_reviewers(db, exceptions)
+
+    return _TripGraph(
+        trip=trip, consignments=consignments, in_scope=in_scope, parcels=parcels, stop_rows=stop_rows,
+        phases=phases, snapshots=snapshots, checkpoints=checkpoints, exceptions=exceptions,
+        substitutions=substitutions, drivers=drivers, horse=horse, trailers=trailers,
+        vehicle_events=vehicle_events, driver_events=driver_events, receipts=receipts, artifacts=artifacts,
+        pings=pings, orgs=orgs, users=users, window_start=window_start, window_end=window_end,
+    )
+
+
+# ── Assembly: pure functions from the loaded graph to manifest sections ──────────
+
+
+@dataclass(frozen=True)
+class _Scope:
+    """What a consignment-scoped pack may show of the trip. An unscoped pack sees everything."""
+
+    visible_stop_ids: set[uuid.UUID | None]
+    # Stops that also serve other clients' cargo: their parcel counts are withheld.
+    shared_stop_ids: set[uuid.UUID | None]
+    client_ids: list[uuid.UUID]
+    redactions: list[str]
+
+
+def _resolve_scope(graph: _TripGraph, scope_id: uuid.UUID | None) -> _Scope:
     redactions: list[str] = ["Driver phone number withheld."]
-    if scope_id is not None:
-        scoped = in_scope[0]
-        visible_stop_ids = {scoped.pickup_stop_id, scoped.delivery_stop_id}
-        shared_stop_ids = {c.pickup_stop_id for c in out_of_scope} | {c.delivery_stop_id for c in out_of_scope}
-        redactions.extend([
-            f"Scoped to consignment {scoped.parcel_perfect_reference}: other clients' consignments, "
-            "parcels, consignment-specific exceptions and stop names are withheld.",
-            "Stop-level parcel counts that include other clients' cargo are withheld.",
-            "Anchored payloads are reproduced verbatim so they can be verified; they may contain "
-            "stop-level totals.",
-        ])
-        client_ids = [scoped.client_organization_id] if scoped.client_organization_id else []
-    else:
-        visible_stop_ids = {stop.id for stop, _ in stop_rows}
-        shared_stop_ids = set()
+    if scope_id is None:
+        trip = graph.trip
         client_ids = sorted(
-            {c.client_organization_id for c in consignments if c.client_organization_id is not None}
+            {c.client_organization_id for c in graph.consignments if c.client_organization_id is not None}
             | ({trip.client_organization_id} if trip.client_organization_id else set()),
             key=str,
         )
+        return _Scope(
+            visible_stop_ids={stop.id for stop, _ in graph.stop_rows}, shared_stop_ids=set(),
+            client_ids=client_ids, redactions=redactions,
+        )
 
+    scoped = graph.in_scope[0]
+    out_of_scope = graph.out_of_scope
+    redactions.extend([
+        f"Scoped to consignment {scoped.parcel_perfect_reference}: other clients' consignments, "
+        "parcels, consignment-specific exceptions and stop names are withheld.",
+        "Stop-level parcel counts that include other clients' cargo are withheld.",
+        "Anchored payloads are reproduced verbatim so they can be verified; they may contain "
+        "stop-level totals.",
+    ])
+    return _Scope(
+        visible_stop_ids={scoped.pickup_stop_id, scoped.delivery_stop_id},
+        shared_stop_ids={c.pickup_stop_id for c in out_of_scope} | {c.delivery_stop_id for c in out_of_scope},
+        client_ids=[scoped.client_organization_id] if scoped.client_organization_id else [],
+        redactions=redactions,
+    )
+
+
+def _stop_records(
+    stop_rows: Sequence[Row[tuple[TripStop, Precinct]]], visible_stop_ids: AbstractSet[uuid.UUID | None],
+) -> dict[uuid.UUID, StopRecord]:
     stops: dict[uuid.UUID, StopRecord] = {}
     for stop, precinct in stop_rows:
         visible = stop.id in visible_stop_ids
@@ -452,86 +592,89 @@ async def build_audit_manifest(
             lat=float(precinct.latitude), lng=float(precinct.longitude),
             geofence_radius_metres=precinct.geofence_radius_metres, slot_time=stop.slot_time,
         )
+    return stops
 
-    # ── Records ────────────────────────────────────────────────────────────────
+
+def _phase_records(
+    graph: _TripGraph, stops: Mapping[uuid.UUID, StopRecord], shared_stop_ids: AbstractSet[uuid.UUID | None],
+) -> list[PhaseRecord]:
     snapshots_by_phase: dict[uuid.UUID, list[TrailerGpsSnapshot]] = {}
-    for snapshot in snapshots:
+    for snapshot in graph.snapshots:
         snapshots_by_phase.setdefault(snapshot.phase_event_id, []).append(snapshot)
+    ctx = _PhaseContext(
+        stops=stops, receipts_by_id={r.id: r for r in graph.receipts}, artifacts=graph.artifacts,
+        snapshots_by_phase=snapshots_by_phase, shared_stop_ids=shared_stop_ids,
+    )
+    return [_phase_record(event, ctx) for event in graph.phases]
 
-    phase_records = [
-        _phase_record(
-            event,
-            stop=stops.get(event.trip_stop_id) if event.trip_stop_id else None,
-            receipt=receipts_by_id.get(event.blockchain_receipt_id) if event.blockchain_receipt_id else None,
-            artifacts=artifacts,
-            trailer_snapshots=snapshots_by_phase.get(event.id, []),
-            withhold_counts=event.trip_stop_id in shared_stop_ids,
-        )
-        for event in phases
-    ]
 
-    checkpoint_records = [
-        CheckpointRecord(
-            checkpoint_id=c.id, checkpoint_type=c.checkpoint_type, recorded_at=c.created_at,
-            driver_phone=_fix(c.driver_phone_lat, c.driver_phone_lng, "driver_phone",
-                              c.driver_captured_at or c.created_at),
-            vehicle_tracker=_fix(c.horse_gps_lat, c.horse_gps_lng, "vehicle_tracker", None),
-            is_deviation=c.is_deviation, note=c.note,
-            evidence=_checkpoint_evidence(c, artifacts),
-            tier="recorded",
-        )
-        for c in checkpoints
-    ]
+def _checkpoint_record(c: Checkpoint, artifacts: Mapping[uuid.UUID, EvidenceArtifact]) -> CheckpointRecord:
+    return CheckpointRecord(
+        checkpoint_id=c.id, checkpoint_type=c.checkpoint_type, recorded_at=c.created_at,
+        driver_phone=_fix(c.driver_phone_lat, c.driver_phone_lng, "driver_phone",
+                          c.driver_captured_at or c.created_at),
+        vehicle_tracker=_fix(c.horse_gps_lat, c.horse_gps_lng, "vehicle_tracker", None),
+        is_deviation=c.is_deviation, note=c.note,
+        evidence=_checkpoint_evidence(c, artifacts),
+        tier="recorded",
+    )
 
-    exception_records = [
-        ExceptionRecord(
-            exception_id=e.id, exception_type=enum_text(e.exception_type), source=enum_text(e.source),
-            severity=enum_text(e.severity), description=e.description, raised_at=e.created_at,
-            position=_fix(e.gps_lat, e.gps_lng, "driver_phone", e.created_at),
-            phase_event_id=e.phase_event_id, checkpoint_id=e.checkpoint_id, consignment_id=e.consignment_id,
-            review_status=enum_text(e.review_status),
-            review_outcome=enum_text(e.review_outcome) if e.review_outcome is not None else None,
-            reviewed_at=e.reviewed_at,
-            reviewer_name=users[e.reviewed_by_user_id].full_name if e.reviewed_by_user_id in users else None,
-            contact_method=enum_text(e.contact_method) if e.contact_method is not None else None,
-            review_note=e.review_note,
-            evidence=[_evidence(artifacts[e.supporting_artifact_id], "exception_supporting")]
-            if e.supporting_artifact_id in artifacts else [],
-            # Exceptions are not anchored today (plan Stage 8) — never claim more.
-            tier="recorded",
-        )
-        for e in exceptions
-    ]
 
-    # ── Location ───────────────────────────────────────────────────────────────
-    all_fixes: list[PositionFix] = [
+def _exception_record(
+    e: TripException, artifacts: dict[uuid.UUID, EvidenceArtifact], users: dict[uuid.UUID, User],
+) -> ExceptionRecord:
+    return ExceptionRecord(
+        exception_id=e.id, exception_type=enum_text(e.exception_type), source=enum_text(e.source),
+        severity=enum_text(e.severity), description=e.description, raised_at=e.created_at,
+        position=_fix(e.gps_lat, e.gps_lng, "driver_phone", e.created_at),
+        phase_event_id=e.phase_event_id, checkpoint_id=e.checkpoint_id, consignment_id=e.consignment_id,
+        review_status=enum_text(e.review_status),
+        review_outcome=enum_text(e.review_outcome) if e.review_outcome is not None else None,
+        reviewed_at=e.reviewed_at,
+        reviewer_name=users[e.reviewed_by_user_id].full_name if e.reviewed_by_user_id in users else None,
+        contact_method=enum_text(e.contact_method) if e.contact_method is not None else None,
+        review_note=e.review_note,
+        evidence=[_evidence(artifacts[e.supporting_artifact_id], "exception_supporting")]
+        if e.supporting_artifact_id in artifacts else [],
+        # Exceptions are not anchored today (plan Stage 8) — never claim more.
+        tier="recorded",
+    )
+
+
+def _all_fixes(
+    pings: Iterable[TripLocationPing], phase_records: Iterable[PhaseRecord],
+    checkpoint_records: Iterable[CheckpointRecord], exception_records: Iterable[ExceptionRecord],
+    generated_at: datetime,
+) -> list[PositionFix]:
+    """Every position the trip recorded from any source, oldest first (untimed fixes last)."""
+    fixes: list[PositionFix] = [
         PositionFix(lat=float(p.lat), lng=float(p.lng), source="driver_phone",
                     recorded_at=p.recorded_at, accuracy_metres=_f(p.accuracy_m))
         for p in pings
     ]
     for record in phase_records:
-        all_fixes.extend(f for f in (record.driver_phone, record.vehicle_tracker) if f is not None)
-        all_fixes.extend(record.trailer_fixes)
+        fixes.extend(f for f in (record.driver_phone, record.vehicle_tracker) if f is not None)
+        fixes.extend(record.trailer_fixes)
     for checkpoint in checkpoint_records:
-        all_fixes.extend(f for f in (checkpoint.driver_phone, checkpoint.vehicle_tracker) if f is not None)
-    all_fixes.extend(e.position for e in exception_records if e.position is not None)
-    all_fixes.sort(key=lambda f: (f.recorded_at is None, f.recorded_at or generated_at))
+        fixes.extend(f for f in (checkpoint.driver_phone, checkpoint.vehicle_tracker) if f is not None)
+    fixes.extend(e.position for e in exception_records if e.position is not None)
+    fixes.sort(key=lambda f: (f.recorded_at is None, f.recorded_at or generated_at))
+    return fixes
 
+
+def _location(
+    all_fixes: list[PositionFix], *, stops: list[StopRecord], include_trail: bool,
+    window_start: datetime | None, window_end: datetime,
+) -> tuple[list[PositionFix], LocationCoverage]:
+    """The trail (empty when withheld) and coverage. Gaps are reported even when the
+    trail is withheld: a silent tracker is a fact about the trip, not a position."""
     fix_counts: dict[PositionSource, int] = {}
     for fix in all_fixes:
         fix_counts[fix.source] = fix_counts.get(fix.source, 0) + 1
     fix_times = [f.recorded_at for f in all_fixes if f.recorded_at is not None]
 
-    if options.include_location_trail:
-        trail = all_fixes
-        stationary = find_stationary_periods(all_fixes, stops=list(stops.values()))
-    else:
-        trail, stationary = [], []
-        redactions.append(
-            "Location trail and stationary periods withheld at the issuer's request; "
-            "coverage gaps are still reported."
-        )
-
+    trail = all_fixes if include_trail else []
+    stationary = find_stationary_periods(all_fixes, stops=stops) if include_trail else []
     coverage = LocationCoverage(
         window_start=window_start, window_end=window_end if window_start is not None else None,
         fix_counts=fix_counts,
@@ -539,24 +682,24 @@ async def build_audit_manifest(
         gaps=find_coverage_gaps(fix_times, window_start=window_start, window_end=window_end),
         stationary_periods=stationary,
     )
+    return trail, coverage
 
-    # ── People and vehicles ────────────────────────────────────────────────────
-    trip_date = trip.created_at.astimezone(DISPLAY_TIMEZONE).date()
-    driver = drivers[trip.driver_id]
-    if not options.include_full_driver_id:
-        redactions.append("Driver identity number masked to its last 4 digits.")
 
-    def vehicle_record(vehicle: Vehicle, role: str) -> VehicleRecord:
-        return VehicleRecord(
-            vehicle_id=vehicle.id, role="horse" if role == "horse" else "trailer",
-            registration=vehicle.registration, vehicle_type=enum_text(vehicle.vehicle_type),
-            make=vehicle.make, model=vehicle.model, year=vehicle.year, vin_number=vehicle.vin_number,
-            licence_disc_expiry=vehicle.licence_disc_expiry.isoformat() if vehicle.licence_disc_expiry else None,
-            licence_disc_valid_on_trip_date=is_valid_on(vehicle.licence_disc_expiry, trip_date),
-            tracker_device_id=vehicle.pulsit_device_id,
-        )
+def _vehicle_record(vehicle: Vehicle, role: Literal["horse", "trailer"], trip_date: date) -> VehicleRecord:
+    return VehicleRecord(
+        vehicle_id=vehicle.id, role=role,
+        registration=vehicle.registration, vehicle_type=enum_text(vehicle.vehicle_type),
+        make=vehicle.make, model=vehicle.model, year=vehicle.year, vin_number=vehicle.vin_number,
+        licence_disc_expiry=vehicle.licence_disc_expiry.isoformat() if vehicle.licence_disc_expiry else None,
+        licence_disc_valid_on_trip_date=is_valid_on(vehicle.licence_disc_expiry, trip_date),
+        tracker_device_id=vehicle.pulsit_device_id,
+    )
 
-    substitution_records = [
+
+def _driver_record(graph: _TripGraph, *, include_full_id: bool, trip_date: date) -> DriverRecord:
+    drivers = graph.drivers
+    driver = drivers[graph.trip.driver_id]
+    substitutions = [
         DriverSubstitutionRecord(
             substitution_id=s.id,
             original_driver_name=drivers[s.original_driver_id].full_name,
@@ -565,16 +708,94 @@ async def build_audit_manifest(
             anchor_receipt_id=s.blockchain_receipt_id,
             tier="anchored" if s.blockchain_receipt_id is not None else "recorded",
         )
-        for s in substitutions
+        for s in graph.substitutions
     ]
+    return DriverRecord(
+        driver_id=driver.id, full_name=driver.full_name,
+        id_number=driver.id_number if include_full_id else mask_id_number(driver.id_number),
+        id_number_masked=not include_full_id,
+        license_number=driver.license_number,
+        license_expiry=driver.license_expiry.isoformat() if driver.license_expiry else None,
+        license_valid_on_trip_date=is_valid_on(driver.license_expiry, trip_date),
+        trip_idvs_status=enum_text(graph.trip.idvs_check_status), trip_idvs_checked_at=graph.trip.idvs_checked_at,
+        substitutions=substitutions,
+    )
 
+
+def _consignment_records(graph: _TripGraph) -> list[ConsignmentRecord]:
     parcels_by_consignment: dict[uuid.UUID, list[ParcelRecord]] = {}
-    for parcel in parcels:
+    for parcel in graph.parcels:
         parcels_by_consignment.setdefault(parcel.consignment_id, []).append(ParcelRecord(
             barcode=parcel.barcode, status=enum_text(parcel.status),
             pp_scan_out_at=parcel.pp_scan_out_at, pp_scan_in_at=parcel.pp_scan_in_at,
         ))
+    orgs = graph.orgs
+    return [
+        ConsignmentRecord(
+            consignment_id=c.id, parcel_perfect_reference=c.parcel_perfect_reference,
+            client_name=orgs[c.client_organization_id].name if c.client_organization_id in orgs else None,
+            declared_value=c.declared_value, parcel_count_expected=c.parcel_count_expected,
+            unit_count_expected=c.unit_count_expected, pickup_stop_id=c.pickup_stop_id,
+            delivery_stop_id=c.delivery_stop_id, parcels=parcels_by_consignment.get(c.id, []),
+        )
+        for c in graph.in_scope
+    ]
 
+
+def _trip_summary(trip: Trip, orgs: Mapping[uuid.UUID, Organization], client_ids: Iterable[uuid.UUID]) -> TripSummary:
+    return TripSummary(
+        trip_id=trip.id, trip_reference=trip.trip_reference, order_number=trip.order_number,
+        trip_type=trip.trip_type, status=enum_text(trip.status),
+        operator_name=orgs[trip.operator_organization_id].name,
+        client_names=[orgs[i].name for i in client_ids if i in orgs],
+        pulsit_trip_reference_id=trip.pulsit_trip_reference_id, journey_lock_hash=trip.journey_lock_hash,
+        created_at=trip.created_at, planned_departure_at=trip.planned_departure_at,
+        planned_arrival_at=trip.planned_arrival_at, actual_departure_at=trip.actual_departure_at,
+        actual_arrival_at=trip.actual_arrival_at, closed_at=trip.closed_at,
+    )
+
+
+async def build_audit_manifest(
+    db: AsyncSession,
+    *,
+    trip_id: uuid.UUID,
+    operator_organization_id: uuid.UUID,
+    options: AuditPackOptions,
+    generated_at: datetime | None = None,
+) -> AuditPackManifest:
+    """Snapshot everything an insurer, adjuster or detective needs about one trip.
+
+    Raises ResourceNotFoundError when the trip is not this operator's, or when the
+    requested consignment scope is not on the trip.
+    """
+    generated_at = generated_at or datetime.now(UTC)
+    graph = await _load_trip_graph(
+        db, trip_id=trip_id, operator_organization_id=operator_organization_id,
+        scope_id=options.scope_consignment_id, generated_at=generated_at,
+    )
+    trip = graph.trip
+    scope = _resolve_scope(graph, options.scope_consignment_id)
+    redactions = list(scope.redactions)
+
+    stops = _stop_records(graph.stop_rows, scope.visible_stop_ids)
+    phase_records = _phase_records(graph, stops, scope.shared_stop_ids)
+    checkpoint_records = [_checkpoint_record(c, graph.artifacts) for c in graph.checkpoints]
+    exception_records = [_exception_record(e, graph.artifacts, graph.users) for e in graph.exceptions]
+
+    all_fixes = _all_fixes(graph.pings, phase_records, checkpoint_records, exception_records, generated_at)
+    trail, coverage = _location(
+        all_fixes, stops=list(stops.values()), include_trail=options.include_location_trail,
+        window_start=graph.window_start, window_end=graph.window_end,
+    )
+    if not options.include_location_trail:
+        redactions.append(
+            "Location trail and stationary periods withheld at the issuer's request; "
+            "coverage gaps are still reported."
+        )
+    if not options.include_full_driver_id:
+        redactions.append("Driver identity number masked to its last 4 digits.")
+
+    trip_date = trip.created_at.astimezone(DISPLAY_TIMEZONE).date()
     included_exception_ids = {e.exception_id for e in exception_records}
     declarations = [
         d for d in await load_declarations(db, trip_id=trip.id)
@@ -585,45 +806,21 @@ async def build_audit_manifest(
     manifest = AuditPackManifest(
         generated_at=generated_at,
         options=options,
-        trip=TripSummary(
-            trip_id=trip.id, trip_reference=trip.trip_reference, order_number=trip.order_number,
-            trip_type=trip.trip_type, status=enum_text(trip.status),
-            operator_name=orgs[trip.operator_organization_id].name,
-            client_names=[orgs[i].name for i in client_ids if i in orgs],
-            pulsit_trip_reference_id=trip.pulsit_trip_reference_id, journey_lock_hash=trip.journey_lock_hash,
-            created_at=trip.created_at, planned_departure_at=trip.planned_departure_at,
-            planned_arrival_at=trip.planned_arrival_at, actual_departure_at=trip.actual_departure_at,
-            actual_arrival_at=trip.actual_arrival_at, closed_at=trip.closed_at,
-        ),
+        trip=_trip_summary(trip, graph.orgs, scope.client_ids),
         stops=list(stops.values()),
-        vehicles=[vehicle_record(horse, "horse"), *(vehicle_record(t, "trailer") for t in trailers)],
-        driver=DriverRecord(
-            driver_id=driver.id, full_name=driver.full_name,
-            id_number=driver.id_number if options.include_full_driver_id else mask_id_number(driver.id_number),
-            id_number_masked=not options.include_full_driver_id,
-            license_number=driver.license_number,
-            license_expiry=driver.license_expiry.isoformat() if driver.license_expiry else None,
-            license_valid_on_trip_date=is_valid_on(driver.license_expiry, trip_date),
-            trip_idvs_status=enum_text(trip.idvs_check_status), trip_idvs_checked_at=trip.idvs_checked_at,
-            substitutions=substitution_records,
-        ),
-        consignments=[
-            ConsignmentRecord(
-                consignment_id=c.id, parcel_perfect_reference=c.parcel_perfect_reference,
-                client_name=orgs[c.client_organization_id].name if c.client_organization_id in orgs else None,
-                declared_value=c.declared_value, parcel_count_expected=c.parcel_count_expected,
-                unit_count_expected=c.unit_count_expected, pickup_stop_id=c.pickup_stop_id,
-                delivery_stop_id=c.delivery_stop_id, parcels=parcels_by_consignment.get(c.id, []),
-            )
-            for c in in_scope
+        vehicles=[
+            _vehicle_record(graph.horse, "horse", trip_date),
+            *(_vehicle_record(t, "trailer", trip_date) for t in graph.trailers),
         ],
+        driver=_driver_record(graph, include_full_id=options.include_full_driver_id, trip_date=trip_date),
+        consignments=_consignment_records(graph),
         phases=phase_records,
         checkpoints=checkpoint_records,
         exceptions=exception_records,
-        record_changes=_record_changes(vehicle_events, driver_events),
+        record_changes=_record_changes(graph.vehicle_events, graph.driver_events),
         location_trail=trail,
         location_coverage=coverage,
-        anchored_records=[_anchored_record(r) for r in receipts],
+        anchored_records=[_anchored_record(r) for r in graph.receipts],
         # From every fix, trail included or not: the last known position is the one
         # location fact a claim form and a SAPS docket cannot do without.
         incident=summarise_incident(exception_records, fixes=all_fixes),
@@ -632,4 +829,3 @@ async def build_audit_manifest(
         redactions=redactions,
     )
     return manifest.model_copy(update={"observations": derive_observations(manifest)})
-

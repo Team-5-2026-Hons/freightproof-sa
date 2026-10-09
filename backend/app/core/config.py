@@ -73,7 +73,7 @@ class Settings(BaseSettings):
     # Pulsit tracker fix describe the same place at roughly the same time. This is
     # a different question from GPS_TOLERANCE_METRES above (is the TRUCK inside its
     # precinct?) — a truck can be correctly inside its geofence while the driver's
-    # phone sits genuinely metres away. See orchestration/proximity_service.py.
+    # phone sits genuinely metres away. See orchestration/evidence/proximity.py.
     # Four independent settings rather than reusing GPS_TOLERANCE_METRES /
     # PULSIT_CORROBORATION_MAX_SKEW_SECONDS, so a future change to either of those
     # never silently drags this unrelated policy along with it.

@@ -307,7 +307,7 @@ export const mockTrips: Trip[] = [
   {
     id: TRIP_0035_ID,
     trip_reference: 'TRP-2026-0035',
-    order_number: 'FX-ORD-2026-0035',
+    pp_manifest: { issuer_account: 'FDX001', origin_hub: 'JNB', number: 3501, display: 'FedEx South Africa · JNB 3501' },
     status: 'closed',
     trip_type: 'loaded',
     journey_lock_hash: 'c2956f8a3d1e4b09f72a83c1d4e5b96f2a3c8d0e1f4a7b2c9d6e3f0a1b4c7d2',
@@ -338,7 +338,7 @@ export const mockTrips: Trip[] = [
   {
     id: TRIP_0038_ID,
     trip_reference: 'TRP-2026-0038',
-    order_number: 'CGY-ORD-2026-0038',
+    pp_manifest: { issuer_account: 'CGY001', origin_hub: 'JNB', number: 3801, display: 'The Courier Guy · JNB 3801' },
     status: 'created',
     trip_type: 'loaded',
     journey_lock_hash: null,
@@ -369,7 +369,7 @@ export const mockTrips: Trip[] = [
   {
     id: TRIP_0039_ID,
     trip_reference: 'TRP-2026-0039',
-    order_number: 'FX-ORD-2026-0039',
+    pp_manifest: { issuer_account: 'FDX001', origin_hub: 'DUR', number: 3901, display: 'FedEx South Africa · DUR 3901' },
     status: 'active',
     trip_type: 'loaded',
     journey_lock_hash: 'f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6',
@@ -409,7 +409,7 @@ export const mockTrips: Trip[] = [
   {
     id: TRIP_0040_ID,
     trip_reference: 'TRP-2026-0040',
-    order_number: 'FX-ORD-2026-0040',
+    pp_manifest: { issuer_account: 'FDX001', origin_hub: 'JNB', number: 4001, display: 'FedEx South Africa · JNB 4001' },
     status: 'active',
     trip_type: 'loaded',
     journey_lock_hash: 'b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8',
@@ -457,7 +457,7 @@ export const mockTrips: Trip[] = [
   {
     id: TRIP_0041_ID,
     trip_reference: 'TRP-2026-0041',
-    order_number: 'FX-ORD-2026-0041',
+    pp_manifest: { issuer_account: 'FDX001', origin_hub: 'JNB', number: 4101, display: 'FedEx South Africa · JNB 4101' },
     status: 'active',
     trip_type: 'loaded',
     journey_lock_hash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
@@ -505,7 +505,7 @@ export const mockTrips: Trip[] = [
   {
     id: TRIP_0042_ID,
     trip_reference: 'TRP-2026-0042',
-    order_number: 'FX-ORD-2026-0042',
+    pp_manifest: { issuer_account: 'FDX001', origin_hub: 'JNB', number: 4201, display: 'FedEx South Africa · JNB 4201' },
     status: 'active',
     trip_type: 'loaded',
     journey_lock_hash: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
@@ -553,7 +553,7 @@ export const mockTrips: Trip[] = [
   {
     id: TRIP_0043_ID,
     trip_reference: 'TRP-2026-0043',
-    order_number: 'FX-ORD-2026-0043',
+    pp_manifest: { issuer_account: 'FDX001', origin_hub: 'JNB', number: 4301, display: 'FedEx South Africa · JNB 4301' },
     status: 'created',
     trip_type: 'loaded',
     journey_lock_hash: null,

@@ -4,6 +4,9 @@ import { Chip } from '@/components/ui/Chip'
 import { InfoRow } from '@/components/ui/InfoRow'
 import type { Vehicle } from '@shared/lib/types/vehicle'
 
+// The list's grid, shared with its loading skeleton so the two always lay out the same.
+export const VEHICLE_GRID_CLASSES = 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4'
+
 interface VehicleCardProps {
   vehicle: Vehicle
   onClick: () => void

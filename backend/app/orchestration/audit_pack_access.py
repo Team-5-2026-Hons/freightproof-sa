@@ -10,6 +10,7 @@ import asyncio
 import hashlib
 import logging
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
 
@@ -19,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.blockchain.anchor_service import canonicalize_payload, compute_payload_hash
 from app.blockchain.hedera import HederaService, mirror_base_url
 from app.core.config import settings
-from app.core.exceptions import HederaServiceError, ResourceNotFoundError
+from app.core.exceptions import HederaServiceError, ResourceNotFoundError, StoredFileMismatchError
 from app.db.models.audit_packs import AuditPack, AuditPackAccessEvent
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import AuditPackAccessEventType, SubjectType, VerifyStatus, enum_text
@@ -27,7 +28,13 @@ from app.db.models.evidence import EvidenceArtifact
 from app.db.models.phases import PhaseEvent
 from app.db.models.transit import Checkpoint, TripException
 from app.db.models.trips import Trip
-from app.orchestration.audit_pack_service import hash_token, pack_label, seal_payload, verify_url
+from app.orchestration.audit_pack_service import (
+    hash_token,
+    pack_label,
+    seal_payload,
+    storage_errors_as_domain_errors,
+    verify_url,
+)
 from app.orchestration.verification_service import verify_subject
 from app.reporting.incident_sheet import render_incident_sheet_pdf
 from app.schemas.audit_pack import (
@@ -40,7 +47,6 @@ from app.schemas.audit_pack import (
     SealReceipt,
 )
 from app.storage.supabase_storage import (
-    EvidenceObjectIntegrityError,
     download_audit_pack_pdf,
     download_evidence_file,
 )
@@ -70,12 +76,18 @@ class ShareLinkClosed(Exception):
         self.reason = reason
 
 
-def _log(
-    db: AsyncSession, pack: AuditPack, event_type: AuditPackAccessEventType,
-    client_ip: str | None, user_agent: str | None,
-) -> None:
+@dataclass(frozen=True)
+class Requester:
+    """Who opened a share link, as far as the request shows: what the access log records."""
+
+    client_ip: str | None
+    user_agent: str | None
+
+
+def _log(db: AsyncSession, pack: AuditPack, event_type: AuditPackAccessEventType, requester: Requester) -> None:
+    user_agent = requester.user_agent
     db.add(AuditPackAccessEvent(
-        id=uuid.uuid4(), audit_pack_id=pack.id, event_type=event_type, client_ip=client_ip,
+        id=uuid.uuid4(), audit_pack_id=pack.id, event_type=event_type, client_ip=requester.client_ip,
         user_agent=user_agent[:USER_AGENT_MAX_LENGTH] if user_agent else None,
     ))
 
@@ -85,8 +97,7 @@ async def open_shared_pack(
     *,
     raw_token: str,
     event_type: AuditPackAccessEventType,
-    client_ip: str | None,
-    user_agent: str | None,
+    requester: Requester,
     now: datetime | None = None,
 ) -> AuditPack:
     """Resolve a share token to its pack and record the access.
@@ -102,14 +113,14 @@ async def open_shared_pack(
         # Never echo the token into logs or errors: it is the credential.
         raise ResourceNotFoundError("Audit pack link", "<redacted>")
     if pack.revoked_at is not None:
-        _log(db, pack, AuditPackAccessEventType.DENIED_REVOKED, client_ip, user_agent)
+        _log(db, pack, AuditPackAccessEventType.DENIED_REVOKED, requester)
         await db.flush()
         raise ShareLinkClosed("revoked")
     if pack.expires_at <= now:
-        _log(db, pack, AuditPackAccessEventType.DENIED_EXPIRED, client_ip, user_agent)
+        _log(db, pack, AuditPackAccessEventType.DENIED_EXPIRED, requester)
         await db.flush()
         raise ShareLinkClosed("expired")
-    _log(db, pack, event_type, client_ip, user_agent)
+    _log(db, pack, event_type, requester)
     await db.flush()
     return pack
 
@@ -159,10 +170,11 @@ async def shared_view(db: AsyncSession, pack: AuditPack) -> PublicAuditPackView:
 
 
 async def shared_pdf(pack: AuditPack) -> bytes:
-    pdf = await download_audit_pack_pdf(s3_bucket=pack.pdf_storage_bucket, s3_key=pack.pdf_storage_key)
+    with storage_errors_as_domain_errors():
+        pdf = await download_audit_pack_pdf(s3_bucket=pack.pdf_storage_bucket, s3_key=pack.pdf_storage_key)
     if hashlib.sha256(pdf).hexdigest() != pack.pdf_sha256:
         logger.error("Stored audit pack PDF no longer matches its issued hash (pack_id=%s)", pack.id)
-        raise EvidenceObjectIntegrityError("The stored audit pack PDF no longer matches the one issued")
+        raise StoredFileMismatchError("The stored audit pack PDF no longer matches the one issued")
     return pdf
 
 
@@ -193,7 +205,8 @@ async def shared_artifact(db: AsyncSession, pack: AuditPack, *, artifact_id: uui
     )).scalar_one_or_none()
     if artifact is None:
         raise ResourceNotFoundError("Evidence artifact", str(artifact_id))
-    data = await download_evidence_file(s3_bucket=artifact.s3_bucket, s3_key=artifact.s3_key)
+    with storage_errors_as_domain_errors():
+        data = await download_evidence_file(s3_bucket=artifact.s3_bucket, s3_key=artifact.s3_key)
     return artifact.mime_type, data
 
 

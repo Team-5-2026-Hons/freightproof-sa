@@ -115,6 +115,7 @@ async def seed_data(db_session: AsyncSession):
 
     yield {
         "org": operator_org,
+        "org_id": operator_org.id,
         "user": user,
         "client_org_id": client_org.id,
         "origin_id": origin.id,
@@ -129,7 +130,7 @@ async def seed_data(db_session: AsyncSession):
 # ─── Helpers ────────────────────────────────────────────────────────────────
 
 # create_trip's phase plan (h1/activation) gates on the SAME operating day as this
-# value (phase_service._reject_if_not_due) — "now" keeps every payload in this file
+# value (phases.scheduling._reject_if_not_due) — "now" keeps every payload in this file
 # immediately activatable, which several tests below rely on.
 def _schedule_now() -> str:
     return datetime.now(UTC).isoformat()
@@ -137,7 +138,6 @@ def _schedule_now() -> str:
 
 def _make_payload(seed: dict) -> dict:
     return {
-        "order_number": "ORD-TEST-001",
         "driver_id": str(seed["driver_id"]),
         "horse_id": str(seed["horse_id"]),
         "trailer_ids": [str(seed["trailer_id"])],
@@ -173,7 +173,8 @@ async def test_create_trip_response_shape(client: AsyncClient, seed_data, db_ses
     )
     body = resp.json()
     assert body["status"] == "created"
-    assert body["order_number"] == "ORD-TEST-001"
+    assert "order_number" not in body
+    assert body["pp_manifest"] is None
     assert body["trip_reference"].startswith("FP-")
     assert len(body["journey_lock_hash"]) == 64
     assert body["idvs_check_status"] == "pending"
@@ -234,9 +235,9 @@ async def test_create_trip_writes_h0_handshake_to_db(client: AsyncClient, seed_d
 
     h0 is asserted COMPLETED (not PENDING): create_trip completes it inline once
     its Hedera anchor succeeds, since reaching that point means trip creation
-    itself IS h0's completion event — see trip_service.create_trip. Leaving h0
+    itself IS h0's completion event — see trips.creation.create_trip. Leaving h0
     PENDING would permanently block every later phase, since _gate_and_load
-    (phase_service.py) requires every lower-sequence_number row resolved and h0
+    (phases/gate.py) requires every lower-sequence_number row resolved and h0
     is sequence 0, the lowest possible."""
     resp = await client.post(
         "/api/v1/trips",
@@ -261,18 +262,6 @@ async def test_create_trip_writes_h0_handshake_to_db(client: AsyncClient, seed_d
     assert h0_row.anchor_status == AnchorStatus.ANCHORED
 
 
-async def test_create_trip_409_on_duplicate_order_number(client: AsyncClient, seed_data, db_session):
-    payload = _make_payload(seed_data)
-    first = await client.post(
-        "/api/v1/trips", json=payload, headers=_auth_headers(seed_data)
-    )
-    assert first.status_code == 201
-    second = await client.post(
-        "/api/v1/trips", json=payload, headers=_auth_headers(seed_data)
-    )
-    assert second.status_code == 409
-    assert "ORD-TEST-001" in second.json()["detail"]
-
 
 async def test_create_trip_404_unknown_driver(client: AsyncClient, seed_data, db_session):
     payload = _make_payload(seed_data)
@@ -290,7 +279,6 @@ async def test_create_trip_zero_trailers(client: AsyncClient, seed_data, db_sess
     crypto/hashing.py). This supersedes the old 422-on-empty-trailers expectation,
     which predates that decision."""
     payload = _make_payload(seed_data)
-    payload["order_number"] = "ORD-NOTRAILER-001"
     payload["trailer_ids"] = []
     resp = await client.post(
         "/api/v1/trips", json=payload, headers=_auth_headers(seed_data)
@@ -310,7 +298,7 @@ async def test_create_trip_zero_trailers(client: AsyncClient, seed_data, db_sess
 
 async def test_create_trip_without_a_schedule_is_422(client: AsyncClient, seed_data, db_session):
     """A trip with neither planned_departure_at nor any stop slot_time can never
-    be activated — _reject_if_not_due (phase_service.py) treats a fully
+    be activated — _reject_if_not_due (phases/scheduling.py) treats a fully
     unscheduled trip as PERMANENTLY not-due, not merely not-yet-due. This must
     be rejected at creation (422, naming the field) rather than accepted into
     a state no future activation attempt can ever satisfy."""
@@ -326,7 +314,7 @@ async def test_create_trip_without_a_schedule_is_422(client: AsyncClient, seed_d
 async def test_create_trip_with_stop_slot_time_only_is_accepted(client: AsyncClient, seed_data, db_session):
     """A multi-stop trip may carry its timing entirely on a stop's slot_time,
     with no trip-level planned_departure_at — the same alternate source
-    phase_service._scheduled_departure falls back to."""
+    phases.scheduling._scheduled_departure falls back to."""
     payload = _make_payload(seed_data)
     payload.pop("planned_departure_at", None)
     payload["stops"] = [
@@ -375,25 +363,24 @@ async def _post_trip_with_hedera_failure(
         return await client.post("/api/v1/trips", json=payload, headers=headers)
 
 
-async def _assert_no_trip_persisted(db_session: AsyncSession, order_number: str) -> None:
+async def _assert_no_trip_persisted(db_session: AsyncSession, operator_organization_id: uuid.UUID) -> None:
     """Assert fail-closed H0: nothing survives a failed anchoring attempt.
 
     The autouse get_db override yields the test session without the
     rollback-on-exception that production get_db performs, so the flushed-but-
     unanchored Trip row is still pending here. Mirror production's rollback
-    first — if trip_service had committed mid-way (breaking atomicity), the
+    first — if trips.creation had committed mid-way (breaking atomicity), the
     row would survive this rollback and the assertion would catch it.
     """
     await db_session.rollback()
     row = (
-        await db_session.execute(select(Trip).where(Trip.order_number == order_number))
-    ).scalar_one_or_none()
-    assert row is None
+        await db_session.execute(select(Trip).where(Trip.operator_organization_id == operator_organization_id))
+    ).scalars().all()
+    assert row == []
 
 
 async def test_create_trip_hedera_timeout_returns_504_and_no_trip(client: AsyncClient, seed_data, db_session):
     payload = _make_payload(seed_data)
-    payload["order_number"] = "ORD-HEDERA-TIMEOUT-001"
 
     resp = await _post_trip_with_hedera_failure(
         client, payload, _auth_headers(seed_data),
@@ -402,12 +389,11 @@ async def test_create_trip_hedera_timeout_returns_504_and_no_trip(client: AsyncC
 
     assert resp.status_code == 504
     assert "retry" in resp.json()["detail"].lower()
-    await _assert_no_trip_persisted(db_session, "ORD-HEDERA-TIMEOUT-001")
+    await _assert_no_trip_persisted(db_session, seed_data["org_id"])
 
 
 async def test_create_trip_hedera_service_error_returns_502_and_no_trip(client: AsyncClient, seed_data, db_session):
     payload = _make_payload(seed_data)
-    payload["order_number"] = "ORD-HEDERA-DOWN-001"
 
     # HederaSubmitError subclasses HederaServiceError — the realistic failure
     # shape for the endpoint's generic HederaServiceError → 502 handler.
@@ -418,7 +404,7 @@ async def test_create_trip_hedera_service_error_returns_502_and_no_trip(client: 
 
     assert resp.status_code == 502
     assert "retry" in resp.json()["detail"].lower()
-    await _assert_no_trip_persisted(db_session, "ORD-HEDERA-DOWN-001")
+    await _assert_no_trip_persisted(db_session, seed_data["org_id"])
 
 
 async def test_list_trips_empty_returns_200(client: AsyncClient, seed_data, db_session):
@@ -443,7 +429,7 @@ async def test_list_trips_returns_created_trip(client: AsyncClient, seed_data, d
     body = resp.json()
     assert resp.status_code == 200
     assert len(body) == 1
-    assert body[0]["order_number"] == "ORD-TEST-001"
+    assert body[0]["pp_manifest"] is None
     assert body[0]["status"] == "created"
     assert body[0]["needs_review_count"] == 0
     assert "driver" in body[0]
@@ -552,7 +538,7 @@ def _assert_derived_phase_fields_populated(phases: list[dict]) -> None:
 async def test_create_trip_response_populates_derived_phase_fields(
     client: AsyncClient, seed_data, db_session,
 ):
-    """Guards trip_service.create_trip's own from_event() call site (POST
+    """Guards trips.creation.create_trip's own from_event() call site (POST
     /trips) — one of PhaseEventRead.from_event()'s three separate call sites,
     each of which builds its own stop map by hand. Nothing else in the suite
     reads stop_sequence/step_recipe off body["phases"] — existing tests only
@@ -623,7 +609,6 @@ async def test_create_trip_persists_consignments_and_parcels(client: AsyncClient
     """POST with two consignments persists a Consignment row per waybill (with the
     dispatcher-entered unit_count_expected) and a Parcel row per PP track."""
     payload = _make_payload(seed_data)
-    payload["order_number"] = "ORD-CONSIGN-001"
     payload["consignments"] = [
         {"pp_reference": "MOCKWAY001", "unit_count_expected": 2},
         {"pp_reference": "WAY001", "unit_count_expected": 4},
@@ -664,7 +649,6 @@ async def test_get_trip_detail_scanned_counts_are_zero_before_any_scan(
     from the phase rows' parcel_count_origin/_destination — see ConsignmentRead's
     docstring. Nothing has been scanned yet, so both must be 0, not absent."""
     payload = _make_payload(seed_data)
-    payload["order_number"] = "ORD-SCANCOUNT-001"
     create_resp = await client.post(
         "/api/v1/trips", json=payload, headers=_auth_headers(seed_data),
     )
@@ -682,12 +666,11 @@ async def test_get_trip_detail_scanned_counts_are_zero_before_any_scan(
 async def test_get_trip_detail_scanned_counts_track_real_scans(
     client: AsyncClient, seed_data, db_session,
 ):
-    """A live warehouse scan (Parcel.pp_scan_out_at stamped by scan_service, not
+    """A live warehouse scan (Parcel.pp_scan_out_at stamped by consignments.scans, not
     the phase ledger) must be visible on the very next trip-detail poll — the
     dispatcher's unloading panel reads this instead of waiting for confirmation
     close to stamp parcel_count_destination."""
     payload = _make_payload(seed_data)
-    payload["order_number"] = "ORD-SCANCOUNT-002"
     create_resp = await client.post(
         "/api/v1/trips", json=payload, headers=_auth_headers(seed_data),
     )
@@ -696,7 +679,7 @@ async def test_get_trip_detail_scanned_counts_track_real_scans(
     consignment_id = uuid.UUID(create_resp.json()["consignments"][0]["id"])
 
     # MOCKWAY001 (the seed payload's waybill) has 2 tracks — stamp one directly,
-    # mirroring what scan_service._stamp_parcel does on a real warehouse scan.
+    # mirroring what consignments.scans._stamp_parcel does on a real warehouse scan.
     parcels = (await db_session.execute(
         select(Parcel).where(Parcel.consignment_id == consignment_id)
     )).scalars().all()
@@ -715,7 +698,6 @@ async def test_create_trip_unknown_waybill_rolls_back_everything(client: AsyncCl
     """A PP waybill that doesn't resolve must roll back the whole trip — atomicity,
     not a partially-created trip with no manifest."""
     payload = _make_payload(seed_data)
-    payload["order_number"] = "ORD-ROLLBACK-001"
     payload["consignments"] = [{"pp_reference": "NOPE999", "unit_count_expected": 1}]
     resp = await client.post(
         "/api/v1/trips", json=payload, headers=_auth_headers(seed_data),
@@ -723,7 +705,7 @@ async def test_create_trip_unknown_waybill_rolls_back_everything(client: AsyncCl
     assert resp.status_code == 422
 
     trip_rows = (
-        await db_session.execute(select(Trip).where(Trip.order_number == "ORD-ROLLBACK-001"))
+        await db_session.execute(select(Trip).where(Trip.operator_organization_id == seed_data["org_id"]))
     ).scalars().all()
     assert trip_rows == []
     stop_rows = (await db_session.execute(select(TripStop))).scalars().all()
@@ -746,14 +728,12 @@ async def test_create_trip_409_on_waybill_already_assigned_to_another_trip(
     total: no Trip/TripStop/PhaseEvent rows left behind by the rejected attempt.
     """
     payload = _make_payload(seed_data)
-    payload["order_number"] = "ORD-REUSE-A"
     first = await client.post(
         "/api/v1/trips", json=payload, headers=_auth_headers(seed_data),
     )
     assert first.status_code == 201
     first_trip_reference = first.json()["trip_reference"]
 
-    payload["order_number"] = "ORD-REUSE-B"
     second = await client.post(
         "/api/v1/trips", json=payload, headers=_auth_headers(seed_data),
     )
@@ -763,16 +743,15 @@ async def test_create_trip_409_on_waybill_already_assigned_to_another_trip(
     assert "MOCKWAY001" in second.json()["detail"]
 
     trip_b_rows = (
-        await db_session.execute(select(Trip).where(Trip.order_number == "ORD-REUSE-B"))
+        await db_session.execute(select(Trip).where(Trip.operator_organization_id == seed_data["org_id"]))
     ).scalars().all()
-    assert trip_b_rows == []
+    assert [t.trip_reference for t in trip_b_rows] == [first_trip_reference]
 
 
 async def test_create_trip_unmapped_accnum_returns_warning(client: AsyncClient, seed_data, db_session):
     """WAY004's accnum (UNMAP9) has no matching Organization — the consignment is
     still saved (client_organization_id NULL) with a non-fatal warning surfaced."""
     payload = _make_payload(seed_data)
-    payload["order_number"] = "ORD-WARN-001"
     payload["consignments"] = [{"pp_reference": "WAY004", "unit_count_expected": 3}]
     resp = await client.post(
         "/api/v1/trips", json=payload, headers=_auth_headers(seed_data),
@@ -794,10 +773,9 @@ async def test_create_empty_leg_no_consignments_no_pp_call(client: AsyncClient, 
     def _raise(*args, **kwargs):
         raise AssertionError("PP client must not be called for an empty-leg trip")
 
-    monkeypatch.setattr("app.orchestration.consignment_service.get_pp_client", _raise)
+    monkeypatch.setattr("app.orchestration.consignments.sync.get_pp_client", _raise)
 
     payload = _make_payload(seed_data)
-    payload["order_number"] = "ORD-EMPTY-001"
     payload["trip_type"] = "empty_leg"
     payload["consignments"] = []
 
@@ -899,7 +877,6 @@ async def test_create_trip_422_on_implausibly_short_duration(
 
     departure = datetime.now(UTC)
     payload = _make_payload(seed_data)
-    payload["order_number"] = "ORD-SHORT-001"
     payload["planned_departure_at"] = departure.isoformat()
     payload["planned_arrival_at"] = (departure + timedelta(minutes=1)).isoformat()
 
@@ -913,7 +890,7 @@ async def test_create_trip_422_on_implausibly_short_duration(
 
     trips = (
         await db_session.execute(
-            select(Trip).where(Trip.order_number == "ORD-SHORT-001")
+            select(Trip).where(Trip.operator_organization_id == seed_data["org_id"])
         )
     ).scalars().all()
     assert trips == []

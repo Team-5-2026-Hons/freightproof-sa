@@ -12,7 +12,6 @@ import type { CoarseTripStatus } from '@shared/lib/types/phase'
 export interface DriverTripSummary {
   id: TripId
   trip_reference: string
-  order_number: string
   // The ONLY field the Active/Upcoming/Past tabs group by. 'created' is an assignment
   // the driver has not activated yet; 'active'/'exception_hold' is underway;
   // 'closed'/'cancelled' is history. See categorizeTrips in lib/utils/trip-filters.ts.

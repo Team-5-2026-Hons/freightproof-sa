@@ -258,7 +258,7 @@ async def _trip(
         created_by_user_id=operator.dispatcher.id,
         planned_departure_at=planned_departure,
         planned_arrival_at=planned_arrival,
-        # Reproduces phase_service's known defect: stamped on EVERY departure, so it holds
+        # Reproduces phases.advance_departure's known defect: stamped on EVERY departure, so it holds
         # the LAST leg. Seeded deliberately wrong to prove no view reads it.
         actual_departure_at=at(departures[-1].minute) if departures else None,
         actual_arrival_at=(
@@ -271,7 +271,7 @@ async def _trip(
     db.add(trip)
     await db.flush()
 
-    # Linked exactly as trip creation does it (trip_service), snapshot included.
+    # Linked exactly as trip creation does it (trips.creation), snapshot included.
     db.add_all([
         TripTrailer(
             trip_id=trip.id, trailer_id=trailer.id,
@@ -972,7 +972,7 @@ async def test_lane_metrics_skip_trips_with_unknown_endpoint(
 async def test_facility_metrics_three_states_without_in_transit_or_overrides(
     db_session: AsyncSession, operator: Operator, lane: list[Precinct], month: date,
 ) -> None:
-    # in_transit is left NULL on both trips, as corroboration_service always leaves it.
+    # in_transit is left NULL on both trips, as evidence.corroboration always leaves it.
     await _trip(
         db_session, operator, start=_start(month, 10), stops=lane,
         steps=_geofenced(_single_leg(), {

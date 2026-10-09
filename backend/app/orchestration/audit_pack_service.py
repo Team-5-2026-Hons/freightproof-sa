@@ -14,6 +14,8 @@ import hashlib
 import logging
 import secrets
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -24,7 +26,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.blockchain.anchor_service import anchor_subject, compute_payload_hash
 from app.blockchain.hedera import mirror_base_url
 from app.core.config import settings
-from app.core.exceptions import HederaServiceError, HederaTimeoutError, ResourceNotFoundError
+from app.core.exceptions import (
+    FileStorageUnavailableError,
+    HederaServiceError,
+    HederaTimeoutError,
+    ResourceNotFoundError,
+    StoredFileMismatchError,
+)
 from app.db.models.audit_packs import AuditPack, AuditPackAccessEvent
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import (
@@ -49,6 +57,7 @@ from app.schemas.audit_pack import (
 from app.schemas.people import UserRead
 from app.storage.supabase_storage import (
     EvidenceObjectIntegrityError,
+    EvidenceStorageUnavailableError,
     download_audit_pack_pdf,
     upload_audit_pack_pdf,
 )
@@ -68,6 +77,18 @@ class IssuedPack:
     pack: AuditPack
     # Exists only in this return value — the database keeps its hash.
     raw_token: str
+
+
+@contextmanager
+def storage_errors_as_domain_errors() -> Iterator[None]:
+    """Re-raise the storage layer's errors as core domain errors. Endpoints may reach
+    storage only through orchestration (import-linter), so they must not need its types."""
+    try:
+        yield
+    except EvidenceObjectIntegrityError as exc:
+        raise StoredFileMismatchError(str(exc)) from exc
+    except EvidenceStorageUnavailableError as exc:
+        raise FileStorageUnavailableError(str(exc)) from exc
 
 
 def pack_label(trip_reference: str, pack_version: int) -> str:
@@ -166,17 +187,20 @@ async def issue_audit_pack(
     db: AsyncSession,
     *,
     trip_id: uuid.UUID,
-    organization_id: uuid.UUID,
     issued_by: UserRead,
     request: AuditPackCreate,
     now: datetime | None = None,
 ) -> IssuedPack:
     """Snapshot the trip, render and store the PDF, seal it on Hedera, mint the link.
 
+    The pack belongs to the issuer's organisation, so a dispatcher can only issue packs
+    for their own operator's trips.
+
     Raises ResourceNotFoundError (trip or consignment not this operator's) and
-    EvidenceStorageUnavailableError (PDF could not be stored — nothing is issued).
+    FileStorageUnavailableError (PDF could not be stored — nothing is issued).
     """
     now = now or datetime.now(UTC)
+    organization_id = issued_by.organization_id
     manifest = await build_audit_manifest(
         db, trip_id=trip_id, operator_organization_id=organization_id, options=request.options(),
         generated_at=now,
@@ -195,7 +219,8 @@ async def issue_audit_pack(
     pdf = await asyncio.to_thread(
         render_audit_pack_pdf, manifest, issue=issue, mirror_base_url=mirror_base_url(settings.HEDERA_NETWORK),
     )
-    stored = await upload_audit_pack_pdf(trip_id=str(trip_id), pack_id=str(pack_id), pdf_bytes=pdf)
+    with storage_errors_as_domain_errors():
+        stored = await upload_audit_pack_pdf(trip_id=str(trip_id), pack_id=str(pack_id), pdf_bytes=pdf)
 
     manifest_json = manifest.as_json_dict()
     pack = AuditPack(
@@ -314,9 +339,10 @@ async def download_issued_pdf(
     """The PDF exactly as issued, or an error — never a file whose hash has changed,
     since handing out an altered copy of evidence is worse than handing out nothing."""
     pack = await get_audit_pack(db, pack_id=pack_id, organization_id=organization_id)
-    pdf = await download_audit_pack_pdf(s3_bucket=pack.pdf_storage_bucket, s3_key=pack.pdf_storage_key)
+    with storage_errors_as_domain_errors():
+        pdf = await download_audit_pack_pdf(s3_bucket=pack.pdf_storage_bucket, s3_key=pack.pdf_storage_key)
     if hashlib.sha256(pdf).hexdigest() != pack.pdf_sha256:
         logger.error("Stored audit pack PDF no longer matches its issued hash (pack_id=%s)", pack.id)
-        raise EvidenceObjectIntegrityError("The stored audit pack PDF no longer matches the one issued")
+        raise StoredFileMismatchError("The stored audit pack PDF no longer matches the one issued")
     reference = (await db.execute(select(Trip.trip_reference).where(Trip.id == pack.trip_id))).scalar_one()
     return pack_label(reference, pack.pack_version), pdf

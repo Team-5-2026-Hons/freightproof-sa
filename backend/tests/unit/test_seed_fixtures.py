@@ -17,7 +17,7 @@ import uuid
 import pytest
 
 from app.integrations.parcel_perfect import (
-    MOCK_WAYBILLS,
+    MOCK_WAYBILLS, DEMO_HUB_CODES, MOCK_MANIFEST_HEADERS,
     SEEDED_WAYBILLS,
     UNASSIGNED_WAYBILLS,
     MockParcelPerfectClient,
@@ -26,7 +26,9 @@ from app.db.models.enums import ParcelStatus, PhaseType, SealCondition
 from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Parcel
 from app.orchestration.phase_plan import PlanStop, build_phase_plan
+from scripts.seed_demo import _PRECINCTS as DEMO_PRECINCTS
 from scripts.seed_trips import (
+    _manifest_key_for,
     _apply_walk_evidence,
     _apply_seed_position_evidence,
     _apply_seed_scan_evidence,
@@ -94,12 +96,22 @@ def test_trip_references_are_unique():
     assert len(references) == len(set(references))
 
 
-def test_order_numbers_are_unique():
-    # create_trip rejects a duplicate active order_number per operator org; the
-    # seeder writes rows directly and would sail past that guard into a state the
-    # application itself forbids.
-    order_numbers = [spec.order_number for spec in TRIP_SPECS]
-    assert len(order_numbers) == len(set(order_numbers))
+def test_each_seeded_trip_rides_one_manifest_with_a_header() -> None:
+    for spec in TRIP_SPECS:
+        manifests = {MOCK_WAYBILLS[leg.pp_reference].details.manifest for leg in spec.consignments}
+        assert len(manifests) == 1, f"{spec.trip_reference} spans manifests {manifests}"
+        assert manifests.pop() in MOCK_MANIFEST_HEADERS
+
+
+def test_manifest_keys_are_unique() -> None:
+    # uq_trips_pp_manifest refuses a duplicate on a live trip; the seeder writes rows
+    # directly and would sail past that guard into a state the application forbids.
+    keys = [_manifest_key_for(spec) for spec in TRIP_SPECS]
+    assert len(keys) == len(set(keys))
+
+
+def test_demo_precincts_carry_every_demo_hub_code() -> None:
+    assert {p.pp_hub_code for p in DEMO_PRECINCTS} == DEMO_HUB_CODES
 
 
 @pytest.mark.parametrize("spec", TRIP_SPECS, ids=lambda s: s.trip_reference)

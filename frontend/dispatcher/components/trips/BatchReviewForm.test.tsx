@@ -39,8 +39,8 @@ function warning(id: string, type: TripException['exception_type']): TripExcepti
 const EXCEPTIONS = [warning('ex-1', 'cargo_damage'), warning('ex-2', 'gps_mismatch')]
 
 function fillForm(): void {
-  fireEvent.change(screen.getByLabelText('Review note'), { target: { value: '  Looked at both  ' } })
-  fireEvent.change(screen.getByLabelText('Outcome'), { target: { value: 'no_action_required' } })
+  fireEvent.change(screen.getByLabelText('Review note (required)'), { target: { value: '  Looked at both  ' } })
+  fireEvent.change(screen.getByLabelText('Outcome (required)'), { target: { value: 'no_action_required' } })
 }
 
 function renderForm(onDone = vi.fn(), onCancel = vi.fn()) {
@@ -75,7 +75,7 @@ describe('BatchReviewForm', () => {
     renderForm()
 
     expect(screen.getByText(/Cargo Damage/)).toBeInTheDocument()
-    expect(screen.getByText(/Gps Mismatch/)).toBeInTheDocument()
+    expect(screen.getByText(/GPS mismatch/)).toBeInTheDocument()
   })
 
   it('submits exactly the listed ids with one note and outcome', async () => {
@@ -101,13 +101,13 @@ describe('BatchReviewForm', () => {
     const submit = screen.getByRole('button', { name: /Review 2 exceptions/ })
     expect(submit).toBeDisabled()
 
-    fireEvent.change(screen.getByLabelText('Review note'), { target: { value: 'Note only' } })
+    fireEvent.change(screen.getByLabelText('Review note (required)'), { target: { value: 'Note only' } })
     expect(submit).toBeDisabled()
 
-    fireEvent.change(screen.getByLabelText('Outcome'), { target: { value: 'no_action_required' } })
+    fireEvent.change(screen.getByLabelText('Outcome (required)'), { target: { value: 'no_action_required' } })
     expect(submit).toBeEnabled()
 
-    fireEvent.change(screen.getByLabelText('Review note'), { target: { value: '   ' } })
+    fireEvent.change(screen.getByLabelText('Review note (required)'), { target: { value: '   ' } })
     expect(submit).toBeDisabled()
     expect(mockedBatch).not.toHaveBeenCalled()
   })
@@ -121,7 +121,7 @@ describe('BatchReviewForm', () => {
 
     await waitFor(() => expect(notify).toHaveBeenCalledWith(expect.objectContaining({ kind: 'error', title: 'A colleague got there first' })))
     expect(onDone).not.toHaveBeenCalled()
-    expect(screen.getByLabelText('Review note')).toHaveValue('  Looked at both  ')
+    expect(screen.getByLabelText('Review note (required)')).toHaveValue('  Looked at both  ')
   })
 
   it("toasts the server's detail on 422", async () => {

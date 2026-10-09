@@ -15,7 +15,7 @@ from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.blockchain.anchor_service import compute_payload_hash
-from app.crypto.hashing import compute_trip_canonical_payload
+from app.crypto.hashing import StopCommitment, compute_trip_canonical_payload_v2
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import (
     AnchorStatus,
@@ -42,7 +42,7 @@ from app.db.models.phases import PhaseEvent, TrailerGpsSnapshot
 from app.db.models.transit import Checkpoint, TripException
 from app.db.models.trips import Consignment, Parcel, Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
-from app.orchestration.phase_service import (
+from app.orchestration.phases.payloads import (
     compute_arrival_canonical_payload_v2,
     compute_confirmation_canonical_payload_v2,
     compute_departure_canonical_payload_v2,
@@ -195,10 +195,13 @@ async def seed_audit_trip(db: AsyncSession) -> AuditTrip:
     db.add_all([creation, activation, loading, departure, in_transit, arrival, unloading, confirmation])
     await db.flush()
 
-    lock_payload = compute_trip_canonical_payload(
-        trip_id=trip.id, order_number=trip.order_number, driver_id=driver.id, horse_id=horse.id,
-        trailer_ids=[trailer.id], origin_precinct_id=origin.id, destination_precinct_id=dest.id,
-        created_by_user_id=dispatcher.id, created_at=T0, trip_type="loaded",
+    lock_payload = compute_trip_canonical_payload_v2(
+        trip_id=trip.id, driver_id=driver.id, horse_id=horse.id, trailer_ids=[trailer.id],
+        origin_precinct_id=origin.id, destination_precinct_id=dest.id, created_by_user_id=dispatcher.id,
+        created_at=T0, trip_type="loaded", pp_manifest=None, pp_manifest_snapshot_sha256=None,
+        planned_departure_at=trip.planned_departure_at, planned_arrival_at=trip.planned_arrival_at,
+        # The same v2 shape trips.creation anchors, so verify_subject checks this lock as it does a real one.
+        stops=[StopCommitment(s.sequence, s.precinct_id, s.slot_time) for s in (stop_jhb, stop_dbn, stop_pmb)],
     )
     creation_receipt = await _receipt(
         db, trip_id=trip.id, subject_type=SubjectType.TRIP, subject_id=trip.id,

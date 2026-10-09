@@ -211,7 +211,7 @@ async def test_driver_raised_exceptions_carry_their_own_severity(
 ):
     """Regression: a driver-raised exception must be as loud as what it is.
 
-    exception_service used to publish a fixed kind with no severity at all, while the
+    exceptions.creation used to publish a fixed kind with no severity at all, while the
     system-detected sites promoted their CRITICAL rows. The result was inverted — a
     panic button pressed during a hijacking reached the dispatcher quieter than an
     automated parcel-count mismatch. The severity now comes off the same binding that
@@ -356,11 +356,11 @@ async def test_first_exception_review_enqueues_exception_reviewed_at_info(
 # Site inventory (grep "TripException(" app/orchestration/ — note that scan_service
 # assigns before adding, so a "db.add(TripException(" grep misses it):
 #
-#   phase_service  advance_departure     departure seal mismatch    CRITICAL
-#   phase_service  advance_arrival       seal continuity            WARNING|CRITICAL
-#   phase_service  advance_arrival       destination seal mismatch  CRITICAL
-#   phase_service  advance_confirmation  waybill count mismatch     WARNING
-#   phase_service  advance_loading       scan shortfall backstop    WARNING
+#   phases         advance_departure     departure seal mismatch    CRITICAL
+#   phases         advance_arrival       seal continuity            WARNING|CRITICAL
+#   phases         advance_arrival       destination seal mismatch  CRITICAL
+#   phases         advance_confirmation  waybill count mismatch     WARNING
+#   phases         advance_loading       scan shortfall backstop    WARNING
 #   scan_service   ingest_scans          scan discrepancy           WARNING
 #
 # advance_departure's site has no test here, and deliberately. Both of its entry
@@ -568,7 +568,7 @@ _BARCODES = ["EMITSCAN001", "EMITSCAN002", "EMITSCAN003"]
 async def _seed_manifest(db_session, trip, stop, *, reference: str) -> Consignment:
     """One waybill of three parcels, picked up and delivered at the same stop.
 
-    pickup_stop_id and delivery_stop_id are both set: phase_gate skips a consignment
+    pickup_stop_id and delivery_stop_id are both set: phases.blocking skips a consignment
     whose relevant stop is NULL, so leaving either off would silently disable the very
     gate these tests need to pass through.
     """
@@ -773,13 +773,16 @@ def test_every_trip_exception_write_site_is_accounted_for():
     actual = {path: count for path, count in actual.items() if count}
 
     expected_sites = {
-        "app/orchestration/action_location_service.py": 2,
-        "app/orchestration/exception_service.py": 1,
-        "app/orchestration/phase_service.py": 8,
-        "app/orchestration/receiver_verification_service.py": 1,
-        "app/orchestration/road_check_service.py": 1,
-        "app/orchestration/scan_service.py": 1,
-        "app/orchestration/trip_service.py": 1,
+        "app/orchestration/consignments/scans.py": 1,
+        "app/orchestration/evidence/action_location.py": 2,
+        "app/orchestration/evidence/road_check.py": 1,
+        "app/orchestration/exceptions/creation.py": 1,
+        "app/orchestration/handover/receiver_verification.py": 1,
+        "app/orchestration/phases/advance_confirmation.py": 1,
+        "app/orchestration/phases/advance_departure.py": 1,
+        "app/orchestration/phases/findings.py": 4,
+        "app/orchestration/phases/override.py": 2,
+        "app/orchestration/trips/administration.py": 1,
     }
     assert actual == expected_sites, (
         "A TripException write site was added or removed. Every site must enqueue a "

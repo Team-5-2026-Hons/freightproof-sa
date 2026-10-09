@@ -9,6 +9,9 @@ import type { Precinct } from '@shared/lib/types/precinct'
 // so cards don't jitter between differing source precisions across precincts.
 const COORDINATE_DECIMAL_PLACES = 5
 
+// The list's grid, shared with its loading skeleton so the two always lay out the same.
+export const PRECINCT_GRID_CLASSES = 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4'
+
 interface PrecinctCardProps {
   precinct: Precinct
   isOwned: boolean

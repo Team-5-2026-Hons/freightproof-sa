@@ -52,7 +52,7 @@ function makeTrip(phases: PhaseDescriptor[], overrides: Partial<Trip> = {}): Tri
   return {
     id: 'trip-1' as unknown as TripId,
     trip_reference: 'TRP-2026-0099',
-    order_number: 'ORD-99',
+    pp_manifest: null,
     status: 'active',
     trip_type: 'loaded',
     journey_lock_hash: null,
@@ -103,7 +103,6 @@ describe('TripDetailView', () => {
     )
 
     expect(screen.getByRole('heading', { name: 'TRP-2026-0099' })).toBeInTheDocument()
-    expect(screen.getByText('ORD-99')).toBeInTheDocument()
   })
 
   it('showAllPhases=true renders exactly N rows for an N-phase (13-row cross-dock) plan, only the current one tappable', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
+import { renderHook, act, waitFor } from '@testing-library/react'
 import { AuthProvider, DEMO_SESSION_KEY, SUPPRESS_RETURN_SAVE_KEY } from '@/lib/context/AuthContext'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useIdleTimeout } from '@/lib/hooks/useIdleTimeout'
@@ -63,22 +63,26 @@ describe('AuthContext (demo mode)', () => {
     expect(sessionStorage.getItem(DEMO_SESSION_KEY)).toBe('true')
   })
 
-  it('a fresh mount with the session flag set hydrates the demo user without signIn', () => {
+  // Restoration goes through the auth port, so it settles a microtask after mount rather
+  // than inside the mount effect. These wait for isLoading to clear, which is the signal
+  // guarded routes themselves wait on; AuthContext.restore.test.tsx proves that the login
+  // view is never shown while it is pending.
+  it('a fresh mount with the session flag set hydrates the demo user without signIn', async () => {
     sessionStorage.setItem(DEMO_SESSION_KEY, 'true')
 
     const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
 
     // User is restored and loading has resolved — guarded routes must not
     // bounce a refreshed demo session back to /login.
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
     expect(result.current.user).not.toBeNull()
-    expect(result.current.isLoading).toBe(false)
   })
 
-  it('a fresh mount without the flag resolves loading with no user', () => {
+  it('a fresh mount without the flag resolves loading with no user', async () => {
     const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
 
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
     expect(result.current.user).toBeNull()
-    expect(result.current.isLoading).toBe(false)
   })
 
   it('signOut removes the demo session flag', async () => {

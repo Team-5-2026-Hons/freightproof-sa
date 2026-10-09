@@ -25,11 +25,11 @@ from app.api.v1.endpoints.audit_packs import trip_packs_router as trip_audit_pac
 from app.api.v1.endpoints.audit_packs_public import router as audit_packs_public_router
 from app.api.v1.endpoints.blockchain import router as blockchain_router
 from app.api.v1.endpoints.checkpoints import router as checkpoints_router
-from app.api.v1.endpoints.dev_pulsit import move_truck_enabled
-from app.api.v1.endpoints.dev_pulsit import router as dev_pulsit_router
-from app.api.v1.endpoints.dev_tracker import router as dev_tracker_router
-from app.api.v1.endpoints.dev_triggers import dev_panel_enabled
-from app.api.v1.endpoints.dev_triggers import router as dev_triggers_router
+from app.dev.endpoints.pulsit import move_truck_enabled
+from app.dev.endpoints.pulsit import router as dev_pulsit_router
+from app.dev.endpoints.tracker import router as dev_tracker_router
+from app.dev.endpoints.triggers import dev_panel_enabled
+from app.dev.endpoints.triggers import router as dev_triggers_router
 from app.api.v1.endpoints.drivers import router as drivers_router
 from app.api.v1.endpoints.exceptions import dispatcher_router as exceptions_dispatcher_router
 from app.api.v1.endpoints.exceptions import router as exceptions_router

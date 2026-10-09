@@ -13,7 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_dispatcher, require_admin_dispatcher
-from app.core.exceptions import ResourceNotFoundError
+from app.core.exceptions import FileStorageUnavailableError, ResourceNotFoundError, StoredFileMismatchError
 from app.core.limits import AUDIT_PACK_BUILD, FLEET_MUTATION
 from app.core.rate_limit import rate_limit
 from app.db.models.enums import enum_text
@@ -45,7 +45,6 @@ from app.schemas.audit_pack import (
 )
 from app.reporting.incident_sheet import NoIncidentError
 from app.schemas.people import UserRead
-from app.storage.supabase_storage import EvidenceObjectIntegrityError, EvidenceStorageUnavailableError
 
 logger = logging.getLogger(__name__)
 
@@ -166,13 +165,12 @@ async def issue_audit_pack_endpoint(
 ) -> AuditPackIssued:
     try:
         issued = await issue_audit_pack(
-            db, trip_id=trip_id, organization_id=current_user.organization_id, issued_by=current_user,
-            request=payload,
+            db, trip_id=trip_id, issued_by=current_user, request=payload,
         )
         [read] = await read_audit_packs(db, [issued.pack])
     except ResourceNotFoundError as exc:
         raise _not_found(exc) from exc
-    except EvidenceStorageUnavailableError as exc:
+    except FileStorageUnavailableError as exc:
         raise HTTPException(
             status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="The pack could not be stored, so nothing was issued. Please try again.",
@@ -268,12 +266,12 @@ async def download_issued_pdf_endpoint(
         label, pdf = await download_issued_pdf(db, pack_id=pack_id, organization_id=current_user.organization_id)
     except ResourceNotFoundError as exc:
         raise _not_found(exc) from exc
-    except EvidenceObjectIntegrityError as exc:
+    except StoredFileMismatchError as exc:
         raise HTTPException(
             status_code=http_status.HTTP_409_CONFLICT,
             detail="The stored PDF no longer matches the one issued. Re-issue the pack.",
         ) from exc
-    except EvidenceStorageUnavailableError as exc:
+    except FileStorageUnavailableError as exc:
         raise HTTPException(
             status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE, detail="Storage is unavailable. Try again.",
         ) from exc

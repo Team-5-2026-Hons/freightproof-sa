@@ -5,13 +5,13 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { TopBar }    from '@/components/ui/TopBar'
 import { BackButton } from '@/components/ui/BackButton'
 import { Chip }      from '@/components/ui/Chip'
-import { Spinner }   from '@/components/ui/Spinner'
 import { Button }    from '@/components/ui/Button'
 import { Ic }        from '@/components/ui/Ic'
 import { InfoRow }   from '@/components/ui/InfoRow'
 import { FormField } from '@/components/ui/FormField'
 import { Switch }    from '@/components/ui/Switch'
 import { Tabs, type Tab } from '@/components/ui/Tabs'
+import { SplitDetailSkeleton } from '@/components/ui/DetailSkeleton'
 import { VehicleAnalyticsSummary } from '@/components/analytics/VehicleAnalyticsSummary'
 import { BlockchainBadge } from '@/components/blockchain/BlockchainBadge'
 import { EventTimeline }   from '@/components/blockchain/EventTimeline'
@@ -30,6 +30,10 @@ import { RETURN_TO_PARAM, safeReturnTo } from '@/lib/navigation/returnTo'
 import { validateVehicleForm, vinFieldFeedback, VEHICLE_FIELD_ORDER, type VehicleField } from '@shared/lib/validation/vehicle'
 import { VIN_LENGTH } from '@shared/lib/validation/constants'
 import { AdminOnly } from '@/components/auth/AdminOnly'
+
+// The vehicle info column's facts: registration, type, make, model, year, device, VIN, licence disc,
+// GVM and status.
+const VEHICLE_SKELETON_INFO_ROWS = 10
 
 type EditState = {
   registration: string
@@ -82,9 +86,7 @@ export default function VehicleDetailPage() {
     return (
       <div className="flex flex-col flex-1">
         <TopBar title="Vehicle" left={backButton} />
-        <div className="flex items-center justify-center flex-1">
-          <Spinner size="lg" />
-        </div>
+        <SplitDetailSkeleton label="Loading vehicle" infoRows={VEHICLE_SKELETON_INFO_ROWS} />
       </div>
     )
   }

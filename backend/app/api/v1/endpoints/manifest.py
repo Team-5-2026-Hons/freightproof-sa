@@ -1,4 +1,4 @@
-"""GET /trips/{trip_id}/manifest — role-aware. See manifest_service docstring."""
+"""GET /trips/{trip_id}/manifest — role-aware. See consignments.manifest_reads docstring."""
 
 from typing import Annotated
 from uuid import UUID
@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import _bearer, get_current_dispatcher, get_current_driver
 from app.core.exceptions import ResourceNotFoundError
 from app.db.session import get_db
-from app.orchestration.manifest_service import get_linehaul_for_driver, get_manifest_for_dispatcher
+from app.orchestration.consignments.manifest_reads import get_linehaul_for_driver, get_manifest_for_dispatcher
 from app.schemas.trips import LinehaulResponse, ManifestResponse
 
 router = APIRouter(prefix="/trips/{trip_id}/manifest", tags=["trips"])

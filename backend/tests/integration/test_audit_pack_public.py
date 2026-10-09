@@ -77,8 +77,7 @@ async def _issue(db: AsyncSession, seed: AuditTrip, **overrides: object) -> Issu
         "purpose": "insurance_claim", **overrides,
     })
     return await issue_audit_pack(
-        db, trip_id=seed.trip.id, organization_id=seed.org.id,
-        issued_by=UserRead.model_validate(seed.dispatcher), request=request,
+        db, trip_id=seed.trip.id, issued_by=UserRead.model_validate(seed.dispatcher), request=request,
     )
 
 

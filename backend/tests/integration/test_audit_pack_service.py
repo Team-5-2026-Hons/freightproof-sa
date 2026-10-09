@@ -62,8 +62,7 @@ def _request(**overrides: object) -> AuditPackCreate:
 
 async def _issue(db: AsyncSession, seed: AuditTrip, **overrides: object) -> audit_pack_service.IssuedPack:
     return await issue_audit_pack(
-        db, trip_id=seed.trip.id, organization_id=seed.org.id, issued_by=_user(seed),
-        request=_request(**overrides), now=NOW,
+        db, trip_id=seed.trip.id, issued_by=_user(seed), request=_request(**overrides), now=NOW,
     )
 
 
@@ -171,8 +170,9 @@ async def test_issue_audit_pack_other_org_trip_raises(db_session, audit_trip, st
     # Act / Assert
     with pytest.raises(ResourceNotFoundError):
         await issue_audit_pack(
-            db_session, trip_id=audit_trip.trip.id, organization_id=uuid.uuid4(),
-            issued_by=_user(audit_trip), request=_request(), now=NOW,
+            db_session, trip_id=audit_trip.trip.id,
+            issued_by=_user(audit_trip).model_copy(update={"organization_id": uuid.uuid4()}),
+            request=_request(), now=NOW,
         )
 
 

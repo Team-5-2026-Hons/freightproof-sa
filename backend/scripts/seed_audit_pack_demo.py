@@ -38,7 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.blockchain.anchor_service import anchor_subject
 from app.core.config import settings
-from app.crypto.hashing import compute_trip_canonical_payload
+from app.crypto.hashing import StopCommitment, compute_trip_canonical_payload_v2
 from app.db.models import Base
 from app.db.models.enums import (
     AnchorStatus,
@@ -64,7 +64,7 @@ from app.db.models.phases import PhaseEvent
 from app.db.models.transit import Checkpoint, TripException
 from app.db.models.trips import Consignment, Parcel, Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
-from app.orchestration.phase_service import (
+from app.orchestration.phases.payloads import (
     compute_confirmation_canonical_payload_v2,
     compute_departure_canonical_payload_v2,
 )
@@ -116,6 +116,67 @@ async def _artifact(db: AsyncSession, trip_id: uuid.UUID, label: str, colour: tu
     db.add(row)
     await db.flush()
     return row
+
+
+async def _upload_photos(
+    db: AsyncSession, trip: Trip, seal_number: str,
+) -> tuple[EvidenceArtifact, EvidenceArtifact, EvidenceArtifact, EvidenceArtifact, EvidenceArtifact]:
+    """Seal, waybill, POD, signature and checkpoint selfie, uploaded under the trip's id."""
+    print("Uploading evidence photos to Supabase Storage…")
+    t0 = trip.created_at
+    return (
+        await _artifact(db, trip.id, f"SEAL {seal_number}", (27, 94, 32), t0 + timedelta(hours=2)),
+        await _artifact(db, trip.id, "WAYBILL", (13, 71, 161), t0 + timedelta(hours=2)),
+        await _artifact(db, trip.id, "PROOF OF DELIVERY", (106, 27, 154), t0 + timedelta(hours=9)),
+        await _artifact(db, trip.id, "RECEIVER SIGNATURE", (66, 66, 66), t0 + timedelta(hours=9)),
+        await _artifact(db, trip.id, "CHECKPOINT SELFIE", (128, 86, 0), t0 + timedelta(hours=4)),
+    )
+
+
+async def _seed_trail(db: AsyncSession, trip: Trip, driver_id: uuid.UUID) -> None:
+    """Driver-phone pings JHB → Harrismith → DBN, with one silence after Harrismith."""
+    t0 = trip.created_at
+    times = [t0 + timedelta(hours=1) + PING_INTERVAL * i for i in range(10)]
+    after_gap = times[-1] + GAP
+    times += [after_gap + PING_INTERVAL * i for i in range(12)]
+    route = [JHB, HARRISMITH, DBN]
+    for i, at in enumerate(times):
+        progress = i / (len(times) - 1)
+        leg = min(int(progress * 2), 1)
+        t = Decimal(str(progress * 2 - leg))
+        start, end = route[leg], route[leg + 1]
+        db.add(TripLocationPing(
+            id=uuid.uuid4(), trip_id=trip.id, driver_id=driver_id, context="in-transit", recorded_at=at,
+            lat=(start[0] + (end[0] - start[0]) * t).quantize(Decimal("0.0000001")),
+            lng=(start[1] + (end[1] - start[1]) * t).quantize(Decimal("0.0000001")),
+            accuracy_m=Decimal("12.5"),
+        ))
+
+
+async def _seed_findings(
+    db: AsyncSession, trip: Trip, *, dispatcher_id: uuid.UUID, selfie_id: uuid.UUID, short_consignment: Consignment,
+) -> None:
+    """A rest-stop checkpoint, a reviewed critical panic, and a count mismatch on the second client."""
+    t0 = trip.created_at
+    db.add(Checkpoint(id=uuid.uuid4(), trip_id=trip.id, checkpoint_type="rest_stop", created_at=t0 + timedelta(hours=4),
+                      driver_phone_lat=HARRISMITH[0], driver_phone_lng=HARRISMITH[1],
+                      driver_captured_at=t0 + timedelta(hours=4), selfie_artifact_id=selfie_id))
+    db.add_all([
+        TripException(
+            id=uuid.uuid4(), trip_id=trip.id, exception_type=ExceptionType.PANIC_BUTTON, source=ExceptionSource.DRIVER,
+            severity=ExceptionSeverity.CRITICAL, description="Panic button held near Harrismith",
+            gps_lat=HARRISMITH[0], gps_lng=HARRISMITH[1], created_at=t0 + timedelta(hours=5),
+            review_status=ExceptionReviewStatus.REVIEWED, review_outcome="handled_externally",
+            reviewed_by_user_id=dispatcher_id, reviewed_at=t0 + timedelta(hours=5, minutes=6), contact_method="phone",
+            review_note="Driver safe; false alarm at a fuel stop",
+        ),
+        TripException(
+            id=uuid.uuid4(), trip_id=trip.id, exception_type=ExceptionType.PARCEL_COUNT_MISMATCH,
+            source=ExceptionSource.SYSTEM, severity=ExceptionSeverity.WARNING, consignment_id=short_consignment.id,
+            description=f"{short_consignment.parcel_perfect_reference} short one parcel",
+            created_at=t0 + timedelta(hours=8),
+        ),
+    ])
 
 
 async def seed(db: AsyncSession) -> Trip:
@@ -186,12 +247,7 @@ async def seed(db: AsyncSession) -> Trip:
         Parcel(id=uuid.uuid4(), consignment_id=consignment_b.id, barcode=f"B{suffix}01", status=ParcelStatus.EXCEPTION),
     ])
 
-    print("Uploading evidence photos to Supabase Storage…")
-    seal = await _artifact(db, trip.id, f"SEAL SEAL-{suffix}", (27, 94, 32), t0 + timedelta(hours=2))
-    waybill = await _artifact(db, trip.id, "WAYBILL", (13, 71, 161), t0 + timedelta(hours=2))
-    pod = await _artifact(db, trip.id, "PROOF OF DELIVERY", (106, 27, 154), t0 + timedelta(hours=9))
-    signature = await _artifact(db, trip.id, "RECEIVER SIGNATURE", (66, 66, 66), t0 + timedelta(hours=9))
-    selfie = await _artifact(db, trip.id, "CHECKPOINT SELFIE", (128, 86, 0), t0 + timedelta(hours=4))
+    seal, waybill, pod, signature, selfie = await _upload_photos(db, trip, f"SEAL-{suffix}")
 
     def phase(seq: int, phase_type: PhaseType, stop: TripStop | None, hours: float, **kw: Any) -> PhaseEvent:
         return PhaseEvent(id=uuid.uuid4(), trip_id=trip.id, trip_stop_id=stop.id if stop else None,
@@ -221,10 +277,13 @@ async def seed(db: AsyncSession) -> Trip:
     print("Anchoring P0, P3 and P6 on Hedera testnet (a few seconds each)…")
     lock = await anchor_subject(
         db, subject_type=SubjectType.TRIP, subject_id=trip.id, receipt_type=BlockchainReceiptType.JOURNEY_LOCK,
-        trip_id=trip.id, canonical_payload=compute_trip_canonical_payload(
-            trip_id=trip.id, order_number=trip.order_number, driver_id=driver.id, horse_id=horse.id,
-            trailer_ids=[trailer.id], origin_precinct_id=origin.id, destination_precinct_id=dest.id,
-            created_by_user_id=dispatcher.id, created_at=t0, trip_type="loaded",
+        trip_id=trip.id, canonical_payload=compute_trip_canonical_payload_v2(
+            trip_id=trip.id, driver_id=driver.id, horse_id=horse.id, trailer_ids=[trailer.id],
+            origin_precinct_id=origin.id, destination_precinct_id=dest.id, created_by_user_id=dispatcher.id,
+            created_at=t0, trip_type="loaded", pp_manifest=None, pp_manifest_snapshot_sha256=None,
+            planned_departure_at=trip.planned_departure_at, planned_arrival_at=trip.planned_arrival_at,
+            # The same v2 shape trips.creation anchors, so verify_subject checks this lock as it does a real one.
+            stops=[StopCommitment(s.sequence, s.precinct_id, s.slot_time) for s in (stop_jhb, stop_dbn, stop_pmb)],
         ),
     )
     creation.blockchain_receipt_id, creation.anchor_status = lock.id, AnchorStatus.ANCHORED
@@ -240,41 +299,8 @@ async def seed(db: AsyncSession) -> Trip:
                                        receipt_type=receipt_type, trip_id=trip.id, canonical_payload=payload)
         event.blockchain_receipt_id, event.anchor_status = receipt.id, AnchorStatus.ANCHORED
 
-    # The trail: JHB → Harrismith → DBN, with one silence after Harrismith.
-    times = [t0 + timedelta(hours=1) + PING_INTERVAL * i for i in range(10)]
-    after_gap = times[-1] + GAP
-    times += [after_gap + PING_INTERVAL * i for i in range(12)]
-    route = [JHB, HARRISMITH, DBN]
-    for i, at in enumerate(times):
-        progress = i / (len(times) - 1)
-        leg = min(int(progress * 2), 1)
-        t = Decimal(str(progress * 2 - leg))
-        start, end = route[leg], route[leg + 1]
-        db.add(TripLocationPing(
-            id=uuid.uuid4(), trip_id=trip.id, driver_id=driver.id, context="in-transit", recorded_at=at,
-            lat=(start[0] + (end[0] - start[0]) * t).quantize(Decimal("0.0000001")),
-            lng=(start[1] + (end[1] - start[1]) * t).quantize(Decimal("0.0000001")),
-            accuracy_m=Decimal("12.5"),
-        ))
-
-    db.add(Checkpoint(id=uuid.uuid4(), trip_id=trip.id, checkpoint_type="rest_stop", created_at=t0 + timedelta(hours=4),
-                      driver_phone_lat=HARRISMITH[0], driver_phone_lng=HARRISMITH[1],
-                      driver_captured_at=t0 + timedelta(hours=4), selfie_artifact_id=selfie.id))
-    db.add_all([
-        TripException(
-            id=uuid.uuid4(), trip_id=trip.id, exception_type=ExceptionType.PANIC_BUTTON, source=ExceptionSource.DRIVER,
-            severity=ExceptionSeverity.CRITICAL, description="Panic button held near Harrismith",
-            gps_lat=HARRISMITH[0], gps_lng=HARRISMITH[1], created_at=t0 + timedelta(hours=5),
-            review_status=ExceptionReviewStatus.REVIEWED, review_outcome="handled_externally",
-            reviewed_by_user_id=dispatcher.id, reviewed_at=t0 + timedelta(hours=5, minutes=6), contact_method="phone",
-            review_note="Driver safe; false alarm at a fuel stop",
-        ),
-        TripException(
-            id=uuid.uuid4(), trip_id=trip.id, exception_type=ExceptionType.PARCEL_COUNT_MISMATCH,
-            source=ExceptionSource.SYSTEM, severity=ExceptionSeverity.WARNING, consignment_id=consignment_b.id,
-            description=f"WAY-B-{suffix} short one parcel", created_at=t0 + timedelta(hours=8),
-        ),
-    ])
+    await _seed_trail(db, trip, driver.id)
+    await _seed_findings(db, trip, dispatcher_id=dispatcher.id, selfie_id=selfie.id, short_consignment=consignment_b)
     await db.flush()
     return trip
 

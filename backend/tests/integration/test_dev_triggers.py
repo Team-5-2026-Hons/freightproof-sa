@@ -7,12 +7,14 @@ restored and main reloaded again on teardown so other test modules are unaffecte
 
 import importlib
 import uuid
+from datetime import datetime
 from typing import AsyncGenerator
 
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.main as app_main
 from app.core.config import settings
@@ -28,8 +30,11 @@ from app.db.models.trips import Consignment, Parcel, Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
 from app.integrations import parcel_perfect as pp_module
+from app.integrations.parcel_perfect import mock as pp_mock_module
 from app.integrations import scan_feed as scan_feed_module
-from app.schemas.dev import CLOSED_PHASE_STATUSES, MAX_STAGED_BARCODES
+from app.integrations.parcel_perfect import MANIFEST_HAPPY_PATH, MockParcelPerfectClient
+from app.orchestration.pp_manifest import manifest_snapshot_sha256
+from app.dev.schemas import CLOSED_PHASE_STATUSES, MAX_STAGED_BARCODES
 
 from tests.conftest import (
     FakeMockStateStore,
@@ -60,9 +65,9 @@ def dev_app():
 def store(monkeypatch: pytest.MonkeyPatch) -> FakeMockStateStore:
     fake = FakeMockStateStore()
     monkeypatch.setattr(scan_feed_module, "get_mock_state_store", lambda: fake)
-    monkeypatch.setattr(pp_module, "get_mock_state_store", lambda: fake)
+    monkeypatch.setattr(pp_mock_module, "get_mock_state_store", lambda: fake)
     monkeypatch.setattr(
-        "app.api.v1.endpoints.dev_triggers.get_mock_state_store", lambda: fake
+        "app.dev.endpoints.triggers.get_mock_state_store", lambda: fake
     )
     return fake
 
@@ -594,7 +599,7 @@ async def test_list_trips_preceding_departure_status_reflects_the_preceding_depa
     dev_client, db_session, seeded, store,
 ):
     """A destination stop's preceding_departure_status is the status of the
-    DEPARTURE that opened its leg — mirrors phase_service._find_departure_for_leg
+    DEPARTURE that opened its leg — mirrors phases.seals._find_departure_for_leg
     (the highest sequence_number DEPARTURE strictly before the stop's own closing
     event), never a hardcoded or otherwise-derived departure. The origin stop
     itself still reports None: nothing closes there."""
@@ -798,3 +803,53 @@ async def test_list_trips_reports_vehicles_and_current_stop(dev_client, db_sessi
     trip_body = next(t for t in res.json() if t["trip_id"] == str(seeded["trip"].id))
     assert [(v["registration"], v["role"]) for v in trip_body["vehicles"]] == [("ABC123GP", "horse"), ("TRL 9", "trailer")]
     assert trip_body["current_stop_sequence"] == seeded["stop"].sequence
+
+
+@pytest_asyncio.fixture
+async def dispatcher_headers(db_session: AsyncSession) -> dict[str, str]:
+    org = Organization(id=uuid.uuid4(), name="Op", org_type=OrganizationType.OPERATOR)
+    db_session.add(org)
+    await db_session.flush()
+    user = User(id=uuid.uuid4(), organization_id=org.id, email=f"d-{uuid.uuid4().hex[:6]}@test.co.za",
+                full_name="D", is_active=True)
+    db_session.add(user)
+    await db_session.flush()
+    return auth_header(make_token(sub=str(user.id), role="dispatcher", org_id=str(org.id)))
+
+
+@pytest.fixture
+def pinned_today(monkeypatch: pytest.MonkeyPatch) -> None:
+    pinned = datetime.now(pp_module.pp_timezone()).date()
+    monkeypatch.setattr(pp_mock_module, "_operations_today", lambda: pinned)
+
+
+async def test_pp_manifest_trigger_changes_the_snapshot(
+    dev_client: AsyncClient, store: FakeMockStateStore, dispatcher_headers: dict[str, str],
+    pinned_today: None, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "PP_USE_MOCK", True)
+    before = manifest_snapshot_sha256(await MockParcelPerfectClient().get_manifest(MANIFEST_HAPPY_PATH))
+
+    resp = await dev_client.post(
+        "/api/v1/dev/pp/manifest", json={"manifest_number": MANIFEST_HAPPY_PATH, "closed": False},
+        headers=dispatcher_headers,
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["snapshot_sha256"] != before
+    header = (await MockParcelPerfectClient().get_manifest(MANIFEST_HAPPY_PATH)).header
+    assert header.closed_at is None
+
+
+async def test_pp_manifest_trigger_unknown_manifest_is_404(
+    dev_client: AsyncClient, store: FakeMockStateStore, dispatcher_headers: dict[str, str],
+    pinned_today: None, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "PP_USE_MOCK", True)
+
+    resp = await dev_client.post(
+        "/api/v1/dev/pp/manifest", json={"manifest_number": 99999, "closed": True},
+        headers=dispatcher_headers,
+    )
+
+    assert resp.status_code == 404

@@ -8,7 +8,6 @@ import { useExceptionHistory } from '@/lib/hooks/useExceptionHistory'
 import type { UseExceptionQueueResult } from '@/lib/hooks/useExceptions'
 import type { UseExceptionHistoryResult } from '@/lib/hooks/useExceptionHistory'
 import type { TripExceptionListItem } from '@shared/lib/types/exception'
-import { COPY } from '@shared/lib/constants/copy'
 
 // client.ts imports the Supabase client at module scope, which throws without real env
 // vars — mocked the same way the exceptions/[id] page test does.
@@ -28,6 +27,7 @@ vi.mock('@/lib/hooks/useAuth', () => ({
 const push = vi.fn()
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push, back: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
 }))
 
 vi.mock('@/lib/hooks/useExceptions', () => ({
@@ -53,6 +53,11 @@ function makeQueueItem(overrides: Partial<TripExceptionListItem> = {}): TripExce
     trip_id: 'trip-1',
     trip_reference: 'FP-2026-0001',
     trip_status: 'active',
+    origin_name: 'Johannesburg DC',
+    destination_name: 'Durban Depot',
+    driver_name: 'Thabo Mokoena',
+    horse_registration: 'HRS 001 GP',
+    trailer_registrations: ['TRL 101 GP'],
     phase_label: 'In Transit',
     stop_label: 2,
     claimed_by_user_id: null,
@@ -69,6 +74,11 @@ function makeHistoryItem(overrides: Partial<TripExceptionListItem> = {}): TripEx
     id: 'exc-h1' as TripExceptionListItem['id'],
     review_status: 'recorded',
     trip_status: 'closed',
+    origin_name: 'Johannesburg DC',
+    destination_name: 'Durban Depot',
+    driver_name: 'Thabo Mokoena',
+    horse_registration: 'HRS 001 GP',
+    trailer_registrations: ['TRL 101 GP'],
     claimed_by_user_id: null,
     claimed_at: null,
     claimed_by_name: null,
@@ -119,7 +129,7 @@ function mockMe() {
 }
 
 function goToHistoryTab() {
-  fireEvent.click(screen.getByRole('button', { name: 'Reviewed' }))
+  fireEvent.click(screen.getByRole('tab', { name: 'History' }))
 }
 
 beforeEach(() => {
@@ -135,7 +145,7 @@ describe('Unreviewed tab', () => {
 
     renderPage()
 
-    expect(screen.getByRole('button', { name: 'Unreviewed · 3' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /^Unreviewed\s*3$/ })).toBeInTheDocument()
   })
 
   it('never renders pagination controls, even with many queue items', () => {
@@ -153,7 +163,7 @@ describe('Unreviewed tab', () => {
 
     renderPage()
 
-    expect(screen.getByText(COPY.emptyState.allClear.title)).toBeInTheDocument()
+    expect(screen.getByText('No exceptions need review.')).toBeInTheDocument()
   })
 
   it('shows an honest error state — never all-clear — when the queue fails with zero items', () => {
@@ -161,7 +171,7 @@ describe('Unreviewed tab', () => {
 
     renderPage()
 
-    expect(screen.queryByText(COPY.emptyState.allClear.title)).not.toBeInTheDocument()
+    expect(screen.queryByText('No exceptions need review.')).not.toBeInTheDocument()
     expect(screen.getByText('Network error')).toBeInTheDocument()
   })
 
@@ -192,10 +202,8 @@ describe('Unreviewed tab', () => {
 
     renderPage()
 
-    expect(screen.getByText('Exception')).toBeInTheDocument() // TRIP_STATUS_META.exception_hold.label
     expect(screen.getByText(/In Transit/)).toBeInTheDocument()
-    expect(screen.getByText(/Stop 2/)).toBeInTheDocument()
-    expect(screen.getByText('Complete')).toBeInTheDocument() // TRIP_STATUS_META.closed.label
+    expect(screen.getByText(/Recorded stop 2/)).toBeInTheDocument()
 
     // Degrades cleanly for the null phase/stop row — no literal "null" text and no
     // dangling "· " fragment left over from a half-built label.
@@ -208,9 +216,7 @@ describe('Unreviewed tab', () => {
 
     renderPage()
 
-    fireEvent.click(screen.getByText('Seal at destination does not match departure.'))
-
-    expect(push).toHaveBeenCalledWith('/exceptions/exc-123')
+    expect(screen.getByRole('link', { name: /FP-2026-0001/ })).toHaveAttribute('href', '/exceptions/exc-123?returnTo=%2Fexceptions')
   })
 })
 
@@ -232,17 +238,19 @@ describe('Claimed by me tab', () => {
     description: 'Free row',
   })
 
-  it('splits the queue into Unreviewed and Claimed by me with counts', () => {
+  it('lists every exception awaiting review in Unreviewed, including your own claims, and your claims again under Claimed by me', () => {
     mockedUseExceptionQueue.mockReturnValue(queueState({ items: [claimedByMe(), claimedByAna(), unclaimed()] }))
 
     renderPage()
 
-    expect(screen.getByRole('button', { name: 'Unreviewed · 2' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Claimed by me · 1' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /^Unreviewed\s*3$/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /^Claimed by me\s*1$/ })).toBeInTheDocument()
     expect(screen.getByText('Claimed by Ana')).toBeInTheDocument()
-    expect(screen.queryByText('Mine row')).not.toBeInTheDocument()
+    expect(screen.getByText('Claimed by you')).toBeInTheDocument()
+    expect(screen.getByText('Mine row')).toBeInTheDocument()
+    expect(screen.getByText('Free row')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Claimed by me · 1' }))
+    fireEvent.click(screen.getByRole('tab', { name: /^Claimed by me\s*1$/ }))
 
     expect(screen.getByText('Mine row')).toBeInTheDocument()
     expect(screen.getByText('Claimed by you')).toBeInTheDocument()
@@ -254,18 +262,18 @@ describe('Claimed by me tab', () => {
     mockedUseExceptionQueue.mockReturnValue(queueState({ items: [unclaimed()] }))
 
     renderPage()
-    fireEvent.click(screen.getByRole('button', { name: 'Claimed by me · 0' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Claimed by me' }))
 
     expect(
-      screen.getByText('Nothing claimed — claim an exception from Unreviewed to work it.'),
+      screen.getByText('Nothing claimed by you.'),
     ).toBeInTheDocument()
   })
 
-  it('keeps queue order from the server', () => {
+  it('sorts newer warnings before older critical records', () => {
     mockedUseExceptionQueue.mockReturnValue(queueState({
       items: [
-        makeQueueItem({ id: 'a' as TripExceptionListItem['id'], severity: 'critical', description: 'First critical' }),
-        makeQueueItem({ id: 'b' as TripExceptionListItem['id'], severity: 'warning', description: 'Second warning' }),
+        makeQueueItem({ id: 'a' as TripExceptionListItem['id'], severity: 'critical', description: 'First critical', created_at: '2026-10-01T10:00:00Z' }),
+        makeQueueItem({ id: 'b' as TripExceptionListItem['id'], severity: 'warning', description: 'Second warning', created_at: '2026-10-02T10:00:00Z' }),
         makeQueueItem({ id: 'c' as TripExceptionListItem['id'], severity: 'info', description: 'Third info' }),
       ],
     }))
@@ -273,8 +281,8 @@ describe('Claimed by me tab', () => {
     renderPage()
 
     const text = document.body.textContent ?? ''
-    expect(text.indexOf('First critical')).toBeLessThan(text.indexOf('Second warning'))
-    expect(text.indexOf('Second warning')).toBeLessThan(text.indexOf('Third info'))
+    expect(text.indexOf('Second warning')).toBeLessThan(text.indexOf('First critical'))
+    expect(text.indexOf('First critical')).toBeLessThan(text.indexOf('Third info'))
   })
 })
 
@@ -322,7 +330,7 @@ describe('History tab', () => {
     renderPage()
     goToHistoryTab()
 
-    expect(screen.getByText(COPY.emptyState.noResults.title)).toBeInTheDocument()
+    expect(screen.getByText('No exception history yet.')).toBeInTheDocument()
   })
 
   it('shows an honest error state — never no-results — when history fails with zero items', () => {
@@ -331,7 +339,7 @@ describe('History tab', () => {
     renderPage()
     goToHistoryTab()
 
-    expect(screen.queryByText(COPY.emptyState.noResults.title)).not.toBeInTheDocument()
+    expect(screen.queryByText('No exception history yet.')).not.toBeInTheDocument()
     expect(screen.getByText('Server error')).toBeInTheDocument()
   })
 
@@ -359,19 +367,13 @@ describe('History tab', () => {
     renderPage()
     goToHistoryTab()
 
-    fireEvent.click(screen.getByText('Seal at destination does not match departure.'))
-
-    expect(push).toHaveBeenCalledWith('/exceptions/exc-h999')
+    expect(screen.getByRole('link', { name: /FP-2026-0001/ })).toHaveAttribute('href', '/exceptions/exc-h999?returnTo=%2Fexceptions%3Ftab%3Dhistory')
   })
 
-  it('calls useExceptionHistory with updated filters when the review-status select changes', () => {
-    renderPage()
-    goToHistoryTab()
-
-    fireEvent.change(screen.getByDisplayValue('All statuses'), { target: { value: 'reviewed' } })
-
-    const lastCall = mockedUseExceptionHistory.mock.calls.at(-1)?.[0]
-    expect(lastCall).toMatchObject({ reviewStatus: 'reviewed' })
+  it('keeps legacy archive inclusion without a redundant status filter', () => {
+    renderPage(); goToHistoryTab()
+    expect(screen.queryByDisplayValue('All statuses')).not.toBeInTheDocument()
+    expect(mockedUseExceptionHistory.mock.calls.at(-1)?.[0].reviewStatus).toBeUndefined()
   })
 
   it('calls useExceptionHistory with updated filters when the severity select changes', () => {
@@ -388,15 +390,23 @@ describe('History tab', () => {
     renderPage()
     goToHistoryTab()
 
-    // The date inputs only exist once the picker's popover is open.
-    fireEvent.click(screen.getByText(/→/))
-
+    // The date inputs live in the shared range picker's popover.
+    fireEvent.click(screen.getByRole('button', { name: /→/ }))
     const dateInputs = document.querySelectorAll('input[type="date"]')
-    expect(dateInputs.length).toBeGreaterThanOrEqual(2)
+    expect(dateInputs).toHaveLength(2)
     fireEvent.change(dateInputs[0], { target: { value: '2026-01-01' } })
 
     const lastCall = mockedUseExceptionHistory.mock.calls.at(-1)?.[0]
     expect(lastCall).toMatchObject({ fromDate: '2026-01-01' })
+  })
+
+  it('sends no date filter while the picker still shows its full default range', () => {
+    renderPage()
+    goToHistoryTab()
+
+    const lastCall = mockedUseExceptionHistory.mock.calls.at(-1)?.[0]
+    expect(lastCall?.fromDate).toBeUndefined()
+    expect(lastCall?.toDate).toBeUndefined()
   })
 
   it('debounces the search input — rapid keystrokes do not each trigger a distinct filters call', () => {
@@ -428,3 +438,159 @@ describe('History tab', () => {
     }
   })
 })
+
+describe('redesign controls', () => {
+  it('shows full identifiers, absolute SAST time and readable raw context', () => {
+    mockedUseExceptionQueue.mockReturnValue(queueState({items:[makeQueueItem({trip_reference:'FP-2026-LONG-FULL-32FF7346',phase_label:'in_transit',stop_label:0,created_at:'2026-10-01T22:00:00Z'})]}))
+    renderPage()
+    expect(screen.getByText('FP-2026-LONG-FULL-32FF7346')).toBeVisible()
+    expect(screen.getByText('02 Oct 2026')).toBeVisible()
+    expect(screen.getByText('00:00 SAST')).toBeVisible()
+    expect(screen.getByText(/Recorded stop 0/)).not.toHaveTextContent('in_transit')
+  })
+  it('filters the complete queue without reducing tab counts and explains filtered emptiness', () => {
+    mockedUseExceptionQueue.mockReturnValue(queueState({items:[makeQueueItem()]}))
+    renderPage()
+    fireEvent.change(screen.getByLabelText('Severity'),{target:{value:'warning'}})
+    expect(screen.getByRole('tab',{name: /^Unreviewed\s*1$/})).toBeInTheDocument()
+    expect(screen.getByText('No exceptions match these filters.')).toBeInTheDocument()
+    fireEvent.click(screen.getAllByRole('button',{name:'Clear filters'})[0])
+    expect(screen.getByText('Seal at destination does not match departure.')).toBeInTheDocument()
+  })
+  it('shows route, driver and vehicles on every row under column headings', () => {
+    mockedUseExceptionQueue.mockReturnValue(queueState({items:[makeQueueItem()]}))
+    renderPage()
+    for (const heading of ['Incident','Trip & route','Driver & vehicles','Status']) expect(screen.getByRole('columnheader',{name:heading})).toBeInTheDocument()
+    expect(screen.getByRole('columnheader',{name:/Raised/})).toBeInTheDocument()
+    expect(screen.getByText('Johannesburg DC → Durban Depot')).toBeInTheDocument()
+    expect(screen.getByText('Thabo Mokoena')).toBeInTheDocument()
+    expect(screen.getByText('HRS 001 GP + TRL 101 GP')).toBeInTheDocument()
+  })
+  it('supports keyboard tabs and optional groups while retaining child trip references', () => {
+    mockedUseExceptionQueue.mockReturnValue(queueState({items:[makeQueueItem(),makeQueueItem({id:'other' as TripExceptionListItem['id'],trip_id:'other-trip',trip_reference:'FP-OTHER',severity:'warning'})]}))
+    renderPage()
+    expect(screen.queryByRole('button',{name:/Newest ·/})).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Group by'),{target:{value:'trip'}})
+    expect(screen.getByRole('button',{name:/Trip FP-2026-0001/})).toHaveAttribute('aria-expanded','true')
+    expect(screen.getByText('Trip FP-2026-0001')).toBeInTheDocument()
+    expect(screen.getByText('FP-2026-0001')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Group by'),{target:{value:'none'}})
+    expect(screen.queryByRole('button',{name:/Newest ·/})).not.toBeInTheDocument()
+    fireEvent.keyDown(screen.getByRole('tab',{name: /^Unreviewed\s*2$/}),{key:'ArrowLeft'})
+    expect(screen.getByRole('tab',{name:'History'})).toHaveFocus()
+  })
+})
+
+describe('sortable headers', () => {
+  const trip = (id: string, reference: string, created: string) => makeQueueItem({ id: id as TripExceptionListItem['id'], trip_reference: reference, description: `Item ${id}.`, created_at: created })
+  const order = () => screen.getAllByRole('row').slice(1).map(row => /Item (\w+)/.exec(row.textContent ?? '')?.[1])
+
+  beforeEach(() => {
+    mockedUseExceptionQueue.mockReturnValue(queueState({
+      items: [trip('a', 'FP-2', '2026-10-01T10:00:00Z'), trip('b', 'FP-3', '2026-10-02T10:00:00Z'), trip('c', 'FP-1', '2026-10-03T10:00:00Z')],
+    }))
+  })
+
+  it('starts newest first and reorders by the clicked column, flipping on a second click', () => {
+    renderPage()
+    expect(order()).toEqual(['c', 'b', 'a'])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Trip & route' }))
+    expect(order()).toEqual(['c', 'a', 'b'])
+    expect(screen.getByRole('columnheader', { name: 'Trip & route' })).toHaveAttribute('aria-sort', 'ascending')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Trip & route' }))
+    expect(order()).toEqual(['b', 'a', 'c'])
+  })
+
+  it('does not offer sorting on History, whose order the server owns', () => {
+    mockedUseExceptionHistory.mockReturnValue(historyState({ items: [makeHistoryItem()] }))
+    renderPage()
+    goToHistoryTab()
+
+    expect(screen.queryByRole('button', { name: 'Trip & route' })).toBeNull()
+  })
+
+  it('does not offer sorting while grouped by trip', () => {
+    renderPage()
+    fireEvent.change(screen.getByLabelText('Group by'), { target: { value: 'trip' } })
+
+    expect(screen.queryByRole('button', { name: 'Trip & route' })).toBeNull()
+  })
+})
+
+describe('claim status', () => {
+  const claimed = (overrides: Partial<TripExceptionListItem> = {}) => makeQueueItem({
+    claimed_by_user_id: 'u-tim', claimed_by_name: 'Tim Gultig', claimed_at: new Date(Date.now() - 2 * 60_000).toISOString(), ...overrides,
+  })
+
+  it("shows a colleague's name, how long ago they claimed it, and offers to take over", () => {
+    mockedUseExceptionQueue.mockReturnValue(queueState({ items: [claimed()] }))
+    renderPage()
+
+    expect(screen.getByText('Claimed by Tim Gultig')).toBeInTheDocument()
+    expect(screen.getByText('2 min ago')).toBeInTheDocument()
+    expect(screen.getByText('Take over')).toBeInTheDocument()
+  })
+
+  it('shows plain Unclaimed and Review for an exception nobody holds', () => {
+    mockedUseExceptionQueue.mockReturnValue(queueState({ items: [makeQueueItem()] }))
+    renderPage()
+
+    expect(screen.getByText('Unclaimed')).toBeInTheDocument()
+    expect(screen.getByText('Review')).toBeInTheDocument()
+  })
+
+  it('announces and flashes a row when a colleague claims it after the list loaded', () => {
+    const unclaimed = makeQueueItem()
+    mockedUseExceptionQueue.mockReturnValue(queueState({ items: [unclaimed] }))
+    const { rerender } = renderPage()
+
+    mockedUseExceptionQueue.mockReturnValue(queueState({ items: [claimed()] }))
+    rerender(<ForensicModeProvider><ExceptionsPage /></ForensicModeProvider>)
+
+    expect(screen.getByText('Tim Gultig claimed Seal Mismatch')).toBeInTheDocument()
+    expect(screen.getByText('Claimed by Tim Gultig').closest('tr')).toHaveClass('bg-sec-c/50')
+  })
+})
+
+describe('loading state', () => {
+  it('shows the table header over skeleton rows on the first load, with no count and no spinner block', () => {
+    mockedUseExceptionQueue.mockReturnValue(queueState({ isLoading: true }))
+    renderPage()
+
+    expect(screen.getByRole('columnheader', { name: 'Incident' })).toBeInTheDocument()
+    expect(document.querySelectorAll('tbody tr').length).toBeGreaterThan(0)
+    expect(document.querySelectorAll('tbody .animate-pulse').length).toBeGreaterThan(0)
+    expect(screen.getByText('Loading exceptions', { selector: '[role="status"]' })).toBeInTheDocument()
+    expect(screen.queryByText(/^Showing /)).toBeNull()
+    expect(screen.queryByText('No exceptions need review.')).toBeNull()
+  })
+
+  it('keeps showing rows, never skeletons, when a refresh runs while data is already on screen', () => {
+    mockedUseExceptionQueue.mockReturnValue(queueState({ isLoading: true, items: [makeQueueItem()] }))
+    renderPage()
+
+    expect(screen.getByText('Seal at destination does not match departure.')).toBeInTheDocument()
+    expect(document.querySelectorAll('tbody .animate-pulse')).toHaveLength(0)
+  })
+
+  it('shows skeletons on the History tab too, without pagination controls', () => {
+    mockedUseExceptionHistory.mockReturnValue(historyState({ isLoading: true }))
+    renderPage()
+    goToHistoryTab()
+
+    expect(screen.getByText('Loading exception history', { selector: '[role="status"]' })).toBeInTheDocument()
+    expect(document.querySelectorAll('tbody .animate-pulse').length).toBeGreaterThan(0)
+    expect(screen.queryByRole('navigation', { name: /pagination/i })).toBeNull()
+  })
+
+  it('still shows the error state, not skeletons, when the first load fails', () => {
+    mockedUseExceptionQueue.mockReturnValue(queueState({ error: 'boom' }))
+    renderPage()
+
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+    expect(document.querySelectorAll('tbody .animate-pulse')).toHaveLength(0)
+  })
+})
+

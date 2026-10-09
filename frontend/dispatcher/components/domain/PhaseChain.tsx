@@ -8,7 +8,7 @@ interface PhaseChainProps {
    *  cross-dock one, and this component must never assume either. */
   nodes: readonly PhaseChainNode[]
   /** Compact mode renders dots instead of icons — used in table rows, where an
-   *  11-node chain would otherwise overflow the 300px PROGRESS column. */
+   *  11-node chain would otherwise overflow the Progress column. */
   compact?: boolean
   className?: string
 }
@@ -58,8 +58,8 @@ export function PhaseChain({ nodes, compact = false, className }: PhaseChainProp
 
             <div className={cn('flex items-center gap-1.5', !compact && 'flex-col')} title={node.label}>
               {compact ? (
-                // A dot, not an icon: 11 nodes at icon size overflow the PROGRESS
-                // column. ChecklistRow prints the literal completed/total alongside,
+                // A dot, not an icon: 11 nodes at icon size overflow the Progress
+                // column. The trip table prints the literal completed/total alongside,
                 // so the count survives even if the chain is ever clipped.
                 <span
                   className={cn(

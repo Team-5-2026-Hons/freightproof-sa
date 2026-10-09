@@ -2,7 +2,7 @@
 
 > **Purpose:** one shared vocabulary mapping **real Load Factor (LFG) operations** to **our system
 > entities**, so the team designs against the same mental model and confusion stays low.
-> **Status:** living document · **Author:** Ciaran · **Date:** 2026-06-24
+> **Status:** living document · **Author:** Ciaran · **Date:** 2026-06-24 · updated 2026-10-01 (FP-281)
 > **Sources:** Bruce minutes (3 Mar · 26 Mar · 16 Apr · 5 May · **24 Jun**), `docs/parcel-traceability.md`,
 > `docs/scope-boundaries.md`, `docs/iteration2_master_plan.md`.
 > **Confidence column:** High = Bruce-confirmed / standard logistics; Medium = strongly implied;
@@ -18,7 +18,10 @@
 | **Consolidated unit / pallet** | ~50 parcels shrink-wrapped + sealed by the client, handed to LFG as **one opaque sealed thing**. The smallest thing **LFG physically handles & counts**. | **❌ not yet modelled** (`HandlingUnit` — the July-visit gap) | many per trip | **High** it exists; **Low** on tracking |
 | **Consignment** | A **commercial booking / waybill**: one consignor → one consignee, **one client, one origin, one destination**, under one PP reference. The "what was booked." | `Consignment` | many per trip | **High** |
 | **Linehaul / Master Waybill** | The **driver's** document: consolidated **unit count** + seal numbers + reg + driver details. **No contents.** (IVS-issued, hard copy in cab.) | *generated from `Trip` — not a stored cargo entity* | one per trip | **High** |
-| **Manifest** | Full list of what's in the truck (PP-issued). Goes **ops-to-ops, never to the driver** (theft risk). | `Consignment.pp_raw_json` / `Parcel` rows (dispatcher-only) | — | **High** |
+| **PP manifest** | The client's Parcel Perfect manifest: the whole load for **one departure**, created by the client around 12:00 on the day. LFG's Master Waybill references its number. A trip is created from one (FP-281). Goes **ops-to-ops, never to the driver** (theft risk). | `Trip.pp_manifest_*` key; snapshot on the H0 `PhaseEvent.parcel_manifest_snapshot` (dispatcher-only) | one per trip, or none (empty leg) | **High** |
+| **Manifest (cargo listing)** | In code, "manifest" also names the trip's live cargo listing: `manifest_service`, `GET /trips/{id}/manifest`, `ManifestPanel`. The `pp_manifest_*` prefix keeps the two apart. | `Consignment.pp_raw_json` / `Parcel` rows (dispatcher-only) | — | **High** |
+| **Empty leg** | A repositioning trip with no cargo and therefore no manifest. | `Trip.trip_type = empty_leg`, `pp_manifest_*` null | — | **High** |
+| **Order number** | **Removed (FP-281).** Nothing in PP reliably supplied it, and the PP manifest replaced it as the trip's external key. FreightProof's own identifier is `trip_reference`. | `Trip.order_number`: nullable, never written, dropped in a clean-up migration | — | **High** |
 | **Trip / leg / load** | The depot-to-depot **vehicle journey**; LFG consolidates many consignments onto it. | `Trip` (+ its consignments + stops) | the spine | **High** |
 | **Stop / waypoint** | A place the truck **visits** in the route. Can serve several consignments at once (see §3). | `TripStop` (FP-112) | many per trip | **High** (design) |
 | **Origin / destination** | The **precinct** (facility or client site) where a consignment is picked up / dropped off. **A role, not a place** (see §3). | `Precinct`, via a consignment's pickup/delivery `TripStop` | one origin + one destination *per consignment* | **High** |

@@ -116,7 +116,7 @@ async def test_receipt_lookup_returns_403_for_dispatcher() -> None:
     app.dependency_overrides[get_current_dispatcher] = lambda: _DISPATCHER_USER
 
     with patch(
-        "app.api.v1.endpoints.blockchain.lookup_receipts",
+        "app.orchestration.receipt_service.lookup_receipts",
         new_callable=AsyncMock,
     ) as lookup_mock:
         async with AsyncClient(
@@ -152,7 +152,7 @@ async def test_receipt_lookup_normalizes_hash_and_excludes_payload() -> None:
     )
 
     with patch(
-        "app.api.v1.endpoints.blockchain.lookup_receipts",
+        "app.orchestration.receipt_service.lookup_receipts",
         new_callable=AsyncMock,
         return_value=[receipt],
     ) as lookup_mock:
@@ -180,7 +180,7 @@ async def test_receipt_lookup_returns_401_for_invalid_token() -> None:
     with (
         patch("app.auth.dependencies.settings.DEMO_MODE", False),
         patch(
-            "app.api.v1.endpoints.blockchain.lookup_receipts",
+            "app.orchestration.receipt_service.lookup_receipts",
             new_callable=AsyncMock,
         ) as lookup_mock,
     ):
@@ -202,7 +202,7 @@ async def test_receipt_lookup_returns_403_without_credentials() -> None:
     with (
         patch("app.auth.dependencies.settings.DEMO_MODE", False),
         patch(
-            "app.api.v1.endpoints.blockchain.lookup_receipts",
+            "app.orchestration.receipt_service.lookup_receipts",
             new_callable=AsyncMock,
         ) as lookup_mock,
     ):
@@ -224,7 +224,7 @@ async def test_receipt_lookup_forwards_trimmed_tx_and_subject_filter() -> None:
     subject_id = uuid.uuid4()
 
     with patch(
-        "app.api.v1.endpoints.blockchain.lookup_receipts",
+        "app.orchestration.receipt_service.lookup_receipts",
         new_callable=AsyncMock,
         return_value=[],
     ) as lookup_mock:
@@ -264,7 +264,7 @@ async def test_receipt_lookup_returns_422_for_invalid_query(
     app.dependency_overrides[get_current_dispatcher] = lambda: _ADMIN_USER
 
     with patch(
-        "app.api.v1.endpoints.blockchain.lookup_receipts",
+        "app.orchestration.receipt_service.lookup_receipts",
         new_callable=AsyncMock,
     ) as lookup_mock:
         async with AsyncClient(
@@ -300,11 +300,11 @@ async def test_verify_hides_hashes_for_dispatcher() -> None:
 
     with (
         patch(
-            "app.api.v1.endpoints.blockchain.assert_subject_visible",
+            "app.orchestration.verification_service.assert_subject_visible",
             new_callable=AsyncMock,
         ),
         patch(
-            "app.api.v1.endpoints.blockchain.verify_subject",
+            "app.orchestration.verification_service.verify_subject",
             new_callable=AsyncMock,
             return_value=_fake_outcome_with_hashes(),
         ),
@@ -334,11 +334,11 @@ async def test_verify_exposes_hashes_for_admin() -> None:
 
     with (
         patch(
-            "app.api.v1.endpoints.blockchain.assert_subject_visible",
+            "app.orchestration.verification_service.assert_subject_visible",
             new_callable=AsyncMock,
         ),
         patch(
-            "app.api.v1.endpoints.blockchain.verify_subject",
+            "app.orchestration.verification_service.verify_subject",
             new_callable=AsyncMock,
             return_value=_fake_outcome_with_hashes(),
         ),

@@ -33,7 +33,6 @@ function demoTripsFor(driverId: string): DriverTripSummary[] {
   return tripsForDriver(mockTrips, driverId as Parameters<typeof tripsForDriver>[1]).map((t) => ({
     id: t.id,
     trip_reference: t.trip_reference,
-    order_number: t.order_number,
     status: t.status,
     trip_type: t.trip_type,
     origin_precinct_id: t.origin_precinct_id,

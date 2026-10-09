@@ -5,9 +5,9 @@ import { Button } from '@/components/ui/Button'
 import { Ic } from '@/components/ui/Ic'
 import { NO_CONTACT_CHOSEN, NO_OUTCOME_CHOSEN, ReviewFields } from '@/components/domain/ReviewFields'
 import { ApiError, reviewExceptionBatch } from '@/lib/api/client'
-import { fmtExceptionType } from '@/lib/format/exception'
+import { EXCEPTION_BATCH_LIMIT } from '@/lib/exceptions/queue'
+import { fmtExceptionType, fmtExceptionRaised } from '@/lib/format/exception'
 import { useToast } from '@/lib/hooks/useToast'
-import { fmtDateTime } from '@shared/lib/utils/datetime'
 import type { DispatcherReviewOutcome, ExceptionContactMethod, TripException } from '@shared/lib/types/exception'
 
 // Same wording as the detail page, since it is the same situation: a colleague changed
@@ -16,6 +16,7 @@ const CONFLICT_TOAST_TITLE = 'A colleague got there first'
 
 interface Props {
   tripId: string
+  tripReference?: string
   /** The rows eligible when the form opens. The caller decides eligibility; the form
    *  snapshots them on mount and sends exactly those ids, so a warning raised while the
    *  dispatcher is typing is never swept into a review they did not see. */
@@ -25,7 +26,7 @@ interface Props {
 }
 
 /** One note and outcome applied to a trip's non-critical, unreviewed exceptions. */
-export function BatchReviewForm({ tripId, exceptions: liveExceptions, onDone, onCancel }: Props) {
+export function BatchReviewForm({ tripId, tripReference, exceptions: liveExceptions, onDone, onCancel }: Props) {
   const { notify } = useToast()
   // Frozen at mount: the parent's list is live (realtime refetches), but what the
   // dispatcher confirms must be the list they read when they opened the form.
@@ -42,7 +43,7 @@ export function BatchReviewForm({ tripId, exceptions: liveExceptions, onDone, on
     e.preventDefault()
     const trimmedNote = note.trim()
     // Both gates, as on the detail page: keyboard submit bypasses the disabled attribute.
-    if (!trimmedNote || outcome === NO_OUTCOME_CHOSEN) return
+    if (!trimmedNote || outcome === NO_OUTCOME_CHOSEN || busy || count > EXCEPTION_BATCH_LIMIT) return
     setBusy(true)
     try {
       await reviewExceptionBatch({
@@ -74,25 +75,26 @@ export function BatchReviewForm({ tripId, exceptions: liveExceptions, onDone, on
   return (
     <form onSubmit={handleSubmit} className="mb-4 flex flex-col gap-4 rounded-lg border border-outline-v/30 bg-surf-lowest p-4">
       <div>
-        <p className="text-sm font-bold text-on-surf">Review {count} {noun} with one note</p>
+        <p className="text-sm font-semibold text-on-surf">Review {count} {noun} with one note</p><p className="mt-2 text-xs text-on-surf-v break-all">Trip {tripReference ?? exceptions[0]?.trip_reference ?? tripId} · These {count} listed records only. New arrivals are excluded. Limit {EXCEPTION_BATCH_LIMIT}.</p>
         <ul className="mt-2 space-y-1 text-xs text-on-surf-v">
           {exceptions.map(x => (
-            <li key={x.id}>{fmtExceptionType(x.exception_type)} · {fmtDateTime(x.created_at)}</li>
+            <li key={x.id}>{fmtExceptionType(x.exception_type)} · {fmtExceptionRaised(x.created_at)}<span className="block break-all tabular-nums">Record {x.id}</span></li>
           ))}
         </ul>
       </div>
-      <ReviewFields
+      <ReviewFields idPrefix={`batch-${tripId}`}
         note={note}       onNote={setNote}
         outcome={outcome} onOutcome={setOutcome}
         contact={contact} onContact={setContact}
       />
-      <div className="flex justify-end gap-2">
+      <p role="status" className="text-xs text-on-surf-v">{busy ? 'Submitting assessment…' : count > EXCEPTION_BATCH_LIMIT ? `Narrow the batch to ${EXCEPTION_BATCH_LIMIT} records before reviewing.` : !note.trim() || !outcome ? 'Choose an outcome and enter a review note to submit.' : 'Ready to submit.'}</p>
+      <div className="flex flex-wrap justify-end gap-2">
         <Button type="button" variant="secondary" size="sm" onClick={onCancel} disabled={busy}>Cancel</Button>
         <Button
           type="submit"
-          variant="success"
+          variant="primary"
           size="sm"
-          disabled={!note.trim() || outcome === NO_OUTCOME_CHOSEN || busy}
+          disabled={!note.trim() || outcome === NO_OUTCOME_CHOSEN || busy || count > EXCEPTION_BATCH_LIMIT}
           loading={busy}
           iconLeft={<Ic n="check" s={14} c="white" />}
         >

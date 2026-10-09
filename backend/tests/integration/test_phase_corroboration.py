@@ -52,7 +52,7 @@ from app.integrations.pulsit import (
     MockPulsitClient, PulsitFix, PulsitFixSource, PulsitFixStatus,
 )
 from app.main import app
-from app.orchestration import corroboration_service
+from app.orchestration.evidence import corroboration as evidence_corroboration
 
 from tests.conftest import FakeMockStateStore, auth_header, make_token
 
@@ -558,7 +558,7 @@ async def test_a_pulsit_outage_leaves_the_handshake_successful(
             raise RuntimeError("Pulsit is unreachable")
 
     monkeypatch.setattr(
-        corroboration_service, "get_pulsit_client", lambda: _ExplodingPulsitClient(),
+        evidence_corroboration, "get_pulsit_client", lambda: _ExplodingPulsitClient(),
     )
 
     resp = await _complete_activation(client, trip, driver)
@@ -761,7 +761,7 @@ async def test_a_positioned_fix_with_no_reading_time_is_dropped_rather_than_inve
             return (await self.get_positions([device_id]))[0]
 
     monkeypatch.setattr(
-        corroboration_service, "get_pulsit_client", lambda: _TimelessPulsitClient(),
+        evidence_corroboration, "get_pulsit_client", lambda: _TimelessPulsitClient(),
     )
 
     resp = await _complete_activation(client, trip, driver)
@@ -874,7 +874,7 @@ async def test_a_snapshot_uses_the_trip_frozen_device_id_not_the_current_vehicle
 # ── Checkpoints: the driver payload no longer supplies the horse position ───────
 #
 # SCOPE NOTE FOR REVIEW: FP-143 as written covers phase handshakes only. These three
-# tests cover an explicit extension of the same treatment to checkpoint_service.py,
+# tests cover an explicit extension of the same treatment to evidence/checkpoints.py,
 # decided 2026-09-04. Flagged here rather than buried, because it changes an existing
 # endpoint's behaviour: Checkpoint.horse_gps_lat/lng used to be whatever the driver's
 # app put in the request body, which made the column a second copy of the driver's own
@@ -958,7 +958,7 @@ async def test_a_pulsit_outage_leaves_the_checkpoint_successful(
             raise RuntimeError("Pulsit is unreachable")
 
     monkeypatch.setattr(
-        corroboration_service, "get_pulsit_client", lambda: _ExplodingPulsitClient(),
+        evidence_corroboration, "get_pulsit_client", lambda: _ExplodingPulsitClient(),
     )
 
     resp = await _log_checkpoint(client, trip, driver)

@@ -1,4 +1,4 @@
-"""Unit tests for app.orchestration.phase_plan.build_phase_plan().
+"""Unit tests for app.orchestration.phases.plan.build_phase_plan().
 
 Asserts the plan against the frozen reference implementation, makePhasePlan(),
 in frontend/shared/lib/mocks/phase-trips.ts. Pure logic, no DB, no HTTP.

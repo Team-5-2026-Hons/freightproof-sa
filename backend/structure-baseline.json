@@ -1,0 +1,39 @@
+{
+  "function_line_limit": 100,
+  "functions": {
+    "app/dev/endpoints/pulsit.py::move_truck": 164,
+    "app/dev/endpoints/triggers.py::list_dev_trips": 162,
+    "app/orchestration/consignments/sync.py::sync_consignment_from_waybill": 163,
+    "app/orchestration/evidence/action_location.py::build_phase_assessment": 119,
+    "app/orchestration/evidence/action_location.py::record_driver_location_finding": 115,
+    "app/orchestration/evidence/action_location.py::record_separation_finding": 128,
+    "app/orchestration/evidence/corroboration.py::record_phase_corroboration": 157,
+    "app/orchestration/exceptions/creation.py::raise_exception": 168,
+    "app/orchestration/exceptions/queries.py::list_exception_history": 103,
+    "app/orchestration/exceptions/review.py::review_exception": 123,
+    "app/orchestration/fleet/vehicles.py::update_vehicle": 117,
+    "app/orchestration/phases/advance_arrival.py::advance_arrival": 151,
+    "app/orchestration/phases/advance_confirmation.py::advance_confirmation": 119,
+    "app/orchestration/phases/advance_departure.py::advance_departure": 118,
+    "app/orchestration/phases/advance_loading.py::advance_loading": 112,
+    "app/orchestration/phases/findings.py::_raise_position_disagreement_if_unrecorded": 129,
+    "app/orchestration/phases/override.py::override_phase": 115,
+    "app/orchestration/resource_service.py::get_trip_detail": 148,
+    "app/orchestration/resource_service.py::list_trip_history": 154,
+    "app/orchestration/resource_service.py::list_trips": 106,
+    "app/orchestration/trips/creation.py::persist_trip": 274,
+    "app/orchestration/verification_service.py::_reconstruct_phase_event_payload": 177,
+    "app/orchestration/verification_service.py::verify_subject": 108,
+    "app/tasks/parcel_perfect.py::_sync_all_active": 116
+  },
+  "files": {
+    "app/orchestration/phase_service.py": 118,
+    "app/integrations/parcel_perfect/__init__.py": 81,
+    "app/orchestration/exception_service.py": 68,
+    "app/orchestration/trip_service.py": 47,
+    "app/orchestration/action_location_service.py": 28,
+    "app/orchestration/evidence/action_location.py": 695,
+    "app/schemas/trips.py": 425,
+    "app/api/v1/endpoints/handover.py": 557
+  }
+}

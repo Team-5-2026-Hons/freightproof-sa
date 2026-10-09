@@ -312,8 +312,8 @@ describe('tripChipMeta', () => {
   })
 
   it('never produces a label longer than the widest one it renders today', () => {
-    // 'At Origin Gate' is 14 chars. Chip has no fixed width, but ChecklistRow's
-    // STATUS column is a fixed 120px, so a regression here would clip silently.
+    // 'At Origin Gate' is 14 chars. Chip has no fixed width, but the trip table's
+    // Status column has a fixed base width, so a regression here would clip silently.
     const widest = (['activation', 'loading', 'departure', 'in_transit', 'unloading',
                      'confirmation'] as const)
       .flatMap(phase => [tripChipMeta('active', phase), tripChipMeta('exception_hold', phase)])

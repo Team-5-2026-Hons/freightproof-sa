@@ -1,4 +1,4 @@
-"""Pydantic v2 schemas for PhaseEvent and TrailerGpsSnapshot.
+"""Pydantic v2 schemas for PhaseEvent and the per-phase completion requests.
 
 Replaces schemas/handshakes.py, whose HandshakeEventRead predates the phase
 ledger and is missing three real columns (trip_stop_id, anchor_status,
@@ -53,9 +53,7 @@ class PhaseEventRead(BaseModel):
 
     # Wire name is `phase_event_id`, matching the shared frontend contract
     # (frontend/shared/lib/types/phase.ts) — this is the phase's own identity,
-    # not a foreign key pointing at one (contrast
-    # TrailerGpsSnapshotBase.phase_event_id below, which IS an FK and is
-    # unaffected by this alias). serialization_alias only changes the OUTBOUND
+    # not a foreign key pointing at one. serialization_alias only changes the OUTBOUND
     # key: model_validate(event)/from_attributes still binds the ORM's `id`
     # attribute by field name, and FastAPI serialises response models with
     # by_alias=True by default, so `id` never reaches the JSON body.
@@ -76,7 +74,7 @@ class PhaseEventRead(BaseModel):
     step_recipe: tuple[str, ...] = ()
 
     # Non-null while this phase is waiting on an external system — today only the
-    # warehouse scan feed. Derived per request (orchestration/phase_gate.py), never
+    # warehouse scan feed. Derived per request (orchestration/phases/blocking.py), never
     # stored: it is a property of the outside world, not of this row.
     blocked_on: Optional[str] = None
 
@@ -114,7 +112,9 @@ class PhaseEventRead(BaseModel):
     pod_photo_artifact_id: Optional[UUID] = None
     pod_signature_artifact_id: Optional[UUID] = None
     linehaul_photo_artifact_id: Optional[UUID] = None
-    parcel_manifest_snapshot: Optional[Any] = None
+    # parcel_manifest_snapshot is deliberately absent: on H0 it holds the whole PP
+    # manifest (FP-281) and this schema is served to the driver. Dispatchers read it
+    # through GET /trips/{id}/manifest.
     parcel_count_origin: Optional[int] = None
     parcel_count_destination: Optional[int] = None
     driver_visual_count: Optional[int] = None
@@ -155,27 +155,6 @@ class PhaseEventRead(BaseModel):
         return read
 
 
-class TrailerGpsSnapshotBase(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    phase_event_id: UUID
-    trailer_id: UUID
-    pulsit_device_id: str
-    lat: float
-    lng: float
-    captured_at: datetime
-    geofence_confirmed: Optional[bool] = None
-
-
-class TrailerGpsSnapshotCreate(TrailerGpsSnapshotBase):
-    pass
-
-
-class TrailerGpsSnapshotRead(TrailerGpsSnapshotBase):
-    id: UUID
-    created_at: datetime
-
-
 class _PhaseCompleteBase(BaseModel):
     # Completion requests may carry raw driver evidence only. In particular, clients
     # must not smuggle a server-evaluated ActionLocationAssessment verdict into the
@@ -199,7 +178,7 @@ class _PhaseCompleteBase(BaseModel):
     # because the origin-gate position is the one the activation gates are judged on.
     #
     # POPIA: personal location data. Stored in Postgres, never anchored — the canonical
-    # payload builders in orchestration/phase_service.py are explicit whitelists, so a
+    # payload builders in orchestration/phases/payloads.py are explicit whitelists, so a
     # field added here cannot reach a hash by accident.
     driver_phone_lat: Optional[float] = Field(default=None, ge=-90, le=90)
     driver_phone_lng: Optional[float] = Field(default=None, ge=-180, le=180)
@@ -207,10 +186,10 @@ class _PhaseCompleteBase(BaseModel):
     # The instant the driver's OWN PHONE submitted this completion — captured
     # client-side at swipe time (frontend/driver-pwa/lib/submission/phase-submitter.ts),
     # not when this request happens to reach the server. This is what lets
-    # corroboration_service tell a live handshake from an offline replay flushed hours
+    # evidence.corroboration tell a live handshake from an offline replay flushed hours
     # later: comparing a fresh Pulsit fix against a stale driver claim, with no capture
     # time on the wire, was the exact gap this field exists to close (see
-    # corroboration_service.py's module docstring).
+    # evidence/corroboration.py's module docstring).
     #
     # Optional so a client built before this field existed — an entry already sitting in
     # a driver's offline queue — still 200s on replay instead of 422ing forever; a
@@ -220,9 +199,9 @@ class _PhaseCompleteBase(BaseModel):
     driver_captured_at: Optional[datetime] = None
 
     # The phone's own claimed
-    # accuracy at the moment of driver_phone_lat/lng, feeding proximity_service.
+    # accuracy at the moment of driver_phone_lat/lng, feeding evidence.proximity.
     # evaluate_proximity's `poor_accuracy`/`missing_accuracy` gates via orchestration/
-    # action_location_service.build_phase_assessment. NOT a phase_events column —
+    # evidence.action_location.build_phase_assessment. NOT a phase_events column —
     # it lives only inside the action_location_assessment JSONB snapshot (schemas/
     # action_location.py). Optional so a client built before this field existed
     # still 200s on replay: an omitted value reads as `missing_accuracy`, which
@@ -239,7 +218,7 @@ class _PhaseCompleteBase(BaseModel):
     @field_validator("driver_captured_at")
     @classmethod
     def validate_driver_captured_at_is_timezone_aware(cls, v: Optional[datetime]) -> Optional[datetime]:
-        # A naive value would silently compare as if it were UTC in corroboration_service,
+        # A naive value would silently compare as if it were UTC in evidence.corroboration,
         # manufacturing a skew verdict from a timestamp that was never actually anchored
         # to a real instant. Rejected outright rather than assumed.
         if v is not None and v.tzinfo is None:

@@ -59,8 +59,10 @@ from app.db.models.transit import TripException
 from app.db.models.trips import Trip, TripStop
 from app.db.models.vehicles import Vehicle
 from app.orchestration import action_location_service
+from app.orchestration.evidence import action_location as evidence_action_location
 from app.schemas.action_location import ActionLocationAssessment
 from app.orchestration import phase_service
+from app.orchestration.phases import findings as phase_findings
 
 # Imported for their fixture side effects as much as their bodies — `override_get_db`
 # is autouse in its defining module and stays autouse here, which is what points the
@@ -335,7 +337,7 @@ async def test_concurrent_separation_finding_attempts_recover_the_partial_unique
         await barrier.wait()
         return existing
 
-    monkeypatch.setattr(action_location_service, "_find_existing_separation", synchronized_find)
+    monkeypatch.setattr(evidence_action_location, "_find_existing_separation", synchronized_find)
     assessment = ActionLocationAssessment(
         policy_version="test-policy", evaluated_at=datetime.now(UTC),
         driver_lat=float(_ORIGIN_LAT), driver_lng=float(_ORIGIN_LNG),
@@ -577,7 +579,7 @@ async def test_a_pulsit_outage_raises_nothing(
     trip, driver, _org, _stop = corroboration_trip
 
     with patch(
-        "app.orchestration.corroboration_service.get_pulsit_client",
+        "app.orchestration.evidence.corroboration.get_pulsit_client",
         side_effect=RuntimeError("Pulsit unreachable"),
     ):
         resp = await _complete_activation(client, trip, driver)
@@ -766,7 +768,7 @@ async def test_a_failure_recording_the_finding_leaves_the_handshake_successful(
     await _stage(_HORSE_DEVICE, _FAR_AWAY_LAT, _FAR_AWAY_LNG)
 
     with patch.object(
-        phase_service, "_phone_tracker_separation_metres",
+        phase_findings, "_phone_tracker_separation_metres",
         side_effect=RuntimeError("separation maths blew up"),
     ):
         resp = await _complete_activation(client, trip, driver)
@@ -789,7 +791,7 @@ async def test_a_failure_building_the_assessment_leaves_the_handshake_successful
     await _stage(_HORSE_DEVICE, _ORIGIN_LAT, _ORIGIN_LNG)
 
     with patch.object(
-        action_location_service, "build_phase_assessment",
+        evidence_action_location, "build_phase_assessment",
         side_effect=RuntimeError("assessment maths blew up"),
     ):
         resp = await _complete_activation(client, trip, driver)

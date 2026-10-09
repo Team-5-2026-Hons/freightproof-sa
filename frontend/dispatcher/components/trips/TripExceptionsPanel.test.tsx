@@ -118,7 +118,7 @@ describe('TripExceptionsPanel filters', () => {
 
     expect(screen.getAllByRole('button', { name: VIEW_ON_MAP_LABEL })).toHaveLength(1)
     fireEvent.click(screen.getByRole('button', { name: VIEW_ON_MAP_LABEL }))
-    expect(screen.getByRole('dialog', { name: /Recorded locations: Gps Mismatch · Loading/ })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: /Recorded locations: GPS mismatch · Loading/ })).toBeInTheDocument()
   })
 
   it('offers batch review only for my or unclaimed non-critical unreviewed rows', () => {
@@ -147,7 +147,7 @@ describe('TripExceptionsPanel filters', () => {
     render(<TripExceptionsPanel precincts={[]} trip={{ ...base, exceptions }} filter="needs_review" onFilter={vi.fn()} returnTo="/trips/x" />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Review 2 warnings' }))
-    expect(screen.getByLabelText('Review note')).toBeInTheDocument()
+    expect(screen.getByLabelText('Review note (required)')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(screen.queryByLabelText('Review note')).not.toBeInTheDocument()
@@ -161,4 +161,41 @@ describe('TripExceptionsPanel filters', () => {
 
     expect(screen.queryByRole('button', { name: /^Review \d+ warning/ })).not.toBeInTheDocument()
   })
+})
+
+
+describe('optional grouping and batch cap', () => {
+  it('allows 100 eligible records and requires narrowing for 101', () => {
+    const base = tripWith(0,1)
+    const rows = Array.from({length:101},(_,i)=>({...base.exceptions[0]!, id:`cap-${i}` as TripException['id'], severity:'warning' as const, claimed_by_user_id:null}))
+    const props={precincts:[],filter:'all' as const,onFilter:vi.fn(),returnTo:'/trips/x'}
+    const view=render(<TripExceptionsPanel {...props} trip={{...base,exceptions:rows.slice(0,100)}} />)
+    expect(screen.getByRole('button',{name:'Review 100 warnings'})).toBeEnabled()
+    view.rerender(<TripExceptionsPanel {...props} trip={{...base,exceptions:rows}} />)
+    expect(screen.queryByRole('button',{name:'Review 101 warnings'})).not.toBeInTheDocument()
+    expect(screen.getByText(/Narrow.*100/)).toBeInTheDocument()
+  })
+  it('keeps two matching phase labels separate and null links visible only when grouping is selected', () => {
+    const base=tripWith(0,1)
+    const first=base.phases[0]!
+    const second={...first,phase_event_id:'second-phase' as typeof first.phase_event_id}
+    const rows=[{...base.exceptions[0]!,id:'one' as TripException['id'],phase_event_id:first.phase_event_id},{...base.exceptions[0]!,id:'two' as TripException['id'],phase_event_id:second.phase_event_id},{...base.exceptions[0]!,id:'null' as TripException['id'],phase_event_id:null}]
+    render(<TripExceptionsPanel precincts={[]} filter="all" onFilter={vi.fn()} returnTo="/trips/x" trip={{...base,phases:[first,second],exceptions:rows}} />)
+    expect(screen.queryByText('Trip-level records')).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Group records'),{target:{value:'phase'}})
+    expect(document.querySelectorAll('[data-phase-group]')).toHaveLength(3)
+    expect(screen.getByText('Trip-level records')).toBeInTheDocument()
+  })
+})
+
+it('keeps the frozen batch and typed note when a live claim removes all current eligibility', () => {
+  const base=tripWith(0,1)
+  const row={...base.exceptions[0]!,severity:'warning' as const,claimed_by_user_id:null}
+  const props={precincts:[],filter:'all' as const,onFilter:vi.fn(),returnTo:'/trips/x'}
+  const view=render(<TripExceptionsPanel {...props} trip={{...base,exceptions:[row]}} />)
+  fireEvent.click(screen.getByRole('button',{name:'Review 1 warning'}))
+  fireEvent.change(screen.getByLabelText('Review note (required)'),{target:{value:'Draft for the explicit batch'}})
+  view.rerender(<TripExceptionsPanel {...props} trip={{...base,exceptions:[{...row,claimed_by_user_id:'colleague'}]}} />)
+  expect(screen.getByLabelText('Review note (required)')).toHaveValue('Draft for the explicit batch')
+  expect(screen.getByText(`Record ${row.id}`)).toBeInTheDocument()
 })

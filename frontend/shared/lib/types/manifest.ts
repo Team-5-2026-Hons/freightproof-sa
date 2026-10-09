@@ -3,6 +3,8 @@
 // available once the loading phase starts; the endpoint returns 404 before that.
 // Mirrors backend ManifestResponse schema.
 
+import type { PPManifestSnapshot } from './pp-manifest'
+
 export type ParcelId = string & { readonly __brand: 'ParcelId' }
 
 export type ParcelStatus = 'pending' | 'scanned_out' | 'scanned_in' | 'exception'
@@ -46,6 +48,9 @@ export interface Manifest {
   origin_scan_complete: boolean
   consignments: ConsignmentManifest[]
   pulled_at: string
+  // The PP manifest as locked at creation (H0, FP-281), or null on trips without one. Never
+  // refreshed: later Parcel Perfect changes show in `consignments`, not here (spec §10.6).
+  pp_manifest_snapshot: PPManifestSnapshot | null
 }
 
 // Linehaul: the driver-facing document for the same manifest endpoint — returned instead
