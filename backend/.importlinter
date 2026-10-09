@@ -19,10 +19,10 @@ unmatched_ignore_imports_alerting = error
 #    db may import only app.core (config); that is the bottom-layer rule.
 # ---------------------------------------------------------------------------
 [importlinter:contract:layers]
-name = Layer order (api|tasks > orchestration > integrations|blockchain|storage|auth|analytics > schemas > db > core|crypto)
+name = Layer order (api|tasks|dev > orchestration > integrations|blockchain|storage|auth|analytics > schemas > db > core|crypto)
 type = layers
 layers =
-    app.api | app.tasks
+    app.api | app.tasks | app.dev
     app.orchestration
     app.integrations | app.blockchain | app.storage | app.auth | app.analytics
     app.schemas
@@ -37,12 +37,12 @@ ignore_imports =
     app.schemas.fleet_analytics -> app.analytics.stats
     app.schemas.fleet_analytics -> app.analytics.fleet.constants
     app.schemas.fleet_analytics -> app.analytics.fleet.periods
-    # schemas -> integrations: dev-only schema; moves with app/dev/ (audit phase 4).
-    app.schemas.dev -> app.integrations.scan_feed
-    # orchestration -> tasks: phase_service imports tasks.blockchain lazily (function level)
-    # to dispatch anchoring. tasks.blockchain imports phase_service back, so a module-level
-    # import would be a cycle. Removed structurally by the anchor_dispatch split (audit 5.2).
-    app.orchestration.phase_service -> app.tasks.blockchain
+    # orchestration -> tasks: phases.anchor_dispatch imports tasks.blockchain lazily (function
+    # level) to queue the Hedera submit on the Celery worker. The anchor_dispatch split (audit
+    # 5.2) removed the import CYCLE (tasks.blockchain now re-enters phases.anchor_execution,
+    # which never points back here); the layer violation itself remains, so the ignore moved
+    # with the code rather than being deleted.
+    app.orchestration.phases.anchor_dispatch -> app.tasks.blockchain
 
 # ---------------------------------------------------------------------------
 # 2. No layer skipping from the API. CLAUDE.md: endpoints -> orchestration -> integrations.
@@ -61,14 +61,6 @@ forbidden_modules =
     app.storage
     app.crypto
 allow_indirect_imports = True
-ignore_imports =
-    # Real skips (audit 4.2): to be routed through orchestration in audit phase 2 (item C).
-    # The 5 dev_* imports (audit 4.2): dev-only tooling; moves to app/dev/ in the last window.
-    app.api.v1.endpoints.dev_tracker -> app.integrations.pulsit
-    app.api.v1.endpoints.dev_pulsit -> app.integrations.pulsit
-    app.api.v1.endpoints.dev_triggers -> app.integrations.mock_state
-    app.api.v1.endpoints.dev_triggers -> app.integrations.parcel_perfect
-    app.api.v1.endpoints.dev_triggers -> app.integrations.scan_feed
 
 # ---------------------------------------------------------------------------
 # 3. Written ahead of the phases/ package (audit 5.1). Trivially kept until it exists.
@@ -78,9 +70,299 @@ ignore_imports =
 #    from inside phases/ is caught as well.
 # ---------------------------------------------------------------------------
 [importlinter:contract:phases-no-facade]
-name = app.orchestration.phases must not import the phase_service facade
+name = app.orchestration.phases must not import the phase_service, phase_gate or phase_plan facades
 type = forbidden
 source_modules =
     app.orchestration.phases.**
 forbidden_modules =
     app.orchestration.phase_service
+    app.orchestration.phase_gate
+    app.orchestration.phase_plan
+# ---------------------------------------------------------------------------
+# 4. Tier order inside phases/ (audit 5.1). A module may import only from tiers below it;
+#    modules on one tier ("|") may not import each other. This is what keeps the package
+#    acyclic, and it is why _finish_phase lives in `completion`, not `service`.
+#    Layers are not optional: a misspelt or missing module fails the contract.
+# ---------------------------------------------------------------------------
+[importlinter:contract:phases-tier-order]
+name = Inside phases/, modules import only from lower tiers
+type = layers
+containers =
+    app.orchestration.phases
+layers =
+    service
+    advance_activation | advance_loading | advance_departure | advance_in_transit | advance_arrival | advance_unloading | advance_confirmation | override
+    queries | gate | anchor_dispatch | anchor_recovery | completion
+    payloads | loaders | state | artifacts | driver_position | seals | scheduling | findings | anchor_execution | blocking | plan
+ignore_imports =
+    # The one lazy edge that leaves phases/. Audit 5.2 draws it as terminating at
+    # tasks.blockchain: tasks.blockchain re-enters via anchor_execution / anchor_recovery, and
+    # nothing points back at anchor_dispatch. Without this, import-linter follows the chain
+    # through tasks.blockchain and reports anchor_dispatch as importing its own siblings.
+    app.orchestration.phases.anchor_dispatch -> app.tasks.blockchain
+
+# ---------------------------------------------------------------------------
+# 5. verification_service rebuilds payloads to verify stored hashes. It reaches only the
+#    phases.payloads leaf, never the phase_service facade; importing the facade is what
+#    made phase_service <-> verification_service a cycle (audit 5.2).
+# ---------------------------------------------------------------------------
+[importlinter:contract:verification-no-facade]
+name = verification_service must not import the phase_service facade
+type = forbidden
+source_modules =
+    app.orchestration.verification_service
+forbidden_modules =
+    app.orchestration.phase_service
+
+# ---------------------------------------------------------------------------
+# 6. Stops the trips package importing back into its own facade (audit 5.5, rule 2:
+#    imports only run old -> new). Wildcard form for the same reason as contract 3.
+# ---------------------------------------------------------------------------
+[importlinter:contract:trips-no-facade]
+name = app.orchestration.trips must not import the trip_service facade
+type = forbidden
+source_modules =
+    app.orchestration.trips.**
+forbidden_modules =
+    app.orchestration.trip_service
+
+# ---------------------------------------------------------------------------
+# 7. creation, administration and queries share no code today and must stay that way
+#    (audit 5.3). Independence also rejects an indirect chain from one to another, so a
+#    shared helper has to be extracted to a lower module instead of imported sideways.
+# ---------------------------------------------------------------------------
+[importlinter:contract:trips-independent-modules]
+name = trips.creation, trips.administration and trips.queries do not import each other
+type = independence
+modules =
+    app.orchestration.trips.creation
+    app.orchestration.trips.administration
+    app.orchestration.trips.queries
+
+# ---------------------------------------------------------------------------
+# 8. Stops the exceptions package importing back into its own facade (audit 5.5, rule 2:
+#    imports only run old -> new). Wildcard form for the same reason as contract 3.
+# ---------------------------------------------------------------------------
+[importlinter:contract:exceptions-no-facade]
+name = app.orchestration.exceptions must not import the exception_service facade
+type = forbidden
+source_modules =
+    app.orchestration.exceptions.**
+forbidden_modules =
+    app.orchestration.exception_service
+
+# ---------------------------------------------------------------------------
+# 9. creation, review and queries share no code today and must stay that way (audit 5.4).
+#    Independence also rejects an indirect chain from one to another, so a shared helper has
+#    to be extracted to a lower module instead of imported sideways.
+# ---------------------------------------------------------------------------
+[importlinter:contract:exceptions-independent-modules]
+name = exceptions.creation, exceptions.review and exceptions.queries do not import each other
+type = independence
+modules =
+    app.orchestration.exceptions.creation
+    app.orchestration.exceptions.review
+    app.orchestration.exceptions.queries
+
+# ---------------------------------------------------------------------------
+# 10. Tier order inside integrations/parcel_perfect/ (audit 5, rule 6). A module may import
+#     only from tiers below it; modules on one tier ("|") may not import each other. The
+#     package __init__ is a facade that imports every submodule, so a child importing the
+#     facade is an import of its siblings through it, and this contract catches that too,
+#     for every tier except `factory` (nothing sits above it to be checked); the AST test in
+#     tests/unit/test_parcel_perfect_package.py covers `factory` as well.
+#     Layers are not optional: a misspelt or missing module fails the contract.
+# ---------------------------------------------------------------------------
+[importlinter:contract:parcel-perfect-tier-order]
+name = Inside integrations/parcel_perfect/, modules import only from lower tiers
+type = layers
+containers =
+    app.integrations.parcel_perfect
+layers =
+    factory
+    mock
+    unassigned_fixtures | manifest_fixtures
+    port | waybill_fixtures | client
+    errors | timestamps | models
+
+# ---------------------------------------------------------------------------
+# 11. Stops the evidence package importing back into its own facades (audit 5.5, rule 2:
+#     imports only run old -> new). One facade per moved module, so the list is the eight
+#     old names. Wildcard form for the same reason as contract 3; function-level (lazy)
+#     imports are in the graph too.
+# ---------------------------------------------------------------------------
+[importlinter:contract:evidence-no-facade]
+name = app.orchestration.evidence must not import the evidence facade modules
+type = forbidden
+source_modules =
+    app.orchestration.evidence.**
+forbidden_modules =
+    app.orchestration.action_location_service
+    app.orchestration.artifact_service
+    app.orchestration.checkpoint_service
+    app.orchestration.corroboration_service
+    app.orchestration.geofence_service
+    app.orchestration.location_service
+    app.orchestration.proximity_service
+    app.orchestration.road_check_service
+
+# ---------------------------------------------------------------------------
+# 12. Tier order inside evidence/ (audit 5, move order: leaves first). A module may import
+#     only from tiers below it; modules on one tier ("|") may not import each other. The
+#     tiers are the edges the code has today: checkpoints builds on corroboration and
+#     action_location; those and road_check build on the geofence/proximity leaves.
+#     evidence/__init__ stays empty (audit 5 rule 1), so there is no package facade to
+#     reach siblings through.
+#     Layers are not optional: a misspelt or missing module fails the contract.
+# ---------------------------------------------------------------------------
+[importlinter:contract:evidence-tier-order]
+name = Inside evidence/, modules import only from lower tiers
+type = layers
+containers =
+    app.orchestration.evidence
+layers =
+    checkpoints
+    corroboration | action_location | road_check
+    geofence | proximity | location | artifacts
+
+# ---------------------------------------------------------------------------
+# 13. Stops the fleet package importing back into its own facades (audit 5.5, rule 2:
+#     imports only run old -> new). One facade per moved module, so the list is the three
+#     old names. Wildcard form for the same reason as contract 3; function-level (lazy)
+#     imports are in the graph too.
+# ---------------------------------------------------------------------------
+[importlinter:contract:fleet-no-facade]
+name = app.orchestration.fleet must not import the fleet facade modules
+type = forbidden
+source_modules =
+    app.orchestration.fleet.**
+forbidden_modules =
+    app.orchestration.driver_service
+    app.orchestration.vehicle_service
+    app.orchestration.precinct_service
+
+# ---------------------------------------------------------------------------
+# 14. drivers, vehicles and precincts share no code today and must stay that way (audit 5).
+#     Independence also rejects an indirect chain from one to another, so a shared helper
+#     has to be extracted to a lower module instead of imported sideways.
+# ---------------------------------------------------------------------------
+[importlinter:contract:fleet-independent-modules]
+name = fleet.drivers, fleet.vehicles and fleet.precincts do not import each other
+type = independence
+modules =
+    app.orchestration.fleet.drivers
+    app.orchestration.fleet.vehicles
+    app.orchestration.fleet.precincts
+
+# ---------------------------------------------------------------------------
+# 15. Stops the handover package importing back into its own facades (audit 5.5, rule 2:
+#     imports only run old -> new). Wildcard form for the same reason as contract 3.
+# ---------------------------------------------------------------------------
+[importlinter:contract:handover-no-facade]
+name = app.orchestration.handover must not import the handover facade modules
+type = forbidden
+source_modules =
+    app.orchestration.handover.**
+forbidden_modules =
+    app.orchestration.handover_service
+    app.orchestration.receiver_verification_service
+
+# ---------------------------------------------------------------------------
+# 16. Tier order inside handover/. receiver_verification builds on capability (it extends a
+#     handover token and builds the scan URL); capability never reaches back. handover/__init__
+#     stays empty (audit 5 rule 1), so there is no package facade to reach siblings through.
+#     Layers are not optional: a misspelt or missing module fails the contract.
+# ---------------------------------------------------------------------------
+[importlinter:contract:handover-tier-order]
+name = Inside handover/, modules import only from lower tiers
+type = layers
+containers =
+    app.orchestration.handover
+layers =
+    receiver_verification
+    capability
+
+# ---------------------------------------------------------------------------
+# 17. Stops the consignments package importing back into its own facades (audit 5.5, rule 2:
+#     imports only run old -> new). One facade per moved module, so the list is the six old
+#     names. Wildcard form for the same reason as contract 3; function-level (lazy) imports
+#     are in the graph too.
+# ---------------------------------------------------------------------------
+[importlinter:contract:consignments-no-facade]
+name = app.orchestration.consignments must not import the consignments facade modules
+type = forbidden
+source_modules =
+    app.orchestration.consignments.**
+forbidden_modules =
+    app.orchestration.consignment_service
+    app.orchestration.scan_service
+    app.orchestration.pp_lookup_service
+    app.orchestration.pp_manifest
+    app.orchestration.pp_manifest_service
+    app.orchestration.manifest_service
+
+# ---------------------------------------------------------------------------
+# 18. Tier order inside consignments/ (audit 5, move order: leaves first). The tiers are the
+#     edges the code has today: manifest_import and manifest_reads build on manifest_snapshot,
+#     which builds on sync (it serialises a waybill); sync, scans and waybill_lookup are the
+#     leaves and share nothing. consignments/__init__ stays empty (audit 5 rule 1).
+#     Layers are not optional: a misspelt or missing module fails the contract.
+# ---------------------------------------------------------------------------
+[importlinter:contract:consignments-tier-order]
+name = Inside consignments/, modules import only from lower tiers
+type = layers
+containers =
+    app.orchestration.consignments
+layers =
+    manifest_import | manifest_reads
+    manifest_snapshot
+    sync | scans | waybill_lookup
+
+# ---------------------------------------------------------------------------
+# 19. Tier order inside dev/ (audit 4.5, 5). Endpoints call services, services build on the
+#     schemas, and nothing reaches back up: schemas is the leaf, so the dev request/response
+#     shapes stay importable without pulling in a service or an endpoint. dev/__init__,
+#     dev/endpoints/__init__ and dev/services/__init__ stay empty (audit 5 rule 1).
+#     Production code may not import app.dev at all: that is contract 1, where app.dev sits in
+#     the top layer beside api and tasks, and app/main.py (outside every contract) is its only
+#     importer.
+#     Layers are not optional: a misspelt or missing module fails the contract.
+# ---------------------------------------------------------------------------
+[importlinter:contract:dev-tier-order]
+name = Inside dev/, endpoints import services and schemas, services import schemas, never upward
+type = layers
+containers =
+    app.dev
+layers =
+    endpoints
+    services
+    schemas
+
+# ---------------------------------------------------------------------------
+# 20. Keeps the anchoring cycle from returning through tasks.blockchain (audit 5.2).
+#     phases.anchor_dispatch imports tasks.blockchain to dispatch the anchor task, so nothing
+#     tasks.blockchain reaches may lead back to anchor_dispatch. Today it reaches phases only
+#     through two lazy imports, anchor_execution and anchor_recovery, which are the leaves of
+#     that chain. This contract fails the day tasks.blockchain imports anything that itself
+#     imports anchor_dispatch (directly or through the facade, the advance_* modules, override
+#     or service). Indirect chains count, and so do function-level imports.
+#     The forbidden list is explicit because import-linter rejects partial wildcards such as
+#     advance_*. A new phases module that imports anchor_dispatch belongs in this list.
+# ---------------------------------------------------------------------------
+[importlinter:contract:tasks-blockchain-entry-points]
+name = tasks.blockchain reaches phases only through anchor_execution and anchor_recovery
+type = forbidden
+source_modules =
+    app.tasks.blockchain
+forbidden_modules =
+    app.orchestration.phase_service
+    app.orchestration.phases.anchor_dispatch
+    app.orchestration.phases.advance_activation
+    app.orchestration.phases.advance_loading
+    app.orchestration.phases.advance_departure
+    app.orchestration.phases.advance_in_transit
+    app.orchestration.phases.advance_arrival
+    app.orchestration.phases.advance_unloading
+    app.orchestration.phases.advance_confirmation
+    app.orchestration.phases.override
+    app.orchestration.phases.service

@@ -121,7 +121,7 @@ def fake_storage(monkeypatch):
             s3_bucket="evidence-artifacts", s3_key=f"{trip_id}/{uuid.uuid4()}", file_hash="a" * 64,
         )
 
-    monkeypatch.setattr("app.orchestration.artifact_service.upload_evidence_file", fake_upload)
+    monkeypatch.setattr("app.orchestration.evidence.artifacts.upload_evidence_file", fake_upload)
 
 
 async def _issue(client: AsyncClient, handover_trip, driver_auth, *, force: bool = False):

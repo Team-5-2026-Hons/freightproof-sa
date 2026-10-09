@@ -97,14 +97,14 @@ class ExceptionType(str, enum.Enum):
     PARCEL_COUNT_MISMATCH  = "parcel_count_mismatch"
     GPS_MISMATCH           = "gps_mismatch"
     # A DISTINCT finding from GPS_MISMATCH. GPS_MISMATCH is "the vehicle tracker disagrees with the
-    # PRECINCT" (FP-145, geofence_service); this is "the driver's OWN PHONE
-    # disagrees with the vehicle tracker" (proximity_service.evaluate_proximity) —
+    # PRECINCT" (FP-145, evidence.geofence); this is "the driver's OWN PHONE
+    # disagrees with the vehicle tracker" (evidence.proximity.evaluate_proximity) —
     # independent questions that can both fire, or either alone, on the same
-    # handshake. See orchestration/action_location_service.record_separation_finding.
+    # handshake. See evidence.action_location.record_separation_finding.
     DRIVER_VEHICLE_SEPARATION = "driver_vehicle_separation"
     # A THIRD independent question, distinct from both of the above: "does the
     # DRIVER'S OWN PHONE agree with the STOP'S PRECINCT?" (ActionLocationAssessment.
-    # driver_in_precinct, geofence_service). Closes a gap neither existing type can
+    # driver_in_precinct, evidence.geofence). Closes a gap neither existing type can
     # catch: DRIVER_VEHICLE_SEPARATION only fires once a real phone-to-tracker
     # distance was measured (proximity == "separated"), so a driver's phone that is
     # measurably outside the fence produces NOTHING today if the truck's tracker fix
@@ -112,25 +112,25 @@ class ExceptionType(str, enum.Enum):
     # nothing. GPS_MISMATCH cannot catch it either: it only ever judges the TRACKER's
     # position, never the phone's. Only ever evaluated for a phase anchored to a stop
     # (never IN_TRANSIT, never a checkpoint — see build_phase_assessment). See
-    # orchestration/action_location_service.record_driver_location_finding.
+    # evidence.action_location.record_driver_location_finding.
     DRIVER_LOCATION_MISMATCH = "driver_location_mismatch"
     # A FOURTH position question: is a TRAILER where its own HORSE is? Raised only when
     # the horse was measured inside the stop's precinct, the trailer was measured
     # outside it, and the two trackers are further apart than
     # TRAILER_HORSE_MAX_SEPARATION_METRES. That is a decoupled trailer, one of the
     # strongest theft signals the system can see. Kept apart from GPS_MISMATCH, which
-    # is about the horse. See phase_service._raise_trailer_decoupling_if_unrecorded.
+    # is about the horse. See phases.findings._raise_trailer_decoupling_if_unrecorded.
     TRAILER_LOCATION_MISMATCH = "trailer_location_mismatch"
     # On the ROAD, not at a stop: a trailer tracker is further than
     # TRAILER_HORSE_MAX_SEPARATION_METRES from its horse's tracker while the trip is
     # on an in-transit leg. No fence is involved, which is what keeps it apart from
-    # TRAILER_LOCATION_MISMATCH (trailer vs the stop's precinct). See road_check_service.
+    # TRAILER_LOCATION_MISMATCH (trailer vs the stop's precinct). See evidence.road_check.
     TRAILER_SEPARATED_IN_TRANSIT = "trailer_separated_in_transit"
     # The horse's tracker is outside its stop's precinct while that stop's departure is
-    # still pending: the truck moved without a recorded seal. See road_check_service.
+    # still pending: the truck moved without a recorded seal. See evidence.road_check.
     MOVED_BEFORE_DEPARTURE = "moved_before_departure"
     # A known tracker returned no position. A gap in the record, not a verdict: nothing
-    # else is inferred from it. See road_check_service.
+    # else is inferred from it. See evidence.road_check.
     TRACKER_SILENT = "tracker_silent"
     ROUTE_DEVIATION       = "route_deviation"
     VEHICLE_SUBSTITUTION   = "vehicle_substitution"

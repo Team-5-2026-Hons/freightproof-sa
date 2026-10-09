@@ -130,7 +130,7 @@ async def seed_data(db_session: AsyncSession):
 # ─── Helpers ────────────────────────────────────────────────────────────────
 
 # create_trip's phase plan (h1/activation) gates on the SAME operating day as this
-# value (phase_service._reject_if_not_due) — "now" keeps every payload in this file
+# value (phases.scheduling._reject_if_not_due) — "now" keeps every payload in this file
 # immediately activatable, which several tests below rely on.
 def _schedule_now() -> str:
     return datetime.now(UTC).isoformat()
@@ -235,9 +235,9 @@ async def test_create_trip_writes_h0_handshake_to_db(client: AsyncClient, seed_d
 
     h0 is asserted COMPLETED (not PENDING): create_trip completes it inline once
     its Hedera anchor succeeds, since reaching that point means trip creation
-    itself IS h0's completion event — see trip_service.create_trip. Leaving h0
+    itself IS h0's completion event — see trips.creation.create_trip. Leaving h0
     PENDING would permanently block every later phase, since _gate_and_load
-    (phase_service.py) requires every lower-sequence_number row resolved and h0
+    (phases/gate.py) requires every lower-sequence_number row resolved and h0
     is sequence 0, the lowest possible."""
     resp = await client.post(
         "/api/v1/trips",
@@ -298,7 +298,7 @@ async def test_create_trip_zero_trailers(client: AsyncClient, seed_data, db_sess
 
 async def test_create_trip_without_a_schedule_is_422(client: AsyncClient, seed_data, db_session):
     """A trip with neither planned_departure_at nor any stop slot_time can never
-    be activated — _reject_if_not_due (phase_service.py) treats a fully
+    be activated — _reject_if_not_due (phases/scheduling.py) treats a fully
     unscheduled trip as PERMANENTLY not-due, not merely not-yet-due. This must
     be rejected at creation (422, naming the field) rather than accepted into
     a state no future activation attempt can ever satisfy."""
@@ -314,7 +314,7 @@ async def test_create_trip_without_a_schedule_is_422(client: AsyncClient, seed_d
 async def test_create_trip_with_stop_slot_time_only_is_accepted(client: AsyncClient, seed_data, db_session):
     """A multi-stop trip may carry its timing entirely on a stop's slot_time,
     with no trip-level planned_departure_at — the same alternate source
-    phase_service._scheduled_departure falls back to."""
+    phases.scheduling._scheduled_departure falls back to."""
     payload = _make_payload(seed_data)
     payload.pop("planned_departure_at", None)
     payload["stops"] = [
@@ -369,7 +369,7 @@ async def _assert_no_trip_persisted(db_session: AsyncSession, operator_organizat
     The autouse get_db override yields the test session without the
     rollback-on-exception that production get_db performs, so the flushed-but-
     unanchored Trip row is still pending here. Mirror production's rollback
-    first — if trip_service had committed mid-way (breaking atomicity), the
+    first — if trips.creation had committed mid-way (breaking atomicity), the
     row would survive this rollback and the assertion would catch it.
     """
     await db_session.rollback()
@@ -538,7 +538,7 @@ def _assert_derived_phase_fields_populated(phases: list[dict]) -> None:
 async def test_create_trip_response_populates_derived_phase_fields(
     client: AsyncClient, seed_data, db_session,
 ):
-    """Guards trip_service.create_trip's own from_event() call site (POST
+    """Guards trips.creation.create_trip's own from_event() call site (POST
     /trips) — one of PhaseEventRead.from_event()'s three separate call sites,
     each of which builds its own stop map by hand. Nothing else in the suite
     reads stop_sequence/step_recipe off body["phases"] — existing tests only
@@ -666,7 +666,7 @@ async def test_get_trip_detail_scanned_counts_are_zero_before_any_scan(
 async def test_get_trip_detail_scanned_counts_track_real_scans(
     client: AsyncClient, seed_data, db_session,
 ):
-    """A live warehouse scan (Parcel.pp_scan_out_at stamped by scan_service, not
+    """A live warehouse scan (Parcel.pp_scan_out_at stamped by consignments.scans, not
     the phase ledger) must be visible on the very next trip-detail poll — the
     dispatcher's unloading panel reads this instead of waiting for confirmation
     close to stamp parcel_count_destination."""
@@ -679,7 +679,7 @@ async def test_get_trip_detail_scanned_counts_track_real_scans(
     consignment_id = uuid.UUID(create_resp.json()["consignments"][0]["id"])
 
     # MOCKWAY001 (the seed payload's waybill) has 2 tracks — stamp one directly,
-    # mirroring what scan_service._stamp_parcel does on a real warehouse scan.
+    # mirroring what consignments.scans._stamp_parcel does on a real warehouse scan.
     parcels = (await db_session.execute(
         select(Parcel).where(Parcel.consignment_id == consignment_id)
     )).scalars().all()
@@ -773,7 +773,7 @@ async def test_create_empty_leg_no_consignments_no_pp_call(client: AsyncClient, 
     def _raise(*args, **kwargs):
         raise AssertionError("PP client must not be called for an empty-leg trip")
 
-    monkeypatch.setattr("app.orchestration.consignment_service.get_pp_client", _raise)
+    monkeypatch.setattr("app.orchestration.consignments.sync.get_pp_client", _raise)
 
     payload = _make_payload(seed_data)
     payload["trip_type"] = "empty_leg"

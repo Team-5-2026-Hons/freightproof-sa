@@ -86,7 +86,7 @@ from app.db.models.trips import Consignment, Parcel, Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
 from app.crypto.hashing import compute_snapshot_sha256
-from app.orchestration import pp_manifest_service
+from app.orchestration.consignments import manifest_import as consignments_manifest_import
 from app.orchestration.pp_manifest import manifest_snapshot
 from app.integrations.parcel_perfect import (
     PPManifestHeader, PPManifestResponse,
@@ -214,7 +214,7 @@ async def racing_world(test_engine, monkeypatch):
     # both would wait forever for a partner that never arrives.
     pp_client = _BarrierPPClient(asyncio.Barrier(_RACERS))
     monkeypatch.setattr(
-        "app.orchestration.consignment_service.get_pp_client", lambda: pp_client
+        "app.orchestration.consignments.sync.get_pp_client", lambda: pp_client
     )
 
     yield {
@@ -411,7 +411,7 @@ async def racing_api_world(test_engine, monkeypatch):
     app.dependency_overrides[get_db] = _get_db
     pp_client = _BarrierPPClient(asyncio.Barrier(_RACERS))
     monkeypatch.setattr(
-        "app.orchestration.consignment_service.get_pp_client", lambda: pp_client
+        "app.orchestration.consignments.sync.get_pp_client", lambda: pp_client
     )
 
     yield {
@@ -605,9 +605,9 @@ async def test_concurrent_creation_from_one_manifest_creates_one_trip(
         ),
         waybills=[waybill],
     )
-    monkeypatch.setattr(pp_manifest_service, "get_pp_client", lambda: _ManifestPPClient(manifest))
+    monkeypatch.setattr(consignments_manifest_import, "get_pp_client", lambda: _ManifestPPClient(manifest))
 
-    real_find = pp_manifest_service.find_live_trip_for_manifest
+    real_find = consignments_manifest_import.find_live_trip_for_manifest
     barrier = asyncio.Barrier(_RACERS)
 
     async def _cleared_check_then_wait(db: AsyncSession, **kwargs: Any) -> Trip | None:
@@ -615,7 +615,7 @@ async def test_concurrent_creation_from_one_manifest_creates_one_trip(
         await barrier.wait()
         return found
 
-    monkeypatch.setattr(pp_manifest_service, "find_live_trip_for_manifest", _cleared_check_then_wait)
+    monkeypatch.setattr(consignments_manifest_import, "find_live_trip_for_manifest", _cleared_check_then_wait)
 
     body = {
         "manifest_number": 900,

@@ -89,7 +89,7 @@ async def _seed_unanchored_precinct_event(db: AsyncSession) -> uuid.UUID:
 async def _seed_anchored_precinct_event(db: AsyncSession) -> uuid.UUID:
     """A precinct event plus a receipt whose data_hash matches the live row.
 
-    The payload must be byte-identical in shape to the one precinct_service builds, or
+    The payload must be byte-identical in shape to the one fleet.precincts builds, or
     this test verifies a hash that production never produces. See
     test_reconstruction_matches_the_real_create_precinct_payload below for the
     stronger, end-to-end version of that proof — this helper reproduces the same
@@ -229,7 +229,7 @@ async def test_reconstruction_matches_the_real_create_precinct_payload(
         return receipt
 
     with patch(
-        "app.orchestration.precinct_service.anchor_subject", new=_persist_real_receipt,
+        "app.orchestration.fleet.precincts.anchor_subject", new=_persist_real_receipt,
     ):
         created = await create_precinct(
             db=db_session,

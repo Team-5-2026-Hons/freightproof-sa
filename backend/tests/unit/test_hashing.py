@@ -12,6 +12,9 @@ from app.crypto.hashing import (
     compute_journey_lock_hash,
     compute_snapshot_sha256,
     compute_trip_canonical_payload,
+    compute_trip_canonical_payload_v2,
+    StopCommitment,
+    TRIP_PAYLOAD_VERSION_V2,
 )
 
 _EXPECTED_KEYS = {
@@ -141,3 +144,76 @@ def test_snapshot_hash_ignores_key_order() -> None:
 
     assert compute_snapshot_sha256(forward) == compute_snapshot_sha256(reordered)
     assert canonical_json(forward) == canonical_json(reordered)
+
+
+# ── Journey lock payload v2: commits to the ordered stops ───────────────────────
+
+def _stops() -> list[StopCommitment]:
+    base = datetime(2026, 3, 1, 8, 0, tzinfo=UTC)
+    return [
+        StopCommitment(sequence=0, precinct_id=uuid.uuid4(), slot_time=base),
+        StopCommitment(sequence=1, precinct_id=uuid.uuid4(), slot_time=None),
+        StopCommitment(sequence=2, precinct_id=uuid.uuid4(), slot_time=base + timedelta(hours=9)),
+    ]
+
+
+def test_v2_payload_is_the_v1_payload_plus_version_and_stops() -> None:
+    args = _args()
+    stops = _stops()
+
+    v1 = compute_trip_canonical_payload(**args)
+    v2 = compute_trip_canonical_payload_v2(**args, stops=stops)
+
+    assert {k: v2[k] for k in v1} == v1
+    assert set(v2) == set(v1) | {"payload_version", "stops"}
+    assert v2["payload_version"] == TRIP_PAYLOAD_VERSION_V2 == 2
+
+
+def test_v2_hash_differs_from_v1_for_the_same_trip() -> None:
+    args = _args()
+
+    v1_hash = compute_journey_lock_hash(compute_trip_canonical_payload(**args))
+    v2_hash = compute_journey_lock_hash(compute_trip_canonical_payload_v2(**args, stops=_stops()))
+
+    assert v1_hash != v2_hash
+
+
+def test_v2_stop_input_order_does_not_affect_the_hash() -> None:
+    args = _args()
+    stops = _stops()
+
+    forward = compute_trip_canonical_payload_v2(**args, stops=stops)
+    shuffled = compute_trip_canonical_payload_v2(**args, stops=[stops[2], stops[0], stops[1]])
+
+    assert forward == shuffled
+    assert [s["sequence"] for s in forward["stops"]] == [0, 1, 2]
+
+
+def test_v2_changing_any_stop_field_changes_the_hash() -> None:
+    args = _args()
+    stops = _stops()
+    base = compute_journey_lock_hash(compute_trip_canonical_payload_v2(**args, stops=stops))
+
+    other_precinct = [stops[0], stops[1]._replace(precinct_id=uuid.uuid4()), stops[2]]
+    other_slot = [stops[0], stops[1]._replace(slot_time=datetime(2026, 3, 2, tzinfo=UTC)), stops[2]]
+    dropped_stop = stops[:2]
+
+    for changed in (other_precinct, other_slot, dropped_stop):
+        assert compute_journey_lock_hash(compute_trip_canonical_payload_v2(**args, stops=changed)) != base
+
+
+def test_v2_slot_time_none_is_null_and_aware_times_are_normalised_to_utc() -> None:
+    sast = timezone(timedelta(hours=2))
+    instant = datetime(2026, 3, 1, 8, 0, tzinfo=UTC)
+    precinct = uuid.uuid4()
+    args = _args()
+
+    payload = compute_trip_canonical_payload_v2(**args, stops=[
+        StopCommitment(0, precinct, None),
+        StopCommitment(1, precinct, instant.astimezone(sast)),
+        StopCommitment(2, precinct, instant.replace(tzinfo=None)),
+    ])
+
+    assert [s["slot_time"] for s in payload["stops"]] == [
+        None, "2026-03-01T08:00:00+00:00", "2026-03-01T08:00:00+00:00",
+    ]

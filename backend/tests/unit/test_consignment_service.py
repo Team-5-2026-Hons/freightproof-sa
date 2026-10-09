@@ -1,4 +1,4 @@
-"""Unit tests for orchestration/consignment_service.py.
+"""Unit tests for orchestration/consignments/sync.py.
 
 All tests are DB-free — the AsyncSession and get_pp_client are fully mocked.
 No real network calls, no migrations, no fixtures requiring a live DB.
@@ -166,7 +166,7 @@ async def test_new_consignment_is_inserted():
     db = _make_db_mock(scalar_one_or_none=None, fetchall_rows=[])
     pp_factory = _make_pp_client_patch()
 
-    with patch("app.orchestration.consignment_service.get_pp_client", pp_factory):
+    with patch("app.orchestration.consignments.sync.get_pp_client", pp_factory):
         result = await fetch_and_sync_consignment(
             db=db,
             pp_reference=_PP_REF,
@@ -207,7 +207,7 @@ async def test_existing_consignment_is_updated_not_duplicated():
     db = _make_db_mock(scalar_one_or_none=existing, fetchall_rows=fetchall_rows)
     pp_factory = _make_pp_client_patch()
 
-    with patch("app.orchestration.consignment_service.get_pp_client", pp_factory):
+    with patch("app.orchestration.consignments.sync.get_pp_client", pp_factory):
         result = await fetch_and_sync_consignment(
             db=db,
             pp_reference=_PP_REF,
@@ -237,7 +237,7 @@ async def test_new_parcels_inserted_for_existing_consignment():
     db = _make_db_mock(scalar_one_or_none=existing, fetchall_rows=fetchall_rows)
     pp_factory = _make_pp_client_patch()
 
-    with patch("app.orchestration.consignment_service.get_pp_client", pp_factory):
+    with patch("app.orchestration.consignments.sync.get_pp_client", pp_factory):
         await fetch_and_sync_consignment(
             db=db,
             pp_reference=_PP_REF,
@@ -268,7 +268,7 @@ async def test_trip_id_set_on_existing_consignment_if_none():
     db = _make_db_mock(scalar_one_or_none=existing, fetchall_rows=fetchall_rows)
     pp_factory = _make_pp_client_patch()
 
-    with patch("app.orchestration.consignment_service.get_pp_client", pp_factory):
+    with patch("app.orchestration.consignments.sync.get_pp_client", pp_factory):
         await fetch_and_sync_consignment(
             db=db,
             pp_reference=_PP_REF,
@@ -288,7 +288,7 @@ async def test_pp_error_propagates():
     client.get_single_waybill = AsyncMock(side_effect=ValueError("PP error"))
     pp_factory = MagicMock(return_value=client)
 
-    with patch("app.orchestration.consignment_service.get_pp_client", pp_factory):
+    with patch("app.orchestration.consignments.sync.get_pp_client", pp_factory):
         with pytest.raises(ValueError, match="PP error"):
             await fetch_and_sync_consignment(
                 db=db,
@@ -318,7 +318,7 @@ async def test_declared_value_coerced_to_decimal():
 
     pp_factory = _make_pp_client_patch(waybill=make_waybill("WAY001", declared_value=1000.00))
 
-    with patch("app.orchestration.consignment_service.get_pp_client", pp_factory):
+    with patch("app.orchestration.consignments.sync.get_pp_client", pp_factory):
         await fetch_and_sync_consignment(db, "WAY001")
 
     consignment_row = next(obj for obj in added_objects if isinstance(obj, Consignment))
@@ -342,7 +342,7 @@ async def test_accnum_resolves_client_org():
     db = _make_db_mock(scalar_one_or_none=None, fetchall_rows=[], org_lookup_result=org_id)
     pp_factory = _make_pp_client_patch(waybill=MOCK_WAYBILLS["WAY001"])
 
-    with patch("app.orchestration.consignment_service.get_pp_client", pp_factory):
+    with patch("app.orchestration.consignments.sync.get_pp_client", pp_factory):
         result = await fetch_and_sync_consignment(db=db, pp_reference="WAY001")
 
     added_obj = db.add.call_args_list[0][0][0]
@@ -362,7 +362,7 @@ async def test_unmapped_accnum_warns_and_saves_null_client():
     db = _make_db_mock(scalar_one_or_none=None, fetchall_rows=[], org_lookup_result=None)
     pp_factory = _make_pp_client_patch(waybill=MOCK_WAYBILLS["WAY004"])
 
-    with patch("app.orchestration.consignment_service.get_pp_client", pp_factory):
+    with patch("app.orchestration.consignments.sync.get_pp_client", pp_factory):
         result = await fetch_and_sync_consignment(db=db, pp_reference="WAY004")
 
     added_obj = db.add.call_args_list[0][0][0]
@@ -383,7 +383,7 @@ async def test_unit_count_and_manifest_persisted():
     db = _make_db_mock(scalar_one_or_none=None, fetchall_rows=[], org_lookup_result=org_id)
     pp_factory = _make_pp_client_patch(waybill=MOCK_WAYBILLS["WAY001"])
 
-    with patch("app.orchestration.consignment_service.get_pp_client", pp_factory):
+    with patch("app.orchestration.consignments.sync.get_pp_client", pp_factory):
         result = await fetch_and_sync_consignment(
             db=db,
             pp_reference="WAY001",
@@ -417,7 +417,7 @@ async def test_refresh_does_not_blank_unit_count():
     db = _make_db_mock(scalar_one_or_none=existing, fetchall_rows=fetchall_rows)
     pp_factory = _make_pp_client_patch(waybill=MOCK_WAYBILLS["WAY001"])
 
-    with patch("app.orchestration.consignment_service.get_pp_client", pp_factory):
+    with patch("app.orchestration.consignments.sync.get_pp_client", pp_factory):
         result = await fetch_and_sync_consignment(db=db, pp_reference="WAY001")
 
     assert result.consignment.unit_count_expected == 4
@@ -432,7 +432,7 @@ async def test_refresh_does_not_blank_unit_count():
 # ---------------------------------------------------------------------------
 # Cross-trip reuse guard
 #
-# Without this guard, create_trip's own post-sync step (trip_service.py:
+# Without this guard, create_trip's own post-sync step (trips/creation.py:
 # `result.consignment.pickup_stop_id = trip_stops[0].id`) silently rewrites an
 # already-anchored trip's consignment onto a second trip's stops the moment the
 # same pp_reference is entered twice - corrupting the first trip's phase-plan
@@ -466,7 +466,7 @@ async def test_reuse_on_a_different_trip_is_rejected():
 
     pp_factory = _make_pp_client_patch()
 
-    with patch("app.orchestration.consignment_service.get_pp_client", pp_factory):
+    with patch("app.orchestration.consignments.sync.get_pp_client", pp_factory):
         with pytest.raises(ConsignmentAlreadyAssignedError) as exc_info:
             await fetch_and_sync_consignment(
                 db=db,
@@ -498,7 +498,7 @@ async def test_resync_on_the_same_trip_is_allowed():
     db = _make_db_mock(scalar_one_or_none=existing, fetchall_rows=fetchall_rows)
     pp_factory = _make_pp_client_patch()
 
-    with patch("app.orchestration.consignment_service.get_pp_client", pp_factory):
+    with patch("app.orchestration.consignments.sync.get_pp_client", pp_factory):
         result = await fetch_and_sync_consignment(
             db=db,
             pp_reference=_PP_REF,

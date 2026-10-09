@@ -123,24 +123,22 @@ async def test_create_trip_empty_leg_does_not_call_sync() -> None:
     db = _make_db()
 
     with (
-        patch("app.orchestration.trip_service._fetch_driver", new_callable=AsyncMock) as mock_driver,
-        patch("app.orchestration.trip_service._fetch_vehicle", new_callable=AsyncMock) as mock_vehicle,
-        patch("app.orchestration.trip_service.anchor_subject", new_callable=AsyncMock) as mock_anchor,
-        patch("app.orchestration.trip_service.compute_journey_lock_hash", return_value="hash-abc"),
+        patch("app.orchestration.trips.creation._fetch_driver", new_callable=AsyncMock) as mock_driver,
+        patch("app.orchestration.trips.creation._fetch_vehicle", new_callable=AsyncMock) as mock_vehicle,
+        patch("app.orchestration.trips.creation.anchor_subject", new_callable=AsyncMock) as mock_anchor,
+        patch("app.orchestration.trips.creation.compute_journey_lock_hash", return_value="hash-abc"),
         # A real dict, not a placeholder — compute_payload_hash (called for real
         # on h0's inline completion) needs a JSON-serialisable payload, matching
         # compute_trip_canonical_payload's actual dict return type.
-        patch("app.orchestration.trip_service.compute_trip_canonical_payload", return_value={"trip_id": "canonical"}),
-        patch("app.orchestration.trip_service.get_trip_detail", new_callable=AsyncMock) as mock_detail,
+        patch("app.orchestration.trips.creation.compute_trip_canonical_payload_v2", return_value={"trip_id": "canonical"}),
         patch(
-            "app.orchestration.consignment_service.fetch_and_sync_consignment",
+            "app.orchestration.consignments.sync.fetch_and_sync_consignment",
             new_callable=AsyncMock,
         ) as mock_sync,
     ):
         mock_driver.return_value = MagicMock(id=payload.driver_id)
         mock_vehicle.return_value = MagicMock(id=payload.horse_id, pulsit_device_id="DEV-001")
         mock_anchor.return_value = MagicMock()
-        mock_detail.return_value = MagicMock()
 
         try:
             await create_trip(db, payload, user)
@@ -163,24 +161,22 @@ async def test_create_trip_with_consignments_calls_sync() -> None:
     db = _make_db()
 
     with (
-        patch("app.orchestration.trip_service._fetch_driver", new_callable=AsyncMock) as mock_driver,
-        patch("app.orchestration.trip_service._fetch_vehicle", new_callable=AsyncMock) as mock_vehicle,
-        patch("app.orchestration.trip_service.anchor_subject", new_callable=AsyncMock) as mock_anchor,
-        patch("app.orchestration.trip_service.compute_journey_lock_hash", return_value="hash-abc"),
+        patch("app.orchestration.trips.creation._fetch_driver", new_callable=AsyncMock) as mock_driver,
+        patch("app.orchestration.trips.creation._fetch_vehicle", new_callable=AsyncMock) as mock_vehicle,
+        patch("app.orchestration.trips.creation.anchor_subject", new_callable=AsyncMock) as mock_anchor,
+        patch("app.orchestration.trips.creation.compute_journey_lock_hash", return_value="hash-abc"),
         # A real dict, not a placeholder — compute_payload_hash (called for real
         # on h0's inline completion) needs a JSON-serialisable payload, matching
         # compute_trip_canonical_payload's actual dict return type.
-        patch("app.orchestration.trip_service.compute_trip_canonical_payload", return_value={"trip_id": "canonical"}),
-        patch("app.orchestration.trip_service.get_trip_detail", new_callable=AsyncMock) as mock_detail,
+        patch("app.orchestration.trips.creation.compute_trip_canonical_payload_v2", return_value={"trip_id": "canonical"}),
         patch(
-            "app.orchestration.consignment_service.fetch_and_sync_consignment",
+            "app.orchestration.consignments.sync.fetch_and_sync_consignment",
             new_callable=AsyncMock,
         ) as mock_sync,
     ):
         mock_driver.return_value = MagicMock(id=payload.driver_id)
         mock_vehicle.return_value = MagicMock(id=payload.horse_id, pulsit_device_id="DEV-001")
         mock_anchor.return_value = MagicMock()
-        mock_detail.return_value = MagicMock()
 
         try:
             await create_trip(db, payload, user)
@@ -209,10 +205,10 @@ async def test_create_trip_unknown_waybill_raises_ppsync_error() -> None:
     db = _make_db()
 
     with (
-        patch("app.orchestration.trip_service._fetch_driver", new_callable=AsyncMock) as mock_driver,
-        patch("app.orchestration.trip_service._fetch_vehicle", new_callable=AsyncMock) as mock_vehicle,
+        patch("app.orchestration.trips.creation._fetch_driver", new_callable=AsyncMock) as mock_driver,
+        patch("app.orchestration.trips.creation._fetch_vehicle", new_callable=AsyncMock) as mock_vehicle,
         patch(
-            "app.orchestration.consignment_service.fetch_and_sync_consignment",
+            "app.orchestration.consignments.sync.fetch_and_sync_consignment",
             new_callable=AsyncMock,
         ) as mock_sync,
     ):
@@ -265,17 +261,16 @@ async def test_create_trip_writes_full_pending_plan() -> None:
     fake_sync_result = MagicMock(consignment=fake_consignment, warning=None)
 
     with (
-        patch("app.orchestration.trip_service._fetch_driver", new_callable=AsyncMock) as mock_driver,
-        patch("app.orchestration.trip_service._fetch_vehicle", new_callable=AsyncMock) as mock_vehicle,
-        patch("app.orchestration.trip_service.anchor_subject", new_callable=AsyncMock) as mock_anchor,
-        patch("app.orchestration.trip_service.compute_journey_lock_hash", return_value="hash-abc"),
+        patch("app.orchestration.trips.creation._fetch_driver", new_callable=AsyncMock) as mock_driver,
+        patch("app.orchestration.trips.creation._fetch_vehicle", new_callable=AsyncMock) as mock_vehicle,
+        patch("app.orchestration.trips.creation.anchor_subject", new_callable=AsyncMock) as mock_anchor,
+        patch("app.orchestration.trips.creation.compute_journey_lock_hash", return_value="hash-abc"),
         # A real dict, not a placeholder — compute_payload_hash (called for real
         # on h0's inline completion) needs a JSON-serialisable payload, matching
         # compute_trip_canonical_payload's actual dict return type.
-        patch("app.orchestration.trip_service.compute_trip_canonical_payload", return_value={"trip_id": "canonical"}),
-        patch("app.orchestration.trip_service.get_trip_detail", new_callable=AsyncMock),
+        patch("app.orchestration.trips.creation.compute_trip_canonical_payload_v2", return_value={"trip_id": "canonical"}),
         patch(
-            "app.orchestration.consignment_service.fetch_and_sync_consignment",
+            "app.orchestration.consignments.sync.fetch_and_sync_consignment",
             new_callable=AsyncMock,
             return_value=fake_sync_result,
         ),
@@ -451,7 +446,7 @@ async def test_create_trip_anchor_failure_still_rolls_back_whole_trip(db_session
     )
 
     with patch(
-        "app.orchestration.trip_service.anchor_subject", new_callable=AsyncMock,
+        "app.orchestration.trips.creation.anchor_subject", new_callable=AsyncMock,
         side_effect=HederaTimeoutError("simulated Hedera timeout"),
     ):
         with pytest.raises(HederaTimeoutError):
@@ -563,7 +558,7 @@ async def test_active_trip_prefers_soonest_departure_over_newest_assignment(
     Nothing is activated, so both trips share the CREATED rank. The trip leaving the day
     after next was the one the dispatcher captured most recently, and created_at ordering
     was enough to make it the driver's "current" trip while the one leaving tomorrow sat
-    unstarted — the opposite of the order phase_service's gates let them be worked in.
+    unstarted — the opposite of the order the phases package's gates let them be worked in.
     """
     from app.orchestration.trip_service import get_active_trip_for_driver
 

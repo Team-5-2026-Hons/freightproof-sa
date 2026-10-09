@@ -20,7 +20,7 @@ from app.core.exceptions import (
 from app.core.limits import FLEET_MUTATION
 from app.core.rate_limit import rate_limit
 from app.db.session import get_db
-from app.orchestration.driver_service import (
+from app.orchestration.fleet.drivers import (
     list_drivers, create_driver, update_driver, get_driver_detail,
 )
 from app.schemas.people import (

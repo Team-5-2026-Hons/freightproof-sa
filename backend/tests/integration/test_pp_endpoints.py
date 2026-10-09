@@ -3,7 +3,7 @@
 Mirrors the auth/db harness of test_precincts.py / test_manifest.py. PP_USE_MOCK
 is forced True regardless of the local .env so these assertions hold everywhere
 the mock fixture library is exercised (WAY001/MOCKWAY001/manifest 69 etc. — see
-app/integrations/parcel_perfect.py).
+app/integrations/parcel_perfect/).
 """
 
 import uuid

@@ -30,10 +30,11 @@ from app.db.models.trips import Consignment, Parcel, Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
 from app.integrations import parcel_perfect as pp_module
+from app.integrations.parcel_perfect import mock as pp_mock_module
 from app.integrations import scan_feed as scan_feed_module
 from app.integrations.parcel_perfect import MANIFEST_HAPPY_PATH, MockParcelPerfectClient
 from app.orchestration.pp_manifest import manifest_snapshot_sha256
-from app.schemas.dev import CLOSED_PHASE_STATUSES, MAX_STAGED_BARCODES
+from app.dev.schemas import CLOSED_PHASE_STATUSES, MAX_STAGED_BARCODES
 
 from tests.conftest import (
     FakeMockStateStore,
@@ -64,9 +65,9 @@ def dev_app():
 def store(monkeypatch: pytest.MonkeyPatch) -> FakeMockStateStore:
     fake = FakeMockStateStore()
     monkeypatch.setattr(scan_feed_module, "get_mock_state_store", lambda: fake)
-    monkeypatch.setattr(pp_module, "get_mock_state_store", lambda: fake)
+    monkeypatch.setattr(pp_mock_module, "get_mock_state_store", lambda: fake)
     monkeypatch.setattr(
-        "app.api.v1.endpoints.dev_triggers.get_mock_state_store", lambda: fake
+        "app.dev.endpoints.triggers.get_mock_state_store", lambda: fake
     )
     return fake
 
@@ -598,7 +599,7 @@ async def test_list_trips_preceding_departure_status_reflects_the_preceding_depa
     dev_client, db_session, seeded, store,
 ):
     """A destination stop's preceding_departure_status is the status of the
-    DEPARTURE that opened its leg — mirrors phase_service._find_departure_for_leg
+    DEPARTURE that opened its leg — mirrors phases.seals._find_departure_for_leg
     (the highest sequence_number DEPARTURE strictly before the stop's own closing
     event), never a hardcoded or otherwise-derived departure. The origin stop
     itself still reports None: nothing closes there."""
@@ -819,7 +820,7 @@ async def dispatcher_headers(db_session: AsyncSession) -> dict[str, str]:
 @pytest.fixture
 def pinned_today(monkeypatch: pytest.MonkeyPatch) -> None:
     pinned = datetime.now(pp_module.pp_timezone()).date()
-    monkeypatch.setattr(pp_module, "_operations_today", lambda: pinned)
+    monkeypatch.setattr(pp_mock_module, "_operations_today", lambda: pinned)
 
 
 async def test_pp_manifest_trigger_changes_the_snapshot(

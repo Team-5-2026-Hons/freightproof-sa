@@ -1,4 +1,4 @@
-"""Unit tests for app.orchestration.corroboration_service — pure logic, no DB, no HTTP.
+"""Unit tests for app.orchestration.evidence.corroboration — pure logic, no DB, no HTTP.
 
 Covers the module-level helpers that turn a Pulsit fix into what gets written:
 
@@ -228,7 +228,7 @@ def test_fix_inside_tolerance_band_returns_true():
 
     # Act
     with patch(
-        "app.orchestration.geofence_service.haversine_metres",
+        "app.orchestration.evidence.geofence.haversine_metres",
         return_value=float(radius) + 1.0,
     ):
         confirmed = _geofence_verdict_to_column(fix, precinct, context="test-tolerance-band")
@@ -303,7 +303,7 @@ def test_positioned_fix_without_fixed_at_returns_none():
     # normal contract never produces this shape (every OK fix from either client
     # carries fixed_at), but this module deliberately refuses to depend on another
     # story's invariant to decide whether to invent a timestamp for evidence — see
-    # the fixed_at guard's own comment in corroboration_service.py. If that
+    # the fixed_at guard's own comment in evidence/corroboration.py. If that
     # invariant is ever broken upstream, the row must still be dropped, not stamped
     # with now().
     fix = _make_fix(status=PulsitFixStatus.OK, lat=_NEARBY_LAT, lng=_NEARBY_LNG, fixed_at=None)
@@ -496,7 +496,7 @@ def test_trailer_fix_outside_the_skew_window_is_not_judged_but_position_still_st
     )
     # The trailer's POSITION is independent of the skew gate (trailer_gps_snapshots.
     # captured_at is the tracker's own reading time, never compared against driver_
-    # captured_at — see corroboration_service's module docstring). Only the verdict
+    # captured_at — see evidence.corroboration's module docstring). Only the verdict
     # is gated, mirroring the trailer loop's `if judges_geofence and _within_
     # corroboration_skew(...)` condition.
     snapshot = _snapshot_for_trailer(

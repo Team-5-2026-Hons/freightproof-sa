@@ -147,7 +147,7 @@ def _make_trip_payload(seed: dict) -> dict:
         "origin_precinct_id": str(seed["origin_id"]),
         "destination_precinct_id": str(seed["destination_id"]),
         # Required: a trip with no schedule (neither this nor a stop slot_time)
-        # can never pass phase_service._reject_if_not_due (see TripCreateRequest
+        # can never pass phases.scheduling._reject_if_not_due (see TripCreateRequest
         # .validate_request).
         "planned_departure_at": datetime.now(UTC).isoformat(),
         "consignments": [{"pp_reference": "MOCKWAY001", "unit_count_expected": 2}],

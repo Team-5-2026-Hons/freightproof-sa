@@ -11,7 +11,7 @@ import httpx
 import pytest
 import respx
 
-import app.integrations.parcel_perfect as pp_module
+import app.integrations.parcel_perfect.client as pp_client_module
 from app.integrations.parcel_perfect import (
     MOCK_WAYBILL_RESPONSE,
     MockParcelPerfectClient,
@@ -94,9 +94,9 @@ def reset_cached_token():
     but tests must be isolated — a cached token from one test must not bleed
     into auth-flow assertions in the next.
     """
-    pp_module._cached_token = None
+    pp_client_module._cached_token = None
     yield
-    pp_module._cached_token = None
+    pp_client_module._cached_token = None
 
 
 @pytest.fixture
@@ -107,10 +107,10 @@ def pp_settings(monkeypatch):
     tests that mock getSalt and getSecureToken responses. Without this, a
     real token in .env would skip auth and misalign the mock response queue.
     """
-    monkeypatch.setattr("app.integrations.parcel_perfect.settings.PP_API_URL", _PP_BASE)
-    monkeypatch.setattr("app.integrations.parcel_perfect.settings.PP_API_KEY", "user@test.com")
-    monkeypatch.setattr("app.integrations.parcel_perfect.settings.PP_API_PASSWORD", "testpassword")
-    monkeypatch.setattr("app.integrations.parcel_perfect.settings.PP_API_TOKEN", "")
+    monkeypatch.setattr("app.core.config.settings.PP_API_URL", _PP_BASE)
+    monkeypatch.setattr("app.core.config.settings.PP_API_KEY", "user@test.com")
+    monkeypatch.setattr("app.core.config.settings.PP_API_PASSWORD", "testpassword")
+    monkeypatch.setattr("app.core.config.settings.PP_API_TOKEN", "")
 
 
 # ---------------------------------------------------------------------------
@@ -179,7 +179,7 @@ async def test_token_cached_on_second_call(pp_settings):
     await client.get_single_waybill("TESTWAY001")
 
     # Token must be cached at module level after the first call.
-    assert pp_module._cached_token == "tok-abc123"
+    assert pp_client_module._cached_token == "tok-abc123"
 
 
 @pytest.mark.asyncio
@@ -234,7 +234,7 @@ def test_get_pp_client_mock_mode(monkeypatch):
 
     Plain def — get_pp_client() is synchronous; no coroutine needed.
     """
-    monkeypatch.setattr("app.integrations.parcel_perfect.settings.PP_USE_MOCK", True)
+    monkeypatch.setattr("app.core.config.settings.PP_USE_MOCK", True)
     client = get_pp_client()
     assert isinstance(client, MockParcelPerfectClient)
 
@@ -244,7 +244,7 @@ def test_get_pp_client_real_mode(monkeypatch):
 
     Plain def — get_pp_client() is synchronous; no coroutine needed.
     """
-    monkeypatch.setattr("app.integrations.parcel_perfect.settings.PP_USE_MOCK", False)
+    monkeypatch.setattr("app.core.config.settings.PP_USE_MOCK", False)
     client = get_pp_client()
     assert isinstance(client, ParcelPerfectClient)
 

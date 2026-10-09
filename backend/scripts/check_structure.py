@@ -19,7 +19,7 @@ Shrinking is always allowed. When the tree shrinks, the script says so and sugge
 
 Length is end_lineno - lineno + 1, so methods and nested functions count, and the
 decorator lines do not (lineno is the `def` line). Functions are keyed by
-file path + qualified name, e.g. "app/orchestration/trip_service.py::persist_trip".
+file path + qualified name, e.g. "app/orchestration/trips/creation.py::persist_trip".
 
 A function that is moved or renamed is a *new* function to this script, so a pure move of
 an over-limit function trips (a). Run --update in the move commit and let the reviewer

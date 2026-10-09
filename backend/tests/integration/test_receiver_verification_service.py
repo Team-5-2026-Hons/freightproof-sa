@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 
 import pytest
 import pytest_asyncio
+from sqlalchemy import select
 
 from app.core.config import settings
 from app.db.models.enums import (
@@ -18,13 +19,16 @@ from app.db.models.enums import (
     PhaseStatus,
     PhaseType,
     ReceiverVerificationStatus,
+    ReceiverVerificationTier,
     ReceiverVerificationUnverifiedReason,
     TripStatus,
 )
 from app.db.models.evidence import EvidenceArtifact
 from app.db.models.phases import PhaseEvent
+from app.db.models.receiver_verification import IdvsQuotaLedger
 from app.db.models.trips import Trip, TripStop
-from app.integrations.idvs import IdvsDecisionStatus, MockIdvsClient
+from app.integrations.idvs import IdvsDecisionStatus, IdvsSession, MockIdvsClient
+from app.orchestration.handover.receiver_verification import record_consent_declined
 from app.orchestration.handover_service import issue_capability_token, record_handover_confirmation
 from app.orchestration.receiver_verification_service import (
     attach_confirmation,
@@ -232,3 +236,115 @@ async def test_attach_confirmation_links_the_row_after_the_receiver_signs(db_ses
 
     await db_session.refresh(v)
     assert v.handover_confirmation_id == confirmation.id
+
+
+# ── Declined consent, and a verification that must only ever start once ─────────
+
+
+class _CountingIdvsClient(MockIdvsClient):
+    """The mock vendor, counting how many sessions it was asked to create."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.sessions_created = 0
+
+    async def create_session(self, *, reference: str, callback_url: str) -> IdvsSession:
+        self.sessions_created += 1
+        return await super().create_session(reference=reference, callback_url=callback_url)
+
+
+async def _sessions_spent(db_session) -> int:
+    return sum((await db_session.execute(select(IdvsQuotaLedger.sessions_used))).scalars().all())
+
+
+async def test_a_decline_records_no_consent_and_says_why(db_session, seeded_phase_event):
+    _, token = await _fresh_token(db_session, seeded_phase_event)
+
+    v = await record_consent_declined(db_session, token=token)
+
+    assert v.consent_given_at is None
+    assert v.consent_text_hash is None
+    assert v.status is ReceiverVerificationStatus.UNVERIFIED
+    assert v.unverified_reason is ReceiverVerificationUnverifiedReason.DECLINED_CONSENT
+    # No selfie or document was taken, so no tier that claims one may be recorded.
+    assert v.tier is ReceiverVerificationTier.TYPED_ONLY
+
+
+async def test_start_verification_after_a_decline_calls_no_vendor_and_spends_no_quota(
+    db_session, seeded_phase_event,
+):
+    raw_token, token = await _fresh_token(db_session, seeded_phase_event)
+    v = await record_consent_declined(db_session, token=token)
+    client = _CountingIdvsClient()
+    spent_before = await _sessions_spent(db_session)
+
+    session = await start_verification(
+        db_session, token=token, raw_token=raw_token, verification=v, client=client,
+    )
+
+    assert session is None
+    assert client.sessions_created == 0
+    assert await _sessions_spent(db_session) == spent_before
+    assert v.unverified_reason is ReceiverVerificationUnverifiedReason.DECLINED_CONSENT
+
+
+async def test_a_second_start_verification_creates_no_second_session(
+    db_session, seeded_phase_event,
+):
+    """A retried /verify must not orphan the first session (webhooks match on
+    provider_session_id) or spend a second free-tier slot."""
+    raw_token, token = await _fresh_token(db_session, seeded_phase_event)
+    v = await record_consent(db_session, token=token, consent_text=_CONSENT)
+    client = _CountingIdvsClient()
+    first = await start_verification(
+        db_session, token=token, raw_token=raw_token, verification=v, client=client,
+    )
+    spent_after_first = await _sessions_spent(db_session)
+
+    second = await start_verification(
+        db_session, token=token, raw_token=raw_token, verification=v, client=client,
+    )
+
+    assert first is not None
+    assert second is None
+    assert client.sessions_created == 1
+    assert v.provider_session_id == first.session_id
+    assert await _sessions_spent(db_session) == spent_after_first
+    assert v.status is ReceiverVerificationStatus.PENDING, "a retry must leave the row alone"
+
+
+async def test_start_verification_on_a_resolved_row_leaves_it_untouched(
+    db_session, seeded_phase_event,
+):
+    raw_token, token = await _fresh_token(db_session, seeded_phase_event)
+    v = await record_consent(db_session, token=token, consent_text=_CONSENT)
+    v.status = ReceiverVerificationStatus.UNVERIFIED
+    v.unverified_reason = ReceiverVerificationUnverifiedReason.NO_DOCUMENT
+    client = _CountingIdvsClient()
+    spent_before = await _sessions_spent(db_session)
+
+    session = await start_verification(
+        db_session, token=token, raw_token=raw_token, verification=v, client=client,
+    )
+
+    assert session is None
+    assert client.sessions_created == 0
+    assert await _sessions_spent(db_session) == spent_before
+    assert v.unverified_reason is ReceiverVerificationUnverifiedReason.NO_DOCUMENT
+
+
+async def test_start_verification_refuses_a_row_with_no_consent_even_if_pending(
+    db_session, seeded_phase_event,
+):
+    """Belt and braces: whatever state a row is in, no consent timestamp means no vendor."""
+    raw_token, token = await _fresh_token(db_session, seeded_phase_event)
+    v = await record_consent(db_session, token=token, consent_text=_CONSENT)
+    v.consent_given_at = None
+    client = _CountingIdvsClient()
+
+    session = await start_verification(
+        db_session, token=token, raw_token=raw_token, verification=v, client=client,
+    )
+
+    assert session is None
+    assert client.sessions_created == 0

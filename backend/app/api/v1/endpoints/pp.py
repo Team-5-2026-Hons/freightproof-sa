@@ -12,7 +12,8 @@ from app.core.exceptions import WaybillNotFoundError
 from app.core.limits import PP_LOOKUP
 from app.core.rate_limit import rate_limit
 from app.db.session import get_db
-from app.orchestration import consignment_service, pp_lookup_service
+from app.orchestration.consignments import sync as consignment_service
+from app.orchestration.consignments import waybill_lookup as pp_lookup_service
 from app.schemas.people import UserRead
 from app.schemas.pp import PPCapabilities, PPWaybillSummary
 

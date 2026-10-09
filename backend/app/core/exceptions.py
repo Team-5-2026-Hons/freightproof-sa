@@ -79,7 +79,7 @@ class PhaseSequenceError(Exception):
     """Raised when a phase is completed out of order (gated on the phase plan, not trip.status).
 
     `trip_status` is a reason clause, not necessarily a bare TripStatus value
-    — each call site in phase_service.py's _gate_and_load describes its own cause.
+    — each call site in phases/gate.py's _gate_and_load describes its own cause.
     """
 
     def __init__(self, trip_status: str, attempted_handshake: str) -> None:

@@ -64,7 +64,7 @@ def stub_signed_urls(monkeypatch):
     """Storage is out of scope here — the artifact service's own tests cover signing."""
     async def _fake(*, s3_bucket, s3_key, ttl_seconds):
         return f"https://storage.test/{s3_key}?ttl={ttl_seconds}"
-    monkeypatch.setattr("app.orchestration.artifact_service.create_signed_url", _fake)
+    monkeypatch.setattr("app.orchestration.evidence.artifacts.create_signed_url", _fake)
 
 
 # ── seeding helpers ─────────────────────────────────────────────────────────────
@@ -260,7 +260,7 @@ async def test_history_pagination_has_no_duplicates_or_omissions_with_tied_times
     client: AsyncClient, db_session,
 ):
     """Rows sharing one created_at value (a realistic tie, not a contrived one — see
-    exception_service._read_with_trip's own comment on why `id` breaks the tie) must
+    exceptions.review._read_with_trip's own comment on why `id` breaks the tie) must
     still page cleanly: every seeded row appears exactly once across all pages."""
     seed = await _seed_org(db_session, tag="page")
     trip = await _make_trip(db_session, seed, tag="page")

@@ -1,4 +1,4 @@
-"""Unit tests for the location-trail service (orchestration/location_service.py)."""
+"""Unit tests for the location-trail service (orchestration/evidence/location.py)."""
 
 import uuid
 from datetime import UTC, datetime

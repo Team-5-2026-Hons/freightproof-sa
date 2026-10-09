@@ -4,9 +4,9 @@ Layering: imports db/, schemas/, core/exceptions, integrations/ only.
 Never import from api/ or auth/.
 
 Driver, vehicle and precinct service functions have been extracted to:
-  - orchestration/driver_service.py
-  - orchestration/vehicle_service.py
-  - orchestration/precinct_service.py
+  - orchestration/fleet/drivers.py
+  - orchestration/fleet/vehicles.py
+  - orchestration/fleet/precincts.py
 """
 
 import uuid
@@ -31,9 +31,9 @@ from app.db.models.organisations import Organization
 from app.db.models.transit import TripException
 from app.db.models.trips import Consignment, Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
-from app.orchestration.phase_gate import blocked_on_by_stop
+from app.orchestration.phases.blocking import blocked_on_by_stop
 from app.orchestration.review_identity import with_reviewer_names
-from app.orchestration.scan_service import scanned_counts_for_trip
+from app.orchestration.consignments.scans import scanned_counts_for_trip
 from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.phases import PhaseEventRead
 from app.schemas.pp_manifest import PPManifestRef
@@ -394,7 +394,7 @@ async def get_trip_detail(
         )
 
     # H3/H5 anchor a PHASE_EVENT-subject receipt (not a TRIP-subject one —
-    # see phase_service.py advance_departure/advance_confirmation), so a TRIP-only filter here
+    # see phases.advance_departure/advance_confirmation), so a TRIP-only filter here
     # silently hid every driver-anchored pickup/delivery receipt from the
     # dispatcher's per-trip evidence view. Reuse the phase event ids already
     # fetched above (no extra query) and OR in their receipts alongside the

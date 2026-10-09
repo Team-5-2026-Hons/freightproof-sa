@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.integrations import parcel_perfect as pp_module
+from app.integrations.parcel_perfect import mock as pp_mock_module
 from tests.conftest import FakeMockStateStore
 
 from app.db.models.enums import (
@@ -27,7 +28,7 @@ from app.db.models.vehicles import Vehicle
 from app.schemas.people import UserRead
 from tests.conftest import auth_header, make_token
 
-# The PP mock's demo client (integrations/parcel_perfect.py _DEMO_PP_ACCOUNT and
+# The PP mock's demo client (integrations/parcel_perfect/waybill_fixtures.py _DEMO_PP_ACCOUNT and
 # _DEMO_PP_CUSTOMER). A world built with this account links every mock manifest.
 MOCK_CLIENT_ACCOUNT = "MOCK01"
 MOCK_CLIENT_NAME = "CGY Logistics"
@@ -155,11 +156,11 @@ def install_pp_mock(monkeypatch: pytest.MonkeyPatch) -> FakeMockStateStore:
     """PP mock with an in-memory override store and a pinned "today", so a preview and
     the create that follows read an identical manifest and nothing touches Redis."""
     store = FakeMockStateStore()
-    monkeypatch.setattr(pp_module, "get_mock_state_store", lambda: store)
+    monkeypatch.setattr(pp_mock_module, "get_mock_state_store", lambda: store)
     monkeypatch.setattr(settings, "PP_USE_MOCK", True)
     monkeypatch.setattr(settings, "DEV_PANEL_ENABLED", True)
     today = datetime.now(pp_module.pp_timezone()).date()
-    monkeypatch.setattr(pp_module, "_operations_today", lambda: today)
+    monkeypatch.setattr(pp_mock_module, "_operations_today", lambda: today)
     return store
 
 

@@ -6,7 +6,7 @@ reviewer is walked through at the demo. Consignments A (stop 1->3), B (1->2) and
 C (2->3) make stop 2 both a drop-off and a pick-up.
 
 Every consignment's cargo data is READ FROM THE PP MOCK FIXTURE LIBRARY
-(app/integrations/parcel_perfect.py), never invented here. This is not tidiness:
+(app/integrations/parcel_perfect/), never invented here. This is not tidiness:
 the seeder previously made up references PP had never heard of, so the dispatcher
 wizard's fail-closed lookup returned 404 on the platform's own demo data. Any
 reference in TRIP_SPECS that is missing from MOCK_WAYBILLS aborts the seed, and
@@ -49,9 +49,11 @@ from app.db.models.people import Driver, User
 from app.db.models.phases import PhaseEvent, TrailerGpsSnapshot
 from app.db.models.trips import Consignment, Parcel, Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
-from app.integrations.parcel_perfect import MOCK_MANIFEST_HEADERS, MOCK_WAYBILLS, PPWaybillResponse
-from app.orchestration.consignment_service import serialise_waybill
-from app.orchestration.phase_plan import ANCHORED_PHASES, PlanStop, build_phase_plan
+from app.integrations.parcel_perfect.manifest_fixtures import MOCK_MANIFEST_HEADERS
+from app.integrations.parcel_perfect.models import PPWaybillResponse
+from app.integrations.parcel_perfect.waybill_fixtures import MOCK_WAYBILLS
+from app.orchestration.consignments.sync import serialise_waybill
+from app.orchestration.phases.plan import ANCHORED_PHASES, PlanStop, build_phase_plan
 
 _CPT = "Cape Town Depot (Epping)"
 _BFN = "Bloemfontein Depot (Hamilton)"
@@ -167,7 +169,7 @@ _WALK_STARTED_AT = datetime(2026, 7, 30, 6, 0, tzinfo=UTC)
 _MINUTES_PER_PHASE = 20
 
 # Every seeded trip now carries a real schedule, because activation is gated on it:
-# phase_service._reject_if_not_due refuses to start a trip before its scheduled day, and
+# phases.scheduling._reject_if_not_due refuses to start a trip before its scheduled day, and
 # treats a trip with no schedule at all as not-yet-due. Seeding without these would make
 # every demo trip permanently unstartable.
 _OPERATING_TZ = timezone(timedelta(hours=settings.OPERATIONS_UTC_OFFSET_HOURS))
@@ -209,7 +211,7 @@ def resolved_sequences(spec: _TripSpec, plan_length: int) -> set[int]:
 
     ALWAYS includes trip_creation, whether or not the spec walks any further.
     Creating the trip IS P0's completion event, which is why create_trip() resolves
-    it inline the moment its anchor succeeds (orchestration/trip_service.py) with
+    it inline the moment its anchor succeeds (orchestration/trips/creation.py) with
     the warning that names this exact bug: "Without this, h0 stays PENDING forever
     and _gate_and_load's 'all lower sequence_numbers resolved' check blocks every
     later phase permanently, since h0 is sequence 0 - the lowest possible."
@@ -344,7 +346,7 @@ async def _reference(db: AsyncSession):
         p.name: p for p in (await db.execute(select(Precinct))).scalars().all()
     }
     # Client attribution comes from the waybill's PP account number, exactly as
-    # consignment_service resolves it on the live path - never hardcoded here.
+    # consignments.sync resolves it on the live path - never hardcoded here.
     organizations = {
         o.pp_account_number: o
         for o in (await db.execute(select(Organization))).scalars().all()
@@ -370,7 +372,7 @@ async def _seed_consignments(
     Returns the parcel rows keyed by pp_reference so the caller can stamp scan
     evidence only when the matching seeded loading/unloading phases are completed.
 
-    Field-for-field this mirrors consignment_service.fetch_and_sync_consignment on
+    Field-for-field this mirrors consignments.sync.fetch_and_sync_consignment on
     the live path - same pp_raw_json shape, same parcel-count basis (len(tracks)),
     same client-org resolution through accnum. A seed that stores a different shape
     from the live path is a seed that hides bugs in whatever reads those columns.
@@ -432,7 +434,7 @@ def _apply_walk_evidence(
 ) -> None:
     """Write the evidence a driver would have captured completing this phase.
 
-    Only fields the real completion path writes (orchestration/phase_service.py):
+    Only fields the real completion path writes (orchestration/phases/):
     activation captures phone GPS, loading the driver's visual count, departure the
     seal, arrival the seal as found at the gate, confirmation the delivered counts.
     Unloading writes nothing of its own here: the seal moved from it to arrival. Scan
@@ -634,7 +636,7 @@ async def _seed_trip(
     # event.phase_type comes back as a plain str after the bulk PhaseEvent insert
     # (insertmanyvalues repopulates every column from the RETURNING row, not just
     # server-generated ones) — coerce before .value, matching the same guard in
-    # complete_phase (phase_service.py: `actual = PhaseType(event.phase_type)`).
+    # complete_phase (phases/service.py: `actual = PhaseType(event.phase_type)`).
     trip.current_phase = PhaseType(current.phase_type).value if current is not None else None
     trip.current_stop = (
         None if current is None or current.trip_stop_id is None

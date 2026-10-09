@@ -24,8 +24,8 @@ from app.core.exceptions import PhaseSequenceError, ResourceNotFoundError, TripS
 from app.core.limits import FLEET_MUTATION
 from app.core.rate_limit import rate_limit
 from app.db.session import get_db
-from app.orchestration.phase_service import override_phase
-from app.orchestration.trip_service import cancel_trip
+from app.orchestration.phases.override import override_phase
+from app.orchestration.trips.administration import cancel_trip
 from app.schemas.people import UserRead
 from app.schemas.trips import CancelTripRequest, OverridePhaseRequest, TripDetailResponse
 

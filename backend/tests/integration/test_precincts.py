@@ -155,7 +155,7 @@ async def test_list_precincts_includes_own_org_non_shared(
     assert [p["name"] for p in body] == ["Demo Operator Yard"]
 
 
-_ANCHOR = "app.orchestration.precinct_service.anchor_subject"
+_ANCHOR = "app.orchestration.fleet.precincts.anchor_subject"
 
 
 def _admin_headers(seed: dict) -> dict:

@@ -8,7 +8,7 @@ the receipt is a separate fact that arrives shortly afterwards, which is exactly
 anchor_status and the driver app's "anchoring in progress" state already modelled.
 
 Layering: tasks -> orchestration -> blockchain -> db. This module owns no anchoring
-logic of its own; it re-enters phase_service's anchor_phase_event, so the canonical
+logic of its own; it re-enters phases.anchor_execution's anchor_phase_event, so the canonical
 payload and the fail-open contract stay defined in exactly one place.
 """
 
@@ -46,9 +46,9 @@ async def _anchor(
     engine = create_async_engine(settings.DATABASE_URL, pool_pre_ping=True)
     session_factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 
-    # Imported here, not at module scope: phase_service imports from app.tasks.blockchain
-    # to dispatch this task, so a top-level import would close the cycle.
-    from app.orchestration.phase_service import anchor_phase_event
+    # Imported here, not at module scope: phases.anchor_dispatch imports this module to
+    # dispatch this task, and the pair stay lazy until check B7 is used to promote them.
+    from app.orchestration.phases.anchor_execution import anchor_phase_event
 
     try:
         async with session_factory() as db:
@@ -98,7 +98,7 @@ def anchor_phase_event_task(
 
 async def _recover_anchors() -> int:
     """Drain a bounded batch of ledger debts, committing every attempt separately."""
-    from app.orchestration.phase_service import recover_phase_anchor
+    from app.orchestration.phases.anchor_recovery import recover_phase_anchor
 
     engine = create_async_engine(settings.DATABASE_URL, pool_pre_ping=True)
     session_factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)

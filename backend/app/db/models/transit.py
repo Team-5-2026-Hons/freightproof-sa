@@ -53,7 +53,7 @@ class Checkpoint(Base):
     driver_phone_lng: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     # The same field as PhaseEvent.driver_captured_at, and for the same reason
     # — a checkpoint is offline-queued exactly like a phase handshake, and its horse
-    # position is likewise superseded by a live Pulsit read (corroboration_service's
+    # position is likewise superseded by a live Pulsit read (evidence.corroboration's
     # record_checkpoint_corroboration) that must not be trusted against a stale replay.
     # See PhaseEvent.driver_captured_at's own comment for the full rationale.
     driver_captured_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -71,8 +71,8 @@ class Checkpoint(Base):
         UUID(as_uuid=True), ForeignKey("merkle_batches.id"), nullable=True
     )
     # The versioned ActionLocationAssessment snapshot for this checkpoint's own
-    # handshake (orchestration/action_location_service.build_checkpoint_assessment,
-    # called from checkpoint_service.log_checkpoint). No precinct-membership facts —
+    # handshake (evidence.action_location.build_checkpoint_assessment,
+    # called from evidence.checkpoints.log_checkpoint). No precinct-membership facts —
     # unlike a phase event, a checkpoint happens on the road between precincts, so
     # those fields are always None here. See schemas/action_location.py.
     action_location_assessment: Mapped[Optional[Any]] = mapped_column(JSONB, nullable=True)
@@ -110,7 +110,7 @@ class TripException(Base):
             postgresql_where=column("client_report_id").isnot(None),
         ),
         # One DRIVER_VEHICLE_SEPARATION finding per source event — the
-        # idempotency key orchestration/action_location_service.record_separation_finding
+        # idempotency key evidence.action_location.record_separation_finding
         # relies on, alongside its own pre-insert existence check, to survive a replayed
         # completion or two concurrent requests racing for the same handshake. Scoped
         # to this exception_type only (postgresql_where), so it adds no constraint at
@@ -198,7 +198,7 @@ class TripException(Base):
     # The driver app's own stable id for this report — the offline queue's
     # entry UUID (frontend/driver-pwa lib/hooks/useOfflineQueue.ts), sent as
     # client_report_id and never regenerated across a retry of the same submission.
-    # Lets exception_service.raise_exception recognise "this exact report, resent"
+    # Lets exceptions.creation.raise_exception recognise "this exact report, resent"
     # (a lost response, or a retry after its photo uploaded but the POST itself
     # failed) and return the existing row instead of inserting a second one.
     # Nullable: an older installed/queued client omits it, and that submission gets
@@ -217,7 +217,7 @@ class TripException(Base):
     gps_lat: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     gps_lng: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     # The exact vehicle a MECHANICAL exception belongs to: the trip's horse or one of its
-    # trailers, worked out by exception_service.pick_breakdown_vehicle from the driver's
+    # trailers, worked out by exceptions.creation.pick_breakdown_vehicle from the driver's
     # "truck or trailer" answer. Needed because trailers attach through trip_trailers
     # (many-to-many), so the trip alone cannot say which trailer on an interlink broke
     # down. Nullable and never backfilled: every other exception type, every breakdown

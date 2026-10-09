@@ -653,7 +653,6 @@
                 "type": "number"
               },
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -668,7 +667,6 @@
                 "type": "number"
               },
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -1145,7 +1143,6 @@
           "declared_value": {
             "anyOf": [
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -3336,7 +3333,6 @@
                 "type": "number"
               },
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -3357,7 +3353,6 @@
                 "type": "number"
               },
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -3372,7 +3367,6 @@
                 "type": "number"
               },
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -3430,6 +3424,10 @@
             "title": "Consent Text",
             "type": "string"
           },
+          "consented": {
+            "title": "Consented",
+            "type": "boolean"
+          },
           "has_document": {
             "default": true,
             "title": "Has Document",
@@ -3437,9 +3435,29 @@
           }
         },
         "required": [
-          "consent_text"
+          "consent_text",
+          "consented"
         ],
         "title": "HandoverConsentRequest",
+        "type": "object"
+      },
+      "HandoverResolveRequest": {
+        "description": "What the receiver typed, for the identity cross-check against the vendor's document.\n\nA body, not query parameters: a name and an ID number in a URL are written to the\naccess log, proxy logs and platform logs. Defaults stay empty (not required) so a\nreceiver whose storage was cleared across the vendor redirect can still resolve;\nempty simply compares as \"nothing typed\". Still no session identifier: the server\nuses the one it stored itself.",
+        "properties": {
+          "receiver_id_number": {
+            "default": "",
+            "maxLength": 60,
+            "title": "Receiver Id Number",
+            "type": "string"
+          },
+          "receiver_name": {
+            "default": "",
+            "maxLength": 120,
+            "title": "Receiver Name",
+            "type": "string"
+          }
+        },
+        "title": "HandoverResolveRequest",
         "type": "object"
       },
       "HandoverScanResponse": {
@@ -11435,7 +11453,7 @@
     },
     "/api/v1/handover/{raw_token}/verify/resolve": {
       "post": {
-        "description": "The security boundary: takes no session identifier from the caller. The session id\ncomes from our own row, written before the redirect — the client can only say \"I am\nback\", never claim a result directly (the exact failure Didit patched in their own\nWordPress plugin).",
+        "description": "The security boundary: takes no session identifier from the caller. The session id\ncomes from our own row, written before the redirect — the client can only say \"I am\nback\", never claim a result directly (the exact failure Didit patched in their own\nWordPress plugin). The body holds only the typed name and ID number, never the URL.",
         "operationId": "handover_resolve_endpoint_api_v1_handover__raw_token__verify_resolve_post",
         "parameters": [
           {
@@ -11446,28 +11464,18 @@
               "title": "Raw Token",
               "type": "string"
             }
-          },
-          {
-            "in": "query",
-            "name": "receiver_name",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Receiver Name",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "receiver_id_number",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Receiver Id Number",
-              "type": "string"
-            }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HandoverResolveRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
@@ -11490,7 +11498,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Fetch the authoritative decision (public, no auth, EMPTY BODY)",
+        "summary": "Fetch the authoritative decision (public, no auth, no session id accepted)",
         "tags": [
           "handover"
         ]

@@ -1,11 +1,11 @@
 """FP-197 — trip-stop-relative move-truck mode: stop resolution and scenario maths.
 
-Split out of api/v1/endpoints/dev_pulsit.py so the endpoint stays a thin HTTP shim and
+Split out of dev/endpoints/pulsit.py so the endpoint stays a thin HTTP shim and
 the two things a reviewer would actually want to audit independently — "does this pick
 the right stop" and "is the offset maths right" — can be unit-tested with no DB, no
 Redis, and no HTTP client at all (see tests/unit/test_dev_truck_service.py).
 
-Layering: this is an orchestration module, so it may import schemas (trip_service.py
+Layering: this is an orchestration module, so it may import schemas (trips/creation.py
 and others already do) and db/models, but never api/ — dev_pulsit.py calls in, not the
 reverse.
 
@@ -13,7 +13,7 @@ Deliberately narrow: this module answers "where should the tracker land for this
 scenario", nothing more. It does not stage the position (dev_pulsit.py calls
 MockPulsitClient itself, so the "this endpoint writes Pulsit mock state and nothing
 else" claim in dev_pulsit.py's own docstring stays checkable by reading one file), and
-it does not evaluate a geofence verdict (orchestration/geofence_service.py owns that,
+it does not evaluate a geofence verdict (orchestration/evidence/geofence.py owns that,
 unchanged here — see MoveTruckResponse's EXPECTED vs TARGET docstring for why
 the two are computed against different precincts).
 """
@@ -31,7 +31,7 @@ from app.core.exceptions import ResourceNotFoundError
 from app.core.geo import EARTH_RADIUS_METRES
 from app.db.models.organisations import Precinct
 from app.db.models.trips import TripStop
-from app.schemas.dev import (
+from app.dev.schemas import (
     SCENARIO_AT_STOP,
     SCENARIO_FIFTY_KM,
     SCENARIO_INSIDE_TOLERANCE,
@@ -98,7 +98,7 @@ class TargetGeometryUnavailableError(Exception):
     Precinct.latitude/longitude/geofence_radius_metres are all NOT NULL in the schema
     (db/models/organisations.py), so this should be unreachable against a real row —
     it exists for the same reason evaluate_geofence's own None-guards exist (see
-    geofence_service.py's DEFAULT_GEOFENCE_RADIUS_METRES docstring): a defensive guard
+    evidence/geofence.py's DEFAULT_GEOFENCE_RADIUS_METRES docstring): a defensive guard
     against a partially-built or detached ORM object in a test or a not-yet-flushed
     unit of work, not an expected runtime state.
 

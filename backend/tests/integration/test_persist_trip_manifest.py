@@ -17,8 +17,9 @@ from app.db.models.enums import PhaseType, SubjectType, TripType, VerifyStatus
 from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Consignment, Parcel, Trip
 from app.integrations import parcel_perfect as pp_module
+from app.integrations.parcel_perfect import mock as pp_mock_module
 from app.integrations.parcel_perfect import MANIFEST_HAPPY_PATH, MockParcelPerfectClient
-from app.orchestration import consignment_service
+from app.orchestration.consignments import sync as consignments_sync
 from app.orchestration.pp_manifest import manifest_key, manifest_snapshot
 from app.orchestration.trip_service import ManifestCargo, NewTrip, persist_trip
 from app.orchestration.verification_service import verify_subject
@@ -33,11 +34,11 @@ def pp_mock(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "DEV_PANEL_ENABLED", False)
     monkeypatch.setattr(settings, "PP_USE_MOCK", True)
     pinned = datetime.now(pp_module.pp_timezone()).date()
-    monkeypatch.setattr(pp_module, "_operations_today", lambda: pinned)
+    monkeypatch.setattr(pp_mock_module, "_operations_today", lambda: pinned)
 
     def _no_second_pull() -> NoReturn:
         raise AssertionError("a manifest trip must sync from the manifest's waybills")
-    monkeypatch.setattr(consignment_service, "get_pp_client", _no_second_pull)
+    monkeypatch.setattr(consignments_sync, "get_pp_client", _no_second_pull)
 
 
 async def _new_trip(world: ManifestWorld) -> NewTrip:

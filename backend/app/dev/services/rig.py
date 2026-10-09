@@ -5,7 +5,7 @@ exactly the case where they part. Positions are computed from THIS trip's own st
 (dev_truck_service geometry), never fixed coordinates.
 
 Writes Pulsit mock state and nothing else. Any exception the room then sees is written
-by road_check_service reading those positions, called separately by the endpoint.
+by evidence.road_check reading those positions, called separately by the endpoint.
 
 Layering: orchestration → integrations (MockPulsitClient), db, schemas. Never api/.
 """
@@ -22,10 +22,10 @@ from app.db.models.enums import PhaseType
 from app.db.models.organisations import Precinct
 from app.db.models.trips import Trip, TripStop
 from app.integrations.pulsit import MockPulsitClient
-from app.orchestration import dev_truck_service
-from app.orchestration.phase_service import current_phase_event
-from app.orchestration.road_check_service import RigRole, RigVehicle, load_rig, road_stage_for_current
-from app.schemas.dev import SCENARIO_AT_STOP, SCENARIO_THREE_KM, DevTruckScenario, RigScenario
+from app.dev.services import truck as dev_truck_service
+from app.orchestration.phases.queries import current_phase_event
+from app.orchestration.evidence.road_check import RigRole, RigVehicle, load_rig, road_stage_for_current
+from app.dev.schemas import SCENARIO_AT_STOP, SCENARIO_THREE_KM, DevTruckScenario, RigScenario
 
 # 5 km: unmistakably apart on the dispatcher's map, and ten times the default 500 m
 # separation threshold, so the scenario still trips the rule if the threshold is tuned.

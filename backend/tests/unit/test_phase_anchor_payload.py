@@ -136,7 +136,7 @@ async def trip_fixture(db_session):
         driver_id=driver.id, horse_id=horse.id,
         origin_precinct_id=origin.id, destination_precinct_id=dest.id,
         status=TripStatus.CREATED, idvs_check_status=IdvsStatus.VERIFIED,
-        # Activation is gated on the trip being due (phase_service._reject_if_not_due) and
+        # Activation is gated on the trip being due (phases.scheduling._reject_if_not_due) and
         # an unscheduled trip is deliberately unstartable, so this fixture books itself for
         # today — what it always meant: a trip a driver is about to run.
         planned_departure_at=datetime.now(UTC),
@@ -580,7 +580,7 @@ async def test_advance_confirmation_anchors_even_on_a_scan_mismatch(
     )
     # Only 2 of 3 scanned in at destination — the mismatch this test exists to
     # anchor. Staged/ingested/closed BEFORE advance_unloading, not after: UNLOADING
-    # now gates on this stop's IN-direction scan session (phase_gate.GATED_PHASES).
+    # now gates on this stop's IN-direction scan session (phases.blocking.GATED_PHASES).
     await feed.stage_scans(
         consignment_reference=consignment.parcel_perfect_reference, stop_reference=str(stop1_id),
         direction=ScanDirection.IN, barcodes=barcodes[:2],

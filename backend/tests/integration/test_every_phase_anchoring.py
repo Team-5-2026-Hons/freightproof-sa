@@ -8,7 +8,7 @@ tests/integration/test_phases.py and tests/integration/test_arrival_phase.py
 already use, not reinvented here.
 
 Nothing in this module calls db_session.commit() to reach ANCHORED: `_dispatch_anchor`
-(app/orchestration/phase_service.py) only queues the Hedera submit on the session's
+(app/orchestration/phases/anchor_dispatch.py) only queues the Hedera submit on the session's
 after_commit hook, and the shared `override_get_db` fixture below never commits mid-
 request, so every advance_*/override_phase call in this file only ever gets as far as
 setting `event_hash` in-request — matching production's real split between "evidence

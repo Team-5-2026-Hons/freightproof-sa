@@ -2,12 +2,13 @@
 
 Why one process per module: importing the whole app (what the test suite and uvicorn do)
 hides circular imports that depend on ORDER. If `app.tasks.blockchain` is the first thing
-imported, it runs before `app.orchestration.phase_service` has finished and a module-level
-back-reference blows up; but once something else has imported phase_service first, the same
-import works. phase_service <-> tasks.blockchain and phase_service -> verification_service
--> phase_service are exactly that shape today, held together by function-level imports
-(audit section 4.2). The package split must not turn a lazy import into a real cycle, and
-a cold import of any single module is the only check that sees it.
+imported, it runs before the module it reaches back into has finished and a module-level
+back-reference blows up; but once something else has imported that module first, the same
+import works. Before the phases split, phase_service <-> tasks.blockchain and
+phase_service -> verification_service -> phase_service were exactly that shape, held
+together by function-level imports (audit section 4.2). The split broke both cycles (audit
+section 5.2) but kept the function-level imports; promoting them must not turn a lazy import
+into a real cycle, and a cold import of any single module is the only check that sees it.
 
 Marked slow: ~160 interpreter start-ups. The processes run concurrently from one fixture;
 each test then only reads its module's result. CI runs this file in its own step because

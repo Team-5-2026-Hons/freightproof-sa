@@ -7,7 +7,7 @@ endpoint here writes to the database directly.
   scan triggers      -> MockScanFeed.stage_scans  -> scan_service.ingest_scans
   PP triggers        -> MockParcelPerfectClient.stage_waybill_override
                                                    -> consignment_service.fetch_and_sync_consignment
-  exception triggers -> exception_service.raise_exception
+  exception triggers -> exceptions.creation.raise_exception
 """
 
 import logging
@@ -30,15 +30,16 @@ from app.db.models.trips import Consignment, Parcel, Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
 from app.integrations.mock_state import get_mock_state_store
-from app.integrations.parcel_perfect import (
-    MockParcelPerfectClient, PPManifestNotFoundError, PPUnsupportedError, PPWaybillNotFoundError,
-    get_pp_client,
-)
+from app.integrations.parcel_perfect.errors import PPManifestNotFoundError, PPUnsupportedError, PPWaybillNotFoundError
+from app.integrations.parcel_perfect.factory import get_pp_client
+from app.integrations.parcel_perfect.mock import MockParcelPerfectClient
 from app.integrations.scan_feed import MockScanFeed, ScanDirection, get_scan_feed
-from app.orchestration import consignment_service, exception_service, scan_service
-from app.orchestration.pp_manifest import manifest_snapshot_sha256
-from app.orchestration.phase_gate import GATED_PHASES
-from app.schemas.dev import (
+from app.orchestration.consignments import scans as scan_service
+from app.orchestration.consignments import sync as consignment_service
+from app.orchestration.exceptions import creation as exception_creation
+from app.orchestration.consignments.manifest_snapshot import manifest_snapshot_sha256
+from app.orchestration.phases.blocking import GATED_PHASES
+from app.dev.schemas import (
     CloseScanSessionRequest, CloseScanSessionResponse, ConsignmentScanResultRead,
     DevConsignment, DevTripStop, DevTripSummary, DevVehicle, ExceptionTriggerRequest,
     ExceptionTriggerResponse, FlushMockStateResponse, PpManifestTriggerRequest,
@@ -116,7 +117,7 @@ async def list_dev_trips(
     for consignment_id, barcode in parcels:
         barcodes_by_consignment.setdefault(consignment_id, []).append(barcode)
 
-    # Imported, not re-declared, so this can never drift from phase_gate.py. Plus
+    # Imported, not re-declared, so this can never drift from phases/blocking.py. Plus
     # DEPARTURE (not gated) to derive preceding_departure_status below, and ARRIVAL,
     # which gates scan IN on the panel; extending this one query rather than adding a
     # second keeps this endpoint's batched-query discipline.
@@ -139,7 +140,7 @@ async def list_dev_trips(
         if trip_stop_id is not None
     }
 
-    # DEPARTURE events per trip, mirroring phase_service._find_departure_for_leg's rule:
+    # DEPARTURE events per trip, mirroring phases.seals._find_departure_for_leg's rule:
     # the highest-sequence_number DEPARTURE strictly before the stop's own closing event.
     departures_by_trip: dict[uuid.UUID, list[tuple[int, str]]] = {}
     for trip_id_col, _, phase_type, status, sequence_number in phase_events:
@@ -472,7 +473,7 @@ async def trigger_exception(
     try:
         # driver_id read from the trip, not the body, so the service's own
         # assigned-driver check runs for real instead of being bypassed.
-        raised = await exception_service.raise_exception(
+        raised = await exception_creation.raise_exception(
             db, trip_id=body.trip_id, driver_id=trip.driver_id,
             exception_type=body.exception_type, description=body.description,
             supporting_artifact_id=None,

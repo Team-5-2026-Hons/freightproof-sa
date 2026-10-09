@@ -47,11 +47,11 @@ ACTION_LOCATION_POLICY_VERSION = "2026-09-15.1"
 # either at-or-under, or over, the policy threshold. 'unverified' means the
 # quality gates did not all pass (see ProximityReason) — it may still carry a
 # real `separation_metres` for display, but that number must never be read as a
-# pass/fail verdict on its own. See orchestration/proximity_service.py.
+# pass/fail verdict on its own. See orchestration/evidence/proximity.py.
 ProximityVerdict = Literal["within_limit", "separated", "unverified"]
 
 # Why a proximity check could not produce a positive verdict. Deliberately
-# distinct from GeofenceVerdictReason (geofence_service.py) — these two modules
+# distinct from GeofenceVerdictReason (evidence/geofence.py) — these two modules
 # answer independent questions (truck-vs-precinct vs. driver-vs-truck) and must
 # never share a reason vocabulary that implies one explains the other.
 ProximityReason = Literal[
@@ -165,7 +165,7 @@ class ActionLocationAssessment(BaseModel):
     # Which stop this assessment was checked against, and the precinct-membership
     # facts for that stop at evaluation time (see module docstring on
     # geometry-at-evaluation-time). All None when the phase has no stop to check
-    # against (mirrors corroboration_service._load_precinct_for_phase) or when a
+    # against (mirrors evidence.corroboration._load_precinct_for_phase) or when a
     # historical record predates this contract.
     expected_trip_stop_id: UUID | None
     precinct_id: UUID | None
@@ -181,7 +181,7 @@ class ActionLocationAssessment(BaseModel):
     def _require_timezone_aware(cls, value: datetime | None) -> datetime | None:
         # A naive value would silently compare as if it were UTC everywhere this
         # assessment's timestamps are later diffed (skew, age) — see
-        # proximity_service.evaluate_proximity and corroboration_service's own
+        # evidence.proximity.evaluate_proximity and evidence.corroboration's own
         # identical rule for driver_captured_at.
         if value is not None and value.tzinfo is None:
             raise ValueError("datetime fields must be timezone-aware")

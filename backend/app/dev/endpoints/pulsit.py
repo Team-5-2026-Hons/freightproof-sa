@@ -49,10 +49,10 @@ from app.integrations.pulsit import (
     PulsitUnsupportedError,
     get_pulsit_client,
 )
-from app.orchestration import dev_truck_service
-from app.orchestration.dev_truck_service import ScenarioTarget, TargetGeometryUnavailableError
-from app.orchestration.geofence_service import TrackerFix, evaluate_geofence
-from app.schemas.dev import MoveTruckRequest, MoveTruckResponse, WaypointRead
+from app.dev.services import truck as dev_truck_service
+from app.dev.services.truck import ScenarioTarget, TargetGeometryUnavailableError
+from app.orchestration.evidence.geofence import TrackerFix, evaluate_geofence
+from app.dev.schemas import MoveTruckRequest, MoveTruckResponse, WaypointRead
 from app.schemas.people import UserRead
 
 logger = logging.getLogger(__name__)

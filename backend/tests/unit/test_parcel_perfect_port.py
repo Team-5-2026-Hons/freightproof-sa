@@ -10,7 +10,7 @@ from app.integrations.parcel_perfect import (
     ParcelPerfectClient,
     get_pp_client,
 )
-from app.integrations.parcel_perfect_port import ParcelPerfectPort
+from app.integrations.parcel_perfect.port import ParcelPerfectPort
 
 PORT_METHODS = ("get_manifest", "get_single_waybill")
 

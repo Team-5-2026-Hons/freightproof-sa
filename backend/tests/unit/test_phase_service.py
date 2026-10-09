@@ -49,7 +49,7 @@ from app.schemas.phases import (
 )
 from tests.conftest import FakeMockStateStore
 
-# Activation is gated on the trip actually being due (phase_service._reject_if_not_due),
+# Activation is gated on the trip actually being due (phases.scheduling._reject_if_not_due),
 # and a trip carrying no schedule at all is deliberately unstartable. Every fixture below
 # therefore books its trip for today — which is what these fixtures always meant: a trip a
 # driver is about to run. Computed per-run, not pinned to a literal date, so the suite
@@ -61,7 +61,7 @@ _SCHEDULED_TODAY = datetime.now(UTC)
 def stub_hedera_service(monkeypatch):
     """advance_loading/advance_confirmation anchor to Hedera via anchor_subject(),
     which builds its own HederaService() when they don't pass one in (they
-    don't — same no-injection shape as trip_service.create_trip). These tests
+    don't — same no-injection shape as trips.creation.create_trip). These tests
     use a real (rolled-back) db_session but must not touch the real Hedera SDK,
     so the SDK wrapper class is patched at the import boundary anchor_service
     uses it through, matching tests/integration/test_trips_anchor.py.
@@ -148,7 +148,7 @@ async def trip_fixture(db_session):
     single-consignment trip: trip_creation (h0), activation/loading/departure/
     in_transit at stop 0, unloading/confirmation at stop 1. h0 is seeded here
     directly as COMPLETED — matching create_trip's inline completion of h0
-    once its Hedera anchor succeeds (see trip_service.create_trip), not the
+    once its Hedera anchor succeeds (see trips.creation.create_trip), not the
     PENDING status _build_phase_events initially assigns every row including
     h0. Only h0.status is set, not its anchor bookkeeping fields
     (completed_at/blockchain_receipt_id/event_hash/anchor_status) — these
@@ -2101,7 +2101,7 @@ async def test_current_phase_and_current_stop_track_the_ledger(db_session, trip_
 # trip-wide `phase_type == LOADING` (or DEPARTURE) lookup either raises
 # MultipleResultsFound the instant advance_unloading runs on ANY leg, or —
 # worse — silently compares against the wrong leg's row without raising
-# anything at all. _find_departure_for_leg (phase_service.py) fixes this by
+# anything at all. _find_departure_for_leg (phases/seals.py) fixes this by
 # always resolving the latest DEPARTURE strictly before the calling phase's
 # own sequence_number — the departure that opened THIS leg.
 
@@ -2168,7 +2168,7 @@ async def cross_dock_trip_fixture(db_session):
     assert len(plan) == 13  # the exact shape this fixture exists to reproduce
 
     # Deterministic emission order per build_phase_plan's own rule (verified
-    # against phase_plan.py directly): trip_creation, activation, then per
+    # against phases/plan.py directly): trip_creation, activation, then per
     # stop loading/departure/in_transit or arrival/unloading, closing on confirmation.
     names = [
         "trip_creation", "activation", "loading_1", "departure_1", "in_transit_1",
@@ -2447,7 +2447,7 @@ async def test_cross_dock_loading_counts_only_what_that_stop_picks_up(
 
     # The warehouse scans every parcel out, in full, at the stop it's actually
     # picked up at, then closes every session this trip's loading/confirmation
-    # rows are gated on. B's dropoff at stop1 is now UNLOADING, which phase_gate
+    # rows are gated on. B's dropoff at stop1 is now UNLOADING, which phases.blocking
     # gates on ScanDirection.IN — so its IN session at stop1 must close too,
     # even though no actual barcodes are staged for it (nothing downstream
     # reads B's scan-in count: it never feeds the final CONFIRMATION at stop2).
@@ -2849,7 +2849,7 @@ async def test_anchor_phase_event_fails_open_on_hedera_trouble(
     """
     trip, driver, phases = trip_fixture
     monkeypatch.setattr(
-        "app.orchestration.phase_service.anchor_subject",
+        "app.orchestration.phases.anchor_execution.anchor_subject",
         AsyncMock(side_effect=hedera_exception),
     )
     payload = {"phase_event_id": str(phases["departure"].id)}
@@ -2974,7 +2974,7 @@ async def test_a_broker_failure_schedules_a_local_anchor_fallback(
     monkeypatch.setattr("app.tasks.blockchain.anchor_phase_event_task", _BrokenBroker)
     inline_calls: list[uuid.UUID] = []
     monkeypatch.setattr(
-        "app.orchestration.phase_service._schedule_anchor_after_dispatch_failure",
+        "app.orchestration.phases.anchor_dispatch._schedule_anchor_after_dispatch_failure",
         lambda **kwargs: inline_calls.append(kwargs["phase_event_id"]),
     )
 
@@ -3532,7 +3532,7 @@ async def _build_confirmation_ready_trip(db_session, *, scan_in_count: int) -> d
     )
 
     # BEFORE advance_unloading, not after: UNLOADING now gates on this stop's
-    # IN-direction scan session (phase_gate.GATED_PHASES), matching the physical
+    # IN-direction scan session (phases.blocking.GATED_PHASES), matching the physical
     # order — the warehouse scans parcels off the truck before the driver can
     # close out unloading.
     await _stage_and_ingest(
@@ -3717,7 +3717,7 @@ async def xdock_ready_to_confirm(db_session, store) -> dict[str, Any]:
     )
     # stop1 has no consignment of its own (pickup_stop_id never points here), so
     # loading_2's gate sees no expected parcel set and is never blocked — no
-    # staging needed, matching phase_gate's own "no Consignment -> not blocked" rule.
+    # staging needed, matching phases.blocking's own "no Consignment -> not blocked" rule.
     await advance_loading(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["loading_2"].id,
         payload=LoadingCompleteRequest(phase_type=PhaseType.LOADING, idempotency_key=str(uuid.uuid4())),
@@ -3739,7 +3739,7 @@ async def xdock_ready_to_confirm(db_session, store) -> dict[str, Any]:
         payload=await _seal_payload(db_session, trip.id, seal_number_at_arrival="AB-2222"),
     )
     # BEFORE advance_unloading, not after: UNLOADING at stop2 now gates on this
-    # consignment's IN-direction scan session there (phase_gate.GATED_PHASES).
+    # consignment's IN-direction scan session there (phases.blocking.GATED_PHASES).
     await _stage_and_ingest(
         db_session, feed, consignment_reference=consignment.parcel_perfect_reference,
         stop_id=stop2.id, direction=ScanDirection.IN, trip_id=trip.id, barcodes=barcodes,

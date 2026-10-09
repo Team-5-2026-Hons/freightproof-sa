@@ -75,7 +75,7 @@ async def test_upload_artifact_returns_201_with_id(client: AsyncClient, seed_tri
     async def fake_upload(*, trip_id, file_bytes, mime_type):
         return UploadResult(s3_bucket="evidence-artifacts", s3_key=f"{trip_id}/x", file_hash="a" * 64)
 
-    monkeypatch.setattr("app.orchestration.artifact_service.upload_evidence_file", fake_upload)
+    monkeypatch.setattr("app.orchestration.evidence.artifacts.upload_evidence_file", fake_upload)
 
     token = make_token(sub=str(driver.id), role="driver")
     resp = await client.post(
