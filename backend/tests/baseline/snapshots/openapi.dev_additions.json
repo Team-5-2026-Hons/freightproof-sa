@@ -1025,7 +1025,6 @@
         "latitude": {
           "anyOf": [
             {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "type": "string"
             },
             {
@@ -1037,7 +1036,6 @@
         "longitude": {
           "anyOf": [
             {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "type": "string"
             },
             {
@@ -1367,7 +1365,6 @@
         "latitude": {
           "anyOf": [
             {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "type": "string"
             },
             {
@@ -1379,7 +1376,6 @@
         "longitude": {
           "anyOf": [
             {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "type": "string"
             },
             {
@@ -1766,7 +1762,6 @@
         "latitude": {
           "anyOf": [
             {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "type": "string"
             },
             {
@@ -1778,7 +1773,6 @@
         "longitude": {
           "anyOf": [
             {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "type": "string"
             },
             {

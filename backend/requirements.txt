@@ -4,7 +4,7 @@ uvicorn[standard]>=0.34,<0.35
 gunicorn==22.0.0
 
 # Data validation
-pydantic>=2.9.0,<3.0.0
+pydantic==2.14.0  # pinned: the B1 OpenAPI snapshot depends on the exact JSON schema pydantic emits (2.14 dropped the Decimal string pattern)
 pydantic-settings>=2.6.0,<3.0.0
 
 
