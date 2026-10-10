@@ -39,8 +39,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Overview',
     items: [
       { label: 'Dashboard', href: ROUTES.home, icon: 'home', activePatterns: ['/'] },
-      // Every dispatcher, not admins only: the analytics endpoints are read-only and
-      // org-scoped (get_current_dispatcher), unlike the receipt lookup below.
+      // Analytics and parcel search are read-only and organisation-scoped.
       { label: 'Analytics', href: ROUTES.analytics, icon: 'bars', activePatterns: [ROUTES.analytics] },
     ],
   },
@@ -48,6 +47,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Trips',
     items: [
       { label: 'Trip History', href: ROUTES.history,  icon: 'clock', activePatterns: ['/history'] },
+      { label: 'Parcel Search', href: ROUTES.parcels, icon: 'box', activePatterns: [ROUTES.parcels] },
       // Hidden in 6071ab2 as "not yet live", back now that FP-146 gave the queue a real
       // org-scoped list, detail page and resolve flow. `activePatterns` covers the detail
       // route too, so the entry stays lit while a dispatcher works one exception.
@@ -67,18 +67,6 @@ const NAV_GROUPS: NavGroup[] = [
     // taxonomy. When organisations or partners arrive, give this group a label.
     items: [
       { label: 'Precincts', href: ROUTES.precincts, icon: 'map', activePatterns: ['/precincts'] },
-    ],
-  },
-  {
-    label: 'Blockchain',
-    items: [
-      {
-        label: 'Receipt Lookup',
-        href: ROUTES.blockchainReceipts,
-        icon: 'hex',
-        activePatterns: [ROUTES.blockchainReceipts],
-        adminOnly: true,
-      },
     ],
   },
 ]
