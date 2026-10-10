@@ -176,6 +176,20 @@
       "rate_limit:handover_public"
     ]
   },
+  "GET /api/v1/parcels/lookup": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/parcels/trace": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
   "GET /api/v1/pp/capabilities": {
     "access": "dispatcher",
     "dependencies": [
