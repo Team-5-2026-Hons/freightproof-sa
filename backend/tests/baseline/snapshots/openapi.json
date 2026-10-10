@@ -4969,6 +4969,242 @@
         "title": "PPWaybillSummary",
         "type": "object"
       },
+      "ParcelJourney": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "destination_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination Name"
+          },
+          "exceptions": {
+            "items": {
+              "$ref": "#/components/schemas/ParcelTraceException"
+            },
+            "title": "Exceptions",
+            "type": "array"
+          },
+          "gaps": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Gaps",
+            "type": "array"
+          },
+          "last_recorded_location": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ParcelRecordedLocation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "membership_source": {
+            "enum": [
+              "current_assignment",
+              "creation_manifest"
+            ],
+            "title": "Membership Source",
+            "type": "string"
+          },
+          "origin_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origin Name"
+          },
+          "phases": {
+            "items": {
+              "$ref": "#/components/schemas/ParcelTracePhase"
+            },
+            "title": "Phases",
+            "type": "array"
+          },
+          "progress": {
+            "$ref": "#/components/schemas/ParcelProgress"
+          },
+          "scans": {
+            "items": {
+              "$ref": "#/components/schemas/ParcelScanObservation"
+            },
+            "title": "Scans",
+            "type": "array"
+          },
+          "seal_windows": {
+            "items": {
+              "$ref": "#/components/schemas/ParcelSealWindow"
+            },
+            "title": "Seal Windows",
+            "type": "array"
+          },
+          "trip_id": {
+            "format": "uuid",
+            "title": "Trip Id",
+            "type": "string"
+          },
+          "trip_reference": {
+            "title": "Trip Reference",
+            "type": "string"
+          },
+          "trip_status": {
+            "$ref": "#/components/schemas/TripStatus"
+          },
+          "vehicle_registration": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vehicle Registration"
+          }
+        },
+        "required": [
+          "trip_id",
+          "trip_reference",
+          "trip_status",
+          "created_at",
+          "vehicle_registration",
+          "membership_source",
+          "origin_name",
+          "destination_name",
+          "progress",
+          "last_recorded_location",
+          "scans",
+          "phases",
+          "seal_windows",
+          "exceptions",
+          "gaps"
+        ],
+        "title": "ParcelJourney",
+        "type": "object"
+      },
+      "ParcelLookupResponse": {
+        "properties": {
+          "barcode": {
+            "title": "Barcode",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ParcelMatch"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next After"
+          }
+        },
+        "required": [
+          "barcode",
+          "items"
+        ],
+        "title": "ParcelLookupResponse",
+        "type": "object"
+      },
+      "ParcelMatch": {
+        "properties": {
+          "journey_count": {
+            "title": "Journey Count",
+            "type": "integer"
+          },
+          "waybill_reference": {
+            "title": "Waybill Reference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "waybill_reference",
+          "journey_count"
+        ],
+        "title": "ParcelMatch",
+        "type": "object"
+      },
+      "ParcelProgress": {
+        "properties": {
+          "has_overrides": {
+            "default": false,
+            "title": "Has Overrides",
+            "type": "boolean"
+          },
+          "phase_event_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phase Event Id"
+          },
+          "phase_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PhaseStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "phase_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PhaseType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "position": {
+            "enum": [
+              "before_pickup",
+              "within_journey",
+              "after_delivery",
+              "cancelled",
+              "unknown"
+            ],
+            "title": "Position",
+            "type": "string"
+          }
+        },
+        "required": [
+          "position"
+        ],
+        "title": "ParcelProgress",
+        "type": "object"
+      },
       "ParcelRead": {
         "properties": {
           "barcode": {
@@ -5056,6 +5292,224 @@
         "title": "ParcelRead",
         "type": "object"
       },
+      "ParcelRecordedLocation": {
+        "properties": {
+          "captured_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Captured At"
+          },
+          "phase_completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phase Completed At"
+          },
+          "phase_event_id": {
+            "format": "uuid",
+            "title": "Phase Event Id",
+            "type": "string"
+          },
+          "precinct_confirmed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precinct Confirmed"
+          },
+          "precinct_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precinct Name"
+          },
+          "source": {
+            "enum": [
+              "horse_tracker",
+              "driver_phone"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "phase_event_id",
+          "precinct_name",
+          "source",
+          "captured_at",
+          "phase_completed_at",
+          "precinct_confirmed"
+        ],
+        "title": "ParcelRecordedLocation",
+        "type": "object"
+      },
+      "ParcelScanObservation": {
+        "properties": {
+          "parcel_id": {
+            "format": "uuid",
+            "title": "Parcel Id",
+            "type": "string"
+          },
+          "scan_in_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scan In At"
+          },
+          "scan_out_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scan Out At"
+          },
+          "source": {
+            "const": "parcel_record_source_unknown",
+            "default": "parcel_record_source_unknown",
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ParcelStatus"
+          }
+        },
+        "required": [
+          "parcel_id",
+          "status",
+          "scan_out_at",
+          "scan_in_at"
+        ],
+        "title": "ParcelScanObservation",
+        "type": "object"
+      },
+      "ParcelSealWindow": {
+        "properties": {
+          "arrival_seal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Arrival Seal"
+          },
+          "departure_phase_id": {
+            "format": "uuid",
+            "title": "Departure Phase Id",
+            "type": "string"
+          },
+          "departure_seal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Departure Seal"
+          },
+          "destination_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination Name"
+          },
+          "inspection_phase_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inspection Phase Id"
+          },
+          "origin_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origin Name"
+          },
+          "phase_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Phase Ids",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "matched",
+              "mismatch",
+              "pending",
+              "unverified"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "departure_phase_id",
+          "inspection_phase_id",
+          "phase_ids",
+          "origin_name",
+          "destination_name",
+          "departure_seal",
+          "arrival_seal",
+          "status"
+        ],
+        "title": "ParcelSealWindow",
+        "type": "object"
+      },
       "ParcelStatus": {
         "enum": [
           "pending",
@@ -5065,6 +5519,250 @@
         ],
         "title": "ParcelStatus",
         "type": "string"
+      },
+      "ParcelTraceException": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "exception_type": {
+            "title": "Exception Type",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "phase_event_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phase Event Id"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "review_status": {
+            "title": "Review Status",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "consignment",
+              "trip_context"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "phase_event_id",
+          "exception_type",
+          "severity",
+          "description",
+          "recorded_at",
+          "scope",
+          "review_status"
+        ],
+        "title": "ParcelTraceException",
+        "type": "object"
+      },
+      "ParcelTracePhase": {
+        "properties": {
+          "anchor_status": {
+            "$ref": "#/components/schemas/AnchorStatus"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "driver_captured_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Driver Captured At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "location_verdict": {
+            "enum": [
+              "confirmed",
+              "mismatch",
+              "unwitnessed",
+              "not_recorded"
+            ],
+            "title": "Location Verdict",
+            "type": "string"
+          },
+          "override_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Override Note"
+          },
+          "phase_type": {
+            "$ref": "#/components/schemas/PhaseType"
+          },
+          "precinct_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precinct Id"
+          },
+          "precinct_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precinct Name"
+          },
+          "relevance": {
+            "enum": [
+              "consignment",
+              "trip_context",
+              "unknown"
+            ],
+            "title": "Relevance",
+            "type": "string"
+          },
+          "seal_condition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seal Condition"
+          },
+          "seal_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seal Number"
+          },
+          "sequence_number": {
+            "title": "Sequence Number",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PhaseStatus"
+          }
+        },
+        "required": [
+          "id",
+          "sequence_number",
+          "phase_type",
+          "status",
+          "completed_at",
+          "driver_captured_at",
+          "precinct_id",
+          "precinct_name",
+          "relevance",
+          "anchor_status",
+          "seal_number",
+          "seal_condition",
+          "location_verdict",
+          "override_note"
+        ],
+        "title": "ParcelTracePhase",
+        "type": "object"
+      },
+      "ParcelTraceResponse": {
+        "properties": {
+          "barcode": {
+            "title": "Barcode",
+            "type": "string"
+          },
+          "coverage_note": {
+            "title": "Coverage Note",
+            "type": "string"
+          },
+          "journeys": {
+            "items": {
+              "$ref": "#/components/schemas/ParcelJourney"
+            },
+            "title": "Journeys",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "waybill_reference": {
+            "title": "Waybill Reference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "barcode",
+          "waybill_reference",
+          "journeys",
+          "next_cursor",
+          "coverage_note"
+        ],
+        "title": "ParcelTraceResponse",
+        "type": "object"
       },
       "PatternBar": {
         "description": "One bar of a busy-pattern chart: an hour, weekday, date or month.",
@@ -11501,6 +12199,162 @@
         "summary": "Fetch the authoritative decision (public, no auth, no session id accepted)",
         "tags": [
           "handover"
+        ]
+      }
+    },
+    "/api/v1/parcels/lookup": {
+      "get": {
+        "operationId": "lookup_parcels_endpoint_api_v1_parcels_lookup_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "barcode",
+            "required": true,
+            "schema": {
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Barcode",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParcelLookupResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Lookup Parcels Endpoint",
+        "tags": [
+          "parcels"
+        ]
+      }
+    },
+    "/api/v1/parcels/trace": {
+      "get": {
+        "operationId": "trace_parcel_endpoint_api_v1_parcels_trace_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "barcode",
+            "required": true,
+            "schema": {
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Barcode",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "waybill_reference",
+            "required": true,
+            "schema": {
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Waybill Reference",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 5,
+              "maximum": 10,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParcelTraceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Trace Parcel Endpoint",
+        "tags": [
+          "parcels"
         ]
       }
     },

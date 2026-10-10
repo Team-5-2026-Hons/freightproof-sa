@@ -20,6 +20,7 @@ import { usePrecincts } from '@/lib/hooks/usePrecincts'
 import { currentTripPhase, isTerminalTrip, tripHeaderFacts } from '@/lib/phase/trip-detail'
 import { getTripSeed } from '@/lib/trips/tripSeed'
 import { ROUTES } from '@/lib/constants/routes'
+import { RETURN_TO_PARAM, safeReturnTo } from '@/lib/navigation/returnTo'
 
 const PANELS: readonly string[] = ['information', 'manifest', 'exceptions']
 const DOCKED_PANEL_QUERY = '(min-width: 1280px)'
@@ -88,7 +89,7 @@ function TripDetail({ tripId }: { tripId: string }) {
   }
 
   const terminal = trip ? isTerminalTrip(trip) : seed?.status === 'closed' || seed?.status === 'cancelled'
-  function back(): void { router.push(terminal ? ROUTES.history : ROUTES.home) }
+  function back(): void { router.push(safeReturnTo(search.get(RETURN_TO_PARAM), terminal ? ROUTES.history : ROUTES.home)) }
   function jump(): void {
     if (!trip) return
     const active = currentTripPhase(trip)
