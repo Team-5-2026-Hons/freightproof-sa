@@ -15,7 +15,7 @@ from app.blockchain.critical_fields import (
     VEHICLE_COSMETIC_FIELDS, VEHICLE_CRITICAL_FIELDS, diff_critical_fields,
 )
 from app.core.exceptions import DuplicateResourceError, ResourceNotFoundError
-from app.orchestration.fleet.canonical import canonical_vehicle_fields
+from app.orchestration.fleet.canonical import anchor_fleet_event
 from app.orchestration.integrity import is_unique_violation, violated_constraint
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import (
@@ -113,24 +113,14 @@ async def create_vehicle(
     await db.flush()
 
     # changed_fields keeps the plaintext device ID (Supabase DB, POPIA-compliant); the anchored
-    # payload (→ BlockchainReceipt.payload_json) carries only its hash. canonical_vehicle_fields
-    # is the single definition of that rewrite, shared with verification.
-    canonical = {
-        "vehicle_event_id": str(vehicle_event.id),
-        "vehicle_id": str(vehicle.id),
-        "event_type": VehicleEventType.CREATED.value,
-        "fields": canonical_vehicle_fields(VehicleEventType.CREATED.value, snapshot),
-        "changed_by_user_id": str(current_user_id),
-        "timestamp": vehicle_event.created_at.isoformat(),
-    }
-    receipt = await anchor_subject(
+    # payload (→ BlockchainReceipt.payload_json) carries only its hash. fleet.canonical builds
+    # that payload and is the single definition of the rewrite, shared with verification.
+    await anchor_fleet_event(
         db,
-        subject_type=SubjectType.VEHICLE_EVENT,
-        subject_id=vehicle_event.id,
-        canonical_payload=canonical,
+        anchor=anchor_subject,
+        event=vehicle_event,
         receipt_type=BlockchainReceiptType.VEHICLE_CREATED,
     )
-    vehicle_event.blockchain_receipt_id = receipt.id
 
     await db.refresh(vehicle)
     return VehicleRead.model_validate(vehicle)
@@ -225,22 +215,14 @@ async def update_vehicle(
     await db.flush()
 
     if critical_diff is not None:
-        canonical = {
-            "vehicle_event_id": str(event.id),
-            "vehicle_id": str(vehicle.id),
-            "event_type": event_type.value,
-            "fields": canonical_vehicle_fields(event_type.value, critical_diff),
-            "changed_by_user_id": str(current_user_id),
-            "timestamp": event.created_at.isoformat(),
-        }
-        receipt = await anchor_subject(
+        # changed_fields logs the cosmetic diff too; the anchored payload keeps only the
+        # critical part, which fleet.canonical selects.
+        await anchor_fleet_event(
             db,
-            subject_type=SubjectType.VEHICLE_EVENT,
-            subject_id=event.id,
-            canonical_payload=canonical,
+            anchor=anchor_subject,
+            event=event,
             receipt_type=BlockchainReceiptType.VEHICLE_UPDATED,
         )
-        event.blockchain_receipt_id = receipt.id
 
     await db.refresh(vehicle)
     return VehicleRead.model_validate(vehicle)

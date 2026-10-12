@@ -90,3 +90,52 @@ def test_update_hashes_a_missing_side_of_the_device_id_as_empty_string() -> None
     assert fields["pulsit_device_id_sha256"]["from"] == (
         "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     )
+
+
+def test_update_keeps_only_critical_fields_so_an_unclassified_field_is_never_anchored() -> None:
+    logged = {
+        "registration": {"from": "CA 1", "to": "CA 2"},
+        "make": {"from": "Volvo", "to": "Scania"},
+        "future_field": {"from": 1, "to": 2},
+    }
+
+    fields = canonical_vehicle_fields(VehicleEventType.LICENSE_PLATE_CHANGED.value, logged)
+
+    assert fields == {"registration": {"from": "CA 1", "to": "CA 2"}}
+
+
+# ── anchor_fleet_event ──────────────────────────────────────────────────────────
+
+async def test_anchor_fleet_event_anchors_the_built_payload_and_links_the_receipt() -> None:
+    import uuid
+    from datetime import UTC, datetime
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from app.db.models.enums import BlockchainReceiptType, DriverEventType, SubjectType
+    from app.db.models.events import DriverEvent
+    from app.orchestration.fleet.canonical import anchor_fleet_event, driver_event_payload
+
+    event = DriverEvent(
+        id=uuid.uuid4(), driver_id=uuid.uuid4(), event_type=DriverEventType.CREATED.value,
+        changed_fields={"is_active": True}, changed_by_user_id=uuid.uuid4(),
+    )
+    event.created_at = datetime(2026, 1, 1, tzinfo=UTC)
+    receipt = SimpleNamespace(id=uuid.uuid4())
+    anchor = AsyncMock(return_value=receipt)
+    db = object()
+
+    result = await anchor_fleet_event(
+        db,  # type: ignore[arg-type]
+        anchor=anchor, event=event, receipt_type=BlockchainReceiptType.DRIVER_CREATED,
+    )
+
+    assert result is receipt
+    assert event.blockchain_receipt_id == receipt.id
+    anchor.assert_awaited_once_with(
+        db,
+        subject_type=SubjectType.DRIVER_EVENT,
+        subject_id=event.id,
+        canonical_payload=driver_event_payload(event),
+        receipt_type=BlockchainReceiptType.DRIVER_CREATED,
+    )

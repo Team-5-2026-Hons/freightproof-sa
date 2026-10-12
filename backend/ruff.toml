@@ -59,7 +59,6 @@ max-statements = 50
 "app/orchestration/consignments/manifest_import.py" = ["C901", "PLR0913"]  # _build_context, _resolve_precinct
 "app/orchestration/consignments/scans.py" = ["PLR0913"]  # _reconcile_consignment, _raise_discrepancy, _build_discrepancy_description
 "app/orchestration/consignments/sync.py" = ["C901", "PLR0913", "PLR0915"]  # fetch_and_sync_consignment (PLR0913), sync_consignment_from_waybill (all three)
-"app/orchestration/fleet/vehicles.py" = ["C901"]  # update_vehicle
 "app/orchestration/handover/capability.py" = ["PLR0913"]  # record_handover_confirmation
 # Relocated, not added: each entry below is an existing violation that moved out of the flat
 # *_service.py modules with its functions (audit phase 4, evidence window); the count of

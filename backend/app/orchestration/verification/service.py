@@ -6,7 +6,10 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
+from typing import Any
 
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -86,6 +89,83 @@ async def _live_artifact_mismatch(
     return None
 
 
+@dataclass(frozen=True)
+class _Rebuilt:
+    """What a reconstructor hands back: the payload rebuilt from live rows, plus the phase
+    event's evidence commitments (None for every other subject type)."""
+    payload: dict[str, Any]
+    phase_state: _PhasePayloadState | None = None
+
+
+# A reconstructor rebuilds one subject's anchored payload from the database. It returns None
+# when the subject's row is gone, and may raise _UnsupportedPhasePayloadVersion or
+# _PhaseEvidenceMissing; verify_subject turns those into outcomes once, for every type.
+type _Reconstructor = Callable[
+    [AsyncSession, uuid.UUID, BlockchainReceipt], Awaitable[_Rebuilt | None]
+]
+
+
+async def _rebuild_trip(
+    db: AsyncSession, subject_id: uuid.UUID, receipt: BlockchainReceipt,
+) -> _Rebuilt | None:
+    payload = await _reconstruct_trip_payload(
+        db, subject_id, anchored_payload=receipt.payload_json,
+    )
+    return None if payload is None else _Rebuilt(payload)
+
+
+async def _rebuild_vehicle_event(
+    db: AsyncSession, subject_id: uuid.UUID, receipt: BlockchainReceipt,
+) -> _Rebuilt | None:
+    payload = await _reconstruct_vehicle_event_payload(
+        db, subject_id, anchored_payload=receipt.payload_json,
+    )
+    return None if payload is None else _Rebuilt(payload)
+
+
+async def _rebuild_driver_event(
+    db: AsyncSession, subject_id: uuid.UUID, receipt: BlockchainReceipt,
+) -> _Rebuilt | None:
+    payload = await _reconstruct_driver_event_payload(db, subject_id)
+    return None if payload is None else _Rebuilt(payload)
+
+
+async def _rebuild_precinct_event(
+    db: AsyncSession, subject_id: uuid.UUID, receipt: BlockchainReceipt,
+) -> _Rebuilt | None:
+    payload = await _reconstruct_precinct_event_payload(db, subject_id)
+    return None if payload is None else _Rebuilt(payload)
+
+
+async def _rebuild_phase_event(
+    db: AsyncSession, subject_id: uuid.UUID, receipt: BlockchainReceipt,
+) -> _Rebuilt:
+    state = await _reconstruct_phase_event_payload(
+        db, subject_id, anchored_payload=receipt.payload_json,
+    )
+    return _Rebuilt(state.payload, state)
+
+
+# The orchestration half of the subject policy: how each verifiable subject type is rebuilt.
+# The blockchain half (tenant visibility) is SUBJECT_VISIBILITY_QUERIES in
+# blockchain/subject_visibility.py; two registries and not one object because blockchain/
+# sits below orchestration/ and may not import it.
+SUBJECT_RECONSTRUCTORS: Mapping[SubjectType, _Reconstructor] = MappingProxyType({
+    SubjectType.TRIP: _rebuild_trip,
+    SubjectType.VEHICLE_EVENT: _rebuild_vehicle_event,
+    SubjectType.DRIVER_EVENT: _rebuild_driver_event,
+    SubjectType.PHASE_EVENT: _rebuild_phase_event,
+    SubjectType.PRECINCT_EVENT: _rebuild_precinct_event,
+})
+
+# Subject types verify_subject does not rebuild: they report no_receipt even when a receipt
+# exists. Written out so a new SubjectType is either registered above or listed here, and a
+# test fails until someone decides which.
+UNVERIFIABLE_SUBJECT_TYPES: frozenset[SubjectType] = frozenset({
+    SubjectType.VEHICLE, SubjectType.DRIVER, SubjectType.AUDIT_PACK,
+})
+
+
 async def verify_subject(
     db: AsyncSession,
     *,
@@ -97,51 +177,25 @@ async def verify_subject(
     if receipt is None:
         return VerifyOutcome(status=VerifyStatus.NO_RECEIPT)
 
-    phase_state: _PhasePayloadState | None = None
-    if subject_type == SubjectType.TRIP:
-        try:
-            rebuilt = await _reconstruct_trip_payload(
-                db, subject_id, anchored_payload=receipt.payload_json,
-            )
-        except _UnsupportedPhasePayloadVersion:
-            return VerifyOutcome(status=VerifyStatus.ERROR, receipt=receipt)
-        if rebuilt is None:
-            return VerifyOutcome(status=VerifyStatus.NO_RECEIPT, receipt=receipt)
-        current_hash = _hash_payload(rebuilt)
-    elif subject_type == SubjectType.VEHICLE_EVENT:
-        rebuilt = await _reconstruct_vehicle_event_payload(
-            db, subject_id, anchored_payload=receipt.payload_json,
-        )
-        if rebuilt is None:
-            return VerifyOutcome(status=VerifyStatus.NO_RECEIPT, receipt=receipt)
-        current_hash = _hash_payload(rebuilt)
-    elif subject_type == SubjectType.DRIVER_EVENT:
-        rebuilt = await _reconstruct_driver_event_payload(db, subject_id)
-        if rebuilt is None:
-            return VerifyOutcome(status=VerifyStatus.NO_RECEIPT, receipt=receipt)
-        current_hash = _hash_payload(rebuilt)
-    elif subject_type == SubjectType.PHASE_EVENT:
-        try:
-            phase_state = await _reconstruct_phase_event_payload(
-                db, subject_id, anchored_payload=receipt.payload_json,
-            )
-        except _UnsupportedPhasePayloadVersion:
-            return VerifyOutcome(status=VerifyStatus.ERROR, receipt=receipt)
-        except _PhaseEvidenceMissing:
-            return VerifyOutcome(
-                status=VerifyStatus.DB_MISMATCH,
-                receipt=receipt,
-                expected_hash=receipt.data_hash,
-            )
-        current_hash = _hash_payload(phase_state.payload)
-    elif subject_type == SubjectType.PRECINCT_EVENT:
-        rebuilt = await _reconstruct_precinct_event_payload(db, subject_id)
-        if rebuilt is None:
-            return VerifyOutcome(status=VerifyStatus.NO_RECEIPT, receipt=receipt)
-        current_hash = _hash_payload(rebuilt)
-    else:
+    reconstructor = SUBJECT_RECONSTRUCTORS.get(subject_type)
+    if reconstructor is None:
         # vehicle/driver subject types not currently verifiable directly
         return VerifyOutcome(status=VerifyStatus.NO_RECEIPT, receipt=receipt)
+
+    try:
+        rebuilt = await reconstructor(db, subject_id, receipt)
+    except _UnsupportedPhasePayloadVersion:
+        return VerifyOutcome(status=VerifyStatus.ERROR, receipt=receipt)
+    except _PhaseEvidenceMissing:
+        return VerifyOutcome(
+            status=VerifyStatus.DB_MISMATCH,
+            receipt=receipt,
+            expected_hash=receipt.data_hash,
+        )
+    if rebuilt is None:
+        return VerifyOutcome(status=VerifyStatus.NO_RECEIPT, receipt=receipt)
+    phase_state = rebuilt.phase_state
+    current_hash = _hash_payload(rebuilt.payload)
 
     if current_hash != receipt.data_hash:
         return VerifyOutcome(

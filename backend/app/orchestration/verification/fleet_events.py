@@ -8,7 +8,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.events import DriverEvent, PrecinctEvent, VehicleEvent
-from app.orchestration.fleet.canonical import canonical_vehicle_fields
+from app.orchestration.fleet.canonical import (
+    driver_event_payload, precinct_event_payload, vehicle_event_payload,
+)
 
 
 def _anchored_device_id_in_plaintext(anchored_payload: Any) -> bool:
@@ -32,7 +34,7 @@ async def _reconstruct_vehicle_event_payload(
     """Rebuild a vehicle event's anchored payload from its live row.
 
     changed_fields keeps the plaintext device ID, which fleet.vehicles hashed before
-    anchoring, so the fields go through the same canonical_vehicle_fields the anchoring side
+    anchoring, so the payload is built by the same fleet.canonical function the anchoring side
     used. Receipts that predate that hashing anchored the plaintext and are rebuilt as-is.
     """
     event = (
@@ -40,19 +42,9 @@ async def _reconstruct_vehicle_event_payload(
     ).scalar_one_or_none()
     if event is None:
         return None
-    fields = (
-        event.changed_fields
-        if _anchored_device_id_in_plaintext(anchored_payload)
-        else canonical_vehicle_fields(event.event_type, event.changed_fields)
+    return vehicle_event_payload(
+        event, device_id_in_plaintext=_anchored_device_id_in_plaintext(anchored_payload),
     )
-    return {
-        "vehicle_event_id": str(event.id),
-        "vehicle_id": str(event.vehicle_id),
-        "event_type": event.event_type,
-        "fields": fields,
-        "changed_by_user_id": str(event.changed_by_user_id),
-        "timestamp": event.created_at.isoformat(),
-    }
 
 
 async def _reconstruct_driver_event_payload(
@@ -63,14 +55,7 @@ async def _reconstruct_driver_event_payload(
     ).scalar_one_or_none()
     if event is None:
         return None
-    return {
-        "driver_event_id": str(event.id),
-        "driver_id": str(event.driver_id),
-        "event_type": event.event_type,
-        "fields": event.changed_fields,
-        "changed_by_user_id": str(event.changed_by_user_id),
-        "timestamp": event.created_at.isoformat(),
-    }
+    return driver_event_payload(event)
 
 
 async def _reconstruct_precinct_event_payload(
@@ -87,11 +72,4 @@ async def _reconstruct_precinct_event_payload(
     ).scalar_one_or_none()
     if event is None:
         return None
-    return {
-        "precinct_event_id": str(event.id),
-        "precinct_id": str(event.precinct_id),
-        "event_type": event.event_type,
-        "fields": event.changed_fields,
-        "changed_by_user_id": str(event.changed_by_user_id),
-        "timestamp": event.created_at.isoformat(),
-    }
+    return precinct_event_payload(event)
