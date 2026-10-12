@@ -16,14 +16,13 @@
     "app/orchestration/phases/advance_confirmation.py::advance_confirmation": 119,
     "app/orchestration/phases/advance_departure.py::advance_departure": 118,
     "app/orchestration/phases/advance_loading.py::advance_loading": 112,
-    "app/orchestration/phases/findings.py::_raise_position_disagreement_if_unrecorded": 129,
+    "app/orchestration/phases/findings.py::_raise_position_disagreement_if_unrecorded": 128,
     "app/orchestration/phases/override.py::override_phase": 115,
-    "app/orchestration/resource_service.py::get_trip_detail": 148,
-    "app/orchestration/resource_service.py::list_trip_history": 154,
-    "app/orchestration/resource_service.py::list_trips": 106,
-    "app/orchestration/trips/creation.py::persist_trip": 274,
+    "app/orchestration/trips/creation.py::persist_trip": 260,
+    "app/orchestration/trips/detail.py::get_trip_detail": 148,
+    "app/orchestration/trips/listing.py::list_trip_history": 154,
+    "app/orchestration/trips/listing.py::list_trips": 106,
     "app/orchestration/verification_service.py::_reconstruct_phase_event_payload": 177,
-    "app/orchestration/verification_service.py::verify_subject": 108,
     "app/tasks/parcel_perfect.py::_sync_all_active": 116
   },
   "files": {
@@ -34,6 +33,6 @@
     "app/orchestration/action_location_service.py": 28,
     "app/orchestration/evidence/action_location.py": 695,
     "app/schemas/trips.py": 425,
-    "app/api/v1/endpoints/handover.py": 557
+    "app/api/v1/endpoints/handover.py": 466
   }
 }

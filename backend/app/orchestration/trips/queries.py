@@ -15,7 +15,7 @@ from app.db.models.enums import ExceptionReviewStatus, ExceptionSeverity, TripSt
 from app.db.models.organisations import Precinct
 from app.db.models.transit import TripException
 from app.db.models.trips import Trip
-from app.orchestration.resource_service import get_trip_detail
+from app.orchestration.trips.detail import get_trip_detail
 from app.schemas.trips import DriverTripListItemResponse, TripDetailResponse
 
 
@@ -121,7 +121,7 @@ async def list_trips_for_driver(
 
     trip_ids = [t.id for t in trips]
 
-    # Batched, not per-row: same N+1 guard as resource_service.list_trips().
+    # Batched, not per-row: same N+1 guard as trips.listing.list_trips().
     # Both FKs are nullable on Trip, so Nones are dropped before the IN clause.
     precinct_ids = {
         pid

@@ -41,7 +41,8 @@ from app.core.rate_limit import rate_limit
 from app.db.models.enums import DispatcherRole, TripStatus
 from app.db.session import get_db
 from app.orchestration.consignments.manifest_import import create_trip_from_pp_manifest, preview_pp_manifest
-from app.orchestration.resource_service import get_trip_detail, list_trip_history, list_trips
+from app.orchestration.trips.detail import get_trip_detail
+from app.orchestration.trips.listing import list_trip_history, list_trips
 from app.orchestration.trips.creation import create_trip
 from app.orchestration.trips.queries import (
     get_active_trip_for_driver,

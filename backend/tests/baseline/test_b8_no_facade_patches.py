@@ -57,6 +57,7 @@ FROZEN_FACADES: frozenset[str] = frozenset({
     "app.orchestration.precinct_service",
     "app.orchestration.proximity_service",
     "app.orchestration.receiver_verification_service",
+    "app.orchestration.resource_service",
     "app.orchestration.road_check_service",
     "app.orchestration.scan_service",
     "app.orchestration.trip_service",
