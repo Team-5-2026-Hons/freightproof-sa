@@ -45,11 +45,6 @@ DEFAULT_ROOT = Path(__file__).resolve().parent.parent
 # baseline file itself is the source of truth, so removing a file from tracking is a
 # one-line edit to the JSON, not a change to this script.
 INITIAL_TRACKED_FILES: tuple[str, ...] = (
-    "app/orchestration/phase_service.py",
-    "app/integrations/parcel_perfect.py",
-    "app/orchestration/exception_service.py",
-    "app/orchestration/trip_service.py",
-    "app/orchestration/action_location_service.py",
     "app/schemas/trips.py",
     "app/api/v1/endpoints/handover.py",
 )
