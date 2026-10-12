@@ -6,6 +6,7 @@ import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Ic } from '@/components/ui/Ic'
 import { Skeleton } from '@/components/ui/Skeleton'
+import { ROUTES } from '@/lib/constants/routes'
 import { fmtAge } from '@/lib/format/period'
 import type {
   ExpiryBands,
@@ -175,7 +176,7 @@ export function FleetTiles({ data, isLoading, error, onRetry, now }: FleetTilesP
   const { critical_waiting: waiting } = data
   return (
     <section className={GRID} aria-label={COPY.ariaLabel}>
-      <FleetTile label={COPY.liveTrips.label} value={String(data.live_trips)} sub={COPY.liveTrips.sub} href="/" />
+      <FleetTile label={COPY.liveTrips.label} value={String(data.live_trips)} sub={COPY.liveTrips.sub} href={ROUTES.home} />
       <FleetTile
         label={COPY.criticalWaiting.label}
         value={String(waiting.count)}

@@ -55,7 +55,7 @@ describe('FleetTiles', () => {
   it('links every tile to where the dispatcher acts on it', () => {
     renderTiles(makeTiles())
 
-    expect(tileLink('Live trips')).toHaveAttribute('href', '/')
+    expect(tileLink('Live trips')).toHaveAttribute('href', '/dashboard')
     expect(tileLink('Critical Exceptions Waiting')).toHaveAttribute('href', '/exceptions')
     expect(tileLink('Unused vehicles')).toHaveAttribute('href', '/fleet/vehicles')
     expect(screen.getByRole('link', { name: 'Drivers' })).toHaveAttribute('href', '/fleet/drivers')

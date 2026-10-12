@@ -8,7 +8,7 @@ import { ROUTES } from '@/lib/constants/routes'
 // The collapse behaviour is route-driven (auto-collapse on trip detail), so
 // usePathname is mocked at the module boundary with a controllable return value —
 // the same approach ConfirmationDetail.test.tsx uses for useAuth.
-const mockUsePathname = vi.fn(() => '/')
+const mockUsePathname = vi.fn((): string => ROUTES.home)
 const mockAuth = vi.hoisted(() => ({
   role: 'dispatcher' as 'dispatcher' | 'admin_dispatcher',
 }))
@@ -53,7 +53,7 @@ function renderSidebar() {
 
 beforeEach(() => {
   window.localStorage.clear()
-  mockUsePathname.mockReturnValue('/')
+  mockUsePathname.mockReturnValue(ROUTES.home)
   mockAuth.role = 'dispatcher'
 })
 
@@ -143,7 +143,7 @@ describe('Sidebar collapse', () => {
   })
 
   it('collapses automatically when navigating to a trip detail page', () => {
-    mockUsePathname.mockReturnValue('/')
+    mockUsePathname.mockReturnValue(ROUTES.home)
     const { rerender } = renderSidebar()
     expect(screen.getByText('Dashboard')).toBeInTheDocument()
 
@@ -178,7 +178,7 @@ describe('Sidebar collapse', () => {
     expect(window.localStorage.getItem(SIDEBAR_COLLAPSE_STORAGE_KEY)).toBeNull()
 
     // Navigating away reverts to the untouched (default expanded) preference.
-    mockUsePathname.mockReturnValue('/')
+    mockUsePathname.mockReturnValue(ROUTES.home)
     rerender(
       <SidebarCollapseProvider>
         <Sidebar mobileOpen={false} onMobileClose={vi.fn()} />
@@ -189,7 +189,7 @@ describe('Sidebar collapse', () => {
 
   it('keeps the saved preference intact through a route-driven auto-collapse', async () => {
     const user = userEvent.setup()
-    mockUsePathname.mockReturnValue('/')
+    mockUsePathname.mockReturnValue(ROUTES.home)
     const { rerender } = renderSidebar()
 
     await user.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
@@ -203,7 +203,7 @@ describe('Sidebar collapse', () => {
     )
     expect(window.localStorage.getItem(SIDEBAR_COLLAPSE_STORAGE_KEY)).toBe('true')
 
-    mockUsePathname.mockReturnValue('/')
+    mockUsePathname.mockReturnValue(ROUTES.home)
     rerender(
       <SidebarCollapseProvider>
         <Sidebar mobileOpen={false} onMobileClose={vi.fn()} />
