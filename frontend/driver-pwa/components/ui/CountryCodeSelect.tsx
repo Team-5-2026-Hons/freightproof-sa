@@ -88,7 +88,7 @@ export function CountryCodeSelect({ value, onChange, className }: CountryCodeSel
             className={cn(
               // text-base, not text-sm — see components/ui/Input.tsx for why (iOS zoom-on-focus).
               'w-full px-4 py-3 text-base bg-transparent text-foreground',
-              'placeholder:text-muted-foreground/50',
+              'placeholder:text-muted-foreground/80',
               'border-b border-input focus:outline-none',
             )}
           />

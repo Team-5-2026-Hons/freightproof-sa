@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { StepHeader } from '@/components/phase/StepHeader'
+import { StepLayout } from '@/components/phase/StepLayout'
 import { CameraCapture } from '@/components/phase/CameraCapture'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
@@ -51,7 +51,10 @@ interface ConditionChoiceProps {
 // app's documented large-touch-target treatment (see Button.tsx's own comment).
 function ConditionChoice({ value, onChange }: ConditionChoiceProps) {
   return (
-    <div role="radiogroup" aria-label="Seal condition" className="grid grid-cols-3 gap-2">
+    // auto-fit on a rem minimum, not a fixed 3 columns: the three choices sit in a row at
+    // normal text sizes and stack once Dynamic Type makes "Damaged" wider than a third of
+    // the screen — at AX sizes a fixed grid pushed the word out of its own button.
+    <div role="radiogroup" aria-label="Seal condition" className="grid grid-cols-[repeat(auto-fit,minmax(6.5rem,1fr))] gap-2">
       {CONDITIONS.map((condition) => {
         const selected = value === condition.value
         return (
@@ -128,15 +131,23 @@ export function SealVerify({ tripId, phase, stepIndex, draft, onUpdate, onComple
   }
 
   return (
-    <main className="flex min-h-dvh flex-col">
-      <StepHeader phase={phase} stepIndex={stepIndex} />
-      <div className="flex flex-1 flex-col gap-6 p-4">
-        <p className="text-lg leading-relaxed text-surface-on-variant">
-          {AS_FOUND_INSTRUCTION}
-        </p>
+    <StepLayout
+      phase={phase}
+      stepIndex={stepIndex}
+      intro={AS_FOUND_INSTRUCTION}
+      requirements={[
+        { label: 'Seal condition', met: draft.sealCondition !== null },
+        // A missing seal has no number to record, so it drops off the list entirely.
+        ...(isMissing ? [] : [{ label: 'Seal number', met: numberSatisfied }]),
+        { label: 'Seal photo', met: hasPhoto },
+      ]}
+      // Always "Swipe to Submit": the label must never leak the comparison result, in any
+      // condition.
+      action={<SwipeToConfirm label="Swipe to Submit" onConfirm={onComplete} disabled={!isReady} />}
+    >
 
         <div className="flex flex-col gap-2">
-          <p className="text-sm font-bold uppercase tracking-wider text-surface-on-variant">
+          <p className="text-footnote font-semibold text-surface-on-variant">
             Seal condition
           </p>
           <ConditionChoice value={draft.sealCondition} onChange={handleConditionChange} />
@@ -151,15 +162,15 @@ export function SealVerify({ tripId, phase, stepIndex, draft, onUpdate, onComple
               onChange={(e) => handleInputChange(e.target.value)}
             />
             {showFormatHint && (
-              <p className="text-base text-error">
+              <p className="text-subhead text-error">
                 Seal number must look like AB-1234 (two letters, four digits).
               </p>
             )}
           </>
         )}
 
-        <div className="flex flex-col gap-3 border-t border-outline-variant pt-6">
-          <p className="text-lg leading-relaxed text-surface-on-variant">
+        <div className="flex flex-col gap-3 border-t border-outline-variant/40 pt-6">
+          <p className="text-body leading-relaxed text-surface-on-variant">
             {isMissing ? MISSING_PHOTO_INSTRUCTION : PRESENT_PHOTO_INSTRUCTION}
           </p>
           <CameraCapture
@@ -168,16 +179,6 @@ export function SealVerify({ tripId, phase, stepIndex, draft, onUpdate, onComple
             onCapture={handleSealPhoto}
           />
         </div>
-      </div>
-      <div className="flex justify-center px-6 pt-6 pb-safe">
-        {/* Always "Swipe to submit": the label must never leak the comparison result,
-            in any condition. */}
-        <SwipeToConfirm
-          label="Swipe to submit"
-          onConfirm={onComplete}
-          disabled={!isReady}
-        />
-      </div>
-    </main>
+    </StepLayout>
   )
 }

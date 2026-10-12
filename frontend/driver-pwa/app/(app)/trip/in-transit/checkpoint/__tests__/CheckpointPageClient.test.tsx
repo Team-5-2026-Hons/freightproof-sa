@@ -60,8 +60,9 @@ vi.mock('@/components/phase/SwipeToConfirm', () => ({
 }))
 
 function fillCaptures() {
-  fireEvent.click(screen.getByText('Selfie'))
-  fireEvent.click(screen.getByText('Cargo photo'))
+  // By role: the checklist above the swipe repeats these labels as plain list items.
+  fireEvent.click(screen.getByRole('button', { name: 'Selfie' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Cargo photo' }))
 }
 
 describe('CheckpointPageClient offline queue (Fix 3)', () => {
@@ -75,7 +76,7 @@ describe('CheckpointPageClient offline queue (Fix 3)', () => {
 
     render(<CheckpointPageClient />)
     fillCaptures()
-    fireEvent.click(screen.getByText('Swipe to confirm'))
+    fireEvent.click(screen.getByText('Swipe to Confirm'))
 
     await waitFor(() => expect(mockRouterPush).toHaveBeenCalledWith(ROUTES.inTransit))
     expect(mockSubmitCheckpoint).toHaveBeenCalledWith('trip-1', expect.objectContaining({
@@ -89,7 +90,7 @@ describe('CheckpointPageClient offline queue (Fix 3)', () => {
 
     render(<CheckpointPageClient />)
     fillCaptures()
-    fireEvent.click(screen.getByText('Swipe to confirm'))
+    fireEvent.click(screen.getByText('Swipe to Confirm'))
 
     await waitFor(() => expect(mockRouterPush).toHaveBeenCalledWith(ROUTES.inTransit))
     expect(mockEnqueueCheckpoint).toHaveBeenCalledWith('trip-1', expect.objectContaining({
@@ -105,7 +106,7 @@ describe('CheckpointPageClient offline queue (Fix 3)', () => {
 
     render(<CheckpointPageClient />)
     fillCaptures()
-    fireEvent.click(screen.getByText('Swipe to confirm'))
+    fireEvent.click(screen.getByText('Swipe to Confirm'))
 
     await waitFor(() => expect(mockRouterPush).toHaveBeenCalledWith(ROUTES.inTransit))
     expect(mockEnqueueCheckpoint).toHaveBeenCalled()
@@ -117,7 +118,7 @@ describe('CheckpointPageClient offline queue (Fix 3)', () => {
 
     render(<CheckpointPageClient />)
     fillCaptures()
-    fireEvent.click(screen.getByText('Swipe to confirm'))
+    fireEvent.click(screen.getByText('Swipe to Confirm'))
 
     // Audit fix: the 4xx branch previously showed "check your connection" — misleading
     // exactly where the code knows retrying won't help.
@@ -130,22 +131,60 @@ describe('CheckpointPageClient offline queue (Fix 3)', () => {
   })
 })
 
-describe('CheckpointPageClient route-deviation checkbox (audit fix)', () => {
+describe('CheckpointPageClient route-deviation switch (audit M5)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockUseTrip.mockReturnValue({ trip: { id: 'trip-1' } })
   })
 
-  it('wraps the 16px checkbox in a label meeting the 44px minimum touch target', () => {
+  it('is a labelled switch with the 44px minimum touch target, not a 16px checkbox', () => {
+    // Arrange / Act
+    render(<CheckpointPageClient />)
+    const toggle = screen.getByRole('switch', { name: /route deviation/i })
+
+    // Assert — the switch's own root is the hit area (h-11 = 44px, Switch.tsx).
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+    expect(toggle).toHaveClass('h-11')
+  })
+
+  it('flips on tap and reads back as checked', () => {
+    // Arrange
+    render(<CheckpointPageClient />)
+    const toggle = screen.getByRole('switch', { name: /route deviation/i })
+
+    // Act
+    fireEvent.click(toggle)
+
+    // Assert
+    expect(toggle).toHaveAttribute('aria-checked', 'true')
+  })
+})
+
+describe('CheckpointPageClient swipe placement (0px-wide swipe bug)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockUseTrip.mockReturnValue({ trip: { id: 'trip-1' } })
+  })
+
+  it('gives the swipe a full-width wrapper so it cannot collapse to zero width', () => {
+    // jsdom does no layout, so the 0px width itself can't be measured here (it was found
+    // in a real browser). This guards the structure that caused it: the track is w-full,
+    // so its wrapper must be full width too, not a shrink-to-fit box in a centred column.
+    // SwipeToConfirm is mocked as a plain button in this file; its direct parent is the
+    // wrapper that collapsed the real track.
     render(<CheckpointPageClient />)
 
-    const checkbox = screen.getByRole('checkbox', { name: /route deviation/i })
-    const labelEl = checkbox.closest('label')
+    const wrapper = screen.getByRole('button', { name: 'Swipe to Confirm' }).parentElement
 
-    // min-h-[44px] is the app's documented minimum touch target (Switch.tsx/Button.tsx);
-    // the visual checkbox itself intentionally stays 16px (h-4 w-4).
-    expect(labelEl).not.toBeNull()
-    expect(labelEl?.className).toContain('min-h-[44px]')
-    expect(checkbox.className).toContain('h-4')
+    expect(wrapper).toHaveClass('w-full')
+  })
+
+  it('lists the selfie and cargo photo as still needed', () => {
+    render(<CheckpointPageClient />)
+
+    const list = screen.getByRole('list', { name: 'Needed to continue' })
+
+    expect(list).toHaveTextContent('Selfie')
+    expect(list).toHaveTextContent('Cargo photo')
   })
 })

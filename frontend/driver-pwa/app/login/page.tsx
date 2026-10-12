@@ -6,6 +6,7 @@ import { useContext, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { AuthContext } from '@/lib/context/AuthContext'
 import { Button } from '@/components/ui/Button'
+import { AppMark } from '@/components/brand/AppMark'
 import { CountryCodeSelect } from '@/components/ui/CountryCodeSelect'
 import { DEFAULT_COUNTRY_CODE, type CountryCode } from '@/lib/constants/country-codes'
 
@@ -63,13 +64,23 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-dvh flex-col items-center justify-center p-6">
-      <h1 className="text-2xl font-semibold mb-8 text-surface-on">FreightProof Driver</h1>
-      <form onSubmit={handleSendOtp} className="w-full max-w-sm flex flex-col gap-4">
+    // Brand in the upper half, form in the lower: the field and button sit where a thumb
+    // already is, and the keyboard rises under the form rather than over the screen's
+    // only purpose statement. pt-safe/bottom inset: this screen owns the whole device.
+    <main className="flex min-h-dvh flex-col px-6 pt-safe pb-[max(env(safe-area-inset-bottom),1.5rem)]">
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
+        <AppMark />
+        <div>
+          <h1 className="text-title-1 text-surface-on">FreightProof</h1>
+          <p className="mt-1 text-subhead text-surface-on-variant">Driver sign-in</p>
+        </div>
+      </div>
+
+      <form onSubmit={handleSendOtp} className="mx-auto flex w-full max-w-sm flex-col gap-4">
         <div className="flex flex-col gap-1.5">
           <label
             htmlFor="phone-local-number"
-            className="text-xs font-bold uppercase tracking-wider text-surface-on-variant"
+            className="text-footnote font-semibold text-surface-on-variant"
           >
             Phone number
           </label>
@@ -79,6 +90,7 @@ export default function LoginPage() {
               id="phone-local-number"
               type="tel"
               inputMode="numeric"
+              autoComplete="tel-national"
               placeholder={country.placeholder}
               value={localNumber}
               onChange={handleLocalNumberChange}
@@ -87,16 +99,17 @@ export default function LoginPage() {
                 // text-base, not text-sm — see components/ui/Input.tsx for why (iOS zoom-on-focus).
                 'flex-1 rounded-xl px-4 py-3 text-base font-medium text-surface-on',
                 'bg-surface-container-low border border-outline-variant/30',
-                'placeholder:text-surface-on-variant/50',
+                'placeholder:text-surface-on-variant/80',
                 'focus:outline-none focus:border-secondary focus:bg-surface-container-lowest',
                 'transition-colors duration-150 min-h-[44px]',
               ].join(' ')}
             />
           </div>
-          {error && <p className="text-xs text-error font-medium">{error}</p>}
+          {error && <p className="text-footnote font-medium text-error">{error}</p>}
         </div>
-        <Button type="submit" loading={loading} disabled={loading || !localNumber}>
-          {loading ? 'Sending…' : 'Send OTP'}
+        {/* "Code", not "OTP": the driver receives a code on WhatsApp; "OTP" is our word. */}
+        <Button type="submit" size="lg" loading={loading} disabled={loading || !localNumber}>
+          {loading ? 'Sending…' : 'Send Code'}
         </Button>
       </form>
     </main>

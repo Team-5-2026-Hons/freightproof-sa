@@ -18,6 +18,7 @@ import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { TripDetailView } from '@/components/trip/TripDetailView'
 import { activationBlock, activationBlockMessage } from '@/lib/utils/activation-gate'
 import type { ActivationCandidate } from '@/lib/utils/activation-gate'
+import { markTransition } from '@/lib/navigation/transition-direction'
 
 // Route to the first step of the selected phase's own recipe.
 function firstStepRoute(phase: PhaseDescriptor): string {
@@ -89,9 +90,9 @@ export default function TripDetailByIdPageClient() {
           {loadError ?? 'Trip not found.'}
         </p>
         <div className="flex gap-2">
-          <Button variant="secondary" size="sm" onClick={load}>Try again</Button>
-          <Button variant="ghost" size="sm" onClick={() => router.push(ROUTES.trips)}>
-            Back to trips
+          <Button variant="secondary" size="sm" onClick={load}>Try Again</Button>
+          <Button variant="ghost" size="sm" onClick={() => { markTransition('back'); router.push(ROUTES.trips) }}>
+            Back to Trips
           </Button>
         </div>
       </main>

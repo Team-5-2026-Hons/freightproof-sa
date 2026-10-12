@@ -167,7 +167,7 @@ describe('OtpPage auto-submit and navigation', () => {
   it('offers a way back to login for a mistyped phone number', () => {
     renderOtpPage()
 
-    fireEvent.click(screen.getByRole('button', { name: /wrong number\? go back/i }))
+    fireEvent.click(screen.getByRole('button', { name: /use a different number/i }))
 
     expect(mockPush).toHaveBeenCalledWith(ROUTES.login)
   })

@@ -196,13 +196,13 @@ describe('trips list page', () => {
     consoleError.mockRestore()
   })
 
-  it('retries the fetch when the driver taps Try again', async () => {
+  it('retries the fetch when the driver taps Try Again', async () => {
     mockFetchMyTrips.mockRejectedValueOnce(new Error('offline')).mockResolvedValue([ACTIVE])
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     render(<TripsPage />)
     await screen.findByText(/Could not load your trips/i)
 
-    fireEvent.click(screen.getByRole('button', { name: /Try again/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Try Again/i }))
 
     expect(await screen.findByText('FP-ACTIVE')).toBeInTheDocument()
     consoleError.mockRestore()

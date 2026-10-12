@@ -190,7 +190,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null)
   }, [])
 
-  // Manual sign-out (the profile panel's "Log out"): clears any saved return path — a
+  // Manual sign-out (the profile panel's "Log Out"): clears any saved return path — a
   // driver who deliberately leaves a screen should not be dropped back onto it next time
   // they sign in.
   const signOut = useCallback(async () => {

@@ -15,7 +15,8 @@
 'use client'
 
 import { useEffect } from 'react'
-import { StepHeader } from '@/components/phase/StepHeader'
+import { Check } from 'lucide-react'
+import { StepLayout } from '@/components/phase/StepLayout'
 import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
 import { QrCode } from '@/components/ui/QrCode'
 import { Button } from '@/components/ui/Button'
@@ -56,35 +57,37 @@ export function ReceiverHandover({
 
   if (isConfirmed) {
     return (
-      <main className="flex min-h-dvh flex-col">
-        <StepHeader phase={phase} stepIndex={stepIndex} />
-        <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
-          <div className="flex size-16 items-center justify-center rounded-full bg-primary-container">
-            <span className="text-3xl" aria-hidden="true">✓</span>
-          </div>
-          <p className="text-xl font-medium text-surface-on">Receiver confirmed the delivery</p>
-          {draft.receiverConfirmedAt !== null && (
-            <p className="text-base text-surface-on-variant">
-              Signed at {formatTime(draft.receiverConfirmedAt)}
-            </p>
-          )}
-          <p className="max-w-sm text-sm text-surface-on-variant">
-            Their signature was recorded on their own device, with their own location.
+      <StepLayout
+        phase={phase}
+        stepIndex={stepIndex}
+        centered
+        action={<SwipeToConfirm label="Continue" onConfirm={onComplete} />}
+      >
+        {/* A drawn check, not a "✓" text glyph: glyphs render in whatever font is at hand
+            and never match the icon set used everywhere else. Success-tinted to match the
+            Trip Complete screen this flow ends on. */}
+        <div className="flex size-16 items-center justify-center rounded-full bg-success/10">
+          <Check className="h-8 w-8 text-success" strokeWidth={2.5} aria-hidden />
+        </div>
+        <p className="text-title-3 text-surface-on">Receiver confirmed the delivery</p>
+        {draft.receiverConfirmedAt !== null && (
+          <p className="text-body text-surface-on-variant">
+            Signed at {formatTime(draft.receiverConfirmedAt)}
           </p>
-        </div>
-        <div className="flex justify-center px-6 pt-6 pb-safe">
-          <SwipeToConfirm label="Continue" onConfirm={onComplete} />
-        </div>
-      </main>
+        )}
+        <p className="max-w-sm text-subhead text-surface-on-variant">
+          Their signature was recorded on their own device, with their own location.
+        </p>
+      </StepLayout>
     )
   }
 
+  // No action while waiting: the receiver's own device completes this step, not a swipe.
   return (
-    <main className="flex min-h-dvh flex-col overflow-x-hidden">
-      <StepHeader phase={phase} stepIndex={stepIndex} />
-      {/* justify-center, so the code sits in the middle of whatever space is left rather
-          than stacking from the top and pushing the status text off a short screen. */}
-      <div className="flex flex-1 flex-col items-center justify-center gap-5 px-4 py-6">
+    <StepLayout phase={phase} stepIndex={stepIndex} centered>
+      {/* Centred, so the code sits in the middle of whatever space is left rather than
+          stacking from the top and pushing the status text off a short screen. */}
+      <div className="flex w-full flex-col items-center gap-5 overflow-x-hidden">
         <p className="max-w-sm text-center text-base leading-relaxed text-surface-on-variant">
           Ask the receiver to scan this code with their phone camera. They sign on their
           own device.
@@ -121,7 +124,7 @@ export function ReceiverHandover({
           <div className="flex w-full flex-col items-center gap-3 rounded-xl border border-error/40 bg-error-container/30 p-4">
             <p className="text-center text-sm text-surface-on">{error}</p>
             <Button variant="secondary" onClick={forceNewCode} disabled={isIssuing}>
-              {isIssuing ? 'Refreshing…' : 'Try again'}
+              {isIssuing ? 'Refreshing…' : 'Try Again'}
             </Button>
           </div>
         )}
@@ -138,10 +141,10 @@ export function ReceiverHandover({
             disabled={isIssuing}
             className="text-sm underline text-surface-on-variant disabled:opacity-50"
           >
-            Receiver having trouble? Show a new code
+            Receiver Having Trouble? Show a New Code
           </button>
         )}
       </div>
-    </main>
+    </StepLayout>
   )
 }

@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { AuthContext } from '@/lib/context/AuthContext'
 import { Button } from '@/components/ui/Button'
 import { OtpInput } from '@/components/ui/OtpInput'
+import { AppMark } from '@/components/brand/AppMark'
 import { ROUTES } from '@/lib/constants/routes'
 import { takeReturnPath } from '@shared/lib/session/return-path'
 
@@ -112,29 +113,43 @@ function OtpForm() {
   }
 
   return (
-    <main className="flex min-h-dvh flex-col items-center justify-center p-6">
-      <h1 className="text-2xl font-semibold mb-2 text-surface-on">Enter OTP</h1>
-      <p className="text-sm text-surface-on-variant mb-8">Sent to {phone}</p>
-      <form onSubmit={handleVerify} className="w-full max-w-sm flex flex-col gap-4">
+    // Same frame as the login screen it follows — mark and heading above, controls in the
+    // lower half — so the two read as one sign-in flow rather than two unrelated pages.
+    <main className="flex min-h-dvh flex-col px-6 pt-safe pb-[max(env(safe-area-inset-bottom),1.5rem)]">
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
+        <AppMark size={56} />
+        <div>
+          {/* "Code", not "OTP" — the same word the login button used. */}
+          <h1 className="text-title-2 text-surface-on">Enter the Code</h1>
+          <p className="mt-1 text-subhead text-surface-on-variant">
+            Sent to <span className="tabular-nums">{phone}</span>
+          </p>
+        </div>
+      </div>
+
+      <form onSubmit={handleVerify} className="mx-auto flex w-full max-w-sm flex-col gap-4">
         <OtpInput length={OTP_LENGTH} value={token} onChange={handleTokenChange} autoFocus />
-        {error && <p className="text-sm text-error text-center">{error}</p>}
-        <Button type="submit" loading={loading} disabled={loading || token.length < OTP_LENGTH}>
+        {error && <p className="text-center text-footnote font-medium text-error">{error}</p>}
+        <Button type="submit" size="lg" loading={loading} disabled={loading || token.length < OTP_LENGTH}>
           {loading ? 'Verifying…' : 'Verify'}
         </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          loading={resending}
-          disabled={cooldownActive || resending}
-          onClick={handleResend}
-        >
-          {cooldownActive ? `Resend in ${cooldown}s` : 'Resend code'}
-        </Button>
-        {/* Full-width to match its ghost sibling (Resend code) above it, rather than
-            the old centered small-text link — both are now the same shadcn Button. */}
-        <Button type="button" variant="ghost" onClick={() => router.push(ROUTES.login)}>
-          Wrong number? Go back
-        </Button>
+        {/* The two ways out as quiet links under the main action, stacked: side by side
+            they don't fit a phone's width and each wrapped onto two lines. */}
+        <div className="flex flex-col items-center">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            loading={resending}
+            disabled={cooldownActive || resending}
+            onClick={handleResend}
+          >
+            {cooldownActive ? `Resend in ${cooldown}s` : 'Resend Code'}
+          </Button>
+          <Button type="button" variant="ghost" size="sm" onClick={() => router.push(ROUTES.login)}>
+            Use a Different Number
+          </Button>
+        </div>
       </form>
     </main>
   )

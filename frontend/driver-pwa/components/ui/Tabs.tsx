@@ -36,7 +36,7 @@ export function Tabs({ tabs, active, onChange, className }: TabsProps) {
               // px-2 (not px-4) + whitespace-nowrap keeps "Upcoming" + its count
               // badge on a single line at narrow widths (390px viewport).
               'flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg whitespace-nowrap',
-              'text-sm font-bold uppercase tracking-wider transition-all duration-200',
+              'text-subhead font-semibold transition-all duration-200',
               'text-surface-on-variant hover:text-surface-on hover:bg-surface-container',
               'data-[state=active]:bg-surface-container-lowest data-[state=active]:text-surface-on',
               'data-[state=active]:shadow-ambient-sm data-[state=active]:hover:bg-surface-container-lowest',
@@ -46,7 +46,7 @@ export function Tabs({ tabs, active, onChange, className }: TabsProps) {
             {tab.icon}
             {tab.label}
             {tab.count !== undefined && (
-              <span className="rounded-full bg-surface-container px-1.5 py-0.5 text-[10px] tabular-nums">
+              <span className="rounded-full bg-surface-container px-1.5 py-0.5 text-caption tabular-nums">
                 {tab.count}
               </span>
             )}

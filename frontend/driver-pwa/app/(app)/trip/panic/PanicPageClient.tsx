@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/Button'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { ROUTES } from '@/lib/constants/routes'
 import { captureWithinBudget, REPORT_CAPTURE_BUDGET_MS } from '@/lib/utils/bounded-capture'
+import { markTransition } from '@/lib/navigation/transition-direction'
 
 export default function PanicPageClient() {
   const router = useRouter()
@@ -115,14 +116,15 @@ export default function PanicPageClient() {
           // This state is reachable via cold load, deep link, or refresh —
           // there may be no meaningful back-history, so router.back() could
           // land anywhere (or nowhere). Use an explicit replace so the label's
-          // promise ("Return to in-transit") is actually guaranteed.
-          onClick={() => router.replace(ROUTES.inTransit)}
+          // promise ("Back to In Transit") is actually guaranteed.
+          onClick={() => { markTransition('back'); router.replace(ROUTES.inTransit) }}
           // Ghost's default text-secondary/hover:bg-secondary/10 is unreadable on this
-          // screen's bg-error backdrop — override to the same dim error-on tone the raw
-          // button used, keeping the visual intent while gaining the shared Button.
-          className="text-error-on/70 hover:bg-error-on/10"
+          // screen's bg-error backdrop — override to full-strength error-on. The old /70
+          // tone measured 3.8:1 on the red, below 4.5:1 for 17pt text: a frightened
+          // driver must be able to read the way out.
+          className="text-error-on hover:bg-error-on/10"
         >
-          Return to in-transit
+          Back to In Transit
         </Button>
       </main>
     )
@@ -132,10 +134,12 @@ export default function PanicPageClient() {
     <main className="flex min-h-dvh flex-col items-center justify-center gap-8 bg-error px-6 pt-6 pb-safe">
       <div className="flex flex-col items-center text-center text-error-on">
         <ShieldAlert className="mb-4 h-14 w-14" strokeWidth={1.5} aria-hidden />
-        <h1 className="mb-2 text-2xl font-bold">Panic Alert</h1>
-        <p className="text-lg leading-relaxed opacity-90">
-          Swipe the button below to send an emergency alert to your dispatcher.
-          Your alert is sent immediately. Your GPS location is included when your phone can provide one in time.
+        <h1 className="mb-2 text-title-1">Panic Alert</h1>
+        {/* Same three facts as before, in half the words — read by someone who may be
+            frightened: what to do, that it goes at once, and what goes with it. */}
+        <p className="max-w-xs text-body leading-relaxed">
+          Swipe to alert your dispatcher. It sends immediately, with your location if your
+          phone can find it in time.
         </p>
         {sending && (
           <p className="mt-2 text-sm opacity-75" role="status">
@@ -154,7 +158,7 @@ export default function PanicPageClient() {
           discrete key presses on the keyboard path), so that extra weighting is dropped;
           the panic flow still uses variant="danger" to keep it visually distinct. */}
       <SwipeToConfirm
-        label="Send panic"
+        label="Send Panic"
         onConfirm={handlePanic}
         variant="danger"
       />
@@ -164,8 +168,9 @@ export default function PanicPageClient() {
         // Same reasoning as the !trip branch above: this page is reachable via cold
         // load or deep link, where router.back() has no meaningful history to pop —
         // replace to the in-transit hub so Cancel always lands somewhere sensible.
-        onClick={() => router.replace(ROUTES.inTransit)}
-        className="text-error-on/70 hover:bg-error-on/10"
+        onClick={() => { markTransition('back'); router.replace(ROUTES.inTransit) }}
+        // Full-strength error-on, not /70 (3.8:1) — see the !trip branch above.
+        className="text-error-on hover:bg-error-on/10"
       >
         Cancel
       </Button>

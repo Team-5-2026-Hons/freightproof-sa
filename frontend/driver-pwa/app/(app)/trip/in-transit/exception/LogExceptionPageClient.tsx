@@ -13,12 +13,14 @@ import { ROUTES } from '@/lib/constants/routes'
 import { Button } from '@/components/ui/Button'
 import { TextArea } from '@/components/ui/TextArea'
 import { CameraCapture } from '@/components/phase/CameraCapture'
+import { RequirementChecklist } from '@/components/phase/StepLayout'
 import { SubpageHeader } from '@/components/layout/SubpageHeader'
 import type { ExceptionType } from '@shared/lib/types/exception'
 import type { Vehicle, VehicleId, VehicleType } from '@shared/lib/types/vehicle'
 import { DRIVER_EXCEPTION_TYPES } from '@shared/lib/constants/status-meta'
 import { useLocation } from '@/lib/hooks/useLocation'
 import { captureWithinBudget, REPORT_CAPTURE_BUDGET_MS } from '@/lib/utils/bounded-capture'
+import { markTransition } from '@/lib/navigation/transition-direction'
 
 // Options are derived from the shared DRIVER_EXCEPTION_TYPES so the picker can never
 // drift to an invalid / non-driver type (e.g. system-detected gps_mismatch).
@@ -305,7 +307,7 @@ export default function LogExceptionPageClient() {
           <h1 className="text-lg font-bold">Unable to verify trip</h1>
           <p className="text-lg leading-relaxed opacity-90">
             We could not confirm this exception against your active trip.
-            Return to in-transit and try again.
+            Go back to In Transit and try again.
           </p>
         </div>
         <Button
@@ -313,9 +315,9 @@ export default function LogExceptionPageClient() {
           variant="ghost"
           // Explicit replace, not router.back(): reachable via cold load/deep link, so
           // there may be no meaningful back-history.
-          onClick={() => router.replace(ROUTES.inTransit)}
+          onClick={() => { markTransition('back'); router.replace(ROUTES.inTransit) }}
         >
-          Return to in-transit
+          Back to In Transit
         </Button>
       </main>
     )
@@ -332,7 +334,7 @@ export default function LogExceptionPageClient() {
     <main className="flex min-h-dvh flex-col">
       <SubpageHeader
         title="Log Exception"
-        backLabel="In-Transit Hub"
+        backLabel="In Transit"
         onBack={() => router.push(ROUTES.inTransit)}
       />
       <div className="flex flex-1 flex-col p-4">
@@ -378,9 +380,11 @@ export default function LogExceptionPageClient() {
           </div>
         )}
 
+        {/* No "Required" helper here: rendered under the field it sat directly above the
+            next label, so the screen read "Required / Photo (optional)" (audit C4). What
+            is still needed is listed beside the submit button instead. */}
         <TextArea
           label="Description"
-          helperText="Required"
           className="mb-6"
           rows={4}
           placeholder="Describe what happened"
@@ -407,16 +411,23 @@ export default function LogExceptionPageClient() {
             space and try again, or report this to your dispatcher directly.
           </p>
         )}
+        <RequirementChecklist
+          requirements={[
+            { label: 'What happened', met: type !== null },
+            ...(asksVehicle ? [{ label: 'Which vehicle', met: vehicleAnswer.complete }] : []),
+            { label: 'Description', met: description.trim() !== '' },
+          ]}
+        />
         <Button
           size="lg"
           disabled={!type || !description.trim() || !vehicleAnswer.complete || submitting}
           onClick={handleSubmit}
         >
           {stage === 'uploading-photo'
-            ? 'Uploading photo…'
+            ? 'Uploading Photo…'
             : stage === 'saving'
               ? 'Submitting…'
-              : 'Submit exception'}
+              : 'Submit Exception'}
         </Button>
       </div>
     </main>

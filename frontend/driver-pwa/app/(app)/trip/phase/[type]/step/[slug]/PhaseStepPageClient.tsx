@@ -170,7 +170,7 @@ export default function PhaseStepPageClient() {
       <main className="flex min-h-dvh flex-col justify-center gap-4 p-6">
         <HoldNotice />
         <Button variant="secondary" size="lg" onClick={() => router.push(ROUTES.activeTripDetail)}>
-          View trip
+          View Trip
         </Button>
       </main>
     )
@@ -204,7 +204,7 @@ function PhaseStepContent({ trip, onHandOff }: PhaseStepContentProps) {
   // Guarding on currentPhase deadlocked the trip — this screen demanded the ledger
   // already be on `unloading`, while the only thing that moves the ledger to `unloading`
   // is a submit from this screen. The driver was bounced back to the trip page every
-  // time they pressed "Arrive at destination". See lib/phase/derive.ts.
+  // time they pressed "Arrive at Destination". See lib/phase/derive.ts.
   const phase = actionablePhase(trip.phases)
   const steps = phase !== null ? stepsFor(phase) : []
   // Guard: the phase the driver is due on may not be the one this URL addresses — a stale
@@ -375,12 +375,15 @@ function usePhaseStepController<T extends PhaseEvidence>(
 
   function notifyPhaseRecorded(notice: RecordedNotice) {
     const savedAt = formatTime(new Date())
+    // savedAt was computed but never interpolated, so every receipt read "Saved . Evidence
+    // recorded…". This toast is the honest receipt (the swipe only says "Confirmed"), so
+    // the time the evidence was saved is the detail that makes it one.
     const body =
       notice === 'anchored'
-        ? `Saved . Evidence recorded and anchored to Hedera HCS.`
+        ? `Saved ${savedAt}. Evidence recorded and anchored to Hedera HCS.`
         : notice === 'anchoring'
-          ? `Saved . Evidence recorded. Hedera anchoring in progress, track it on your trip screen.`
-          : `Saved . Evidence stored on this device.`
+          ? `Saved ${savedAt}. Evidence recorded. Hedera anchoring in progress, track it on your trip screen.`
+          : `Saved ${savedAt}. Evidence stored on this device.`
     notify({ kind: 'success', title: `${PHASE_NAMES[phase.phase_type]} recorded`, body })
   }
 
@@ -723,7 +726,7 @@ function ConfirmationStep({ trip, phase, slug, stepIndex, isFinalStep, onHandOff
 //
 // The phase DOES have a PhaseCompleteRequest variant again as of 2026-08-09
 // (InTransitCompleteRequest / advance_in_transit) and the driver does submit it — but
-// from the in-transit hub's "Arrive at destination" swipe, deliberately not from a step
+// from the in-transit hub's "Arrive at Destination" swipe, deliberately not from a step
 // page: a step recipe would perturb actionablePhase() and force a change to the shared
 // STEP_SLUGS contract. So the recipe stays empty, PhaseStepContent's guard still
 // redirects away before this phase can address a step page, and this file stays out of

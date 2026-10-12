@@ -4,7 +4,8 @@ import { cn } from '@/lib/utils'
 
 export type ChipKind = 'verified' | 'success' | 'warning' | 'error' | 'pending' | 'neutral' | 'overridden' | 'info' | 'live'
 
-const chipVariants = cva('inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider', {
+// Footnote-size semibold in the label's own case — a status reads as a word, not a stamp.
+const chipVariants = cva('inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-footnote font-semibold', {
   variants: {
     kind: {
       verified:   'bg-secondary/10 text-secondary',

@@ -69,7 +69,7 @@ export function ThemeSelect() {
                   sr-only and so has nothing for the global focus ring to draw on. */}
               <span
                 className={cn(
-                  'flex min-h-[44px] items-center justify-center gap-1.5 rounded-lg text-xs font-semibold transition-colors',
+                  'flex min-h-[44px] items-center justify-center gap-1.5 rounded-lg text-subhead font-semibold transition-colors',
                   'peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring',
                   isSelected
                     ? 'bg-surface-container-lowest text-surface-on shadow-level-1'

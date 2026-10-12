@@ -23,9 +23,16 @@ vi.mock('@/lib/hooks/useAuth', () => ({
   useAuth: () => ({ user: mockUser, signOut: mockSignOut }),
 }))
 
+// The vehicle now comes from the driver's real active trip, not the mock fixtures.
+let mockTrip: { horse: { registration: string; make: string | null } | null } | null = null
+vi.mock('@/lib/hooks/useTrip', () => ({
+  useTrip: () => ({ trip: mockTrip }),
+}))
+
 beforeEach(() => {
   vi.clearAllMocks()
   mockSignOut.mockResolvedValue(undefined)
+  mockTrip = null
 })
 
 function renderPanel() {
@@ -45,7 +52,7 @@ describe('ProfilePanel logout confirmation', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /log out/i }))
 
-    expect(screen.getByText(/new OTP to sign back in/i)).toBeInTheDocument()
+    expect(screen.getByText(/new code to sign back in/i)).toBeInTheDocument()
     expect(mockSignOut).not.toHaveBeenCalled()
   })
 
@@ -55,7 +62,7 @@ describe('ProfilePanel logout confirmation', () => {
 
     fireEvent.click(within(getConfirmDialog()).getByRole('button', { name: /cancel/i }))
 
-    expect(screen.queryByText(/new OTP to sign back in/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/new code to sign back in/i)).not.toBeInTheDocument()
     expect(mockSignOut).not.toHaveBeenCalled()
   })
 
@@ -71,5 +78,35 @@ describe('ProfilePanel logout confirmation', () => {
 
     expect(mockSignOut).toHaveBeenCalledTimes(1)
     expect(mockRouterReplace).toHaveBeenCalledWith(ROUTES.login)
+  })
+})
+
+describe('ProfilePanel content (audit M13)', () => {
+  it('shows the vehicle from the driver\u2019s real active trip', () => {
+    // Arrange
+    mockTrip = { horse: { registration: 'GP 12-34 ZX', make: 'Scania' } }
+
+    // Act
+    renderPanel()
+
+    // Assert
+    expect(screen.getByText('GP 12-34 ZX · Scania')).toBeInTheDocument()
+  })
+
+  it('says so plainly when there is no vehicle on an active trip', () => {
+    // Arrange / Act
+    renderPanel()
+
+    // Assert
+    expect(screen.getByText('No vehicle on an active trip')).toBeInTheDocument()
+  })
+
+  it('no longer shows trip counts computed from mock fixtures', () => {
+    // Arrange / Act
+    renderPanel()
+
+    // Assert — those numbers were wrong for every real driver.
+    expect(screen.queryByText(/trips completed/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/total trips/i)).not.toBeInTheDocument()
   })
 })

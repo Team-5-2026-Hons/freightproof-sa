@@ -3,7 +3,7 @@ import { CheckCircle2, Truck } from 'lucide-react'
 import type { Trip } from '@shared/lib/types/trip'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import { PHASE_NAMES } from '@shared/lib/constants/phase-meta'
-import { currentPhase, isAnchored, isDriving } from '@/lib/phase'
+import { currentPhase, isAnchored, isDriving, phaseLocation } from '@/lib/phase'
 import { tripStatusChip } from '@/lib/utils/trip-status-chip'
 import { Card } from '@/components/ui/Card'
 import { Chip } from '@/components/ui/Chip'
@@ -58,12 +58,15 @@ export function TripDetailView({
     <main className="flex h-dvh flex-col overflow-y-auto overscroll-contain">
       <SubpageHeader
         title={trip.trip_reference}
-        backLabel="My Trips"
+        // Named after the tab it returns to — iOS back buttons show the previous title.
+        backLabel="Trips"
         onBack={onBack}
         titleVariant="reference"
         titleCaption="Trip reference"
         right={
-          <span className="shrink-0 rounded-xl border-2 border-primary px-3 py-1.5 text-xs font-bold tracking-industrial text-surface-on">
+          // Secondary identifier: quiet metadata beside the back button, not a second
+          // bordered badge competing with the trip reference below it.
+          <span className="shrink-0 font-mono text-footnote tabular-nums text-surface-on-variant">
             {trip.order_number}
           </span>
         }
@@ -83,7 +86,7 @@ export function TripDetailView({
             iconLeft={<Truck className="h-5 w-5" strokeWidth={2} aria-hidden />}
             onClick={onInTransitHub}
           >
-            Continue driving
+            Continue Driving
           </Button>
         )}
 
@@ -109,9 +112,9 @@ export function TripDetailView({
                     <span>
                       <span className="font-semibold">{PHASE_NAMES[phase.phase_type]}</span>
                       {/* Disambiguates a repeated phase type on a cross-dock plan. */}
-                      {phase.stop_sequence !== null && (
-                        <span className="ml-1.5 text-xs font-normal text-surface-on-variant">
-                          Stop {phase.stop_sequence}
+                      {phaseLocation(phases, phase) !== null && (
+                        <span className="ml-1.5 text-footnote font-normal text-surface-on-variant">
+                          {phaseLocation(phases, phase)}
                         </span>
                       )}
                     </span>
@@ -130,11 +133,12 @@ export function TripDetailView({
           </section>
         ) : (
           // Suppressed while driving: the current phase is then the arrival phase, whose
-          // steps can't be completed until the truck has arrived. "Continue driving"
+          // steps can't be completed until the truck has arrived. "Continue Driving"
           // above takes its place.
           !onHold && !driving && current !== null && (
             <CurrentPhaseCard
               phase={current}
+              stop={phaseLocation(phases, current)}
               onSelect={() => onSelectPhase(current)}
             />
           )

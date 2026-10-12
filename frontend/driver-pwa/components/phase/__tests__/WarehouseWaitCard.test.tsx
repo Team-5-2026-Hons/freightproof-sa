@@ -38,13 +38,13 @@ describe('WarehouseWaitCard', () => {
     expect(screen.getByText('Waiting for the warehouse')).toBeInTheDocument()
   })
 
-  it('renders a Check now control', () => {
+  it('renders a Check Now control', () => {
     render(<WarehouseWaitCard>Body copy.</WarehouseWaitCard>)
 
     expect(screen.getByRole('button', { name: /check now/i })).toBeInTheDocument()
   })
 
-  it('activating Check now calls refreshQuietly', () => {
+  it('activating Check Now calls refreshQuietly', () => {
     render(<WarehouseWaitCard>Body copy.</WarehouseWaitCard>)
 
     fireEvent.click(screen.getByRole('button', { name: /check now/i }))
@@ -52,7 +52,7 @@ describe('WarehouseWaitCard', () => {
     expect(mockRefreshQuietly).toHaveBeenCalledTimes(1)
   })
 
-  it('disables Check now while a refresh is in flight', () => {
+  it('disables Check Now while a refresh is in flight', () => {
     mockIsRefreshing = true
     render(<WarehouseWaitCard>Body copy.</WarehouseWaitCard>)
 

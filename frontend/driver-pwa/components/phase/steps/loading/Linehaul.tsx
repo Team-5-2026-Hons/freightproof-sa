@@ -1,7 +1,7 @@
 // frontend/driver-pwa/components/phase/steps/loading/Linehaul.tsx
 'use client'
 
-import { StepHeader } from '@/components/phase/StepHeader'
+import { StepLayout } from '@/components/phase/StepLayout'
 import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
 import { CameraCapture } from '@/components/phase/CameraCapture'
 import { WarehouseWaitCard } from '@/components/phase/WarehouseWaitCard'
@@ -58,10 +58,19 @@ export function Linehaul({
     })
   }
 
+  const hasPhoto = Boolean(draft.linehaulPhotoDataUrl)
+
   return (
-    <main className="flex min-h-dvh flex-col">
-      <StepHeader phase={phase} stepIndex={stepIndex} />
-      <div className="flex flex-1 flex-col gap-6 p-4">
+    <StepLayout
+      phase={phase}
+      stepIndex={stepIndex}
+      intro={isBlocked ? undefined : 'Check this against the linehaul sheet you were given, then confirm.'}
+      requirements={[{ label: 'Linehaul sheet photo', met: hasPhoto }]}
+      // No action at all while blocked: the server would 409 it, so there is nothing to offer.
+      action={isBlocked ? undefined : (
+        <SwipeToConfirm label="Confirm Linehaul" onConfirm={onComplete} disabled={!hasPhoto} />
+      )}
+    >
         {isBlocked ? (
           <WarehouseWaitCard>
             Loading is still in progress. This will unlock on its own once the warehouse
@@ -69,10 +78,7 @@ export function Linehaul({
           </WarehouseWaitCard>
         ) : (
           <>
-            <p className="text-sm text-surface-on-variant">
-              Check this against the linehaul sheet you were given, then confirm.
-            </p>
-            <dl className="rounded-xl border border-outline-variant bg-surface-container-lowest divide-y divide-outline-variant">
+            <dl className="divide-y divide-outline-variant/40 rounded-2xl bg-surface-container-lowest shadow-level-2">
               <Row label="Vehicle" value={linehaul?.vehicle_registration ?? '—'} />
               <Row label="Type" value={linehaul?.vehicle_type ?? '—'} />
               <Row label="Driver" value={linehaul?.driver_full_name ?? '—'} />
@@ -85,25 +91,15 @@ export function Linehaul({
             />
           </>
         )}
-      </div>
-      <div className="flex justify-center px-6 pt-6 pb-safe">
-        {!isBlocked && (
-          <SwipeToConfirm
-            label="Confirm linehaul"
-            onConfirm={onComplete}
-            disabled={!draft.linehaulPhotoDataUrl}
-          />
-        )}
-      </div>
-    </main>
+    </StepLayout>
   )
 }
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between p-3">
-      <dt className="text-sm text-surface-on-variant">{label}</dt>
-      <dd className="text-sm font-semibold">{value}</dd>
+    <div className="flex items-center justify-between gap-3 px-4 py-3">
+      <dt className="text-body text-surface-on-variant">{label}</dt>
+      <dd className="text-right text-body font-semibold tabular-nums">{value}</dd>
     </div>
   )
 }

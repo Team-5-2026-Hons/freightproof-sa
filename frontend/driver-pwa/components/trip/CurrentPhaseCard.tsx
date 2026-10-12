@@ -6,6 +6,8 @@ import { Card } from '@/components/ui/Card'
 interface CurrentPhaseCardProps {
   phase: PhaseDescriptor
   onSelect: () => void
+  /** Where the phase happens ("Origin", "Stop 2", "Destination") — see lib/phase stopLabel. */
+  stop?: string | null
 }
 
 // Sits directly under PhaseProgressBar's dots — the chevron visually continues from the
@@ -14,8 +16,8 @@ interface CurrentPhaseCardProps {
 //
 // Uses the interactive Card (role="button" + Enter/Space handling) rather than Button
 // asChild: this row's left-aligned icon+label+arrow layout doesn't fit Button's cva,
-// which always forces centered/uppercase/font-bold text.
-export function CurrentPhaseCard({ phase, onSelect }: CurrentPhaseCardProps) {
+// which always forces centered/semibold text.
+export function CurrentPhaseCard({ phase, onSelect, stop = null }: CurrentPhaseCardProps) {
   return (
     // -mt-1 so the chevron reads as a continuation of the timeline dot directly above.
     <div className="-mt-1 flex flex-col items-center">
@@ -33,8 +35,8 @@ export function CurrentPhaseCard({ phase, onSelect }: CurrentPhaseCardProps) {
             <span className="font-semibold text-secondary-on-container">
               {PHASE_NAMES[phase.phase_type]}
               {/* Disambiguates a repeated phase type on a cross-dock plan. */}
-              {phase.stop_sequence !== null && (
-                <span className="ml-1.5 font-normal opacity-80">Stop {phase.stop_sequence}</span>
+              {stop !== null && (
+                <span className="ml-1.5 font-normal opacity-80">{stop}</span>
               )}
             </span>
           </div>

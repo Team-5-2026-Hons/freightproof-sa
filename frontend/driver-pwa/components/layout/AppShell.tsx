@@ -1,13 +1,15 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { useCallback, useRef, useState, type ReactNode } from 'react'
 import { usePathname } from 'next/navigation'
+import { cn } from '@/lib/utils'
 import { OfflineBanner } from './OfflineBanner'
 import { ProfilePanel } from './ProfilePanel'
 import { BottomNav } from './BottomNav'
 
-// Shell header titles for top-level nav destinations. Handshake/trip sub-flows
-// render their own StepHeader, so the fallback brand title is correct there.
+// Titles for the top-level tab destinations — the only routes AppShell wraps (every
+// other route is full-bleed and renders its own SubpageHeader/StepHeader). They match
+// the tab labels, so the screen a driver lands on is named exactly what they tapped.
 const ROUTE_TITLES: Record<string, string> = {
   '/': 'Home',
   '/trips': 'Trips',
@@ -20,45 +22,74 @@ interface AppShellProps {
 
 export function AppShell({ children }: AppShellProps) {
   const [profileOpen, setProfileOpen] = useState(false)
+  // True once the large title has scrolled up under the bar — the iOS hand-off point
+  // where the big title disappears and the small centred one takes over.
+  const [collapsed, setCollapsed] = useState(false)
+  const headerRef = useRef<HTMLElement | null>(null)
+  const titleRef = useRef<HTMLHeadingElement | null>(null)
   const pathname = usePathname()
   const title = ROUTE_TITLES[pathname] ?? 'FreightProof'
 
+  // Collapse once the large title's midline passes under the bar — the point iOS hands
+  // over, and early enough that a short screen (which can only scroll a few points) never
+  // rests with half-clipped letters peeking out under an opaque bar. Read from live layout
+  // on each scroll rather than a fixed pixel threshold, because the bar's height moves
+  // with the safe-area inset, the offline banner, and Dynamic Type. React skips the
+  // re-render while the boolean is unchanged, so this is cheap per event.
+  const handleScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    const titleEl = titleRef.current
+    const headerEl = headerRef.current
+    if (!titleEl || !headerEl) return
+    const titleMidline = titleEl.offsetTop + titleEl.offsetHeight / 2
+    setCollapsed(event.currentTarget.scrollTop > titleMidline - headerEl.offsetHeight)
+  }, [])
+
   return (
-    // h-dvh (not min-h-screen): pins this frame to exactly one screen's height so the
-    // header and BottomNav never move. Previously this was min-h-screen with no upper
-    // bound, and every page rendered as {children} below also declared its own
-    // min-h-screen — the two stacked, so the frame always grew past one viewport no
-    // matter how little content a page had, forcing the whole document to scroll (the
-    // header included) instead of just the content between the fixed header and nav.
-    <div className="flex h-dvh flex-col">
-      {/* min-h-14 (not h-14) + pt-safe: the shell header is the topmost element on
-          every non-full-bleed screen, so under viewportFit:'cover' it renders behind the
-          iOS status bar unless it carries the inset itself. A fixed h-14 would absorb
-          that padding into the same 56px box and crush the title instead of sitting
-          below the notch. */}
-      {/* bg-surface, matching <body> — this bar used to be surface-container-lowest
-          (pure white) with a border and a drop shadow over a surface-tinted page, which
-          on a phone reads as a floating white slab bolted to the top of the screen
-          rather than as the top of the screen. It is a flex sibling ABOVE the
-          scrollport below, not an overlay, so no content ever passes under it and it
-          needs no separation cue at all: matching the page exactly is what makes the
-          title look like it belongs to the page. */}
-      <header className="flex min-h-14 shrink-0 items-center justify-center bg-surface px-2 pt-safe">
-        <p className="text-sm font-bold text-surface-on">{title}</p>
-      </header>
+    <>
+      {/* One scrollport for the whole tab screen, h-dvh so the frame is exactly one
+          screen tall. The bar is sticky INSIDE it (not a sibling above it) so content
+          really passes underneath the glass once scrolled — the material only means
+          something when there is something behind it. pb-32 lets the last row scroll
+          clear of the floating tab pill, which overlays rather than taking up space. */}
+      <div onScroll={handleScroll} className="h-dvh overflow-y-auto overscroll-contain">
+        {/* pt-safe: under viewportFit:'cover' the bar would otherwise sit behind the
+            status bar / Dynamic Island. At rest it is the page colour with no edge —
+            the large title below is the header. Collapsed, it turns to glass with a
+            hairline, the moment content starts sliding beneath it. */}
+        <header
+          ref={headerRef}
+          className={cn(
+            'sticky top-0 z-sticky border-b pt-safe transition-[background-color,border-color] duration-200',
+            collapsed ? 'glass-nav border-outline-variant/40' : 'border-transparent bg-surface',
+          )}
+        >
+          <div className="flex h-11 items-center justify-center px-4">
+            {/* Hidden from assistive tech while the large title is on screen, so a
+                screen reader never hears the screen name twice. */}
+            <p
+              aria-hidden={!collapsed}
+              className={cn(
+                'text-headline text-surface-on transition-opacity duration-200',
+                collapsed ? 'opacity-100' : 'opacity-0',
+              )}
+            >
+              {title}
+            </p>
+          </div>
+          {/* Inside the sticky bar so a connectivity warning stays on screen while the
+              driver scrolls — drivers work through signal dead zones. */}
+          <OfflineBanner />
+        </header>
 
-      {/* Drivers work through signal dead zones — surface connectivity loss on every shell screen. */}
-      <OfflineBanner />
+        <h1 ref={titleRef} className="px-4 pt-1 text-large-title text-surface-on">
+          {title}
+        </h1>
 
-      {/* The only scrollable region in the shell — overflow-y-auto here (not on the
-          document) is what keeps the header and BottomNav locked in place while a
-          page's content scrolls underneath them. pb-28 clears the floating BottomNav
-          pill, which overlays fixed-to-viewport rather than participating in normal
-          document flow. */}
-      <div className="flex-1 overflow-y-auto pb-28">{children}</div>
+        <div className="pb-32">{children}</div>
+      </div>
 
       <BottomNav onProfileClick={() => setProfileOpen(true)} />
       <ProfilePanel open={profileOpen} onClose={() => setProfileOpen(false)} />
-    </div>
+    </>
   )
 }

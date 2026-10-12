@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { StepHeader } from '@/components/phase/StepHeader'
+import { StepLayout } from '@/components/phase/StepLayout'
 import { Input } from '@/components/ui/Input'
 import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
 import { WarehouseWaitCard } from '@/components/phase/WarehouseWaitCard'
@@ -42,9 +42,15 @@ export function VisualCount({ tripId, phase, stepIndex, draft, onUpdate, onCompl
   }
 
   return (
-    <main className="flex min-h-dvh flex-col">
-      <StepHeader phase={phase} stepIndex={stepIndex} />
-      <div className="flex flex-1 flex-col gap-6 p-4">
+    <StepLayout
+      phase={phase}
+      stepIndex={stepIndex}
+      intro={isBlocked ? undefined : 'Count the parcels physically unloaded and enter the number below, if you can.'}
+      // No checklist: the count is optional. An invalid entry is explained on the field.
+      action={isBlocked ? undefined : (
+        <SwipeToConfirm label="Confirm Count" onConfirm={handleConfirm} disabled={!isValid} />
+      )}
+    >
         {isBlocked ? (
           // Server is the authority (409s regardless); this just tells the driver why.
           <WarehouseWaitCard>
@@ -53,9 +59,6 @@ export function VisualCount({ tripId, phase, stepIndex, draft, onUpdate, onCompl
           </WarehouseWaitCard>
         ) : (
           <>
-            <p className="text-lg leading-relaxed text-surface-on-variant">
-              Count the parcels physically unloaded and enter the number below, if you can.
-            </p>
             <Input
               label="Your visual count at destination"
               type="number"
@@ -65,15 +68,12 @@ export function VisualCount({ tripId, phase, stepIndex, draft, onUpdate, onCompl
               placeholder="Count unloaded parcels (optional)"
               value={input}
               onChange={(e) => setInput(e.target.value)}
+              // Says why the swipe is waiting: a typed count must be a whole number, zero
+              // or more. Shown once the field is left, by Input's own touched rule.
+              error={isValid ? undefined : 'Enter a whole number of parcels, or leave it blank.'}
             />
           </>
         )}
-      </div>
-      <div className="flex justify-center px-6 pt-6 pb-safe">
-        {!isBlocked && (
-          <SwipeToConfirm label="Confirm count" onConfirm={handleConfirm} disabled={!isValid} />
-        )}
-      </div>
-    </main>
+    </StepLayout>
   )
 }

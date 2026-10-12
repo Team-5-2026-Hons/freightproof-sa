@@ -21,7 +21,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
     <div className="flex flex-col gap-1.5">
       <label
         htmlFor={inputId}
-        className="text-sm font-bold uppercase tracking-wider text-surface-on-variant"
+        className="text-footnote font-semibold text-surface-on-variant"
       >
         {label}
       </label>
@@ -35,7 +35,10 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
           // never resets and leaves the whole screen stuck zoomed in.
           'w-full rounded-xl px-4 py-3 text-base font-medium text-foreground',
           'bg-muted border border-input',
-          'placeholder:text-muted-foreground/70',
+          // /80, not /70: placeholders here carry instructions ("Type the seal number
+          // you see"), so they must read — /70 measured 3.9:1 on the muted fill, /80
+          // clears 4.5:1 in both themes. Same value in TextArea and the login field.
+          'placeholder:text-muted-foreground/80',
           'focus:outline-none focus:border-ring focus:bg-card',
           'transition-colors duration-150 min-h-[44px]',
           'disabled:opacity-40 disabled:cursor-not-allowed',

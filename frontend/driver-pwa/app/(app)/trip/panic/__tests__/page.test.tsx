@@ -77,11 +77,11 @@ describe('PanicPage no-active-trip guard', () => {
     expect(screen.getByText(/send panic/i)).toBeInTheDocument()
   })
 
-  it('fallback "Return to in-transit" button uses router.replace, not router.back', () => {
+  it('fallback "Back to In Transit" button uses router.replace, not router.back', () => {
     mockUseTrip.mockReturnValue({ trip: null, isLoading: false, logException: vi.fn() })
 
     render(<PanicPage />)
-    fireEvent.click(screen.getByText(/return to in-transit/i))
+    fireEvent.click(screen.getByText(/back to in transit/i))
 
     expect(mockRouterReplace).toHaveBeenCalledWith(ROUTES.inTransit)
     expect(mockRouterBack).not.toHaveBeenCalled()

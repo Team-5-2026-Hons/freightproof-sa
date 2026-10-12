@@ -225,7 +225,9 @@ export function CameraCapture({ label, dataUrl, onCapture }: CameraCaptureProps)
 
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-sm font-medium">{label}</p>
+      {/* Same footnote-semibold label as Input/TextArea, so a photo slot and a text field
+          on one step read as the same kind of thing. */}
+      <p className="text-footnote font-semibold text-surface-on-variant">{label}</p>
       {dataUrl ? (
         <div
           // Fixed aspect-video frame + border so the preview reads as a bounded card instead of
@@ -239,27 +241,35 @@ export function CameraCapture({ label, dataUrl, onCapture }: CameraCaptureProps)
             variant="ghost"
             size="sm"
             onClick={handleCapture}
-            // Overrides ghost's uppercase/bold/transparent defaults back to the original
+            // Overrides ghost's semibold/transparent defaults back to the original
             // floating pill look: rounded-full, a visible scrim so it reads over any
-            // photo, and normal-case/font-medium text. Shadow lifts it off the photo so
+            // photo, and font-medium text. Shadow lifts it off the photo so
             // it reads as a floating control, not part of the image.
-            className="absolute bottom-2 right-2 rounded-full bg-surface-container-highest/90 font-medium normal-case tracking-normal shadow-ambient-sm hover:bg-surface-container-highest"
+            className="absolute bottom-2 right-2 rounded-full bg-surface-container-highest/90 font-medium shadow-ambient-sm hover:bg-surface-container-highest"
           >
             Retake
           </Button>
         </div>
       ) : (
+        // A tappable tile, not a dashed drop zone: dashes are the desktop "drag a file
+        // here" idiom, and there is nothing to drag on a phone. The accent-tinted camera
+        // and the verb say what a tap does; it dips on press like every other control.
         <button
+          type="button"
           onClick={handleCapture}
           disabled={isCapturing}
-          className="flex h-32 w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-outline-variant bg-surface-container-low text-sm text-surface-on-variant disabled:opacity-60 animate-fade-in-scale motion-reduce:animate-none"
+          className="flex h-32 w-full flex-col items-center justify-center gap-2 rounded-2xl bg-surface-container-low transition-transform duration-150 active:scale-[0.98] disabled:opacity-60 animate-fade-in-scale motion-reduce:animate-none"
         >
-          <CameraIcon className="h-6 w-6" strokeWidth={1.5} aria-hidden />
-          {isCapturing
-            ? 'Opening camera…'
-            : nativeCameraUnavailable
-              ? 'Choose a photo instead'
-              : 'Tap to photograph'}
+          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-secondary/10 text-secondary">
+            <CameraIcon className="h-6 w-6" strokeWidth={2} aria-hidden />
+          </span>
+          <span className="text-body font-semibold text-secondary">
+            {isCapturing
+              ? 'Opening Camera…'
+              : nativeCameraUnavailable
+                ? 'Choose a Photo Instead'
+                : 'Take Photo'}
+          </span>
         </button>
       )}
     </div>

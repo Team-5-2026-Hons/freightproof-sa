@@ -33,7 +33,7 @@ function getPhoneInput() {
 
 async function submit() {
   await act(async () => {
-    fireEvent.click(screen.getByRole('button', { name: /send otp/i }))
+    fireEvent.click(screen.getByRole('button', { name: /send code/i }))
   })
 }
 

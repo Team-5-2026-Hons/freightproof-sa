@@ -44,7 +44,7 @@ describe('PanicSubmittedPageClient (Fix 2: honest sent-vs-queued copy)', () => {
     mockSearchParams = new URLSearchParams('queued=1')
 
     render(<PanicSubmittedPageClient />)
-    fireEvent.click(screen.getByText('Return to in-transit'))
+    fireEvent.click(screen.getByText('Back to In Transit'))
 
     expect(mockReplace).toHaveBeenCalledWith(ROUTES.inTransit)
   })

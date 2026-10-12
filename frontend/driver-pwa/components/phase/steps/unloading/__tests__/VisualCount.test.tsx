@@ -14,6 +14,7 @@
 //    the scan gate above still applies regardless of what the driver typed or left blank.
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { CONFIRM_DISPATCH_MS } from '@/components/phase/SwipeToConfirm'
 import { VisualCount } from '../VisualCount'
 import { makePhase } from '@/components/phase/__tests__/testFixtures'
 import type { UnloadingEvidence } from '@/lib/types/evidence-draft'
@@ -89,7 +90,7 @@ describe('VisualCount — scan gate (blocked_on)', () => {
     renderStep({ phase: makePhase('unloading', { blocked_on: null }) })
 
     expect(screen.getByLabelText('Your visual count at destination')).toBeInTheDocument()
-    expect(screen.getByRole('slider', { name: 'Confirm count' })).toBeInTheDocument()
+    expect(screen.getByRole('slider', { name: 'Confirm Count' })).toBeInTheDocument()
   })
 
   it('treats a fixture with no blocked_on key at all as unblocked, not permanently blocked', () => {
@@ -102,7 +103,7 @@ describe('VisualCount — scan gate (blocked_on)', () => {
     renderStep({ phase: phaseWithoutField })
 
     expect(screen.queryByText(/waiting for the warehouse/i)).not.toBeInTheDocument()
-    expect(screen.getByRole('slider', { name: 'Confirm count' })).toBeInTheDocument()
+    expect(screen.getByRole('slider', { name: 'Confirm Count' })).toBeInTheDocument()
   })
 })
 
@@ -111,11 +112,11 @@ describe('VisualCount — optional count', () => {
   afterEach(() => vi.useRealTimers())
 
   function completeSwipe() {
-    const slider = screen.getByRole('slider', { name: 'Confirm count' })
+    const slider = screen.getByRole('slider', { name: 'Confirm Count' })
     fireEvent.keyDown(slider, { key: 'Enter' }) // arm
     fireEvent.keyDown(slider, { key: 'Enter' }) // confirm
     act(() => {
-      vi.advanceTimersByTime(180) // SwipeToConfirm's settle delay before handing off
+      vi.advanceTimersByTime(CONFIRM_DISPATCH_MS) // SwipeToConfirm's delay before handing off
     })
   }
 
@@ -137,7 +138,7 @@ describe('VisualCount — optional count', () => {
     renderStep({ onUpdate, onComplete })
 
     // Field is left untouched — the empty string is its initial state.
-    expect(screen.getByRole('slider', { name: 'Confirm count' })).toHaveAttribute('aria-disabled', 'false')
+    expect(screen.getByRole('slider', { name: 'Confirm Count' })).toHaveAttribute('aria-disabled', 'false')
 
     completeSwipe()
 
@@ -160,7 +161,7 @@ describe('VisualCount — optional count', () => {
 
     typeCount('-3')
 
-    expect(screen.getByRole('slider', { name: 'Confirm count' })).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('slider', { name: 'Confirm Count' })).toHaveAttribute('aria-disabled', 'true')
   })
 
   it('clearing a previously entered count back to empty re-enables the swipe as null, not blocked', () => {
@@ -168,7 +169,7 @@ describe('VisualCount — optional count', () => {
 
     typeCount('')
 
-    expect(screen.getByRole('slider', { name: 'Confirm count' })).toHaveAttribute('aria-disabled', 'false')
+    expect(screen.getByRole('slider', { name: 'Confirm Count' })).toHaveAttribute('aria-disabled', 'false')
   })
 })
 

@@ -6,8 +6,12 @@
 // never be reachable by a single accidental input, and never fire twice for one intent.
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { SwipeToConfirm } from '../SwipeToConfirm'
+import { SwipeToConfirm, CONFIRM_DISPATCH_MS, PANIC_DISPATCH_MS } from '../SwipeToConfirm'
 import { PREF_TAP_TO_CONFIRM } from '@/lib/constants/preferences'
+import { playHaptic } from '@/lib/haptics'
+
+// The haptics are asserted as calls: the real plugin has no native side under jsdom.
+vi.mock('@/lib/haptics', () => ({ playHaptic: vi.fn() }))
 
 // jsdom ships no PointerEvent constructor, so Testing Library falls back to a bare Event
 // and silently drops clientX — every drag would then compute as NaN and read as "didn't
@@ -29,7 +33,8 @@ window.PointerEvent = PointerEventPolyfill
 // Mirrors the component's own constants. Track width 400 - thumb 48 - padding (4 * 2) = 344.
 const TRACK_WIDTH_PX = 400
 const MAX_TRAVEL_PX = TRACK_WIDTH_PX - 48 - 8
-const SETTLE_DURATION_MS = 180
+// The component's own export, so the test can never drift from the real delay.
+const SETTLE_DURATION_MS = CONFIRM_DISPATCH_MS
 
 // jsdom reports offsetWidth as 0 for everything, which would leave the component's travel
 // distance at 0 and make every drag look like a no-op. Stubbing it is what lets the real
@@ -44,6 +49,20 @@ beforeEach(() => {
   HTMLElement.prototype.releasePointerCapture = vi.fn()
   HTMLElement.prototype.hasPointerCapture = vi.fn(() => true)
   window.localStorage.clear()
+  // Reduce Motion on: the thumb jumps straight to each spring's target instead of
+  // animating over requestAnimationFrame frames, so these tests assert the gesture's
+  // DECISIONS (confirm or not, once, latched) rather than animation timing. The spring
+  // itself is covered in lib/motion/__tests__/spring.test.ts.
+  window.matchMedia = vi.fn((query: string) => ({
+    matches: query === '(prefers-reduced-motion: reduce)',
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  }))
   vi.useFakeTimers()
 })
 
@@ -85,7 +104,7 @@ async function settleAsync() {
 describe('SwipeToConfirm — the drag gesture', () => {
   it('fires onConfirm exactly once when dragged past the threshold', () => {
     const onConfirm = vi.fn()
-    render(<SwipeToConfirm label="Swipe to confirm" onConfirm={onConfirm} />)
+    render(<SwipeToConfirm label="Swipe to Confirm" onConfirm={onConfirm} />)
 
     swipeTo(MAX_TRAVEL_PX)
     settle()
@@ -97,7 +116,7 @@ describe('SwipeToConfirm — the drag gesture', () => {
     // ~29% of the track. The whole point of the threshold: a driver brushing the control
     // while climbing into the cab must not submit a phase.
     const onConfirm = vi.fn()
-    render(<SwipeToConfirm label="Swipe to confirm" onConfirm={onConfirm} />)
+    render(<SwipeToConfirm label="Swipe to Confirm" onConfirm={onConfirm} />)
 
     swipeTo(100)
     settle()
@@ -108,7 +127,7 @@ describe('SwipeToConfirm — the drag gesture', () => {
 
   it('does not fire just below the completion threshold', () => {
     const onConfirm = vi.fn()
-    render(<SwipeToConfirm label="Swipe to confirm" onConfirm={onConfirm} />)
+    render(<SwipeToConfirm label="Swipe to Confirm" onConfirm={onConfirm} />)
 
     // 85% — past halfway, still short of the 90% threshold.
     swipeTo(Math.floor(MAX_TRAVEL_PX * 0.85))
@@ -118,7 +137,7 @@ describe('SwipeToConfirm — the drag gesture', () => {
   })
 
   it('shows a hint after an incomplete swipe so the gesture is discoverable', () => {
-    render(<SwipeToConfirm label="Swipe to confirm" onConfirm={vi.fn()} />)
+    render(<SwipeToConfirm label="Swipe to Confirm" onConfirm={vi.fn()} />)
 
     swipeTo(60)
 
@@ -129,7 +148,7 @@ describe('SwipeToConfirm — the drag gesture', () => {
 describe('SwipeToConfirm — disabled', () => {
   it('cannot be confirmed while disabled', () => {
     const onConfirm = vi.fn()
-    render(<SwipeToConfirm label="Swipe to confirm" onConfirm={onConfirm} disabled />)
+    render(<SwipeToConfirm label="Swipe to Confirm" onConfirm={onConfirm} disabled />)
 
     swipeTo(MAX_TRAVEL_PX)
     settle()
@@ -147,7 +166,7 @@ describe('SwipeToConfirm — after a completed swipe', () => {
     // far end and whose label had faded out — a blank strip the driver could swipe again,
     // firing a duplicate confirm into an in-flight navigation.
     const onConfirm = vi.fn()
-    render(<SwipeToConfirm label="Swipe to confirm" onConfirm={onConfirm} />)
+    render(<SwipeToConfirm label="Swipe to Confirm" onConfirm={onConfirm} />)
 
     swipeTo(MAX_TRAVEL_PX)
     settle()
@@ -164,7 +183,7 @@ describe('SwipeToConfirm — after a completed swipe', () => {
     // The label fades as the thumb covers it; at the end of the track that fraction is 0,
     // which rendered "Confirmed"/"Submitting…" invisible and left the driver staring at
     // an apparently empty control for the whole submit.
-    render(<SwipeToConfirm label="Swipe to confirm" onConfirm={vi.fn()} />)
+    render(<SwipeToConfirm label="Swipe to Confirm" onConfirm={vi.fn()} />)
 
     swipeTo(MAX_TRAVEL_PX)
 
@@ -186,7 +205,7 @@ describe('SwipeToConfirm — async onConfirm', () => {
         }),
     )
 
-    render(<SwipeToConfirm label="Swipe to confirm" onConfirm={onConfirm} />)
+    render(<SwipeToConfirm label="Swipe to Confirm" onConfirm={onConfirm} />)
 
     swipeTo(MAX_TRAVEL_PX)
     settle()
@@ -209,7 +228,7 @@ describe('SwipeToConfirm — async onConfirm', () => {
     // the driver on this screen with their draft intact, resolving exactly as a success
     // does. A control that stayed latched there would strand them with no way to retry.
     const onConfirm = vi.fn(() => Promise.resolve())
-    render(<SwipeToConfirm label="Swipe to confirm" onConfirm={onConfirm} />)
+    render(<SwipeToConfirm label="Swipe to Confirm" onConfirm={onConfirm} />)
 
     swipeTo(MAX_TRAVEL_PX)
     await settleAsync()
@@ -227,7 +246,7 @@ describe('SwipeToConfirm — async onConfirm', () => {
 describe('SwipeToConfirm — keyboard path', () => {
   it('requires two presses, so one stray keypress cannot submit', () => {
     const onConfirm = vi.fn()
-    render(<SwipeToConfirm label="Swipe to confirm" onConfirm={onConfirm} />)
+    render(<SwipeToConfirm label="Swipe to Confirm" onConfirm={onConfirm} />)
 
     fireEvent.keyDown(getTrack(), { key: 'Enter' })
     settle()
@@ -239,7 +258,7 @@ describe('SwipeToConfirm — keyboard path', () => {
   })
 
   it('is reachable by keyboard at all — the control is focusable when enabled', () => {
-    render(<SwipeToConfirm label="Swipe to confirm" onConfirm={vi.fn()} />)
+    render(<SwipeToConfirm label="Swipe to Confirm" onConfirm={vi.fn()} />)
 
     expect(getTrack()).toHaveAttribute('tabindex', '0')
   })
@@ -253,7 +272,7 @@ describe('SwipeToConfirm — tap-to-confirm accessibility preference', () => {
   it('renders a plain button rather than a drag track', () => {
     // Someone who enabled this pref has told us a drag is the barrier, so presenting a
     // drag affordance at all would be the wrong answer.
-    render(<SwipeToConfirm label="Swipe to confirm" onConfirm={vi.fn()} />)
+    render(<SwipeToConfirm label="Swipe to Confirm" onConfirm={vi.fn()} />)
 
     expect(screen.queryByRole('slider')).not.toBeInTheDocument()
     expect(screen.getByRole('button')).toBeInTheDocument()
@@ -261,7 +280,7 @@ describe('SwipeToConfirm — tap-to-confirm accessibility preference', () => {
 
   it('still requires two taps — the safety property survives the accessible path', () => {
     const onConfirm = vi.fn()
-    render(<SwipeToConfirm label="Swipe to confirm" onConfirm={onConfirm} />)
+    render(<SwipeToConfirm label="Swipe to Confirm" onConfirm={onConfirm} />)
 
     fireEvent.click(screen.getByRole('button'))
     settle()
@@ -270,5 +289,130 @@ describe('SwipeToConfirm — tap-to-confirm accessibility preference', () => {
     fireEvent.click(screen.getByRole('button'))
     settle()
     expect(onConfirm).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('SwipeToConfirm — the confirm moment', () => {
+  beforeEach(() => {
+    // The module mock is shared by the whole file; each assertion here counts its own calls.
+    vi.mocked(playHaptic).mockClear()
+  })
+
+  it('commits with the ✓ state and a success haptic, before handing off', () => {
+    // Arrange
+    const onConfirm = vi.fn()
+    render(<SwipeToConfirm label="Swipe to Confirm" onConfirm={onConfirm} />)
+
+    // Act
+    swipeTo(MAX_TRAVEL_PX)
+
+    // Assert — the moment is visible and felt immediately, onConfirm only after the hold.
+    expect(playHaptic).toHaveBeenCalledWith('confirm')
+    expect(screen.getByText('Confirmed')).toBeInTheDocument()
+    expect(getTrack()).toHaveClass('bg-success')
+    expect(onConfirm).not.toHaveBeenCalled()
+    settle()
+    expect(onConfirm).toHaveBeenCalledTimes(1)
+  })
+
+  it('ticks once as the drag crosses the commit point, not on every move past it', () => {
+    // Arrange
+    render(<SwipeToConfirm label="Swipe to Confirm" onConfirm={vi.fn()} />)
+    const track = getTrack()
+
+    // Act
+    fireEvent.pointerDown(track, { clientX: 0, pointerId: 1 })
+    fireEvent.pointerMove(track, { clientX: MAX_TRAVEL_PX * 0.95, pointerId: 1 })
+    fireEvent.pointerMove(track, { clientX: MAX_TRAVEL_PX * 0.97, pointerId: 1 })
+
+    // Assert
+    expect(vi.mocked(playHaptic).mock.calls.filter(([m]) => m === 'threshold')).toHaveLength(1)
+  })
+
+  it('confirms a deliberate flick that is past halfway and carrying momentum', () => {
+    // Arrange — 30ms between samples, 140px apart: ~4700px/s, projecting far past the end.
+    const now = vi.spyOn(performance, 'now')
+    const onConfirm = vi.fn()
+    render(<SwipeToConfirm label="Swipe to Confirm" onConfirm={onConfirm} />)
+    const track = getTrack()
+
+    // Act
+    now.mockReturnValue(1000)
+    fireEvent.pointerDown(track, { clientX: 0, pointerId: 1 })
+    now.mockReturnValue(1010)
+    fireEvent.pointerMove(track, { clientX: MAX_TRAVEL_PX * 0.2, pointerId: 1 })
+    now.mockReturnValue(1040)
+    fireEvent.pointerMove(track, { clientX: MAX_TRAVEL_PX * 0.6, pointerId: 1 })
+    fireEvent.pointerUp(track, { clientX: MAX_TRAVEL_PX * 0.6, pointerId: 1 })
+    settle()
+
+    // Assert
+    expect(onConfirm).toHaveBeenCalledTimes(1)
+    now.mockRestore()
+  })
+
+  it('never confirms a fast twitch that has not reached halfway', () => {
+    // Arrange — just as fast, but released at 30% of the track.
+    const now = vi.spyOn(performance, 'now')
+    const onConfirm = vi.fn()
+    render(<SwipeToConfirm label="Swipe to Confirm" onConfirm={onConfirm} />)
+    const track = getTrack()
+
+    // Act
+    now.mockReturnValue(1000)
+    fireEvent.pointerDown(track, { clientX: 0, pointerId: 1 })
+    now.mockReturnValue(1030)
+    fireEvent.pointerMove(track, { clientX: MAX_TRAVEL_PX * 0.3, pointerId: 1 })
+    fireEvent.pointerUp(track, { clientX: MAX_TRAVEL_PX * 0.3, pointerId: 1 })
+    settle()
+
+    // Assert
+    expect(onConfirm).not.toHaveBeenCalled()
+    now.mockRestore()
+  })
+
+  it('resists past the end of the track instead of following the finger off it', () => {
+    // Arrange
+    render(<SwipeToConfirm label="Swipe to Confirm" onConfirm={vi.fn()} />)
+    const track = getTrack()
+
+    // Act — 200px of overshoot.
+    fireEvent.pointerDown(track, { clientX: 0, pointerId: 1 })
+    fireEvent.pointerMove(track, { clientX: MAX_TRAVEL_PX + 200, pointerId: 1 })
+
+    // Assert — the thumb moves less than the finger did past the boundary.
+    const thumb = track.querySelector('div') as HTMLDivElement
+    const travelled = Number(thumb.style.transform.match(/translateX\(([-\d.]+)px\)/)?.[1])
+    expect(travelled).toBeGreaterThan(MAX_TRAVEL_PX)
+    expect(travelled).toBeLessThan(MAX_TRAVEL_PX + 200)
+  })
+
+  it('hands a panic swipe off without the confirm hold, with the heavy haptic', () => {
+    // Arrange
+    const onConfirm = vi.fn()
+    render(<SwipeToConfirm label="Send Panic" onConfirm={onConfirm} variant="danger" />)
+
+    // Act
+    swipeTo(MAX_TRAVEL_PX)
+    act(() => {
+      vi.advanceTimersByTime(PANIC_DISPATCH_MS)
+    })
+
+    // Assert
+    expect(playHaptic).toHaveBeenCalledWith('panic')
+    expect(onConfirm).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('SwipeToConfirm — waiting state', () => {
+  it('reads as waiting, not switched off, while disabled', () => {
+    // Arrange / Act
+    render(<SwipeToConfirm label="Swipe to Submit" onConfirm={vi.fn()} disabled />)
+
+    // Assert — a full-strength neutral track with a legible label, never a 40% fade.
+    const track = getTrack()
+    expect(track).toHaveClass('bg-surface-container-highest')
+    expect(track).not.toHaveClass('opacity-40')
+    expect(screen.getByText('Swipe to Submit')).toHaveClass('text-surface-on-variant')
   })
 })

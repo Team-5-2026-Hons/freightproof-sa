@@ -19,7 +19,7 @@ vi.mock('@/lib/hooks/useTrip', () => ({
 beforeEach(() => {
   vi.clearAllMocks()
   mockPathname = ROUTES.home
-  mockUseTrip.mockReturnValue({ trip: null })
+  mockUseTrip.mockReturnValue({ trip: null, exceptions: [] })
 })
 
 describe('BottomNav', () => {
@@ -40,18 +40,37 @@ describe('BottomNav', () => {
     expect(screen.getByRole('button', { name: 'Settings' })).not.toHaveAttribute('aria-current')
   })
 
-  it('shows the red trip dot on Trips when a trip is assigned', () => {
-    mockUseTrip.mockReturnValue({ trip: { id: 'trip-1' } })
+  it('shows no badge for an ordinary assigned trip — that is the normal state', () => {
+    mockUseTrip.mockReturnValue({ trip: { id: 'trip-1', status: 'active' }, exceptions: [] })
     render(<BottomNav onProfileClick={vi.fn()} />)
 
-    expect(screen.getByText(/active trip assigned/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Trips' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /needs attention/i })).not.toBeInTheDocument()
   })
 
-  it('hides the red trip dot when there is no active trip', () => {
-    mockUseTrip.mockReturnValue({ trip: null })
+  it('badges Trips when the trip is on an exception hold', () => {
+    mockUseTrip.mockReturnValue({ trip: { id: 'trip-1', status: 'exception_hold' }, exceptions: [] })
     render(<BottomNav onProfileClick={vi.fn()} />)
 
-    expect(screen.queryByText(/active trip assigned/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Trips, needs attention' })).toBeInTheDocument()
+  })
+
+  it('badges Trips when the trip has an open driver-visible exception', () => {
+    mockUseTrip.mockReturnValue({
+      trip: { id: 'trip-1', status: 'active' },
+      exceptions: [{ id: 'exc-1', review_status: 'needs_review', source: 'dispatcher' }],
+    })
+    render(<BottomNav onProfileClick={vi.fn()} />)
+
+    expect(screen.getByRole('button', { name: 'Trips, needs attention' })).toBeInTheDocument()
+  })
+
+  it('shows a visible label under every destination icon', () => {
+    render(<BottomNav onProfileClick={vi.fn()} />)
+
+    for (const label of ['Home', 'Trips', 'Settings']) {
+      expect(screen.getByText(label)).toBeVisible()
+    }
   })
 
   it('calls onProfileClick when the profile button is tapped', () => {

@@ -26,7 +26,7 @@ export function WarehouseWaitCard({ children }: WarehouseWaitCardProps) {
           {isRefreshing ? 'Checking…' : lastCheckedLabel(lastRefreshedAt)}
         </p>
         <Button type="button" variant="ghost" size="sm" onClick={() => void refreshQuietly()} disabled={isRefreshing}>
-          Check now
+          Check Now
         </Button>
       </div>
     </div>

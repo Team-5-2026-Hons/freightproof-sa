@@ -154,6 +154,25 @@
   }
 
   /*
+   * Increase Contrast (iOS Settings › Accessibility › Display & Text Size). Hairlines and
+   * secondary text are the app's quietest elements — dividers at 25% outline-variant,
+   * captions in on-variant — and the first to disappear for a driver who has asked for
+   * more contrast. Because every class reads these variables, strengthening the two
+   * tokens strengthens every divider, border and secondary label at once: hairlines take
+   * the full outline tone, secondary text moves halfway toward primary text.
+   */
+  @media (prefers-contrast: more) {
+    :root {
+      --fp-outline-variant:     119 118 128;
+      --fp-surface-on-variant:   45  45  52;
+    }
+    .dark {
+      --fp-outline-variant:     145 143 153;
+      --fp-surface-on-variant:  210 208 216;
+    }
+  }
+
+  /*
    * shadcn/ui theme variables, mapped onto the app's existing Material-3-derived
    * hex palette (see tailwind.config.ts `colors`) so both vocabularies render
    * identically. HSL triplets (no hsl() wrapper) per shadcn convention — consumed
@@ -231,10 +250,33 @@
      blur, in either theme — the alpha is the whole point of the effect and has to
      survive the swap, hence rgb(channels / alpha) rather than a var holding a
      finished colour. */
+  /* The one material for floating chrome (sticky headers now; the tab pill and sheets as
+     they are rebuilt). Saturation lifts the colour of whatever scrolls underneath so the
+     bar reads as a pane of glass over the content rather than a grey fog on top of it —
+     the same recipe as iOS's bar material. */
   .glass-nav {
-    background: rgb(var(--fp-surface) / 0.8);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    background: rgb(var(--fp-surface) / 0.72);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+  }
+
+  /* Reduce Transparency: the driver has asked for solid surfaces, so the bar goes opaque
+     and stops sampling the content behind it. */
+  @media (prefers-reduced-transparency: reduce) {
+    .glass-nav {
+      background: rgb(var(--fp-surface));
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+  }
+
+  /* Increase Contrast: a near-solid bar plus a defined edge, so the chrome/content
+     boundary never depends on a blur the driver may not be able to see. */
+  @media (prefers-contrast: more) {
+    .glass-nav {
+      background: rgb(var(--fp-surface) / 0.97);
+      box-shadow: 0 1px 0 rgb(var(--fp-outline));
+    }
   }
 
   .tracking-industrial {
@@ -282,6 +324,21 @@
      viewport and a sticky header is a scroll container. */
   html {
     overflow-x: hidden;
+  }
+
+  /* Dynamic Type. `-apple-system-body` is WebKit's handle on the iOS Body text style, so
+     binding the root font to it makes 1rem follow the driver's Text Size setting — and,
+     because every size and most spacing in this app is rem-based, the layout scales with
+     it the way a native screen does. That is also what makes the viewport zoom lock in
+     app/layout.tsx acceptable: enlargement comes from the system setting instead.
+     Gated to touch WebKit (-webkit-touch-callout exists only on iOS) because desktop
+     Safari maps the same keyword to the 13px macOS body size. The shorthand resets
+     line-height, so the 1.5 Tailwind's preflight set is restored after it. */
+  @supports (font: -apple-system-body) and (-webkit-touch-callout: none) {
+    html {
+      font: -apple-system-body;
+      line-height: 1.5;
+    }
   }
 
   body {

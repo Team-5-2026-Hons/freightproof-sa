@@ -131,9 +131,8 @@ export default function TripsPage() {
     // owns the fixed, locked-to-viewport frame and gives this page a sized,
     // scrollable slot; see AppShell.tsx for why stacking a second min-h-screen here
     // forced every visit to scroll regardless of how many trips there were to show.
+    // The screen title is AppShell's large title — a page-level h1 here doubled it.
     <main className="flex flex-col gap-4 p-4">
-      <h1 className="text-xl font-semibold text-surface-on">My Trips</h1>
-
       <Tabs
         tabs={[
           { id: 'active', label: 'Active', count: active.length },
@@ -173,7 +172,7 @@ export default function TripsPage() {
           >
             Filter
             {activeFilterCount > 0 && (
-              <span className="rounded-full bg-surface-container px-1.5 py-0.5 text-[10px] tabular-nums">
+              <span className="rounded-full bg-surface-container px-1.5 py-0.5 text-caption tabular-nums">
                 {activeFilterCount}
               </span>
             )}
@@ -196,7 +195,7 @@ export default function TripsPage() {
       ) : loadError !== null ? (
         <div className="flex flex-col items-start gap-3 rounded-xl bg-error-container px-4 py-3">
           <p className="text-sm text-error-on-container">{loadError}</p>
-          <Button variant="secondary" size="sm" onClick={load}>Try again</Button>
+          <Button variant="secondary" size="sm" onClick={load}>Try Again</Button>
         </div>
       ) : tripsToShow.length === 0 ? (
         <EmptyState

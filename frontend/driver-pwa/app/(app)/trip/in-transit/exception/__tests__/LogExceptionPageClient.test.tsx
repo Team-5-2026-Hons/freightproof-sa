@@ -106,7 +106,7 @@ describe('LogExceptionPageClient required description', () => {
     render(<LogExceptionPageClient />)
     fireEvent.click(screen.getByText('Cargo damage'))
 
-    const submit = screen.getByText('Submit exception')
+    const submit = screen.getByText('Submit Exception')
     expect(screen.getByLabelText('Description')).toBeRequired()
     expect(submit).toBeDisabled()
 
@@ -133,7 +133,7 @@ describe('LogExceptionPageClient submit receipt (5b)', () => {
     render(<LogExceptionPageClient />)
     fireEvent.click(screen.getByText('Cargo damage'))
     enterRequiredDescription()
-    fireEvent.click(screen.getByText('Submit exception'))
+    fireEvent.click(screen.getByText('Submit Exception'))
 
     await waitFor(() => expect(mockRouterPush).toHaveBeenCalledWith(ROUTES.inTransit))
     expect(logException).toHaveBeenCalledWith('cargo_damage', {
@@ -155,7 +155,7 @@ describe('LogExceptionPageClient submit receipt (5b)', () => {
     render(<LogExceptionPageClient />)
     fireEvent.click(screen.getByText('Vehicle breakdown'))
     enterRequiredDescription()
-    fireEvent.click(screen.getByText('Submit exception'))
+    fireEvent.click(screen.getByText('Submit Exception'))
 
     await waitFor(() => expect(screen.getByText(/could not submit/i)).toBeInTheDocument())
     expect(mockNotify).not.toHaveBeenCalledWith(expect.objectContaining({ kind: 'success' }))
@@ -180,7 +180,7 @@ describe('LogExceptionPageClient failure feedback (audit fixes)', () => {
     render(<LogExceptionPageClient />)
     fireEvent.click(screen.getByText('Cargo damage'))
     enterRequiredDescription()
-    fireEvent.click(screen.getByText('Submit exception'))
+    fireEvent.click(screen.getByText('Submit Exception'))
 
     await waitFor(() => expect(mockRouterPush).toHaveBeenCalledWith(ROUTES.inTransit))
     expect(mockEnqueueException).toHaveBeenCalledWith(
@@ -212,7 +212,7 @@ describe('LogExceptionPageClient failure feedback (audit fixes)', () => {
     render(<LogExceptionPageClient />)
     fireEvent.click(screen.getByText('Cargo damage'))
     enterRequiredDescription()
-    fireEvent.click(screen.getByText('Submit exception'))
+    fireEvent.click(screen.getByText('Submit Exception'))
 
     await waitFor(() => expect(mockEnqueueException).toHaveBeenCalled())
     expect(mockRouterPush).toHaveBeenCalledWith(ROUTES.inTransit)
@@ -226,7 +226,7 @@ describe('LogExceptionPageClient failure feedback (audit fixes)', () => {
     render(<LogExceptionPageClient />)
     fireEvent.click(screen.getByText('Cargo damage'))
     enterRequiredDescription()
-    fireEvent.click(screen.getByText('Submit exception'))
+    fireEvent.click(screen.getByText('Submit Exception'))
 
     await waitFor(() =>
       expect(screen.getByText(/the report was not accepted/i)).toBeInTheDocument(),
@@ -243,10 +243,10 @@ describe('LogExceptionPageClient back link (5d)', () => {
     mockUseTrip.mockReturnValue({ trip: RIGID_TRIP, logException: vi.fn() })
   })
 
-  it('shows a "← In-Transit Hub" back target (SubpageHeader) that pushes the hub route (not router.back)', () => {
+  it('shows an "In Transit" back target (SubpageHeader) that pushes the hub route (not router.back)', () => {
     render(<LogExceptionPageClient />)
 
-    const backLink = screen.getByText('← In-Transit Hub')
+    const backLink = screen.getByRole('button', { name: 'In Transit' })
     // min-h-[44px] is SubpageHeader's shared 44px minimum touch target for a
     // stressed/gloved hand — see components/layout/SubpageHeader.tsx.
     expect(backLink).toHaveClass('min-h-[44px]')
@@ -277,7 +277,7 @@ describe('LogExceptionPageClient phase tagging', () => {
     render(<LogExceptionPageClient />)
     fireEvent.click(screen.getByText('Vehicle breakdown'))
     enterRequiredDescription()
-    fireEvent.click(screen.getByText('Submit exception'))
+    fireEvent.click(screen.getByText('Submit Exception'))
 
     await waitFor(() => expect(mockEnqueueException).toHaveBeenCalled())
     expect(mockEnqueueException).toHaveBeenCalledWith(
@@ -303,7 +303,7 @@ describe('LogExceptionPageClient phase tagging', () => {
     render(<LogExceptionPageClient />)
     fireEvent.click(screen.getByText('Seal broken in transit'))
     enterRequiredDescription()
-    fireEvent.click(screen.getByText('Submit exception'))
+    fireEvent.click(screen.getByText('Submit Exception'))
 
     await waitFor(() => expect(mockEnqueueException).toHaveBeenCalled())
     expect(mockEnqueueException).toHaveBeenCalledWith(
@@ -335,7 +335,7 @@ describe('LogExceptionPageClient location capture', () => {
     render(<LogExceptionPageClient />)
     fireEvent.click(screen.getByText('Cargo damage'))
     enterRequiredDescription()
-    fireEvent.click(screen.getByText('Submit exception'))
+    fireEvent.click(screen.getByText('Submit Exception'))
 
     await waitFor(() => expect(mockEnqueueException).toHaveBeenCalled())
     expect(logException).toHaveBeenCalledWith('cargo_damage', expect.objectContaining({
@@ -361,7 +361,7 @@ describe('LogExceptionPageClient location capture', () => {
       render(<LogExceptionPageClient />)
       fireEvent.click(screen.getByText('Cargo damage'))
       enterRequiredDescription()
-      fireEvent.click(screen.getByText('Submit exception'))
+      fireEvent.click(screen.getByText('Submit Exception'))
 
       await act(async () => { await vi.advanceTimersByTimeAsync(REPORT_CAPTURE_BUDGET_MS - 1) })
       expect(logException).not.toHaveBeenCalled()
@@ -398,7 +398,7 @@ describe('LogExceptionPageClient asks which vehicle broke down', () => {
     render(<LogExceptionPageClient />)
     chooseBreakdown()
     expect(screen.queryByText('Which vehicle broke down?')).not.toBeInTheDocument()
-    fireEvent.click(screen.getByText('Submit exception'))
+    fireEvent.click(screen.getByText('Submit Exception'))
 
     await waitFor(() => expect(logException).toHaveBeenCalled())
     expect(logException).toHaveBeenCalledWith('mechanical', {
@@ -416,7 +416,7 @@ describe('LogExceptionPageClient asks which vehicle broke down', () => {
     fireEvent.click(screen.getByText('Trailer'))
     // "Trailer" alone names the only trailer, so no plate is asked for.
     expect(screen.queryByText(FRONT_TRAILER.registration)).not.toBeInTheDocument()
-    fireEvent.click(screen.getByText('Submit exception'))
+    fireEvent.click(screen.getByText('Submit Exception'))
 
     await waitFor(() => expect(logException).toHaveBeenCalled())
     expect(logException).toHaveBeenCalledWith('mechanical', {
@@ -435,7 +435,7 @@ describe('LogExceptionPageClient asks which vehicle broke down', () => {
     fireEvent.click(screen.getByText(REAR_TRAILER.registration))
     expect(screen.getByText('Trailer')).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByText(REAR_TRAILER.registration)).toHaveAttribute('aria-pressed', 'true')
-    fireEvent.click(screen.getByText('Submit exception'))
+    fireEvent.click(screen.getByText('Submit Exception'))
 
     await waitFor(() => expect(logException).toHaveBeenCalled())
     expect(logException).toHaveBeenCalledWith('mechanical', {
@@ -454,7 +454,7 @@ describe('LogExceptionPageClient asks which vehicle broke down', () => {
     fireEvent.click(screen.getByText(REAR_TRAILER.registration))
     fireEvent.click(screen.getByText('Truck'))
     expect(screen.queryByText(REAR_TRAILER.registration)).not.toBeInTheDocument()
-    fireEvent.click(screen.getByText('Submit exception'))
+    fireEvent.click(screen.getByText('Submit Exception'))
 
     await waitFor(() => expect(logException).toHaveBeenCalled())
     expect(logException).toHaveBeenCalledWith('mechanical', {
@@ -467,7 +467,7 @@ describe('LogExceptionPageClient asks which vehicle broke down', () => {
 
     render(<LogExceptionPageClient />)
     chooseBreakdown()
-    const submit = screen.getByText('Submit exception')
+    const submit = screen.getByText('Submit Exception')
 
     expect(submit).toBeDisabled()
     fireEvent.click(screen.getByText('Trailer'))
@@ -488,9 +488,9 @@ describe('LogExceptionPageClient asks which vehicle broke down', () => {
     expect(screen.queryByText('Which vehicle broke down?')).not.toBeInTheDocument()
     // Back on breakdown, the earlier answer is gone and has to be given again.
     fireEvent.click(screen.getByText('Vehicle breakdown'))
-    expect(screen.getByText('Submit exception')).toBeDisabled()
+    expect(screen.getByText('Submit Exception')).toBeDisabled()
     fireEvent.click(screen.getByText('Cargo damage'))
-    fireEvent.click(screen.getByText('Submit exception'))
+    fireEvent.click(screen.getByText('Submit Exception'))
 
     await waitFor(() => expect(logException).toHaveBeenCalled())
     expect(logException).toHaveBeenCalledWith('cargo_damage', {
@@ -506,7 +506,7 @@ describe('LogExceptionPageClient asks which vehicle broke down', () => {
     chooseBreakdown()
     fireEvent.click(screen.getByText('Trailer'))
     fireEvent.click(screen.getByText(REAR_TRAILER.registration))
-    fireEvent.click(screen.getByText('Submit exception'))
+    fireEvent.click(screen.getByText('Submit Exception'))
 
     await waitFor(() => expect(mockEnqueueException).toHaveBeenCalled())
     expect(mockEnqueueException).toHaveBeenCalledWith(
@@ -554,7 +554,7 @@ describe('LogExceptionPageClient photo capture (FP-150)', () => {
     fireEvent.click(screen.getByText('Cargo damage'))
     enterRequiredDescription()
     fireEvent.click(screen.getByText('Photo (optional)'))
-    fireEvent.click(screen.getByText('Submit exception'))
+    fireEvent.click(screen.getByText('Submit Exception'))
 
     await waitFor(() => expect(mockRouterPush).toHaveBeenCalledWith(ROUTES.inTransit))
     expect(mockUploadArtifact).toHaveBeenCalledWith({
@@ -581,7 +581,7 @@ describe('LogExceptionPageClient photo capture (FP-150)', () => {
       target: { value: 'Pallet crushed on the left side' },
     })
     fireEvent.click(screen.getByText('Photo (optional)'))
-    fireEvent.click(screen.getByText('Submit exception'))
+    fireEvent.click(screen.getByText('Submit Exception'))
 
     await waitFor(() => expect(logException).toHaveBeenCalled())
     expect(logException).toHaveBeenCalledWith('cargo_damage', {
@@ -614,7 +614,7 @@ describe('LogExceptionPageClient photo capture (FP-150)', () => {
     fireEvent.click(screen.getByText('Cargo damage'))
     enterRequiredDescription()
     fireEvent.click(screen.getByText('Photo (optional)'))
-    fireEvent.click(screen.getByText('Submit exception'))
+    fireEvent.click(screen.getByText('Submit Exception'))
 
     await waitFor(() => expect(mockEnqueueException).toHaveBeenCalled())
     // The image travels WITH the queued entry — the whole point of FP-150's offline
@@ -646,7 +646,7 @@ describe('LogExceptionPageClient photo capture (FP-150)', () => {
     fireEvent.click(screen.getByText('Cargo damage'))
     enterRequiredDescription()
     fireEvent.click(screen.getByText('Photo (optional)'))
-    fireEvent.click(screen.getByText('Submit exception'))
+    fireEvent.click(screen.getByText('Submit Exception'))
 
     await waitFor(() => expect(logException).toHaveBeenCalled())
     expect(logException).toHaveBeenCalledWith('cargo_damage', {
@@ -669,7 +669,7 @@ describe('LogExceptionPageClient photo capture (FP-150)', () => {
     fireEvent.click(screen.getByText('Cargo damage'))
     enterRequiredDescription()
     fireEvent.click(screen.getByText('Photo (optional)'))
-    fireEvent.click(screen.getByText('Submit exception'))
+    fireEvent.click(screen.getByText('Submit Exception'))
 
     await waitFor(() => expect(mockNotify).toHaveBeenCalled())
     expect(mockNotify).toHaveBeenCalledWith(
@@ -691,12 +691,25 @@ describe('LogExceptionPageClient photo capture (FP-150)', () => {
     render(<LogExceptionPageClient />)
     fireEvent.click(screen.getByText('Cargo damage'))
     enterRequiredDescription()
-    fireEvent.click(screen.getByText('Submit exception'))
+    fireEvent.click(screen.getByText('Submit Exception'))
 
     // Nothing holds this report — not the server, not the device. A "Report saved"
     // receipt here would be a lie, and the driver would never re-report it.
     await waitFor(() => expect(screen.getByText(/out of storage/i)).toBeInTheDocument())
     expect(mockNotify).not.toHaveBeenCalledWith(expect.objectContaining({ title: 'Report saved' }))
     expect(mockRouterPush).not.toHaveBeenCalled()
+  })
+})
+
+describe('LogExceptionPageClient — what is still needed (audit C4)', () => {
+  it('lists the requirements beside the submit, not a stray "Required" under the description', () => {
+    // Arrange / Act
+    render(<LogExceptionPageClient />)
+
+    // Assert — "Required" used to sit directly above "Photo (optional)" and read as one label.
+    expect(screen.queryByText('Required')).not.toBeInTheDocument()
+    const list = screen.getByRole('list', { name: 'Needed to continue' })
+    expect(list).toHaveTextContent('What happened')
+    expect(list).toHaveTextContent('Description')
   })
 })

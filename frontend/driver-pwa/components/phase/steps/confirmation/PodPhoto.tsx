@@ -5,7 +5,7 @@
 // confirmation's recipe (STEP_SLUGS.confirmation: '1-pod-photo', '2-receiver-handover').
 'use client'
 
-import { StepHeader } from '@/components/phase/StepHeader'
+import { StepLayout } from '@/components/phase/StepLayout'
 import { CameraCapture } from '@/components/phase/CameraCapture'
 import { useArtifactUpload } from '@/lib/hooks/useArtifactUpload'
 import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
@@ -38,21 +38,18 @@ export function PodPhoto({ tripId, phase, stepIndex, draft, onUpdate, onComplete
   const hasPhoto = draft.podPhotoDataUrl !== null
 
   return (
-    <main className="flex min-h-dvh flex-col">
-      <StepHeader phase={phase} stepIndex={stepIndex} />
-      <div className="flex flex-1 flex-col gap-6 p-4">
-        <p className="text-lg leading-relaxed text-surface-on-variant">
-          Photograph the delivered cargo.
-        </p>
-        <CameraCapture
-          label="Proof of delivery photo"
-          dataUrl={draft.podPhotoDataUrl}
-          onCapture={handleCapture}
-        />
-      </div>
-      <div className="flex justify-center px-6 pt-6 pb-safe">
-        <SwipeToConfirm label="Swipe to confirm" onConfirm={onComplete} disabled={!hasPhoto} />
-      </div>
-    </main>
+    <StepLayout
+      phase={phase}
+      stepIndex={stepIndex}
+      intro="Photograph the delivered cargo."
+      requirements={[{ label: 'Proof of delivery photo', met: hasPhoto }]}
+      action={<SwipeToConfirm label="Swipe to Confirm" onConfirm={onComplete} disabled={!hasPhoto} />}
+    >
+      <CameraCapture
+        label="Proof of delivery photo"
+        dataUrl={draft.podPhotoDataUrl}
+        onCapture={handleCapture}
+      />
+    </StepLayout>
   )
 }

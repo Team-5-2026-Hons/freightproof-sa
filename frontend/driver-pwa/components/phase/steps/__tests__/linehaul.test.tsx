@@ -37,7 +37,7 @@ const EMPTY_DRAFT = { linehaulPhotoDataUrl: null, linehaulPhotoArtifactId: null,
 // The blocked branch now renders WarehouseWaitCard (components/phase/WarehouseWaitCard.tsx),
 // which reads useTrip() directly — every test in this file renders Linehaul bare, with no
 // TripProvider ancestor, so the real hook (which throws outside one) is stubbed for the
-// whole file. A single module-scope vi.fn(), not one created per render, so the "Check now"
+// whole file. A single module-scope vi.fn(), not one created per render, so the "Check Now"
 // tests below can assert on it after the click.
 const mockRefreshQuietly = vi.fn().mockResolvedValue(undefined)
 
@@ -110,8 +110,8 @@ describe('Linehaul', () => {
   })
 
   // Task: driver PWA trip auto-refresh (2026-08-10) — the blocked wait is no longer a
-  // dead end. WarehouseWaitCard adds a Check now control alongside the existing copy.
-  it('renders a Check now control when blocked', () => {
+  // dead end. WarehouseWaitCard adds a Check Now control alongside the existing copy.
+  it('renders a Check Now control when blocked', () => {
     render(
       <Linehaul
         tripId="trip-1"
@@ -127,7 +127,7 @@ describe('Linehaul', () => {
     expect(screen.getByRole('button', { name: /check now/i })).toBeInTheDocument()
   })
 
-  it('activating Check now calls refreshQuietly', () => {
+  it('activating Check Now calls refreshQuietly', () => {
     render(
       <Linehaul
         tripId="trip-1"
@@ -160,7 +160,7 @@ describe('Linehaul', () => {
 
     // "Linehaul sheet" also appears in the StepHeader's phase name, so the capture
     // control is identified by its own copy instead — unique to CameraCapture.
-    expect(screen.getByText(/tap to photograph/i)).toBeInTheDocument()
+    expect(screen.getByText(/take photo/i)).toBeInTheDocument()
   })
 
   it('disables the swipe until a photo exists', () => {
@@ -179,7 +179,7 @@ describe('Linehaul', () => {
       />,
     )
 
-    expect(screen.getByRole('slider', { name: 'Confirm linehaul' })).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('slider', { name: 'Confirm Linehaul' })).toHaveAttribute('aria-disabled', 'true')
 
     rerender(
       <Linehaul
@@ -193,7 +193,7 @@ describe('Linehaul', () => {
       />,
     )
 
-    expect(screen.getByRole('slider', { name: 'Confirm linehaul' })).toHaveAttribute('aria-disabled', 'false')
+    expect(screen.getByRole('slider', { name: 'Confirm Linehaul' })).toHaveAttribute('aria-disabled', 'false')
   })
 })
 

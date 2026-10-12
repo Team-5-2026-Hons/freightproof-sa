@@ -14,6 +14,7 @@
 import { useState } from 'react'
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { CONFIRM_DISPATCH_MS } from '@/components/phase/SwipeToConfirm'
 import { CaptureSeal } from '../CaptureSeal'
 import { makePhase } from '@/components/phase/__tests__/testFixtures'
 import type { DepartureEvidence } from '@/lib/types/evidence-draft'
@@ -93,7 +94,7 @@ describe('CaptureSeal — capturing the seal number and photo', () => {
     const onUpdate = vi.fn()
     renderStep({ onUpdate })
 
-    fireEvent.click(screen.getByText('Seal photo'))
+    fireEvent.click(screen.getByRole('button', { name: 'Seal photo' }))
 
     // The artifact id is reset alongside the new data URL: a retake must not leave the
     // PREVIOUS photo's id in the draft, or the submit would send the discarded shot.
@@ -146,7 +147,7 @@ describe('CaptureSeal — the guard confirmation is gone and must stay gone', ()
     renderStep({ onUpdate })
 
     typeSealNumber('AB-1234')
-    fireEvent.click(screen.getByText('Seal photo'))
+    fireEvent.click(screen.getByRole('button', { name: 'Seal photo' }))
 
     // Guards against a re-added field being persisted into the draft and reaching
     // lib/api/phases.ts, whose departure branch no longer sends either key.
@@ -161,13 +162,13 @@ describe('CaptureSeal — submit readiness (SwipeToConfirm)', () => {
   it('is disabled until both the seal number and the seal photo are present', () => {
     renderStep({ draft: makeDraft() })
 
-    expect(screen.getByRole('slider', { name: 'Swipe to confirm' })).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('slider', { name: 'Swipe to Confirm' })).toHaveAttribute('aria-disabled', 'true')
   })
 
   it('is disabled when the seal photo is missing even though the number is valid', () => {
     renderStep({ draft: makeDraft({ sealNumber: 'AB-1234', sealPhotoDataUrl: null }) })
 
-    expect(screen.getByRole('slider', { name: 'Swipe to confirm' })).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('slider', { name: 'Swipe to Confirm' })).toHaveAttribute('aria-disabled', 'true')
   })
 
   it('is disabled when the seal number is not validly formatted', () => {
@@ -175,7 +176,7 @@ describe('CaptureSeal — submit readiness (SwipeToConfirm)', () => {
       draft: makeDraft({ sealNumber: 'not-a-seal', sealPhotoDataUrl: 'data:image/jpeg;base64,x' }),
     })
 
-    expect(screen.getByRole('slider', { name: 'Swipe to confirm' })).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('slider', { name: 'Swipe to Confirm' })).toHaveAttribute('aria-disabled', 'true')
   })
 
   it('is enabled once the seal number is valid and the photo is captured', () => {
@@ -183,7 +184,7 @@ describe('CaptureSeal — submit readiness (SwipeToConfirm)', () => {
       draft: makeDraft({ sealNumber: 'AB-1234', sealPhotoDataUrl: 'data:image/jpeg;base64,x' }),
     })
 
-    expect(screen.getByRole('slider', { name: 'Swipe to confirm' })).toHaveAttribute('aria-disabled', 'false')
+    expect(screen.getByRole('slider', { name: 'Swipe to Confirm' })).toHaveAttribute('aria-disabled', 'false')
   })
 })
 
@@ -201,11 +202,11 @@ describe('CaptureSeal — completing the swipe', () => {
       onComplete,
     })
 
-    const slider = screen.getByRole('slider', { name: 'Swipe to confirm' })
+    const slider = screen.getByRole('slider', { name: 'Swipe to Confirm' })
     fireEvent.keyDown(slider, { key: 'Enter' }) // arm
     fireEvent.keyDown(slider, { key: 'Enter' }) // confirm
     act(() => {
-      vi.advanceTimersByTime(180) // SwipeToConfirm's settle delay before handing off
+      vi.advanceTimersByTime(CONFIRM_DISPATCH_MS) // SwipeToConfirm's delay before handing off
     })
 
     expect(onComplete).toHaveBeenCalledTimes(1)

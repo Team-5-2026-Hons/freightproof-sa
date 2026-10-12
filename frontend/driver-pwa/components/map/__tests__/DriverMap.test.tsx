@@ -44,12 +44,14 @@ const mapCtor = vi.fn()
 const circleCtor = vi.fn()
 const setCenter = vi.fn()
 const setRadius = vi.fn()
+const mapSetOptions = vi.fn()
 
 class FakeMap {
   constructor(container: HTMLElement, options: { center: { lat: number; lng: number } }) {
     mapCtor(container, options)
   }
   setCenter = setCenter
+  setOptions = mapSetOptions
 }
 
 class FakeCircle {
@@ -73,6 +75,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers()
+  document.documentElement.classList.remove('dark')
 })
 
 describe('DriverMap rung 3 — no GPS fix at all', () => {
@@ -233,5 +236,73 @@ describe('DriverMap with a working key', () => {
 
     await waitFor(() => expect(setCenter).toHaveBeenCalledWith({ lat: moved.lat, lng: moved.lng }))
     expect(setRadius).toHaveBeenCalledWith(moved.accuracyM)
+  })
+})
+
+describe('DriverMap — theme and handoff', () => {
+  it('draws the dark basemap when the app is in the dark theme', async () => {
+    // Arrange
+    mockApiKey = 'a-real-key'
+    document.documentElement.classList.add('dark')
+
+    // Act
+    render(<DriverMap position={JHB_FIX} capturedAt={FIX_TAKEN_AT} />)
+
+    // Assert
+    await waitFor(() => expect(mapCtor).toHaveBeenCalled())
+    const [, options] = mapCtor.mock.calls[0] as [HTMLElement, { styles: unknown[] | null }]
+    expect(Array.isArray(options.styles)).toBe(true)
+    expect(options.styles!.length).toBeGreaterThan(0)
+  })
+
+  it('keeps Google’s default styling in the light theme', async () => {
+    // Arrange
+    mockApiKey = 'a-real-key'
+
+    // Act
+    render(<DriverMap position={JHB_FIX} capturedAt={FIX_TAKEN_AT} />)
+
+    // Assert
+    await waitFor(() => expect(mapCtor).toHaveBeenCalled())
+    const [, options] = mapCtor.mock.calls[0] as [HTMLElement, { styles: unknown[] | null }]
+    expect(options.styles).toBeNull()
+  })
+
+  it('restyles a live map when the theme flips (e.g. the automatic switch at sunset)', async () => {
+    // Arrange
+    mockApiKey = 'a-real-key'
+    render(<DriverMap position={JHB_FIX} capturedAt={FIX_TAKEN_AT} />)
+    await screen.findByRole('link', { name: /open in maps/i })
+
+    // Act
+    document.documentElement.classList.add('dark')
+
+    // Assert
+    await waitFor(() => expect(mapSetOptions).toHaveBeenCalledWith({ styles: expect.any(Array) }))
+  })
+
+  it('offers the phone’s map app from the live map, not only from the fallback cards', async () => {
+    // Arrange
+    mockApiKey = 'a-real-key'
+
+    // Act
+    render(<DriverMap position={JHB_FIX} capturedAt={FIX_TAKEN_AT} />)
+
+    // Assert
+    const link = await screen.findByRole('link', { name: /open in maps/i })
+    expect(link).toHaveAttribute('href', expect.stringContaining(String(JHB_FIX.lat)))
+  })
+
+  it('sizes the fallback cards separately from the map strip', () => {
+    // Arrange — no fix, so the no-fix panel renders instead of a map.
+
+    // Act
+    const { container } = render(
+      <DriverMap position={null} capturedAt={null} className="h-[200px]" fallbackClassName="w-full" />,
+    )
+
+    // Assert — the fixed strip height would clip the panel's text and Retry button.
+    expect(container.firstElementChild).not.toHaveClass('h-[200px]')
+    expect(container.firstElementChild).toHaveClass('w-full')
   })
 })

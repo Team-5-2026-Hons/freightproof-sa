@@ -143,7 +143,7 @@ function walk(plan: readonly PhaseDescriptor[], through: number): PhaseDescripto
 // driver arrives — so in_transit is `currentPhase()` the entire time this screen is up.
 //
 // This fixture previously resolved in_transit too, which made `unloading` current and
-// quietly hid a real bug: "Arrive at destination" read the current phase's recipe, found
+// quietly hid a real bug: "Arrive at Destination" read the current phase's recipe, found
 // unloading's steps in the test and in_transit's empty one in the app, and so passed here
 // while dead-ending on a real phone. Anchored to the departure row by phase_type rather
 // than a literal sequence number, so it cannot drift if the plan generator changes shape.
@@ -276,6 +276,16 @@ describe('InTransitPageClient expandable cards (5c)', () => {
     expect(description).toHaveClass('line-clamp-2')
   })
 
+  it('shows that a card expands, and marks it as an alert without a thick side stripe', () => {
+    // Arrange / Act
+    render(<InTransitPageClient />)
+    const card = screen.getByRole('button', { expanded: false })
+
+    // Assert — the chevron is the visible "there is more" cue the old card lacked.
+    expect(card.querySelector('svg.lucide-chevron-down')).not.toBeNull()
+    expect(card).not.toHaveClass('border-l-4')
+  })
+
   it('tapping a card removes the clamp and sets aria-expanded=true; tapping again re-clamps', () => {
     render(<InTransitPageClient />)
 
@@ -307,7 +317,23 @@ describe('InTransitPageClient driving screen', () => {
     expect(screen.getByRole('button', { name: /arrive at destination/i })).toBeInTheDocument()
   })
 
-  it('walks "Arrive at destination" past the pending, stepless in_transit row to the arrival step', async () => {
+  it('keeps Panic outside the region that scrolls, so it can never be scrolled away', () => {
+    // Arrange
+    render(<InTransitPageClient />)
+
+    // Act — walk up from the Panic button looking for any scrolling ancestor.
+    let node: HTMLElement | null = screen.getByRole('button', { name: 'Panic' })
+    const scrollers: HTMLElement[] = []
+    while (node) {
+      if (node.classList.contains('overflow-y-auto')) scrollers.push(node)
+      node = node.parentElement
+    }
+
+    // Assert
+    expect(scrollers).toEqual([])
+  })
+
+  it('walks "Arrive at Destination" past the pending, stepless in_transit row to the arrival step', async () => {
     // Guards the premise: in_transit is CURRENT here (not resolved), and carries no
     // recipe. Without both, this test cannot detect the dead-end it exists to catch.
     const current = DRIVING_PHASES.find((p) => p.status !== 'completed')!
@@ -324,9 +350,9 @@ describe('InTransitPageClient driving screen', () => {
     expect(mockRouterPush).toHaveBeenCalledWith('/trip/phase/arrival/step/2-seal-verify')
   })
 
-  it('never routes "Arrive at destination" back to a trip screen, which would loop', async () => {
+  it('never routes "Arrive at Destination" back to a trip screen, which would loop', async () => {
     // The regression itself: the old fallback returned ROUTES.activeTripDetail, whose
-    // "Continue driving" CTA leads straight back here — a driver could not reach unloading.
+    // "Continue Driving" CTA leads straight back here — a driver could not reach unloading.
     render(<InTransitPageClient />)
 
     await confirmArrival()
@@ -511,13 +537,13 @@ describe('InTransitPageClient arrival attestation', () => {
     fireEvent.click(screen.getByRole('button', { name: /arrive at destination/i }))
 
     await screen.findByText('Driver and truck were recorded 320 m apart. Limit: 100 m.')
-    fireEvent.click(screen.getByRole('button', { name: 'Retry location' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Retry Location' }))
     await waitFor(() => expect(mockPreviewPhaseLocation).toHaveBeenLastCalledWith(
       'trip-1', IN_TRANSIT_PHASE.phase_event_id,
       expect.objectContaining({ lat: retryCapture.latitude, captured_at: retryCapture.capturedAt }),
     ))
     fireEvent.change(screen.getByLabelText('Reason for continuing'), { target: { value: 'Truck is at the gate.' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Continue with exception' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with Exception' }))
 
     await waitFor(() => expect(mockStartPhaseSubmission).toHaveBeenCalledWith(expect.objectContaining({
       driverCapturedAt: retryCapture.capturedAt,

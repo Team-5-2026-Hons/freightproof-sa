@@ -241,7 +241,7 @@ describe('type-mismatch guard', () => {
 
   it('opens the arrival step while the driverless in_transit row is still the ledger-current phase', () => {
     // The deadlock this guard used to create. in_transit is PENDING for the whole drive
-    // (the backend closes it from the driver's own "Arrive at destination" swipe), so
+    // (the backend closes it from the driver's own "Arrive at Destination" swipe), so
     // guarding on currentPhase meant the arrival step demanded a ledger position that
     // only that swipe could produce. The driver got bounced to /trips/active on every
     // swipe and the trip could never be completed.
@@ -413,16 +413,16 @@ describe('final step — hands the submission off and returns the driver Home', 
       lat: FRESH_LOCATION.latitude, lng: FRESH_LOCATION.longitude,
       accuracy_metres: FRESH_LOCATION.accuracy, captured_at: FRESH_LOCATION.capturedAt,
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Continue with exception' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with Exception' }))
     expect(screen.getByText('Please provide a reason before continuing.')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Retry location' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Retry Location' }))
     await waitFor(() => expect(mockPreviewPhaseLocation).toHaveBeenLastCalledWith(TRIP_ID, LOADING_PE, {
       lat: retryCapture.latitude, lng: retryCapture.longitude,
       accuracy_metres: retryCapture.accuracy, captured_at: retryCapture.capturedAt,
     }))
     fireEvent.change(screen.getByLabelText('Reason for continuing'), { target: { value: 'Truck is at the gate.' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Continue with exception' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with Exception' }))
 
     await waitFor(() => expect(mockSubmitPhase).toHaveBeenLastCalledWith(
       TRIP_ID, LOADING_PE, 'loading', expect.anything(), expect.any(String),

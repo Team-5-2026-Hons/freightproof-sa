@@ -4,6 +4,7 @@
 import { useRouter, useSearchParams } from 'next/navigation'
 import { CheckCircle2, Clock } from 'lucide-react'
 import { ROUTES, PANIC_QUEUED_PARAM } from '@/lib/constants/routes'
+import { markTransition } from '@/lib/navigation/transition-direction'
 import { Button } from '@/components/ui/Button'
 
 export default function PanicSubmittedPageClient() {
@@ -23,8 +24,8 @@ export default function PanicSubmittedPageClient() {
           <CheckCircle2 className="h-10 w-10 text-success" strokeWidth={2} aria-hidden />
         )}
       </div>
-      <h1 className="text-xl font-bold">{queued ? 'Alert saved' : 'Alert sent'}</h1>
-      <p className="text-lg leading-relaxed text-surface-on-variant max-w-xs">
+      <h1 className="text-title-2">{queued ? 'Alert saved' : 'Alert sent'}</h1>
+      <p className="max-w-xs text-body leading-relaxed text-surface-on-variant">
         {queued ? (
           <>
             No signal right now — this alert is stored on this device and will send
@@ -38,8 +39,8 @@ export default function PanicSubmittedPageClient() {
           </>
         )}
       </p>
-      <Button size="lg" onClick={() => router.replace(ROUTES.inTransit)}>
-        Return to in-transit
+      <Button size="lg" onClick={() => { markTransition('back'); router.replace(ROUTES.inTransit) }}>
+        Back to In Transit
       </Button>
     </main>
   )

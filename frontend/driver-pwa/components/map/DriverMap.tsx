@@ -16,6 +16,8 @@ import { importLibrary, setOptions } from '@googlemaps/js-api-loader'
 import { Loader2, MapPinOff, Navigation, WifiOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { GOOGLE_MAPS_API_KEY } from '@/lib/constants/env'
+import { DARK_CLASS } from '@/lib/theme'
+import { MAP_STYLES_DARK } from '@/lib/tokens'
 import { formatTime } from '@/lib/utils/format-time'
 import { Button } from '@/components/ui/Button'
 import type { DriverPosition } from '@/lib/types/location'
@@ -75,6 +77,13 @@ function nativeMapsUrl(position: DriverPosition): string {
   }
 }
 
+// The basemap's styling for whichever theme <html> currently carries. null = Google's own
+// default (light) styling.
+function themedMapStyles(): google.maps.MapTypeStyle[] | null {
+  if (typeof document === 'undefined') return null
+  return document.documentElement.classList.contains(DARK_CLASS) ? MAP_STYLES_DARK : null
+}
+
 function formatCoordinate(value: number): string {
   return value.toFixed(COORDINATE_DECIMALS)
 }
@@ -124,7 +133,7 @@ function CoordinatesCard({ position, capturedAt, reason, className }: Coordinate
       </p>
 
       <div className="rounded-xl bg-surface-container-lowest p-4">
-        <p className="text-xs uppercase tracking-industrial text-surface-on-variant">
+        <p className="text-footnote font-semibold text-surface-on-variant">
           {stale ? 'Last known position' : 'Current position'}
         </p>
         <p className="mt-1 font-mono text-lg font-semibold text-surface-on">
@@ -146,8 +155,8 @@ function CoordinatesCard({ position, capturedAt, reason, className }: Coordinate
         rel="noopener noreferrer"
         className={cn(
           'inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-xl px-6 py-4',
-          'text-sm font-bold uppercase tracking-wider transition-all duration-200 active:scale-[0.98]',
-          'border border-outline-variant/60 bg-surface-container-lowest text-surface-on shadow-ambient-sm',
+          'text-body font-semibold transition-all duration-200 active:scale-[0.98]',
+          'border border-outline-variant/60 bg-surface-container-lowest text-surface-on',
           'hover:bg-surface-container-low',
         )}
       >
@@ -180,7 +189,7 @@ function NoFixPanel({ onRetry, className }: NoFixPanelProps) {
       </p>
       {onRetry !== undefined && (
         <Button variant="secondary" size="md" onClick={onRetry}>
-          Try again
+          Try Again
         </Button>
       )}
     </div>
@@ -195,12 +204,19 @@ export interface DriverMapProps {
   /** Re-request a fix. Omit to render the no-fix state without a retry control. */
   onRetry?: () => void
   className?: string
+  /**
+   * Sizing for the fallback cards (no fix / coordinates), when it must differ from the
+   * map's own. A fixed-height map strip needs an explicit height for the Maps API to draw
+   * into, but the fallback cards carry text and a button that would overflow that height.
+   * Defaults to `className`.
+   */
+  fallbackClassName?: string
 }
 
 /** Whether the Maps JS API is usable right now. */
 type MapState = 'loading' | 'ready' | 'unavailable'
 
-export function DriverMap({ position, capturedAt, onRetry, className }: DriverMapProps) {
+export function DriverMap({ position, capturedAt, onRetry, className, fallbackClassName = className }: DriverMapProps) {
   const [mapState, setMapState] = useState<MapState>('loading')
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<google.maps.Map | null>(null)
@@ -234,6 +250,7 @@ export function DriverMap({ position, capturedAt, onRetry, className }: DriverMa
           gestureHandling: 'greedy',
           clickableIcons: false,
           keyboardShortcuts: false,
+          styles: themedMapStyles(),
         })
 
         // The halo is the uncertainty, drawn to scale, stopping a 500m fix reading as a pinpoint.
@@ -286,6 +303,18 @@ export function DriverMap({ position, capturedAt, onRetry, className }: DriverMa
     accuracyRef.current?.setRadius(position.accuracyM ?? FALLBACK_ACCURACY_RADIUS_M)
   }, [position, mapState])
 
+  // Follow the app theme live: the theme class lands on <html> (lib/theme.ts), including
+  // the automatic switch at sunset under "System", so watch that one attribute rather than
+  // re-deriving the preference here.
+  useEffect(() => {
+    if (mapState !== 'ready' || typeof MutationObserver === 'undefined') return
+    const observer = new MutationObserver(() => {
+      mapRef.current?.setOptions({ styles: themedMapStyles() })
+    })
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+    return () => observer.disconnect()
+  }, [mapState])
+
   // Release the Maps objects on unmount so repeated opens don't accumulate map instances.
   useEffect(() => () => {
     driverDotRef.current?.setMap(null)
@@ -309,10 +338,10 @@ export function DriverMap({ position, capturedAt, onRetry, className }: DriverMa
   }, [retryTiles])
 
   // Rung 3 first: with no fix there is no coordinate for rungs 1 and 2 to show either.
-  if (position === null) return <NoFixPanel onRetry={onRetry} className={className} />
-  if (!hasKey) return <CoordinatesCard position={position} capturedAt={capturedAt} reason="no-key" className={className} />
+  if (position === null) return <NoFixPanel onRetry={onRetry} className={fallbackClassName} />
+  if (!hasKey) return <CoordinatesCard position={position} capturedAt={capturedAt} reason="no-key" className={fallbackClassName} />
   if (mapState === 'unavailable') {
-    return <CoordinatesCard position={position} capturedAt={capturedAt} reason="tiles-unreachable" className={className} />
+    return <CoordinatesCard position={position} capturedAt={capturedAt} reason="tiles-unreachable" className={fallbackClassName} />
   }
 
   return (
@@ -323,6 +352,20 @@ export function DriverMap({ position, capturedAt, onRetry, className }: DriverMa
           <Loader2 className="h-5 w-5 animate-spin text-surface-on-variant" aria-hidden />
           <p className="text-sm text-surface-on-variant">Loading map</p>
         </div>
+      )}
+      {/* The same handoff the fallback cards offer: a small map is for glancing, the
+          phone's own map app is for looking properly. A real <a> for the reason given on
+          the fallback card's link. Top-left: the bottom corners carry Google's logo and
+          attribution, which must stay visible. */}
+      {mapState === 'ready' && (
+        <a
+          href={nativeMapsUrl(position)}
+          rel="noopener noreferrer"
+          className="glass-nav absolute left-2 top-2 flex min-h-[44px] items-center gap-1.5 rounded-full px-3.5 text-footnote font-semibold text-surface-on shadow-level-2 transition-opacity duration-100 active:opacity-60"
+        >
+          <Navigation className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
+          Open in Maps
+        </a>
       )}
     </div>
   )

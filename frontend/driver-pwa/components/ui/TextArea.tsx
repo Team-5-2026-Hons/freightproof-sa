@@ -21,7 +21,7 @@ export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(function 
     <div className="flex flex-col gap-1.5">
       <label
         htmlFor={inputId}
-        className="text-xs font-bold uppercase tracking-wider text-surface-on-variant"
+        className="text-footnote font-semibold text-surface-on-variant"
       >
         {label}
       </label>
@@ -33,7 +33,7 @@ export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(function 
           // text-base, not text-sm — see components/ui/Input.tsx for why (iOS zoom-on-focus).
           'w-full rounded-xl px-4 py-3 text-base font-medium text-foreground',
           'bg-muted border border-input',
-          'placeholder:text-muted-foreground/70 resize-none',
+          'placeholder:text-muted-foreground/80 resize-none',
           'focus:outline-none focus:border-ring focus:bg-card',
           'transition-colors duration-150 min-h-[120px]',
           'disabled:opacity-40 disabled:cursor-not-allowed',

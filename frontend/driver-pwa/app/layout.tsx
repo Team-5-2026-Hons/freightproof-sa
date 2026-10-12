@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter } from 'next/font/google'
 import './globals.css'
 import { AuthProvider } from '@/lib/context/AuthContext'
 import { ToastProvider } from '@/lib/context/ToastContext'
@@ -12,7 +11,8 @@ import { THEME_INIT_SCRIPT } from '@/lib/theme'
 // viewportFit: 'cover' lets content draw under the WebView's notch/gesture-bar insets, so
 // bottom-anchored controls (SwipeToConfirm, panic Cancel) get real clearance.
 // maximumScale/userScalable lock pinch-zoom: this ships as a packaged native shell
-// (Capacitor), so an input focus must not trigger iOS's zoom-to-focused-field.
+// (Capacitor), so an input focus must not trigger iOS's zoom-to-focused-field. Drivers who
+// need larger text get it from Dynamic Type instead — globals.css binds 1rem to it.
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
@@ -34,18 +34,12 @@ export const metadata: Metadata = {
   },
 }
 
-const inter = Inter({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700', '800', '900'],
-  variable: '--font-inter',
-  display: 'swap',
-})
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     // suppressHydrationWarning: the pre-paint script below writes the theme class before
     // React hydrates, so server and client class lists legitimately differ on first pass.
-    <html lang="en" className={inter.variable} suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <body className="font-sans bg-surface text-surface-on antialiased min-h-dvh">
         {/* First child of <body>: runs before paint, avoiding a white flash. See lib/theme.ts. */}
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />

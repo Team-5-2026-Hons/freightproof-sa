@@ -1,7 +1,7 @@
 'use client'
 
 import { CheckCircle2 } from 'lucide-react'
-import { StepHeader } from '@/components/phase/StepHeader'
+import { StepLayout } from '@/components/phase/StepLayout'
 import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
 import { WarehouseWaitCard } from '@/components/phase/WarehouseWaitCard'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
@@ -36,37 +36,40 @@ export function Closed({ tripId, phase, stepIndex, draft, onComplete }: ClosedPr
     return onComplete()
   }
 
+  // No success tick and no swipe while blocked: the control is omitted entirely rather
+  // than left visible-but-disabled, and the wait card says why.
+  if (isBlocked) {
+    return (
+      <StepLayout phase={phase} stepIndex={stepIndex} centered>
+        <WarehouseWaitCard>
+          The warehouse is still scanning the parcels in at this stop. The trip will
+          close on its own once they finish. Your evidence is saved — no action is
+          needed from you.
+        </WarehouseWaitCard>
+      </StepLayout>
+    )
+  }
+
   return (
-    <main className="flex min-h-dvh flex-col">
-      <StepHeader phase={phase} stepIndex={stepIndex} />
-      {isBlocked ? (
-        // No success tick and no swipe while blocked: hide the control entirely rather
-        // than leave it visible-but-disabled, and say why.
-        <div className="flex flex-1 flex-col justify-center gap-2 p-4">
-          <WarehouseWaitCard>
-            The warehouse is still scanning the parcels in at this stop. The trip will
-            close on its own once they finish. Your evidence is saved — no action is
-            needed from you.
-          </WarehouseWaitCard>
-        </div>
-      ) : (
-        <>
-          <div className="flex flex-1 flex-col items-center justify-center gap-6 p-4 text-center">
-            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
-              <CheckCircle2 className="h-10 w-10 text-success" strokeWidth={2} aria-hidden />
-            </div>
-            <div>
-              <p className="text-xl font-bold">Trip Complete</p>
-              <p className="mt-1 text-base text-surface-on-variant">
-                All phases are complete. Evidence has been recorded.
-              </p>
-            </div>
-          </div>
-          <div className="flex justify-center px-6 pt-6 pb-safe">
-            <SwipeToConfirm label="Close trip" onConfirm={handleClose} disabled={!isReady} />
-          </div>
-        </>
-      )}
-    </main>
+    <StepLayout
+      phase={phase}
+      stepIndex={stepIndex}
+      centered
+      requirements={[
+        { label: 'Proof of delivery photo', met: draft.podPhotoDataUrl !== null },
+        { label: 'Receiver confirmation', met: Boolean(draft.podSignatureArtifactId) },
+      ]}
+      action={<SwipeToConfirm label="Close Trip" onConfirm={handleClose} disabled={!isReady} />}
+    >
+      <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
+        <CheckCircle2 className="h-10 w-10 text-success" strokeWidth={2} aria-hidden />
+      </div>
+      <div>
+        <p className="text-title-2">Trip Complete</p>
+        <p className="mt-1 text-body text-surface-on-variant">
+          All phases are complete. Evidence has been recorded.
+        </p>
+      </div>
+    </StepLayout>
   )
 }

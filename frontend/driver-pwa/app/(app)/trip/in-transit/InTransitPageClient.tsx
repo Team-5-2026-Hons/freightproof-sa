@@ -17,11 +17,12 @@
 // Layout invariant: PANIC IS NEVER BEHIND A SCROLL. The action stack at the bottom is
 // `shrink-0` inside an `overflow-hidden` viewport-height column, and the only part of it
 // that can grow (the open-exceptions list) is height-capped and scrolls inside itself. The
-// map takes whatever is left, which on any phone is the largest element on screen.
+// map takes whatever is left, which on any phone is the largest element on screen — the
+// driver's choice in the design review, over a fixed strip.
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ShieldAlert, ScanFace, TriangleAlert } from 'lucide-react'
+import { ChevronDown, ShieldAlert, ScanFace, TriangleAlert } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTrip } from '@/lib/hooks/useTrip'
 import { useLocationTrail } from '@/lib/hooks/useLocationTrail'
@@ -40,6 +41,7 @@ import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { SubpageHeader } from '@/components/layout/SubpageHeader'
 import type { DriverPosition } from '@/lib/types/location'
 import type { LocationWarningAcknowledgement } from '@/lib/types/location'
+import { openDriverExceptions } from '@/lib/utils/trip-attention'
 import type { ActionLocationAssessment } from '@shared/lib/types/action-location'
 import type { TripException } from '@shared/lib/types/exception'
 import { LocationCheckModal } from '@/components/phase/LocationCheckModal'
@@ -65,8 +67,10 @@ interface DriverFix {
 
 // A native <button> (not the Card component) so the expand/collapse toggle is
 // keyboard-operable and announces its state via aria-expanded — long exception and
-// dispatcher-note descriptions were previously clamped with no way to read the rest.
-// Styling mirrors Card variant="exception".
+// dispatcher-note descriptions are clamped until tapped. The chevron is the visible half
+// of that: the old card expanded on tap but gave no sign it could, so the note read as
+// simply cut off. A tinted container, not a thick coloured left border, marks it as an
+// alert (that stripe is a stock template tell).
 function ExceptionCard({ exception }: ExceptionCardProps) {
   const [expanded, setExpanded] = useState(false)
   return (
@@ -74,15 +78,26 @@ function ExceptionCard({ exception }: ExceptionCardProps) {
       type="button"
       aria-expanded={expanded}
       onClick={() => setExpanded((prev) => !prev)}
-      className="w-full rounded-xl border-l-4 border-error bg-surface-container-lowest p-3 text-left shadow-ambient"
+      className="flex w-full gap-3 rounded-2xl bg-error-container/60 p-3.5 text-left transition-transform duration-150 active:scale-[0.99]"
     >
-      <p className="text-sm font-semibold text-error-on-container capitalize">
-        {exception.exception_type.replace(/_/g, ' ')}
-      </p>
-      {/* clamped only while collapsed — a tap reveals the full description */}
-      <p className={cn('text-xs text-surface-on-variant mt-0.5', !expanded && 'line-clamp-2')}>
-        {exception.description}
-      </p>
+      <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0 text-error" strokeWidth={2} aria-hidden />
+      <span className="min-w-0 flex-1">
+        <span className="block text-headline capitalize text-error-on-container">
+          {exception.exception_type.replace(/_/g, ' ')}
+        </span>
+        {/* clamped only while collapsed — a tap reveals the full description */}
+        <span className={cn('mt-0.5 block text-subhead text-error-on-container/90', !expanded && 'line-clamp-2')}>
+          {exception.description}
+        </span>
+      </span>
+      <ChevronDown
+        className={cn(
+          'mt-0.5 h-5 w-5 shrink-0 text-error-on-container/70 transition-transform duration-200',
+          expanded && 'rotate-180',
+        )}
+        strokeWidth={2}
+        aria-hidden
+      />
     </button>
   )
 }
@@ -156,7 +171,7 @@ export default function InTransitPageClient() {
   // dispatcher sees every exception regardless — nothing is hidden from the evidence
   // trail, only from this one screen. Driver- and dispatcher-raised exceptions stay
   // visible: those the driver either filed themselves or is meant to act on.
-  const openExceptions = exceptions.filter((e) => e.review_status !== 'reviewed' && e.source !== 'system')
+  const openExceptions = openDriverExceptions(exceptions)
 
   // Captured here, in component scope, rather than read off `trip` inside the nested
   // handlers below — TS narrows `trip` to non-null in this scope (the guard above), but
@@ -365,36 +380,43 @@ export default function InTransitPageClient() {
     <main className="flex h-dvh flex-col overflow-hidden">
       <SubpageHeader
         title={trip.trip_reference}
-        backLabel="Trip detail"
+        // Same identifier treatment as trip detail, so the reference reads identically
+        // on both screens a driver moves between.
+        titleVariant="reference"
+        titleCaption="Trip reference"
+        backLabel="Trip Detail"
         onBack={() => router.push(ROUTES.activeTripDetail)}
-        right={<span className="text-sm text-surface-on-variant">In Transit</span>}
+        right={<span className="text-subhead text-surface-on-variant">In Transit</span>}
       />
-
-      <div className="flex shrink-0 items-baseline justify-between gap-3 px-4 py-2">
-        <p className="text-sm uppercase tracking-industrial text-surface-on-variant">Planned arrival</p>
-        <p className="text-base font-semibold text-surface-on">
-          {trip.planned_arrival_at ? formatTime(trip.planned_arrival_at) : 'Not set'}
-        </p>
-      </div>
 
       {/* The map, and the largest element on the screen: it takes every pixel the header
           and the action stack do not need. min-h-0 is load-bearing — without it a flex
           child refuses to shrink below its content and pushes the stack off the bottom. */}
-      <section className="min-h-0 flex-1 px-4 pb-3">
+      <section aria-label="Your position" className="relative min-h-0 flex-1 px-4 pt-3 pb-3">
         <DriverMap
           position={fix?.position ?? null}
           capturedAt={fix?.capturedAt ?? null}
           onRetry={() => { void refreshFix() }}
           className="h-full w-full"
+          // The fallback cards carry text and a button; on a short phone they scroll inside
+          // the map's slot rather than spilling over the action stack.
+          fallbackClassName="h-full w-full overflow-y-auto"
         />
+        {/* The planned arrival laid over the map's corner on the same glass as the bars —
+            the one number a driver checks most, without spending a row on it. "ETA", the
+            word Home's card uses for the same time, keeps it short enough to sit beside
+            "Open in Maps" even at large text sizes. */}
+        <p className="glass-nav pointer-events-none absolute right-6 top-5 rounded-full px-3 py-2 text-subhead font-semibold tabular-nums text-surface-on shadow-level-2">
+          <span className="text-surface-on-variant">ETA </span>
+          {trip.planned_arrival_at ? formatTime(trip.planned_arrival_at) : 'Not set'}
+        </p>
       </section>
 
       {/* Everything the driver can do, in a block that never scrolls away. */}
-      <div className="shrink-0 border-t border-outline-variant/60 bg-surface-container-lowest px-4 pt-3 pb-safe">
+      <div className="shrink-0 border-t border-outline-variant/40 bg-surface-container-lowest px-4 pt-3 pb-safe">
         {openExceptions.length > 0 && (
           <section className="mb-3 flex flex-col gap-2">
-            <p className="flex items-center gap-1.5 text-base font-semibold text-error">
-              <TriangleAlert className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
+            <p className="text-footnote font-semibold text-error">
               {openExceptions.length} open exception{openExceptions.length > 1 ? 's' : ''}
             </p>
             {/* Height-capped and self-scrolling: a leg with eight exceptions must not be
@@ -421,7 +443,7 @@ export default function InTransitPageClient() {
               focus off it either way, but an unmounted control cannot be reached at all,
               which is the stronger guarantee against a second swipe mid-check. */}
           {!(arrivalPreviewLoading || arrivalCapturedAt !== null) && (
-            <SwipeToConfirm label="Arrive at destination" onConfirm={() => { void handleArrivalSwipe() }} />
+            <SwipeToConfirm label="Arrive at Destination" onConfirm={() => { void handleArrivalSwipe() }} />
           )}
           <LocationCheckModal
             open={arrivalPreviewLoading || arrivalCapturedAt !== null}
@@ -434,11 +456,15 @@ export default function InTransitPageClient() {
           />
         </div>
 
+        {/* Secondary actions as icon-over-label tiles: ranked visibly below the swipe, and
+            a stacked label never has to share a row with its icon, which is what wrapped
+            "Log Exception" onto two lines at large text sizes. */}
         <div className="mt-3 grid grid-cols-2 gap-3">
           <Button
             variant="secondary"
             size="lg"
-            iconLeft={<ScanFace className="h-4 w-4" strokeWidth={2} aria-hidden />}
+            className="flex-col gap-1 py-2.5 text-subhead"
+            iconLeft={<ScanFace className="h-5 w-5" strokeWidth={2} aria-hidden />}
             onClick={() => router.push(ROUTES.checkpoint)}
           >
             Checkpoint
@@ -446,9 +472,11 @@ export default function InTransitPageClient() {
           <Button
             variant="secondary"
             size="lg"
+            className="flex-col gap-1 py-2.5 text-subhead"
+            iconLeft={<TriangleAlert className="h-5 w-5" strokeWidth={2} aria-hidden />}
             onClick={() => router.push(ROUTES.exception)}
           >
-            Log exception
+            Log Exception
           </Button>
         </div>
 

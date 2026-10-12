@@ -29,10 +29,11 @@ describe('CurrentPhaseCard', () => {
   // Cross-dock disambiguation: a phase_type can occur more than once in
   // one trip's plan, so the sequence number alone isn't enough for a driver to place
   // which occurrence they're on — stop_sequence must appear too.
-  it('shows the stop number to disambiguate a repeated phase type on a cross-dock plan', () => {
+  it('shows the stop label to disambiguate a repeated phase type on a cross-dock plan', () => {
     render(
       <CurrentPhaseCard
         phase={makePhase('unloading', { sequence_number: 9, stop_sequence: 3 })}
+        stop="Stop 3"
         onSelect={vi.fn()}
       />,
     )
@@ -40,7 +41,7 @@ describe('CurrentPhaseCard', () => {
     expect(screen.getByText('Stop 3')).toBeInTheDocument()
   })
 
-  it('omits the stop label when stop_sequence is null (trip_creation)', () => {
+  it('omits the stop label when none is given (trip_creation has no stop)', () => {
     render(
       <CurrentPhaseCard
         phase={makePhase('trip_creation', { sequence_number: 0, stop_sequence: null })}
@@ -49,5 +50,18 @@ describe('CurrentPhaseCard', () => {
     )
 
     expect(screen.queryByText(/^Stop /)).not.toBeInTheDocument()
+  })
+
+  it('never prints a raw 0-based stop sequence on its own', () => {
+    // The old card rendered "Stop {stop_sequence}" itself, which put "Stop 0" on every
+    // origin phase; the label now comes only from lib/phase stopLabel via the caller.
+    render(
+      <CurrentPhaseCard
+        phase={makePhase('loading', { sequence_number: 2, stop_sequence: 0 })}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByText(/Stop 0/)).not.toBeInTheDocument()
   })
 })

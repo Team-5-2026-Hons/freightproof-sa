@@ -259,13 +259,13 @@ describe('TripDetailView', () => {
 
     // The current phase's own capture card (in_transit carries no steps of its own, so
     // this would otherwise fall through to nothing useful) must not be offered while the
-    // driver is moving — "Continue driving" takes its place instead.
+    // driver is moving — "Continue Driving" takes its place instead.
     expect(screen.queryByRole('button', { name: /in transit/i })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /continue driving/i })).toBeInTheDocument()
   })
 
   it('shows the arrival capture card, not the driving screen, once in_transit resolves', () => {
-    // in_transit resolved (the "Arrive at destination" swipe done), arrival current — the
+    // in_transit resolved (the "Arrive at Destination" swipe done), arrival current — the
     // driver is standing at the destination doing seal-verify. This is the state the old
     // case-2 fossil (V7) mistook for "still driving"; it must now show the arrival
     // capture card instead.
@@ -419,7 +419,7 @@ describe('TripDetailView', () => {
       />,
     )
 
-    fireEvent.click(screen.getByText('← My Trips'))
+    fireEvent.click(screen.getByRole('button', { name: 'Trips' }))
     expect(onBack).toHaveBeenCalled()
   })
 })

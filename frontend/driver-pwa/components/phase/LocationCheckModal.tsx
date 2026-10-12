@@ -90,7 +90,7 @@ export function LocationCheckModal({
             Location check could not be completed. Your action can still be recorded.
           </p>
           <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" size="sm" onClick={onRetry}>Retry location</Button>
+            <Button variant="secondary" size="sm" onClick={onRetry}>Retry Location</Button>
             <Button size="sm" onClick={continueAction}>Continue</Button>
           </div>
         </div>
@@ -109,7 +109,7 @@ export function LocationCheckModal({
             We could not compare your location with the truck. Your action can still be recorded.
           </p>
           <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" size="sm" onClick={onRetry}>Retry location</Button>
+            <Button variant="secondary" size="sm" onClick={onRetry}>Retry Location</Button>
             <Button size="sm" onClick={continueAction}>Continue</Button>
           </div>
         </div>
@@ -162,8 +162,8 @@ export function LocationCheckModal({
           <p id="location-warning-reason-error" role="alert" className="text-sm text-error">{reasonError}</p>
         )}
         <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" size="sm" onClick={onRetry}>Retry location</Button>
-          <Button size="sm" onClick={continueAction}>Continue with exception</Button>
+          <Button variant="secondary" size="sm" onClick={onRetry}>Retry Location</Button>
+          <Button size="sm" onClick={continueAction}>Continue with Exception</Button>
         </div>
       </div>
     </Modal>

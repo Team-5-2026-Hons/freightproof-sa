@@ -12,11 +12,14 @@ import { CameraCapture } from '@/components/phase/CameraCapture'
 import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
 import { Button } from '@/components/ui/Button'
 import { TextArea } from '@/components/ui/TextArea'
+import { Switch } from '@/components/ui/Switch'
+import { RequirementChecklist } from '@/components/phase/StepLayout'
 import { SubpageHeader } from '@/components/layout/SubpageHeader'
 import { ROUTES } from '@/lib/constants/routes'
 import { ApiError } from '@/lib/api/client'
 import { submitCheckpoint, type CheckpointEvidence } from '@/lib/api/checkpoints'
 import { contextPhaseEventId } from '@/lib/phase/derive'
+import { markTransition } from '@/lib/navigation/transition-direction'
 
 // Driver-initiated periodic in-transit capture (selfie + cargo photo), independent
 // of the five handshakes — proves the driver and cargo are where they should be
@@ -98,11 +101,11 @@ export default function CheckpointPageClient() {
           <h1 className="text-lg font-bold">Unable to verify trip</h1>
           <p className="text-lg leading-relaxed opacity-90">
             We could not confirm this checkpoint against your active trip.
-            Return to in-transit and try again.
+            Go back to In Transit and try again.
           </p>
         </div>
-        <Button type="button" variant="ghost" onClick={() => router.replace(ROUTES.inTransit)}>
-          Return to in-transit
+        <Button type="button" variant="ghost" onClick={() => { markTransition('back'); router.replace(ROUTES.inTransit) }}>
+          Back to In Transit
         </Button>
       </main>
     )
@@ -112,13 +115,11 @@ export default function CheckpointPageClient() {
     <main className="flex min-h-dvh flex-col">
       <SubpageHeader
         title="Log Checkpoint"
-        backLabel="In-Transit Hub"
+        backLabel="In Transit"
         onBack={() => router.push(ROUTES.inTransit)}
       />
-      {/* pb-8 keeps the swipe control clear of the note textarea on short viewports —
-          min-h-screen alone lets the footer controls crowd the form when it overflows. */}
-      <div className="flex flex-1 flex-col p-4 pb-8">
-        <p className="mb-6 text-lg leading-relaxed text-surface-on-variant">
+      <div className="flex flex-1 flex-col p-4">
+        <p className="mb-6 text-body leading-relaxed text-surface-on-variant">
           Capture a selfie and a cargo photo to confirm your location and load mid-transit.
         </p>
 
@@ -126,25 +127,22 @@ export default function CheckpointPageClient() {
           <CameraCapture label="Selfie" dataUrl={selfieDataUrl} onCapture={setSelfieDataUrl} />
           <CameraCapture label="Cargo photo" dataUrl={cargoPhotoDataUrl} onCapture={setCargoPhotoDataUrl} />
 
-          {/* The visual checkbox stays 16px, but the whole label is the tap target —
-              min-h-[44px] meets the app's documented 44px minimum touch target (same
-              pattern Switch.tsx documents: grow the hit area, not the control, so it
-              doesn't look oversized next to its text). */}
-          <label className="flex min-h-[44px] cursor-pointer select-none items-center gap-3 text-base">
-            <input
-              type="checkbox"
-              checked={isDeviation}
-              onChange={(e) => setIsDeviation(e.target.checked)}
-              className="h-4 w-4"
-            />
-            This is a route deviation
-          </label>
+          {/* An iOS switch row, not a web checkbox (audit M5): a 16px square box read as a
+              form from a website, and was the smallest target on the screen. The row is a
+              grouped-list cell; the switch carries its own 44px hit area. */}
+          <div className="flex min-h-[52px] items-center justify-between gap-4 rounded-2xl bg-surface-container-low pl-4 pr-2">
+            <label htmlFor="route-deviation" className="text-body text-surface-on">
+              This is a route deviation
+            </label>
+            <Switch id="route-deviation" checked={isDeviation} onCheckedChange={setIsDeviation} />
+          </div>
 
+          {/* "Optional" once, in the label — it used to appear three times (label-free
+              placeholder, helper text and placeholder again). */}
           <TextArea
-            label="Note"
-            helperText="Optional"
+            label="Note (optional)"
             rows={3}
-            placeholder="Note (optional)"
+            placeholder="Anything dispatch should know"
             value={note}
             onChange={(e) => setNote(e.target.value)}
           />
@@ -154,19 +152,31 @@ export default function CheckpointPageClient() {
           // This branch only renders on a terminal 4xx — retrying with the same input
           // cannot succeed, so "check your connection" would be actively misleading here
           // (the connection worked; the server said no).
-          <p className="mb-3 text-base text-error">
+          <p className="mb-3 text-subhead text-error">
             Could not submit — the checkpoint was not accepted. Review the details or contact your dispatcher.
           </p>
         )}
-        <div className="flex flex-col items-center pb-safe">
-          <div className="flex justify-center">
-            <SwipeToConfirm label={submitting ? 'Submitting…' : 'Swipe to confirm'} onConfirm={handleSubmit} disabled={!isReady || submitting} />
-          </div>
-          <Button variant="secondary" size="lg" className="mt-4" onClick={() => router.push(ROUTES.inTransit)}>
-            Cancel
-          </Button>
-        </div>
       </div>
+
+      {/* The same pinned glass footer as the evidence steps (StepLayout). It also fixes a
+          real bug: the swipe used to sit in a shrink-to-fit wrapper inside an
+          items-center column, which gave its w-full track a width of 0px — the control
+          rendered invisible and a checkpoint could not be submitted at all. A full-width
+          block parent is what gives SwipeToConfirm its width. */}
+      <footer className="glass-nav sticky bottom-0 z-sticky border-t border-outline-variant/25 px-4 pt-3 pb-[max(env(safe-area-inset-bottom),1.5rem)]">
+        <RequirementChecklist
+          requirements={[
+            { label: 'Selfie', met: selfieDataUrl !== null },
+            { label: 'Cargo photo', met: cargoPhotoDataUrl !== null },
+          ]}
+        />
+        <div className="flex w-full justify-center">
+          <SwipeToConfirm label={submitting ? 'Submitting…' : 'Swipe to Confirm'} onConfirm={handleSubmit} disabled={!isReady || submitting} />
+        </div>
+        <Button variant="ghost" size="md" className="mt-2 w-full" onClick={() => { markTransition('back'); router.push(ROUTES.inTransit) }}>
+          Cancel
+        </Button>
+      </footer>
     </main>
   )
 }
