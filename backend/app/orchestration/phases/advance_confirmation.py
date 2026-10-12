@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.blockchain.anchor_service import compute_payload_hash
 from app.core.realtime import RealtimeKind, TripEvent, enqueue_event, event_severity
 from app.db.models.enums import (
-    BlockchainReceiptType, ExceptionSeverity, ExceptionSource, ExceptionType, PhaseStatus,
+    BlockchainReceiptType, EvidenceRole, ExceptionSeverity, ExceptionSource, ExceptionType, PhaseStatus,
 )
 from app.db.models.transit import TripException
 from app.integrations.scan_feed import ScanDirection
@@ -44,8 +44,8 @@ async def advance_confirmation(
     )
 
     artifact_hashes = await _assert_artifacts_belong_to_trip(
-        db, trip_id=trip_id,
-        artifact_ids=(payload.pod_photo_artifact_id, payload.pod_signature_artifact_id),
+        db, trip_id=trip_id, phase_event_id=event.id,
+        cited={EvidenceRole.POD_PHOTO: payload.pod_photo_artifact_id, EvidenceRole.POD_SIGNATURE: payload.pod_signature_artifact_id},
     )
 
     event.pod_photo_artifact_id = payload.pod_photo_artifact_id

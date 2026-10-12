@@ -24,13 +24,14 @@ from app.core.exceptions import (
     HandoverLinkInvalidError,
     ResourceNotFoundError,
 )
-from app.db.models.enums import ArtifactType, PhaseType
+from app.db.models.enums import ArtifactType, EvidenceRole, PhaseType
 from app.db.models.handover import HandoverCapabilityToken, HandoverConfirmation
 from app.db.models.organisations import Precinct
 from app.db.models.phases import PhaseEvent
 from app.db.models.receiver_verification import ReceiverIdentityVerification
 from app.db.models.trips import Consignment, Trip, TripStop
 from app.orchestration.evidence.artifacts import create_receiver_artifact
+from app.orchestration.evidence.attribution import EvidenceAttribution
 from app.orchestration.handover.capability import (
     HandoverRedemptionResult,
     RotationResult,
@@ -274,6 +275,9 @@ async def record_receiver_confirmation(
         captured_at=datetime.now(UTC),  # server clock; receiver's phone clock isn't evidence
         captured_lat=submission.receiver_lat,
         captured_lng=submission.receiver_lng,
+        attribution=EvidenceAttribution(
+            phase_event_id=token.phase_event_id, role=EvidenceRole.POD_SIGNATURE,
+        ),
     )
     confirmation = await record_handover_confirmation(
         db,

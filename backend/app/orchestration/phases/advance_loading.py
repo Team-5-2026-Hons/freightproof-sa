@@ -5,7 +5,7 @@ import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.realtime import RealtimeKind, TripEvent, enqueue_event, event_severity
-from app.db.models.enums import ExceptionSeverity, PhaseStatus
+from app.db.models.enums import EvidenceRole, ExceptionSeverity, PhaseStatus
 from app.integrations.scan_feed import ScanDirection
 from app.orchestration.consignments import scans as scan_service
 from app.orchestration.evidence import corroboration
@@ -42,7 +42,7 @@ async def advance_loading(
     linehaul_photo_sha256: str | None = None
     if payload.linehaul_photo_artifact_id is not None:
         linehaul_hashes = await _assert_artifacts_belong_to_trip(
-            db, trip_id=trip_id, artifact_ids=(payload.linehaul_photo_artifact_id,),
+            db, trip_id=trip_id, phase_event_id=event.id, cited={EvidenceRole.LINEHAUL_PHOTO: payload.linehaul_photo_artifact_id},
         )
         event.linehaul_photo_artifact_id = payload.linehaul_photo_artifact_id
         linehaul_photo_sha256 = linehaul_hashes[payload.linehaul_photo_artifact_id]
