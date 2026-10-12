@@ -57,6 +57,8 @@ class RealtimeKind(str, Enum):
     # (silent refetch, never a toast), and the payload stays ids-only either way.
     EXCEPTION_CLAIMED = "exception_claimed"
     TRIP_CLOSED = "trip_closed"
+    # A new evidence artifact was stored. Refreshes only the artifacts resource; INFO, never a toast.
+    EVIDENCE_UPLOADED = "evidence_uploaded"
 
 
 class EventSeverity(str, Enum):

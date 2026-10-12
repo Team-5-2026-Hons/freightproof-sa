@@ -69,6 +69,16 @@ _DELETE_ORDER = [
     "trip_stops",
 ]
 
+# evidence_artifacts.phase_event_id -> phase_events and the phase_events -> evidence_artifacts
+# columns form a cycle, so no delete order satisfies both. The nullable half is cleared first.
+# _SEVERED_BEFORE_DELETE names the edge so tests/unit/test_dev_reset_lifecycle.py can exempt
+# exactly that edge from its ordering check, and nothing else.
+_CLEAR_ATTRIBUTION = (
+    "UPDATE evidence_artifacts SET phase_event_id = NULL, evidence_role = NULL "
+    "WHERE phase_event_id IS NOT NULL"
+)
+_SEVERED_BEFORE_DELETE = frozenset({("evidence_artifacts", "phase_events")})
+
 # Trip-scoped receipts only. Vehicle/driver receipts carry trip_id IS NULL and are
 # referenced by vehicle_events / driver_events, which are reference-side audit rows.
 _RECEIPTS_DELETE = "DELETE FROM blockchain_receipts WHERE trip_id IS NOT NULL"
@@ -105,6 +115,9 @@ async def reset() -> None:
     try:
         async with async_session() as db:
             before = await _counts(db, _REFERENCE_TABLES)
+
+            result = await db.execute(text(_CLEAR_ATTRIBUTION))
+            print(f"  {'evidence attribution':<24} {_deleted(result)} cleared")
 
             for table in _DELETE_ORDER:
                 result = await db.execute(text(f"DELETE FROM {table}"))  # noqa: S608

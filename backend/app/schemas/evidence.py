@@ -6,7 +6,7 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
 
-from app.db.models.enums import ArtifactType
+from app.db.models.enums import ArtifactType, EvidenceRole
 
 
 class EvidenceArtifactBase(BaseModel):
@@ -40,6 +40,10 @@ class EvidenceArtifactUpdate(BaseModel):
 class EvidenceArtifactRead(EvidenceArtifactBase):
     id: UUID
     created_at: datetime
+    # Read-only: set by the upload route (drivers) or the handover route (receiver), never
+    # accepted through EvidenceArtifactCreate.
+    phase_event_id: Optional[UUID] = None
+    evidence_role: Optional[EvidenceRole] = None
 
 
 class EvidenceArtifactWithUrl(EvidenceArtifactRead):
