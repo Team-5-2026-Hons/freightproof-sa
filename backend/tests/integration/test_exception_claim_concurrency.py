@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ExceptionClaimedByColleagueError
 from app.db.models.transit import TripException
-from app.orchestration.exception_service import claim_exception
+from app.orchestration.exceptions.review import claim_exception
 from tests.integration.test_exception_review_concurrency import _seed, _teardown
 
 _CLAIMED = 200

@@ -10,7 +10,7 @@ from app.core.config import settings
 from app.integrations import parcel_perfect as pp_module
 from app.integrations.parcel_perfect import mock as pp_mock_module
 from app.integrations.parcel_perfect import MANIFEST_HAPPY_PATH, MockParcelPerfectClient, PPTrack
-from app.orchestration.pp_manifest import (
+from app.orchestration.consignments.manifest_snapshot import (
     manifest_key,
     manifest_snapshot,
     manifest_snapshot_sha256,

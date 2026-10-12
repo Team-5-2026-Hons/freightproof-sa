@@ -21,8 +21,9 @@ from app.db.models.phases import PhaseEvent
 from app.db.models.transit import TripException
 from app.db.models.trips import Trip, TripStop
 from app.db.models.vehicles import Vehicle
-from app.orchestration.action_location_service import (
-    record_driver_location_finding, record_separation_finding,
+from app.orchestration.evidence.action_location import (
+    record_driver_location_finding,
+    record_separation_finding,
 )
 from app.schemas.action_location import ActionLocationAssessment, ProximityVerdict
 

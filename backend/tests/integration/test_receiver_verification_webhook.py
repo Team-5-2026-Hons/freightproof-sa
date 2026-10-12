@@ -27,8 +27,8 @@ from app.db.models.receiver_verification import ReceiverIdentityVerification
 from app.db.models.trips import Trip, TripStop
 from app.db.session import get_db
 from app.main import app
-from app.orchestration.handover_service import issue_capability_token
-from app.orchestration.receiver_verification_service import (
+from app.orchestration.handover.capability import issue_capability_token
+from app.orchestration.handover.receiver_verification import (
     PROVIDER_DIDIT,
     WEBHOOK_MAX_CLOCK_SKEW_SECONDS,
     ingest_webhook_decision,
@@ -237,7 +237,7 @@ async def test_late_decision_path_survives_a_fresh_load(db_session, terminal_ver
 
 
 async def test_sweep_terminalises_a_stale_pending_row(db_session, pending_verification):
-    from app.orchestration.receiver_verification_service import sweep_abandoned_verifications
+    from app.orchestration.handover.receiver_verification import sweep_abandoned_verifications
 
     swept = await sweep_abandoned_verifications(db_session, older_than_seconds=-1)
 
@@ -247,7 +247,7 @@ async def test_sweep_terminalises_a_stale_pending_row(db_session, pending_verifi
 
 
 async def test_sweep_leaves_a_fresh_pending_row_alone(db_session, pending_verification):
-    from app.orchestration.receiver_verification_service import sweep_abandoned_verifications
+    from app.orchestration.handover.receiver_verification import sweep_abandoned_verifications
 
     swept = await sweep_abandoned_verifications(db_session, older_than_seconds=86_400)
 

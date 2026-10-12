@@ -32,11 +32,13 @@ from app.db.models.enums import PhaseType
 from app.db.models.organisations import Precinct
 from app.db.models.phases import TrailerGpsSnapshot
 from app.integrations.pulsit import PulsitFix, PulsitFixSource, PulsitFixStatus
-from app.orchestration.corroboration_service import (
-    _PHASES_WITHOUT_A_GEOFENCE_VERDICT, _geofence_verdict_to_column, _snapshot_for_trailer,
+from app.orchestration.evidence.corroboration import (
+    _PHASES_WITHOUT_A_GEOFENCE_VERDICT,
+    _geofence_verdict_to_column,
+    _snapshot_for_trailer,
     _within_corroboration_skew,
 )
-from app.orchestration.geofence_service import DEFAULT_GEOFENCE_RADIUS_METRES
+from app.orchestration.evidence.geofence import DEFAULT_GEOFENCE_RADIUS_METRES
 
 # Riverhorse Valley, Durban — the same real precinct fixture test_geofence_service.py
 # uses, kept identical so a distance that is "clearly inside" or "clearly outside"

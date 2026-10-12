@@ -16,7 +16,11 @@ from app.db.models.transit import TripException
 from app.db.models.trips import Consignment, Parcel
 from app.integrations import scan_feed as scan_feed_module
 from app.integrations.scan_feed import MockScanFeed, ScanDirection
-from app.orchestration import scan_service
+from app.orchestration.consignments.scans import (
+    ingest_scans,
+    scanned_counts_for_consignment,
+    scanned_counts_for_trip,
+)
 from sqlalchemy import select
 from tests.conftest import FakeMockStateStore
 
@@ -37,7 +41,7 @@ async def test_full_scan_out_stamps_every_parcel(db_session, store, seeded):
         direction=ScanDirection.OUT, barcodes=seeded["barcodes"],
     )
 
-    result = await scan_service.ingest_scans(
+    result = await ingest_scans(
         db_session, trip_id=seeded["trip"].id, trip_stop_id=seeded["stop"].id,
         direction=ScanDirection.OUT,
     )
@@ -57,7 +61,7 @@ async def test_full_scan_out_raises_no_exception(db_session, store, seeded):
         direction=ScanDirection.OUT, barcodes=seeded["barcodes"],
     )
 
-    await scan_service.ingest_scans(
+    await ingest_scans(
         db_session, trip_id=seeded["trip"].id, trip_stop_id=seeded["stop"].id,
         direction=ScanDirection.OUT,
     )
@@ -74,7 +78,7 @@ async def test_scan_in_stamps_the_in_column_not_the_out_column(db_session, store
         direction=ScanDirection.IN, barcodes=seeded["barcodes"],
     )
 
-    await scan_service.ingest_scans(
+    await ingest_scans(
         db_session, trip_id=seeded["trip"].id, trip_stop_id=seeded["stop"].id,
         direction=ScanDirection.IN,
     )
@@ -88,7 +92,7 @@ async def test_scan_in_stamps_the_in_column_not_the_out_column(db_session, store
 
 
 async def test_nothing_staged_leaves_parcels_untouched(db_session, store, seeded):
-    result = await scan_service.ingest_scans(
+    result = await ingest_scans(
         db_session, trip_id=seeded["trip"].id, trip_stop_id=seeded["stop"].id,
         direction=ScanDirection.OUT,
     )
@@ -107,7 +111,7 @@ async def test_partial_scan_raises_a_scoped_exception(db_session, store, seeded)
         direction=ScanDirection.OUT, barcodes=seeded["barcodes"][:2],
     )
 
-    result = await scan_service.ingest_scans(
+    result = await ingest_scans(
         db_session, trip_id=seeded["trip"].id, trip_stop_id=seeded["stop"].id,
         direction=ScanDirection.OUT,
     )
@@ -128,7 +132,7 @@ async def test_partial_scan_stamps_only_the_scanned_parcels(db_session, store, s
         direction=ScanDirection.OUT, barcodes=seeded["barcodes"][:2],
     )
 
-    await scan_service.ingest_scans(
+    await ingest_scans(
         db_session, trip_id=seeded["trip"].id, trip_stop_id=seeded["stop"].id,
         direction=ScanDirection.OUT,
     )
@@ -149,7 +153,7 @@ async def test_unexpected_barcode_raises_an_exception_naming_it(db_session, stor
         direction=ScanDirection.OUT, barcodes=[*seeded["barcodes"], "STRANGER-99"],
     )
 
-    result = await scan_service.ingest_scans(
+    result = await ingest_scans(
         db_session, trip_id=seeded["trip"].id, trip_stop_id=seeded["stop"].id,
         direction=ScanDirection.OUT,
     )
@@ -169,7 +173,7 @@ async def test_unexpected_barcode_creates_no_parcel_row(db_session, store, seede
         direction=ScanDirection.OUT, barcodes=[*seeded["barcodes"], "STRANGER-99"],
     )
 
-    await scan_service.ingest_scans(
+    await ingest_scans(
         db_session, trip_id=seeded["trip"].id, trip_stop_id=seeded["stop"].id,
         direction=ScanDirection.OUT,
     )
@@ -188,11 +192,11 @@ async def test_repeated_ingest_does_not_duplicate_the_exception(db_session, stor
         direction=ScanDirection.OUT, barcodes=seeded["barcodes"][:2],
     )
 
-    await scan_service.ingest_scans(
+    await ingest_scans(
         db_session, trip_id=seeded["trip"].id, trip_stop_id=seeded["stop"].id,
         direction=ScanDirection.OUT,
     )
-    await scan_service.ingest_scans(
+    await ingest_scans(
         db_session, trip_id=seeded["trip"].id, trip_stop_id=seeded["stop"].id,
         direction=ScanDirection.OUT,
     )
@@ -218,7 +222,7 @@ async def test_a_new_discrepancy_is_recorded_again_after_the_first_is_reviewed(
         consignment_reference="WAY001", stop_reference=str(seeded["stop"].id),
         direction=ScanDirection.OUT, barcodes=seeded["barcodes"][:2],
     )
-    await scan_service.ingest_scans(
+    await ingest_scans(
         db_session, trip_id=seeded["trip"].id, trip_stop_id=seeded["stop"].id,
         direction=ScanDirection.OUT,
     )
@@ -231,7 +235,7 @@ async def test_a_new_discrepancy_is_recorded_again_after_the_first_is_reviewed(
 
     # Same staged feed, unchanged — proves the recurrence is recorded because the
     # prior row was reviewed, not because anything about the discrepancy itself changed.
-    await scan_service.ingest_scans(
+    await ingest_scans(
         db_session, trip_id=seeded["trip"].id, trip_stop_id=seeded["stop"].id,
         direction=ScanDirection.OUT,
     )
@@ -249,7 +253,7 @@ async def test_repeated_ingest_keeps_the_first_scan_timestamp(db_session, store,
         consignment_reference="WAY001", stop_reference=str(seeded["stop"].id),
         direction=ScanDirection.OUT, barcodes=seeded["barcodes"],
     )
-    await scan_service.ingest_scans(
+    await ingest_scans(
         db_session, trip_id=seeded["trip"].id, trip_stop_id=seeded["stop"].id,
         direction=ScanDirection.OUT,
     )
@@ -261,7 +265,7 @@ async def test_repeated_ingest_keeps_the_first_scan_timestamp(db_session, store,
         consignment_reference="WAY001", stop_reference=str(seeded["stop"].id),
         direction=ScanDirection.OUT, barcodes=seeded["barcodes"],
     )
-    await scan_service.ingest_scans(
+    await ingest_scans(
         db_session, trip_id=seeded["trip"].id, trip_stop_id=seeded["stop"].id,
         direction=ScanDirection.OUT,
     )
@@ -276,7 +280,7 @@ async def test_unknown_trip_raises_not_found(db_session, store, seeded):
     from app.core.exceptions import ResourceNotFoundError
 
     with pytest.raises(ResourceNotFoundError):
-        await scan_service.ingest_scans(
+        await ingest_scans(
             db_session, trip_id=uuid.uuid4(), trip_stop_id=seeded["stop"].id,
             direction=ScanDirection.OUT,
         )
@@ -286,14 +290,14 @@ async def test_stop_belonging_to_another_trip_raises_not_found(db_session, store
     from app.core.exceptions import ResourceNotFoundError
 
     with pytest.raises(ResourceNotFoundError):
-        await scan_service.ingest_scans(
+        await ingest_scans(
             db_session, trip_id=seeded["trip"].id, trip_stop_id=uuid.uuid4(),
             direction=ScanDirection.OUT,
         )
 
 
 async def test_scanned_counts_are_zero_before_any_scan(db_session, store, seeded):
-    counts = await scan_service.scanned_counts_for_consignment(
+    counts = await scanned_counts_for_consignment(
         db_session, consignment_id=seeded["consignment"].id,
     )
 
@@ -307,12 +311,12 @@ async def test_scanned_counts_reflect_stamped_parcels(db_session, store, seeded)
         consignment_reference="WAY001", stop_reference=str(seeded["stop"].id),
         direction=ScanDirection.OUT, barcodes=seeded["barcodes"][:2],
     )
-    await scan_service.ingest_scans(
+    await ingest_scans(
         db_session, trip_id=seeded["trip"].id, trip_stop_id=seeded["stop"].id,
         direction=ScanDirection.OUT,
     )
 
-    counts = await scan_service.scanned_counts_for_consignment(
+    counts = await scanned_counts_for_consignment(
         db_session, consignment_id=seeded["consignment"].id,
     )
 
@@ -333,7 +337,7 @@ async def test_scanned_counts_for_trip_zero_for_a_consignment_with_no_parcels(
     db_session.add(empty_consignment)
     await db_session.flush()
 
-    counts = await scan_service.scanned_counts_for_trip(db_session, trip_id=seeded["trip"].id)
+    counts = await scanned_counts_for_trip(db_session, trip_id=seeded["trip"].id)
 
     assert empty_consignment.id in counts
     assert counts[empty_consignment.id].expected == 0
@@ -371,12 +375,12 @@ async def test_scanned_counts_for_trip_splits_correctly_across_two_consignments(
         consignment_reference="WAY002", stop_reference=str(seeded["stop"].id),
         direction=ScanDirection.OUT, barcodes=second_barcodes[:1],
     )
-    await scan_service.ingest_scans(
+    await ingest_scans(
         db_session, trip_id=seeded["trip"].id, trip_stop_id=seeded["stop"].id,
         direction=ScanDirection.OUT,
     )
 
-    counts = await scan_service.scanned_counts_for_trip(db_session, trip_id=seeded["trip"].id)
+    counts = await scanned_counts_for_trip(db_session, trip_id=seeded["trip"].id)
 
     assert counts[seeded["consignment"].id].expected == 3
     assert counts[seeded["consignment"].id].scanned_out == 2

@@ -2,7 +2,7 @@
 receiver typed? A single-use session link stops replay, never a confederate completing
 the flow with their own genuine document."""
 
-from app.orchestration.receiver_verification_service import identity_matches
+from app.orchestration.handover.receiver_verification import identity_matches
 
 
 def test_matching_surname_and_id_number_match():

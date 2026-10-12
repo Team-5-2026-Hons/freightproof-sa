@@ -15,7 +15,7 @@ import pytest
 
 from app.core.config import settings
 from app.db.models.organisations import Precinct
-from app.orchestration.geofence_service import (
+from app.orchestration.evidence.geofence import (
     DEFAULT_GEOFENCE_RADIUS_METRES,
     GeofenceVerdictReason,
     TrackerFix,

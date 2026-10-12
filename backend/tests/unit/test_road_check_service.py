@@ -6,7 +6,7 @@ from decimal import Decimal
 from app.db.models.enums import ExceptionSeverity, ExceptionType
 from app.db.models.organisations import Precinct
 from app.integrations.pulsit import PulsitFixStatus
-from app.orchestration.road_check_service import (
+from app.orchestration.evidence.road_check import (
     RigReading,
     RigRole,
     RoadStage,

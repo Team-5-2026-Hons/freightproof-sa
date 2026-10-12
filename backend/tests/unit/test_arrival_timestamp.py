@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.enums import PhaseStatus, PhaseType, TripStatus
 from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Trip
-from app.orchestration import phase_service
 from app.orchestration.consignments import scans as consignments_scans
 from app.orchestration.evidence import corroboration as evidence_corroboration
 from app.orchestration.phases import (
@@ -71,7 +70,7 @@ async def test_final_driver_arrival_uses_phase_completion_timestamp(
 ) -> None:
     db, trip, event = arrival_context
 
-    await phase_service.advance_in_transit(
+    await advance_in_transit.advance_in_transit(
         db, trip_id=trip.id, driver_id=trip.driver_id, phase_event_id=event.id,
         payload=InTransitCompleteRequest(
             phase_type=PhaseType.IN_TRANSIT, idempotency_key=str(uuid.uuid4()),
@@ -88,7 +87,7 @@ async def test_intermediate_driver_arrival_leaves_trip_arrival_unset(
     db, trip, event = arrival_context
     db.execute.return_value.scalar_one_or_none.return_value = uuid.uuid4()
 
-    await phase_service.advance_in_transit(
+    await advance_in_transit.advance_in_transit(
         db, trip_id=trip.id, driver_id=trip.driver_id, phase_event_id=event.id,
         payload=InTransitCompleteRequest(
             phase_type=PhaseType.IN_TRANSIT, idempotency_key=str(uuid.uuid4()),
@@ -105,7 +104,7 @@ async def test_overridden_arrival_does_not_claim_actual_arrival(
     db, trip, event = arrival_context
     event.status = PhaseStatus.OVERRIDDEN
 
-    await phase_service._finish_phase(
+    await completion._finish_phase(
         db, trip=trip, event=event, idempotency_key=str(uuid.uuid4()),
     )
 
@@ -132,7 +131,7 @@ async def test_confirmation_preserves_arrival_or_its_absence(
     monkeypatch.setattr(consignments_scans, "load_consignments_at_stop", AsyncMock(return_value=[]))
     monkeypatch.setattr(advance_confirmation, "_dispatch_anchor", MagicMock())
 
-    await phase_service.advance_confirmation(
+    await advance_confirmation.advance_confirmation(
         db, trip_id=trip.id, driver_id=trip.driver_id, phase_event_id=event.id,
         payload=ConfirmationCompleteRequest(
             phase_type=PhaseType.CONFIRMATION,

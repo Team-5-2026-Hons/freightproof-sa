@@ -94,7 +94,7 @@ def _make_db() -> AsyncMock:
 @pytest.mark.asyncio
 async def test_cancel_trip_locks_trip_before_checking_terminal_status() -> None:
     """The terminal-status decision must happen while holding the trip row lock."""
-    from app.orchestration.trip_service import cancel_trip
+    from app.orchestration.trips.administration import cancel_trip
 
     db = _make_db()
     db.execute.side_effect = RuntimeError("statement captured")
@@ -116,7 +116,7 @@ async def test_cancel_trip_locks_trip_before_checking_terminal_status() -> None:
 @pytest.mark.asyncio
 async def test_create_trip_empty_leg_does_not_call_sync() -> None:
     """An empty-leg trip (no consignments) must never call fetch_and_sync_consignment."""
-    from app.orchestration.trip_service import create_trip
+    from app.orchestration.trips.creation import create_trip
 
     payload = make_empty_leg_payload()
     user = make_user()
@@ -152,7 +152,7 @@ async def test_create_trip_empty_leg_does_not_call_sync() -> None:
 @pytest.mark.asyncio
 async def test_create_trip_with_consignments_calls_sync() -> None:
     """A loaded trip calls fetch_and_sync_consignment once per consignment with correct args."""
-    from app.orchestration.trip_service import create_trip
+    from app.orchestration.trips.creation import create_trip
 
     payload = make_loaded_payload(
         consignments=[{"pp_reference": "WAY123", "unit_count_expected": 2}]
@@ -196,7 +196,7 @@ async def test_create_trip_unknown_waybill_raises_ppsync_error() -> None:
     """A PP failure for any consignment (e.g. unresolvable pp_reference) surfaces as
     PPSyncError and rolls back the session — a trip must not persist with a cargo
     plan that couldn't be pulled from PP."""
-    from app.orchestration.trip_service import create_trip
+    from app.orchestration.trips.creation import create_trip
 
     payload = make_loaded_payload(
         consignments=[{"pp_reference": "NOPE999", "unit_count_expected": 1}]
@@ -232,7 +232,7 @@ async def test_create_trip_writes_full_pending_plan() -> None:
     build_phase_plan's 2-stop shape: trip_creation, activation, loading,
     departure, in_transit, arrival, unloading, confirmation.
     """
-    from app.orchestration.trip_service import create_trip
+    from app.orchestration.trips.creation import create_trip
 
     payload = make_loaded_payload()
     user = make_user()
@@ -336,7 +336,7 @@ def test_build_phase_events_single_leg_matches_plan() -> None:
     checks the same 8-row shape end-to-end through create_trip's session-mocked
     wiring; this test isolates the plan-building logic itself.
     """
-    from app.orchestration.trip_service import _build_phase_events
+    from app.orchestration.trips.creation import _build_phase_events
 
     trip_id = uuid.uuid4()
     stop_0 = TripStop(id=uuid.uuid4(), trip_id=trip_id, precinct_id=uuid.uuid4(), sequence=0)
@@ -431,7 +431,7 @@ async def test_create_trip_anchor_failure_still_rolls_back_whole_trip(db_session
     anchor_status=FAILED must, at trip creation, undo the entire trip — no Trip
     or PhaseEvent row may survive it.
     """
-    from app.orchestration.trip_service import create_trip
+    from app.orchestration.trips.creation import create_trip
 
     operator_org, dispatcher_user, driver, horse, origin, dest = create_trip_seed
     user = UserRead(
@@ -496,7 +496,7 @@ async def test_active_trip_prefers_activated_trip_over_newer_assignment(
     PWA's Home and Active tab showed an un-activated assignment while the trip the driver
     was actually driving vanished from view.
     """
-    from app.orchestration.trip_service import get_active_trip_for_driver
+    from app.orchestration.trips.queries import get_active_trip_for_driver
 
     operator_org, user, driver, horse, origin, dest = create_trip_seed
     client_org = (await db_session.execute(
@@ -529,7 +529,7 @@ async def test_active_trip_falls_back_to_created_when_nothing_activated(
 ) -> None:
     """CREATED stays eligible: Activation (which is what flips CREATED -> ACTIVE) is
     reached through this trip, so a driver holding only an assignment must still get it."""
-    from app.orchestration.trip_service import get_active_trip_for_driver
+    from app.orchestration.trips.queries import get_active_trip_for_driver
 
     operator_org, user, driver, horse, origin, dest = create_trip_seed
     client_org = (await db_session.execute(
@@ -560,7 +560,7 @@ async def test_active_trip_prefers_soonest_departure_over_newest_assignment(
     was enough to make it the driver's "current" trip while the one leaving tomorrow sat
     unstarted — the opposite of the order the phases package's gates let them be worked in.
     """
-    from app.orchestration.trip_service import get_active_trip_for_driver
+    from app.orchestration.trips.queries import get_active_trip_for_driver
 
     operator_org, user, driver, horse, origin, dest = create_trip_seed
     client_org = (await db_session.execute(
@@ -593,7 +593,7 @@ async def test_active_trip_sorts_an_unscheduled_assignment_last(
 ) -> None:
     """A trip with no planned departure cannot be the "next" one to leave, however
     recently it was captured — it has no place in the queue at all until it is scheduled."""
-    from app.orchestration.trip_service import get_active_trip_for_driver
+    from app.orchestration.trips.queries import get_active_trip_for_driver
 
     operator_org, user, driver, horse, origin, dest = create_trip_seed
     client_org = (await db_session.execute(
@@ -627,7 +627,7 @@ async def test_active_trip_keeps_the_underway_trip_over_a_sooner_assignment(
     """Departure order decides WITHIN a rank, never across one. A trip the driver is
     physically on outranks an assignment even when that assignment leaves sooner —
     otherwise a mis-scheduled row would yank Home away mid-journey."""
-    from app.orchestration.trip_service import get_active_trip_for_driver
+    from app.orchestration.trips.queries import get_active_trip_for_driver
 
     operator_org, user, driver, horse, origin, dest = create_trip_seed
     client_org = (await db_session.execute(
@@ -656,7 +656,7 @@ async def test_active_trip_keeps_the_underway_trip_over_a_sooner_assignment(
 
 @pytest.mark.asyncio
 async def test_active_trip_ignores_terminal_trips(db_session, create_trip_seed) -> None:
-    from app.orchestration.trip_service import get_active_trip_for_driver
+    from app.orchestration.trips.queries import get_active_trip_for_driver
 
     operator_org, user, driver, horse, origin, dest = create_trip_seed
     client_org = (await db_session.execute(
@@ -684,7 +684,7 @@ async def test_list_trips_for_driver_returns_all_statuses_newest_first(
 ) -> None:
     """Terminal trips are included on purpose — the PWA's Past tab is built from them,
     and grouping is the client's job."""
-    from app.orchestration.trip_service import list_trips_for_driver
+    from app.orchestration.trips.queries import list_trips_for_driver
 
     operator_org, user, driver, horse, origin, dest = create_trip_seed
     client_org = (await db_session.execute(
@@ -724,7 +724,7 @@ async def test_list_trips_for_driver_returns_all_statuses_newest_first(
 @pytest.mark.asyncio
 async def test_list_trips_for_driver_scopes_to_that_driver(db_session, create_trip_seed) -> None:
     """driver_id is the whole authorisation boundary for GET /trips/me."""
-    from app.orchestration.trip_service import list_trips_for_driver
+    from app.orchestration.trips.queries import list_trips_for_driver
 
     operator_org, user, driver, horse, origin, dest = create_trip_seed
     client_org = (await db_session.execute(
@@ -759,7 +759,7 @@ async def test_list_trips_for_driver_scopes_to_that_driver(db_session, create_tr
 async def test_own_trip_detail_rejects_another_drivers_trip(db_session, create_trip_seed) -> None:
     """404 (ResourceNotFoundError), not a 403: a distinguishable refusal would confirm the
     trip exists and let a driver probe for real trip ids."""
-    from app.orchestration.trip_service import get_own_trip_detail_for_driver
+    from app.orchestration.trips.queries import get_own_trip_detail_for_driver
 
     operator_org, user, driver, horse, origin, dest = create_trip_seed
     client_org = (await db_session.execute(

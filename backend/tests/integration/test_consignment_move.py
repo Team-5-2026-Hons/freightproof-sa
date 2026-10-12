@@ -26,16 +26,21 @@ from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.vehicles import Vehicle
 from app.integrations.parcel_perfect import MOCK_WAYBILLS, PPTrack, PPWaybillResponse
-from app.orchestration import consignment_service, scan_service
+from app.orchestration.consignments.sync import ConsignmentSyncResult
+from app.orchestration.consignments.scans import ingest_scans
 from app.orchestration.consignments import scans as consignments_scans
 from app.orchestration.consignments import sync as consignments_sync
-from app.orchestration.trip_service import ManifestCargo, NewTrip, persist_trip
-from app.orchestration.pp_manifest import manifest_key, manifest_snapshot, manifest_snapshot_sha256
+from app.orchestration.trips.creation import ManifestCargo, NewTrip, persist_trip
+from app.orchestration.consignments.manifest_snapshot import (
+    manifest_key,
+    manifest_snapshot,
+    manifest_snapshot_sha256,
+)
 from app.integrations.parcel_perfect import MANIFEST_HAPPY_PATH, PPManifestResponse, MockParcelPerfectClient
 from app.db.models.enums import TripType
 from app.schemas.trips import TripStopCreate
 from app.integrations.scan_feed import ScanDirection, ScanEvent
-from app.orchestration.consignment_service import sync_consignment_from_waybill
+from app.orchestration.consignments.sync import sync_consignment_from_waybill
 from tests.integration._pp_manifest_world import ManifestWorld, build_manifest_world, insert_trip
 
 _WAYBILL = "MFTWB8101"
@@ -229,7 +234,7 @@ async def test_committed_scan_wins_against_recreation(scan_race_world: ScanRaceW
         assert cached is not None
         assert cached.trip_id == race.old_id
         async def scan() -> None:
-            await scan_service.ingest_scans(scanner, trip_id=race.old_id, trip_stop_id=race.stop_id, direction=direction)
+            await ingest_scans(scanner, trip_id=race.old_id, trip_stop_id=race.stop_id, direction=direction)
             await scanner.commit()
         scan_task = asyncio.create_task(scan())
         move_task = None
@@ -271,7 +276,7 @@ async def test_committed_recreation_excludes_old_trip_scan(scan_race_world: Scan
         assert cached.trip_id == race.old_id
         await sync_consignment_from_waybill(mover, _waybill(), trip_id=race.replacement_id)
         await mover.flush()
-        scan_task = asyncio.create_task(scan_service.ingest_scans(scanner, trip_id=race.old_id, trip_stop_id=race.stop_id, direction=direction))
+        scan_task = asyncio.create_task(ingest_scans(scanner, trip_id=race.old_id, trip_stop_id=race.stop_id, direction=direction))
         try:
             async with asyncio.timeout(5):
                 await _wait_for_lock(race.sessions, scanner_pid, mover_pid)
@@ -330,11 +335,11 @@ async def test_multi_waybill_recreation_and_scan_share_one_lock_order(
         ),
     )
     first_moved, release = asyncio.Event(), asyncio.Event()
-    real_sync = consignment_service.sync_consignment_from_waybill
+    real_sync = sync_consignment_from_waybill
 
     async def pause_after_first(
         db: AsyncSession, waybill: PPWaybillResponse, **kwargs: Any,
-    ) -> consignment_service.ConsignmentSyncResult:
+    ) -> ConsignmentSyncResult:
         result = await real_sync(db, waybill, **kwargs)
         if not first_moved.is_set():
             assert waybill.details.waybill == _WAYBILL
@@ -368,7 +373,7 @@ async def test_multi_waybill_recreation_and_scan_share_one_lock_order(
                     event_task.cancel()
                     await asyncio.gather(event_task, return_exceptions=True)
                     await move_task
-                scan_task = asyncio.create_task(scan_service.ingest_scans(
+                scan_task = asyncio.create_task(ingest_scans(
                     scanner, trip_id=race.old_id, trip_stop_id=race.stop_id, direction=direction,
                 ))
                 await _wait_for_lock(race.sessions, scanner_pid, mover_pid)

@@ -75,6 +75,6 @@ def test_module_discovery_covers_the_whole_app() -> None:
     modules = all_app_modules()
 
     assert "app.main" in modules
-    assert "app.orchestration.phase_service" in modules
+    assert "app.orchestration.phases.service" in modules
     assert "app.tasks.blockchain" in modules
     assert len(modules) > 100

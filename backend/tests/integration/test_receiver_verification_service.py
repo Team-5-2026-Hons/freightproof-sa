@@ -29,8 +29,11 @@ from app.db.models.receiver_verification import IdvsQuotaLedger
 from app.db.models.trips import Trip, TripStop
 from app.integrations.idvs import IdvsDecisionStatus, IdvsSession, MockIdvsClient
 from app.orchestration.handover.receiver_verification import record_consent_declined
-from app.orchestration.handover_service import issue_capability_token, record_handover_confirmation
-from app.orchestration.receiver_verification_service import (
+from app.orchestration.handover.capability import (
+    issue_capability_token,
+    record_handover_confirmation,
+)
+from app.orchestration.handover.receiver_verification import (
     attach_confirmation,
     record_consent,
     resolve_verification,

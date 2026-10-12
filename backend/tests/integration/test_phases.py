@@ -36,7 +36,7 @@ from app.db.session import get_db
 from app.integrations import scan_feed as scan_feed_module
 from app.integrations.scan_feed import MockScanFeed, ScanDirection
 from app.main import app
-from app.orchestration import scan_service
+from app.orchestration.consignments.scans import ingest_scans
 
 from tests.conftest import FakeMockStateStore, auth_header, make_token
 
@@ -1459,7 +1459,7 @@ async def completed_unloading_trip(
         consignment_reference=pp_reference, stop_reference=str(stop0.id),
         direction=ScanDirection.OUT, barcodes=barcodes,
     )
-    await scan_service.ingest_scans(
+    await ingest_scans(
         db_session, trip_id=trip.id, trip_stop_id=stop0.id, direction=ScanDirection.OUT,
     )
     await feed.close_session(
@@ -1554,7 +1554,7 @@ async def test_a_closed_phase_row_is_never_written_again(
         direction=ScanDirection.IN,
         barcodes=completed_unloading_trip["barcodes"],
     )
-    await scan_service.ingest_scans(
+    await ingest_scans(
         db_session,
         trip_id=completed_unloading_trip["trip_id"],
         trip_stop_id=completed_unloading_trip["delivery_stop_id"],

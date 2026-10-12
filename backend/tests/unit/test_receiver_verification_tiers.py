@@ -11,7 +11,7 @@ from app.db.models.enums import (
     ReceiverVerificationUnverifiedReason,
 )
 from app.integrations.idvs import IdvsDecisionStatus
-from app.orchestration.receiver_verification_service import resolve_verdict
+from app.orchestration.handover.receiver_verification import resolve_verdict
 
 
 def test_approved_and_matching_identity_is_verified():

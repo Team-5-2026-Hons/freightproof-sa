@@ -12,7 +12,7 @@ from app.db.models.enums import (
 from app.db.models.events import PrecinctEvent
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import User
-from app.orchestration.precinct_service import create_precinct
+from app.orchestration.fleet.precincts import create_precinct
 from app.orchestration.verification.service import _hash_payload, verify_subject
 from app.schemas.organisations import PrecinctCreateBody
 

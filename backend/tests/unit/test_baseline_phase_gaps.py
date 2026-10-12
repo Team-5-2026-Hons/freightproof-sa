@@ -31,12 +31,10 @@ from app.blockchain.anchor_service import compute_payload_hash
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import AnchorStatus, BlockchainReceiptType, PhaseStatus, PhaseType, SubjectType, VerifyStatus
 from app.db.models.phases import PhaseEvent
-from app.orchestration.phase_service import (
-    _BACKGROUND_ANCHOR_TASKS,
-    advance_activation,
-    advance_loading,
-    compute_confirmation_canonical_payload_v1,
-)
+from app.orchestration.phases.anchor_dispatch import _BACKGROUND_ANCHOR_TASKS
+from app.orchestration.phases.advance_activation import advance_activation
+from app.orchestration.phases.advance_loading import advance_loading
+from app.orchestration.phases.payloads import compute_confirmation_canonical_payload_v1
 from app.orchestration.verification.service import verify_subject
 from app.schemas.phases import ActivationCompleteRequest, LoadingCompleteRequest
 from tests.unit import test_phase_anchor_payload as _fixtures

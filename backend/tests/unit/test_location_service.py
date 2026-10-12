@@ -13,7 +13,7 @@ from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.trips import Trip
 from app.db.models.vehicles import Vehicle
-from app.orchestration.location_service import record_location_pings
+from app.orchestration.evidence.location import record_location_pings
 from app.schemas.locations import LocationPingCreate
 
 

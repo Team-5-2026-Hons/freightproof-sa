@@ -33,7 +33,7 @@ from app.integrations import parcel_perfect as pp_module
 from app.integrations.parcel_perfect import mock as pp_mock_module
 from app.integrations import scan_feed as scan_feed_module
 from app.integrations.parcel_perfect import MANIFEST_HAPPY_PATH, MockParcelPerfectClient
-from app.orchestration.pp_manifest import manifest_snapshot_sha256
+from app.orchestration.consignments.manifest_snapshot import manifest_snapshot_sha256
 from app.dev.schemas import CLOSED_PHASE_STATUSES, MAX_STAGED_BARCODES
 
 from tests.conftest import (

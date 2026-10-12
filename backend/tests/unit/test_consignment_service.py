@@ -24,7 +24,10 @@ from app.integrations.parcel_perfect import (
     PPWaybillDetails,
     PPWaybillResponse,
 )
-from app.orchestration.consignment_service import fetch_and_sync_consignment, get_assigned_trip_reference
+from app.orchestration.consignments.sync import (
+    fetch_and_sync_consignment,
+    get_assigned_trip_reference,
+)
 
 # Sentinel distinguishing "no org lookup expected" (accnum="" in the local
 # dummy fixtures below, so fetch_and_sync_consignment never queries for an

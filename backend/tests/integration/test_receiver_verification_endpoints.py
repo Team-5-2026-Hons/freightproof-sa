@@ -36,7 +36,7 @@ from app.db.models.trips import Trip, TripStop
 from app.db.session import get_db
 from app.integrations.idvs import IdvsDecisionStatus, MockIdvsClient
 from app.main import app
-from app.orchestration.handover_service import hash_presented_token
+from app.orchestration.handover.capability import hash_presented_token
 from app.storage.supabase_storage import UploadResult
 from tests.conftest import auth_header, make_token
 

@@ -48,7 +48,7 @@ from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
 from app.integrations import pulsit as pulsit_module
 from app.dev.services.truck import TOLERANCE_BOUNDARY_MARGIN_METRES
-from app.orchestration.geofence_service import TrackerFix, evaluate_geofence
+from app.orchestration.evidence.geofence import TrackerFix, evaluate_geofence
 from app.dev.schemas import (
     SCENARIO_AT_STOP,
     SCENARIO_FIFTY_KM,

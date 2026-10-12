@@ -37,24 +37,32 @@ from app.db.models.trips import Consignment, Parcel, Trip, TripStop
 from app.db.models.vehicles import Vehicle
 from app.integrations import scan_feed as scan_feed_module
 from app.integrations.scan_feed import MockScanFeed, ScanDirection
-from app.orchestration import scan_service
-from app.orchestration.phase_plan import ANCHORED_PHASES
-from app.orchestration.phase_service import (
-    _BACKGROUND_ANCHOR_TASKS,
-    _PHASE_RECEIPT_TYPES,
-    advance_activation, advance_arrival, advance_confirmation, advance_departure,
-    advance_in_transit, advance_loading,
-    advance_unloading, compute_activation_canonical_payload_v2,
-    compute_arrival_canonical_payload_v2, compute_confirmation_canonical_payload_v1,
-    compute_confirmation_canonical_payload_v2, compute_departure_canonical_payload_v1,
-    compute_departure_canonical_payload_v2, compute_in_transit_canonical_payload_v2,
-    compute_loading_canonical_payload_v2, compute_override_canonical_payload_v2,
+from app.orchestration.consignments.scans import ingest_scans
+from app.orchestration.phases.plan import ANCHORED_PHASES
+from app.orchestration.phases.anchor_dispatch import _BACKGROUND_ANCHOR_TASKS
+from app.orchestration.phases.anchor_execution import _PHASE_RECEIPT_TYPES, receipt_type_for
+from app.orchestration.phases.advance_activation import advance_activation
+from app.orchestration.phases.advance_arrival import advance_arrival
+from app.orchestration.phases.advance_confirmation import advance_confirmation
+from app.orchestration.phases.advance_departure import advance_departure
+from app.orchestration.phases.advance_in_transit import advance_in_transit
+from app.orchestration.phases.advance_loading import advance_loading
+from app.orchestration.phases.advance_unloading import advance_unloading
+from app.orchestration.phases.payloads import (
+    compute_activation_canonical_payload_v2,
+    compute_arrival_canonical_payload_v2,
+    compute_confirmation_canonical_payload_v1,
+    compute_confirmation_canonical_payload_v2,
+    compute_departure_canonical_payload_v1,
+    compute_departure_canonical_payload_v2,
+    compute_in_transit_canonical_payload_v2,
+    compute_loading_canonical_payload_v2,
+    compute_override_canonical_payload_v2,
     compute_unloading_canonical_payload_v2,
-    override_phase,
-    receipt_type_for,
-    recover_phase_anchor,
 )
-from app.orchestration.phase_service import anchor_phase_event
+from app.orchestration.phases.override import override_phase
+from app.orchestration.phases.anchor_recovery import recover_phase_anchor
+from app.orchestration.phases.anchor_execution import anchor_phase_event
 from app.orchestration.verification.service import verify_subject
 from app.storage.supabase_storage import EvidenceObjectNotFoundError, EvidenceStorageUnavailableError
 from app.schemas.phases import (
@@ -539,7 +547,7 @@ async def test_advance_confirmation_anchors_even_on_a_scan_mismatch(
         consignment_reference=consignment.parcel_perfect_reference, stop_reference=str(stop0_id),
         direction=ScanDirection.OUT, barcodes=barcodes,
     )
-    await scan_service.ingest_scans(
+    await ingest_scans(
         db_session, trip_id=trip.id, trip_stop_id=stop0_id, direction=ScanDirection.OUT,
     )
     await feed.close_session(
@@ -585,7 +593,7 @@ async def test_advance_confirmation_anchors_even_on_a_scan_mismatch(
         consignment_reference=consignment.parcel_perfect_reference, stop_reference=str(stop1_id),
         direction=ScanDirection.IN, barcodes=barcodes[:2],
     )
-    await scan_service.ingest_scans(
+    await ingest_scans(
         db_session, trip_id=trip.id, trip_stop_id=stop1_id, direction=ScanDirection.IN,
     )
     await feed.close_session(

@@ -29,7 +29,7 @@ from app.core.exceptions import DuplicateResourceError, ResourceNotFoundError
 from app.db.models.enums import BlockchainReceiptType, DriverEventType, IdvsStatus, SubjectType
 from app.db.models.events import DriverEvent
 from app.db.models.people import UQ_DRIVERS_ORG_ID_NUMBER, Driver
-from app.orchestration.driver_service import create_driver, update_driver
+from app.orchestration.fleet.drivers import create_driver, update_driver
 from app.schemas.people import DriverCreateBody, DriverUpdateBody
 
 # Postgres error code for unique_violation — the service maps only this to DuplicateResourceError.

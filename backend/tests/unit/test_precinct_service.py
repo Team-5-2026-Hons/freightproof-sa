@@ -21,7 +21,7 @@ from app.db.models.enums import (
 from app.db.models.events import PrecinctEvent
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import User
-from app.orchestration.precinct_service import create_precinct, list_precincts, update_precinct
+from app.orchestration.fleet.precincts import create_precinct, list_precincts, update_precinct
 from app.orchestration.verification.fleet_events import _reconstruct_precinct_event_payload
 from app.orchestration.verification.service import _hash_payload
 from app.schemas.organisations import PrecinctCreateBody, PrecinctUpdateBody
