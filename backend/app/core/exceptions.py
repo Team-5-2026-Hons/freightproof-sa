@@ -321,3 +321,23 @@ class StoredFileMismatchError(Exception):
 class FileStorageUnavailableError(Exception):
     """Object storage could not be reached, so nothing was read or written (503).
     Domain-side twin of the storage layer's availability error."""
+
+
+class HandoverLinkInvalidError(Exception):
+    """A presented handover link cannot be used, for any reason (404).
+
+    Deliberately one type with no reason attached: the receiver-facing routes must answer
+    every failure identically, so the true reason lives in handover_token_attempts and never
+    travels up the stack where a caller could be tempted to surface it.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("The handover link is not valid.")
+
+
+class HandoverAlreadyConfirmedError(Exception):
+    """The receiver has already confirmed this handover, so no new code may be issued (409)."""
+
+    def __init__(self, phase_event_id: str) -> None:
+        super().__init__(f"Handover for phase event '{phase_event_id}' is already confirmed.")
+        self.phase_event_id = phase_event_id

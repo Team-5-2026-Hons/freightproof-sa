@@ -40,6 +40,7 @@
 | | app/dev | **Done**: dev endpoints, services and schemas moved into `app/dev/` with no facades (no branch imported them). `app.dev` sits in the top layer, so production code cannot import it. All endpoint layer-skip ignores are gone. B8 now resolves patch targets held in module-level string constants | `a2a8847` |
 | 4b Remaining grouping | — | Planned, not implemented: analytics, verification/receipts, trip reads and review helpers (§5.7). Retain wrappers for any additional moved public paths | — |
 | | audit packs (§6.2 stage 5) | **Done** 2026-10-12: Tim's five modules (2,076 lines) moved whole into `orchestration/audit_packs/` as `analysis`, `incident_declarations`, `builder`, `lifecycle` and `access`; empty `__init__`. **No wrappers**: a search of every remote branch found importers only on `dev`, `Ciaran` and `Feat-ValueAddedDocumentation`, and `Chiko` held only a prose mention in the old §5.7 row. Import-linter contract 21 (tier order) added. The six distinct patch targets in the audit-pack tests (nine break cases) were retargeted and each shown to fail when its fake is broken. AST check: all 104 classes and functions identical to `dev`; only imports and two module docstrings differ. B1/B2 snapshots and B3/B4/B6/B8 unchanged. Step 3: nothing needed splitting (`_phase_record` 68 code lines, `build_audit_manifest` 62; see §5.7) | this change |
+| | handover route (§6.2 stage 3a) | **Done** 2026-10-12: the route's DB work moved into `orchestration/handover/service.py` (new top tier; contract 16 is now `service` > `receiver_verification` > `capability`). `endpoints/handover.py` has no `select`, `db.execute`, `db.add`, `db.flush` or scalar call; every `commit`, `rollback` and `except SQLAlchemyError` stays in the route at its original point (`service.py` never ends a transaction, and confirm still saves the attempt row before its generic 404). Two domain errors added to `core/exceptions.py` (`HandoverLinkInvalidError` → the generic 404, `HandoverAlreadyConfirmedError` → 409); the confirmation lookup raises `ResourceNotFoundError`. Characterised first: 19 tests added to the existing handover and receiver test files and run green on the unchanged code, then the move. Route signatures, decorators and docstrings unchanged; B1/B2 snapshots unchanged. No log line moved module | this change |
 | 5 Facade removal | — | **Retained during team migration.** 24 facades in `orchestration/` plus the `integrations/parcel_perfect` package `__init__`. Track acknowledgements and removal evidence in §6.1; do not infer completion from this branch passing tests | — |
 
 **Team handoff:** use the [backend structure migration guide](2026-10-09-backend-structure-migration-guide.md)
@@ -49,10 +50,10 @@ not a second refactor plan. Branch migration statuses remain unconfirmed until t
 
 **Current baselines** (re-measure after every PR):
 
-| Measure | At `8e2b698` | Now (stage 5, on `7232998`) |
+| Measure | At `8e2b698` | Now (stage 3a, on `f3dd40c` plus this change) |
 |---|---|---|
-| Backend suite, slow included | — | **2,800 passed, 4 skipped** (252 of them the slow B7 import checks; stage 5 adds one, because B7 tests each module and `audit_packs/__init__` is new) |
-| Backend suite as CI runs it (`-m "not slow"`) | 2,263 passed, 4 skipped | **2,548 passed, 4 skipped** (full run minus the 252 slow checks) |
+| Backend suite, slow included | — | **2,820 passed, 4 skipped** (253 of them the slow B7 import checks; stage 5 added one for `audit_packs/__init__`, stage 3a one for `handover/service`, plus 19 handover characterisation tests) |
+| Backend suite as CI runs it (`-m "not slow"`) | 2,263 passed, 4 skipped | **2,567 passed, 4 skipped** (full run minus the 253 slow checks) |
 | dispatcher vitest | 1,480 | **1,500** (at `84c2753`; frontend untouched since) |
 | driver-pwa vitest | 821 | **859** (at `84c2753`; frontend untouched since) |
 | import-linter contracts | 0 | **21** |
@@ -64,12 +65,11 @@ not a second refactor plan. Branch migration statuses remain unconfirmed until t
 | `orchestration/exception_service.py` | 1,121 lines | **68** (facade only) |
 | `integrations/parcel_perfect.py` | 1,485 lines | **81** (`parcel_perfect/__init__.py`, facade only) |
 | `schemas/trips.py` | 576 lines | **425** |
-| `endpoints/handover.py` | 560 lines | **557** (thinning it is a separate follow-up; see §0 note below) |
+| `endpoints/handover.py` | 560 lines | **466** (stage 3a: no database calls left; the work is in `orchestration/handover/service.py`, 370 lines) |
 
-**Follow-ups after phase 4** (none blocks merging): move the DB work out of `endpoints/handover.py` into
-`orchestration/handover/` (the `service.py` rev. 3 planned; not a pure move, so it was left out of the
-window); update the remaining stale `*_service` path mentions in endpoint and schema docstrings, together
-with a B1 snapshot update, because they are in the OpenAPI contract.
+**Follow-ups after phase 4** (none blocks merging): ~~move the DB work out of `endpoints/handover.py` into
+`orchestration/handover/`~~ (**done**, stage 3a); update the remaining stale `*_service` path mentions in
+endpoint and schema docstrings, together with a B1 snapshot update, because they are in the OpenAPI contract.
 
 **Done since phase 4** (`dcc9bf7`): `log_checkpoint` split; the three `_format_separation` copies replaced
 by `core.geo.format_distance` (§5.1); comment and docstring paths updated outside endpoints and schemas;
@@ -170,7 +170,7 @@ nested functions.
 | `orchestration/trip_service.py` | 825 | 14 / 15 | 28% | Borderline — `persist_trip` is 274 lines |
 | `orchestration/action_location_service.py` | 706 | 13 / 13 | 31% | Borderline |
 | `schemas/trips.py` | 576 | 2 + 39 classes / 4 | 14% | Barrel of unrelated request/response models |
-| `api/v1/endpoints/handover.py` | 560 | 12 / 12 | 13% | Fails "endpoints thin" — 18 `db.*()` calls, 7 `select()` |
+| `api/v1/endpoints/handover.py` | 560 | 12 / 12 | 13% | Failed "endpoints thin" — 18 `db.*()` calls, 7 `select()`. **Resolved 2026-10-12 (stage 3a)**: 0 and 0; now 466 lines, DB work in `handover/service.py` |
 
 Comment share = (comment lines + docstring lines) ÷ non-blank lines, truncated.
 
@@ -192,7 +192,7 @@ technically a break of "db never imports app", practically harmless.
 | endpoint → integration, skipping orchestration | `trips.py`, `pp.py` → `parcel_perfect`; `handover.py` → `idvs` | Real |
 | endpoint → integration (dev tools) — *missed in rev. 1* | `dev_tracker.py` → `pulsit` (1); `dev_triggers.py` → `mock_state`, `parcel_perfect`, `scan_feed` (3); `dev_pulsit.py` → `pulsit` (1) — **5 imports** | Lower: dev-only, but moves with `app/dev/` |
 | endpoint → blockchain, skipping orchestration | `blockchain.py` → `anchor_service`, `subject_visibility` | Real (known, 2 Sept) |
-| endpoints holding DB queries | `handover.py` **18** `db.*()` / 7 `select()`; `dev_triggers.py` **13** / 10; `dev_pulsit.py` **3** / 3 | Real for `handover.py`; dev tools lower. (Rev. 1's 19/22/6 used an unstated method) |
+| endpoints holding DB queries | `handover.py` **18** `db.*()` / 7 `select()`; `dev_triggers.py` **13** / 10; `dev_pulsit.py` **3** / 3 | Was real for `handover.py`: **resolved in stage 3a** (0 queries; DB work in `handover/service.py`). Dev tools lower, now in `app/dev/`. (Rev. 1's 19/22/6 used an unstated method) |
 | import cycle `phase_service` ↔ `tasks.blockchain`, and `phase_service` → `verification_service` → `phase_service` | broken today by function-level imports at `phase_service.py:438, 489, 528` and `tasks/blockchain.py:51, 101` | §5.2 removes it structurally |
 
 ### 4.3 Patterns the marker can be pointed at (defend these, do not disturb them)
@@ -234,7 +234,7 @@ backend/app/orchestration/
 ├── evidence/         artifacts · checkpoints · corroboration · action_location · geofence ·
 │                     location · proximity · road_check (existing *_service modules, moved whole)
 ├── fleet/            drivers.py · vehicles.py · precincts.py
-├── handover/         capability.py · receiver_verification.py
+├── handover/         capability.py · receiver_verification.py · service.py (the receiver routes' DB work, stage 3a)
 ├── consignments/     sync · scans · waybill_lookup · manifest_snapshot · manifest_import ·
 │                     manifest_reads (consignment, scan, pp_lookup, pp_manifest, pp_manifest_service
 │                     and manifest services, moved whole; named for the job, not the vendor, §5.6)
@@ -252,9 +252,13 @@ backend/app/dev/                           endpoints/ (triggers, pulsit, tracker
 - `integrations/parcel_perfect/` has ten modules, not five. A single `mock.py` would have been about
   1,000 lines, most of it demo data, so the fixtures got three modules of their own, and errors and
   timestamps became leaves the rest import.
-- `handover/` has no `service.py` yet. Moving the database work out of `endpoints/handover.py` changes
-  code, not just its location, so it is a follow-up commit rather than part of a move window.
-  `receiver_verification.py` is not named `verification.py` so it cannot be mistaken for
+- `handover/` gained its `service.py` in stage 3a (2026-10-12), after the move window: moving the database work
+  out of `endpoints/handover.py` changed code, not just its location, so it was a separate change. The
+  stage's acceptance line, "no DB calls in the route module", is read as no *queries or writes*: the route
+  still owns `commit`, `rollback` and `except SQLAlchemyError`, at the same points as before, because
+  orchestration never commits anywhere in this codebase and the confirm route must save the attempt row
+  before raising its generic 404. `service.py` is the top tier of `handover/`; it raises domain errors and
+  never `HTTPException`. `receiver_verification.py` is not named `verification.py` so it cannot be mistaken for
   `orchestration/verification_service.py` (Hedera verification).
 - `consignments/` also took `manifest_service` (role-aware manifest reads), which rev. 3's list missed.
 - `app/dev/` has no facades: no open branch imported the old paths, and facades there would have
@@ -600,8 +604,8 @@ changes and moves stay in separate commits.
 | # | Stage | Owner | Depends on | Done when | Target |
 |---|---|---|---|---|---|
 | 1 | Merge this restructure into `dev` | Ciaran | — | PR green in CI, reviewed, merged; Tim told to integrate | Sat 10 Oct |
-| 2 | Receiver selfie: save it or remove it (review F2/F5) | Ciaran | — | `SELFIE_ONLY` is assigned only when a photo is stored and linked through `selfie_artifact_id` (column already exists); a skipped photo records `TYPED_ONLY`. **Fallback if the upload is not working by Tue 13 Oct:** remove the capture step and record `TYPED_ONLY` | Tue 13 Oct |
-| 3a | Thin `endpoints/handover.py` | Ciaran | 1 | Routes validate, call `orchestration/handover/`, return; no DB calls in the route module; B1 snapshot unchanged | Wed 14 Oct |
+| 2 | Receiver selfie: retain capture and implement secure upload/storage (review F2/F5; handoff below) | Tim | 3a | `SELFIE_ONLY` is assigned only after a photo is stored and linked through `selfie_artifact_id`; skip or failed upload retains `TYPED_ONLY`. Decision recorded 12 Oct: keep capture; handed to Tim after 3a, not urgent; not yet implemented | Tim to set, before stage 8 |
+| 3a | Thin `endpoints/handover.py` | Ciaran | 1 | Routes validate, call `orchestration/handover/`, return; no DB calls in the route module; B1 snapshot unchanged. **Done 12 Oct**: 466 lines, DB work in `handover/service.py`, transactions stay in the route (§5 deviations); 19 characterisation tests added first; 2,820 passed, 4 skipped | Wed 14 Oct |
 | 3b | `resource_service` → `trips/` (list, history, detail reads) | Ciaran | 1 | Wrapper kept; patches retargeted; guardrails green | Thu 15 Oct |
 | 4 | `review_identity`, `review_policy` → `exceptions/`; analytics pair → `orchestration/analytics/` | Ciaran | 1 | Wrappers kept; guardrails green | Thu 15 Oct |
 | — | Tim integrates `dev` into his branch and merges | **Tim** | 1 | His branch green on the integrated revision; §6.1 row filled in | Thu 15 Oct |
@@ -614,6 +618,72 @@ changes and moves stay in separate commits.
 If a stage slips, it moves to the remaining-work list. The freeze does not move. Wrappers left
 in place at submission are an acceptable, documented state. A feature that claims evidence
 it never stores is not.
+
+### Stage 2 handoff — receiver selfie persistence (decision: 12 October 2026)
+
+**Status:** planned, not implemented; **owner: Tim, after 3a** (stage 3a is done, 12 Oct). Ciaran chose **keep selfie capture and implement
+upload/storage**, then explicitly deferred implementation to a new session. This supersedes
+the automatic remove-capture fallback previously listed above; if the deadline cannot be met,
+bring that scope decision back to Ciaran. Do not report this stage complete from this plan edit.
+
+**Confirmed source defect:** `record_consent_decision` in
+`backend/app/orchestration/handover/receiver_verification.py` assigns `SELFIE_ONLY` as soon as
+a consenting receiver says they have no document. No photo is required. In
+`frontend/receiver/app/h/[token]/HandoverPageClient.tsx`, `handleSelfieCaptured` stores a data
+URL only in React state; the confirmation request never uploads it. Skipping capture also
+leaves the backend claiming selfie evidence. Reproduce this with a failing test before fixing.
+
+**Implementation boundary and intended approach:**
+
+- Consent without a document starts at `TYPED_ONLY`. Promote to `SELFIE_ONLY` only after
+  the image upload succeeds, its `EvidenceArtifact` row is persisted, and the existing
+  `ReceiverIdentityVerification.selfie_artifact_id` FK is linked. Keep the status unverified:
+  a stored photograph does not verify identity.
+- Weigh sending the optional selfie in the confirm request, like the signature: redemption then gives the token gate, single use, rate limit and race safety.
+- Add a focused upload function in `orchestration/handover/` (in `service.py`, or a module above `receiver_verification` in the contract 16 tier order) and a thin route in `endpoints/handover.py`.
+  Require a live, unredeemed capability token, the matching browser-binding cookie and
+  recorded consent. Use the existing generic rejection response for invalid credentials.
+  Reject uploads after confirmation and serialize duplicate/racing uploads so an existing
+  linked photo cannot be silently replaced or generate repeated storage writes.
+- Reuse the existing evidence-storage and artifact conventions. Bound request/image size,
+  verify image type from bytes, and apply a public upload rate limit. Keep the photograph
+  in the existing private evidence storage; do not send it to Didit or blockchain.
+  Store only after authorization checks and handle storage/database failure explicitly.
+- Wire `SelfieCapture` to the upload. Show saving/failure state, allow retry or continuation
+  without a photo, and prevent confirmation racing an in-flight upload. A skipped or failed
+  upload must not manufacture a selfie tier or strand a delivery. Bound capture dimensions
+  and request duration; do not persist the image in browser storage.
+- Update displayed consent wording and its version to distinguish a selfie retained by
+  FreightProof from document/face images sent to the identity vendor. Preserve recorded
+  historical consent hashes. Assess historical `SELFIE_ONLY` rows with no artifact as a
+  separate data-integrity concern; do not silently rewrite existing evidence.
+- The FK already exists in `db/models/receiver_verification.py`; no new column is expected.
+  Check the actual model/migration state before deciding whether any migration is necessary.
+
+**Verification:** cover no-document consent before capture, successful storage/linking,
+skip, storage failure, malformed/oversized image, missing or wrong browser cookie, missing
+or declined consent, expired/unknown/redeemed token, duplicate upload, and upload/confirmation
+races. Assert persisted artifact trip ownership, hash and attribution. Add receiver tests
+for saving, retry and skip; keep document verification and confirmation paths green.
+Update B1/B2 snapshots only for reviewed additive API changes, then run backend lint,
+types, structure/import checks, baseline and DB-backed tests, plus receiver lint/types/tests/build
+and a real-device camera/upload smoke test. Distinguish pass, skip and not-run evidence.
+
+**Fresh-session prerequisites:** read `CLAUDE.md` and applicable instructions; query the
+existing graph and use source when stale; inspect `git status` for other work. Stages 3a and 5
+are done: the route's database work lives in `handover/service.py`, and the audit-pack files are
+not part of this stage. Expected files: `backend/app/api/v1/endpoints/handover.py`,
+`backend/app/orchestration/handover/service.py` and `receiver_verification.py`,
+`backend/app/schemas/handover.py`, and the receiver's `components/SelfieCapture.tsx`,
+`app/h/[token]/HandoverPageClient.tsx`, `lib/api.ts`, `lib/consent.ts` with their tests. The
+public router is already mounted, so shared `app/main.py` should not need a change.
+No implementation or tests were changed during this handoff. Local PostgreSQL was not
+reachable on ports 5432/5433 during inspection; establish a disposable test database,
+never use the shared Supabase database for destructive fixtures. Do not read `.env` files,
+commit, push, switch branches or run a shared migration from a feature branch.
+
+**Stages 3 and 4:** 3a done 12 Oct; 3b and 4 follow in Ciaran's session, each committed
+separately; behaviour changes stay separate from moves.
 
 ---
 

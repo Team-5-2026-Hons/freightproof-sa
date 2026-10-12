@@ -114,6 +114,9 @@ Other paths:
 - Dev endpoints now live in `app.dev.endpoints.{triggers,pulsit,tracker}`, dev services in
   `app.dev.services.{rig,truck}`, and dev schemas in `app.dev.schemas`. Old dev paths have no
   compatibility wrapper. Production modules must not import this top-layer package.
+- Handover route database work (the receiver QR routes' queries and sequencing) lives in
+  `app.orchestration.handover.service`, the top tier of `handover/`. It is new code, not a move, so
+  there is no wrapper and no old path. `endpoints/handover.py` keeps `commit` and `rollback`.
 - `analytics_service`, `fleet_analytics_service`, `verification_service`, `receipt_service`,
   `resource_service`, `review_identity`, `review_policy` and `integrity` still contain real code at
   their existing paths. Do not target the audit's proposed future folders before those moves land.
