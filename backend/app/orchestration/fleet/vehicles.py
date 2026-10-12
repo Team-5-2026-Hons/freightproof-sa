@@ -3,7 +3,6 @@
 Extracted from resource_service.py — owns list/create/update/detail for Vehicle.
 """
 
-import hashlib
 import uuid
 from typing import Any
 
@@ -16,6 +15,7 @@ from app.blockchain.critical_fields import (
     VEHICLE_COSMETIC_FIELDS, VEHICLE_CRITICAL_FIELDS, diff_critical_fields,
 )
 from app.core.exceptions import DuplicateResourceError, ResourceNotFoundError
+from app.orchestration.fleet.canonical import canonical_vehicle_fields
 from app.orchestration.integrity import is_unique_violation, violated_constraint
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import (
@@ -112,22 +112,14 @@ async def create_vehicle(
     db.add(vehicle_event)
     await db.flush()
 
-    # Build payload-safe fields: hash the GPS device ID.
-    # snapshot in vehicle_event.changed_fields keeps plaintext (Supabase DB, POPIA-compliant).
-    # canonical (→ payload_json in BlockchainReceipt) uses the hash only.
-    _canonical_fields = {
-        **snapshot,
-        "pulsit_device_id_sha256": hashlib.sha256(
-            str(snapshot.get("pulsit_device_id") or "").encode("utf-8")
-        ).hexdigest() if snapshot.get("pulsit_device_id") else None,
-    }
-    _canonical_fields.pop("pulsit_device_id", None)
-
+    # changed_fields keeps the plaintext device ID (Supabase DB, POPIA-compliant); the anchored
+    # payload (→ BlockchainReceipt.payload_json) carries only its hash. canonical_vehicle_fields
+    # is the single definition of that rewrite, shared with verification.
     canonical = {
         "vehicle_event_id": str(vehicle_event.id),
         "vehicle_id": str(vehicle.id),
         "event_type": VehicleEventType.CREATED.value,
-        "fields": _canonical_fields,    # ← was `snapshot`; device ID hashed for POPIA compliance
+        "fields": canonical_vehicle_fields(VehicleEventType.CREATED.value, snapshot),
         "changed_by_user_id": str(current_user_id),
         "timestamp": vehicle_event.created_at.isoformat(),
     }
@@ -233,20 +225,11 @@ async def update_vehicle(
     await db.flush()
 
     if critical_diff is not None:
-        _canonical_diff = dict(critical_diff)
-        if "pulsit_device_id" in _canonical_diff:
-            entry = _canonical_diff.pop("pulsit_device_id")
-            # entry is {"from": "...", "to": "..."} — hash both sides for POPIA compliance
-            _canonical_diff["pulsit_device_id_sha256"] = {
-                k: hashlib.sha256((v or "").encode()).hexdigest()
-                for k, v in entry.items()
-            }
-
         canonical = {
             "vehicle_event_id": str(event.id),
             "vehicle_id": str(vehicle.id),
             "event_type": event_type.value,
-            "fields": _canonical_diff,    # ← was `diff`; device ID hashed for POPIA compliance
+            "fields": canonical_vehicle_fields(event_type.value, critical_diff),
             "changed_by_user_id": str(current_user_id),
             "timestamp": event.created_at.isoformat(),
         }
