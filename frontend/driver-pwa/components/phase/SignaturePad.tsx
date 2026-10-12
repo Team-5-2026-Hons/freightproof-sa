@@ -178,7 +178,7 @@ export function SignaturePad({ label, dataUrl, onCapture }: SignaturePadProps) {
         {(hasStrokes || dataUrl) && (
           <Button
             type="button"
-            variant="ghost"
+            variant="secondary"
             size="sm"
             iconLeft={<RotateCcw className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />}
             onClick={handleClear}

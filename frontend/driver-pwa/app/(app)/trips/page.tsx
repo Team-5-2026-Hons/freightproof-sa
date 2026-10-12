@@ -163,7 +163,7 @@ export default function TripsPage() {
       {tab === 'past' && (
         <div className="flex flex-col gap-2">
           <Button
-            variant="ghost"
+            variant="secondary"
             size="sm"
             className="self-start"
             iconLeft={<SlidersHorizontal className="h-4 w-4" aria-hidden />}

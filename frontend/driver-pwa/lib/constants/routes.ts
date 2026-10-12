@@ -23,7 +23,10 @@ export const PANIC_QUEUED_PARAM = 'queued'
 
 export const ROUTES = {
   home:     '/',
-  login:    '/login',
+  // Welcome screen; the phone entry it leads to sits under it so the '/login' auth-route
+  // prefix (AuthContext, (app)/layout, OTP page) covers both without a new entry.
+  login:      '/login',
+  loginPhone: '/login/phone',
   settings: '/settings',
   trips:    '/trips',
 

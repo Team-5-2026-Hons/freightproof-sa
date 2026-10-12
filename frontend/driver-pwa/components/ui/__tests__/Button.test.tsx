@@ -6,12 +6,14 @@ describe('Button', () => {
   it('renders the secondary variant with a distinct visible border', () => {
     // Regression: the old secondary variant (bg-surface-container-highest, no border)
     // read as the disabled state to testers. It must now carry a border to stay
-    // clearly "enabled".
+    // clearly "enabled". Full-strength hairline and an ink label: the quiet style must
+    // never fall back to the old borderless blue link text (ghost, removed Oct 2026).
     render(<Button variant="secondary">Log Checkpoint</Button>)
 
     const button = screen.getByRole('button', { name: 'Log Checkpoint' })
 
-    expect(button.className).toContain('border-outline-variant/60')
+    expect(button).toHaveClass('border', 'border-outline-variant', 'text-surface-on')
+    expect(button).not.toHaveClass('text-secondary')
   })
 
   it('gives a disabled secondary button its own muted look, separable from enabled', () => {

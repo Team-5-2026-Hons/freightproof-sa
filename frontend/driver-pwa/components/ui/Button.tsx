@@ -25,10 +25,13 @@ const buttonVariants = cva(
       // map chips), so a shadow keeps meaning "this is above the page".
       variant: {
         primary:   'bg-primary text-primary-on hover:opacity-90 disabled:bg-surface-container-highest disabled:text-surface-on-variant',
-        // Bordered tonal style: a visible outline keeps enabled secondary buttons clearly
-        // distinct from the disabled:opacity-40 state, which testers otherwise misread as disabled.
-        secondary: 'bg-surface-container-lowest text-surface-on border border-outline-variant/60 hover:bg-surface-container-low disabled:bg-surface-container-low disabled:text-surface-on-variant',
-        ghost:     'bg-transparent text-secondary hover:bg-secondary/10 disabled:text-surface-on-variant',
+        // The one quiet style: ink label on a white face with a full-strength hairline.
+        // There is deliberately no text-only (ghost) variant any more — blue label-only
+        // buttons read as web links beside the black primary, and on a phone in a cab a
+        // control needs an edge to be found. Blue is kept for progress and status only.
+        // active: because touch has no hover (hoverOnlyWhenSupported), the press needs
+        // its own tone alongside the base scale-dip.
+        secondary: 'bg-surface-container-lowest text-surface-on border border-outline-variant hover:bg-surface-container-low active:bg-surface-container-low disabled:bg-surface-container-low disabled:text-surface-on-variant',
         danger:    'bg-error-container text-error-on-container hover:opacity-90 disabled:opacity-40',
       },
       size: {
@@ -78,6 +81,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     <Comp
       ref={ref}
       disabled={disabled || loading}
+      // Busy is not the same as unavailable: assistive tech announces it, and callers can
+      // style a sending button (aria-busy:) apart from one that is waiting on input.
+      aria-busy={loading || undefined}
       className={cn(buttonVariants({ variant, size }), className)}
       {...props}
     >

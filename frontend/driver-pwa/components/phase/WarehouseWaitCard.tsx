@@ -25,7 +25,7 @@ export function WarehouseWaitCard({ children }: WarehouseWaitCardProps) {
         <p className="text-xs text-surface-on-variant" aria-live="polite">
           {isRefreshing ? 'Checking…' : lastCheckedLabel(lastRefreshedAt)}
         </p>
-        <Button type="button" variant="ghost" size="sm" onClick={() => void refreshQuietly()} disabled={isRefreshing}>
+        <Button type="button" variant="secondary" size="sm" onClick={() => void refreshQuietly()} disabled={isRefreshing}>
           Check Now
         </Button>
       </div>

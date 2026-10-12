@@ -58,17 +58,16 @@ export function StepHeader({ phase, stepIndex }: StepHeaderProps) {
     // the shared .glass-nav material, since step content scrolls underneath.
     <header className="glass-nav sticky top-0 z-sticky border-b border-outline-variant/25 pb-3 pt-safe px-4">
       <div className="mb-3 flex items-center gap-3 pt-4">
-        {/* Same tinted chevron as SubpageHeader, so the two headers a driver moves
-            between mid-trip share one back affordance (a bare "←" glyph used to stand in
-            for an icon here). -ml-3 aligns the chevron with the header edge while the
-            h-11/w-11 box meets the same 44px touch minimum as the panic button. */}
+        {/* Same round ink chevron as SubpageHeader, so the two headers a driver moves
+            between mid-trip share one back affordance. 44px, the same touch minimum as
+            the panic button opposite it. */}
         <button
           type="button"
           onClick={handleBack}
           aria-label={backLabel}
-          className="-ml-3 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-secondary transition-opacity duration-100 active:opacity-50"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-surface-container-high text-surface-on transition-transform duration-100 active:scale-95 active:bg-surface-container-highest"
         >
-          <ChevronLeft className="h-7 w-7" strokeWidth={2.25} aria-hidden />
+          <ChevronLeft className="h-6 w-6 -translate-x-px" strokeWidth={2.25} aria-hidden />
         </button>
         {/* The step counter rides on the phase line rather than in its own column: with
             a separate column the step name was squeezed to "Inspe…" (and then split
@@ -92,7 +91,9 @@ export function StepHeader({ phase, stepIndex }: StepHeaderProps) {
           icon={<ShieldAlert className="h-5 w-5" strokeWidth={2} aria-hidden />}
           onClick={() => router.push(ROUTES.panic)}
           aria-label="Emergency — open panic alert"
-          className="text-error hover:bg-error-container/40"
+          // Round red-tinted well, the mirror of the back button's grey one: the pair
+          // frames the header symmetrically, and the tint keeps panic unmistakable.
+          className="rounded-full bg-error-container/60 text-error hover:bg-error-container active:bg-error-container"
         />
       </div>
       {/* One segment per step of this phase: done steps solid, the step on screen tinted,

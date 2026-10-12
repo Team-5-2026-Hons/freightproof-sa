@@ -312,7 +312,7 @@ export default function LogExceptionPageClient() {
         </div>
         <Button
           type="button"
-          variant="ghost"
+          variant="secondary"
           // Explicit replace, not router.back(): reachable via cold load/deep link, so
           // there may be no meaningful back-history.
           onClick={() => { markTransition('back'); router.replace(ROUTES.inTransit) }}

@@ -91,7 +91,7 @@ export default function TripDetailByIdPageClient() {
         </p>
         <div className="flex gap-2">
           <Button variant="secondary" size="sm" onClick={load}>Try Again</Button>
-          <Button variant="ghost" size="sm" onClick={() => { markTransition('back'); router.push(ROUTES.trips) }}>
+          <Button variant="secondary" size="sm" onClick={() => { markTransition('back'); router.push(ROUTES.trips) }}>
             Back to Trips
           </Button>
         </div>

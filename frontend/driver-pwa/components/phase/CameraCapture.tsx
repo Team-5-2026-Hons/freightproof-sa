@@ -238,32 +238,32 @@ export function CameraCapture({ label, dataUrl, onCapture }: CameraCaptureProps)
           <img src={dataUrl} alt={label} className="h-full w-full object-cover" />
           <Button
             type="button"
-            variant="ghost"
+            variant="secondary"
             size="sm"
             onClick={handleCapture}
-            // Overrides ghost's semibold/transparent defaults back to the original
-            // floating pill look: rounded-full, a visible scrim so it reads over any
-            // photo, and font-medium text. Shadow lifts it off the photo so
-            // it reads as a floating control, not part of the image.
-            className="absolute bottom-2 right-2 rounded-full bg-surface-container-highest/90 font-medium shadow-ambient-sm hover:bg-surface-container-highest"
+            // Floating pill over the photo: rounded-full, a near-opaque scrim so it reads
+            // over any image, and no hairline (the scrim and shadow are its edge here).
+            // Shadow lifts it off the photo so it reads as a control, not part of the image.
+            className="absolute bottom-2 right-2 rounded-full border-0 bg-surface-container-highest/90 font-medium shadow-ambient-sm hover:bg-surface-container-highest"
           >
             Retake
           </Button>
         </div>
       ) : (
         // A tappable tile, not a dashed drop zone: dashes are the desktop "drag a file
-        // here" idiom, and there is nothing to drag on a phone. The accent-tinted camera
-        // and the verb say what a tap does; it dips on press like every other control.
+        // here" idiom, and there is nothing to drag on a phone. The camera and the verb
+        // say what a tap does, in ink like every other control (blue is for progress);
+        // the hairline matches the outlined buttons, and it dips on press like them.
         <button
           type="button"
           onClick={handleCapture}
           disabled={isCapturing}
-          className="flex h-32 w-full flex-col items-center justify-center gap-2 rounded-2xl bg-surface-container-low transition-transform duration-150 active:scale-[0.98] disabled:opacity-60 animate-fade-in-scale motion-reduce:animate-none"
+          className="flex h-32 w-full flex-col items-center justify-center gap-2 rounded-2xl border border-outline-variant bg-surface-container-lowest transition-transform duration-150 active:scale-[0.98] active:bg-surface-container-low disabled:opacity-60 animate-fade-in-scale motion-reduce:animate-none"
         >
-          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-secondary/10 text-secondary">
+          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-surface-container-high text-surface-on">
             <CameraIcon className="h-6 w-6" strokeWidth={2} aria-hidden />
           </span>
-          <span className="text-body font-semibold text-secondary">
+          <span className="text-body font-semibold text-surface-on">
             {isCapturing
               ? 'Opening Camera…'
               : nativeCameraUnavailable

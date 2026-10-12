@@ -360,3 +360,13 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Welcome-screen backdrop: a Karoo dusk — deep blue sky to an amber horizon over dark
+   ground. It stands in until a hero photo is set (WELCOME_IMAGE_SRC in app/login/page.tsx)
+   and stays underneath it after, so a slow image load fades in over sky, never a white
+   box. Raw colours on purpose: this is artwork, not UI, and must not shift with theme. */
+.auth-dusk {
+  background:
+    radial-gradient(120% 60% at 50% 62%, rgb(214 140 72 / 0.55), transparent 60%),
+    linear-gradient(180deg, #0a1428 0%, #16305a 38%, #6a4a3a 58%, #1a1410 66%, #0b0b0d 100%);
+}

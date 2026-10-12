@@ -22,17 +22,17 @@ describe('SubpageHeader', () => {
     expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument()
   })
 
-  it('renders a custom back label', () => {
+  it('names the back button after its destination when a custom label is given', () => {
     render(<SubpageHeader title="Log Exception" backLabel="In Transit" />)
 
-    expect(screen.getByRole('button', { name: 'In Transit' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Back to In Transit' })).toBeInTheDocument()
   })
 
   it('calls the provided onBack instead of router.back()', () => {
     const onBack = vi.fn()
     render(<SubpageHeader title="Log Exception" backLabel="In Transit" onBack={onBack} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'In Transit' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Back to In Transit' }))
 
     expect(onBack).toHaveBeenCalled()
     expect(mockBack).not.toHaveBeenCalled()
@@ -76,14 +76,17 @@ describe('SubpageHeader', () => {
     expect(caption).toHaveClass('sr-only')
   })
 
-  it('renders the back button as a plain tinted control, not a filled pill', () => {
-    render(<SubpageHeader title="Log Exception" />)
+  it('renders the back button as an ink chevron in a light round well, with no visible text', () => {
+    render(<SubpageHeader title="Log Exception" backLabel="In Transit" />)
 
-    const back = screen.getByRole('button', { name: 'Back' })
+    const back = screen.getByRole('button', { name: 'Back to In Transit' })
 
-    // Regression guard for audit H3: the filled black pill outranked the page content.
-    expect(back).toHaveClass('text-secondary')
+    // Ink, not the blue link tint; a light well, not the filled black pill that
+    // outranked the page content (audit H3); the destination is in the accessible name only.
+    expect(back).toHaveClass('rounded-full', 'bg-surface-container-high', 'text-surface-on')
+    expect(back).not.toHaveClass('text-secondary')
     expect(back).not.toHaveClass('bg-primary')
+    expect(back.textContent).toBe('')
   })
 
   it('omits the caption when none is given', () => {

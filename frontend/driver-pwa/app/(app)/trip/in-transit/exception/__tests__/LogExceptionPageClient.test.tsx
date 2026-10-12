@@ -246,7 +246,7 @@ describe('LogExceptionPageClient back link (5d)', () => {
   it('shows an "In Transit" back target (SubpageHeader) that pushes the hub route (not router.back)', () => {
     render(<LogExceptionPageClient />)
 
-    const backLink = screen.getByRole('button', { name: 'In Transit' })
+    const backLink = screen.getByRole('button', { name: 'Back to In Transit' })
     // min-h-[44px] is SubpageHeader's shared 44px minimum touch target for a
     // stressed/gloved hand — see components/layout/SubpageHeader.tsx.
     expect(backLink).toHaveClass('min-h-[44px]')

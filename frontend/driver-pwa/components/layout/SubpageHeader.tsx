@@ -16,11 +16,13 @@ interface SubpageHeaderProps {
   titleCaption?: string
 }
 
+const DEFAULT_BACK_LABEL = 'Back'
+
 // Sticky header for non-step subpages (phase steps use components/phase/StepHeader).
 // Owns its own horizontal padding — render as the first child of an unpadded <main>.
 export function SubpageHeader({
   title,
-  backLabel = 'Back',
+  backLabel = DEFAULT_BACK_LABEL,
   onBack,
   right,
   titleVariant = 'heading',
@@ -41,17 +43,18 @@ export function SubpageHeader({
     // Glass rather than an opaque bar: the header is sticky and content scrolls under it.
     <header className="glass-nav sticky top-0 z-sticky border-b border-outline-variant/25 px-4 pb-3 pt-safe">
       <div className="flex min-h-11 items-center justify-between gap-3 pt-1">
-        {/* The iOS back button: a tinted chevron plus where it goes, no fill. The old
-            filled black "← My Trips" pill was the loudest object on every subpage,
-            outranking the content it led away from (audit H3). -ml-2 optically aligns
-            the chevron with the title's left edge; the hit area stays 44px tall. */}
+        {/* The current iOS back button: an ink chevron in a quiet round well, no text.
+            HIG (Toolbars › Navigation) asks for the standard symbol rather than a "Back"
+            label, and the blue chevron-plus-label read as a web link. The well is a light
+            tone, not black: the old filled black pill outranked the page (audit H3). The
+            destination still reaches screen readers through the accessible name. */}
         <button
           type="button"
           onClick={handleBack}
-          className="-ml-2 flex min-h-[44px] items-center gap-0.5 rounded-lg pr-2 text-body text-secondary transition-opacity duration-100 active:opacity-50"
+          aria-label={backLabel === DEFAULT_BACK_LABEL ? backLabel : `Back to ${backLabel}`}
+          className="flex h-11 min-h-[44px] w-11 items-center justify-center rounded-full bg-surface-container-high text-surface-on transition-transform duration-100 active:scale-95 active:bg-surface-container-highest"
         >
-          <ChevronLeft className="h-6 w-6 shrink-0" strokeWidth={2.25} aria-hidden />
-          {backLabel}
+          <ChevronLeft className="h-6 w-6 shrink-0 -translate-x-px" strokeWidth={2.25} aria-hidden />
         </button>
         {right}
       </div>

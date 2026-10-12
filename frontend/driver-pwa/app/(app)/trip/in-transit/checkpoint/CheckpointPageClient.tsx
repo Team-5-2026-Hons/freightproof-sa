@@ -104,7 +104,7 @@ export default function CheckpointPageClient() {
             Go back to In Transit and try again.
           </p>
         </div>
-        <Button type="button" variant="ghost" onClick={() => { markTransition('back'); router.replace(ROUTES.inTransit) }}>
+        <Button type="button" variant="secondary" onClick={() => { markTransition('back'); router.replace(ROUTES.inTransit) }}>
           Back to In Transit
         </Button>
       </main>
@@ -173,7 +173,7 @@ export default function CheckpointPageClient() {
         <div className="flex w-full justify-center">
           <SwipeToConfirm label={submitting ? 'Submitting…' : 'Swipe to Confirm'} onConfirm={handleSubmit} disabled={!isReady || submitting} />
         </div>
-        <Button variant="ghost" size="md" className="mt-2 w-full" onClick={() => { markTransition('back'); router.push(ROUTES.inTransit) }}>
+        <Button variant="secondary" size="md" className="mt-2 w-full" onClick={() => { markTransition('back'); router.push(ROUTES.inTransit) }}>
           Cancel
         </Button>
       </footer>

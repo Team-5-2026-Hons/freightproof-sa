@@ -15,6 +15,11 @@ import { ROUTES } from '@/lib/constants/routes'
 import { captureWithinBudget, REPORT_CAPTURE_BUDGET_MS } from '@/lib/utils/bounded-capture'
 import { markTransition } from '@/lib/navigation/transition-direction'
 
+// The outlined secondary button inverted for this page's red ground: transparent face,
+// white label and edge, a faint white wash on press.
+const ON_RED_OUTLINE =
+  'border-error-on bg-transparent text-error-on hover:bg-error-on/10 active:bg-error-on/15'
+
 export default function PanicPageClient() {
   const router = useRouter()
   const { trip, isLoading, logException } = useTrip()
@@ -112,17 +117,17 @@ export default function PanicPageClient() {
         </div>
         <Button
           type="button"
-          variant="ghost"
+          variant="secondary"
           // This state is reachable via cold load, deep link, or refresh —
           // there may be no meaningful back-history, so router.back() could
           // land anywhere (or nowhere). Use an explicit replace so the label's
           // promise ("Back to In Transit") is actually guaranteed.
           onClick={() => { markTransition('back'); router.replace(ROUTES.inTransit) }}
-          // Ghost's default text-secondary/hover:bg-secondary/10 is unreadable on this
-          // screen's bg-error backdrop — override to full-strength error-on. The old /70
-          // tone measured 3.8:1 on the red, below 4.5:1 for 17pt text: a frightened
-          // driver must be able to read the way out.
-          className="text-error-on hover:bg-error-on/10"
+          // The white-faced outlined button would be a glaring slab on this screen's
+          // bg-error backdrop, so on red it inverts: transparent face, error-on label and
+          // edge. Full-strength error-on, not /70 (3.8:1 on the red, below 4.5:1 for 17pt
+          // text): a frightened driver must be able to read the way out.
+          className={ON_RED_OUTLINE}
         >
           Back to In Transit
         </Button>
@@ -164,13 +169,13 @@ export default function PanicPageClient() {
       />
       <Button
         type="button"
-        variant="ghost"
+        variant="secondary"
         // Same reasoning as the !trip branch above: this page is reachable via cold
         // load or deep link, where router.back() has no meaningful history to pop —
         // replace to the in-transit hub so Cancel always lands somewhere sensible.
         onClick={() => { markTransition('back'); router.replace(ROUTES.inTransit) }}
-        // Full-strength error-on, not /70 (3.8:1) — see the !trip branch above.
-        className="text-error-on hover:bg-error-on/10"
+        // Outlined in error-on, not filled white — see the !trip branch above.
+        className={ON_RED_OUTLINE}
       >
         Cancel
       </Button>

@@ -419,7 +419,7 @@ describe('TripDetailView', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Trips' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Back to Trips' }))
     expect(onBack).toHaveBeenCalled()
   })
 })

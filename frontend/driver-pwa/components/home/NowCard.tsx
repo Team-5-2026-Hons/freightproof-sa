@@ -120,10 +120,13 @@ export function NowCard({ trip, onStartPhase, onContinueDriving, onViewTrip }: N
       <button
         type="button"
         onClick={onViewTrip}
-        className="flex min-h-[44px] items-center justify-between rounded-2xl px-5 text-body text-secondary transition-opacity duration-100 active:opacity-50"
+        // An iOS grouped-list row, not a blue text link: ink label, grey disclosure
+        // chevron, on the same white face as the card above so the two read as one
+        // group. Flat (no shadow) — it is a row of the card's group, not a second card.
+        className="flex min-h-[52px] items-center justify-between rounded-2xl bg-surface-container-lowest px-5 text-body font-semibold text-surface-on transition-colors duration-100 active:bg-surface-container-low"
       >
         View Trip
-        <ChevronRight className="h-5 w-5" strokeWidth={2.25} aria-hidden />
+        <ChevronRight className="h-5 w-5 text-surface-on-variant" strokeWidth={2.25} aria-hidden />
       </button>
     </div>
   )
