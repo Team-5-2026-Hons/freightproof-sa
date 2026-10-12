@@ -29,7 +29,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'OVERVIEW',
     items: [
-      { label: 'Dashboard', href: ROUTES.home, icon: 'home', activePatterns: ['/'] },
+      { label: 'Dashboard', href: ROUTES.home, icon: 'home', activePatterns: [ROUTES.home] },
       // Every dispatcher, not admins only: the analytics endpoints are read-only and
       // org-scoped (get_current_dispatcher), unlike the receipt lookup below.
       { label: 'Analytics', href: ROUTES.analytics, icon: 'bars', activePatterns: [ROUTES.analytics] },
@@ -89,10 +89,7 @@ function roleLabel(role: DispatcherUser['role'] | undefined): string {
 }
 
 function isActive(pathname: string, patterns: string[]): boolean {
-  return patterns.some(p => {
-    if (p === '/') return pathname === '/'
-    return pathname.startsWith(p)
-  })
+  return patterns.some(p => pathname.startsWith(p))
 }
 
 function NavLink({ item, pathname, onClose, collapsed }: {
