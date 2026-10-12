@@ -11,7 +11,7 @@
     "app/orchestration/exceptions/creation.py::raise_exception": 168,
     "app/orchestration/exceptions/queries.py::list_exception_history": 103,
     "app/orchestration/exceptions/review.py::review_exception": 123,
-    "app/orchestration/fleet/vehicles.py::update_vehicle": 117,
+    "app/orchestration/fleet/vehicles.py::update_vehicle": 108,
     "app/orchestration/phases/advance_arrival.py::advance_arrival": 151,
     "app/orchestration/phases/advance_confirmation.py::advance_confirmation": 119,
     "app/orchestration/phases/advance_departure.py::advance_departure": 118,
@@ -22,7 +22,7 @@
     "app/orchestration/trips/detail.py::get_trip_detail": 148,
     "app/orchestration/trips/listing.py::list_trip_history": 154,
     "app/orchestration/trips/listing.py::list_trips": 106,
-    "app/orchestration/verification_service.py::_reconstruct_phase_event_payload": 177,
+    "app/orchestration/verification/phase_payloads.py::_reconstruct_phase_event_payload": 177,
     "app/tasks/parcel_perfect.py::_sync_all_active": 116
   },
   "files": {

@@ -35,7 +35,7 @@ from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
 from app.main import app
 from app.orchestration.fleet.vehicles import create_vehicle, update_vehicle
-from app.orchestration.verification_service import verify_subject
+from app.orchestration.verification.service import verify_subject
 from app.schemas.vehicles import VehicleCreateBody, VehicleUpdateBody
 
 from tests.conftest import auth_header, make_token
@@ -265,7 +265,7 @@ async def test_verify_returns_verified_for_anchored_trip(
 
     Two separate patches are required:
       1. app.blockchain.anchor_service.HederaService — used during POST /trips to submit the hash.
-      2. app.orchestration.verification_service.HederaService — used during POST /verify
+      2. app.orchestration.verification.service.HederaService — used during POST /verify
          to confirm the hash on the mirror node.
     """
     fake_receipt = HederaReceipt(
@@ -290,7 +290,7 @@ async def test_verify_returns_verified_for_anchored_trip(
 
     # Step 2: verify the trip — patch the verification-layer HederaService so
     # verify_hash returns True (simulating a matching mirror-node response).
-    with patch("app.orchestration.verification_service.HederaService") as MockVerify:
+    with patch("app.orchestration.verification.service.HederaService") as MockVerify:
         MockVerify.return_value.verify_hash.return_value = True
 
         verify_resp = await client.post(

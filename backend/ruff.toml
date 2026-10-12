@@ -85,7 +85,8 @@ max-statements = 50
 # violations (audit 5.3); the count of violating functions is unchanged.
 "app/orchestration/trips/creation.py" = ["C901", "PLR0915"]  # persist_trip
 "app/orchestration/trips/listing.py" = ["PLR0913"]  # list_trip_history, relocated from resource_service.py
-"app/orchestration/verification_service.py" = ["C901"]
+"app/orchestration/verification/phase_payloads.py" = ["C901"]  # _reconstruct_phase_event_payload, relocated from verification_service.py
+"app/orchestration/verification/service.py" = ["C901"]  # verify_subject, relocated from verification_service.py
 "app/storage/supabase_storage.py" = ["C901"]
 "scripts/check_supabase_wiring.py" = ["C901"]
 "scripts/pp_watch.py" = ["C901", "PLR0913", "PLR0915"]

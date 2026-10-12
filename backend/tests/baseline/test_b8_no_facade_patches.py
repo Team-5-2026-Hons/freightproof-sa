@@ -18,7 +18,8 @@ corroboration_service, action_location_service, checkpoint_service and geofence_
 road_check_service never had any. The fleet, handover and consignments window's driver_service,
 vehicle_service, precinct_service, consignment_service, scan_service and pp_manifest_service had
 12, 8, 9, 22, 4 and 3; handover_service, receiver_verification_service, pp_lookup_service,
-pp_manifest and manifest_service never had any.
+pp_manifest and manifest_service never had any. The verification window's verification_service and
+receipt_service had 14 and 6.
 
 integrations.parcel_perfect is the odd one out: the facade IS the package, so its submodules
 (`...parcel_perfect.mock`) share the facade's dotted prefix. A site is "through the facade"
@@ -58,6 +59,7 @@ FROZEN_FACADES: frozenset[str] = frozenset({
     "app.orchestration.pp_manifest_service",
     "app.orchestration.precinct_service",
     "app.orchestration.proximity_service",
+    "app.orchestration.receipt_service",
     "app.orchestration.receiver_verification_service",
     "app.orchestration.resource_service",
     "app.orchestration.review_identity",
@@ -66,6 +68,7 @@ FROZEN_FACADES: frozenset[str] = frozenset({
     "app.orchestration.scan_service",
     "app.orchestration.trip_service",
     "app.orchestration.vehicle_service",
+    "app.orchestration.verification_service",
 })
 
 

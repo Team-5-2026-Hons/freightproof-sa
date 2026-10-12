@@ -37,7 +37,7 @@ from app.orchestration.phase_service import (
     advance_loading,
     compute_confirmation_canonical_payload_v1,
 )
-from app.orchestration.verification_service import verify_subject
+from app.orchestration.verification.service import verify_subject
 from app.schemas.phases import ActivationCompleteRequest, LoadingCompleteRequest
 from tests.unit import test_phase_anchor_payload as _fixtures
 

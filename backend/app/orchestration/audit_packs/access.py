@@ -35,7 +35,7 @@ from app.orchestration.audit_packs.lifecycle import (
     storage_errors_as_domain_errors,
     verify_url,
 )
-from app.orchestration.verification_service import verify_subject
+from app.orchestration.verification.service import verify_subject
 from app.reporting.incident_sheet import render_incident_sheet_pdf
 from app.schemas.audit_pack import (
     AuditPackManifest,

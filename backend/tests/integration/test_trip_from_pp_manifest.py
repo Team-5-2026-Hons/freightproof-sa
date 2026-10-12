@@ -28,7 +28,7 @@ from app.integrations.parcel_perfect import (
 from app.main import app
 from app.orchestration.consignment_service import fetch_and_sync_consignment
 from app.orchestration.trip_service import cancel_trip
-from app.orchestration.verification_service import verify_subject
+from app.orchestration.verification.service import verify_subject
 from tests.conftest import auth_header
 from tests.integration._pp_manifest_world import (
     MOCK_CLIENT_NAME, build_manifest_world, create_body, install_pp_mock, preview,

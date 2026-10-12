@@ -67,7 +67,7 @@ def storage(monkeypatch: pytest.MonkeyPatch, audit_trip: AuditTrip) -> dict[str,
     monkeypatch.setattr(lifecycle, "upload_audit_pack_pdf", fake_upload)
     monkeypatch.setattr(access, "download_audit_pack_pdf", fake_download)
     monkeypatch.setattr(access, "download_evidence_file", fake_download)
-    monkeypatch.setattr("app.orchestration.verification_service.hash_stored_evidence_file", fake_hash)
+    monkeypatch.setattr("app.orchestration.verification.phase_payloads.hash_stored_evidence_file", fake_hash)
     return store
 
 

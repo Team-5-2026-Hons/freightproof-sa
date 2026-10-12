@@ -73,6 +73,8 @@ not named here. Do not import a package root as a replacement shortcut; orchestr
 | `exception_service` | `exceptions.creation` (raise); `exceptions.review` (claim/release/review); `exceptions.queries` (queue/history/detail) |
 | `review_identity` | `exceptions.review_identity` (`user_names`, `name_of`, `with_reviewer_names`). Wrapper kept |
 | `review_policy` | `exceptions.review_policy` (`initial_review_status`, `dispatcher_authored_review`, `AuthoredReviewFields`). Wrapper kept |
+| `verification_service` | `verification.service` (`VerifyOutcome`, `verify_subject`, `verify_visible_subject`); `verification.phase_payloads` (`reconstruct_pending_phase_payload`, `_hash_payload`); `verification.fleet_events` (`_reconstruct_precinct_event_payload`). Wrapper kept for these six names; resolve any other symbol from the new modules |
+| `receipt_service` | `verification.receipts` (`lookup_receipts`, `list_receipts_for_subject`). Wrapper kept |
 | `analytics_service` | `analytics.metrics` (dispatcher analytics screen). Wrapper kept. Not `app.analytics`: that package holds the query and calculation code and did not move |
 | `fleet_analytics_service` | `analytics.fleet` (fleet-wide analytics page). Wrapper kept |
 | `action_location_service` | `evidence.action_location` |
@@ -122,8 +124,13 @@ Other paths:
 - Handover route database work (the receiver QR routes' queries and sequencing) lives in
   `app.orchestration.handover.service`, the top tier of `handover/`. It is new code, not a move, so
   there is no wrapper and no old path. `endpoints/handover.py` keeps `commit` and `rollback`.
-- `verification_service`, `receipt_service` and `integrity` still contain real code at
-  their existing paths. Do not target the audit's proposed future folders before those moves land.
+- Patch targets for verification: `HederaService` and `assert_subject_visible` and `verify_subject` are looked
+  up in `app.orchestration.verification.service`; `hash_stored_evidence_file` in
+  `app.orchestration.verification.phase_payloads`; `lookup_receipts` and `list_receipts_for_subject` in
+  `app.orchestration.verification.receipts`. Patching either wrapper fails (B8 and, for names the wrapper does
+  not re-export, `AttributeError`). A branch whose tests still patch `app.orchestration.verification_service.*`
+  must retarget them when it integrates.
+- `integrity` still contains real code at its existing path.
 
 Example of an ordinary import migration:
 

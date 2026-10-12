@@ -44,7 +44,8 @@ from app.db.models.vehicles import Vehicle
 from app.orchestration.phase_service import (
     _PHASE_RECEIPT_TYPES, anchor_phase_event, receipt_type_for, recover_phase_anchor,
 )
-from app.orchestration.verification_service import reconstruct_pending_phase_payload, verify_subject
+from app.orchestration.verification.phase_payloads import reconstruct_pending_phase_payload
+from app.orchestration.verification.service import verify_subject
 
 from tests.conftest import auth_header, make_token
 # override_get_db is autouse and never referenced by name below, so importing it is

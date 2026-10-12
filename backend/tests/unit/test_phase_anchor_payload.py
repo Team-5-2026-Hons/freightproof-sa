@@ -55,7 +55,7 @@ from app.orchestration.phase_service import (
     recover_phase_anchor,
 )
 from app.orchestration.phase_service import anchor_phase_event
-from app.orchestration.verification_service import verify_subject
+from app.orchestration.verification.service import verify_subject
 from app.storage.supabase_storage import EvidenceObjectNotFoundError, EvidenceStorageUnavailableError
 from app.schemas.phases import (
     ActivationCompleteRequest, ArrivalCompleteRequest, ConfirmationCompleteRequest,
@@ -103,7 +103,7 @@ def stub_evidence_storage_hash(monkeypatch):
         return "a" * 64
 
     monkeypatch.setattr(
-        "app.orchestration.verification_service.hash_stored_evidence_file", _stored_hash,
+        "app.orchestration.verification.phase_payloads.hash_stored_evidence_file", _stored_hash,
     )
 
 
@@ -989,7 +989,7 @@ async def test_verify_subject_detects_replaced_storage_bytes(
         return "b" * 64 if s3_key == seal.s3_key else "a" * 64
 
     monkeypatch.setattr(
-        "app.orchestration.verification_service.hash_stored_evidence_file", _stored_hash,
+        "app.orchestration.verification.phase_payloads.hash_stored_evidence_file", _stored_hash,
     )
     stub_service = MagicMock()
 
@@ -1015,7 +1015,7 @@ async def test_verify_subject_treats_missing_storage_object_as_mismatch(
         raise EvidenceObjectNotFoundError("missing")
 
     monkeypatch.setattr(
-        "app.orchestration.verification_service.hash_stored_evidence_file", _missing,
+        "app.orchestration.verification.phase_payloads.hash_stored_evidence_file", _missing,
     )
     stub_service = MagicMock()
 
@@ -1040,7 +1040,7 @@ async def test_verify_subject_treats_storage_outage_as_error_not_tampering(
         raise EvidenceStorageUnavailableError("unavailable")
 
     monkeypatch.setattr(
-        "app.orchestration.verification_service.hash_stored_evidence_file", _unavailable,
+        "app.orchestration.verification.phase_payloads.hash_stored_evidence_file", _unavailable,
     )
     stub_service = MagicMock()
 

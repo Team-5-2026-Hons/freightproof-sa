@@ -22,7 +22,7 @@ from app.integrations.parcel_perfect import MANIFEST_HAPPY_PATH, MockParcelPerfe
 from app.orchestration.consignments import sync as consignments_sync
 from app.orchestration.pp_manifest import manifest_key, manifest_snapshot
 from app.orchestration.trip_service import ManifestCargo, NewTrip, persist_trip
-from app.orchestration.verification_service import verify_subject
+from app.orchestration.verification.service import verify_subject
 from app.schemas.trips import TripStopCreate
 from tests.integration._pp_manifest_world import (
     MOCK_CLIENT_NAME, build_manifest_world, insert_trip,

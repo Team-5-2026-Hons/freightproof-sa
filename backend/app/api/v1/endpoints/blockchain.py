@@ -12,8 +12,8 @@ from app.core.limits import BLOCKCHAIN_VERIFY
 from app.core.rate_limit import rate_limit
 from app.db.models.enums import DispatcherRole, SubjectType
 from app.db.session import get_db
-from app.orchestration import receipt_service
-from app.orchestration.verification_service import verify_visible_subject
+from app.orchestration.verification import receipts as receipt_reads
+from app.orchestration.verification.service import verify_visible_subject
 from app.schemas.blockchain import (
     BlockchainReceiptLookupQuery,
     BlockchainReceiptRead,
@@ -31,7 +31,7 @@ async def lookup_receipts_endpoint(
     db: AsyncSession = Depends(get_db),
     current_user: UserRead = Depends(require_admin_dispatcher),
 ) -> list[BlockchainReceiptRead]:
-    receipts = await receipt_service.lookup_receipts(
+    receipts = await receipt_reads.lookup_receipts(
         db,
         organization_id=current_user.organization_id,
         data_hash=query.data_hash,
@@ -49,7 +49,7 @@ async def list_receipts(
     current_user: UserRead = Depends(require_admin_dispatcher),
 ) -> list[BlockchainReceiptRead]:
     try:
-        receipts = await receipt_service.list_receipts_for_subject(
+        receipts = await receipt_reads.list_receipts_for_subject(
             db, subject_type=subject_type,
             subject_id=subject_id, organization_id=current_user.organization_id,
         )
