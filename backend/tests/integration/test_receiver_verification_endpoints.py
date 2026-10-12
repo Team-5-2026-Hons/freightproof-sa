@@ -7,12 +7,14 @@ any of these routes would hand a guesser an oracle.
 """
 
 import base64
+import logging
 import uuid
 
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy import event, select
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import settings
 from app.db.models.enums import (
@@ -24,10 +26,12 @@ from app.db.models.enums import (
     ReceiverVerificationTier,
     ReceiverVerificationUnverifiedReason,
     TripStatus,
+    ExceptionType,
 )
 from app.db.models.handover import HandoverCapabilityToken
 from app.db.models.phases import PhaseEvent
 from app.db.models.receiver_verification import IdvsQuotaLedger, ReceiverIdentityVerification
+from app.db.models.transit import TripException
 from app.db.models.trips import Trip, TripStop
 from app.db.session import get_db
 from app.integrations.idvs import IdvsDecisionStatus, MockIdvsClient
@@ -641,3 +645,78 @@ async def test_full_walk_survives_the_vendor_being_unavailable(
 
     confirmed = await client.post(f"/api/v1/handover/{token}/confirm", json=_E2E_CONFIRM)
     assert confirmed.status_code == 201, "a vendor outage must never block a real delivery"
+
+
+# ── Route characterisation (stage 3a) ────────────────────────────────────────
+#
+# Added before endpoints/handover.py was thinned. They patch the shared test session, not a
+# name in the route module, so they hold on both sides of the move.
+
+
+async def test_consent_when_the_commit_fails_is_a_500_after_a_rollback(
+    client, handover_trip, driver_auth, db_session, monkeypatch, caplog,
+):
+    token = await _issue(client, handover_trip, driver_auth)
+    rollbacks: list[int] = []
+    real_rollback = db_session.rollback
+
+    async def failing_commit() -> None:
+        raise SQLAlchemyError("simulated commit failure")
+
+    async def counting_rollback() -> None:
+        rollbacks.append(1)
+        await real_rollback()
+
+    monkeypatch.setattr(db_session, "commit", failing_commit)
+    monkeypatch.setattr(db_session, "rollback", counting_rollback)
+
+    with caplog.at_level(logging.ERROR):
+        res = await client.post(f"/api/v1/handover/{token}/consent", json=_CONSENT_BODY)
+
+    assert res.status_code == 500
+    assert res.json()["detail"] == "Could not record consent."
+    assert rollbacks == [1]
+    assert "Failed to record handover consent" in caplog.text
+
+
+async def test_resolve_without_prior_consent_is_the_generic_404(client, handover_trip, driver_auth):
+    token = await _issue(client, handover_trip, driver_auth)
+
+    res = await client.post(
+        f"/api/v1/handover/{token}/verify/resolve",
+        json={"receiver_name": _NKOSI_NAME, "receiver_id_number": _NKOSI_ID},
+    )
+
+    assert res.status_code == 404
+    assert res.json()["detail"] == _GENERIC_NOT_FOUND
+
+
+async def test_a_mismatching_resolve_files_one_exception_on_the_trip_and_commits(
+    client, handover_trip, driver_auth, db_session, monkeypatch,
+):
+    token = await _started_session(client, handover_trip, driver_auth, db_session)
+    commits: list[int] = []
+    real_commit = db_session.commit
+
+    async def counting_commit() -> None:
+        commits.append(1)
+        await real_commit()
+
+    monkeypatch.setattr(db_session, "commit", counting_commit)
+
+    res = await client.post(
+        f"/api/v1/handover/{token}/verify/resolve",
+        json={"receiver_name": "Someone Else", "receiver_id_number": "8001015009087"},
+    )
+
+    assert res.status_code == 200
+    assert res.json()["identity_match"] is False
+    rows = (
+        await db_session.execute(
+            select(TripException.exception_type).where(
+                TripException.trip_id == handover_trip["trip"].id
+            )
+        )
+    ).scalars().all()
+    assert rows == [ExceptionType.RECEIVER_ID_MISMATCH]
+    assert commits == [1]
