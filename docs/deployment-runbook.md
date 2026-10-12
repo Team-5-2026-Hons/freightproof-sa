@@ -81,6 +81,10 @@ ALLOWED_ORIGINS=["https://www.freightproof.co.za"]
 # required — the QR target, the Didit callback, and a CORS entry, all at once.
 HANDOVER_RECEIVER_BASE_URL=https://receiver.freightproof.co.za
 
+# The client portal that serves audit-pack share links (/p/<token>) and seal checks
+# (/v/<pack id>). Printed into every issued PDF and folded into CORS automatically.
+AUDIT_PACK_PORTAL_BASE_URL=https://portal.freightproof.co.za
+
 # required in production — an explicit statement about topology, not a default.
 # true: Railway's edge overwrites X-Forwarded-For, so it is the real client address.
 # Governs the rate-limit bucket key AND the receiver_ip evidence field on every handover.
@@ -128,6 +132,37 @@ NEXT_PUBLIC_API_URL=https://api.freightproof.co.za
 
 That is the app's only configuration. It holds no session and talks to exactly two
 endpoints.
+
+---
+
+## 4a. Vercel — client portal (audit packs, new project)
+
+The page an insurer, loss adjuster or detective opens from an audit-pack share link. It
+verifies anchors against the public Hedera mirror node **from the visitor's own browser**.
+
+1. New Vercel project, root directory `frontend/client-portal`, framework preset Next.js,
+   Node 22. Not a static export: `next.config.js` `headers()` sets `Referrer-Policy:
+   no-referrer` and `X-Frame-Options: DENY`, and both matter (the URL path is the credential).
+2. Domain: `portal.freightproof.co.za` — must equal `AUDIT_PACK_PORTAL_BASE_URL` on Railway,
+   or issued PDFs print a verification address nobody can open.
+3. Environment variables:
+
+```bash
+NEXT_PUBLIC_API_URL=https://api.freightproof.co.za
+# Optional — defaults to the public OpenStreetMap tiles, same as the dispatcher.
+NEXT_PUBLIC_TILE_URL=
+```
+
+**Before the first pack is issued in production:**
+
+- Apply migration `tim_add_audit_packs` (three new tables: `audit_packs`,
+  `audit_pack_access_events`, `incident_declarations`) **from `dev` after merge** — never
+  from a feature branch (CLAUDE.md).
+- The API image needs Pango/HarfBuzz for WeasyPrint (already in `backend/Dockerfile`). Check
+  the first Railway build log; if the PDF endpoints 500, this is the first suspect. The
+  container build was not verified before merge (no Docker on the development machine).
+- Issued PDFs are stored under `audit-packs/` in the existing `evidence-artifacts` bucket; no
+  new bucket is needed.
 
 ---
 

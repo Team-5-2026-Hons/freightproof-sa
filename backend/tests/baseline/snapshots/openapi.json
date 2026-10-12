@@ -403,6 +403,137 @@
         "title": "AnchorStatus",
         "type": "string"
       },
+      "AnchoredField": {
+        "additionalProperties": false,
+        "description": "A phase value checked against the payload its receipt committed.",
+        "properties": {
+          "matches_anchor": {
+            "title": "Matches Anchor",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "name",
+          "value",
+          "matches_anchor"
+        ],
+        "title": "AnchoredField",
+        "type": "object"
+      },
+      "AnchoredRecord": {
+        "additionalProperties": false,
+        "description": "One Hedera receipt plus the exact canonical string that was hashed, so a\nverifier can hash that string itself instead of trusting our serialisation.",
+        "properties": {
+          "canonical_payload": {
+            "title": "Canonical Payload",
+            "type": "string"
+          },
+          "data_hash": {
+            "title": "Data Hash",
+            "type": "string"
+          },
+          "hedera_consensus_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hedera Consensus At"
+          },
+          "hedera_sequence_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hedera Sequence Number"
+          },
+          "hedera_topic_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hedera Topic Id"
+          },
+          "hedera_tx_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hedera Tx Id"
+          },
+          "payload_matches_hash": {
+            "title": "Payload Matches Hash",
+            "type": "boolean"
+          },
+          "receipt_id": {
+            "format": "uuid",
+            "title": "Receipt Id",
+            "type": "string"
+          },
+          "receipt_type": {
+            "title": "Receipt Type",
+            "type": "string"
+          },
+          "subject_id": {
+            "format": "uuid",
+            "title": "Subject Id",
+            "type": "string"
+          },
+          "subject_type": {
+            "title": "Subject Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "receipt_id",
+          "subject_type",
+          "subject_id",
+          "receipt_type",
+          "canonical_payload",
+          "data_hash",
+          "hedera_topic_id",
+          "hedera_sequence_number",
+          "hedera_tx_id",
+          "hedera_consensus_at",
+          "payload_matches_hash"
+        ],
+        "title": "AnchoredRecord",
+        "type": "object"
+      },
       "ArrivalCompleteRequest": {
         "additionalProperties": false,
         "properties": {
@@ -528,6 +659,554 @@
         "title": "ArtifactType",
         "type": "string"
       },
+      "AuditPackAccessEventRead": {
+        "additionalProperties": false,
+        "properties": {
+          "client_ip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Ip"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "user_agent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Agent"
+          }
+        },
+        "required": [
+          "event_type",
+          "client_ip",
+          "user_agent",
+          "created_at"
+        ],
+        "title": "AuditPackAccessEventRead",
+        "type": "object"
+      },
+      "AuditPackCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_in_days": {
+            "default": 30,
+            "enum": [
+              7,
+              30,
+              90
+            ],
+            "title": "Expires In Days",
+            "type": "integer"
+          },
+          "external_reference": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Reference"
+          },
+          "include_full_driver_id": {
+            "default": false,
+            "title": "Include Full Driver Id",
+            "type": "boolean"
+          },
+          "include_location_trail": {
+            "default": true,
+            "title": "Include Location Trail",
+            "type": "boolean"
+          },
+          "purpose": {
+            "enum": [
+              "insurance_claim",
+              "delivery_dispute",
+              "police_report",
+              "client_audit",
+              "sla_evidence"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          },
+          "recipient_email": {
+            "anyOf": [
+              {
+                "maxLength": 320,
+                "minLength": 3,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipient Email"
+          },
+          "recipient_name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Recipient Name",
+            "type": "string"
+          },
+          "recipient_organization": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Recipient Organization",
+            "type": "string"
+          },
+          "scope_consignment_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope Consignment Id"
+          }
+        },
+        "required": [
+          "recipient_name",
+          "recipient_organization",
+          "purpose"
+        ],
+        "title": "AuditPackCreate",
+        "type": "object"
+      },
+      "AuditPackIssued": {
+        "additionalProperties": false,
+        "description": "Returned once, at issue: the only time the raw share token exists anywhere.",
+        "properties": {
+          "pack": {
+            "$ref": "#/components/schemas/AuditPackRead"
+          },
+          "share_token": {
+            "title": "Share Token",
+            "type": "string"
+          },
+          "share_url": {
+            "title": "Share Url",
+            "type": "string"
+          },
+          "verify_url": {
+            "title": "Verify Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pack",
+          "share_token",
+          "share_url",
+          "verify_url"
+        ],
+        "title": "AuditPackIssued",
+        "type": "object"
+      },
+      "AuditPackManifest": {
+        "additionalProperties": false,
+        "properties": {
+          "anchored_records": {
+            "items": {
+              "$ref": "#/components/schemas/AnchoredRecord"
+            },
+            "title": "Anchored Records",
+            "type": "array"
+          },
+          "checkpoints": {
+            "items": {
+              "$ref": "#/components/schemas/CheckpointRecord"
+            },
+            "title": "Checkpoints",
+            "type": "array"
+          },
+          "consignments": {
+            "items": {
+              "$ref": "#/components/schemas/ConsignmentRecord"
+            },
+            "title": "Consignments",
+            "type": "array"
+          },
+          "declarations": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/IncidentDeclarationRecord"
+            },
+            "title": "Declarations",
+            "type": "array"
+          },
+          "driver": {
+            "$ref": "#/components/schemas/DriverRecord"
+          },
+          "exceptions": {
+            "items": {
+              "$ref": "#/components/schemas/ExceptionRecord"
+            },
+            "title": "Exceptions",
+            "type": "array"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "incident": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IncidentSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "location_coverage": {
+            "$ref": "#/components/schemas/LocationCoverage"
+          },
+          "location_trail": {
+            "items": {
+              "$ref": "#/components/schemas/PositionFix"
+            },
+            "title": "Location Trail",
+            "type": "array"
+          },
+          "manifest_version": {
+            "default": 1,
+            "title": "Manifest Version",
+            "type": "integer"
+          },
+          "observations": {
+            "items": {
+              "$ref": "#/components/schemas/Observation"
+            },
+            "title": "Observations",
+            "type": "array"
+          },
+          "options": {
+            "$ref": "#/components/schemas/AuditPackOptions"
+          },
+          "phases": {
+            "items": {
+              "$ref": "#/components/schemas/PhaseRecord"
+            },
+            "title": "Phases",
+            "type": "array"
+          },
+          "record_changes": {
+            "items": {
+              "$ref": "#/components/schemas/RecordChange"
+            },
+            "title": "Record Changes",
+            "type": "array"
+          },
+          "redactions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Redactions",
+            "type": "array"
+          },
+          "stops": {
+            "items": {
+              "$ref": "#/components/schemas/StopRecord"
+            },
+            "title": "Stops",
+            "type": "array"
+          },
+          "trip": {
+            "$ref": "#/components/schemas/TripSummary"
+          },
+          "vehicles": {
+            "items": {
+              "$ref": "#/components/schemas/VehicleRecord"
+            },
+            "title": "Vehicles",
+            "type": "array"
+          }
+        },
+        "required": [
+          "generated_at",
+          "options",
+          "trip",
+          "stops",
+          "vehicles",
+          "driver",
+          "consignments",
+          "phases",
+          "checkpoints",
+          "exceptions",
+          "record_changes",
+          "location_trail",
+          "location_coverage",
+          "anchored_records",
+          "observations",
+          "redactions"
+        ],
+        "title": "AuditPackManifest",
+        "type": "object"
+      },
+      "AuditPackOptions": {
+        "additionalProperties": false,
+        "description": "What the issuer chose to include — POPIA minimality is decided per pack.",
+        "properties": {
+          "include_full_driver_id": {
+            "default": false,
+            "title": "Include Full Driver Id",
+            "type": "boolean"
+          },
+          "include_location_trail": {
+            "default": true,
+            "title": "Include Location Trail",
+            "type": "boolean"
+          },
+          "scope_consignment_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope Consignment Id"
+          }
+        },
+        "title": "AuditPackOptions",
+        "type": "object"
+      },
+      "AuditPackRead": {
+        "additionalProperties": false,
+        "properties": {
+          "anchor_status": {
+            "title": "Anchor Status",
+            "type": "string"
+          },
+          "consignment_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consignment Id"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "external_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Reference"
+          },
+          "hedera_consensus_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hedera Consensus At"
+          },
+          "hedera_sequence_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hedera Sequence Number"
+          },
+          "hedera_topic_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hedera Topic Id"
+          },
+          "hedera_tx_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hedera Tx Id"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "include_full_driver_id": {
+            "title": "Include Full Driver Id",
+            "type": "boolean"
+          },
+          "include_location_trail": {
+            "title": "Include Location Trail",
+            "type": "boolean"
+          },
+          "issued_at": {
+            "format": "date-time",
+            "title": "Issued At",
+            "type": "string"
+          },
+          "last_viewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Viewed At"
+          },
+          "manifest_sha256": {
+            "title": "Manifest Sha256",
+            "type": "string"
+          },
+          "pack_label": {
+            "title": "Pack Label",
+            "type": "string"
+          },
+          "pdf_sha256": {
+            "title": "Pdf Sha256",
+            "type": "string"
+          },
+          "pdf_size_bytes": {
+            "title": "Pdf Size Bytes",
+            "type": "integer"
+          },
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          },
+          "recipient_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipient Email"
+          },
+          "recipient_name": {
+            "title": "Recipient Name",
+            "type": "string"
+          },
+          "recipient_organization": {
+            "title": "Recipient Organization",
+            "type": "string"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "expired",
+              "revoked"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "trip_id": {
+            "format": "uuid",
+            "title": "Trip Id",
+            "type": "string"
+          },
+          "view_count": {
+            "title": "View Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "pack_label",
+          "trip_id",
+          "consignment_id",
+          "purpose",
+          "external_reference",
+          "recipient_name",
+          "recipient_organization",
+          "recipient_email",
+          "include_location_trail",
+          "include_full_driver_id",
+          "manifest_sha256",
+          "pdf_sha256",
+          "pdf_size_bytes",
+          "anchor_status",
+          "hedera_topic_id",
+          "hedera_sequence_number",
+          "hedera_tx_id",
+          "hedera_consensus_at",
+          "issued_at",
+          "expires_at",
+          "revoked_at",
+          "status",
+          "view_count",
+          "last_viewed_at"
+        ],
+        "title": "AuditPackRead",
+        "type": "object"
+      },
       "BlockchainReceiptRead": {
         "description": "Full receipt shape returned by blockchain endpoints and embedded in TripDetailResponse.\n\nUses subject_type/subject_id rather than the legacy trip_id field so that\nreceipts for vehicles, drivers, and events can all be represented uniformly.",
         "properties": {
@@ -632,7 +1311,8 @@
           "driver_created",
           "driver_updated",
           "precinct_created",
-          "precinct_updated"
+          "precinct_updated",
+          "audit_pack_issued"
         ],
         "title": "BlockchainReceiptType",
         "type": "string"
@@ -939,6 +1619,90 @@
           "created_at"
         ],
         "title": "CheckpointRead",
+        "type": "object"
+      },
+      "CheckpointRecord": {
+        "additionalProperties": false,
+        "properties": {
+          "checkpoint_id": {
+            "format": "uuid",
+            "title": "Checkpoint Id",
+            "type": "string"
+          },
+          "checkpoint_type": {
+            "title": "Checkpoint Type",
+            "type": "string"
+          },
+          "driver_phone": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PositionFix"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceFile"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "is_deviation": {
+            "title": "Is Deviation",
+            "type": "boolean"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "tier": {
+            "enum": [
+              "anchored",
+              "corroborated",
+              "recorded",
+              "declared"
+            ],
+            "title": "Tier",
+            "type": "string"
+          },
+          "vehicle_tracker": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PositionFix"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "checkpoint_id",
+          "checkpoint_type",
+          "recorded_at",
+          "driver_phone",
+          "vehicle_tracker",
+          "is_deviation",
+          "note",
+          "evidence",
+          "tier"
+        ],
+        "title": "CheckpointRecord",
         "type": "object"
       },
       "ConfirmationCompleteRequest": {
@@ -1320,6 +2084,134 @@
           "updated_at"
         ],
         "title": "ConsignmentRead",
+        "type": "object"
+      },
+      "ConsignmentRecord": {
+        "additionalProperties": false,
+        "properties": {
+          "client_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Name"
+          },
+          "consignment_id": {
+            "format": "uuid",
+            "title": "Consignment Id",
+            "type": "string"
+          },
+          "declared_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Declared Value"
+          },
+          "delivery_stop_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Stop Id"
+          },
+          "parcel_count_expected": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parcel Count Expected"
+          },
+          "parcel_perfect_reference": {
+            "title": "Parcel Perfect Reference",
+            "type": "string"
+          },
+          "parcels": {
+            "items": {
+              "$ref": "#/components/schemas/ParcelRecord"
+            },
+            "title": "Parcels",
+            "type": "array"
+          },
+          "pickup_stop_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pickup Stop Id"
+          },
+          "unit_count_expected": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Count Expected"
+          }
+        },
+        "required": [
+          "consignment_id",
+          "parcel_perfect_reference",
+          "client_name",
+          "declared_value",
+          "parcel_count_expected",
+          "unit_count_expected",
+          "pickup_stop_id",
+          "delivery_stop_id",
+          "parcels"
+        ],
+        "title": "ConsignmentRecord",
+        "type": "object"
+      },
+      "CoverageGap": {
+        "additionalProperties": false,
+        "properties": {
+          "end": {
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "minutes": {
+            "title": "Minutes",
+            "type": "integer"
+          },
+          "start": {
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "minutes"
+        ],
+        "title": "CoverageGap",
         "type": "object"
       },
       "CriticalWaiting": {
@@ -2573,6 +3465,156 @@
         "title": "DriverRead",
         "type": "object"
       },
+      "DriverRecord": {
+        "additionalProperties": false,
+        "properties": {
+          "driver_id": {
+            "format": "uuid",
+            "title": "Driver Id",
+            "type": "string"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "id_number": {
+            "title": "Id Number",
+            "type": "string"
+          },
+          "id_number_masked": {
+            "title": "Id Number Masked",
+            "type": "boolean"
+          },
+          "license_expiry": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Expiry"
+          },
+          "license_number": {
+            "title": "License Number",
+            "type": "string"
+          },
+          "license_valid_on_trip_date": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Valid On Trip Date"
+          },
+          "substitutions": {
+            "items": {
+              "$ref": "#/components/schemas/DriverSubstitutionRecord"
+            },
+            "title": "Substitutions",
+            "type": "array"
+          },
+          "trip_idvs_checked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trip Idvs Checked At"
+          },
+          "trip_idvs_status": {
+            "title": "Trip Idvs Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "driver_id",
+          "full_name",
+          "id_number",
+          "id_number_masked",
+          "license_number",
+          "license_expiry",
+          "license_valid_on_trip_date",
+          "trip_idvs_status",
+          "trip_idvs_checked_at",
+          "substitutions"
+        ],
+        "title": "DriverRecord",
+        "type": "object"
+      },
+      "DriverSubstitutionRecord": {
+        "additionalProperties": false,
+        "properties": {
+          "anchor_receipt_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anchor Receipt Id"
+          },
+          "exchange_location": {
+            "title": "Exchange Location",
+            "type": "string"
+          },
+          "is_planned": {
+            "title": "Is Planned",
+            "type": "boolean"
+          },
+          "original_driver_name": {
+            "title": "Original Driver Name",
+            "type": "string"
+          },
+          "substituting_driver_name": {
+            "title": "Substituting Driver Name",
+            "type": "string"
+          },
+          "substitution_at": {
+            "format": "date-time",
+            "title": "Substitution At",
+            "type": "string"
+          },
+          "substitution_id": {
+            "format": "uuid",
+            "title": "Substitution Id",
+            "type": "string"
+          },
+          "tier": {
+            "enum": [
+              "anchored",
+              "corroborated",
+              "recorded",
+              "declared"
+            ],
+            "title": "Tier",
+            "type": "string"
+          }
+        },
+        "required": [
+          "substitution_id",
+          "original_driver_name",
+          "substituting_driver_name",
+          "exchange_location",
+          "is_planned",
+          "substitution_at",
+          "anchor_receipt_id",
+          "tier"
+        ],
+        "title": "DriverSubstitutionRecord",
+        "type": "object"
+      },
       "DriverTripListItemResponse": {
         "description": "One row of GET /api/v1/trips/me — the authenticated driver's own trip list.\n\nDeliberately not TripListItemResponse: that carries driver/horse/trailers a driver\nalready knows, and omits precinct names, which are resolved server-side here.\nstatus is the coarse TripStatus the PWA groups its Active/Upcoming/Past tabs by;\nthe phase ledger, not this field, sequences the trip.",
         "properties": {
@@ -3043,6 +4085,64 @@
         "title": "EvidenceArtifactWithUrl",
         "type": "object"
       },
+      "EvidenceFile": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "captured_at": {
+            "format": "date-time",
+            "title": "Captured At",
+            "type": "string"
+          },
+          "mime_type": {
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "seal_photo",
+              "waybill_photo",
+              "gate_photo",
+              "pod_photo",
+              "pod_signature",
+              "linehaul_photo",
+              "checkpoint_selfie",
+              "checkpoint_cargo_photo",
+              "exception_supporting"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "tier": {
+            "enum": [
+              "anchored",
+              "corroborated",
+              "recorded",
+              "declared"
+            ],
+            "title": "Tier",
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "role",
+          "sha256",
+          "mime_type",
+          "captured_at",
+          "tier"
+        ],
+        "title": "EvidenceFile",
+        "type": "object"
+      },
       "EvidenceResponse": {
         "properties": {
           "overrides": {
@@ -3104,6 +4204,182 @@
         ],
         "title": "ExceptionContactMethod",
         "type": "string"
+      },
+      "ExceptionRecord": {
+        "additionalProperties": false,
+        "properties": {
+          "checkpoint_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkpoint Id"
+          },
+          "consignment_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consignment Id"
+          },
+          "contact_method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Method"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceFile"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "exception_id": {
+            "format": "uuid",
+            "title": "Exception Id",
+            "type": "string"
+          },
+          "exception_type": {
+            "title": "Exception Type",
+            "type": "string"
+          },
+          "phase_event_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phase Event Id"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PositionFix"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "raised_at": {
+            "format": "date-time",
+            "title": "Raised At",
+            "type": "string"
+          },
+          "review_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Note"
+          },
+          "review_outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Outcome"
+          },
+          "review_status": {
+            "title": "Review Status",
+            "type": "string"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "reviewer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer Name"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "tier": {
+            "enum": [
+              "anchored",
+              "corroborated",
+              "recorded",
+              "declared"
+            ],
+            "title": "Tier",
+            "type": "string"
+          }
+        },
+        "required": [
+          "exception_id",
+          "exception_type",
+          "source",
+          "severity",
+          "description",
+          "raised_at",
+          "position",
+          "phase_event_id",
+          "checkpoint_id",
+          "consignment_id",
+          "review_status",
+          "review_outcome",
+          "reviewed_at",
+          "reviewer_name",
+          "contact_method",
+          "review_note",
+          "evidence",
+          "tier"
+        ],
+        "title": "ExceptionRecord",
+        "type": "object"
       },
       "ExceptionReviewOutcome": {
         "description": "What a dispatcher concluded when reviewing an exception. LEGACY_REVIEW and\nDISPATCHER_AUTHORED are not real choices (see DispatcherReviewOutcome): the first\nonly back-marks a pre-existing `resolved=true` row as reviewed with no recorded\nfinding, the second marks a dispatcher's own note as reviewed by its author.",
@@ -3799,6 +5075,303 @@
         "title": "InTransitCompleteRequest",
         "type": "object"
       },
+      "IncidentDeclarationCreate": {
+        "additionalProperties": false,
+        "description": "What a claim form asks for that FreightProof never captured. Append-only: a\ncorrection is a new declaration, so what was declared when stays on record.",
+        "properties": {
+          "client_notified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Notified At"
+          },
+          "exception_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exception Id"
+          },
+          "insurer_claim_reference": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Insurer Claim Reference"
+          },
+          "insurer_notified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Insurer Notified At"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "reported_to_saps_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reported To Saps At"
+          },
+          "saps_cas_number": {
+            "anyOf": [
+              {
+                "maxLength": 50,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Saps Cas Number"
+          },
+          "saps_officer": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Saps Officer"
+          },
+          "saps_station": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Saps Station"
+          },
+          "tracking_company_notified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tracking Company Notified At"
+          }
+        },
+        "title": "IncidentDeclarationCreate",
+        "type": "object"
+      },
+      "IncidentDeclarationRecord": {
+        "additionalProperties": false,
+        "description": "Police and notification facts the operator typed in after the event. Always the\nDeclared tier: FreightProof did not capture any of it, so the pack never presents it\nas if it had.",
+        "properties": {
+          "client_notified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Notified At"
+          },
+          "declaration_id": {
+            "format": "uuid",
+            "title": "Declaration Id",
+            "type": "string"
+          },
+          "declared_at": {
+            "format": "date-time",
+            "title": "Declared At",
+            "type": "string"
+          },
+          "declared_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Declared By Name"
+          },
+          "exception_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exception Id"
+          },
+          "insurer_claim_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Insurer Claim Reference"
+          },
+          "insurer_notified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Insurer Notified At"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "reported_to_saps_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reported To Saps At"
+          },
+          "saps_cas_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Saps Cas Number"
+          },
+          "saps_officer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Saps Officer"
+          },
+          "saps_station": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Saps Station"
+          },
+          "tier": {
+            "const": "declared",
+            "default": "declared",
+            "title": "Tier",
+            "type": "string"
+          },
+          "tracking_company_notified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tracking Company Notified At"
+          }
+        },
+        "required": [
+          "declaration_id",
+          "exception_id",
+          "saps_station",
+          "saps_cas_number",
+          "saps_officer",
+          "reported_to_saps_at",
+          "tracking_company_notified_at",
+          "insurer_notified_at",
+          "client_notified_at",
+          "insurer_claim_reference",
+          "note",
+          "declared_by_name",
+          "declared_at"
+        ],
+        "title": "IncidentDeclarationRecord",
+        "type": "object"
+      },
       "IncidentPin": {
         "description": "One located report on the incident map (chart 3.6). Deliberately nothing about the\nperson: no driver name, phone or id. A pin is where a named driver was, so it carries only\nwhat the dispatcher needs to open the report (POPIA).",
         "properties": {
@@ -3847,6 +5420,83 @@
           "lng"
         ],
         "title": "IncidentPin",
+        "type": "object"
+      },
+      "IncidentSummary": {
+        "additionalProperties": false,
+        "description": "The key times an adjuster or detective reads first, derived from the critical\nexceptions. Built only when the trip has at least one.",
+        "properties": {
+          "exception_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Exception Ids",
+            "type": "array"
+          },
+          "first_exception_type": {
+            "title": "First Exception Type",
+            "type": "string"
+          },
+          "first_raised_at": {
+            "format": "date-time",
+            "title": "First Raised At",
+            "type": "string"
+          },
+          "first_reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Reviewed At"
+          },
+          "last_known_position": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PositionFix"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "minutes_to_first_review": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minutes To First Review"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PositionFix"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "exception_ids",
+          "first_exception_type",
+          "first_raised_at",
+          "position",
+          "last_known_position",
+          "first_reviewed_at",
+          "minutes_to_first_review"
+        ],
+        "title": "IncidentSummary",
         "type": "object"
       },
       "IncidentsResponse": {
@@ -4139,6 +5789,84 @@
         "title": "LinehaulResponse",
         "type": "object"
       },
+      "LiveRecordCheck": {
+        "additionalProperties": false,
+        "properties": {
+          "receipt_id": {
+            "format": "uuid",
+            "title": "Receipt Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "verified",
+              "db_mismatch",
+              "hedera_mismatch",
+              "no_receipt",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "subject_id": {
+            "format": "uuid",
+            "title": "Subject Id",
+            "type": "string"
+          },
+          "subject_type": {
+            "title": "Subject Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "receipt_id",
+          "subject_type",
+          "subject_id",
+          "status"
+        ],
+        "title": "LiveRecordCheck",
+        "type": "object"
+      },
+      "LiveVerification": {
+        "additionalProperties": false,
+        "properties": {
+          "checked_at": {
+            "format": "date-time",
+            "title": "Checked At",
+            "type": "string"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/LiveRecordCheck"
+            },
+            "title": "Records",
+            "type": "array"
+          },
+          "records_added_since_issue": {
+            "title": "Records Added Since Issue",
+            "type": "integer"
+          },
+          "seal_status": {
+            "enum": [
+              "verified",
+              "db_mismatch",
+              "hedera_mismatch",
+              "no_receipt",
+              "error"
+            ],
+            "title": "Seal Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "checked_at",
+          "seal_status",
+          "records",
+          "records_added_since_issue"
+        ],
+        "title": "LiveVerification",
+        "type": "object"
+      },
       "LoadingCompleteRequest": {
         "additionalProperties": false,
         "properties": {
@@ -4256,6 +5984,98 @@
           "phase_type"
         ],
         "title": "LoadingCompleteRequest",
+        "type": "object"
+      },
+      "LocationCoverage": {
+        "additionalProperties": false,
+        "properties": {
+          "first_fix_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Fix At"
+          },
+          "fix_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "enum": [
+                "driver_phone",
+                "vehicle_tracker",
+                "trailer_tracker"
+              ]
+            },
+            "title": "Fix Counts",
+            "type": "object"
+          },
+          "gaps": {
+            "items": {
+              "$ref": "#/components/schemas/CoverageGap"
+            },
+            "title": "Gaps",
+            "type": "array"
+          },
+          "last_fix_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Fix At"
+          },
+          "stationary_periods": {
+            "items": {
+              "$ref": "#/components/schemas/StationaryPeriod"
+            },
+            "title": "Stationary Periods",
+            "type": "array"
+          },
+          "window_end": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window End"
+          },
+          "window_start": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window Start"
+          }
+        },
+        "required": [
+          "window_start",
+          "window_end",
+          "fix_counts",
+          "first_fix_at",
+          "last_fix_at",
+          "gaps",
+          "stationary_periods"
+        ],
+        "title": "LocationCoverage",
         "type": "object"
       },
       "LocationPingBatch": {
@@ -4386,6 +6206,44 @@
           "pulled_at"
         ],
         "title": "ManifestResponse",
+        "type": "object"
+      },
+      "Observation": {
+        "additionalProperties": false,
+        "description": "A factual, rule-generated sentence. States what the record shows, never a\nconclusion about fault — FreightProof records, it does not adjudicate.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "evidence_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Evidence Ids",
+            "type": "array"
+          },
+          "level": {
+            "enum": [
+              "info",
+              "attention"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "level",
+          "text",
+          "evidence_ids"
+        ],
+        "title": "Observation",
         "type": "object"
       },
       "OnTimeResponse": {
@@ -5290,6 +7148,51 @@
           "updated_at"
         ],
         "title": "ParcelRead",
+        "type": "object"
+      },
+      "ParcelRecord": {
+        "additionalProperties": false,
+        "properties": {
+          "barcode": {
+            "title": "Barcode",
+            "type": "string"
+          },
+          "pp_scan_in_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pp Scan In At"
+          },
+          "pp_scan_out_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pp Scan Out At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "barcode",
+          "status",
+          "pp_scan_out_at",
+          "pp_scan_in_at"
+        ],
+        "title": "ParcelRecord",
         "type": "object"
       },
       "ParcelRecordedLocation": {
@@ -6281,6 +8184,287 @@
         "title": "PhaseEventRead",
         "type": "object"
       },
+      "PhaseRecord": {
+        "additionalProperties": false,
+        "properties": {
+          "anchor_receipt_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anchor Receipt Id"
+          },
+          "anchor_status": {
+            "title": "Anchor Status",
+            "type": "string"
+          },
+          "anchored_fields": {
+            "items": {
+              "$ref": "#/components/schemas/AnchoredField"
+            },
+            "title": "Anchored Fields",
+            "type": "array"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "driver_captured_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Driver Captured At"
+          },
+          "driver_phone": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PositionFix"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "driver_visual_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Driver Visual Count"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceFile"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "location_assessment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ActionLocationAssessment"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "location_warning_acknowledged_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Warning Acknowledged At"
+          },
+          "location_warning_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Warning Reason"
+          },
+          "overridden_by_dispatcher": {
+            "title": "Overridden By Dispatcher",
+            "type": "boolean"
+          },
+          "override_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Override Note"
+          },
+          "parcel_count_destination": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parcel Count Destination"
+          },
+          "parcel_count_origin": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parcel Count Origin"
+          },
+          "phase_event_id": {
+            "format": "uuid",
+            "title": "Phase Event Id",
+            "type": "string"
+          },
+          "phase_type": {
+            "title": "Phase Type",
+            "type": "string"
+          },
+          "precinct_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precinct Name"
+          },
+          "seal_condition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seal Condition"
+          },
+          "seal_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seal Number"
+          },
+          "sequence_number": {
+            "title": "Sequence Number",
+            "type": "integer"
+          },
+          "slot_time": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slot Time"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "tier": {
+            "enum": [
+              "anchored",
+              "corroborated",
+              "recorded",
+              "declared"
+            ],
+            "title": "Tier",
+            "type": "string"
+          },
+          "trailer_fixes": {
+            "items": {
+              "$ref": "#/components/schemas/PositionFix"
+            },
+            "title": "Trailer Fixes",
+            "type": "array"
+          },
+          "trip_stop_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trip Stop Id"
+          },
+          "vehicle_tracker": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PositionFix"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "phase_event_id",
+          "sequence_number",
+          "phase_type",
+          "status",
+          "anchor_status",
+          "trip_stop_id",
+          "precinct_name",
+          "slot_time",
+          "completed_at",
+          "driver_captured_at",
+          "driver_phone",
+          "vehicle_tracker",
+          "trailer_fixes",
+          "location_assessment",
+          "location_warning_acknowledged_at",
+          "location_warning_reason",
+          "overridden_by_dispatcher",
+          "override_note",
+          "seal_number",
+          "parcel_count_origin",
+          "parcel_count_destination",
+          "driver_visual_count",
+          "evidence",
+          "anchored_fields",
+          "anchor_receipt_id",
+          "tier"
+        ],
+        "title": "PhaseRecord",
+        "type": "object"
+      },
       "PhaseStatus": {
         "enum": [
           "pending",
@@ -6394,6 +8578,58 @@
           "median_over_minutes"
         ],
         "title": "PlanSpread",
+        "type": "object"
+      },
+      "PositionFix": {
+        "additionalProperties": false,
+        "properties": {
+          "accuracy_metres": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accuracy Metres"
+          },
+          "lat": {
+            "title": "Lat",
+            "type": "number"
+          },
+          "lng": {
+            "title": "Lng",
+            "type": "number"
+          },
+          "recorded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded At"
+          },
+          "source": {
+            "enum": [
+              "driver_phone",
+              "vehicle_tracker",
+              "trailer_tracker"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lat",
+          "lng",
+          "source"
+        ],
+        "title": "PositionFix",
         "type": "object"
       },
       "PrecinctCreateBody": {
@@ -6852,6 +9088,124 @@
         "title": "ProblemsResponse",
         "type": "object"
       },
+      "PublicAuditPackView": {
+        "additionalProperties": false,
+        "properties": {
+          "external_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Reference"
+          },
+          "manifest": {
+            "$ref": "#/components/schemas/AuditPackManifest"
+          },
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          },
+          "recipient_name": {
+            "title": "Recipient Name",
+            "type": "string"
+          },
+          "recipient_organization": {
+            "title": "Recipient Organization",
+            "type": "string"
+          },
+          "seal": {
+            "$ref": "#/components/schemas/PublicPackSeal"
+          }
+        },
+        "required": [
+          "seal",
+          "recipient_name",
+          "recipient_organization",
+          "purpose",
+          "external_reference",
+          "manifest"
+        ],
+        "title": "PublicAuditPackView",
+        "type": "object"
+      },
+      "PublicPackSeal": {
+        "additionalProperties": false,
+        "description": "Everything needed to check a pack's seal and nothing about the trip itself — safe\nto show to whoever holds a forwarded PDF.",
+        "properties": {
+          "anchor_status": {
+            "title": "Anchor Status",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "hedera_network": {
+            "title": "Hedera Network",
+            "type": "string"
+          },
+          "issued_at": {
+            "format": "date-time",
+            "title": "Issued At",
+            "type": "string"
+          },
+          "manifest_sha256": {
+            "title": "Manifest Sha256",
+            "type": "string"
+          },
+          "mirror_base_url": {
+            "title": "Mirror Base Url",
+            "type": "string"
+          },
+          "pack_id": {
+            "format": "uuid",
+            "title": "Pack Id",
+            "type": "string"
+          },
+          "pack_label": {
+            "title": "Pack Label",
+            "type": "string"
+          },
+          "pdf_sha256": {
+            "title": "Pdf Sha256",
+            "type": "string"
+          },
+          "revoked": {
+            "title": "Revoked",
+            "type": "boolean"
+          },
+          "seal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SealReceipt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "pack_id",
+          "pack_label",
+          "issued_at",
+          "expires_at",
+          "revoked",
+          "anchor_status",
+          "manifest_sha256",
+          "pdf_sha256",
+          "seal",
+          "hedera_network",
+          "mirror_base_url"
+        ],
+        "title": "PublicPackSeal",
+        "type": "object"
+      },
       "PunctualityBucket": {
         "description": "Chart 2.1. Strict: on or before the plan, no grace window.",
         "properties": {
@@ -6984,6 +9338,74 @@
           "receiver_scan_rate"
         ],
         "title": "ReceiverSignoffBucket",
+        "type": "object"
+      },
+      "RecordChange": {
+        "additionalProperties": false,
+        "description": "A driver or vehicle master-record edit made while the trip was running —\nadjusters read these as possible collusion signals.",
+        "properties": {
+          "anchor_receipt_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anchor Receipt Id"
+          },
+          "changed_at": {
+            "format": "date-time",
+            "title": "Changed At",
+            "type": "string"
+          },
+          "changed_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Changed Fields",
+            "type": "array"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "subject": {
+            "enum": [
+              "driver",
+              "vehicle"
+            ],
+            "title": "Subject",
+            "type": "string"
+          },
+          "subject_id": {
+            "format": "uuid",
+            "title": "Subject Id",
+            "type": "string"
+          },
+          "tier": {
+            "enum": [
+              "anchored",
+              "corroborated",
+              "recorded",
+              "declared"
+            ],
+            "title": "Tier",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject",
+          "subject_id",
+          "event_type",
+          "changed_fields",
+          "changed_at",
+          "anchor_receipt_id",
+          "tier"
+        ],
+        "title": "RecordChange",
         "type": "object"
       },
       "ReviewAgeBand": {
@@ -7144,6 +9566,74 @@
         "title": "SealCondition",
         "type": "string"
       },
+      "SealReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "canonical_payload": {
+            "title": "Canonical Payload",
+            "type": "string"
+          },
+          "data_hash": {
+            "title": "Data Hash",
+            "type": "string"
+          },
+          "hedera_consensus_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hedera Consensus At"
+          },
+          "hedera_sequence_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hedera Sequence Number"
+          },
+          "hedera_topic_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hedera Topic Id"
+          },
+          "hedera_tx_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hedera Tx Id"
+          }
+        },
+        "required": [
+          "canonical_payload",
+          "data_hash",
+          "hedera_topic_id",
+          "hedera_sequence_number",
+          "hedera_tx_id",
+          "hedera_consensus_at"
+        ],
+        "title": "SealReceipt",
+        "type": "object"
+      },
       "SignoffFlags": {
         "properties": {
           "rejected_attempt_count": {
@@ -7199,6 +9689,113 @@
         "title": "SiteActivity",
         "type": "object"
       },
+      "StationaryPeriod": {
+        "additionalProperties": false,
+        "properties": {
+          "end": {
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "lat": {
+            "title": "Lat",
+            "type": "number"
+          },
+          "lng": {
+            "title": "Lng",
+            "type": "number"
+          },
+          "minutes": {
+            "title": "Minutes",
+            "type": "integer"
+          },
+          "start": {
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "minutes",
+          "lat",
+          "lng"
+        ],
+        "title": "StationaryPeriod",
+        "type": "object"
+      },
+      "StopRecord": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "geofence_radius_metres": {
+            "title": "Geofence Radius Metres",
+            "type": "integer"
+          },
+          "lat": {
+            "title": "Lat",
+            "type": "number"
+          },
+          "lng": {
+            "title": "Lng",
+            "type": "number"
+          },
+          "precinct_id": {
+            "format": "uuid",
+            "title": "Precinct Id",
+            "type": "string"
+          },
+          "precinct_name": {
+            "title": "Precinct Name",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "slot_time": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slot Time"
+          },
+          "trip_stop_id": {
+            "format": "uuid",
+            "title": "Trip Stop Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trip_stop_id",
+          "sequence",
+          "precinct_id",
+          "precinct_name",
+          "address",
+          "lat",
+          "lng",
+          "geofence_radius_metres",
+          "slot_time"
+        ],
+        "title": "StopRecord",
+        "type": "object"
+      },
       "SubjectType": {
         "enum": [
           "trip",
@@ -7207,7 +9804,8 @@
           "vehicle_event",
           "driver_event",
           "phase_event",
-          "precinct_event"
+          "precinct_event",
+          "audit_pack"
         ],
         "title": "SubjectType",
         "type": "string"
@@ -9119,6 +11717,149 @@
         "title": "TripStopRead",
         "type": "object"
       },
+      "TripSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "actual_arrival_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Arrival At"
+          },
+          "actual_departure_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Departure At"
+          },
+          "client_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Client Names",
+            "type": "array"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "journey_lock_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Journey Lock Hash"
+          },
+          "operator_name": {
+            "title": "Operator Name",
+            "type": "string"
+          },
+          "order_number": {
+            "title": "Order Number",
+            "type": "string"
+          },
+          "planned_arrival_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Arrival At"
+          },
+          "planned_departure_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Departure At"
+          },
+          "pulsit_trip_reference_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pulsit Trip Reference Id"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "trip_id": {
+            "format": "uuid",
+            "title": "Trip Id",
+            "type": "string"
+          },
+          "trip_reference": {
+            "title": "Trip Reference",
+            "type": "string"
+          },
+          "trip_type": {
+            "title": "Trip Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trip_id",
+          "trip_reference",
+          "order_number",
+          "trip_type",
+          "status",
+          "operator_name",
+          "client_names",
+          "pulsit_trip_reference_id",
+          "journey_lock_hash",
+          "created_at",
+          "planned_departure_at",
+          "planned_arrival_at",
+          "actual_departure_at",
+          "actual_arrival_at",
+          "closed_at"
+        ],
+        "title": "TripSummary",
+        "type": "object"
+      },
       "TripType": {
         "description": "Loaded = normal cargo run; empty_leg = repositioning, no consignments.",
         "enum": [
@@ -9858,6 +12599,117 @@
           "created_at"
         ],
         "title": "VehicleRead",
+        "type": "object"
+      },
+      "VehicleRecord": {
+        "additionalProperties": false,
+        "properties": {
+          "licence_disc_expiry": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Licence Disc Expiry"
+          },
+          "licence_disc_valid_on_trip_date": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Licence Disc Valid On Trip Date"
+          },
+          "make": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Make"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "registration": {
+            "title": "Registration",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "horse",
+              "trailer"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "tracker_device_id": {
+            "title": "Tracker Device Id",
+            "type": "string"
+          },
+          "vehicle_id": {
+            "format": "uuid",
+            "title": "Vehicle Id",
+            "type": "string"
+          },
+          "vehicle_type": {
+            "title": "Vehicle Type",
+            "type": "string"
+          },
+          "vin_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vin Number"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year"
+          }
+        },
+        "required": [
+          "vehicle_id",
+          "role",
+          "registration",
+          "vehicle_type",
+          "make",
+          "model",
+          "year",
+          "vin_number",
+          "licence_disc_expiry",
+          "licence_disc_valid_on_trip_date",
+          "tracker_device_id"
+        ],
+        "title": "VehicleRecord",
         "type": "object"
       },
       "VehicleStreakResponse": {
@@ -11039,6 +13891,198 @@
         "summary": "Upload Artifact Endpoint",
         "tags": [
           "artifacts"
+        ]
+      }
+    },
+    "/api/v1/audit-packs/{pack_id}": {
+      "get": {
+        "operationId": "get_audit_pack_endpoint_api_v1_audit_packs__pack_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pack_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Pack Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditPackRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "One issued audit pack",
+        "tags": [
+          "audit-packs"
+        ]
+      }
+    },
+    "/api/v1/audit-packs/{pack_id}/access-events": {
+      "get": {
+        "operationId": "list_access_events_endpoint_api_v1_audit_packs__pack_id__access_events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pack_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Pack Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AuditPackAccessEventRead"
+                  },
+                  "title": "Response List Access Events Endpoint Api V1 Audit Packs  Pack Id  Access Events Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Every use of an audit pack's share link, newest first",
+        "tags": [
+          "audit-packs"
+        ]
+      }
+    },
+    "/api/v1/audit-packs/{pack_id}/pdf": {
+      "get": {
+        "operationId": "download_issued_pdf_endpoint_api_v1_audit_packs__pack_id__pdf_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pack_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Pack Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/pdf": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Download an issued pack's PDF exactly as issued",
+        "tags": [
+          "audit-packs"
+        ]
+      }
+    },
+    "/api/v1/audit-packs/{pack_id}/revoke": {
+      "post": {
+        "operationId": "revoke_audit_pack_endpoint_api_v1_audit_packs__pack_id__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pack_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Pack Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditPackRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Revoke an audit pack's share link (the pack itself is kept as a record)",
+        "tags": [
+          "audit-packs"
         ]
       }
     },
@@ -12609,6 +15653,254 @@
         ]
       }
     },
+    "/api/v1/public/audit-packs/seal/{pack_id}": {
+      "get": {
+        "operationId": "pack_seal_endpoint_api_v1_public_audit_packs_seal__pack_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pack_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Pack Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicPackSeal"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Check an issued pack's seal (no evidence shown; the address printed on the PDF)",
+        "tags": [
+          "audit-packs-public"
+        ]
+      }
+    },
+    "/api/v1/public/audit-packs/{token}": {
+      "get": {
+        "operationId": "open_pack_endpoint_api_v1_public_audit_packs__token__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicAuditPackView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Open an audit pack from its share link",
+        "tags": [
+          "audit-packs-public"
+        ]
+      }
+    },
+    "/api/v1/public/audit-packs/{token}/artifacts/{artifact_id}": {
+      "get": {
+        "operationId": "shared_artifact_endpoint_api_v1_public_audit_packs__token__artifacts__artifact_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "One evidence file named in the pack, as stored (the page re-hashes it)",
+        "tags": [
+          "audit-packs-public"
+        ]
+      }
+    },
+    "/api/v1/public/audit-packs/{token}/incident-sheet.pdf": {
+      "get": {
+        "operationId": "shared_incident_sheet_endpoint_api_v1_public_audit_packs__token__incident_sheet_pdf_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/pdf": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "The incident fact sheet, rendered from the issued pack's snapshot",
+        "tags": [
+          "audit-packs-public"
+        ]
+      }
+    },
+    "/api/v1/public/audit-packs/{token}/pdf": {
+      "get": {
+        "operationId": "shared_pdf_endpoint_api_v1_public_audit_packs__token__pdf_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/pdf": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download the pack's PDF exactly as issued",
+        "tags": [
+          "audit-packs-public"
+        ]
+      }
+    },
+    "/api/v1/public/audit-packs/{token}/verify": {
+      "post": {
+        "operationId": "verify_pack_endpoint_api_v1_public_audit_packs__token__verify_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveVerification"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Re-check every anchored record against today's database and Hedera",
+        "tags": [
+          "audit-packs-public"
+        ]
+      }
+    },
     "/api/v1/stream": {
       "get": {
         "operationId": "stream_endpoint_api_v1_stream_get",
@@ -13203,6 +16495,324 @@
         ]
       }
     },
+    "/api/v1/trips/{trip_id}/audit-packs": {
+      "get": {
+        "operationId": "list_audit_packs_endpoint_api_v1_trips__trip_id__audit_packs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trip_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Trip Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AuditPackRead"
+                  },
+                  "title": "Response List Audit Packs Endpoint Api V1 Trips  Trip Id  Audit Packs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List a trip's issued audit packs",
+        "tags": [
+          "audit-packs"
+        ]
+      },
+      "post": {
+        "operationId": "issue_audit_pack_endpoint_api_v1_trips__trip_id__audit_packs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trip_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Trip Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuditPackCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditPackIssued"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Issue an audit pack: snapshot, render, store and seal it, and mint its share link",
+        "tags": [
+          "audit-packs"
+        ]
+      }
+    },
+    "/api/v1/trips/{trip_id}/audit-trail/incident-sheet.pdf": {
+      "get": {
+        "operationId": "incident_sheet_pdf_api_v1_trips__trip_id__audit_trail_incident_sheet_pdf_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trip_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Trip Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/pdf": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Incident fact sheet (1–2 pages) for SAPS, the tracking company or a TAPA report",
+        "tags": [
+          "audit-packs"
+        ]
+      }
+    },
+    "/api/v1/trips/{trip_id}/audit-trail/preview": {
+      "get": {
+        "operationId": "preview_audit_trail_api_v1_trips__trip_id__audit_trail_preview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trip_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Trip Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope_consignment_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope Consignment Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_location_trail",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Include Location Trail",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_full_driver_id",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Full Driver Id",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditPackManifest"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Preview the audit pack manifest for a trip (nothing is stored or anchored)",
+        "tags": [
+          "audit-packs"
+        ]
+      }
+    },
+    "/api/v1/trips/{trip_id}/audit-trail/preview.pdf": {
+      "get": {
+        "operationId": "preview_audit_trail_pdf_api_v1_trips__trip_id__audit_trail_preview_pdf_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trip_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Trip Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope_consignment_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope Consignment Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_location_trail",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Include Location Trail",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_full_driver_id",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Full Driver Id",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/pdf": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Preview the audit pack as a PDF (watermarked PREVIEW; nothing is stored or anchored)",
+        "tags": [
+          "audit-packs"
+        ]
+      }
+    },
     "/api/v1/trips/{trip_id}/cancel": {
       "post": {
         "description": "A trip abandoned mid-plan (cargo pulled, vehicle broken down) has no other\nexit — phase rows are left exactly as they are (evidence, not completion).",
@@ -13375,6 +16985,114 @@
         "summary": "Raise Exception Endpoint",
         "tags": [
           "exceptions"
+        ]
+      }
+    },
+    "/api/v1/trips/{trip_id}/incident-declarations": {
+      "get": {
+        "operationId": "list_declarations_endpoint_api_v1_trips__trip_id__incident_declarations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trip_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Trip Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IncidentDeclarationRecord"
+                  },
+                  "title": "Response List Declarations Endpoint Api V1 Trips  Trip Id  Incident Declarations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "A trip's incident declarations, oldest first",
+        "tags": [
+          "audit-packs"
+        ]
+      },
+      "post": {
+        "operationId": "record_declaration_endpoint_api_v1_trips__trip_id__incident_declarations_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trip_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Trip Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IncidentDeclarationCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentDeclarationRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Declare police-report and notification facts for a trip's incident",
+        "tags": [
+          "audit-packs"
         ]
       }
     },

@@ -253,3 +253,9 @@ def _default_mirror_url(network: str) -> str:
     raise HederaConfigError(
         f"Unsupported HEDERA_NETWORK '{network}' for mirror-node lookup."
     )
+
+
+def mirror_base_url(network: str) -> str:
+    """Public mirror node for `network` — the address an outside party (an insurer's
+    browser, a printed audit pack) reads anchored messages back from."""
+    return _default_mirror_url(network)

@@ -10,6 +10,7 @@ from sqlalchemy import SQLColumnExpression, Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import SubjectNotVisibleError
+from app.db.models.audit_packs import AuditPack
 from app.db.models.enums import SubjectType
 from app.db.models.events import DriverEvent, PrecinctEvent, VehicleEvent
 from app.db.models.organisations import Precinct
@@ -80,6 +81,12 @@ def subject_visibility_query(
                 PrecinctEvent.id == subject_id,
                 Precinct.principal_organization_id == organization_id,
             )
+        )
+    elif subject_type == SubjectType.AUDIT_PACK:
+        # An issued pack's seal is the issuing operator's, like the trip it summarises.
+        query = select(AuditPack.id).where(
+            AuditPack.id == subject_id,
+            AuditPack.organization_id == organization_id,
         )
     else:
         raise SubjectNotVisibleError(str(subject_type), str(subject_id))

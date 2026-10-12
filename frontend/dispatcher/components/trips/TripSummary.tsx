@@ -15,7 +15,7 @@ import { RECORD_AFFORDANCE } from '@/components/ui/RecordLink'
 import { precinctLabel, type HeaderFact, type TripHeaderFacts, type TripVehicles, type VehicleRef } from '@/lib/phase/trip-detail'
 import { tripChipMeta } from '@/lib/phase/derive'
 
-export type TripPanel = 'information' | 'manifest' | 'exceptions'
+export type TripPanel = 'information' | 'manifest' | 'exceptions' | 'audit'
 interface Props {
   facts: TripHeaderFacts
   precincts: Precinct[]

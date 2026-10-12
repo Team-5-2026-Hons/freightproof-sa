@@ -105,6 +105,30 @@
       "fastapi.security.http.HTTPBearer"
     ]
   },
+  "GET /api/v1/audit-packs/{pack_id}": {
+    "access": "admin-dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "app.auth.dependencies.require_admin_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/audit-packs/{pack_id}/access-events": {
+    "access": "admin-dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "app.auth.dependencies.require_admin_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/audit-packs/{pack_id}/pdf": {
+    "access": "admin-dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "app.auth.dependencies.require_admin_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
   "GET /api/v1/auth/me": {
     "access": "dispatcher",
     "dependencies": [
@@ -219,6 +243,36 @@
       "fastapi.security.http.HTTPBearer"
     ]
   },
+  "GET /api/v1/public/audit-packs/seal/{pack_id}": {
+    "access": "none",
+    "dependencies": [
+      "rate_limit:audit_pack_public"
+    ]
+  },
+  "GET /api/v1/public/audit-packs/{token}": {
+    "access": "none",
+    "dependencies": [
+      "rate_limit:audit_pack_public"
+    ]
+  },
+  "GET /api/v1/public/audit-packs/{token}/artifacts/{artifact_id}": {
+    "access": "none",
+    "dependencies": [
+      "rate_limit:audit_pack_public"
+    ]
+  },
+  "GET /api/v1/public/audit-packs/{token}/incident-sheet.pdf": {
+    "access": "none",
+    "dependencies": [
+      "rate_limit:audit_pack_public"
+    ]
+  },
+  "GET /api/v1/public/audit-packs/{token}/pdf": {
+    "access": "none",
+    "dependencies": [
+      "rate_limit:audit_pack_public"
+    ]
+  },
   "GET /api/v1/stream": {
     "access": "dispatcher",
     "dependencies": [
@@ -277,6 +331,50 @@
     ]
   },
   "GET /api/v1/trips/{trip_id}/artifacts": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/trips/{trip_id}/audit-packs": {
+    "access": "admin-dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "app.auth.dependencies.require_admin_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/trips/{trip_id}/audit-trail/incident-sheet.pdf": {
+    "access": "admin-dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "app.auth.dependencies.require_admin_dispatcher",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:audit_pack_build"
+    ]
+  },
+  "GET /api/v1/trips/{trip_id}/audit-trail/preview": {
+    "access": "admin-dispatcher",
+    "dependencies": [
+      "app.api.v1.endpoints.audit_packs._options",
+      "app.auth.dependencies.get_current_dispatcher",
+      "app.auth.dependencies.require_admin_dispatcher",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:audit_pack_build"
+    ]
+  },
+  "GET /api/v1/trips/{trip_id}/audit-trail/preview.pdf": {
+    "access": "admin-dispatcher",
+    "dependencies": [
+      "app.api.v1.endpoints.audit_packs._options",
+      "app.auth.dependencies.get_current_dispatcher",
+      "app.auth.dependencies.require_admin_dispatcher",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:audit_pack_build"
+    ]
+  },
+  "GET /api/v1/trips/{trip_id}/incident-declarations": {
     "access": "dispatcher",
     "dependencies": [
       "app.auth.dependencies.get_current_dispatcher",
@@ -389,6 +487,15 @@
       "rate_limit:artifact_upload"
     ]
   },
+  "POST /api/v1/audit-packs/{pack_id}/revoke": {
+    "access": "admin-dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "app.auth.dependencies.require_admin_dispatcher",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:fleet_mutation"
+    ]
+  },
   "POST /api/v1/blockchain/verify": {
     "access": "dispatcher",
     "dependencies": [
@@ -461,6 +568,12 @@
       "rate_limit:precinct_mutation"
     ]
   },
+  "POST /api/v1/public/audit-packs/{token}/verify": {
+    "access": "none",
+    "dependencies": [
+      "rate_limit:blockchain_verify"
+    ]
+  },
   "POST /api/v1/trips": {
     "access": "dispatcher",
     "dependencies": [
@@ -475,6 +588,15 @@
       "app.auth.dependencies.get_current_dispatcher",
       "fastapi.security.http.HTTPBearer",
       "rate_limit:trip_create"
+    ]
+  },
+  "POST /api/v1/trips/{trip_id}/audit-packs": {
+    "access": "admin-dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "app.auth.dependencies.require_admin_dispatcher",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:audit_pack_build"
     ]
   },
   "POST /api/v1/trips/{trip_id}/cancel": {
@@ -499,6 +621,14 @@
       "app.auth.dependencies.get_current_driver",
       "fastapi.security.http.HTTPBearer",
       "rate_limit:evidence_write"
+    ]
+  },
+  "POST /api/v1/trips/{trip_id}/incident-declarations": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:fleet_mutation"
     ]
   },
   "POST /api/v1/trips/{trip_id}/locations": {
