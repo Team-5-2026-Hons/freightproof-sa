@@ -610,7 +610,7 @@ changes and moves stay in separate commits.
 | # | Stage | Owner | Depends on | Done when | Target |
 |---|---|---|---|---|---|
 | 1 | Merge this restructure into `dev` | Ciaran | — | PR green in CI, reviewed, merged; Tim told to integrate | Sat 10 Oct |
-| 2 | Receiver selfie: retain capture and implement secure upload/storage (review F2/F5; handoff below) | Tim | 3a | `SELFIE_ONLY` is assigned only after a photo is stored and linked through `selfie_artifact_id`; skip or failed upload retains `TYPED_ONLY`. Decision recorded 12 Oct: keep capture; handed to Tim after 3a, not urgent; not yet implemented | Tim to set, before stage 8 |
+| 2 | Receiver selfie: retain capture and implement secure upload/storage (review F2/F5; handoff below) | Tim | 3a–7 merged | `SELFIE_ONLY` is assigned only after a photo is stored and linked through `selfie_artifact_id`; skip or failed upload retains `TYPED_ONLY`. Decision recorded 12 Oct: keep capture, selfie travels in the confirm request (handoff below); Tim starts after the restructure merges; not yet implemented | Tim to set, before stage 8 |
 | 3a | Thin `endpoints/handover.py` | Ciaran | 1 | Routes validate, call `orchestration/handover/`, return; no DB calls in the route module; B1 snapshot unchanged. **Done 12 Oct**: 466 lines, DB work in `handover/service.py`, transactions stay in the route (§5 deviations); 19 characterisation tests added first; 2,820 passed, 4 skipped | Wed 14 Oct |
 | 3b | `resource_service` → `trips/` (list, history, detail reads) | Ciaran | 1 | Wrapper kept; patches retargeted; guardrails green. **Done 12 Oct**: `trips/detail.py` and `trips/listing.py`, 22 contracts, 2,822 passed, 4 skipped | Thu 15 Oct |
 | 4 | `review_identity`, `review_policy` → `exceptions/`; analytics pair → `orchestration/analytics/` | Ciaran | 1 | Wrappers kept; guardrails green. **Done 12 Oct**: 25 contracts, 2,827 passed, 4 skipped | Thu 15 Oct |
@@ -625,71 +625,54 @@ If a stage slips, it moves to the remaining-work list. The freeze does not move.
 in place at submission are an acceptable, documented state. A feature that claims evidence
 it never stores is not.
 
-### Stage 2 handoff — receiver selfie persistence (decision: 12 October 2026)
+### Stage 2 handoff — receiver selfie persistence (decisions: 12 October 2026)
 
-**Status:** planned, not implemented; **owner: Tim, after 3a** (stage 3a is done, 12 Oct). Ciaran chose **keep selfie capture and implement
-upload/storage**, then explicitly deferred implementation to a new session. This supersedes
-the automatic remove-capture fallback previously listed above; if the deadline cannot be met,
-bring that scope decision back to Ciaran. Do not report this stage complete from this plan edit.
+**Status:** not implemented. **Owner: Tim**, starting from `dev` once the restructure (stages 3a–7)
+is merged. Not urgent, but must land before stage 8 testing. Ciaran's decision: keep the selfie
+capture and store it properly. If that cannot be done before stage 8, bring the scope decision
+back to Ciaran; do not fall back silently.
 
 **Confirmed source defect:** `record_consent_decision` in
-`backend/app/orchestration/handover/receiver_verification.py` assigns `SELFIE_ONLY` as soon as
-a consenting receiver says they have no document. No photo is required. In
-`frontend/receiver/app/h/[token]/HandoverPageClient.tsx`, `handleSelfieCaptured` stores a data
-URL only in React state; the confirmation request never uploads it. Skipping capture also
-leaves the backend claiming selfie evidence. Reproduce this with a failing test before fixing.
+`backend/app/orchestration/handover/receiver_verification.py` assigns `SELFIE_ONLY` as soon as a
+consenting receiver says they have no document. No photo is required. In
+`frontend/receiver/app/h/[token]/HandoverPageClient.tsx` the captured selfie is held in React state
+only; the confirmation request never sends it. The record claims evidence it never stored.
 
-**Implementation boundary and intended approach:**
+**Design (decided 12 Oct; replaces the separate upload route planned earlier):** the selfie travels
+in the confirm request, as the signature already does. Confirmation already provides the
+capability token plus browser-binding cookie, single use (the redemption `UPDATE`), the public rate
+limit and race safety, so a separate upload route would rebuild all of that and add an orphan-upload
+path. Consequences:
 
-- Consent without a document starts at `TYPED_ONLY`. Promote to `SELFIE_ONLY` only after
-  the image upload succeeds, its `EvidenceArtifact` row is persisted, and the existing
-  `ReceiverIdentityVerification.selfie_artifact_id` FK is linked. Keep the status unverified:
-  a stored photograph does not verify identity.
-- Weigh sending the optional selfie in the confirm request, like the signature: redemption then gives the token gate, single use, rate limit and race safety.
-- Add a focused upload function in `orchestration/handover/` (in `service.py`, or a module above `receiver_verification` in the contract 16 tier order) and a thin route in `endpoints/handover.py`.
-  Require a live, unredeemed capability token, the matching browser-binding cookie and
-  recorded consent. Use the existing generic rejection response for invalid credentials.
-  Reject uploads after confirmation and serialize duplicate/racing uploads so an existing
-  linked photo cannot be silently replaced or generate repeated storage writes.
-- Reuse the existing evidence-storage and artifact conventions. Bound request/image size,
-  verify image type from bytes, and apply a public upload rate limit. Keep the photograph
-  in the existing private evidence storage; do not send it to Didit or blockchain.
-  Store only after authorization checks and handle storage/database failure explicitly.
-- Wire `SelfieCapture` to the upload. Show saving/failure state, allow retry or continuation
-  without a photo, and prevent confirmation racing an in-flight upload. A skipped or failed
-  upload must not manufacture a selfie tier or strand a delivery. Bound capture dimensions
-  and request duration; do not persist the image in browser storage.
-- Update displayed consent wording and its version to distinguish a selfie retained by
-  FreightProof from document/face images sent to the identity vendor. Preserve recorded
-  historical consent hashes. Assess historical `SELFIE_ONLY` rows with no artifact as a
-  separate data-integrity concern; do not silently rewrite existing evidence.
-- The FK already exists in `db/models/receiver_verification.py`; no new column is expected.
-  Check the actual model/migration state before deciding whether any migration is necessary.
+- Consent with no document records `TYPED_ONLY`, `UNVERIFIED`, reason `NO_DOCUMENT`. The three
+  existing tests that assert `selfie_only` after consent (`test_receiver_verification_endpoints.py`)
+  test the defect and are updated in the fix commit.
+- `HandoverConfirmRequest` gains an optional, size-bounded `selfie_jpeg_base64` (validated like
+  `signature_png_base64`; bad input is a 422 before redemption, so the token is not burned).
+- `orchestration/handover/service.py` `record_receiver_confirmation` stores the selfie after the
+  signature, only when the verification row shows consent with no document: `create_receiver_artifact`
+  with `ArtifactType.PHOTO` (string column, no migration; type checked from the bytes), link
+  `selfie_artifact_id`, promote to `SELFIE_ONLY`; status stays `UNVERIFIED`, because a photograph does
+  not verify identity. Inside a savepoint: a storage, image-type or database failure is logged, the
+  tier stays `TYPED_ONLY` and the confirmation still succeeds. A selfie sent without that consent is
+  not stored (POPIA). Commits and rollbacks stay in the route (§5 deviations).
+- POPIA: private evidence storage only; never sent to Didit; neither the photo nor its hash is added
+  to any anchored payload (that would be a new confirmation payload version and change B3).
+- Receiver: send the captured image with the confirm request; skipping it still confirms; memory only,
+  no browser storage. Consent wording distinguishes the photo FreightProof keeps from the images sent
+  to the identity vendor, with a new consent version; historical consent hashes stay valid.
+- Historical `SELFIE_ONLY` rows without an artifact are not rewritten; record them as a known data issue.
 
-**Verification:** cover no-document consent before capture, successful storage/linking,
-skip, storage failure, malformed/oversized image, missing or wrong browser cookie, missing
-or declined consent, expired/unknown/redeemed token, duplicate upload, and upload/confirmation
-races. Assert persisted artifact trip ownership, hash and attribution. Add receiver tests
-for saving, retry and skip; keep document verification and confirmation paths green.
-Update B1/B2 snapshots only for reviewed additive API changes, then run backend lint,
-types, structure/import checks, baseline and DB-backed tests, plus receiver lint/types/tests/build
-and a real-device camera/upload smoke test. Distinguish pass, skip and not-run evidence.
+**Verification:** backend tests for no-document consent, a stored and linked selfie (trip ownership,
+hash, null driver attribution), confirm without a selfie, a selfie without consent, oversized or
+malformed input (422, token still usable), non-image bytes and a storage failure (confirmation
+succeeds at `TYPED_ONLY`); existing confirm, cookie and race tests unchanged. B1 changes by the one
+additive field only; B2/B3/B4 unchanged. Receiver vitest for send-when-captured and omit-when-skipped,
+plus tsc, lint and build; a real-phone smoke test of both paths. Two commits: the `TYPED_ONLY` fix with
+its tests, then selfie storage with the frontend. Do not read `.env`, run Alembic from a feature
+branch, or use the shared database for destructive fixtures.
 
-**Fresh-session prerequisites:** read `CLAUDE.md` and applicable instructions; query the
-existing graph and use source when stale; inspect `git status` for other work. Stages 3a and 5
-are done: the route's database work lives in `handover/service.py`, and the audit-pack files are
-not part of this stage. Expected files: `backend/app/api/v1/endpoints/handover.py`,
-`backend/app/orchestration/handover/service.py` and `receiver_verification.py`,
-`backend/app/schemas/handover.py`, and the receiver's `components/SelfieCapture.tsx`,
-`app/h/[token]/HandoverPageClient.tsx`, `lib/api.ts`, `lib/consent.ts` with their tests. The
-public router is already mounted, so shared `app/main.py` should not need a change.
-No implementation or tests were changed during this handoff. Local PostgreSQL was not
-reachable on ports 5432/5433 during inspection; establish a disposable test database,
-never use the shared Supabase database for destructive fixtures. Do not read `.env` files,
-commit, push, switch branches or run a shared migration from a feature branch.
-
-**Stages 3 and 4:** 3a done 12 Oct; 3b and 4 follow in Ciaran's session, each committed
-separately; behaviour changes stay separate from moves.
+**Stages 3–6:** done 12 Oct, each committed separately; behaviour changes kept separate from moves.
 
 ---
 
