@@ -310,3 +310,14 @@ class ManifestNotFoundError(Exception):
 class ManifestLookupUnsupportedError(Exception):
     """The connected parcel system cannot look manifests up (501). Carries no detail on
     purpose: the integration's own message is an internal engineering note."""
+
+
+class StoredFileMismatchError(Exception):
+    """A stored file is missing or no longer hashes to the value recorded when it was
+    stored (409 for an issued audit pack). Domain-side twin of the storage layer's
+    integrity error, so the API layer can map it without importing app.storage."""
+
+
+class FileStorageUnavailableError(Exception):
+    """Object storage could not be reached, so nothing was read or written (503).
+    Domain-side twin of the storage layer's availability error."""

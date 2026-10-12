@@ -177,3 +177,50 @@ async def hash_stored_evidence_file(*, s3_bucket: str, s3_key: str) -> str:
         raise EvidenceStorageUnavailableError("Evidence storage is unavailable") from exc
 
     return digest.hexdigest()
+
+
+# Issued audit-pack PDFs live beside the evidence they summarise, under their own prefix
+# so a pack can never be mistaken for (or overwrite) an uploaded artifact.
+_AUDIT_PACK_PREFIX = "audit-packs"
+_PDF_MIME = "application/pdf"
+
+
+async def upload_audit_pack_pdf(*, trip_id: str, pack_id: str, pdf_bytes: bytes) -> UploadResult:
+    """Store an issued pack's PDF at a key derived from its ids, and return its hash."""
+    key = f"{_AUDIT_PACK_PREFIX}/{trip_id}/{pack_id}.pdf"
+    client = _get_client()
+    try:
+        # The Supabase client is synchronous; off the loop so a slow upload stalls one
+        # request, not the server.
+        await asyncio.to_thread(
+            client.storage.from_(_BUCKET).upload, key, pdf_bytes, {"content-type": _PDF_MIME},
+        )
+    except Exception as exc:  # noqa: BLE001 — the SDK raises several unrelated types
+        logger.exception("Audit pack PDF upload failed for %s", key)
+        raise EvidenceStorageUnavailableError("Could not store the audit pack PDF") from exc
+    return UploadResult(s3_bucket=_BUCKET, s3_key=key, file_hash=hashlib.sha256(pdf_bytes).hexdigest())
+
+
+async def download_audit_pack_pdf(*, s3_bucket: str, s3_key: str) -> bytes:
+    """Fetch an issued pack's PDF bytes for re-download."""
+    client = _get_client()
+    try:
+        data = await asyncio.to_thread(client.storage.from_(s3_bucket).download, s3_key)
+    except Exception as exc:  # noqa: BLE001 — the SDK raises several unrelated types
+        logger.exception("Audit pack PDF download failed for %s/%s", s3_bucket, s3_key)
+        raise EvidenceStorageUnavailableError("Could not read the audit pack PDF") from exc
+    return bytes(data)
+
+
+async def download_evidence_file(*, s3_bucket: str, s3_key: str) -> bytes:
+    """Fetch one evidence object's bytes (bounded) so a share-link viewer can see — and
+    re-hash in their own browser — the exact photo that was committed."""
+    client = _get_client()
+    try:
+        data = await asyncio.to_thread(client.storage.from_(s3_bucket).download, s3_key)
+    except Exception as exc:  # noqa: BLE001 — the SDK raises several unrelated types
+        logger.exception("Evidence download failed for %s/%s", s3_bucket, s3_key)
+        raise EvidenceStorageUnavailableError("Could not read the evidence file") from exc
+    if len(data) > MAX_EVIDENCE_FILE_SIZE_BYTES:
+        raise EvidenceObjectIntegrityError("Stored evidence exceeds the accepted upload size")
+    return bytes(data)

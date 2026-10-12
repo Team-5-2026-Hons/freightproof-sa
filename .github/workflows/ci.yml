@@ -83,6 +83,13 @@ jobs:
           key: pip-${{ hashFiles('backend/requirements-dev.txt') }}
           restore-keys: pip-
 
+      # WeasyPrint (audit-pack PDFs) loads Pango and HarfBuzz when imported, and app/reporting
+      # imports it at module level, so without these every app import fails, not just the PDF
+      # tests. Same packages as backend/Dockerfile; installed explicitly rather than relying
+      # on whatever the runner image happens to ship.
+      - name: Install WeasyPrint system libraries
+        run: sudo apt-get update && sudo apt-get install -y libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0 fonts-dejavu-core
+
       - name: Install dependencies
         working-directory: backend
         run: pip install -r requirements-dev.txt

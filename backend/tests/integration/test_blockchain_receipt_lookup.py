@@ -14,6 +14,7 @@ from sqlalchemy import inspect
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.blockchain.anchor_service import lookup_receipts
+from app.db.models.audit_packs import AuditPack
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import (
     BlockchainReceiptType,
@@ -409,7 +410,15 @@ async def test_lookup_is_tenant_safe_for_every_subject_type_and_direction(
             changed_fields={},
             changed_by_user_id=lookup_seed.user.id,
         )
-        db_session.add_all([phase, vehicle_event, driver_event, precinct_event])
+        audit_pack = AuditPack(
+            id=uuid.uuid4(), trip_id=trip.id, organization_id=organization.id, pack_version=1,
+            purpose="insurance_claim", recipient_name="R", recipient_organization="R",
+            include_location_trail=False, include_full_driver_id=False, manifest_version=1,
+            manifest_json={}, manifest_sha256="0" * 64, pdf_storage_bucket="b", pdf_storage_key="k",
+            pdf_sha256="0" * 64, pdf_size_bytes=1, anchor_status="anchored", token_hash=uuid.uuid4().hex * 2,
+            issued_at=now, expires_at=now, issued_by_user_id=lookup_seed.user.id,
+        )
+        db_session.add_all([phase, vehicle_event, driver_event, precinct_event, audit_pack])
         await db_session.flush()
 
         subjects = [
@@ -432,6 +441,7 @@ async def test_lookup_is_tenant_safe_for_every_subject_type_and_direction(
                 BlockchainReceiptType.PRECINCT_CREATED,
             ),
             (SubjectType.PHASE_EVENT, phase.id, BlockchainReceiptType.PICKUP),
+            (SubjectType.AUDIT_PACK, audit_pack.id, BlockchainReceiptType.AUDIT_PACK_ISSUED),
         ]
         for subject_type, subject_id, receipt_type in subjects:
             receipt = _receipt(
